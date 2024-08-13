@@ -1,5 +1,8 @@
+mod types;
+mod utils;
 use clap::{Parser, ValueEnum};
-use std::fs;
+use types::Program;
+use utils::program_at_path;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -23,10 +26,19 @@ fn main() {
 
     match args.cmd {
         Command::R1CS => {
-            let contents =
-                fs::read_to_string(args.path).expect("Should have been able to read the file");
+            let program = program_at_path(args.path);
 
-            println!("With text:\n{contents}");
+            assert!(
+                program.functions.len() == 1,
+                "only one function supported at the moment",
+            );
+            let Program {
+                mut functions,
+                unconstrained_functions: _,
+            } = program;
+            let circuit = functions.pop().unwrap();
+
+            println!("Opcodes : {:?}", circuit.opcodes.len());
         }
     }
 }
