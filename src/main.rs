@@ -22,23 +22,74 @@ enum Command {
 }
 
 fn main() {
-    let args = Args::parse();
+  let args = Args::parse();
 
-    match args.cmd {
-        Command::R1CS => {
-            let program = program_at_path(args.path);
+  match args.cmd {
+    Command::R1CS => {
+      let program = program_at_path(args.path);
 
-            assert!(
-                program.functions.len() == 1,
-                "only one function supported at the moment",
-            );
-            let Program {
-                mut functions,
-                unconstrained_functions: _,
-            } = program;
-            let circuit = functions.pop().unwrap();
+      assert!(
+        program.functions.len() == 1,
+        "only one function supported at the moment",
+      );
+      let Program {
+        mut functions,
+        unconstrained_functions: _,
+      } = program;
+      let circuit = functions.pop().unwrap();
 
-            println!("Opcodes : {:?}", circuit.opcodes.len());
+      let iter = circuit.opcodes.iter();
+
+      let mut assert_0_count = 0;
+
+      for opcode in iter {
+        match opcode {
+          Opcode::AssertZero(_expr) => assert_0_count += 1,
+          Opcode::BlackBoxFuncCall(bb_fn_call) => match bb_fn_call {
+            BlackBoxFuncCall::AND { lhs, rhs, output } => {
+              println!("BB AND")
+            }
+            BlackBoxFuncCall::XOR { lhs, rhs, output } => {
+              println!("BB XOR")
+            }
+            BlackBoxFuncCall::RANGE { input } => {
+              println!("BB RANGE")
+            }
+            _ => {
+              // Unsupported operations: AES128Encrypt, SHA256, Blake2s, Blake3, SchnorrVerify, PedersenCommitment,
+              // PedersenHash, EcdsaSecp256k1, EcdsaSecp256r1, MultiScalarMul, EmbeddedCurveAdd, Keccak256, Keccakf1600,
+              // RecursiveAggregation, BigIntAdd, BigIntSub, BigIntMul, BigIntDiv, BigIntFromLeBytes, BigIntToLeBytes,
+              // Poseidon2Permutation, Sha256Compression
+              println!("Unsupprted BlackBoxFuncCall")
+            }
+          },
+          Opcode::Directive(_) => println!("Directive",),
+          Opcode::MemoryOp {
+            block_id,
+            op,
+            predicate,
+          } => println!("MemoryOp",),
+          Opcode::MemoryInit {
+            block_id,
+            init,
+            block_type,
+          } => println!("MemoryInit",),
+          Opcode::BrilligCall {
+            id,
+            inputs,
+            outputs,
+            predicate,
+          } => println!("BrilligCall",),
+          Opcode::Call {
+            id,
+            inputs,
+            outputs,
+            predicate,
+          } => println!("Call",),
         }
+      }
+
+      println!("Opcodes : {:?}", circuit.opcodes.len());
     }
+  }
 }
