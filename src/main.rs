@@ -1,24 +1,24 @@
 mod types;
 mod utils;
+use acir::circuit::{opcodes::BlackBoxFuncCall, Opcode};
 use clap::{Parser, ValueEnum};
 use types::Program;
 use utils::program_at_path;
-
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Name of the person to greet
-    cmd: Command,
+  /// Name of the person to greet
+  cmd: Command,
 
-    /// Path to circuit file
-    path: String,
+  /// Path to circuit file
+  path: String,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Command {
-    /// Compile the ACIR to R1CS
-    R1CS,
+  /// Compile the ACIR to R1CS
+  R1CS,
 }
 
 fn main() {
