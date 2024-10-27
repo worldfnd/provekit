@@ -8,9 +8,9 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-acir = { git = "https://github.com/noir-lang/noir", tag = "v0.31.0", version = "0.47.0" }
-acvm = { git = "https://github.com/noir-lang/noir", tag = "v0.31.0", version = "0.47.0" }
-acir_field = { git = "https://github.com/noir-lang/noir", tag = "v0.31.0", version = "0.47.0" }
+acir = { git = "https://github.com/noir-lang/noir"}
+acvm = { git = "https://github.com/noir-lang/noir"}
+acir_field = { git = "https://github.com/noir-lang/noir"}
 # acvm = "0.46.0"
 arkworks_backend = { git = "https://github.com/noir-lang/arkworks_backend", version = "0.1.0" }
 clap = { version = "4.5.15", features = ["derive"] }

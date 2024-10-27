@@ -18,13 +18,13 @@ dependencies = [
 
 [[package]]
 name = "acir"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
- "acir_field 0.47.0",
+ "acir_field 0.52.0",
  "base64 0.21.7",
  "bincode",
- "brillig 0.47.0",
+ "brillig 0.52.0",
  "flate2",
  "serde",
  "serde-big-array",
@@ -47,8 +47,8 @@ dependencies = [
 
 [[package]]
 name = "acir_field"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -76,12 +76,12 @@ dependencies = [
 
 [[package]]
 name = "acvm"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
- "acir 0.47.0",
- "acvm_blackbox_solver 0.47.0",
- "brillig_vm 0.47.0",
+ "acir 0.52.0",
+ "acvm_blackbox_solver 0.52.0",
+ "brillig_vm 0.52.0",
  "indexmap 1.9.3",
  "num-bigint",
  "serde",
@@ -117,10 +117,10 @@ dependencies = [
 
 [[package]]
 name = "acvm_blackbox_solver"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
- "acir 0.47.0",
+ "acir 0.52.0",
  "blake2",
  "blake3",
  "k256",
@@ -129,7 +129,6 @@ dependencies = [
  "num-bigint",
  "p256",
  "sha2",
- "sha3",
  "thiserror",
 ]
 
@@ -511,10 +510,10 @@ dependencies = [
 
 [[package]]
 name = "brillig"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
- "acir_field 0.47.0",
+ "acir_field 0.52.0",
  "serde",
 ]
 
@@ -532,11 +531,11 @@ dependencies = [
 
 [[package]]
 name = "brillig_vm"
-version = "0.47.0"
-source = "git+https://github.com/noir-lang/noir?tag=v0.31.0#540bef3597bd3e5775c83ec2ee3c0d4463084b4c"
+version = "0.52.0"
+source = "git+https://github.com/noir-lang/noir#600ffeb05cd2538604570f3e2aa1b2e560e577c3"
 dependencies = [
- "acir 0.47.0",
- "acvm_blackbox_solver 0.47.0",
+ "acir 0.52.0",
+ "acvm_blackbox_solver 0.52.0",
  "num-bigint",
  "num-traits",
  "thiserror",
@@ -1593,9 +1592,9 @@ checksum = "7843ec2de400bcbc6a6328c958dc38e5359da6e93e72e37bc5246bf1ae776389"
 name = "noir-r1cs"
 version = "0.1.0"
 dependencies = [
- "acir 0.47.0",
- "acir_field 0.47.0",
- "acvm 0.47.0",
+ "acir 0.52.0",
+ "acir_field 0.52.0",
+ "acvm 0.52.0",
  "arkworks_backend",
  "base64 0.22.1",
  "clap",
