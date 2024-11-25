@@ -4,11 +4,25 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ark-ff = { version = "0.5.0", features = ["asm"] }
 arrayvec = "0.7.6"
 blake3 = "1.5.4"
 bytemuck = "1.19.0"
+halo2curves = { version = "0.7.0", features = ["bn256-table"] }
+hex-literal = "0.4.1"
+num-traits = "0.2.19"
 p3-bn254-fr = { version = "0.2.0", features = ["table"] }
 p3-field = "0.2.0"
 p3-poseidon2 = "0.2.0"
 p3-symmetric = "0.2.0"
 rand = "0.8.5"
+ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
+subtle = "2.6.1"
+zkhash = "0.2.0"
+
+[profile.release]
+debug = true # Generate symbol info for profiling
+
+[patch.crates-io]
+# ruint = { git = "https://github.com/recmo/uint", branch = "recmo/der" }
+ruint = { path = "../uint" }

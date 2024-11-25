@@ -33,13 +33,13 @@ pub struct K12;
 
 impl Display for Keccak {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "keccak-SHA3")
+        f.pad("keccak-NEON")
     }
 }
 
 impl Display for K12 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "K12-SHA3")
+        f.pad("K12-NEON")
     }
 }
 

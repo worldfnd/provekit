@@ -21,7 +21,7 @@ pub struct Sha256;
 
 impl Display for Sha256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SHA256-NEON")
+        f.pad("SHA256-NEON")
     }
 }
 

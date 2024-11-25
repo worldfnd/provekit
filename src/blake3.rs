@@ -40,7 +40,7 @@ pub struct Blake3 {
 
 impl Display for Blake3 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "blake3-{:?}", self.platform)
+        f.pad(&format!("blake3-{:?}", self.platform))
     }
 }
 
