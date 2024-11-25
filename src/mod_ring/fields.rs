@@ -1,5 +1,5 @@
 use {
-    super::{ModRing, ModRingElement, RingRef},
+    super::{ModRing, ModRingElement, RingRef, RingRefExt},
     ruint::{aliases::U256, uint},
     std::ops::Deref,
 };
@@ -30,6 +30,18 @@ impl Deref for Bn254Field {
 }
 
 pub type Bn254Element = ModRingElement<Bn254Field>;
+
+impl From<U256> for Bn254Element {
+    fn from(value: U256) -> Self {
+        Bn254Field.from(value)
+    }
+}
+
+impl From<Bn254Element> for U256 {
+    fn from(value: Bn254Element) -> Self {
+        value.to_uint()
+    }
+}
 
 #[test]
 fn test_bn254_field() {

@@ -91,6 +91,22 @@ impl<Uint: UintMont> ModRing<Uint> {
         self.modulus
     }
 
+    pub fn montgomery_r(&self) -> Uint {
+        self.montgomery_r
+    }
+
+    pub fn montgomery_r2(&self) -> Uint {
+        self.montgomery_r2
+    }
+
+    pub fn montgomery_r3(&self) -> Uint {
+        self.montgomery_r3
+    }
+
+    pub fn mod_inv(&self) -> u64 {
+        self.mod_inv
+    }
+
     /// Montogomery multiplication for the ring.
     fn mont_mul(&self, a: Uint, b: Uint) -> Uint {
         a.mul_redc(b, self.modulus, self.mod_inv)

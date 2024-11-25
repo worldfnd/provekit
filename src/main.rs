@@ -7,7 +7,7 @@ mod poseidon2_bn254_ruint;
 mod poseidon2_bn254_zkhash;
 mod sha256_neon;
 // mod skyscraper_bn254_portable;
-mod skyscraper_bn254_ruint;
+mod skyscraper_bn254_ref;
 
 use {
     core::{
@@ -85,7 +85,7 @@ fn main() {
         Box::new(poseidon2_bn254_plonky3::Poseidon2Bn254Plonky3::new()),
         Box::new(poseidon2_bn254_ruint::Poseidon2::new()),
         Box::new(poseidon2_bn254_zkhash::Poseidon2Zkhash::new()),
-        Box::new(skyscraper_bn254_ruint::Skyscraper),
+        Box::new(skyscraper_bn254_ref::Skyscraper),
     ];
     println!("seconds per hash for batches of 512 bit messages.");
     print!("hash \\ batch size              ");

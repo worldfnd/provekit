@@ -14,12 +14,9 @@ impl<const BITS: usize, const LIMBS: usize> UintMont for Uint<BITS, LIMBS> {
             .to();
 
         // R = 2^BITS mod modulus.
-        assert_eq!(Self::BITS % 2, 0);
-        let mut sqrt_r = Self::ZERO;
-        sqrt_r.set_bit(Self::BITS / 2, true);
-        let montgomery_r = sqrt_r.mul_redc(sqrt_r, modulus, mod_inv);
-        let montgomery_r2 = montgomery_r.mul_redc(montgomery_r, modulus, mod_inv);
-        let montgomery_r3 = montgomery_r2.mul_redc(montgomery_r, modulus, mod_inv);
+        let montgomery_r = Self::from(2).pow_mod(Self::from(Self::BITS), modulus);
+        let montgomery_r2 = montgomery_r.mul_mod(montgomery_r, modulus);
+        let montgomery_r3 = montgomery_r2.mul_redc(montgomery_r2, modulus, mod_inv);
         ModRing {
             modulus,
             mod_inv,
