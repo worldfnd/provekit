@@ -3,6 +3,9 @@ name = "delegated-spartan"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 ark-bn254 = { version = "0.4.0", features = ["std"] }
 ark-ec = { version = "0.4.2", features = ["std"] }
