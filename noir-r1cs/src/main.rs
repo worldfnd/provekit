@@ -195,7 +195,6 @@ fn main() {
                 }
             }
             Opcode::BlackBoxFuncCall(_) => unimplemented!("BlackBoxFuncCall"),
-            Opcode::Directive(_) => unimplemented!("Directive"),
             Opcode::MemoryOp { .. } => unimplemented!("MemoryOp"),
             Opcode::MemoryInit { .. } => unimplemented!("MemoryInit"),
             Opcode::BrilligCall { .. } => unimplemented!("BrilligCall"),

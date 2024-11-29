@@ -1,9 +1,9 @@
 //! NTT algorithms for the BN254 scalar field.
 //! Uses 5 as the generator of the multilicative group (same as arkworks).
-//! Fr^* is of order 2^28 * 3^2 * 13 * 29 * 983 * 11003 * 237073 * 405928799 * 1670836401704629 * 13818364434197438864469338081
-//! This NTT supports all divisors of 2^28 * 3^2 = 2415919104
-//! TODO: 13 = 2^2 * 3^1 + 1 is a good candidate for Rader NTT and could also be supported.
-//! See also https://github.com/recmo/goldilocks/blob/main/ntt/src/ntt
+//! Fr^* is of order 2^28 * 3^2 * 13 * 29 * 983 * 11003 * 237073 * 405928799 *
+//! 1670836401704629 * 13818364434197438864469338081 This NTT supports all
+//! divisors of 2^28 * 3^2 = 2415919104 TODO: 13 = 2^2 * 3^1 + 1 is a good
+//! candidate for Rader NTT and could also be supported. See also https://github.com/recmo/goldilocks/blob/main/ntt/src/ntt
 use {
     ark_bn254::Fr,
     ark_ff::{Field, MontFp},

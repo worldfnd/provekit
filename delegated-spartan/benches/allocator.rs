@@ -7,7 +7,7 @@ pub struct MeasuringAllocator<Inner: GlobalAlloc> {
     inner: Inner,
     count: AtomicUsize,
     total: AtomicUsize,
-    max: AtomicUsize,
+    max:   AtomicUsize,
 }
 
 impl<Inner: GlobalAlloc> MeasuringAllocator<Inner> {
@@ -46,5 +46,5 @@ pub static ALLOCATOR: MeasuringAllocator<SystemAllocator> = MeasuringAllocator {
     inner: SystemAllocator,
     count: AtomicUsize::new(0),
     total: AtomicUsize::new(0),
-    max: AtomicUsize::new(0),
+    max:   AtomicUsize::new(0),
 };

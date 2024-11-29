@@ -13,17 +13,17 @@ use {
 };
 
 pub struct LigeroCommitter {
-    pub rows: usize,
-    pub cols: usize,
-    pub code: usize,
-    pub queries: usize,
+    pub rows:         usize,
+    pub cols:         usize,
+    pub code:         usize,
+    pub queries:      usize,
     pub combinations: usize,
 }
 
 pub struct LigeroCommitment<'a> {
     comitter: &'a LigeroCommitter,
-    matrix: Vec<Fr>,
-    tree: MerkleTree,
+    matrix:   Vec<Fr>,
+    tree:     MerkleTree,
 }
 
 impl LigeroCommitter {
@@ -106,7 +106,8 @@ impl LigeroCommitment<'_> {
         // Compute the linear combinations of the rows and send to verifier.
         for a in once(a).chain(r.chunks_exact(self.comitter.rows)) {
             let mut combination = vec![Fr::ZERO; self.comitter.cols];
-            // TODO: Matrix doesn't have right transposition, plus code is not necessarily systematized.
+            // TODO: Matrix doesn't have right transposition, plus code is not necessarily
+            // systematized.
             for (a, row) in a.iter().zip(self.matrix.chunks_exact(self.comitter.code)) {
                 let row = &row[..self.comitter.cols];
                 for (c, row) in combination.iter_mut().zip(row.iter()) {

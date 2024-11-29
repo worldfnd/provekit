@@ -26,7 +26,8 @@ impl SmolHasher for Poseidon2Zkhash {
             ];
             self.0.permutation(&mut state);
 
-            // This allocates a Vec, which is dumb but it's the only way to get the bytes our of arkworks.
+            // This allocates a Vec, which is dumb but it's the only way to get the bytes
+            // our of arkworks.
             hash.copy_from_slice(state[0].0.to_bytes_le().as_ref());
         }
     }

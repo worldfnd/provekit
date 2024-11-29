@@ -37,7 +37,8 @@ pub fn prove_r1cs(
     let _e = todo!();
 
     // Prove the sum equals zero
-    // let (r, rs) = prove_sumcheck_r1cs(transcript, size, e, az, bz, cz, Fr::zero());
+    // let (r, rs) = prove_sumcheck_r1cs(transcript, size, e, az, bz, cz,
+    // Fr::zero());
 
     // Random linear combination of Az, Bz, Cz
 

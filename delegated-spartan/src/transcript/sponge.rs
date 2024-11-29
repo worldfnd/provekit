@@ -1,6 +1,7 @@
 use {crate::poseidon, ark_bn254::Fr, ark_ff::MontFp};
 
-// Random initial state (nothing up my sleeve: digits of 2 * pi in groups of 77 digits)
+// Random initial state (nothing up my sleeve: digits of 2 * pi in groups of 77
+// digits)
 const INITIAL_STATE: [Fr; 3] = [
     MontFp!("62831853071795864769252867665590057683943387987502116419498891846156328125724"),
     MontFp!("17997256069650684234135964296173026564613294187689219101164463450718816256962"),
@@ -8,7 +9,7 @@ const INITIAL_STATE: [Fr; 3] = [
 ];
 
 pub struct Sponge {
-    state: [Fr; 3],
+    state:  [Fr; 3],
     sponge: SpongeState,
 }
 
@@ -23,7 +24,7 @@ enum SpongeState {
 impl Sponge {
     pub fn new() -> Self {
         Self {
-            state: INITIAL_STATE,
+            state:  INITIAL_STATE,
             sponge: SpongeState::Initial,
         }
     }

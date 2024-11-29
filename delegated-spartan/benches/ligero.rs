@@ -58,7 +58,8 @@ fn main() {
         let proof_size = transcript.proof.len() * size_of::<Fr>();
 
         println!(
-            "size: 2^{size_log2} = {}𝔽 = {:#}x{:#}, prover time: {}s, througput: {}𝔽/s, proof size: {}B, permute_3: {:#}, permute_16: {:#}, memory: {}B, allocs: {:#}",
+            "size: 2^{size_log2} = {}𝔽 = {:#}x{:#}, prover time: {}s, througput: {}𝔽/s, proof \
+             size: {}B, permute_3: {:#}, permute_16: {:#}, memory: {}B, allocs: {:#}",
             human(size),
             human(committer.rows),
             human(committer.cols),

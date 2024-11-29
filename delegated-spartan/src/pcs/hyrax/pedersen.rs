@@ -35,7 +35,8 @@ impl PedersenCommitter {
 
     /// Commit to a value using the Pedersen commitment scheme.
     /// Returns the prover secret and the commitment.
-    /// IDEA: Prover never uses the G1Affine, so we may as well write it to transcript?
+    /// IDEA: Prover never uses the G1Affine, so we may as well write it to
+    /// transcript?
     pub fn commit(&self, rng: &mut impl Rng, values: &[Fr]) -> (Fr, G1Affine) {
         let secret = rng.gen();
         (secret, self.compute_commitment(secret, values))
@@ -85,7 +86,8 @@ impl PedersenCommitter {
 
     // Prove that two values are equal.
     // Only the secrets are required.
-    // **Warning** This does not verify the vector lentghs and they are implicitely zero padded.
+    // **Warning** This does not verify the vector lentghs and they are implicitely
+    // zero padded.
     pub fn prove_equal(&self, rng: &mut impl Rng, transcript: &mut Prover, a: Fr, b: Fr) {
         let (s, c) = self.commit(rng, &[]);
         transcript.write_g1(c);
@@ -166,7 +168,8 @@ impl PedersenCommitter {
     }
 
     /// Proof that c = a . b.
-    /// From a only the secret and values are used, from b nothing is used, and from c only the secret is used.
+    /// From a only the secret and values are used, from b nothing is used, and
+    /// from c only the secret is used.
     pub fn prove_dot_product(
         &self,
         rng: &mut impl Rng,

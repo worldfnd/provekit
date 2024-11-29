@@ -26,17 +26,6 @@ ark-poly = "0.4.2"              # NTT Benchmark comparison.
 criterion = { version = "0.5" }
 hex = "0.4.3"
 
-[profile.release]
-debug = true # Generate symbol info for profiling
-
-# Doing light optimizations helps test performance more than it hurts build time.
-[profile.test]
-opt-level = 2
-
-# Compilation profile for any non-workspace member.
-[profile.dev.package."*"]
-opt-level = 3
-
 [[bench]]
 name = "poseidon"
 harness = false

@@ -1,4 +1,5 @@
-//! Reference implementation of the Skyscraper hash function using the Field elements.
+//! Reference implementation of the Skyscraper hash function using the Field
+//! elements.
 use {
     crate::{
         mod_ring::{

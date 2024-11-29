@@ -9,14 +9,14 @@ use {
 
 #[derive(Deserialize)]
 struct R1CS {
-    num_public: usize,
-    num_variables: usize,
+    num_public:      usize,
+    num_variables:   usize,
     num_constraints: usize,
-    a: SparseMatrix,
-    b: SparseMatrix,
-    c: SparseMatrix,
+    a:               SparseMatrix,
+    b:               SparseMatrix,
+    c:               SparseMatrix,
     #[serde(deserialize_with = "ark_de_vv")]
-    witnesses: Vec<Vec<Fr>>,
+    witnesses:       Vec<Vec<Fr>>,
 }
 
 type SparseMatrix = Vec<SpartMatrixEntry>;
@@ -24,9 +24,9 @@ type SparseMatrix = Vec<SpartMatrixEntry>;
 #[derive(Deserialize)]
 struct SpartMatrixEntry {
     constraint: usize,
-    signal: usize,
+    signal:     usize,
     #[serde(deserialize_with = "ark_de")]
-    value: Fr,
+    value:      Fr,
 }
 
 fn ark_de<'de, D>(data: D) -> Result<Fr, D::Error>

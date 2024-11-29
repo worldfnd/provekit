@@ -48,7 +48,8 @@ fn main() {
         let proof_size = transcript.proof.len() * size_of::<Fr>();
 
         println!(
-            "size: 2^{size_log2} = {}𝔽, prover time: {}s, througput: {}𝔽/s, proof size: {}B, memory: {}B, allocs: {}",
+            "size: 2^{size_log2} = {}𝔽, prover time: {}s, througput: {}𝔽/s, proof size: {}B, \
+             memory: {}B, allocs: {}",
             human(size),
             human(duration),
             human(size as f64 / duration),

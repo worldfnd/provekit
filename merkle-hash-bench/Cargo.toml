@@ -19,10 +19,3 @@ rand = "0.8.5"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 subtle = "2.6.1"
 zkhash = "0.2.0"
-
-[profile.release]
-debug = true # Generate symbol info for profiling
-
-[patch.crates-io]
-# ruint = { git = "https://github.com/recmo/uint", branch = "recmo/der" }
-ruint = { path = "../uint" }

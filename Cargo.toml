@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["noir-r1cs", "delegated-spartan", "merkle-hash-bench"]
+
+[profile.release]
+debug = true # Generate symbol info for profiling
+
+# Doing light optimizations helps test performance more than it hurts build time.
+[profile.test]
+opt-level = 2
+
+# Compilation profile for any non-workspace member. We want to optimize these even in debug mode.
+[profile.dev.package."*"]
+opt-level = 3
