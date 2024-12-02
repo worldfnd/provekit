@@ -1,10 +1,13 @@
+mod blake2_icicle;
 mod blake3;
 mod blake3_naive;
+mod keccak_icicle;
 mod keccak_neon;
 mod mod_ring;
 mod poseidon2_bn254_plonky3;
 mod poseidon2_bn254_ruint;
 mod poseidon2_bn254_zkhash;
+mod poseidon_icicle;
 mod sha256_neon;
 mod skyscraper_bn254_ref;
 mod skyscraper_bn254_ruint;
@@ -18,7 +21,10 @@ use {
         time::Duration,
     },
     rand::RngCore,
-    std::time::Instant,
+    std::{
+        io::{stdout, Write},
+        time::Instant,
+    },
 };
 
 pub trait SmolHasher: Display {
@@ -78,11 +84,14 @@ pub fn human(value: f64) -> impl Display {
 fn main() {
     let mut rng = rand::thread_rng();
     let hashers: Vec<Box<dyn SmolHasher>> = vec![
+        Box::new(blake2_icicle::Blake2Icicle::new()),
         Box::new(blake3_naive::Blake3Naive),
         Box::new(blake3::Blake3::new()),
+        Box::new(keccak_icicle::KeccakIcicle::new()),
         Box::new(keccak_neon::Keccak),
         Box::new(keccak_neon::K12),
         Box::new(sha256_neon::Sha256),
+        Box::new(poseidon_icicle::PoseidonIcicle::new()),
         Box::new(poseidon2_bn254_plonky3::Poseidon2Bn254Plonky3::new()),
         Box::new(poseidon2_bn254_ruint::Poseidon2::new()),
         Box::new(poseidon2_bn254_zkhash::Poseidon2Zkhash::new()),
@@ -98,6 +107,7 @@ fn main() {
     println!();
     for hash in &hashers {
         print!("{hash:25}");
+        stdout().flush().unwrap();
         for length in lengths {
             let mut input = vec![0_u8; length * 64];
             let mut output = vec![0_u8; length * 32];
@@ -108,6 +118,7 @@ fn main() {
             let hashes_per_sec = human(length as f64 / duration);
             let sec_per_hash = human(duration / length as f64);
             print!("\t{sec_per_hash:#}");
+            stdout().flush().unwrap();
         }
         println!();
     }
