@@ -1,5 +1,4 @@
-//! Reference implementation of the Skyscraper hash function using the Field
-//! elements.
+//! Reference implementation of the Skyscraper hash function using the Field elements.
 use {
     crate::{
         mod_ring::{
@@ -115,9 +114,6 @@ mod tests {
                 20498050724266033890829404465405035543297153733520482423774420418741549228506_U256.into());
         }
     }
-
-    #[test]
-    fn test_square_redc() {}
 
     #[test]
     fn test_bar() {

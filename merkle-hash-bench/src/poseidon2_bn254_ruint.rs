@@ -12,9 +12,9 @@ use {
 };
 
 pub struct Poseidon2 {
-    first:  [[Bn254Element; 3]; 4],
+    first: [[Bn254Element; 3]; 4],
     middle: [Bn254Element; 56],
-    last:   [[Bn254Element; 3]; 4],
+    last: [[Bn254Element; 3]; 4],
 }
 
 impl Display for Poseidon2 {
@@ -47,9 +47,9 @@ impl Poseidon2 {
     pub fn new() -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            first:  rng.gen(),
+            first: rng.gen(),
             middle: rng.gen(),
-            last:   rng.gen(),
+            last: rng.gen(),
         }
     }
 
