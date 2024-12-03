@@ -45,6 +45,7 @@ impl From<Bn254Element> for U256 {
 
 #[test]
 fn test_bn254_field() {
+    use std::mem::size_of;
     assert_eq!(size_of::<Bn254Element>(), 32);
     assert_eq!(*Bn254Field, ModRing::from_modulus(Bn254Field.modulus()));
 }
