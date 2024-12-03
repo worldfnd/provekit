@@ -57,7 +57,7 @@ fn reduce(mut n: U256) -> U256 {
 fn add_2(a: U256, b: U256) -> U256 {
     let (sum, carry) = a.overflowing_add(b);
     let (reduced, borrow) = sum.overflowing_sub(MODULUS);
-    if carry || !borrow {
+    if carry | !borrow {
         reduced
     } else {
         sum

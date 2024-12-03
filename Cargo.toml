@@ -26,8 +26,8 @@ perf = "warn"
 complexity = "warn"
 style = "warn"
 correctness = "warn"
-restriction = "warn"
 suspicous = "warn"
+missing_docs_in_private_items = { level = "allow", priority = 1 }
 
 [profile.release]
 debug = true # Generate symbol info for profiling
@@ -39,3 +39,26 @@ opt-level = 2
 # Compilation profile for any non-workspace member. We want to optimize these even in debug mode.
 [profile.dev.package."*"]
 opt-level = 3
+
+[workspace.dependencies]
+anyhow = "1.0.93"
+argh = "0.1.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
+base64 = "0.22.1"
+
+# Noir lang
+acir = { git = "https://github.com/noir-lang/noir" }
+acvm = { git = "https://github.com/noir-lang/noir" }
+acir_field = { git = "https://github.com/noir-lang/noir" }
+# acvm = "0.46.0"
+arkworks_backend = { git = "https://github.com/noir-lang/arkworks_backend", version = "0.1.0" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", version = "1.0.0-beta.0" }
+
+[patch."https://github.com/noir-lang/noir"]
+noirc_artifacts = { path = "../../noir-lang/noir/tooling/noirc_artifacts" }
+
+[patch.crates-io]
+ruint = { git = "https://github.com/recmo/uint", branch = "recmo/montgomery" }
