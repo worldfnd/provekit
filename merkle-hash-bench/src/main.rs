@@ -9,6 +9,7 @@ mod poseidon2_bn254_ruint;
 mod poseidon2_bn254_zkhash;
 mod poseidon_icicle;
 mod sha256_neon;
+// mod skyscraper_bn254_portable;
 mod skyscraper_bn254_ref;
 mod skyscraper_bn254_ruint;
 mod skyscraper_neon;

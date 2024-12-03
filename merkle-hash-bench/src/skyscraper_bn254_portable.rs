@@ -1,5 +1,9 @@
 use {
-    crate::SmolHasher, bytemuck::{cast, cast_ref, cast_slice_mut, checked::cast_mut}, hex_literal::hex, num_traits::WrappingMul, std::fmt::Display
+    crate::SmolHasher,
+    bytemuck::{cast, cast_ref, cast_slice_mut, checked::cast_mut},
+    hex_literal::hex,
+    num_traits::WrappingMul,
+    std::fmt::Display,
 };
 
 /// Limbs in little-endian order.
@@ -57,7 +61,7 @@ fn compress(l: U256, r: U256) -> U256 {
 /// https://hackmd.io/@gnark/modular_multiplication
 /// The input and output arguments do not need to be fully reduced.
 fn square_add_add_redc(a: U256, b: U256, n: U256) -> U256 {
-    [0; 4]
+    square_redc(a)
 }
 
 /// Requires a to be fully reduced.
@@ -74,70 +78,129 @@ fn bar(mut a: U256) -> U256 {
 
     // Recompose
     a
+
+    // Reduce
 }
 
-fn mont_mul(a: U256, b: U256) -> U256 {
-    let mut t = [0; 6];
-    for i in 0..4 {
-        // At the start of the loop t[5] is zero.
+#[inline]
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn square_redc(a: [u64; 4]) -> [u64; 4] {
+    debug_assert!(is_reduced(a));
 
-        // Compute partial product
-        let mut carry = 0_u64;
-        for j in 0..4 {
-            let r =  (carry as u128) + (t[j] as u128) + (a[j] as u128) * (b[i] as u128);
-            t[j] = r as u64;
-            carry = (r >> 64) as u64;
-        }
-        // Propagate last carry.
-        {
-            let r =  (carry as u128) + (t[4] as u128);
-            t[4] = r as u64;
-            t[5] = (r >> 64) as u64;
-        }
+    let (r0, carry) = carrying_mul_add(a[0], a[0], 0, 0);
+    let (r1, carry_lo, carry_hi) = carrying_double_mul_add(a[0], a[1], 0, carry, false);
+    let (r2, carry_lo, carry_hi) = carrying_double_mul_add(a[0], a[2], 0, carry_lo, carry_hi);
+    let (r3, r4, _) = carrying_double_mul_add(a[0], a[3], 0, carry_lo, carry_hi);
 
-        // Comput multiple of Modulus to add that will clear t[0]
-        let m = t[0].wrapping_mul(INV);
+    // Add m times modulus to result and shift one limb
+    let m = INV.wrapping_mul(r0);
+    let (_, carry) = carrying_mul_add(m, MODULUS[0], r0, 0);
+    let (r0, carry) = carrying_mul_add(m, MODULUS[1], r1, carry);
+    let (r1, carry) = carrying_mul_add(m, MODULUS[2], r2, carry);
+    let (r2, carry) = carrying_mul_add(m, MODULUS[3], r3, carry);
+    let r3 = r4 + carry;
 
-        // Add m times Modulus
-        let mut carry = 0_u64;
-        for j in 0..4 {
-            let r =  (carry as u128) + (t[j] as u128) + (MODULUS[j] as u128) * (m as u128);
-            t[j] = r as u64;
-            carry = (r >> 64) as u64;
-        }
-        // Propagate last carry.
-        {
-            let r =  (carry as u128) + (t[4] as u128);
-            t[4] = r as u64;
-            t[5] = (r >> 64) as u64;
-        }
-        debug_assert_eq!(t[0], 0);
+    let (r1, carry) = carrying_mul_add(a[1], a[1], r1, 0);
+    let (r2, carry_lo, carry_hi) = carrying_double_mul_add(a[1], a[2], r2, carry, false);
+    let (r3, r4, _) = carrying_double_mul_add(a[1], a[3], r3, carry_lo, carry_hi);
 
-        // Shift t to the right by 64 bits.
-        for j in 0..5 {
-            t[j] = t[j + 1];
+    let m = INV.wrapping_mul(r0);
+    let (_, carry) = carrying_mul_add(m, MODULUS[0], r0, 0);
+    let (r0, carry) = carrying_mul_add(m, MODULUS[1], r1, carry);
+    let (r1, carry) = carrying_mul_add(m, MODULUS[2], r2, carry);
+    let (r2, carry) = carrying_mul_add(m, MODULUS[3], r3, carry);
+    let r3 = r4 + carry;
+
+    let (r2, carry) = carrying_mul_add(a[2], a[2], r2, 0);
+    let (r3, r4, _) = carrying_double_mul_add(a[2], a[3], r3, carry, false);
+
+    let m = INV.wrapping_mul(r0);
+    let (_, carry) = carrying_mul_add(m, MODULUS[0], r0, 0);
+    let (r0, carry) = carrying_mul_add(m, MODULUS[1], r1, carry);
+    let (r1, carry) = carrying_mul_add(m, MODULUS[2], r2, carry);
+    let (r2, carry) = carrying_mul_add(m, MODULUS[3], r3, carry);
+    let r3 = r4 + carry;
+
+    let (r3, r4) = carrying_mul_add(a[3], a[3], r3, 0);
+
+    let m = INV.wrapping_mul(r0);
+    let (_, carry) = carrying_mul_add(m, MODULUS[0], r0, 0);
+    let (r0, carry) = carrying_mul_add(m, MODULUS[1], r1, carry);
+    let (r1, carry) = carrying_mul_add(m, MODULUS[2], r2, carry);
+    let (r2, carry) = carrying_mul_add(m, MODULUS[3], r3, carry);
+    let r3 = r4 + carry;
+
+    reduce1_carry([r0, r1, r2, r3], false)
+}
+
+#[inline]
+#[must_use]
+fn is_reduced(n: [u64; 4]) -> bool {
+    for (lhs, rhs) in zip(n.iter().rev(), MODULUS.iter().rev()) {
+        match lhs.cmp(rhs) {
+            Ordering::Less => return true,
+            Ordering::Greater => return false,
+            Ordering::Equal => {}
         }
-        t[5] = 0;
+    }
+    // lhs == rhs
+    false
+}
+
+#[inline]
+#[must_use]
+#[allow(clippy::needless_bitwise_bool)]
+fn reduce1_carry(value: [u64; 4], carry: bool) -> [u64; 4] {
+    let (reduced, borrow) = sub(value, modulus);
+    // TODO: Ideally this turns into a cmov, which makes the whole mul_redc constant
+    // time.
+    if carry | !borrow {
+        reduced
+    } else {
+        value
     }
 }
 
-fn adc(a: u64, b: u64, c: u64) -> (u64, u64) {
-    let r = (a as u128) + (b as u128) + (c as u128);
-    (r as u64, (r >> 64) as u64)
+/// Compute `lhs * rhs + add + carry`.
+/// The output can not overflow for any input values.
+#[inline]
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+const fn carrying_mul_add(lhs: u64, rhs: u64, add: u64, carry: u64) -> (u64, u64) {
+    let wide = (lhs as u128)
+        .wrapping_mul(rhs as u128)
+        .wrapping_add(add as u128)
+        .wrapping_add(carry as u128);
+    (wide as u64, (wide >> 64) as u64)
 }
 
-fn addc(a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
-    let r = (a as u128) + (b as u128) + (c as u128) + (d as u128));
-    (r as u64, (r >> 64) as u64)
+/// Compute `2 * lhs * rhs + add + carry_lo + 2^64 * carry_hi`.
+/// The output can not overflow for any input values.
+#[inline]
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+const fn carrying_double_mul_add(
+    lhs: u64,
+    rhs: u64,
+    add: u64,
+    carry_lo: u64,
+    carry_hi: bool,
+) -> (u64, u64, bool) {
+    let wide = (lhs as u128).wrapping_mul(rhs as u128);
+    let (wide, carry_1) = wide.overflowing_add(wide);
+    let carries = (add as u128)
+        .wrapping_add(carry_lo as u128)
+        .wrapping_add((carry_hi as u128) << 64);
+    let (wide, carry_2) = wide.overflowing_add(carries);
+    (wide as u64, (wide >> 64) as u64, carry_1 | carry_2)
 }
 
-// (r, c') = a + b * c
-fn mac(a: u64, b: u64, c: &mut u64) -> u64 {
-    let r = (a as u128) + (b as u128) * (*c as u128);
-    *c = (r >> 64) as u64;
-    r as u64
-}
-
-fn double(lo: u64, hi: u64) -> (u64, u64, u64) {
-    (lo << 1, (hi << 1) | (lo >> 63), hi >> 63)
+// Helper while [Rust#85532](https://github.com/rust-lang/rust/issues/85532) stabilizes.
+#[inline]
+#[must_use]
+const fn borrowing_sub(lhs: u64, rhs: u64, borrow: bool) -> (u64, bool) {
+    let (result, borrow_1) = lhs.overflowing_sub(rhs);
+    let (result, borrow_2) = result.overflowing_sub(borrow as u64);
+    (result, borrow_1 | borrow_2)
 }
