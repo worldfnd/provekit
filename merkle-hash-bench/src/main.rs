@@ -7,6 +7,7 @@ mod mod_ring;
 mod poseidon2_bn254_plonky3;
 mod poseidon2_bn254_ruint;
 mod poseidon2_bn254_zkhash;
+mod poseidon2_icicle;
 mod poseidon_icicle;
 mod sha256_neon;
 // mod skyscraper_bn254_portable;
@@ -85,18 +86,19 @@ pub fn human(value: f64) -> impl Display {
 fn main() {
     let mut rng = rand::thread_rng();
     let hashers: Vec<Box<dyn SmolHasher>> = vec![
-        Box::new(blake2_icicle::Blake2Icicle::new()),
-        Box::new(blake3_naive::Blake3Naive),
-        Box::new(blake3::Blake3::new()),
-        Box::new(keccak_icicle::KeccakIcicle::new()),
-        Box::new(keccak_neon::Keccak),
-        Box::new(keccak_neon::K12),
+        // Box::new(blake2_icicle::Blake2Icicle::new()),
+        // Box::new(blake3_naive::Blake3Naive),
+        // Box::new(blake3::Blake3::new()),
+        // Box::new(keccak_icicle::KeccakIcicle::new()),
+        // Box::new(keccak_neon::Keccak),
+        // Box::new(keccak_neon::K12),
         Box::new(sha256_neon::Sha256),
-        Box::new(poseidon_icicle::PoseidonIcicle::new()),
+        Box::new(poseidon_icicle::Poseidon2Icicle::new()),
+        Box::new(poseidon2_icicle::PoseidonIcicle::new()),
         Box::new(poseidon2_bn254_plonky3::Poseidon2Bn254Plonky3::new()),
         Box::new(poseidon2_bn254_ruint::Poseidon2::new()),
         Box::new(poseidon2_bn254_zkhash::Poseidon2Zkhash::new()),
-        Box::new(skyscraper_bn254_ref::Skyscraper),
+        // Box::new(skyscraper_bn254_ref::Skyscraper),
         Box::new(skyscraper_bn254_ruint::Skyscraper),
     ];
     println!("seconds per hash for batches of 512 bit messages.");

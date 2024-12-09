@@ -3,31 +3,31 @@ use {
     icicle_bn254::curve::ScalarField,
     icicle_core::{
         hash::{HashConfig, Hasher},
-        poseidon::create_poseidon_hasher,
+        poseidon2::create_poseidon2_hasher,
     },
     icicle_runtime::memory::HostSlice,
     std::fmt::Display,
 };
 
-pub struct Poseidon2Icicle {
+pub struct PoseidonIcicle {
     hasher: Hasher,
 }
 
-impl Display for Poseidon2Icicle {
+impl Display for PoseidonIcicle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("poseidon-bn254-icicle")
+        f.pad("poseidon2-bn254-icicle")
     }
 }
 
-impl Poseidon2Icicle {
+impl PoseidonIcicle {
     pub fn new() -> Self {
-        let hasher = create_poseidon_hasher::<ScalarField>(3, None).unwrap();
+        let hasher = create_poseidon2_hasher::<ScalarField>(3, None).unwrap();
         assert_eq!(hasher.output_size(), 32);
         Self { hasher }
     }
 }
 
-impl SmolHasher for Poseidon2Icicle {
+impl SmolHasher for PoseidonIcicle {
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         let config = HashConfig::default();
         let mut padded = [0u8; 96];
