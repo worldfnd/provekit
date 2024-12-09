@@ -9,17 +9,17 @@ use {
     std::fmt::Display,
 };
 
-pub struct PoseidonIcicle {
+pub struct Poseidon2T3Icicle {
     hasher: Hasher,
 }
 
-impl Display for PoseidonIcicle {
+impl Display for Poseidon2T3Icicle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("poseidon2-bn254-icicle")
+        f.pad("poseidon2-t3-icicle")
     }
 }
 
-impl PoseidonIcicle {
+impl Poseidon2T3Icicle {
     pub fn new() -> Self {
         let hasher = create_poseidon2_hasher::<ScalarField>(3, None).unwrap();
         assert_eq!(hasher.output_size(), 32);
@@ -27,7 +27,7 @@ impl PoseidonIcicle {
     }
 }
 
-impl SmolHasher for PoseidonIcicle {
+impl SmolHasher for Poseidon2T3Icicle {
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         let config = HashConfig::default();
         let mut padded = [0u8; 96];

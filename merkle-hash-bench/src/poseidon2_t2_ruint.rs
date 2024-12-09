@@ -11,26 +11,22 @@ use {
     std::fmt::{self, Display, Formatter},
 };
 
-pub struct Poseidon2 {
-    first: [[Bn254Element; 3]; 4],
+pub struct Poseidon2T3Ruint {
+    first:  [[Bn254Element; 2]; 4],
     middle: [Bn254Element; 56],
-    last: [[Bn254Element; 3]; 4],
+    last:   [[Bn254Element; 2]; 4],
 }
 
-impl Display for Poseidon2 {
+impl Display for Poseidon2T3Ruint {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.pad("Poseidon2-Bn254-Ruint")
+        f.pad("Poseidon2-t3-Ruint")
     }
 }
 
-impl SmolHasher for Poseidon2 {
+impl SmolHasher for Poseidon2T3Ruint {
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-            let mut state = [
-                from_bytes(&message[0..32]),
-                from_bytes(&message[32..64]),
-                Bn254Field.zero(),
-            ];
+            let mut state = [from_bytes(&message[0..32]), from_bytes(&message[32..64])];
             self.permute(&mut state);
             hash.copy_from_slice(state[0].as_montgomery().as_le_slice());
         }
@@ -43,17 +39,17 @@ fn from_bytes(bytes: &[u8]) -> Bn254Element {
     Bn254Field.from_montgomery(U256::from_le_bytes::<32>(bytes))
 }
 
-impl Poseidon2 {
+impl Poseidon2T3Ruint {
     pub fn new() -> Self {
         let mut rng = rand::thread_rng();
         Self {
-            first: rng.gen(),
+            first:  rng.gen(),
             middle: rng.gen(),
-            last: rng.gen(),
+            last:   rng.gen(),
         }
     }
 
-    fn permute(&self, state: &mut [Bn254Element; 3]) {
+    fn permute(&self, state: &mut [Bn254Element; 2]) {
         let sum = state.iter().copied().sum();
         state.iter_mut().for_each(|s| *s += sum);
         for rc in self.first {
@@ -66,9 +62,8 @@ impl Poseidon2 {
             state[0] += rc;
             state[0] = state[0].pow(5);
 
-            // TODO: Why is this one more operations than the MDS matrix?
             let sum = state.iter().copied().sum();
-            state[2] += state[2];
+            state[1] += state[1];
             state.iter_mut().for_each(|s| *s += sum);
         }
         for rc in self.last {

@@ -4,10 +4,12 @@ mod blake3_naive;
 mod keccak_icicle;
 mod keccak_neon;
 mod mod_ring;
-mod poseidon2_bn254_plonky3;
-mod poseidon2_bn254_ruint;
-mod poseidon2_bn254_zkhash;
-mod poseidon2_icicle;
+mod poseidon2_t2_icicle;
+mod poseidon2_t2_ruint;
+mod poseidon2_t3_icicle;
+mod poseidon2_t3_plonky3;
+mod poseidon2_t3_ruint;
+mod poseidon2_t3_zkhash;
 mod poseidon_icicle;
 mod sha256_neon;
 // mod skyscraper_bn254_portable;
@@ -94,10 +96,11 @@ fn main() {
         // Box::new(keccak_neon::K12),
         Box::new(sha256_neon::Sha256),
         Box::new(poseidon_icicle::Poseidon2Icicle::new()),
-        Box::new(poseidon2_icicle::PoseidonIcicle::new()),
-        Box::new(poseidon2_bn254_plonky3::Poseidon2Bn254Plonky3::new()),
-        Box::new(poseidon2_bn254_ruint::Poseidon2::new()),
-        Box::new(poseidon2_bn254_zkhash::Poseidon2Zkhash::new()),
+        Box::new(poseidon2_t3_icicle::Poseidon2T3Icicle::new()),
+        Box::new(poseidon2_t3_plonky3::Poseidon2T3Plonky3::new()),
+        Box::new(poseidon2_t3_ruint::Poseidon2T3Ruint::new()),
+        Box::new(poseidon2_t3_zkhash::Poseidon2T3Zkhash::new()),
+        Box::new(poseidon2_t2_icicle::Poseidon2T2Icicle::new()),
         // Box::new(skyscraper_bn254_ref::Skyscraper),
         Box::new(skyscraper_bn254_ruint::Skyscraper),
     ];
