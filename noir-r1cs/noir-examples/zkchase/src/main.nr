@@ -1,8 +1,8 @@
-// 
-// 
-// 
+//
+//
+//
 
-// This is an 
+// This is an
 global COLS = 18;
 global ROWS = 14;
 

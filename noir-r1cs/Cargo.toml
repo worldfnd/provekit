@@ -7,12 +7,18 @@ edition = "2021"
 workspace = true
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-acir = { git = "https://github.com/noir-lang/noir" }
-acvm = { git = "https://github.com/noir-lang/noir" }
-acir_field = { git = "https://github.com/noir-lang/noir" }
-# acvm = "0.46.0"
-arkworks_backend = { git = "https://github.com/noir-lang/arkworks_backend", version = "0.1.0" }
-clap = { version = "4.5.15", features = ["derive"] }
-base64 = "0.22.1"
+argh.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+base64.workspace = true
+
+# Noir lang
+acir.workspace = true
+acvm.workspace = true
+acir_field.workspace = true
+noirc_artifacts.workspace = true
+noirc_abi.workspace = true
+noirc_printable_type.workspace = true
