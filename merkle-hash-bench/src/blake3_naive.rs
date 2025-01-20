@@ -4,7 +4,7 @@ pub struct Blake3Naive;
 
 impl Display for Blake3Naive {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("blake3-api")
+        f.pad("blake3-crate")
     }
 }
 

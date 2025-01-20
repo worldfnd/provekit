@@ -11,19 +11,19 @@ use {
     std::fmt::{self, Display, Formatter},
 };
 
-pub struct Poseidon2T3Ruint {
+pub struct Poseidon2T2Ruint {
     first:  [[Bn254Element; 2]; 4],
     middle: [Bn254Element; 56],
     last:   [[Bn254Element; 2]; 4],
 }
 
-impl Display for Poseidon2T3Ruint {
+impl Display for Poseidon2T2Ruint {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.pad("Poseidon2-t3-Ruint")
+        f.pad("Poseidon2-t2-Ruint")
     }
 }
 
-impl SmolHasher for Poseidon2T3Ruint {
+impl SmolHasher for Poseidon2T2Ruint {
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             let mut state = [from_bytes(&message[0..32]), from_bytes(&message[32..64])];
@@ -39,7 +39,7 @@ fn from_bytes(bytes: &[u8]) -> Bn254Element {
     Bn254Field.from_montgomery(U256::from_le_bytes::<32>(bytes))
 }
 
-impl Poseidon2T3Ruint {
+impl Poseidon2T2Ruint {
     pub fn new() -> Self {
         let mut rng = rand::thread_rng();
         Self {

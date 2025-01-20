@@ -27,3 +27,4 @@ icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "ma
 icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
 icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
 icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+sha3 = { version = "0.10.8", features = ["asm"] }

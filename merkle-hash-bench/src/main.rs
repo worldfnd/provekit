@@ -1,6 +1,7 @@
 mod blake2_icicle;
 mod blake3;
 mod blake3_naive;
+mod keccak_api;
 mod keccak_icicle;
 mod keccak_neon;
 mod mod_ring;
@@ -88,25 +89,27 @@ pub fn human(value: f64) -> impl Display {
 fn main() {
     let mut rng = rand::thread_rng();
     let hashers: Vec<Box<dyn SmolHasher>> = vec![
-        // Box::new(blake2_icicle::Blake2Icicle::new()),
-        // Box::new(blake3_naive::Blake3Naive),
-        // Box::new(blake3::Blake3::new()),
-        // Box::new(keccak_icicle::KeccakIcicle::new()),
-        // Box::new(keccak_neon::Keccak),
-        // Box::new(keccak_neon::K12),
+        Box::new(keccak_api::KeccakApi),
+        Box::new(blake3_naive::Blake3Naive),
+        Box::new(keccak_icicle::KeccakIcicle::new()),
+        Box::new(keccak_neon::Keccak),
+        Box::new(keccak_neon::K12),
+        Box::new(blake2_icicle::Blake2Icicle::new()),
+        Box::new(blake3::Blake3::new()),
         Box::new(sha256_neon::Sha256),
         Box::new(poseidon_icicle::Poseidon2Icicle::new()),
         Box::new(poseidon2_t3_icicle::Poseidon2T3Icicle::new()),
         Box::new(poseidon2_t3_plonky3::Poseidon2T3Plonky3::new()),
-        Box::new(poseidon2_t3_ruint::Poseidon2T3Ruint::new()),
         Box::new(poseidon2_t3_zkhash::Poseidon2T3Zkhash::new()),
+        Box::new(poseidon2_t3_ruint::Poseidon2T3Ruint::new()),
         Box::new(poseidon2_t2_icicle::Poseidon2T2Icicle::new()),
-        // Box::new(skyscraper_bn254_ref::Skyscraper),
+        Box::new(poseidon2_t2_ruint::Poseidon2T2Ruint::new()),
+        Box::new(skyscraper_bn254_ref::Skyscraper),
         Box::new(skyscraper_bn254_ruint::Skyscraper),
     ];
     println!("seconds per hash for batches of 512 bit messages.");
     print!("hash \\ batch size              ");
-    let lengths = [4, 16, 64, 256, 1 << 20];
+    let lengths = [4, 16, 64, 256, 1 << 15];
     for length in lengths {
         print!("\t{length}");
     }
