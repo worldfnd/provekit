@@ -25,13 +25,13 @@ use whir::{
     whir::Statement,
 };
 
-use nimue_pow::blake3::Blake3PoW;
 use rand::Rng;
 
 use clap::Parser;
 use whir::whir::fs_utils::{DigestReader, DigestWriter};
 use whir::whir::iopattern::DigestIOPattern;
 use prover::skyscraper::{Skyscraper, SkyscraperSponge};
+use prover::skyscraper_pow::SkyscraperPoW;
 
 
 #[derive(Parser, Debug)]
@@ -65,7 +65,7 @@ struct Args {
     fold_optimisation: FoldType,
 }
 
-type PowStrategy = Blake3PoW;
+type PowStrategy = SkyscraperPoW;
 
 fn main() {
     let mut args = Args::parse();
