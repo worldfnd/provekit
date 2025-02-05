@@ -1,8 +1,12 @@
 use ark_crypto_primitives::merkle_tree::Config;
-use ark_ff::FftField;
+use ark_ff::{BigInt, FftField};
 use ark_serialize::CanonicalSerialize;
+use ark_std::str::FromStr;
+use ark_std::ops::{Add, Mul};
 use clap::Parser;
 use std::time::Instant;
+use std::fs::File;
+use serde::Deserialize;
 use nimue::{Arthur, IOPattern, Merlin};
 use prover::{
     skyscraper::SkyscraperSponge, 
@@ -13,6 +17,8 @@ use prover::{
         SkyscraperMerkleConfig,
     },
 };
+use ruint::aliases::U256;
+use ruint_macro::uint;
 use whir::{
     crypto::{
         fields::Field256,
@@ -21,10 +27,30 @@ use whir::{
     parameters::*,
     poly_utils::{coeffs::CoefficientList, MultilinearPoint},
     whir::{
-        fs_utils::{DigestReader, DigestWriter},
-        iopattern::DigestIOPattern,
+        committer::Witness, fs_utils::{DigestReader, DigestWriter}, iopattern::DigestIOPattern
     },
 };
+use std::io::BufReader;
+use serde_json::Result;
+
+#[derive(Deserialize)]
+struct MatrixCell {
+    constraint: u32,
+    signal: u32,
+    value: String,
+}
+
+#[derive(Deserialize)]
+struct R1CSWithWitness {
+    num_public: u32,
+    num_variables: u32,
+    num_constraints: u32,
+    a: Vec<MatrixCell>,
+    b: Vec<MatrixCell>,
+    c: Vec<MatrixCell>,
+    witnesses: Vec<Vec<String>>,
+}
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -59,7 +85,23 @@ struct Args {
 
 type PowStrategy = SkyscraperPoW;
 
+fn calculate_witness_bound(matrix_cells: Vec<MatrixCell>, witness: Vec<Vec<String>>, num_constraints: u32)->Vec<Field256> {
+    let mut witness_bound = vec![Field256::from(0); num_constraints as usize];
+    for x in matrix_cells {
+        let cell = Field256::from_str(&x.value).expect("Failed to create Field256 value from a string");
+        let witness_cell = Field256::from_str(&witness[0][x.signal as usize]).expect("Failed to create Field256 value from a string");
+        witness_bound[x.constraint as usize] = witness_bound[x.constraint as usize].add(cell.mul(witness_cell));
+    }
+    witness_bound
+}
+
 fn main() {
+    let file = File::open("./prover/disclose_wrencher.json").expect("Failed to open file");
+    let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
+    let witness_bound_a = calculate_witness_bound(r1cs_with_witness.a, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
+    let witness_bound_b = calculate_witness_bound(r1cs_with_witness.b, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
+    let witness_bound_c = calculate_witness_bound(r1cs_with_witness.c, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
+    
     let mut args = Args::parse();
 
     if args.pow_bits.is_none() {

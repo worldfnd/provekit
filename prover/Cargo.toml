@@ -19,11 +19,11 @@ ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 rand = "0.8"
 nimue-pow = { git = "https://github.com/arkworks-rs/nimue"}
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 ark-poly = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
 ark-serialize = "0.5"
 clap = { version = "4.4.17", features = ["derive"] }
-serde_json = "1.0"
 
 
 [lints]
