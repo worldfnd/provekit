@@ -1,7 +1,8 @@
 use ark_crypto_primitives::merkle_tree::Config;
-use ark_ff::{BigInt, FftField};
+use ark_ff::{BigInt, FftField, Field};
 use ark_serialize::CanonicalSerialize;
 use ark_std::str::FromStr;
+use ark_std::Zero;
 use ark_std::ops::{Add, Mul};
 use clap::Parser;
 use std::time::Instant;
@@ -85,51 +86,57 @@ struct Args {
 
 type PowStrategy = SkyscraperPoW;
 
-fn calculate_witness_bound(matrix_cells: Vec<MatrixCell>, witness: Vec<Vec<String>>, num_constraints: u32)->Vec<Field256> {
+fn calculate_witness_bound(matrix_cells: Vec<MatrixCell>, witness: &Vec<Field256>, num_constraints: u32)->Vec<Field256> {
     let mut witness_bound = vec![Field256::from(0); num_constraints as usize];
     for x in matrix_cells {
         let cell = Field256::from_str(&x.value).expect("Failed to create Field256 value from a string");
-        let witness_cell = Field256::from_str(&witness[0][x.signal as usize]).expect("Failed to create Field256 value from a string");
+        let witness_cell = witness[x.signal as usize];
         witness_bound[x.constraint as usize] = witness_bound[x.constraint as usize].add(cell.mul(witness_cell));
     }
     witness_bound
 }
 
+fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
+    witness.iter().map(|x|{Field256::from_str(x).expect("Failed to create Field256 value from a string")}).collect()
+}
+
+fn next_power_of_two(n: usize) -> usize {
+    let mut power = 1;
+    let mut ans = 0;
+    while power < n {
+        power <<= 1;
+        ans += 1;
+    }
+    ans
+}
+
+
+fn pad_to_power_of_two(mut witness: Vec<Field256>) -> Vec<Field256> {
+    let target_len = next_power_of_two(witness.len());
+    while witness.len() < 1<<target_len {
+        witness.push(Field256::zero()); // Pad with zeros
+    }
+    witness
+}
+
 fn main() {
     let file = File::open("./prover/disclose_wrencher.json").expect("Failed to open file");
     let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
-    let witness_bound_a = calculate_witness_bound(r1cs_with_witness.a, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
-    let witness_bound_b = calculate_witness_bound(r1cs_with_witness.b, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
-    let witness_bound_c = calculate_witness_bound(r1cs_with_witness.c, r1cs_with_witness.witnesses, r1cs_with_witness.num_constraints);
+    let witness = stringvec_to_fieldvec(&r1cs_with_witness.witnesses[0]);
+    let witness = pad_to_power_of_two(witness);
+    let witness_bound_a = calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints);
+    let witness_bound_b = calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints);
+    let witness_bound_c = calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints);
     
     let mut args = Args::parse();
-
+    args.num_variables = next_power_of_two(witness.len());
     if args.pow_bits.is_none() {
         args.pow_bits = Some(default_max_pow(args.num_variables, args.rate));
     }
-
-    use Field256 as F;
-    use merkle_tree::blake3 as mt;
-
-    run_whir::<F, mt::MerkleTreeParams<F>>(args);
+    run_whir_pcs(args, witness);
 }
 
-fn run_whir<F, MerkleConfig>(
-    args: Args
-) where
-    F: FftField + CanonicalSerialize,
-    MerkleConfig: Config<Leaf = [F]> + Clone,
-    MerkleConfig::InnerDigest: AsRef<[u8]> + From<[u8; 32]>,
-    IOPattern: DigestIOPattern<MerkleConfig>,
-    Merlin: DigestWriter<MerkleConfig>,
-    for<'a> Arthur<'a>: DigestReader<MerkleConfig>,
-{
-    run_whir_pcs::<MerkleConfig>(args)
-}
-
-fn run_whir_pcs<MerkleConfig>(
-    args: Args
-) 
+fn run_whir_pcs(args: Args, witness: Vec<Field256>) 
 {   
     use Field256 as F;
     use whir::whir::{
@@ -186,11 +193,8 @@ fn run_whir_pcs<MerkleConfig>(
     }
 
     use ark_ff::Field;
-    let polynomial = CoefficientList::new(
-        (0..num_coeffs)
-            .map(<F as Field>::BasePrimeField::from)
-            .collect(),
-    );
+    let polynomial = CoefficientList::new(witness);
+
     let points: Vec<_> = (0..num_evaluations)
         .map(|i| MultilinearPoint(vec![F::from(i as u64); num_variables]))
         .collect();
