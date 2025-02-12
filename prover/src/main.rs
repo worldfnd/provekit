@@ -1,9 +1,9 @@
 use ark_crypto_primitives::merkle_tree::Config;
-use ark_ff::{BigInt, FftField, Field};
+use ark_ff::{BigInt, FftField, Field, AdditiveGroup};
 use ark_serialize::CanonicalSerialize;
 use ark_std::str::FromStr;
-use ark_std::Zero;
-use ark_std::ops::{Add, Mul};
+use ark_std::{Zero, One};
+use ark_std::ops::{Add, Mul, Sub};
 use clap::Parser;
 use std::time::Instant;
 use std::fs::File;
@@ -11,6 +11,7 @@ use serde::Deserialize;
 use nimue::{Arthur, IOPattern, Merlin};
 use prover::{
     skyscraper::SkyscraperSponge, 
+    skyscraper::uint_to_field, 
     skyscraper_pow::SkyscraperPoW,
     skyscraper_traits_for_whir::{
         SkyscraperCRH, 
@@ -33,6 +34,7 @@ use whir::{
 };
 use std::io::BufReader;
 use serde_json::Result;
+use itertools::izip;
 
 #[derive(Deserialize)]
 struct MatrixCell {
@@ -119,15 +121,100 @@ fn pad_to_power_of_two(mut witness: Vec<Field256>) -> Vec<Field256> {
     witness
 }
 
+fn evaluations_over_boolean_hypercube_for_eq(r: Vec<Field256>) -> Vec<Field256> {
+    let mut ans = vec![Field256::one()];
+    for x in r {
+        let mut left: Vec<Field256> = ans.clone().into_iter().map(|y| {y.mul(Field256::one().sub(x))}).collect();
+        let right: Vec<Field256> = ans.into_iter().map(|y| {y.mul(x)}).collect();
+        left.extend(right);
+        ans = left;
+    }
+    ans
+}
+
+const HALF: Field256 = uint_to_field(uint!(10944121435919637611123202872628637544274182200208017171849102093287904247809_U256));
+
+
+fn update(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
+    let sz = f.len();
+    let (left, right) = f.split_at_mut(sz / 2);
+    for i in 0..(left.len()) {
+        // println!("Before {:?} {:?} {:?}", left[i], r, right[i]-left[i]);
+        left[i] += r * (right[i]-left[i]);
+        // println!("After {:?}", left[i]);
+    }
+    left.to_vec()
+}
+
+fn prove_sumcheck(
+    mut a: Vec<Field256>,
+    mut b: Vec<Field256>,
+    mut c: Vec<Field256>,
+    mut eq: Vec<Field256>,
+    mut sum: Field256,
+) {
+    let rand: Vec<Field256> = (2..16).into_iter().map(|x| {Field256::from(x)}).collect();
+
+    for i in 0..next_power_of_two(a.len()) {
+        println!("---------------- For iteration {:?} ----------------", i);
+        println!("A: {:?}", a);
+        println!("B: {:?}", b); 
+        println!("C: {:?}", c);
+        println!("EQ: {:?}", eq);
+        
+        let mut eval_at_0 = Field256::from(0);
+        let mut eval_at_em1 = Field256::from(0);
+        let mut eval_at_inf = Field256::from(0);
+        
+        let (a0, a1) = a.split_at(a.len() / 2);
+        let (b0, b1) = b.split_at(b.len() / 2);
+        let (c0, c1) = c.split_at(c.len() / 2);
+        let (eq0, eq1) = eq.split_at(eq.len() / 2);
+        
+        izip!(
+            a0.iter().zip(a1),
+            b0.iter().zip(b1),
+            c0.iter().zip(c1),
+            eq0.iter().zip(eq1)
+        )
+        .for_each(|(a, b, c, eq)| {
+            eval_at_0 += *eq.0 * (a.0 * b.0 - c.0);
+            eval_at_em1 += (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
+            eval_at_inf += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
+        });
+
+        let p0 = eval_at_0;
+        let p2 = HALF * (eval_at_em1 - eval_at_0 - eval_at_0 - eval_at_0);
+        let p3 = eval_at_inf;
+        let p1 = sum - p0 - p0 - p3 - p2;
+
+        eq = update(eq, rand[i]);
+        a = update(a, rand[i]);
+        b = update(b, rand[i]);
+        c = update(c, rand[i]);
+
+        println!("Eval at 0: {:?}", p0);
+        println!("Eval at 1: {:?}", p0 + p1 + p2 + p3);
+        println!("Supposed sum: {:?}", sum);
+        sum = p0 + rand[i] * (p1 + rand[i] * (p2 + rand[i] * p3));
+        println!("Actual sum: {:?}", p0 + p0 + p1 + p2 + p3); 
+    }
+    println!("Eval at rand: {:?}", sum);
+}
+
+
+
 fn main() {
-    let file = File::open("./prover/disclose_wrencher.json").expect("Failed to open file");
+    let file = File::open("./prover/r1cs_sample_bigger.json").expect("Failed to open file");
     let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
     let witness = stringvec_to_fieldvec(&r1cs_with_witness.witnesses[0]);
     let witness = pad_to_power_of_two(witness);
-    let witness_bound_a = calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints);
-    let witness_bound_b = calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints);
-    let witness_bound_c = calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints);
-    
+    let witness_bound_a = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_b = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_c = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
+    let eq = evaluations_over_boolean_hypercube_for_eq(vec![Field256::from(10); next_power_of_two(witness_bound_a.len())]);
+
+    prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero());
     let mut args = Args::parse();
     args.num_variables = next_power_of_two(witness.len());
     if args.pow_bits.is_none() {

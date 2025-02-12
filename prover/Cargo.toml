@@ -24,6 +24,8 @@ ark-poly = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
 ark-serialize = "0.5"
 clap = { version = "4.4.17", features = ["derive"] }
+itertools = "0.13.0"
+
 
 
 [lints]

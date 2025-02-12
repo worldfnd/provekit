@@ -1,0 +1,129 @@
+{
+    "num_public": 0,
+    "num_variables": 14,
+    "num_constraints": 7,
+    "a": [
+      {
+        "constraint": 0,
+        "signal": 1,
+        "value": "1"
+      },
+      {
+        "constraint": 1,
+        "signal": 8,
+        "value": "1"
+      },
+      {
+        "constraint": 2,
+        "signal": 2,
+        "value": "1"
+      },
+      {
+        "constraint": 3,
+        "signal": 9,
+        "value": "1"
+      },
+      {
+        "constraint": 4,
+        "signal": 3,
+        "value": "1"
+      },
+      {
+        "constraint": 5,
+        "signal": 0,
+        "value": "1"
+      },
+      {
+        "constraint": 6,
+        "signal": 0,
+        "value": "1"
+      }
+    ],
+    "b": [
+      {
+        "constraint": 0,
+        "signal": 6,
+        "value": "1"
+      },
+      {
+        "constraint": 1,
+        "signal": 7,
+        "value": "1"
+      },
+      {
+        "constraint": 2,
+        "signal": 6,
+        "value": "1"
+      },
+      {
+        "constraint": 3,
+        "signal": 10,
+        "value": "1"
+      },
+      {
+        "constraint": 4,
+        "signal": 7,
+        "value": "1"
+      },
+      {
+        "constraint": 5,
+        "signal": 11,
+        "value": "1"
+      },
+      {
+        "constraint": 5,
+        "signal": 12,
+        "value": "1"
+      },
+      {
+        "constraint": 6,
+        "signal": 4,
+        "value": "1"
+      },
+      {
+        "constraint": 6,
+        "signal": 13,
+        "value": "1"
+      }
+    ],
+    "c": [
+      {
+        "constraint": 0,
+        "signal": 8,
+        "value": "1"
+      },
+      {
+        "constraint": 1,
+        "signal": 9,
+        "value": "1"
+      },
+      {
+        "constraint": 2,
+        "signal": 10,
+        "value": "1"
+      },
+      {
+        "constraint": 3,
+        "signal": 11,
+        "value": "1"
+      },
+      {
+        "constraint": 4,
+        "signal": 12,
+        "value": "1"
+      },
+      {
+        "constraint": 5,
+        "signal": 13,
+        "value": "1"
+      },
+      {
+        "constraint": 6,
+        "signal": 5,
+        "value": "1"
+      }
+    ],
+    "witnesses": [
+      ["1", "2", "3", "4", "5", "135", "6", "7", "12", "84", "18", "102", "28", "130"]
+    ]
+  }
