@@ -1,8 +1,13 @@
 use {
-    crate::SmolHasher,
+    crate::{SmolHasher, HASHES},
+    linkme::distributed_slice,
     sha3::{Digest, Sha3_256},
     std::fmt::Display,
 };
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(KeccakApi);
 
 pub struct KeccakApi;
 

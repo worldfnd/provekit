@@ -1,33 +1,39 @@
+#![cfg(feature = "icicle")]
 use {
-    crate::SmolHasher,
+    crate::{SmolHasher, HASHES},
     icicle_bn254::curve::ScalarField,
     icicle_core::{
         hash::{HashConfig, Hasher},
-        poseidon::create_poseidon_hasher,
+        poseidon2::create_poseidon2_hasher,
     },
     icicle_runtime::memory::HostSlice,
+    linkme::distributed_slice,
     std::fmt::Display,
 };
 
-pub struct Poseidon2Icicle {
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2T3Icicle::new());
+
+pub struct Poseidon2T3Icicle {
     hasher: Hasher,
 }
 
-impl Display for Poseidon2Icicle {
+impl Display for Poseidon2T3Icicle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("poseidon-bn254-icicle")
+        f.pad("poseidon2-t3-icicle")
     }
 }
 
-impl Poseidon2Icicle {
+impl Poseidon2T3Icicle {
     pub fn new() -> Self {
-        let hasher = create_poseidon_hasher::<ScalarField>(3, None).unwrap();
+        let hasher = create_poseidon2_hasher::<ScalarField>(3, None).unwrap();
         assert_eq!(hasher.output_size(), 32);
         Self { hasher }
     }
 }
 
-impl SmolHasher for Poseidon2Icicle {
+impl SmolHasher for Poseidon2T3Icicle {
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         let config = HashConfig::default();
         let mut padded = [0u8; 96];

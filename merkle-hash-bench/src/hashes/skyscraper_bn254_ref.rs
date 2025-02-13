@@ -1,15 +1,21 @@
-//! Reference implementation of the Skyscraper hash function using the Field elements.
+//! Reference implementation of the Skyscraper hash function using the Field
+//! elements.
 use {
     crate::{
         mod_ring::{
             fields::{Bn254Element, Bn254Field},
             RingRefExt,
         },
-        SmolHasher,
+        SmolHasher, HASHES,
     },
+    linkme::distributed_slice,
     ruint::{aliases::U256, uint},
     std::fmt::Display,
 };
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Skyscraper);
 
 const RC: [U256; 8] = uint! {[
     17829420340877239108687448009732280677191990375576158938221412342251481978692_U256,

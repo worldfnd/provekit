@@ -1,36 +1,30 @@
-mod blake2_icicle;
-mod blake3;
-mod blake3_naive;
-mod keccak_api;
-mod keccak_icicle;
-mod keccak_neon;
+#![feature(portable_simd)] // Required for Stwo
+#![allow(unsafe_code)]
+#![allow(missing_docs)]
+
+mod hashes;
 mod mod_ring;
-mod poseidon2_t2_icicle;
-mod poseidon2_t2_ruint;
-mod poseidon2_t3_icicle;
-mod poseidon2_t3_plonky3;
-mod poseidon2_t3_ruint;
-mod poseidon2_t3_zkhash;
-mod poseidon_icicle;
-mod sha256_neon;
-// mod skyscraper_bn254_portable;
-mod skyscraper_bn254_ref;
-mod skyscraper_bn254_ruint;
-mod skyscraper_neon;
 
 use {
+    anyhow::Result,
+    argh::FromArgs,
     core::{
         f64,
         fmt::{self, Display, Formatter},
         hint::black_box,
         time::Duration,
     },
+    linkme::distributed_slice,
     rand::RngCore,
     std::{
         io::{stdout, Write},
         time::Instant,
     },
 };
+
+/// Linker magic to collect all hash constructors.
+#[distributed_slice]
+pub static HASHES: [fn() -> Box<dyn SmolHasher>];
 
 pub trait SmolHasher: Display {
     /// `messages` will be a multiple of 64 bytes, `hashes` a multiple of 32.
@@ -57,9 +51,9 @@ fn measure<A, F: FnMut() -> A>(duration: Duration, mut f: F) -> f64 {
     aggregate
 }
 
+/// Pretty print a float using SI-prefixes.
 pub fn human(value: f64) -> impl Display {
     pub struct Human(f64);
-
     impl Display for Human {
         fn fmt(&self, f: &mut Formatter) -> fmt::Result {
             let log10 = if self.0.is_normal() {
@@ -82,31 +76,11 @@ pub fn human(value: f64) -> impl Display {
             Ok(())
         }
     }
-
     Human(value)
 }
 
-fn main() {
+fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn SmolHasher>) {
     let mut rng = rand::thread_rng();
-    let hashers: Vec<Box<dyn SmolHasher>> = vec![
-        Box::new(keccak_api::KeccakApi),
-        Box::new(blake3_naive::Blake3Naive),
-        Box::new(keccak_icicle::KeccakIcicle::new()),
-        Box::new(keccak_neon::Keccak),
-        Box::new(keccak_neon::K12),
-        Box::new(blake2_icicle::Blake2Icicle::new()),
-        Box::new(blake3::Blake3::new()),
-        Box::new(sha256_neon::Sha256),
-        Box::new(poseidon_icicle::Poseidon2Icicle::new()),
-        Box::new(poseidon2_t3_icicle::Poseidon2T3Icicle::new()),
-        Box::new(poseidon2_t3_plonky3::Poseidon2T3Plonky3::new()),
-        Box::new(poseidon2_t3_zkhash::Poseidon2T3Zkhash::new()),
-        Box::new(poseidon2_t3_ruint::Poseidon2T3Ruint::new()),
-        Box::new(poseidon2_t2_icicle::Poseidon2T2Icicle::new()),
-        Box::new(poseidon2_t2_ruint::Poseidon2T2Ruint::new()),
-        Box::new(skyscraper_bn254_ref::Skyscraper),
-        Box::new(skyscraper_bn254_ruint::Skyscraper),
-    ];
     println!("seconds per hash for batches of 512 bit messages.");
     print!("hash \\ batch size              ");
     let lengths = [4, 16, 64, 256, 1 << 15];
@@ -114,21 +88,42 @@ fn main() {
         print!("\t{length}");
     }
     println!();
-    for hash in &hashers {
+    for hash in hashers {
         print!("{hash:25}");
         stdout().flush().unwrap();
         for length in lengths {
             let mut input = vec![0_u8; length * 64];
             let mut output = vec![0_u8; length * 32];
             rng.fill_bytes(&mut input);
-            let duration = measure(Duration::from_secs(1), || {
+            let duration = measure(duration, || {
                 hash.hash(black_box(&input), black_box(&mut output));
             });
-            let hashes_per_sec = human(length as f64 / duration);
+            let _hashes_per_sec = human(length as f64 / duration);
             let sec_per_hash = human(duration / length as f64);
             print!("\t{sec_per_hash:#}");
             stdout().flush().unwrap();
         }
         println!();
     }
+    println!();
+}
+
+#[derive(FromArgs)]
+/// Benchmark various regular and zk-firendly hash functions for batches of
+/// 512-bit messages.
+struct Args {
+    /// duration of the benchmark in seconds.
+    #[argh(option)]
+    duration: Option<f64>,
+}
+
+fn main() -> Result<()> {
+    let args: Args = argh::from_env();
+    let duration = Duration::from_secs_f64(args.duration.unwrap_or(0.01));
+
+    // Consrtuct all hashers.
+    let hashes = HASHES.iter().map(|ctor| ctor()).collect::<Vec<_>>();
+
+    print_table(duration, hashes.iter().map(|hasher| &**hasher));
+    Ok(())
 }

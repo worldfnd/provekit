@@ -3,6 +3,14 @@ name = "merkle-hash-bench"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+icicle = [
+    "dep:icicle-core",
+    "dep:icicle-runtime",
+    "dep:icicle-hash",
+    "dep:icicle-bn254",
+]
+
 [lints]
 workspace = true
 
@@ -12,6 +20,8 @@ rand.workspace = true
 subtle.workspace = true
 bytemuck.workspace = true
 hex-literal.workspace = true
+argh.workspace = true
+anyhow.workspace = true
 
 ark-ff = { version = "0.5.0", features = ["asm"] }
 arrayvec = "0.7.6"
@@ -23,8 +33,11 @@ p3-field = "0.2.0"
 p3-poseidon2 = "0.2.0"
 p3-symmetric = "0.2.0"
 zkhash = "0.2.0"
-icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
+icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
+icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
+icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
 sha3 = { version = "0.10.8", features = ["asm"] }
+stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1" }
+zerocopy = { version = "0.8.17", features = ["simd"] }
+linkme = "0.3.31"

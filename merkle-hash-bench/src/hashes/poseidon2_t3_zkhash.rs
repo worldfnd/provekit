@@ -1,5 +1,6 @@
 use {
-    crate::SmolHasher,
+    crate::{SmolHasher, HASHES},
+    linkme::distributed_slice,
     std::fmt::{self, Display, Formatter},
     zkhash::{
         ark_ff::{BigInteger, PrimeField, Zero},
@@ -7,6 +8,10 @@ use {
         poseidon2::{poseidon2::Poseidon2, poseidon2_instance_bn256::POSEIDON2_BN256_PARAMS},
     },
 };
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2T3Zkhash::new());
 
 pub struct Poseidon2T3Zkhash(Poseidon2<FpBN256>);
 

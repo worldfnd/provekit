@@ -1,0 +1,17 @@
+mod blake2_icicle;
+mod blake2s_stwo;
+mod blake3;
+mod blake3_naive;
+mod keccak_api;
+mod keccak_icicle;
+mod keccak_neon;
+mod poseidon2_t2_icicle;
+mod poseidon2_t2_ruint;
+mod poseidon2_t3_icicle;
+mod poseidon2_t3_plonky3;
+mod poseidon2_t3_ruint;
+mod poseidon2_t3_zkhash;
+mod poseidon_icicle;
+mod sha256_neon;
+mod skyscraper_bn254_ref;
+mod skyscraper_bn254_ruint;

@@ -1,5 +1,5 @@
 use {
-    crate::SmolHasher,
+    crate::{SmolHasher, HASHES},
     arrayvec::ArrayVec,
     blake3::{
         guts::{BLOCK_LEN, CHUNK_LEN},
@@ -7,8 +7,13 @@ use {
         IncrementCounter, OUT_LEN,
     },
     core::slice,
+    linkme::distributed_slice,
     std::{fmt::Display, iter::zip},
 };
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Blake3::new());
 
 // Static assertions
 const _: () = assert!(
@@ -24,12 +29,14 @@ const _: () = assert!(
     "Blake3 chunk len is not 16 blocks."
 );
 
-/// Default Blake3 initialization vector. Copied here because it is not publicly exported.
+/// Default Blake3 initialization vector. Copied here because it is not publicly
+/// exported.
 const BLAKE3_IV: [u32; 8] = [
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// Flags for a single block message. Copied here because it is not publicly exported.
+/// Flags for a single block message. Copied here because it is not publicly
+/// exported.
 const FLAGS_START: u8 = 1 << 0; // CHUNK_START
 const FLAGS_END: u8 = 1 << 1; // CHUNK_END
 const FLAGS: u8 = 1 << 3; // ROOT
@@ -140,7 +147,8 @@ pub fn as_chunks_exact<T, const N: usize>(slice: &[T]) -> &[[T; N]] {
         0,
         "slice length must be a multiple of chunk size"
     );
-    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the
+    // slice length
     let new_len = slice.len() / N;
     // SAFETY: We cast a slice of `new_len * N` elements into
     // a slice of `new_len` many `N` elements chunks.

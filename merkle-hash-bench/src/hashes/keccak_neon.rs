@@ -1,4 +1,16 @@
-use {crate::SmolHasher, std::fmt::Display};
+use {
+    crate::{SmolHasher, HASHES},
+    linkme::distributed_slice,
+    std::fmt::Display,
+};
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH1: fn() -> Box<dyn SmolHasher> = || Box::new(Keccak);
+
+#[allow(unsafe_code)] // Squelch the warning about using link_section
+#[distributed_slice(HASHES)]
+static HASH2: fn() -> Box<dyn SmolHasher> = || Box::new(K12);
 
 const RC: [u64; 24] = [
     0x0000000000000001,
