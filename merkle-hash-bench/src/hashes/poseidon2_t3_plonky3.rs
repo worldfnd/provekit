@@ -1,6 +1,5 @@
 use {
-    crate::{SmolHasher, HASHES},
-    linkme::distributed_slice,
+    crate::{register_hash, SmolHasher},
     p3_bn254_fr::{Bn254Fr, DiffusionMatrixBN254, FFBn254Fr},
     p3_field::AbstractField,
     p3_poseidon2::Poseidon2ExternalMatrixGeneral,
@@ -8,9 +7,7 @@ use {
     std::fmt::Display,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2T3Plonky3::new());
+register_hash!(Poseidon2T3Plonky3::new());
 
 type Poseidon2 =
     p3_poseidon2::Poseidon2<Bn254Fr, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBN254, 3, 5>;

@@ -1,5 +1,5 @@
 use {
-    crate::{SmolHasher, HASHES},
+    crate::{register_hash, SmolHasher},
     arrayvec::ArrayVec,
     blake3::{
         guts::{BLOCK_LEN, CHUNK_LEN},
@@ -7,13 +7,10 @@ use {
         IncrementCounter, OUT_LEN,
     },
     core::slice,
-    linkme::distributed_slice,
     std::{fmt::Display, iter::zip},
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Blake3::new());
+register_hash!(Blake3::new());
 
 // Static assertions
 const _: () = assert!(

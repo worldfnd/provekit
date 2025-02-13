@@ -1,14 +1,11 @@
 use {
-    crate::{SmolHasher, HASHES},
+    crate::{register_hash, SmolHasher},
     hex_literal::hex,
-    linkme::distributed_slice,
     ruint::{aliases::U256, uint},
     std::fmt::Display,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Skyscraper);
+register_hash!(Skyscraper);
 
 const MODULUS: U256 =
     uint!(21888242871839275222246405745257275088548364400416034343698204186575808495617_U256);

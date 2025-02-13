@@ -1,13 +1,10 @@
 use {
-    crate::{SmolHasher, HASHES},
-    linkme::distributed_slice,
+    crate::{register_hash, SmolHasher},
     std::{fmt::Display, iter::zip, mem::transmute, simd::u32x16},
     stwo_prover::core::backend::simd::blake2s::compress16,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Blake2Stwo);
+register_hash!(Blake2Stwo);
 
 pub struct Blake2Stwo;
 

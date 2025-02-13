@@ -1,16 +1,13 @@
 #![cfg(feature = "icicle")]
 use {
-    crate::{SmolHasher, HASHES},
+    crate::{register_hash, SmolHasher},
     icicle_core::hash::{HashConfig, Hasher},
     icicle_hash::blake2s::Blake2s,
     icicle_runtime::memory::HostSlice,
-    linkme::distributed_slice,
     std::fmt::Display,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Blake2Icicle::new());
+register_hash!(Blake2Icicle::new());
 
 pub struct Blake2Icicle {
     hasher: Hasher,

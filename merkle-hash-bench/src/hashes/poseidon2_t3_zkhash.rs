@@ -1,6 +1,5 @@
 use {
-    crate::{SmolHasher, HASHES},
-    linkme::distributed_slice,
+    crate::{register_hash, SmolHasher},
     std::fmt::{self, Display, Formatter},
     zkhash::{
         ark_ff::{BigInteger, PrimeField, Zero},
@@ -9,9 +8,7 @@ use {
     },
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2T3Zkhash::new());
+register_hash!(Poseidon2T3Zkhash::new());
 
 pub struct Poseidon2T3Zkhash(Poseidon2<FpBN256>);
 

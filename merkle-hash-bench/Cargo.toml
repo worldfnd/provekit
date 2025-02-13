@@ -41,3 +41,4 @@ sha3 = { version = "0.10.8", features = ["asm"] }
 stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1" }
 zerocopy = { version = "0.8.17", features = ["simd"] }
 linkme = "0.3.31"
+gensym = "0.1.1"

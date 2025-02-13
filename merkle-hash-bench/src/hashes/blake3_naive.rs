@@ -1,12 +1,9 @@
 use {
-    crate::{SmolHasher, HASHES},
-    linkme::distributed_slice,
+    crate::{register_hash, SmolHasher},
     std::fmt::Display,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Blake3Naive);
+register_hash!(Blake3Naive);
 
 pub struct Blake3Naive;
 

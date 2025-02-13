@@ -1,14 +1,11 @@
 //! Adapted from: https://github.com/RustCrypto/hashes/blob/a467ac63d85f31d4bdd67a28ba0d61939df86dbd/sha2/src/sha256/aarch64.rs#L22
 //! Which itself is adapted from mbed-tls.
 use {
-    crate::{SmolHasher, HASHES},
+    crate::{register_hash, SmolHasher},
     core::{arch::aarch64::*, fmt::Display},
-    linkme::distributed_slice,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Sha256);
+register_hash!(Sha256);
 
 /// Round constants for SHA-256 family of digests
 pub static K32: [u32; 64] = [

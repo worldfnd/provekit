@@ -4,17 +4,14 @@ use {
             fields::{Bn254Element, Bn254Field},
             RingRefExt,
         },
-        SmolHasher, HASHES,
+        register_hash, SmolHasher,
     },
-    linkme::distributed_slice,
     rand::Rng,
     ruint::aliases::U256,
     std::fmt::{self, Display, Formatter},
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2T2Ruint::new());
+register_hash!(Poseidon2T2Ruint::new());
 
 pub struct Poseidon2T2Ruint {
     first:  [[Bn254Element; 2]; 4],

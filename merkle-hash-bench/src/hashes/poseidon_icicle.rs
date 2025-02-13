@@ -1,19 +1,16 @@
 #![cfg(feature = "icicle")]
 use {
-    crate::{SmolHasher, HASHES},
+    crate::{register_hash, SmolHasher},
     icicle_bn254::curve::ScalarField,
     icicle_core::{
         hash::{HashConfig, Hasher},
         poseidon::create_poseidon_hasher,
     },
     icicle_runtime::memory::HostSlice,
-    linkme::distributed_slice,
     std::fmt::Display,
 };
 
-#[allow(unsafe_code)] // Squelch the warning about using link_section
-#[distributed_slice(HASHES)]
-static HASH: fn() -> Box<dyn SmolHasher> = || Box::new(Poseidon2Icicle::new());
+register_hash!(Poseidon2Icicle::new());
 
 pub struct Poseidon2Icicle {
     hasher: Hasher,
