@@ -1,3 +1,4 @@
+#[allow(missing_docs)]
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
     merkle_tree::{
@@ -7,7 +8,7 @@ use ark_crypto_primitives::{
     Error,
 };
 use crate::skyscraper::SkyscraperSponge;
-use nimue::{Arthur, DefaultHash, IOPattern, Merlin, ProofResult};
+use nimue::{Arthur, IOPattern, Merlin, ProofResult};
 use nimue::plugins::ark::{FieldIOPattern, FieldReader, FieldWriter};
 use rand::Rng;
 use std::borrow::Borrow;
@@ -18,7 +19,7 @@ use whir::{
         fs_utils::{DigestReader, DigestWriter},
     },
 };
-
+/// TODO: Add documentation
 pub struct SkyscraperCRH;
 
 impl CRHScheme for SkyscraperCRH {
@@ -26,12 +27,12 @@ impl CRHScheme for SkyscraperCRH {
     type Output = Field256;
     type Parameters = ();
 
-    fn setup<R: Rng>(r: &mut R) -> Result<Self::Parameters, Error> {
+    fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
 
     fn evaluate<T: Borrow<Self::Input>>(
-        parameters: &Self::Parameters,
+        _parameters: &Self::Parameters,
         input: T,
     ) -> Result<Self::Output, Error> {
         let elems = input.borrow();
@@ -42,7 +43,7 @@ impl CRHScheme for SkyscraperCRH {
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
-
+/// TODO: Add documentation
 pub struct SkyscraperTwoToOne;
 
 impl TwoToOneCRHScheme for SkyscraperTwoToOne {
@@ -50,7 +51,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
     type Output = Field256;
     type Parameters = ();
 
-    fn setup<R: Rng>(r: &mut R) -> Result<Self::Parameters, Error> {
+    fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
 
@@ -75,6 +76,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
 }
 
 #[derive(Clone, Copy)]
+/// Skyscraper configuration for the Merkle hash
 pub struct SkyscraperMerkleConfig;
 
 impl Config for SkyscraperMerkleConfig {

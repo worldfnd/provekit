@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use whir::crypto::fields::Field256;
 use ark_ff::{BigInt, BigInteger, PrimeField};
 use nimue::hash::sponge::{DuplexSponge, Sponge};
@@ -5,6 +6,7 @@ use ruint::Uint;
 use ruint_macro::uint;
 use zeroize::Zeroize;
 
+/// TODO: Add documentation
 pub const fn uint_to_field(i: Uint<256, 4>) -> Field256 {
     Field256::new(BigInt(i.into_limbs()))
 }
@@ -43,6 +45,7 @@ fn sbox(v: u8) -> u8 {
     (v ^ ((!v).rotate_left(1) & v.rotate_left(2) & v.rotate_left(3))).rotate_left(1)
 }
 
+/// TODO: Add documentation
 pub fn bigint_from_bytes_le<const N: usize>(bytes: &[u8]) -> BigInt<N> {
     let limbs = bytes
         .chunks_exact(8)
@@ -79,12 +82,14 @@ fn permute([l, r]: State) -> State {
     [l, r]
 }
 
+/// TODO: Add documentation
 pub fn compress(l: Field256, r: Field256) -> Field256 {
     let a = l.clone();
     let [l, _] = permute([l.clone(), r.clone()]);
     l + a
 }
 
+/// TODO: Add documentation
 #[derive(Clone, Default, Zeroize)]
 pub struct Skyscraper {
     state: State,
@@ -115,7 +120,7 @@ impl Sponge for Skyscraper {
         self.state = permute(self.state);
     }
 }
-
+/// TODO: Add documentation
 pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
 
 mod tests {

@@ -1,6 +1,6 @@
-use ark_crypto_primitives::merkle_tree::Config;
-use ark_ff::{BigInt, FftField, Field, AdditiveGroup};
-use ark_serialize::CanonicalSerialize;
+#![allow(dead_code)]
+//! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
+
 use ark_std::str::FromStr;
 use ark_std::{Zero, One};
 use ark_std::ops::{Add, Mul, Sub};
@@ -8,33 +8,36 @@ use clap::Parser;
 use std::time::Instant;
 use std::fs::File;
 use serde::Deserialize;
-use nimue::{Arthur, IOPattern, Merlin};
+use nimue::IOPattern;
 use prover::{
     skyscraper::SkyscraperSponge, 
     skyscraper::uint_to_field, 
     skyscraper_pow::SkyscraperPoW,
-    skyscraper_traits_for_whir::{
-        SkyscraperCRH, 
-        SkyscraperTwoToOne, 
-        SkyscraperMerkleConfig,
-    },
+    skyscraper_traits_for_whir::SkyscraperMerkleConfig,
 };
-use ruint::aliases::U256;
 use ruint_macro::uint;
 use whir::{
     crypto::{
         fields::Field256,
-        merkle_tree::{self, HashCounter},
+        merkle_tree::HashCounter,
     },
     parameters::*,
     poly_utils::{coeffs::CoefficientList, MultilinearPoint},
     whir::{
-        committer::Witness, fs_utils::{DigestReader, DigestWriter}, iopattern::DigestIOPattern
+        committer::Committer,
+        iopattern::WhirIOPattern,
+        parameters::WhirConfig, prover::Prover,
+        verifier::Verifier, 
+        whir_proof_size, 
+        Statement,
     },
+    
 };
-use std::io::BufReader;
-use serde_json::Result;
+
 use itertools::izip;
+use prover::utils::{
+    stringvec_to_fieldvec,
+};
 
 #[derive(Deserialize)]
 struct MatrixCell {
@@ -98,9 +101,9 @@ fn calculate_witness_bound(matrix_cells: Vec<MatrixCell>, witness: &Vec<Field256
     witness_bound
 }
 
-fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
-    witness.iter().map(|x|{Field256::from_str(x).expect("Failed to create Field256 value from a string")}).collect()
-}
+// fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
+//     witness.iter().map(|x|{Field256::from_str(x).expect("Failed to create Field256 value from a string")}).collect()
+// }
 
 fn next_power_of_two(n: usize) -> usize {
     let mut power = 1;
@@ -226,10 +229,7 @@ fn main() {
 fn run_whir_pcs(args: Args, witness: Vec<Field256>) 
 {   
     use Field256 as F;
-    use whir::whir::{
-        committer::Committer, iopattern::WhirIOPattern, parameters::WhirConfig, prover::Prover,
-        verifier::Verifier, whir_proof_size, Statement,
-    };
+    
 
     // Runs as a PCS
     let security_level = args.security_level;
@@ -245,8 +245,6 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
     if num_evaluations == 0 {
         println!("Warning: running as PCS but no evaluations specified.");
     }
-
-    let num_coeffs = 1 << num_variables;
 
     let mv_params = MultivariateParameters::<F>::new(num_variables);
 
@@ -264,11 +262,11 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
     };
 
     let params = WhirConfig::<F, SkyscraperMerkleConfig, PowStrategy>::new(mv_params, whir_params);
-
-    let io = IOPattern::<SkyscraperSponge, F>::new("🌪️")
-        .commit_statement(&params)
-        .add_whir_proof(&params)
-        .clone();
+    
+    let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
+    .commit_statement(&params)
+    .add_whir_proof(&params)
+    .clone();
 
     let mut merlin = io.to_merlin();
 
@@ -279,7 +277,6 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         println!("WARN: more PoW bits required than what specified.");
     }
 
-    use ark_ff::Field;
     let polynomial = CoefficientList::new(witness);
 
     let points: Vec<_> = (0..num_evaluations)
