@@ -1,6 +1,5 @@
 use {
-    crate::{register_hash, SmolHasher},
-    std::fmt::{self, Display, Formatter},
+    crate::{register_hash, Field, HashFn, SmolHasher},
     zkhash::{
         ark_ff::{BigInteger, PrimeField, Zero},
         fields::bn256::FpBN256,
@@ -12,13 +11,19 @@ register_hash!(Poseidon2T3Zkhash::new());
 
 pub struct Poseidon2T3Zkhash(Poseidon2<FpBN256>);
 
-impl Display for Poseidon2T3Zkhash {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.pad("Poseidon2-t3-ZKHash")
-    }
-}
-
 impl SmolHasher for Poseidon2T3Zkhash {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Poseidon2(3)
+    }
+
+    fn implementation(&self) -> &str {
+        "zkhash"
+    }
+
+    fn field(&self) -> Field {
+        Field::Bn254
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             let mut state = [

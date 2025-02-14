@@ -1,8 +1,7 @@
 use {
-    crate::{register_hash, SmolHasher},
+    crate::{register_hash, Field, HashFn, SmolHasher},
     hex_literal::hex,
     ruint::{aliases::U256, uint},
-    std::fmt::Display,
 };
 
 register_hash!(Skyscraper);
@@ -25,13 +24,19 @@ const _SBOX: [u8; 256] = hex!("00020416080a2c2e10121406585a5c5e20222436282a0c0eb
 
 pub struct Skyscraper;
 
-impl Display for Skyscraper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("skyscraper-bn254-ruint")
-    }
-}
-
 impl SmolHasher for Skyscraper {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Skyscraper(1)
+    }
+
+    fn implementation(&self) -> &str {
+        "reference"
+    }
+
+    fn field(&self) -> Field {
+        Field::Bn254
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             let a = from_bytes(&message[0..32]);

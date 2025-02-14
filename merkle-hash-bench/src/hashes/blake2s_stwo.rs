@@ -1,6 +1,6 @@
 use {
-    crate::{register_hash, SmolHasher},
-    std::{fmt::Display, iter::zip, mem::transmute, simd::u32x16},
+    crate::{register_hash, HashFn, SmolHasher},
+    std::{iter::zip, mem::transmute, simd::u32x16},
     stwo_prover::core::backend::simd::blake2s::compress16,
 };
 
@@ -8,13 +8,15 @@ register_hash!(Blake2Stwo);
 
 pub struct Blake2Stwo;
 
-impl Display for Blake2Stwo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("blake2s-stwo")
-    }
-}
-
 impl SmolHasher for Blake2Stwo {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Blake2s
+    }
+
+    fn implementation(&self) -> &str {
+        "stwo"
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (msg, out) in zip(messages.chunks_exact(1024), hashes.chunks_exact_mut(512)) {
             compress(msg.try_into().unwrap(), out.try_into().unwrap());

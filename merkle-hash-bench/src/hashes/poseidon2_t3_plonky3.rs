@@ -1,10 +1,9 @@
 use {
-    crate::{register_hash, SmolHasher},
+    crate::{register_hash, Field::Bn254, HashFn, SmolHasher},
     p3_bn254_fr::{Bn254Fr, DiffusionMatrixBN254, FFBn254Fr},
     p3_field::AbstractField,
     p3_poseidon2::Poseidon2ExternalMatrixGeneral,
     p3_symmetric::Permutation,
-    std::fmt::Display,
 };
 
 register_hash!(Poseidon2T3Plonky3::new());
@@ -16,13 +15,19 @@ pub struct Poseidon2T3Plonky3 {
     poseidon: Poseidon2,
 }
 
-impl Display for Poseidon2T3Plonky3 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("poseidon2-t3-plonky3")
-    }
-}
-
 impl SmolHasher for Poseidon2T3Plonky3 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Poseidon2(3)
+    }
+
+    fn implementation(&self) -> &str {
+        "plonky3"
+    }
+
+    fn field(&self) -> crate::Field {
+        Bn254
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             self.compress(message, hash);

@@ -1,5 +1,5 @@
 use {
-    crate::{register_hash, SmolHasher},
+    crate::{register_hash, HashFn, SmolHasher},
     arrayvec::ArrayVec,
     blake3::{
         guts::{BLOCK_LEN, CHUNK_LEN},
@@ -39,19 +39,16 @@ const FLAGS_END: u8 = 1 << 1; // CHUNK_END
 const FLAGS: u8 = 1 << 3; // ROOT
 
 pub struct Blake3 {
-    platform: Platform,
-}
-
-impl Display for Blake3 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("blake3-{:?}", self.platform))
-    }
+    platform:       Platform,
+    implementation: String,
 }
 
 impl Blake3 {
     pub fn new() -> Self {
+        let platform = Platform::detect();
         Self {
-            platform: Platform::detect(),
+            platform,
+            implementation: format!("{:?}", platform),
         }
     }
 
@@ -85,6 +82,14 @@ impl Blake3 {
 }
 
 impl SmolHasher for Blake3 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Blake3
+    }
+
+    fn implementation(&self) -> &str {
+        &self.implementation
+    }
+
     fn hash(&self, inputs: &[u8], output: &mut [u8]) {
         let size = 64;
         assert!(

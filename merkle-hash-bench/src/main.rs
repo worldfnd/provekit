@@ -1,5 +1,4 @@
 #![feature(portable_simd)] // Required for Stwo
-// #![allow(unsafe_code)]
 #![allow(missing_docs)]
 
 mod hashes;
@@ -17,16 +16,70 @@ use {
     rand::RngCore,
     std::{
         f64,
-        fmt::Display,
+        fmt::{Display, Formatter},
         hint::black_box,
         io::{stdout, Write},
         time::Duration,
     },
 };
 
-pub trait SmolHasher: Display {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    None,
+    Bn254,
+    Goldilocks,
+    M31,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum HashFn {
+    Sha256,
+    Blake2s,
+    Blake3,
+    Poseidon(usize),
+    Poseidon2(usize),
+    Skyscraper(usize),
+    Keccak(usize),
+}
+
+pub trait SmolHasher {
+    fn hash_fn(&self) -> HashFn;
+
+    fn implementation(&self) -> &str {
+        ""
+    }
+
+    fn field(&self) -> Field {
+        Field::None
+    }
+
     /// `messages` will be a multiple of 64 bytes, `hashes` a multiple of 32.
     fn hash(&self, messages: &[u8], hashes: &mut [u8]);
+}
+
+impl Display for Field {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::None => f.pad("none"),
+            Self::Bn254 => f.pad("bn254"),
+            Self::Goldilocks => f.pad("goldilocks"),
+            Self::M31 => f.pad("m31"),
+        }
+    }
+}
+
+impl Display for HashFn {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Self::Sha256 => f.pad("sha256"),
+            Self::Blake2s => f.pad("blake2s"),
+            Self::Blake3 => f.pad("blake3"),
+            Self::Poseidon(t) => f.pad(&format!("poseidon:{t}")),
+            Self::Poseidon2(t) => f.pad(&format!("poseidon2:{t}")),
+            Self::Skyscraper(t) => f.pad(&format!("skyscraper:{t}")),
+            Self::Keccak(t) => f.pad(&format!("keccak:{t}")),
+        }
+    }
 }
 
 fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn SmolHasher>) {
@@ -39,7 +92,12 @@ fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn Smo
     }
     println!();
     for hash in hashers {
-        print!("{hash:25}");
+        print!(
+            "{:14}{:10}{:7}",
+            hash.hash_fn(),
+            hash.implementation(),
+            hash.field()
+        );
         stdout().flush().unwrap();
         for length in lengths {
             let mut input = vec![0_u8; length * 64];

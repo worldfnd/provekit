@@ -1,8 +1,8 @@
 //! Adapted from: https://github.com/RustCrypto/hashes/blob/a467ac63d85f31d4bdd67a28ba0d61939df86dbd/sha2/src/sha256/aarch64.rs#L22
 //! Which itself is adapted from mbed-tls.
 use {
-    crate::{register_hash, SmolHasher},
-    core::{arch::aarch64::*, fmt::Display},
+    crate::{register_hash, HashFn, SmolHasher},
+    core::arch::aarch64::*,
 };
 
 register_hash!(Sha256);
@@ -21,13 +21,15 @@ pub static K32: [u32; 64] = [
 
 pub struct Sha256;
 
-impl Display for Sha256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("SHA256-NEON")
-    }
-}
-
 impl SmolHasher for Sha256 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Sha256
+    }
+
+    fn implementation(&self) -> &str {
+        "neon"
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             unsafe { sha256_compress(message, hash) }
