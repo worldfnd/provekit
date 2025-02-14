@@ -1,26 +1,19 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
-use ark_std::str::FromStr;
 use ark_std::{Zero, One};
-use ark_std::ops::{Add, Mul, Sub};
+use ark_std::ops::Mul;
 use clap::Parser;
-use std::time::Instant;
 use std::fs::File;
-use serde::Deserialize;
 use nimue::IOPattern;
 use prover::{
     skyscraper::SkyscraperSponge, 
     skyscraper::uint_to_field, 
     skyscraper_pow::SkyscraperPoW,
-    skyscraper_traits_for_whir::SkyscraperMerkleConfig,
+    skyscraper_for_whir::SkyscraperMerkleConfig,
 };
-use ruint_macro::uint;
 use whir::{
-    crypto::{
-        fields::Field256,
-        merkle_tree::HashCounter,
-    },
+    crypto::fields::Field256,
     parameters::*,
     poly_utils::{coeffs::CoefficientList, MultilinearPoint},
     whir::{
@@ -28,35 +21,20 @@ use whir::{
         iopattern::WhirIOPattern,
         parameters::WhirConfig, prover::Prover,
         verifier::Verifier, 
-        whir_proof_size, 
         Statement,
     },
     
 };
-
 use itertools::izip;
 use prover::utils::{
     stringvec_to_fieldvec,
+    pad_to_power_of_two,
+    next_power_of_two,
+    calculate_witness_bound,
+    evaluations_over_boolean_hypercube_for_eq,
+    R1CSWithWitness,
+    HALF,
 };
-
-#[derive(Deserialize)]
-struct MatrixCell {
-    constraint: u32,
-    signal: u32,
-    value: String,
-}
-
-#[derive(Deserialize)]
-struct R1CSWithWitness {
-    num_public: u32,
-    num_variables: u32,
-    num_constraints: u32,
-    a: Vec<MatrixCell>,
-    b: Vec<MatrixCell>,
-    c: Vec<MatrixCell>,
-    witnesses: Vec<Vec<String>>,
-}
-
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -76,9 +54,6 @@ struct Args {
     #[arg(short = 'r', long, default_value = "1")]
     rate: usize,
 
-    #[arg(long = "reps", default_value = "1000")]
-    verifier_repetitions: usize,
-
     #[arg(short = 'k', long = "fold", default_value = "4")]
     folding_factor: usize,
 
@@ -88,55 +63,6 @@ struct Args {
     #[arg(long = "fold_type", default_value = "ProverHelps")]
     fold_optimisation: FoldType,
 }
-
-type PowStrategy = SkyscraperPoW;
-
-fn calculate_witness_bound(matrix_cells: Vec<MatrixCell>, witness: &Vec<Field256>, num_constraints: u32)->Vec<Field256> {
-    let mut witness_bound = vec![Field256::from(0); num_constraints as usize];
-    for x in matrix_cells {
-        let cell = Field256::from_str(&x.value).expect("Failed to create Field256 value from a string");
-        let witness_cell = witness[x.signal as usize];
-        witness_bound[x.constraint as usize] = witness_bound[x.constraint as usize].add(cell.mul(witness_cell));
-    }
-    witness_bound
-}
-
-// fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
-//     witness.iter().map(|x|{Field256::from_str(x).expect("Failed to create Field256 value from a string")}).collect()
-// }
-
-fn next_power_of_two(n: usize) -> usize {
-    let mut power = 1;
-    let mut ans = 0;
-    while power < n {
-        power <<= 1;
-        ans += 1;
-    }
-    ans
-}
-
-
-fn pad_to_power_of_two(mut witness: Vec<Field256>) -> Vec<Field256> {
-    let target_len = next_power_of_two(witness.len());
-    while witness.len() < 1<<target_len {
-        witness.push(Field256::zero()); // Pad with zeros
-    }
-    witness
-}
-
-fn evaluations_over_boolean_hypercube_for_eq(r: Vec<Field256>) -> Vec<Field256> {
-    let mut ans = vec![Field256::one()];
-    for x in r {
-        let mut left: Vec<Field256> = ans.clone().into_iter().map(|y| {y.mul(Field256::one().sub(x))}).collect();
-        let right: Vec<Field256> = ans.into_iter().map(|y| {y.mul(x)}).collect();
-        left.extend(right);
-        ans = left;
-    }
-    ans
-}
-
-const HALF: Field256 = uint_to_field(uint!(10944121435919637611123202872628637544274182200208017171849102093287904247809_U256));
-
 
 fn update(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
     let sz = f.len();
@@ -205,8 +131,6 @@ fn prove_sumcheck(
     println!("Eval at rand: {:?}", sum);
 }
 
-
-
 fn main() {
     let file = File::open("./prover/r1cs_sample_bigger.json").expect("Failed to open file");
     let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
@@ -215,6 +139,7 @@ fn main() {
     let witness_bound_a = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
     let witness_bound_b = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
     let witness_bound_c = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
+    // TODO: change randomness in eq. It currently has just array of 10s.
     let eq = evaluations_over_boolean_hypercube_for_eq(vec![Field256::from(10); next_power_of_two(witness_bound_a.len())]);
 
     prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero());
@@ -228,15 +153,10 @@ fn main() {
 
 fn run_whir_pcs(args: Args, witness: Vec<Field256>) 
 {   
-    use Field256 as F;
-    
-
-    // Runs as a PCS
     let security_level = args.security_level;
     let pow_bits = args.pow_bits.unwrap();
     let num_variables = args.num_variables;
     let starting_rate = args.rate;
-    let reps = args.verifier_repetitions;
     let folding_factor = args.folding_factor;
     let fold_optimisation = args.fold_optimisation;
     let soundness_type = args.soundness_type;
@@ -246,9 +166,9 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         println!("Warning: running as PCS but no evaluations specified.");
     }
 
-    let mv_params = MultivariateParameters::<F>::new(num_variables);
+    let mv_params = MultivariateParameters::<Field256>::new(num_variables);
 
-    let whir_params = WhirParameters::<SkyscraperMerkleConfig, PowStrategy> {
+    let whir_params = WhirParameters::<SkyscraperMerkleConfig, SkyscraperPoW> {
         initial_statement: true,
         security_level,
         pow_bits,
@@ -261,7 +181,7 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         starting_log_inv_rate: starting_rate,
     };
 
-    let params = WhirConfig::<F, SkyscraperMerkleConfig, PowStrategy>::new(mv_params, whir_params);
+    let params = WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>::new(mv_params, whir_params);
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
     .commit_statement(&params)
@@ -280,7 +200,7 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
     let polynomial = CoefficientList::new(witness);
 
     let points: Vec<_> = (0..num_evaluations)
-        .map(|i| MultilinearPoint(vec![F::from(i as u64); num_variables]))
+        .map(|i| MultilinearPoint(vec![Field256::from(i as u64); num_variables]))
         .collect();
     let evaluations = points
         .iter()
@@ -292,8 +212,6 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         evaluations,
     };
 
-    let whir_prover_time = Instant::now();
-
     let committer = Committer::new(params.clone());
     let witness = committer.commit(&mut merlin, polynomial).unwrap();
 
@@ -303,27 +221,7 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         .prove(&mut merlin, statement.clone(), witness)
         .unwrap();
 
-    println!("Prover time: {:.1?}", whir_prover_time.elapsed());
-    println!(
-        "Proof size: {:.1} KiB",
-        whir_proof_size(merlin.transcript(), &proof) as f64 / 1024.0
-    );
-
-    // Just not to count that initial inversion (which could be precomputed)
     let verifier = Verifier::new(params);
-
-    HashCounter::reset();
-    let whir_verifier_time = Instant::now();
-    for _ in 0..reps {
-        let mut arthur = io.to_arthur(merlin.transcript());
-        verifier.verify(&mut arthur, &statement, &proof).unwrap();
-    }
-    println!(
-        "Verifier time: {:.1?}",
-        whir_verifier_time.elapsed() / reps as u32
-    );
-    println!(
-        "Average hashes: {:.1}k",
-        (HashCounter::get() as f64 / reps as f64) / 1000.0
-    );
+    let mut arthur = io.to_arthur(merlin.transcript());
+    verifier.verify(&mut arthur, &statement, &proof).unwrap();
 }

@@ -5,6 +5,6 @@ pub mod skyscraper_pow;
 /// TODO: Add documentation
 pub mod skyscraper;
 /// TODO: Add documentation
-pub mod skyscraper_traits_for_whir;
+pub mod skyscraper_for_whir;
 /// TODO: Add documentation
 pub mod utils;
