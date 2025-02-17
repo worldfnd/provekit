@@ -1,11 +1,19 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
+use ark_ff::Field;
 use ark_std::{Zero, One};
 use ark_std::ops::Mul;
+use ark_crypto_primitives::merkle_tree::Config;
 use clap::Parser;
+use nimue::plugins::ark::FieldIOPattern;
+use nimue::Arthur;
+use nimue::Merlin;
+use whir::whir::iopattern::DigestIOPattern;
 use std::fs::File;
 use nimue::IOPattern;
+use nimue::plugins::ark::{FieldReader, FieldWriter};
+use nimue::plugins::ark::FieldChallenges;
 use prover::{
     skyscraper::SkyscraperSponge, 
     skyscraper::uint_to_field, 
@@ -81,7 +89,8 @@ fn prove_sumcheck(
     mut c: Vec<Field256>,
     mut eq: Vec<Field256>,
     mut sum: Field256,
-) {
+    mut merlin: Merlin<SkyscraperSponge, Field256>,
+) -> Merlin<SkyscraperSponge, Field256> {
     let rand: Vec<Field256> = (2..16).into_iter().map(|x| {Field256::from(x)}).collect();
 
     for i in 0..next_power_of_two(a.len()) {
@@ -121,7 +130,7 @@ fn prove_sumcheck(
         a = update(a, rand[i]);
         b = update(b, rand[i]);
         c = update(c, rand[i]);
-
+        
         println!("Eval at 0: {:?}", p0);
         println!("Eval at 1: {:?}", p0 + p1 + p2 + p3);
         println!("Supposed sum: {:?}", sum);
@@ -129,6 +138,20 @@ fn prove_sumcheck(
         println!("Actual sum: {:?}", p0 + p0 + p1 + p2 + p3); 
     }
     println!("Eval at rand: {:?}", sum);
+    merlin
+}
+
+pub trait RandIOPattern {
+    fn add_rand(self, num_rand: usize) -> Self;
+}
+
+impl<IOPattern> RandIOPattern for IOPattern 
+where 
+    IOPattern: FieldIOPattern<Field256>
+{
+    fn add_rand(self, num_rand: usize) -> Self {
+        self.challenge_scalars(num_rand, "rand")
+    }
 }
 
 fn main() {
@@ -136,23 +159,14 @@ fn main() {
     let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
     let witness = stringvec_to_fieldvec(&r1cs_with_witness.witnesses[0]);
     let witness = pad_to_power_of_two(witness);
-    let witness_bound_a = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
-    let witness_bound_b = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
-    let witness_bound_c = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
-    // TODO: change randomness in eq. It currently has just array of 10s.
-    let eq = evaluations_over_boolean_hypercube_for_eq(vec![Field256::from(10); next_power_of_two(witness_bound_a.len())]);
 
-    prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero());
     let mut args = Args::parse();
+    
     args.num_variables = next_power_of_two(witness.len());
     if args.pow_bits.is_none() {
         args.pow_bits = Some(default_max_pow(args.num_variables, args.rate));
     }
-    run_whir_pcs(args, witness);
-}
 
-fn run_whir_pcs(args: Args, witness: Vec<Field256>) 
-{   
     let security_level = args.security_level;
     let pow_bits = args.pow_bits.unwrap();
     let num_variables = args.num_variables;
@@ -183,12 +197,37 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
 
     let params = WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>::new(mv_params, whir_params);
     
+    
+    // println!("{:?}", io);
+
+    
+    let witness_bound_a = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_b = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_c = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
+
+
+    let log_constraints = next_power_of_two(witness_bound_a.len());
+
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
+    .add_rand(log_constraints)
     .commit_statement(&params)
     .add_whir_proof(&params)
     .clone();
-
+    
     let mut merlin = io.to_merlin();
+    let mut rand = vec![Field256::from(0); log_constraints];
+    merlin.fill_challenge_scalars(&mut rand);
+    let eq = evaluations_over_boolean_hypercube_for_eq(rand);
+
+    let mut merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero(), merlin);
+    
+
+    run_whir_pcs(args, io, witness, params, merlin, log_constraints);
+}
+
+fn run_whir_pcs(args: Args, io: IOPattern::<SkyscraperSponge, Field256>, witness: Vec<Field256>, params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, mut merlin: Merlin<SkyscraperSponge, Field256>, log_constraints: usize) 
+{   
+    
 
     println!("=========================================");
     println!("Whir (PCS) 🌪️");
@@ -199,8 +238,8 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
 
     let polynomial = CoefficientList::new(witness);
 
-    let points: Vec<_> = (0..num_evaluations)
-        .map(|i| MultilinearPoint(vec![Field256::from(i as u64); num_variables]))
+    let points: Vec<_> = (0..args.num_evaluations)
+        .map(|i| MultilinearPoint(vec![Field256::from(i as u64); args.num_variables]))
         .collect();
     let evaluations = points
         .iter()
@@ -213,6 +252,7 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
     };
 
     let committer = Committer::new(params.clone());
+    
     let witness = committer.commit(&mut merlin, polynomial).unwrap();
 
     let prover = Prover(params.clone());
@@ -222,6 +262,14 @@ fn run_whir_pcs(args: Args, witness: Vec<Field256>)
         .unwrap();
 
     let verifier = Verifier::new(params);
+    
+    let mut temporary = vec![Field256::from(0); log_constraints];
     let mut arthur = io.to_arthur(merlin.transcript());
+    arthur.fill_challenge_scalars(&mut temporary);
+
+
+
     verifier.verify(&mut arthur, &statement, &proof).unwrap();
 }
+
+
