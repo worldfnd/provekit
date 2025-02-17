@@ -126,15 +126,19 @@ fn prove_sumcheck(
         let p3 = eval_at_inf;
         let p1 = sum - p0 - p0 - p3 - p2;
 
-        eq = update(eq, rand[i]);
-        a = update(a, rand[i]);
-        b = update(b, rand[i]);
-        c = update(c, rand[i]);
+        merlin.add_scalars(&vec![p0, p1, p2, p3]);
+        let mut r = vec![Field256::from(0)];
+        merlin.fill_challenge_scalars(&mut r);
+
+        eq = update(eq, r[0]);
+        a = update(a, r[0]);
+        b = update(b, r[0]);
+        c = update(c, r[0]);
         
         println!("Eval at 0: {:?}", p0);
         println!("Eval at 1: {:?}", p0 + p1 + p2 + p3);
         println!("Supposed sum: {:?}", sum);
-        sum = p0 + rand[i] * (p1 + rand[i] * (p2 + rand[i] * p3));
+        sum = p0 + r[0] * (p1 + r[0] * (p2 + r[0] * p3));
         println!("Actual sum: {:?}", p0 + p0 + p1 + p2 + p3); 
     }
     println!("Eval at rand: {:?}", sum);
@@ -151,6 +155,23 @@ where
 {
     fn add_rand(self, num_rand: usize) -> Self {
         self.challenge_scalars(num_rand, "rand")
+    }
+}
+
+pub trait SumcheckIOPattern {
+    fn add_sumcheck_polynomials(self, num_vars: usize) -> Self;
+}
+
+impl<IOPattern> SumcheckIOPattern for IOPattern 
+where 
+    IOPattern: FieldIOPattern<Field256>
+{
+    fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
+        for _ in 0..num_vars {
+            self = self.add_scalars(4, "Sumcheck Polynomials");
+            self = self.challenge_scalars(1, "Sumcheck Random");
+        }
+        self
     }
 }
 
@@ -210,6 +231,7 @@ fn main() {
 
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
     .add_rand(log_constraints)
+    .add_sumcheck_polynomials(log_constraints)
     .commit_statement(&params)
     .add_whir_proof(&params)
     .clone();
@@ -223,6 +245,10 @@ fn main() {
     
 
     run_whir_pcs(args, io, witness, params, merlin, log_constraints);
+}
+
+fn eval_qubic_poly(poly: &Vec<Field256>, point: &Field256) -> Field256 {
+    poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
 }
 
 fn run_whir_pcs(args: Args, io: IOPattern::<SkyscraperSponge, Field256>, witness: Vec<Field256>, params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, mut merlin: Merlin<SkyscraperSponge, Field256>, log_constraints: usize) 
@@ -265,9 +291,24 @@ fn run_whir_pcs(args: Args, io: IOPattern::<SkyscraperSponge, Field256>, witness
     
     let mut temporary = vec![Field256::from(0); log_constraints];
     let mut arthur = io.to_arthur(merlin.transcript());
+    
     arthur.fill_challenge_scalars(&mut temporary);
-
-
+    
+    
+    let mut prev_sum = Field256::from(0);
+    
+    for _ in 0..log_constraints {
+        let mut sp = vec![Field256::from(0); 4];
+        let mut r = vec![Field256::from(0); 1];
+        arthur.fill_next_scalars(&mut sp);
+        arthur.fill_challenge_scalars(&mut r);
+        // assert_eq!(prev_sum, )
+        let eval_at_zero = eval_qubic_poly(&sp, &Field256::from(0));
+        let eval_at_one = eval_qubic_poly(&sp, &Field256::from(1));
+        assert_eq!(prev_sum, eval_at_zero + eval_at_one);
+        prev_sum = eval_qubic_poly(&sp, &r[0]);
+        // println!("{:?}", val);
+    }
 
     verifier.verify(&mut arthur, &statement, &proof).unwrap();
 }
