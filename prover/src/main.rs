@@ -1,22 +1,16 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
-use ark_ff::Field;
-use ark_std::{Zero, One};
-use ark_std::ops::Mul;
-use ark_crypto_primitives::merkle_tree::Config;
+use ark_std::Zero;
 use clap::Parser;
 use nimue::plugins::ark::FieldIOPattern;
-use nimue::Arthur;
 use nimue::Merlin;
-use whir::whir::iopattern::DigestIOPattern;
 use std::fs::File;
 use nimue::IOPattern;
 use nimue::plugins::ark::{FieldReader, FieldWriter};
 use nimue::plugins::ark::FieldChallenges;
 use prover::{
     skyscraper::SkyscraperSponge, 
-    skyscraper::uint_to_field, 
     skyscraper_pow::SkyscraperPoW,
     skyscraper_for_whir::SkyscraperMerkleConfig,
 };
@@ -38,7 +32,7 @@ use prover::utils::{
     stringvec_to_fieldvec,
     pad_to_power_of_two,
     next_power_of_two,
-    calculate_witness_bound,
+    calculate_matrix_vector_product,
     evaluations_over_boolean_hypercube_for_eq,
     R1CSWithWitness,
     HALF,
@@ -91,7 +85,6 @@ fn prove_sumcheck(
     mut sum: Field256,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
 ) -> Merlin<SkyscraperSponge, Field256> {
-    let rand: Vec<Field256> = (2..16).into_iter().map(|x| {Field256::from(x)}).collect();
 
     for i in 0..next_power_of_two(a.len()) {
         println!("---------------- For iteration {:?} ----------------", i);
@@ -126,9 +119,9 @@ fn prove_sumcheck(
         let p3 = eval_at_inf;
         let p1 = sum - p0 - p0 - p3 - p2;
 
-        merlin.add_scalars(&vec![p0, p1, p2, p3]);
+        let _ = merlin.add_scalars(&vec![p0, p1, p2, p3]);
         let mut r = vec![Field256::from(0)];
-        merlin.fill_challenge_scalars(&mut r);
+        let _ = merlin.fill_challenge_scalars(&mut r);
 
         eq = update(eq, r[0]);
         a = update(a, r[0]);
@@ -145,21 +138,14 @@ fn prove_sumcheck(
     merlin
 }
 
-pub trait RandIOPattern {
-    fn add_rand(self, num_rand: usize) -> Self;
-}
 
-impl<IOPattern> RandIOPattern for IOPattern 
-where 
-    IOPattern: FieldIOPattern<Field256>
-{
-    fn add_rand(self, num_rand: usize) -> Self {
-        self.challenge_scalars(num_rand, "rand")
-    }
-}
-
+/// Trait which is used to add sumcheck functionality fo IOPattern
 pub trait SumcheckIOPattern {
+    /// Prover sends coefficients of the qubic sumcheck polynomial and the verifier sends randomness for the next sumcheck round
     fn add_sumcheck_polynomials(self, num_vars: usize) -> Self;
+    
+    /// Verifier sends the randomness on which the supposed 0-polynomial is evaluated
+    fn add_rand(self, num_rand: usize) -> Self;
 }
 
 impl<IOPattern> SumcheckIOPattern for IOPattern 
@@ -172,6 +158,10 @@ where
             self = self.challenge_scalars(1, "Sumcheck Random");
         }
         self
+    }
+
+    fn add_rand(self, num_rand: usize) -> Self {
+        self.challenge_scalars(num_rand, "rand")
     }
 }
 
@@ -222,9 +212,9 @@ fn main() {
     // println!("{:?}", io);
 
     
-    let witness_bound_a = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
-    let witness_bound_b = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
-    let witness_bound_c = pad_to_power_of_two(calculate_witness_bound(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_a = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_b = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_c = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
 
 
     let log_constraints = next_power_of_two(witness_bound_a.len());
@@ -238,10 +228,10 @@ fn main() {
     
     let mut merlin = io.to_merlin();
     let mut rand = vec![Field256::from(0); log_constraints];
-    merlin.fill_challenge_scalars(&mut rand);
+    let _ = merlin.fill_challenge_scalars(&mut rand);
     let eq = evaluations_over_boolean_hypercube_for_eq(rand);
 
-    let mut merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero(), merlin);
+    let merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero(), merlin);
     
 
     run_whir_pcs(args, io, witness, params, merlin, log_constraints);
@@ -292,7 +282,7 @@ fn run_whir_pcs(args: Args, io: IOPattern::<SkyscraperSponge, Field256>, witness
     let mut temporary = vec![Field256::from(0); log_constraints];
     let mut arthur = io.to_arthur(merlin.transcript());
     
-    arthur.fill_challenge_scalars(&mut temporary);
+    let _ = arthur.fill_challenge_scalars(&mut temporary);
     
     
     let mut prev_sum = Field256::from(0);
@@ -300,8 +290,8 @@ fn run_whir_pcs(args: Args, io: IOPattern::<SkyscraperSponge, Field256>, witness
     for _ in 0..log_constraints {
         let mut sp = vec![Field256::from(0); 4];
         let mut r = vec![Field256::from(0); 1];
-        arthur.fill_next_scalars(&mut sp);
-        arthur.fill_challenge_scalars(&mut r);
+        let _ = arthur.fill_next_scalars(&mut sp);
+        let _ = arthur.fill_challenge_scalars(&mut r);
         // assert_eq!(prev_sum, )
         let eval_at_zero = eval_qubic_poly(&sp, &Field256::from(0));
         let eval_at_one = eval_qubic_poly(&sp, &Field256::from(1));
