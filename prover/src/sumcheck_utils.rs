@@ -23,7 +23,7 @@ pub fn update_boolean_hypercube_values_with_r(mut f: Vec<Field256>, r: Field256)
     left.to_vec()
 }
 
-pub fn prove_sumcheck(
+pub fn run_sumcheck_prover(
     mut a: Vec<Field256>,
     mut b: Vec<Field256>,
     mut c: Vec<Field256>,

@@ -4,7 +4,7 @@
 use ark_ff::Field;
 use ark_std::Zero;
 use clap::Parser;
-use nimue::Merlin;
+use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
 use nimue::plugins::ark::FieldReader;
 use nimue::plugins::ark::FieldChallenges;
@@ -44,9 +44,12 @@ fn main() {
         .clone();
     
     let mut merlin = io.to_merlin();
-    let merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, Field256::zero(), merlin, log_constraints);
+    let merlin = run_sumcheck_prover(witness_bound_a, witness_bound_b, witness_bound_c, Field256::zero(), merlin, log_constraints);
     let (proof, merlin, statement, params, io) = run_whir_pcs_prover(args, io, witness, params, merlin, log_constraints);
-    run_whir_pcs_verifier(params, io, proof, merlin, log_constraints, statement);
+    
+    let mut arthur = io.to_arthur(merlin.transcript());
+    let arthur = run_sumcheck_verifier(log_constraints, arthur);
+    run_whir_pcs_verifier(params, proof, arthur, statement);
 }
 
 
@@ -63,11 +66,7 @@ fn run_whir_pcs_prover(
     Statement<Field256>,
     WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     IOPattern::<SkyscraperSponge, Field256>, 
-)
-
-{   
-    
-
+) {   
     println!("=========================================");
     println!("Whir (PCS) 🌪️");
     println!("{}", params);
@@ -103,36 +102,35 @@ fn run_whir_pcs_prover(
     (proof, merlin, statement, params, io)
 }
 
-fn run_whir_pcs_verifier(
-    params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
-    io: IOPattern::<SkyscraperSponge, Field256>,
-    proof: WhirProof<SkyscraperMerkleConfig, Field256>,
-    merlin: Merlin<SkyscraperSponge, Field256>,
+fn run_sumcheck_verifier(
     log_constraints: usize,
-    statement: Statement<Field256>,
-) {
-    let verifier = Verifier::new(params);
-    
-    let mut arthur = io.to_arthur(merlin.transcript());
-    
-    let mut temporary = vec![Field256::from(0); log_constraints];
-    let _ = arthur.fill_challenge_scalars(&mut temporary);
-    
+    mut arthur: Arthur<SkyscraperSponge, Field256>,
+) -> Arthur<SkyscraperSponge, Field256> {
+    let mut combination_randomness = vec![Field256::from(0); log_constraints];
+    let _ = arthur.fill_challenge_scalars(&mut combination_randomness);
+
     let mut prev_sum = Field256::from(0);
-    
+
     for _ in 0..log_constraints {
         let mut sp = vec![Field256::from(0); 4];
         let mut r = vec![Field256::from(0); 1];
         let _ = arthur.fill_next_scalars(&mut sp);
         let _ = arthur.fill_challenge_scalars(&mut r);
-        // assert_eq!(prev_sum, )
         let eval_at_zero = eval_qubic_poly(&sp, &Field256::from(0));
         let eval_at_one = eval_qubic_poly(&sp, &Field256::from(1));
         assert_eq!(prev_sum, eval_at_zero + eval_at_one);
         prev_sum = eval_qubic_poly(&sp, &r[0]);
-        // println!("{:?}", val);
     }
+    arthur
+}
 
+fn run_whir_pcs_verifier(
+    params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
+    proof: WhirProof<SkyscraperMerkleConfig, Field256>,
+    mut arthur: Arthur<SkyscraperSponge, Field256>,
+    statement: Statement<Field256>,
+) { 
+    let verifier = Verifier::new(params);
     verifier.verify(&mut arthur, &statement, &proof).unwrap();
 }
 
