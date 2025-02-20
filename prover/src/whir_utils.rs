@@ -12,36 +12,45 @@ use whir::parameters::default_max_pow;
 use whir::parameters::MultivariateParameters;
 use whir::parameters::WhirParameters;
 
+/// Command line arguments for WHIR
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
+    /// Security level
     #[arg(short = 'l', long, default_value = "100")]
     pub security_level: usize,
 
+    /// Proof of work bits
     #[arg(short = 'p', long)]
     pub pow_bits: Option<usize>,
 
+    /// Number of variables for the extension polynomial
     #[arg(short = 'd', long, default_value = "20")]
     pub num_variables: usize,
 
+    /// Number of evaluations in Constrained Reed-Solomon code
     #[arg(short = 'e', long = "evaluations", default_value = "1")]
     pub num_evaluations: usize,
 
+    /// Rate
     #[arg(short = 'r', long, default_value = "1")]
     pub rate: usize,
 
+    /// Folding factor
     #[arg(short = 'k', long = "fold", default_value = "4")]
     pub folding_factor: usize,
 
+    /// Soundness type
     #[arg(long = "sec", default_value = "ConjectureList")]
     pub soundness_type: SoundnessType,
 
+    /// Fold type
     #[arg(long = "fold_type", default_value = "ProverHelps")]
     pub fold_optimisation: FoldType,
 }
 
-
-pub fn get_args_and_params(witness_len: usize) -> (Args, WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) {
+/// Parse command line parameters and return args and params used for whir
+pub fn parse_args(witness_len: usize) -> (Args, WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) {
     let mut args = Args::parse();
     
     args.num_variables = next_power_of_two(witness_len);

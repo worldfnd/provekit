@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
-use ark_ff::Field;
 use ark_std::Zero;
-use clap::Parser;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
 use nimue::plugins::ark::FieldReader;
@@ -16,7 +14,6 @@ use prover::skyscraper::{
 };
 use whir::{
     crypto::fields::Field256,
-    parameters::*,
     poly_utils::{coeffs::CoefficientList, MultilinearPoint},
     whir::{
         committer::Committer,
@@ -35,7 +32,7 @@ use itertools::izip;
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = extract_witness_and_witness_bound("./prover/r1cs_sample_bigger.json");
-    let (whir_args, whir_params) = get_args_and_params(z.len());
+    let (whir_args, whir_params) = parse_args(z.len());
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
         .add_rand(m)
@@ -44,38 +41,36 @@ fn main() {
         .add_whir_proof(&whir_params)
         .clone();
     
-    let mut merlin = io.to_merlin();
+    let merlin = io.to_merlin();
     let merlin = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
-    let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin, m);
+    let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
     
-    let mut arthur = io.to_arthur(merlin.transcript());
+    let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
     run_whir_pcs_verifier(whir_params, proof, arthur, statement);
 }
 
 fn run_sumcheck_prover(
+    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
     mut a: Vec<Field256>,
     mut b: Vec<Field256>,
     mut c: Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
     m: usize,
 ) -> Merlin<SkyscraperSponge, Field256> {
-    let mut sum = Field256::zero();
+    println!("=========================================");
+    println!("Running Prover - Sumcheck");
+    let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
     let _ = merlin.fill_challenge_scalars(&mut r);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(r);
 
-    for i in 0..next_power_of_two(a.len()) {
-        println!("---------------- For iteration {:?} ----------------", i);
-        println!("A: {:?}", a);
-        println!("B: {:?}", b); 
-        println!("C: {:?}", c);
-        println!("EQ: {:?}", eq);
-        
-        let mut eval_at_0 = Field256::from(0);
-        let mut eval_at_em1 = Field256::from(0);
-        let mut eval_at_inf = Field256::from(0);
+    for i in 0..m {        
+        // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
+        let mut hhat_i_at_0 = Field256::from(0);
+        let mut hhat_i_at_em1 = Field256::from(0);
+        let mut hhat_i_at_inf = Field256::from(0);
         
         let (a0, a1) = a.split_at(a.len() / 2);
         let (b0, b1) = b.split_at(b.len() / 2);
@@ -89,42 +84,37 @@ fn run_sumcheck_prover(
             eq0.iter().zip(eq1)
         )
         .for_each(|(a, b, c, eq)| {
-            eval_at_0 += *eq.0 * (a.0 * b.0 - c.0);
-            eval_at_em1 += (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
-            eval_at_inf += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
+            hhat_i_at_0 += *eq.0 * (a.0 * b.0 - c.0);
+            hhat_i_at_em1 += (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
+            hhat_i_at_inf += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
         });
 
-        let p0 = eval_at_0;
-        let p2 = HALF * (eval_at_em1 - eval_at_0 - eval_at_0 - eval_at_0);
-        let p3 = eval_at_inf;
-        let p1 = sum - p0 - p0 - p3 - p2;
+        let mut hhat_i_coeffs = vec![Field256::from(0); 4];
+        hhat_i_coeffs[0] = hhat_i_at_0;
+        hhat_i_coeffs[2] = HALF * (hhat_i_at_em1 - hhat_i_at_0 - hhat_i_at_0 - hhat_i_at_0);
+        hhat_i_coeffs[3] = hhat_i_at_inf;
+        hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion - hhat_i_coeffs[0] - hhat_i_coeffs[0] - hhat_i_coeffs[3] - hhat_i_coeffs[2];
 
-        let _ = merlin.add_scalars(&vec![p0, p1, p2, p3]);
-        let mut r = vec![Field256::from(0)];
-        let _ = merlin.fill_challenge_scalars(&mut r);
-
-        eq = update_boolean_hypercube_values_with_r(eq, r[0]);
-        a = update_boolean_hypercube_values_with_r(a, r[0]);
-        b = update_boolean_hypercube_values_with_r(b, r[0]);
-        c = update_boolean_hypercube_values_with_r(c, r[0]);
-        
-        println!("Eval at 0: {:?}", p0);
-        println!("Eval at 1: {:?}", p0 + p1 + p2 + p3);
-        println!("Supposed sum: {:?}", sum);
-        sum = p0 + r[0] * (p1 + r[0] * (p2 + r[0] * p3));
-        println!("Actual sum: {:?}", p0 + p0 + p1 + p2 + p3); 
+        let _ = merlin.add_scalars(&vec![hhat_i_coeffs[0], hhat_i_coeffs[1], hhat_i_coeffs[2], hhat_i_coeffs[3]]);
+        let mut alpha_i_wrapped_in_vector = vec![Field256::from(0)];
+        let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
+        let alpha_i = alpha_i_wrapped_in_vector[0];
+        eq = update_boolean_hypercube_values(eq, alpha_i);
+        a = update_boolean_hypercube_values(a, alpha_i);
+        b = update_boolean_hypercube_values(b, alpha_i);
+        c = update_boolean_hypercube_values(c, alpha_i);
+        saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
+        println!("Prover Sumcheck: Round {i} Completed");
     }
-    println!("Eval at rand: {:?}", sum);
     merlin
 }
 
 fn run_whir_pcs_prover(
     args: Args, 
     io: IOPattern::<SkyscraperSponge, Field256>, 
-    witness: Vec<Field256>, 
+    z: Vec<Field256>, 
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     mut merlin: Merlin<SkyscraperSponge, Field256>, 
-    log_constraints: usize
 ) -> (
     WhirProof<SkyscraperMerkleConfig, Field256>, 
     Merlin<SkyscraperSponge, Field256>,
@@ -133,14 +123,14 @@ fn run_whir_pcs_prover(
     IOPattern::<SkyscraperSponge, Field256>, 
 ) {   
     println!("=========================================");
-    println!("Whir (PCS) 🌪️");
+    println!("Running Prover - Whir Commitment");
     println!("{}", params);
     if !params.check_pow_bits() {
         println!("WARN: more PoW bits required than what specified.");
     }
 
-    // In appendix a, fhat_z is combination of fhat_v and fhat_w. But our input "witness" already combines these two.
-    let fhat_z = CoefficientList::new(witness);
+    // In appendix a, fhat_z is combination of fhat_v and fhat_w. We should only commit to fhat_w. But for now, we are committing to fhat_z.
+    let fhat_z = CoefficientList::new(z);
 
     let points: Vec<_> = (0..args.num_evaluations)
         .map(|i| MultilinearPoint(vec![Field256::from(i as u64); args.num_variables]))
@@ -169,24 +159,28 @@ fn run_whir_pcs_prover(
 }
 
 fn run_sumcheck_verifier(
-    log_constraints: usize,
+    m: usize,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
 ) -> Arthur<SkyscraperSponge, Field256> {
+    println!("=========================================");
+    println!("Running Verifier - Sumcheck");
     // r is the combination randomness from the 2nd item of the interaction phase 
-    let mut r = vec![Field256::from(0); log_constraints];
+    let mut r = vec![Field256::from(0); m];
     let _ = arthur.fill_challenge_scalars(&mut r);
 
-    let mut prev_sum = Field256::from(0);
+    let mut saved_val_for_sumcheck_equality_assertion = Field256::from(0);
 
-    for _ in 0..log_constraints {
-        let mut sp = vec![Field256::from(0); 4];
-        let mut r = vec![Field256::from(0); 1];
-        let _ = arthur.fill_next_scalars(&mut sp);
-        let _ = arthur.fill_challenge_scalars(&mut r);
-        let eval_at_zero = eval_qubic_poly(&sp, &Field256::from(0));
-        let eval_at_one = eval_qubic_poly(&sp, &Field256::from(1));
-        assert_eq!(prev_sum, eval_at_zero + eval_at_one);
-        prev_sum = eval_qubic_poly(&sp, &r[0]);
+    for i in 0..m {
+        let mut hhat_i = vec![Field256::from(0); 4];
+        let mut alpha_i = vec![Field256::from(0); 1];
+        let _ = arthur.fill_next_scalars(&mut hhat_i);
+        let _ = arthur.fill_challenge_scalars(&mut alpha_i);
+        let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &Field256::from(0));
+        let hhat_i_at_one = eval_qubic_poly(&hhat_i, &Field256::from(1));
+        assert_eq!(saved_val_for_sumcheck_equality_assertion, hhat_i_at_zero + hhat_i_at_one);
+        saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
+        println!("Verfier Sumcheck: Round {i} Completed");
+
     }
     arthur
 }
@@ -197,6 +191,8 @@ fn run_whir_pcs_verifier(
     mut arthur: Arthur<SkyscraperSponge, Field256>,
     statement: Statement<Field256>,
 ) { 
+    println!("=========================================");
+    println!("Running Verifier - Whir Commitment ");
     let verifier = Verifier::new(params);
     verifier.verify(&mut arthur, &statement, &proof).unwrap();
 }

@@ -98,10 +98,12 @@ pub struct R1CSWithWitness {
     pub witnesses: Vec<Vec<String>>,
 }
 
+/// Evaluates a qubic polynomial on a value
 pub fn eval_qubic_poly(poly: &Vec<Field256>, point: &Field256) -> Field256 {
     poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
 }
 
+/// Given a path to JSON file with sparce matrices and a witness, calculates matrix-vector multiplication and returns them
 pub fn extract_witness_and_witness_bound (file_path: &str) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>, Vec<Field256>, usize) {
     let file = File::open(file_path).expect("Failed to open file");
     let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");

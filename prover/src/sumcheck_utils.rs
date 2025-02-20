@@ -1,23 +1,12 @@
 use whir::crypto::fields::Field256;
-use itertools::izip;
-use crate::skyscraper::skyscraper::SkyscraperSponge;
-use nimue::Merlin;
-use crate::utils::{
-    HALF,
-    next_power_of_two,
-};
-use nimue::plugins::ark::FieldWriter;
-use nimue::plugins::ark::FieldChallenges;
 use nimue::plugins::ark::FieldIOPattern;
 
-
-pub fn update_boolean_hypercube_values_with_r(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
+/// Given evaluations over boolean hypercube, replace the first variable with given value and calculate new evaluations (Fold boolean hypercube over a given value)
+pub fn update_boolean_hypercube_values(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
     let sz = f.len();
     let (left, right) = f.split_at_mut(sz / 2);
     for i in 0..(left.len()) {
-        // println!("Before {:?} {:?} {:?}", left[i], r, right[i]-left[i]);
         left[i] += r * (right[i]-left[i]);
-        // println!("After {:?}", left[i]);
     }
     left.to_vec()
 }
