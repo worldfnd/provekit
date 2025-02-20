@@ -9,6 +9,8 @@ use crate::utils::{
 use nimue::plugins::ark::FieldWriter;
 use nimue::plugins::ark::FieldChallenges;
 use nimue::plugins::ark::FieldIOPattern;
+use crate::utils::evaluations_over_boolean_hypercube_for_eq;
+
 
 pub fn update_boolean_hypercube_values_with_r(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
     let sz = f.len();
@@ -25,10 +27,14 @@ pub fn prove_sumcheck(
     mut a: Vec<Field256>,
     mut b: Vec<Field256>,
     mut c: Vec<Field256>,
-    mut eq: Vec<Field256>,
     mut sum: Field256,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
+    log_constraints: usize,
 ) -> Merlin<SkyscraperSponge, Field256> {
+
+    let mut rand = vec![Field256::from(0); log_constraints];
+    let _ = merlin.fill_challenge_scalars(&mut rand);
+    let mut eq = evaluations_over_boolean_hypercube_for_eq(rand);
 
     for i in 0..next_power_of_two(a.len()) {
         println!("---------------- For iteration {:?} ----------------", i);

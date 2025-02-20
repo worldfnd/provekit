@@ -44,11 +44,7 @@ fn main() {
         .clone();
     
     let mut merlin = io.to_merlin();
-    let mut rand = vec![Field256::from(0); log_constraints];
-    let _ = merlin.fill_challenge_scalars(&mut rand);
-    let eq = evaluations_over_boolean_hypercube_for_eq(rand);
-
-    let merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, eq, Field256::zero(), merlin);
+    let merlin = prove_sumcheck(witness_bound_a, witness_bound_b, witness_bound_c, Field256::zero(), merlin, log_constraints);
     let (proof, merlin, statement, params, io) = run_whir_pcs_prover(args, io, witness, params, merlin, log_constraints);
     run_whir_pcs_verifier(params, io, proof, merlin, log_constraints, statement);
 }
