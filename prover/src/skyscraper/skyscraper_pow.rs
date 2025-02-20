@@ -2,7 +2,7 @@ use nimue_pow::PowStrategy;
 use ruint::aliases::U256;
 use ruint_macro::uint;
 use whir::crypto::fields::Field256;
-use crate::skyscraper::{bigint_from_bytes_le, compress, uint_to_field};
+use crate::skyscraper::skyscraper::{bigint_from_bytes_le, compress, uint_to_field};
 
 /// TODO: Add documentation
 #[derive(Clone, Copy)]

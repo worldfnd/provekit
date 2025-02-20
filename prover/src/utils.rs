@@ -4,8 +4,9 @@ use ark_std::str::FromStr;
 use serde::Deserialize;
 use ark_std::ops::{Add, Sub, Mul};
 use ruint_macro::uint;
-use crate::skyscraper::uint_to_field;
+use crate::skyscraper::skyscraper::uint_to_field;
 use ark_std::{Zero, One};
+use std::fs::File;
 
 
 /// Convert vector string to vector field
@@ -95,4 +96,18 @@ pub struct R1CSWithWitness {
 
     /// List of witnesses for the R1CS
     pub witnesses: Vec<Vec<String>>,
+}
+
+pub fn eval_qubic_poly(poly: &Vec<Field256>, point: &Field256) -> Field256 {
+    poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
+}
+
+pub fn extract_witness_and_witness_bound (file_path: &str) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>, Vec<Field256>) {
+    let file = File::open(file_path).expect("Failed to open file");
+    let r1cs_with_witness: R1CSWithWitness = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
+    let witness = pad_to_power_of_two(stringvec_to_fieldvec(&r1cs_with_witness.witnesses[0]));
+    let witness_bound_a = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.a, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_b = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.b, &witness, r1cs_with_witness.num_constraints));
+    let witness_bound_c = pad_to_power_of_two(calculate_matrix_vector_product(r1cs_with_witness.c, &witness, r1cs_with_witness.num_constraints));
+    (witness_bound_a, witness_bound_b, witness_bound_c, witness)
 }

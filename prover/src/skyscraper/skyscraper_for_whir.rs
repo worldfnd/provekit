@@ -7,7 +7,7 @@ use ark_crypto_primitives::{
     },
     Error,
 };
-use crate::skyscraper::SkyscraperSponge;
+use crate::skyscraper::skyscraper::SkyscraperSponge;
 use nimue::{Arthur, IOPattern, Merlin, ProofResult};
 use nimue::plugins::ark::{FieldIOPattern, FieldReader, FieldWriter};
 use rand::Rng;
@@ -39,7 +39,7 @@ impl CRHScheme for SkyscraperCRH {
         elems
             .iter()
             .cloned()
-            .reduce(crate::skyscraper::compress)
+            .reduce(crate::skyscraper::skyscraper::compress)
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
@@ -60,7 +60,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
         left_input: T,
         right_input: T,
     ) -> Result<Self::Output, Error> {
-        Ok(crate::skyscraper::compress(
+        Ok(crate::skyscraper::skyscraper::compress(
             left_input.borrow().clone(),
             right_input.borrow().clone(),
         ))

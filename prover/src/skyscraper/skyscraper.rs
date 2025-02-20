@@ -124,7 +124,7 @@ impl Sponge for Skyscraper {
 pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
 
 mod tests {
-    use crate::skyscraper::{bar, compress, square, uint_to_field};
+    use crate::skyscraper::skyscraper::{bar, compress, square, uint_to_field};
     use ruint::uint;
 
     #[test]
