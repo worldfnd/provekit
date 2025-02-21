@@ -164,7 +164,7 @@ pub fn calculate_witness_bounds (r1cs: &R1CS, witness: Vec<Field256>) -> (Vec<Fi
     let witness_bound_a = pad_to_power_of_two(calculate_matrix_vector_product(&r1cs.a, &witness, r1cs.num_constraints));
     let witness_bound_b = pad_to_power_of_two(calculate_matrix_vector_product(&r1cs.b, &witness, r1cs.num_constraints));
     let witness_bound_c = pad_to_power_of_two(calculate_matrix_vector_product(& r1cs.c, &witness, r1cs.num_constraints));
-    let witness = pad_to_power_of_two(witness);
+    // let witness = pad_to_power_of_two(witness);
     let m = next_power_of_two(witness_bound_a.len());
     (witness_bound_a, witness_bound_b, witness_bound_c, witness, m)
 }

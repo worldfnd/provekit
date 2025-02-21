@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
+use ark_ff::Field;
 use ark_std::Zero;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
@@ -47,10 +48,30 @@ fn calculate_matrices_on_external_row(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Ve
     (alpha_a, alpha_b, alpha_c)
 }
 
+
+
+fn calculate_dot_product(a: &Vec<Field256>, b: &Vec<Field256>) -> Field256 {
+    a.iter().zip(b.iter()).map(|(&a, &b)| (a * b)).sum()
+}
+
+fn check_last_sumcheck(a: &Vec<Field256>, b: &Vec<Field256>, c: &Vec<Field256>, z: &Vec<Field256>, r: &Vec<Field256>, alpha: &Vec<Field256>) {
+    let a = calculate_dot_product(a, z);
+    let b = calculate_dot_product(b, z);
+    let c = calculate_dot_product(c, z);
+    let eq = calculate_eq(r, alpha);
+    println!("{:?}", (a * b - c)*eq);
+}
+
+fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
+    r.iter().zip(alpha.iter()).fold(Field256::from(1), |acc, (&r, &alpha)|{
+        acc * (r * alpha + (Field256::from(1) - r) * (Field256::from(1)-alpha))
+    })
+}
+
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
-    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = calculate_witness_bounds(&r1cs, witness);
+    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, mut z, m) = calculate_witness_bounds(&r1cs, witness);
     let (whir_args, whir_params) = parse_args(z.len());
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
@@ -61,8 +82,12 @@ fn main() {
         .clone();
     
     let merlin = io.to_merlin();
-    let (merlin, alpha) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    let (merlin, alpha, r) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
     let (a_alpha, b_alpha, c_alpha) = calculate_matrices_on_external_row(&alpha, &r1cs);
+    
+    check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
+    
+    z = pad_to_power_of_two(z);
     let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
@@ -76,13 +101,14 @@ fn run_sumcheck_prover(
     mut c: Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
     m: usize,
-) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>) {
+) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
     let _ = merlin.fill_challenge_scalars(&mut r);
+    let mut r = (m..2*m).map(|i| {Field256::from(i as u32)}).collect();
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
     let mut alpha = Vec::<Field256>::with_capacity(m);
     for i in 0..m {        
@@ -125,8 +151,9 @@ fn run_sumcheck_prover(
         c = update_boolean_hypercube_values(c, alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
         println!("Prover Sumcheck: Round {i} Completed");
+        println!("Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
     }
-    (merlin, alpha)
+    (merlin, alpha, r)
 }
 
 fn run_whir_pcs_prover(
@@ -160,19 +187,19 @@ fn run_whir_pcs_prover(
         .map(|point| fhat_z.evaluate_at_extension(point))
         .collect();
 
-    let computed_evals: Vec<Field256> = (0..(1<<args.num_variables))
-        .map(|i| {
-            let mut bits = Vec::with_capacity(args.num_variables);
-            for j in 0..args.num_variables {
-                bits.push(if ((i >> j) & 1) == 1 { Field256::from(1) } else { Field256::from(0) });
-            }
-            bits.reverse();
-            let point = MultilinearPoint(bits);
-            fhat_z.evaluate_at_extension(&point)
-        })
-        .collect();
+    // let computed_evals: Vec<Field256> = (0..(1<<args.num_variables))
+    //     .map(|i| {
+    //         let mut bits = Vec::with_capacity(args.num_variables);
+    //         for j in 0..args.num_variables {
+    //             bits.push(if ((i >> j) & 1) == 1 { Field256::from(1) } else { Field256::from(0) });
+    //         }
+    //         bits.reverse();
+    //         let point = MultilinearPoint(bits);
+    //         fhat_z.evaluate_at_extension(&point)
+    //     })
+    //     .collect();
 
-    println!("{:?}", computed_evals);
+    // println!("{:?}", computed_evals);
 
     let statement = Statement {
         points,
