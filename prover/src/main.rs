@@ -42,7 +42,8 @@ fn main() {
         .clone();
     
     let merlin = io.to_merlin();
-    let merlin = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    let (merlin, alpha) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    println!("{:?}", alpha);
     let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
     
     let arthur = io.to_arthur(merlin.transcript());
@@ -57,7 +58,7 @@ fn run_sumcheck_prover(
     mut c: Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
     m: usize,
-) -> Merlin<SkyscraperSponge, Field256> {
+) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
@@ -65,7 +66,7 @@ fn run_sumcheck_prover(
     let mut r = vec![Field256::from(0); m];
     let _ = merlin.fill_challenge_scalars(&mut r);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(r);
-
+    let mut alpha = Vec::<Field256>::with_capacity(m);
     for i in 0..m {        
         // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
         let mut hhat_i_at_0 = Field256::from(0);
@@ -99,6 +100,7 @@ fn run_sumcheck_prover(
         let mut alpha_i_wrapped_in_vector = vec![Field256::from(0)];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
+        alpha.push(alpha_i);
         eq = update_boolean_hypercube_values(eq, alpha_i);
         a = update_boolean_hypercube_values(a, alpha_i);
         b = update_boolean_hypercube_values(b, alpha_i);
@@ -106,7 +108,7 @@ fn run_sumcheck_prover(
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
         println!("Prover Sumcheck: Round {i} Completed");
     }
-    merlin
+    (merlin, alpha)
 }
 
 fn run_whir_pcs_prover(
@@ -139,6 +141,20 @@ fn run_whir_pcs_prover(
         .iter()
         .map(|point| fhat_z.evaluate_at_extension(point))
         .collect();
+
+    let computed_evals: Vec<Field256> = (0..(1<<args.num_variables))
+        .map(|i| {
+            let mut bits = Vec::with_capacity(args.num_variables);
+            for j in 0..args.num_variables {
+                bits.push(if ((i >> j) & 1) == 1 { Field256::from(1) } else { Field256::from(0) });
+            }
+            bits.reverse();
+            let point = MultilinearPoint(bits);
+            fhat_z.evaluate_at_extension(&point)
+        })
+        .collect();
+
+    println!("{:?}", computed_evals);
 
     let statement = Statement {
         points,
