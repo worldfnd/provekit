@@ -29,9 +29,28 @@ use prover::whir_utils::*;
 use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
+
+fn calculate_matrices_on_external_row(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
+    let mut alpha_a = vec![Field256::from(0); r1cs.num_variables];
+    let mut alpha_b = vec![Field256::from(0); r1cs.num_variables];
+    let mut alpha_c = vec![Field256::from(0); r1cs.num_variables];
+    for cell in &r1cs.a {
+        alpha_a[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    for cell in &r1cs.b {
+        alpha_b[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    for cell in &r1cs.c {
+        alpha_c[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    (alpha_a, alpha_b, alpha_c)
+}
+
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = extract_witness_and_witness_bound("./prover/r1cs_sample_bigger.json");
+    let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
+    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = calculate_witness_bounds(&r1cs, witness);
     let (whir_args, whir_params) = parse_args(z.len());
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
@@ -43,9 +62,8 @@ fn main() {
     
     let merlin = io.to_merlin();
     let (merlin, alpha) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
-    println!("{:?}", alpha);
+    let (a_alpha, b_alpha, c_alpha) = calculate_matrices_on_external_row(&alpha, &r1cs);
     let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
-    
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
     run_whir_pcs_verifier(whir_params, proof, arthur, statement);
@@ -65,7 +83,7 @@ fn run_sumcheck_prover(
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
     let _ = merlin.fill_challenge_scalars(&mut r);
-    let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(r);
+    let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
     let mut alpha = Vec::<Field256>::with_capacity(m);
     for i in 0..m {        
         // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
