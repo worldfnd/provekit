@@ -22,3 +22,7 @@ acir_field.workspace = true
 noirc_artifacts.workspace = true
 noirc_abi.workspace = true
 noirc_printable_type.workspace = true
+
+flate2 = "1.0"
+bincode = "1.3"
+sprs = "0.11"

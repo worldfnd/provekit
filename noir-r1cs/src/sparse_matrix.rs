@@ -35,6 +35,14 @@ impl<F> SparseMatrix<F> {
         assert!(col < self.cols, "column index out of bounds");
         self.entries.insert((row, col), value);
     }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
 }
 
 impl<F: PartialEq> SparseMatrix<F> {
