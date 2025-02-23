@@ -1,3 +1,4 @@
+#![cfg(feature = "stwo")]
 use {
     crate::{register_hash, HashFn, SmolHasher},
     std::{iter::zip, mem::transmute, simd::u32x16},

@@ -3,10 +3,7 @@ mod ruint;
 
 use {
     num_traits::{One, PrimInt, Unsigned, Zero},
-    rand::{
-        distributions::{Distribution, Standard},
-        Rng,
-    },
+    rand::{distr::StandardUniform, prelude::*, Rng},
     std::{
         fmt::{self, Debug, Formatter},
         iter::{Product, Sum},
@@ -353,7 +350,7 @@ impl<Ring: RingRef + Default> Product for ModRingElement<Ring> {
     }
 }
 
-impl<Ring: RingRef + Default> Distribution<ModRingElement<Ring>> for Standard {
+impl<Ring: RingRef + Default> Distribution<ModRingElement<Ring>> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ModRingElement<Ring> {
         Ring::default().random(rng)
     }

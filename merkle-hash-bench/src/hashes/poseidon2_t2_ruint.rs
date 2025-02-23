@@ -8,7 +8,10 @@ use {
     },
     rand::Rng,
     ruint::aliases::U256,
-    std::fmt::{self, Display, Formatter},
+    std::{
+        array,
+        fmt::{self, Display, Formatter},
+    },
 };
 
 register_hash!(Poseidon2T2Ruint::new());
@@ -49,10 +52,10 @@ fn from_bytes(bytes: &[u8]) -> Bn254Element {
 
 impl Poseidon2T2Ruint {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         Self {
             first:  rng.gen(),
-            middle: rng.gen(),
+            middle: array::from_fn(|_| rng.gen()),
             last:   rng.gen(),
         }
     }

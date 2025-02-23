@@ -15,13 +15,13 @@ use {
 register_hash!(Icicle {
     hash_fn: HashFn::Keccak(24),
     field:   Field::None,
-    hasher:  Keccak256::new(0).unwrap(),
+    hasher:  Keccak256::new(64).unwrap(),
 });
 
 register_hash!(Icicle {
     hash_fn: HashFn::Blake2s,
     field:   Field::None,
-    hasher:  Blake2s::new(0).unwrap(),
+    hasher:  Blake2s::new(64).unwrap(),
 });
 
 register_hash!(Icicle {

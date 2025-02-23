@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 mod hashes;
-mod mod_ring;
+// mod mod_ring;
 mod registery;
 mod utils;
 
@@ -39,6 +39,8 @@ pub enum HashFn {
     Poseidon(usize),
     Poseidon2(usize),
     Skyscraper(usize),
+    Monolith(usize),
+    Rescue(usize),
     Keccak(usize),
 }
 
@@ -62,7 +64,7 @@ impl Display for Field {
         match self {
             Self::None => f.pad("none"),
             Self::Bn254 => f.pad("bn254"),
-            Self::Goldilocks => f.pad("goldilocks"),
+            Self::Goldilocks => f.pad("gold"),
             Self::M31 => f.pad("m31"),
         }
     }
@@ -77,13 +79,15 @@ impl Display for HashFn {
             Self::Poseidon(t) => f.pad(&format!("poseidon:{t}")),
             Self::Poseidon2(t) => f.pad(&format!("poseidon2:{t}")),
             Self::Skyscraper(t) => f.pad(&format!("skyscraper:{t}")),
+            Self::Monolith(t) => f.pad(&format!("monolith:{t}")),
+            Self::Rescue(t) => f.pad(&format!("rescue:{t}")),
             Self::Keccak(t) => f.pad(&format!("keccak:{t}")),
         }
     }
 }
 
 fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn SmolHasher>) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     println!("seconds per hash for batches of 512 bit messages.");
     print!("hash \\ batch size              ");
     let lengths = [4, 16, 64, 256, 1 << 15];
