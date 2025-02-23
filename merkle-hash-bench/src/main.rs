@@ -2,7 +2,7 @@
 #![allow(missing_docs)]
 
 mod hashes;
-// mod mod_ring;
+mod mod_ring;
 mod registery;
 mod utils;
 

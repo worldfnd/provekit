@@ -30,7 +30,7 @@ impl SmolHasher for Skyscraper {
     }
 
     fn implementation(&self) -> &str {
-        "reference"
+        "ruint"
     }
 
     fn field(&self) -> Field {
