@@ -7,10 +7,10 @@ use std::{
 #[derive(Debug, Clone, Default)]
 pub struct SparseMatrix<F> {
     /// The number of rows in the matrix.
-    rows: usize,
+    pub rows: usize,
 
     /// The number of columns in the matrix.
-    cols: usize,
+    pub cols: usize,
 
     /// The default value of the matrix.
     default: F,
@@ -27,6 +27,14 @@ impl<F> SparseMatrix<F> {
             default,
             entries: BTreeMap::new(),
         }
+    }
+
+    pub fn grow(&mut self, rows: usize, cols: usize) {
+        // TODO: Make it default infinite size instead.
+        assert!(rows >= self.rows);
+        assert!(cols >= self.cols);
+        self.rows = rows;
+        self.cols = cols;
     }
 
     /// Set the value at the given row and column.
@@ -86,14 +94,14 @@ impl<F: Clone> IndexMut<(usize, usize)> for SparseMatrix<F> {
     }
 }
 
-impl<F> Mul<Vec<F>> for &SparseMatrix<F>
+impl<F> Mul<&[F]> for &SparseMatrix<F>
 where
     F: Clone + AddAssign,
     for<'a> &'a F: Mul<Output = F>,
 {
     type Output = Vec<F>;
 
-    fn mul(self, rhs: Vec<F>) -> Self::Output {
+    fn mul(self, rhs: &[F]) -> Self::Output {
         assert_eq!(
             self.cols,
             rhs.len(),

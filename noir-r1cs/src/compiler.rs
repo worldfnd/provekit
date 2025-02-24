@@ -2,29 +2,42 @@ use {
     crate::SparseMatrix,
     acir::{
         circuit::{Circuit, Opcode},
-        native_types::Expression,
+        native_types::{Expression, Witness},
         AcirField, FieldElement,
     },
-    acvm::acir::circuit::Program,
-    std::{collections::BTreeMap, default},
+    std::collections::BTreeMap,
 };
 
 /// Represents a R1CS constraint system.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct R1CS {
     pub a: SparseMatrix<FieldElement>,
     pub b: SparseMatrix<FieldElement>,
     pub c: SparseMatrix<FieldElement>,
 
     // Remapping of witness indices to the r1cs_witness array
-    pub remap: BTreeMap<usize, usize>,
+    pub witnesses: usize,
+    pub remap:     BTreeMap<usize, usize>,
+
+    pub constraints: usize,
 }
 
 impl R1CS {
+    pub fn new() -> Self {
+        Self {
+            a:           SparseMatrix::new(0, 1, FieldElement::zero()),
+            b:           SparseMatrix::new(0, 1, FieldElement::zero()),
+            c:           SparseMatrix::new(0, 1, FieldElement::zero()),
+            witnesses:   1,
+            remap:       BTreeMap::new(),
+            constraints: 0,
+        }
+    }
+
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
         for opcode in circuit.opcodes.iter() {
             match opcode {
-                Opcode::AssertZero(expr) => self.add_constraint(expr),
+                Opcode::AssertZero(expr) => self.add_assert_zero(expr),
 
                 // TODO: Brillig is a VM used to generate witness values. It does not produce
                 // constraints.
@@ -49,82 +62,87 @@ impl R1CS {
         }
     }
 
-    #[rustfmt::skip]
-    pub fn add_constraint(&mut self, _expr: &Expression<FieldElement>) {
-        // TODO: Ideally at this point all constraints are of the form A(w) * B(w) = C(w),
-        // where A, B, and C are linear combinations of the witness vector w. We should
-        // implement a compilation pass that ensures this is the case.
+    /// Index of the constant one witness
+    pub fn witness_one(&self) -> usize {
+        0
+    }
 
-        todo!("Port over philipp's code below");
-        /*
-        // We only use one of the mul_terms per R1CS constraint in A and B
-        // This isn't always the most efficient   way to do it though:
-        // a * c + a * d + b * c + b * d    = (a + b) * (c + d) [1 instead of 4]
-        // a * b + a * c    = a * (b + c) [1 instead of 2]
-        // TODO: detect the    above cases and handle separately
-        // TODO: ACIR    represents (a + b) * (c + d) as 3 EXPR opcodes, which are
-        // translated with the below logic to 3 R1CS constraints, while it could    just
-        // be a single one.
-        if current_expr.mul_terms.len() > 1 {
-            // Insert an additional constraint and temporary    witness at the end
-            let (m, a, b) = current_expr.mul_terms[0];
-            max_witness_index += 1; // Evaluate and create the temporary witness
-            let w_val = m
-                * r1cs_w[*remap.get(&a.witness_index()).unwrap()]
-                * r1cs_w[*remap.get(&b.witness_index()).unwrap()];
-            remap.insert(max_witness_index, r1cs_w.len());
-            r1cs_w.push(w_val);
+    /// Create a new witness variable
+    pub fn new_witness(&mut self) -> usize {
+        let value = self.witnesses;
+        self.witnesses += 1;
+        self.a.grow(self.constraints, self.witnesses);
+        self.b.grow(self.constraints, self.witnesses);
+        self.c.grow(self.constraints, self.witnesses);
+        value
+    }
 
-            // Add constraint on temporary witness
-            r1cs_a.set(constraints, *remap.get(&a.witness_index()).unwrap(), m);
-            r1cs_b.set(
-                constraints,
-                *remap.get(&b.witness_index()).unwrap(),
-                FieldElement::one(),
-            );
-            r1cs_c.set(
-                constraints,
-                *remap.get(&max_witness_index).unwrap(),
-                FieldElement::one(),
-            );
+    /// Map ACIR Witnesses to r1cs_witness indices
+    pub fn map_witness(&mut self, witness: Witness) -> usize {
+        self.remap
+            .get(&witness.as_usize())
+            .copied()
+            .unwrap_or_else(|| {
+                let value = self.new_witness();
+                self.remap.insert(witness.as_usize(), value);
+                value
+            })
+    }
 
-            // Remove the used mul_term
-            current_expr.mul_terms = current_expr.mul_terms[1..].to_vec();
-            // Add the temporary witness to the linear combinations (we'll constrain on
-            // all of them at once later)
-            current_expr
-                .linear_combinations
-                .push((FieldElement::one(), Witness::from(max_witness_index)));
-            constraints += 1;
-        } else {
-            // Either single mul_term left or none
-            if current_expr.mul_terms.len() == 1 {
-                let (m, a, b) = current_expr.mul_terms[0];
-                r1cs_a.set(constraints, *remap.get(&a.witness_index()).unwrap(), m);
-                r1cs_b.set(
-                    constraints,
-                    *remap.get(&b.witness_index()).unwrap(),
-                    FieldElement::one(),
-                );
-            }
-
-            // Set all linear combinations and the constant in C
-            r1cs_c.set(constraints, 0, current_expr.q_c.neg());
-            for (m, c) in current_expr.linear_combinations {
-                r1cs_c.set(
-                    constraints,
-                    *remap.get(&c.witness_index()).unwrap(),
-                    m.neg(),
-                );
-            }
-
-            constraints += 1;
-            break;
+    /// Add an R1CS constraint.
+    pub fn add_constraint(
+        &mut self,
+        a: &[(FieldElement, usize)],
+        b: &[(FieldElement, usize)],
+        c: &[(FieldElement, usize)],
+    ) {
+        let row = self.constraints;
+        self.constraints += 1;
+        self.a.grow(self.constraints, self.witnesses);
+        self.b.grow(self.constraints, self.witnesses);
+        self.c.grow(self.constraints, self.witnesses);
+        for (c, col) in a.iter().copied() {
+            self.a.set(row, col, c)
         }
-        */
+        for (c, col) in b.iter().copied() {
+            self.b.set(row, col, c)
+        }
+        for (c, col) in c.iter().copied() {
+            self.c.set(row, col, c)
+        }
+    }
+
+    /// Add an ACIR assert zero constraint.
+    pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
+        // Create individual constraints for all the multiplication terms and collect
+        // their outputs
+        let mut linear = expr
+            .mul_terms
+            .iter()
+            .map(|term| {
+                let a = self.map_witness(term.1);
+                let b = self.map_witness(term.2);
+                let c = self.new_witness();
+                self.add_constraint(&[(FieldElement::one(), a)], &[(FieldElement::one(), b)], &[
+                    (FieldElement::one(), c),
+                ]);
+                (term.0, c)
+            })
+            .collect::<Vec<_>>();
+
+        // Extend with linear combinations
+        linear.extend(
+            expr.linear_combinations
+                .iter()
+                .map(|term| (term.0, self.map_witness(term.1))),
+        );
+
+        // Add constant by multipliying with constant value one.
+        linear.push((expr.q_c, self.witness_one()));
+
+        // Add a single linear constraint
+        // We could avoid this by substituting back into the last multiplication
+        // constraint.
+        self.add_constraint(&[], &[], &linear);
     }
 }
-
-pub fn compile(program: &Program<FieldElement>) {}
-
-pub fn add_constraint(expr: &Expression<FieldElement>) {}

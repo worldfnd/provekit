@@ -11,15 +11,15 @@ impl Display for PrintAbi<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "(")?;
         for (i, param) in self.0.parameters.iter().enumerate() {
-            print!("{}: ", param.name);
+            write!(f, "{}: ", param.name)?;
             match param.visibility {
-                AbiVisibility::Public => print!("pub "),
+                AbiVisibility::Public => write!(f, "pub ")?,
                 AbiVisibility::Private => {}
-                AbiVisibility::DataBus => print!("data_bus "),
+                AbiVisibility::DataBus => write!(f, "data_bus ")?,
             }
-            print!("{}", PrintType(&param.typ));
+            write!(f, "{}", PrintType(&param.typ))?;
             if i < self.0.parameters.len() - 1 {
-                print!(", ");
+                write!(f, ", ")?;
             }
         }
         write!(f, ")")
