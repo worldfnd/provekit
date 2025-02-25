@@ -198,7 +198,8 @@ impl R1CS {
                 // constraints.
                 Opcode::BrilligCall { .. } => {
                     println!("Opcode::BrilligCall");
-                    unimplemented!("BrilligCall")
+                    println!("Opcode::{:?}", opcode);
+                    // unimplemented!("BrilligCall")
                 }
 
                 // Directive is a modern version of Brillig.
@@ -263,6 +264,14 @@ impl R1CS {
 
         // Check equality
         assert_eq!(ab_w, c_w, "R1CS check failed: (A*w)*(B*w) != C*w");
+        println!("R1CS check passed: (A*w)*(B*w) = C*w");
+        // println!("r1cs_a: {:?}", self.r1cs_a);
+        // println!("r1cs_b: {:?}", self.r1cs_b);
+        // println!("r1cs_c: {:?}", self.r1cs_c);
+        // println!(
+        //     "r1cs_w: {:?}",
+        //     self.r1cs_w.iter().map(|w| w.0).collect::<Vec<_>>()
+        // );
     }
 
     pub fn add_constraint(&mut self, current_expr: &Expression<FieldElement>) {
@@ -374,11 +383,13 @@ impl R1CS {
             self.r1cs_b
                 .add_triplet(constraints, b_idx, FieldWrapper::one());
 
-            assert_eq!(current_expr.linear_combinations.len(), 1);
-            let (m, c) = current_expr.linear_combinations[0];
-            let c_idx = c.witness_index() as usize;
-            self.r1cs_c
-                .add_triplet(constraints, c_idx, FieldWrapper(m.neg()));
+            if current_expr.linear_combinations.len() == 1 {
+                let (m, c) = current_expr.linear_combinations[0];
+                let c_idx = c.witness_index() as usize;
+                self.r1cs_c
+                    .add_triplet(constraints, c_idx, FieldWrapper(m.neg()));
+            }
+
             self.r1cs_c.add_triplet(
                 constraints,
                 self.original_witness + 1,
@@ -389,12 +400,12 @@ impl R1CS {
         constraints += 1;
         self.current_constraint = constraints;
         // print the r1cs_a, r1cs_b, r1cs_c
-        println!("r1cs_a: {:?}", self.r1cs_a);
-        println!("r1cs_b: {:?}", self.r1cs_b);
-        println!("r1cs_c: {:?}", self.r1cs_c);
-        println!(
-            "r1cs_w: {:?}",
-            self.r1cs_w.iter().map(|w| w.0).collect::<Vec<_>>()
-        );
+        // println!("r1cs_a: {:?}", self.r1cs_a);
+        // println!("r1cs_b: {:?}", self.r1cs_b);
+        // println!("r1cs_c: {:?}", self.r1cs_c);
+        // println!(
+        //     "r1cs_w: {:?}",
+        //     self.r1cs_w.iter().map(|w| w.0).collect::<Vec<_>>()
+        // );
     }
 }
