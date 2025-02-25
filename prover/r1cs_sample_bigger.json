@@ -20,7 +20,7 @@
       },
       {
         "constraint": 3,
-        "signal": 9,
+        "signal": 0,
         "value": "1"
       },
       {
@@ -53,6 +53,11 @@
       {
         "constraint": 2,
         "signal": 6,
+        "value": "1"
+      },
+      {
+        "constraint": 3,
+        "signal": 9,
         "value": "1"
       },
       {

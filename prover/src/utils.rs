@@ -57,9 +57,9 @@ pub fn calculate_matrix_vector_product(matrix_cells: &Vec<MatrixCell>, witness: 
 /// List of evaluations for eq(r, x) over the boolean hypercube
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(r: &Vec<Field256>) -> Vec<Field256> {
     let mut ans = vec![Field256::from(1)];
-    for x in r {
-        let mut left: Vec<Field256> = ans.clone().into_iter().map(|y| {y.mul(Field256::one().sub(x))}).collect();
-        let right: Vec<Field256> = ans.into_iter().map(|y| {y.mul(x)}).collect();
+    for x in r.iter().rev() {
+        let mut left: Vec<Field256> = ans.clone().into_iter().map(|y| {y * (Field256::one() - x)}).collect();
+        let right: Vec<Field256> = ans.into_iter().map(|y| {y * x}).collect();
         left.extend(right);
         ans = left;
     }
@@ -167,4 +167,8 @@ pub fn calculate_witness_bounds (r1cs: &R1CS, witness: Vec<Field256>) -> (Vec<Fi
     // let witness = pad_to_power_of_two(witness);
     let m = next_power_of_two(witness_bound_a.len());
     (witness_bound_a, witness_bound_b, witness_bound_c, witness, m)
+}
+
+pub fn calculate_dot_product(a: &Vec<Field256>, b: &Vec<Field256>) -> Field256 {
+    a.iter().zip(b.iter()).map(|(&a, &b)| (a * b)).sum()
 }

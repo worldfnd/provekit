@@ -49,17 +49,13 @@ fn calculate_matrices_on_external_row(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Ve
 }
 
 
-
-fn calculate_dot_product(a: &Vec<Field256>, b: &Vec<Field256>) -> Field256 {
-    a.iter().zip(b.iter()).map(|(&a, &b)| (a * b)).sum()
-}
-
 fn check_last_sumcheck(a: &Vec<Field256>, b: &Vec<Field256>, c: &Vec<Field256>, z: &Vec<Field256>, r: &Vec<Field256>, alpha: &Vec<Field256>) {
     let a = calculate_dot_product(a, z);
     let b = calculate_dot_product(b, z);
     let c = calculate_dot_product(c, z);
     let eq = calculate_eq(r, alpha);
-    println!("{:?}", (a * b - c)*eq);
+    // println!("a {:?}, b {:?}, c {:?}, eq(r, alpha) {:?}", a, b, c, eq);
+    println!("Supposed last sumcheck value: {:?}", (a * b - c)*eq);
 }
 
 fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
@@ -83,6 +79,7 @@ fn main() {
     
     let merlin = io.to_merlin();
     let (merlin, alpha, r) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    // println!("Alpha: {:?}, r: {:?}", alpha, r);
     let (a_alpha, b_alpha, c_alpha) = calculate_matrices_on_external_row(&alpha, &r1cs);
     
     check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
@@ -108,14 +105,16 @@ fn run_sumcheck_prover(
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
     let _ = merlin.fill_challenge_scalars(&mut r);
-    let mut r = (m..2*m).map(|i| {Field256::from(i as u32)}).collect();
+    // let mut r = (m..2*m).map(|i| {Field256::from(i as u32)}).collect();
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
+    // println!("EQ: {:?}", eq);
     let mut alpha = Vec::<Field256>::with_capacity(m);
     for i in 0..m {        
         // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
         let mut hhat_i_at_0 = Field256::from(0);
         let mut hhat_i_at_em1 = Field256::from(0);
         let mut hhat_i_at_inf = Field256::from(0);
+        let mut hhat_i_at_1= Field256::from(0);
         
         let (a0, a1) = a.split_at(a.len() / 2);
         let (b0, b1) = b.split_at(b.len() / 2);
@@ -133,13 +132,16 @@ fn run_sumcheck_prover(
             hhat_i_at_em1 += (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
             hhat_i_at_inf += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
         });
-
+        
         let mut hhat_i_coeffs = vec![Field256::from(0); 4];
+
         hhat_i_coeffs[0] = hhat_i_at_0;
-        hhat_i_coeffs[2] = HALF * (hhat_i_at_em1 - hhat_i_at_0 - hhat_i_at_0 - hhat_i_at_0);
+        hhat_i_coeffs[2] = HALF * (saved_val_for_sumcheck_equality_assertion + hhat_i_at_em1 - hhat_i_at_0 - hhat_i_at_0 - hhat_i_at_0);
         hhat_i_coeffs[3] = hhat_i_at_inf;
         hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion - hhat_i_coeffs[0] - hhat_i_coeffs[0] - hhat_i_coeffs[3] - hhat_i_coeffs[2];
-
+        
+        assert_eq!(saved_val_for_sumcheck_equality_assertion, hhat_i_coeffs[0] + hhat_i_coeffs[0] + hhat_i_coeffs[1] + hhat_i_coeffs[2] + hhat_i_coeffs[3]);
+        
         let _ = merlin.add_scalars(&vec![hhat_i_coeffs[0], hhat_i_coeffs[1], hhat_i_coeffs[2], hhat_i_coeffs[3]]);
         let mut alpha_i_wrapped_in_vector = vec![Field256::from(0)];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
@@ -150,9 +152,10 @@ fn run_sumcheck_prover(
         b = update_boolean_hypercube_values(b, alpha_i);
         c = update_boolean_hypercube_values(c, alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
-        println!("Prover Sumcheck: Round {i} Completed");
-        println!("Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
+        // println!("Prover Sumcheck: Round {i} Completed");
+        // println!("Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
     }
+    println!("Final Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
     (merlin, alpha, r)
 }
 
