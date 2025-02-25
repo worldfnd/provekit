@@ -77,7 +77,7 @@ pub fn parse_args(witness_len: usize) -> (Args, WhirConfig::<Field256, Skyscrape
         initial_statement: true,
         security_level,
         pow_bits,
-        folding_factor,
+        folding_factor: whir::parameters::FoldingFactor::Constant(folding_factor),
         leaf_hash_params: (),
         two_to_one_params: (),
         soundness_type,

@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
-use ark_ff::Field;
 use ark_std::Zero;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
@@ -31,7 +30,7 @@ use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
 
-fn calculate_matrices_on_external_row(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
+fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
     let mut alpha_a = vec![Field256::from(0); r1cs.num_variables];
     let mut alpha_b = vec![Field256::from(0); r1cs.num_variables];
@@ -49,20 +48,12 @@ fn calculate_matrices_on_external_row(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Ve
 }
 
 
-fn check_last_sumcheck(a: &Vec<Field256>, b: &Vec<Field256>, c: &Vec<Field256>, z: &Vec<Field256>, r: &Vec<Field256>, alpha: &Vec<Field256>) {
-    let a = calculate_dot_product(a, z);
-    let b = calculate_dot_product(b, z);
-    let c = calculate_dot_product(c, z);
-    let eq = calculate_eq(r, alpha);
-    // println!("a {:?}, b {:?}, c {:?}, eq(r, alpha) {:?}", a, b, c, eq);
-    println!("Supposed last sumcheck value: {:?}", (a * b - c)*eq);
-}
-
-fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
-    r.iter().zip(alpha.iter()).fold(Field256::from(1), |acc, (&r, &alpha)|{
-        acc * (r * alpha + (Field256::from(1) - r) * (Field256::from(1)-alpha))
-    })
-}
+// fn check_last_sumcheck(a: &Vec<Field256>, b: &Vec<Field256>, c: &Vec<Field256>, z: &Vec<Field256>, r: &Vec<Field256>, alpha: &Vec<Field256>) {
+//     let a = calculate_dot_product(a, z);
+//     let b = calculate_dot_product(b, z);
+//     let c = calculate_dot_product(c, z);
+//     let eq = calculate_eq(r, alpha);
+// }
 
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
@@ -80,9 +71,9 @@ fn main() {
     let merlin = io.to_merlin();
     let (merlin, alpha, r) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
     // println!("Alpha: {:?}, r: {:?}", alpha, r);
-    let (a_alpha, b_alpha, c_alpha) = calculate_matrices_on_external_row(&alpha, &r1cs);
+    let (a_alpha, b_alpha, c_alpha) = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
     
-    check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
+    // check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
     
     z = pad_to_power_of_two(z);
     let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
@@ -109,12 +100,11 @@ fn run_sumcheck_prover(
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
     // println!("EQ: {:?}", eq);
     let mut alpha = Vec::<Field256>::with_capacity(m);
-    for i in 0..m {        
+    for _ in 0..m {        
         // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
         let mut hhat_i_at_0 = Field256::from(0);
         let mut hhat_i_at_em1 = Field256::from(0);
         let mut hhat_i_at_inf = Field256::from(0);
-        let mut hhat_i_at_1= Field256::from(0);
         
         let (a0, a1) = a.split_at(a.len() / 2);
         let (b0, b1) = b.split_at(b.len() / 2);
@@ -152,10 +142,7 @@ fn run_sumcheck_prover(
         b = update_boolean_hypercube_values(b, alpha_i);
         c = update_boolean_hypercube_values(c, alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
-        // println!("Prover Sumcheck: Round {i} Completed");
-        // println!("Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
     }
-    println!("Final Sumcheck {:?}", saved_val_for_sumcheck_equality_assertion);
     (merlin, alpha, r)
 }
 

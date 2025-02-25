@@ -2,7 +2,7 @@
 use whir::crypto::fields::Field256;
 use ark_std::str::FromStr;
 use serde::Deserialize;
-use ark_std::ops::{Add, Sub, Mul};
+use ark_std::ops::{Add, Mul};
 use ruint_macro::uint;
 use crate::skyscraper::skyscraper::uint_to_field;
 use ark_std::{Zero, One};
@@ -107,6 +107,7 @@ pub struct R1CSWithWitnessWithStringValue {
     pub witnesses: Vec<Vec<String>>,
 }
 
+/// Matrix Cell where value is Field256 instead of a string
 pub struct MatrixCell {
     /// A constraint can be thought as a row of the matrix
     pub constraint: usize,
@@ -118,6 +119,7 @@ pub struct MatrixCell {
     pub value: Field256,
 }
 
+/// R1CS where Matrix Cell values are Field256 elements instead of strings
 pub struct R1CS {
     /// Number of public inputs
     pub num_public: usize,
@@ -144,6 +146,7 @@ pub fn eval_qubic_poly(poly: &Vec<Field256>, point: &Field256) -> Field256 {
     poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
 }
 
+/// Parse R1CS matrices and the witness from a given file
 pub fn parse_matrices_and_witness (file_path: &str) -> (R1CS, Vec<Field256>) {
     let file = File::open(file_path).expect("Failed to open file");
     let r1cs_with_witness_string: R1CSWithWitnessWithStringValue = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
@@ -169,6 +172,14 @@ pub fn calculate_witness_bounds (r1cs: &R1CS, witness: Vec<Field256>) -> (Vec<Fi
     (witness_bound_a, witness_bound_b, witness_bound_c, witness, m)
 }
 
+/// Calculates a dot product of two Field256 vectors
 pub fn calculate_dot_product(a: &Vec<Field256>, b: &Vec<Field256>) -> Field256 {
     a.iter().zip(b.iter()).map(|(&a, &b)| (a * b)).sum()
+}
+
+/// Calculates eq(r, alpha)
+pub fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
+    r.iter().zip(alpha.iter()).fold(Field256::from(1), |acc, (&r, &alpha)|{
+        acc * (r * alpha + (Field256::from(1) - r) * (Field256::from(1)-alpha))
+    })
 }
