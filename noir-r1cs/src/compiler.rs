@@ -41,7 +41,9 @@ impl R1CS {
 
                 // TODO: Brillig is a VM used to generate witness values. It does not produce
                 // constraints.
-                Opcode::BrilligCall { .. } => unimplemented!("BrilligCall"),
+                Opcode::BrilligCall { .. } => {
+                    println!("BrilligCall")
+                }
 
                 // Directive is a modern version of Brillig.
                 Opcode::Directive(..) => unimplemented!("Directive"),
@@ -60,6 +62,7 @@ impl R1CS {
                 Opcode::BlackBoxFuncCall(_) => unimplemented!("BlackBoxFuncCall"),
             }
         }
+        println!("self.constraints: {:?}", self.constraints);
     }
 
     /// Index of the constant one witness
@@ -116,19 +119,31 @@ impl R1CS {
     pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
-        let mut linear = expr
-            .mul_terms
-            .iter()
-            .map(|term| {
-                let a = self.map_witness(term.1);
-                let b = self.map_witness(term.2);
-                let c = self.new_witness();
-                self.add_constraint(&[(FieldElement::one(), a)], &[(FieldElement::one(), b)], &[
-                    (FieldElement::one(), c),
-                ]);
-                (term.0, c)
-            })
-            .collect::<Vec<_>>();
+        let mut linear = vec![];
+        let mut a = vec![];
+        let mut b = vec![];
+        if expr.mul_terms.len() > 1 {
+            linear = expr
+                .mul_terms
+                .iter()
+                .map(|term| {
+                    let a = self.map_witness(term.1);
+                    let b = self.map_witness(term.2);
+                    let c = self.new_witness();
+                    self.add_constraint(
+                        &[(FieldElement::one(), a)],
+                        &[(FieldElement::one(), b)],
+                        &[(FieldElement::one(), c)],
+                    );
+                    (term.0, c)
+                })
+                .collect::<Vec<_>>();
+        } else if expr.mul_terms.len() == 1 {
+            // no need to create intermediate multiplication constraints
+            let term = expr.mul_terms[0];
+            a = vec![(FieldElement::one(), self.map_witness(term.1))];
+            b = vec![(FieldElement::one(), self.map_witness(term.2))];
+        }
 
         // Extend with linear combinations
         linear.extend(
@@ -143,6 +158,6 @@ impl R1CS {
         // Add a single linear constraint
         // We could avoid this by substituting back into the last multiplication
         // constraint.
-        self.add_constraint(&[], &[], &linear);
+        self.add_constraint(&a, &b, &linear);
     }
 }
