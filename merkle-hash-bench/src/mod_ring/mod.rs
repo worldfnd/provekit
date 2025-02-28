@@ -3,10 +3,7 @@ mod ruint;
 
 use {
     num_traits::{One, PrimInt, Unsigned, Zero},
-    rand::{
-        distributions::{Distribution, Standard},
-        Rng,
-    },
+    rand::{distr::StandardUniform, prelude::*, Rng},
     std::{
         fmt::{self, Debug, Formatter},
         iter::{Product, Sum},
@@ -39,9 +36,10 @@ pub trait UintExp: Sized {
 
 /// Trait for ModRing parameter references.
 ///
-/// Making this a trait allows both zero-sized and references to be used, so the same
-/// implementation can cover both compile-time and runtime known fields. In the latter case,
-/// a sufficiently large `Uint` will have to be picked compile time though.
+/// Making this a trait allows both zero-sized and references to be used, so the
+/// same implementation can cover both compile-time and runtime known fields. In
+/// the latter case, a sufficiently large `Uint` will have to be picked compile
+/// time though.
 pub trait RingRef: Copy + Deref<Target = ModRing<Self::Uint>> {
     type Uint: UintMont;
 }
@@ -62,21 +60,18 @@ pub struct ModRing<Uint: UintMont> {
     modulus: Uint,
 
     // Precomputed values for Montgomery multiplication.
-    montgomery_r: Uint,  // R = 2^64*LIMBS mod modulus
+    montgomery_r:  Uint, // R = 2^64*LIMBS mod modulus
     montgomery_r2: Uint, // R^2, or R in Montgomery form
     montgomery_r3: Uint, // R^3, or R^2 in Montgomery form
-    mod_inv: u64,        // -1 / modulus mod 2^64
+    mod_inv:       u64,  // -1 / modulus mod 2^64
 }
 
 /// Element of a [`ModRing`].
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ModRingElement<Ring: RingRef> {
-    ring: Ring,
+    ring:  Ring,
     value: Ring::Uint,
 }
-
-/// ModRingElement with the ring parameters by embedded reference.
-pub type ModRingElementRef<'a, Uint> = ModRingElement<&'a ModRing<Uint>>;
 
 impl<Uint: UintMont> RingRef for &ModRing<Uint> {
     type Uint = Uint;
@@ -172,13 +167,14 @@ impl<Ring: RingRef> ModRingElement<Ring> {
 
     /// Small exponentiation
     ///
-    /// Run time may depend on the exponent, use [`pow_ct`] if constant time is required.
+    /// Run time may depend on the exponent, use [`pow_ct`] if constant time is
+    /// required.
     #[inline(always)]
     pub fn pow(self, exponent: usize) -> Self {
         match exponent {
             0 => self.ring.one(),
             1 => self,
-            n => {
+            _ => {
                 let value = self.pow(exponent / 2).square();
                 if exponent % 2 == 1 {
                     value * self
@@ -191,7 +187,8 @@ impl<Ring: RingRef> ModRingElement<Ring> {
 
     /// Small exponentiation
     ///
-    /// Run time may depend on the exponent, use [`pow_ct`] if constant time is required.
+    /// Run time may depend on the exponent, use [`pow_ct`] if constant time is
+    /// required.
     // pub fn pow(self, exponent: u64) -> Self {
     //     match exponent {
     //         0 => self.ring.one(),
@@ -353,7 +350,7 @@ impl<Ring: RingRef + Default> Product for ModRingElement<Ring> {
     }
 }
 
-impl<Ring: RingRef + Default> Distribution<ModRingElement<Ring>> for Standard {
+impl<Ring: RingRef + Default> Distribution<ModRingElement<Ring>> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ModRingElement<Ring> {
         Ring::default().random(rng)
     }

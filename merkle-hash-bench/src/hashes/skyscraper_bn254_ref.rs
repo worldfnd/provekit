@@ -1,15 +1,17 @@
-//! Reference implementation of the Skyscraper hash function using the Field elements.
+//! Reference implementation of the Skyscraper hash function using the Field
+//! elements.
 use {
     crate::{
         mod_ring::{
             fields::{Bn254Element, Bn254Field},
             RingRefExt,
         },
-        SmolHasher,
+        register_hash, Field, HashFn, SmolHasher,
     },
     ruint::{aliases::U256, uint},
-    std::fmt::Display,
 };
+
+register_hash!(Skyscraper);
 
 const RC: [U256; 8] = uint! {[
     17829420340877239108687448009732280677191990375576158938221412342251481978692_U256,
@@ -26,13 +28,19 @@ const SIGMA: U256 =
 
 pub struct Skyscraper;
 
-impl Display for Skyscraper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("skyscraper-bn254-ref")
-    }
-}
-
 impl SmolHasher for Skyscraper {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Skyscraper(1)
+    }
+
+    fn implementation(&self) -> &str {
+        "reference"
+    }
+
+    fn field(&self) -> Field {
+        Field::Bn254
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             let a = from_bytes(&message[0..32]);

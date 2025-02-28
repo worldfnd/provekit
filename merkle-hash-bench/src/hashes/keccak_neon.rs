@@ -1,4 +1,10 @@
-use {crate::SmolHasher, std::fmt::Display};
+use {
+    crate::{register_hash, HashFn, SmolHasher},
+    std::fmt::Display,
+};
+
+register_hash!(Keccak);
+register_hash!(K12);
 
 const RC: [u64; 24] = [
     0x0000000000000001,
@@ -31,19 +37,11 @@ pub struct Keccak;
 
 pub struct K12;
 
-impl Display for Keccak {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("keccak-NEON")
-    }
-}
-
-impl Display for K12 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad("K12-NEON")
-    }
-}
-
 impl SmolHasher for Keccak {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Keccak(24)
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (messages, hashes) in messages.chunks_exact(128).zip(hashes.chunks_exact_mut(64)) {
             unsafe {
@@ -54,6 +52,10 @@ impl SmolHasher for Keccak {
 }
 
 impl SmolHasher for K12 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Keccak(12)
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (messages, hashes) in messages.chunks_exact(128).zip(hashes.chunks_exact_mut(64)) {
             unsafe {

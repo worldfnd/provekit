@@ -4,12 +4,17 @@ use {
             fields::{Bn254Element, Bn254Field},
             RingRefExt,
         },
-        SmolHasher,
+        register_hash, Field, HashFn, SmolHasher,
     },
     rand::Rng,
     ruint::aliases::U256,
-    std::fmt::{self, Display, Formatter},
+    std::{
+        array,
+        fmt::{self, Display, Formatter},
+    },
 };
+
+register_hash!(Poseidon2T2Ruint::new());
 
 pub struct Poseidon2T2Ruint {
     first:  [[Bn254Element; 2]; 4],
@@ -17,13 +22,19 @@ pub struct Poseidon2T2Ruint {
     last:   [[Bn254Element; 2]; 4],
 }
 
-impl Display for Poseidon2T2Ruint {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.pad("Poseidon2-t2-Ruint")
-    }
-}
-
 impl SmolHasher for Poseidon2T2Ruint {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Poseidon2(2)
+    }
+
+    fn implementation(&self) -> &str {
+        "ruint"
+    }
+
+    fn field(&self) -> Field {
+        Field::Bn254
+    }
+
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
             let mut state = [from_bytes(&message[0..32]), from_bytes(&message[32..64])];
@@ -41,10 +52,10 @@ fn from_bytes(bytes: &[u8]) -> Bn254Element {
 
 impl Poseidon2T2Ruint {
     pub fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         Self {
             first:  rng.gen(),
-            middle: rng.gen(),
+            middle: array::from_fn(|_| rng.gen()),
             last:   rng.gen(),
         }
     }

@@ -1,5 +1,5 @@
 use {
-    crate::SmolHasher,
+    crate::{register_hash, HashFn, SmolHasher},
     arrayvec::ArrayVec,
     blake3::{
         guts::{BLOCK_LEN, CHUNK_LEN},
@@ -9,6 +9,8 @@ use {
     core::slice,
     std::{fmt::Display, iter::zip},
 };
+
+register_hash!(Blake3::new());
 
 // Static assertions
 const _: () = assert!(
@@ -24,30 +26,29 @@ const _: () = assert!(
     "Blake3 chunk len is not 16 blocks."
 );
 
-/// Default Blake3 initialization vector. Copied here because it is not publicly exported.
+/// Default Blake3 initialization vector. Copied here because it is not publicly
+/// exported.
 const BLAKE3_IV: [u32; 8] = [
-    0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// Flags for a single block message. Copied here because it is not publicly exported.
+/// Flags for a single block message. Copied here because it is not publicly
+/// exported.
 const FLAGS_START: u8 = 1 << 0; // CHUNK_START
 const FLAGS_END: u8 = 1 << 1; // CHUNK_END
 const FLAGS: u8 = 1 << 3; // ROOT
 
 pub struct Blake3 {
-    platform: Platform,
-}
-
-impl Display for Blake3 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.pad(&format!("blake3-{:?}", self.platform))
-    }
+    platform:       Platform,
+    implementation: String,
 }
 
 impl Blake3 {
     pub fn new() -> Self {
+        let platform = Platform::detect();
         Self {
-            platform: Platform::detect(),
+            platform,
+            implementation: format!("{:?}", platform),
         }
     }
 
@@ -81,6 +82,14 @@ impl Blake3 {
 }
 
 impl SmolHasher for Blake3 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Blake3
+    }
+
+    fn implementation(&self) -> &str {
+        &self.implementation
+    }
+
     fn hash(&self, inputs: &[u8], output: &mut [u8]) {
         let size = 64;
         assert!(
@@ -140,7 +149,8 @@ pub fn as_chunks_exact<T, const N: usize>(slice: &[T]) -> &[[T; N]] {
         0,
         "slice length must be a multiple of chunk size"
     );
-    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+    // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the
+    // slice length
     let new_len = slice.len() / N;
     // SAFETY: We cast a slice of `new_len * N` elements into
     // a slice of `new_len` many `N` elements chunks.
