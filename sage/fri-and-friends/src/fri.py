@@ -225,7 +225,7 @@ class FRIOPP:
         round_max_degree = max_degree
 
         if prev_round.dimension < max_degree:
-            # Can't test degree if max_degree is higer than code dimension
+            # Can't test degree if max_degree is higher than code dimension
             return False
 
         for this_round in self.rounds[1:]:
@@ -318,7 +318,7 @@ class FRIPCS_Verifier:
         eval_points = original.evaluation_points()
         
         if eval_points != quot.evaluation_points():
-            # Reed solomon evaluation domains are incompatible!
+            # Reed Solomon evaluation domains are incompatible!
             return False
         
         rs_orignal = original.gen_proof()

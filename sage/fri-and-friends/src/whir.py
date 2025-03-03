@@ -16,6 +16,26 @@ from sage.modules.all import vector;
 from sage.misc.prandom import random
 from typing import *
 
+
+def compute_hypercube_sum(sumcheck_poly, skip_variables = [], hypercube = [0,1]):
+    sc_val = sumcheck_poly
+    variables = sumcheck_poly.variables()
+    skip_variables = skip_variables or []
+
+    for xvar in variables:
+        if xvar in skip_variables:
+            continue
+
+        this_round = 0
+
+        for hval in hypercube:
+            this_round += sc_val.subs({xvar : hval})
+
+        sc_val = this_round
+
+    return sc_val
+
+
 def eq_list(poly_vars, eq_values):
     if len(poly_vars) != len(eq_values):
         raise ValueError(f"The number of variables in the base ring does not match eq_values")
@@ -29,7 +49,7 @@ def eq_list(poly_vars, eq_values):
 
     return result
 
-def eq_polyomial(poly_ring, eq_values):
+def eq_polynomial(poly_ring, eq_values):
     Fq = poly_ring.base_ring()
     poly_vars = poly_ring.gens()
     return eq_list(poly_vars, eq_values)
@@ -55,7 +75,7 @@ def random_multilinear_poly(poly_ring):
 
 def eq_weight_polynomial(WeightRing, evaluation_point):
     base_poly = WeightRing.base_ring()
-    ep = eq_polyomial(base_poly, evaluation_point)
+    ep = eq_polynomial(base_poly, evaluation_point)
     z = WeightRing.gen()
     return z* WeightRing(ep)
 
@@ -65,21 +85,23 @@ def gen_mvariate_ring(base_ring, variables_count : int, var_name = "X"):
 
 def tensor_map(sumcheck_challenges):
     """
-    Given the list of sumcheck challenges, say 
-    [a_0, a_1, •••, a_ℓ], it computes the 2^ℓ tensor product 
-    _basis_ of (1, a_0)⊗(1, a_1)⊗ ••• ⊗(1, a_ℓ) and stores 
-    them in a dictionary of size 2^ℓ. 
+    Given the list of Sumcheck challenges, say
+    [a_0, a_1, •••, a_{ℓ-1}], it computes the 2^ℓ tensor products
+    of (1, a_0)⊗(1, a_1)⊗ ••• ⊗(1, a_{ℓ-1}) and stores
+    them in a dictionary of size 2^ℓ.
 
-    Since there's a bijection between univariate polynomials and multilinear 
-    polynomial, given a polynomial written as bilinear form 
+    Since there's a bijection between univariate polynomials and multilinear
+    polynomial, given a polynomial written as a bilinear form
 
-            f(x) = <(f_0, f_1, •••, f_{ℓ-1}),  (1, x, x^2, •••, x^{ℓ-1})>
+            f(x) = <(f_0, f_1, •••, f_{2^{ℓ}-1}),  (1, x, x^2, •••, x^{2^{ℓ}-1})>
 
-    one can write 
+    one can write
 
-            fold(f, [a_0, a_1, •••, a_ℓ] ) = 
-                <(f_0, f_1, •••, f_{ℓ-1}), (1, a_0)⊗(1, a_0)⊗ ••• ⊗(1, a_ℓ)>
+            fold(f, [a_0, a_1, •••, a_ℓ] ) =
+                <(f_0, f_1, •••, f_{2^{ℓ}-1}), (1, a_0)⊗(1, a_0)⊗ ••• ⊗(1, a_{ℓ-1})>
 
+    This function therefore computes (1, a_0)⊗(1, a_0)⊗ ••• ⊗(1, a_{ℓ-1}) where a_i's
+    are the sumcheck challenges.
     """
     degree_map = dict()
 
@@ -96,7 +118,7 @@ def tensor_map(sumcheck_challenges):
     return degree_map
 
 
-def fold_virtually(oracle_ndxes : list[int],  # list of indxes in proof oracle 
+def fold_virtually(oracle_ndxes : list[int],  # list of indices in proof oracle 
                   proof_oracle : vector,      # Reed-Solomon code word
                   fold_challenges : list[FiniteField], # fold_factor = 2^|fold_challenge|
                   ntt_omega : FiniteField,    # Generator of Reed-Solomon code word
@@ -117,13 +139,13 @@ def fold_virtually(oracle_ndxes : list[int],  # list of indxes in proof oracle
        Therefore for all i, (ntt_omega•fold_omega^i) ^ ℓ =  ntt_omega^ℓ.
        This gives us a way to compute f_j(x^ℓ) for all j.
 
-    4. One the values of f_j(ntt_omega^{4•ndx}) if computed for all j,
-        uses the bijection between the multilinear polynomal and univariate
+    4. Once the values of f_j(ntt_omega^{4•ndx}) are computed for all j,
+        uses the bijection between the multilinear polynomial and univariate
         polynomial to compute the fold. See function `tensor_map` for details.
 
     """
 
-    # Compute the sumcheck tensor and cache it
+    # Compute the Sumcheck tensor and cache it
     schk_tensor = tensor_map(fold_challenges)
 
     folding_factor = 2**len(fold_challenges)
@@ -141,13 +163,13 @@ def fold_virtually(oracle_ndxes : list[int],  # list of indxes in proof oracle
     result = list()
 
     for ndx in oracle_ndxes:
-        # Compute the query indicides. 
+        # Compute the query indices. 
         query_ndx = [ (ndx + j*step) % order for j in range(folding_factor) ]
         query_resp = vector([proof_oracle[i] for i in query_ndx])
         q_omega = ntt_omega**ndx
 
         # 
-        # Compute the Vandermonte matrix for the fold_factor root 
+        # Compute the Vandermonde matrix for the fold_factor root 
         # conjugates of q_omega
         # 
         vander = [[(q_omega*(fold_omega**j))**k for k in range(folding_factor)] \
@@ -229,6 +251,7 @@ class WhirRound:
         univar = WhirRound.to_univariate(self.poly, temp_var)
         self._code_value = self.encoder.encode(univar)
 
+
     def weight_coefficient(self):
         return self.weight_poly.coefficient(1)
 
@@ -242,6 +265,9 @@ class WhirRound:
     def fri_oracle(self):
         assert self._code_value is not None
         return self._code_value
+    
+    def set_fri_oracle(self, new_oracle):
+        self.set_fri_oracle = new_oracle
 
     def folded_poly(self):
         temp_var = self.RS_RING.gen()
@@ -276,23 +302,7 @@ class WhirRound:
 
 
     def do_hypercube_sum(self, skip_variables = []):
-        sc_val = self.sumcheck_poly
-        variables = self.sumcheck_poly.variables()
-        skip_variables = skip_variables or []
-
-        for xvar in variables:
-            if xvar in skip_variables:
-                continue
-
-            this_round = 0
-
-            for hval in self.hypercube:
-                this_round += sc_val.subs({xvar : hval})
-
-            sc_val = this_round
-
-        return sc_val
-
+        return compute_hypercube_sum(self.sumcheck_poly, skip_variables, self.hypercube)
 
     def sumcheck_prover_round(self, sumcheck_challenge=None):
         if sumcheck_challenge is None and len(self.sumcheck_challenges) > 0:
@@ -306,20 +316,20 @@ class WhirRound:
             this_var = self.polyvars[len(self.sumcheck_challenges)]
             self.sumcheck_challenges.append(sumcheck_challenge)
 
-            # Update the sumcheck polynomial with new randomness
+            # Update the Sumcheck polynomial with new randomness
             self.sumcheck_poly = self.sumcheck_poly.subs({this_var : sumcheck_challenge })
 
-            # Update the polynomial in tandem with sumcheck polynomial
+            # Update the polynomial in tandem with Sumcheck polynomial
             self.poly = self.poly.subs({this_var : sumcheck_challenge })
 
-            # Update the weigth polynomial so that at the end we only need to add
+            # Update the weight polynomial so that at the end we only need to add
             # swift combination rounds
             weight_update = self.weight_coefficient().subs( {this_var : sumcheck_challenge })
             self.weight_poly = self.weight_var*weight_update
 
         skip_var = self.polyvars[len(self.sumcheck_challenges)]
 
-        # Get the sumcheck round polynomial by skipping the first veriable from updated sumcheck polynomial
+        # Get the Sumcheck round polynomial by skipping the first Variable from updated Sumcheck polynomial
         result = self.do_hypercube_sum([skip_var])
         interminate = result.variables()[0]
         self.claimed_sum = result.subs({ interminate : 0}) + result.subs({ interminate : 1})
@@ -399,8 +409,8 @@ class WhirVerifier:
                 weight_polynomial : Polynomial,
                 ntt_omega : FiniteField,              # must have order 2^k
                 claimed_sum : FiniteField,            # Claimed value of sum
-                fold_factor : int = 2,                # Determines sumcheck rounds
-                shift_query_count : int = 2,          # Number of shift queries to make
+                fold_factor : int = 2,                # Determines Sumcheck rounds
+                shift_query_count : int = 5,          # Number of shift queries to make
                 ntt_omega_order : int = None,         # Multiplicative order of generator
                 hypercube = [0,1]                     # Hypercube to sum over
     ):
@@ -441,7 +451,7 @@ class WhirVerifier:
         claimed_sum = self.claimed_sum
 
         if print_round_poly:
-                print(f"Current sumcheck claim: {self.claimed_sum}")
+                print(f"Current Sumcheck claim: {self.claimed_sum}")
 
         polyvars = self.polyvars()
 
@@ -472,7 +482,7 @@ class WhirVerifier:
         self.claimed_sum = claimed_sum
 
         if print_round_poly:
-                print(f"Updated sumcheck claim: {self.claimed_sum}")
+                print(f"Updated Sumcheck claim: {self.claimed_sum}")
 
     def virtual_shift_response(self,
                                last_round : WhirRound,
@@ -539,11 +549,11 @@ class WhirVerifier:
         self.claimed_sum += h_update
 
         if trace:
-            print(f"    V> Updated sumcheck claim: {self.claimed_sum}")
+            print(f"    V> Updated Sumcheck claim: {self.claimed_sum}")
 
     def fold_check(self, prover: WhirRound, shift_query_count : int, trace=True):
         gamma = self.Fq.random_element()         # This should be sent after OOD response
-        ood_challenge = self.Fq.random_element() # TODO: Check it's not in evalualation domain
+        ood_challenge = self.Fq.random_element() # TODO: Check it's not in evaluation domain
 
         fold_factor = 2**self.schk_rounds
         assert prover.multi_order % fold_factor == 0
@@ -559,7 +569,7 @@ class WhirVerifier:
             print(f"Shift queries: {shift_queries}")
             print(f"Combination randomness 𝛾: {gamma}")
 
-        prover_fold = prover.fold_round(gamma, ood_challenge, shift_queries)
+        prover_fold = prover.fold_round(gamma, ood_challenge, shift_queries, trace=trace)
 
         last_round = prover_fold.last_round
         new_round = prover_fold.this_round
@@ -590,7 +600,7 @@ class WhirVerifier:
 
             if trace:
                 print("\n----- Next OOD + STIR Round -----\n")
-            current_round = self.fold_check(current_round, self.shift_query_count)
+            current_round = self.fold_check(current_round, self.shift_query_count, trace=trace)
 
         if trace:
             print("\n----- Final Round -----\n")
@@ -625,7 +635,7 @@ class WhirVerifier:
 if __name__ == '__main__':
     from proth_primes import proth_in_range
 
-    def test_whir(variables_count = 10, rate_factor=8, fold_factor = 4, shift_query_count = 2):
+    def test_whir(variables_count = 10, rate_factor=8, fold_factor = 4, shift_query_count = 10, trace=True):
         (p, cofactor, twodicity) = proth_in_range(15, 15, 27,27)
         Fq = GF(p)
 
@@ -647,7 +657,7 @@ if __name__ == '__main__':
 
         print(f"TEST SETUP:")
         print(f"    Finite Field: {Fq} ({cofactor}⋅2^{twodicity} + 1)")
-        print(f"    RS Generator: {omega}, multiplicatie order: {mult_order} (2^{mult_order_log})")
+        print(f"    RS Generator: {omega}, multiplicative order: {mult_order} (2^{mult_order_log})")
         print(f"    Polynomial Variable: {input_poly.variables()}")
         print(f"    PCS Evaluation point: {evaluation_point}")
         print(f"    PCS Evaluation claim: {pcs_claim}")
@@ -657,7 +667,7 @@ if __name__ == '__main__':
         wr = WhirRound(input_poly, weight_poly, omega, pcs_claim)
         wv = WhirVerifier(weight_poly, omega, pcs_claim, fold_factor, shift_query_count)
 
-        assert wv.validate_pcs_claim(wr)
+        assert wv.validate_pcs_claim(wr, trace)
 
 
-    test_whir(variables_count=8)
+    test_whir(variables_count=10)

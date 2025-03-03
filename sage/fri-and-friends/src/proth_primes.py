@@ -74,7 +74,7 @@ def proth_in_range(cofactor_min, cofactor_max, twodicity_min, twodicity_max) -> 
             else:
                 return (key*(2**v) + 1, key, v)
     
-    raise ValueError(f"No proth prime found with multiplicative co-factor in the range ({cofactor_min}, {cofactor_max}) and multiplicative twoadic valuation in the range ({twodicity_min}, {twodicity_max}) found")
+    raise ValueError(f"No proth prime found with multiplicative co-factor in the range ({cofactor_min}, {cofactor_max}) and multiplicative two-adic valuation in the range ({twodicity_min}, {twodicity_max}) found")
 
 
 if __name__=='__main__':
