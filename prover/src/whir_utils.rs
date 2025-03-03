@@ -11,6 +11,24 @@ use crate::utils::next_power_of_two;
 use whir::parameters::default_max_pow;
 use whir::parameters::MultivariateParameters;
 use whir::parameters::WhirParameters;
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GnarkConfig {
+    pub n_rounds: usize,
+    pub n_vars: usize,
+    pub rate: usize,
+    pub folding_factor: Vec<usize>,
+    pub ood_samples: Vec<usize>,
+    pub num_queries: Vec<usize>,
+    pub pow_bits: Vec<i32>,
+    pub final_queries: usize,
+    pub final_pow_bits: i32,
+    pub final_folding_pow_bits: i32,
+    pub domain_generator: String,
+    pub io_pattern: String,
+    pub transcript: Vec<u8>,
+    pub transcript_len: usize
+}
 
 /// Command line arguments for WHIR
 #[derive(Parser, Debug)]

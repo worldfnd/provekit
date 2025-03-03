@@ -2,6 +2,9 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 
 use ark_std::Zero;
+use ark_serialize::{CanonicalSerialize, Write};
+use ark_poly::domain::EvaluationDomain;
+use std::fs::File;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
 use nimue::plugins::ark::FieldReader;
@@ -20,12 +23,12 @@ use whir::{
         iopattern::WhirIOPattern,
         parameters::WhirConfig, prover::Prover,
         verifier::Verifier, 
-        Statement,
     },
-    
+    whir::statement::{Statement, StatementVerifier, Weights, VerifierWeights},
 };
 use prover::utils::*;
 use prover::whir_utils::*;
+use prover::whir_utils::GnarkConfig;
 use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
@@ -76,10 +79,37 @@ fn main() {
     // check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
     
     z = pad_to_power_of_two(z);
-    let (proof, merlin, statement, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
+    let (proof, merlin, statement_verifier, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
+    
+    let mut proof_bytes = vec![];
+    proof.serialize_compressed(&mut proof_bytes).unwrap();
+    let mut file = File::create("proof").unwrap();
+    file.write_all(&proof_bytes).expect("REASON");
+
+    let gnark_config = GnarkConfig{
+        n_rounds: whir_params.n_rounds(),
+        rate: whir_params.starting_log_inv_rate,
+        n_vars: whir_params.mv_parameters.num_variables,
+        folding_factor: (0..whir_params.n_rounds())
+            .map(|round| whir_params.folding_factor.at_round(round))
+            .collect(),
+        ood_samples: whir_params.round_parameters.iter().map(|x| x.ood_samples).collect(),
+        num_queries: whir_params.round_parameters.iter().map(|x| x.num_queries).collect(),
+        pow_bits: whir_params.round_parameters.iter().map(|x| x.pow_bits as i32).collect(),
+        final_queries: whir_params.final_queries,
+        final_pow_bits: whir_params.final_pow_bits as i32,
+        final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
+        domain_generator: format!("{}", whir_params.starting_domain.backing_domain.group_gen()),
+        io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
+        transcript: merlin.transcript().to_vec(),
+        transcript_len: merlin.transcript().to_vec().len()
+    };
+
+    let mut file_params = File::create("params").unwrap();
+    file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("REASON");
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
-    run_whir_pcs_verifier(whir_params, proof, arthur, statement);
+    run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
 }
 
 fn run_sumcheck_prover(
@@ -155,7 +185,7 @@ fn run_whir_pcs_prover(
 ) -> (
     WhirProof<SkyscraperMerkleConfig, Field256>, 
     Merlin<SkyscraperSponge, Field256>,
-    Statement<Field256>,
+    StatementVerifier<Field256>,
     WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     IOPattern::<SkyscraperSponge, Field256>, 
 ) {   
@@ -172,7 +202,7 @@ fn run_whir_pcs_prover(
     let points: Vec<_> = (0..args.num_evaluations)
         .map(|i| MultilinearPoint(vec![Field256::from(i as u64); args.num_variables]))
         .collect();
-    let evaluations = points
+    let evaluations : Vec<Field256> = points
         .iter()
         .map(|point| fhat_z.evaluate_at_extension(point))
         .collect();
@@ -191,10 +221,20 @@ fn run_whir_pcs_prover(
 
     // println!("{:?}", computed_evals);
 
-    let statement = Statement {
-        points,
-        evaluations,
-    };
+    let mut statement = Statement::<Field256>::new(args.num_variables);
+    let mut statement_verifier= StatementVerifier::<Field256>::new(args.num_variables);
+
+    for (point, eval) in points.iter().zip(evaluations) {
+        // let eval = polynomial.evaluate_at_extension(point);
+        let weights = Weights::evaluation(point.clone());
+        statement.add_constraint(weights, eval);
+        let weights_verifier = VerifierWeights::evaluation(point.clone());
+        statement_verifier.add_constraint(weights_verifier, eval);
+    }
+    // let statement = Statement {
+    //     points,
+    //     evaluations,
+    // };
 
     let committer = Committer::new(params.clone());
     
@@ -203,10 +243,10 @@ fn run_whir_pcs_prover(
     let prover = Prover(params.clone());
 
     let proof = prover
-        .prove(&mut merlin, statement.clone(), witness)
+        .prove(&mut merlin, &mut statement.clone(), witness)
         .unwrap();
     
-    (proof, merlin, statement, params, io)
+    (proof, merlin, statement_verifier, params, io)
 }
 
 fn run_sumcheck_verifier(
@@ -240,7 +280,7 @@ fn run_whir_pcs_verifier(
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
-    statement: Statement<Field256>,
+    statement: StatementVerifier<Field256>,
 ) { 
     println!("=========================================");
     println!("Running Verifier - Whir Commitment ");
