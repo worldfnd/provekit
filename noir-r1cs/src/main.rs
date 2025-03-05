@@ -129,7 +129,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     witness[0] = Some(FieldElement::one()); // Constant
 
     // Inputs
-    // witness[430] because of private_inputs
     for (witness_idx, original_witness_idx) in private_inputs
         .iter()
         .zip(private_inputs_original_witnesses.iter())
@@ -175,9 +174,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .collect::<Vec<_>>();
 
     dbg!(&witness);
-    println!("witness: {:?}", witness[1]);
-    println!("witness: {:?}", witness[2]);
-    println!("witness: {:?}", witness[430]);
 
     for (_, f) in witness_stack.clone().into_iter() {
         // make sure f appears in witness
