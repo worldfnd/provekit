@@ -5,7 +5,7 @@ use {
         native_types::{Expression, Witness},
         AcirField, FieldElement,
     },
-    std::collections::BTreeMap,
+    std::{collections::BTreeMap, ops::Neg},
 };
 
 /// Represents a R1CS constraint system.
@@ -117,6 +117,7 @@ impl R1CS {
 
     /// Add an ACIR assert zero constraint.
     pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
+        // println!("expr {:?}", expr);
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
@@ -149,11 +150,11 @@ impl R1CS {
         linear.extend(
             expr.linear_combinations
                 .iter()
-                .map(|term| (term.0, self.map_witness(term.1))),
+                .map(|term| (term.0.neg(), self.map_witness(term.1))),
         );
 
         // Add constant by multipliying with constant value one.
-        linear.push((expr.q_c, self.witness_one()));
+        linear.push((expr.q_c.neg(), self.witness_one()));
 
         // Add a single linear constraint
         // We could avoid this by substituting back into the last multiplication
