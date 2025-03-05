@@ -1,4 +1,5 @@
 #[allow(missing_docs)]
+use ark_poly::domain::EvaluationDomain;
 use whir::crypto::fields::Field256;
 use ark_std::str::FromStr;
 use serde::Deserialize;
@@ -7,7 +8,13 @@ use ruint_macro::uint;
 use crate::skyscraper::skyscraper::uint_to_field;
 use ark_std::{Zero, One};
 use std::fs::File;
-
+use whir::whir::parameters::WhirConfig;
+use crate::skyscraper::skyscraper_for_whir::SkyscraperMerkleConfig;
+use crate::skyscraper::skyscraper_pow::SkyscraperPoW;
+use nimue::Merlin;
+use crate::skyscraper::skyscraper::SkyscraperSponge;
+use nimue::IOPattern;
+use crate::whir_utils::GnarkConfig;
 
 /// Convert vector string to vector field
 pub fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
@@ -200,4 +207,26 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
         alpha_c[cell.signal] += eq_alpha[cell.constraint] * cell.value;
     }
     (alpha_a, alpha_b, alpha_c)
+}
+
+/// Generates config used for Gnark circuit
+pub fn generate_gnark_config(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>) -> GnarkConfig {
+    GnarkConfig{
+        n_rounds: whir_params.n_rounds(),
+        rate: whir_params.starting_log_inv_rate,
+        n_vars: whir_params.mv_parameters.num_variables,
+        folding_factor: (0..whir_params.n_rounds())
+            .map(|round| whir_params.folding_factor.at_round(round))
+            .collect(),
+        ood_samples: whir_params.round_parameters.iter().map(|x| x.ood_samples).collect(),
+        num_queries: whir_params.round_parameters.iter().map(|x| x.num_queries).collect(),
+        pow_bits: whir_params.round_parameters.iter().map(|x| x.pow_bits as i32).collect(),
+        final_queries: whir_params.final_queries,
+        final_pow_bits: whir_params.final_pow_bits as i32,
+        final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
+        domain_generator: format!("{}", whir_params.starting_domain.backing_domain.group_gen()),
+        io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
+        transcript: merlin.transcript().to_vec(),
+        transcript_len: merlin.transcript().to_vec().len()
+    }
 }

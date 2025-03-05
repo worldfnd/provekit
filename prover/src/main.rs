@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 use ark_std::Zero;
 use ark_serialize::{CanonicalSerialize, Write};
-use ark_poly::domain::EvaluationDomain;
 use whir::poly_utils::evals::EvaluationsList;
 use std::fs::File;
 use nimue::{Merlin, Arthur};
@@ -27,7 +26,6 @@ use whir::{
 };
 use prover::utils::*;
 use prover::whir_utils::*;
-use prover::whir_utils::GnarkConfig;
 use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
@@ -56,25 +54,7 @@ fn main() {
     let mut file = File::create("proof").unwrap();
     file.write_all(&proof_bytes).expect("REASON");
     
-
-    let gnark_config = GnarkConfig{
-        n_rounds: whir_params.n_rounds(),
-        rate: whir_params.starting_log_inv_rate,
-        n_vars: whir_params.mv_parameters.num_variables,
-        folding_factor: (0..whir_params.n_rounds())
-            .map(|round| whir_params.folding_factor.at_round(round))
-            .collect(),
-        ood_samples: whir_params.round_parameters.iter().map(|x| x.ood_samples).collect(),
-        num_queries: whir_params.round_parameters.iter().map(|x| x.num_queries).collect(),
-        pow_bits: whir_params.round_parameters.iter().map(|x| x.pow_bits as i32).collect(),
-        final_queries: whir_params.final_queries,
-        final_pow_bits: whir_params.final_pow_bits as i32,
-        final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
-        domain_generator: format!("{}", whir_params.starting_domain.backing_domain.group_gen()),
-        io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript: merlin.transcript().to_vec(),
-        transcript_len: merlin.transcript().to_vec().len()
-    };
+    let gnark_config = generate_gnark_config(&whir_params, &merlin, &io);
 
     let mut file_params = File::create("params").unwrap();
     file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("REASON");
