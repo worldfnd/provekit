@@ -84,7 +84,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
 
     let witness_stack = witness_stack.pop().unwrap().witness;
-    println!("witness_stack {:?}", witness_stack);
+    // println!("witness_stack {:?}", witness_stack);
 
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
