@@ -23,3 +23,6 @@ noirc_artifacts.workspace = true
 noirc_abi.workspace = true
 noirc_printable_type.workspace = true
 rand.workspace = true
+
+flate2 = "1.0"
+bincode = "1.3"

@@ -5,7 +5,7 @@ mod utils;
 
 use {
     self::{compiler::R1CS, sparse_matrix::SparseMatrix},
-    acir::{AcirField, FieldElement},
+    acir::{native_types::Witness, AcirField, FieldElement},
     anyhow::{ensure, Context, Result as AnyResult},
     argh::FromArgs,
     noirc_artifacts::program::ProgramArtifact,
@@ -13,7 +13,7 @@ use {
     std::{fs::File, iter::zip, path::PathBuf, vec},
     tracing::{info, level_filters::LevelFilter},
     tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter},
-    utils::PrintAbi,
+    utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
 
 /// Simple program to greet a person
@@ -78,6 +78,16 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         main.opcodes.len()
     );
 
+    // sanity check that the witness are consistent with the ones given by the
+    // original noir program
+    let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
+        deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
+
+    let witness_stack = witness_stack.pop().unwrap().witness;
+    println!("witness_stack0: {:?}", witness_stack[&Witness(0)]);
+    println!("witness_stack1: {:?}", witness_stack[&Witness(1)]);
+    println!("witness_stack2: {:?}", witness_stack[&Witness(2)]);
+
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
@@ -98,7 +108,10 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     let private_inputs = main
         .private_parameters
         .iter()
-        .map(|w| r1cs.map_witness(*w))
+        .map(|w| {
+            println!("w is {:?}", w);
+            r1cs.map_witness(*w)
+        })
         .collect::<Vec<_>>();
 
     info!(
@@ -115,8 +128,16 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     witness[0] = Some(FieldElement::one()); // Constant
 
     // Inputs
-    witness[1] = Some(FieldElement::from(1234_u32)); // a
-    witness[2] = Some(FieldElement::from(5678_u32)); // b
+    // witness[430] because of private_inputs
+    witness[1] = Some(FieldElement::from(1_u32)); // a
+    witness[2] = Some(FieldElement::from(2_u32)); // b
+    witness[430] = Some(
+        FieldElement::try_from_str(
+            "0x0e90c132311e864e0c8bca37976f28579a2dd9436bbc11326e21ec7c00cea5b2",
+        )
+        .unwrap(),
+    );
+    println!("witness[430] {:?}", witness[430]);
 
     // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
     for row in 0..r1cs.constraints {
@@ -141,13 +162,42 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
 
     // Complete witness with entropy.
     // TODO: Use better entropy source and proper sampling.
-    let mut rng = rand::rng();
+    let mut rng = rand::thread_rng();
     let witness = witness
         .iter()
-        .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.random::<u128>())))
+        .map(|f| {
+            f.unwrap_or_else(|| {
+                println!("randomizing");
+                FieldElement::from(rng.gen::<u128>())
+            })
+        })
         .collect::<Vec<_>>();
 
     dbg!(&witness);
+    println!("witness: {:?}", witness[1]);
+    println!("witness: {:?}", witness[2]);
+    println!("witness: {:?}", witness[430]);
+
+    for (_, f) in witness_stack.clone().into_iter() {
+        // make sure f appears in witness
+        assert!(witness.iter().find(|w| f == **w).is_some());
+    }
+
+    // actually check the witness
+    r1cs.remap
+        .iter()
+        .for_each(|(original_witness_index, index_in_r1cs_w)| {
+            println!("original_witness_index: {}", original_witness_index);
+            println!(
+                "witness_stack[&Witness(*original_witness_index as u32)]: {:?}",
+                witness_stack[&Witness(*original_witness_index as u32)]
+            );
+            println!("witness[*index_in_r1cs_w]: {:?}", witness[*index_in_r1cs_w]);
+            assert_eq!(
+                witness_stack[&Witness(*original_witness_index as u32)],
+                witness[*index_in_r1cs_w]
+            );
+        });
 
     // Verify
     let a = mat_mul(&r1cs.a, &witness);
