@@ -183,3 +183,21 @@ pub fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
         acc * (r * alpha + (Field256::from(1) - r) * (Field256::from(1)-alpha))
     })
 }
+
+/// Calculates a random row of R1CS matrix extension. Made possible due to sparseness. 
+pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
+    let mut alpha_a = vec![Field256::from(0); r1cs.num_variables];
+    let mut alpha_b = vec![Field256::from(0); r1cs.num_variables];
+    let mut alpha_c = vec![Field256::from(0); r1cs.num_variables];
+    for cell in &r1cs.a {
+        alpha_a[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    for cell in &r1cs.b {
+        alpha_b[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    for cell in &r1cs.c {
+        alpha_c[cell.signal] += eq_alpha[cell.constraint] * cell.value;
+    }
+    (alpha_a, alpha_b, alpha_c)
+}

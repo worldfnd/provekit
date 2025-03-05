@@ -13,20 +13,36 @@ use whir::parameters::MultivariateParameters;
 use whir::parameters::WhirParameters;
 use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
+
+/// Configuration for Gnark
 pub struct GnarkConfig {
+    /// number of rounds
     pub n_rounds: usize,
+    /// number of variables
     pub n_vars: usize,
+    /// rate
     pub rate: usize,
+    /// folding factor
     pub folding_factor: Vec<usize>,
+    /// out of domain samples
     pub ood_samples: Vec<usize>,
+    /// number of queries
     pub num_queries: Vec<usize>,
+    /// proof of work bits
     pub pow_bits: Vec<i32>,
+    /// final queries
     pub final_queries: usize,
+    /// final proof of work bits
     pub final_pow_bits: i32,
+    /// final folding proof of work bits
     pub final_folding_pow_bits: i32,
+    /// domain generator string
     pub domain_generator: String,
+    /// nimue input output pattern
     pub io_pattern: String,
+    /// transcript in byte form
     pub transcript: Vec<u8>,
+    /// length of the transcript
     pub transcript_len: usize
 }
 

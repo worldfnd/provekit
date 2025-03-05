@@ -1,11 +1,9 @@
-#![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
-use ark_ff::Field;
+#![allow(dead_code)]
 use ark_std::Zero;
 use ark_serialize::{CanonicalSerialize, Write};
 use ark_poly::domain::EvaluationDomain;
 use whir::poly_utils::evals::EvaluationsList;
-use core::num;
 use std::fs::File;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
@@ -19,7 +17,6 @@ use prover::skyscraper::{
 };
 use whir::{
     crypto::fields::Field256,
-    poly_utils::{coeffs::CoefficientList, MultilinearPoint},
     whir::{
         committer::Committer,
         iopattern::WhirIOPattern,
@@ -35,36 +32,11 @@ use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
 
-fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
-    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
-    let mut alpha_a = vec![Field256::from(0); r1cs.num_variables];
-    let mut alpha_b = vec![Field256::from(0); r1cs.num_variables];
-    let mut alpha_c = vec![Field256::from(0); r1cs.num_variables];
-    for cell in &r1cs.a {
-        alpha_a[cell.signal] += eq_alpha[cell.constraint] * cell.value;
-    }
-    for cell in &r1cs.b {
-        alpha_b[cell.signal] += eq_alpha[cell.constraint] * cell.value;
-    }
-    for cell in &r1cs.c {
-        alpha_c[cell.signal] += eq_alpha[cell.constraint] * cell.value;
-    }
-    (alpha_a, alpha_b, alpha_c)
-}
-
-
-// fn check_last_sumcheck(a: &Vec<Field256>, b: &Vec<Field256>, c: &Vec<Field256>, z: &Vec<Field256>, r: &Vec<Field256>, alpha: &Vec<Field256>) {
-//     let a = calculate_dot_product(a, z);
-//     let b = calculate_dot_product(b, z);
-//     let c = calculate_dot_product(c, z);
-//     let eq = calculate_eq(r, alpha);
-// }
-
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (r1cs, witness) = parse_matrices_and_witness("./prover/disclose_wrencher.json");
-    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, mut z, m) = calculate_witness_bounds(&r1cs, witness);
-    let (whir_args, whir_params) = parse_args(z.len());
+    let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
+    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = calculate_witness_bounds(&r1cs, witness);
+    let (_whir_args, whir_params) = parse_args(z.len());
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
         .add_rand(m)
@@ -75,17 +47,9 @@ fn main() {
 
     let merlin = io.to_merlin();
     let (merlin, alpha, r, last_sum) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
-    // println!("Alpha: {:?}, r: {:?}", alpha, r);
     let (a_alpha, b_alpha, c_alpha) = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
-    
-    // check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
-    
-    z = pad_to_power_of_two(z);
-    let a_alpha = pad_to_power_of_two(a_alpha);
-    let b_alpha = pad_to_power_of_two(b_alpha);
-    let c_alpha = pad_to_power_of_two(c_alpha);
     let num_variables = next_power_of_two(z.len());
-    let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
+    let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
     let mut proof_bytes = vec![];
     proof.serialize_compressed(&mut proof_bytes).unwrap();
@@ -185,7 +149,6 @@ fn run_sumcheck_prover(
 }
 
 fn run_whir_pcs_prover(
-    args: Args, 
     io: IOPattern::<SkyscraperSponge, Field256>, 
     z: Vec<Field256>, 
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
@@ -208,6 +171,10 @@ fn run_whir_pcs_prover(
 
     // In appendix a, fhat_z is combination of fhat_v and fhat_w. We should only commit to fhat_w. But for now, we are committing to fhat_z.
     // let fhat_z = CoefficientList::new(z);
+    let z = pad_to_power_of_two(z);
+    let a_alpha = pad_to_power_of_two(alphas.0);
+    let b_alpha = pad_to_power_of_two(alphas.1);
+    let c_alpha = pad_to_power_of_two(alphas.2);
 
     let poly = EvaluationsList::new(z);
     let polynomial = poly.to_coeffs();
@@ -216,15 +183,15 @@ fn run_whir_pcs_prover(
     let witness = committer.commit(&mut merlin, polynomial).unwrap();
     let mut statement = Statement::<Field256>::new(num_variables);
 
-    let linear_claim_weight_a = Weights::linear(EvaluationsList::new(alphas.0));
+    let linear_claim_weight_a = Weights::linear(EvaluationsList::new(a_alpha));
     let sum_a = linear_claim_weight_a.weighted_sum(&poly);
     statement.add_constraint(linear_claim_weight_a, sum_a);
 
-    let linear_claim_weight_b = Weights::linear(EvaluationsList::new(alphas.1));
+    let linear_claim_weight_b = Weights::linear(EvaluationsList::new(b_alpha));
     let sum_b = linear_claim_weight_b.weighted_sum(&poly);
     statement.add_constraint(linear_claim_weight_b, sum_b);
 
-    let linear_claim_weight_c = Weights::linear(EvaluationsList::new(alphas.2));
+    let linear_claim_weight_c = Weights::linear(EvaluationsList::new(c_alpha));
     let sum_c = linear_claim_weight_c.weighted_sum(&poly);
     statement.add_constraint(linear_claim_weight_c, sum_c);
 
