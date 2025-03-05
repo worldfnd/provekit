@@ -1,7 +1,7 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 #![allow(dead_code)]
 use ark_std::Zero;
-use ark_serialize::{CanonicalSerialize, Write};
+use ark_serialize::Write;
 use whir::poly_utils::evals::EvaluationsList;
 use std::fs::File;
 use nimue::{Merlin, Arthur};
@@ -30,6 +30,7 @@ use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
 
+
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
@@ -49,10 +50,7 @@ fn main() {
     let num_variables = next_power_of_two(z.len());
     let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
-    let mut proof_bytes = vec![];
-    proof.serialize_compressed(&mut proof_bytes).unwrap();
-    let mut file = File::create("proof").unwrap();
-    file.write_all(&proof_bytes).expect("REASON");
+    write_proof_bytes_to_file(&proof);
     
     let gnark_config = generate_gnark_config(&whir_params, &merlin, &io);
 

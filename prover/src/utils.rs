@@ -15,6 +15,9 @@ use nimue::Merlin;
 use crate::skyscraper::skyscraper::SkyscraperSponge;
 use nimue::IOPattern;
 use crate::whir_utils::GnarkConfig;
+use whir::whir::WhirProof;
+use std::io::Write;
+use ark_serialize::CanonicalSerialize;
 
 /// Convert vector string to vector field
 pub fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
@@ -229,4 +232,12 @@ pub fn generate_gnark_config(whir_params: &WhirConfig::<Field256, SkyscraperMerk
         transcript: merlin.transcript().to_vec(),
         transcript_len: merlin.transcript().to_vec().len()
     }
+}
+
+/// Writes proof bytes to file
+pub fn write_proof_bytes_to_file(proof: &WhirProof<SkyscraperMerkleConfig, Field256>) {
+    let mut proof_bytes = vec![];
+    proof.serialize_compressed(&mut proof_bytes).unwrap();
+    let mut file = File::create("./prover/proof").unwrap();
+    file.write_all(&proof_bytes).expect("REASON");
 }
