@@ -30,9 +30,10 @@ use itertools::izip;
 
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
-    let (sum_fhat_1, sum_fhat_2, sum_fhat_3, z, m) = calculate_witness_bounds(&r1cs, witness);
+    let (r1cs, z) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
     let (_whir_args, whir_params) = parse_args(z.len());
+    let m = next_power_of_two(r1cs.num_constraints);
+    let num_variables = next_power_of_two(z.len());
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
         .add_rand(m)
@@ -42,9 +43,8 @@ fn main() {
         .clone();
 
     let merlin = io.to_merlin();
-    let (merlin, alpha, r, last_sum) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    let (merlin, alpha, r, last_sum) = run_sumcheck_prover(&r1cs, &z, merlin, m);
     let (a_alpha, b_alpha, c_alpha) = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
-    let num_variables = next_power_of_two(z.len());
     let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
     write_proof_bytes_to_file(&proof);
@@ -57,15 +57,15 @@ fn main() {
 }
 
 fn run_sumcheck_prover(
-    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
-    mut a: Vec<Field256>,
-    mut b: Vec<Field256>,
-    mut c: Vec<Field256>,
+    r1cs: &R1CS,
+    z: &Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
     m: usize,
 ) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>, Field256) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
+    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
+    let (mut a, mut b, mut c) = calculate_witness_bounds(r1cs, z);
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
