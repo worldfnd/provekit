@@ -7,7 +7,6 @@ use whir::whir::parameters::WhirConfig;
 use whir::crypto::fields::Field256;
 use crate::skyscraper::skyscraper_for_whir::SkyscraperMerkleConfig;
 use crate::skyscraper::skyscraper_pow::SkyscraperPoW;
-use crate::utils::next_power_of_two;
 use whir::parameters::default_max_pow;
 use whir::parameters::MultivariateParameters;
 use whir::parameters::WhirParameters;
@@ -58,14 +57,6 @@ pub struct Args {
     #[arg(short = 'p', long)]
     pub pow_bits: Option<usize>,
 
-    /// Number of variables for the extension polynomial
-    #[arg(short = 'd', long, default_value = "20")]
-    pub num_variables: usize,
-
-    /// Number of evaluations in Constrained Reed-Solomon code
-    #[arg(short = 'e', long = "evaluations", default_value = "1")]
-    pub num_evaluations: usize,
-
     /// Rate
     #[arg(short = 'r', long, default_value = "1")]
     pub rate: usize,
@@ -83,27 +74,20 @@ pub struct Args {
     pub fold_optimisation: FoldType,
 }
 
-/// Parse command line parameters and return args and params used for whir
-pub fn parse_args(witness_len: usize) -> (Args, WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) {
+/// Parse command line parameters turn it into whir params
+pub fn parse_args_and_return_whir_params(num_variables: usize) -> WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW> {
     let mut args = Args::parse();
-    
-    args.num_variables = next_power_of_two(witness_len);
+
     if args.pow_bits.is_none() {
-        args.pow_bits = Some(default_max_pow(args.num_variables, args.rate));
+        args.pow_bits = Some(default_max_pow(num_variables, args.rate));
     }
 
     let security_level = args.security_level;
     let pow_bits = args.pow_bits.unwrap();
-    let num_variables = args.num_variables;
     let starting_rate = args.rate;
     let folding_factor = args.folding_factor;
     let fold_optimisation = args.fold_optimisation;
     let soundness_type = args.soundness_type;
-    let num_evaluations = args.num_evaluations;
-
-    if num_evaluations == 0 {
-        println!("Warning: running as PCS but no evaluations specified.");
-    }
 
     let mv_params = MultivariateParameters::<Field256>::new(num_variables);
 
@@ -122,5 +106,5 @@ pub fn parse_args(witness_len: usize) -> (Args, WhirConfig::<Field256, Skyscrape
 
     let params = WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>::new(mv_params, whir_params);
 
-    (args, params)
+    params
 }

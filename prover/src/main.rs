@@ -31,9 +31,9 @@ use itertools::izip;
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let (r1cs, z) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
-    let (_whir_args, whir_params) = parse_args(z.len());
-    let m = next_power_of_two(r1cs.num_constraints);
     let num_variables = next_power_of_two(z.len());
+    let whir_params= parse_args_and_return_whir_params(num_variables);
+    let m = next_power_of_two(r1cs.num_constraints);
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
         .add_rand(m)
