@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-whir = { git = "https://github.com/WizardOfMenlo/whir"}
+whir = { git = "https://github.com/WizardOfMenlo/whir", branch="veljko/gr1cs"}
 ruint = "1.12.3"
 ruint-macro = "1.2.1"
 nimue = { git = "https://github.com/arkworks-rs/nimue", features = ["ark"] }

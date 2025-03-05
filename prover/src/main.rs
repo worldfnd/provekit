@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
-
+use ark_ff::Field;
 use ark_std::Zero;
 use ark_serialize::{CanonicalSerialize, Write};
 use ark_poly::domain::EvaluationDomain;
+use whir::poly_utils::evals::EvaluationsList;
+use core::num;
 use std::fs::File;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
@@ -60,7 +62,7 @@ fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -
 
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
+    let (r1cs, witness) = parse_matrices_and_witness("./prover/disclose_wrencher.json");
     let (sum_fhat_1, sum_fhat_2, sum_fhat_3, mut z, m) = calculate_witness_bounds(&r1cs, witness);
     let (whir_args, whir_params) = parse_args(z.len());
     
@@ -70,21 +72,26 @@ fn main() {
         .commit_statement(&whir_params)
         .add_whir_proof(&whir_params)
         .clone();
-    
+
     let merlin = io.to_merlin();
-    let (merlin, alpha, r) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
+    let (merlin, alpha, r, last_sum) = run_sumcheck_prover(sum_fhat_1, sum_fhat_2, sum_fhat_3, merlin, m);
     // println!("Alpha: {:?}, r: {:?}", alpha, r);
     let (a_alpha, b_alpha, c_alpha) = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
     
     // check_last_sumcheck(&a_alpha, &b_alpha, &c_alpha, &z, &r, &alpha);
     
     z = pad_to_power_of_two(z);
-    let (proof, merlin, statement_verifier, whir_params, io) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin);
+    let a_alpha = pad_to_power_of_two(a_alpha);
+    let b_alpha = pad_to_power_of_two(b_alpha);
+    let c_alpha = pad_to_power_of_two(c_alpha);
+    let num_variables = next_power_of_two(z.len());
+    let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(whir_args, io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
     let mut proof_bytes = vec![];
     proof.serialize_compressed(&mut proof_bytes).unwrap();
     let mut file = File::create("proof").unwrap();
     file.write_all(&proof_bytes).expect("REASON");
+    
 
     let gnark_config = GnarkConfig{
         n_rounds: whir_params.n_rounds(),
@@ -109,7 +116,8 @@ fn main() {
     file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("REASON");
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
-    run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
+    run_whir_pcs_verifier(whir_params, proof, arthur, num_variables, sums.clone());
+    assert_eq!(last_sum, (sums.0 * sums.1 - sums.2) * calculate_eq(&r, &alpha)); 
 }
 
 fn run_sumcheck_prover(
@@ -119,7 +127,7 @@ fn run_sumcheck_prover(
     mut c: Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
     m: usize,
-) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>) {
+) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>, Field256) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
@@ -173,7 +181,7 @@ fn run_sumcheck_prover(
         c = update_boolean_hypercube_values(c, alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
-    (merlin, alpha, r)
+    (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)
 }
 
 fn run_whir_pcs_prover(
@@ -182,12 +190,14 @@ fn run_whir_pcs_prover(
     z: Vec<Field256>, 
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     mut merlin: Merlin<SkyscraperSponge, Field256>, 
+    num_variables: usize,
+    alphas: (Vec<Field256>, Vec<Field256>, Vec<Field256>),
 ) -> (
     WhirProof<SkyscraperMerkleConfig, Field256>, 
     Merlin<SkyscraperSponge, Field256>,
-    StatementVerifier<Field256>,
     WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     IOPattern::<SkyscraperSponge, Field256>, 
+    (Field256, Field256, Field256),
 ) {   
     println!("=========================================");
     println!("Running Prover - Whir Commitment");
@@ -197,48 +207,27 @@ fn run_whir_pcs_prover(
     }
 
     // In appendix a, fhat_z is combination of fhat_v and fhat_w. We should only commit to fhat_w. But for now, we are committing to fhat_z.
-    let fhat_z = CoefficientList::new(z);
+    // let fhat_z = CoefficientList::new(z);
 
-    let points: Vec<_> = (0..args.num_evaluations)
-        .map(|i| MultilinearPoint(vec![Field256::from(i as u64); args.num_variables]))
-        .collect();
-    let evaluations : Vec<Field256> = points
-        .iter()
-        .map(|point| fhat_z.evaluate_at_extension(point))
-        .collect();
-
-    // let computed_evals: Vec<Field256> = (0..(1<<args.num_variables))
-    //     .map(|i| {
-    //         let mut bits = Vec::with_capacity(args.num_variables);
-    //         for j in 0..args.num_variables {
-    //             bits.push(if ((i >> j) & 1) == 1 { Field256::from(1) } else { Field256::from(0) });
-    //         }
-    //         bits.reverse();
-    //         let point = MultilinearPoint(bits);
-    //         fhat_z.evaluate_at_extension(&point)
-    //     })
-    //     .collect();
-
-    // println!("{:?}", computed_evals);
-
-    let mut statement = Statement::<Field256>::new(args.num_variables);
-    let mut statement_verifier= StatementVerifier::<Field256>::new(args.num_variables);
-
-    for (point, eval) in points.iter().zip(evaluations) {
-        // let eval = polynomial.evaluate_at_extension(point);
-        let weights = Weights::evaluation(point.clone());
-        statement.add_constraint(weights, eval);
-        let weights_verifier = VerifierWeights::evaluation(point.clone());
-        statement_verifier.add_constraint(weights_verifier, eval);
-    }
-    // let statement = Statement {
-    //     points,
-    //     evaluations,
-    // };
-
-    let committer = Committer::new(params.clone());
+    let poly = EvaluationsList::new(z);
+    let polynomial = poly.to_coeffs();
     
-    let witness = committer.commit(&mut merlin, fhat_z).unwrap();
+    let committer = Committer::new(params.clone());
+    let witness = committer.commit(&mut merlin, polynomial).unwrap();
+    let mut statement = Statement::<Field256>::new(num_variables);
+
+    let linear_claim_weight_a = Weights::linear(EvaluationsList::new(alphas.0));
+    let sum_a = linear_claim_weight_a.weighted_sum(&poly);
+    statement.add_constraint(linear_claim_weight_a, sum_a);
+
+    let linear_claim_weight_b = Weights::linear(EvaluationsList::new(alphas.1));
+    let sum_b = linear_claim_weight_b.weighted_sum(&poly);
+    statement.add_constraint(linear_claim_weight_b, sum_b);
+
+    let linear_claim_weight_c = Weights::linear(EvaluationsList::new(alphas.2));
+    let sum_c = linear_claim_weight_c.weighted_sum(&poly);
+    statement.add_constraint(linear_claim_weight_c, sum_c);
+
 
     let prover = Prover(params.clone());
 
@@ -246,7 +235,7 @@ fn run_whir_pcs_prover(
         .prove(&mut merlin, &mut statement.clone(), witness)
         .unwrap();
     
-    (proof, merlin, statement_verifier, params, io)
+    (proof, merlin, params, io, (sum_a, sum_b, sum_c))
 }
 
 fn run_sumcheck_verifier(
@@ -271,7 +260,6 @@ fn run_sumcheck_verifier(
         assert_eq!(saved_val_for_sumcheck_equality_assertion, hhat_i_at_zero + hhat_i_at_one);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
         println!("Verfier Sumcheck: Round {i} Completed");
-
     }
     arthur
 }
@@ -280,12 +268,18 @@ fn run_whir_pcs_verifier(
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
-    statement: StatementVerifier<Field256>,
+    num_variables: usize, 
+    sums: (Field256, Field256, Field256),
 ) { 
     println!("=========================================");
     println!("Running Verifier - Whir Commitment ");
+    let mut statement_verifier= StatementVerifier::<Field256>::new(num_variables);
+    let linear_claim_weight_verifier = VerifierWeights::linear(num_variables, None);
+    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums.0);
+    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums.1);
+    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums.2);
     let verifier = Verifier::new(params);
-    verifier.verify(&mut arthur, &statement, &proof).unwrap();
+    verifier.verify(&mut arthur, &statement_verifier, &proof).unwrap();
 }
 
 
