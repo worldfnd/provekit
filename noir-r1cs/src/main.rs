@@ -84,13 +84,14 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
 
     let witness_stack = witness_stack.pop().unwrap().witness;
-    println!("witness_stack0: {:?}", witness_stack[&Witness(0)]);
-    println!("witness_stack1: {:?}", witness_stack[&Witness(1)]);
-    println!("witness_stack2: {:?}", witness_stack[&Witness(2)]);
+    println!("witness_stack {:?}", witness_stack);
 
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
+
+    // just checking the private inputs for now
+    let mut private_inputs_original_witnesses = vec![];
 
     // Collect inputs and outputs
     let public_inputs = main
@@ -109,7 +110,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .private_parameters
         .iter()
         .map(|w| {
-            println!("w is {:?}", w);
+            private_inputs_original_witnesses.push(w);
             r1cs.map_witness(*w)
         })
         .collect::<Vec<_>>();
@@ -129,15 +130,15 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
 
     // Inputs
     // witness[430] because of private_inputs
-    witness[1] = Some(FieldElement::from(1_u32)); // a
-    witness[2] = Some(FieldElement::from(2_u32)); // b
-    witness[430] = Some(
-        FieldElement::try_from_str(
-            "0x0e90c132311e864e0c8bca37976f28579a2dd9436bbc11326e21ec7c00cea5b2",
-        )
-        .unwrap(),
-    );
-    println!("witness[430] {:?}", witness[430]);
+    for (witness_idx, original_witness_idx) in private_inputs
+        .iter()
+        .zip(private_inputs_original_witnesses.iter())
+    {
+        println!("witness_idx {:?}", witness_idx);
+        println!("original_witness_idx {:?}", original_witness_idx);
+        println!("value {:?}", witness_stack[original_witness_idx]);
+        witness[*witness_idx] = Some(witness_stack[original_witness_idx])
+    }
 
     // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
     for row in 0..r1cs.constraints {
