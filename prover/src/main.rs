@@ -1,9 +1,7 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
 #![allow(dead_code)]
 use ark_std::Zero;
-use ark_serialize::Write;
 use whir::poly_utils::evals::EvaluationsList;
-use std::fs::File;
 use nimue::{Merlin, Arthur};
 use nimue::IOPattern;
 use nimue::plugins::ark::FieldReader;
@@ -30,7 +28,6 @@ use prover::sumcheck_utils::*;
 use whir::whir::WhirProof;
 use itertools::izip;
 
-
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let (r1cs, witness) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
@@ -51,11 +48,8 @@ fn main() {
     let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
     write_proof_bytes_to_file(&proof);
+    write_gnark_parameters_to_file(&whir_params, &merlin, &io);
     
-    let gnark_config = generate_gnark_config(&whir_params, &merlin, &io);
-
-    let mut file_params = File::create("params").unwrap();
-    file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("REASON");
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
     run_whir_pcs_verifier(whir_params, proof, arthur, num_variables, sums.clone());

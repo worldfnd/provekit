@@ -212,9 +212,9 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
     (alpha_a, alpha_b, alpha_c)
 }
 
-/// Generates config used for Gnark circuit
-pub fn generate_gnark_config(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>) -> GnarkConfig {
-    GnarkConfig{
+/// Writes config used for Gnark circuit to a file
+pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>) {
+    let gnark_config = GnarkConfig {
         n_rounds: whir_params.n_rounds(),
         rate: whir_params.starting_log_inv_rate,
         n_vars: whir_params.mv_parameters.num_variables,
@@ -231,13 +231,15 @@ pub fn generate_gnark_config(whir_params: &WhirConfig::<Field256, SkyscraperMerk
         io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript: merlin.transcript().to_vec(),
         transcript_len: merlin.transcript().to_vec().len()
-    }
+    };
+    let mut file_params = File::create("./prover/params").unwrap();
+    file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("Writing gnark parameters to a file failed");
 }
 
-/// Writes proof bytes to file
+/// Writes proof bytes to a file
 pub fn write_proof_bytes_to_file(proof: &WhirProof<SkyscraperMerkleConfig, Field256>) {
     let mut proof_bytes = vec![];
     proof.serialize_compressed(&mut proof_bytes).unwrap();
     let mut file = File::create("./prover/proof").unwrap();
-    file.write_all(&proof_bytes).expect("REASON");
+    file.write_all(&proof_bytes).expect("Writing proof bytes to a file failed");
 }
