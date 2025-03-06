@@ -117,7 +117,6 @@ impl R1CS {
 
     /// Add an ACIR assert zero constraint.
     pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
-        // println!("expr {:?}", expr);
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
@@ -142,7 +141,7 @@ impl R1CS {
         } else if expr.mul_terms.len() == 1 {
             // no need to create intermediate multiplication constraints
             let term = expr.mul_terms[0];
-            a = vec![(FieldElement::one(), self.map_witness(term.1))];
+            a = vec![(FieldElement::from(term.0), self.map_witness(term.1))];
             b = vec![(FieldElement::one(), self.map_witness(term.2))];
         }
 
