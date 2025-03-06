@@ -71,16 +71,14 @@ fn run_sumcheck_prover(
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
     // r is the combination randomness from the 2nd item of the interaction phase 
     let mut r = vec![Field256::from(0); m];
-    let _ = merlin.fill_challenge_scalars(&mut r);
-    // let mut r = (m..2*m).map(|i| {Field256::from(i as u32)}).collect();
+    merlin.fill_challenge_scalars(&mut r).expect("Failed to extract challenge scalars from Merlin");
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
-    // println!("EQ: {:?}", eq);
     let mut alpha = Vec::<Field256>::with_capacity(m);
     for _ in 0..m {        
-        // hhat_i_at_x = hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
+        // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
         let mut hhat_i_at_0 = Field256::from(0);
         let mut hhat_i_at_em1 = Field256::from(0);
-        let mut hhat_i_at_inf = Field256::from(0);
+        let mut hhat_i_at_inf_over_x_cube = Field256::from(0);
         
         let (a0, a1) = a.split_at(a.len() / 2);
         let (b0, b1) = b.split_at(b.len() / 2);
@@ -96,14 +94,14 @@ fn run_sumcheck_prover(
         .for_each(|(a, b, c, eq)| {
             hhat_i_at_0 += *eq.0 * (a.0 * b.0 - c.0);
             hhat_i_at_em1 += (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
-            hhat_i_at_inf += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
+            hhat_i_at_inf_over_x_cube += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
         });
         
         let mut hhat_i_coeffs = vec![Field256::from(0); 4];
 
         hhat_i_coeffs[0] = hhat_i_at_0;
         hhat_i_coeffs[2] = HALF * (saved_val_for_sumcheck_equality_assertion + hhat_i_at_em1 - hhat_i_at_0 - hhat_i_at_0 - hhat_i_at_0);
-        hhat_i_coeffs[3] = hhat_i_at_inf;
+        hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube;
         hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion - hhat_i_coeffs[0] - hhat_i_coeffs[0] - hhat_i_coeffs[3] - hhat_i_coeffs[2];
         
         assert_eq!(saved_val_for_sumcheck_equality_assertion, hhat_i_coeffs[0] + hhat_i_coeffs[0] + hhat_i_coeffs[1] + hhat_i_coeffs[2] + hhat_i_coeffs[3]);
