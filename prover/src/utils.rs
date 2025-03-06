@@ -1,23 +1,24 @@
-#[allow(missing_docs)]
-use ark_poly::domain::EvaluationDomain;
-use whir::crypto::fields::Field256;
-use ark_std::str::FromStr;
+use std::{
+    fs::File,
+    io::Write,
+};
 use serde::Deserialize;
-use ark_std::ops::{Add, Mul};
-use ruint_macro::uint;
-use crate::skyscraper::skyscraper::uint_to_field;
-use ark_std::{Zero, One};
-use std::fs::File;
-use whir::whir::parameters::WhirConfig;
-use crate::skyscraper::skyscraper_for_whir::SkyscraperMerkleConfig;
-use crate::skyscraper::skyscraper_pow::SkyscraperPoW;
-use nimue::Merlin;
-use crate::skyscraper::skyscraper::SkyscraperSponge;
-use nimue::IOPattern;
-use crate::whir_utils::GnarkConfig;
-use whir::whir::WhirProof;
-use std::io::Write;
+use ark_std::{Zero, One, str::FromStr, ops::{Add, Mul}};
+use ark_poly::domain::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
+use ruint_macro::uint;
+use nimue::{Merlin, IOPattern};
+use crate::whir_utils::GnarkConfig;
+use whir::{
+    crypto::fields::Field256,
+    whir::{parameters::WhirConfig, WhirProof},
+};
+use crate::skyscraper::{
+    skyscraper::uint_to_field,
+    skyscraper::SkyscraperSponge,
+    skyscraper_for_whir::SkyscraperMerkleConfig,
+    skyscraper_pow::SkyscraperPoW,
+};
 
 /// Convert vector string to vector field
 pub fn stringvec_to_fieldvec(witness: &Vec<String>) -> Vec<Field256> {
@@ -97,22 +98,16 @@ pub struct MatrixCellWithStringValue {
 pub struct R1CSWithWitnessWithStringValue {
     /// Number of public inputs
     pub num_public: usize,
-
     /// Number of variables
     pub num_variables: usize,
-
     /// Number of constraints 
     pub num_constraints: usize,
-
     /// A sparse representation of the matrix A of R1CS
     pub a: Vec<MatrixCellWithStringValue>,
-
     /// A sparse representation of the matrix B of R1CS
     pub b: Vec<MatrixCellWithStringValue>,
-
     /// A sparse representation of the matrix C of R1CS
     pub c: Vec<MatrixCellWithStringValue>,
-
     /// List of witnesses for the R1CS
     pub witnesses: Vec<Vec<String>>,
 }
@@ -121,10 +116,8 @@ pub struct R1CSWithWitnessWithStringValue {
 pub struct MatrixCell {
     /// A constraint can be thought as a row of the matrix
     pub constraint: usize,
-
     /// A signal can be thought as a column of the matrix
     pub signal: usize,
-    
     /// A numerical value of the cell of the matrix
     pub value: Field256,
 }
@@ -133,19 +126,14 @@ pub struct MatrixCell {
 pub struct R1CS {
     /// Number of public inputs
     pub num_public: usize,
-
     /// Number of variables
     pub num_variables: usize,
-
     /// Number of constraints 
     pub num_constraints: usize,
-
     /// A sparse representation of the matrix A of R1CS
     pub a: Vec<MatrixCell>,
-
     /// A sparse representation of the matrix B of R1CS
     pub b: Vec<MatrixCell>,
-
     /// A sparse representation of the matrix C of R1CS
     pub c: Vec<MatrixCell>,
 }
@@ -157,7 +145,7 @@ pub fn eval_qubic_poly(poly: &Vec<Field256>, point: &Field256) -> Field256 {
 }
 
 /// Parse R1CS matrices and the witness from a given file
-pub fn parse_matrices_and_witness (file_path: &str) -> (R1CS, Vec<Field256>) {
+pub fn deserialize_r1cs_and_z (file_path: &str) -> (R1CS, Vec<Field256>) {
     let file = File::open(file_path).expect("Failed to open file");
     let r1cs_with_witness_string: R1CSWithWitnessWithStringValue = serde_json::from_reader(file).expect("Failed to parse JSON with Serde");
     let r1cs = R1CS {

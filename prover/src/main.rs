@@ -1,38 +1,40 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper appendix A
-#![allow(dead_code)]
 use ark_std::Zero;
-use whir::poly_utils::evals::EvaluationsList;
-use nimue::{Merlin, Arthur};
-use nimue::IOPattern;
-use nimue::plugins::ark::FieldReader;
-use nimue::plugins::ark::FieldChallenges;
-use nimue::plugins::ark::FieldWriter;
-use prover::skyscraper::{
-    skyscraper::SkyscraperSponge, 
-    skyscraper_pow::SkyscraperPoW,
-    skyscraper_for_whir::SkyscraperMerkleConfig,
-};
+use itertools::izip;
 use whir::{
     crypto::fields::Field256,
     whir::{
         committer::Committer,
         iopattern::WhirIOPattern,
-        parameters::WhirConfig, prover::Prover,
-        verifier::Verifier, 
+        parameters::WhirConfig,
+        prover::Prover,
+        verifier::Verifier,
+        statement::{Statement, StatementVerifier, Weights, VerifierWeights},
+        WhirProof,
     },
-    whir::statement::{Statement, StatementVerifier, Weights, VerifierWeights},
+    poly_utils::evals::EvaluationsList,
 };
-use prover::utils::*;
-use prover::whir_utils::*;
-use prover::sumcheck_utils::*;
-use whir::whir::WhirProof;
-use itertools::izip;
+use nimue::{
+    Merlin, Arthur,
+    IOPattern,
+    plugins::ark::{FieldReader, FieldChallenges, FieldWriter},
+};
+use prover::skyscraper::{
+    skyscraper::SkyscraperSponge, 
+    skyscraper_pow::SkyscraperPoW,
+    skyscraper_for_whir::SkyscraperMerkleConfig,
+};
+use prover::{
+    utils::*, 
+    whir_utils::*, 
+    sumcheck_utils::*,
+};
 
 fn main() {
-    // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (r1cs, z) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
+    let (r1cs, z) = deserialize_r1cs_and_z("./prover/r1cs_sample_bigger.json");
     let num_variables = next_power_of_two(z.len());
-    let whir_params= parse_args_and_return_whir_params(num_variables);
+    let whir_params= parse_cli_args_and_return_whir_params(num_variables);
+    // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let m = next_power_of_two(r1cs.num_constraints);
     
     let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
@@ -152,7 +154,7 @@ fn run_whir_pcs_prover(
     let polynomial = poly.to_coeffs();
     
     let committer = Committer::new(params.clone());
-    let witness = committer.commit(&mut merlin, polynomial).unwrap();
+    let witness = committer.commit(&mut merlin, polynomial).expect("WHIR prover failed to commit");
     let mut statement = Statement::<Field256>::new(num_variables);
 
     let linear_claim_weight_a = Weights::linear(EvaluationsList::new(a_alpha));
@@ -172,7 +174,7 @@ fn run_whir_pcs_prover(
 
     let proof = prover
         .prove(&mut merlin, &mut statement.clone(), witness)
-        .unwrap();
+        .expect("Whir prover failed to generate a proof");
     
     (proof, merlin, params, io, (sum_a, sum_b, sum_c))
 }
@@ -218,7 +220,7 @@ fn run_whir_pcs_verifier(
     statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums.1);
     statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums.2);
     let verifier = Verifier::new(params);
-    verifier.verify(&mut arthur, &statement_verifier, &proof).unwrap();
+    verifier.verify(&mut arthur, &statement_verifier, &proof).expect("Whir verifier failed to verify");
 }
 
 
