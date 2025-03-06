@@ -181,7 +181,7 @@ pub fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
 }
 
 /// Calculates a random row of R1CS matrix extension. Made possible due to sparseness. 
-pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -> (Vec<Field256>, Vec<Field256>, Vec<Field256>) {
+pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1CS) -> [Vec<Field256>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
     let mut alpha_a = vec![Field256::from(0); r1cs.num_variables];
     let mut alpha_b = vec![Field256::from(0); r1cs.num_variables];
@@ -195,7 +195,8 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
     for cell in &r1cs.c {
         alpha_c[cell.signal] += eq_alpha[cell.constraint] * cell.value;
     }
-    (alpha_a, alpha_b, alpha_c)
+    let alphas: [Vec<Field256>; 3] = [alpha_a, alpha_b, alpha_c];
+    alphas
 }
 
 /// Writes config used for Gnark circuit to a file
