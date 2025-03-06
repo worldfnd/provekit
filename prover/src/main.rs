@@ -32,37 +32,33 @@ use prover::{
 
 fn main() {
     let (r1cs, z) = deserialize_r1cs_and_z("./prover/r1cs_sample_bigger.json");
-    let num_variables = next_power_of_two(z.len());
-    let whir_params= parse_cli_args_and_return_whir_params(num_variables);
-    // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let m = next_power_of_two(r1cs.num_constraints);
+    // m is equal to ceiling(log(number of variables in constraint system)). It is equal to the log of the width of the matrices.
+    let m = next_power_of_two(z.len());
+    // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
+    let m_0 = next_power_of_two(r1cs.num_constraints);
+    let whir_params= parse_cli_args_and_return_whir_params(m);
     
-    let io = IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
-        .add_rand(m)
-        .add_sumcheck_polynomials(m)
-        .commit_statement(&whir_params)
-        .add_whir_proof(&whir_params)
-        .clone();
+    let io = create_io_pattern(m_0, &whir_params);
 
     let merlin = io.to_merlin();
-    let (merlin, alpha, r, last_sum) = run_sumcheck_prover(&r1cs, &z, merlin, m);
+    let (merlin, alpha, r, last_sumcheck_val) = run_sumcheck_prover(&r1cs, &z, merlin, m_0);
     let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
-    let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, alphas);
+    let (proof, merlin, whir_params, io, whir_query_answer_sums) = run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
     
     write_proof_bytes_to_file(&proof);
     write_gnark_parameters_to_file(&whir_params, &merlin, &io);
     
     let arthur = io.to_arthur(merlin.transcript());
-    let arthur = run_sumcheck_verifier(m, arthur);
-    run_whir_pcs_verifier(whir_params, proof, arthur, num_variables, sums.clone());
-    assert_eq!(last_sum, (sums[0] * sums[1] - sums[2]) * calculate_eq(&r, &alpha)); 
+    let arthur = run_sumcheck_verifier(m_0, arthur);
+    run_whir_pcs_verifier(whir_params, proof, arthur, m, whir_query_answer_sums.clone());
+    assert_eq!(last_sumcheck_val, (whir_query_answer_sums[0] * whir_query_answer_sums[1] - whir_query_answer_sums[2]) * calculate_eq(&r, &alpha)); 
 }
 
 fn run_sumcheck_prover(
     r1cs: &R1CS,
     z: &Vec<Field256>,
     mut merlin: Merlin<SkyscraperSponge, Field256>,
-    m: usize,
+    m_0: usize,
 ) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>, Field256) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
@@ -70,11 +66,11 @@ fn run_sumcheck_prover(
     let (mut a, mut b, mut c) = calculate_witness_bounds(r1cs, z);
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
     // r is the combination randomness from the 2nd item of the interaction phase 
-    let mut r = vec![Field256::from(0); m];
+    let mut r = vec![Field256::from(0); m_0];
     merlin.fill_challenge_scalars(&mut r).expect("Failed to extract challenge scalars from Merlin");
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
-    let mut alpha = Vec::<Field256>::with_capacity(m);
-    for _ in 0..m {        
+    let mut alpha = Vec::<Field256>::with_capacity(m_0);
+    for _ in 0..m_0 {        
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck polynomial sent by the prover.
         let mut hhat_i_at_0 = Field256::from(0);
         let mut hhat_i_at_em1 = Field256::from(0);
@@ -125,7 +121,7 @@ fn run_whir_pcs_prover(
     z: Vec<Field256>, 
     params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     mut merlin: Merlin<SkyscraperSponge, Field256>, 
-    num_variables: usize,
+    m: usize,
     alphas: [Vec<Field256>; 3],
 ) -> (
     WhirProof<SkyscraperMerkleConfig, Field256>, 
@@ -150,7 +146,7 @@ fn run_whir_pcs_prover(
     let witness = committer.commit(&mut merlin, polynomial)
         .expect("WHIR prover failed to commit");
 
-    let mut statement = Statement::<Field256>::new(num_variables);
+    let mut statement = Statement::<Field256>::new(m);
 
     let sums: [Field256; 3] = alphas.map(|alpha| {
         let weight = Weights::linear(EvaluationsList::new(pad_to_power_of_two(alpha)));
@@ -168,18 +164,18 @@ fn run_whir_pcs_prover(
 }
 
 fn run_sumcheck_verifier(
-    m: usize,
+    m_0: usize,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
 ) -> Arthur<SkyscraperSponge, Field256> {
     println!("=========================================");
     println!("Running Verifier - Sumcheck");
     // r is the combination randomness from the 2nd item of the interaction phase 
-    let mut r = vec![Field256::from(0); m];
+    let mut r = vec![Field256::from(0); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
 
     let mut saved_val_for_sumcheck_equality_assertion = Field256::from(0);
 
-    for i in 0..m {
+    for i in 0..m_0 {
         let mut hhat_i = vec![Field256::from(0); 4];
         let mut alpha_i = vec![Field256::from(0); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
@@ -197,13 +193,13 @@ fn run_whir_pcs_verifier(
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
-    num_variables: usize, 
+    m: usize, 
     sums: [Field256; 3],
 ) { 
     println!("=========================================");
     println!("Running Verifier - Whir Commitment ");
-    let mut statement_verifier= StatementVerifier::<Field256>::new(num_variables);
-    let linear_claim_weight_verifier = VerifierWeights::linear(num_variables, None);
+    let mut statement_verifier= StatementVerifier::<Field256>::new(m);
+    let linear_claim_weight_verifier = VerifierWeights::linear(m, None);
     statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[0]);
     statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[1]);
     statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[2]);
@@ -211,4 +207,10 @@ fn run_whir_pcs_verifier(
     verifier.verify(&mut arthur, &statement_verifier, &proof).expect("Whir verifier failed to verify");
 }
 
-
+fn create_io_pattern(m_0: usize, whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) -> IOPattern::<SkyscraperSponge, Field256>{
+    IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
+        .add_rand(m_0)
+        .add_sumcheck_polynomials(m_0)
+        .commit_statement(&whir_params)
+        .add_whir_proof(&whir_params)
+}
