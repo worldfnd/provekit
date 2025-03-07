@@ -42,7 +42,9 @@ pub struct GnarkConfig {
     /// transcript in byte form
     pub transcript: Vec<u8>,
     /// length of the transcript
-    pub transcript_len: usize
+    pub transcript_len: usize,
+    /// statement evaluations
+    pub statement_evaluations: Vec<String>
 }
 
 /// Command line arguments for WHIR

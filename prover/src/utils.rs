@@ -211,12 +211,12 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
 }
 
 /// Writes config used for Gnark circuit to a file
-pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>) {
+pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: (Field256, Field256, Field256)) {
     let gnark_config = GnarkConfig {
-        n_rounds: whir_params.n_rounds(),
+        n_rounds: whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0,
         rate: whir_params.starting_log_inv_rate,
         n_vars: whir_params.mv_parameters.num_variables,
-        folding_factor: (0..whir_params.n_rounds())
+        folding_factor: (0..(whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0))
             .map(|round| whir_params.folding_factor.at_round(round))
             .collect(),
         ood_samples: whir_params.round_parameters.iter().map(|x| x.ood_samples).collect(),
@@ -228,8 +228,10 @@ pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, Skysc
         domain_generator: format!("{}", whir_params.starting_domain.backing_domain.group_gen()),
         io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript: merlin.transcript().to_vec(),
-        transcript_len: merlin.transcript().to_vec().len()
+        transcript_len: merlin.transcript().to_vec().len(),
+        statement_evaluations: vec![sums.0.to_string(), sums.1.to_string(), sums.2.to_string()]
     };
+    println!("round config {:?}", whir_params.round_parameters);
     let mut file_params = File::create("./prover/params").unwrap();
     file_params.write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes()).expect("Writing gnark parameters to a file failed");
 }

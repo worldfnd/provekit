@@ -30,7 +30,7 @@ use itertools::izip;
 
 fn main() {
     // m is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
-    let (r1cs, z) = parse_matrices_and_witness("./prover/r1cs_sample_bigger.json");
+    let (r1cs, z) = parse_matrices_and_witness("./prover/disclose_wrencher.json");
     let num_variables = next_power_of_two(z.len());
     let whir_params= parse_args_and_return_whir_params(num_variables);
     let m = next_power_of_two(r1cs.num_constraints);
@@ -48,7 +48,7 @@ fn main() {
     let (proof, merlin, whir_params, io, sums) = run_whir_pcs_prover(io, z, whir_params, merlin, num_variables, (a_alpha, b_alpha, c_alpha));
     
     write_proof_bytes_to_file(&proof);
-    write_gnark_parameters_to_file(&whir_params, &merlin, &io);
+    write_gnark_parameters_to_file(&whir_params, &merlin, &io, sums.clone());
     
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m, arthur);
