@@ -200,7 +200,7 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
 }
 
 /// Writes config used for Gnark circuit to a file
-pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: (Field256, Field256, Field256)) {
+pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: [Field256; 3]) {
     let gnark_config = GnarkConfig {
         n_rounds: whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0,
         rate: whir_params.starting_log_inv_rate,
@@ -218,7 +218,7 @@ pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, Skysc
         io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript: merlin.transcript().to_vec(),
         transcript_len: merlin.transcript().to_vec().len(),
-        statement_evaluations: vec![sums.0.to_string(), sums.1.to_string(), sums.2.to_string()]
+        statement_evaluations: vec![sums[0].to_string(), sums[1].to_string(), sums[2].to_string()]
     };
     println!("round config {:?}", whir_params.round_parameters);
     let mut file_params = File::create("./prover/params").unwrap();

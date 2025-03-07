@@ -46,7 +46,7 @@ fn main() {
     let (proof, merlin, whir_params, io, whir_query_answer_sums) = run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
     
     write_proof_bytes_to_file(&proof);
-    write_gnark_parameters_to_file(&whir_params, &merlin, &io, sums.clone());
+    write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone());
     
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m_0, arthur);
