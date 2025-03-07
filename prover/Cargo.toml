@@ -9,13 +9,13 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-whir = { path = "../../WizardOfMenlo/whir"}
+whir = { git = "https://github.com/WizardOfMenlo/whir", branch="veljko/gr1cs"}
 ruint = "1.12.3"
 ruint-macro = "1.2.1"
 nimue = { git = "https://github.com/arkworks-rs/nimue", features = ["ark"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 zeroize = "1.8.1"
-ark-crypto-primitives = { path = "../../crypto-primitives/crypto-primitives"}
+ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 rand = "0.8"
 nimue-pow = { git = "https://github.com/arkworks-rs/nimue"}
 serde = { version = "1.0", features = ["derive"] }
