@@ -1,17 +1,11 @@
-#[allow(missing_docs)]
+use std::borrow::Borrow;
+use rand::Rng;
+use crate::skyscraper::skyscraper::SkyscraperSponge;
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
-    merkle_tree::{
-        Config,
-        IdentityDigestConverter,
-    },
+    merkle_tree::{Config, IdentityDigestConverter},
     Error,
 };
-use crate::skyscraper::skyscraper::SkyscraperSponge;
-use nimue::{Arthur, IOPattern, Merlin, ProofResult};
-use nimue::plugins::ark::{FieldIOPattern, FieldReader, FieldWriter};
-use rand::Rng;
-use std::borrow::Borrow;
 use whir::{
     crypto::fields::Field256,
     whir::{
@@ -19,7 +13,12 @@ use whir::{
         fs_utils::{DigestReader, DigestWriter},
     },
 };
-/// TODO: Add documentation
+use nimue::{
+    Arthur, Merlin, IOPattern, ProofResult,
+    plugins::ark::{FieldIOPattern, FieldReader, FieldWriter},
+};
+
+/// Skyscraper collision-resistant hash
 pub struct SkyscraperCRH;
 
 impl CRHScheme for SkyscraperCRH {
@@ -43,7 +42,7 @@ impl CRHScheme for SkyscraperCRH {
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
-/// TODO: Add documentation
+/// Skyscraper collision-resistant hash for merkle inner hash
 pub struct SkyscraperTwoToOne;
 
 impl TwoToOneCRHScheme for SkyscraperTwoToOne {
@@ -75,8 +74,8 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
     }
 }
 
-#[derive(Clone, Copy)]
 /// Skyscraper configuration for the Merkle hash
+#[derive(Clone, Copy)]
 pub struct SkyscraperMerkleConfig;
 
 impl Config for SkyscraperMerkleConfig {

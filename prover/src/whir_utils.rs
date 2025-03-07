@@ -1,18 +1,23 @@
 use clap::Parser;
-use whir::parameters::{
-    SoundnessType,
-    FoldType,
-};
-use whir::whir::parameters::WhirConfig;
-use whir::crypto::fields::Field256;
-use crate::skyscraper::skyscraper_for_whir::SkyscraperMerkleConfig;
-use crate::skyscraper::skyscraper_pow::SkyscraperPoW;
-use whir::parameters::default_max_pow;
-use whir::parameters::MultivariateParameters;
-use whir::parameters::WhirParameters;
 use serde::{Deserialize, Serialize};
-#[derive(Debug, Serialize, Deserialize)]
+use whir::{
+    crypto::fields::Field256,
+    parameters::{
+        SoundnessType,
+        FoldType,
+        default_max_pow,
+        MultivariateParameters,
+        WhirParameters,
+    },
+    whir::parameters::WhirConfig,
+};
+use crate::skyscraper::{
+    skyscraper_for_whir::SkyscraperMerkleConfig,
+    skyscraper_pow::SkyscraperPoW,
+};
 
+
+#[derive(Debug, Serialize, Deserialize)]
 /// Configuration for Gnark
 pub struct GnarkConfig {
     /// number of rounds
@@ -77,36 +82,27 @@ pub struct Args {
 }
 
 /// Parse command line parameters turn it into whir params
-pub fn parse_args_and_return_whir_params(num_variables: usize) -> WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW> {
+pub fn parse_cli_args_and_return_whir_params(num_variables: usize) -> WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW> {
     let mut args = Args::parse();
 
     if args.pow_bits.is_none() {
         args.pow_bits = Some(default_max_pow(num_variables, args.rate));
     }
 
-    let security_level = args.security_level;
-    let pow_bits = args.pow_bits.unwrap();
-    let starting_rate = args.rate;
-    let folding_factor = args.folding_factor;
-    let fold_optimisation = args.fold_optimisation;
-    let soundness_type = args.soundness_type;
-
     let mv_params = MultivariateParameters::<Field256>::new(num_variables);
 
     let whir_params = WhirParameters::<SkyscraperMerkleConfig, SkyscraperPoW> {
         initial_statement: true,
-        security_level,
-        pow_bits,
-        folding_factor: whir::parameters::FoldingFactor::Constant(folding_factor),
+        security_level: args.security_level,
+        pow_bits: args.pow_bits.unwrap(),
+        folding_factor: whir::parameters::FoldingFactor::Constant(args.folding_factor),
         leaf_hash_params: (),
         two_to_one_params: (),
-        soundness_type,
-        fold_optimisation,
+        soundness_type: args.soundness_type,
+        fold_optimisation: args.fold_optimisation,
         _pow_parameters: Default::default(),
-        starting_log_inv_rate: starting_rate,
+        starting_log_inv_rate: args.rate,
     };
 
-    let params = WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>::new(mv_params, whir_params);
-
-    params
+    WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>::new(mv_params, whir_params)
 }

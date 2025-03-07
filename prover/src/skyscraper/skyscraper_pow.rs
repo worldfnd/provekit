@@ -1,10 +1,14 @@
-use nimue_pow::PowStrategy;
 use ruint::aliases::U256;
 use ruint_macro::uint;
+use nimue_pow::PowStrategy;
 use whir::crypto::fields::Field256;
-use crate::skyscraper::skyscraper::{bigint_from_bytes_le, compress, uint_to_field};
+use crate::skyscraper::skyscraper::{
+    bigint_from_bytes_le,
+    compress,
+    uint_to_field,
+};
 
-/// TODO: Add documentation
+/// Skyscraper proof of work
 #[derive(Clone, Copy)]
 pub struct SkyscraperPoW {
     challenge: Field256,
