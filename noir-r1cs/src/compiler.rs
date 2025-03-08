@@ -45,8 +45,8 @@ impl R1CS {
                     println!("BrilligCall")
                 }
 
-                // Directive is a modern version of Brillig.
-                Opcode::Directive(..) => unimplemented!("Directive"),
+                // // Directive is a modern version of Brillig.
+                // Opcode::Directive(..) => unimplemented!("Directive"),
 
                 // Calls to a function, this is to efficiently represent repeated structure in
                 // circuits. TODO: We need to implement this so we can store
@@ -59,7 +59,9 @@ impl R1CS {
                 Opcode::MemoryInit { .. } => unimplemented!("MemoryInit"),
 
                 // These are calls to built-in functions, for this we need to create.
-                Opcode::BlackBoxFuncCall(_) => unimplemented!("BlackBoxFuncCall"),
+                Opcode::BlackBoxFuncCall(_) => {
+                    println!("BlackBoxFuncCall")
+                }
             }
         }
         println!("self.constraints: {:?}", self.constraints);

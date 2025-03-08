@@ -91,13 +91,17 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
 
     // just checking the private inputs for now
     let mut private_inputs_original_witnesses = vec![];
+    let mut public_inputs_original_witnesses = vec![];
 
     // Collect inputs and outputs
     let public_inputs = main
         .public_parameters
         .0
         .iter()
-        .map(|w| r1cs.map_witness(*w))
+        .map(|w| {
+            public_inputs_original_witnesses.push(w);
+            r1cs.map_witness(*w)
+        })
         .collect::<Vec<_>>();
     let public_outputs = main
         .return_values
@@ -131,6 +135,16 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     for (witness_idx, original_witness_idx) in private_inputs
         .iter()
         .zip(private_inputs_original_witnesses.iter())
+    {
+        println!("witness_idx {:?}", witness_idx);
+        println!("original_witness_idx {:?}", original_witness_idx);
+        println!("value {:?}", witness_stack[original_witness_idx]);
+        witness[*witness_idx] = Some(witness_stack[original_witness_idx])
+    }
+
+    for (witness_idx, original_witness_idx) in public_inputs
+        .iter()
+        .zip(public_inputs_original_witnesses.iter())
     {
         println!("witness_idx {:?}", witness_idx);
         println!("original_witness_idx {:?}", original_witness_idx);
