@@ -42,7 +42,7 @@ impl R1CS {
                 // TODO: Brillig is a VM used to generate witness values. It does not produce
                 // constraints.
                 Opcode::BrilligCall { .. } => {
-                    println!("BrilligCall")
+                    println!("BrilligCall {:?}", opcode)
                 }
 
                 // // Directive is a modern version of Brillig.
@@ -55,8 +55,22 @@ impl R1CS {
                 Opcode::Call { .. } => unimplemented!("Call"),
 
                 // These should be implemented using lookup arguments, or memory checking arguments.
-                Opcode::MemoryOp { .. } => unimplemented!("MemoryOp"),
-                Opcode::MemoryInit { .. } => unimplemented!("MemoryInit"),
+                Opcode::MemoryOp {
+                    block_id,
+                    op,
+                    predicate,
+                } => {
+                    println!("block id {:?} op {:?} pred {:?}", block_id, op, predicate);
+                    println!("op {:?}", opcode);
+                }
+                Opcode::MemoryInit {
+                    block_id,
+                    init,
+                    block_type,
+                } => {
+                    println!("MemoryInit {:?}", opcode);
+                    println!("init {:?}", init)
+                }
 
                 // These are calls to built-in functions, for this we need to create.
                 Opcode::BlackBoxFuncCall(_) => {
@@ -127,7 +141,7 @@ impl R1CS {
         let mut a = vec![];
         let mut b = vec![];
 
-        if expr.mul_terms.len() > 1 {
+        if expr.mul_terms.len() >= 1 {
             // Process all except the last multiplication term
             linear = expr
                 .mul_terms
@@ -153,11 +167,6 @@ impl R1CS {
                 self.map_witness(last_term.1),
             )];
             b = vec![(FieldElement::one(), self.map_witness(last_term.2))];
-        } else if expr.mul_terms.len() == 1 {
-            // no need to create intermediate multiplication constraints
-            let term = expr.mul_terms[0];
-            a = vec![(FieldElement::from(term.0), self.map_witness(term.1))];
-            b = vec![(FieldElement::one(), self.map_witness(term.2))];
         }
 
         // Extend with linear combinations
