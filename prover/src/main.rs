@@ -9,7 +9,7 @@ use whir::{
         parameters::WhirConfig,
         prover::Prover,
         verifier::Verifier,
-        statement::{Statement, StatementVerifier, Weights, VerifierWeights},
+        statement::{Statement, StatementVerifier, Weights},
         WhirProof,
     },
     poly_utils::evals::EvaluationsList,
@@ -43,14 +43,15 @@ fn main() {
     let merlin = io.to_merlin();
     let (merlin, alpha, r, last_sumcheck_val) = run_sumcheck_prover(&r1cs, &z, merlin, m_0);
     let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
-    let (proof, merlin, whir_params, io, whir_query_answer_sums) = run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
+    let (proof, merlin, whir_params, io, whir_query_answer_sums, statement) = run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
     
+    let statement_verifier = StatementVerifier::<Field256>::from_statement(&statement);
     write_proof_bytes_to_file(&proof);
     write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone());
     
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m_0, arthur);
-    run_whir_pcs_verifier(whir_params, proof, arthur, m, whir_query_answer_sums.clone());
+    run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
     assert_eq!(last_sumcheck_val, (whir_query_answer_sums[0] * whir_query_answer_sums[1] - whir_query_answer_sums[2]) * calculate_eq(&r, &alpha)); 
 }
 
@@ -129,6 +130,7 @@ fn run_whir_pcs_prover(
     WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     IOPattern<SkyscraperSponge, Field256>, 
     [Field256; 3], 
+    Statement<Field256>
 ) {   
     println!("=========================================");
     println!("Running Prover - Whir Commitment");
@@ -157,10 +159,10 @@ fn run_whir_pcs_prover(
 
     let prover = Prover(params.clone());
     let proof = prover
-        .prove(&mut merlin, &mut statement.clone(), witness)
+        .prove(&mut merlin, statement.clone(), witness)
         .expect("WHIR prover failed to generate a proof");
     
-    (proof, merlin, params, io, sums)
+    (proof, merlin, params, io, sums, statement)
 }
 
 fn run_sumcheck_verifier(
@@ -193,16 +195,10 @@ fn run_whir_pcs_verifier(
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
     mut arthur: Arthur<SkyscraperSponge, Field256>,
-    m: usize, 
-    sums: [Field256; 3],
+    statement_verifier: StatementVerifier<Field256>
 ) { 
     println!("=========================================");
     println!("Running Verifier - Whir Commitment ");
-    let mut statement_verifier= StatementVerifier::<Field256>::new(m);
-    let linear_claim_weight_verifier = VerifierWeights::linear(m, None);
-    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[0]);
-    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[1]);
-    statement_verifier.add_constraint(linear_claim_weight_verifier.clone(), sums[2]);
     let verifier = Verifier::new(params);
     verifier.verify(&mut arthur, &statement_verifier, &proof).expect("Whir verifier failed to verify");
 }
