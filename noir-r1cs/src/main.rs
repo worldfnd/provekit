@@ -229,6 +229,8 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     // dbg!(&b);
     // dbg!(&c);
 
+    r1cs.write_json_to_file(public_inputs.len(), &witness, "r1cs.json")?;
+
     Ok(())
 }
 

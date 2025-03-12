@@ -5,8 +5,20 @@ use {
         native_types::{Expression, Witness},
         AcirField, FieldElement,
     },
-    std::{collections::BTreeMap, ops::Neg},
+    serde::{Deserialize, Serialize},
+    std::{collections::BTreeMap, fs::File, io::Write, ops::Neg},
 };
+
+#[derive(Serialize)]
+struct JsonR1CS {
+    num_public:      usize,
+    num_variables:   usize,
+    num_constraints: usize,
+    a:               Vec<MatrixEntry>,
+    b:               Vec<MatrixEntry>,
+    c:               Vec<MatrixEntry>,
+    witnesses:       Vec<Vec<String>>,
+}
 
 /// Represents a R1CS constraint system.
 #[derive(Debug, Clone)]
@@ -22,6 +34,13 @@ pub struct R1CS {
     pub constraints: usize,
 }
 
+#[derive(Serialize, Deserialize)]
+struct MatrixEntry {
+    constraint: usize,
+    signal:     usize,
+    value:      String,
+}
+
 impl R1CS {
     pub fn new() -> Self {
         Self {
@@ -32,6 +51,69 @@ impl R1CS {
             remap:       BTreeMap::new(),
             constraints: 0,
         }
+    }
+
+    pub fn to_json(
+        &self,
+        num_public: usize,
+        witness: &[FieldElement],
+    ) -> Result<String, serde_json::Error> {
+        // Convert sparse matrices to vector format
+        let a = self.matrix_to_entries(&self.a);
+        let b = self.matrix_to_entries(&self.b);
+        let c = self.matrix_to_entries(&self.c);
+
+        // Convert witness to string format
+        let witnesses = vec![witness
+            .iter()
+            .map(|w| w.to_string())
+            .collect::<Vec<String>>()];
+
+        let json_r1cs = JsonR1CS {
+            num_public,
+            num_variables: self.witnesses,
+            num_constraints: self.constraints,
+            a,
+            b,
+            c,
+            witnesses,
+        };
+
+        serde_json::to_string_pretty(&json_r1cs)
+    }
+
+    fn matrix_to_entries(&self, matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
+        let mut entries = Vec::new();
+
+        // Iterate through the sparse matrix
+        for row in 0..self.constraints {
+            for (col, value) in matrix.iter_row(row) {
+                if !value.is_zero() {
+                    entries.push(MatrixEntry {
+                        constraint: row,
+                        signal:     col,
+                        value:      value.to_string(),
+                    });
+                }
+            }
+        }
+
+        entries
+    }
+
+    pub fn write_json_to_file(
+        &self,
+        num_public: usize,
+        witness: &[FieldElement],
+        path: &str,
+    ) -> std::io::Result<()> {
+        let json = self
+            .to_json(num_public, witness)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        let mut file = File::create(path)?;
+        file.write_all(json.as_bytes())?;
+        Ok(())
     }
 
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
