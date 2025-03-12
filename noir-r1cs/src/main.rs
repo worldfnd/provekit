@@ -89,6 +89,10 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
 
+    println!("r1cs.a {:?}", r1cs.a);
+    println!("r1cs.b {:?}", r1cs.b);
+    println!("r1cs.c {:?}", r1cs.c);
+
     // just checking the private inputs for now
     let mut private_inputs_original_witnesses = vec![];
     let mut public_inputs_original_witnesses = vec![];
@@ -198,11 +202,11 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .iter()
         .for_each(|(original_witness_index, index_in_r1cs_w)| {
             println!("original_witness_index: {}", original_witness_index);
+            println!("index_in_r1cs_w: {}", index_in_r1cs_w);
             println!(
                 "witness_stack[&Witness(*original_witness_index as u32)]: {:?}",
                 witness_stack[&Witness(*original_witness_index as u32)]
             );
-            println!("witness[*index_in_r1cs_w]: {:?}", witness[*index_in_r1cs_w]);
             assert_eq!(
                 witness_stack[&Witness(*original_witness_index as u32)],
                 witness[*index_in_r1cs_w]

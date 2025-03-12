@@ -101,6 +101,7 @@ impl R1CS {
         b: &[(FieldElement, usize)],
         c: &[(FieldElement, usize)],
     ) {
+        println!("add_constraint");
         let row = self.constraints;
         self.constraints += 1;
         self.a.grow(self.constraints, self.witnesses);
@@ -119,15 +120,19 @@ impl R1CS {
 
     /// Add an ACIR assert zero constraint.
     pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
+        println!("expr {:?}", expr);
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
         let mut a = vec![];
         let mut b = vec![];
+
         if expr.mul_terms.len() > 1 {
+            // Process all except the last multiplication term
             linear = expr
                 .mul_terms
                 .iter()
+                .take(expr.mul_terms.len() - 1)
                 .map(|term| {
                     let a = self.map_witness(term.1);
                     let b = self.map_witness(term.2);
@@ -137,9 +142,17 @@ impl R1CS {
                         &[(FieldElement::one(), b)],
                         &[(FieldElement::one(), c)],
                     );
-                    (term.0, c)
+                    (-term.0, c)
                 })
                 .collect::<Vec<_>>();
+
+            // Handle the last multiplication term directly
+            let last_term = &expr.mul_terms[expr.mul_terms.len() - 1];
+            a = vec![(
+                FieldElement::from(last_term.0),
+                self.map_witness(last_term.1),
+            )];
+            b = vec![(FieldElement::one(), self.map_witness(last_term.2))];
         } else if expr.mul_terms.len() == 1 {
             // no need to create intermediate multiplication constraints
             let term = expr.mul_terms[0];
@@ -153,6 +166,7 @@ impl R1CS {
                 .iter()
                 .map(|term| (term.0.neg(), self.map_witness(term.1))),
         );
+        println!("linear {:?}", linear);
 
         // Add constant by multipliying with constant value one.
         linear.push((expr.q_c.neg(), self.witness_one()));
