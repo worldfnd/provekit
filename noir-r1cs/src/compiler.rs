@@ -197,7 +197,7 @@ impl R1CS {
         b: &[(FieldElement, usize)],
         c: &[(FieldElement, usize)],
     ) {
-        println!("add_constraint");
+        // println!("add_constraint");
         let row = self.constraints;
         self.constraints += 1;
         self.a.grow(self.constraints, self.witnesses);
@@ -216,7 +216,7 @@ impl R1CS {
 
     /// Add an ACIR assert zero constraint.
     pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
-        println!("expr {:?}", expr);
+        // println!("expr {:?}", expr);
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
@@ -257,7 +257,7 @@ impl R1CS {
                 .iter()
                 .map(|term| (term.0.neg(), self.map_witness(term.1))),
         );
-        println!("linear {:?}", linear);
+        // println!("linear {:?}", linear);
 
         // Add constant by multipliying with constant value one.
         linear.push((expr.q_c.neg(), self.witness_one()));

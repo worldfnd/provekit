@@ -89,10 +89,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
 
-    println!("r1cs.a {:?}", r1cs.a);
-    println!("r1cs.b {:?}", r1cs.b);
-    println!("r1cs.c {:?}", r1cs.c);
-
     // just checking the private inputs for now
     let mut private_inputs_original_witnesses = vec![];
     let mut public_inputs_original_witnesses = vec![];
@@ -140,9 +136,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .iter()
         .zip(private_inputs_original_witnesses.iter())
     {
-        println!("witness_idx {:?}", witness_idx);
-        println!("original_witness_idx {:?}", original_witness_idx);
-        println!("value {:?}", witness_stack[original_witness_idx]);
         witness[*witness_idx] = Some(witness_stack[original_witness_idx])
     }
 
@@ -150,9 +143,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .iter()
         .zip(public_inputs_original_witnesses.iter())
     {
-        println!("witness_idx {:?}", witness_idx);
-        println!("original_witness_idx {:?}", original_witness_idx);
-        println!("value {:?}", witness_stack[original_witness_idx]);
         witness[*witness_idx] = Some(witness_stack[original_witness_idx])
     }
 
@@ -173,7 +163,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
             panic!("Could not solve constraint {row}.")
         };
-        eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
+        // eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
         witness[col] = Some(val);
     }
 
@@ -182,12 +172,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     let mut rng = rand::thread_rng();
     let witness = witness
         .iter()
-        .map(|f| {
-            f.unwrap_or_else(|| {
-                println!("randomizing");
-                FieldElement::from(rng.gen::<u128>())
-            })
-        })
+        .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.gen::<u128>())))
         .collect::<Vec<_>>();
 
     dbg!(&witness);
@@ -201,12 +186,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     r1cs.remap
         .iter()
         .for_each(|(original_witness_index, index_in_r1cs_w)| {
-            println!("original_witness_index: {}", original_witness_index);
-            println!("index_in_r1cs_w: {}", index_in_r1cs_w);
-            println!(
-                "witness_stack[&Witness(*original_witness_index as u32)]: {:?}",
-                witness_stack[&Witness(*original_witness_index as u32)]
-            );
             assert_eq!(
                 witness_stack[&Witness(*original_witness_index as u32)],
                 witness[*index_in_r1cs_w]
