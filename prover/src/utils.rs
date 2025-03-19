@@ -200,8 +200,9 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
 }
 
 /// Writes config used for Gnark circuit to a file
-pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: [Field256; 3]) {
+pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: [Field256; 3], m_0: usize) {
     let gnark_config = GnarkConfig {
+        log_num_constraints: m_0,
         n_rounds: whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0,
         rate: whir_params.starting_log_inv_rate,
         n_vars: whir_params.mv_parameters.num_variables,

@@ -20,6 +20,8 @@ use crate::skyscraper::{
 #[derive(Debug, Serialize, Deserialize)]
 /// Configuration for Gnark
 pub struct GnarkConfig {
+    /// log of number of constraints in R1CS
+    pub log_num_constraints: usize,
     /// number of rounds
     pub n_rounds: usize,
     /// number of variables

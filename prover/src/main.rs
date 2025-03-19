@@ -31,7 +31,7 @@ use prover::{
 };
 
 fn main() {
-    let (r1cs, z) = deserialize_r1cs_and_z("./prover/r1cs_sample_bigger.json");
+    let (r1cs, z) = deserialize_r1cs_and_z("./prover/disclose_wrencher.json");
     // m is equal to ceiling(log(number of variables in constraint system)). It is equal to the log of the width of the matrices.
     let m = next_power_of_two(z.len());
     // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
@@ -47,7 +47,7 @@ fn main() {
     
     let statement_verifier = StatementVerifier::<Field256>::from_statement(&statement);
     write_proof_bytes_to_file(&proof);
-    write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone());
+    write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone(), m_0);
     
     let arthur = io.to_arthur(merlin.transcript());
     let arthur = run_sumcheck_verifier(m_0, arthur);
