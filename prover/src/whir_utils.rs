@@ -81,12 +81,19 @@ pub struct Args {
     /// Fold type
     #[arg(long = "fold_type", default_value = "ProverHelps")]
     pub fold_optimisation: FoldType,
+
+    /// Fold type
+    #[arg(long = "input_file_path", default_value = "./prover/disclose_wrencher.json")]
+    pub input_file_path: String,
 }
 
-/// Parse command line parameters turn it into whir params
-pub fn parse_cli_args_and_return_whir_params(num_variables: usize) -> WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW> {
-    let mut args = Args::parse();
+/// Parse command line parameters 
+pub fn parse_cli_args() -> Args {
+    Args::parse()
+}
 
+/// Generate whir params
+pub fn generate_whir_params(num_variables: usize, mut args: Args) -> WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW> {
     if args.pow_bits.is_none() {
         args.pow_bits = Some(default_max_pow(num_variables, args.rate));
     }
