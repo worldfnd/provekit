@@ -43,6 +43,32 @@ impl<F> SparseMatrix<F> {
         assert!(col < self.cols, "column index out of bounds");
         self.entries.insert((row, col), value);
     }
+
+    /// Return a dense representation of the matrix.
+    fn to_dense(&self) -> Vec<Vec<F>>
+    where
+        F: Clone,
+    {
+        let mut result = vec![vec![self.default.clone(); self.cols]; self.rows];
+        for ((i, j), value) in self.entries.iter() {
+            result[*i][*j] = value.clone();
+        }
+        result
+    }
+
+    /// Pretty print a dense representation of the matrix.
+    pub fn pretty_print(&self)
+    where
+        F: std::fmt::Debug, F: Clone,
+    {
+        let dense = self.to_dense();
+        for row in dense.iter() {
+            for value in row.iter() {
+                print!("{:?}\t", value);
+            }
+            println!();
+        }
+    }
 }
 
 impl<F: PartialEq> SparseMatrix<F> {

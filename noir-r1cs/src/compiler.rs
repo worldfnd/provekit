@@ -116,13 +116,33 @@ impl R1CS {
         Ok(())
     }
 
+    /// Pretty print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
+    pub fn pretty_print(&self) {
+        if std::cmp::max(self.constraints, self.witnesses) > 15 {
+            println!("Matrices too large to print");
+            return;
+        }
+        println!("ACIR witness <-> R1CS witness mapping:");
+        for (k, v) in &self.remap {
+            println!("{k} <-> {v}");
+        }
+        println!("Matrix A:");
+        self.a.pretty_print();
+        println!("Matrix B:");
+        self.b.pretty_print();
+        println!("Matrix C:");
+        self.c.pretty_print();
+    }
+
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_assert_zero(expr),
 
-                // TODO: Brillig is a VM used to generate witness values. It does not produce
-                // constraints.
+                // Brillig instructions are used by the ACVM to solve for ACIR witness values.
+                // Corresponding ACIR constraints are by Noir as AssertZeros, and we map all ACIR
+                // witness values to R1CS witness values, so we can safely ignore
+                // Opcode::BrilligCall.
                 Opcode::BrilligCall { .. } => {
                     println!("BrilligCall {:?}", opcode)
                 }
@@ -160,7 +180,6 @@ impl R1CS {
                 }
             }
         }
-        println!("self.constraints: {:?}", self.constraints);
     }
 
     /// Index of the constant one witness
