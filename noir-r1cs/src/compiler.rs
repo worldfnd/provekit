@@ -121,8 +121,10 @@ impl R1CS {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_assert_zero(expr),
 
-                // TODO: Brillig is a VM used to generate witness values. It does not produce
-                // constraints.
+                // Brillig instructions are used by the ACVM to solve for ACIR witness values.
+                // Corresponding ACIR constraints are by Noir as AssertZeros, and we map all ACIR
+                // witness values to R1CS witness values, so we can safely ignore
+                // Opcode::BrilligCall.
                 Opcode::BrilligCall { .. } => {
                     println!("BrilligCall {:?}", opcode)
                 }
@@ -160,7 +162,6 @@ impl R1CS {
                 }
             }
         }
-        println!("self.constraints: {:?}", self.constraints);
     }
 
     /// Index of the constant one witness
@@ -266,5 +267,25 @@ impl R1CS {
         // We could avoid this by substituting back into the last multiplication
         // constraint.
         self.add_constraint(&a, &b, &linear);
+    }
+}
+
+/// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
+impl std::fmt::Display for R1CS {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if std::cmp::max(self.constraints, self.witnesses) > 15 {
+            println!("Matrices too large to print");
+            return Ok(());
+        }
+        writeln!(f, "ACIR witness <-> R1CS witness mapping:")?;
+        for (k, v) in &self.remap {
+            writeln!(f, "{k} <-> {v}")?;
+        }
+        writeln!(f, "Matrix A:")?;
+        write!(f, "{}", self.a)?;
+        writeln!(f, "Matrix B:")?;
+        write!(f, "{}", self.b)?;
+        writeln!(f, "Matrix C:")?;
+        write!(f, "{}", self.c)
     }
 }

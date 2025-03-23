@@ -1,6 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    ops::{Add, AddAssign, Index, IndexMut, Mul},
+    collections::BTreeMap, fmt::{Debug, Display, Formatter}, ops::{Add, AddAssign, Index, IndexMut, Mul}
 };
 
 /// A sparse matrix with elements of type `F`.
@@ -42,6 +41,33 @@ impl<F> SparseMatrix<F> {
         assert!(row < self.rows, "row index out of bounds");
         assert!(col < self.cols, "column index out of bounds");
         self.entries.insert((row, col), value);
+    }
+
+    /// Return a dense representation of the matrix.
+    /// (This is a helper method for debugging.)
+    fn to_dense(&self) -> Vec<Vec<F>>
+    where
+        F: Clone,
+    {
+        let mut result = vec![vec![self.default.clone(); self.cols]; self.rows];
+        for ((i, j), value) in self.entries.iter() {
+            result[*i][*j] = value.clone();
+        }
+        result
+    }
+}
+
+/// Print a dense representation of the matrix, for debugging.
+impl<F: Debug + Clone> Display for SparseMatrix<F> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let dense = self.to_dense();
+        for row in dense.iter() {
+            for value in row.iter() {
+                write!(f, "{:?}\t", value)?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
     }
 }
 
