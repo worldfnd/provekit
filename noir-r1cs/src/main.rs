@@ -97,7 +97,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
-    r1cs.pretty_print();
+    print!("{}", r1cs);
 
     info!(
         "R1CS: {} witnesses, {} constraints",

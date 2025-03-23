@@ -116,24 +116,6 @@ impl R1CS {
         Ok(())
     }
 
-    /// Pretty print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
-    pub fn pretty_print(&self) {
-        if std::cmp::max(self.constraints, self.witnesses) > 15 {
-            println!("Matrices too large to print");
-            return;
-        }
-        println!("ACIR witness <-> R1CS witness mapping:");
-        for (k, v) in &self.remap {
-            println!("{k} <-> {v}");
-        }
-        println!("Matrix A:");
-        self.a.pretty_print();
-        println!("Matrix B:");
-        self.b.pretty_print();
-        println!("Matrix C:");
-        self.c.pretty_print();
-    }
-
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
         for opcode in circuit.opcodes.iter() {
             match opcode {
@@ -285,5 +267,25 @@ impl R1CS {
         // We could avoid this by substituting back into the last multiplication
         // constraint.
         self.add_constraint(&a, &b, &linear);
+    }
+}
+
+/// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
+impl std::fmt::Display for R1CS {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        if std::cmp::max(self.constraints, self.witnesses) > 15 {
+            println!("Matrices too large to print");
+            return Ok(());
+        }
+        writeln!(f, "ACIR witness <-> R1CS witness mapping:")?;
+        for (k, v) in &self.remap {
+            writeln!(f, "{k} <-> {v}")?;
+        }
+        writeln!(f, "Matrix A:")?;
+        write!(f, "{}", self.a)?;
+        writeln!(f, "Matrix B:")?;
+        write!(f, "{}", self.b)?;
+        writeln!(f, "Matrix C:")?;
+        write!(f, "{}", self.c)
     }
 }
