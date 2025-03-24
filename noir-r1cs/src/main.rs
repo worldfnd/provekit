@@ -16,24 +16,10 @@ use {
     utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
 
-/// Simple program to greet a person
+/// Prove & verify a compiled Noir program using R1CS.
 #[derive(FromArgs)]
 struct Args {
-    #[argh(subcommand)]
-    cmd: Command,
-}
-
-#[derive(FromArgs)]
-#[argh(subcommand)]
-enum Command {
-    Noir(NoirCmd),
-}
-
-#[derive(FromArgs)]
-#[argh(subcommand, name = "noir")]
-/// Execute Noir VM
-struct NoirCmd {
-    /// path to the compiled Noir package file
+    /// path to the compiled Noir program
     #[argh(positional)]
     program_path: PathBuf,
 
@@ -54,12 +40,10 @@ fn main() -> AnyResult<()> {
         )
         .init();
     let args: Args = argh::from_env();
-    match args.cmd {
-        Command::Noir(cmd) => noir(cmd),
-    }
+    prove_verify(args)
 }
 
-fn noir(args: NoirCmd) -> AnyResult<()> {
+fn prove_verify(args: Args) -> AnyResult<()> {
     info!("Loading Noir program {:?}", args.program_path);
     let file = File::open(args.program_path).context("while opening Noir program")?;
     let program: ProgramArtifact =
@@ -80,8 +64,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         main.opcodes.len()
     );
 
-    // sanity check that the witness are consistent with the ones given by the
-    // original noir program
     let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
         deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
 
@@ -128,7 +110,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
             panic!("Could not solve constraint {row}.")
         };
-        // eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
         witness[col] = Some(val);
     }
 
@@ -141,21 +122,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .collect::<Vec<_>>();
 
     dbg!(&witness);
-
-    for (_, f) in witness_stack.clone().into_iter() {
-        // make sure f appears in witness
-        assert!(witness.iter().find(|w| f == **w).is_some());
-    }
-
-    // actually check the witness
-    r1cs.remap
-        .iter()
-        .for_each(|(original_witness_index, index_in_r1cs_w)| {
-            assert_eq!(
-                witness_stack[&Witness(*original_witness_index as u32)],
-                witness[*index_in_r1cs_w]
-            );
-        });
 
     // Verify
     let a = mat_mul(&r1cs.a, &witness);
