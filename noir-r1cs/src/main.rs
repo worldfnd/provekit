@@ -99,11 +99,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     r1cs.add_circuit(main);
     print!("{}", r1cs);
 
-    info!(
-        "R1CS: {} witnesses, {} constraints",
-        r1cs.witnesses, r1cs.constraints
-    );
-
     // Compute a satisfying witness
     let mut witness = vec![None; r1cs.witnesses];
     witness[0] = Some(FieldElement::one()); // Constant
@@ -173,10 +168,6 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .for_each(|(row, ((&a, &b), &c))| {
             assert_eq!(a * b, c, "Constraint {row} failed");
         });
-
-    // dbg!(&a);
-    // dbg!(&b);
-    // dbg!(&c);
 
     r1cs.write_json_to_file(num_public_parameters, &witness, "r1cs.json")?;
 

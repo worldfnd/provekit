@@ -273,6 +273,10 @@ impl R1CS {
 /// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
 impl std::fmt::Display for R1CS {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f,
+            "R1CS: {} witnesses, {} constraints",
+            self.witnesses, self.constraints
+        )?;
         if std::cmp::max(self.constraints, self.witnesses) > 15 {
             println!("Matrices too large to print");
             return Ok(());
