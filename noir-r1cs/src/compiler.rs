@@ -2,11 +2,11 @@ use {
     crate::SparseMatrix,
     acir::{
         circuit::{Circuit, Opcode},
-        native_types::{Expression, Witness},
+        native_types::{Expression, Witness as AcirWitness},
         AcirField, FieldElement,
     },
     serde::{Deserialize, Serialize},
-    std::{collections::BTreeMap, fs::File, io::Write, ops::Neg},
+    std::{collections::BTreeMap, fmt::{Debug, Formatter}, fs::File, io::Write, ops::Neg, vec},
 };
 
 #[derive(Serialize)]
@@ -20,6 +20,24 @@ struct JsonR1CS {
     witnesses:       Vec<Vec<String>>,
 }
 
+#[derive(Debug, Clone)]
+/// Indicates how to solve for an R1CS witness value
+pub enum WitnessBuilder {
+    /// Constant value, used for the constant one witness & e.g. static lookups
+    Constant(FieldElement),
+    /// A witness value carried over from the ACIR circuit
+    Acir(usize),
+    /// A Fiat-Shamir challenge value
+    Challenge,
+    /// The inverse of the value at a specified witness index
+    Inverse(usize),
+    /// Solvable is for values that can be solved for using the R1CS constraint with the specified index
+    Solvable(usize),
+    // TODO come back to this - it complicates Debug, Clone, etc.
+    // /// Solve using a closure
+    // Closure(Box<dyn Fn(&[FieldElement]) -> FieldElement>),
+}
+
 /// Represents a R1CS constraint system.
 #[derive(Debug, Clone)]
 pub struct R1CS {
@@ -27,11 +45,11 @@ pub struct R1CS {
     pub b: SparseMatrix<FieldElement>,
     pub c: SparseMatrix<FieldElement>,
 
-    // Remapping of witness indices to the r1cs_witness array
-    pub witnesses: usize,
-    pub remap:     BTreeMap<usize, usize>,
-
-    pub constraints: usize,
+    /// Indicates how to solve for each R1CS witness
+    pub witness_builders: Vec<WitnessBuilder>,
+    
+    /// Maps indices of ACIR witnesses to indices of R1CS witnesses
+    acir_to_r1cs_witness_map: BTreeMap<usize, usize>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -47,9 +65,8 @@ impl R1CS {
             a:           SparseMatrix::new(0, 1, FieldElement::zero()),
             b:           SparseMatrix::new(0, 1, FieldElement::zero()),
             c:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            witnesses:   1,
-            remap:       BTreeMap::new(),
-            constraints: 0,
+            witness_builders:   vec![WitnessBuilder::Constant(FieldElement::one())],
+            acir_to_r1cs_witness_map: BTreeMap::new(),
         }
     }
 
@@ -58,10 +75,6 @@ impl R1CS {
         num_public: usize,
         witness: &[FieldElement],
     ) -> Result<String, serde_json::Error> {
-        // Convert sparse matrices to vector format
-        let a = self.matrix_to_entries(&self.a);
-        let b = self.matrix_to_entries(&self.b);
-        let c = self.matrix_to_entries(&self.c);
 
         // Convert witness to string format
         let witnesses = vec![witness
@@ -71,34 +84,28 @@ impl R1CS {
 
         let json_r1cs = JsonR1CS {
             num_public,
-            num_variables: self.witnesses,
-            num_constraints: self.constraints,
-            a,
-            b,
-            c,
+            num_variables: self.witness_builders.len(),
+            num_constraints: self.num_constraints(),
+            a: Self::matrix_to_entries(&self.a),
+            b: Self::matrix_to_entries(&self.b),
+            c: Self::matrix_to_entries(&self.c),
             witnesses,
         };
 
         serde_json::to_string_pretty(&json_r1cs)
     }
 
-    fn matrix_to_entries(&self, matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
-        let mut entries = Vec::new();
-
-        // Iterate through the sparse matrix
-        for row in 0..self.constraints {
-            for (col, value) in matrix.iter_row(row) {
-                if !value.is_zero() {
-                    entries.push(MatrixEntry {
-                        constraint: row,
-                        signal:     col,
-                        value:      value.to_string(),
-                    });
-                }
+    fn matrix_to_entries(matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
+        matrix.entries.iter().filter_map(|((row, col), value)| {
+            if !value.is_zero() {
+                Some(MatrixEntry {
+                    constraint: *row,
+                    signal:     *col,
+                    value:      value.to_string(),
+                });
             }
-        }
-
-        entries
+            None
+        }).collect()
     }
 
     pub fn write_json_to_file(
@@ -164,60 +171,91 @@ impl R1CS {
         }
     }
 
-    /// Index of the constant one witness
+    /// Index of the constant 1 witness
     pub fn witness_one(&self) -> usize {
         0
     }
 
-    /// Create a new witness variable
-    pub fn new_witness(&mut self) -> usize {
-        let value = self.witnesses;
-        self.witnesses += 1;
-        self.a.grow(self.constraints, self.witnesses);
-        self.b.grow(self.constraints, self.witnesses);
-        self.c.grow(self.constraints, self.witnesses);
-        value
+    /// The number of witnesses in the R1CS instance.
+    /// This includes the constant one witness.
+    pub fn num_witnesses(&self) -> usize {
+        self.witness_builders.len()
     }
 
-    /// Map ACIR Witnesses to r1cs_witness indices
-    pub fn map_witness(&mut self, witness: Witness) -> usize {
-        self.remap
-            .get(&witness.as_usize())
+    /// The number of constraints in the R1CS instance.
+    pub fn num_constraints(&self) -> usize {
+        self.a.rows
+    }
+
+    // Increase the size of the R1CS matrices to the specified dimensions.
+    fn grow_matrices(&mut self, num_rows: usize, num_cols: usize) {
+        self.a.grow(num_rows, num_cols);
+        self.b.grow(num_rows, num_cols);
+        self.c.grow(num_rows, num_cols);
+    }
+
+    // Grow the R1CS matrices to accomodate one new witness. Returns the index of the new witness.
+    fn new_witness_index(&mut self) -> usize {
+        let num_rows = self.num_constraints();
+        let next_witness_idx = self.num_witnesses();
+        self.grow_matrices(num_rows, self.num_witnesses() + 1);
+        next_witness_idx
+    }
+
+    // Grow the R1CS matrices to accomodate one new constraint.  Returns the index of the new constraint.
+    fn new_constraint_index(&mut self) -> usize {
+        let next_constraint_idx = self.num_constraints();
+        let num_cols = self.witness_builders.len();
+        self.grow_matrices(self.num_constraints() + 1, num_cols);
+        next_constraint_idx
+    }
+
+    // Add a new witness to the R1CS instance, returning its index.
+    fn add_witness(&mut self, witness: WitnessBuilder) -> usize {
+        let witness_idx = self.new_witness_index();
+        // Add the witness to the mapping if it is an ACIR witness
+        if let WitnessBuilder::Acir(acir_witness) = witness {
+            self.acir_to_r1cs_witness_map.insert(acir_witness, witness_idx);
+        }
+        self.witness_builders.push(witness);
+        debug_assert_eq!(self.witness_builders.len(), witness_idx + 1);
+        witness_idx
+    }
+
+    // Return the R1CS witness index corresponding to the AcirWitness provided, creating a new R1CS
+    // witness (and builder) if required.
+    fn to_r1cs_witness(&mut self, acir_witness: AcirWitness) -> usize {
+        self.acir_to_r1cs_witness_map
+            .get(&acir_witness.as_usize())
             .copied()
             .unwrap_or_else(|| {
-                let value = self.new_witness();
-                self.remap.insert(witness.as_usize(), value);
-                value
+                self.add_witness(WitnessBuilder::Acir(acir_witness.as_usize()))
             })
     }
 
-    /// Add an R1CS constraint.
-    pub fn add_constraint(
+    // Set the values of an R1CS constraint at the specified constraint index.
+    // Implementation note: does not create a new constraint index, since the constraint idx is
+    // sometimes required earlier in the calling context, see e.g. Solvable.
+    fn set_constraint(
         &mut self,
-        a: &[(FieldElement, usize)],
-        b: &[(FieldElement, usize)],
-        c: &[(FieldElement, usize)],
+        constraint_idx: usize,
+        az: &[(FieldElement, usize)],
+        bz: &[(FieldElement, usize)],
+        cz: &[(FieldElement, usize)],
     ) {
-        // println!("add_constraint");
-        let row = self.constraints;
-        self.constraints += 1;
-        self.a.grow(self.constraints, self.witnesses);
-        self.b.grow(self.constraints, self.witnesses);
-        self.c.grow(self.constraints, self.witnesses);
-        for (c, col) in a.iter().copied() {
-            self.a.set(row, col, c)
+        for (coeff, witness_idx) in az.iter().copied() {
+            self.a.set(constraint_idx, witness_idx, coeff)
         }
-        for (c, col) in b.iter().copied() {
-            self.b.set(row, col, c)
+        for (coeff, witness_idx) in bz.iter().copied() {
+            self.b.set(constraint_idx, witness_idx, coeff)
         }
-        for (c, col) in c.iter().copied() {
-            self.c.set(row, col, c)
+        for (coeff, witness_idx) in cz.iter().copied() {
+            self.c.set(constraint_idx, witness_idx, coeff)
         }
     }
 
-    /// Add an ACIR assert zero constraint.
-    pub fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
-        // println!("expr {:?}", expr);
+    // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
+    fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
@@ -230,35 +268,36 @@ impl R1CS {
                 .mul_terms
                 .iter()
                 .take(expr.mul_terms.len() - 1)
-                .map(|term| {
-                    let a = self.map_witness(term.1);
-                    let b = self.map_witness(term.2);
-                    let c = self.new_witness();
-                    self.add_constraint(
-                        &[(FieldElement::one(), a)],
-                        &[(FieldElement::one(), b)],
-                        &[(FieldElement::one(), c)],
+                .map(|(coeff, acir_witness0, acir_witness1)| {
+                    let witness0 = self.to_r1cs_witness(*acir_witness0);
+                    let witness1 = self.to_r1cs_witness(*acir_witness1);
+                    let constraint_idx = self.new_constraint_index();
+                    let multn_result = self.add_witness(WitnessBuilder::Solvable(constraint_idx));
+                    self.set_constraint(
+                        constraint_idx,
+                        &[(FieldElement::one(), witness0)],
+                        &[(FieldElement::one(), witness1)],
+                        &[(FieldElement::one(), multn_result)],
                     );
-                    (-term.0, c)
+                    (-*coeff, multn_result)
                 })
                 .collect::<Vec<_>>();
 
             // Handle the last multiplication term directly
-            let last_term = &expr.mul_terms[expr.mul_terms.len() - 1];
+            let (coeff, acir_witness0, acir_witness1) = &expr.mul_terms[expr.mul_terms.len() - 1];
             a = vec![(
-                FieldElement::from(last_term.0),
-                self.map_witness(last_term.1),
+                FieldElement::from(*coeff),
+                self.to_r1cs_witness(*acir_witness0),
             )];
-            b = vec![(FieldElement::one(), self.map_witness(last_term.2))];
+            b = vec![(FieldElement::one(), self.to_r1cs_witness(*acir_witness1))];
         }
 
         // Extend with linear combinations
         linear.extend(
             expr.linear_combinations
                 .iter()
-                .map(|term| (term.0.neg(), self.map_witness(term.1))),
+                .map(|(coeff, acir_witness)| (coeff.neg(), self.to_r1cs_witness(*acir_witness))),
         );
-        // println!("linear {:?}", linear);
 
         // Add constant by multipliying with constant value one.
         linear.push((expr.q_c.neg(), self.witness_one()));
@@ -266,23 +305,24 @@ impl R1CS {
         // Add a single linear constraint
         // We could avoid this by substituting back into the last multiplication
         // constraint.
-        self.add_constraint(&a, &b, &linear);
+        let constraint_idx = self.new_constraint_index();
+        self.set_constraint(constraint_idx, &a, &b, &linear);
     }
 }
 
 /// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
 impl std::fmt::Display for R1CS {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(f,
             "R1CS: {} witnesses, {} constraints",
-            self.witnesses, self.constraints
+            self.witness_builders.len(), self.num_constraints()
         )?;
-        if std::cmp::max(self.constraints, self.witnesses) > 15 {
+        if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 15 {
             println!("Matrices too large to print");
             return Ok(());
         }
         writeln!(f, "ACIR witness <-> R1CS witness mapping:")?;
-        for (k, v) in &self.remap {
+        for (k, v) in &self.acir_to_r1cs_witness_map {
             writeln!(f, "{k} <-> {v}")?;
         }
         writeln!(f, "Matrix A:")?;

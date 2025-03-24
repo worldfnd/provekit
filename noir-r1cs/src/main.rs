@@ -4,16 +4,7 @@ mod sparse_matrix;
 mod utils;
 
 use {
-    self::{compiler::R1CS, sparse_matrix::SparseMatrix},
-    acir::{native_types::Witness, AcirField, FieldElement},
-    anyhow::{ensure, Context, Result as AnyResult},
-    argh::FromArgs,
-    noirc_artifacts::program::ProgramArtifact,
-    rand::Rng,
-    std::{fs::File, path::PathBuf, vec},
-    tracing::{info, level_filters::LevelFilter},
-    tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter},
-    utils::{file_io::deserialize_witness_stack, PrintAbi},
+    self::{compiler::R1CS, sparse_matrix::SparseMatrix}, acir::{native_types::Witness as AcirWitness, AcirField, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::WitnessBuilder, noirc_artifacts::program::ProgramArtifact, rand::Rng, std::{fs::File, path::PathBuf, vec}, tracing::{field::Field, info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
 };
 
 /// Prove & verify a compiled Noir program using R1CS.
@@ -72,7 +63,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     if num_acir_witnesses < 15 {
         println!("ACIR witness values:");
         (0..num_acir_witnesses).for_each(|i| {
-            println!("{}: {:?}", i, witness_stack[&Witness(i as u32)]);
+            println!("{}: {:?}", i, witness_stack[&AcirWitness(i as u32)]);
         });
     }
 
@@ -82,39 +73,53 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     print!("{}", r1cs);
 
     // Compute a satisfying witness
-    let mut witness = vec![None; r1cs.witnesses];
-    witness[0] = Some(FieldElement::one()); // Constant
-
-    // Fill in R1CS witness values with the pre-computed ACIR witness values
-    for (acir_witness_idx, witness_idx) in &r1cs.remap {
-        witness[*witness_idx] = Some(witness_stack[&Witness(*acir_witness_idx as u32)]);
-    }
-
-    // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
-    for row in 0..r1cs.constraints {
-        let [a, b, c] =
-            [&r1cs.a, &r1cs.b, &r1cs.c].map(|mat| sparse_dot(mat.iter_row(row), &witness));
-        let (val, mat) = match (a, b, c) {
-            (Some(a), Some(b), Some(c)) => {
-                assert_eq!(a * b, c, "Constraint {row} failed");
-                continue;
-            }
-            (Some(a), Some(b), None) => (a * b, &r1cs.c),
-            (Some(a), None, Some(c)) => (c / a, &r1cs.b),
-            (None, Some(b), Some(c)) => (c / b, &r1cs.a),
-            _ => {
-                dbg!(a, b, c);
-                panic!("Can not solve constraint {row}.")
+    // FIXME where does this belong?  witness_builders should be a private field of R1CS.
+    let mut rng = rand::thread_rng();
+    let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses()];
+    r1cs.witness_builders.iter().enumerate().for_each(|(witness_idx, witness_builder)| {
+        assert_eq!(witness[witness_idx], None, "Witness {witness_idx} already set.");
+        let value = match witness_builder {
+            WitnessBuilder::Constant(c) => *c,
+            WitnessBuilder::Acir(acir_witness_idx) => {
+                witness_stack[&AcirWitness(*acir_witness_idx as u32)]
             },
+            WitnessBuilder::Challenge => {
+                // FIXME use a transcript to generate the challenge!
+                FieldElement::from(rng.gen::<u128>())
+            },
+            WitnessBuilder::Inverse(operand_idx) => {
+                let operand: FieldElement = witness[*operand_idx].unwrap();
+                operand.inverse()
+            },
+            WitnessBuilder::Solvable(constraint_idx) => {
+                // FIXME: copied from earlier code, but could be more general?  e.g. when both a and c contain reference the same (as yet unknown) witness index.
+                let [a, b, c] =
+                    [&r1cs.a, &r1cs.b, &r1cs.c].map(|mat| sparse_dot(mat.iter_row(*constraint_idx), &witness));
+                let (val, mat) = match (a, b, c) {
+                    (Some(_), Some(_), Some(_)) => {
+                        panic!("Constraint {constraint_idx} contains no unknowns.")
+                    }
+                    (Some(a), Some(b), None) => (a * b, &r1cs.c),
+                    (Some(a), None, Some(c)) => (c / a, &r1cs.b),
+                    (None, Some(b), Some(c)) => (c / b, &r1cs.a),
+                    _ => {
+                        dbg!(a, b, c);
+                        panic!("Can not solve constraint {constraint_idx}.")
+                    },
+                };
+                let Some((solved_witness_idx, value)) = solve_dot(mat.iter_row(*constraint_idx), &witness, val) else {
+                    panic!("Could not solve constraint {constraint_idx}.")
+                };
+                assert_eq!(solved_witness_idx, witness_idx, "Constraint {constraint_idx} solved the wrong witness.");
+                value
+            }
         };
-        let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
-            panic!("Could not solve constraint {row}.")
-        };
-        witness[col] = Some(val);
-    }
+        witness[witness_idx] = Some(value);
+    });
 
     // Complete witness with entropy.
     // TODO: Use better entropy source and proper sampling.
+    // FIXME is this the correct behaviour?  Would an error be more appropriate?
     let mut rng = rand::thread_rng();
     let witness = witness
         .iter()

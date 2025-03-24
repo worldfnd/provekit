@@ -12,10 +12,10 @@ pub struct SparseMatrix<F> {
     pub cols: usize,
 
     /// The default value of the matrix.
-    default: F,
+    pub default: F,
 
     /// The non-default entries of the matrix.
-    entries: BTreeMap<(usize, usize), F>,
+    pub entries: BTreeMap<(usize, usize), F>,
 }
 
 impl<F> SparseMatrix<F> {
