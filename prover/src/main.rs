@@ -31,12 +31,13 @@ use prover::{
 };
 
 fn main() {
-    let (r1cs, z) = deserialize_r1cs_and_z("./prover/disclose_wrencher.json");
+    let args = parse_cli_args(); 
+    let (r1cs, z) = deserialize_r1cs_and_z(&args.input_file_path);
     // m is equal to ceiling(log(number of variables in constraint system)). It is equal to the log of the width of the matrices.
     let m = next_power_of_two(z.len());
     // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the number of variables in the multilinear polynomial we are running our sumcheck on.
     let m_0 = next_power_of_two(r1cs.num_constraints);
-    let whir_params= parse_cli_args_and_return_whir_params(m);
+    let whir_params= generate_whir_params(m, args);
     
     let io = create_io_pattern(m_0, &whir_params);
 
