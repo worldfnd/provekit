@@ -31,6 +31,8 @@ pub enum WitnessBuilder {
     Challenge,
     /// The inverse of the value at a specified witness index
     Inverse(usize),
+    /// The product of the values at two specified witness indices
+    Product(usize, usize),
     /// Solvable is for values that can be solved for using the R1CS constraint with the specified index
     Solvable(usize),
     // TODO come back to this - it complicates Debug, Clone, etc.
@@ -126,7 +128,7 @@ impl R1CS {
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
         for opcode in circuit.opcodes.iter() {
             match opcode {
-                Opcode::AssertZero(expr) => self.add_assert_zero(expr),
+                Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
 
                 // Brillig instructions are used by the ACVM to solve for ACIR witness values.
                 // Corresponding ACIR constraints are by Noir as AssertZeros, and we map all ACIR
@@ -255,7 +257,7 @@ impl R1CS {
     }
 
     // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
-    fn add_assert_zero(&mut self, expr: &Expression<FieldElement>) {
+    fn add_acir_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
         let mut linear = vec![];
@@ -271,8 +273,8 @@ impl R1CS {
                 .map(|(coeff, acir_witness0, acir_witness1)| {
                     let witness0 = self.to_r1cs_witness(*acir_witness0);
                     let witness1 = self.to_r1cs_witness(*acir_witness1);
+                    let multn_result = self.add_witness(WitnessBuilder::Product(witness0, witness1));
                     let constraint_idx = self.new_constraint_index();
-                    let multn_result = self.add_witness(WitnessBuilder::Solvable(constraint_idx));
                     self.set_constraint(
                         constraint_idx,
                         &[(FieldElement::one(), witness0)],

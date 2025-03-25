@@ -91,6 +91,11 @@ fn prove_verify(args: Args) -> AnyResult<()> {
                 let operand: FieldElement = witness[*operand_idx].unwrap();
                 operand.inverse()
             },
+            WitnessBuilder::Product(operand_idx_a, operand_idx_b) => {
+                let a: FieldElement = witness[*operand_idx_a].unwrap();
+                let b: FieldElement = witness[*operand_idx_b].unwrap();
+                a * b
+            },
             WitnessBuilder::Solvable(constraint_idx) => {
                 // FIXME: copied from earlier code, but could be more general?  e.g. when both a and c contain reference the same (as yet unknown) witness index.
                 let [a, b, c] =
