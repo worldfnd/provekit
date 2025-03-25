@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 use whir::crypto::fields::Field256;
 use ark_ff::{BigInt, BigInteger, PrimeField};
-use nimue::hash::sponge::{DuplexSponge, Sponge};
+use spongefish::duplex_sponge::{DuplexSponge, Permutation};
 use ruint::Uint;
 use ruint_macro::uint;
 use zeroize::Zeroize;
@@ -106,7 +106,7 @@ impl AsMut<[Field256]> for Skyscraper {
     }
 }
 
-impl Sponge for Skyscraper {
+impl Permutation for Skyscraper {
     type U = Field256;
     const N: usize = 2;
     const R: usize = 1;

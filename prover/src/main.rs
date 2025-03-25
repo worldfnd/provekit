@@ -5,7 +5,7 @@ use whir::{
     crypto::fields::Field256,
     whir::{
         committer::Committer,
-        iopattern::WhirIOPattern,
+        domainsep::WhirDomainSeparator,
         parameters::WhirConfig,
         prover::Prover,
         verifier::Verifier,
@@ -14,10 +14,10 @@ use whir::{
     },
     poly_utils::evals::EvaluationsList,
 };
-use nimue::{
-    Merlin, Arthur,
-    IOPattern,
-    plugins::ark::{FieldReader, FieldChallenges, FieldWriter},
+use spongefish::{
+    ProverState, VerifierState,
+    DomainSeparator,
+    codecs::arkworks_algebra::{DeserializeField, UnitToField, FieldToUnit},
 };
 use prover::skyscraper::{
     skyscraper::SkyscraperSponge, 
@@ -40,16 +40,16 @@ fn main() {
     
     let io = create_io_pattern(m_0, &whir_params);
 
-    let merlin = io.to_merlin();
+    let merlin = io.to_prover_state();
     let (merlin, alpha, r, last_sumcheck_val) = run_sumcheck_prover(&r1cs, &z, merlin, m_0);
     let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
     let (proof, merlin, whir_params, io, whir_query_answer_sums, statement) = run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
     
     let statement_verifier = StatementVerifier::<Field256>::from_statement(&statement);
     write_proof_bytes_to_file(&proof);
-    write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone(), m_0);
+    write_gnark_parameters_to_file(&whir_params, &merlin, &io, whir_query_answer_sums.clone(), m_0, m);
     
-    let arthur = io.to_arthur(merlin.transcript());
+    let arthur = io.to_verifier_state(merlin.narg_string());
     let arthur = run_sumcheck_verifier(m_0, arthur);
     run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
     assert_eq!(last_sumcheck_val, (whir_query_answer_sums[0] * whir_query_answer_sums[1] - whir_query_answer_sums[2]) * calculate_eq(&r, &alpha)); 
@@ -58,9 +58,9 @@ fn main() {
 fn run_sumcheck_prover(
     r1cs: &R1CS,
     z: &Vec<Field256>,
-    mut merlin: Merlin<SkyscraperSponge, Field256>,
+    mut merlin: ProverState<SkyscraperSponge, Field256>,
     m_0: usize,
-) -> (Merlin<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>, Field256) {
+) -> (ProverState<SkyscraperSponge, Field256>, Vec<Field256>, Vec<Field256>, Field256) {
     println!("=========================================");
     println!("Running Prover - Sumcheck");
     // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
@@ -118,17 +118,17 @@ fn run_sumcheck_prover(
 }
 
 fn run_whir_pcs_prover(
-    io: IOPattern<SkyscraperSponge, Field256>, 
+    io: DomainSeparator<SkyscraperSponge, Field256>, 
     z: Vec<Field256>, 
     params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
-    mut merlin: Merlin<SkyscraperSponge, Field256>, 
+    mut merlin: ProverState<SkyscraperSponge, Field256>, 
     m: usize,
     alphas: [Vec<Field256>; 3],
 ) -> (
     WhirProof<SkyscraperMerkleConfig, Field256>, 
-    Merlin<SkyscraperSponge, Field256>,
+    ProverState<SkyscraperSponge, Field256>,
     WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
-    IOPattern<SkyscraperSponge, Field256>, 
+    DomainSeparator<SkyscraperSponge, Field256>, 
     [Field256; 3], 
     Statement<Field256>
 ) {   
@@ -167,8 +167,8 @@ fn run_whir_pcs_prover(
 
 fn run_sumcheck_verifier(
     m_0: usize,
-    mut arthur: Arthur<SkyscraperSponge, Field256>,
-) -> Arthur<SkyscraperSponge, Field256> {
+    mut arthur: VerifierState<SkyscraperSponge, Field256>,
+) -> VerifierState<SkyscraperSponge, Field256> {
     println!("=========================================");
     println!("Running Verifier - Sumcheck");
     // r is the combination randomness from the 2nd item of the interaction phase 
@@ -194,7 +194,7 @@ fn run_sumcheck_verifier(
 fn run_whir_pcs_verifier(
     params: WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, 
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
-    mut arthur: Arthur<SkyscraperSponge, Field256>,
+    mut arthur: VerifierState<SkyscraperSponge, Field256>,
     statement_verifier: StatementVerifier<Field256>
 ) { 
     println!("=========================================");
@@ -203,8 +203,8 @@ fn run_whir_pcs_verifier(
     verifier.verify(&mut arthur, &statement_verifier, &proof).expect("Whir verifier failed to verify");
 }
 
-fn create_io_pattern(m_0: usize, whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) -> IOPattern::<SkyscraperSponge, Field256>{
-    IOPattern::<SkyscraperSponge, Field256>::new("🌪️")
+fn create_io_pattern(m_0: usize, whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) -> DomainSeparator::<SkyscraperSponge, Field256>{
+    DomainSeparator::<SkyscraperSponge, Field256>::new("🌪️")
         .add_rand(m_0)
         .add_sumcheck_polynomials(m_0)
         .commit_statement(&whir_params)

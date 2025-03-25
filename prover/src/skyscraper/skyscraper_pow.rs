@@ -1,6 +1,6 @@
 use ruint::aliases::U256;
 use ruint_macro::uint;
-use nimue_pow::PowStrategy;
+use spongefish_pow::PowStrategy;
 use whir::crypto::fields::Field256;
 use crate::skyscraper::skyscraper::{
     bigint_from_bytes_le,
@@ -91,20 +91,20 @@ impl SkyscraperPoW {
 
 #[test]
 fn test_pow_skyscraper() {
-    use nimue_pow::{PoWChallenge, PoWIOPattern};
-    use nimue::{ByteIOPattern, ByteReader, ByteWriter, DefaultHash, IOPattern};
+    use spongefish_pow::{PoWChallenge, PoWDomainSeparator};
+    use spongefish::{ByteDomainSeparator, ByteReader, ByteWriter, DefaultHash, DomainSeparator};
 
     const BITS: f64 = 10.0;
 
-    let iopattern = IOPattern::<DefaultHash>::new("the proof of work lottery 🎰")
+    let iopattern = DomainSeparator::<DefaultHash>::new("the proof of work lottery 🎰")
         .add_bytes(1, "something")
         .challenge_pow("rolling dices");
 
-    let mut prover = iopattern.to_merlin();
+    let mut prover = iopattern.to_prover_state();
     prover.add_bytes(b"\0").expect("Invalid IOPattern");
     prover.challenge_pow::<SkyscraperPoW>(BITS).unwrap();
 
-    let mut verifier = iopattern.to_arthur(prover.transcript());
+    let mut verifier = iopattern.to_verifier_state(prover.narg_string());
     let byte = verifier.next_bytes::<1>().unwrap();
     assert_eq!(&byte, b"\0");
     verifier.challenge_pow::<SkyscraperPoW>(BITS).unwrap();

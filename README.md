@@ -10,7 +10,7 @@ Zero-knowledge proof toolkit targeting mobile devices.
 This project depends on the following libraries, which are developed in lockstep:
 
 - [🌪️ WHIR](https://github.com/WizardOfMenlo/whir)
-- [Nimue](https://github.com/arkworks-rs/nimue)
+- [Spongefish](https://github.com/arkworks-rs/spongefish)
 - [gnark-skyscraper](https://github.com/reilabs/gnark-skyscraper)
 - [gnark-nimue](https://github.com/reilabs/gnark-nimue)
 - [gnark-whir](https://github.com/reilabs/gnark-whir)

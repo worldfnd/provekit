@@ -1,5 +1,5 @@
 use whir::crypto::fields::Field256;
-use nimue::plugins::ark::FieldIOPattern;
+use spongefish::codecs::arkworks_algebra::FieldDomainSeparator;
 
 /// Given evaluations over boolean hypercube, replace the first variable with given value and calculate new evaluations (Fold boolean hypercube over a given value)
 pub fn update_boolean_hypercube_values(mut f: Vec<Field256>, r: Field256) -> Vec<Field256> {
@@ -22,7 +22,7 @@ pub trait SumcheckIOPattern {
 
 impl<IOPattern> SumcheckIOPattern for IOPattern 
 where 
-    IOPattern: FieldIOPattern<Field256>
+    IOPattern: FieldDomainSeparator<Field256>
 {
     fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
         for _ in 0..num_vars {

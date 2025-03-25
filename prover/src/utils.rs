@@ -7,7 +7,7 @@ use ark_std::{Zero, One, str::FromStr, ops::{Add, Mul}};
 use ark_poly::domain::EvaluationDomain;
 use ark_serialize::CanonicalSerialize;
 use ruint_macro::uint;
-use nimue::{Merlin, IOPattern};
+use spongefish::{ProverState, DomainSeparator};
 use crate::whir_utils::GnarkConfig;
 use whir::{
     crypto::fields::Field256,
@@ -200,13 +200,13 @@ pub fn calculate_external_row_of_r1cs_matrices(alpha: &Vec<Field256>, r1cs: &R1C
 }
 
 /// Writes config used for Gnark circuit to a file
-pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &Merlin<SkyscraperSponge, Field256>, io: &IOPattern<SkyscraperSponge, Field256>, sums: [Field256; 3], m_0: usize) {
+pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>, merlin: &ProverState<SkyscraperSponge, Field256>, io: &DomainSeparator<SkyscraperSponge, Field256>, sums: [Field256; 3], m_0: usize, m: usize) {
     let gnark_config = GnarkConfig {
         log_num_constraints: m_0,
-        n_rounds: whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0,
+        n_rounds: whir_params.folding_factor.compute_number_of_rounds(m).0,
         rate: whir_params.starting_log_inv_rate,
-        n_vars: whir_params.mv_parameters.num_variables,
-        folding_factor: (0..(whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0))
+        n_vars: m,
+        folding_factor: (0..(whir_params.folding_factor.compute_number_of_rounds(m).0))
             .map(|round| whir_params.folding_factor.at_round(round))
             .collect(),
         ood_samples: whir_params.round_parameters.iter().map(|x| x.ood_samples).collect(),
@@ -217,8 +217,8 @@ pub fn write_gnark_parameters_to_file(whir_params: &WhirConfig::<Field256, Skysc
         final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
         domain_generator: format!("{}", whir_params.starting_domain.backing_domain.group_gen()),
         io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript: merlin.transcript().to_vec(),
-        transcript_len: merlin.transcript().to_vec().len(),
+        transcript: merlin.narg_string().to_vec(),
+        transcript_len: merlin.narg_string().to_vec().len(),
         statement_evaluations: vec![sums[0].to_string(), sums[1].to_string(), sums[2].to_string()]
     };
     println!("round config {:?}", whir_params.round_parameters);

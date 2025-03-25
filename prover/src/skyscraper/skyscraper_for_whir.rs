@@ -9,13 +9,13 @@ use ark_crypto_primitives::{
 use whir::{
     crypto::fields::Field256,
     whir::{
-        iopattern::DigestIOPattern,
+        domainsep::DigestDomainSeparator,
         fs_utils::{DigestReader, DigestWriter},
     },
 };
-use nimue::{
-    Arthur, Merlin, IOPattern, ProofResult,
-    plugins::ark::{FieldIOPattern, FieldReader, FieldWriter},
+use spongefish::{
+    VerifierState, ProverState, DomainSeparator, ProofResult,
+    codecs::arkworks_algebra::{FieldDomainSeparator, DeserializeField, FieldToUnit},
 };
 
 /// Skyscraper collision-resistant hash
@@ -87,19 +87,19 @@ impl Config for SkyscraperMerkleConfig {
     type TwoToOneHash = SkyscraperTwoToOne;
 }
 
-impl DigestIOPattern<SkyscraperMerkleConfig> for IOPattern<SkyscraperSponge, Field256> {
+impl DigestDomainSeparator<SkyscraperMerkleConfig> for DomainSeparator<SkyscraperSponge, Field256> {
     fn add_digest(self, label: &str) -> Self {
-        <Self as FieldIOPattern<Field256>>::add_scalars(self, 1, label)
+        <Self as FieldDomainSeparator<Field256>>::add_scalars(self, 1, label)
     }
 }
 
-impl DigestWriter<SkyscraperMerkleConfig> for Merlin<SkyscraperSponge, Field256> {
+impl DigestWriter<SkyscraperMerkleConfig> for ProverState<SkyscraperSponge, Field256> {
     fn add_digest(&mut self, digest: Field256) -> ProofResult<()> {
         self.add_scalars(&[digest])
     }
 }
 
-impl <'a> DigestReader<SkyscraperMerkleConfig> for Arthur<'a, SkyscraperSponge, Field256> {
+impl <'a> DigestReader<SkyscraperMerkleConfig> for VerifierState<'a, SkyscraperSponge, Field256> {
     fn read_digest(&mut self) -> ProofResult<Field256> {
         let [r] = self.next_scalars()?;
         Ok(r)
