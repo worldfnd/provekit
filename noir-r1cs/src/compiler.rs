@@ -256,6 +256,19 @@ impl R1CS {
         }
     }
 
+    // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
+    fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
+        let product = self.add_witness(WitnessBuilder::Product(operand_a, operand_b));
+        let constraint_idx = self.new_constraint_index();
+        self.set_constraint(
+            constraint_idx,
+            &[(FieldElement::one(), operand_a)],
+            &[(FieldElement::one(), operand_b)],
+            &[(FieldElement::one(), product)],
+        );
+        product
+    }
+
     // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
     fn add_acir_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
@@ -273,15 +286,7 @@ impl R1CS {
                 .map(|(coeff, acir_witness0, acir_witness1)| {
                     let witness0 = self.to_r1cs_witness(*acir_witness0);
                     let witness1 = self.to_r1cs_witness(*acir_witness1);
-                    let multn_result = self.add_witness(WitnessBuilder::Product(witness0, witness1));
-                    let constraint_idx = self.new_constraint_index();
-                    self.set_constraint(
-                        constraint_idx,
-                        &[(FieldElement::one(), witness0)],
-                        &[(FieldElement::one(), witness1)],
-                        &[(FieldElement::one(), multn_result)],
-                    );
-                    (-*coeff, multn_result)
+                    (-*coeff, self.add_product(witness0, witness1))
                 })
                 .collect::<Vec<_>>();
 
