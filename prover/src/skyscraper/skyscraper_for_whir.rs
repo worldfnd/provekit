@@ -10,12 +10,12 @@ use whir::{
     crypto::fields::Field256,
     whir::{
         domainsep::DigestDomainSeparator,
-        fs_utils::{DigestReader, DigestWriter},
+        utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
     },
 };
 use spongefish::{
     VerifierState, ProverState, DomainSeparator, ProofResult,
-    codecs::arkworks_algebra::{FieldDomainSeparator, DeserializeField, FieldToUnit},
+    codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize},
 };
 
 /// Skyscraper collision-resistant hash
@@ -93,13 +93,13 @@ impl DigestDomainSeparator<SkyscraperMerkleConfig> for DomainSeparator<Skyscrape
     }
 }
 
-impl DigestWriter<SkyscraperMerkleConfig> for ProverState<SkyscraperSponge, Field256> {
+impl DigestToUnitSerialize<SkyscraperMerkleConfig> for ProverState<SkyscraperSponge, Field256> {
     fn add_digest(&mut self, digest: Field256) -> ProofResult<()> {
         self.add_scalars(&[digest])
     }
 }
 
-impl <'a> DigestReader<SkyscraperMerkleConfig> for VerifierState<'a, SkyscraperSponge, Field256> {
+impl <'a> DigestToUnitDeserialize<SkyscraperMerkleConfig> for VerifierState<'a, SkyscraperSponge, Field256> {
     fn read_digest(&mut self) -> ProofResult<Field256> {
         let [r] = self.next_scalars()?;
         Ok(r)

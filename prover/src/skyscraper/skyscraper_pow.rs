@@ -92,7 +92,7 @@ impl SkyscraperPoW {
 #[test]
 fn test_pow_skyscraper() {
     use spongefish_pow::{PoWChallenge, PoWDomainSeparator};
-    use spongefish::{ByteDomainSeparator, ByteReader, ByteWriter, DefaultHash, DomainSeparator};
+    use spongefish::{ByteDomainSeparator, BytesToUnitDeserialize, BytesToUnitSerialize, DefaultHash, DomainSeparator};
 
     const BITS: f64 = 10.0;
 

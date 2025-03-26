@@ -4,7 +4,7 @@ use itertools::izip;
 use whir::{
     crypto::fields::Field256,
     whir::{
-        committer::Committer,
+        committer::{CommitmentWriter, CommitmentReader},
         domainsep::WhirDomainSeparator,
         parameters::WhirConfig,
         prover::Prover,
@@ -17,7 +17,7 @@ use whir::{
 use spongefish::{
     ProverState, VerifierState,
     DomainSeparator,
-    codecs::arkworks_algebra::{DeserializeField, UnitToField, FieldToUnit},
+    codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField, FieldToUnitSerialize},
 };
 use prover::skyscraper::{
     skyscraper::SkyscraperSponge, 
@@ -145,7 +145,7 @@ fn run_whir_pcs_prover(
     let poly = EvaluationsList::new(z);
     let polynomial = poly.to_coeffs();
 
-    let committer = Committer::new(params.clone());
+    let committer = CommitmentWriter::new(params.clone());
     let witness = committer.commit(&mut merlin, polynomial)
         .expect("WHIR prover failed to commit");
 
@@ -200,8 +200,14 @@ fn run_whir_pcs_verifier(
 ) { 
     println!("=========================================");
     println!("Running Verifier - Whir Commitment ");
-    let verifier = Verifier::new(params);
-    verifier.verify(&mut arthur, &statement_verifier, &proof).expect("Whir verifier failed to verify");
+    let commitment_reader = CommitmentReader::new(&params);
+    let verifier = Verifier::new(&params);
+    // let verifier = Verifier::new(&params);
+    let parsed_commitment = commitment_reader
+                .parse_commitment(&mut arthur)
+                .unwrap();
+
+    verifier.verify(&mut arthur, &parsed_commitment, &statement_verifier, &proof).expect("Whir verifier failed to verify");
 }
 
 fn create_io_pattern(m_0: usize, whir_params: &WhirConfig::<Field256, SkyscraperMerkleConfig, SkyscraperPoW>) -> DomainSeparator::<SkyscraperSponge, Field256>{
