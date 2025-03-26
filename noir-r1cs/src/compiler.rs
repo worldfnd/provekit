@@ -1,12 +1,9 @@
 use {
-    crate::SparseMatrix,
-    acir::{
+    crate::SparseMatrix, acir::{
         circuit::{Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness},
         AcirField, FieldElement,
-    },
-    serde::{Deserialize, Serialize},
-    std::{collections::BTreeMap, fmt::{Debug, Formatter}, fs::File, io::Write, ops::Neg, vec},
+    }, rand::seq::index, serde::{Deserialize, Serialize}, std::{collections::BTreeMap, fmt::{Debug, Formatter}, fs::File, io::Write, ops::Neg, vec}
 };
 
 #[derive(Serialize)]
@@ -33,6 +30,13 @@ pub enum WitnessBuilder {
     Inverse(usize),
     /// The product of the values at two specified witness indices
     Product(usize, usize),
+    // FIXME think about the static case!
+    /// Witness is the result of reading a memory block at the specified index
+    StaticMemoryRead(usize, usize),
+    /// Witness is the result of reading a memory block at the specified (witness) index
+    DynamicMemoryRead(usize, usize),
+    /// The number of times that the .1th value of the .0th memory block is accessed
+    MemoryAccessCount(usize, usize),
     /// Solvable is for values that can be solved for using the R1CS constraint with the specified index
     Solvable(usize),
     // TODO come back to this - it complicates Debug, Clone, etc.
@@ -155,6 +159,12 @@ impl R1CS {
                 } => {
                     println!("block id {:?} op {:?} pred {:?}", block_id, op, predicate);
                     println!("op {:?}", opcode);
+                    // panic if it is not a read
+                    // panic if the predicate is set (until we learn what it is!)
+                    // panic if the blocktype is not Memory (until we learn what it is!)
+                    // create a new (as yet unconstrained) witness `res` for the result of the read (maybe it is a remapping of an acir witness)
+                    // use a MemoryRead builder so that the solver can later determine its value
+                    // store the tuple (addr, res) in a list of memory accesses for block_id.
                 }
                 Opcode::MemoryInit {
                     block_id,
@@ -163,6 +173,9 @@ impl R1CS {
                 } => {
                     println!("MemoryInit {:?}", opcode);
                     println!("init {:?}", init)
+                    // for now: panic if the memory block id is not 0
+                    // there will already be acir witnesses for the memory values - just remap them
+                    // record these r1cs witness indices for later (associated with the block_id)
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -171,6 +184,24 @@ impl R1CS {
                 }
             }
         }
+
+        // TODO add lookups enforcing memory checking:
+        // it is the SOLVER that needs to determine the memory access counts!
+        // add witness values for memory access counts, using the WitnessBuilder::MemoryAccessCount
+        // In order to determine the memory access counts, the SOLVER needs to know which of the witnesses are memory addresses (for the memory block) - how to make this available in a clean manner?
+        // ... add the witnesses for the memory access count multiplicities at the end (so that the other witnesses are already solved for)
+
+        // for each memory block:
+        // add two verifier challenges
+        // for each (addr, res) tuple, build the corresponding denominator
+        // add witnesses for the inverse of each denominator
+        // constrain that they are indeed the inverses
+        // now introduce intermediate products (#acceses - 1 of them)
+        // for each (j * 1, mem_value) tuple, build the corresponding denominator
+        // ..
+        // now check that the two products are equal!
+
+        // so the compiler needs to track which witnesses are memory addresses, and also which are purportedly the results of reads
     }
 
     /// Index of the constant 1 witness
@@ -254,6 +285,20 @@ impl R1CS {
         for (coeff, witness_idx) in cz.iter().copied() {
             self.c.set(constraint_idx, witness_idx, coeff)
         }
+    }
+
+    // Adds a new witness `denominator` and constrains it to represent one of denominator in a use of logup for an indexed lookup, i.e. 
+    //    `denominator - (sz_challenge - (index + rs_challenge * value)) == 0`
+    fn add_indexed_lookup_denominator(&mut self, rs_challenge: usize, sz_challenge: usize, coeff_and_index: (FieldElement, usize), value: usize) -> usize {
+        let constraint_idx = self.new_constraint_index();
+        let denominator = self.add_witness(WitnessBuilder::Solvable(constraint_idx));
+        self.set_constraint(
+            constraint_idx,
+            &[(FieldElement::one(), rs_challenge)],
+            &[(FieldElement::one(), value)],
+            &[(FieldElement::one(), denominator), (FieldElement::one().neg(), sz_challenge), coeff_and_index],
+        );
+        denominator
     }
 
     // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.

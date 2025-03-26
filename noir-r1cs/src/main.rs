@@ -73,7 +73,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     print!("{}", r1cs);
 
     // Compute a satisfying witness
-    // FIXME where does this belong?  witness_builders should be a private field of R1CS.
+    // FIXME where does this block of code belong?  witness_builders should be a private field of R1CS.
     let mut rng = rand::thread_rng();
     let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses()];
     r1cs.witness_builders.iter().enumerate().for_each(|(witness_idx, witness_builder)| {
@@ -119,6 +119,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
                 value
             }
         };
+        // TODO add to Transcript
         witness[witness_idx] = Some(value);
     });
 
