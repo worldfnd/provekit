@@ -4,7 +4,7 @@ mod sparse_matrix;
 mod utils;
 
 use {
-    self::{compiler::R1CS, sparse_matrix::SparseMatrix}, acir::{native_types::Witness as AcirWitness, AcirField, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::WitnessBuilder, noirc_artifacts::program::ProgramArtifact, rand::Rng, std::{fs::File, path::PathBuf, vec}, tracing::{field::Field, info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
+    self::{compiler::R1CS, sparse_matrix::SparseMatrix}, acir::{native_types::Witness as AcirWitness, AcirField, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::WitnessBuilder, noirc_artifacts::program::ProgramArtifact, rand::Rng, std::{collections::BTreeMap, fs::File, path::PathBuf, vec}, tracing::{field::Field, info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
 };
 
 /// Prove & verify a compiled Noir program using R1CS.
@@ -75,6 +75,8 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     // FIXME where does this block of code belong?  witness_builders should be a private field of R1CS.
     let mut rng = rand::thread_rng();
     let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses()];
+    // The memory read counts for each block of memory
+    let mut memory_read_counts: BTreeMap<_, _> = r1cs.memory_lengths.iter().map(|(block_id, len)| (block_id, vec![0u32; *len])).collect();
     r1cs.witness_builders.iter().enumerate().for_each(|(witness_idx, witness_builder)| {
         assert_eq!(witness[witness_idx], None, "Witness {witness_idx} already set.");
         let value = match witness_builder {
@@ -82,8 +84,14 @@ fn prove_verify(args: Args) -> AnyResult<()> {
             WitnessBuilder::Acir(acir_witness_idx) => {
                 witness_stack[&AcirWitness(*acir_witness_idx as u32)]
             },
-            WitnessBuilder::MemoryRead(acir_witness_idx) => {
-                witness_stack[&AcirWitness(*acir_witness_idx as u32)]
+            WitnessBuilder::StaticMemoryRead(block_id, static_addr, value_acir_witness_idx) => {
+                memory_read_counts.get_mut(block_id).unwrap()[*static_addr] += 1;
+                witness_stack[&AcirWitness(*value_acir_witness_idx as u32)]
+            },
+            WitnessBuilder::DynamicMemoryRead(block_id, addr_witness_idx, value_acir_witness_idx) => {
+                let addr = witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
+                memory_read_counts.get_mut(block_id).unwrap()[addr] += 1;
+                witness_stack[&AcirWitness(*value_acir_witness_idx as u32)]
             },
             WitnessBuilder::Challenge => {
                 // FIXME use a transcript to generate the challenge!
@@ -99,11 +107,11 @@ fn prove_verify(args: Args) -> AnyResult<()> {
                 a * b
             },
             WitnessBuilder::Sum(operands) => {
-                unimplemented!("TODO tomorrow!");
-                //operands.iter().map(|idx| witness[*idx].unwrap()).sum()
+                operands.iter().map(|idx| witness[*idx].unwrap()).fold(FieldElement::zero(), |acc, x| acc + x)
             },
             WitnessBuilder::MemoryAccessCount(block_id, addr) => {
-                unimplemented!("TODO tomorrow!");
+                let count = memory_read_counts.get(block_id).unwrap()[*addr];
+                FieldElement::from(count)
             },
             WitnessBuilder::Solvable(constraint_idx) => {
                 // FIXME: copied from earlier code, but could be more general?  e.g. when both a and c contain reference the same (as yet unknown) witness index.
@@ -134,16 +142,14 @@ fn prove_verify(args: Args) -> AnyResult<()> {
 
     // Complete witness with entropy.
     // TODO: Use better entropy source and proper sampling.
-    // FIXME is this the correct behaviour?  Would an error be more appropriate?
+    // FIXME is this the correct behaviour?  Would an error be more appropriate if the solver fails to determine the witness?
     let mut rng = rand::thread_rng();
     let witness = witness
         .iter()
         .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.gen::<u128>())))
         .collect::<Vec<_>>();
 
-    dbg!(&witness);
-
-    // Verify
+    // Check that the witness satisfies the R1CS relation
     let a = mat_mul(&r1cs.a, &witness);
     let b = mat_mul(&r1cs.b, &witness);
     let c = mat_mul(&r1cs.c, &witness);
