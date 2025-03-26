@@ -68,8 +68,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     }
 
     // Create the R1CS relation
-    let mut r1cs = R1CS::new();
-    r1cs.add_circuit(main);
+    let r1cs = R1CS::from_acir(main);
     print!("{}", r1cs);
 
     // Compute a satisfying witness
@@ -81,6 +80,9 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         let value = match witness_builder {
             WitnessBuilder::Constant(c) => *c,
             WitnessBuilder::Acir(acir_witness_idx) => {
+                witness_stack[&AcirWitness(*acir_witness_idx as u32)]
+            },
+            WitnessBuilder::MemoryRead(acir_witness_idx) => {
                 witness_stack[&AcirWitness(*acir_witness_idx as u32)]
             },
             WitnessBuilder::Challenge => {
@@ -95,6 +97,13 @@ fn prove_verify(args: Args) -> AnyResult<()> {
                 let a: FieldElement = witness[*operand_idx_a].unwrap();
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 a * b
+            },
+            WitnessBuilder::Sum(operands) => {
+                unimplemented!("TODO tomorrow!");
+                //operands.iter().map(|idx| witness[*idx].unwrap()).sum()
+            },
+            WitnessBuilder::MemoryAccessCount(block_id, addr) => {
+                unimplemented!("TODO tomorrow!");
             },
             WitnessBuilder::Solvable(constraint_idx) => {
                 // FIXME: copied from earlier code, but could be more general?  e.g. when both a and c contain reference the same (as yet unknown) witness index.

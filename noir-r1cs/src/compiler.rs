@@ -1,6 +1,6 @@
 use {
     crate::SparseMatrix, acir::{
-        circuit::{Circuit, Opcode},
+        circuit::{opcodes::BlockType, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness},
         AcirField, FieldElement,
     }, rand::seq::index, serde::{Deserialize, Serialize}, std::{collections::BTreeMap, fmt::{Debug, Formatter}, fs::File, io::Write, ops::Neg, vec}
@@ -18,6 +18,19 @@ struct JsonR1CS {
 }
 
 #[derive(Debug, Clone)]
+/// Represents a read-only memory block in the R1CS instance.
+pub struct ReadOnlyMemoryBlock {
+    /// The memory block ID (determined by the ACIR circuit)
+    pub id: usize,
+    /// The R1CS witnesses corresponding to the memory block values
+    pub value_witnesses: Vec<usize>,
+    /// (constant address, R1CS witness index of value read) tuples
+    pub static_reads: Vec<(usize, usize)>,
+    /// (R1CS witness index of address, R1CS witness index of value read) tuples
+    pub dynamic_reads: Vec<(usize, usize)>,
+}
+
+#[derive(Debug, Clone)]
 /// Indicates how to solve for an R1CS witness value
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
@@ -28,14 +41,13 @@ pub enum WitnessBuilder {
     Challenge,
     /// The inverse of the value at a specified witness index
     Inverse(usize),
+    /// The sum of many witness values
+    Sum(Vec<usize>),
     /// The product of the values at two specified witness indices
     Product(usize, usize),
-    // FIXME think about the static case!
-    /// Witness is the result of reading a memory block at the specified index
-    StaticMemoryRead(usize, usize),
-    /// Witness is the result of reading a memory block at the specified (witness) index
-    DynamicMemoryRead(usize, usize),
-    /// The number of times that the .1th value of the .0th memory block is accessed
+    /// Witness is the result of a memory read, whose value is available as the specified acir witness index
+    MemoryRead(usize),
+    /// The number of times that the .1th index of the .0th memory block is accessed
     MemoryAccessCount(usize, usize),
     /// Solvable is for values that can be solved for using the R1CS constraint with the specified index
     Solvable(usize),
@@ -68,10 +80,10 @@ struct MatrixEntry {
 impl R1CS {
     pub fn new() -> Self {
         Self {
-            a:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            b:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            c:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            witness_builders:   vec![WitnessBuilder::Constant(FieldElement::one())],
+            a: SparseMatrix::new(0, 1, FieldElement::zero()),
+            b: SparseMatrix::new(0, 1, FieldElement::zero()),
+            c: SparseMatrix::new(0, 1, FieldElement::zero()),
+            witness_builders: vec![WitnessBuilder::Constant(FieldElement::one())],
             acir_to_r1cs_witness_map: BTreeMap::new(),
         }
     }
@@ -129,10 +141,16 @@ impl R1CS {
         Ok(())
     }
 
-    pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {
+    // TODO should be a From method
+    /// Create an R1CS instance from an ACIR circuit, introducing extra witnesses and constraints as
+    /// needed.
+    pub fn from_acir(circuit: &Circuit<FieldElement>) -> Self {
+        let mut r1cs = R1CS::new();
+        // Read-only memory blocks (used for building the memory lookup constraints at the end)
+        let mut memory_blocks: BTreeMap<usize, ReadOnlyMemoryBlock> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
-                Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
+                Opcode::AssertZero(expr) => r1cs.add_acir_assert_zero(expr),
 
                 // Brillig instructions are used by the ACVM to solve for ACIR witness values.
                 // Corresponding ACIR constraints are by Noir as AssertZeros, and we map all ACIR
@@ -151,31 +169,77 @@ impl R1CS {
                 // witness vector.
                 Opcode::Call { .. } => unimplemented!("Call"),
 
-                // These should be implemented using lookup arguments, or memory checking arguments.
-                Opcode::MemoryOp {
-                    block_id,
-                    op,
-                    predicate,
-                } => {
-                    println!("block id {:?} op {:?} pred {:?}", block_id, op, predicate);
-                    println!("op {:?}", opcode);
-                    // panic if it is not a read
-                    // panic if the predicate is set (until we learn what it is!)
-                    // panic if the blocktype is not Memory (until we learn what it is!)
-                    // create a new (as yet unconstrained) witness `res` for the result of the read (maybe it is a remapping of an acir witness)
-                    // use a MemoryRead builder so that the solver can later determine its value
-                    // store the tuple (addr, res) in a list of memory accesses for block_id.
-                }
                 Opcode::MemoryInit {
                     block_id,
                     init,
                     block_type,
                 } => {
-                    println!("MemoryInit {:?}", opcode);
-                    println!("init {:?}", init)
-                    // for now: panic if the memory block id is not 0
-                    // there will already be acir witnesses for the memory values - just remap them
-                    // record these r1cs witness indices for later (associated with the block_id)
+                    if *block_type != BlockType::Memory {
+                        panic!("MemoryInit block type must be Memory")
+                    }
+                    let block_id = block_id.0 as usize;
+                    assert!(
+                        !memory_blocks.contains_key(&block_id),
+                        "Memory block {} already initialized",
+                        block_id
+                    );
+                    let mut block = ReadOnlyMemoryBlock {
+                        id: block_id,
+                        value_witnesses: vec![],
+                        static_reads: vec![],
+                        dynamic_reads: vec![],
+                    };
+                    init.iter().for_each(|acir_witness| {
+                        let r1cs_witness = r1cs.add_witness(WitnessBuilder::Acir(acir_witness.0 as usize));
+                        // Add the witness index to the memory block
+                        block.value_witnesses.push(r1cs_witness);
+                    });
+                    memory_blocks.insert(block_id, block);
+                }
+
+                Opcode::MemoryOp {
+                    block_id,
+                    op,
+                    predicate,
+                } => {
+                    let is_read = op.operation.is_zero();
+                    assert!(is_read, "MemoryOp write not yet supported");
+
+                    // panic if the predicate is set (until we learn what it is!)
+                    assert!(predicate.is_none());
+
+                    let block_id = block_id.0 as usize;
+                    assert!(
+                        memory_blocks.contains_key(&block_id),
+                        "Memory block {} not initialized before read",
+                        block_id
+                    );
+                    let block = memory_blocks.get_mut(&block_id).unwrap();
+
+                    // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
+                    // Use a memory witness builders so that the solver can later determine its value and also determine the memory access counts
+
+                    // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
+                    // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
+                    let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
+
+                    if op.index.is_const() {
+                        // Statically addressed memory read
+                        let static_addr = op.index.to_const().unwrap().try_to_u64().unwrap() as usize;
+                        let value_read = r1cs.add_witness(WitnessBuilder::MemoryRead(result_of_read_acir_witness));
+                        block.static_reads.push((static_addr, value_read));
+                    } else {
+                        // Dynamically addressed memory read
+                        // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
+                        // If it isn't, we'll need to introduce constraints and use a solvable witness for the index, but let's leave this til later.
+                        let addr_wb = match op.index.to_witness() {
+                            Some(acir_witness) => WitnessBuilder::Acir(acir_witness.0 as usize),
+                            None => unimplemented!("MemoryOp index must be a witness or a constant, not a more general Expression"),
+                        };
+                        let addr = r1cs.add_witness(addr_wb);
+                        let value_read = r1cs.add_witness(WitnessBuilder::MemoryRead(result_of_read_acir_witness));
+                        block.dynamic_reads.push((addr, value_read));
+                    }
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -185,23 +249,50 @@ impl R1CS {
             }
         }
 
-        // TODO add lookups enforcing memory checking:
-        // it is the SOLVER that needs to determine the memory access counts!
-        // add witness values for memory access counts, using the WitnessBuilder::MemoryAccessCount
-        // In order to determine the memory access counts, the SOLVER needs to know which of the witnesses are memory addresses (for the memory block) - how to make this available in a clean manner?
-        // ... add the witnesses for the memory access count multiplicities at the end (so that the other witnesses are already solved for)
+        // Add lookups enforcing memory checking:
+        memory_blocks.iter().for_each(|(block_id, block)| {
+            // FIXME can remove this assertion?
+            let num_reads = block.static_reads.len() + block.dynamic_reads.len();
+            assert_ne!(num_reads, 0, "Memory block {} has no reads (should have been removed by ACIR compiler)", block_id);
 
-        // for each memory block:
-        // add two verifier challenges
-        // for each (addr, res) tuple, build the corresponding denominator
-        // add witnesses for the inverse of each denominator
-        // constrain that they are indeed the inverses
-        // now introduce intermediate products (#acceses - 1 of them)
-        // for each (j * 1, mem_value) tuple, build the corresponding denominator
-        // ..
-        // now check that the two products are equal!
+            // For each memory block, use a lookup to enforce that the reads are correct.
 
-        // so the compiler needs to track which witnesses are memory addresses, and also which are purportedly the results of reads
+            // Add witness values for memory access counts, using the WitnessBuilder::MemoryAccessCount
+            let access_counts: Vec<_> = (0..block.value_witnesses.len()).into_iter().map(|index| {
+                r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index))
+            }).collect();
+
+            // Add two verifier challenges for the lookup
+            let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+            let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+
+            // Calculate the product over all reads of 1/factor
+            let mut summands_for_reads = vec![];
+            block.static_reads.iter().for_each(|(addr, value)| {
+                summands_for_reads.push(r1cs.add_indexed_lookup_factor(rs_challenge, sz_challenge, ((*addr).into(), r1cs.witness_one()), *value));
+            });
+            block.dynamic_reads.iter().for_each(|(addr_witness, value)| {
+                summands_for_reads.push(r1cs.add_indexed_lookup_factor(rs_challenge, sz_challenge, (FieldElement::one(), *addr_witness), *value));
+            });
+            let sum_for_reads = r1cs.add_sum(summands_for_reads);
+
+            // Calculate the sum over all table elements of multiplicity/factor
+            let summands_for_table = block.value_witnesses.iter().zip(access_counts.iter()).enumerate().map(|(addr, (value, access_count))| {
+                let denominator = r1cs.add_indexed_lookup_factor(rs_challenge, sz_challenge, (addr.into(), r1cs.witness_one()), *value);
+                r1cs.add_product(*access_count, denominator)
+            }).collect();
+            let sum_for_table = r1cs.add_sum(summands_for_table);
+
+            // Enforce that the two sums are equal
+            let constraint_idx = r1cs.new_constraint_index();
+            r1cs.set_constraint(
+                constraint_idx,
+                &[(FieldElement::one(), r1cs.witness_one())],
+                &[(FieldElement::one(), sum_for_reads)],
+                &[(FieldElement::one(), sum_for_table)],
+            );
+        });
+        r1cs
     }
 
     /// Index of the constant 1 witness
@@ -244,11 +335,18 @@ impl R1CS {
     }
 
     // Add a new witness to the R1CS instance, returning its index.
+    // If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
     fn add_witness(&mut self, witness: WitnessBuilder) -> usize {
         let witness_idx = self.new_witness_index();
         // Add the witness to the mapping if it is an ACIR witness
-        if let WitnessBuilder::Acir(acir_witness) = witness {
-            self.acir_to_r1cs_witness_map.insert(acir_witness, witness_idx);
+        match &witness {
+            WitnessBuilder::Acir(acir_witness) => {
+                self.acir_to_r1cs_witness_map.insert(*acir_witness, witness_idx);
+            }
+            WitnessBuilder::MemoryRead(value_acir_witness) => {
+                self.acir_to_r1cs_witness_map.insert(*value_acir_witness, witness_idx);
+            }
+            _ => {}
         }
         self.witness_builders.push(witness);
         debug_assert_eq!(self.witness_builders.len(), witness_idx + 1);
@@ -287,18 +385,27 @@ impl R1CS {
         }
     }
 
-    // Adds a new witness `denominator` and constrains it to represent one of denominator in a use of logup for an indexed lookup, i.e. 
-    //    `denominator - (sz_challenge - (index + rs_challenge * value)) == 0`
-    fn add_indexed_lookup_denominator(&mut self, rs_challenge: usize, sz_challenge: usize, coeff_and_index: (FieldElement, usize), value: usize) -> usize {
+    // Adds a new witness `factor` and constrains it to represent 
+    //    `factor - (sz_challenge - (index + rs_challenge * value)) == 0`
+    // Then adds a new witness for its inverse, constrains it to be such, and returns its index.
+    fn add_indexed_lookup_factor(&mut self, rs_challenge: usize, sz_challenge: usize, coeff_and_index: (FieldElement, usize), value: usize) -> usize {
         let constraint_idx = self.new_constraint_index();
-        let denominator = self.add_witness(WitnessBuilder::Solvable(constraint_idx));
+        let factor = self.add_witness(WitnessBuilder::Solvable(constraint_idx));
         self.set_constraint(
             constraint_idx,
             &[(FieldElement::one(), rs_challenge)],
             &[(FieldElement::one(), value)],
-            &[(FieldElement::one(), denominator), (FieldElement::one().neg(), sz_challenge), coeff_and_index],
+            &[(FieldElement::one(), factor), (FieldElement::one().neg(), sz_challenge), coeff_and_index],
         );
-        denominator
+        let inverse = self.add_witness(WitnessBuilder::Inverse(factor));
+        let inverse_constraint_idx = self.new_constraint_index();
+        self.set_constraint(
+            inverse_constraint_idx,
+            &[(FieldElement::one(), factor)],
+            &[(FieldElement::one(), inverse)],
+            &[(FieldElement::one(), self.witness_one())],
+        );
+        inverse
     }
 
     // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
@@ -312,6 +419,20 @@ impl R1CS {
             &[(FieldElement::one(), product)],
         );
         product
+    }
+
+    // Add a new witness representing the sum of existing witnesses, and add an R1CS constraint enforcing this.
+    fn add_sum(&mut self, summands: Vec<usize>) -> usize {
+        let sum = self.add_witness(WitnessBuilder::Sum(summands.clone()));
+        let constraint_idx = self.new_constraint_index();
+        let az = summands.iter().map(|&s| (FieldElement::one(), s)).collect::<Vec<_>>();
+        self.set_constraint(
+            constraint_idx,
+            &az,
+            &[(FieldElement::one(), self.witness_one())],
+            &[(FieldElement::one(), sum)],
+        );
+        sum
     }
 
     // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
