@@ -2,6 +2,8 @@ use std::{
     collections::BTreeMap, fmt::{Debug, Display, Formatter}, ops::{Add, AddAssign, Index, IndexMut, Mul}
 };
 
+use acir::{AcirField, FieldElement};
+
 /// A sparse matrix with elements of type `F`.
 #[derive(Debug, Clone, Default)]
 pub struct SparseMatrix<F> {
@@ -83,6 +85,7 @@ impl<F: PartialEq> SparseMatrix<F> {
         })
     }
 
+    // TODO wouldn't it be better to use the CSR format (not the COO format?) for sparse matrices?  There should never be a row without a non-zero entry.
     /// Iterate over the non-default entries of the given row.
     pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, &F)> {
         self.entries
@@ -139,4 +142,45 @@ where
         }
         result
     }
+}
+
+// Sparse dot product. `a` is assumed zero. `b` is assumed missing.
+pub fn sparse_dot<'a>(
+    a: impl Iterator<Item = (usize, &'a FieldElement)>,
+    b: &[Option<FieldElement>],
+) -> Option<FieldElement> {
+    let mut accumulator = FieldElement::zero();
+    for (col, &a) in a {
+        accumulator += a * b[col]?;
+    }
+    Some(accumulator)
+}
+
+// Returns a pair (i, f) such that, setting `b[i] = f`,
+// ensures `sparse_dot(a, b) = r`.
+fn solve_dot<'a>(
+    a: impl Iterator<Item = (usize, &'a FieldElement)>,
+    b: &[Option<FieldElement>],
+    r: FieldElement,
+) -> Option<(usize, FieldElement)> {
+    let mut accumulator = -r;
+    let mut missing = None;
+    for (col, &a) in a {
+        if let Some(b) = b[col] {
+            accumulator += a * b;
+        } else if missing.is_none() {
+            missing = Some((col, a));
+        } else {
+            return None;
+        }
+    }
+    missing.map(|(col, coeff)| (col, -accumulator / coeff))
+}
+
+pub fn mat_mul(a: &SparseMatrix<FieldElement>, b: &[FieldElement]) -> Vec<FieldElement> {
+    let mut result = vec![FieldElement::zero(); a.rows];
+    for ((i, j), &value) in a.iter() {
+        result[i] += value * b[j];
+    }
+    result
 }
