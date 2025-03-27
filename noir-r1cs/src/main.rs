@@ -64,6 +64,7 @@ fn main() -> AnyResult<()> {
 
     // Compile to obtain R1CS matrices and R1CS solver
     let r1cs = R1CS::from_acir(acir_circuit);
+    info!("{}", r1cs);
 
     // Solve for the R1CS witness using the ACIR witness
     let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
