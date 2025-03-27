@@ -2,9 +2,11 @@
 mod compiler;
 mod sparse_matrix;
 mod utils;
+mod solver;
+mod r1cs_matrices;
 
 use {
-    self::{compiler::R1CSMatrices, sparse_matrix::{mat_mul, SparseMatrix}}, acir::{native_types::Witness as AcirWitness, AcirField, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::{MockTranscript, WitnessBuilder, R1CS}, noirc_artifacts::program::ProgramArtifact, rand::Rng, std::{collections::BTreeMap, fs::File, path::PathBuf, vec}, tracing::{field::Field, info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
+    acir::{native_types::Witness as AcirWitness, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::R1CS, noirc_artifacts::program::ProgramArtifact, solver::MockTranscript, std::{fs::File, path::PathBuf}, tracing::{info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
 };
 
 /// Prove & verify a compiled Noir program using R1CS.
@@ -47,6 +49,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         "Program must have one entry point."
     );
     let main = &program.bytecode.functions[0];
+    let num_public_parameters = main.public_parameters.0.len();
     let num_acir_witnesses = main.current_witness_index as usize;
     info!(
         "ACIR: {} witnesses, {} opcodes.",
@@ -82,8 +85,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         ));
     }
 
-    // FIXME
-    //r1cs.matrices.write_json_to_file(num_public_parameters, &witness, "r1cs.json")?;
+    r1cs.matrices.write_json_to_file(num_public_parameters, &witness, "r1cs.json")?;
 
     Ok(())
 }
