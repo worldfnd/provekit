@@ -57,7 +57,9 @@ impl R1CS {
         let mut memory_blocks: BTreeMap<usize, ReadOnlyMemoryBlock> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
-                Opcode::AssertZero(expr) => r1cs.add_acir_assert_zero(&expr),
+                Opcode::AssertZero(expr) => {
+                    r1cs.add_acir_assert_zero(&expr);
+                }
 
                 // Brillig instructions are used by the ACVM to solve for ACIR witness values.
                 // Corresponding ACIR constraints are by Noir as AssertZeros, and we map all ACIR
@@ -138,7 +140,7 @@ impl R1CS {
                     } else {
                         // Dynamically addressed memory read
                         // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                        // If it isn't, we'll need to introduce constraints and use a solvable witness for the index, but let's leave this til later.
+                        // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
                         let addr_wb = match op.index.to_witness() {
                             Some(acir_witness) => WitnessBuilder::Acir(acir_witness.0 as usize),
                             None => unimplemented!("MemoryOp index must be a witness or a constant, not a more general Expression"),
@@ -307,7 +309,7 @@ impl R1CS {
         self.matrices.add_constraint(
             &[(FieldElement::one(), rs_challenge)],
             &[(FieldElement::one(), value)],
-            &[(FieldElement::one(), denominator), (FieldElement::one().neg(), sz_challenge), (index, index_witness)],
+            &[(FieldElement::one().neg(), denominator), (FieldElement::one(), sz_challenge), (index.neg(), index_witness)],
         );
         let inverse = self.add_witness(WitnessBuilder::Inverse(denominator));
         self.matrices.add_constraint(

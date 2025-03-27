@@ -15,6 +15,9 @@ struct JsonR1CS {
 }
 
 /// Represents a R1CS constraint system.
+/// A witness z satisfies the R1CS iff:
+/// Az * Bz = Cz
+/// where Az, Bz, Cz are the vectors formed by multiplying the matrices A, B, C by the witness z.
 #[derive(Debug, Clone)]
 pub struct R1CSMatrices {
     pub a: SparseMatrix<FieldElement>,
@@ -115,7 +118,7 @@ impl R1CSMatrices {
         self.c.grow(num_rows, num_cols);
     }
 
-    // Adds a new R1CS constraint.
+    /// Adds a new R1CS constraint.
     pub fn add_constraint(
         &mut self,
         az: &[(FieldElement, usize)],
@@ -156,7 +159,7 @@ impl R1CSMatrices {
 /// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
 impl std::fmt::Display for R1CSMatrices {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 15 {
+        if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 25 {
             println!("R1CS matrices too large to print");
             return Ok(());
         }
