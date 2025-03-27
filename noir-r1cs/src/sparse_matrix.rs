@@ -1,5 +1,7 @@
 use std::{
-    collections::BTreeMap, fmt::{Debug, Display, Formatter}, ops::{AddAssign, Index, IndexMut, Mul}
+    collections::BTreeMap,
+    fmt::{Debug, Display, Formatter},
+    ops::{AddAssign, Index, IndexMut, Mul},
 };
 
 use acir::{AcirField, FieldElement};

@@ -1,17 +1,19 @@
 use {
-    crate::sparse_matrix::{mat_mul, SparseMatrix}, acir::
-        {FieldElement, AcirField}, serde::{Deserialize, Serialize}, std::{fmt::Formatter, fs::File, io::Write}
+    crate::sparse_matrix::{mat_mul, SparseMatrix},
+    acir::{AcirField, FieldElement},
+    serde::{Deserialize, Serialize},
+    std::{fmt::Formatter, fs::File, io::Write},
 };
 
 #[derive(Serialize)]
 struct JsonR1CS {
-    num_public:      usize,
-    num_variables:   usize,
+    num_public: usize,
+    num_variables: usize,
     num_constraints: usize,
-    a:               Vec<MatrixEntry>,
-    b:               Vec<MatrixEntry>,
-    c:               Vec<MatrixEntry>,
-    witnesses:       Vec<Vec<String>>,
+    a: Vec<MatrixEntry>,
+    b: Vec<MatrixEntry>,
+    c: Vec<MatrixEntry>,
+    witnesses: Vec<Vec<String>>,
 }
 
 /// Represents a R1CS constraint system.
@@ -28,8 +30,8 @@ pub struct R1CSMatrices {
 #[derive(Serialize, Deserialize)]
 struct MatrixEntry {
     constraint: usize,
-    signal:     usize,
-    value:      String,
+    signal: usize,
+    value: String,
 }
 
 impl R1CSMatrices {
@@ -46,7 +48,6 @@ impl R1CSMatrices {
         num_public: usize,
         witness: &[FieldElement],
     ) -> Result<String, serde_json::Error> {
-
         // Convert witness to string format
         let witnesses = vec![witness
             .iter()
@@ -67,16 +68,20 @@ impl R1CSMatrices {
     }
 
     fn matrix_to_entries(matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
-        matrix.entries.iter().filter_map(|((row, col), value)| {
-            if !value.is_zero() {
-                Some(MatrixEntry {
-                    constraint: *row,
-                    signal:     *col,
-                    value:      value.to_string(),
-                });
-            }
-            None
-        }).collect()
+        matrix
+            .entries
+            .iter()
+            .filter_map(|((row, col), value)| {
+                if !value.is_zero() {
+                    Some(MatrixEntry {
+                        constraint: *row,
+                        signal: *col,
+                        value: value.to_string(),
+                    });
+                }
+                None
+            })
+            .collect()
     }
 
     pub fn write_json_to_file(
@@ -125,7 +130,6 @@ impl R1CSMatrices {
         bz: &[(FieldElement, usize)],
         cz: &[(FieldElement, usize)],
     ) {
-
         let next_constraint_idx = self.num_constraints();
         let num_cols = self.num_witnesses();
         self.grow_matrices(self.num_constraints() + 1, num_cols);
@@ -147,7 +151,12 @@ impl R1CSMatrices {
         let az = mat_mul(&self.a, witness);
         let bz = mat_mul(&self.b, witness);
         let cz = mat_mul(&self.c, witness);
-        for (row, ((a_val, b_val), c_val)) in az.into_iter().zip(bz.into_iter()).zip(cz.into_iter()).enumerate() {
+        for (row, ((a_val, b_val), c_val)) in az
+            .into_iter()
+            .zip(bz.into_iter())
+            .zip(cz.into_iter())
+            .enumerate()
+        {
             if a_val * b_val != c_val {
                 return Some(row);
             }
@@ -156,12 +165,10 @@ impl R1CSMatrices {
     }
 }
 
-/// Print the R1CS matrices and the ACIR -> R1CS witness map, useful for debugging.
 impl std::fmt::Display for R1CSMatrices {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 25 {
-            println!("R1CS matrices too large to print");
-            return Ok(());
+            return writeln!(f, "R1CS matrices too large to print")
         }
         writeln!(f, "Matrix A:")?;
         write!(f, "{}", self.a)?;

@@ -1,15 +1,25 @@
 #![doc = include_str!("../README.md")]
 mod compiler;
+mod r1cs_matrices;
+mod solver;
 mod sparse_matrix;
 mod utils;
-mod solver;
-mod r1cs_matrices;
 
 use {
-    acir::{native_types::Witness as AcirWitness, FieldElement}, anyhow::{ensure, Context, Result as AnyResult}, argh::FromArgs, compiler::R1CS, noirc_artifacts::program::ProgramArtifact, solver::MockTranscript, std::{fs::File, path::PathBuf}, tracing::{info, level_filters::LevelFilter}, tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter}, utils::{file_io::deserialize_witness_stack, PrintAbi}
+    acir::FieldElement,
+    anyhow::{ensure, Context, Result as AnyResult},
+    argh::FromArgs,
+    compiler::R1CS,
+    noirc_artifacts::program::ProgramArtifact,
+    solver::MockTranscript,
+    std::{fs::File, path::PathBuf},
+    tracing::{info, level_filters::LevelFilter},
+    tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter},
+    utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
 
-/// Prove & verify a compiled Noir program using R1CS.
+/// Compile a R1CS instance and R1CS solver for the compiled Noir program, solve the R1CS witness
+/// values from the provided ACIR witness values, then check that the R1CS instance is satisfied.
 #[derive(FromArgs)]
 struct Args {
     /// path to the compiled Noir program
@@ -33,10 +43,6 @@ fn main() -> AnyResult<()> {
         )
         .init();
     let args: Args = argh::from_env();
-    prove_verify(args)
-}
-
-fn prove_verify(args: Args) -> AnyResult<()> {
     info!("Loading Noir program {:?}", args.program_path);
     let file = File::open(args.program_path).context("while opening Noir program")?;
     let program: ProgramArtifact =
@@ -48,32 +54,22 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         program.bytecode.functions.len() == 1,
         "Program must have one entry point."
     );
-    let main = &program.bytecode.functions[0];
-    let num_public_parameters = main.public_parameters.0.len();
-    let num_acir_witnesses = main.current_witness_index as usize;
+    let acir_circuit = &program.bytecode.functions[0];
+    let num_acir_witnesses = acir_circuit.current_witness_index as usize;
     info!(
         "ACIR: {} witnesses, {} opcodes.",
         num_acir_witnesses,
-        main.opcodes.len()
+        acir_circuit.opcodes.len()
     );
 
-    let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
-        deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
-
-    let acir_witness = witness_stack.pop().unwrap().witness;
-
-    if num_acir_witnesses < 15 {
-        println!("ACIR witness values:");
-        (0..num_acir_witnesses).for_each(|i| {
-            println!("{}: {:?}", i, acir_witness[&AcirWitness(i as u32)]);
-        });
-    }
-
-    // Determine the R1CS constraints and witnesses from the ACIR program
-    let r1cs = R1CS::from_acir(main);
-    print!("{}", r1cs);
+    // Compile to obtain R1CS matrices and R1CS solver
+    let r1cs = R1CS::from_acir(acir_circuit);
 
     // Solve for the R1CS witness using the ACIR witness
+    let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
+        deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
+    let acir_witness = witness_stack.pop().unwrap().witness;
+
     let mut transcript = MockTranscript::new();
     let witness = r1cs.solver.solve(&mut transcript, &acir_witness);
 
@@ -85,7 +81,8 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         ));
     }
 
-    r1cs.matrices.write_json_to_file(num_public_parameters, &witness, "r1cs.json")?;
+    r1cs.matrices
+        .write_json_to_file(acir_circuit.public_parameters.0.len(), &witness, "r1cs.json")?;
 
     Ok(())
 }

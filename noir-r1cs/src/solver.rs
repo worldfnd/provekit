@@ -1,8 +1,10 @@
 use {
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
-        FieldElement, AcirField
-    }, rand::Rng, std::collections::BTreeMap
+        AcirField, FieldElement,
+    },
+    rand::Rng,
+    std::collections::BTreeMap,
 };
 
 #[derive(Debug, Clone)]
@@ -39,9 +41,7 @@ pub struct MockTranscript {
 
 impl MockTranscript {
     pub fn new() -> Self {
-        Self {
-            count: 0,
-        }
+        Self { count: 0 }
     }
 
     pub fn append(&mut self, _value: FieldElement) {
@@ -49,7 +49,7 @@ impl MockTranscript {
     }
 
     pub fn draw_challenge(&mut self) -> FieldElement {
-        self.count +=1;
+        self.count += 1;
         self.count.into()
     }
 }
@@ -75,57 +75,84 @@ impl R1CSSolver {
         self.witness_builders.push(witness_builder);
     }
 
-    pub fn solve(&self, transcript: &mut MockTranscript, acir_witnesses: &WitnessMap<FieldElement>) -> Vec<FieldElement> {
+    /// Given the ACIR witness values, solve for the R1CS witness values.
+    pub fn solve(
+        &self,
+        transcript: &mut MockTranscript,
+        acir_witnesses: &WitnessMap<FieldElement>,
+    ) -> Vec<FieldElement> {
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.num_witnesses()];
         // The memory read counts for each block of memory
-        let mut memory_read_counts: BTreeMap<usize, Vec<u32>> = self.memory_lengths.iter().map(|(block_id, len)| (*block_id, vec![0u32; *len])).collect();
-        self.witness_builders.iter().enumerate().for_each(|(witness_idx, witness_builder)| {
-            assert_eq!(witness[witness_idx], None, "Witness {witness_idx} already set.");
-            let value = match witness_builder {
-                WitnessBuilder::Constant(c) => *c,
-                WitnessBuilder::Acir(acir_witness_idx) => {
-                    acir_witnesses[&AcirWitness(*acir_witness_idx as u32)]
-                },
-                WitnessBuilder::StaticMemoryRead(block_id, static_addr, value_acir_witness_idx) => {
-                    memory_read_counts.get_mut(&block_id).unwrap()[*static_addr] += 1;
-                    acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
-                },
-                WitnessBuilder::DynamicMemoryRead(block_id, addr_witness_idx, value_acir_witness_idx) => {
-                    let addr = witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
-                    memory_read_counts.get_mut(&block_id).unwrap()[addr] += 1;
-                    acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
-                },
-                WitnessBuilder::Challenge => {
-                    transcript.draw_challenge()
-                },
-                WitnessBuilder::Inverse(operand_idx) => {
-                    let operand: FieldElement = witness[*operand_idx].unwrap();
-                    operand.inverse()
-                },
-                WitnessBuilder::Product(operand_idx_a, operand_idx_b) => {
-                    let a: FieldElement = witness[*operand_idx_a].unwrap();
-                    let b: FieldElement = witness[*operand_idx_b].unwrap();
-                    a * b
-                },
-                WitnessBuilder::Sum(operands) => {
-                    operands.iter().map(|idx| witness[*idx].unwrap()).fold(FieldElement::zero(), |acc, x| acc + x)
-                },
-                WitnessBuilder::MemoryAccessCount(block_id, addr) => {
-                    let count = memory_read_counts.get(&block_id).unwrap()[*addr];
-                    FieldElement::from(count)
-                },
-                WitnessBuilder::LogUpDenominator(sz_challenge, (index_coeff, index), rs_challenge, value) => {
-                    let index = witness[*index].unwrap();
-                    let value = witness[*value].unwrap();
-                    let rs_challenge = witness[*rs_challenge].unwrap();
-                    let sz_challenge = witness[*sz_challenge].unwrap();
-                    let denominator = sz_challenge - (*index_coeff * index + rs_challenge * value);
-                    denominator
-                },
-            };
-            witness[witness_idx] = Some(value);
-            transcript.append(value);
-        });
+        let mut memory_read_counts: BTreeMap<usize, Vec<u32>> = self
+            .memory_lengths
+            .iter()
+            .map(|(block_id, len)| (*block_id, vec![0u32; *len]))
+            .collect();
+        self.witness_builders
+            .iter()
+            .enumerate()
+            .for_each(|(witness_idx, witness_builder)| {
+                assert_eq!(
+                    witness[witness_idx], None,
+                    "Witness {witness_idx} already set."
+                );
+                let value = match witness_builder {
+                    WitnessBuilder::Constant(c) => *c,
+                    WitnessBuilder::Acir(acir_witness_idx) => {
+                        acir_witnesses[&AcirWitness(*acir_witness_idx as u32)]
+                    }
+                    WitnessBuilder::StaticMemoryRead(
+                        block_id,
+                        static_addr,
+                        value_acir_witness_idx,
+                    ) => {
+                        memory_read_counts.get_mut(block_id).unwrap()[*static_addr] += 1;
+                        acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
+                    }
+                    WitnessBuilder::DynamicMemoryRead(
+                        block_id,
+                        addr_witness_idx,
+                        value_acir_witness_idx,
+                    ) => {
+                        let addr =
+                            witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
+                        memory_read_counts.get_mut(block_id).unwrap()[addr] += 1;
+                        acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
+                    }
+                    WitnessBuilder::Challenge => transcript.draw_challenge(),
+                    WitnessBuilder::Inverse(operand_idx) => {
+                        let operand: FieldElement = witness[*operand_idx].unwrap();
+                        operand.inverse()
+                    }
+                    WitnessBuilder::Product(operand_idx_a, operand_idx_b) => {
+                        let a: FieldElement = witness[*operand_idx_a].unwrap();
+                        let b: FieldElement = witness[*operand_idx_b].unwrap();
+                        a * b
+                    }
+                    WitnessBuilder::Sum(operands) => operands
+                        .iter()
+                        .map(|idx| witness[*idx].unwrap())
+                        .fold(FieldElement::zero(), |acc, x| acc + x),
+                    WitnessBuilder::MemoryAccessCount(block_id, addr) => {
+                        let count = memory_read_counts.get(block_id).unwrap()[*addr];
+                        FieldElement::from(count)
+                    }
+                    WitnessBuilder::LogUpDenominator(
+                        sz_challenge,
+                        (index_coeff, index),
+                        rs_challenge,
+                        value,
+                    ) => {
+                        let index = witness[*index].unwrap();
+                        let value = witness[*value].unwrap();
+                        let rs_challenge = witness[*rs_challenge].unwrap();
+                        let sz_challenge = witness[*sz_challenge].unwrap();
+                        sz_challenge - (*index_coeff * index + rs_challenge * value)
+                    }
+                };
+                witness[witness_idx] = Some(value);
+                transcript.append(value);
+            });
 
         // Complete witness with entropy.
         // TODO: Use better entropy source and proper sampling.
@@ -145,7 +172,7 @@ impl R1CSSolver {
     }
 
     /// Index of the constant 1 witness
-    pub fn witness_one(&self) -> usize {
+    pub const fn witness_one(&self) -> usize {
         0
     }
 }
