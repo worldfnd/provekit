@@ -1,32 +1,24 @@
 #![doc = include_str!("../README.md")]
+mod cmd;
 mod compiler;
 mod sparse_matrix;
 mod utils;
 
 use {
-    self::{compiler::R1CS, sparse_matrix::SparseMatrix},
+    self::{cmd::Command, compiler::R1CS, sparse_matrix::SparseMatrix},
     acir::{native_types::Witness, AcirField, FieldElement},
     anyhow::{ensure, Context, Result as AnyResult},
-    argh::FromArgs,
     noirc_artifacts::program::ProgramArtifact,
     rand::Rng,
-    std::{fs::File, path::PathBuf, vec},
+    std::{
+        fs::File,
+        path::{Path, PathBuf},
+        vec,
+    },
     tracing::{info, level_filters::LevelFilter},
     tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter},
     utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
-
-/// Prove & verify a compiled Noir program using R1CS.
-#[derive(FromArgs)]
-struct Args {
-    /// path to the compiled Noir program
-    #[argh(positional)]
-    program_path: PathBuf,
-
-    /// path to the witness file
-    #[argh(positional)]
-    witness_path: PathBuf,
-}
 
 fn main() -> AnyResult<()> {
     tracing_subscriber::fmt()
@@ -39,13 +31,15 @@ fn main() -> AnyResult<()> {
                 .from_env_lossy(),
         )
         .init();
-    let args: Args = argh::from_env();
-    prove_verify(args)
+
+    // Run CLI command
+    let args = argh::from_env::<cmd::Args>();
+    args.run()
 }
 
-fn prove_verify(args: Args) -> AnyResult<()> {
-    info!("Loading Noir program {:?}", args.program_path);
-    let file = File::open(args.program_path).context("while opening Noir program")?;
+fn prove_verify(program_path: &Path, witness_path: &Path) -> AnyResult<()> {
+    info!("Loading Noir program {:?}", program_path);
+    let file = File::open(program_path).context("while opening Noir program")?;
     let program: ProgramArtifact =
         serde_json::from_reader(file).context("while reading Noir program")?;
 
@@ -65,7 +59,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
     );
 
     let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
-        deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
+        deserialize_witness_stack(witness_path.to_str().unwrap())?;
 
     let witness_stack = witness_stack.pop().unwrap().witness;
 
