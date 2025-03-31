@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "delegated-spartan"]
+members = ["noir-r1cs", "delegated-spartan", "merkle-hash-bench", "prover"]
 
 [workspace.package]
 edition = "2021"
