@@ -3,7 +3,7 @@
 use {
     ark_std::Zero,
     itertools::izip,
-    prover::{
+    noir_r1cs::whir_r1cs::{
         skyscraper::{
             skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
             skyscraper_pow::SkyscraperPoW,

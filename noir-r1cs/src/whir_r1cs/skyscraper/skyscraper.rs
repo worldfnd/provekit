@@ -1,10 +1,11 @@
 #![allow(unused_imports)]
-use whir::crypto::fields::Field256;
-use ark_ff::{BigInt, BigInteger, PrimeField};
-use spongefish::duplex_sponge::{DuplexSponge, Permutation};
-use ruint::Uint;
-use ruint_macro::uint;
-use zeroize::Zeroize;
+use {
+    ark_ff::{BigInt, BigInteger, PrimeField},
+    ruint::{uint, Uint},
+    spongefish::duplex_sponge::{DuplexSponge, Permutation},
+    whir::crypto::fields::Field256,
+    zeroize::Zeroize,
+};
 
 /// TODO: Add documentation
 pub const fn uint_to_field(i: Uint<256, 4>) -> Field256 {
@@ -113,7 +114,9 @@ impl Permutation for Skyscraper {
 
     fn new(iv: [u8; 32]) -> Self {
         let felt = Field256::new(bigint_from_bytes_le(&iv));
-        Self { state: [0.into(), felt] }
+        Self {
+            state: [0.into(), felt],
+        }
     }
 
     fn permute(&mut self) {
@@ -124,8 +127,10 @@ impl Permutation for Skyscraper {
 pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
 
 mod tests {
-    use crate::skyscraper::skyscraper::{bar, compress, square, uint_to_field};
-    use ruint::uint;
+    use {
+        crate::whir_r1cs::skyscraper::skyscraper::{bar, compress, square, uint_to_field},
+        ruint::uint,
+    };
 
     #[test]
     fn test_square() {
@@ -165,6 +170,5 @@ mod tests {
             uint_to_field(3583228880285179354728993622328037400470978495633822008876840172083178912457_U256.into())
             );
         }
-
     }
 }

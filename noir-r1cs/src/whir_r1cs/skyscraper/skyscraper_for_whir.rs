@@ -1,21 +1,25 @@
-use std::borrow::Borrow;
-use rand::Rng;
-use crate::skyscraper::skyscraper::SkyscraperSponge;
-use ark_crypto_primitives::{
-    crh::{CRHScheme, TwoToOneCRHScheme},
-    merkle_tree::{Config, IdentityDigestConverter},
-    Error,
-};
-use whir::{
-    crypto::fields::Field256,
-    whir::{
-        domainsep::DigestDomainSeparator,
-        utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
+use {
+    crate::whir_r1cs::skyscraper::skyscraper::{compress, SkyscraperSponge},
+    ark_crypto_primitives::{
+        crh::{CRHScheme, TwoToOneCRHScheme},
+        merkle_tree::{Config, IdentityDigestConverter},
+        Error,
     },
-};
-use spongefish::{
-    VerifierState, ProverState, DomainSeparator, ProofResult,
-    codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize},
+    rand::Rng,
+    spongefish::{
+        codecs::arkworks_algebra::{
+            FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
+        },
+        DomainSeparator, ProofResult, ProverState, VerifierState,
+    },
+    std::borrow::Borrow,
+    whir::{
+        crypto::fields::Field256,
+        whir::{
+            domainsep::DigestDomainSeparator,
+            utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
+        },
+    },
 };
 
 /// Skyscraper collision-resistant hash
@@ -38,7 +42,7 @@ impl CRHScheme for SkyscraperCRH {
         elems
             .iter()
             .cloned()
-            .reduce(crate::skyscraper::skyscraper::compress)
+            .reduce(compress)
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
@@ -59,7 +63,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
         left_input: T,
         right_input: T,
     ) -> Result<Self::Output, Error> {
-        Ok(crate::skyscraper::skyscraper::compress(
+        Ok(compress(
             left_input.borrow().clone(),
             right_input.borrow().clone(),
         ))
@@ -99,7 +103,9 @@ impl DigestToUnitSerialize<SkyscraperMerkleConfig> for ProverState<SkyscraperSpo
     }
 }
 
-impl <'a> DigestToUnitDeserialize<SkyscraperMerkleConfig> for VerifierState<'a, SkyscraperSponge, Field256> {
+impl<'a> DigestToUnitDeserialize<SkyscraperMerkleConfig>
+    for VerifierState<'a, SkyscraperSponge, Field256>
+{
     fn read_digest(&mut self) -> ProofResult<Field256> {
         let [r] = self.next_scalars()?;
         Ok(r)

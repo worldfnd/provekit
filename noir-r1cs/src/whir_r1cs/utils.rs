@@ -1,5 +1,5 @@
 use {
-    crate::{
+    crate::whir_r1cs::{
         skyscraper::{
             skyscraper::{uint_to_field, SkyscraperSponge},
             skyscraper_for_whir::SkyscraperMerkleConfig,
@@ -14,7 +14,7 @@ use {
         str::FromStr,
         One, Zero,
     },
-    ruint_macro::uint,
+    ruint::uint,
     serde::Deserialize,
     spongefish::{DomainSeparator, ProverState},
     std::{fs::File, io::Write},
