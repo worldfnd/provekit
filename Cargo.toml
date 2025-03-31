@@ -49,7 +49,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 base64 = "0.22.1"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
-rand = "0.8.5"
+rand = "0.9.0"
 subtle = "2.6.1"
 bytemuck = "1.19.0"
 hex-literal = "0.4.1"

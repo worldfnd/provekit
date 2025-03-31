@@ -1,5 +1,5 @@
 use {
-    crate::SparseMatrix,
+    super::ConstraintSink,
     acir::{
         circuit::{Circuit, Opcode},
         native_types::{Expression, Witness},
@@ -8,30 +8,24 @@ use {
     std::collections::BTreeMap,
 };
 
-/// Represents a R1CS constraint system.
+/// Represents a R1CS constraint source from ACIR.
 #[derive(Debug, Clone)]
-pub struct R1CS {
-    pub a: SparseMatrix<FieldElement>,
-    pub b: SparseMatrix<FieldElement>,
-    pub c: SparseMatrix<FieldElement>,
-
-    // Remapping of witness indices to the r1cs_witness array
-    pub witnesses: usize,
-    pub remap:     BTreeMap<usize, usize>,
-
-    pub constraints: usize,
+pub struct AcirSource<'a> {
+    circuit:     &'a Circuit<FieldElement>,
+    witnesses:   usize,
+    constraints: usize,
+    witness_map: Vec<usize>,
 }
 
-impl R1CS {
-    pub fn new() -> Self {
-        Self {
-            a:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            b:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            c:           SparseMatrix::new(0, 1, FieldElement::zero()),
-            witnesses:   1,
-            remap:       BTreeMap::new(),
-            constraints: 0,
-        }
+impl<'a> AcirSource<'a> {
+    pub fn new(circuit: &'a Circuit<FieldElement>) -> Self {
+        let witness_map = vec![None; circuit.num_witnesses()];
+        // Do a preprocessing pass to compute the dimensions and witness map.
+        Self {}
+    }
+
+    pub fn emit(&self, sink: &mut impl ConstraintSink) {
+        todo!();
     }
 
     pub fn add_circuit(&mut self, circuit: &Circuit<FieldElement>) {

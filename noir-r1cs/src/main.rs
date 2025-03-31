@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 mod compiler;
+mod r1cs_emitter;
 mod sparse_matrix;
 mod utils;
 
@@ -119,6 +120,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
     witness[2] = Some(FieldElement::from(5678_u32)); // b
 
     // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
+    info!("Solving for witness.");
     for row in 0..r1cs.constraints {
         let [a, b, c] =
             [&r1cs.a, &r1cs.b, &r1cs.c].map(|mat| sparse_dot(mat.iter_row(row), &witness));
@@ -135,9 +137,10 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
             panic!("Could not solve constraint {row}.")
         };
-        eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
+        // eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
         witness[col] = Some(val);
     }
+    info!("Witness found.");
 
     // Complete witness with entropy.
     // TODO: Use better entropy source and proper sampling.
@@ -147,7 +150,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.random::<u128>())))
         .collect::<Vec<_>>();
 
-    dbg!(&witness);
+    // dbg!(&witness);
 
     // Verify
     let a = mat_mul(&r1cs.a, &witness);
@@ -160,6 +163,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         .for_each(|(row, ((&a, &b), &c))| {
             assert_eq!(a * b, c, "Constraint {row} failed");
         });
+    info!("Witness verified.");
 
     // dbg!(&a);
     // dbg!(&b);
