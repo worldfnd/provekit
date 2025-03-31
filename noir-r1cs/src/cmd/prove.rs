@@ -1,6 +1,6 @@
 use {
     super::{utils::load_noir_program, Command},
-    crate::compiler::R1CS,
+    crate::{compiler::R1CS, sparse_matrix::SparseMatrix},
     acir::{
         brillig::ForeignCallResult,
         circuit::{brillig::BrilligBytecode, Circuit},
@@ -8,9 +8,10 @@ use {
         AcirField as _, FieldElement,
     },
     acvm::pwg::{ACVMStatus, ACVM},
-    anyhow::{anyhow, Context, Result},
+    anyhow::{anyhow, ensure, Context, Result},
     argh::FromArgs,
     bn254_blackbox_solver::Bn254BlackBoxSolver,
+    itertools::Itertools,
     noirc_abi::{input_parser::Format, Abi},
     rand::Rng,
     std::{
@@ -59,6 +60,8 @@ impl Command for ProveArgs {
         let mut witness = noir_to_r1cs_witness(noir_witness, &r1cs)?;
         solve_r1cs(&r1cs, witness.as_mut_slice())?;
         let witness = fill_witness(witness)?;
+
+        verify_r1cs(&r1cs, &witness)?;
 
         Ok(())
     }
@@ -190,6 +193,18 @@ fn fill_witness(witness: Vec<Option<FieldElement>>) -> Result<Vec<FieldElement>>
     Ok(witness)
 }
 
+#[instrument(skip_all, fields(size = witness.len(), constraints = r1cs.constraints))]
+fn verify_r1cs(r1cs: &R1CS, witness: &[FieldElement]) -> Result<()> {
+    // Verify
+    let a = mat_mul(&r1cs.a, &witness);
+    let b = mat_mul(&r1cs.b, &witness);
+    let c = mat_mul(&r1cs.c, &witness);
+    for (row, ((&a, &b), &c)) in a.iter().zip(b.iter()).zip(c.iter()).enumerate() {
+        ensure!(a * b == c, "Constraint {row} failed");
+    }
+    Ok(())
+}
+
 // Sparse dot product. `a` is assumed zero. `b` is assumed missing.
 fn sparse_dot<'a>(
     a: impl Iterator<Item = (usize, &'a FieldElement)>,
@@ -221,4 +236,12 @@ fn solve_dot<'a>(
         }
     }
     missing.map(|(col, coeff)| (col, -accumulator / coeff))
+}
+
+fn mat_mul(a: &SparseMatrix<FieldElement>, b: &[FieldElement]) -> Vec<FieldElement> {
+    let mut result = vec![FieldElement::zero(); a.rows];
+    for ((i, j), &value) in a.iter() {
+        result[i] += value * b[j];
+    }
+    result
 }
