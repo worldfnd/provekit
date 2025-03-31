@@ -55,13 +55,13 @@ bytemuck = "1.19.0"
 hex-literal = "0.4.1"
 
 
-# Noir lang: make sure it matches installed version `noirup -C 801c7188`
-acir = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "801c7188" }
+# Noir lang: make sure it matches installed version `noirup -C 03b58fa2`
+acir = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 
 [patch.crates-io]
 ruint = { git = "https://github.com/recmo/uint", branch = "main" }

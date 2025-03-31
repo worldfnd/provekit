@@ -1,0 +1,1744 @@
+noir-passport-examples/compare_age.json
+   Compiling noir-r1cs v0.1.0 (/Users/ryan.cao/ryan_tfh/Client_Side_Proving/noir-r1cs)
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 1.46s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/compare_age.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  13
+Return values len:  1
+Num AssertZero: 2344
+Num `mul_term`s: 1432
+Blackbox fn "Poseidon2Permutation": 34
+Blackbox fn "RANGE": 1336
+RANGE check: 32 bits had 557 lookups
+RANGE check: 1 bits had 482 lookups
+RANGE check: 8 bits had 215 lookups
+RANGE check: 128 bits had 40 lookups
+RANGE check: 3 bits had 16 lookups
+RANGE check: 30 bits had 13 lookups
+RANGE check: 2 bits had 5 lookups
+RANGE check: 31 bits had 4 lookups
+RANGE check: 33 bits had 4 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 726
+Num Unique Brillig opcodes: 4
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+3776 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+2672 constraints from range checks
+25850 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+20558 total R1CS constraints (14.327412297270401 num vars)
+40028 total R1CS witness size, (15.288721912782648 num vars)
+noir-passport-examples/compare_birthdate.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/compare_birthdate.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  27
+Return values len:  1
+Num AssertZero: 3099
+Num `mul_term`s: 1941
+Blackbox fn "RANGE": 1709
+Blackbox fn "Poseidon2Permutation": 34
+RANGE check: 32 bits had 698 lookups
+RANGE check: 1 bits had 629 lookups
+RANGE check: 8 bits had 286 lookups
+RANGE check: 128 bits had 50 lookups
+RANGE check: 3 bits had 20 lookups
+RANGE check: 30 bits had 13 lookups
+RANGE check: 31 bits had 5 lookups
+RANGE check: 33 bits had 5 lookups
+RANGE check: 2 bits had 3 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 931
+Num Unique Brillig opcodes: 4
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+5040 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+3418 constraints from range checks
+32429 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+22568 total R1CS constraints (14.461990950585571 num vars)
+46607 total R1CS witness size, (15.508259032001188 num vars)
+noir-passport-examples/compare_citizenship.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/compare_citizenship.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  6
+Return values len:  1
+Num AssertZero: 128
+Num `mul_term`s: 30
+Blackbox fn "Poseidon2Permutation": 34
+Blackbox fn "RANGE": 110
+RANGE check: 8 bits had 110 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 2
+Num Unique Brillig opcodes: 1
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+158 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+220 constraints from range checks
+880 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+14488 total R1CS constraints (13.822570830950168 num vars)
+15058 total R1CS witness size, (13.87824254386927 num vars)
+noir-passport-examples/compare_expiry.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/compare_expiry.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  27
+Return values len:  1
+Num AssertZero: 3189
+Num `mul_term`s: 1941
+Blackbox fn "Poseidon2Permutation": 34
+Blackbox fn "RANGE": 1784
+RANGE check: 32 bits had 708 lookups
+RANGE check: 1 bits had 629 lookups
+RANGE check: 8 bits had 332 lookups
+RANGE check: 128 bits had 50 lookups
+RANGE check: 3 bits had 20 lookups
+RANGE check: 30 bits had 13 lookups
+RANGE check: 4 bits had 6 lookups
+RANGE check: 31 bits had 5 lookups
+RANGE check: 33 bits had 5 lookups
+RANGE check: 24 bits had 4 lookups
+RANGE check: 2 bits had 3 lookups
+RANGE check: 10 bits had 2 lookups
+RANGE check: 5 bits had 2 lookups
+RANGE check: 7 bits had 2 lookups
+RANGE check: 26 bits had 1 lookups
+RANGE check: 23 bits had 1 lookups
+RANGE check: 29 bits had 1 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 964
+Num Unique Brillig opcodes: 4
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+5130 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+3568 constraints from range checks
+33359 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+22808 total R1CS constraints (14.477252323937952 num vars)
+47537 total R1CS witness size, (15.536763239041623 num vars)
+noir-passport-examples/data_check_dg2_integrity.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/data_check_dg2_integrity.json noir-examples/basic/target/witness.gz`
+Private inputs len: 22903
+Public inputs len:  0
+Return values len:  0
+Write after read at BlockId(731), Expression { mul_terms: [], linear_combinations: [(1, Witness(74363))], q_c: 0 }
+Num AssertZero: 51131
+Num `mul_term`s: 14744
+Blackbox fn "Sha256Compression": 356
+Blackbox fn "RANGE": 66456
+RANGE check: 32 bits had 42652 lookups
+RANGE check: 8 bits had 22980 lookups
+RANGE check: 1 bits had 749 lookups
+RANGE check: 24 bits had 15 lookups
+RANGE check: 9 bits had 10 lookups
+RANGE check: 30 bits had 10 lookups
+RANGE check: 17 bits had 10 lookups
+RANGE check: 25 bits had 10 lookups
+RANGE check: 2 bits had 9 lookups
+RANGE check: 16 bits had 5 lookups
+RANGE check: 64 bits had 4 lookups
+RANGE check: 3 bits had 2 lookups
+Num Memory inits: 14
+Total memory alloc size: 1092
+Num Memory writes: 1
+Num Memory reads: 262
+Read-only: false
+Num Brillig calls: 1204
+Num Unique Brillig opcodes: 6
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+65875 constraints from AssertZero
+11129984 constraints from SHA
+11021404 witnesses from SHA
+0 constraints from Poseidon2
+0 witnesses from Poseidon2
+132912 constraints from range checks
+1550983 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+11328771 total R1CS constraints (23.433488023306637 num vars)
+12572387 total R1CS witness size, (23.583755250813976 num vars)
+noir-passport-examples/data_check_expiry.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.20s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/data_check_expiry.json noir-examples/basic/target/witness.gz`
+Private inputs len: 95
+Public inputs len:  8
+Return values len:  0
+Num AssertZero: 749
+Num `mul_term`s: 401
+Blackbox fn "RANGE": 571
+RANGE check: 8 bits had 228 lookups
+RANGE check: 32 bits had 160 lookups
+RANGE check: 1 bits had 142 lookups
+RANGE check: 128 bits had 10 lookups
+RANGE check: 4 bits had 6 lookups
+RANGE check: 3 bits had 4 lookups
+RANGE check: 24 bits had 4 lookups
+RANGE check: 30 bits had 4 lookups
+RANGE check: 2 bits had 2 lookups
+RANGE check: 10 bits had 2 lookups
+RANGE check: 5 bits had 2 lookups
+RANGE check: 7 bits had 2 lookups
+RANGE check: 31 bits had 1 lookups
+RANGE check: 29 bits had 1 lookups
+RANGE check: 26 bits had 1 lookups
+RANGE check: 33 bits had 1 lookups
+RANGE check: 23 bits had 1 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 252
+Num Unique Brillig opcodes: 4
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+1150 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+0 constraints from Poseidon2
+0 witnesses from Poseidon2
+1142 constraints from range checks
+8808 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+2292 total R1CS constraints (11.162391328756906 num vars)
+8808 total R1CS witness size, (13.10459875356437 num vars)
+noir-passport-examples/data_check_integrity.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/data_check_integrity.json noir-examples/basic/target/witness.gz`
+Private inputs len: 1000
+Public inputs len:  9
+Return values len:  1
+Write after read at BlockId(8), Expression { mul_terms: [], linear_combinations: [(1, Witness(3970))], q_c: 0 }
+Write after read at BlockId(51), Expression { mul_terms: [], linear_combinations: [(1, Witness(20014))], q_c: 0 }
+Num AssertZero: 22305
+Num `mul_term`s: 17614
+Blackbox fn "Poseidon2Permutation": 134
+Blackbox fn "RANGE": 13397
+Blackbox fn "Sha256Compression": 15
+RANGE check: 32 bits had 10952 lookups
+RANGE check: 8 bits had 1222 lookups
+RANGE check: 1 bits had 1033 lookups
+RANGE check: 24 bits had 34 lookups
+RANGE check: 30 bits had 24 lookups
+RANGE check: 9 bits had 20 lookups
+RANGE check: 25 bits had 20 lookups
+RANGE check: 17 bits had 20 lookups
+RANGE check: 2 bits had 20 lookups
+RANGE check: 128 bits had 10 lookups
+RANGE check: 16 bits had 10 lookups
+RANGE check: 3 bits had 8 lookups
+RANGE check: 64 bits had 7 lookups
+RANGE check: 4 bits had 6 lookups
+RANGE check: 7 bits had 2 lookups
+RANGE check: 10 bits had 2 lookups
+RANGE check: 5 bits had 2 lookups
+RANGE check: 23 bits had 1 lookups
+RANGE check: 26 bits had 1 lookups
+RANGE check: 31 bits had 1 lookups
+RANGE check: 33 bits had 1 lookups
+RANGE check: 29 bits had 1 lookups
+Num Memory inits: 18
+Total memory alloc size: 1235
+Num Memory writes: 2
+Num Memory reads: 319
+Read-only: false
+Num Brillig calls: 1326
+Num Unique Brillig opcodes: 8
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+39919 constraints from AssertZero
+468960 constraints from SHA
+464385 witnesses from SHA
+55610 constraints from Poseidon2
+55878 witnesses from Poseidon2
+26794 constraints from range checks
+365991 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+591283 total R1CS constraints (19.1734892731557 num vars)
+886254 total R1CS witness size, (19.75736070823285 num vars)
+noir-passport-examples/disclose_bytes.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.21s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/disclose_bytes.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  93
+Return values len:  91
+Num AssertZero: 278
+Num `mul_term`s: 90
+Blackbox fn "RANGE": 275
+Blackbox fn "Poseidon2Permutation": 34
+RANGE check: 8 bits had 275 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 0
+Num Unique Brillig opcodes: 0
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+368 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+550 constraints from range checks
+2200 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+15028 total R1CS constraints (13.87536540064177 num vars)
+16378 total R1CS witness size, (13.999471572532684 num vars)
+noir-passport-examples/disclose_flags.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/disclose_flags.json noir-examples/basic/target/witness.gz`
+Private inputs len: 105
+Public inputs len:  3
+Return values len:  70
+Num AssertZero: 1116
+Num `mul_term`s: 1018
+Blackbox fn "Poseidon2Permutation": 34
+Blackbox fn "RANGE": 593
+RANGE check: 8 bits had 585 lookups
+RANGE check: 1 bits had 8 lookups
+Num Memory inits: 1
+Total memory alloc size: 90
+Num Memory writes: 0
+Num Memory reads: 9
+Read-only: true
+Num Brillig calls: 2
+Num Unique Brillig opcodes: 1
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+2134 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+1186 constraints from range checks
+4688 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+17430 total R1CS constraints (14.089284949013047 num vars)
+18866 total R1CS witness size, (14.203500952361395 num vars)
+noir-passport-examples/exclusion_check_country.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.23s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/exclusion_check_country.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  203
+Return values len:  1
+Num AssertZero: 140
+Num `mul_term`s: 40
+Blackbox fn "RANGE": 317
+Blackbox fn "Poseidon2Permutation": 34
+RANGE check: 32 bits had 207 lookups
+RANGE check: 8 bits had 107 lookups
+RANGE check: 1 bits had 3 lookups
+Num Memory inits: 1
+Total memory alloc size: 200
+Num Memory writes: 0
+Num Memory reads: 3
+Read-only: true
+Num Brillig calls: 7
+Num Unique Brillig opcodes: 3
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+180 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+634 constraints from range checks
+7483 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+14924 total R1CS constraints (13.86534664481678 num vars)
+21661 total R1CS witness size, (14.402812227377439 num vars)
+noir-passport-examples/inclusion_check_country.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/inclusion_check_country.json noir-examples/basic/target/witness.gz`
+Private inputs len: 97
+Public inputs len:  603
+Return values len:  1
+Num AssertZero: 335
+Num `mul_term`s: 32
+Blackbox fn "RANGE": 708
+Blackbox fn "Poseidon2Permutation": 34
+RANGE check: 8 bits had 707 lookups
+RANGE check: 32 bits had 1 lookups
+Num Memory inits: 2
+Total memory alloc size: 801
+Num Memory writes: 0
+Num Memory reads: 4
+Read-only: true
+Num Brillig calls: 4
+Num Unique Brillig opcodes: 2
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+367 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+14110 constraints from Poseidon2
+14178 witnesses from Poseidon2
+1416 constraints from range checks
+5688 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+15893 total R1CS constraints (13.95610385644527 num vars)
+19866 total R1CS witness size, (14.278013796118156 num vars)
+noir-passport-examples/outer.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/outer.json noir-examples/basic/target/witness.gz`
+Private inputs len: 2332
+Public inputs len:  201
+Return values len:  0
+Num AssertZero: 200
+Num `mul_term`s: 96
+Blackbox fn "MultiScalarMul": 48
+Blackbox fn "RecursiveAggregation": 4
+Blackbox fn "RANGE": 246
+RANGE check: 8 bits had 198 lookups
+RANGE check: 1 bits had 48 lookups
+Num Memory inits: 0
+Total memory alloc size: 0
+Num Memory writes: 0
+Num Memory reads: 0
+Read-only: true
+Num Brillig calls: 100
+Num Unique Brillig opcodes: 2
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+296 constraints from AssertZero
+0 constraints from SHA
+0 witnesses from SHA
+0 constraints from Poseidon2
+0 witnesses from Poseidon2
+492 constraints from range checks
+1632 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+788 total R1CS constraints (9.622051819456376 num vars)
+1632 total R1CS witness size, (10.672425341971495 num vars)
+noir-passport-examples/sig_check_dsc_tbs_1000_ecdsa_nist_p256.json
+warning: unused imports: `WitnessStack`, `Witness`, and `brillig::IntegerBitSize`
+ --> src/main.rs:5:5
+  |
+5 |     brillig::IntegerBitSize,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+6 |     circuit::{opcodes::BlackBoxFuncCall, Opcode},
+7 |     native_types::{Expression, Witness, WitnessStack},
+  |                                ^^^^^^^  ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused imports: `Add`, `BTreeMap`, `Neg`, and `thread::current`
+  --> src/main.rs:12:36
+   |
+12 |     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+   |                                    ^^^^^^^^
+13 |     ops::{Add, AddAssign, Neg},
+   |           ^^^             ^^^
+14 |     thread::current,
+   |     ^^^^^^^^^^^^^^^
+
+warning: value assigned to `second_idx` is never read
+   --> src/factoring.rs:133:21
+    |
+133 |                     second_idx -= 1; // Everything from `second_idx` gets shifted back by 1
+    |                     ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` on by default
+
+warning: struct `R1CSMatrix` is never constructed
+  --> src/main.rs:40:8
+   |
+40 | struct R1CSMatrix<F> {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: associated items `new`, `set`, `resize`, and `get_matrix` are never used
+  --> src/main.rs:47:8
+   |
+46 | impl R1CSMatrix<FieldElement> {
+   | ----------------------------- associated items in this implementation
+47 |     fn new() -> Self {
+   |        ^^^
+...
+55 |     pub fn set(&mut self, i: usize, j: usize, value: FieldElement) {
+   |            ^^^
+...
+61 |     pub fn resize(&mut self, n: usize, m: usize) {
+   |            ^^^^^^
+...
+67 |     pub fn get_matrix(&self) -> Vec<FieldElement> {
+   |            ^^^^^^^^^^
+
+warning: function `dot` is never used
+  --> src/main.rs:78:4
+   |
+78 | fn dot(a: &[FieldElement], b: &[FieldElement]) -> FieldElement {
+   |    ^^^
+
+warning: struct `MulGroup` is never constructed
+  --> src/factoring.rs:12:19
+   |
+12 | pub(crate) struct MulGroup {
+   |                   ^^^^^^^^
+
+warning: method `combine` is never used
+  --> src/factoring.rs:23:19
+   |
+18 | impl MulGroup {
+   | ------------- method in this implementation
+...
+23 |     pub(crate) fn combine(&self, other: &MulGroup) -> Option<MulGroup> {
+   |                   ^^^^^^^
+
+warning: struct `MulGroupTable` is never constructed
+  --> src/factoring.rs:83:19
+   |
+83 | pub(crate) struct MulGroupTable {
+   |                   ^^^^^^^^^^^^^
+
+warning: struct `FactoredPoly` is never constructed
+  --> src/factoring.rs:91:19
+   |
+91 | pub(crate) struct FactoredPoly {
+   |                   ^^^^^^^^^^^^
+
+warning: function `convert_into_most_efficient_mul_grouping` is never used
+   --> src/factoring.rs:103:15
+    |
+103 | pub(crate) fn convert_into_most_efficient_mul_grouping(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `noir-r1cs` (bin "noir-r1cs") generated 11 warnings (run `cargo fix --bin "noir-r1cs"` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.22s
+     Running `target/release/noir-r1cs r1cs noir-passport-examples/sig_check_dsc_tbs_1000_ecdsa_nist_p256.json noir-examples/basic/target/witness.gz`
+Private inputs len: 1149
+Public inputs len:  1
+Return values len:  1
+Write after read at BlockId(52), Expression { mul_terms: [], linear_combinations: [(1, Witness(24974))], q_c: 0 }
+Num AssertZero: 38924
+Num `mul_term`s: 38870
+Blackbox fn "Poseidon2Permutation": 372
+Blackbox fn "RANGE": 33765
+Blackbox fn "Sha256Compression": 17
+RANGE check: 32 bits had 13103 lookups
+RANGE check: 1 bits had 6028 lookups
+RANGE check: 120 bits had 4914 lookups
+RANGE check: 126 bits had 4880 lookups
+RANGE check: 8 bits had 2308 lookups
+RANGE check: 16 bits had 1242 lookups
+RANGE check: 22 bits had 1220 lookups
+RANGE check: 24 bits had 15 lookups
+RANGE check: 9 bits had 10 lookups
+RANGE check: 17 bits had 10 lookups
+RANGE check: 25 bits had 10 lookups
+RANGE check: 30 bits had 10 lookups
+RANGE check: 2 bits had 9 lookups
+RANGE check: 64 bits had 4 lookups
+RANGE check: 3 bits had 2 lookups
+Num Memory inits: 25
+Total memory alloc size: 532
+Num Memory writes: 1
+Num Memory reads: 1308
+Read-only: false
+Num Brillig calls: 2581
+Num Unique Brillig opcodes: 18
+Num Calls: 0
+Num Unique calls: 0
+----------------------------------------------------------------
+77794 constraints from AssertZero
+531488 constraints from SHA
+526303 witnesses from SHA
+154380 constraints from Poseidon2
+155124 witnesses from Poseidon2
+67530 constraints from range checks
+1696510 witnesses from range checks
+TODO(ryancao): MISSING MEMORY CHECKER CONSTRAINTS
+831192 total R1CS constraints (19.66482224319305 num vars)
+2377937 total R1CS witness size, (21.181279062796488 num vars)

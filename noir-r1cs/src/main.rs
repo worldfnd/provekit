@@ -5,35 +5,21 @@ mod utils;
 
 use {
     self::{compiler::R1CS, sparse_matrix::SparseMatrix},
-    acir::{AcirField, FieldElement},
+    acir::{native_types::Witness, AcirField, FieldElement},
     anyhow::{ensure, Context, Result as AnyResult},
     argh::FromArgs,
     noirc_artifacts::program::ProgramArtifact,
     rand::Rng,
-    std::{fs::File, iter::zip, path::PathBuf, vec},
+    std::{fs::File, path::PathBuf, vec},
     tracing::{info, level_filters::LevelFilter},
     tracing_subscriber::{self, fmt::format::FmtSpan, EnvFilter},
-    utils::PrintAbi,
+    utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
 
-/// Simple program to greet a person
+/// Prove & verify a compiled Noir program using R1CS.
 #[derive(FromArgs)]
 struct Args {
-    #[argh(subcommand)]
-    cmd: Command,
-}
-
-#[derive(FromArgs)]
-#[argh(subcommand)]
-enum Command {
-    Noir(NoirCmd),
-}
-
-#[derive(FromArgs)]
-#[argh(subcommand, name = "noir")]
-/// Execute Noir VM
-struct NoirCmd {
-    /// path to the compiled Noir package file
+    /// path to the compiled Noir program
     #[argh(positional)]
     program_path: PathBuf,
 
@@ -54,12 +40,10 @@ fn main() -> AnyResult<()> {
         )
         .init();
     let args: Args = argh::from_env();
-    match args.cmd {
-        Command::Noir(cmd) => noir(cmd),
-    }
+    prove_verify(args)
 }
 
-fn noir(args: NoirCmd) -> AnyResult<()> {
+fn prove_verify(args: Args) -> AnyResult<()> {
     info!("Loading Noir program {:?}", args.program_path);
     let file = File::open(args.program_path).context("while opening Noir program")?;
     let program: ProgramArtifact =
@@ -72,51 +56,39 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
         "Program must have one entry point."
     );
     let main = &program.bytecode.functions[0];
+    let num_public_parameters = main.public_parameters.0.len();
+    let num_acir_witnesses = main.current_witness_index as usize;
     info!(
         "ACIR: {} witnesses, {} opcodes.",
-        main.current_witness_index,
+        num_acir_witnesses,
         main.opcodes.len()
     );
+
+    let mut witness_stack: acir::native_types::WitnessStack<FieldElement> =
+        deserialize_witness_stack(args.witness_path.to_str().unwrap())?;
+
+    let witness_stack = witness_stack.pop().unwrap().witness;
+
+    if num_acir_witnesses < 15 {
+        println!("ACIR witness values:");
+        (0..num_acir_witnesses).for_each(|i| {
+            println!("{}: {:?}", i, witness_stack[&Witness(i as u32)]);
+        });
+    }
 
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
     r1cs.add_circuit(main);
-
-    // Collect inputs and outputs
-    let public_inputs = main
-        .public_parameters
-        .0
-        .iter()
-        .map(|w| r1cs.map_witness(*w))
-        .collect::<Vec<_>>();
-    let public_outputs = main
-        .return_values
-        .0
-        .iter()
-        .map(|w| r1cs.map_witness(*w))
-        .collect::<Vec<_>>();
-    let private_inputs = main
-        .private_parameters
-        .iter()
-        .map(|w| r1cs.map_witness(*w))
-        .collect::<Vec<_>>();
-
-    info!(
-        "R1CS: {} witnesses, {} constraints",
-        r1cs.witnesses, r1cs.constraints
-    );
-    // dbg!(&r1cs);
-    dbg!(&public_inputs);
-    dbg!(&public_outputs);
-    dbg!(&private_inputs);
+    print!("{}", r1cs);
 
     // Compute a satisfying witness
     let mut witness = vec![None; r1cs.witnesses];
     witness[0] = Some(FieldElement::one()); // Constant
 
-    // Inputs
-    witness[1] = Some(FieldElement::from(1234_u32)); // a
-    witness[2] = Some(FieldElement::from(5678_u32)); // b
+    // Fill in R1CS witness values with the pre-computed ACIR witness values
+    for (acir_witness_idx, witness_idx) in &r1cs.remap {
+        witness[*witness_idx] = Some(witness_stack[&Witness(*acir_witness_idx as u32)]);
+    }
 
     // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
     for row in 0..r1cs.constraints {
@@ -130,24 +102,24 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
             (Some(a), Some(b), None) => (a * b, &r1cs.c),
             (Some(a), None, Some(c)) => (c / a, &r1cs.b),
             (None, Some(b), Some(c)) => (c / b, &r1cs.a),
-            _ => panic!("Can not solve constraint {row}."),
+            _ => {
+                dbg!(a, b, c);
+                panic!("Can not solve constraint {row}.")
+            }
         };
         let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
             panic!("Could not solve constraint {row}.")
         };
-        eprintln!("Constraint {row}: Solved for witness[{col}] = {val}");
         witness[col] = Some(val);
     }
 
     // Complete witness with entropy.
     // TODO: Use better entropy source and proper sampling.
-    let mut rng = rand::rng();
+    let mut rng = rand::thread_rng();
     let witness = witness
         .iter()
-        .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.random::<u128>())))
+        .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.gen::<u128>())))
         .collect::<Vec<_>>();
-
-    dbg!(&witness);
 
     // Verify
     let a = mat_mul(&r1cs.a, &witness);
@@ -161,9 +133,7 @@ fn noir(args: NoirCmd) -> AnyResult<()> {
             assert_eq!(a * b, c, "Constraint {row} failed");
         });
 
-    // dbg!(&a);
-    // dbg!(&b);
-    // dbg!(&c);
+    r1cs.write_json_to_file(num_public_parameters, &witness, "r1cs.json")?;
 
     Ok(())
 }
