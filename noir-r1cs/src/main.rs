@@ -105,7 +105,7 @@ fn prove_verify(args: Args) -> AnyResult<()> {
             _ => {
                 dbg!(a, b, c);
                 panic!("Can not solve constraint {row}.")
-            },
+            }
         };
         let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
             panic!("Could not solve constraint {row}.")
@@ -120,8 +120,6 @@ fn prove_verify(args: Args) -> AnyResult<()> {
         .iter()
         .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.gen::<u128>())))
         .collect::<Vec<_>>();
-
-    dbg!(&witness);
 
     // Verify
     let a = mat_mul(&r1cs.a, &witness);
