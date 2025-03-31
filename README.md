@@ -40,6 +40,12 @@ cd gnark-whir
 go run .
 ```
 
+## Refactored
+
+```sh
+cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json --output-path ./r1cs.json
+cargo run --release --bin noir-r1cs prove ./noir-examples/poseidon-rounds/target/basic.json ./r1cs.json ./noir-examples/poseidon-rounds/Prover.toml
+```
 ## Components
 
 

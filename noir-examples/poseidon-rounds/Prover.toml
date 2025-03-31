@@ -1,7 +1,2 @@
 plains = [1, 2]
-a = 1
-b = 2
-c = 3
-d = 5
-x = 0
 result = '0x0b50a50fda9459e4eda4b0e9382fcbb5d00c6b387bd6b79b9efb3ff95c2a32b6'

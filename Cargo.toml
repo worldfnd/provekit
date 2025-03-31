@@ -66,6 +66,7 @@ acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir" }

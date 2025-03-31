@@ -21,6 +21,7 @@ itertools.workspace = true
 ruint.workspace = true
 flate2.workspace = true
 bincode.workspace = true
+rand.workspace = true
 
 # Noir lang
 acir.workspace = true
@@ -29,7 +30,7 @@ acir_field.workspace = true
 noirc_artifacts.workspace = true
 noirc_abi.workspace = true
 noirc_printable_type.workspace = true
-rand.workspace = true
+bn254_blackbox_solver.workspace = true
 
 # WHIR
 whir.workspace = true
