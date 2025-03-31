@@ -46,7 +46,7 @@ impl Command for PrepareArgs {
     }
 }
 
-#[instrument(skip_all)]
+#[instrument(fields(size = program_path.metadata().map(|m| m.len()).ok()))]
 fn load_noir_program(program_path: &Path) -> Result<ProgramArtifact> {
     let file = File::open(program_path).context("while opening Noir program")?;
     let program: ProgramArtifact =
@@ -62,7 +62,7 @@ fn load_noir_program(program_path: &Path) -> Result<ProgramArtifact> {
     Ok(program)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip_all, fields(opcodes = circuit.opcodes.len(), witnesses = circuit.current_witness_index))]
 fn prepare_circuit(circuit: &Circuit<FieldElement>) -> Result<R1CS> {
     // Create the R1CS relation
     let mut r1cs = R1CS::new();
@@ -70,7 +70,7 @@ fn prepare_circuit(circuit: &Circuit<FieldElement>) -> Result<R1CS> {
     Ok(r1cs)
 }
 
-#[instrument(skip_all)]
+#[instrument(skip(r1cs), fields(witnesses = r1cs.witnesses, constraints = r1cs.constraints))]
 fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
     #[derive(Serialize)]
     struct JsonR1CS {
@@ -87,7 +87,7 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
     struct MatrixEntry {
         constraint: usize,
         signal:     usize,
-        value:      String,
+        value:      FieldElement,
     }
 
     fn matrix_to_entries(matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
@@ -96,7 +96,7 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
             .map(|((constraint, signal), value)| MatrixEntry {
                 constraint,
                 signal,
-                value: value.to_string(), // OPT: Stringify on the fly
+                value: *value,
             })
             .collect()
     }
@@ -117,5 +117,6 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
     let _span = span!(Level::INFO, "writing R1CS to file").entered();
     let mut file = File::create(output_path).context("while creating output file")?;
     serde_json::to_writer_pretty(&mut file, &json_r1cs).context("while writing R1CS to file")?;
+    info!(size = file.metadata().map(|m| m.len()).ok(), "R1CS written");
     Ok(())
 }
