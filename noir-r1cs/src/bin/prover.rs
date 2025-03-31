@@ -12,6 +12,7 @@ use {
         utils::*,
         whir_utils::*,
     },
+    rand::Rng,
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
