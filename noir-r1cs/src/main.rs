@@ -3,6 +3,7 @@ mod cmd;
 mod compiler;
 mod sparse_matrix;
 mod utils;
+mod witness;
 
 use {
     self::{cmd::Command, sparse_matrix::SparseMatrix},
