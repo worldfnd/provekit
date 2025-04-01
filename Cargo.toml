@@ -59,13 +59,13 @@ flate2 = "1.0"
 bincode = "1.3"
 
 # Noir lang: make sure it matches installed version `noirup -C 03b58fa2`
-acir = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+acir = { git = "https://github.com/noir-lang/noir" }
+acvm = { git = "https://github.com/noir-lang/noir" }
+acir_field = { git = "https://github.com/noir-lang/noir" }
+noirc_abi = { git = "https://github.com/noir-lang/noir" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir" }
