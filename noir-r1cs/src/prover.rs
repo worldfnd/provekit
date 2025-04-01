@@ -218,7 +218,7 @@ pub fn run_whir_pcs_prover(
 }
 
 #[instrument(skip_all)]
-fn run_sumcheck_verifier(
+pub fn run_sumcheck_verifier(
     m_0: usize,
     mut arthur: VerifierState<SkyscraperSponge, Field256>,
 ) -> VerifierState<SkyscraperSponge, Field256> {

@@ -2,27 +2,31 @@ use {
     super::{utils::load_noir_program, Command},
     crate::{
         compiler::R1CS,
-        prover::{create_io_pattern, run_sumcheck_prover, run_whir_pcs_prover},
+        prover::{
+            create_io_pattern, run_sumcheck_prover, run_sumcheck_verifier, run_whir_pcs_prover,
+            run_whir_pcs_verifier,
+        },
         sparse_matrix::SparseMatrix,
         witness::generate_witness,
     },
     acir::{circuit::Circuit, native_types::WitnessMap, FieldElement},
-    anyhow::{Context, Result},
+    anyhow::{ensure, Context, Result},
     argh::FromArgs,
     ark_ff::{BigInt, PrimeField},
+    ark_serialize::CanonicalSerialize as _,
     noir_r1cs::whir_r1cs::{
         skyscraper::{
             skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
             skyscraper_pow::SkyscraperPoW,
         },
         utils::{
-            calculate_external_row_of_r1cs_matrices, next_power_of_two, pad_to_power_of_two,
-            MatrixCell, R1CS as WhirR1CS,
+            calculate_eq, calculate_external_row_of_r1cs_matrices, gnark_parameters,
+            next_power_of_two, pad_to_power_of_two, MatrixCell, R1CS as WhirR1CS,
         },
         whir_utils::{generate_whir_params, Args as WhirArgs},
     },
     noirc_abi::{input_parser::Format, Abi},
-    spongefish::{ProverState, VerifierState},
+    spongefish::{DomainSeparator, ProverState, VerifierState},
     std::{
         fs::File,
         io::Read,
@@ -32,12 +36,17 @@ use {
     whir::{
         crypto::fields::Field256,
         parameters::{FoldType, SoundnessType},
-        whir::{parameters::WhirConfig, statement::Statement, WhirProof},
+        whir::{
+            parameters::WhirConfig,
+            statement::{Statement, StatementVerifier},
+            WhirProof,
+        },
     },
 };
 
 type Whir = WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>;
 type WhirSkyProof = WhirProof<SkyscraperMerkleConfig, Field256>;
+type IOPattern = DomainSeparator<SkyscraperSponge, Field256>;
 
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Debug)]
@@ -54,6 +63,14 @@ pub struct ProveArgs {
     /// path to the input values
     #[argh(positional)]
     input_path: PathBuf,
+
+    // path to store proof file
+    #[argh(positional)]
+    proof_path: PathBuf,
+
+    // path to store Gnark proof file
+    #[argh(positional)]
+    gnark_out: PathBuf,
 }
 
 impl Command for ProveArgs {
@@ -70,8 +87,8 @@ impl Command for ProveArgs {
             main.opcodes.len()
         );
         let r1cs = prepare_circuit(&main)?;
-        let witness = generate_witness(&r1cs, &brillig, &main, input)?;
 
+        // WHIR Configuration
         let (m, m_0, whir_params) = proof_paremeters(&r1cs, WhirArgs {
             security_level:    128,
             pow_bits:          Some(20),
@@ -82,10 +99,35 @@ impl Command for ProveArgs {
             input_file_path:   String::new(),
         });
 
+        // Generate the witness vector
+        let witness = generate_witness(&r1cs, &brillig, &main, input)?;
+
+        // Convert between ark_ff 0.4.2 and 0.5.0 😢
         let r1cs = convert_r1cs(r1cs);
         let witness = convert_witness_field(witness);
 
-        let (proof, ..) = prove(&r1cs, witness, m, m_0, whir_params);
+        // Prove the R1CS instance
+        let (proof, merlin, whir_params, io, sums, statement, r, alpha, last_sumcheck_val) =
+            prove(&r1cs, witness, m, m_0, whir_params);
+
+        // Write proof to file
+        write_proof(&proof, &self.proof_path)?;
+        write_gnark_params(&whir_params, &merlin, &io, sums, m_0, m, &self.gnark_out)?;
+
+        // Verify proof
+        verify(
+            whir_params,
+            proof,
+            &statement,
+            &merlin,
+            &io,
+            sums,
+            m_0,
+            m,
+            &r,
+            &alpha,
+            last_sumcheck_val,
+        )?;
 
         Ok(())
     }
@@ -169,7 +211,17 @@ fn prove(
     m: usize,
     m_0: usize,
     whir_params: Whir,
-) -> (WhirSkyProof, ProverState<SkyscraperSponge, Field256>) {
+) -> (
+    WhirSkyProof,
+    ProverState<SkyscraperSponge, Field256>,
+    Whir,
+    IOPattern,
+    [Field256; 3],
+    Statement<Field256>,
+    Vec<Field256>,
+    Vec<Field256>,
+    Field256,
+) {
     let z = pad_to_power_of_two(witness);
     let io = create_io_pattern(m_0, &whir_params);
     let merlin = io.to_prover_state();
@@ -178,5 +230,68 @@ fn prove(
     let (proof, merlin, whir_params, io, whir_query_answer_sums, statement) =
         run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
 
-    (proof, merlin)
+    (
+        proof,
+        merlin,
+        whir_params,
+        io,
+        whir_query_answer_sums,
+        statement,
+        r,
+        alpha,
+        last_sumcheck_val,
+    )
+}
+
+#[instrument(skip(proof))]
+fn write_proof(proof: &WhirSkyProof, output_path: &Path) -> Result<()> {
+    // TODO: This is missing the entire transcript.
+    let mut file = File::create(output_path).context("while creating output file")?;
+    proof
+        .serialize_compressed(&mut file)
+        .context("while writing output file")?;
+    Ok(())
+}
+
+#[instrument(skip_all, fields(output_path = ?output_path))]
+fn write_gnark_params(
+    whir_params: &Whir,
+    merlin: &ProverState<SkyscraperSponge, Field256>,
+    io: &DomainSeparator<SkyscraperSponge, Field256>,
+    sums: [Field256; 3],
+    m_0: usize,
+    m: usize,
+    output_path: &Path,
+) -> Result<()> {
+    let mut file = File::create(output_path).context("while creating output file")?;
+    let gnark_parameters = gnark_parameters(whir_params, merlin, io, sums, m_0, m);
+    serde_json::to_writer_pretty(&mut file, &gnark_parameters)
+        .context("while writing output file")?;
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn verify(
+    whir_params: Whir,
+    proof: WhirSkyProof,
+    statement: &Statement<Field256>,
+    merlin: &ProverState<SkyscraperSponge, Field256>,
+    io: &DomainSeparator<SkyscraperSponge, Field256>,
+    sums: [Field256; 3],
+    m_0: usize,
+    m: usize,
+    r: &[Field256],
+    alpha: &[Field256],
+    last_sumcheck_val: Field256,
+) -> Result<()> {
+    let statement_verifier = StatementVerifier::<Field256>::from_statement(statement);
+
+    let arthur = io.to_verifier_state(merlin.narg_string());
+    let arthur = run_sumcheck_verifier(m_0, arthur);
+    run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
+    ensure!(
+        last_sumcheck_val == (sums[0] * sums[1] - sums[2]) * calculate_eq(r, alpha),
+        "Proof verification failed"
+    );
+    Ok(())
 }

@@ -219,7 +219,7 @@ pub fn calculate_dot_product(a: &Vec<Field256>, b: &Vec<Field256>) -> Field256 {
 }
 
 /// Calculates eq(r, alpha)
-pub fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
+pub fn calculate_eq(r: &[Field256], alpha: &[Field256]) -> Field256 {
     r.iter()
         .zip(alpha.iter())
         .fold(Field256::from(1), |acc, (&r, &alpha)| {
@@ -250,17 +250,17 @@ pub fn calculate_external_row_of_r1cs_matrices(
     let alphas: [Vec<Field256>; 3] = [alpha_a, alpha_b, alpha_c];
     alphas
 }
-
 /// Writes config used for Gnark circuit to a file
-pub fn write_gnark_parameters_to_file(
+#[instrument(skip_all)]
+pub fn gnark_parameters(
     whir_params: &WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
     merlin: &ProverState<SkyscraperSponge, Field256>,
     io: &DomainSeparator<SkyscraperSponge, Field256>,
     sums: [Field256; 3],
     m_0: usize,
     m: usize,
-) {
-    let gnark_config = GnarkConfig {
+) -> GnarkConfig {
+    GnarkConfig {
         log_num_constraints:    m_0,
         n_rounds:               whir_params.folding_factor.compute_number_of_rounds(m).0,
         rate:                   whir_params.starting_log_inv_rate,
@@ -298,7 +298,20 @@ pub fn write_gnark_parameters_to_file(
             sums[1].to_string(),
             sums[2].to_string(),
         ],
-    };
+    }
+}
+
+/// Writes config used for Gnark circuit to a file
+#[instrument(skip_all)]
+pub fn write_gnark_parameters_to_file(
+    whir_params: &WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
+    merlin: &ProverState<SkyscraperSponge, Field256>,
+    io: &DomainSeparator<SkyscraperSponge, Field256>,
+    sums: [Field256; 3],
+    m_0: usize,
+    m: usize,
+) {
+    let gnark_config = gnark_parameters(whir_params, merlin, io, sums, m_0, m);
     println!("round config {:?}", whir_params.round_parameters);
     let mut file_params = File::create("./prover/params").unwrap();
     file_params
@@ -308,7 +321,7 @@ pub fn write_gnark_parameters_to_file(
 
 /// Writes proof bytes to a file
 pub fn write_proof_bytes_to_file(proof: &WhirProof<SkyscraperMerkleConfig, Field256>) {
-    let mut proof_bytes = vec![];
+    let mut proof_bytes: Vec<u8> = vec![];
     proof.serialize_compressed(&mut proof_bytes).unwrap();
     let mut file = File::create("./prover/proof").unwrap();
     file.write_all(&proof_bytes)
