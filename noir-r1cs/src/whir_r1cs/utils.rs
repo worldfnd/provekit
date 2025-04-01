@@ -18,6 +18,7 @@ use {
     serde::Deserialize,
     spongefish::{DomainSeparator, ProverState},
     std::{fs::File, io::Write},
+    tracing::instrument,
     whir::{
         crypto::fields::Field256,
         whir::{parameters::WhirConfig, WhirProof},
@@ -58,6 +59,7 @@ pub fn next_power_of_two(n: usize) -> usize {
 
 /// Pads the vector with 0 so that the number of elements in the vector is a
 /// power of 2
+#[instrument(skip_all)]
 pub fn pad_to_power_of_two(mut witness: Vec<Field256>) -> Vec<Field256> {
     let target_len = next_power_of_two(witness.len());
     while witness.len() < 1 << target_len {
@@ -67,6 +69,7 @@ pub fn pad_to_power_of_two(mut witness: Vec<Field256>) -> Vec<Field256> {
 }
 
 /// Calculates matrix-vector product
+#[instrument(skip_all)]
 pub fn calculate_matrix_vector_product(
     matrix_cells: &Vec<MatrixCell>,
     witness: &Vec<Field256>,
@@ -74,6 +77,8 @@ pub fn calculate_matrix_vector_product(
 ) -> Vec<Field256> {
     let mut witness_bound = vec![Field256::zero(); num_constraints as usize];
     for x in matrix_cells {
+        assert!(x.signal < witness.len());
+        assert!(x.constraint < num_constraints);
         let witness_cell = witness[x.signal as usize];
         witness_bound[x.constraint as usize] =
             witness_bound[x.constraint as usize].add(x.value.mul(witness_cell));
@@ -82,6 +87,7 @@ pub fn calculate_matrix_vector_product(
 }
 
 /// List of evaluations for eq(r, x) over the boolean hypercube
+#[instrument(skip_all)]
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(r: &Vec<Field256>) -> Vec<Field256> {
     let mut ans = vec![Field256::from(1)];
     for x in r.iter().rev() {
@@ -184,6 +190,7 @@ pub fn deserialize_r1cs_and_z(file_path: &str) -> (R1CS, Vec<Field256>) {
 
 /// Given a path to JSON file with sparce matrices and a witness, calculates
 /// matrix-vector multiplication and returns them
+#[instrument(skip_all)]
 pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &Vec<Field256>,
@@ -222,6 +229,7 @@ pub fn calculate_eq(r: &Vec<Field256>, alpha: &Vec<Field256>) -> Field256 {
 
 /// Calculates a random row of R1CS matrix extension. Made possible due to
 /// sparseness.
+#[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices(
     alpha: &Vec<Field256>,
     r1cs: &R1CS,

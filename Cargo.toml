@@ -73,6 +73,7 @@ whir = { git = "https://github.com/WizardOfMenlo/whir" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }
+ark-ff42 = { package = "ark-ff", version = "0.4.2", features = ["asm", "std"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 zeroize = "1.8.1"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }

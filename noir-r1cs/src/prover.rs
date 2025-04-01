@@ -16,6 +16,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
     },
+    tracing::instrument,
     whir::{
         crypto::fields::Field256,
         poly_utils::evals::EvaluationsList,
@@ -74,7 +75,8 @@ fn main() {
     );
 }
 
-fn run_sumcheck_prover(
+#[instrument(skip_all)]
+pub fn run_sumcheck_prover(
     r1cs: &R1CS,
     z: &Vec<Field256>,
     mut merlin: ProverState<SkyscraperSponge, Field256>,
@@ -165,7 +167,8 @@ fn run_sumcheck_prover(
     (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)
 }
 
-fn run_whir_pcs_prover(
+#[instrument(skip_all)]
+pub fn run_whir_pcs_prover(
     io: DomainSeparator<SkyscraperSponge, Field256>,
     z: Vec<Field256>,
     params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
@@ -214,6 +217,7 @@ fn run_whir_pcs_prover(
     (proof, merlin, params, io, sums, statement)
 }
 
+#[instrument(skip_all)]
 fn run_sumcheck_verifier(
     m_0: usize,
     mut arthur: VerifierState<SkyscraperSponge, Field256>,
@@ -243,7 +247,8 @@ fn run_sumcheck_verifier(
     arthur
 }
 
-fn run_whir_pcs_verifier(
+#[instrument(skip_all)]
+pub fn run_whir_pcs_verifier(
     params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
     proof: WhirProof<SkyscraperMerkleConfig, Field256>,
     mut arthur: VerifierState<SkyscraperSponge, Field256>,
@@ -261,7 +266,8 @@ fn run_whir_pcs_verifier(
         .expect("Whir verifier failed to verify");
 }
 
-fn create_io_pattern(
+#[instrument(skip_all)]
+pub fn create_io_pattern(
     m_0: usize,
     whir_params: &WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
 ) -> DomainSeparator<SkyscraperSponge, Field256> {

@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 mod cmd;
 mod compiler;
+mod prover;
 mod sparse_matrix;
 mod utils;
 mod witness;
