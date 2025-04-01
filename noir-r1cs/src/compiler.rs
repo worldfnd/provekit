@@ -91,8 +91,7 @@ impl R1CS {
                     r1cs.solver.memory_lengths.insert(block_id, init.len());
                     let mut block = ReadOnlyMemoryBlock {
                         value_witnesses: vec![],
-                        static_reads: vec![],
-                        dynamic_reads: vec![],
+                        read_operations: vec![],
                     };
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness =
@@ -130,34 +129,25 @@ impl R1CS {
                     // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
                     let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                    if op.index.is_const() {
-                        // Statically addressed memory read
-                        let static_addr =
-                            op.index.to_const().unwrap().try_to_u64().unwrap() as usize;
-                        let value_read = r1cs.add_witness(WitnessBuilder::StaticMemoryRead(
-                            block_id,
-                            static_addr,
-                            result_of_read_acir_witness,
-                        ));
-                        block.static_reads.push((static_addr, value_read));
-                    } else {
-                        // Dynamically addressed memory read
-                        // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                        // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                        let addr_wb = op.index.to_witness().map_or_else(
-                            || {
-                                unimplemented!("MemoryOp index must be a witness or a constant, not a more general Expression")
-                            },
-                            |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
-                        );
-                        let addr = r1cs.add_witness(addr_wb);
-                        let value_read = r1cs.add_witness(WitnessBuilder::DynamicMemoryRead(
-                            block_id,
-                            addr,
-                            result_of_read_acir_witness,
-                        ));
-                        block.dynamic_reads.push((addr, value_read));
-                    }
+                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
+                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
+                    // (According to experiments, the index is always a witness, not a constant:
+                    // static reads are hard-wired into the circuit, or instead rendered as a
+                    // dynamic read by introducing a new witness constrained to have the value of
+                    // the static address.)
+                    let addr_wb = op.index.to_witness().map_or_else(
+                        || {
+                            unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
+                        },
+                        |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
+                    );
+                    let addr = r1cs.add_witness(addr_wb);
+                    let value_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
+                        block_id,
+                        addr,
+                        result_of_read_acir_witness,
+                    ));
+                    block.read_operations.push((addr, value_read));
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -179,28 +169,18 @@ impl R1CS {
             let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
 
             // Calculate the sum, over all reads, of 1/denominator
-            let mut summands_for_reads = vec![];
-            block.static_reads.iter().for_each(|(addr, value)| {
-                summands_for_reads.push(r1cs.add_indexed_lookup_factor(
-                    rs_challenge,
-                    sz_challenge,
-                    (*addr).into(),
-                    r1cs.solver.witness_one(),
-                    *value,
-                ));
-            });
-            block
-                .dynamic_reads
+            let summands_for_reads = block
+                .read_operations
                 .iter()
-                .for_each(|(addr_witness, value)| {
-                    summands_for_reads.push(r1cs.add_indexed_lookup_factor(
+                .map(|(addr_witness, value)| {
+                    r1cs.add_indexed_lookup_factor(
                         rs_challenge,
                         sz_challenge,
                         FieldElement::one(),
                         *addr_witness,
                         *value,
-                    ));
-                });
+                    )
+                }).collect();
             let sum_for_reads = r1cs.add_sum(summands_for_reads);
 
             // Calculate the sum over all table elements of multiplicity/factor
@@ -253,11 +233,7 @@ impl R1CS {
                 self.acir_to_r1cs_witness_map
                     .insert(*acir_witness, next_witness_idx);
             }
-            WitnessBuilder::StaticMemoryRead(_, _, value_acir_witness) => {
-                self.acir_to_r1cs_witness_map
-                    .insert(*value_acir_witness, next_witness_idx);
-            }
-            WitnessBuilder::DynamicMemoryRead(_, _, value_acir_witness) => {
+            WitnessBuilder::MemoryRead(_, _, value_acir_witness) => {
                 self.acir_to_r1cs_witness_map
                     .insert(*value_acir_witness, next_witness_idx);
             }
@@ -408,8 +384,6 @@ impl std::fmt::Display for R1CS {
 pub struct ReadOnlyMemoryBlock {
     /// The R1CS witnesses corresponding to the memory block values
     pub value_witnesses: Vec<usize>,
-    /// (constant address, R1CS witness index of value read) tuples
-    pub static_reads: Vec<(usize, usize)>,
     /// (R1CS witness index of address, R1CS witness index of value read) tuples
-    pub dynamic_reads: Vec<(usize, usize)>,
+    pub read_operations: Vec<(usize, usize)>,
 }

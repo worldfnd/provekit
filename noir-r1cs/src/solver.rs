@@ -23,10 +23,8 @@ pub enum WitnessBuilder {
     Sum(Vec<usize>),
     /// The product of the values at two specified witness indices
     Product(usize, usize),
-    /// Witness is the result of a memory read from the .0th block at the .1th static address, whose value is available as the .2th acir witness index
-    StaticMemoryRead(usize, usize, usize),
     /// Witness is the result of a memory read from the .0th block at the address determined by the .1th R1CS witness, whose value is available as the .2th acir witness index
-    DynamicMemoryRead(usize, usize, usize),
+    MemoryRead(usize, usize, usize),
     /// The number of times that the .1th index of the .0th memory block is accessed
     MemoryAccessCount(usize, usize),
     /// For solving for the denominator of an indexed lookup.
@@ -101,15 +99,7 @@ impl R1CSSolver {
                     WitnessBuilder::Acir(acir_witness_idx) => {
                         acir_witnesses[&AcirWitness(*acir_witness_idx as u32)]
                     }
-                    WitnessBuilder::StaticMemoryRead(
-                        block_id,
-                        static_addr,
-                        value_acir_witness_idx,
-                    ) => {
-                        memory_read_counts.get_mut(block_id).unwrap()[*static_addr] += 1;
-                        acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
-                    }
-                    WitnessBuilder::DynamicMemoryRead(
+                    WitnessBuilder::MemoryRead(
                         block_id,
                         addr_witness_idx,
                         value_acir_witness_idx,
