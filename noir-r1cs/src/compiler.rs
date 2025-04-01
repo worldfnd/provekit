@@ -111,7 +111,8 @@ impl R1CS {
                     let is_read = op.operation.is_zero();
                     assert!(is_read, "MemoryOp write not yet supported");
 
-                    // panic if the predicate is set (until we learn what it is!)
+                    // Panic if the predicate is set (according to Noir developers, predicate is
+                    // always None and will soon be removed).
                     assert!(predicate.is_none());
 
                     let block_id = block_id.0 as usize;
