@@ -14,7 +14,13 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 base64.workspace = true
-clap = { version = "4.4", features = ["derive"] }
+clap.workspace = true
+zeroize.workspace = true
+itertools.workspace = true
+ruint.workspace = true
+flate2.workspace = true
+bincode.workspace = true
+rand.workspace = true
 
 # Noir lang
 acir.workspace = true
@@ -23,11 +29,22 @@ acir_field.workspace = true
 noirc_artifacts.workspace = true
 noirc_abi.workspace = true
 noirc_printable_type.workspace = true
-rand.workspace = true
+bn254_blackbox_solver.workspace = true
 
-flate2 = "1.0"
-bincode = "1.3"
+# WHIR
+whir.workspace = true
+spongefish.workspace = true
+spongefish-pow.workspace = true
+ark-ff.workspace = true
+ark-crypto-primitives.workspace = true
+ark-poly.workspace = true
+ark-std.workspace = true
+ark-serialize.workspace = true
 
 [[bin]]
 name = "circuit_stats"
 path = "src/bin/circuit_stats.rs"
+
+[[bin]]
+name = "prover"
+path = "src/bin/prover.rs"

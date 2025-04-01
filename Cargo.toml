@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "delegated-spartan", "merkle-hash-bench", "prover"]
+members = ["noir-r1cs", "merkle-hash-bench"]
 
 [workspace.package]
 edition = "2021"
@@ -43,6 +43,7 @@ opt-level = 3
 [workspace.dependencies]
 anyhow = "1.0.93"
 argh = "0.1.12"
+clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1.41"
@@ -53,7 +54,9 @@ rand = "0.8.5"
 subtle = "2.6.1"
 bytemuck = "1.19.0"
 hex-literal = "0.4.1"
-
+itertools = "0.13.0"
+flate2 = "1.0"
+bincode = "1.3"
 
 # Noir lang: make sure it matches installed version `noirup -C 03b58fa2`
 acir = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
@@ -62,6 +65,21 @@ acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
 noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+
+# WHIR
+whir = { git = "https://github.com/WizardOfMenlo/whir" }
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
+    "arkworks-algebra",
+] }
+ark-ff42 = { package = "ark-ff", version = "0.4.2", features = ["asm", "std"] }
+ark-ff = { version = "0.5", features = ["asm", "std"] }
+zeroize = "1.8.1"
+ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
+ark-poly = "0.5"
+ark-std = { version = "0.5", features = ["std"] }
+ark-serialize = "0.5"
 
 [patch.crates-io]
 ruint = { git = "https://github.com/recmo/uint", branch = "main" }
