@@ -48,7 +48,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
-tracing-tree = "0.4.0"
 base64 = "0.22.1"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 rand = "0.8.5"

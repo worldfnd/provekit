@@ -20,6 +20,7 @@ pub struct Args {
 enum Commands {
     Prepare(prepare::PrepareArgs),
     Prove(prove::ProveArgs),
+    // TODO: Verify
 }
 
 impl Command for Args {

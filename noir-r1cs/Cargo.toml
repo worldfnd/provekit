@@ -13,7 +13,6 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-tracing-tree.workspace = true
 base64.workspace = true
 clap.workspace = true
 zeroize.workspace = true
@@ -45,3 +44,7 @@ ark-serialize.workspace = true
 [[bin]]
 name = "circuit_stats"
 path = "src/bin/circuit_stats.rs"
+
+[[bin]]
+name = "prover"
+path = "src/bin/prover.rs"

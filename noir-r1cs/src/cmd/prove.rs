@@ -1,32 +1,30 @@
 use {
     super::{utils::load_noir_program, Command},
-    crate::{
-        compiler::R1CS,
-        prover::{
-            create_io_pattern, run_sumcheck_prover, run_sumcheck_verifier, run_whir_pcs_prover,
-            run_whir_pcs_verifier,
-        },
-        sparse_matrix::SparseMatrix,
-        witness::generate_witness,
-    },
+    crate::{compiler::R1CS, sparse_matrix::SparseMatrix, witness::generate_witness},
     acir::{circuit::Circuit, native_types::WitnessMap, FieldElement},
     anyhow::{ensure, Context, Result},
     argh::FromArgs,
     ark_ff::{BigInt, PrimeField},
     ark_serialize::CanonicalSerialize as _,
-    noir_r1cs::whir_r1cs::{
-        skyscraper::{
-            skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
-            skyscraper_pow::SkyscraperPoW,
+    noir_r1cs::{
+        prover::{
+            create_io_pattern, run_sumcheck_prover, run_sumcheck_verifier, run_whir_pcs_prover,
+            run_whir_pcs_verifier,
         },
-        utils::{
-            calculate_eq, calculate_external_row_of_r1cs_matrices, gnark_parameters,
-            next_power_of_two, pad_to_power_of_two, MatrixCell, R1CS as WhirR1CS,
+        whir_r1cs::{
+            skyscraper::{
+                skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
+                skyscraper_pow::SkyscraperPoW,
+            },
+            utils::{
+                calculate_eq, calculate_external_row_of_r1cs_matrices, gnark_parameters,
+                next_power_of_two, pad_to_power_of_two, MatrixCell, R1CS as WhirR1CS,
+            },
+            whir_utils::{generate_whir_params, Args as WhirArgs},
         },
-        whir_utils::{generate_whir_params, Args as WhirArgs},
     },
     noirc_abi::{input_parser::Format, Abi},
-    spongefish::{DomainSeparator, ProverState, VerifierState},
+    spongefish::{DomainSeparator, ProverState},
     std::{
         fs::File,
         io::Read,
@@ -76,6 +74,7 @@ pub struct ProveArgs {
 impl Command for ProveArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
+        // Load Noir circuit for R1CS
         let program = load_noir_program(&self.program_path)?;
         let main = &program.bytecode.functions[0];
         let abi = program.abi;
@@ -123,11 +122,11 @@ impl Command for ProveArgs {
             &io,
             sums,
             m_0,
-            m,
             &r,
             &alpha,
             last_sumcheck_val,
-        )?;
+        )
+        .context("Verifying proof failed")?;
 
         Ok(())
     }
@@ -277,9 +276,8 @@ fn verify(
     statement: &Statement<Field256>,
     merlin: &ProverState<SkyscraperSponge, Field256>,
     io: &DomainSeparator<SkyscraperSponge, Field256>,
-    sums: [Field256; 3],
+    whir_query_answer_sums: [Field256; 3],
     m_0: usize,
-    m: usize,
     r: &[Field256],
     alpha: &[Field256],
     last_sumcheck_val: Field256,
@@ -290,8 +288,10 @@ fn verify(
     let arthur = run_sumcheck_verifier(m_0, arthur);
     run_whir_pcs_verifier(whir_params, proof, arthur, statement_verifier);
     ensure!(
-        last_sumcheck_val == (sums[0] * sums[1] - sums[2]) * calculate_eq(r, alpha),
-        "Proof verification failed"
+        last_sumcheck_val
+            == (whir_query_answer_sums[0] * whir_query_answer_sums[1] - whir_query_answer_sums[2])
+                * calculate_eq(r, alpha),
+        "Last sumcheck value does not match"
     );
     Ok(())
 }

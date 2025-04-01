@@ -2,10 +2,9 @@ use {
     super::{utils::load_noir_program, Command},
     crate::{compiler::R1CS, sparse_matrix::SparseMatrix},
     acir::{circuit::Circuit, FieldElement},
-    anyhow::{ensure, Context as _, Result},
+    anyhow::{Context as _, Result},
     argh::FromArgs,
-    noirc_artifacts::program::ProgramArtifact,
-    serde::Serialize,
+    serde::{Serialize, Serializer},
     std::{
         fs::File,
         path::{Path, PathBuf},
@@ -64,13 +63,13 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
         a:               Vec<MatrixEntry>,
         b:               Vec<MatrixEntry>,
         c:               Vec<MatrixEntry>,
-        witnesses:       Vec<Vec<FieldElement>>,
     }
 
     #[derive(Serialize)]
     struct MatrixEntry {
         constraint: usize,
         signal:     usize,
+        #[serde(serialize_with = "serialize_field_element")]
         value:      FieldElement,
     }
 
@@ -85,6 +84,13 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
             .collect()
     }
 
+    fn serialize_field_element<S>(value: &FieldElement, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
     let json_r1cs = {
         let _span = span!(Level::INFO, "preparing R1CS struct").entered();
         JsonR1CS {
@@ -94,7 +100,6 @@ fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
             a:               matrix_to_entries(&r1cs.a),
             b:               matrix_to_entries(&r1cs.b),
             c:               matrix_to_entries(&r1cs.c),
-            witnesses:       Vec::new(), // TODO
         }
     };
 

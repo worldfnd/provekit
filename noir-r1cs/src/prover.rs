@@ -1,9 +1,7 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper
 //! appendix A
 use {
-    ark_std::Zero,
-    itertools::izip,
-    noir_r1cs::whir_r1cs::{
+    crate::whir_r1cs::{
         skyscraper::{
             skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
             skyscraper_pow::SkyscraperPoW,
@@ -12,6 +10,8 @@ use {
         utils::*,
         whir_utils::*,
     },
+    ark_std::Zero,
+    itertools::izip,
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
@@ -32,7 +32,7 @@ use {
     },
 };
 
-fn main() {
+pub fn main() {
     let args = parse_cli_args();
     let (r1cs, z) = deserialize_r1cs_and_z(&args.input_file_path);
     // m is equal to ceiling(log(number of variables in constraint system)). It is
@@ -87,8 +87,6 @@ pub fn run_sumcheck_prover(
     Vec<Field256>,
     Field256,
 ) {
-    println!("=========================================");
-    println!("Running Prover - Sumcheck");
     // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
     let (mut a, mut b, mut c) = calculate_witness_bounds(r1cs, z);
     let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
@@ -222,8 +220,6 @@ pub fn run_sumcheck_verifier(
     m_0: usize,
     mut arthur: VerifierState<SkyscraperSponge, Field256>,
 ) -> VerifierState<SkyscraperSponge, Field256> {
-    println!("=========================================");
-    println!("Running Verifier - Sumcheck");
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![Field256::from(0); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
@@ -242,7 +238,6 @@ pub fn run_sumcheck_verifier(
             hhat_i_at_zero + hhat_i_at_one
         );
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
-        println!("Verfier Sumcheck: Round {i} Completed");
     }
     arthur
 }
@@ -254,8 +249,6 @@ pub fn run_whir_pcs_verifier(
     mut arthur: VerifierState<SkyscraperSponge, Field256>,
     statement_verifier: StatementVerifier<Field256>,
 ) {
-    println!("=========================================");
-    println!("Running Verifier - Whir Commitment ");
     let commitment_reader = CommitmentReader::new(&params);
     let verifier = Verifier::new(&params);
     // let verifier = Verifier::new(&params);
