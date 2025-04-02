@@ -1,16 +1,19 @@
 //! Crate for implementing and benchmarking the protocol described in WHIR paper
 //! appendix A
 use {
-    crate::whir_r1cs::{
-        skyscraper::{
-            skyscraper::SkyscraperSponge, skyscraper_for_whir::SkyscraperMerkleConfig,
-            skyscraper_pow::SkyscraperPoW,
+    crate::{
+        whir_r1cs::{
+            skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+            sumcheck_utils::{update_boolean_hypercube_values, SumcheckIOPattern},
+            utils::{
+                calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
+                eval_qubic_poly, pad_to_power_of_two, HALF,
+            },
         },
-        sumcheck_utils::*,
-        utils::*,
-        whir_utils::*,
+        FieldElement, R1CS,
     },
-    ark_std::Zero,
+    anyhow::{ensure, Context as _, Result},
+    ark_std::{One, Zero},
     itertools::izip,
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
@@ -18,7 +21,6 @@ use {
     },
     tracing::instrument,
     whir::{
-        crypto::fields::Field256,
         poly_utils::evals::EvaluationsList,
         whir::{
             committer::{CommitmentReader, CommitmentWriter},
@@ -32,6 +34,8 @@ use {
     },
 };
 
+#[rustfmt::skip]
+/*
 pub fn main() {
     let args = parse_cli_args();
     let (r1cs, z) = deserialize_r1cs_and_z(&args.input_file_path);
@@ -54,7 +58,7 @@ pub fn main() {
         run_whir_pcs_prover(io, z, whir_params, merlin, m, alphas);
     eprintln!("Whir Prover: {} ms", now.elapsed().as_millis());
 
-    let statement_verifier = StatementVerifier::<Field256>::from_statement(&statement);
+    let statement_verifier = StatementVerifier::<FieldElement>::from_statement(&statement);
     write_proof_bytes_to_file(&proof);
     write_gnark_parameters_to_file(
         &whir_params,
@@ -74,35 +78,36 @@ pub fn main() {
             * calculate_eq(&r, &alpha)
     );
 }
+*/
 
 #[instrument(skip_all)]
 pub fn run_sumcheck_prover(
     r1cs: &R1CS,
-    z: &Vec<Field256>,
-    mut merlin: ProverState<SkyscraperSponge, Field256>,
+    z: &[FieldElement],
+    mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m_0: usize,
 ) -> (
-    ProverState<SkyscraperSponge, Field256>,
-    Vec<Field256>,
-    Vec<Field256>,
-    Field256,
+    ProverState<SkyscraperSponge, FieldElement>,
+    Vec<FieldElement>,
+    Vec<FieldElement>,
+    FieldElement,
 ) {
     // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
     let (mut a, mut b, mut c) = calculate_witness_bounds(r1cs, z);
-    let mut saved_val_for_sumcheck_equality_assertion = Field256::zero();
+    let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
     // r is the combination randomness from the 2nd item of the interaction phase
-    let mut r = vec![Field256::from(0); m_0];
+    let mut r = vec![FieldElement::zero(); m_0];
     merlin
         .fill_challenge_scalars(&mut r)
         .expect("Failed to extract challenge scalars from Merlin");
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
-    let mut alpha = Vec::<Field256>::with_capacity(m_0);
+    let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
     for _ in 0..m_0 {
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
-        let mut hhat_i_at_0 = Field256::from(0);
-        let mut hhat_i_at_em1 = Field256::from(0);
-        let mut hhat_i_at_inf_over_x_cube = Field256::from(0);
+        let mut hhat_i_at_0 = FieldElement::zero();
+        let mut hhat_i_at_em1 = FieldElement::zero();
+        let mut hhat_i_at_inf_over_x_cube = FieldElement::zero();
 
         let (a0, a1) = a.split_at(a.len() / 2);
         let (b0, b1) = b.split_at(b.len() / 2);
@@ -122,7 +127,7 @@ pub fn run_sumcheck_prover(
             hhat_i_at_inf_over_x_cube += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
         });
 
-        let mut hhat_i_coeffs = vec![Field256::from(0); 4];
+        let mut hhat_i_coeffs = vec![FieldElement::zero(); 4];
 
         hhat_i_coeffs[0] = hhat_i_at_0;
         hhat_i_coeffs[2] = HALF
@@ -152,7 +157,7 @@ pub fn run_sumcheck_prover(
             hhat_i_coeffs[2],
             hhat_i_coeffs[3],
         ]);
-        let mut alpha_i_wrapped_in_vector = vec![Field256::from(0)];
+        let mut alpha_i_wrapped_in_vector = vec![FieldElement::zero()];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
@@ -167,19 +172,18 @@ pub fn run_sumcheck_prover(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_prover(
-    io: DomainSeparator<SkyscraperSponge, Field256>,
-    z: Vec<Field256>,
-    params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
-    mut merlin: ProverState<SkyscraperSponge, Field256>,
+    io: DomainSeparator<SkyscraperSponge, FieldElement>,
+    z: Vec<FieldElement>,
+    params: &WhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>,
+    mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
-    alphas: [Vec<Field256>; 3],
+    alphas: [Vec<FieldElement>; 3],
 ) -> (
-    WhirProof<SkyscraperMerkleConfig, Field256>,
-    ProverState<SkyscraperSponge, Field256>,
-    WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
-    DomainSeparator<SkyscraperSponge, Field256>,
-    [Field256; 3],
-    Statement<Field256>,
+    WhirProof<SkyscraperMerkleConfig, FieldElement>,
+    ProverState<SkyscraperSponge, FieldElement>,
+    DomainSeparator<SkyscraperSponge, FieldElement>,
+    [FieldElement; 3],
+    Statement<FieldElement>,
 ) {
     println!("=========================================");
     println!("Running Prover - Whir Commitment");
@@ -198,9 +202,9 @@ pub fn run_whir_pcs_prover(
         .commit(&mut merlin, polynomial)
         .expect("WHIR prover failed to commit");
 
-    let mut statement = Statement::<Field256>::new(m);
+    let mut statement = Statement::<FieldElement>::new(m);
 
-    let sums: [Field256; 3] = alphas.map(|alpha| {
+    let sums: [FieldElement; 3] = alphas.map(|alpha| {
         let weight = Weights::linear(EvaluationsList::new(pad_to_power_of_two(alpha)));
         let sum = weight.weighted_sum(&poly);
         statement.add_constraint(weight, sum);
@@ -212,59 +216,61 @@ pub fn run_whir_pcs_prover(
         .prove(&mut merlin, statement.clone(), witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (proof, merlin, params, io, sums, statement)
+    (proof, merlin, io, sums, statement)
 }
 
 #[instrument(skip_all)]
 pub fn run_sumcheck_verifier(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     m_0: usize,
-    mut arthur: VerifierState<SkyscraperSponge, Field256>,
-) -> VerifierState<SkyscraperSponge, Field256> {
+) -> Result<()> {
     // r is the combination randomness from the 2nd item of the interaction phase
-    let mut r = vec![Field256::from(0); m_0];
+    let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
 
-    let mut saved_val_for_sumcheck_equality_assertion = Field256::from(0);
+    let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
 
     for i in 0..m_0 {
-        let mut hhat_i = vec![Field256::from(0); 4];
-        let mut alpha_i = vec![Field256::from(0); 1];
+        let mut hhat_i = vec![FieldElement::zero(); 4];
+        let mut alpha_i = vec![FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
-        let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &Field256::from(0));
-        let hhat_i_at_one = eval_qubic_poly(&hhat_i, &Field256::from(1));
-        assert_eq!(
-            saved_val_for_sumcheck_equality_assertion,
-            hhat_i_at_zero + hhat_i_at_one
+        let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &FieldElement::zero());
+        let hhat_i_at_one = eval_qubic_poly(&hhat_i, &FieldElement::one());
+        ensure!(
+            saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
+            "Sumcheck equality assertion failed"
         );
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
     }
-    arthur
+    Ok(())
 }
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_verifier(
-    params: WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
-    proof: WhirProof<SkyscraperMerkleConfig, Field256>,
-    mut arthur: VerifierState<SkyscraperSponge, Field256>,
-    statement_verifier: StatementVerifier<Field256>,
-) {
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    params: &WhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>,
+    proof: &WhirProof<SkyscraperMerkleConfig, FieldElement>,
+    statement_verifier: &StatementVerifier<FieldElement>,
+) -> Result<()> {
     let commitment_reader = CommitmentReader::new(&params);
     let verifier = Verifier::new(&params);
     // let verifier = Verifier::new(&params);
-    let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
+    let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
     verifier
-        .verify(&mut arthur, &parsed_commitment, &statement_verifier, &proof)
-        .expect("Whir verifier failed to verify");
+        .verify(arthur, &parsed_commitment, &statement_verifier, &proof)
+        .context("while verifying WHIR")?;
+
+    Ok(())
 }
 
 #[instrument(skip_all)]
 pub fn create_io_pattern(
     m_0: usize,
-    whir_params: &WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>,
-) -> DomainSeparator<SkyscraperSponge, Field256> {
-    DomainSeparator::<SkyscraperSponge, Field256>::new("🌪️")
+    whir_params: &WhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>,
+) -> DomainSeparator<SkyscraperSponge, FieldElement> {
+    DomainSeparator::<SkyscraperSponge, FieldElement>::new("🌪️")
         .add_rand(m_0)
         .add_sumcheck_polynomials(m_0)
         .commit_statement(&whir_params)

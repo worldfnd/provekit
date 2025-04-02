@@ -1,16 +1,12 @@
-#![allow(unused_imports)]
 use {
+    crate::utils::uint_to_field,
     ark_ff::{BigInt, BigInteger, PrimeField},
-    ruint::{uint, Uint},
+    ruint::uint,
     spongefish::duplex_sponge::{DuplexSponge, Permutation},
     whir::crypto::fields::Field256,
     zeroize::Zeroize,
 };
 
-/// TODO: Add documentation
-pub const fn uint_to_field(i: Uint<256, 4>) -> Field256 {
-    Field256::new(BigInt(i.into_limbs()))
-}
 const RC: [Field256; 8] = [
     uint_to_field(uint!(
         17829420340877239108687448009732280677191990375576158938221412342251481978692_U256
@@ -128,7 +124,10 @@ pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
 
 mod tests {
     use {
-        crate::whir_r1cs::skyscraper::skyscraper::{bar, compress, square, uint_to_field},
+        crate::{
+            utils::uint_to_field,
+            whir_r1cs::skyscraper::skyscraper::{bar, compress, square},
+        },
         ruint::uint,
     };
 

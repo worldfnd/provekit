@@ -1,5 +1,8 @@
 use {
-    crate::whir_r1cs::skyscraper::skyscraper::{bigint_from_bytes_le, compress, uint_to_field},
+    crate::{
+        utils::uint_to_field,
+        whir_r1cs::skyscraper::skyscraper::{bigint_from_bytes_le, compress},
+    },
     ruint::{aliases::U256, uint},
     spongefish_pow::PowStrategy,
     whir::crypto::fields::Field256,

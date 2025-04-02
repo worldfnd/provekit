@@ -1,7 +1,5 @@
 use {
-    crate::whir_r1cs::skyscraper::{
-        skyscraper_for_whir::SkyscraperMerkleConfig, skyscraper_pow::SkyscraperPoW,
-    },
+    crate::whir_r1cs::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW},
     clap::Parser,
     serde::{Deserialize, Serialize},
     whir::{

@@ -1,13 +1,10 @@
 #![doc = include_str!("../README.md")]
 mod cmd;
-mod compiler;
-mod sparse_matrix;
-mod utils;
-mod witness;
 
 use {
-    self::{cmd::Command, sparse_matrix::SparseMatrix},
+    self::cmd::Command,
     anyhow::Result,
+    noir_r1cs::sparse_matrix::SparseMatrix,
     std::{
         fmt::{Display, Formatter},
         sync::{Arc, Mutex},

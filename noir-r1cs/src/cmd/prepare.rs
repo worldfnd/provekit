@@ -1,9 +1,9 @@
 use {
     super::{utils::load_noir_program, Command},
-    crate::{compiler::R1CS, sparse_matrix::SparseMatrix},
     acir::{circuit::Circuit, FieldElement},
     anyhow::{Context as _, Result},
     argh::FromArgs,
+    noir_r1cs::{sparse_matrix::SparseMatrix, NoirProofScheme, R1CS},
     serde::{Serialize, Serializer},
     std::{
         fs::File,
@@ -29,83 +29,11 @@ impl Command for PrepareArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         let program = load_noir_program(&self.program_path)?;
-        let main = &program.bytecode.functions[0];
-        info!(
-            "ACIR: {} witnesses, {} opcodes.",
-            main.current_witness_index,
-            main.opcodes.len()
-        );
-        let r1cs = prepare_circuit(&main)?;
-        info!(
-            "R1CS: {} constraints, {} variables.",
-            r1cs.constraints, r1cs.witnesses
-        );
-        write_r1cs_to_file(&r1cs, &self.output_path)?;
+
+        let scheme = NoirProofScheme::from_program(&program)?;
+
+        // TODO: Store to file.
+
         Ok(())
     }
-}
-
-#[instrument(skip_all, fields(opcodes = circuit.opcodes.len(), witnesses = circuit.current_witness_index))]
-fn prepare_circuit(circuit: &Circuit<FieldElement>) -> Result<R1CS> {
-    // Create the R1CS relation
-    let mut r1cs = R1CS::new();
-    r1cs.add_circuit(circuit);
-    Ok(r1cs)
-}
-
-#[instrument(skip(r1cs), fields(witnesses = r1cs.witnesses, constraints = r1cs.constraints))]
-fn write_r1cs_to_file(r1cs: &R1CS, output_path: &Path) -> Result<()> {
-    #[derive(Serialize)]
-    struct JsonR1CS {
-        num_public:      usize,
-        num_variables:   usize,
-        num_constraints: usize,
-        a:               Vec<MatrixEntry>,
-        b:               Vec<MatrixEntry>,
-        c:               Vec<MatrixEntry>,
-    }
-
-    #[derive(Serialize)]
-    struct MatrixEntry {
-        constraint: usize,
-        signal:     usize,
-        #[serde(serialize_with = "serialize_field_element")]
-        value:      FieldElement,
-    }
-
-    fn matrix_to_entries(matrix: &SparseMatrix<FieldElement>) -> Vec<MatrixEntry> {
-        matrix
-            .iter()
-            .map(|((constraint, signal), value)| MatrixEntry {
-                constraint,
-                signal,
-                value: *value,
-            })
-            .collect()
-    }
-
-    fn serialize_field_element<S>(value: &FieldElement, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&value.to_string())
-    }
-
-    let json_r1cs = {
-        let _span = span!(Level::INFO, "preparing R1CS struct").entered();
-        JsonR1CS {
-            num_public:      0, // TODO
-            num_variables:   r1cs.witnesses,
-            num_constraints: r1cs.constraints,
-            a:               matrix_to_entries(&r1cs.a),
-            b:               matrix_to_entries(&r1cs.b),
-            c:               matrix_to_entries(&r1cs.c),
-        }
-    };
-
-    let _span = span!(Level::INFO, "writing R1CS to file").entered();
-    let mut file = File::create(output_path).context("while creating output file")?;
-    serde_json::to_writer_pretty(&mut file, &json_r1cs).context("while writing R1CS to file")?;
-    info!(size = file.metadata().map(|m| m.len()).ok(), "R1CS written");
-    Ok(())
 }

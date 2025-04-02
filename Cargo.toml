@@ -54,25 +54,26 @@ rand = "0.8.5"
 subtle = "2.6.1"
 bytemuck = "1.19.0"
 hex-literal = "0.4.1"
+hex = "0.4.3"
 itertools = "0.13.0"
 flate2 = "1.0"
 bincode = "1.3"
 
-# Noir lang: make sure it matches installed version `noirup -C 03b58fa2`
-acir = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+# Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
+# Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
+acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }
-ark-ff42 = { package = "ark-ff", version = "0.4.2", features = ["asm", "std"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 zeroize = "1.8.1"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
