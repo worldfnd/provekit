@@ -2,29 +2,35 @@
 //! constraints, witness size, and various operations used in the circuit.
 
 use {
+    super::Command,
     acir::{
         circuit::{opcodes::BlackBoxFuncCall, Opcode, Program},
         native_types::Expression,
     },
     acir_field::FieldElement,
+    anyhow::Result,
+    argh::FromArgs,
     base64::Engine,
-    clap::Parser,
     std::{
         collections::{hash_map::Entry, HashMap, HashSet},
         fs,
         ops::AddAssign,
+        path::PathBuf,
     },
+    tracing::instrument,
 };
 
 /// Simple program to show circuit statistics
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Path to circuit file
-    circuit_path: String,
+#[derive(FromArgs, PartialEq, Debug)]
+#[argh(subcommand, name = "circuit_stats")]
+pub struct Args {
+    /// path to circuit file
+    #[argh(positional)]
+    circuit_path: PathBuf,
 
-    /// Path to witness file
-    witness_path: String,
+    /// path to witness file
+    #[argh(positional)]
+    witness_path: PathBuf,
 }
 
 fn program_at_path(acir_path: String) -> Program<FieldElement> {
@@ -43,9 +49,16 @@ fn program_at_path(acir_path: String) -> Program<FieldElement> {
     program.unwrap()
 }
 
-fn main() {
-    let args = Args::parse();
-    let program = program_at_path(args.circuit_path);
+impl Command for Args {
+    #[instrument(skip_all)]
+    fn run(&self) -> Result<()> {
+        main(self);
+        Ok(())
+    }
+}
+
+fn main(arg: &Args) {
+    let program = program_at_path(arg.circuit_path.to_string_lossy().to_string());
 
     assert!(
         program.functions.len() == 1,
