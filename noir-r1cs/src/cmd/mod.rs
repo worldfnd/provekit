@@ -1,3 +1,4 @@
+mod circuit_stats;
 mod prepare;
 mod prove;
 pub(self) mod utils;
@@ -20,6 +21,7 @@ pub struct Args {
 enum Commands {
     Prepare(prepare::PrepareArgs),
     Prove(prove::ProveArgs),
+    CircuitStats(circuit_stats::Args),
     // TODO: Verify
 }
 
@@ -34,6 +36,7 @@ impl Command for Commands {
         match self {
             Commands::Prepare(args) => args.run(),
             Commands::Prove(args) => args.run(),
+            Commands::CircuitStats(args) => args.run(),
         }
     }
 }

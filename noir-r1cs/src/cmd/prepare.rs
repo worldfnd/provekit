@@ -1,15 +1,10 @@
 use {
     super::{utils::load_noir_program, Command},
-    acir::{circuit::Circuit, FieldElement},
-    anyhow::{Context as _, Result},
+    anyhow::Result,
     argh::FromArgs,
-    noir_r1cs::{sparse_matrix::SparseMatrix, NoirProofScheme, R1CS},
-    serde::{Serialize, Serializer},
-    std::{
-        fs::File,
-        path::{Path, PathBuf},
-    },
-    tracing::{info, instrument, span, Level},
+    noir_r1cs::NoirProofScheme,
+    std::path::PathBuf,
+    tracing::instrument,
 };
 
 /// Prepare a Noir program for proving

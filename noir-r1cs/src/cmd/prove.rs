@@ -2,23 +2,10 @@ use {
     super::{utils::load_noir_program, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{
-        self,
-        whir_r1cs::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        NoirProofScheme,
-    },
-    spongefish::DomainSeparator,
+    noir_r1cs::{self, NoirProofScheme},
     std::{fs::File, io::Read, path::PathBuf},
     tracing::instrument,
-    whir::{
-        crypto::fields::Field256,
-        whir::{parameters::WhirConfig, WhirProof},
-    },
 };
-
-type Whir = WhirConfig<Field256, SkyscraperMerkleConfig, SkyscraperPoW>;
-type WhirSkyProof = WhirProof<SkyscraperMerkleConfig, Field256>;
-type IOPattern = DomainSeparator<SkyscraperSponge, Field256>;
 
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Debug)]
