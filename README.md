@@ -10,26 +10,26 @@ First make sure you have the exact correct version of Noir installed [so the art
 noirup -C 03b58fa2
 ```
 
-Compile the Noir circuit and generate the witness:
+Compile the Noir circuit:
 
 ```sh
 cd noir-r1cs/noir-examples/poseidon-rounds
-nargo execute
+nargo compile
 ```
 
-Generate the R1CS instance:
+Generate the Noir Proof Scheme:
 
 ```sh
-cargo run --release --bin noir-r1cs ./noir-r1cs/noir-examples/poseidon-rounds/target/basic.json ./noir-r1cs/noir-examples/poseidon-rounds/target/basic.gz
+cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json --output-path ./noir_proof_scheme.bin
 ```
 
-Generate the WHIR GR1CS proof:
+(Currently this doesn't write an output file)
+
+Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin prover -- --input_file_path ./noir-r1cs/r1cs.json
+cargo run --release --bin noir-r1cs prove ./noir-examples/poseidon-rounds/target/basic.json ./noir-examples/poseidon-rounds/Prover.toml
 ```
-
-This will write the proof to `prover/proof`.
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
@@ -40,16 +40,7 @@ cd gnark-whir
 go run .
 ```
 
-## Refactored
-
-```sh
-cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json --output-path ./r1cs.json
-cargo run --release --bin noir-r1cs prove ./noir-examples/poseidon-rounds/target/basic.json ./r1cs.json ./noir-examples/poseidon-rounds/Prover.toml ./proof.bin ./gnark.json
-```
-
-
 ## Components
-
 
 ## Dependencies
 
