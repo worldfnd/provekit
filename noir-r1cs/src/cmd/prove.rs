@@ -1,5 +1,5 @@
 use {
-    super::{utils::load_noir_program, Command},
+    super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::{self, NoirProofScheme},
@@ -33,8 +33,9 @@ impl Command for ProveArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Reconstruct the scheme.
-        let program = load_noir_program(&self.program_path)?;
-        let scheme = NoirProofScheme::from_program(&program)?;
+        // TODO: Instead read from file.
+        let scheme = NoirProofScheme::from_file(&self.program_path)
+            .context("while compiling Noir program")?;
 
         // Read the input toml
         let mut file = File::open(&self.input_path).context("while opening input file")?;

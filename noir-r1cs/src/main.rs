@@ -4,19 +4,17 @@ mod cmd;
 use {
     self::cmd::Command,
     anyhow::Result,
-    noir_r1cs::sparse_matrix::SparseMatrix,
     std::{
         fmt::{Display, Formatter},
         sync::{Arc, Mutex},
         time::Instant,
     },
-    tracing::{level_filters::LevelFilter, span, Subscriber},
+    tracing::{span, Subscriber},
     tracing_subscriber::{
         self, fmt,
         layer::{Context, SubscriberExt as _},
         registry::LookupSpan,
-        util::SubscriberInitExt as _,
-        EnvFilter, Layer, Registry,
+        Layer, Registry,
     },
 };
 
@@ -66,7 +64,7 @@ where
         let depth = lock.len();
         let duration = lock.pop().expect("expected: start time exists").elapsed();
 
-        let span: tracing_subscriber::registry::SpanRef<'_, S> =
+        let _span: tracing_subscriber::registry::SpanRef<'_, S> =
             ctx.span(id).expect("expected: span id exists in registry");
 
         for _ in 0..(depth - 1) {

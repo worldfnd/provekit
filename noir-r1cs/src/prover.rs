@@ -172,7 +172,6 @@ pub fn run_sumcheck_prover(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_prover(
-    io: DomainSeparator<SkyscraperSponge, FieldElement>,
     z: Vec<FieldElement>,
     params: &WhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>,
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
@@ -181,7 +180,6 @@ pub fn run_whir_pcs_prover(
 ) -> (
     WhirProof<SkyscraperMerkleConfig, FieldElement>,
     ProverState<SkyscraperSponge, FieldElement>,
-    DomainSeparator<SkyscraperSponge, FieldElement>,
     [FieldElement; 3],
     Statement<FieldElement>,
 ) {
@@ -216,7 +214,7 @@ pub fn run_whir_pcs_prover(
         .prove(&mut merlin, statement.clone(), witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (proof, merlin, io, sums, statement)
+    (proof, merlin, sums, statement)
 }
 
 #[instrument(skip_all)]
@@ -230,7 +228,7 @@ pub fn run_sumcheck_verifier(
 
     let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
 
-    for i in 0..m_0 {
+    for _i in 0..m_0 {
         let mut hhat_i = vec![FieldElement::zero(); 4];
         let mut alpha_i = vec![FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);

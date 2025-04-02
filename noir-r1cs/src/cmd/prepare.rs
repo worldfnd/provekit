@@ -1,6 +1,6 @@
 use {
-    super::{utils::load_noir_program, Command},
-    anyhow::Result,
+    super::Command,
+    anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::NoirProofScheme,
     std::path::PathBuf,
@@ -23,9 +23,8 @@ pub struct PrepareArgs {
 impl Command for PrepareArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let program = load_noir_program(&self.program_path)?;
-
-        let scheme = NoirProofScheme::from_program(&program)?;
+        let _scheme = NoirProofScheme::from_file(&self.program_path)
+            .context("while compiling Noir program")?;
 
         // TODO: Store to file.
 

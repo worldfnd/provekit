@@ -2,12 +2,13 @@ use {
     crate::{
         noir_to_r1cs,
         utils::PrintAbi,
-        whir_r1cs::{WhirProof, WhirR1CSProof, WhirR1CSScheme},
+        whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     rand::{thread_rng, Rng as _},
+    std::{fs::File, path::Path},
     tracing::{info, instrument, span, Level},
 };
 
@@ -25,6 +26,16 @@ pub struct NoirProof {
 }
 
 impl NoirProofScheme {
+    #[instrument(skip_all)]
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let program = {
+            let _span = span!(Level::INFO, "serde_json").entered();
+            let file = File::open(path).context("while opening Noir program")?;
+            serde_json::from_reader(file).context("while reading Noir program")?
+        };
+        Self::from_program(&program)
+    }
+
     #[instrument(skip_all)]
     pub fn from_program(program: &ProgramArtifact) -> Result<Self> {
         info!("Program noir version: {}", program.noir_version);

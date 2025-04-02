@@ -122,14 +122,9 @@ impl Permutation for Skyscraper {
 /// TODO: Add documentation
 pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
 
+#[cfg(test)]
 mod tests {
-    use {
-        crate::{
-            utils::uint_to_field,
-            whir_r1cs::skyscraper::skyscraper::{bar, compress, square},
-        },
-        ruint::uint,
-    };
+    use super::*;
 
     #[test]
     fn test_square() {

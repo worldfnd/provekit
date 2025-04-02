@@ -94,7 +94,7 @@ impl WhirR1CSScheme {
     }
 
     #[instrument(skip_all)]
-    pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<(WhirR1CSProof)> {
+    pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
             witness.len() == r1cs.witnesses,
             "Unexpected witness length for R1CS instance"
@@ -121,8 +121,8 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, io, whir_query_answer_sums, statement) =
-            run_whir_pcs_prover(io, witness, &self.whir_config, merlin, self.m, alphas);
+        let (whir_proof, merlin, whir_query_answer_sums, statement) =
+            run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
 

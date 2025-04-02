@@ -1,7 +1,6 @@
 mod circuit_stats;
 mod prepare;
 mod prove;
-pub(self) mod utils;
 
 use {anyhow::Result, argh::FromArgs};
 
