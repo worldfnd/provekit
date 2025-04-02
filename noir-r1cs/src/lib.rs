@@ -1,13 +1,15 @@
+#![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
 mod ark_serde;
+mod gnark_config;
 mod noir_proof_scheme;
-pub mod noir_to_r1cs;
-pub mod noir_witness;
-pub mod prover;
-pub mod r1cs;
-pub mod sparse_matrix;
-pub mod utils;
-pub mod whir_r1cs;
+mod noir_to_r1cs;
+mod noir_witness;
+mod r1cs;
+mod skyscraper;
+mod sparse_matrix;
+mod utils;
+mod whir_r1cs;
 
 use {
     crate::{noir_witness::NoirWitnessGenerator, whir_r1cs::WhirProof},

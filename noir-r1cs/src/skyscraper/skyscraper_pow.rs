@@ -1,7 +1,7 @@
 use {
     crate::{
+        skyscraper::skyscraper::{bigint_from_bytes_le, compress},
         utils::uint_to_field,
-        whir_r1cs::skyscraper::skyscraper::{bigint_from_bytes_le, compress},
     },
     ruint::{aliases::U256, uint},
     spongefish_pow::PowStrategy,
