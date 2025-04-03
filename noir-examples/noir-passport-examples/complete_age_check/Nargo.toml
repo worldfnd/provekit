@@ -1,5 +1,5 @@
 [package]
-name = "ryan_main"
+name = "complete_age_check"
 type = "bin"
 compiler_version = ">=0.32.0"
 
