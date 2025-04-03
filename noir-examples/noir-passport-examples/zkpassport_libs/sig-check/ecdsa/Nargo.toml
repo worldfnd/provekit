@@ -1,0 +1,11 @@
+[package]
+name = "sig_check_ecdsa"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.35.0"
+
+[dependencies]
+utils = { path = "../../utils" }
+ecdsa = { tag = "v0.2.3", git = "https://github.com/zkpassport/noir-ecdsa" }
+bignum = {tag = "v0.6.1", git = "https://github.com/noir-lang/noir-bignum"}
+bigcurve = {tag = "v0.7.0-2", git = "https://github.com/madztheo/noir_bigcurve"}

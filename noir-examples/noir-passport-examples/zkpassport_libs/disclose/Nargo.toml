@@ -1,0 +1,8 @@
+[package]
+name = "disclose_lib"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.32.0"
+
+[dependencies]
+utils = { path = "../utils" }

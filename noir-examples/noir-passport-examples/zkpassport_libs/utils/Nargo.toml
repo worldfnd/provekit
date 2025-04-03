@@ -1,0 +1,5 @@
+[package]
+name = "utils"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.22.0"
