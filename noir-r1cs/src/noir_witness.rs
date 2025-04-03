@@ -12,7 +12,7 @@ use {
     noirc_abi::{input_parser::Format, Abi},
     noirc_artifacts::program::ProgramArtifact,
     std::collections::BTreeMap,
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 #[derive(Clone, Debug)]
@@ -88,7 +88,7 @@ fn generate_noir_witness(
             ACVMStatus::RequiresForeignCall(info) => {
                 let result = match info.function.as_str() {
                     "print" => {
-                        eprintln!("NOIR PRINT: {:?}", info.inputs);
+                        info!("NOIR PRINT: {:?}", info.inputs);
                         Ok(ForeignCallResult::default())
                     }
                     name => Err(anyhow!(
