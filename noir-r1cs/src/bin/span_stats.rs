@@ -3,15 +3,14 @@
 //! NOTE: This module is only included in the bin, not in the lib.
 use {
     crate::ALLOC,
-    nu_ansi_term::{Color, Style},
     std::{
+        cmp::max,
         fmt::{self, Display, Formatter, Write as _},
-        sync::{Arc, Mutex},
         time::Instant,
     },
     tracing::{
         field::{Field, Visit},
-        span::{self, Attributes, Id},
+        span::{Attributes, Id},
         Level, Subscriber,
     },
     tracing_subscriber::{self, layer::Context, registry::LookupSpan, Layer},
@@ -80,6 +79,15 @@ where
     fn on_new_span(&self, attrs: &Attributes, id: &Id, ctx: Context<S>) {
         let span = ctx.span(id).expect("invalid span in on_new_span");
 
+        // Update parent
+        if let Some(parent) = span.parent() {
+            if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
+                data.children = true;
+                data.peak_memory = max(data.peak_memory, ALLOC.max());
+            }
+        }
+        ALLOC.reset_max();
+
         // Add Data if it hasn't already
         if span.extensions().get::<Data>().is_none() {
             let depth = span
@@ -94,13 +102,6 @@ where
                 .unwrap_or(0);
             let data = Data::new(attrs, depth);
             span.extensions_mut().insert(data);
-        }
-
-        // Flag child on parent
-        if let Some(parent) = span.parent() {
-            if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
-                data.children = true;
-            }
         }
 
         // Fetch data
@@ -189,6 +190,13 @@ where
         let peak_memory: usize = std::cmp::max(ALLOC.max(), data.peak_memory);
         let allocations = ALLOC.count() - data.allocations;
         let own = peak_memory - data.memory;
+
+        // Update parent
+        if let Some(parent) = span.parent() {
+            if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
+                data.peak_memory = max(data.peak_memory, peak_memory);
+            }
+        }
 
         let mut buffer = String::with_capacity(100);
 

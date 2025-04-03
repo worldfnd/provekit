@@ -6,7 +6,7 @@ mod span_stats;
 use {
     self::{cmd::Command, measuring_alloc::MeasuringAllocator, span_stats::SpanStats},
     anyhow::Result,
-    tracing_subscriber::{self, fmt, layer::SubscriberExt as _, Registry},
+    tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
 };
 
 #[global_allocator]

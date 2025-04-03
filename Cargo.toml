@@ -82,8 +82,6 @@ anyhow = "1.0.93"
 argh = "0.1.12"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
-nu-ansi-term = "0.46.0"
-
 
 [patch.crates-io]
 ruint = { git = "https://github.com/recmo/uint", branch = "main" }
