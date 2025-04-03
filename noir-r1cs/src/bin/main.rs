@@ -13,8 +13,7 @@ use {
 static ALLOC: MeasuringAllocator = MeasuringAllocator::new();
 
 fn main() -> Result<()> {
-    let fmt_layer = fmt::Layer::default();
-    let subscriber = Registry::default().with(fmt_layer).with(SpanStats::new());
+    let subscriber = Registry::default().with(SpanStats);
     tracing::subscriber::set_global_default(subscriber)?;
 
     // Run CLI command

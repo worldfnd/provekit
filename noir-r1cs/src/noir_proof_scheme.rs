@@ -26,11 +26,16 @@ pub struct NoirProof {
 }
 
 impl NoirProofScheme {
-    #[instrument(skip_all)]
+    #[instrument()]
     pub fn from_file(path: &Path) -> Result<Self> {
         let program = {
-            let _span = span!(Level::INFO, "serde_json").entered();
             let file = File::open(path).context("while opening Noir program")?;
+            let _span = span!(
+                Level::INFO,
+                "serde_json",
+                size = file.metadata().map(|m| m.len()).ok(),
+            )
+            .entered();
             serde_json::from_reader(file).context("while reading Noir program")?
         };
         Self::from_program(&program)
@@ -77,10 +82,9 @@ impl NoirProofScheme {
         })
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(size=input_toml.len()))]
     pub fn prove(&self, input_toml: &str) -> Result<NoirProof> {
-        let span = span!(Level::INFO, "generate_witness");
-        let enter = span.enter();
+        let span = span!(Level::INFO, "generate_witness").entered();
 
         // Create witness for provided input
         let input = self
@@ -102,7 +106,7 @@ impl NoirProofScheme {
         self.r1cs
             .verify_witness(&witness)
             .context("While verifying R1CS instance")?;
-        drop(enter);
+        drop(span);
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
