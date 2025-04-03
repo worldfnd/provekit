@@ -1,0 +1,8 @@
+[package]
+name = "basic"
+type = "bin"
+authors = [""]
+compiler_version = ">=0.22.0"
+
+[dependencies]
+poseidon2 = { tag = "main", git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2"}

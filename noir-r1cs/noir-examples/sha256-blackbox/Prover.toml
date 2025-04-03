@@ -1,0 +1,25 @@
+# Input for SHA-256 compression function (16 32-bit words)
+input = [
+    0x00000002, 0x00000000, 0x00000000, 0x00000000,
+    0x00000001, 0x00000000, 0x00000000, 0x00000000,
+    0x0000000a, 0x00000000, 0x00000000, 0x00000000,
+    0x0000000b, 0x00000000, 0x00000000, 0x00000000
+]
+
+# Initial state for SHA-256 (8 32-bit words)
+state = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+]
+
+# Expected result after compression (8 32-bit words)
+result = [
+    0x6f1488ff,
+    0xaa13d975,
+    0x1d5e26b0,
+    0x8c0eec2e,
+    0xdeb0585a,
+    0x5fa50268,
+    0x6fc50b94,
+    0xd0df0631,
+]
