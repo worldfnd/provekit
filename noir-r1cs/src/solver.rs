@@ -3,7 +3,6 @@ use {
         native_types::{Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     },
-    rand::Rng,
     std::collections::BTreeMap,
 };
 
@@ -145,15 +144,7 @@ impl R1CSSolver {
                 transcript.append(value);
             });
 
-        // Complete witness with entropy.
-        // TODO: Use better entropy source and proper sampling.
-        // FIXME is this the desired behaviour?  Would an error be more appropriate if the solver fails to determine the witness?
-        let mut rng = rand::thread_rng();
-        let witness = witness
-            .iter()
-            .map(|f| f.unwrap_or_else(|| FieldElement::from(rng.gen::<u128>())))
-            .collect::<Vec<_>>();
-        witness
+        witness.iter().map(|v| v.unwrap()).collect()
     }
 
     /// The number of witnesses in the R1CS instance.
