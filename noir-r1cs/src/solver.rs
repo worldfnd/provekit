@@ -13,7 +13,8 @@ use {
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
     Constant(FieldElement),
-    /// A witness value carried over from the ACIR circuit
+    /// A witness value carried over from the ACIR circuit (at the specified ACIR witness index)
+    /// (includes ACIR inputs and outputs)
     Acir(usize),
     /// A Fiat-Shamir challenge value
     Challenge,
