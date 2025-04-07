@@ -8,15 +8,19 @@ use {
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     rand::{thread_rng, Rng as _},
+    serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
     tracing::{info, instrument, span, Level},
 };
 
 /// A scheme for proving a Noir program.
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct NoirProofScheme {
+    #[serde(skip)]
     r1cs:              R1CS,
+    #[serde(skip)]
     witness_generator: NoirWitnessGenerator,
+    #[serde(skip)]
     whir:              WhirR1CSScheme,
 }
 

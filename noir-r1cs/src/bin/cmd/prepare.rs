@@ -3,7 +3,8 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::NoirProofScheme,
-    std::path::PathBuf,
+    postcard,
+    std::{fs::File, path::PathBuf},
     tracing::instrument,
 };
 
@@ -23,10 +24,12 @@ pub struct PrepareArgs {
 impl Command for PrepareArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let _scheme = NoirProofScheme::from_file(&self.program_path)
+        let scheme = NoirProofScheme::from_file(&self.program_path)
             .context("while compiling Noir program")?;
 
-        // TODO: Store to file.
+        // Store to file.
+        let mut file = File::create(&self.output_path).context("while creating output file")?;
+        postcard::to_io(&scheme, &mut file).context("while writing Noir proof scheme")?;
 
         Ok(())
     }

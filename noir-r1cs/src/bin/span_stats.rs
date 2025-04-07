@@ -251,7 +251,7 @@ pub fn human(value: f64) -> impl Display {
                 .chars()
                 .nth((si_power + 10) as usize)
                 .unwrap();
-            if suffix != ' ' {
+            if suffix != ' ' || f.width() == Some(6) {
                 write!(f, "{suffix}")?;
             }
             Ok(())

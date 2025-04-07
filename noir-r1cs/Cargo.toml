@@ -47,3 +47,4 @@ argh.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+postcard.workspace = true

@@ -20,7 +20,7 @@ use {
         DomainSeparator, ProverState, VerifierState,
     },
     std::fmt::{Debug, Formatter},
-    tracing::instrument,
+    tracing::{info, instrument, warn},
     whir::{
         parameters::{
             default_max_pow, FoldType, FoldingFactor,
@@ -292,12 +292,10 @@ pub fn run_whir_pcs_prover(
     [FieldElement; 3],
     Statement<FieldElement>,
 ) {
-    println!("=========================================");
-    println!("Running Prover - Whir Commitment");
-    println!("{}", params);
+    info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
-        println!("WARN: More PoW bits required than specified.");
+        warn!("More PoW bits required than specified.");
     }
 
     let z = pad_to_power_of_two(z);
