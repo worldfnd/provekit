@@ -1,14 +1,21 @@
-pub const NP0: u64 = 0xc2e1f593efffffff;
+pub const U64_NP0: u64 = 0xc2e1f593efffffff;
 
-pub const P: [u64; 4] = [
+pub const U64_P: [u64; 4] = [
     0x43e1f593f0000001,
     0x2833e84879b97091,
     0xb85045b68181585d,
     0x30644e72e131a029,
 ];
 
+pub const U64_2P: [u64; 4] = [
+    0x87c3eb27e0000002,
+    0x5067d090f372e122,
+    0x70a08b6d0302b0ba,
+    0x60c89ce5c2634053,
+];
+
 // R mod P
-pub const R: [u64; 4] = [
+pub const U64_R: [u64; 4] = [
     0xac96341c4ffffffb,
     0x36fc76959f60cd29,
     0x666ea36f7879462e,
@@ -16,7 +23,7 @@ pub const R: [u64; 4] = [
 ];
 
 // R^2 mod P
-pub const R2: [u64; 4] = [
+pub const U64_R2: [u64; 4] = [
     0x1BB8E645AE216DA7,
     0x53FE3AB1E35C59E3,
     0x8C49833D53BB8085,
@@ -24,7 +31,7 @@ pub const R2: [u64; 4] = [
 ];
 
 // R^-1 mod P
-pub const R_INV: [u64; 4] = [
+pub const U64_R_INV: [u64; 4] = [
     0xdc5ba0056db1194e,
     0x090ef5a9e111ec87,
     0xc8260de4aeb85d5d,
@@ -46,6 +53,14 @@ pub const U52_P: [u64; 5] = [
     0x181585D2833E8,
     0xA029B85045B68,
     0x030644E72E131,
+];
+
+pub const U52_2P: [u64; 5] = [
+    0x3EB27E0000002,
+    0x90F372E12287C,
+    0x302B0BA5067D0,
+    0x405370A08B6D0,
+    0x060C89CE5C263,
 ];
 
 pub const F52_P: [f64; 5] = [

@@ -49,9 +49,29 @@ fn bench_block_multiplier(c: &mut Criterion) {
 
     let rtz = block_multiplier::rtz::RTZ::set().unwrap();
 
-    group.bench_function("block_multiplier", |bencher| {
+    group.bench_function("scalar_mul", |bencher| {
         bencher.iter(|| {
-            block_multiplier::block_multiplier(
+            block_multiplier::scalar_mul(
+                black_box(s0_a),
+                black_box(s0_b),
+            )
+        })
+    });
+
+    group.bench_function("simd_mul", |bencher| {
+        bencher.iter(|| {
+            block_multiplier::simd_mul(
+                black_box(v0_a),
+                black_box(v0_b),
+                black_box(v1_a),
+                black_box(v1_b),
+            )
+        })
+    });
+
+    group.bench_function("block_mul", |bencher| {
+        bencher.iter(|| {
+            block_multiplier::block_mul(
                 &rtz,
                 black_box(s0_a),
                 black_box(s0_b),
