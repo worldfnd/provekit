@@ -4,6 +4,8 @@ use std::{
     ops::{AddAssign, Index, IndexMut, Mul},
 };
 
+use acir::{AcirField, FieldElement};
+
 /// A sparse matrix with elements of type `F`.
 #[derive(Debug, Clone, Default)]
 pub struct SparseMatrix<F> {
@@ -14,10 +16,10 @@ pub struct SparseMatrix<F> {
     pub cols: usize,
 
     /// The default value of the matrix.
-    default: F,
+    pub default: F,
 
     /// The non-default entries of the matrix.
-    entries: BTreeMap<(usize, usize), F>,
+    pub entries: BTreeMap<(usize, usize), F>,
 }
 
 impl<F> SparseMatrix<F> {
@@ -85,6 +87,7 @@ impl<F: PartialEq> SparseMatrix<F> {
         })
     }
 
+    // TODO wouldn't it be better to use the CSR format (not the COO format?) for sparse matrices?  There should never be a row without a non-zero entry.
     /// Iterate over the non-default entries of the given row.
     pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, &F)> {
         self.entries
@@ -141,4 +144,12 @@ where
         }
         result
     }
+}
+
+pub fn mat_mul(a: &SparseMatrix<FieldElement>, b: &[FieldElement]) -> Vec<FieldElement> {
+    let mut result = vec![FieldElement::zero(); a.rows];
+    for ((i, j), &value) in a.iter() {
+        result[i] += value * b[j];
+    }
+    result
 }
