@@ -11,11 +11,12 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     noirc_abi::{input_parser::Format, Abi},
     noirc_artifacts::program::ProgramArtifact,
+    serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
     tracing::{info, instrument},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NoirWitnessGenerator {
     abi:            Abi,
     brillig:        Vec<BrilligBytecode<NoirElement>>,

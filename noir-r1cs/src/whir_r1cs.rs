@@ -15,6 +15,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     itertools::izip,
+    serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
@@ -47,10 +48,11 @@ pub type WhirProof = GenericWhirProof<SkyscraperMerkleConfig, FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct WhirR1CSScheme {
     m:           usize,
     m_0:         usize,
+    #[serde(skip)]
     whir_config: WhirConfig,
 }
 

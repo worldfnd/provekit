@@ -1,11 +1,13 @@
 use {
     super::Command,
+    crate::write,
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::NoirProofScheme,
     postcard,
-    std::{fs::File, path::PathBuf},
-    tracing::instrument,
+    std::{fs::File, io::Write, path::PathBuf},
+    tracing::{info, instrument},
+    zstd::stream::Encoder as ZstdEncoder,
 };
 
 /// Prepare a Noir program for proving
@@ -16,8 +18,8 @@ pub struct PrepareArgs {
     #[argh(positional)]
     program_path: PathBuf,
 
-    /// output path for the prepared R1CS file
-    #[argh(option, default = "PathBuf::from(\"r1cs.json\")")]
+    /// output path for the prepared proof scheme
+    #[argh(option, default = "PathBuf::from(\"noir_proof_scheme.bin\")")]
     output_path: PathBuf,
 }
 
@@ -28,8 +30,7 @@ impl Command for PrepareArgs {
             .context("while compiling Noir program")?;
 
         // Store to file.
-        let mut file = File::create(&self.output_path).context("while creating output file")?;
-        postcard::to_io(&scheme, &mut file).context("while writing Noir proof scheme")?;
+        write(&scheme, &self.output_path).context("while writing Noir proof scheme")?;
 
         Ok(())
     }

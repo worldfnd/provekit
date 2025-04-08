@@ -16,11 +16,8 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Clone, Serialize)]
 pub struct NoirProofScheme {
-    #[serde(skip)]
     r1cs:              R1CS,
-    #[serde(skip)]
     witness_generator: NoirWitnessGenerator,
-    #[serde(skip)]
     whir:              WhirR1CSScheme,
 }
 
