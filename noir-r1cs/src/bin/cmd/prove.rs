@@ -1,11 +1,10 @@
 use {
     super::Command,
-    crate::file::read_bin,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{self, NoirProofScheme},
+    noir_r1cs::{self, read, NoirProofScheme},
     std::{fs::File, io::Read, path::PathBuf},
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 /// Prove a prepared Noir program
@@ -34,7 +33,9 @@ impl Command for ProveArgs {
     fn run(&self) -> Result<()> {
         // Read the scheme
         let scheme: NoirProofScheme =
-            read_bin(&self.scheme_path).context("while reading Noir proof scheme")?;
+            read(&self.scheme_path).context("while reading Noir proof scheme")?;
+        let (constraints, witnesses) = scheme.size();
+        info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
         let mut file = File::open(&self.input_path).context("while opening input file")?;

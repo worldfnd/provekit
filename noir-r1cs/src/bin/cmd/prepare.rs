@@ -1,9 +1,8 @@
 use {
     super::Command,
-    crate::write,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::NoirProofScheme,
+    noir_r1cs::{write, NoirProofScheme},
     std::path::PathBuf,
     tracing::instrument,
 };
@@ -17,7 +16,12 @@ pub struct PrepareArgs {
     program_path: PathBuf,
 
     /// output path for the prepared proof scheme
-    #[argh(option, default = "PathBuf::from(\"noir_proof_scheme.bin\")")]
+    #[argh(
+        option,
+        long = "out",
+        short = 'o',
+        default = "PathBuf::from(\"noir_proof_scheme.bin\")"
+    )]
     output_path: PathBuf,
 }
 

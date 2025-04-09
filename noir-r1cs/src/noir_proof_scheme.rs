@@ -83,6 +83,10 @@ impl NoirProofScheme {
         })
     }
 
+    pub fn size(&self) -> (usize, usize) {
+        (self.r1cs.constraints, self.r1cs.witnesses)
+    }
+
     #[instrument(skip_all, fields(size=input_toml.len()))]
     pub fn prove(&self, input_toml: &str) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();

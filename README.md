@@ -20,7 +20,7 @@ nargo compile
 Generate the Noir Proof Scheme:
 
 ```sh
-cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json --output-path ./noir_proof_scheme.bin
+cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json --output-path ./noir_proof_scheme.nps
 ```
 
 (Currently this doesn't write an output file)
@@ -28,7 +28,7 @@ cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/targ
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-examples/poseidon-rounds/target/basic.json ./noir-examples/poseidon-rounds/Prover.toml
+cargo run --release --bin noir-r1cs prove ./noir_proof_scheme.nps ./noir-examples/poseidon-rounds/Prover.toml
 ```
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
@@ -38,6 +38,13 @@ cd ..
 git clone https://github.com/reilabs/gnark-whir
 cd gnark-whir
 go run .
+```
+
+Benchmark against Barretenberg:
+
+```
+cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./scheme.nps
+hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' 'cargo run --release --bin noir-r1cs prove ./scheme.nps ./Prover.toml'
 ```
 
 ## Components

@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
+mod file;
 mod gnark_config;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
@@ -10,14 +11,23 @@ mod sparse_matrix;
 mod utils;
 mod whir_r1cs;
 
-use {
-    crate::{noir_witness::NoirWitnessGenerator, utils::serde_ark, whir_r1cs::WhirProof},
-    serde::{Deserialize, Serialize},
-    sparse_matrix::SparseMatrix,
-};
 pub use {
-    acir::FieldElement as NoirElement, noir_proof_scheme::NoirProofScheme,
-    noir_to_r1cs::noir_to_r1cs, r1cs::R1CS, whir::crypto::fields::Field256 as FieldElement,
+    crate::{
+        file::{read, write, FileFormat},
+        noir_proof_scheme::NoirProofScheme,
+        noir_to_r1cs::noir_to_r1cs,
+        r1cs::R1CS,
+        utils::human,
+    },
+    acir::FieldElement as NoirElement,
+    whir::crypto::fields::Field256 as FieldElement,
+};
+use {
+    crate::{
+        noir_witness::NoirWitnessGenerator, sparse_matrix::SparseMatrix, utils::serde_ark,
+        whir_r1cs::WhirProof,
+    },
+    serde::{Deserialize, Serialize},
 };
 
 #[derive(Clone, Serialize, Deserialize)]

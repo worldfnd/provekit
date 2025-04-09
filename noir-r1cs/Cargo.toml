@@ -49,3 +49,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 postcard.workspace = true
 zstd.workspace = true
+bytes.workspace = true

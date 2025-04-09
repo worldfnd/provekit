@@ -2,7 +2,8 @@
 //!
 //! NOTE: This module is only included in the bin, not in the lib.
 use {
-    crate::{human, ALLOC},
+    crate::ALLOC,
+    noir_r1cs::human,
     std::{
         cmp::max,
         fmt::{self, Write as _},
