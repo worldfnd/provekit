@@ -1,6 +1,7 @@
 mod circuit_stats;
 mod prepare;
 mod prove;
+mod verify;
 
 use {anyhow::Result, argh::FromArgs};
 
@@ -18,10 +19,10 @@ pub struct Args {
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand)]
 enum Commands {
-    Prepare(prepare::PrepareArgs),
-    Prove(prove::ProveArgs),
+    Prepare(prepare::Args),
+    Prove(prove::Args),
     CircuitStats(circuit_stats::Args),
-    // TODO: Verify
+    Verify(verify::Args),
 }
 
 impl Command for Args {
@@ -36,6 +37,7 @@ impl Command for Commands {
             Commands::Prepare(args) => args.run(),
             Commands::Prove(args) => args.run(),
             Commands::CircuitStats(args) => args.run(),
+            Commands::Verify(args) => args.run(),
         }
     }
 }

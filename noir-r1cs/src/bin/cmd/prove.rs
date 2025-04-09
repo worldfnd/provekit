@@ -10,7 +10,7 @@ use {
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "prove")]
-pub struct ProveArgs {
+pub struct Args {
     /// path to the compiled Noir program
     #[argh(positional)]
     scheme_path: PathBuf,
@@ -37,7 +37,7 @@ pub struct ProveArgs {
     gnark_out: PathBuf,
 }
 
-impl Command for ProveArgs {
+impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme

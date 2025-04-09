@@ -62,18 +62,23 @@ pub struct WhirR1CSProof {
 
     whir_proof: WhirProof,
 
+    // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     alpha: Vec<FieldElement>,
 
+    // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     r: Vec<FieldElement>,
 
+    // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     last_sumcheck_val: FieldElement,
 
+    // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
 
+    // TODO: Derive from scheme and transcript
     statement: Statement<FieldElement>,
 }
 
