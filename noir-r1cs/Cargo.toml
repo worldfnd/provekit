@@ -8,7 +8,7 @@ workspace = true
 
 [[bin]]
 name = "noir-r1cs"
-path = "src/bin/main.rs"
+path = "src/cli/main.rs"
 
 [dependencies]
 serde.workspace = true

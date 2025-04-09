@@ -48,9 +48,10 @@ go run .
 
 Benchmark against Barretenberg:
 
-```
+```sh
+cd noir-examples/poseidon-rounds
 cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./scheme.nps
-hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' 'cargo run --release --bin noir-r1cs prove ./scheme.nps ./Prover.toml'
+hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml'
 ```
 
 ## Components
