@@ -7,7 +7,7 @@ use {
 };
 
 /// Represents a R1CS constraint system.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct R1CS {
     pub public_inputs: usize,
     pub witnesses:     usize,

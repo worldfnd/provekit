@@ -1,4 +1,6 @@
 mod print_abi;
+pub mod serde_ark;
+pub mod serde_jsonify;
 pub mod sumcheck;
 
 pub use self::print_abi::PrintAbi;

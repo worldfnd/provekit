@@ -1,19 +1,19 @@
 use {
     crate::human,
-    anyhow::{Context as _, Result},
-    serde::Serialize,
+    anyhow::{ensure, Context as _, Result},
+    serde::{Deserialize, Serialize},
     std::{
         ffi::OsStr,
         fs::File,
-        io::{Result as IOResult, Write},
+        io::{Read, Result as IOResult, Write},
         path::PathBuf,
     },
     tracing::{info, instrument},
-    zstd::stream::Encoder as ZstdEncoder,
+    zstd::stream::{Decoder as ZstdDecoder, Encoder as ZstdEncoder},
 };
 
 const ZSTD_COMPRESSION: i32 = zstd::DEFAULT_COMPRESSION_LEVEL;
-const MAGIC_BYTES: &[u8] = b"\xDC\xDFNWps\x01\x00";
+const MAGIC_BYTES: &[u8] = b"\xDC\xDFWHIR\x01\x00";
 
 /// Helper to count bytes written to a writer.
 struct CountingWriter<T: Write> {
@@ -54,6 +54,13 @@ pub fn write_json<T: Serialize>(value: &T, path: &PathBuf) -> Result<()> {
         human(size as f64)
     );
     Ok(())
+}
+
+/// Read a JSON file.
+#[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
+pub fn read_json<T: for<'a> Deserialize<'a>>(path: &PathBuf) -> Result<T> {
+    let mut file = File::open(path).context("while opening input file")?;
+    serde_json::from_reader(&mut file).context("while reading JSON")
 }
 
 /// Write a compressed binary file (fast and small).
@@ -99,17 +106,38 @@ pub fn write_bin<T: Serialize>(value: &T, path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Read a compressed binary file.
+#[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
+pub fn read_bin<T: for<'a> Deserialize<'a>>(path: &PathBuf) -> Result<T> {
+    let mut file = File::open(path).context("while opening input file")?;
+
+    // Check magic bytes
+    let mut magic = [0; MAGIC_BYTES.len()];
+    file.read_exact(&mut magic)
+        .context("while reading magic bytes")?;
+    ensure!(magic == MAGIC_BYTES, "Invalid magic bytes");
+
+    // Decompressor
+    let mut decompressor = ZstdDecoder::new(&mut file).context("while creating decompressor")?;
+
+    // Postcard
+    // See <https://github.com/jamesmunns/postcard/pull/212> for the reason for the full uncompressed buffer.
+    let mut uncompressed = Vec::new();
+    decompressor
+        .read_to_end(&mut uncompressed)
+        .context("while reading decompressed data")?;
+    postcard::from_bytes(&uncompressed).context("while decoding from postcard")
+}
+
 impl<T: Write> CountingWriter<T> {
+    #[must_use]
     pub fn new(writer: T) -> Self {
         Self { writer, count: 0 }
     }
 
+    #[must_use]
     pub fn count(&self) -> usize {
         self.count
-    }
-
-    pub fn into_inner(self) -> T {
-        self.writer
     }
 }
 

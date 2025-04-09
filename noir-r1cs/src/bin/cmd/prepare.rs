@@ -4,10 +4,8 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::NoirProofScheme,
-    postcard,
-    std::{fs::File, io::Write, path::PathBuf},
-    tracing::{info, instrument},
-    zstd::stream::Encoder as ZstdEncoder,
+    std::path::PathBuf,
+    tracing::instrument,
 };
 
 /// Prepare a Noir program for proving
@@ -28,10 +26,7 @@ impl Command for PrepareArgs {
     fn run(&self) -> Result<()> {
         let scheme = NoirProofScheme::from_file(&self.program_path)
             .context("while compiling Noir program")?;
-
-        // Store to file.
         write(&scheme, &self.output_path).context("while writing Noir proof scheme")?;
-
         Ok(())
     }
 }

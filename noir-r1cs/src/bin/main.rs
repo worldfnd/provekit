@@ -25,8 +25,8 @@ fn main() -> Result<()> {
 }
 
 /// Pretty print a float using SI-prefixes.
-pub fn human(value: f64) -> impl Display {
-    pub struct Human(f64);
+fn human(value: f64) -> impl Display {
+    struct Human(f64);
     impl Display for Human {
         fn fmt(&self, f: &mut Formatter) -> FmtResult {
             let log10 = if self.0.is_normal() {

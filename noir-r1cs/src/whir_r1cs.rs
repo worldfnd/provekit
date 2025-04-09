@@ -48,11 +48,10 @@ pub type WhirProof = GenericWhirProof<SkyscraperMerkleConfig, FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
     m:           usize,
     m_0:         usize,
-    #[serde(skip)]
     whir_config: WhirConfig,
 }
 

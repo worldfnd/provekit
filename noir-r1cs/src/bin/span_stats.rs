@@ -5,7 +5,7 @@ use {
     crate::{human, ALLOC},
     std::{
         cmp::max,
-        fmt::{self, Display, Formatter, Write as _},
+        fmt::{self, Write as _},
         time::Instant,
     },
     tracing::{

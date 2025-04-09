@@ -14,7 +14,7 @@ use {
 };
 
 /// A scheme for proving a Noir program.
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProofScheme {
     r1cs:              R1CS,
     witness_generator: NoirWitnessGenerator,
@@ -27,7 +27,7 @@ pub struct NoirProof {
 }
 
 impl NoirProofScheme {
-    #[instrument()]
+    #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
     pub fn from_file(path: &Path) -> Result<Self> {
         let program = {
             let file = File::open(path).context("while opening Noir program")?;
@@ -142,4 +142,20 @@ fn fill_witness(witness: Vec<Option<FieldElement>>) -> Result<Vec<FieldElement>>
         .collect::<Vec<_>>();
     info!("Filled witness with {count} random values");
     Ok(witness)
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::NoirProofScheme, crate::test_serde, std::path::PathBuf};
+
+    #[test]
+    fn test_noir_proof_scheme_serde() {
+        let proof_schema = NoirProofScheme::from_file(&PathBuf::from(
+            "../noir-examples/poseidon-rounds/target/basic.json",
+        ))
+        .unwrap();
+        test_serde(&proof_schema.r1cs);
+        test_serde(&proof_schema.witness_generator);
+        test_serde(&proof_schema.whir);
+    }
 }

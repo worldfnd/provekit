@@ -1,5 +1,6 @@
 use {
     super::Command,
+    crate::file::read_bin,
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::{self, NoirProofScheme},
@@ -12,9 +13,8 @@ use {
 #[argh(subcommand, name = "prove")]
 pub struct ProveArgs {
     /// path to the compiled Noir program
-    // TODO: Replace with `NoirProofScheme` file.
     #[argh(positional)]
-    program_path: PathBuf,
+    scheme_path: PathBuf,
 
     /// path to the input values
     #[argh(positional)]
@@ -32,10 +32,9 @@ pub struct ProveArgs {
 impl Command for ProveArgs {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Reconstruct the scheme.
-        // TODO: Instead read from file.
-        let scheme = NoirProofScheme::from_file(&self.program_path)
-            .context("while compiling Noir program")?;
+        // Read the scheme
+        let scheme: NoirProofScheme =
+            read_bin(&self.scheme_path).context("while reading Noir proof scheme")?;
 
         // Read the input toml
         let mut file = File::open(&self.input_path).context("while opening input file")?;

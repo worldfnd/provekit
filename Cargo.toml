@@ -88,3 +88,13 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 
 [patch.crates-io]
 ruint = { git = "https://github.com/recmo/uint", branch = "main" }
+postcard = { path = "../../jamesmunns/postcard/source/postcard" }
+
+[patch.'https://github.com/noir-lang/noir']
+acir = { path = "../../noir-lang/noir/acvm-repo/acir" }
+acvm = { path = "../../noir-lang/noir/acvm-repo/acvm" }
+acir_field = { path = "../../noir-lang/noir/acvm-repo/acir_field" }
+noirc_abi = { path = "../../noir-lang/noir/tooling/noirc_abi" }
+noirc_artifacts = { path = "../../noir-lang/noir/tooling/noirc_artifacts" }
+noirc_printable_type = { path = "../../noir-lang/noir/compiler/noirc_printable_type" }
+bn254_blackbox_solver = { path = "../../noir-lang/noir/acvm-repo/bn254_blackbox_solver" }

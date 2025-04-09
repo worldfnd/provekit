@@ -1,5 +1,5 @@
 use {
-    crate::FieldElement,
+    crate::{utils::serde_ark, FieldElement},
     ark_std::Zero,
     serde::{Deserialize, Serialize},
     std::{
@@ -10,7 +10,7 @@ use {
 };
 
 /// A sparse matrix with elements of type `F`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SparseMatrix {
     /// The number of rows in the matrix.
     pub rows: usize,
@@ -19,11 +19,11 @@ pub struct SparseMatrix {
     pub cols: usize,
 
     /// The default value of the matrix.
-    #[serde(with = "crate::ark_serde")]
+    #[serde(with = "serde_ark")]
     default: FieldElement,
 
     /// The non-default entries of the matrix.
-    #[serde(with = "crate::ark_serde")]
+    #[serde(with = "serde_ark")]
     entries: BTreeMap<(usize, usize), FieldElement>,
 }
 
