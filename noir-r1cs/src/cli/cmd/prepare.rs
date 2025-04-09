@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::NoirProofScheme,
+    noir_r1cs::{write, NoirProofScheme},
     std::path::PathBuf,
     tracing::instrument,
 };
@@ -10,24 +10,27 @@ use {
 /// Prepare a Noir program for proving
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "prepare")]
-pub struct PrepareArgs {
+pub struct Args {
     /// path to the compiled Noir program
     #[argh(positional)]
     program_path: PathBuf,
 
-    /// output path for the prepared R1CS file
-    #[argh(option, default = "PathBuf::from(\"r1cs.json\")")]
+    /// output path for the prepared proof scheme
+    #[argh(
+        option,
+        long = "out",
+        short = 'o',
+        default = "PathBuf::from(\"noir_proof_scheme.bin\")"
+    )]
     output_path: PathBuf,
 }
 
-impl Command for PrepareArgs {
+impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let _scheme = NoirProofScheme::from_file(&self.program_path)
+        let scheme = NoirProofScheme::from_file(&self.program_path)
             .context("while compiling Noir program")?;
-
-        // TODO: Store to file.
-
+        write(&scheme, &self.output_path).context("while writing Noir proof scheme")?;
         Ok(())
     }
 }

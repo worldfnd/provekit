@@ -6,6 +6,7 @@ use {
         Error,
     },
     rand::Rng,
+    serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{
             FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
@@ -23,6 +24,7 @@ use {
 };
 
 /// Skyscraper collision-resistant hash
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperCRH;
 
 impl CRHScheme for SkyscraperCRH {
@@ -47,6 +49,8 @@ impl CRHScheme for SkyscraperCRH {
     }
 }
 /// Skyscraper collision-resistant hash for merkle inner hash
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperTwoToOne;
 
 impl TwoToOneCRHScheme for SkyscraperTwoToOne {
@@ -79,7 +83,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
 }
 
 /// Skyscraper configuration for the Merkle hash
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperMerkleConfig;
 
 impl Config for SkyscraperMerkleConfig {

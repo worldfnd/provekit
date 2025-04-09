@@ -3,9 +3,10 @@
 //! NOTE: This module is only included in the bin, not in the lib.
 use {
     crate::ALLOC,
+    noir_r1cs::human,
     std::{
         cmp::max,
-        fmt::{self, Display, Formatter, Write as _},
+        fmt::{self, Write as _},
         time::Instant,
     },
     tracing::{
@@ -227,35 +228,4 @@ where
 
         eprintln!("{}", buffer);
     }
-}
-
-/// Pretty print a float using SI-prefixes.
-pub fn human(value: f64) -> impl Display {
-    pub struct Human(f64);
-    impl Display for Human {
-        fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-            let log10 = if self.0.is_normal() {
-                self.0.abs().log10()
-            } else {
-                0.0
-            };
-            let si_power = ((log10 / 3.0).floor() as isize).clamp(-10, 10);
-            let value = self.0 * 10_f64.powi((-si_power * 3) as i32);
-            let digits = f.precision().unwrap_or(3) - 1 - (log10 - 3.0 * si_power as f64) as usize;
-            let separator = if f.alternate() { "" } else { "\u{202F}" };
-            if f.width() == Some(6) && digits == 0 {
-                write!(f, " ")?;
-            }
-            write!(f, "{value:.digits$}{separator}")?;
-            let suffix = "qryzafpnμm kMGTPEZYRQ"
-                .chars()
-                .nth((si_power + 10) as usize)
-                .unwrap();
-            if suffix != ' ' {
-                write!(f, "{suffix}")?;
-            }
-            Ok(())
-        }
-    }
-    Human(value)
 }

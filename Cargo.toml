@@ -47,12 +47,16 @@ base64 = "0.22.1"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 rand = "0.8.5"
 subtle = "2.6.1"
+tracing = "0.1.41"
 bytemuck = "1.19.0"
 hex-literal = "0.4.1"
 hex = "0.4.3"
 itertools = "0.13.0"
 flate2 = "1.0"
 bincode = "1.3"
+postcard = { version = "1.1.1", features = ["use-std"] }
+zstd = "0.13.3"
+bytes = "1.10.1"
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
@@ -80,8 +84,4 @@ ark-serialize = "0.5"
 # Bin
 anyhow = "1.0.93"
 argh = "0.1.12"
-tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
-
-[patch.crates-io]
-ruint = { git = "https://github.com/recmo/uint", branch = "main" }

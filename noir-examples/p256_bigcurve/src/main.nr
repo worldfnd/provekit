@@ -31,5 +31,5 @@ fn main(
     let s_p = Secp256r1Scalar::from_bignum(r / s);
     let r_point = Secp256r1::msm([gen, public], [s_g, s_p]);
 
-    assert(r_point.x == rx);
+    assert(r_point.x == r_x);
 }

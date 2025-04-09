@@ -8,25 +8,26 @@ use {
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     rand::{thread_rng, Rng as _},
+    serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
     tracing::{info, instrument, span, Level},
 };
 
 /// A scheme for proving a Noir program.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProofScheme {
     r1cs:              R1CS,
     witness_generator: NoirWitnessGenerator,
     whir:              WhirR1CSScheme,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
-    // TODO:
     whir_r1cs_proof: WhirR1CSProof,
 }
 
 impl NoirProofScheme {
-    #[instrument()]
+    #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
     pub fn from_file(path: &Path) -> Result<Self> {
         let program = {
             let file = File::open(path).context("while opening Noir program")?;
@@ -80,6 +81,10 @@ impl NoirProofScheme {
             witness_generator,
             whir,
         })
+    }
+
+    pub fn size(&self) -> (usize, usize) {
+        (self.r1cs.constraints, self.r1cs.witnesses)
     }
 
     #[instrument(skip_all, fields(size=input_toml.len()))]
@@ -141,4 +146,20 @@ fn fill_witness(witness: Vec<Option<FieldElement>>) -> Result<Vec<FieldElement>>
         .collect::<Vec<_>>();
     info!("Filled witness with {count} random values");
     Ok(witness)
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::NoirProofScheme, crate::test_serde, std::path::PathBuf};
+
+    #[test]
+    fn test_noir_proof_scheme_serde() {
+        let proof_schema = NoirProofScheme::from_file(&PathBuf::from(
+            "../noir-examples/poseidon-rounds/target/basic.json",
+        ))
+        .unwrap();
+        test_serde(&proof_schema.r1cs);
+        test_serde(&proof_schema.witness_generator);
+        test_serde(&proof_schema.whir);
+    }
 }

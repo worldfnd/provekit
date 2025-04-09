@@ -1,5 +1,8 @@
 use {
-    crate::{utils::noir_to_native, FieldElement, NoirElement},
+    crate::{
+        utils::{noir_to_native, serde_jsonify},
+        FieldElement, NoirElement,
+    },
     acir::{
         brillig::ForeignCallResult,
         circuit::{brillig::BrilligBytecode, Circuit as NoirCircuit},
@@ -11,12 +14,17 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     noirc_abi::{input_parser::Format, Abi},
     noirc_artifacts::program::ProgramArtifact,
+    serde::{Deserialize, Serialize},
     std::collections::BTreeMap,
     tracing::{info, instrument},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NoirWitnessGenerator {
+    // Note: Abi uses an [internally tagged] enum format in Serde, which is not compatible
+    // with some schemaless formats like Postcard.
+    // [internally-tagged]: https://serde.rs/enum-representations.html
+    #[serde(with = "serde_jsonify")]
     abi:            Abi,
     brillig:        Vec<BrilligBytecode<NoirElement>>,
     circuit:        NoirCircuit<NoirElement>,
@@ -64,6 +72,16 @@ impl NoirWitnessGenerator {
         let witness = noir_to_r1cs_witness(noir_witness, &self.witness_map, self.r1cs_witnesses)
             .context("while converting noir witness to r1cs")?;
         Ok(witness)
+    }
+}
+
+impl PartialEq for NoirWitnessGenerator {
+    fn eq(&self, other: &Self) -> bool {
+        format!("{:?}", self.abi) == format!("{:?}", other.abi)
+            && self.brillig == other.brillig
+            && self.circuit == other.circuit
+            && self.witness_map == other.witness_map
+            && self.r1cs_witnesses == other.r1cs_witnesses
     }
 }
 
@@ -124,4 +142,28 @@ fn noir_to_r1cs_witness(
     }
 
     Ok(witness)
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_serde,
+        std::{fs::File, path::PathBuf},
+    };
+
+    #[test]
+    fn test_noir_witness_generator_serde() {
+        let path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.json");
+        let program = {
+            let file = File::open(path).unwrap();
+            serde_json::from_reader(file).unwrap()
+        };
+
+        let witness_generator = NoirWitnessGenerator::new(&program, BTreeMap::new(), 0);
+        test_serde(&witness_generator.brillig);
+        test_serde(&witness_generator.circuit);
+        test_serde(&witness_generator.witness_map);
+        test_serde(&witness_generator.r1cs_witnesses);
+    }
 }

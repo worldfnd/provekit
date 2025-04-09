@@ -2,40 +2,49 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{self, NoirProofScheme},
+    noir_r1cs::{self, read, write, NoirProofScheme},
     std::{fs::File, io::Read, path::PathBuf},
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Debug)]
 #[argh(subcommand, name = "prove")]
-pub struct ProveArgs {
+pub struct Args {
     /// path to the compiled Noir program
-    // TODO: Replace with `NoirProofScheme` file.
     #[argh(positional)]
-    program_path: PathBuf,
+    scheme_path: PathBuf,
 
     /// path to the input values
     #[argh(positional)]
     input_path: PathBuf,
 
     /// path to store proof file
-    #[argh(option, default = "PathBuf::from(\"./proof.bin\")")]
+    #[argh(
+        option,
+        long = "out",
+        short = 'o',
+        default = "PathBuf::from(\"./proof.np\")"
+    )]
     proof_path: PathBuf,
 
     /// path to store Gnark proof file
-    #[argh(option, default = "PathBuf::from(\"./gnark_proof.bin\")")]
+    #[argh(
+        option,
+        long = "gnark-out",
+        default = "PathBuf::from(\"./gnark_proof.bin\")"
+    )]
     gnark_out: PathBuf,
 }
 
-impl Command for ProveArgs {
+impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Reconstruct the scheme.
-        // TODO: Instead read from file.
-        let scheme = NoirProofScheme::from_file(&self.program_path)
-            .context("while compiling Noir program")?;
+        // Read the scheme
+        let scheme: NoirProofScheme =
+            read(&self.scheme_path).context("while reading Noir proof scheme")?;
+        let (constraints, witnesses) = scheme.size();
+        info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
         let mut file = File::open(&self.input_path).context("while opening input file")?;
@@ -54,7 +63,8 @@ impl Command for ProveArgs {
             .verify(&proof)
             .context("While verifying Noir proof")?;
 
-        // TODO: Store the proof to file
+        // Store the proof to file
+        write(&proof, &self.proof_path).context("while writing proof")?;
 
         Ok(())
     }

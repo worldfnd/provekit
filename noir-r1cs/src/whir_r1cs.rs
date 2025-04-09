@@ -2,7 +2,7 @@ use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::{
-            next_power_of_two, pad_to_power_of_two,
+            next_power_of_two, pad_to_power_of_two, serde_ark, serde_hex,
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
@@ -15,12 +15,13 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     itertools::izip,
+    serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
     },
     std::fmt::{Debug, Formatter},
-    tracing::instrument,
+    tracing::{info, instrument, warn},
     whir::{
         parameters::{
             default_max_pow, FoldType, FoldingFactor,
@@ -47,20 +48,37 @@ pub type WhirProof = GenericWhirProof<SkyscraperMerkleConfig, FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
     m:           usize,
     m_0:         usize,
     whir_config: WhirConfig,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
+    #[serde(with = "serde_hex")]
     transcript: Vec<u8>,
+
     whir_proof: WhirProof,
+
+    // TODO: Derive from transcript
+    #[serde(with = "serde_ark")]
     alpha: Vec<FieldElement>,
+
+    // TODO: Derive from transcript
+    #[serde(with = "serde_ark")]
     r: Vec<FieldElement>,
+
+    // TODO: Derive from transcript
+    #[serde(with = "serde_ark")]
     last_sumcheck_val: FieldElement,
+
+    // TODO: Derive from transcript
+    #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
+
+    // TODO: Derive from scheme and transcript
     statement: Statement<FieldElement>,
 }
 
@@ -292,12 +310,10 @@ pub fn run_whir_pcs_prover(
     [FieldElement; 3],
     Statement<FieldElement>,
 ) {
-    println!("=========================================");
-    println!("Running Prover - Whir Commitment");
-    println!("{}", params);
+    info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
-        println!("WARN: More PoW bits required than specified.");
+        warn!("More PoW bits required than specified.");
     }
 
     let z = pad_to_power_of_two(z);
