@@ -21,6 +21,7 @@ pub struct NoirProofScheme {
     whir:              WhirR1CSScheme,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
     // TODO:
     whir_r1cs_proof: WhirR1CSProof,

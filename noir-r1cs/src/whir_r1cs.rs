@@ -2,7 +2,7 @@ use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::{
-            next_power_of_two, pad_to_power_of_two,
+            next_power_of_two, pad_to_power_of_two, serde_ark, serde_hex,
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
@@ -55,13 +55,25 @@ pub struct WhirR1CSScheme {
     whir_config: WhirConfig,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
+    #[serde(with = "serde_hex")]
     transcript: Vec<u8>,
+
     whir_proof: WhirProof,
+
+    #[serde(with = "serde_ark")]
     alpha: Vec<FieldElement>,
+
+    #[serde(with = "serde_ark")]
     r: Vec<FieldElement>,
+
+    #[serde(with = "serde_ark")]
     last_sumcheck_val: FieldElement,
+
+    #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
+
     statement: Statement<FieldElement>,
 }
 

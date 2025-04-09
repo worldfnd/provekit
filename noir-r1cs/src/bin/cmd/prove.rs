@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{self, read, NoirProofScheme},
+    noir_r1cs::{self, read, write, NoirProofScheme},
     std::{fs::File, io::Read, path::PathBuf},
     tracing::{info, instrument},
 };
@@ -20,11 +20,20 @@ pub struct ProveArgs {
     input_path: PathBuf,
 
     /// path to store proof file
-    #[argh(option, default = "PathBuf::from(\"./proof.bin\")")]
+    #[argh(
+        option,
+        long = "out",
+        short = 'o',
+        default = "PathBuf::from(\"./proof.np\")"
+    )]
     proof_path: PathBuf,
 
     /// path to store Gnark proof file
-    #[argh(option, default = "PathBuf::from(\"./gnark_proof.bin\")")]
+    #[argh(
+        option,
+        long = "gnark-out",
+        default = "PathBuf::from(\"./gnark_proof.bin\")"
+    )]
     gnark_out: PathBuf,
 }
 
@@ -54,7 +63,8 @@ impl Command for ProveArgs {
             .verify(&proof)
             .context("While verifying Noir proof")?;
 
-        // TODO: Store the proof to file
+        // Store the proof to file
+        write(&proof, &self.proof_path).context("while writing proof")?;
 
         Ok(())
     }
