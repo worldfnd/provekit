@@ -15,6 +15,8 @@ use {
     tracing::instrument,
 };
 
+// TODO: Handling of the return value for the verifier.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NoirWitnessGenerator {
     // Note: Abi uses an [internally tagged] enum format in Serde, which is not compatible

@@ -1,6 +1,7 @@
 use {
     crate::{FieldElement, SparseMatrix},
-    anyhow::{ensure, Result},
+    anyhow::{bail, ensure, Result},
+    ark_ff::One,
     ark_std::Zero,
     serde::{Deserialize, Serialize},
     tracing::instrument,
@@ -73,24 +74,25 @@ impl R1CS {
             witness.len(),
             self.witnesses
         );
-        // Solve constraints (this is how Noir expects it to be done, judging from ACVM)
+        // Solve constraints in order
+        // (this is how Noir expects it to be done, judging from ACVM)
         for row in 0..self.constraints {
             let [a, b, c] =
                 [&self.a, &self.b, &self.c].map(|mat| sparse_dot(mat.iter_row(row), &witness));
             let (val, mat) = match (a, b, c) {
                 (Some(a), Some(b), Some(c)) => {
-                    assert_eq!(a * b, c, "Constraint {row} failed");
+                    ensure!(a * b == c, "Constraint {row} failed");
                     continue;
                 }
                 (Some(a), Some(b), None) => (a * b, &self.c),
                 (Some(a), None, Some(c)) => (c / a, &self.b),
                 (None, Some(b), Some(c)) => (c / b, &self.a),
                 _ => {
-                    panic!("Can not solve constraint {row}.")
+                    bail!("Can not solve constraint {row}.")
                 }
             };
             let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
-                panic!("Could not solve constraint {row}.")
+                bail!("Could not solve constraint {row}.")
             };
             witness[col] = Some(val);
         }
@@ -145,7 +147,14 @@ fn solve_dot<'a>(
             return None;
         }
     }
-    missing.map(|(col, coeff)| (col, -accumulator / coeff))
+    missing.map(|(col, coeff)| {
+        if coeff.is_one() {
+            // Very common case
+            (col, -accumulator)
+        } else {
+            (col, -accumulator / coeff)
+        }
+    })
 }
 
 fn mat_mul(a: &SparseMatrix, b: &[FieldElement]) -> Vec<FieldElement> {

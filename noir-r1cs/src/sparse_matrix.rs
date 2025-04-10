@@ -9,6 +9,9 @@ use {
     },
 };
 
+// TODO: Compressed Row Storage with Interning of field elements.
+// TODO: Interning on R1CS level (or higher).
+
 /// A sparse matrix with elements of type `F`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SparseMatrix {
