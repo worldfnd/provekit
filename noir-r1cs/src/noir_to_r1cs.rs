@@ -6,7 +6,7 @@ use {
     },
     anyhow::{bail, Result},
     ark_std::One,
-    std::{collections::BTreeMap, ops::Neg},
+    std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };
 
 struct NoirToR1CSCompiler {
@@ -17,7 +17,7 @@ struct NoirToR1CSCompiler {
 
 /// Compile a Noir circuit to a R1CS relation, returning the R1CS and a map from
 /// Noir witness indices to R1CS witness indices.
-pub fn noir_to_r1cs(circuit: &Circuit<NoirElement>) -> Result<(R1CS, BTreeMap<usize, usize>)> {
+pub fn noir_to_r1cs(circuit: &Circuit<NoirElement>) -> Result<(R1CS, Vec<Option<NonZeroU32>>)> {
     let mut compiler = NoirToR1CSCompiler::new();
     compiler.add_circuit(circuit)?;
     Ok(compiler.finalize())
@@ -36,8 +36,19 @@ impl NoirToR1CSCompiler {
     }
 
     /// Returns the R1CS and the witness map
-    pub fn finalize(self) -> (R1CS, BTreeMap<usize, usize>) {
-        (self.r1cs, self.witness_map)
+    pub fn finalize(self) -> (R1CS, Vec<Option<NonZeroU32>>) {
+        // Convert witness map to vector
+        let len = self
+            .witness_map
+            .iter()
+            .map(|(i, _)| *i)
+            .max()
+            .map_or_else(|| 0, |i| i + 1);
+        let mut map = vec![None; len];
+        for (i, j) in self.witness_map {
+            map[i] = Some(NonZeroU32::new(j as u32).expect("Index zero is reserved"));
+        }
+        (self.r1cs, map)
     }
 
     /// Index of the constant one witness

@@ -13,7 +13,7 @@ noirup -C 03b58fa2
 Compile the Noir circuit:
 
 ```sh
-cd noir-r1cs/noir-examples/poseidon-rounds
+cd noir-examples/poseidon-rounds
 nargo compile
 ```
 
@@ -52,6 +52,12 @@ Benchmark against Barretenberg:
 cd noir-examples/poseidon-rounds
 cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./scheme.nps
 hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml'
+```
+
+Profile
+
+```sh
+samply record -r 10000 -- ../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml
 ```
 
 ## Components

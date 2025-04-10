@@ -5,7 +5,8 @@ use {
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
-    anyhow::{ensure, Context as _, Result},
+    anyhow::{anyhow, ensure, Context as _, Result},
+    ark_ff::Field as _,
     noirc_artifacts::program::ProgramArtifact,
     rand::{thread_rng, Rng as _},
     serde::{Deserialize, Serialize},
@@ -91,15 +92,21 @@ impl NoirProofScheme {
     pub fn prove(&self, input_toml: &str) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();
 
+        // Create partial witness
+        let mut partial_witness = vec![None; self.r1cs.witnesses];
+        partial_witness[0] = Some(FieldElement::ONE);
+
         // Create witness for provided input
         let input = self
             .witness_generator
             .input_from_toml(input_toml)
             .context("while reading input from toml")?;
-        let mut partial_witness = self
-            .witness_generator
-            .generate_partial_witness(input)
-            .context("while generating partial witness")?;
+        for (i, value) in input.into_iter().enumerate() {
+            let j = self.witness_generator.witness_map()[i]
+                .ok_or_else(|| anyhow!("ACIR input witness index {i} unmapped"))?
+                .get() as usize;
+            partial_witness[j] = Some(value);
+        }
 
         // Solve R1CS instance
         self.r1cs
@@ -108,6 +115,7 @@ impl NoirProofScheme {
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness
+        #[cfg(test)]
         self.r1cs
             .verify_witness(&witness)
             .context("While verifying R1CS instance")?;
