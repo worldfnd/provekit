@@ -15,7 +15,7 @@ use {
     noirc_abi::{input_parser::Format, Abi},
     noirc_artifacts::program::ProgramArtifact,
     serde::{Deserialize, Serialize},
-    std::collections::BTreeMap,
+    std::num::NonZeroU32,
     tracing::{info, instrument},
 };
 
@@ -25,22 +25,29 @@ pub struct NoirWitnessGenerator {
     // with some schemaless formats like Postcard.
     // [internally-tagged]: https://serde.rs/enum-representations.html
     #[serde(with = "serde_jsonify")]
-    abi:            Abi,
-    brillig:        Vec<BrilligBytecode<NoirElement>>,
-    circuit:        NoirCircuit<NoirElement>,
-    witness_map:    BTreeMap<usize, usize>,
+    abi:     Abi,
+    brillig: Vec<BrilligBytecode<NoirElement>>,
+    circuit: NoirCircuit<NoirElement>,
+
+    /// ACIR witness index to R1CS witness index
+    /// Index zero is reserved for constant one, so we can use NonZeroU32
+    witness_map:    Vec<Option<NonZeroU32>>,
     r1cs_witnesses: usize,
 }
 
 impl NoirWitnessGenerator {
     pub fn new(
         program: &ProgramArtifact,
-        witness_map: BTreeMap<usize, usize>,
+        witness_map: Vec<Option<NonZeroU32>>,
         r1cs_witnesses: usize,
     ) -> Self {
         let abi = program.abi.clone();
         let brillig = program.bytecode.unconstrained_functions.clone();
         let circuit = program.bytecode.functions[0].clone();
+        assert!(witness_map
+            .iter()
+            .filter_map(|n| *n)
+            .all(|n| (n.get() as usize) < r1cs_witnesses));
         Self {
             abi,
             brillig,
@@ -67,8 +74,7 @@ impl NoirWitnessGenerator {
         &self,
         input: WitnessMap<NoirElement>,
     ) -> Result<Vec<Option<FieldElement>>> {
-        let noir_witness = generate_noir_witness(&self.brillig, &self.circuit, input)
-            .context("while generating noir witness")?;
+        let noir_witness = input;
         let witness = noir_to_r1cs_witness(noir_witness, &self.witness_map, self.r1cs_witnesses)
             .context("while converting noir witness to r1cs")?;
         Ok(witness)
@@ -127,7 +133,7 @@ fn generate_noir_witness(
 #[instrument(skip_all)]
 fn noir_to_r1cs_witness(
     noir_witness: WitnessMap<NoirElement>,
-    remap: &BTreeMap<usize, usize>,
+    remap: &[Option<NonZeroU32>],
     r1cs_witnesses: usize,
 ) -> Result<Vec<Option<FieldElement>>> {
     // Compute a satisfying witness
@@ -135,10 +141,13 @@ fn noir_to_r1cs_witness(
     witness[0] = Some(FieldElement::one()); // Constant at index 1
 
     // Fill in R1CS witness values with the pre-computed ACIR witness values
-    for (acir_witness_idx, witness_idx) in remap {
-        witness[*witness_idx] = Some(noir_to_native(
-            noir_witness[&Witness(*acir_witness_idx as u32)],
-        ));
+    for (Witness(index), value) in noir_witness.into_iter() {
+        let index = remap
+            .get(index as usize)
+            .ok_or_else(|| anyhow!("ACIR witness index out of range"))?
+            .ok_or_else(|| anyhow!("ACIR witness index unmapped"))?
+            .get() as usize;
+        witness[index] = Some(noir_to_native(value));
     }
 
     Ok(witness)
