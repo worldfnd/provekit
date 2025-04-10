@@ -58,6 +58,23 @@ fn bench_block_multiplier(c: &mut Criterion) {
         })
     });
 
+    group.bench_function("scalar_sqr", |bencher| {
+        bencher.iter(|| {
+            block_multiplier::scalar_sqr(
+                black_box(s0_a),
+            )
+        })
+    });
+
+    group.bench_function("simd_sqr", |bencher| {
+        bencher.iter(|| {
+            block_multiplier::simd_sqr(
+                black_box(v0_a),
+                black_box(v1_a),
+            )
+        })
+    });
+
     group.bench_function("simd_mul", |bencher| {
         bencher.iter(|| {
             block_multiplier::simd_mul(
@@ -79,6 +96,17 @@ fn bench_block_multiplier(c: &mut Criterion) {
                 black_box(v0_b),
                 black_box(v1_a),
                 black_box(v1_b),
+            )
+        })
+    });
+
+    group.bench_function("block_sqr", |bencher| {
+        bencher.iter(|| {
+            block_multiplier::block_sqr(
+                &rtz,
+                black_box(s0_a),
+                black_box(v0_a),
+                black_box(v1_a),
             )
         })
     });
