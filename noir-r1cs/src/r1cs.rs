@@ -1,5 +1,5 @@
 use {
-    crate::{FieldElement, SparseMatrix},
+    crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
     anyhow::{bail, ensure, Result},
     ark_ff::One,
     ark_std::Zero,
@@ -13,6 +13,7 @@ pub struct R1CS {
     pub public_inputs: usize,
     pub witnesses:     usize,
     pub constraints:   usize,
+    pub interner:      Interner,
     pub a:             SparseMatrix,
     pub b:             SparseMatrix,
     pub c:             SparseMatrix,
@@ -24,10 +25,23 @@ impl R1CS {
             public_inputs: 0,
             witnesses:     0,
             constraints:   0,
-            a:             SparseMatrix::new(0, 0, FieldElement::zero()),
-            b:             SparseMatrix::new(0, 0, FieldElement::zero()),
-            c:             SparseMatrix::new(0, 0, FieldElement::zero()),
+            interner:      Interner::new(),
+            a:             SparseMatrix::new(0, 0),
+            b:             SparseMatrix::new(0, 0),
+            c:             SparseMatrix::new(0, 0),
         }
+    }
+
+    pub fn a(&self) -> HydratedSparseMatrix<'_> {
+        self.a.hydrate(&self.interner)
+    }
+
+    pub fn b(&self) -> HydratedSparseMatrix<'_> {
+        self.b.hydrate(&self.interner)
+    }
+
+    pub fn c(&self) -> HydratedSparseMatrix<'_> {
+        self.c.hydrate(&self.interner)
     }
 
     /// Create a new witness variable
@@ -47,20 +61,19 @@ impl R1CS {
         b: &[(FieldElement, usize)],
         c: &[(FieldElement, usize)],
     ) {
-        // println!("add_constraint");
         let row = self.constraints;
         self.constraints += 1;
         self.a.grow(self.constraints, self.witnesses);
         self.b.grow(self.constraints, self.witnesses);
         self.c.grow(self.constraints, self.witnesses);
         for (c, col) in a.iter().copied() {
-            self.a.set(row, col, c)
+            self.a.set(row, col, self.interner.intern(c))
         }
         for (c, col) in b.iter().copied() {
-            self.b.set(row, col, c)
+            self.b.set(row, col, self.interner.intern(c))
         }
         for (c, col) in c.iter().copied() {
-            self.c.set(row, col, c)
+            self.c.set(row, col, self.interner.intern(c))
         }
     }
 
@@ -74,19 +87,20 @@ impl R1CS {
             witness.len(),
             self.witnesses
         );
+
         // Solve constraints in order
         // (this is how Noir expects it to be done, judging from ACVM)
         for row in 0..self.constraints {
             let [a, b, c] =
-                [&self.a, &self.b, &self.c].map(|mat| sparse_dot(mat.iter_row(row), &witness));
+                [self.a(), self.b(), self.c()].map(|mat| sparse_dot(mat.iter_row(row), &witness));
             let (val, mat) = match (a, b, c) {
                 (Some(a), Some(b), Some(c)) => {
                     ensure!(a * b == c, "Constraint {row} failed");
                     continue;
                 }
-                (Some(a), Some(b), None) => (a * b, &self.c),
-                (Some(a), None, Some(c)) => (c / a, &self.b),
-                (None, Some(b), Some(c)) => (c / b, &self.a),
+                (Some(a), Some(b), None) => (a * b, self.c()),
+                (Some(a), None, Some(c)) => (c / a, self.b()),
+                (None, Some(b), Some(c)) => (c / b, self.a()),
                 _ => {
                     bail!("Can not solve constraint {row}.")
                 }
@@ -107,10 +121,15 @@ impl R1CS {
         );
 
         // Verify
-        let a = mat_mul(&self.a, &witness);
-        let b = mat_mul(&self.b, &witness);
-        let c = mat_mul(&self.c, &witness);
-        for (row, ((&a, &b), &c)) in a.iter().zip(b.iter()).zip(c.iter()).enumerate() {
+        let a = self.a() * witness;
+        let b = self.b() * witness;
+        let c = self.c() * witness;
+        for (row, ((a, b), c)) in a
+            .into_iter()
+            .zip(b.into_iter())
+            .zip(c.into_iter())
+            .enumerate()
+        {
             ensure!(a * b == c, "Constraint {row} failed");
         }
         Ok(())
@@ -119,11 +138,11 @@ impl R1CS {
 
 // Sparse dot product. `a` is assumed zero. `b` is assumed missing.
 fn sparse_dot<'a>(
-    a: impl Iterator<Item = (usize, &'a FieldElement)>,
+    a: impl Iterator<Item = (usize, FieldElement)>,
     b: &[Option<FieldElement>],
 ) -> Option<FieldElement> {
     let mut accumulator = FieldElement::zero();
-    for (col, &a) in a {
+    for (col, a) in a {
         accumulator += a * b[col]?;
     }
     Some(accumulator)
@@ -132,13 +151,13 @@ fn sparse_dot<'a>(
 // Returns a pair (i, f) such that, setting `b[i] = f`,
 // ensures `sparse_dot(a, b) = r`.
 fn solve_dot<'a>(
-    a: impl Iterator<Item = (usize, &'a FieldElement)>,
+    a: impl Iterator<Item = (usize, FieldElement)>,
     b: &[Option<FieldElement>],
     r: FieldElement,
 ) -> Option<(usize, FieldElement)> {
     let mut accumulator = -r;
     let mut missing = None;
-    for (col, &a) in a {
+    for (col, a) in a {
         if let Some(b) = b[col] {
             accumulator += a * b;
         } else if missing.is_none() {
@@ -155,12 +174,4 @@ fn solve_dot<'a>(
             (col, -accumulator / coeff)
         }
     })
-}
-
-fn mat_mul(a: &SparseMatrix, b: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = vec![FieldElement::zero(); a.rows];
-    for ((i, j), &value) in a.iter() {
-        result[i] += value * b[j];
-    }
-    result
 }
