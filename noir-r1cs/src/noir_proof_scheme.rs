@@ -115,6 +115,7 @@ impl NoirProofScheme {
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness
+        #[cfg(test)]
         self.r1cs
             .verify_witness(&witness)
             .context("While verifying R1CS instance")?;
