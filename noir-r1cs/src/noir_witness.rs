@@ -1,22 +1,18 @@
 use {
     crate::{
         utils::{noir_to_native, serde_jsonify},
-        FieldElement, NoirElement,
+        FieldElement,
     },
-    acir::{
-        brillig::ForeignCallResult,
-        circuit::{brillig::BrilligBytecode, Circuit as NoirCircuit},
-        native_types::{Witness, WitnessMap},
+    anyhow::{anyhow, bail, ensure, Context, Result},
+    ark_ff::PrimeField,
+    noirc_abi::{
+        input_parser::{Format, InputValue},
+        Abi, AbiType,
     },
-    acvm::pwg::{ACVMStatus, ACVM},
-    anyhow::{anyhow, Context, Result},
-    ark_std::One,
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    noirc_abi::{input_parser::Format, Abi},
     noirc_artifacts::program::ProgramArtifact,
     serde::{Deserialize, Serialize},
     std::num::NonZeroU32,
-    tracing::{info, instrument},
+    tracing::instrument,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -25,154 +21,114 @@ pub struct NoirWitnessGenerator {
     // with some schemaless formats like Postcard.
     // [internally-tagged]: https://serde.rs/enum-representations.html
     #[serde(with = "serde_jsonify")]
-    abi:     Abi,
-    brillig: Vec<BrilligBytecode<NoirElement>>,
-    circuit: NoirCircuit<NoirElement>,
+    abi: Abi,
 
     /// ACIR witness index to R1CS witness index
     /// Index zero is reserved for constant one, so we can use NonZeroU32
-    witness_map:    Vec<Option<NonZeroU32>>,
-    r1cs_witnesses: usize,
+    witness_map: Vec<Option<NonZeroU32>>,
 }
 
 impl NoirWitnessGenerator {
     pub fn new(
         program: &ProgramArtifact,
-        witness_map: Vec<Option<NonZeroU32>>,
+        mut witness_map: Vec<Option<NonZeroU32>>,
         r1cs_witnesses: usize,
     ) -> Self {
         let abi = program.abi.clone();
-        let brillig = program.bytecode.unconstrained_functions.clone();
-        let circuit = program.bytecode.functions[0].clone();
         assert!(witness_map
             .iter()
             .filter_map(|n| *n)
             .all(|n| (n.get() as usize) < r1cs_witnesses));
-        Self {
-            abi,
-            brillig,
-            circuit,
-            witness_map,
-            r1cs_witnesses,
-        }
+
+        // Take only the prefix of witness map relevant for Noir inputs
+        let num_inputs = abi.field_count() as usize;
+        witness_map.truncate(num_inputs);
+        Self { abi, witness_map }
     }
 
+    pub fn witness_map(&self) -> &[Option<NonZeroU32>] {
+        &self.witness_map
+    }
+
+    /// Noir inputs are in order at the start of the witness vector
     #[instrument(skip_all, fields(size = toml.len()))]
-    pub fn input_from_toml(&self, toml: &str) -> Result<WitnessMap<NoirElement>> {
-        let input = Format::Toml
+    pub fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>> {
+        // Parse toml to name -> value map
+        let mut input = Format::Toml
             .parse(toml, &self.abi)
             .context("while parsing input toml")?;
-        let map = self
-            .abi
-            .encode(&input, None)
-            .context("while encoding input toml to witness map")?;
-        Ok(map)
-    }
 
-    #[instrument(skip_all)]
-    pub fn generate_partial_witness(
-        &self,
-        input: WitnessMap<NoirElement>,
-    ) -> Result<Vec<Option<FieldElement>>> {
-        let noir_witness = input;
-        let witness = noir_to_r1cs_witness(noir_witness, &self.witness_map, self.r1cs_witnesses)
-            .context("while converting noir witness to r1cs")?;
-        Ok(witness)
+        // Prepare witness vector
+        let num_inputs = self.abi.field_count() as usize;
+        let mut inputs = Vec::with_capacity(num_inputs);
+
+        // Encode to vector of field elements base on Abi type info.
+        for param in self.abi.parameters.iter() {
+            let value = input
+                .remove(&param.name)
+                .ok_or_else(|| anyhow!("Missing input {}", &param.name))?
+                .clone();
+            encode_input(&mut inputs, value, &param.typ)
+                .with_context(|| format!("while encoding input for {}", &param.name))?;
+        }
+        if let Some(name) = input.keys().next() {
+            bail!("Extra input {name}");
+        }
+
+        Ok(inputs)
     }
 }
 
 impl PartialEq for NoirWitnessGenerator {
     fn eq(&self, other: &Self) -> bool {
         format!("{:?}", self.abi) == format!("{:?}", other.abi)
-            && self.brillig == other.brillig
-            && self.circuit == other.circuit
             && self.witness_map == other.witness_map
-            && self.r1cs_witnesses == other.r1cs_witnesses
     }
 }
 
-#[instrument(skip_all, fields(size = circuit.opcodes.len(), witnesses = circuit.current_witness_index))]
-fn generate_noir_witness(
-    brillig: &[BrilligBytecode<NoirElement>],
-    circuit: &NoirCircuit<NoirElement>,
-    input: WitnessMap<NoirElement>,
-) -> Result<WitnessMap<NoirElement>> {
-    let solver = Bn254BlackBoxSolver::default();
-    let mut acvm = ACVM::new(
-        &solver,
-        &circuit.opcodes,
-        input,
-        brillig,
-        &circuit.assert_messages,
-    );
-    loop {
-        match acvm.solve() {
-            ACVMStatus::Solved => break,
-            ACVMStatus::InProgress => Err(anyhow!("Execution halted unexpectedly")),
-            ACVMStatus::RequiresForeignCall(info) => {
-                let result = match info.function.as_str() {
-                    "print" => {
-                        info!("NOIR PRINT: {:?}", info.inputs);
-                        Ok(ForeignCallResult::default())
-                    }
-                    name => Err(anyhow!(
-                        "Execution requires unimplemented foreign call to {name}"
-                    )),
-                }?;
-                acvm.resolve_pending_foreign_call(result);
-                Ok(())
+/// Recursively encode Noir ABI input to a witness vector
+/// See [noirc_abi::Abi::encode] for the Noir ABI specification.
+fn encode_input(
+    input: &mut Vec<FieldElement>,
+    value: InputValue,
+    abi_type: &AbiType,
+) -> Result<()> {
+    match (value, abi_type) {
+        (InputValue::Field(elem), AbiType::Field) => input.push(noir_to_native(elem)),
+        (InputValue::Vec(vec_elements), AbiType::Array { typ, .. }) => {
+            for elem in vec_elements {
+                encode_input(input, elem, typ)?;
             }
-            ACVMStatus::RequiresAcirCall(_) => Err(anyhow!("Execution requires acir call")),
-            ACVMStatus::Failure(error) => Err(error.into()),
         }
-        .context("while running ACVM")?
+        (InputValue::Vec(vec_elements), AbiType::Tuple { fields }) => {
+            for (value, typ) in vec_elements.into_iter().zip(fields) {
+                encode_input(input, value, typ)?;
+            }
+        }
+        (InputValue::String(string), AbiType::String { length }) => {
+            ensure!(
+                string.len() == *length as usize,
+                "String length {} does not match expected length {length}",
+                string.len()
+            );
+            let str_as_fields = string
+                .bytes()
+                .map(|byte| FieldElement::from_be_bytes_mod_order(&[byte]));
+            input.extend(str_as_fields);
+        }
+        (InputValue::Struct(mut object), AbiType::Struct { fields, .. }) => {
+            for (field, typ) in fields {
+                let value = object
+                    .remove(field)
+                    .ok_or_else(|| anyhow!("Missing input {field}"))?;
+                encode_input(input, value, typ)
+                    .with_context(|| format!("while encoding input struct field {field}"))?;
+            }
+            if let Some(name) = object.keys().next() {
+                bail!("Extra input {name}");
+            }
+        }
+        (value, typ) => bail!("Invalid input type, expected {typ:?}, got {value:?}"),
     }
-    Ok(acvm.finalize())
-}
-
-#[instrument(skip_all)]
-fn noir_to_r1cs_witness(
-    noir_witness: WitnessMap<NoirElement>,
-    remap: &[Option<NonZeroU32>],
-    r1cs_witnesses: usize,
-) -> Result<Vec<Option<FieldElement>>> {
-    // Compute a satisfying witness
-    let mut witness = vec![None; r1cs_witnesses];
-    witness[0] = Some(FieldElement::one()); // Constant at index 1
-
-    // Fill in R1CS witness values with the pre-computed ACIR witness values
-    for (Witness(index), value) in noir_witness.into_iter() {
-        let index = remap
-            .get(index as usize)
-            .ok_or_else(|| anyhow!("ACIR witness index out of range"))?
-            .ok_or_else(|| anyhow!("ACIR witness index unmapped"))?
-            .get() as usize;
-        witness[index] = Some(noir_to_native(value));
-    }
-
-    Ok(witness)
-}
-
-#[cfg(test)]
-mod tests {
-    use {
-        super::*,
-        crate::test_serde,
-        std::{fs::File, path::PathBuf},
-    };
-
-    #[test]
-    fn test_noir_witness_generator_serde() {
-        let path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.json");
-        let program = {
-            let file = File::open(path).unwrap();
-            serde_json::from_reader(file).unwrap()
-        };
-
-        let witness_generator = NoirWitnessGenerator::new(&program, BTreeMap::new(), 0);
-        test_serde(&witness_generator.brillig);
-        test_serde(&witness_generator.circuit);
-        test_serde(&witness_generator.witness_map);
-        test_serde(&witness_generator.r1cs_witnesses);
-    }
+    Ok(())
 }
