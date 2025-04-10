@@ -1,7 +1,7 @@
 use {
     crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
     anyhow::{bail, ensure, Result},
-    ark_ff::{AdditiveGroup, One},
+    ark_ff::One,
     ark_std::Zero,
     serde::{Deserialize, Serialize},
     tracing::instrument,
@@ -21,16 +21,14 @@ pub struct R1CS {
 
 impl R1CS {
     pub fn new() -> Self {
-        let mut interner = Interner::new();
-        let zero = interner.intern(FieldElement::ZERO);
         Self {
             public_inputs: 0,
-            witnesses: 0,
-            constraints: 0,
-            interner,
-            a: SparseMatrix::new(0, 0, zero),
-            b: SparseMatrix::new(0, 0, zero),
-            c: SparseMatrix::new(0, 0, zero),
+            witnesses:     0,
+            constraints:   0,
+            interner:      Interner::new(),
+            a:             SparseMatrix::new(0, 0),
+            b:             SparseMatrix::new(0, 0),
+            c:             SparseMatrix::new(0, 0),
         }
     }
 

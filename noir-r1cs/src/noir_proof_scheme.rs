@@ -66,9 +66,9 @@ impl NoirProofScheme {
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.constraints,
             r1cs.witnesses,
-            r1cs.a.iter().count(),
-            r1cs.b.iter().count(),
-            r1cs.c.iter().count()
+            r1cs.a.num_entries(),
+            r1cs.b.num_entries(),
+            r1cs.c.num_entries()
         );
 
         // Configure witness generator
