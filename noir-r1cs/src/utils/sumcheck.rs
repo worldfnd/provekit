@@ -79,7 +79,13 @@ pub fn calculate_witness_bounds(
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let witness_bound_a = pad_to_power_of_two(r1cs.a() * witness);
     let witness_bound_b = pad_to_power_of_two(r1cs.b() * witness);
-    let witness_bound_c = pad_to_power_of_two(r1cs.c() * witness);
+    let witness_bound_c = pad_to_power_of_two(
+        witness_bound_a
+            .iter()
+            .zip(witness_bound_b.iter())
+            .map(|(a, b)| a * b)
+            .collect(),
+    );
     (witness_bound_a, witness_bound_b, witness_bound_c)
 }
 
