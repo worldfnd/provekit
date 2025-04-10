@@ -114,7 +114,7 @@ impl NoirProofScheme {
             .context("while solving R1CS witness")?;
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
-        // Verify witness
+        // Verify witness (redudant with solve)
         #[cfg(test)]
         self.r1cs
             .verify_witness(&witness)

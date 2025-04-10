@@ -77,9 +77,9 @@ pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
-    let witness_bound_a = pad_to_power_of_two(&r1cs.a * witness);
-    let witness_bound_b = pad_to_power_of_two(&r1cs.b * witness);
-    let witness_bound_c = pad_to_power_of_two(&r1cs.c * witness);
+    let witness_bound_a = pad_to_power_of_two(r1cs.a() * witness);
+    let witness_bound_b = pad_to_power_of_two(r1cs.b() * witness);
+    let witness_bound_c = pad_to_power_of_two(r1cs.c() * witness);
     (witness_bound_a, witness_bound_b, witness_bound_c)
 }
 
@@ -101,5 +101,9 @@ pub fn calculate_external_row_of_r1cs_matrices(
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
     let eq_alpha = &eq_alpha[..r1cs.constraints];
-    [eq_alpha * &r1cs.a, eq_alpha * &r1cs.b, eq_alpha * &r1cs.c]
+    [
+        eq_alpha * r1cs.a(),
+        eq_alpha * r1cs.b(),
+        eq_alpha * r1cs.c(),
+    ]
 }

@@ -2,6 +2,7 @@
 #![allow(missing_docs)]
 mod file;
 mod gnark_config;
+mod interner;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
 mod noir_witness;
@@ -24,7 +25,10 @@ pub use {
 };
 use {
     crate::{
-        noir_witness::NoirWitnessGenerator, sparse_matrix::SparseMatrix, utils::serde_ark,
+        interner::{InternedFieldElement, Interner},
+        noir_witness::NoirWitnessGenerator,
+        sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
+        utils::serde_ark,
         whir_r1cs::WhirProof,
     },
     serde::{Deserialize, Serialize},
