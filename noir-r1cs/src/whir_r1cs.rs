@@ -146,7 +146,7 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, whir_query_answer_sums, statement) =
+        let (whir_proof, merlin, whir_query_answer_sums, _statement) =
             run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
@@ -163,6 +163,7 @@ impl WhirR1CSScheme {
     }
 
     #[instrument(skip_all)]
+    #[allow(unused)] // TODO: Fix implementation
     pub fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
         // Set up transcript
         let io = create_io_pattern(self.m_0, &self.whir_config);

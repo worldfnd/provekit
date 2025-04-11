@@ -31,6 +31,7 @@ pub const fn workload_size<T: Sized>() -> usize {
 
 /// Unzip a [[(T,T); N]; M] into ([[T; N]; M],[[T; N]; M]) using move semantics
 // TODO: Cleanup when <https://github.com/rust-lang/rust/issues/96097> lands
+#[allow(unsafe_code)] // Required for `MaybeUninit`
 fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
     input: [[(T, T); N]; M],
 ) -> ([[T; N]; M], [[T; N]; M]) {
