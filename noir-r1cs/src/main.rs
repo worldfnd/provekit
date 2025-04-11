@@ -4,6 +4,8 @@ mod r1cs_matrices;
 mod solver;
 mod sparse_matrix;
 mod utils;
+#[cfg(test)]
+mod test_compiler;
 
 use {
     acir::FieldElement,
