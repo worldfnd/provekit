@@ -17,10 +17,11 @@ use {
         ops::Neg,
         vec,
     },
-    tracing::field::Field,
 };
 
-const THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
+const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
+const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 32;
+pub const BASE_DECOMPOSITION: u32 = 32;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// [R1CSSolver].
@@ -58,6 +59,7 @@ impl R1CS {
         // Read-only memory blocks (used for building the memory lookup constraints at the end)
         let mut memory_blocks: BTreeMap<usize, ReadOnlyMemoryBlock> = BTreeMap::new();
         let mut range_blocks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        let mut range_blocks_outside_threshold: BTreeMap<u32, &Vec<usize>> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -177,6 +179,9 @@ impl R1CS {
                             .entry(num_bits)
                             .or_default()
                             .push(input_witness);
+                        range_blocks.keys().for_each(|key| {
+                            r1cs.solver.range_checks.push(*key);
+                        });
                     }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
@@ -242,46 +247,112 @@ impl R1CS {
         range_blocks
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
-                if values_to_lookup.len() < THRESHOLD_FOR_LOOKUP_TABLE {
+                if values_to_lookup.len() < NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
                     values_to_lookup.iter().for_each(|value| {
                         r1cs.add_naive_range_check(*num_bits, *value);
                     })
                 } else {
-                    let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
-                    let table_range = (1 << num_bits) as u32;
-                    let multiplicity_witness = r1cs.add_witness(WitnessBuilder::Constant(
-                        FieldElement::from(values_to_lookup.len()),
-                    ));
-                    let table_summands: Vec<usize> = (0..table_range)
-                        .map(|table_value| {
-                            let table_denom = r1cs.add_lookup_factor(
-                                sz_challenge,
-                                FieldElement::from(table_value),
-                                r1cs.solver.witness_one(),
-                            );
-                            let denom_times_multiplicity = r1cs.add_witness(
-                                WitnessBuilder::Product(multiplicity_witness, table_denom),
-                            );
-                            r1cs.add_product(table_denom, multiplicity_witness);
-                            denom_times_multiplicity
-                        })
-                        .collect();
-                    let sum_for_table = r1cs.add_sum(table_summands);
-                    let witness_summands: Vec<usize> = values_to_lookup
-                        .iter()
-                        .map(|value| {
-                            r1cs.add_lookup_factor(sz_challenge, FieldElement::one(), *value)
-                        })
-                        .collect();
-                    let sum_for_witness = r1cs.add_sum(witness_summands);
+                    if (*num_bits < NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP)
+                        && num_bits.is_power_of_two()
+                    {
+                        let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+                        let table_range = (1 << num_bits) as u32;
+                        let table_summands: Vec<usize> = (0..table_range)
+                            .map(|table_value| {
+                                let table_denom = r1cs.add_lookup_factor(
+                                    sz_challenge,
+                                    FieldElement::from(table_value),
+                                    r1cs.solver.witness_one(),
+                                );
+                                let multiplicity_witness = r1cs.add_witness(
+                                    WitnessBuilder::DigitMultiplicity(table_value, *num_bits),
+                                );
+                                let denom_times_multiplicity = r1cs.add_witness(
+                                    WitnessBuilder::Product(multiplicity_witness, table_denom),
+                                );
+                                r1cs.add_product(table_denom, multiplicity_witness);
+                                denom_times_multiplicity
+                            })
+                            .collect();
+                        let sum_for_table = r1cs.add_sum(table_summands);
+                        let witness_summands: Vec<usize> = values_to_lookup
+                            .iter()
+                            .map(|value| {
+                                r1cs.add_lookup_factor(sz_challenge, FieldElement::one(), *value)
+                            })
+                            .collect();
+                        let sum_for_witness = r1cs.add_sum(witness_summands);
 
-                    r1cs.matrices.add_constraint(
-                        &[(FieldElement::one(), sum_for_table)],
-                        &[(FieldElement::one().neg(), sum_for_witness)],
-                        &[(FieldElement::zero(), r1cs.solver.witness_one())],
-                    );
+                        r1cs.matrices.add_constraint(
+                            &[(FieldElement::one(), sum_for_table)],
+                            &[(FieldElement::one().neg(), sum_for_witness)],
+                            &[(FieldElement::zero(), r1cs.solver.witness_one())],
+                        );
+                    } else {
+                        range_blocks_outside_threshold.insert(*num_bits, values_to_lookup);
+                    }
                 }
             });
+
+        let mut digital_decomp_witness_vec: Vec<usize> = Vec::new();
+        range_blocks_outside_threshold
+            .iter()
+            .for_each(|(num_bits, values_to_lookup)| {
+                let num_digits = *num_bits / BASE_DECOMPOSITION;
+                values_to_lookup.iter().for_each(|value_index| {
+                    let digits_in_le_order: Vec<usize> = (0..num_digits)
+                        .map(|digit| {
+                            let digit_wb = WitnessBuilder::DigitDecomp(digit, *value_index);
+                            r1cs.add_witness(digit_wb)
+                        })
+                        .collect();
+                    let digits_constraint_a: Vec<(FieldElement, usize)> = digits_in_le_order
+                        .iter()
+                        .enumerate()
+                        .map(|(index, digit)| {
+                            let recomp_coeff =
+                                FieldElement::from(BASE_DECOMPOSITION.pow(index as u32));
+                            (recomp_coeff, *digit)
+                        })
+                        .collect();
+                    r1cs.matrices.add_constraint(
+                        &digits_constraint_a,
+                        &[(FieldElement::one(), r1cs.solver.witness_one())],
+                        &[(FieldElement::one(), *value_index)],
+                    );
+                    digital_decomp_witness_vec.extend(digits_in_le_order);
+                });
+            });
+        let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+        let table_summands: Vec<usize> = (0..(1 << BASE_DECOMPOSITION))
+            .map(|table_value| {
+                let table_denom = r1cs.add_lookup_factor(
+                    sz_challenge,
+                    FieldElement::from(table_value),
+                    r1cs.solver.witness_one(),
+                );
+                let multiplicity_witness = r1cs.add_witness(WitnessBuilder::DigitMultiplicity(
+                    table_value,
+                    BASE_DECOMPOSITION,
+                ));
+                let denom_times_multiplicity =
+                    r1cs.add_witness(WitnessBuilder::Product(multiplicity_witness, table_denom));
+                r1cs.add_product(table_denom, multiplicity_witness);
+                denom_times_multiplicity
+            })
+            .collect();
+        let sum_for_table = r1cs.add_sum(table_summands);
+        let witness_summands: Vec<usize> = digital_decomp_witness_vec
+            .iter()
+            .map(|value| r1cs.add_lookup_factor(sz_challenge, FieldElement::one(), *value))
+            .collect();
+        let sum_for_witness = r1cs.add_sum(witness_summands);
+
+        r1cs.matrices.add_constraint(
+            &[(FieldElement::one(), sum_for_table)],
+            &[(FieldElement::one().neg(), sum_for_witness)],
+            &[(FieldElement::zero(), r1cs.solver.witness_one())],
+        );
 
         r1cs
     }
