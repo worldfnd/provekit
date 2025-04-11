@@ -29,7 +29,17 @@ pub enum WitnessBuilder {
     MemoryAccessCount(usize, usize),
     /// For solving for the denominator of an indexed lookup.
     /// Fields are (sz_challenge, (index_coeff, index), rs_challenge, value).
-    LogUpDenominator(usize, (FieldElement, usize), usize, usize),
+    IndexedLogUpDenominator(usize, (FieldElement, usize), usize, usize),
+    /// For solving for the denominator of a lookup (non-indexed).
+    /// Field are (sz_challenge, (value_coeff, value)).
+    LogUpDenominator(usize, (FieldElement, usize)),
+    /// Products with linear operations on the witness indices.
+    /// Fields are Product((index, a, b), (index, c, d)) such that
+    /// we wish to compute (ax + b) * (cx + d).
+    ProductLinearOperation(
+        (usize, FieldElement, FieldElement),
+        (usize, FieldElement, FieldElement),
+    ),
 }
 
 /// Mock transcript. To be replaced.
@@ -127,7 +137,7 @@ impl R1CSSolver {
                         let count = memory_read_counts.get(block_id).unwrap()[*addr];
                         FieldElement::from(count)
                     }
-                    WitnessBuilder::LogUpDenominator(
+                    WitnessBuilder::IndexedLogUpDenominator(
                         sz_challenge,
                         (index_coeff, index),
                         rs_challenge,
@@ -138,6 +148,14 @@ impl R1CSSolver {
                         let rs_challenge = witness[*rs_challenge].unwrap();
                         let sz_challenge = witness[*sz_challenge].unwrap();
                         sz_challenge - (*index_coeff * index + rs_challenge * value)
+                    }
+                    WitnessBuilder::LogUpDenominator(sz_challenge, (value_coeff, value)) => {
+                        let sz_challenge = witness[*sz_challenge].unwrap();
+                        let value = witness[*value].unwrap();
+                        sz_challenge - (*value_coeff * value)
+                    }
+                    WitnessBuilder::ProductLinearOperation((x, a, b), (y, c, d)) => {
+                        (*a * witness[*x].unwrap() + *b) * (*c * witness[*y].unwrap() + *d)
                     }
                 };
                 witness[witness_idx] = Some(value);

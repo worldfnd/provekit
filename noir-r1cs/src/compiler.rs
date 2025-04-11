@@ -4,7 +4,10 @@ use {
         solver::{R1CSSolver, WitnessBuilder},
     },
     acir::{
-        circuit::{opcodes::BlockType, Circuit, Opcode},
+        circuit::{
+            opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum},
+            Circuit, Opcode,
+        },
         native_types::{Expression, Witness as AcirWitness},
         AcirField, FieldElement,
     },
@@ -14,7 +17,10 @@ use {
         ops::Neg,
         vec,
     },
+    tracing::field::Field,
 };
+
+const THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// [R1CSSolver].
@@ -51,6 +57,7 @@ impl R1CS {
 
         // Read-only memory blocks (used for building the memory lookup constraints at the end)
         let mut memory_blocks: BTreeMap<usize, ReadOnlyMemoryBlock> = BTreeMap::new();
+        let mut range_blocks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -151,9 +158,30 @@ impl R1CS {
                 }
 
                 // These are calls to built-in functions, for this we need to create.
-                Opcode::BlackBoxFuncCall(_) => {
-                    println!("BlackBoxFuncCall")
-                }
+                Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
+                    BlackBoxFuncCall::RANGE {
+                        input: function_input,
+                    } => {
+                        let input = function_input.input();
+                        let num_bits = function_input.num_bits();
+                        let input_wb = match input {
+                            ConstantOrWitnessEnum::Constant(value) => {
+                                WitnessBuilder::Constant(value)
+                            }
+                            ConstantOrWitnessEnum::Witness(witness) => {
+                                WitnessBuilder::Acir(witness.as_usize())
+                            }
+                        };
+                        let input_witness = r1cs.add_witness(input_wb);
+                        range_blocks
+                            .entry(num_bits)
+                            .or_default()
+                            .push(input_witness);
+                    }
+                    _ => {
+                        println!("Other black box function: {:?}", black_box_func_call);
+                    }
+                },
             }
         }
 
@@ -180,7 +208,8 @@ impl R1CS {
                         *addr_witness,
                         *value,
                     )
-                }).collect();
+                })
+                .collect();
             let sum_for_reads = r1cs.add_sum(summands_for_reads);
 
             // Calculate the sum over all table elements of multiplicity/factor
@@ -209,6 +238,51 @@ impl R1CS {
                 &[(FieldElement::one(), sum_for_table)],
             );
         });
+
+        range_blocks
+            .iter()
+            .for_each(|(num_bits, values_to_lookup)| {
+                if values_to_lookup.len() < THRESHOLD_FOR_LOOKUP_TABLE {
+                    values_to_lookup.iter().for_each(|value| {
+                        r1cs.add_naive_range_check(*num_bits, *value);
+                    })
+                } else {
+                    let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+                    let table_range = (1 << num_bits) as u32;
+                    let multiplicity_witness = r1cs.add_witness(WitnessBuilder::Constant(
+                        FieldElement::from(values_to_lookup.len()),
+                    ));
+                    let table_summands: Vec<usize> = (0..table_range)
+                        .map(|table_value| {
+                            let table_denom = r1cs.add_lookup_factor(
+                                sz_challenge,
+                                FieldElement::from(table_value),
+                                r1cs.solver.witness_one(),
+                            );
+                            let denom_times_multiplicity = r1cs.add_witness(
+                                WitnessBuilder::Product(multiplicity_witness, table_denom),
+                            );
+                            r1cs.add_product(table_denom, multiplicity_witness);
+                            denom_times_multiplicity
+                        })
+                        .collect();
+                    let sum_for_table = r1cs.add_sum(table_summands);
+                    let witness_summands: Vec<usize> = values_to_lookup
+                        .iter()
+                        .map(|value| {
+                            r1cs.add_lookup_factor(sz_challenge, FieldElement::one(), *value)
+                        })
+                        .collect();
+                    let sum_for_witness = r1cs.add_sum(witness_summands);
+
+                    r1cs.matrices.add_constraint(
+                        &[(FieldElement::one(), sum_for_table)],
+                        &[(FieldElement::one().neg(), sum_for_witness)],
+                        &[(FieldElement::zero(), r1cs.solver.witness_one())],
+                    );
+                }
+            });
+
         r1cs
     }
 
@@ -333,7 +407,7 @@ impl R1CS {
         index_witness: usize,
         value: usize,
     ) -> usize {
-        let wb = WitnessBuilder::LogUpDenominator(
+        let wb = WitnessBuilder::IndexedLogUpDenominator(
             sz_challenge,
             (index, index_witness),
             rs_challenge,
@@ -356,6 +430,70 @@ impl R1CS {
             &[(FieldElement::one(), self.solver.witness_one())],
         );
         inverse
+    }
+
+    fn add_lookup_factor(
+        &mut self,
+        sz_challenge: usize,
+        value_coeff: FieldElement,
+        value_witness: usize,
+    ) -> usize {
+        let denom_wb = WitnessBuilder::LogUpDenominator(sz_challenge, (value_coeff, value_witness));
+        let denominator = self.add_witness(denom_wb);
+        self.matrices.add_constraint(
+            &[
+                (FieldElement::one(), sz_challenge),
+                (FieldElement::one().neg() * value_coeff, value_witness),
+            ],
+            &[(FieldElement::one(), self.solver.witness_one())],
+            &[(FieldElement::one(), denominator)],
+        );
+        let inverse = self.add_witness(WitnessBuilder::Inverse(denominator));
+        self.matrices.add_constraint(
+            &[(FieldElement::one(), denominator)],
+            &[(FieldElement::one(), inverse)],
+            &[(FieldElement::one(), self.solver.witness_one())],
+        );
+        inverse
+    }
+
+    fn add_naive_range_check(&mut self, num_bits: u32, index_witness: usize) {
+        let mut current_product_witness = index_witness;
+        (1..num_bits).for_each(|index| {
+            let next_product_witness = self.add_witness(WitnessBuilder::ProductLinearOperation(
+                (
+                    current_product_witness,
+                    FieldElement::one(),
+                    FieldElement::zero(),
+                ),
+                (
+                    current_product_witness,
+                    FieldElement::one(),
+                    FieldElement::from(index).neg(),
+                ),
+            ));
+            self.matrices.add_constraint(
+                &[(FieldElement::one(), current_product_witness)],
+                &[
+                    (FieldElement::one(), current_product_witness),
+                    (FieldElement::from(index).neg(), self.solver.witness_one()),
+                ],
+                &[(FieldElement::one(), next_product_witness)],
+            );
+            current_product_witness = next_product_witness;
+        });
+
+        self.matrices.add_constraint(
+            &[(FieldElement::one(), current_product_witness)],
+            &[
+                (FieldElement::one(), current_product_witness),
+                (
+                    FieldElement::from(num_bits).neg(),
+                    self.solver.witness_one(),
+                ),
+            ],
+            &[(FieldElement::zero(), self.solver.witness_one())],
+        );
     }
 }
 
