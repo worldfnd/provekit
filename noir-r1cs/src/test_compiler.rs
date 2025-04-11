@@ -50,3 +50,15 @@ fn test_read_write_memory() {
         "src/test_programs/read-write-memory/target/main.gz",
     );
 }
+
+// FIXME remove, will be redundant
+#[test]
+fn test_write_compilation(
+) {
+    let program_path = "src/test_programs/read-write-memory/target/main.json";
+    let file = File::open(program_path).unwrap();
+    let program: ProgramArtifact = serde_json::from_reader(file).unwrap();
+    let acir_circuit = &program.bytecode.functions[0];
+    // Compile the ACIR circuit to R1CS
+    let r1cs = R1CS::from_acir(acir_circuit);
+}

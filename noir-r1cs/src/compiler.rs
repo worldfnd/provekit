@@ -50,7 +50,7 @@ impl R1CS {
         };
 
         // Read-only memory blocks (used for building the memory lookup constraints at the end)
-        let mut memory_blocks: BTreeMap<usize, ReadOnlyMemoryBlock> = BTreeMap::new();
+        let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -89,15 +89,12 @@ impl R1CS {
                         block_id
                     );
                     r1cs.solver.memory_lengths.insert(block_id, init.len());
-                    let mut block = ReadOnlyMemoryBlock {
-                        value_witnesses: vec![],
-                        read_operations: vec![],
-                    };
+                    let mut block = MemoryBlock::new();
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness =
                             r1cs.add_witness(WitnessBuilder::Acir(acir_witness.0 as usize));
                         // Add the witness index to the memory block
-                        block.value_witnesses.push(r1cs_witness);
+                        block.initial_value_witnesses.push(r1cs_witness);
                     });
                     memory_blocks.insert(block_id, block);
                 }
@@ -107,9 +104,6 @@ impl R1CS {
                     op,
                     predicate,
                 } => {
-                    let is_read = op.operation.is_zero();
-                    assert!(is_read, "MemoryOp write not yet supported");
-
                     // Panic if the predicate is set (according to Noir developers, predicate is
                     // always None and will soon be removed).
                     assert!(predicate.is_none());
@@ -122,32 +116,37 @@ impl R1CS {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
-                    // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
+                    let op = if op.operation.is_zero() {
+                        // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
+                        // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
 
-                    // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
-                    // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
-                    let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
+                        // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
+                        // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
+                        let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                    // (According to experiments, the index is always a witness, not a constant:
-                    // static reads are hard-wired into the circuit, or instead rendered as a
-                    // dynamic read by introducing a new witness constrained to have the value of
-                    // the static address.)
-                    let addr_wb = op.index.to_witness().map_or_else(
-                        || {
-                            unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
-                        },
-                        |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
-                    );
-                    let addr = r1cs.add_witness(addr_wb);
-                    let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
-                        block_id,
-                        addr,
-                        result_of_read_acir_witness,
-                    ));
-                    block.read_operations.push((addr, result_of_read));
+                        // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
+                        // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
+                        // (According to experiments, the index is always a witness, not a constant:
+                        // static reads are hard-wired into the circuit, or instead rendered as a
+                        // dynamic read by introducing a new witness constrained to have the value of
+                        // the static address.)
+                        let addr_wb = op.index.to_witness().map_or_else(
+                            || {
+                                unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
+                            },
+                            |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
+                        );
+                        let addr = r1cs.add_witness(addr_wb);
+                        let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
+                            block_id,
+                            addr,
+                            result_of_read_acir_witness,
+                        ));
+                        MemoryOperation::Read(addr, result_of_read)
+                    } else {
+                        unimplemented!("MemoryOp write operation not yet implemented");
+                    };
+                    block.operations.push(op);
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -157,57 +156,69 @@ impl R1CS {
             }
         }
 
-        // For each memory block, use a lookup to enforce that the reads are correct.
+        // For each memory block, add appropriate constraints (depending on whether it is read-only or not)
         memory_blocks.iter().for_each(|(block_id, block)| {
-            // Add witness entries for memory access counts, using the WitnessBuilder::MemoryAccessCount
-            let access_counts: Vec<_> = (0..block.value_witnesses.len())
-                .map(|index| r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index)))
-                .collect();
+            if block.is_read_only() {
+                // Use a lookup to enforce that the reads are correct.
+                // Add witness entries for memory access counts, using the WitnessBuilder::MemoryAccessCount
+                let access_counts: Vec<_> = (0..block.initial_value_witnesses.len())
+                    .map(|index| r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index)))
+                    .collect();
 
-            // Add two verifier challenges for the lookup
-            let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
-            let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+                // Add two verifier challenges for the lookup
+                let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+                let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
 
-            // Calculate the sum, over all reads, of 1/denominator
-            let summands_for_reads = block
-                .read_operations
-                .iter()
-                .map(|(addr_witness, value)| {
-                    r1cs.add_indexed_lookup_factor(
-                        rs_challenge,
-                        sz_challenge,
-                        FieldElement::one(),
-                        *addr_witness,
-                        *value,
-                    )
-                }).collect();
-            let sum_for_reads = r1cs.add_sum(summands_for_reads);
+                // Calculate the sum, over all reads, of 1/denominator
+                let summands_for_reads = block
+                    .operations
+                    .iter()
+                    .map(|op| {
+                        match op {
+                            MemoryOperation::Read(addr_witness, value) => {
+                                r1cs.add_indexed_lookup_factor(
+                                    rs_challenge,
+                                    sz_challenge,
+                                    FieldElement::one(),
+                                    *addr_witness,
+                                    *value,
+                                )
+                            }
+                            MemoryOperation::Write(_, _) => {
+                                unreachable!();
+                            }
+                        }
+                    }).collect();
+                let sum_for_reads = r1cs.add_sum(summands_for_reads);
 
-            // Calculate the sum over all table elements of multiplicity/factor
-            let summands_for_table = block
-                .value_witnesses
-                .iter()
-                .zip(access_counts.iter())
-                .enumerate()
-                .map(|(addr, (value, access_count))| {
-                    let denominator = r1cs.add_indexed_lookup_factor(
-                        rs_challenge,
-                        sz_challenge,
-                        addr.into(),
-                        r1cs.solver.witness_one(),
-                        *value,
-                    );
-                    r1cs.add_product(*access_count, denominator)
-                })
-                .collect();
-            let sum_for_table = r1cs.add_sum(summands_for_table);
+                // Calculate the sum over all table elements of multiplicity/factor
+                let summands_for_table = block
+                    .initial_value_witnesses
+                    .iter()
+                    .zip(access_counts.iter())
+                    .enumerate()
+                    .map(|(addr, (value, access_count))| {
+                        let denominator = r1cs.add_indexed_lookup_factor(
+                            rs_challenge,
+                            sz_challenge,
+                            addr.into(),
+                            r1cs.solver.witness_one(),
+                            *value,
+                        );
+                        r1cs.add_product(*access_count, denominator)
+                    })
+                    .collect();
+                let sum_for_table = r1cs.add_sum(summands_for_table);
 
-            // Enforce that the two sums are equal
-            r1cs.matrices.add_constraint(
-                &[(FieldElement::one(), r1cs.solver.witness_one())],
-                &[(FieldElement::one(), sum_for_reads)],
-                &[(FieldElement::one(), sum_for_table)],
-            );
+                // Enforce that the two sums are equal
+                r1cs.matrices.add_constraint(
+                    &[(FieldElement::one(), r1cs.solver.witness_one())],
+                    &[(FieldElement::one(), sum_for_reads)],
+                    &[(FieldElement::one(), sum_for_table)],
+                );
+            } else {
+                // TODO: Use Spice memory checking for read-write memory blocks
+            }
         });
         r1cs
     }
@@ -381,9 +392,33 @@ impl std::fmt::Display for R1CS {
 
 #[derive(Debug, Clone)]
 /// Used for tracking reads of a read-only memory block
-pub struct ReadOnlyMemoryBlock {
+pub struct MemoryBlock {
     /// The R1CS witnesses corresponding to the memory block values
-    pub value_witnesses: Vec<usize>,
+    pub initial_value_witnesses: Vec<usize>,
+    /// The memory operations, in the order that they occur
+    pub operations: Vec<MemoryOperation>,
+}
+
+impl MemoryBlock {
+    pub fn new() -> Self {
+        Self {
+            initial_value_witnesses: vec![],
+            operations: vec![],
+        }
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.operations.iter().all(|op| match op {
+            MemoryOperation::Read(_, _) => true,
+            MemoryOperation::Write(_, _) => false,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum MemoryOperation {
     /// (R1CS witness index of address, R1CS witness index of value read) tuples
-    pub read_operations: Vec<(usize, usize)>,
+    Read(usize, usize),
+    /// (R1CS witness index of address, R1CS witness index of value to write) tuples
+    Write(usize, usize),
 }
