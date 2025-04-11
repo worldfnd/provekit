@@ -221,15 +221,19 @@ pub fn run_sumcheck_prover(
     Vec<FieldElement>,
     FieldElement,
 ) {
-    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
-    let (mut a, mut b, mut c) = calculate_witness_bounds(r1cs, z);
     let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
     merlin
         .fill_challenge_scalars(&mut r)
         .expect("Failed to extract challenge scalars from Merlin");
-    let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
+
+    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
+    let ((mut a, mut b, mut c), mut eq) = rayon::join(
+        || calculate_witness_bounds(r1cs, z),
+        || calculate_evaluations_over_boolean_hypercube_for_eq(&r),
+    );
+
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
     let mut fold = None;
@@ -237,7 +241,6 @@ pub fn run_sumcheck_prover(
     for _ in 0..m_0 {
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
-
         let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
             sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
                 [
@@ -250,6 +253,12 @@ pub fn run_sumcheck_prover(
                     (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0),
                 ]
             });
+        if fold.is_some() {
+            a.truncate(a.len() / 2);
+            b.truncate(b.len() / 2);
+            c.truncate(c.len() / 2);
+            eq.truncate(eq.len() / 2);
+        }
 
         let mut hhat_i_coeffs = [FieldElement::zero(); 4];
 
@@ -275,18 +284,14 @@ pub fn run_sumcheck_prover(
                 + hhat_i_coeffs[3]
         );
 
-        let _ = merlin.add_scalars(&vec![
-            hhat_i_coeffs[0],
-            hhat_i_coeffs[1],
-            hhat_i_coeffs[2],
-            hhat_i_coeffs[3],
-        ]);
+        let _ = merlin.add_scalars(&hhat_i_coeffs[..]);
         let mut alpha_i_wrapped_in_vector = vec![FieldElement::zero()];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
 
         fold = Some(alpha_i);
+
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
     (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)

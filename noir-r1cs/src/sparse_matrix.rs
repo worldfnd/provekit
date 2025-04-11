@@ -144,6 +144,7 @@ impl<'a> HydratedSparseMatrix<'a> {
 }
 
 /// Right multiplication by vector
+// OPT: Paralelize
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     type Output = Vec<FieldElement>;
 
@@ -162,6 +163,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
 }
 
 /// Left multiplication by vector
+// OPT: Paralelize
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 

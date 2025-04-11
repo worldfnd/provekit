@@ -4,6 +4,7 @@ use {
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
+    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
     tracing::instrument,
@@ -11,6 +12,7 @@ use {
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
+// TODO: Figure out a way to also half the mles on folding
 pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
     mles: [&mut [FieldElement]; N],
     fold: Option<FieldElement>,
@@ -148,20 +150,30 @@ where
 /// List of evaluations for eq(r, x) over the boolean hypercube
 #[instrument(skip_all)]
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
-    r: &Vec<FieldElement>,
+    r: &[FieldElement],
 ) -> Vec<FieldElement> {
-    let mut ans = vec![FieldElement::from(1)];
-    for x in r.iter().rev() {
-        let mut left: Vec<FieldElement> = ans
-            .clone()
-            .into_iter()
-            .map(|y| y * (FieldElement::one() - x))
-            .collect();
-        let right: Vec<FieldElement> = ans.into_iter().map(|y| y * x).collect();
-        left.extend(right);
-        ans = left;
+    let mut result = vec![FieldElement::zero(); 1 << r.len()];
+    eval_eq(r, &mut result, FieldElement::one());
+    result
+}
+
+/// Evaluates the equality polynomial recursively.
+fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement) {
+    debug_assert_eq!(out.len(), 1 << eval.len());
+    let size = out.len();
+    if let Some((&x, tail)) = eval.split_first() {
+        let (o0, o1) = out.split_at_mut(out.len() / 2);
+        let s1 = scalar * x;
+        let s0 = scalar - s1;
+        if size > workload_size::<FieldElement>() {
+            rayon::join(|| eval_eq(tail, o0, s0), || eval_eq(tail, o1, s1));
+        } else {
+            eval_eq(tail, o0, s0);
+            eval_eq(tail, o1, s1);
+        }
+    } else {
+        out[0] += scalar;
     }
-    ans
 }
 
 /// Evaluates a qubic polynomial on a value
@@ -176,16 +188,14 @@ pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
-    let witness_bound_a = pad_to_power_of_two(r1cs.a() * witness);
-    let witness_bound_b = pad_to_power_of_two(r1cs.b() * witness);
-    let witness_bound_c = pad_to_power_of_two(
-        witness_bound_a
-            .iter()
-            .zip(witness_bound_b.iter())
-            .map(|(a, b)| a * b)
-            .collect(),
-    );
-    (witness_bound_a, witness_bound_b, witness_bound_c)
+    let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
+    // Derive C from R1CS relation (faster than matrix multiplication)
+    let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
+    (
+        pad_to_power_of_two(a),
+        pad_to_power_of_two(b),
+        pad_to_power_of_two(c),
+    )
 }
 
 /// Calculates eq(r, alpha)
