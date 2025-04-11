@@ -9,7 +9,10 @@ use {
     crate::{FieldElement, NoirElement},
     ark_ff::{BigInt, PrimeField},
     ruint::{aliases::U256, uint},
-    std::fmt::{Display, Formatter, Result as FmtResult},
+    std::{
+        fmt::{Display, Formatter, Result as FmtResult},
+        mem::MaybeUninit,
+    },
     tracing::instrument,
 };
 
@@ -24,6 +27,30 @@ pub const HALF: FieldElement = uint_to_field(uint!(
 pub const fn workload_size<T: Sized>() -> usize {
     const CACHE_SIZE: usize = 1 << 15;
     CACHE_SIZE / size_of::<T>()
+}
+
+/// Unzip a [[(T,T); N]; M] into ([[T; N]; M],[[T; N]; M]) using move semantics
+// TODO: Cleanup when <https://github.com/rust-lang/rust/issues/96097> lands
+fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
+    input: [[(T, T); N]; M],
+) -> ([[T; N]; M], [[T; N]; M]) {
+    // Create uninitialized memory for the output arrays
+    let mut left: [[MaybeUninit<T>; N]; M] = [const { [const { MaybeUninit::uninit() }; N] }; M];
+    let mut right: [[MaybeUninit<T>; N]; M] = [const { [const { MaybeUninit::uninit() }; N] }; M];
+
+    // Move results to output arrays
+    for (i, a) in input.into_iter().enumerate() {
+        for (j, (l, r)) in a.into_iter().enumerate() {
+            left[i][j] = MaybeUninit::new(l);
+            right[i][j] = MaybeUninit::new(r);
+        }
+    }
+
+    // Convert the arrays of MaybeUninit into fully initialized arrays
+    // Safety: All the elements have been initialized above
+    let left = left.map(|a| a.map(|u| unsafe { u.assume_init() }));
+    let right = right.map(|a| a.map(|u| unsafe { u.assume_init() }));
+    (left, right)
 }
 
 pub const fn uint_to_field(i: U256) -> FieldElement {

@@ -6,7 +6,7 @@ use {
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
-                update_boolean_hypercube_values, SumcheckIOPattern,
+                sumcheck_fold_map_reduce, update_boolean_hypercube_values, SumcheckIOPattern,
             },
             workload_size, HALF,
         },
@@ -14,8 +14,6 @@ use {
     },
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
-    itertools::izip,
-    rayon::iter::IntoParallelRefIterator,
     serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
@@ -233,26 +231,25 @@ pub fn run_sumcheck_prover(
         .expect("Failed to extract challenge scalars from Merlin");
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r);
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
+
+    let mut fold = None;
+
     for _ in 0..m_0 {
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
-        let size = a.len();
-        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] = sumcheck_map_reduce(
-            [
-                a.split_at(size / 2),
-                b.split_at(size / 2),
-                c.split_at(size / 2),
-                eq.split_at(size / 2),
-            ],
-            |[a, b, c, eq]| {
+
+        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
+            sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
                 [
+                    // Evaluation at 0
                     eq.0 * (a.0 * b.0 - c.0),
+                    // Evaluation at -1
                     (eq.0 + eq.0 - eq.1)
                         * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1)),
+                    // Evaluation at infinity
                     (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0),
                 ]
-            },
-        );
+            });
 
         let mut hhat_i_coeffs = [FieldElement::zero(); 4];
 
@@ -289,60 +286,10 @@ pub fn run_sumcheck_prover(
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
 
-        // let ((eq, a), (b, c)) = rayon::join(
-        //     || {
-        //         rayon::join(
-        //             || update_boolean_hypercube_values(eq, alpha_i),
-        //             || update_boolean_hypercube_values(a, alpha_i),
-        //         )
-        //     },
-        //     || {
-        //         rayon::join(
-        //             || update_boolean_hypercube_values(b, alpha_i),
-        //             || update_boolean_hypercube_values(c, alpha_i),
-        //         )
-        //     },
-        // );
-        a = update_boolean_hypercube_values(a, alpha_i);
-        b = update_boolean_hypercube_values(b, alpha_i);
-        c = update_boolean_hypercube_values(c, alpha_i);
-        eq = update_boolean_hypercube_values(eq, alpha_i);
+        fold = Some(alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
     (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)
-}
-
-fn sumcheck_map_reduce<const N: usize, const M: usize>(
-    mles: [(&[FieldElement], &[FieldElement]); N],
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
-    let size = mles[0].0.len();
-    debug_assert!(mles
-        .iter()
-        .all(|(p0, p1)| p0.len() == size && p1.len() == size));
-    if size * N * 2 > workload_size::<FieldElement>() {
-        // Split ranges
-        let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
-        let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
-        let right = pairs.map(|((_, r0), (_, r1))| (r0, r1));
-
-        // Parallel recurse
-        let (l, r) = rayon::join(
-            || sumcheck_map_reduce(left, map),
-            || sumcheck_map_reduce(right, map),
-        );
-
-        // Combine results
-        array::from_fn(|i| l[i] + r[i])
-    } else {
-        let mut result = [FieldElement::zero(); M];
-        for i in 0..size {
-            let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
-            let local = map(e);
-            result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
-        }
-        result
-    }
 }
 
 #[instrument(skip_all)]
