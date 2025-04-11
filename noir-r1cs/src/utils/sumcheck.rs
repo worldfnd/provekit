@@ -103,22 +103,6 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-/// Given evaluations over boolean hypercube, replace the first variable with
-/// given value and calculate new evaluations (Fold boolean hypercube over a
-/// given value)
-pub fn update_boolean_hypercube_values(
-    mut f: Vec<FieldElement>,
-    r: FieldElement,
-) -> Vec<FieldElement> {
-    let sz = f.len();
-    let (left, right) = f.split_at_mut(sz / 2);
-    for i in 0..(left.len()) {
-        left[i] += r * (right[i] - left[i]);
-    }
-    f.truncate(sz / 2);
-    f
-}
-
 /// Trait which is used to add sumcheck functionality fo IOPattern
 pub trait SumcheckIOPattern {
     /// Prover sends coefficients of the qubic sumcheck polynomial and the

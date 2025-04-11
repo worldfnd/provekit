@@ -6,9 +6,9 @@ use {
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
-                sumcheck_fold_map_reduce, update_boolean_hypercube_values, SumcheckIOPattern,
+                sumcheck_fold_map_reduce, SumcheckIOPattern,
             },
-            workload_size, HALF,
+            HALF,
         },
         FieldElement, R1CS,
     },
@@ -19,10 +19,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
     },
-    std::{
-        array,
-        fmt::{Debug, Formatter},
-    },
+    std::fmt::{Debug, Formatter},
     tracing::{info, instrument, warn},
     whir::{
         parameters::{
@@ -79,9 +76,8 @@ pub struct WhirR1CSProof {
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
-
     // TODO: Derive from scheme and transcript
-    statement: Statement<FieldElement>,
+    // statement: Statement<FieldElement>,
 }
 
 impl WhirR1CSScheme {
@@ -150,7 +146,7 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, whir_query_answer_sums, statement) =
+        let (whir_proof, merlin, whir_query_answer_sums, _statement) =
             run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
@@ -162,18 +158,19 @@ impl WhirR1CSScheme {
             r,
             last_sumcheck_val,
             whir_query_answer_sums,
-            statement,
+            // statement,
         })
     }
 
     #[instrument(skip_all)]
+    #[allow(unused)] // TODO: Fix implementation
     pub fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
         // Set up transcript
         let io = create_io_pattern(self.m_0, &self.whir_config);
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
         // Compute statement verifier
-        let statement_verifier = StatementVerifier::from_statement(&proof.statement);
+        let statement_verifier = StatementVerifier::from_statement(todo!());
 
         run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(

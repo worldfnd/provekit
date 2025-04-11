@@ -48,7 +48,7 @@ ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 rand = "0.8.5"
 subtle = "2.6.1"
 tracing = "0.1.41"
-bytemuck = "1.19.0"
+bytemuck = "1.22.0"
 hex-literal = "0.4.1"
 hex = "0.4.3"
 itertools = "0.13.0"
@@ -70,7 +70,7 @@ noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "v1.0.
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
 
 # WHIR
-whir = { git = "https://github.com/WizardOfMenlo/whir" }
+whir = { git = "https://github.com/WizardOfMenlo/whir", features = ["tracing"] }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }

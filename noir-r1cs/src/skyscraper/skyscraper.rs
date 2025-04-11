@@ -1,6 +1,7 @@
 use {
     crate::utils::uint_to_field,
-    ark_ff::{BigInt, BigInteger, PrimeField},
+    ark_ff::{BigInt, PrimeField},
+    bytemuck::bytes_of_mut,
     ruint::uint,
     spongefish::duplex_sponge::{DuplexSponge, Permutation},
     whir::crypto::fields::Field256,
@@ -52,12 +53,14 @@ pub fn bigint_from_bytes_le<const N: usize>(bytes: &[u8]) -> BigInt<N> {
 }
 
 fn bar(a: Field256) -> Field256 {
-    let mut bytes = a.into_bigint().to_bytes_le();
+    let mut limbs = a.into_bigint().0;
+    let bytes = bytes_of_mut(&mut limbs);
+
     let (left, right) = bytes.split_at_mut(16);
     left.swap_with_slice(right);
     bytes.iter_mut().for_each(|b| *b = sbox(*b));
 
-    Field256::new(bigint_from_bytes_le(&bytes))
+    Field256::new(BigInt(limbs))
 }
 
 fn square(a: Field256) -> Field256 {
@@ -81,8 +84,8 @@ fn permute([l, r]: State) -> State {
 
 /// TODO: Add documentation
 pub fn compress(l: Field256, r: Field256) -> Field256 {
-    let a = l.clone();
-    let [l, _] = permute([l.clone(), r.clone()]);
+    let a = l;
+    let [l, _] = permute([l, r]);
     l + a
 }
 

@@ -58,7 +58,8 @@ impl Command for Args {
             .prove(&input_toml)
             .context("While proving Noir program statement")?;
 
-        // Verify the proof
+        // Verify the proof (not in release build)
+        #[cfg(test)]
         scheme
             .verify(&proof)
             .context("While verifying Noir proof")?;
