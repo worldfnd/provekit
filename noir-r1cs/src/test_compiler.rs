@@ -26,6 +26,15 @@ fn test_compilation_and_solving(
 }
 
 #[test]
+fn test_brillig_conditional() {
+    test_compilation_and_solving(
+        "src/test_programs/brillig-conditional/target/main.json",
+        "src/test_programs/brillig-conditional/target/main.gz",
+    );
+}
+
+
+#[test]
 fn test_read_only_memory() {
     test_compilation_and_solving(
         "src/test_programs/read-only-memory/target/main.json",
@@ -34,9 +43,10 @@ fn test_read_only_memory() {
 }
 
 #[test]
-fn test_brillig_conditional() {
+#[ignore]
+fn test_read_write_memory() {
     test_compilation_and_solving(
-        "src/test_programs/brillig-conditional/target/main.json",
-        "src/test_programs/brillig-conditional/target/main.gz",
+        "src/test_programs/read-write-memory/target/main.json",
+        "src/test_programs/read-write-memory/target/main.gz",
     );
 }
