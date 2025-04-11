@@ -15,7 +15,8 @@ pub fn update_boolean_hypercube_values(mut f: Vec<Field256>, r: Field256) -> Vec
     for i in 0..(left.len()) {
         left[i] += r * (right[i] - left[i]);
     }
-    left.to_vec()
+    f.truncate(sz / 2);
+    f
 }
 
 /// Trait which is used to add sumcheck functionality fo IOPattern
@@ -66,7 +67,7 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
 }
 
 /// Evaluates a qubic polynomial on a value
-pub fn eval_qubic_poly(poly: &Vec<FieldElement>, point: &FieldElement) -> FieldElement {
+pub fn eval_qubic_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElement {
     poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
 }
 

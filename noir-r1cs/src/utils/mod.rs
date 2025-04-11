@@ -18,6 +18,14 @@ pub const HALF: FieldElement = uint_to_field(uint!(
     10944121435919637611123202872628637544274182200208017171849102093287904247809_U256
 ));
 
+/// Target single-thread workload size for `T`.
+/// Should ideally be a multiple of a cache line (64 bytes)
+/// and close to the L1 cache size (32 KB).
+pub const fn workload_size<T: Sized>() -> usize {
+    const CACHE_SIZE: usize = 1 << 15;
+    CACHE_SIZE / size_of::<T>()
+}
+
 pub const fn uint_to_field(i: U256) -> FieldElement {
     FieldElement::new(BigInt(i.into_limbs()))
 }

@@ -8,19 +8,23 @@ use {
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
                 update_boolean_hypercube_values, SumcheckIOPattern,
             },
-            HALF,
+            workload_size, HALF,
         },
         FieldElement, R1CS,
     },
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     itertools::izip,
+    rayon::iter::IntoParallelRefIterator,
     serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
     },
-    std::fmt::{Debug, Formatter},
+    std::{
+        array,
+        fmt::{Debug, Formatter},
+    },
     tracing::{info, instrument, warn},
     whir::{
         parameters::{
@@ -232,29 +236,25 @@ pub fn run_sumcheck_prover(
     for _ in 0..m_0 {
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
-        let mut hhat_i_at_0 = FieldElement::zero();
-        let mut hhat_i_at_em1 = FieldElement::zero();
-        let mut hhat_i_at_inf_over_x_cube = FieldElement::zero();
+        let size = a.len();
+        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] = sumcheck_map_reduce(
+            [
+                a.split_at(size / 2),
+                b.split_at(size / 2),
+                c.split_at(size / 2),
+                eq.split_at(size / 2),
+            ],
+            |[a, b, c, eq]| {
+                [
+                    eq.0 * (a.0 * b.0 - c.0),
+                    (eq.0 + eq.0 - eq.1)
+                        * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1)),
+                    (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0),
+                ]
+            },
+        );
 
-        let (a0, a1) = a.split_at(a.len() / 2);
-        let (b0, b1) = b.split_at(b.len() / 2);
-        let (c0, c1) = c.split_at(c.len() / 2);
-        let (eq0, eq1) = eq.split_at(eq.len() / 2);
-
-        izip!(
-            a0.iter().zip(a1),
-            b0.iter().zip(b1),
-            c0.iter().zip(c1),
-            eq0.iter().zip(eq1)
-        )
-        .for_each(|(a, b, c, eq)| {
-            hhat_i_at_0 += *eq.0 * (a.0 * b.0 - c.0);
-            hhat_i_at_em1 +=
-                (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
-            hhat_i_at_inf_over_x_cube += (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
-        });
-
-        let mut hhat_i_coeffs = vec![FieldElement::zero(); 4];
+        let mut hhat_i_coeffs = [FieldElement::zero(); 4];
 
         hhat_i_coeffs[0] = hhat_i_at_0;
         hhat_i_coeffs[2] = HALF
@@ -288,13 +288,61 @@ pub fn run_sumcheck_prover(
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
-        eq = update_boolean_hypercube_values(eq, alpha_i);
+
+        // let ((eq, a), (b, c)) = rayon::join(
+        //     || {
+        //         rayon::join(
+        //             || update_boolean_hypercube_values(eq, alpha_i),
+        //             || update_boolean_hypercube_values(a, alpha_i),
+        //         )
+        //     },
+        //     || {
+        //         rayon::join(
+        //             || update_boolean_hypercube_values(b, alpha_i),
+        //             || update_boolean_hypercube_values(c, alpha_i),
+        //         )
+        //     },
+        // );
         a = update_boolean_hypercube_values(a, alpha_i);
         b = update_boolean_hypercube_values(b, alpha_i);
         c = update_boolean_hypercube_values(c, alpha_i);
+        eq = update_boolean_hypercube_values(eq, alpha_i);
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
     (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)
+}
+
+fn sumcheck_map_reduce<const N: usize, const M: usize>(
+    mles: [(&[FieldElement], &[FieldElement]); N],
+    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
+) -> [FieldElement; M] {
+    let size = mles[0].0.len();
+    debug_assert!(mles
+        .iter()
+        .all(|(p0, p1)| p0.len() == size && p1.len() == size));
+    if size * N * 2 > workload_size::<FieldElement>() {
+        // Split ranges
+        let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
+        let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
+        let right = pairs.map(|((_, r0), (_, r1))| (r0, r1));
+
+        // Parallel recurse
+        let (l, r) = rayon::join(
+            || sumcheck_map_reduce(left, map),
+            || sumcheck_map_reduce(right, map),
+        );
+
+        // Combine results
+        array::from_fn(|i| l[i] + r[i])
+    } else {
+        let mut result = [FieldElement::zero(); M];
+        for i in 0..size {
+            let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
+            let local = map(e);
+            result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
+        }
+        result
+    }
 }
 
 #[instrument(skip_all)]
