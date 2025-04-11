@@ -216,9 +216,9 @@ pub fn calculate_external_row_of_r1cs_matrices(
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
     let eq_alpha = &eq_alpha[..r1cs.constraints];
-    [
-        eq_alpha * r1cs.a(),
-        eq_alpha * r1cs.b(),
-        eq_alpha * r1cs.c(),
-    ]
+    let ((a, b), c) = rayon::join(
+        || rayon::join(|| eq_alpha * r1cs.a(), || eq_alpha * r1cs.b()),
+        || eq_alpha * r1cs.c(),
+    );
+    [a, b, c]
 }
