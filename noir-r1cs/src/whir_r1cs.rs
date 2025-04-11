@@ -76,9 +76,8 @@ pub struct WhirR1CSProof {
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
-
     // TODO: Derive from scheme and transcript
-    statement: Statement<FieldElement>,
+    // statement: Statement<FieldElement>,
 }
 
 impl WhirR1CSScheme {
@@ -159,7 +158,7 @@ impl WhirR1CSScheme {
             r,
             last_sumcheck_val,
             whir_query_answer_sums,
-            statement,
+            // statement,
         })
     }
 
@@ -170,7 +169,7 @@ impl WhirR1CSScheme {
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
         // Compute statement verifier
-        let statement_verifier = StatementVerifier::from_statement(&proof.statement);
+        let statement_verifier = StatementVerifier::from_statement(todo!());
 
         run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(
