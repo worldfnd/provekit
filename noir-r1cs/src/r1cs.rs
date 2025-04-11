@@ -91,8 +91,9 @@ impl R1CS {
         // Solve constraints in order
         // (this is how Noir expects it to be done, judging from ACVM)
         for row in 0..self.constraints {
-            let [a, b, c] =
-                [self.a(), self.b(), self.c()].map(|mat| sparse_dot(mat.iter_row(row), &witness));
+            let a = sparse_dot(self.a().iter_row(row), &witness);
+            let b = sparse_dot(self.b().iter_row(row), &witness);
+            let c = sparse_dot(self.c().iter_row(row), &witness);
             let (val, mat) = match (a, b, c) {
                 (Some(a), Some(b), Some(c)) => {
                     ensure!(a * b == c, "Constraint {row} failed");

@@ -21,6 +21,7 @@ flate2.workspace = true
 bincode.workspace = true
 rand.workspace = true
 hex.workspace = true
+rayon.workspace = true
 
 # Noir lang
 acir.workspace = true
