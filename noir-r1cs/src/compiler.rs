@@ -2,18 +2,16 @@ use {
     crate::{
         r1cs_matrices::R1CSMatrices,
         solver::{R1CSSolver, WitnessBuilder},
-    },
-    acir::{
+    }, acir::{
         circuit::{opcodes::BlockType, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness},
         AcirField, FieldElement,
-    },
-    std::{
+    }, acvm::brillig_vm::Memory, core::hash, std::{
         collections::BTreeMap,
         fmt::{Debug, Formatter},
         ops::Neg,
         vec,
-    },
+    }, tracing::field::Field
 };
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
@@ -88,7 +86,7 @@ impl R1CS {
                         "Memory block {} already initialized",
                         block_id
                     );
-                    r1cs.solver.memory_lengths.insert(block_id, init.len());
+                    r1cs.solver.initial_memories.insert(block_id, init.iter().map(|w| w.0 as usize).collect());
                     let mut block = MemoryBlock::new();
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness =
@@ -116,6 +114,20 @@ impl R1CS {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
+                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
+                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
+                    // (According to experiments, the index is always a witness, not a constant:
+                    // static reads are hard-wired into the circuit, or instead rendered as a
+                    // dynamic read by introducing a new witness constrained to have the value of
+                    // the static address.)
+                    let addr_wb = op.index.to_witness().map_or_else(
+                        || {
+                            unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
+                        },
+                        |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
+                    );
+                    let addr = r1cs.add_witness(addr_wb);
+
                     let op = if op.operation.is_zero() {
                         // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
                         // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
@@ -124,27 +136,20 @@ impl R1CS {
                         // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
                         let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                        // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                        // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                        // (According to experiments, the index is always a witness, not a constant:
-                        // static reads are hard-wired into the circuit, or instead rendered as a
-                        // dynamic read by introducing a new witness constrained to have the value of
-                        // the static address.)
-                        let addr_wb = op.index.to_witness().map_or_else(
-                            || {
-                                unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
-                            },
-                            |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
-                        );
-                        let addr = r1cs.add_witness(addr_wb);
-                        let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
+                        let result_of_read = r1cs.add_witness(WitnessBuilder::ValueReadFromMemory(
                             block_id,
                             addr,
                             result_of_read_acir_witness,
                         ));
                         MemoryOperation::Read(addr, result_of_read)
                     } else {
-                        unimplemented!("MemoryOp write operation not yet implemented");
+                        let value_written = r1cs.add_witness(WitnessBuilder::ValueWrittenToMemory(
+                            block_id,
+                            addr,
+                            // TODO check that op.value is indeed the value written
+                            op.value.to_witness().unwrap().0 as usize,
+                        ));
+                        MemoryOperation::Write(addr, value_written)
                     };
                     block.operations.push(op);
                 }
@@ -162,7 +167,7 @@ impl R1CS {
                 // Use a lookup to enforce that the reads are correct.
                 // Add witness entries for memory access counts, using the WitnessBuilder::MemoryAccessCount
                 let access_counts: Vec<_> = (0..block.initial_value_witnesses.len())
-                    .map(|index| r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index)))
+                    .map(|index| r1cs.add_witness(WitnessBuilder::MemoryReadCount(*block_id, index)))
                     .collect();
 
                 // Add two verifier challenges for the lookup
@@ -217,10 +222,124 @@ impl R1CS {
                     &[(FieldElement::one(), sum_for_table)],
                 );
             } else {
-                // TODO: Use Spice memory checking for read-write memory blocks
+                // Read/write memory block - use offline memory checking
+                let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+                let rs_challenge_sqrd = r1cs.add_product(rs_challenge, rs_challenge);
+                let mut timer: u32 = 0;
+
+                let mut read_hash = r1cs.solver.witness_one();
+                let mut write_hash = r1cs.solver.witness_one();
+
+                let put = |addr, addr_witness, value| {
+                    let hash_value = r1cs.add_memory_op_hash(
+                        rs_challenge,
+                        rs_challenge_sqrd,
+                        addr,
+                        addr_witness,
+                        value,
+                        FieldElement::from(timer),
+                        r1cs.solver.witness_one(),
+                    );
+                    write_hash = r1cs.add_product(write_hash, hash_value);
+                };
+
+                let get = |addr, addr_witness, value| {
+                    let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
+                        *block_id,
+                        (addr, addr_witness),
+                    ));
+                    let hash_value = r1cs.add_memory_op_hash(
+                        rs_challenge,
+                        rs_challenge_sqrd,
+                        FieldElement::from(addr),
+                        addr_witness,
+                        value,
+                        FieldElement::one(),
+                        retrieved_timer,
+                    );
+                    read_hash = r1cs.add_product(read_hash, hash_value);
+                    timer += 1;  // TODO think this through: fine, since we only support honest provers?
+                };
+
+                // For each of the writes in the inititialization, add a factor to the write hash
+                block.initial_value_witnesses.iter().enumerate().for_each(|(addr, mem_value)| {
+                    put(FieldElement::from(addr), r1cs.solver.witness_one(), *mem_value);
+                });
+
+                // TODO double check that it makes sense that the same constraints are added in both the read and the write case
+                block.operations.iter().for_each(|op| {
+                    match op {
+                        MemoryOperation::Read(addr_witness, value) => {
+                            get(1, *addr_witness, *value);
+                            put(
+                                FieldElement::one(),
+                                *addr_witness,
+                                *value,
+                            );
+                        }
+                        MemoryOperation::Write(addr_witness, value) => {
+                            get(1, *addr_witness, *value);
+                            put(
+                                FieldElement::one(),
+                                *addr_witness,
+                                *value,
+                            );
+                        }
+                    }
+                });
+
+                // For each of the cells of the memory block, add a factor to the read hash
+                (0..block.initial_value_witnesses.len()).for_each(|addr| {
+                    // Implementation note: the values read via memory operations above are provided
+                    // by ACIR.  For the "audit" reads at the end of offline memory checking, we
+                    // need to add witnesses for these values ourselves.
+                    let value = r1cs.add_witness(WitnessBuilder::FinalMemoryValue(
+                        *block_id,
+                        addr,
+                    ));
+                    get(addr, r1cs.solver.witness_one(), value);
+                });
+
+                // Add the final constraint to enforce that the hashes are equal
+                r1cs.matrices.add_constraint(
+                    &[(FieldElement::one(), r1cs.solver.witness_one())],
+                    &[(FieldElement::one(), read_hash)],
+                    &[(FieldElement::one(), write_hash)],
+                );
+
+
             }
         });
         r1cs
+    }
+
+    fn add_memory_op_hash(
+        &mut self,
+        rs_challenge: usize,
+        rs_challenge_sqrd: usize,
+        addr: FieldElement,
+        addr_witness: usize,
+        value_witness: usize,
+        timer: FieldElement,
+        timer_witness: usize,
+    ) -> usize {
+        let hash_value = self.add_witness(WitnessBuilder::HashValue(
+            rs_challenge,
+            (addr, addr_witness),
+            value_witness,
+            (timer, timer_witness),
+        ));
+        let intermediate = self.add_product(rs_challenge_sqrd, timer_witness);
+        self.matrices.add_constraint(
+            &[(FieldElement::one(), rs_challenge)],
+            &[(FieldElement::one(), value_witness)],
+            &[
+                (FieldElement::one(), hash_value),
+                (timer.neg(), intermediate),
+                (addr.neg(), addr_witness),
+            ],
+        );
+        0
     }
 
     // Return the R1CS witness index corresponding to the AcirWitness provided, creating a new R1CS
@@ -244,7 +363,7 @@ impl R1CS {
                 self.acir_to_r1cs_witness_map
                     .insert(*acir_witness, next_witness_idx);
             }
-            WitnessBuilder::MemoryRead(_, _, value_acir_witness) => {
+            WitnessBuilder::ValueReadFromMemory(_, _, value_acir_witness) => {
                 self.acir_to_r1cs_witness_map
                     .insert(*value_acir_witness, next_witness_idx);
             }
@@ -370,6 +489,7 @@ impl R1CS {
     }
 }
 
+// FIXME should display if memory read-only or read/write
 impl std::fmt::Display for R1CS {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(
@@ -377,12 +497,12 @@ impl std::fmt::Display for R1CS {
             "R1CS: {} witnesses, {} constraints, {} memory blocks",
             self.num_witnesses(),
             self.num_constraints(),
-            self.solver.memory_lengths.len()
+            self.solver.initial_memories.len()
         )?;
-        if !self.solver.memory_lengths.is_empty() {
+        if !self.solver.initial_memories.is_empty() {
             writeln!(f, "Memory blocks:")?;
-            for (block_id, block) in &self.solver.memory_lengths {
-                write!(f, "  {}: {} elements; ", block_id, block)?;
+            for (block_id, block) in &self.solver.initial_memories {
+                write!(f, "  {}: {} elements; ", block_id, block.len())?;
             }
             writeln!(f)?;
         }
