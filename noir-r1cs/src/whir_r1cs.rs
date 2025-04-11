@@ -6,9 +6,9 @@ use {
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
-                sumcheck_fold_map_reduce, update_boolean_hypercube_values, SumcheckIOPattern,
+                sumcheck_fold_map_reduce, SumcheckIOPattern,
             },
-            workload_size, HALF,
+            HALF,
         },
         FieldElement, R1CS,
     },
@@ -19,10 +19,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
     },
-    std::{
-        array,
-        fmt::{Debug, Formatter},
-    },
+    std::fmt::{Debug, Formatter},
     tracing::{info, instrument, warn},
     whir::{
         parameters::{

@@ -22,6 +22,10 @@ bincode.workspace = true
 rand.workspace = true
 hex.workspace = true
 rayon.workspace = true
+postcard.workspace = true
+zstd.workspace = true
+bytes.workspace = true
+bytemuck.workspace = true
 
 # Noir lang
 acir.workspace = true
@@ -48,6 +52,3 @@ argh.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-postcard.workspace = true
-zstd.workspace = true
-bytes.workspace = true

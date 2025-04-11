@@ -122,6 +122,7 @@ impl PowStrategy for SkyscraperPoW {
     }
 
     fn solve(&mut self) -> Option<u64> {
+        // TODO: Parallel solve
         (0u64..)
             .step_by(1)
             .find_map(|nonce| self.check_single(nonce))
