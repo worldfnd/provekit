@@ -1,4 +1,4 @@
-use crate::compiler::BASE_DECOMPOSITION;
+use crate::compiler::LOG_BASE_DECOMPOSITION;
 use {
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
@@ -107,6 +107,8 @@ impl R1CSSolver {
             .iter()
             .map(|(block_id, len)| (*block_id, vec![0u32; *len]))
             .collect();
+        // The multiplicities for each of the values in the various
+        // lookup tables we create throughout the R1CS compilation.
         let mut digit_multiplicity_count: BTreeMap<u32, Vec<u32>> = self
             .range_checks
             .iter()
@@ -176,7 +178,7 @@ impl R1CSSolver {
                     }
                     WitnessBuilder::DigitDecomp(i, j) => {
                         let witness_element_bytes: Vec<u8> = witness[*j].unwrap().to_be_bytes();
-                        let num_bytes_in_digit = BASE_DECOMPOSITION / 8;
+                        let num_bytes_in_digit = LOG_BASE_DECOMPOSITION / 8;
                         let index_bytes = &witness_element_bytes[((witness_element_bytes.len()
                             - (i + 1) as usize)
                             * num_bytes_in_digit as usize)
@@ -189,7 +191,7 @@ impl R1CSSolver {
                         let digit_usize = usize::from_be_bytes(padded_bytes_for_usize);
                         let digit = FieldElement::from_be_bytes_reduce(index_bytes);
                         digit_multiplicity_count
-                            .get_mut(&BASE_DECOMPOSITION)
+                            .get_mut(&LOG_BASE_DECOMPOSITION)
                             .unwrap()[digit_usize] += 1;
                         digit
                     }
