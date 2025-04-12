@@ -114,7 +114,6 @@ impl R1CSSolver {
             .iter()
             .map(|range_check_bits| (*range_check_bits, vec![0u32; 1 << *range_check_bits]))
             .collect();
-
         self.witness_builders
             .iter()
             .enumerate()
@@ -179,21 +178,23 @@ impl R1CSSolver {
                     WitnessBuilder::DigitDecomp(i, j) => {
                         let witness_element_bytes: Vec<u8> = witness[*j].unwrap().to_be_bytes();
                         let num_bytes_in_digit = LOG_BASE_DECOMPOSITION / 8;
+                        // Grab the bytes of the element that we need for the digit.
                         let index_bytes = &witness_element_bytes[((witness_element_bytes.len()
                             - (i + 1) as usize)
                             * num_bytes_in_digit as usize)
                             ..((witness_element_bytes.len() - *i as usize)
                                 * num_bytes_in_digit as usize)];
+                        // Convert this into a usize for storage purposes into the `digit_multiplicity_count` map.
                         let mut padded_bytes_for_usize = [0u8; std::mem::size_of::<usize>()];
                         assert!(index_bytes.len() < padded_bytes_for_usize.len());
                         let offset = padded_bytes_for_usize.len() - index_bytes.len();
                         padded_bytes_for_usize[offset..].copy_from_slice(&index_bytes);
                         let digit_usize = usize::from_be_bytes(padded_bytes_for_usize);
-                        let digit = FieldElement::from_be_bytes_reduce(index_bytes);
                         digit_multiplicity_count
                             .get_mut(&LOG_BASE_DECOMPOSITION)
                             .unwrap()[digit_usize] += 1;
-                        digit
+                        // Return the field element that represents this digit.
+                        FieldElement::from_be_bytes_reduce(index_bytes)
                     }
                     WitnessBuilder::DigitMultiplicity(i, j) => {
                         // NOTE: all the digital decompositions must be added to the witness before querying
