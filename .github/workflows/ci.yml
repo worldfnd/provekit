@@ -23,7 +23,7 @@ jobs:
         # TODO: Remove this once formatting and clippy lints have been applied
         #       for now it's useful to see the feedback frmo fmt as well as build failures
         continue-on-error: true
-      - run: cargo clippy --all-targets --all-features --verbose
+      - run: cargo clippy --all-targets --all-features
         env:
           RUSTFLAGS: -Dwarnings
         # TODO: Remove this once formatting and clippy lints have been applied
