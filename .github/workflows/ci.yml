@@ -12,6 +12,9 @@ jobs:
     name: Rust project - latest
     runs-on: ubuntu-latest
     strategy:
+      # TODO: Remove this once formatting and clippy lints have been applied
+      #       for now it's useful to see the feedback frmo fmt as well as build failures
+      fail-fast: false
       matrix:
         toolchain:
           - nightly
