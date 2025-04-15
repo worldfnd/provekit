@@ -1,0 +1,45 @@
+[package]
+name = "cm31_ntt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+num-traits = "0.2.19"
+num = "0.4.3"
+rand = "0.8.5"
+criterion = "0.5.1"
+
+[dev-dependencies]
+rand_chacha = "0.3.1"
+
+[[bench]]
+name = "ntt_block_8"
+harness = false
+
+[[bench]]
+name = "ntt_32768"
+harness = false
+
+[[bench]]
+name = "ntt_precompute"
+harness = false
+
+[[bench]]
+name = "ntt_2_22"
+harness = false
+
+[[bench]]
+name = "ntt_2_23"
+harness = false
+
+[[bench]]
+name = "ntt_2_24"
+harness = false
+
+[[bench]]
+name = "sequential_ntt_block_8"
+harness = false
+
+[[bench]]
+name = "sequential_cm13_muls"
+harness = false
