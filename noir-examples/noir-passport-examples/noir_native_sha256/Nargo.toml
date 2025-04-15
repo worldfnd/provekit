@@ -1,5 +1,5 @@
 [package]
-name = "custom_sha256"
+name = "noir_native_sha256"
 type = "lib"
 authors = ["Ryan Cao"]
 
