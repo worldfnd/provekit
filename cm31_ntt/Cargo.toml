@@ -37,6 +37,10 @@ name = "ntt_2_24"
 harness = false
 
 [[bench]]
+name = "ntt_2_24_optimisation_attempt"
+harness = false
+
+[[bench]]
 name = "sequential_ntt_block_8"
 harness = false
 

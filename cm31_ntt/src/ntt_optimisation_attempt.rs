@@ -3,20 +3,16 @@ use num_traits::Zero;
 use crate::ntt_utils::*;
 
 /// A radix-8 NTT butterfly.
-/// @param read_from The slice of all coefficients of the original polynomial. In practice, it is
-///                  the scratch array that do_ntt() uses to store the intermediate results.
-/// @param write_to The slice to write the results to.
-/// @param read_indices The indices of the coefficients in read_from to read from.
-/// @param write_indices The indices of the coefficients in write_to to write to.
-/// @param wts The twiddle factors 1 - 8 (excluding the 0th twiddle factor).
 #[inline]
-pub fn ntt_block_8_in_place(
-    read_from: &mut [CF],
-    write_to: &mut [CF],
-    k: usize,
-    m: usize,
-    offset: usize,
-    stride: usize,
+pub fn ntt_block_8(
+    f0: CF,
+    f1: CF,
+    f2: CF,
+    f3: CF,
+    f4: CF,
+    f5: CF,
+    f6: CF,
+    f7: CF,
     wt: CF,
     wt2: CF,
     wt3: CF,
@@ -24,19 +20,20 @@ pub fn ntt_block_8_in_place(
     wt5: CF,
     wt6: CF,
     wt7: CF,
-) {
+) -> [CF; 8] {
     // Refer to Yuval's Radix 8 DIT diagram.
     // 1st columm of black dots: a0-a8
     // 2nd columm of black dots: b0-b8
     // 3nd columm of black dots: res[0]-res[8]
-    let t0 = read_from[0 + 8 * k];
-    let t1 = read_from[1 + 8 * k] * wt;
-    let t2 = read_from[2 + 8 * k] * wt2;
-    let t3 = read_from[3 + 8 * k] * wt3;
-    let t4 = read_from[4 + 8 * k] * wt4;
-    let t5 = read_from[5 + 8 * k] * wt5;
-    let t6 = read_from[6 + 8 * k] * wt6;
-    let t7 = read_from[7 + 8 * k] * wt7;
+    // Multiply by twiddle factors
+    let t0 = f0;
+    let t1 = f1 * wt;
+    let t2 = f2 * wt2;
+    let t3 = f3 * wt3;
+    let t4 = f4 * wt4;
+    let t5 = f5 * wt5;
+    let t6 = f6 * wt6;
+    let t7 = f7 * wt7;
 
     // Column 1
     let a0 = t0 + t4;
@@ -68,16 +65,17 @@ pub fn ntt_block_8_in_place(
     let b7_j_w8 = b7_j * W_8;
 
     // Note that the order of the writes is in bit-reversed order (0, 4, 2, 6, 1, 5, 3, 7).
-    write_to[offset + (k + 0 * m) * stride] = b0 + b4;
-    write_to[offset + (k + 4 * m) * stride] = b0 - b4;
-    write_to[offset + (k + 2 * m) * stride] = b1 + b5_j;
-    write_to[offset + (k + 6 * m) * stride] = b1 - b5_j;
-    write_to[offset + (k + 1 * m) * stride] = b2 + b6_w8;
-    write_to[offset + (k + 5 * m) * stride] = b2 - b6_w8;
-    write_to[offset + (k + 3 * m) * stride] = b3 + b7_j_w8;
-    write_to[offset + (k + 7 * m) * stride] = b3 - b7_j_w8;
-}
+    let res0 = b0 + b4;
+    let res1 = b0 - b4;
+    let res2 = b1 + b5_j;
+    let res3 = b1 - b5_j;
+    let res4 = b2 + b6_w8;
+    let res5 = b2 - b6_w8;
+    let res6 = b3 + b7_j_w8;
+    let res7 = b3 - b7_j_w8;
 
+    [res0, res1, res2, res3, res4, res5, res6, res7]
+}
 
 fn do_ntt(
     f: &mut [CF],
@@ -117,13 +115,16 @@ fn do_ntt(
         let wt6 = level_twiddles[base_idx + 5];
         let wt7 = level_twiddles[base_idx + 6];
         
-        ntt_block_8_in_place(
-            scratch.as_mut(),
-            f,
-            k,
-            m,
-            offset,
-            stride,
+        let k8 = k * 8;
+        let res = ntt_block_8(
+            scratch[0 + k8],
+            scratch[1 + k8],
+            scratch[2 + k8],
+            scratch[3 + k8],
+            scratch[4 + k8],
+            scratch[5 + k8],
+            scratch[6 + k8],
+            scratch[7 + k8],
             wt,
             wt2,
             wt3,
@@ -132,6 +133,15 @@ fn do_ntt(
             wt6,
             wt7,
         );
+
+        f[offset + (k + 0 * m) * stride] = res[0];
+        f[offset + (k + 4 * m) * stride] = res[1];
+        f[offset + (k + 2 * m) * stride] = res[2];
+        f[offset + (k + 6 * m) * stride] = res[3];
+        f[offset + (k + 1 * m) * stride] = res[4];
+        f[offset + (k + 5 * m) * stride] = res[5];
+        f[offset + (k + 3 * m) * stride] = res[6];
+        f[offset + (k + 7 * m) * stride] = res[7];
     }
 }
 

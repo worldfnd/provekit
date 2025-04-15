@@ -21,7 +21,7 @@ fn bench_2_24(c: &mut Criterion) {
 
     let mut arr = vec![CF::zero(); 16777216];
     for i in 0..n {
-        g[i] = arr[i];
+        arr[i] = rng.r#gen();
     }
 
     group.bench_function(format!("size {n} with precomputation (in-place)"), |b| {

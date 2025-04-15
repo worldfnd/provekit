@@ -70,7 +70,16 @@ pub fn ntt_block_4(f: [CF; 4]) -> [CF; 4] {
 
 /// A radix-8 NTT butterfly.
 #[inline]
-pub fn ntt_block_8(f: [CF; 8]) -> [CF; 8] {
+pub fn ntt_block_8(
+    f: [CF; 8],
+    //wt: CF,
+    //wt2: CF,
+    //wt3: CF,
+    //wt4: CF,
+    //wt5: CF,
+    //wt6: CF,
+    //wt7: CF,
+) -> [CF; 8] {
     debug_assert_eq!(f.len(), 8);
     let mut res = [CF::zero(); 8];
 
