@@ -33,7 +33,7 @@ use {
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
-            statement::{Statement, StatementVerifier as GenericStatementVerifier, Weights},
+            statement::{Statement, StatementVerifier as GenericStatementVerifier, VerifierWeights, Weights},
             verifier::Verifier,
             WhirProof as GenericWhirProof,
         },
@@ -76,8 +76,6 @@ pub struct WhirR1CSProof {
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
-    // TODO: Derive from scheme and transcript
-    // statement: Statement<FieldElement>,
 }
 
 impl WhirR1CSScheme {
@@ -146,7 +144,7 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, whir_query_answer_sums, _statement) =
+        let (whir_proof, merlin, whir_query_answer_sums) =
             run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
@@ -158,7 +156,6 @@ impl WhirR1CSScheme {
             r,
             last_sumcheck_val,
             whir_query_answer_sums,
-            // statement,
         })
     }
 
@@ -169,8 +166,15 @@ impl WhirR1CSScheme {
         let io = create_io_pattern(self.m_0, &self.whir_config);
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
+
         // Compute statement verifier
-        let statement_verifier = StatementVerifier::from_statement(todo!());
+        let mut statement_verifier = StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
+        for claimed_sum in &proof.whir_query_answer_sums {
+            statement_verifier.add_constraint(
+                VerifierWeights::linear(self.m, None),
+                claimed_sum.clone(),
+            );
+        }           
 
         run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(
@@ -305,7 +309,6 @@ pub fn run_whir_pcs_prover(
     WhirProof,
     ProverState<SkyscraperSponge, FieldElement>,
     [FieldElement; 3],
-    Statement<FieldElement>,
 ) {
     info!("WHIR Parameters: {params}");
 
@@ -333,10 +336,10 @@ pub fn run_whir_pcs_prover(
 
     let prover = Prover(params.clone());
     let proof = prover
-        .prove(&mut merlin, statement.clone(), witness)
+        .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (proof, merlin, sums, statement)
+    (proof, merlin, sums)
 }
 
 #[instrument(skip_all)]
