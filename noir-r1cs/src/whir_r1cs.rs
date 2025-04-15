@@ -66,6 +66,12 @@ pub struct WhirR1CSProof {
     whir_query_answer_sums: [FieldElement; 3],
 }
 
+struct DataFromSumcheckVerifier {
+    r: Vec<FieldElement>, 
+    alpha: Vec<FieldElement>,
+    last_sumcheck_val: FieldElement,
+}
+
 impl WhirR1CSScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
         Self::new_for_size(r1cs.witnesses, r1cs.constraints)
@@ -161,7 +167,7 @@ impl WhirR1CSScheme {
             );
         }           
 
-        let (r, alpha, last_sumcheck_val) = run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
+        let data_from_sumcheck_verifier = run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(
             &mut arthur,
             &self.whir_config,
@@ -172,10 +178,10 @@ impl WhirR1CSScheme {
 
         // Check the Spartan sumcheck relation.
         ensure!(
-            last_sumcheck_val
+            data_from_sumcheck_verifier.last_sumcheck_val
                 == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
                     - proof.whir_query_answer_sums[2])
-                    * calculate_eq(&r, &alpha),
+                    * calculate_eq(&data_from_sumcheck_verifier.r, &data_from_sumcheck_verifier.alpha),
             "last sumcheck value does not match"
         );
 
@@ -329,7 +335,7 @@ pub fn run_whir_pcs_prover(
 pub fn run_sumcheck_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     m_0: usize,
-) -> Result<(Vec<FieldElement>, Vec<FieldElement>, FieldElement)> {
+) -> Result<DataFromSumcheckVerifier> {
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
@@ -353,7 +359,7 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
     }
 
-    Ok((r, alpha, saved_val_for_sumcheck_equality_assertion))
+    Ok(DataFromSumcheckVerifier{r, alpha, last_sumcheck_val: saved_val_for_sumcheck_equality_assertion})
 }
 
 
