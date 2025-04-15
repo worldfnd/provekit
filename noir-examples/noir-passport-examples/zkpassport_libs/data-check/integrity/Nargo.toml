@@ -1,0 +1,10 @@
+[package]
+name = "data_check_integrity_lib"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.22.0"
+
+[dependencies]
+utils = { path = "../../utils" }
+sha256 = { tag = "v0.1.1", git = "https://github.com/noir-lang/sha256" }
+sha512 = { tag = "master", git = "https://github.com/noir-lang/sha512" }
