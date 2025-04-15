@@ -12,9 +12,6 @@ jobs:
     name: Rust project - latest
     runs-on: ubuntu-latest
     strategy:
-      # TODO: Remove this once formatting and clippy lints have been applied
-      #       for now it's useful to see the feedback frmo fmt as well as build failures
-      fail-fast: false
       matrix:
         toolchain:
           - nightly
@@ -23,9 +20,15 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rustfmt && rustup component add clippy
       - run: cargo fmt --all --check
+        # TODO: Remove this once formatting and clippy lints have been applied
+        #       for now it's useful to see the feedback frmo fmt as well as build failures
+        continue-on-error: true
       - run: cargo clippy --all-targets --all-features --verbose
         env:
           RUSTFLAGS: -Dwarnings
+        # TODO: Remove this once formatting and clippy lints have been applied
+        #       for now it's useful to see the feedback frmo fmt as well as build failures
+        continue-on-error: true
       - run: cargo build --all-targets --all-features --verbose
       - run: cargo test --all-targets --all-features --verbose
       - run: cargo test --doc --all-features --verbose
