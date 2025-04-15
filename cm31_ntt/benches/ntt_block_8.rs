@@ -2,7 +2,7 @@ use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
 use cm31_ntt::ntt_utils::ntt_block_8;
 use cm31_ntt::cm31::CF;
-use num_traits::Zero;
+use num_traits::{Zero, One};
 use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
@@ -14,7 +14,18 @@ fn benchmark(c: &mut Criterion) {
         inputs[i] = rng.r#gen();
     }
 
-    c.bench_function("ntt_block_8", |b| b.iter(|| ntt_block_8(black_box(inputs))));
+    c.bench_function(
+        "ntt_block_8", |b| b.iter(
+            || ntt_block_8(
+                   black_box(inputs[0]), black_box(inputs[1]), 
+                   black_box(inputs[2]), black_box(inputs[3]),
+                   black_box(inputs[4]), black_box(inputs[5]),
+                   black_box(inputs[6]), black_box(inputs[7]), 
+                   CF::one(), CF::one(), CF::one(), CF::one(),
+                   CF::one(), CF::one(), CF::one(),
+               )
+        )
+    );
 }
 
 criterion_group!(

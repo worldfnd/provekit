@@ -114,19 +114,19 @@ pub fn ntt_radix_8(f: Vec<CF>, w: CF) -> Vec<CF> {
             let wt6  = wt5 * wt;
             let wt7  = wt6 * wt;
 
-            // Apply twiddle factors
-            let t0 = ntt_a0[k];
-            let t1 = wt  * ntt_a1[k];
-            let t2 = wt2 * ntt_a2[k];
-            let t3 = wt3 * ntt_a3[k];
-            let t4 = wt4 * ntt_a4[k];
-            let t5 = wt5 * ntt_a5[k];
-            let t6 = wt6 * ntt_a6[k];
-            let t7 = wt7 * ntt_a7[k];
+            let f0 = ntt_a0[k];
+            let f1 = ntt_a1[k];
+            let f2 = ntt_a2[k];
+            let f3 = ntt_a3[k];
+            let f4 = ntt_a4[k];
+            let f5 = ntt_a5[k];
+            let f6 = ntt_a6[k];
+            let f7 = ntt_a7[k];
 
-            let ts = [t0, t1, t2, t3, t4, t5, t6, t7];
-
-            let butterfly = ntt_block_8(ts);
+            let butterfly = ntt_block_8(
+                f0, f1, f2, f3, f4, f5, f6, f7,
+                wt, wt2, wt3, wt4, wt5, wt6, wt7
+            );
 
             for r in 0..8 {
                 res[k + r * m] = butterfly[r];
@@ -212,19 +212,29 @@ pub fn ntt_radix_8_precomputed(
             // The first twiddle factor in the level is w^8 (used for the next recursion level)
             // So the twiddle factors for this k start at index 1 + 7*k
             let base_idx = 1 + 7 * k;
-            
-            // Apply twiddle factors
-            let t0 = ntt_a0[k];  // No twiddle factor needed for the first subarray
-            let t1 = level_twiddles[base_idx]     * ntt_a1[k];  // w^k
-            let t2 = level_twiddles[base_idx + 1] * ntt_a2[k];  // w^2k
-            let t3 = level_twiddles[base_idx + 2] * ntt_a3[k];  // w^3k
-            let t4 = level_twiddles[base_idx + 3] * ntt_a4[k];  // w^4k
-            let t5 = level_twiddles[base_idx + 4] * ntt_a5[k];  // w^5k
-            let t6 = level_twiddles[base_idx + 5] * ntt_a6[k];  // w^6k
-            let t7 = level_twiddles[base_idx + 6] * ntt_a7[k];  // w^7k
+
+            let f0 = ntt_a0[k];
+            let f1 = ntt_a1[k];
+            let f2 = ntt_a2[k];
+            let f3 = ntt_a3[k];
+            let f4 = ntt_a4[k];
+            let f5 = ntt_a5[k];
+            let f6 = ntt_a6[k];
+            let f7 = ntt_a7[k];
+
+            let wt   = level_twiddles[base_idx];
+            let wt2  = level_twiddles[base_idx + 1];
+            let wt3  = level_twiddles[base_idx + 2];
+            let wt4  = level_twiddles[base_idx + 3];
+            let wt5  = level_twiddles[base_idx + 4];
+            let wt6  = level_twiddles[base_idx + 5];
+            let wt7  = level_twiddles[base_idx + 6];
 
             // Apply the radix-8 butterfly
-            let butterfly = ntt_block_8([t0, t1, t2, t3, t4, t5, t6, t7]);
+            let butterfly = ntt_block_8(
+                f0, f1, f2, f3, f4, f5, f6, f7,
+                wt, wt2, wt3, wt4, wt5, wt6, wt7
+            );
 
             // Write the results to the correct positions
             for r in 0..8 {
@@ -653,7 +663,10 @@ pub mod tests {
             }
 
             let naive = naive_ntt(poly.to_vec());
-            let res = ntt_block_8(poly);
+            let res = ntt_block_8(
+                poly[0], poly[1], poly[2], poly[3], poly[4], poly[5], poly[6], poly[7],
+                CF::one(), CF::one(), CF::one(), CF::one(), CF::one(), CF::one(), CF::one()
+            );
             assert_eq!(naive, res);
 
             let ires = naive_intt(res.to_vec());

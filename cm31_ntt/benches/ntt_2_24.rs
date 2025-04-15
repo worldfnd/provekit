@@ -26,7 +26,7 @@ fn bench_2_24(c: &mut Criterion) {
         g[i] = arr[i];
     }
 
-    group.bench_function(format!("size {n} without precomputation (in-place)"), |b| {
+    group.bench_function(format!("size {n} without precomputation (Vec)"), |b| {
         b.iter(|| {
             let g_clone = g.clone();
             ntt_radix_8(black_box(g_clone), w);

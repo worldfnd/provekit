@@ -71,16 +71,22 @@ pub fn ntt_block_4(f: [CF; 4]) -> [CF; 4] {
 /// A radix-8 NTT butterfly.
 #[inline]
 pub fn ntt_block_8(
-    f: [CF; 8],
-    //wt: CF,
-    //wt2: CF,
-    //wt3: CF,
-    //wt4: CF,
-    //wt5: CF,
-    //wt6: CF,
-    //wt7: CF,
+    f0: CF,
+    f1: CF,
+    f2: CF,
+    f3: CF,
+    f4: CF,
+    f5: CF,
+    f6: CF,
+    f7: CF,
+    wt: CF,
+    wt2: CF,
+    wt3: CF,
+    wt4: CF,
+    wt5: CF,
+    wt6: CF,
+    wt7: CF,
 ) -> [CF; 8] {
-    debug_assert_eq!(f.len(), 8);
     let mut res = [CF::zero(); 8];
 
     // Refer to Yuval's Radix 8 DIT diagram.
@@ -88,15 +94,24 @@ pub fn ntt_block_8(
     // 2nd columm of black dots: b0-b8
     // 3nd columm of black dots: res[0]-res[8]
 
+    let t0 = f0;
+    let t1 = f1 * wt;
+    let t2 = f2 * wt2;
+    let t3 = f3 * wt3;
+    let t4 = f4 * wt4;
+    let t5 = f5 * wt5;
+    let t6 = f6 * wt6;
+    let t7 = f7 * wt7;
+
     // Column 1
-    let a0 = f[0] + f[4];
-    let a1 = f[0] - f[4];
-    let a2 = f[2] + f[6];
-    let a3 = f[2] - f[6];
-    let a4 = f[1] + f[5];
-    let a5 = f[1] - f[5];
-    let a6 = f[3] + f[7];
-    let a7 = f[3] - f[7];
+    let a0 = t0 + t4;
+    let a1 = t0 - t4;
+    let a2 = t2 + t6;
+    let a3 = t2 - t6;
+    let a4 = t1 + t5;
+    let a5 = t1 - t5;
+    let a6 = t3 + t7;
+    let a7 = t3 - t7;
 
     // Column 2
     let a3_j = a3.mul_j();
