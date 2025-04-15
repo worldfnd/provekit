@@ -87,8 +87,6 @@ pub fn ntt_block_8(
     wt6: CF,
     wt7: CF,
 ) -> [CF; 8] {
-    let mut res = [CF::zero(); 8];
-
     // Refer to Yuval's Radix 8 DIT diagram.
     // 1st columm of black dots: a0-a8
     // 2nd columm of black dots: b0-b8
@@ -132,16 +130,25 @@ pub fn ntt_block_8(
     let b6_w8 = b6 * W_8;
     let b7_j_w8 = b7_j * W_8;
 
-    res[0] = b0 + b4;
-    res[4] = b0 - b4;
-    res[2] = b1 + b5_j;
-    res[6] = b1 - b5_j;
-    res[1] = b2 + b6_w8;
-    res[5] = b2 - b6_w8;
-    res[3] = b3 + b7_j_w8;
-    res[7] = b3 - b7_j_w8;
+    let res0 = b0 + b4;
+    let res4 = b0 - b4;
+    let res2 = b1 + b5_j;
+    let res6 = b1 - b5_j;
+    let res1 = b2 + b6_w8;
+    let res5 = b2 - b6_w8;
+    let res3 = b3 + b7_j_w8;
+    let res7 = b3 - b7_j_w8;
 
-    res
+    [
+        res0,
+        res1,
+        res2,
+        res3,
+        res4,
+        res5,
+        res6,
+        res7,
+    ]
 }
 
 /// A helper function to perform the NTT in a very simple but unoptimised O(n^2) way to test for

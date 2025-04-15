@@ -19,11 +19,9 @@ fn bench_2_24(c: &mut Criterion) {
 
     let mut rng = ChaCha8Rng::seed_from_u64(0);
 
-    let mut arr = vec![CF::zero(); 16777216];
     let mut g = vec![CF::zero(); 16777216];
     for i in 0..n {
-        arr[i] = rng.r#gen();
-        g[i] = arr[i];
+        g[i] = rng.r#gen();
     }
 
     group.bench_function(format!("size {n} without precomputation (Vec)"), |b| {
