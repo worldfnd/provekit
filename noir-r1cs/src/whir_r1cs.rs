@@ -275,7 +275,7 @@ pub fn run_sumcheck_prover(
         );
 
         let _ = merlin.add_scalars(&hhat_i_coeffs[..]);
-        let mut alpha_i_wrapped_in_vector = vec![FieldElement::zero()];
+        let mut alpha_i_wrapped_in_vector = [FieldElement::zero()];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
@@ -345,8 +345,8 @@ pub fn run_sumcheck_verifier(
     let mut alpha = vec![FieldElement::zero(); m_0];
 
     for i in 0..m_0 {
-        let mut hhat_i = vec![FieldElement::zero(); 4];
-        let mut alpha_i = vec![FieldElement::zero(); 1];
+        let mut hhat_i = [FieldElement::zero(); 4];
+        let mut alpha_i = [FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
         alpha[i] = alpha_i[0];
