@@ -8,12 +8,12 @@ use crate::constants::*;
 use rtz::RTZ;
 use seq_macro::seq;
 use std::arch::aarch64::vcvtq_f64_u64;
-use std::ops::BitAnd;
-use std::simd::{Simd, StdFloat, num::SimdFloat};
-use std::simd::cmp::SimdPartialEq;
-use std::simd::num::SimdUint;
-use std::simd::num::SimdInt;
 use std::array;
+use std::ops::BitAnd;
+use std::simd::cmp::SimdPartialEq;
+use std::simd::num::SimdInt;
+use std::simd::num::SimdUint;
+use std::simd::{Simd, StdFloat, num::SimdFloat};
 
 /// Macro to extract a subarray from an array.
 ///
@@ -51,10 +51,8 @@ macro_rules! subarray {
     };
 }
 
-#[inline(always)]
-pub fn scalar_sqr(
-    a: [u64; 4],
-) -> [u64; 4] {
+#[inline]
+pub fn scalar_sqr(a: [u64; 4]) -> [u64; 4] {
     // -- [SCALAR] ---------------------------------------------------------------------------------
     let mut t = [0_u64; 8];
 
@@ -102,7 +100,7 @@ pub fn scalar_sqr(
     (s_r3[3], s_r3[4]) = carrying_mul_add(t[2], U64_I1[3], s_r3[3], 0);
 
     let s = addv(addv(subarray!(t, 3, 5), s_r1), addv(s_r2, s_r3));
-    
+
     let m = U64_MU0.wrapping_mul(s[0]);
     let mut mp = [0_u64; 5];
     (mp[0], mp[1]) = carrying_mul_add(m, U64_P[0], mp[0], 0);
@@ -115,11 +113,8 @@ pub fn scalar_sqr(
     r
 }
 
-#[inline(always)]
-pub fn scalar_mul(
-    a: [u64; 4],
-    b: [u64; 4]
-) -> [u64; 4] {
+#[inline]
+pub fn scalar_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     // -- [SCALAR] ---------------------------------------------------------------------------------
     let mut t = [0_u64; 8];
 
@@ -167,7 +162,7 @@ pub fn scalar_mul(
     (s_r3[3], s_r3[4]) = carrying_mul_add(t[2], U64_I1[3], s_r3[3], 0);
 
     let s = addv(addv(subarray!(t, 3, 5), s_r1), addv(s_r2, s_r3));
-    
+
     let m = U64_MU0.wrapping_mul(s[0]);
     let mut mp = [0_u64; 5];
     (mp[0], mp[1]) = carrying_mul_add(m, U64_P[0], mp[0], 0);
@@ -180,12 +175,8 @@ pub fn scalar_mul(
     r
 }
 
-
-#[inline(always)]
-pub fn simd_sqr(
-    v0_a: [u64; 4],
-    v1_a: [u64; 4],
-) -> ([u64; 4], [u64; 4]) {
+#[inline]
+pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
 
     let mut t: [Simd<u64, 2>; 10] = [Simd::splat(0); 10];
@@ -363,12 +354,12 @@ pub fn simd_sqr(
     (v[0], v[1])
 }
 
-#[inline(always)]
+#[inline]
 pub fn simd_mul(
     v0_a: [u64; 4],
     v0_b: [u64; 4],
     v1_a: [u64; 4],
-    v1_b: [u64; 4]
+    v1_b: [u64; 4],
 ) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
     let v0_b = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_b, v1_b]));
@@ -548,8 +539,7 @@ pub fn simd_mul(
     (v[0], v[1])
 }
 
-
-#[inline(always)]
+#[inline]
 pub fn block_sqr(
     _rtz: &RTZ, // Proof that the mode has been set to RTZ
     s0_a: [u64; 4],
@@ -788,7 +778,7 @@ pub fn block_sqr(
     (s0, v[0], v[1])
 }
 
-#[inline(always)]
+#[inline]
 pub fn block_mul(
     _rtz: &RTZ, // Proof that the mode has been set to RTZ
     s0_a: [u64; 4],
@@ -1194,7 +1184,7 @@ fn carrying_mul_add(a: u64, b: u64, add: u64, carry: u64) -> (u64, u64) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{block_mul, block_sqr, scalar_mul, scalar_sqr, constants, rtz::RTZ};
+    use crate::{block_mul, block_sqr, constants, rtz::RTZ, scalar_mul, scalar_sqr};
     use primitive_types::U256;
     use rand::{Rng, SeedableRng, rngs};
 
@@ -1290,12 +1280,7 @@ mod tests {
             let v0_a_mont = mod_mul(v0_a, r);
             let v1_a_mont = mod_mul(v1_a, r);
 
-            let (s0, v0, v1) = block_sqr(
-                &rtz,
-                s0_a_mont.0,
-                v0_a_mont.0,
-                v1_a_mont.0,
-            );
+            let (s0, v0, v1) = block_sqr(&rtz, s0_a_mont.0, v0_a_mont.0, v1_a_mont.0);
             assert!(U256(s0) < U256(OUTPUT_MAX));
             assert!(U256(v0) < U256(OUTPUT_MAX));
             assert!(U256(v1) < U256(OUTPUT_MAX));
@@ -1325,10 +1310,7 @@ mod tests {
             let s0_a_mont = mod_mul(s0_a, r);
             let s0_b_mont = mod_mul(s0_b, r);
 
-            let s0 = scalar_mul(
-                s0_a_mont.0,
-                s0_b_mont.0,
-            );
+            let s0 = scalar_mul(s0_a_mont.0, s0_b_mont.0);
             assert!(U256(s0) < U256(OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_b));
         }
@@ -1350,9 +1332,7 @@ mod tests {
             let s0_a = U256::from_little_endian(&s0_a_bytes) % p;
             let s0_a_mont = mod_mul(s0_a, r);
 
-            let s0 = scalar_sqr(
-                s0_a_mont.0,
-            );
+            let s0 = scalar_sqr(s0_a_mont.0);
             assert!(U256(s0) < U256(OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_a));
         }
