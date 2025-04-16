@@ -129,12 +129,11 @@ impl R1CS {
                     // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
                     let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                    // (According to experiments, the index is always a witness, not a constant:
-                    // static reads are hard-wired into the circuit, or instead rendered as a
-                    // dynamic read by introducing a new witness constrained to have the value of
-                    // the static address.)
+                    // `op.index` is _always_ just a single ACIR witness, not a more complicated expression, and not a constant.
+                    // See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                    // Static reads are hard-wired into the circuit, or instead rendered as a
+                    // dummy dynamic read by introducing a new witness constrained to have the value of
+                    // the static address.
                     let addr_wb = op.index.to_witness().map_or_else(
                         || {
                             unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
