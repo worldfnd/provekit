@@ -16,9 +16,11 @@ pub struct CF {
     pub(crate) b: RF, // the imaginary part
 }
 
+// The 8th root of unity and its negation
 pub const W_8: CF = CF::new(0x00008000, 0x00008000);
 pub const W_8_NEG_1: CF = CF::new(0x7fff7fff, 0x7fff7fff);
 
+// The 4th root of unity and its negation
 pub const W_4: CF = CF::new(0x00000000, 0x00000001);
 pub const W_4_NEG_1: CF = CF::new(0x7fffffff, 0x7ffffffe);
 

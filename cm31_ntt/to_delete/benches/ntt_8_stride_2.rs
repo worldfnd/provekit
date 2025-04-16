@@ -8,11 +8,11 @@ use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 
-fn bench_2_22(c: &mut Criterion) {
+fn bench(c: &mut Criterion) {
     let radix = 8;
 
     // 2^22 = 4,194,304 elements
-    let n = 1 << 22;
+    let n = 8192;
     let half_n = n / 2; // half size for radix-8 part
 
     // Get the primitive root of unity for the half-size and precompute twiddle factors
@@ -40,12 +40,12 @@ fn bench_2_22(c: &mut Criterion) {
         })
     });
     
-    group.bench_function(format!("size {n} with precomputation"), |b| {
-        b.iter(|| {
-            let f_clone = f.clone();
-            ntt_8_stride_2_precomputed(black_box(f_clone), &r8_twiddles, &stride2_twiddles);
-        })
-    });
+    //group.bench_function(format!("size {n} with precomputation"), |b| {
+        //b.iter(|| {
+            //let f_clone = f.clone();
+            //ntt_8_stride_2_precomputed(black_box(f_clone), &r8_twiddles, &stride2_twiddles);
+        //})
+    //});
     
     group.finish();
 }
@@ -53,6 +53,6 @@ fn bench_2_22(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default().sample_size(10);
-    targets = bench_2_22
+    targets = bench
 }
 criterion_main!(benches);

@@ -1,30 +1,25 @@
-use crate::cm31::{
-    CF,
-    gen_roots_of_unity,
-    W_8,
-};
+use crate::cm31::{ CF, gen_roots_of_unity, W_8 };
 use crate::rm31::RF;
 use num_traits::{Zero, One};
 use num_traits::pow::Pow;
+use rayon::prelude::*;
 
-//pub(crate) fn log_8(n: usize) -> usize {
-    //let mut log = 0;
-    //let mut m = n;
-    //while m > 1 {
-        //m /= 8;
-        //log += 1;
-    //}
-    //log
-//}
-
-pub(crate) fn is_power_of_8(n: u32) -> bool {
+pub fn is_power_of(n: u32, x: u32) -> bool {
     if n == 0 {
         return false;
     }
 
+    if x == 1 && n == 1 {
+        return true;
+    }
+
+    if x == 1 && n != 1 {
+        return false;
+    }
+
     let mut num = n;
-    while num % 8 == 0 {
-        num /= 8;
+    while num % x == 0 {
+        num /= x;
     }
 
     num == 1
@@ -36,36 +31,6 @@ pub fn get_root_of_unity(n: usize) -> CF {
     assert!(n.is_power_of_two(), "n must be a power of 2");
     let roots_of_unity = gen_roots_of_unity((n as f64).log2() as usize);
     roots_of_unity[roots_of_unity.len() - 1]
-}
-
-pub(crate) fn level_offset(overall_transform_size: usize, d: usize) -> usize {
-    let mut offset = 0;
-    let mut current = overall_transform_size;
-    for _ in 0..d {
-        offset += 1 + 7 * (current / 8);
-        current /= 8;
-    }
-    offset
-}
-
-/// A radix-4 NTT butterfly.
-pub fn ntt_block_4(f: [CF; 4]) -> [CF; 4] {
-    debug_assert_eq!(f.len(), 4);
-    let mut res = [CF::zero(); 4];
-
-    let a0 = f[0] + f[2];
-    let a1 = f[0] - f[2];
-    let a2 = f[1] + f[3];
-    let a3 = f[1] - f[3];
-
-    let a3_j = a3.mul_j();
-
-    res[0] = a0 + a2;
-    res[2] = a0 - a2;
-    res[1] = a1 + a3_j;
-    res[3] = a1 - a3_j;
-
-    res
 }
 
 /// A radix-8 NTT butterfly.
@@ -86,7 +51,7 @@ pub fn ntt_block_8(
     wt5: CF,
     wt6: CF,
     wt7: CF,
-) -> [CF; 8] {
+) -> (CF, CF, CF, CF, CF, CF, CF, CF) {
     // Refer to Yuval's Radix 8 DIT diagram.
     // 1st columm of black dots: a0-a8
     // 2nd columm of black dots: b0-b8
@@ -139,48 +104,40 @@ pub fn ntt_block_8(
     let res3 = b3 + b7_j_w8;
     let res7 = b3 - b7_j_w8;
 
-    [
-        res0,
-        res1,
-        res2,
-        res3,
-        res4,
-        res5,
-        res6,
-        res7,
-    ]
+    (res0, res1, res2, res3, res4, res5, res6, res7)
 }
 
-/// A helper function to perform the NTT in a very simple but unoptimised O(n^2) way to test for
-/// correctness of the optimised NTT functions.
-pub fn naive_ntt(f: Vec<CF>) -> Vec<CF> {
+pub fn naive_ntt(f: &Vec<CF>) -> Vec<CF> {
     let n = f.len();
     let wn = get_root_of_unity(n);
-    let mut res = vec![CF::zero(); f.len()];
-    for i in 0..n {
+    let mut res = vec![CF::zero(); n];
+    
+    // Parallelize the outer loop
+    res.par_iter_mut().enumerate().for_each(|(i, res_i)| {
+        // Each thread computes one output element
         for j in 0..n {
-            res[i] += f[j] * wn.pow(i * j);
+            *res_i += f[j] * wn.pow(i * j);
         }
-    }
+    });
 
     res
 }
 
-/// A helper function to perform the inverse NTT in a very simple but unoptimised O(n^2) way to
-/// help test for correctness of the NTT.
-pub fn naive_intt(f: Vec<CF>) -> Vec<CF> {
+pub fn naive_intt(f: &Vec<CF>) -> Vec<CF> {
     let n = f.len();
     let wn = get_root_of_unity(n);
+    let n_inv = RF::new(n as u32).try_inverse().unwrap();
 
     let mut res = vec![CF::zero(); n];
-    for i in 0..n {
+    
+    // Parallelize the outer loop for computing values
+    res.par_iter_mut().enumerate().for_each(|(i, res_i)| {
         for j in 0..n {
-            res[i] += f[j] * wn.pow(i * j).try_inverse().unwrap();
+            *res_i += f[j] * wn.pow(i * j).try_inverse().unwrap();
         }
-    }
-    for i in 0..n {
-        res[i] = res[i].mul_by_f(RF::new(n as u32).try_inverse().unwrap());
-    }
+        // Apply scaling factor
+        *res_i = res_i.mul_by_f(n_inv);
+    });
 
     res
 }
@@ -268,4 +225,86 @@ pub fn precompute_twiddles_stride4(n: usize) -> Vec<[CF; 3]> {
     }
     
     w_powers
+}
+
+#[cfg(test)]
+pub mod tests {
+    use crate::ntt_utils::*;
+    use num_traits::Zero;
+    use rand::Rng;
+    use rand_chacha::ChaCha8Rng;
+    use rand_chacha::rand_core::SeedableRng;
+
+    #[test]
+    fn test_is_power_of() {
+        assert!(is_power_of(1, 1));
+        assert!(is_power_of(1, 2));
+        assert!(is_power_of(8, 2));
+        assert!(is_power_of(1024, 2));
+        assert!(is_power_of(64, 8));
+        assert!(!is_power_of(2, 1));
+        assert!(!is_power_of(8, 3));
+    }
+
+    // Schoolbook multiplication
+    fn naive_poly_mul(
+        f1: &Vec<CF>,
+        f2: &Vec<CF>,
+    ) -> Vec<CF> {
+        let n = f1.len();
+        assert_eq!(n, f2.len());
+        let mut res = vec![CF::zero(); 2 * n - 1];
+        for i in 0..n {
+            for j in 0..n {
+                res[i + j] += f1[i] * f2[j];
+            }
+        }
+        res
+    }
+
+    #[test]
+    fn test_naive_poly_mul() {
+        let f1 = vec![CF::new(1, 0), CF::new(2, 0), CF::new(3, 0), CF::new(4, 0)];
+        let f3 = vec![CF::new(1, 0), CF::new(3, 0), CF::new(5, 0), CF::new(7, 0)];
+        let res = naive_poly_mul(&f1, &f3);
+        let expected = vec![CF::new(1, 0), CF::new(5, 0), CF::new(14, 0), CF::new(30, 0), CF::new(41, 0), CF::new(41, 0), CF::new(28, 0)];
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_naive_ntt_by_property() {
+        // Test the correctness of the native NTT and inverse NTT functions.
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+
+        for n in [2, 4, 8] {
+            let mut poly1 = vec![CF::zero(); n];
+            let mut poly2 = vec![CF::zero(); n];
+            for i in 0..n {
+                poly1[i] = rng.r#gen();
+                poly2[i] = rng.r#gen();
+            }
+
+            let mut poly1_padded = vec![CF::zero(); n * 2];
+            let mut poly2_padded = vec![CF::zero(); n * 2];
+
+            for i in 0..n {
+                poly1_padded[i] = poly1[i];
+                poly2_padded[i] = poly2[i];
+            }
+
+            let poly1_ntt = naive_ntt(&poly1_padded);
+            let poly2_ntt = naive_ntt(&poly2_padded);
+            let mut product_ntt = vec![CF::zero(); n * 2];
+
+            for i in 0..n * 2 {
+                product_ntt[i] = poly1_ntt[i] * poly2_ntt[i];
+            }
+            let product_poly = naive_intt(&product_ntt);
+            let expected_product = naive_poly_mul(&poly1, &poly2);
+
+            for i in 0..expected_product.len() {
+                assert_eq!(product_poly[i], expected_product[i]);
+            }
+        }
+    }
 }

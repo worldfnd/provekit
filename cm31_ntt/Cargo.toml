@@ -8,42 +8,28 @@ num-traits = "0.2.19"
 num = "0.4.3"
 rand = "0.8.5"
 criterion = "0.5.1"
+rayon.workspace = true
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 rand_chacha = "0.3.1"
 
 [[bench]]
-name = "ntt_block_8"
+name = "ntt"
 harness = false
 
 [[bench]]
-name = "ntt_32768"
+name = "ntt_precomp"
 harness = false
 
 [[bench]]
-name = "ntt_precompute"
+name = "ntt_vec"
 harness = false
 
 [[bench]]
-name = "ntt_2_22"
+name = "ntt_vec_precomp"
 harness = false
 
 [[bench]]
-name = "ntt_2_23"
-harness = false
-
-[[bench]]
-name = "ntt_2_24"
-harness = false
-
-[[bench]]
-name = "ntt_2_24_optimisation_attempt"
-harness = false
-
-[[bench]]
-name = "sequential_ntt_block_8"
-harness = false
-
-[[bench]]
-name = "sequential_cm13_muls"
+name = "ntt_in_place"
 harness = false
