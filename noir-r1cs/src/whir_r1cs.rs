@@ -49,21 +49,21 @@ pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
-    m:           usize,
-    m_0:         usize,
-    whir_config: WhirConfig,
+    pub m:           usize,
+    pub m_0:         usize,
+    pub whir_config: WhirConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
-    transcript: Vec<u8>,
+    pub transcript: Vec<u8>,
 
-    whir_proof: WhirProof,
+    pub whir_proof: WhirProof,
 
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
-    whir_query_answer_sums: [FieldElement; 3],
+    pub whir_query_answer_sums: [FieldElement; 3],
 }
 
 struct DataFromSumcheckVerifier {
