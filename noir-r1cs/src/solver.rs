@@ -1,3 +1,5 @@
+use rand::seq::index;
+
 use crate::compiler::LOG_BASE_DECOMPOSITION;
 use {
     acir::{
@@ -41,10 +43,11 @@ pub enum WitnessBuilder {
         (usize, FieldElement, FieldElement),
         (usize, FieldElement, FieldElement),
     ),
-    /// Witness builder to solve for the ith digit of the jth witness index in BASE [BASE_DECOMPOSITION],
-    /// where 0 is the least significant digit. Fields are (i, j).
-    DigitDecomp(u32, usize),
-    /// The multiplicity of the ith digit, for a range check of j num_bits.
+    /// Witness builder to solve for the the digit of the ith witness index in BASE log(k),
+    /// but for mixed-digit decompositions such that the previous digits in total took up $j$ bits.
+    /// Fields are (log(k), i, j).
+    DigitDecomp(u32, usize, u32),
+    /// The multiplicity of the value i, for a range check of j num_bits.
     /// Fields are (i, j).
     DigitMultiplicity(u32, u32),
 }
@@ -175,26 +178,32 @@ impl R1CSSolver {
                     WitnessBuilder::ProductLinearOperation((x, a, b), (y, c, d)) => {
                         (*a * witness[*x].unwrap() + *b) * (*c * witness[*y].unwrap() + *d)
                     }
-                    WitnessBuilder::DigitDecomp(i, j) => {
-                        let witness_element_bytes: Vec<u8> = witness[*j].unwrap().to_be_bytes();
-                        let num_bytes_in_digit = LOG_BASE_DECOMPOSITION / 8;
-                        // Grab the bytes of the element that we need for the digit.
-                        let index_bytes = &witness_element_bytes[((witness_element_bytes.len()
-                            - (i + 1) as usize)
-                            * num_bytes_in_digit as usize)
-                            ..((witness_element_bytes.len() - *i as usize)
-                                * num_bytes_in_digit as usize)];
-                        // Convert this into a usize for storage purposes into the `digit_multiplicity_count` map.
-                        let mut padded_bytes_for_usize = [0u8; std::mem::size_of::<usize>()];
-                        assert!(index_bytes.len() < padded_bytes_for_usize.len());
-                        let offset = padded_bytes_for_usize.len() - index_bytes.len();
-                        padded_bytes_for_usize[offset..].copy_from_slice(&index_bytes);
-                        let digit_usize = usize::from_be_bytes(padded_bytes_for_usize);
-                        digit_multiplicity_count
-                            .get_mut(&LOG_BASE_DECOMPOSITION)
-                            .unwrap()[digit_usize] += 1;
-                        // Return the field element that represents this digit.
-                        FieldElement::from_be_bytes_reduce(index_bytes)
+                    WitnessBuilder::DigitDecomp(log_k, i, previous_digit_sum) => {
+                        let witness_element_bits: Vec<bool> = witness[*i]
+                            .unwrap()
+                            .to_be_bytes()
+                            .iter()
+                            .flat_map(|byte| (0..8).rev().map(move |i| (byte >> i) & 1 != 0))
+                            .collect();
+                        // Grab the bits of the element that we need for the digit.
+                        let index_bits = &witness_element_bits[(witness_element_bits.len()
+                            - (*previous_digit_sum + log_k) as usize)
+                            ..(witness_element_bits.len() - *previous_digit_sum as usize)];
+                        // Convert the decomposed value back into a field element.
+                        let next_multiple_of_8 = index_bits.len().div_ceil(8) * 8;
+                        let padding_amt = next_multiple_of_8 - index_bits.len();
+                        let mut padded_index_bits = vec![false; next_multiple_of_8];
+                        padded_index_bits[padding_amt..].copy_from_slice(index_bits);
+                        let be_byte_vec: Vec<u8> = padded_index_bits
+                            .chunks(8)
+                            .map(|chunk_in_bits| {
+                                chunk_in_bits
+                                    .iter()
+                                    .enumerate()
+                                    .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << (7 - i)))
+                            })
+                            .collect();
+                        FieldElement::from_be_bytes_reduce(&be_byte_vec)
                     }
                     WitnessBuilder::DigitMultiplicity(i, j) => {
                         // NOTE: all the digital decompositions must be added to the witness before querying

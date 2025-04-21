@@ -20,8 +20,8 @@ use {
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
-const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 32;
-pub const LOG_BASE_DECOMPOSITION: u32 = 32;
+const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 16;
+pub const LOG_BASE_DECOMPOSITION: u32 = 16;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// [R1CSSolver].
@@ -63,7 +63,7 @@ impl R1CS {
         let mut range_blocks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
-        let mut range_blocks_outside_threshold: BTreeMap<u32, &Vec<usize>> = BTreeMap::new();
+        let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -171,8 +171,8 @@ impl R1CS {
                         let input = function_input.input();
                         let num_bits = function_input.num_bits();
                         let input_wb = match input {
-                            ConstantOrWitnessEnum::Constant(value) => {
-                                WitnessBuilder::Constant(value)
+                            ConstantOrWitnessEnum::Constant(_) => {
+                                panic!("We should never be range-checking a constant value, as this should already be done by the noir-ACIR compiler");
                             }
                             ConstantOrWitnessEnum::Witness(witness) => {
                                 WitnessBuilder::Acir(witness.as_usize())
@@ -184,11 +184,6 @@ impl R1CS {
                             .entry(num_bits)
                             .or_default()
                             .push(input_witness);
-                        // Keep track of the different ranges we are checking in order
-                        // to track and update multiplicities.
-                        range_blocks.keys().for_each(|key| {
-                            r1cs.solver.range_checks.push(*key);
-                        });
                     }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
@@ -251,70 +246,82 @@ impl R1CS {
             );
         });
 
+        let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         range_blocks
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
-                if values_to_lookup.len() < NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
-                    values_to_lookup.iter().for_each(|value| {
-                        // If there are not enough values to look up, we do a naive range check.
-                        // This is simply doing $\prod_{i = 0}^{range}{a - i} = 0, for each
-                        // witness $a$.
-                        r1cs.add_naive_range_check(*num_bits, *value);
-                    })
-                } else {
-                    if (*num_bits < NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP)
-                        || !num_bits.is_power_of_two()
-                    {
-                        // If the num_bits is less than the threshold (so we do not need to do
-                        // a base decomposition), or is not a power of two (so we cannot evenly
-                        // divide by the base digital decomp), we do a logup over the entire
-                        // range of the number of bits.
-                        r1cs.add_logup_summations(*num_bits, values_to_lookup);
-                    } else {
-                        // Otherwise, we insert it into a map of all of the lookups for ranges
-                        // outside of the threshold.
-                        range_blocks_outside_threshold.insert(*num_bits, values_to_lookup);
+                if *num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
+                    for value in values_to_lookup {
+                        let mut smaller_num_bits = num_bits.clone();
+                        let mut sum_of_bits_so_far = 0;
+                        while smaller_num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
+                            let digit_wb = WitnessBuilder::DigitDecomp(
+                                NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
+                                *value,
+                                sum_of_bits_so_far,
+                            );
+                            let digit_wb_idx = r1cs.add_witness(digit_wb);
+                            value_to_decomp_map
+                                .entry(*value)
+                                .or_default()
+                                .push((NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, digit_wb_idx));
+                            range_blocks_decomp_sorted
+                                .entry(NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP)
+                                .or_default()
+                                .push(digit_wb_idx);
+                            sum_of_bits_so_far += NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
+                            smaller_num_bits -= NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
+                        }
+                        let digit_wb = WitnessBuilder::DigitDecomp(
+                            smaller_num_bits,
+                            *value,
+                            sum_of_bits_so_far,
+                        );
+                        let digit_wb_idx = r1cs.add_witness(digit_wb);
+                        range_blocks_decomp_sorted
+                            .entry(smaller_num_bits)
+                            .or_default()
+                            .push(digit_wb_idx);
+                        value_to_decomp_map
+                            .entry(*value)
+                            .or_default()
+                            .push((smaller_num_bits, digit_wb_idx));
                     }
+                } else {
+                    range_blocks_decomp_sorted.insert(*num_bits, values_to_lookup.clone());
                 }
             });
 
-        let mut digital_decomp_witness_vec: Vec<usize> = Vec::new();
-        range_blocks_outside_threshold
+        value_to_decomp_map
+            .iter()
+            .for_each(|(value, le_decomposition)| {
+                let digits_constraint_a: Vec<(FieldElement, usize)> = le_decomposition
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (recomp_coeff, digit))| {
+                        let recomp_coeff_scaled =
+                            FieldElement::from(((1 << *recomp_coeff) as usize).pow(index as u32));
+                        (recomp_coeff_scaled, *digit)
+                    })
+                    .collect();
+                r1cs.matrices.add_constraint(
+                    &digits_constraint_a,
+                    &[(FieldElement::one(), r1cs.solver.witness_one())],
+                    &[(FieldElement::one(), *value)],
+                );
+            });
+
+        range_blocks_decomp_sorted
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
-                let num_digits = *num_bits / LOG_BASE_DECOMPOSITION;
-                values_to_lookup.iter().for_each(|value_index| {
-                    // We first compute the digits, going from least significant
-                    // to most significant.
-                    let digits_in_le_order: Vec<usize> = (0..num_digits)
-                        .map(|digit| {
-                            let digit_wb = WitnessBuilder::DigitDecomp(digit, *value_index);
-                            r1cs.add_witness(digit_wb)
-                        })
-                        .collect();
-                    // We add the constraint for the recomposition, to check if it is
-                    // equal to the original value.
-                    let digits_constraint_a: Vec<(FieldElement, usize)> = digits_in_le_order
-                        .iter()
-                        .enumerate()
-                        .map(|(index, digit)| {
-                            let recomp_coeff = FieldElement::from(
-                                ((1 << LOG_BASE_DECOMPOSITION) as usize).pow(index as u32),
-                            );
-                            (recomp_coeff, *digit)
-                        })
-                        .collect();
-                    r1cs.matrices.add_constraint(
-                        &digits_constraint_a,
-                        &[(FieldElement::one(), r1cs.solver.witness_one())],
-                        &[(FieldElement::one(), *value_index)],
-                    );
-                    // We then add the digits to a vec of witnesses to range check in
-                    // a single lookup table.
-                    digital_decomp_witness_vec.extend(digits_in_le_order);
-                });
+                if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
+                    r1cs.add_logup_summations(*num_bits, &values_to_lookup);
+                } else {
+                    values_to_lookup.iter().for_each(|value| {
+                        r1cs.add_naive_range_check(*num_bits, *value);
+                    })
+                }
             });
-        r1cs.add_logup_summations(LOG_BASE_DECOMPOSITION, &digital_decomp_witness_vec);
         r1cs
     }
 
@@ -469,7 +476,7 @@ impl R1CS {
     ///
     /// Checks that both sums (LHS and RHS) are equal at the end.
     fn add_logup_summations(&mut self, num_bits: u32, values_to_lookup: &[usize]) {
-        // Sample the Shwartz-Zippel challenge for the log derivative
+        // Sample the Schwartz-Zippel challenge for the log derivative
         // multiset check.
         let sz_challenge = self.add_witness(WitnessBuilder::Challenge);
         // Compute all the terms in the summation for multiplicity/(X - table_value)
