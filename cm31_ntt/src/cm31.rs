@@ -17,12 +17,27 @@ pub struct CF {
 }
 
 // The 8th root of unity and its negation
-pub const W_8: CF = CF::new(0x00008000, 0x00008000);
-pub const W_8_NEG_1: CF = CF::new(0x7fff7fff, 0x7fff7fff);
+pub const W_8: CF = CF { 
+    a: RF { val: 0x00008000},
+    b: RF { val: 0x00008000 }
+};
+
+pub const W_8_NEG_1: CF = CF {
+    a: RF { val: 0x7fff7fff},
+    b: RF { val: 0x7fff7fff }
+};
 
 // The 4th root of unity and its negation
-pub const W_4: CF = CF::new(0x00000000, 0x00000001);
-pub const W_4_NEG_1: CF = CF::new(0x7fffffff, 0x7ffffffe);
+pub const W_4: CF = CF {
+    a: RF { val: 0x00000000},
+    b: RF { val: 0x00000001 }
+};
+
+pub const W_4_NEG_1: CF = CF {
+    a: RF { val: 0x7fffffff},
+    b: RF { val: 0x7ffffffe }
+};
+
 
 /// Returns the 2nd to n-th roots of unity (inclusive).
 pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
@@ -38,7 +53,7 @@ pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
 }
 
 impl CF {
-    pub const fn new(real: u32, imag: u32) -> CF {
+    pub fn new(real: u32, imag: u32) -> CF {
         CF { a: RF::new(real), b: RF::new(imag) }
     }
 
@@ -359,7 +374,7 @@ impl Distribution<CF> for Standard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::m31::P;
+    use crate::rm31::P;
     use rand_chacha::ChaCha8Rng;
     use rand_chacha::rand_core::SeedableRng;
     use num_traits::One;

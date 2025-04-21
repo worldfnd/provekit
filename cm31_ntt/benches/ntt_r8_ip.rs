@@ -9,11 +9,11 @@ use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 
 fn bench(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ntt::ntt");
+    let mut group = c.benchmark_group("ntt_r8_ip");
 
     for log8_n in 7..9 {
         let n = 8usize.pow(log8_n);
-        let w = get_root_of_unity(n as usize);
+        let wn = get_root_of_unity(n as usize);
         let mut rng = ChaCha8Rng::seed_from_u64(0);
 
         let mut f = vec![CF::zero(); n];
@@ -21,13 +21,12 @@ fn bench(c: &mut Criterion) {
             f[i] = rng.r#gen();
         }
 
-        group.bench_function(format!("size {n} without precomputation (optimised)"), |b| {
+        group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt(black_box(&f), w);
+                ntt_r8_ip(black_box(&mut f), wn);
             })
         });
     }
-
     group.finish();
 }
 

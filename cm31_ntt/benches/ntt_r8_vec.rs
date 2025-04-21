@@ -8,22 +8,12 @@ use rand::Rng;
 use rand_chacha::ChaCha8Rng;
 use rand_chacha::rand_core::SeedableRng;
 
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref PRECOMP: Vec<CF> = {
-        let n = 8usize.pow(8);
-        let wn = get_root_of_unity(n);
-        precomp_vec_twiddles(n, wn, 8)
-    };
-}
 fn bench(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ntt::ntt_radix_8");
+    let mut group = c.benchmark_group("ntt_r8_vec");
 
-    for log8_n in [8] {
+    for log8_n in 7..9 {
         let n = 8usize.pow(log8_n);
-        //let wn = get_root_of_unity(n as usize);
-        //let precomp = precomp_vec_twiddles(n, wn, 8);
+        let wn = get_root_of_unity(n as usize);
         let mut rng = ChaCha8Rng::seed_from_u64(0);
 
         let mut f = vec![CF::zero(); n];
@@ -31,9 +21,9 @@ fn bench(c: &mut Criterion) {
             f[i] = rng.r#gen();
         }
 
-        group.bench_function(format!("size {n} with precomputation (Vec)"), |b| {
+        group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_radix_8_precomp(black_box(&f), &*PRECOMP);
+                ntt_r8_vec(black_box(&f), wn);
             })
         });
     }

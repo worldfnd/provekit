@@ -1,4 +1,3 @@
-use crate::m31::into_m31;
 use core::fmt::Display;
 use num_traits::{ Zero, One, Pow };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
@@ -8,7 +7,6 @@ use rand::Rng;
 
 pub const P: u32 = 0x7fffffff;
 pub const P_64: u64 = 0x7fffffff;
-pub const P2: u64 = 0xfffffffe;
 pub const P3: u64 = 0x17ffffffd;
 pub const MASK: u64 = 0xffffffff;
 
@@ -18,24 +16,19 @@ pub const MASK: u64 = 0xffffffff;
 // See https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf
 #[derive(Copy, Clone, Debug)]
 pub struct RF {
-    pub(crate) val: u64,
+    pub(crate) val: u32,
 }
 
-pub fn reduce(value: u64) -> u64 {
-    let x_l = value & 0xffffffff;
-    let x_h = value >> 32;
-
-    let mut r = x_h * 2 + x_l;
-    while r >= P_64 {
-        r -= P_64;
-    }
-    r
+pub fn reduce(value: u32) -> u32 {
+    let hi = value >> 31;
+    let x = (value & P) + hi;
+    if x == P { 0 } else { x }
 }
 
 impl RF {
     #[inline]
-    pub const fn new(value: u32) -> RF {
-        RF { val: into_m31(value).val as u64 }
+    pub fn new(value: u32) -> RF {
+        RF { val: reduce(value) }
     }
 
     #[inline]
@@ -59,7 +52,6 @@ impl RF {
         res
     }
 
-    #[inline]
     pub fn try_inverse(&self) -> Option<Self> {
         // From https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L188
         if self.is_zero() {
@@ -79,27 +71,27 @@ impl RF {
         let p1111111111111111111111111111 = p1111111111111111.reduce().exp_power_of_2(12) * p111111111111;
         let p1111111111111111111111111111101 =
             p1111111111111111111111111111.reduce().exp_power_of_2(3) * p101;
-        Some(p1111111111111111111111111111101.reduce())
+
+        let fully_reduced = p1111111111111111111111111111101.reduce().val % P;
+        Some(RF::new(fully_reduced))
     }
 
-    #[inline]
     pub fn mul_2exp_u64(&self, exp: u64) -> Self {
         // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = exp % 31;
-        let left = (reduced << exp) & P_64;
+        let left = (reduced << exp) & P;
         let right = reduced >> (31 - exp);
         let rotated = left | right;
         Self::new(rotated as u32)
     }
 
-    #[inline]
     pub fn div_2exp_u64(&self, exp: u64) -> Self {
         // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = (exp % 31) as u8;
         let left =   reduced >> exp;
-        let right = (reduced << (31 - exp)) & P_64;
+        let right = (reduced << (31 - exp)) & P;
         let rotated = left | right;
         Self::new(rotated as u32)
     }
@@ -125,16 +117,9 @@ impl Into<RF> for u32 {
     }
 }
 
-impl Into<RF> for u64 {
+impl From<RF> for u32 {
     #[inline]
-    fn into(self) -> RF {
-        RF { val: reduce(self) }
-    }
-}
-
-impl From<RF> for u64 {
-    #[inline]
-    fn from(f: RF) -> u64 {
+    fn from(f: RF) -> u32 {
         f.val
     }
 }
@@ -164,21 +149,25 @@ impl Neg for RF {
 
     #[inline]
     fn neg(self) -> Self::Output {
-        let tmp = P3 - (self.val & MASK);
-        let msb = (tmp >> 32) & 1;
-        let out = 2 * msb + (tmp & MASK);
+        let tmp   = P3 - self.val as u64;
+        let carry = (tmp >> 32) as u32;
+        let low   = tmp as u32;
+        let out = low.wrapping_add(carry << 1);
         RF { val: out }
     }
 }
-
 impl Mul for RF {
     type Output = Self;
 
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
-        let tmp = self.val * rhs.val;
-        let tmp = 2 * (tmp >> 32) + (tmp & MASK);
-        let out = 2 * (tmp >> 32) + (tmp & MASK);
+        let prod = self.val as u64 * rhs.val as u64;
+        let hi  = prod >> 32;
+        let lo  = prod & 0xffffffff;
+        let tmp = lo + hi * 2;
+        let hi2 = tmp >> 32;
+        let lo2 = tmp & 0xffffffff;
+        let out = (lo2 + hi2 * 2) as u32;
         RF { val: out }
     }
 }
@@ -193,7 +182,7 @@ impl MulAssign for RF {
 impl PartialEq for RF {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        reduce(self.val) == reduce(other.val)
+        self.val % P == other.val % P
     }
 }
 
@@ -219,12 +208,10 @@ impl Add for RF {
     #[inline]
     /// The output may not be fully reduced
     fn add(self, rhs: Self) -> Self::Output {
-        let mut tmp: u64 = self.val + rhs.val;
-        let mut msb: u64 = (tmp >> 32) & 1;
-        tmp = 2 * msb + (tmp & MASK);
-        msb = (tmp >> 32) & 1;
-        tmp = 2 * msb + (tmp & MASK);
-        RF { val: tmp }
+        let tmp = self.val as u64 + rhs.val as u64;
+        let carry = (tmp >> 32) as u32;
+        let low   = tmp as u32;
+        RF { val: low.wrapping_add(carry << 1) }
     }
 }
 
@@ -241,9 +228,10 @@ impl Sub for RF {
     #[inline]
     /// The output may not be fully reduced
     fn sub(self, rhs: Self) -> Self::Output {
-        let tmp: u64 = P3 + (self.val & MASK) - (rhs.val & MASK);
-        let msb = (tmp >> 32) & 3;
-        RF { val: 2 * msb + (tmp & MASK) }
+        let tmp: u64 = P3 + self.val as u64 - rhs.val as u64;
+        let carry = (tmp >> 32) as u32;
+        let low   = tmp as u32;
+        RF { val: low.wrapping_add(carry << 1) }
     }
 }
 
@@ -279,7 +267,7 @@ impl Distribution<RF> for Standard {
         loop {
             let candidate = (rng.next_u32() >> 1) as u32;
             if candidate < threshold {
-                return RF { val: (candidate % P) as u64 };
+                return RF { val: candidate % P };
             }
         }
     }
@@ -323,23 +311,18 @@ mod tests {
 
     #[test]
     fn test_reduce() {
-        let v = 0xffffffffffffffff;
-        let expected = v % P_64;
+        let v = P - 123;
+        let expected = v % P;
         let v31: RF = v.into();
         assert_eq!(expected, v31.val);
 
-        let v = P_64 - 123;
-        let expected = v % P_64;
+        let v = P;
+        let expected = v % P;
         let v31: RF = v.into();
         assert_eq!(expected, v31.val);
 
-        let v = P_64;
-        let expected = v % P_64;
-        let v31: RF = v.into();
-        assert_eq!(expected, v31.val);
-
-        let v = P_64 + 123;
-        let expected = v % P_64;
+        let v = P + 123;
+        let expected = v % P;
         let v31: RF = v.into();
         assert_eq!(expected, v31.val);
     }
@@ -350,10 +333,9 @@ mod tests {
             let lhs: RF = (*lhs).into();
             let rhs: RF = (*rhs).into();
             
-            // The result may not be fully reduced
-            let expected = (lhs.val + rhs.val) % P_64;
-            let result = (lhs + rhs).val % P_64;
-            assert_eq!(expected, result);
+            let expected = (lhs.val as u64 + rhs.val as u64) % P_64;
+            let result = (lhs + rhs).val % P;
+            assert_eq!(expected as u32, result);
         }
     }
 
@@ -370,10 +352,10 @@ mod tests {
 
         for v in vals {
             expected += v.val;
-            expected %= P_64;
+            expected %= P;
 
             sum += *v;
-            assert_eq!(sum.val % P_64, expected % P_64);
+            assert_eq!(sum, RF::new(expected));
         }
     }
 
@@ -383,13 +365,12 @@ mod tests {
             let lhs: RF = (*lhs).into();
             let rhs: RF = (*rhs).into();
             
-            // The result should be fully reduced even if the inputs are not
             let expected = if lhs.val > rhs.val {
-                (lhs.val - rhs.val) % P_64
+                (lhs.val - rhs.val) % P
             } else {
-                (P_64 - (rhs.val - lhs.val)) % P_64
+                (P - (rhs.val - lhs.val)) % P
             };
-            let result = (lhs - rhs).val % P_64;
+            let result = (lhs - rhs).val % P;
             assert_eq!(expected, result);
         }
     }
@@ -409,35 +390,34 @@ mod tests {
             expected = if expected > v.val {
                 expected - v.val
             } else {
-                P_64 - (v.val - expected)
+                P - (v.val - expected)
             };
 
             sum -= *v;
-            assert_eq!(sum.val % P_64, expected % P_64);
+            assert_eq!(sum, RF::new(expected));
         }
     }
 
     #[test]
     fn test_neg() {
-        let vals: &[(u64, u64)] = &[
+        let vals: &[(u32, u32)] = &[
             (0, 0),
             (2, 0),
             (1234, 0),
-            (P_64 - 1, 0),
-            (P_64 - 2, 0),
-            (P_64, 0),
-            (P_64 + 1, 0),
-            (P_64 + 2, 0),
-            (P_64 + 1234, 0),
-            (P_64 - 1, 1234),
+            (P - 1, 0),
+            (P - 2, 0),
+            (P, 0),
+            (P, 1),
+            (P, 2),
+            (P, 1234),
         ];
 
         for v in vals {
-            let x = RF::new(v.0 as u32) + RF::new(v.1 as u32);
-            let n = x.neg().reduce();
-            let mut e = P_64 - ((v.0 + v.1) % P_64);
-            e = e % P_64;
-            assert_eq!(n.val, e);
+            let x = RF::new(v.0) + RF::new(v.1);
+            let n = x.neg();
+            let s = x + n;
+            let expected = RF::new(0);
+            assert_eq!(s, expected);
         }
     }
 
@@ -448,9 +428,9 @@ mod tests {
             let rhs: RF = (*rhs).into();
             
             // The result may not be fully reduced
-            let expected = (lhs.val * rhs.val) % P_64;
-            let result = (lhs * rhs).val % P_64;
-            assert_eq!(expected, result);
+            let expected = (lhs.val as u64 * rhs.val as u64 ) % P_64;
+            let result = (lhs * rhs).val % P;
+            assert_eq!(expected as u32, result);
         }
     }
 
@@ -472,9 +452,9 @@ mod tests {
         let mut product = RF::new(1);
         for v in vals {
             expected *= v.val;
-            expected %= P_64;
+            expected %= P;
             product *= *v;
-            assert_eq!(product.val % P_64, expected);
+            assert_eq!(product.val % P, expected);
         }
     }
 
@@ -507,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_add_without_reduce() {
-        let e_x = P_64 - 1;
+        let e_x = P - 1;
         let mut e_y = e_x;
         let x = RF::new(P - 1);
         let mut y = x;
@@ -515,7 +495,7 @@ mod tests {
             y += x;
             let reduced = y.reduce();
             
-            e_y = (e_y + e_x) % P_64;
+            e_y = (e_y + e_x) % P;
 
             assert_eq!(reduced.val, e_y);
         }

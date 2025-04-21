@@ -14,7 +14,7 @@ lazy_static! {
     static ref PRECOMP_SMALL: Vec<CF> = {
         let n = NTT_BLOCK_SIZE_FOR_CACHE;
         let wn = get_root_of_unity(n);
-        precomp_twiddles(n, wn)
+        precomp_for_ntt_r8_ip_p(n, wn)
     };
 
     static ref PRECOMP_FULL: Vec<CF> = {
@@ -27,31 +27,10 @@ lazy_static! {
 fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("ntt::ntt");
 
-    /*
     for log8_n in 7..9 {
         let n = 8usize.pow(log8_n);
-        let wn = get_root_of_unity(n as usize);
-        let precomp = precomp_twiddles(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE));
-
-        let mut rng = ChaCha8Rng::seed_from_u64(0);
-
-        let mut f = vec![CF::zero(); n];
-        for i in 0..n {
-            f[i] = rng.r#gen();
-        }
-
-        group.bench_function(format!("size {n} with precomputation (optimised)"), |b| {
-            b.iter(|| {
-                ntt_precomp(black_box(&f), wn, &precomp);
-            })
-        });
-    }
-    */
-
-    for log8_n in [7, 8] {
-        let n = 8usize.pow(log8_n);
-        let wn = get_root_of_unity(n);
-        //let precomp_small = precomp_twiddles(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE));
+        //let wn = get_root_of_unity(n);
+        //let precomp_small = precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE));
         //let precomp_full = gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE);
 
         let mut rng = ChaCha8Rng::seed_from_u64(0);
@@ -61,9 +40,11 @@ fn bench(c: &mut Criterion) {
             f[i] = rng.r#gen();
         }
 
-        group.bench_function(format!("ntt_precomp_full() on size {n} with precomputation (optimised)"), |b| {
+        let mut scratch = vec![CF::zero(); n];
+
+        group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_precomp_full(black_box(&f), &*PRECOMP_SMALL, &*PRECOMP_FULL);
+                ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_SMALL, &*PRECOMP_FULL);
             })
         });
     }

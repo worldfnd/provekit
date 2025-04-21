@@ -15,21 +15,25 @@ lazy_static = "1.5.0"
 rand_chacha = "0.3.1"
 
 [[bench]]
-name = "ntt"
+name = "ntt_r8_vec"
 harness = false
 
 [[bench]]
-name = "ntt_precomp"
+name = "ntt_r8_vec_p"
 harness = false
 
 [[bench]]
-name = "ntt_vec"
+name = "ntt_r8_ip"
 harness = false
 
 [[bench]]
-name = "ntt_vec_precomp"
+name = "ntt_r8_ip_p"
 harness = false
 
 [[bench]]
-name = "ntt_in_place"
+name = "ntt_r8_hybrid_ps"
+harness = false
+
+[[bench]]
+name = "ntt_r8_hybrid_p"
 harness = false
