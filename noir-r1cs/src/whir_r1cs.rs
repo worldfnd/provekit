@@ -33,7 +33,7 @@ use {
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
-            statement::{Statement, StatementVerifier as GenericStatementVerifier, Weights},
+            statement::{Statement, StatementVerifier as GenericStatementVerifier, VerifierWeights, Weights},
             verifier::Verifier,
             WhirProof as GenericWhirProof,
         },
@@ -63,21 +63,13 @@ pub struct WhirR1CSProof {
 
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
-    alpha: Vec<FieldElement>,
-
-    // TODO: Derive from transcript
-    #[serde(with = "serde_ark")]
-    r: Vec<FieldElement>,
-
-    // TODO: Derive from transcript
-    #[serde(with = "serde_ark")]
-    last_sumcheck_val: FieldElement,
-
-    // TODO: Derive from transcript
-    #[serde(with = "serde_ark")]
     whir_query_answer_sums: [FieldElement; 3],
-    // TODO: Derive from scheme and transcript
-    // statement: Statement<FieldElement>,
+}
+
+struct DataFromSumcheckVerifier {
+    r: Vec<FieldElement>, 
+    alpha: Vec<FieldElement>,
+    last_sumcheck_val: FieldElement,
 }
 
 impl WhirR1CSScheme {
@@ -139,14 +131,14 @@ impl WhirR1CSScheme {
 
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha, r, last_sumcheck_val) =
+        let (merlin, alpha) =
             run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, whir_query_answer_sums, _statement) =
+        let (whir_proof, merlin, whir_query_answer_sums) =
             run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
@@ -154,11 +146,7 @@ impl WhirR1CSScheme {
         Ok(WhirR1CSProof {
             transcript,
             whir_proof,
-            alpha,
-            r,
-            last_sumcheck_val,
             whir_query_answer_sums,
-            // statement,
         })
     }
 
@@ -169,10 +157,17 @@ impl WhirR1CSScheme {
         let io = create_io_pattern(self.m_0, &self.whir_config);
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
-        // Compute statement verifier
-        let statement_verifier = StatementVerifier::from_statement(todo!());
 
-        run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
+        // Compute statement verifier
+        let mut statement_verifier = StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
+        for claimed_sum in &proof.whir_query_answer_sums {
+            statement_verifier.add_constraint(
+                VerifierWeights::linear(self.m, None),
+                claimed_sum.clone(),
+            );
+        }           
+
+        let data_from_sumcheck_verifier = run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(
             &mut arthur,
             &self.whir_config,
@@ -183,10 +178,10 @@ impl WhirR1CSScheme {
 
         // Check the Spartan sumcheck relation.
         ensure!(
-            proof.last_sumcheck_val
+            data_from_sumcheck_verifier.last_sumcheck_val
                 == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
                     - proof.whir_query_answer_sums[2])
-                    * calculate_eq(&proof.r, &proof.alpha),
+                    * calculate_eq(&data_from_sumcheck_verifier.r, &data_from_sumcheck_verifier.alpha),
             "last sumcheck value does not match"
         );
 
@@ -215,8 +210,6 @@ pub fn run_sumcheck_prover(
 ) -> (
     ProverState<SkyscraperSponge, FieldElement>,
     Vec<FieldElement>,
-    Vec<FieldElement>,
-    FieldElement,
 ) {
     let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
     // r is the combination randomness from the 2nd item of the interaction phase
@@ -282,7 +275,7 @@ pub fn run_sumcheck_prover(
         );
 
         let _ = merlin.add_scalars(&hhat_i_coeffs[..]);
-        let mut alpha_i_wrapped_in_vector = vec![FieldElement::zero()];
+        let mut alpha_i_wrapped_in_vector = [FieldElement::zero()];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
         alpha.push(alpha_i);
@@ -291,7 +284,7 @@ pub fn run_sumcheck_prover(
 
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
-    (merlin, alpha, r, saved_val_for_sumcheck_equality_assertion)
+    (merlin, alpha)
 }
 
 #[instrument(skip_all)]
@@ -305,7 +298,6 @@ pub fn run_whir_pcs_prover(
     WhirProof,
     ProverState<SkyscraperSponge, FieldElement>,
     [FieldElement; 3],
-    Statement<FieldElement>,
 ) {
     info!("WHIR Parameters: {params}");
 
@@ -333,28 +325,31 @@ pub fn run_whir_pcs_prover(
 
     let prover = Prover(params.clone());
     let proof = prover
-        .prove(&mut merlin, statement.clone(), witness)
+        .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (proof, merlin, sums, statement)
+    (proof, merlin, sums)
 }
 
 #[instrument(skip_all)]
 pub fn run_sumcheck_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     m_0: usize,
-) -> Result<()> {
+) -> Result<DataFromSumcheckVerifier> {
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
 
     let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
 
-    for _i in 0..m_0 {
-        let mut hhat_i = vec![FieldElement::zero(); 4];
-        let mut alpha_i = vec![FieldElement::zero(); 1];
+    let mut alpha = vec![FieldElement::zero(); m_0];
+
+    for i in 0..m_0 {
+        let mut hhat_i = [FieldElement::zero(); 4];
+        let mut alpha_i = [FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
+        alpha[i] = alpha_i[0];
         let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &FieldElement::zero());
         let hhat_i_at_one = eval_qubic_poly(&hhat_i, &FieldElement::one());
         ensure!(
@@ -363,8 +358,10 @@ pub fn run_sumcheck_verifier(
         );
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
     }
-    Ok(())
+
+    Ok(DataFromSumcheckVerifier{r, alpha, last_sumcheck_val: saved_val_for_sumcheck_equality_assertion})
 }
+
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_verifier(
