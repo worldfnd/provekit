@@ -185,6 +185,27 @@ impl R1CS {
                             .or_default()
                             .push(input_witness);
                     }
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                        let lhs_input = lhs.input();
+                        let rhs_input = rhs.input();
+                        let (lhs_input_wb, rhs_input_wb) = match (lhs_input, rhs_input) {
+                            (
+                                ConstantOrWitnessEnum::Witness(lhs_input_witness),
+                                ConstantOrWitnessEnum::Witness(rhs_input_witness),
+                            ) => (
+                                WitnessBuilder::Acir(lhs_input_witness.as_usize()),
+                                WitnessBuilder::Acir(rhs_input_witness.as_usize()),
+                            ),
+                            _ => panic!(
+                                "Currently we do not support calling `AND` on non-witness values, although this can be easily remedied."
+                            ),
+                        };
+                        let lhs_r1cs_witness_idx = r1cs.add_witness(lhs_input_wb);
+                        let rhs_r1cs_witness_idx = r1cs.add_witness(rhs_input_wb);
+                        let output_r1cs_witness_idx =
+                            r1cs.add_witness(WitnessBuilder::Acir(output.as_usize()));
+                        // --- Let's assume they are all u32s for now, and that we are creating a single (u4, u4, u4) LogUp table ---
+                    }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
                     }
@@ -336,8 +357,8 @@ impl R1CS {
             })
     }
 
-    // Add a new witness to the R1CS instance, returning its index.
-    // If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
+    /// Add a new witness to the R1CS instance, returning its index.
+    /// If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
     fn add_witness(&mut self, witness_builder: WitnessBuilder) -> usize {
         let next_witness_idx = self.matrices.add_witness();
         // Add the witness to the mapping if it is an ACIR witness
@@ -382,7 +403,7 @@ impl R1CS {
         sum
     }
 
-    // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
+    /// Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
     fn add_acir_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
@@ -392,6 +413,9 @@ impl R1CS {
 
         if expr.mul_terms.len() >= 1 {
             // Process all except the last multiplication term
+            // --- Okay so `linear` is a vector consisting of all the (coeff, product witness R1CS index)s ---
+            // --- And the idea is that all (linearized) mul terms except the very last one are negative because they're on the C side ---
+            // --- as well as all linear terms, as well as the constant ---
             linear = expr
                 .mul_terms
                 .iter()
