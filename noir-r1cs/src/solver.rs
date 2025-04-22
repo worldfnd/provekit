@@ -1,7 +1,5 @@
-use rand::seq::index;
-
-use crate::compiler::LOG_BASE_DECOMPOSITION;
 use {
+    crate::compiler::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
@@ -50,6 +48,13 @@ pub enum WitnessBuilder {
     /// The multiplicity of the value i, for a range check of j num_bits.
     /// Fields are (i, j).
     DigitMultiplicity(u32, u32),
+    /// NOTE: This is not going to add to the R1CS witness vector and is not actually
+    /// a witness builder. It is simply a placeholder to indicate to the R1CS solver
+    /// that we need to add to the multiplicity count of a particular witness.
+    ///
+    /// In particular, this is to add to the multiplicity count for the value of the
+    /// jth witness in the lookup table for i bits. Fields are (i, j).
+    AddMultiplicityCount(u32, usize),
 }
 
 /// Mock transcript. To be replaced.
@@ -79,8 +84,9 @@ pub struct R1CSSolver {
     /// The length of each memory block
     pub memory_lengths: BTreeMap<usize, usize>,
 
-    /// The ranges that are checked.
-    pub range_checks: Vec<u32>,
+    // The multiplicities for each of the values in the various
+    // lookup tables we create throughout the R1CS compilation.
+    pub multiplicity_counts: BTreeMap<u32, Vec<u32>>,
 }
 
 impl R1CSSolver {
@@ -88,7 +94,9 @@ impl R1CSSolver {
         Self {
             witness_builders: vec![WitnessBuilder::Constant(FieldElement::one())],
             memory_lengths: BTreeMap::new(),
-            range_checks: Vec::new(),
+            multiplicity_counts: (0..NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP)
+                .map(|range_check_bits| (range_check_bits, vec![0u32; 1 << range_check_bits]))
+                .collect(),
         }
     }
 
@@ -99,7 +107,7 @@ impl R1CSSolver {
 
     /// Given the ACIR witness values, solve for the R1CS witness values.
     pub fn solve(
-        &self,
+        &mut self,
         transcript: &mut MockTranscript,
         acir_witnesses: &WitnessMap<FieldElement>,
     ) -> Vec<FieldElement> {
@@ -110,13 +118,9 @@ impl R1CSSolver {
             .iter()
             .map(|(block_id, len)| (*block_id, vec![0u32; *len]))
             .collect();
-        // The multiplicities for each of the values in the various
-        // lookup tables we create throughout the R1CS compilation.
-        let mut digit_multiplicity_count: BTreeMap<u32, Vec<u32>> = self
-            .range_checks
-            .iter()
-            .map(|range_check_bits| (*range_check_bits, vec![0u32; 1 << *range_check_bits]))
-            .collect();
+
+        let mut witness_index = 0;
+
         self.witness_builders
             .iter()
             .enumerate()
@@ -208,12 +212,31 @@ impl R1CSSolver {
                     WitnessBuilder::DigitMultiplicity(i, j) => {
                         // NOTE: all the digital decompositions must be added to the witness before querying
                         // the solver for the multiplicity.
-                        let multiplicity = digit_multiplicity_count.get(j).unwrap()[*i as usize];
+                        let multiplicity = self.multiplicity_counts.get(j).unwrap()[*i as usize];
                         FieldElement::from(multiplicity)
                     }
+                    WitnessBuilder::AddMultiplicityCount(i, j) => {
+                        let witness_value = witness[*j].unwrap();
+                        let witness_value_as_bytes = witness_value.to_be_bytes();
+                        // Because we know that witnesses whose multiplicity we want will always
+                        // be less than 16 bits, we can just extract the last two bytes.
+                        let significant_witness_bytes =
+                            &witness_value_as_bytes[(witness_value_as_bytes.len() - 2)..];
+                        let witness_as_usize =
+                            u16::from_be_bytes(significant_witness_bytes.try_into().expect(
+                                "Witness value should be representable as a u16 if being looked up",
+                            )) as usize;
+                        self.multiplicity_counts.get_mut(i).unwrap()[witness_as_usize] += 1;
+                        // This does not matter as it does not add to the witnesses,
+                        FieldElement::zero()
+                    }
                 };
-                witness[witness_idx] = Some(value);
-                transcript.append(value);
+                if let WitnessBuilder::AddMultiplicityCount(_, _) = *witness_builder {
+                } else {
+                    witness[witness_idx] = Some(value);
+                    transcript.append(value);
+                    witness_index += 1;
+                }
             });
 
         witness.iter().map(|v| v.unwrap()).collect()
@@ -222,7 +245,14 @@ impl R1CSSolver {
     /// The number of witnesses in the R1CS instance.
     /// This includes the constant one witness.
     pub fn num_witnesses(&self) -> usize {
-        self.witness_builders.len()
+        let mut num_witnesses = 0;
+        self.witness_builders.iter().for_each(|wb| {
+            if let WitnessBuilder::AddMultiplicityCount(_, _) = *wb {
+            } else {
+                num_witnesses += 1
+            }
+        });
+        num_witnesses
     }
 
     /// Index of the constant 1 witness
