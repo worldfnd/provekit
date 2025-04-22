@@ -55,13 +55,17 @@ bytemuck = "1.19.0"
 hex-literal = "0.4.1"
 
 
-# Noir lang: make sure it matches installed version `noirup -C 03b58fa2`
-acir = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "03b58fa2" }
+# Noir lang: make sure it matches installed version `noirup -C ceaa198`
+# Your `nargo --version` command should give you the following:
+# nargo version = 1.0.0-beta.3
+# noirc version = 1.0.0-beta.3+ceaa1986628197bd1170147f6a07f0f98d21030a
+# (git version hash: ceaa1986628197bd1170147f6a07f0f98d21030a, is dirty: false)
+acir = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
 
 [patch.crates-io]
 ruint = { git = "https://github.com/recmo/uint", branch = "main" }

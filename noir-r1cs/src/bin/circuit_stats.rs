@@ -22,9 +22,6 @@ use {
 struct Args {
     /// Path to circuit file
     circuit_path: String,
-
-    /// Path to witness file
-    witness_path: String,
 }
 
 fn program_at_path(acir_path: String) -> Program<FieldElement> {
@@ -96,6 +93,12 @@ fn main() {
     .into_iter()
     .collect();
 
+    // --- Data tracking for AND/XOR opcodes ---
+    // Tuples are going to be the bit lengths of each binary input
+    // Values are going to be the number instances for that specific tuple input
+    let mut and_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut xor_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
+
     // --- Data tracking for range checks ---
     let mut range_check_bit_counts: HashMap<u32, usize> = HashMap::new();
 
@@ -139,13 +142,17 @@ fn main() {
                                 count.add_assign(1);
                             });
                     }
-                    BlackBoxFuncCall::AND {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                        dbg!(lhs);
+                        dbg!(rhs);
+                        dbg!(output);
                         blackbox_func_call_variants
                             .entry("AND")
+                            .and_modify(|count| {
+                                count.add_assign(1);
+                            });
+                        and_opcode_bit_counts
+                            .entry((lhs.num_bits(), rhs.num_bits()))
                             .and_modify(|count| {
                                 count.add_assign(1);
                             });
