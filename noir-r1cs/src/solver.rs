@@ -1,3 +1,6 @@
+use rand::seq::index;
+
+use crate::compiler::LOG_BASE_DECOMPOSITION;
 use {
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
@@ -29,7 +32,24 @@ pub enum WitnessBuilder {
     MemoryAccessCount(usize, usize),
     /// For solving for the denominator of an indexed lookup.
     /// Fields are (sz_challenge, (index_coeff, index), rs_challenge, value).
-    LogUpDenominator(usize, (FieldElement, usize), usize, usize),
+    IndexedLogUpDenominator(usize, (FieldElement, usize), usize, usize),
+    /// For solving for the denominator of a lookup (non-indexed).
+    /// Field are (sz_challenge, (value_coeff, value)).
+    LogUpDenominator(usize, (FieldElement, usize)),
+    /// Products with linear operations on the witness indices.
+    /// Fields are Product((index, a, b), (index, c, d)) such that
+    /// we wish to compute (ax + b) * (cx + d).
+    ProductLinearOperation(
+        (usize, FieldElement, FieldElement),
+        (usize, FieldElement, FieldElement),
+    ),
+    /// Witness builder to solve for the the digit of the ith witness index in BASE log(k),
+    /// but for mixed-digit decompositions such that the previous digits in total took up $j$ bits.
+    /// Fields are (log(k), i, j).
+    DigitDecomp(u32, usize, u32),
+    /// The multiplicity of the value i, for a range check of j num_bits.
+    /// Fields are (i, j).
+    DigitMultiplicity(u32, u32),
 }
 
 /// Mock transcript. To be replaced.
@@ -58,6 +78,9 @@ pub struct R1CSSolver {
 
     /// The length of each memory block
     pub memory_lengths: BTreeMap<usize, usize>,
+
+    /// The ranges that are checked.
+    pub range_checks: Vec<u32>,
 }
 
 impl R1CSSolver {
@@ -65,6 +88,7 @@ impl R1CSSolver {
         Self {
             witness_builders: vec![WitnessBuilder::Constant(FieldElement::one())],
             memory_lengths: BTreeMap::new(),
+            range_checks: Vec::new(),
         }
     }
 
@@ -85,6 +109,13 @@ impl R1CSSolver {
             .memory_lengths
             .iter()
             .map(|(block_id, len)| (*block_id, vec![0u32; *len]))
+            .collect();
+        // The multiplicities for each of the values in the various
+        // lookup tables we create throughout the R1CS compilation.
+        let mut digit_multiplicity_count: BTreeMap<u32, Vec<u32>> = self
+            .range_checks
+            .iter()
+            .map(|range_check_bits| (*range_check_bits, vec![0u32; 1 << *range_check_bits]))
             .collect();
         self.witness_builders
             .iter()
@@ -127,7 +158,7 @@ impl R1CSSolver {
                         let count = memory_read_counts.get(block_id).unwrap()[*addr];
                         FieldElement::from(count)
                     }
-                    WitnessBuilder::LogUpDenominator(
+                    WitnessBuilder::IndexedLogUpDenominator(
                         sz_challenge,
                         (index_coeff, index),
                         rs_challenge,
@@ -138,6 +169,47 @@ impl R1CSSolver {
                         let rs_challenge = witness[*rs_challenge].unwrap();
                         let sz_challenge = witness[*sz_challenge].unwrap();
                         sz_challenge - (*index_coeff * index + rs_challenge * value)
+                    }
+                    WitnessBuilder::LogUpDenominator(sz_challenge, (value_coeff, value)) => {
+                        let sz_challenge = witness[*sz_challenge].unwrap();
+                        let value = witness[*value].unwrap();
+                        sz_challenge - (*value_coeff * value)
+                    }
+                    WitnessBuilder::ProductLinearOperation((x, a, b), (y, c, d)) => {
+                        (*a * witness[*x].unwrap() + *b) * (*c * witness[*y].unwrap() + *d)
+                    }
+                    WitnessBuilder::DigitDecomp(log_k, i, previous_digit_sum) => {
+                        let witness_element_bits: Vec<bool> = witness[*i]
+                            .unwrap()
+                            .to_be_bytes()
+                            .iter()
+                            .flat_map(|byte| (0..8).rev().map(move |i| (byte >> i) & 1 != 0))
+                            .collect();
+                        // Grab the bits of the element that we need for the digit.
+                        let index_bits = &witness_element_bits[(witness_element_bits.len()
+                            - (*previous_digit_sum + log_k) as usize)
+                            ..(witness_element_bits.len() - *previous_digit_sum as usize)];
+                        // Convert the decomposed value back into a field element.
+                        let next_multiple_of_8 = index_bits.len().div_ceil(8) * 8;
+                        let padding_amt = next_multiple_of_8 - index_bits.len();
+                        let mut padded_index_bits = vec![false; next_multiple_of_8];
+                        padded_index_bits[padding_amt..].copy_from_slice(index_bits);
+                        let be_byte_vec: Vec<u8> = padded_index_bits
+                            .chunks(8)
+                            .map(|chunk_in_bits| {
+                                chunk_in_bits
+                                    .iter()
+                                    .enumerate()
+                                    .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << (7 - i)))
+                            })
+                            .collect();
+                        FieldElement::from_be_bytes_reduce(&be_byte_vec)
+                    }
+                    WitnessBuilder::DigitMultiplicity(i, j) => {
+                        // NOTE: all the digital decompositions must be added to the witness before querying
+                        // the solver for the multiplicity.
+                        let multiplicity = digit_multiplicity_count.get(j).unwrap()[*i as usize];
+                        FieldElement::from(multiplicity)
                     }
                 };
                 witness[witness_idx] = Some(value);
