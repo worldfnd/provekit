@@ -64,14 +64,18 @@ impl R1CS {
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
         let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        // Keeps track of a mapping between R1CS witness indices to the list of
+        // R1CS witness indices corresponding to their decomp, where the tuple
+        // can be seen as (num_bits, digit_idx) such that `digit_idx` is the R1CS
+        // index of the digit witness which should be multiplied by 2^{num_bits}
+        // in the final recomp.
+        let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         // We assume for now that all (lhs, rhs, output, combined_table_val) tuples are `u32`s and
-        // store their R1CS witness indices. We keep track of those tuples here
-        // to understand which witnesses to add decomposition and lookup
-        // constraints to later in order to enforce the AND and XOR opcodes.
+        // store their R1CS witness indices. We keep track of just the `combined_table_val` indices here
+        // to understand which witnesses to add lookup constraints to later in order to enforce the AND and XOR opcodes.
         // Note that `combined_table_val` refers to the "packed" version of (lhs, rhs, output)
         // which is to be looked up in the LogUp table.
-        let mut and_opcode_lhs_rhs_output_r1cs_indices: Vec<(usize, usize, usize, usize)> =
-            Vec::new();
+        let mut and_opcode_packed_elems_r1cs_indices: Vec<usize> = Vec::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -219,43 +223,66 @@ impl R1CS {
                         // Four u8s in a u32. digit_0 + digit_1 * 2^8 + digit_2 * 2^{16} + digit_3 * 2^{24} is the recomp.
                         let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
-                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    32,
                                     lhs_r1cs_witness_idx,
-                                    digit_idx,
+                                    digit_idx * 8,
                                 ))
                             })
                             .collect();
                         let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
-                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    32,
                                     rhs_r1cs_witness_idx,
-                                    digit_idx,
+                                    digit_idx * 8,
                                 ))
                             })
                             .collect();
                         let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
-                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    32,
                                     output_r1cs_witness_idx,
-                                    digit_idx,
+                                    digit_idx * 8,
                                 ))
                             })
                             .collect();
-                        let packed_table_val_r1cs_indices = (0..3).map(|digit_idx| {
-                            r1cs.add_witness(WitnessBuilder::LookupTablePacking(
-                                lhs_u8_digit_decomp_r1cs_indices[digit_idx],
-                                rhs_u8_digit_decomp_r1cs_indices[digit_idx],
-                                output_u8_digit_decomp_r1cs_indices[digit_idx],
-                            ))
-                        });
+                        // --- We need to add recomp constraints for LHS, RHS, and output ---
+                        value_to_decomp_map.insert(
+                            lhs_r1cs_witness_idx,
+                            lhs_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (32, *x))
+                                .collect(),
+                        );
+                        value_to_decomp_map.insert(
+                            rhs_r1cs_witness_idx,
+                            rhs_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (32, *x))
+                                .collect(),
+                        );
+                        value_to_decomp_map.insert(
+                            output_r1cs_witness_idx,
+                            output_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (32, *x))
+                                .collect(),
+                        );
 
-                        // --- Add this particular tuple to the set of things which need to be constrained ---
-                        // and_opcode_lhs_rhs_output_r1cs_indices.push((
-                        //     lhs_r1cs_witness_idx,
-                        //     rhs_r1cs_witness_idx,
-                        //     output_r1cs_witness_idx,
-                        //     packed_table_val_r1cs_idx,
-                        // ));
+                        // --- These are the actual things which need to be looked up ---
+                        let mut packed_table_val_r1cs_indices = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::LookupTablePacking(
+                                    lhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                    rhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                    output_u8_digit_decomp_r1cs_indices[digit_idx],
+                                ))
+                            })
+                            .collect();
+                        and_opcode_packed_elems_r1cs_indices
+                            .append(&mut packed_table_val_r1cs_indices);
                     }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
@@ -293,9 +320,9 @@ impl R1CS {
 
         // Next, we compute all of the (1 / (1 - x_i)) values, i.e. the "things
         // to be looked up" side.
-        let and_logup_frac_lhs_r1cs_indices = and_opcode_lhs_rhs_output_r1cs_indices
+        let and_logup_frac_lhs_r1cs_indices = and_opcode_packed_elems_r1cs_indices
             .iter()
-            .map(|(_, _, _, packed_val_idx)| {
+            .map(|packed_val_idx| {
                 r1cs.add_lookup_factor(
                     add_opcode_sz_challenge_r1cs_index,
                     FieldElement::one(),
@@ -304,9 +331,9 @@ impl R1CS {
             })
             .collect();
 
+        // Compute the sums over the LHS and RHS and check that they are equal.
         let sum_for_table = r1cs.add_sum(and_logup_frac_rhs_r1cs_indices);
         let sum_for_witness = r1cs.add_sum(and_logup_frac_lhs_r1cs_indices);
-        // Check that these two sums are equal.
         r1cs.matrices.add_constraint(
             &[(FieldElement::one(), sum_for_table)],
             &[(FieldElement::one().neg(), sum_for_witness)],
@@ -371,7 +398,6 @@ impl R1CS {
 
         // ------------------------ Range checks ------------------------
 
-        let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         range_blocks
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {

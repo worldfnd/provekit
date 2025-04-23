@@ -1,12 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Add};
 
-use rand::seq::index;
-
-use crate::{
-    compiler::LOG_BASE_DECOMPOSITION,
-    utils::helpers::{
-        compute_compact_and_logup_repr, LHS_SHIFT_FACTOR, OUTPUT_SHIFT_FACTOR, RHS_SHIFT_FACTOR,
-    },
+use crate::utils::helpers::{
+    compute_compact_and_logup_repr, LHS_SHIFT_FACTOR, OUTPUT_SHIFT_FACTOR, RHS_SHIFT_FACTOR,
 };
 use {
     crate::compiler::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
@@ -72,9 +67,6 @@ pub enum WitnessBuilder {
     /// to binary functions (e.g. AND and XOR) which can be directly looked up
     /// in an appropriately packed lookup table.
     LookupTablePacking(usize, usize, usize),
-    /// Represents the jth digit within the decomposition of R1CS witness at
-    /// index i, where the tuple is (i, j).
-    AndOpcodeDigitDecomp(usize, u32),
 }
 
 /// Mock transcript. To be replaced.
@@ -242,26 +234,28 @@ impl R1CSSolver {
                         let multiplicity = self.multiplicity_counts.get(j).unwrap()[*i as usize];
                         FieldElement::from(multiplicity)
                     }
-                    WitnessBuilder::AndOpcodeTupleMultiplicity(count) => {
-                        // TODO(ryancao): Actually implement the solver logic
-                        // for this one!
-                        todo!()
+                    WitnessBuilder::AndOpcodeTupleMultiplicity(packed_val) => {
+                        FieldElement::from(*and_table_count.get(packed_val).unwrap())
                     }
                     WitnessBuilder::LookupTablePacking(
                         lhs_r1cs_idx,
                         rhs_r1cs_idx,
                         output_r1cs_idx,
                     ) => {
+                        // --- First we compute the actual value for the current packed witness ---
                         let lhs: FieldElement = witness[*lhs_r1cs_idx].unwrap();
                         let rhs: FieldElement = witness[*rhs_r1cs_idx].unwrap();
                         let output: FieldElement = witness[*output_r1cs_idx].unwrap();
-                        lhs * FieldElement::from(LHS_SHIFT_FACTOR)
+                        let packed_output = lhs * FieldElement::from(LHS_SHIFT_FACTOR)
                             + rhs * FieldElement::from(RHS_SHIFT_FACTOR)
-                            + output * FieldElement::from(OUTPUT_SHIFT_FACTOR)
+                            + output * FieldElement::from(OUTPUT_SHIFT_FACTOR);
+
+                        // --- Then we add to the multiplicity count ---
+                        let packed_output_u32 = packed_output.try_to_u32().unwrap();
+                        and_table_count.get_mut(&packed_output_u32).unwrap().add(1);
+
+                        packed_output
                     }
-                    // TODO(ryancao): Actually implement the solver logic for
-                    // this one!
-                    WitnessBuilder::AndOpcodeDigitDecomp(_, _) => todo!(),
                     WitnessBuilder::AddMultiplicityCount(i, j) => {
                         let witness_value = witness[*j].unwrap();
                         let witness_value_as_bytes = witness_value.to_be_bytes();
