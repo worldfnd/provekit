@@ -1,6 +1,13 @@
+use std::collections::HashMap;
+
 use rand::seq::index;
 
-use crate::compiler::LOG_BASE_DECOMPOSITION;
+use crate::{
+    compiler::LOG_BASE_DECOMPOSITION,
+    utils::helpers::{
+        compute_compact_and_logup_repr, LHS_SHIFT_FACTOR, OUTPUT_SHIFT_FACTOR, RHS_SHIFT_FACTOR,
+    },
+};
 use {
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
@@ -50,6 +57,13 @@ pub enum WitnessBuilder {
     /// The multiplicity of the value i, for a range check of j num_bits.
     /// Fields are (i, j).
     DigitMultiplicity(u32, u32),
+    /// The multiplicity for the (lhs & rhs -> output) tuple, indexed by the
+    /// "packed" version of the entry.
+    AndOpcodeTupleMultiplicity(u32),
+    /// This generates the witnesses which are the "packed" version of inputs
+    /// to binary functions (e.g. AND and XOR) which can be directly looked up
+    /// in an appropriately packed lookup table.
+    LookupTablePacking(usize, usize, usize),
 }
 
 /// Mock transcript. To be replaced.
@@ -116,6 +130,13 @@ impl R1CSSolver {
             .range_checks
             .iter()
             .map(|range_check_bits| (*range_check_bits, vec![0u32; 1 << *range_check_bits]))
+            .collect();
+        // Multiplicities for the various AND table entries. Note that the
+        // entries are stored in "compact" representation, although this is
+        // not necessary.
+        let mut and_table_count: HashMap<u32, u32> = (0..(1 << 8))
+            .zip(0..(1 << 8))
+            .map(|(lhs, rhs)| (compute_compact_and_logup_repr(lhs, rhs), 0))
             .collect();
         self.witness_builders
             .iter()
@@ -210,6 +231,23 @@ impl R1CSSolver {
                         // the solver for the multiplicity.
                         let multiplicity = digit_multiplicity_count.get(j).unwrap()[*i as usize];
                         FieldElement::from(multiplicity)
+                    }
+                    WitnessBuilder::AndOpcodeTupleMultiplicity(count) => {
+                        // TODO(ryancao): Actually implement the solver logic
+                        // for this one!
+                        todo!()
+                    }
+                    WitnessBuilder::LookupTablePacking(
+                        lhs_r1cs_idx,
+                        rhs_r1cs_idx,
+                        output_r1cs_idx,
+                    ) => {
+                        let lhs: FieldElement = witness[*lhs_r1cs_idx].unwrap();
+                        let rhs: FieldElement = witness[*rhs_r1cs_idx].unwrap();
+                        let output: FieldElement = witness[*output_r1cs_idx].unwrap();
+                        lhs * FieldElement::from(LHS_SHIFT_FACTOR)
+                            + rhs * FieldElement::from(RHS_SHIFT_FACTOR)
+                            + output * FieldElement::from(OUTPUT_SHIFT_FACTOR)
                     }
                 };
                 witness[witness_idx] = Some(value);

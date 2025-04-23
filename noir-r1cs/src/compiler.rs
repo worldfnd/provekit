@@ -2,6 +2,7 @@ use {
     crate::{
         r1cs_matrices::R1CSMatrices,
         solver::{R1CSSolver, WitnessBuilder},
+        utils::helpers::compute_compact_and_logup_repr,
     },
     acir::{
         circuit::{
@@ -12,9 +13,9 @@ use {
         AcirField, FieldElement,
     },
     std::{
-        collections::BTreeMap,
+        collections::{hash_map::Entry, BTreeMap, HashMap},
         fmt::{Debug, Formatter},
-        ops::Neg,
+        ops::{AddAssign, Neg},
         vec,
     },
 };
@@ -64,6 +65,14 @@ impl R1CS {
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
         let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        // We assume for now that all (lhs, rhs, output, combined_table_val) tuples are `u32`s and
+        // store their R1CS witness indices. We keep track of those tuples here
+        // to understand which witnesses to add decomposition and lookup
+        // constraints to later in order to enforce the AND and XOR opcodes.
+        // Note that `combined_table_val` refers to the "packed" version of (lhs, rhs, output)
+        // which is to be looked up in the LogUp table.
+        let mut and_opcode_lhs_rhs_output_r1cs_indices: Vec<(usize, usize, usize, usize)> =
+            Vec::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -200,11 +209,26 @@ impl R1CS {
                                 "Currently we do not support calling `AND` on non-witness values, although this can be easily remedied."
                             ),
                         };
+
+                        // --- Add all the needed witnesses to the R1CS instance, including the "packed" version to be looked up ---
                         let lhs_r1cs_witness_idx = r1cs.add_witness(lhs_input_wb);
                         let rhs_r1cs_witness_idx = r1cs.add_witness(rhs_input_wb);
                         let output_r1cs_witness_idx =
                             r1cs.add_witness(WitnessBuilder::Acir(output.as_usize()));
-                        // --- Let's assume they are all u32s for now, and that we are creating a single (u4, u4, u4) LogUp table ---
+                        let packed_table_val_r1cs_idx =
+                            r1cs.add_witness(WitnessBuilder::LookupTablePacking(
+                                lhs_r1cs_witness_idx,
+                                rhs_r1cs_witness_idx,
+                                output_r1cs_witness_idx,
+                            ));
+
+                        // --- Add this particular tuple to the set of things which need to be constrained ---
+                        and_opcode_lhs_rhs_output_r1cs_indices.push((
+                            lhs_r1cs_witness_idx,
+                            rhs_r1cs_witness_idx,
+                            output_r1cs_witness_idx,
+                            packed_table_val_r1cs_idx,
+                        ));
                     }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
@@ -212,6 +236,57 @@ impl R1CS {
                 },
             }
         }
+
+        // ------------------------ AND opcode ------------------------
+        // Note: We assume that all inputs are `u32`s, and that we have a single
+        // table of size 2^{16} which is (u8 & u8 -> u8), represented by a
+        // "packed" u32 which is (lhs + rhs << 8 + output << 16).
+
+        // --- Okay so let's add the table which contains all (u8 & u8 -> u8) values ---
+        // TODO: Can we combine all of these SZ challenges?
+        let add_opcode_sz_challenge_r1cs_index = r1cs.add_witness(WitnessBuilder::Challenge);
+
+        // Canonically, we will say that the LHS for logup is the "thing to be
+        // looked up" side and the RHS for logup is the "lookup table" side.
+        // This first bit of code computes the "lookup table" side.
+        let and_logup_frac_rhs_r1cs_indices: Vec<usize> = (0..(1 << 8))
+            .zip(0..(1 << 8))
+            .map(|(lhs_val, rhs_val): (u8, u8)| {
+                let table_val = compute_compact_and_logup_repr(lhs_val, rhs_val);
+                let logup_table_frac_inv_idx = r1cs.add_lookup_factor(
+                    add_opcode_sz_challenge_r1cs_index,
+                    FieldElement::from(table_val),
+                    r1cs.solver.witness_one(),
+                );
+                let multiplicity_witness_r1cs_idx =
+                    r1cs.add_witness(WitnessBuilder::AndOpcodeTupleMultiplicity(table_val));
+                r1cs.add_product(logup_table_frac_inv_idx, multiplicity_witness_r1cs_idx)
+            })
+            .collect();
+
+        // Next, we compute all of the (1 / (1 - x_i)) values, i.e. the "things
+        // to be looked up" side.
+        let and_logup_frac_lhs_r1cs_indices = and_opcode_lhs_rhs_output_r1cs_indices
+            .iter()
+            .map(|(_, _, _, packed_val_idx)| {
+                r1cs.add_lookup_factor(
+                    add_opcode_sz_challenge_r1cs_index,
+                    FieldElement::one(),
+                    *packed_val_idx,
+                )
+            })
+            .collect();
+
+        let sum_for_table = r1cs.add_sum(and_logup_frac_rhs_r1cs_indices);
+        let sum_for_witness = r1cs.add_sum(and_logup_frac_lhs_r1cs_indices);
+        // Check that these two sums are equal.
+        r1cs.matrices.add_constraint(
+            &[(FieldElement::one(), sum_for_table)],
+            &[(FieldElement::one().neg(), sum_for_witness)],
+            &[(FieldElement::zero(), r1cs.solver.witness_one())],
+        );
+
+        // ------------------------ Memory checking ------------------------
 
         // For each memory block, use a lookup to enforce that the reads are correct.
         memory_blocks.iter().for_each(|(block_id, block)| {
@@ -266,6 +341,8 @@ impl R1CS {
                 &[(FieldElement::one(), sum_for_table)],
             );
         });
+
+        // ------------------------ Range checks ------------------------
 
         let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         range_blocks
