@@ -132,6 +132,11 @@ impl R1CSMatrices {
     ) {
         let next_constraint_idx = self.num_constraints();
         let num_cols = self.num_witnesses();
+        if next_constraint_idx == 166 {
+            dbg!(az);
+            dbg!(bz);
+            dbg!(cz);
+        }
         self.grow_matrices(self.num_constraints() + 1, num_cols);
 
         for (coeff, witness_idx) in az.iter().copied() {
@@ -168,7 +173,7 @@ impl R1CSMatrices {
 impl std::fmt::Display for R1CSMatrices {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 25 {
-            return writeln!(f, "R1CS matrices too large to print")
+            return writeln!(f, "R1CS matrices too large to print");
         }
         writeln!(f, "Matrix A:")?;
         write!(f, "{}", self.a)?;

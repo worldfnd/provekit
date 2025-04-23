@@ -2,6 +2,7 @@ use {
     crate::{
         r1cs_matrices::R1CSMatrices,
         solver::{R1CSSolver, WitnessBuilder},
+        utils::field_utils::pow_field,
     },
     acir::{
         circuit::{
@@ -20,7 +21,7 @@ use {
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
-pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 16;
+pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// [R1CSSolver].
@@ -308,8 +309,10 @@ impl R1CS {
                     .iter()
                     .enumerate()
                     .map(|(index, (recomp_coeff, digit))| {
-                        let recomp_coeff_scaled =
-                            FieldElement::from(((1 << *recomp_coeff) as usize).pow(index as u32));
+                        let recomp_coeff_scaled = pow_field(
+                            FieldElement::from((1 << *recomp_coeff) as u64),
+                            index as u32,
+                        );
                         (recomp_coeff_scaled, *digit)
                     })
                     .collect();
@@ -348,21 +351,26 @@ impl R1CS {
     // Add a new witness to the R1CS instance, returning its index.
     // If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
     fn add_witness(&mut self, witness_builder: WitnessBuilder) -> usize {
-        let next_witness_idx = self.matrices.add_witness();
-        // Add the witness to the mapping if it is an ACIR witness
-        match &witness_builder {
-            WitnessBuilder::Acir(acir_witness) => {
-                self.acir_to_r1cs_witness_map
-                    .insert(*acir_witness, next_witness_idx);
+        if let WitnessBuilder::AddMultiplicityCount(_, _) = witness_builder {
+            self.solver.add_witness_builder(witness_builder);
+            self.matrices.num_witnesses()
+        } else {
+            let next_witness_idx = self.matrices.add_witness();
+            // Add the witness to the mapping if it is an ACIR witness
+            match &witness_builder {
+                WitnessBuilder::Acir(acir_witness) => {
+                    self.acir_to_r1cs_witness_map
+                        .insert(*acir_witness, next_witness_idx);
+                }
+                WitnessBuilder::MemoryRead(_, _, value_acir_witness) => {
+                    self.acir_to_r1cs_witness_map
+                        .insert(*value_acir_witness, next_witness_idx);
+                }
+                _ => {}
             }
-            WitnessBuilder::MemoryRead(_, _, value_acir_witness) => {
-                self.acir_to_r1cs_witness_map
-                    .insert(*value_acir_witness, next_witness_idx);
-            }
-            _ => {}
+            self.solver.add_witness_builder(witness_builder);
+            next_witness_idx
         }
-        self.solver.add_witness_builder(witness_builder);
-        next_witness_idx
     }
 
     // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
