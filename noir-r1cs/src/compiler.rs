@@ -524,8 +524,11 @@ impl R1CS {
 
         // Check that these two sums are equal.
         self.matrices.add_constraint(
-            &[(FieldElement::one(), sum_for_table)],
-            &[(FieldElement::one().neg(), sum_for_witness)],
+            &[
+                (FieldElement::one(), sum_for_table),
+                (FieldElement::one().neg(), sum_for_witness),
+            ],
+            &[(FieldElement::one(), self.solver.witness_one())],
             &[(FieldElement::zero(), self.solver.witness_one())],
         );
     }

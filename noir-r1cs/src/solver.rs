@@ -4,6 +4,7 @@ use {
         native_types::{Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     },
+    rand::Rng,
     std::collections::BTreeMap,
 };
 
@@ -58,27 +59,25 @@ pub enum WitnessBuilder {
 }
 
 /// Mock transcript. To be replaced.
-pub struct MockTranscript {
-    count: u32,
-}
+pub struct MockTranscript {}
 
 impl MockTranscript {
     pub fn new() -> Self {
-        Self { count: 0 }
+        Self {}
     }
 
-    pub fn append(&mut self, _value: FieldElement) {
-        self.count += 1;
-    }
+    pub fn append(&mut self, _value: FieldElement) {}
 
     pub fn draw_challenge(&mut self) -> FieldElement {
-        self.count += 1;
-        self.count.into()
+        let mut rng = rand::thread_rng();
+        let n: u32 = rng.gen();
+        n.into()
     }
 }
 
 pub struct R1CSSolver {
     /// Indicates how to solve for each R1CS witness
+    ///
     pub witness_builders: Vec<WitnessBuilder>,
 
     /// The length of each memory block
@@ -105,7 +104,6 @@ impl R1CSSolver {
         acir_witnesses: &WitnessMap<FieldElement>,
     ) -> Vec<FieldElement> {
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.num_witnesses()];
-        dbg!(&self.num_witnesses());
         // The memory read counts for each block of memory
         let mut memory_read_counts: BTreeMap<usize, Vec<u32>> = self
             .memory_lengths
