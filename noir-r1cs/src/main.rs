@@ -3,9 +3,9 @@ mod compiler;
 mod r1cs_matrices;
 mod solver;
 mod sparse_matrix;
-mod utils;
 #[cfg(test)]
 mod test_compiler;
+mod utils;
 
 use {
     acir::FieldElement,
@@ -84,8 +84,11 @@ fn main() -> AnyResult<()> {
         ));
     }
 
-    r1cs.matrices
-        .write_json_to_file(acir_circuit.public_parameters.0.len(), &witness, "r1cs.json")?;
+    r1cs.matrices.write_json_to_file(
+        acir_circuit.public_parameters.0.len(),
+        &witness,
+        "r1cs.json",
+    )?;
 
     Ok(())
 }

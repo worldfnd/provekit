@@ -9,11 +9,11 @@ pub const OUTPUT_SHIFT_FACTOR: u32 = 1 << 16;
 
 /// Making it slightly easier to generalize the functions for binary operations.
 /// Not using this currently.
-#[derive(Clone, Debug, Copy)]
-pub enum BinOp {
-    AND,
-    XOR,
-}
+// #[derive(Clone, Debug, Copy)]
+// pub enum BinOp {
+//     AND,
+//     XOR,
+// }
 
 /// We assume that the inputs being passed in are `u8`s, but we need to output
 /// a `u32` since the final representation is the concatenation
