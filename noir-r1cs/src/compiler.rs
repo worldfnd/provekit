@@ -135,18 +135,17 @@ impl R1CS {
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
                     // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
-                    // Use a memory witness builders so that the solver can later determine its value and also determine the memory access counts
+                    // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
 
                     // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
                     // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
                     let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                    // (According to experiments, the index is always a witness, not a constant:
-                    // static reads are hard-wired into the circuit, or instead rendered as a
-                    // dynamic read by introducing a new witness constrained to have the value of
-                    // the static address.)
+                    // `op.index` is _always_ just a single ACIR witness, not a more complicated expression, and not a constant.
+                    // See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                    // Static reads are hard-wired into the circuit, or instead rendered as a
+                    // dummy dynamic read by introducing a new witness constrained to have the value of
+                    // the static address.
                     let addr_wb = op.index.to_witness().map_or_else(
                         || {
                             unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
@@ -154,12 +153,12 @@ impl R1CS {
                         |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
                     );
                     let addr = r1cs.add_witness(addr_wb);
-                    let value_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
+                    let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
                         block_id,
                         addr,
                         result_of_read_acir_witness,
                     ));
-                    block.read_operations.push((addr, value_read));
+                    block.read_operations.push((addr, result_of_read));
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -193,7 +192,7 @@ impl R1CS {
 
         // For each memory block, use a lookup to enforce that the reads are correct.
         memory_blocks.iter().for_each(|(block_id, block)| {
-            // Add witness values for memory access counts, using the WitnessBuilder::MemoryAccessCount
+            // Add witness entries for memory access counts, using the WitnessBuilder::MemoryAccessCount
             let access_counts: Vec<_> = (0..block.value_witnesses.len())
                 .map(|index| r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index)))
                 .collect();
