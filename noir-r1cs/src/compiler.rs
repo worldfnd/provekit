@@ -210,25 +210,53 @@ impl R1CS {
                             ),
                         };
 
-                        // --- Add all the needed witnesses to the R1CS instance, including the "packed" version to be looked up ---
+                        // --- Add all the needed witnesses to the R1CS instance... ---
                         let lhs_r1cs_witness_idx = r1cs.add_witness(lhs_input_wb);
                         let rhs_r1cs_witness_idx = r1cs.add_witness(rhs_input_wb);
                         let output_r1cs_witness_idx =
                             r1cs.add_witness(WitnessBuilder::Acir(output.as_usize()));
-                        let packed_table_val_r1cs_idx =
+
+                        // --- ...including digits and the "packed" version of digits to be looked up ---
+                        // Four u8s in a u32. digit_0 + digit_1 * 2^8 + digit_2 * 2^{16} + digit_3 * 2^{24} is the recomp.
+                        let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                    lhs_r1cs_witness_idx,
+                                    digit_idx,
+                                ))
+                            })
+                            .collect();
+                        let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                    rhs_r1cs_witness_idx,
+                                    digit_idx,
+                                ))
+                            })
+                            .collect();
+                        let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::AndOpcodeDigitDecomp(
+                                    output_r1cs_witness_idx,
+                                    digit_idx,
+                                ))
+                            })
+                            .collect();
+                        let packed_table_val_r1cs_indices = (0..3).map(|digit_idx| {
                             r1cs.add_witness(WitnessBuilder::LookupTablePacking(
-                                lhs_r1cs_witness_idx,
-                                rhs_r1cs_witness_idx,
-                                output_r1cs_witness_idx,
-                            ));
+                                lhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                rhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                output_u8_digit_decomp_r1cs_indices[digit_idx],
+                            ))
+                        });
 
                         // --- Add this particular tuple to the set of things which need to be constrained ---
-                        and_opcode_lhs_rhs_output_r1cs_indices.push((
-                            lhs_r1cs_witness_idx,
-                            rhs_r1cs_witness_idx,
-                            output_r1cs_witness_idx,
-                            packed_table_val_r1cs_idx,
-                        ));
+                        // and_opcode_lhs_rhs_output_r1cs_indices.push((
+                        //     lhs_r1cs_witness_idx,
+                        //     rhs_r1cs_witness_idx,
+                        //     output_r1cs_witness_idx,
+                        //     packed_table_val_r1cs_idx,
+                        // ));
                     }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);

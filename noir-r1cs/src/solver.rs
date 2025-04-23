@@ -64,6 +64,9 @@ pub enum WitnessBuilder {
     /// to binary functions (e.g. AND and XOR) which can be directly looked up
     /// in an appropriately packed lookup table.
     LookupTablePacking(usize, usize, usize),
+    /// Represents the jth digit within the decomposition of R1CS witness at
+    /// index i, where the tuple is (i, j).
+    AndOpcodeDigitDecomp(usize, u32),
 }
 
 /// Mock transcript. To be replaced.
@@ -249,6 +252,9 @@ impl R1CSSolver {
                             + rhs * FieldElement::from(RHS_SHIFT_FACTOR)
                             + output * FieldElement::from(OUTPUT_SHIFT_FACTOR)
                     }
+                    // TODO(ryancao): Actually implement the solver logic for
+                    // this one!
+                    WitnessBuilder::AndOpcodeDigitDecomp(_, _) => todo!(),
                 };
                 witness[witness_idx] = Some(value);
                 transcript.append(value);
