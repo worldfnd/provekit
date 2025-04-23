@@ -1,8 +1,8 @@
 mod circuit_stats;
+mod generate_gnark_inputs;
 mod prepare;
 mod prove;
 mod verify;
-mod generate_gnark_inputs;
 
 use {anyhow::Result, argh::FromArgs};
 

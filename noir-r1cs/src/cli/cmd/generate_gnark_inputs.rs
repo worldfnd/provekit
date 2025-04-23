@@ -1,23 +1,14 @@
 use {
-    crate::Command, 
-    anyhow::{Context, Result}, 
-    argh::FromArgs, 
-    noir_r1cs::{
-        create_io_pattern, 
-        read, 
-        write_gnark_parameters_to_file, 
-        NoirProof, 
-        NoirProofScheme
-    }, 
-    std::{
-        fs::File, 
-        path::PathBuf, 
-        io::Write,
-    }, 
-    tracing::{info, instrument},
+    crate::Command,
+    anyhow::{Context, Result},
+    argh::FromArgs,
     ark_serialize::CanonicalSerialize,
+    noir_r1cs::{
+        create_io_pattern, read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme,
+    },
+    std::{fs::File, io::Write, path::PathBuf},
+    tracing::{info, instrument},
 };
-
 
 /// Generate input compatible with gnark.
 #[derive(FromArgs, PartialEq, Debug)]
@@ -55,8 +46,13 @@ impl Command for Args {
 
         let mut file = File::create("./prover/proof").unwrap();
         let mut proof_bytes = vec![];
-        proof.whir_r1cs_proof.whir_proof.serialize_compressed(&mut proof_bytes).unwrap();
-        file.write_all(&proof_bytes).expect("Writing proof bytes to a file failed");
+        proof
+            .whir_r1cs_proof
+            .whir_proof
+            .serialize_compressed(&mut proof_bytes)
+            .unwrap();
+        file.write_all(&proof_bytes)
+            .expect("Writing proof bytes to a file failed");
 
         let json = serde_json::to_string_pretty(&scheme.r1cs).unwrap(); // Or `to_string` for compact
         let mut file = File::create("r1cs.json")?;
