@@ -25,7 +25,7 @@ lazy_static! {
 }
 
 fn bench(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ntt::ntt");
+    let mut group = c.benchmark_group("ntt_r8_hybrid_p");
 
     for log8_n in 7..9 {
         let n = 8usize.pow(log8_n);
