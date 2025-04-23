@@ -134,8 +134,8 @@ impl R1CSSolver {
         // Multiplicities for the various AND table entries. Note that the
         // entries are stored in "compact" representation, although this is
         // not necessary.
-        let mut and_table_count: HashMap<u32, u32> = (0..(1 << 8))
-            .zip(0..(1 << 8))
+        let mut and_table_count: HashMap<u32, u32> = (0..255)
+            .zip(0..255)
             .map(|(lhs, rhs)| (compute_compact_and_logup_repr(lhs, rhs), 0))
             .collect();
         self.witness_builders.iter().for_each(|witness_builder| {

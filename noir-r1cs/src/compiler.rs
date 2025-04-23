@@ -224,7 +224,7 @@ impl R1CS {
                         let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
                                 r1cs.add_witness(WitnessBuilder::DigitDecomp(
-                                    32,
+                                    8,
                                     lhs_r1cs_witness_idx,
                                     digit_idx * 8,
                                 ))
@@ -233,7 +233,7 @@ impl R1CS {
                         let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
                                 r1cs.add_witness(WitnessBuilder::DigitDecomp(
-                                    32,
+                                    8,
                                     rhs_r1cs_witness_idx,
                                     digit_idx * 8,
                                 ))
@@ -242,7 +242,7 @@ impl R1CS {
                         let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
                             .map(|digit_idx| {
                                 r1cs.add_witness(WitnessBuilder::DigitDecomp(
-                                    32,
+                                    8,
                                     output_r1cs_witness_idx,
                                     digit_idx * 8,
                                 ))
@@ -253,21 +253,21 @@ impl R1CS {
                             lhs_r1cs_witness_idx,
                             lhs_u8_digit_decomp_r1cs_indices
                                 .iter()
-                                .map(|x| (32, *x))
+                                .map(|x| (8, *x))
                                 .collect(),
                         );
                         value_to_decomp_map.insert(
                             rhs_r1cs_witness_idx,
                             rhs_u8_digit_decomp_r1cs_indices
                                 .iter()
-                                .map(|x| (32, *x))
+                                .map(|x| (8, *x))
                                 .collect(),
                         );
                         value_to_decomp_map.insert(
                             output_r1cs_witness_idx,
                             output_u8_digit_decomp_r1cs_indices
                                 .iter()
-                                .map(|x| (32, *x))
+                                .map(|x| (8, *x))
                                 .collect(),
                         );
 
@@ -303,8 +303,8 @@ impl R1CS {
         // Canonically, we will say that the LHS for logup is the "thing to be
         // looked up" side and the RHS for logup is the "lookup table" side.
         // This first bit of code computes the "lookup table" side.
-        let and_logup_frac_rhs_r1cs_indices: Vec<usize> = (0..(1 << 8))
-            .zip(0..(1 << 8))
+        let and_logup_frac_rhs_r1cs_indices: Vec<usize> = (0..255)
+            .zip(0..255)
             .map(|(lhs_val, rhs_val): (u8, u8)| {
                 let table_val = compute_compact_and_logup_repr(lhs_val, rhs_val);
                 let logup_table_frac_inv_idx = r1cs.add_lookup_factor(

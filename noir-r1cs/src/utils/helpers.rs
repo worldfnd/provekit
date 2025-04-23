@@ -18,16 +18,20 @@ pub const OUTPUT_SHIFT_FACTOR: u32 = 1 << 16;
 /// We assume that the inputs being passed in are `u8`s, but we need to output
 /// a `u32` since the final representation is the concatenation
 pub fn compute_compact_and_logup_repr(lhs: u8, rhs: u8) -> u32 {
-    let table_val = (lhs + rhs * (1 << 8) + (lhs & rhs) * (1 << 16)) as u32;
+    let table_val = (lhs as u32 * LHS_SHIFT_FACTOR)
+        + (rhs as u32 * RHS_SHIFT_FACTOR)
+        + (lhs & rhs) as u32 * OUTPUT_SHIFT_FACTOR;
     // --- Sanitycheck ---
     debug_assert_eq!(
-        (table_val & U8_BIN_LHS_MASK) & ((table_val * U8_BIN_RHS_MASK) >> 8),
+        (table_val & U8_BIN_LHS_MASK) & ((table_val & U8_BIN_RHS_MASK) >> 8),
         (table_val & U8_BIN_OUT_MASK) >> 16
     );
     table_val
 }
 pub fn compute_compact_xor_logup_repr(lhs: u8, rhs: u8) -> u32 {
-    let table_val = (lhs + rhs * (1 << 8) + (lhs ^ rhs) * (1 << 16)) as u32;
+    let table_val = (lhs as u32 * LHS_SHIFT_FACTOR)
+        + (rhs as u32 * RHS_SHIFT_FACTOR)
+        + (lhs ^ rhs) as u32 * OUTPUT_SHIFT_FACTOR;
     // --- Sanitycheck ---
     debug_assert_eq!(
         (table_val & U8_BIN_LHS_MASK) ^ ((table_val * U8_BIN_RHS_MASK) >> 8),

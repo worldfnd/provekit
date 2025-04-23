@@ -56,3 +56,11 @@ fn test_range() {
         "src/test_programs/range-check/target/main.gz",
     );
 }
+
+#[test]
+fn test_and_opcode() {
+    test_compilation_and_solving(
+        "src/test_programs/and-opcode/target/main.json",
+        "src/test_programs/and-opcode/target/main.gz",
+    );
+}
