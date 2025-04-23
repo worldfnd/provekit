@@ -21,8 +21,7 @@ use {
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
-const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 16;
-pub const LOG_BASE_DECOMPOSITION: u32 = 16;
+pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 16;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// [R1CSSolver].
@@ -387,6 +386,10 @@ impl R1CS {
                                 sum_of_bits_so_far,
                             );
                             let digit_wb_idx = r1cs.add_witness(digit_wb);
+                            r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
+                                NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
+                                digit_wb_idx,
+                            ));
                             value_to_decomp_map
                                 .entry(*value)
                                 .or_default()
@@ -404,6 +407,10 @@ impl R1CS {
                             sum_of_bits_so_far,
                         );
                         let digit_wb_idx = r1cs.add_witness(digit_wb);
+                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
+                            smaller_num_bits,
+                            digit_wb_idx,
+                        ));
                         range_blocks_decomp_sorted
                             .entry(smaller_num_bits)
                             .or_default()
@@ -414,6 +421,9 @@ impl R1CS {
                             .push((smaller_num_bits, digit_wb_idx));
                     }
                 } else {
+                    for value in values_to_lookup {
+                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(*num_bits, *value));
+                    }
                     range_blocks_decomp_sorted.insert(*num_bits, values_to_lookup.clone());
                 }
             });

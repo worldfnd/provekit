@@ -249,6 +249,7 @@ fn main() {
                     }
                     BlackBoxFuncCall::RANGE { input } => {
                         // --- We keep track of the total number of RANGE calls ---
+                        dbg!(&input.input());
                         blackbox_func_call_variants
                             .entry("RANGE")
                             .and_modify(|count| {
