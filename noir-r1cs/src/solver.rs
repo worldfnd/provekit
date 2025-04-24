@@ -23,17 +23,22 @@ pub enum WitnessBuilder {
     Sum(Vec<usize>),
     /// The product of the values at two specified witness indices
     Product(usize, usize),
-    /// Witness is the result of a memory read from the .0th block at the address determined by the .1th R1CS witness, whose value is available as the .2th acir witness index
-    /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses.
-    ValueReadFromMemory(usize, usize, usize),
+    /// Witness is the result of a memory read from the .0th block at the address determined by the .1th R1CS witness, whose value is available as the .2th ACIR witness index
+    /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses (updating the stored timestamps, in particular).
+    ExplicitReadValueFromMemory(usize, usize, usize),
+    /// Witness is the result of a memory read from the .0th block at the address determined by the
+    /// .1th R1CS witness, whose value the R1CS solver needs to determine via memory simulation: it
+    /// will be the value at that address which is accompanied by the timestamp whose value is
+    /// already resolved as the R1CS witness with index .2.
+    ImplicitReadValueFromMemory(usize, usize, usize),
     /// The number of times that the .1th index of the .0th memory block is accessed
     MemoryReadCount(usize, usize),
     /// For solving for the denominator of an indexed lookup.
     /// Fields are (sz_challenge, (index_coeff, index), rs_challenge, value).
     LogUpDenominator(usize, (FieldElement, usize), usize, usize),
     /// Witness is the value written to the .0th block of memory at the address determined by the .1th R1CS witness, whose value is available as the .2th acir witness index
-    /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses.
-    ValueWrittenToMemory(usize, usize, usize),
+    /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses (updating the stored timestamps, in particular).
+    ExplicitWriteValueToMemory(usize, usize, usize),
     /// The RS fingerprints used in read/write memory checking
     HashValue(usize, (FieldElement, usize), usize, (FieldElement, usize)),
     /// The timestamp of a memory read (used for read/write memory checking)
@@ -126,7 +131,7 @@ impl R1CSSolver {
                     WitnessBuilder::Acir(acir_witness_idx) => {
                         acir_witnesses[&AcirWitness(*acir_witness_idx as u32)]
                     }
-                    WitnessBuilder::ValueReadFromMemory(
+                    WitnessBuilder::ExplicitReadValueFromMemory(
                         block_id,
                         addr_witness_idx,
                         value_acir_witness_idx,
@@ -138,6 +143,26 @@ impl R1CSSolver {
                         mem_op_timer += 1;
                         memory_state.get_mut(block_id).unwrap()[addr].1 = mem_op_timer;
                         acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
+                    }
+                    WitnessBuilder::ImplicitReadValueFromMemory(
+                        block_id,
+                        addr_witness_idx,
+                        expected_read_timestamp_witness_idx,
+                    ) => {
+                        let addr =
+                            witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
+                        let expected_read_timestamp =
+                            witness[*expected_read_timestamp_witness_idx].unwrap().try_to_u64().unwrap() as u32;
+                        let (value, read_timestamp) =
+                            memory_state.get(block_id).unwrap()[addr];
+                        assert_eq!(
+                            read_timestamp, expected_read_timestamp,
+                            "Memory read timestamp mismatch: expected {expected_read_timestamp}, got {read_timestamp} (ACIR instructions and witness builders are not in a compatible order)"
+                        );
+                        // Note: we don't change the value of mem_op_timer here since this will be
+                        // handled by the ExplicitWriteValueToMemory associated this this
+                        // ImplicitReadValueFromMemory.
+                        value
                     }
                     WitnessBuilder::Challenge => transcript.draw_challenge(),
                     WitnessBuilder::Inverse(operand_idx) => {
@@ -169,7 +194,7 @@ impl R1CSSolver {
                         let sz_challenge = witness[*sz_challenge].unwrap();
                         sz_challenge - (*index_coeff * index + rs_challenge * value)
                     }
-                    WitnessBuilder::ValueWrittenToMemory(
+                    WitnessBuilder::ExplicitWriteValueToMemory(
                         block_id,
                         addr_witness_idx,
                         value_acir_witness_idx,

@@ -43,7 +43,6 @@ fn test_read_only_memory() {
 }
 
 #[test]
-#[ignore]
 fn test_read_write_memory() {
     test_compilation_and_solving(
         "src/test_programs/read-write-memory/target/main.json",

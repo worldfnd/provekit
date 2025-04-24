@@ -135,20 +135,19 @@ impl R1CS {
                         // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
                         let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                        let result_of_read = r1cs.add_witness(WitnessBuilder::ValueReadFromMemory(
+                        let result_of_read = r1cs.add_witness(WitnessBuilder::ExplicitReadValueFromMemory(
                             block_id,
                             addr,
                             result_of_read_acir_witness,
                         ));
-                        MemoryOperation::Read(addr, result_of_read)
+                        MemoryOperation::Load(addr, result_of_read)
                     } else {
-                        let value_written = r1cs.add_witness(WitnessBuilder::ValueWrittenToMemory(
+                        let value_written = r1cs.add_witness(WitnessBuilder::ExplicitWriteValueToMemory(
                             block_id,
                             addr,
-                            // TODO check that op.value is indeed the value written
                             op.value.to_witness().unwrap().0 as usize,
                         ));
-                        MemoryOperation::Write(addr, value_written)
+                        MemoryOperation::Store(addr, value_written)
                     };
                     block.operations.push(op);
                 }
@@ -179,7 +178,7 @@ impl R1CS {
                     .iter()
                     .map(|op| {
                         match op {
-                            MemoryOperation::Read(addr_witness, value) => {
+                            MemoryOperation::Load(addr_witness, value) => {
                                 r1cs.add_indexed_lookup_factor(
                                     rs_challenge,
                                     sz_challenge,
@@ -188,7 +187,7 @@ impl R1CS {
                                     *value,
                                 )
                             }
-                            MemoryOperation::Write(_, _) => {
+                            MemoryOperation::Store(_, _) => {
                                 unreachable!();
                             }
                         }
@@ -228,6 +227,10 @@ impl R1CS {
                 let mut read_hash = r1cs.solver.witness_one();
                 let mut write_hash = r1cs.solver.witness_one();
 
+                // Track all the (mem_op_index, read timestamp) pairs so we can perform the two
+                // required range checks later.
+                let mut all_mem_op_index_and_rt = vec![];
+
                 // For each of the writes in the inititialization, add a factor to the write hash
                 block.initial_value_witnesses.iter().enumerate().for_each(|(addr, mem_value)| {
                     // Initial PUTs. These all use timestamp zero.
@@ -241,15 +244,15 @@ impl R1CS {
                     write_hash = r1cs.add_product(write_hash, hash_value);
                 });
 
-                // TODO double check that it makes sense that the same constraints are added in both the read and the write case
                 block.operations.iter().enumerate().for_each(|(mem_op_index, op)| {
                     match op {
-                        MemoryOperation::Read(addr_witness, value) => {
+                        MemoryOperation::Load(addr_witness, value) => {
                             // GET
                             let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
                                 *block_id,
                                 (1, *addr_witness),
                             ));
+                            all_mem_op_index_and_rt.push((mem_op_index, retrieved_timer));
                             let hash_value = r1cs.add_memory_op_hash(
                                 rs_challenge,
                                 rs_challenge_sqrd,
@@ -269,17 +272,23 @@ impl R1CS {
                             );
                             write_hash = r1cs.add_product(write_hash, hash_value);
                         }
-                        MemoryOperation::Write(addr_witness, value) => {
+                        MemoryOperation::Store(addr_witness, value) => {
                             // GET
                             let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
                                 *block_id,
                                 (1, *addr_witness),
                             ));
+                            all_mem_op_index_and_rt.push((mem_op_index, retrieved_timer));
+                            let retrieved_value = r1cs.add_witness(WitnessBuilder::ImplicitReadValueFromMemory(
+                                *block_id,
+                                *addr_witness,
+                                retrieved_timer
+                            ));
                             let hash_value = r1cs.add_memory_op_hash(
                                 rs_challenge,
                                 rs_challenge_sqrd,
                                 (FieldElement::one(), *addr_witness),
-                                *value,
+                                retrieved_value,
                                 (FieldElement::one(), retrieved_timer),
                             );
                             read_hash = r1cs.add_product(read_hash, hash_value);
@@ -299,19 +308,19 @@ impl R1CS {
 
                 // For each of the cells of the memory block, add a factor to the read hash
                 (0..block.initial_value_witnesses.len()).for_each(|addr| {
-                    // Implementation note: the values read via all of the memory operations above
-                    // are provided by ACIR.  By constrast, here, for the "audit" reads at the end
-                    // of offline memory checking, we need to add witnesses for these values
-                    // ourselves.
+                    // Implementation note: these "audit" reads are "implicit" in the offline memory
+                    // checking protocol, and so do not correspond to an ACIR witness. So we need to
+                    // add witnesses for their retrieved values ourselves
+                    // GET
                     let value = r1cs.add_witness(WitnessBuilder::FinalMemoryValue(
                         *block_id,
                         addr,
                     ));
-                    // GET
                     let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
                         *block_id,
                         (addr, r1cs.solver.witness_one()),
                     ));
+                    all_mem_op_index_and_rt.push((block.operations.len() - 1, retrieved_timer));
                     let hash_value = r1cs.add_memory_op_hash(
                         rs_challenge,
                         rs_challenge_sqrd,
@@ -329,13 +338,14 @@ impl R1CS {
                     &[(FieldElement::one(), write_hash)],
                 );
 
-                // TODO add the range checks!
+                // TODO add the two range checks using all_mem_op_index_and_rt
+                // (in order for this to work, the range checks compilation must come after the memory checking).
             }
         });
         r1cs
     }
 
-    // FIXME can we generalize this to work for any RS signature?  Wouldn't it then be useful for logup and permutation arguments in general?
+    // TODO can we generalize this to work for any RS signature?  Wouldn't it then be useful for logup and permutation arguments in general?
     // add_rs_fingerprint/add_permutation_factor([rs challenges; N], [things to be combined; N+1])
     fn add_memory_op_hash(
         &mut self,
@@ -385,7 +395,7 @@ impl R1CS {
                 self.acir_to_r1cs_witness_map
                     .insert(*acir_witness, next_witness_idx);
             }
-            WitnessBuilder::ValueReadFromMemory(_, _, value_acir_witness) => {
+            WitnessBuilder::ExplicitReadValueFromMemory(_, _, value_acir_witness) => {
                 self.acir_to_r1cs_witness_map
                     .insert(*value_acir_witness, next_witness_idx);
             }
@@ -511,7 +521,6 @@ impl R1CS {
     }
 }
 
-// FIXME should display if memory read-only or read/write
 impl std::fmt::Display for R1CS {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(
@@ -551,16 +560,16 @@ impl MemoryBlock {
 
     pub fn is_read_only(&self) -> bool {
         self.operations.iter().all(|op| match op {
-            MemoryOperation::Read(_, _) => true,
-            MemoryOperation::Write(_, _) => false,
+            MemoryOperation::Load(_, _) => true,
+            MemoryOperation::Store(_, _) => false,
         })
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum MemoryOperation {
-    /// (R1CS witness index of address, R1CS witness index of value read) tuples
-    Read(usize, usize),
-    /// (R1CS witness index of address, R1CS witness index of value to write) tuples
-    Write(usize, usize),
+    /// (R1CS witness index of address, R1CS witness index of value read)
+    Load(usize, usize),
+    /// (R1CS witness index of address, R1CS witness index of value to write)
+    Store(usize, usize),
 }
