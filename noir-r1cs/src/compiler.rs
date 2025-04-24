@@ -191,7 +191,7 @@ impl R1CS {
                             }
                         };
                         let input_witness = r1cs.add_witness(input_wb);
-                        // Add the entry into the range blocks
+                        // Add the entry into the range blocks.
                         range_blocks
                             .entry(num_bits)
                             .or_default()
@@ -402,8 +402,15 @@ impl R1CS {
             );
         });
 
+        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
+        // mixed-digit decomposition of the value stored at witness_index.
         // ------------------------ Range checks ------------------------
 
+        // Do a forward pass through everything that needs to be range checked,
+        // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
+        // and creating a map `range_blocks_decomp_sorted` of each `num_bits` from 1 to the
+        // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of values that are
+        // to be looked up in that range.
         range_blocks
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
@@ -411,6 +418,8 @@ impl R1CS {
                     for value in values_to_lookup {
                         let mut smaller_num_bits = num_bits.clone();
                         let mut sum_of_bits_so_far = 0;
+                        // Keep creating digits of the maximum size until we are left
+                        // with the remainder.
                         while smaller_num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                             let digit_wb = WitnessBuilder::DigitDecomp(
                                 NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
@@ -418,10 +427,6 @@ impl R1CS {
                                 sum_of_bits_so_far,
                             );
                             let digit_wb_idx = r1cs.add_witness(digit_wb);
-                            r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
-                                NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
-                                digit_wb_idx,
-                            ));
                             value_to_decomp_map
                                 .entry(*value)
                                 .or_default()
@@ -439,10 +444,6 @@ impl R1CS {
                             sum_of_bits_so_far,
                         );
                         let digit_wb_idx = r1cs.add_witness(digit_wb);
-                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
-                            smaller_num_bits,
-                            digit_wb_idx,
-                        ));
                         range_blocks_decomp_sorted
                             .entry(smaller_num_bits)
                             .or_default()
@@ -453,13 +454,12 @@ impl R1CS {
                             .push((smaller_num_bits, digit_wb_idx));
                     }
                 } else {
-                    for value in values_to_lookup {
-                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(*num_bits, *value));
-                    }
                     range_blocks_decomp_sorted.insert(*num_bits, values_to_lookup.clone());
                 }
             });
 
+        // Do a pass through all the values to its digital decompositions to add
+        // a constraint to check for the correct recomposition.
         value_to_decomp_map
             .iter()
             .for_each(|(value, le_decomposition)| {
@@ -481,6 +481,23 @@ impl R1CS {
                 );
             });
 
+        // Do a pass through all of the range checks necessary, and if it meets
+        // the threshold to do a lookup, count the multiplicity for it. We need
+        // all of these to be counted before actually doing the lookup.
+        range_blocks_decomp_sorted
+            .iter()
+            .for_each(|(num_bits, values_to_lookup)| {
+                if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
+                    values_to_lookup.iter().for_each(|value| {
+                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(*num_bits, *value));
+                    })
+                }
+            });
+
+        // Do another pass through all the range checks necessary, creating
+        // a logup check for those that meet the threshold (ie we are looking up
+        // more than NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE) values, and
+        // doing the naive range check otherwise.
         range_blocks_decomp_sorted
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
