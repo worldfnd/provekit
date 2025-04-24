@@ -65,10 +65,10 @@ impl R1CS {
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
         let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-        // Keeps track of a mapping between R1CS witness indices to the list of
-        // R1CS witness indices corresponding to their decomp, where the tuple
-        // can be seen as (num_bits, digit_idx) such that `digit_idx` is the R1CS
-        // index of the digit witness which should be multiplied by 2^{num_bits}
+        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
+        // mixed-digit decomposition of the value stored at witness_index, where the tuple
+        // can be seen as (digit_num_bits, witness_index_of_digit) such that `witness_index_of_digit` is the R1CS
+        // index of the digit witness which should be multiplied by 2^{digit_num_bits}
         // in the final recomp.
         let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         // We assume for now that all (lhs, rhs, output, combined_table_val) tuples are `u32`s and
@@ -402,8 +402,6 @@ impl R1CS {
             );
         });
 
-        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
-        // mixed-digit decomposition of the value stored at witness_index.
         // ------------------------ Range checks ------------------------
 
         // Do a forward pass through everything that needs to be range checked,
