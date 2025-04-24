@@ -133,8 +133,7 @@ impl R1CSSolver {
         // entries are stored in "compact" representation, although this is
         // not necessary.
         let mut and_table_count: HashMap<u32, u32> = (0..255)
-            .zip(0..255)
-            .map(|(lhs, rhs)| (compute_compact_and_logup_repr(lhs, rhs), 0))
+            .flat_map(|lhs| (0..255).map(move |rhs| (compute_compact_and_logup_repr(lhs, rhs), 0)))
             .collect();
         self.witness_builders.iter().for_each(|witness_builder| {
             assert_eq!(
@@ -236,7 +235,8 @@ impl R1CSSolver {
 
                     // --- Then we add to the multiplicity count ---
                     let packed_output_u32 = packed_output.try_to_u32().unwrap();
-                    let _ = and_table_count.get_mut(&packed_output_u32).unwrap().add(1);
+                    let current_count = and_table_count.get(&packed_output_u32).unwrap_or(&0);
+                    and_table_count.insert(packed_output_u32, *current_count + 1);
 
                     packed_output
                 }
@@ -256,6 +256,7 @@ impl R1CSSolver {
                     FieldElement::zero()
                 }
             };
+
             if let WitnessBuilder::AddMultiplicityCount(_, _) = *witness_builder {
             } else {
                 witness[witness_index] = Some(value);

@@ -303,17 +303,20 @@ impl R1CS {
         // Canonically, we will say that the LHS for logup is the "thing to be
         // looked up" side and the RHS for logup is the "lookup table" side.
         // This first bit of code computes the "lookup table" side.
-        let and_logup_frac_rhs_r1cs_indices: Vec<usize> = (0..255)
-            .zip(0..255)
-            .map(|(lhs_val, rhs_val): (u8, u8)| {
-                let table_val = compute_compact_and_logup_repr(lhs_val, rhs_val);
+        let all_compact_and_reprs: Vec<u32> = (0..255)
+            .flat_map(|lhs| (0..255).map(move |rhs| compute_compact_and_logup_repr(lhs, rhs)))
+            .collect();
+        let and_logup_frac_rhs_r1cs_indices = all_compact_and_reprs
+            .iter()
+            .map(|compact_and_repr| {
                 let logup_table_frac_inv_idx = r1cs.add_lookup_factor(
                     add_opcode_sz_challenge_r1cs_index,
-                    FieldElement::from(table_val),
+                    FieldElement::from(*compact_and_repr),
                     r1cs.solver.witness_one(),
                 );
-                let multiplicity_witness_r1cs_idx =
-                    r1cs.add_witness(WitnessBuilder::AndOpcodeTupleMultiplicity(table_val));
+                let multiplicity_witness_r1cs_idx = r1cs.add_witness(
+                    WitnessBuilder::AndOpcodeTupleMultiplicity(*compact_and_repr),
+                );
                 r1cs.add_product(logup_table_frac_inv_idx, multiplicity_witness_r1cs_idx)
             })
             .collect();
@@ -335,8 +338,11 @@ impl R1CS {
         let sum_for_table = r1cs.add_sum(and_logup_frac_rhs_r1cs_indices);
         let sum_for_witness = r1cs.add_sum(and_logup_frac_lhs_r1cs_indices);
         r1cs.matrices.add_constraint(
-            &[(FieldElement::one(), sum_for_table)],
-            &[(FieldElement::one().neg(), sum_for_witness)],
+            &[
+                (FieldElement::one(), sum_for_table),
+                (FieldElement::one().neg(), sum_for_witness),
+            ],
+            &[(FieldElement::one(), r1cs.solver.witness_one())],
             &[(FieldElement::zero(), r1cs.solver.witness_one())],
         );
 
