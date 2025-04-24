@@ -128,13 +128,15 @@ impl R1CS {
                     let addr = r1cs.add_witness(addr_wb);
 
                     let op = if op.operation.is_zero() {
-                        // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
-                        // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
-
-                        // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
-                        // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
+                        // Create a new (as yet unconstrained) witness `result_of_read` for the
+                        // result of the read; it will be constrained by later memory block
+                        // processing.
+                        // "In read operations, [op.value] corresponds to the witness index at which
+                        // the value from memory will be written." (from the Noir codebase)
+                        // At R1CS solving time, only need to map over the value of the
+                        // corresponding ACIR witness, whose value is already determined by the ACIR
+                        // solver.
                         let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
-
                         let result_of_read = r1cs.add_witness(WitnessBuilder::ExplicitReadValueFromMemory(
                             block_id,
                             addr,
@@ -221,8 +223,10 @@ impl R1CS {
                 );
             } else {
                 // Read/write memory block - use Spice offline memory checking
+                // Add two verifier challenges for the multiset check
                 let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
                 let rs_challenge_sqrd = r1cs.add_product(rs_challenge, rs_challenge);
+                let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
 
                 let mut read_hash = r1cs.solver.witness_one();
                 let mut write_hash = r1cs.solver.witness_one();
@@ -234,14 +238,15 @@ impl R1CS {
                 // For each of the writes in the inititialization, add a factor to the write hash
                 block.initial_value_witnesses.iter().enumerate().for_each(|(addr, mem_value)| {
                     // Initial PUTs. These all use timestamp zero.
-                    let hash_value = r1cs.add_memory_op_hash(
+                    let factor = r1cs.add_mem_op_multiset_factor(
+                        sz_challenge,
                         rs_challenge,
                         rs_challenge_sqrd,
                         (FieldElement::from(addr), r1cs.solver.witness_one()),
                         *mem_value,
                         (FieldElement::zero(), r1cs.solver.witness_one()),
                     );
-                    write_hash = r1cs.add_product(write_hash, hash_value);
+                    write_hash = r1cs.add_product(write_hash, factor);
                 });
 
                 block.operations.iter().enumerate().for_each(|(mem_op_index, op)| {
@@ -253,24 +258,26 @@ impl R1CS {
                                 (1, *addr_witness),
                             ));
                             all_mem_op_index_and_rt.push((mem_op_index, retrieved_timer));
-                            let hash_value = r1cs.add_memory_op_hash(
+                            let factor = r1cs.add_mem_op_multiset_factor(
+                                sz_challenge,
                                 rs_challenge,
                                 rs_challenge_sqrd,
                                 (FieldElement::one(), *addr_witness),
                                 *value,
                                 (FieldElement::one(), retrieved_timer),
                             );
-                            read_hash = r1cs.add_product(read_hash, hash_value);
+                            read_hash = r1cs.add_product(read_hash, factor);
 
                             // PUT
-                            let hash_value = r1cs.add_memory_op_hash(
+                            let factor = r1cs.add_mem_op_multiset_factor(
+                                sz_challenge,
                                 rs_challenge,
                                 rs_challenge_sqrd,
                                 (FieldElement::one(), *addr_witness),
                                 *value,
                                 (FieldElement::from(mem_op_index + 1), r1cs.solver.witness_one()),
                             );
-                            write_hash = r1cs.add_product(write_hash, hash_value);
+                            write_hash = r1cs.add_product(write_hash, factor);
                         }
                         MemoryOperation::Store(addr_witness, value) => {
                             // GET
@@ -284,24 +291,26 @@ impl R1CS {
                                 *addr_witness,
                                 retrieved_timer
                             ));
-                            let hash_value = r1cs.add_memory_op_hash(
+                            let factor = r1cs.add_mem_op_multiset_factor(
+                                sz_challenge,
                                 rs_challenge,
                                 rs_challenge_sqrd,
                                 (FieldElement::one(), *addr_witness),
                                 retrieved_value,
                                 (FieldElement::one(), retrieved_timer),
                             );
-                            read_hash = r1cs.add_product(read_hash, hash_value);
+                            read_hash = r1cs.add_product(read_hash, factor);
 
                             // PUT
-                            let hash_value = r1cs.add_memory_op_hash(
+                            let factor = r1cs.add_mem_op_multiset_factor(
+                                sz_challenge,
                                 rs_challenge,
                                 rs_challenge_sqrd,
                                 (FieldElement::one(), *addr_witness),
                                 *value,
                                 (FieldElement::from(mem_op_index + 1), r1cs.solver.witness_one()),
                             );
-                            write_hash = r1cs.add_product(write_hash, hash_value);
+                            write_hash = r1cs.add_product(write_hash, factor);
                         }
                     }
                 });
@@ -321,14 +330,15 @@ impl R1CS {
                         (addr, r1cs.solver.witness_one()),
                     ));
                     all_mem_op_index_and_rt.push((block.operations.len() - 1, retrieved_timer));
-                    let hash_value = r1cs.add_memory_op_hash(
+                    let factor = r1cs.add_mem_op_multiset_factor(
+                        sz_challenge,
                         rs_challenge,
                         rs_challenge_sqrd,
                         (FieldElement::from(addr), r1cs.solver.witness_one()),
                         value,
                         (FieldElement::one(), retrieved_timer),
                     );
-                    read_hash = r1cs.add_product(read_hash, hash_value);
+                    read_hash = r1cs.add_product(read_hash, factor);
                 });
 
                 // Add the final constraint to enforce that the hashes are equal
@@ -339,23 +349,37 @@ impl R1CS {
                 );
 
                 // TODO add the two range checks using all_mem_op_index_and_rt
-                // (in order for this to work, the range checks compilation must come after the memory checking).
+
+                // We want to establish that mem_op_index = max(mem_op_index, retrieved_timer)
+                // We do this via two separate range checks:
+                //  1. retrieved_timer in 0..2^K
+                //  2. (mem_op_index - retrieved_time) in 0..2^K
+                // where K is minimal such that 2^K >= block.operations.len().
+                // TODO triple check the following:
+                // This is sound so long as 2^K is less than the characteristic of the field.
+                // (Note that range checks are being implemented only for powers of two).
+                
+                // When merging in Vishruti's code:
+                // (in order for this to work, the compilation of the range checks must come after the compilation of the memory checking).
             }
         });
         r1cs
     }
 
-    // TODO can we generalize this to work for any RS signature?  Wouldn't it then be useful for logup and permutation arguments in general?
-    // add_rs_fingerprint/add_permutation_factor([rs challenges; N], [things to be combined; N+1])
-    fn add_memory_op_hash(
+    // Add and return a new witness representing `sz_challenge - hash`, where `hash` is the hash value of a memory operation, adding an R1CS constraint enforcing this.
+    // (This is a helper method for the offline memory checking.)
+    // TODO combine this with Vishruti's add_indexed_lookup_factor (generic over the length of the combination).
+    fn add_mem_op_multiset_factor(
         &mut self,
+        sz_challenge: usize,
         rs_challenge: usize,
         rs_challenge_sqrd: usize,
         (addr, addr_witness): (FieldElement, usize),
         value_witness: usize,
         (timer, timer_witness): (FieldElement, usize),
     ) -> usize {
-        let hash_value = self.add_witness(WitnessBuilder::HashValue(
+        let factor = self.add_witness(WitnessBuilder::MemOpMultisetFactor(
+            sz_challenge,
             rs_challenge,
             (addr, addr_witness),
             value_witness,
@@ -366,9 +390,10 @@ impl R1CS {
             &[(FieldElement::one(), rs_challenge)],
             &[(FieldElement::one(), value_witness)],
             &[
-                (FieldElement::one(), hash_value),
-                (timer.neg(), intermediate),
-                (addr.neg(), addr_witness),
+                (FieldElement::one(), factor),
+                (FieldElement::one().neg(), sz_challenge),
+                (timer, intermediate),
+                (addr, addr_witness),
             ],
         );
         0

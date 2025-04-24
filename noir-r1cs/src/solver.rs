@@ -5,6 +5,7 @@ use {
     },
     std::collections::BTreeMap
 };
+use rand::Rng;
 
 #[derive(Debug, Clone)]
 /// Indicates how to solve for an R1CS witness value in terms of earlier R1CS witness values and/or
@@ -39,8 +40,11 @@ pub enum WitnessBuilder {
     /// Witness is the value written to the .0th block of memory at the address determined by the .1th R1CS witness, whose value is available as the .2th acir witness index
     /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses (updating the stored timestamps, in particular).
     ExplicitWriteValueToMemory(usize, usize, usize),
-    /// The RS fingerprints used in read/write memory checking
-    HashValue(usize, (FieldElement, usize), usize, (FieldElement, usize)),
+    /// The factors of the multiset check used in read/write memory checking.
+    /// Values: (sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness))
+    /// where sz_challenge, rs_challenge, addr_witness, timer_witness are witness indices.
+    /// Solver computes: sz_challenge - (addr * addr_witness + rs_challenge * value + rs_challenge * rs_challenge * timer * timer_witness)
+    MemOpMultisetFactor(usize, usize, (FieldElement, usize), usize, (FieldElement, usize)),
     /// The timestamp of a memory read (used for read/write memory checking)
     /// Fields are (block id, (raw address, address witness index), only one of which can be non-zero)
     MemoryReadTimestamp(usize, (usize, usize)),
@@ -50,22 +54,19 @@ pub enum WitnessBuilder {
 }
 
 /// Mock transcript. To be replaced.
-pub struct MockTranscript {
-    count: u32,
-}
+pub struct MockTranscript { }
 
 impl MockTranscript {
     pub fn new() -> Self {
-        Self { count: 0 }
+        Self {}
     }
 
-    pub fn append(&mut self, _value: FieldElement) {
-        self.count += 1;
-    }
+    pub fn append(&mut self, _value: FieldElement) {}
 
     pub fn draw_challenge(&mut self) -> FieldElement {
-        self.count += 1;
-        self.count.into()
+        let mut rng = rand::thread_rng();
+        let n: u32 = rng.gen();
+        n.into()
     }
 }
 
@@ -208,14 +209,15 @@ impl R1CSSolver {
                         memory[addr] = (value, mem_op_timer);
                         value
                     }
-                    WitnessBuilder::HashValue(rs_challenge, (addr, addr_witness), value, (timer, timer_witness)) => {
+                    WitnessBuilder::MemOpMultisetFactor(sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness)) => {
+                        let sz_challenge = witness[*sz_challenge].unwrap();
                         let rs_challenge = witness[*rs_challenge].unwrap();
                         let addr_witness = witness[*addr_witness].unwrap();
                         let value = witness[*value].unwrap();
                         let timer_value = *timer * witness[*timer_witness].unwrap();
-                        *addr * addr_witness
+                        sz_challenge - (*addr * addr_witness
                             + rs_challenge * value
-                            + rs_challenge * rs_challenge * timer_value
+                            + rs_challenge * rs_challenge * timer_value)
                     }
                     WitnessBuilder::MemoryReadTimestamp(block_id, (addr, addr_witness)) => {
                         let addr = if *addr_witness == self.witness_one() {
