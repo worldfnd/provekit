@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+mod bin_op_helpers;
 mod compiler;
 mod r1cs_matrices;
 mod solver;

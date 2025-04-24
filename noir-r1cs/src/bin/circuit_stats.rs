@@ -101,7 +101,7 @@ fn main() {
     // Values are going to be the number instances for that specific tuple input
     let mut and_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
     let mut xor_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
-    let mut and_with_non_witness_value: bool = false;
+    let and_with_non_witness_value: bool = false;
     let mut xor_with_non_witness_value: bool = false;
 
     // --- For counting types of instances of each input combination ---
@@ -155,7 +155,11 @@ fn main() {
                                 count.add_assign(1);
                             });
                     }
-                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                    BlackBoxFuncCall::AND {
+                        lhs,
+                        rhs,
+                        output: _,
+                    } => {
                         blackbox_func_call_variants
                             .entry("AND")
                             .and_modify(|count| {

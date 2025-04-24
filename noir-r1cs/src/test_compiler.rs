@@ -58,9 +58,9 @@ fn test_range() {
 }
 
 #[test]
-fn test_and_opcode() {
+fn test_bin_opcode() {
     test_compilation_and_solving(
-        "src/test_programs/and-opcode/target/main.json",
-        "src/test_programs/and-opcode/target/main.gz",
+        "src/test_programs/bin-opcode/target/main.json",
+        "src/test_programs/bin-opcode/target/main.gz",
     );
 }
