@@ -1,7 +1,8 @@
-use std::{collections::HashMap, ops::Add};
+use std::collections::HashMap;
 
 use crate::utils::helpers::{
-    compute_compact_and_logup_repr, LHS_SHIFT_FACTOR, OUTPUT_SHIFT_FACTOR, RHS_SHIFT_FACTOR,
+    compute_compact_bin_op_logup_repr, BinOp, LHS_SHIFT_FACTOR, OUTPUT_SHIFT_FACTOR,
+    RHS_SHIFT_FACTOR,
 };
 use {
     crate::compiler::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
@@ -64,10 +65,13 @@ pub enum WitnessBuilder {
     /// The multiplicity for the (lhs & rhs -> output) tuple, indexed by the
     /// "packed" version of the entry.
     AndOpcodeTupleMultiplicity(u32),
+    /// The multiplicity for the (lhs ^ rhs -> output) tuple, indexed by the
+    /// "packed" version of the entry.
+    XorOpcodeTupleMultiplicity(u32),
     /// This generates the witnesses which are the "packed" version of inputs
     /// to binary functions (e.g. AND and XOR) which can be directly looked up
     /// in an appropriately packed lookup table.
-    LookupTablePacking(usize, usize, usize),
+    LookupTablePacking(usize, usize, usize, BinOp),
 }
 
 /// Mock transcript. To be replaced.
@@ -129,11 +133,20 @@ impl R1CSSolver {
 
         let mut witness_index = 0;
 
-        // Multiplicities for the various AND table entries. Note that the
+        // Multiplicities for the various AND and XOR table entries. Note that the
         // entries are stored in "compact" representation, although this is
         // not necessary.
         let mut and_table_count: HashMap<u32, u32> = (0..255)
-            .flat_map(|lhs| (0..255).map(move |rhs| (compute_compact_and_logup_repr(lhs, rhs), 0)))
+            .flat_map(|lhs| {
+                (0..255)
+                    .map(move |rhs| (compute_compact_bin_op_logup_repr(lhs, rhs, BinOp::AND), 0))
+            })
+            .collect();
+        let mut xor_table_count: HashMap<u32, u32> = (0..255)
+            .flat_map(|lhs| {
+                (0..255)
+                    .map(move |rhs| (compute_compact_bin_op_logup_repr(lhs, rhs, BinOp::XOR), 0))
+            })
             .collect();
         self.witness_builders.iter().for_each(|witness_builder| {
             assert_eq!(
@@ -224,7 +237,12 @@ impl R1CSSolver {
                 WitnessBuilder::AndOpcodeTupleMultiplicity(packed_val) => {
                     FieldElement::from(*and_table_count.get(packed_val).unwrap())
                 }
-                WitnessBuilder::LookupTablePacking(lhs_r1cs_idx, rhs_r1cs_idx, output_r1cs_idx) => {
+                WitnessBuilder::LookupTablePacking(
+                    lhs_r1cs_idx,
+                    rhs_r1cs_idx,
+                    output_r1cs_idx,
+                    opcode_type,
+                ) => {
                     // --- First we compute the actual value for the current packed witness ---
                     let lhs: FieldElement = witness[*lhs_r1cs_idx].unwrap();
                     let rhs: FieldElement = witness[*rhs_r1cs_idx].unwrap();
@@ -235,8 +253,18 @@ impl R1CSSolver {
 
                     // --- Then we add to the multiplicity count ---
                     let packed_output_u32 = packed_output.try_to_u32().unwrap();
-                    let current_count = and_table_count.get(&packed_output_u32).unwrap_or(&0);
-                    and_table_count.insert(packed_output_u32, *current_count + 1);
+                    match opcode_type {
+                        BinOp::AND => {
+                            let current_count =
+                                and_table_count.get(&packed_output_u32).unwrap_or(&0);
+                            and_table_count.insert(packed_output_u32, *current_count + 1);
+                        }
+                        BinOp::XOR => {
+                            let current_count =
+                                xor_table_count.get(&packed_output_u32).unwrap_or(&0);
+                            xor_table_count.insert(packed_output_u32, *current_count + 1);
+                        }
+                    }
 
                     packed_output
                 }
@@ -254,6 +282,9 @@ impl R1CSSolver {
                     multiplicity_counts.get_mut(i).unwrap()[witness_as_usize] += 1;
                     // This does not matter as it does not add to the witnesses,
                     FieldElement::zero()
+                }
+                WitnessBuilder::XorOpcodeTupleMultiplicity(packed_val) => {
+                    FieldElement::from(*xor_table_count.get(packed_val).unwrap())
                 }
             };
 
