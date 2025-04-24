@@ -114,12 +114,11 @@ impl R1CS {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // It isn't clear from the Noir codebase if index can ever be a not equal to just a single ACIR witness.
-                    // If it isn't, we'll need to introduce constraints and use a witness for the index, but let's leave this til later.
-                    // (According to experiments, the index is always a witness, not a constant:
-                    // static reads are hard-wired into the circuit, or instead rendered as a
-                    // dynamic read by introducing a new witness constrained to have the value of
-                    // the static address.)
+                    // `op.index` is _always_ just a single ACIR witness, not a more complicated expression, and not a constant.
+                    // See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                    // Static reads are hard-wired into the circuit, or instead rendered as a
+                    // dummy dynamic read by introducing a new witness constrained to have the value of
+                    // the static address.
                     let addr_wb = op.index.to_witness().map_or_else(
                         || {
                             unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
@@ -222,82 +221,105 @@ impl R1CS {
                     &[(FieldElement::one(), sum_for_table)],
                 );
             } else {
-                // Read/write memory block - use offline memory checking
+                // Read/write memory block - use Spice offline memory checking
                 let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
                 let rs_challenge_sqrd = r1cs.add_product(rs_challenge, rs_challenge);
-                let mut timer: u32 = 0;
 
                 let mut read_hash = r1cs.solver.witness_one();
                 let mut write_hash = r1cs.solver.witness_one();
 
-                let put = |addr, addr_witness, value| {
-                    let hash_value = r1cs.add_memory_op_hash(
-                        rs_challenge,
-                        rs_challenge_sqrd,
-                        addr,
-                        addr_witness,
-                        value,
-                        FieldElement::from(timer),
-                        r1cs.solver.witness_one(),
-                    );
-                    write_hash = r1cs.add_product(write_hash, hash_value);
-                };
-
-                let get = |addr, addr_witness, value| {
-                    let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
-                        *block_id,
-                        (addr, addr_witness),
-                    ));
-                    let hash_value = r1cs.add_memory_op_hash(
-                        rs_challenge,
-                        rs_challenge_sqrd,
-                        FieldElement::from(addr),
-                        addr_witness,
-                        value,
-                        FieldElement::one(),
-                        retrieved_timer,
-                    );
-                    read_hash = r1cs.add_product(read_hash, hash_value);
-                    timer += 1;  // TODO think this through: fine, since we only support honest provers?
-                };
-
                 // For each of the writes in the inititialization, add a factor to the write hash
                 block.initial_value_witnesses.iter().enumerate().for_each(|(addr, mem_value)| {
-                    put(FieldElement::from(addr), r1cs.solver.witness_one(), *mem_value);
+                    // Initial PUTs. These all use timestamp zero.
+                    let hash_value = r1cs.add_memory_op_hash(
+                        rs_challenge,
+                        rs_challenge_sqrd,
+                        (FieldElement::from(addr), r1cs.solver.witness_one()),
+                        *mem_value,
+                        (FieldElement::zero(), r1cs.solver.witness_one()),
+                    );
+                    write_hash = r1cs.add_product(write_hash, hash_value);
                 });
 
                 // TODO double check that it makes sense that the same constraints are added in both the read and the write case
-                block.operations.iter().for_each(|op| {
+                block.operations.iter().enumerate().for_each(|(mem_op_index, op)| {
                     match op {
                         MemoryOperation::Read(addr_witness, value) => {
-                            get(1, *addr_witness, *value);
-                            put(
-                                FieldElement::one(),
-                                *addr_witness,
+                            // GET
+                            let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
+                                *block_id,
+                                (1, *addr_witness),
+                            ));
+                            let hash_value = r1cs.add_memory_op_hash(
+                                rs_challenge,
+                                rs_challenge_sqrd,
+                                (FieldElement::one(), *addr_witness),
                                 *value,
+                                (FieldElement::one(), retrieved_timer),
                             );
+                            read_hash = r1cs.add_product(read_hash, hash_value);
+
+                            // PUT
+                            let hash_value = r1cs.add_memory_op_hash(
+                                rs_challenge,
+                                rs_challenge_sqrd,
+                                (FieldElement::one(), *addr_witness),
+                                *value,
+                                (FieldElement::from(mem_op_index + 1), r1cs.solver.witness_one()),
+                            );
+                            write_hash = r1cs.add_product(write_hash, hash_value);
                         }
                         MemoryOperation::Write(addr_witness, value) => {
-                            get(1, *addr_witness, *value);
-                            put(
-                                FieldElement::one(),
-                                *addr_witness,
+                            // GET
+                            let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
+                                *block_id,
+                                (1, *addr_witness),
+                            ));
+                            let hash_value = r1cs.add_memory_op_hash(
+                                rs_challenge,
+                                rs_challenge_sqrd,
+                                (FieldElement::one(), *addr_witness),
                                 *value,
+                                (FieldElement::one(), retrieved_timer),
                             );
+                            read_hash = r1cs.add_product(read_hash, hash_value);
+
+                            // PUT
+                            let hash_value = r1cs.add_memory_op_hash(
+                                rs_challenge,
+                                rs_challenge_sqrd,
+                                (FieldElement::one(), *addr_witness),
+                                *value,
+                                (FieldElement::from(mem_op_index + 1), r1cs.solver.witness_one()),
+                            );
+                            write_hash = r1cs.add_product(write_hash, hash_value);
                         }
                     }
                 });
 
                 // For each of the cells of the memory block, add a factor to the read hash
                 (0..block.initial_value_witnesses.len()).for_each(|addr| {
-                    // Implementation note: the values read via memory operations above are provided
-                    // by ACIR.  For the "audit" reads at the end of offline memory checking, we
-                    // need to add witnesses for these values ourselves.
+                    // Implementation note: the values read via all of the memory operations above
+                    // are provided by ACIR.  By constrast, here, for the "audit" reads at the end
+                    // of offline memory checking, we need to add witnesses for these values
+                    // ourselves.
                     let value = r1cs.add_witness(WitnessBuilder::FinalMemoryValue(
                         *block_id,
                         addr,
                     ));
-                    get(addr, r1cs.solver.witness_one(), value);
+                    // GET
+                    let retrieved_timer = r1cs.add_witness(WitnessBuilder::MemoryReadTimestamp(
+                        *block_id,
+                        (addr, r1cs.solver.witness_one()),
+                    ));
+                    let hash_value = r1cs.add_memory_op_hash(
+                        rs_challenge,
+                        rs_challenge_sqrd,
+                        (FieldElement::from(addr), r1cs.solver.witness_one()),
+                        value,
+                        (FieldElement::one(), retrieved_timer),
+                    );
+                    read_hash = r1cs.add_product(read_hash, hash_value);
                 });
 
                 // Add the final constraint to enforce that the hashes are equal
@@ -307,21 +329,21 @@ impl R1CS {
                     &[(FieldElement::one(), write_hash)],
                 );
 
-
+                // TODO add the range checks!
             }
         });
         r1cs
     }
 
+    // FIXME can we generalize this to work for any RS signature?  Wouldn't it then be useful for logup and permutation arguments in general?
+    // add_rs_fingerprint/add_permutation_factor([rs challenges; N], [things to be combined; N+1])
     fn add_memory_op_hash(
         &mut self,
         rs_challenge: usize,
         rs_challenge_sqrd: usize,
-        addr: FieldElement,
-        addr_witness: usize,
+        (addr, addr_witness): (FieldElement, usize),
         value_witness: usize,
-        timer: FieldElement,
-        timer_witness: usize,
+        (timer, timer_witness): (FieldElement, usize),
     ) -> usize {
         let hash_value = self.add_witness(WitnessBuilder::HashValue(
             rs_challenge,
