@@ -22,9 +22,6 @@ use {
 struct Args {
     /// Path to circuit file
     circuit_path: String,
-
-    /// Path to witness file
-    witness_path: String,
 }
 
 fn program_at_path(acir_path: String) -> Program<FieldElement> {
@@ -163,6 +160,7 @@ fn main() {
                     }
                     BlackBoxFuncCall::RANGE { input } => {
                         // --- We keep track of the total number of RANGE calls ---
+                        dbg!(&input.input());
                         blackbox_func_call_variants
                             .entry("RANGE")
                             .and_modify(|count| {
