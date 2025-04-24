@@ -319,6 +319,9 @@ impl R1CS {
                 );
             });
 
+        // Do a pass through all of the range checks necessary, and if it meets
+        // the threshold to do a lookup, count the multiplicity for it. We need
+        // all of these to be counted before actually doing the lookup.
         range_blocks_decomp_sorted
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
@@ -329,6 +332,10 @@ impl R1CS {
                 }
             });
 
+        // Do another pass through all the range checks necessary, creating
+        // a logup check for those that meet the threshold (ie we are looking up
+        // more than NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE) values, and
+        // doing the naive range check otherwise.
         range_blocks_decomp_sorted
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
