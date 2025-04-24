@@ -3,7 +3,10 @@
 
 use {
     acir::{
-        circuit::{opcodes::BlackBoxFuncCall, Opcode, Program},
+        circuit::{
+            opcodes::{BlackBoxFuncCall, ConstantOrWitnessEnum},
+            Opcode, Program,
+        },
         native_types::Expression,
     },
     acir_field::FieldElement,
@@ -93,6 +96,22 @@ fn main() {
     .into_iter()
     .collect();
 
+    // --- Data tracking for AND/XOR opcodes ---
+    // Tuples are going to be the bit lengths of each binary input
+    // Values are going to be the number instances for that specific tuple input
+    let mut and_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut xor_opcode_bit_counts: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut and_with_non_witness_value: bool = false;
+    let mut xor_with_non_witness_value: bool = false;
+
+    // --- For counting types of instances of each input combination ---
+    let mut heterogeneous_and_inputs_count = 0;
+    let mut homogeneous_witness_and_inputs_count = 0;
+    let mut homogeneous_constant_and_inputs_count = 0;
+    let mut heterogeneous_xor_inputs_count = 0;
+    let mut homogeneous_witness_xor_inputs_count = 0;
+    let mut homogeneous_constant_xor_inputs_count = 0;
+
     // --- Data tracking for range checks ---
     let mut range_check_bit_counts: HashMap<u32, usize> = HashMap::new();
 
@@ -136,20 +155,50 @@ fn main() {
                                 count.add_assign(1);
                             });
                     }
-                    BlackBoxFuncCall::AND {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
                         blackbox_func_call_variants
                             .entry("AND")
                             .and_modify(|count| {
                                 count.add_assign(1);
                             });
+                        // --- Keep track of the various bit counts we are dealing with ---
+                        if let Entry::Occupied(mut x) =
+                            and_opcode_bit_counts.entry((lhs.num_bits(), rhs.num_bits()))
+                        {
+                            x.get_mut().add_assign(1);
+                        } else {
+                            and_opcode_bit_counts.insert((lhs.num_bits(), rhs.num_bits()), 1);
+                        }
+                        match (lhs.input(), rhs.input()) {
+                            (
+                                ConstantOrWitnessEnum::Constant(_),
+                                ConstantOrWitnessEnum::Constant(_),
+                            ) => {
+                                homogeneous_constant_and_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Constant(_),
+                                ConstantOrWitnessEnum::Witness(_),
+                            ) => {
+                                heterogeneous_and_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Witness(_),
+                                ConstantOrWitnessEnum::Constant(_),
+                            ) => {
+                                heterogeneous_and_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Witness(_),
+                                ConstantOrWitnessEnum::Witness(_),
+                            ) => {
+                                homogeneous_witness_and_inputs_count += 1;
+                            }
+                        }
                     }
                     BlackBoxFuncCall::XOR {
-                        lhs: _,
-                        rhs: _,
+                        lhs,
+                        rhs,
                         output: _,
                     } => {
                         blackbox_func_call_variants
@@ -157,6 +206,46 @@ fn main() {
                             .and_modify(|count| {
                                 count.add_assign(1);
                             });
+                        // --- Keep track of the various bit counts we are dealing with ---
+                        if let Entry::Occupied(mut x) =
+                            xor_opcode_bit_counts.entry((lhs.num_bits(), rhs.num_bits()))
+                        {
+                            x.get_mut().add_assign(1);
+                        } else {
+                            xor_opcode_bit_counts.insert((lhs.num_bits(), rhs.num_bits()), 1);
+                        }
+                        if let ConstantOrWitnessEnum::Constant(_) = lhs.input() {
+                            xor_with_non_witness_value = true;
+                        }
+                        if let ConstantOrWitnessEnum::Constant(_) = rhs.input() {
+                            xor_with_non_witness_value = true;
+                        }
+                        match (lhs.input(), rhs.input()) {
+                            (
+                                ConstantOrWitnessEnum::Constant(_),
+                                ConstantOrWitnessEnum::Constant(_),
+                            ) => {
+                                homogeneous_constant_xor_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Constant(_),
+                                ConstantOrWitnessEnum::Witness(_),
+                            ) => {
+                                heterogeneous_xor_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Witness(_),
+                                ConstantOrWitnessEnum::Constant(_),
+                            ) => {
+                                heterogeneous_xor_inputs_count += 1;
+                            }
+                            (
+                                ConstantOrWitnessEnum::Witness(_),
+                                ConstantOrWitnessEnum::Witness(_),
+                            ) => {
+                                homogeneous_witness_xor_inputs_count += 1;
+                            }
+                        }
                     }
                     BlackBoxFuncCall::RANGE { input } => {
                         // --- We keep track of the total number of RANGE calls ---
@@ -440,6 +529,52 @@ fn main() {
     key_value_pairs.iter().for_each(|(k, v)| {
         println!("RANGE check: {:?} bits had {:?} lookups", k, v);
     });
+
+    // --- Blackbox AND and XOR functions ---
+    and_opcode_bit_counts.iter().for_each(|(k, v)| {
+        println!(
+            "AND blackbox call with input dims {:?} accessed {:?} times",
+            k, v
+        );
+    });
+    println!(
+        "Did we see any AND with non-witness values: {:?}",
+        and_with_non_witness_value
+    );
+    println!(
+        "heterogeneous_and_inputs_count: {:?}",
+        heterogeneous_and_inputs_count
+    );
+    println!(
+        "homogeneous_witness_and_inputs_count: {:?}",
+        homogeneous_witness_and_inputs_count
+    );
+    println!(
+        "homogeneous_constant_and_inputs_count: {:?}",
+        homogeneous_constant_and_inputs_count
+    );
+    xor_opcode_bit_counts.iter().for_each(|(k, v)| {
+        println!(
+            "XOR blackbox call with input dims {:?} accessed {:?} times",
+            k, v
+        );
+    });
+    println!(
+        "Did we see any XOR with non-witness values: {:?}",
+        xor_with_non_witness_value
+    );
+    println!(
+        "heterogeneous_xor_inputs_count: {:?}",
+        heterogeneous_xor_inputs_count
+    );
+    println!(
+        "homogeneous_witness_xor_inputs_count: {:?}",
+        homogeneous_witness_xor_inputs_count
+    );
+    println!(
+        "homogeneous_constant_xor_inputs_count: {:?}",
+        homogeneous_constant_xor_inputs_count
+    );
 
     // --- Memory operations ---
     println!("Num Memory inits: {:?}", mem_alloc_counter);

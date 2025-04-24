@@ -132,11 +132,6 @@ impl R1CSMatrices {
     ) {
         let next_constraint_idx = self.num_constraints();
         let num_cols = self.num_witnesses();
-        if next_constraint_idx == 166 {
-            dbg!(az);
-            dbg!(bz);
-            dbg!(cz);
-        }
         self.grow_matrices(self.num_constraints() + 1, num_cols);
 
         for (coeff, witness_idx) in az.iter().copied() {

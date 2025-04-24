@@ -3,6 +3,7 @@ use {
         r1cs_matrices::R1CSMatrices,
         solver::{R1CSSolver, WitnessBuilder},
         utils::field_utils::pow_field,
+        utils::helpers::compute_compact_and_logup_repr,
     },
     acir::{
         circuit::{
@@ -13,9 +14,9 @@ use {
         AcirField, FieldElement,
     },
     std::{
-        collections::BTreeMap,
+        collections::{hash_map::Entry, BTreeMap, HashMap},
         fmt::{Debug, Formatter},
-        ops::Neg,
+        ops::{AddAssign, Neg},
         vec,
     },
 };
@@ -64,6 +65,18 @@ impl R1CS {
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
         let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
+        // mixed-digit decomposition of the value stored at witness_index, where the tuple
+        // can be seen as (digit_num_bits, witness_index_of_digit) such that `witness_index_of_digit` is the R1CS
+        // index of the digit witness which should be multiplied by 2^{digit_num_bits}
+        // in the final recomp.
+        let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
+        // We assume for now that all (lhs, rhs, output, combined_table_val) tuples are `u32`s and
+        // store their R1CS witness indices. We keep track of just the `combined_table_val` indices here
+        // to understand which witnesses to add lookup constraints to later in order to enforce the AND and XOR opcodes.
+        // Note that `combined_table_val` refers to the "packed" version of (lhs, rhs, output)
+        // which is to be looked up in the LogUp table.
+        let mut and_opcode_packed_elems_r1cs_indices: Vec<usize> = Vec::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -184,12 +197,156 @@ impl R1CS {
                             .or_default()
                             .push(input_witness);
                     }
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                        let lhs_input = lhs.input();
+                        let rhs_input = rhs.input();
+                        let (lhs_input_wb, rhs_input_wb) = match (lhs_input, rhs_input) {
+                            (
+                                ConstantOrWitnessEnum::Witness(lhs_input_witness),
+                                ConstantOrWitnessEnum::Witness(rhs_input_witness),
+                            ) => (
+                                WitnessBuilder::Acir(lhs_input_witness.as_usize()),
+                                WitnessBuilder::Acir(rhs_input_witness.as_usize()),
+                            ),
+                            _ => panic!(
+                                "Currently we do not support calling `AND` on non-witness values, although this can be easily remedied."
+                            ),
+                        };
+
+                        // --- Add all the needed witnesses to the R1CS instance... ---
+                        let lhs_r1cs_witness_idx = r1cs.add_witness(lhs_input_wb);
+                        let rhs_r1cs_witness_idx = r1cs.add_witness(rhs_input_wb);
+                        let output_r1cs_witness_idx =
+                            r1cs.add_witness(WitnessBuilder::Acir(output.as_usize()));
+
+                        // --- ...including digits and the "packed" version of digits to be looked up ---
+                        // Four u8s in a u32. digit_0 + digit_1 * 2^8 + digit_2 * 2^{16} + digit_3 * 2^{24} is the recomp.
+                        let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    8,
+                                    lhs_r1cs_witness_idx,
+                                    digit_idx * 8,
+                                ))
+                            })
+                            .collect();
+                        let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    8,
+                                    rhs_r1cs_witness_idx,
+                                    digit_idx * 8,
+                                ))
+                            })
+                            .collect();
+                        let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::DigitDecomp(
+                                    8,
+                                    output_r1cs_witness_idx,
+                                    digit_idx * 8,
+                                ))
+                            })
+                            .collect();
+                        // --- We need to add recomp constraints for LHS, RHS, and output ---
+                        value_to_decomp_map.insert(
+                            lhs_r1cs_witness_idx,
+                            lhs_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (8, *x))
+                                .collect(),
+                        );
+                        value_to_decomp_map.insert(
+                            rhs_r1cs_witness_idx,
+                            rhs_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (8, *x))
+                                .collect(),
+                        );
+                        value_to_decomp_map.insert(
+                            output_r1cs_witness_idx,
+                            output_u8_digit_decomp_r1cs_indices
+                                .iter()
+                                .map(|x| (8, *x))
+                                .collect(),
+                        );
+
+                        // --- These are the actual things which need to be looked up ---
+                        let mut packed_table_val_r1cs_indices = (0..3)
+                            .map(|digit_idx| {
+                                r1cs.add_witness(WitnessBuilder::LookupTablePacking(
+                                    lhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                    rhs_u8_digit_decomp_r1cs_indices[digit_idx],
+                                    output_u8_digit_decomp_r1cs_indices[digit_idx],
+                                ))
+                            })
+                            .collect();
+                        and_opcode_packed_elems_r1cs_indices
+                            .append(&mut packed_table_val_r1cs_indices);
+                    }
                     _ => {
                         println!("Other black box function: {:?}", black_box_func_call);
                     }
                 },
             }
         }
+
+        // ------------------------ AND opcode ------------------------
+        // Note: We assume that all inputs are `u32`s, and that we have a single
+        // table of size 2^{16} which is (u8 & u8 -> u8), represented by a
+        // "packed" u32 which is (lhs + rhs << 8 + output << 16).
+
+        // --- Okay so let's add the table which contains all (u8 & u8 -> u8) values ---
+        // TODO: Can we combine all of these SZ challenges?
+        let add_opcode_sz_challenge_r1cs_index = r1cs.add_witness(WitnessBuilder::Challenge);
+
+        // Canonically, we will say that the LHS for logup is the "thing to be
+        // looked up" side and the RHS for logup is the "lookup table" side.
+        // This first bit of code computes the "lookup table" side.
+        let all_compact_and_reprs: Vec<u32> = (0..255)
+            .flat_map(|lhs| (0..255).map(move |rhs| compute_compact_and_logup_repr(lhs, rhs)))
+            .collect();
+        let and_logup_frac_rhs_r1cs_indices = all_compact_and_reprs
+            .iter()
+            .map(|compact_and_repr| {
+                let logup_table_frac_inv_idx = r1cs.add_lookup_factor(
+                    add_opcode_sz_challenge_r1cs_index,
+                    FieldElement::from(*compact_and_repr),
+                    r1cs.solver.witness_one(),
+                );
+                let multiplicity_witness_r1cs_idx = r1cs.add_witness(
+                    WitnessBuilder::AndOpcodeTupleMultiplicity(*compact_and_repr),
+                );
+                r1cs.add_product(logup_table_frac_inv_idx, multiplicity_witness_r1cs_idx)
+            })
+            .collect();
+
+        // Next, we compute all of the (1 / (1 - x_i)) values, i.e. the "things
+        // to be looked up" side.
+        let and_logup_frac_lhs_r1cs_indices = and_opcode_packed_elems_r1cs_indices
+            .iter()
+            .map(|packed_val_idx| {
+                r1cs.add_lookup_factor(
+                    add_opcode_sz_challenge_r1cs_index,
+                    FieldElement::one(),
+                    *packed_val_idx,
+                )
+            })
+            .collect();
+
+        // Compute the sums over the LHS and RHS and check that they are equal.
+        let sum_for_table = r1cs.add_sum(and_logup_frac_rhs_r1cs_indices);
+        let sum_for_witness = r1cs.add_sum(and_logup_frac_lhs_r1cs_indices);
+        r1cs.matrices.add_constraint(
+            &[
+                (FieldElement::one(), sum_for_table),
+                (FieldElement::one().neg(), sum_for_witness),
+            ],
+            &[(FieldElement::one(), r1cs.solver.witness_one())],
+            &[(FieldElement::zero(), r1cs.solver.witness_one())],
+        );
+
+        // ------------------------ Memory checking ------------------------
 
         // For each memory block, use a lookup to enforce that the reads are correct.
         memory_blocks.iter().for_each(|(block_id, block)| {
@@ -245,9 +402,8 @@ impl R1CS {
             );
         });
 
-        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
-        // mixed-digit decomposition of the value stored at witness_index.
-        let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
+        // ------------------------ Range checks ------------------------
+
         // Do a forward pass through everything that needs to be range checked,
         // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
         // and creating a map `range_blocks_decomp_sorted` of each `num_bits` from 1 to the
@@ -365,8 +521,8 @@ impl R1CS {
             })
     }
 
-    // Add a new witness to the R1CS instance, returning its index.
-    // If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
+    /// Add a new witness to the R1CS instance, returning its index.
+    /// If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
     fn add_witness(&mut self, witness_builder: WitnessBuilder) -> usize {
         if let WitnessBuilder::AddMultiplicityCount(_, _) = witness_builder {
             self.solver.add_witness_builder(witness_builder);
@@ -416,7 +572,7 @@ impl R1CS {
         sum
     }
 
-    // Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
+    /// Add R1CS constraints to the instance to enforce that the provided ACIR expression is zero.
     fn add_acir_assert_zero(&mut self, expr: &Expression<FieldElement>) {
         // Create individual constraints for all the multiplication terms and collect
         // their outputs
@@ -426,6 +582,9 @@ impl R1CS {
 
         if expr.mul_terms.len() >= 1 {
             // Process all except the last multiplication term
+            // --- Okay so `linear` is a vector consisting of all the (coeff, product witness R1CS index)s ---
+            // --- And the idea is that all (linearized) mul terms except the very last one are negative because they're on the C side ---
+            // --- as well as all linear terms, as well as the constant ---
             linear = expr
                 .mul_terms
                 .iter()
