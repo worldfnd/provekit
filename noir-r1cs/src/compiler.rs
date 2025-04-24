@@ -178,7 +178,7 @@ impl R1CS {
                             }
                         };
                         let input_witness = r1cs.add_witness(input_wb);
-                        // Add the entry into the range blocks
+                        // Add the entry into the range blocks.
                         range_blocks
                             .entry(num_bits)
                             .or_default()
@@ -245,6 +245,8 @@ impl R1CS {
             );
         });
 
+        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
+        // mixed-digit decomposition of the value stored at witness_index.
         let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         // Do a forward pass through everything that needs to be range checked,
         // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
@@ -298,6 +300,8 @@ impl R1CS {
                 }
             });
 
+        // Do a pass through all the values to its digital decompositions to add
+        // a constraint to check for the correct recomposition.
         value_to_decomp_map
             .iter()
             .for_each(|(value, le_decomposition)| {
