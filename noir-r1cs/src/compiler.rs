@@ -246,6 +246,11 @@ impl R1CS {
         });
 
         let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
+        // Do a forward pass through everything that needs to be range checked,
+        // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
+        // and creating a map `range_blocks_decomp_sorted` of each `num_bits` from 1 to the
+        // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of values that are
+        // to be looked up in that range.
         range_blocks
             .iter()
             .for_each(|(num_bits, values_to_lookup)| {
@@ -253,6 +258,8 @@ impl R1CS {
                     for value in values_to_lookup {
                         let mut smaller_num_bits = num_bits.clone();
                         let mut sum_of_bits_so_far = 0;
+                        // Keep creating digits of the maximum size until we are left
+                        // with the remainder.
                         while smaller_num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                             let digit_wb = WitnessBuilder::DigitDecomp(
                                 NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
@@ -260,10 +267,6 @@ impl R1CS {
                                 sum_of_bits_so_far,
                             );
                             let digit_wb_idx = r1cs.add_witness(digit_wb);
-                            r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
-                                NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
-                                digit_wb_idx,
-                            ));
                             value_to_decomp_map
                                 .entry(*value)
                                 .or_default()
@@ -281,10 +284,6 @@ impl R1CS {
                             sum_of_bits_so_far,
                         );
                         let digit_wb_idx = r1cs.add_witness(digit_wb);
-                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(
-                            smaller_num_bits,
-                            digit_wb_idx,
-                        ));
                         range_blocks_decomp_sorted
                             .entry(smaller_num_bits)
                             .or_default()
@@ -295,9 +294,6 @@ impl R1CS {
                             .push((smaller_num_bits, digit_wb_idx));
                     }
                 } else {
-                    for value in values_to_lookup {
-                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(*num_bits, *value));
-                    }
                     range_blocks_decomp_sorted.insert(*num_bits, values_to_lookup.clone());
                 }
             });
@@ -321,6 +317,16 @@ impl R1CS {
                     &[(FieldElement::one(), r1cs.solver.witness_one())],
                     &[(FieldElement::one(), *value)],
                 );
+            });
+
+        range_blocks_decomp_sorted
+            .iter()
+            .for_each(|(num_bits, values_to_lookup)| {
+                if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
+                    values_to_lookup.iter().for_each(|value| {
+                        r1cs.add_witness(WitnessBuilder::AddMultiplicityCount(*num_bits, *value));
+                    })
+                }
             });
 
         range_blocks_decomp_sorted
