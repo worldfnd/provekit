@@ -131,6 +131,9 @@ impl R1CSMatrices {
         cz: &[(FieldElement, usize)],
     ) {
         let next_constraint_idx = self.num_constraints();
+        if next_constraint_idx == 390260 {
+            dbg!(az, bz, cz);
+        }
         let num_cols = self.num_witnesses();
         self.grow_matrices(self.num_constraints() + 1, num_cols);
 

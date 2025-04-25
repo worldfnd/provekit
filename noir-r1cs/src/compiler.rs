@@ -633,7 +633,7 @@ impl R1CS {
     /// `index_witness`, which is $a$, is in the $range$, which is `num_bits`.
     pub(crate) fn add_naive_range_check(&mut self, num_bits: u32, index_witness: usize) {
         let mut current_product_witness = index_witness;
-        (1..num_bits).for_each(|index| {
+        (1..(1 << num_bits) - 1).for_each(|index: u32| {
             let next_product_witness = self.add_witness(WitnessBuilder::ProductLinearOperation(
                 (
                     current_product_witness,
@@ -641,7 +641,7 @@ impl R1CS {
                     FieldElement::zero(),
                 ),
                 (
-                    current_product_witness,
+                    index_witness,
                     FieldElement::one(),
                     FieldElement::from(index).neg(),
                 ),
@@ -649,7 +649,7 @@ impl R1CS {
             self.matrices.add_constraint(
                 &[(FieldElement::one(), current_product_witness)],
                 &[
-                    (FieldElement::one(), current_product_witness),
+                    (FieldElement::one(), index_witness),
                     (FieldElement::from(index).neg(), self.solver.witness_one()),
                 ],
                 &[(FieldElement::one(), next_product_witness)],
@@ -660,9 +660,9 @@ impl R1CS {
         self.matrices.add_constraint(
             &[(FieldElement::one(), current_product_witness)],
             &[
-                (FieldElement::one(), current_product_witness),
+                (FieldElement::one(), index_witness),
                 (
-                    FieldElement::from(num_bits).neg(),
+                    FieldElement::from((1 << num_bits) - 1 as u32).neg(),
                     self.solver.witness_one(),
                 ),
             ],

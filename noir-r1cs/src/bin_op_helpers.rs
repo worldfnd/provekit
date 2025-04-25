@@ -19,13 +19,13 @@ use crate::{
 /// Additionally, we do *not* range check the inputs or outputs since they are
 /// assumed to have OpCode::RANGE over them already given their `u32` data
 /// types.
-pub fn add_bin_opcode_initial_witnesses<F: AcirField>(
+pub fn add_bin_opcode_initial_witnesses(
     r1cs: &mut R1CS,
     op: BinOp,
     value_to_decomp_map: &mut BTreeMap<usize, Vec<(u32, usize)>>,
     binop_opcode_packed_elems_r1cs_indices: &mut Vec<usize>,
-    lhs: &FunctionInput<F>,
-    rhs: &FunctionInput<F>,
+    lhs: &FunctionInput<FieldElement>,
+    rhs: &FunctionInput<FieldElement>,
     output: &Witness,
 ) {
     let lhs_input = lhs.input();
@@ -38,9 +38,21 @@ pub fn add_bin_opcode_initial_witnesses<F: AcirField>(
             WitnessBuilder::Acir(lhs_input_witness.as_usize()),
             WitnessBuilder::Acir(rhs_input_witness.as_usize()),
         ),
-        _ => panic!(
-            "Currently we do not support calling binary operations on non-witness values, although this can be easily remedied."
+        (
+            ConstantOrWitnessEnum::Witness(lhs_input_witness),
+            ConstantOrWitnessEnum::Constant(rhs_constant),
+        ) => (
+            WitnessBuilder::Acir(lhs_input_witness.as_usize()),
+            WitnessBuilder::Constant(rhs_constant),
         ),
+        (
+            ConstantOrWitnessEnum::Constant(lhs_constant),
+            ConstantOrWitnessEnum::Witness(rhs_input_witness),
+        ) => (
+            WitnessBuilder::Constant(lhs_constant),
+            WitnessBuilder::Acir(rhs_input_witness.as_usize()),
+        ),
+        _ => panic!("We should not be calling an AND/XOR opcode on two constant values."),
     };
 
     // --- Add all the needed witnesses to the R1CS instance... ---
