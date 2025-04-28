@@ -1,4 +1,5 @@
 mod circuit_stats;
+mod generate_gnark_inputs;
 mod prepare;
 mod prove;
 mod verify;
@@ -23,6 +24,7 @@ enum Commands {
     Prove(prove::Args),
     CircuitStats(circuit_stats::Args),
     Verify(verify::Args),
+    GenerateGnarkInputs(generate_gnark_inputs::Args),
 }
 
 impl Command for Args {
@@ -38,6 +40,7 @@ impl Command for Commands {
             Commands::Prove(args) => args.run(),
             Commands::CircuitStats(args) => args.run(),
             Commands::Verify(args) => args.run(),
+            Commands::GenerateGnarkInputs(args) => args.run(),
         }
     }
 }

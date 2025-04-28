@@ -33,7 +33,9 @@ use {
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
-            statement::{Statement, StatementVerifier as GenericStatementVerifier, VerifierWeights, Weights},
+            statement::{
+                Statement, StatementVerifier as GenericStatementVerifier, VerifierWeights, Weights,
+            },
             verifier::Verifier,
             WhirProof as GenericWhirProof,
         },
@@ -49,26 +51,26 @@ pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
-    m:           usize,
-    m_0:         usize,
-    whir_config: WhirConfig,
+    pub m:           usize,
+    pub m_0:         usize,
+    pub whir_config: WhirConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
-    transcript: Vec<u8>,
+    pub transcript: Vec<u8>,
 
-    whir_proof: WhirProof,
+    pub whir_proof: WhirProof,
 
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
-    whir_query_answer_sums: [FieldElement; 3],
+    pub whir_query_answer_sums: [FieldElement; 3],
 }
 
 struct DataFromSumcheckVerifier {
-    r: Vec<FieldElement>, 
-    alpha: Vec<FieldElement>,
+    r:                 Vec<FieldElement>,
+    alpha:             Vec<FieldElement>,
     last_sumcheck_val: FieldElement,
 }
 
@@ -131,8 +133,7 @@ impl WhirR1CSScheme {
 
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha) =
-            run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
+        let (merlin, alpha) = run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
@@ -157,17 +158,16 @@ impl WhirR1CSScheme {
         let io = create_io_pattern(self.m_0, &self.whir_config);
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
-
         // Compute statement verifier
-        let mut statement_verifier = StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
+        let mut statement_verifier =
+            StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
         for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier.add_constraint(
-                VerifierWeights::linear(self.m, None),
-                claimed_sum.clone(),
-            );
-        }           
+            statement_verifier
+                .add_constraint(VerifierWeights::linear(self.m, None), claimed_sum.clone());
+        }
 
-        let data_from_sumcheck_verifier = run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
+        let data_from_sumcheck_verifier =
+            run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
         run_whir_pcs_verifier(
             &mut arthur,
             &self.whir_config,
@@ -181,7 +181,10 @@ impl WhirR1CSScheme {
             data_from_sumcheck_verifier.last_sumcheck_val
                 == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
                     - proof.whir_query_answer_sums[2])
-                    * calculate_eq(&data_from_sumcheck_verifier.r, &data_from_sumcheck_verifier.alpha),
+                    * calculate_eq(
+                        &data_from_sumcheck_verifier.r,
+                        &data_from_sumcheck_verifier.alpha
+                    ),
             "last sumcheck value does not match"
         );
 
@@ -359,9 +362,12 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
     }
 
-    Ok(DataFromSumcheckVerifier{r, alpha, last_sumcheck_val: saved_val_for_sumcheck_equality_assertion})
+    Ok(DataFromSumcheckVerifier {
+        r,
+        alpha,
+        last_sumcheck_val: saved_val_for_sumcheck_equality_assertion,
+    })
 }
-
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_verifier(

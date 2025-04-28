@@ -37,6 +37,12 @@ Verify the Noir Proof:
 cargo run --release --bin noir-r1cs verify ./noir-proof-scheme.nps ./noir-proof.np
 ```
 
+Generate inputs for Gnark circuit:
+
+```sh
+cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+```
+
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh

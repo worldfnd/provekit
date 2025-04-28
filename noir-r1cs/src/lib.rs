@@ -15,13 +15,15 @@ mod whir_r1cs;
 pub use {
     crate::{
         file::{read, write, FileFormat},
-        noir_proof_scheme::NoirProofScheme,
+        noir_proof_scheme::{NoirProof, NoirProofScheme},
         noir_to_r1cs::noir_to_r1cs,
         r1cs::R1CS,
         utils::human,
     },
     acir::FieldElement as NoirElement,
+    gnark_config::write_gnark_parameters_to_file,
     whir::crypto::fields::Field256 as FieldElement,
+    whir_r1cs::create_io_pattern,
 };
 use {
     crate::{

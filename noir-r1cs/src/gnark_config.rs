@@ -52,7 +52,7 @@ pub struct GnarkConfig {
 #[instrument(skip_all)]
 pub fn gnark_parameters(
     whir_params: &WhirConfig,
-    merlin: &ProverState<SkyscraperSponge, FieldElement>,
+    transcript: &[u8],
     io: &IOPattern,
     sums: [FieldElement; 3],
     m_0: usize,
@@ -89,8 +89,8 @@ pub fn gnark_parameters(
             whir_params.starting_domain.backing_domain.group_gen()
         ),
         io_pattern:             String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript:             merlin.narg_string().to_vec(),
-        transcript_len:         merlin.narg_string().to_vec().len(),
+        transcript:             transcript.to_vec(),
+        transcript_len:         transcript.to_vec().len(),
         statement_evaluations:  vec![
             sums[0].to_string(),
             sums[1].to_string(),
@@ -103,13 +103,13 @@ pub fn gnark_parameters(
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
     whir_params: &WhirConfig,
-    merlin: &ProverState<SkyscraperSponge, FieldElement>,
+    transcript: &[u8],
     io: &IOPattern,
     sums: [FieldElement; 3],
     m_0: usize,
     m: usize,
 ) {
-    let gnark_config = gnark_parameters(whir_params, merlin, io, sums, m_0, m);
+    let gnark_config = gnark_parameters(whir_params, transcript, io, sums, m_0, m);
     println!("round config {:?}", whir_params.round_parameters);
     let mut file_params = File::create("./prover/params").unwrap();
     file_params

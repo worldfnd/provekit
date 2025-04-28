@@ -17,14 +17,14 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    r1cs:              R1CS,
-    witness_generator: NoirWitnessGenerator,
-    whir:              WhirR1CSScheme,
+    pub r1cs:              R1CS,
+    pub witness_generator: NoirWitnessGenerator,
+    pub whir:              WhirR1CSScheme,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
-    whir_r1cs_proof: WhirR1CSProof,
+    pub whir_r1cs_proof: WhirR1CSProof,
 }
 
 impl NoirProofScheme {
