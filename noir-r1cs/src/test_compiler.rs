@@ -64,3 +64,19 @@ fn test_bin_opcode() {
         "src/test_programs/bin-opcode/target/main.gz",
     );
 }
+
+#[test]
+fn test_complete_age_check() {
+    test_compilation_and_solving(
+        "../noir-examples/noir-passport-examples/complete_age_check/target/complete_age_check.json",
+        "../noir-examples/noir-passport-examples/complete_age_check/target/complete_age_check.gz",
+    );
+}
+
+#[test]
+fn test_small_sha() {
+    test_compilation_and_solving(
+        "src/test_programs/small-sha/target/main.json",
+        "src/test_programs/small-sha/target/main.gz",
+    );
+}

@@ -62,7 +62,7 @@ pub fn add_bin_opcode_initial_witnesses(
 
     // --- ...including digits and the "packed" version of digits to be looked up ---
     // Four u8s in a u32. digit_0 + digit_1 * 2^8 + digit_2 * 2^{16} + digit_3 * 2^{24} is the recomp.
-    let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+    let lhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..4)
         .map(|digit_idx| {
             r1cs.add_witness(WitnessBuilder::DigitDecomp(
                 8,
@@ -71,7 +71,7 @@ pub fn add_bin_opcode_initial_witnesses(
             ))
         })
         .collect();
-    let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+    let rhs_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..4)
         .map(|digit_idx| {
             r1cs.add_witness(WitnessBuilder::DigitDecomp(
                 8,
@@ -80,7 +80,7 @@ pub fn add_bin_opcode_initial_witnesses(
             ))
         })
         .collect();
-    let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..3)
+    let output_u8_digit_decomp_r1cs_indices: Vec<usize> = (0..4)
         .map(|digit_idx| {
             r1cs.add_witness(WitnessBuilder::DigitDecomp(
                 8,
@@ -89,31 +89,43 @@ pub fn add_bin_opcode_initial_witnesses(
             ))
         })
         .collect();
+    if lhs_r1cs_witness_idx == 87 {
+        dbg!("hi from binop");
+    }
+    if rhs_r1cs_witness_idx == 87 {
+        dbg!("hihi from binop");
+    }
+    if output_r1cs_witness_idx == 87 {
+        dbg!("hihihi from binop");
+    }
     // --- We need to add recomp constraints for LHS, RHS, and output ---
     value_to_decomp_map.insert(
         lhs_r1cs_witness_idx,
         lhs_u8_digit_decomp_r1cs_indices
             .iter()
-            .map(|x| (8, *x))
+            .enumerate()
+            .map(|(index, x)| ((index * 8) as u32, *x))
             .collect(),
     );
     value_to_decomp_map.insert(
         rhs_r1cs_witness_idx,
         rhs_u8_digit_decomp_r1cs_indices
             .iter()
-            .map(|x| (8, *x))
+            .enumerate()
+            .map(|(index, x)| ((index * 8) as u32, *x))
             .collect(),
     );
     value_to_decomp_map.insert(
         output_r1cs_witness_idx,
         output_u8_digit_decomp_r1cs_indices
             .iter()
-            .map(|x| (8, *x))
+            .enumerate()
+            .map(|(index, x)| ((index * 8) as u32, *x))
             .collect(),
     );
 
     // --- These are the actual things which need to be looked up ---
-    let mut packed_table_val_r1cs_indices = (0..3)
+    let mut packed_table_val_r1cs_indices = (0..4)
         .map(|digit_idx| {
             r1cs.add_witness(WitnessBuilder::LookupTablePacking(
                 lhs_u8_digit_decomp_r1cs_indices[digit_idx],
@@ -140,8 +152,8 @@ pub fn add_bin_opcode_logup_constraints_witnesses(
     // Canonically, we will say that the LHS for logup is the "thing to be
     // looked up" side and the RHS for logup is the "lookup table" side.
     // This first bit of code computes the "lookup table" side.
-    let all_compact_binop_reprs: Vec<u32> = (0..255)
-        .flat_map(|lhs| (0..255).map(move |rhs| compute_compact_bin_op_logup_repr(lhs, rhs, op)))
+    let all_compact_binop_reprs: Vec<u32> = (0..=255)
+        .flat_map(|lhs| (0..=255).map(move |rhs| compute_compact_bin_op_logup_repr(lhs, rhs, op)))
         .collect();
     let binop_logup_frac_rhs_r1cs_indices = all_compact_binop_reprs
         .iter()

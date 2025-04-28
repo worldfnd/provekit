@@ -62,10 +62,10 @@ impl R1CS {
         // Same as above, but for number of bits that are above the [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP].
         // Separated so that we can separate the witness values into digits to do smaller range checks.
         let mut range_blocks_decomp_sorted: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-        // Keeps track of the witness_index: Vec<(digit_num_bits, witness_index_of_digit)> of the
+        // Keeps track of the witness_index: Vec<(total_bits_so_far, witness_index_of_digit)> of the
         // mixed-digit decomposition of the value stored at witness_index, where the tuple
-        // can be seen as (digit_num_bits, witness_index_of_digit) such that `witness_index_of_digit` is the R1CS
-        // index of the digit witness which should be multiplied by 2^{digit_num_bits}
+        // can be seen as (total_bits_so_far, witness_index_of_digit) such that `witness_index_of_digit` is the R1CS
+        // index of the digit witness which should be multiplied by 2^{total_bits_so_far}
         // in the final recomp.
         let mut value_to_decomp_map: BTreeMap<usize, Vec<(u32, usize)>> = BTreeMap::new();
         // We assume for now that all (lhs, rhs, output, combined_table_val) tuples are `u32`s and
@@ -86,7 +86,7 @@ impl R1CS {
                 // witness values to R1CS witness values, so we can safely ignore
                 // Opcode::BrilligCall.
                 Opcode::BrilligCall { .. } => {
-                    println!("BrilligCall {:?}", opcode)
+                    // println!("BrilligCall {:?}", opcode)
                 }
 
                 // // Directive is a modern version of Brillig.
@@ -132,45 +132,47 @@ impl R1CS {
                     predicate,
                 } => {
                     let is_read = op.operation.is_zero();
-                    assert!(is_read, "MemoryOp write not yet supported");
+                    // assert!(is_read, "MemoryOp write not yet supported");
 
-                    // Panic if the predicate is set (according to Noir developers, predicate is
-                    // always None and will soon be removed).
-                    assert!(predicate.is_none());
+                    if is_read {
+                        // Panic if the predicate is set (according to Noir developers, predicate is
+                        // always None and will soon be removed).
+                        assert!(predicate.is_none());
 
-                    let block_id = block_id.0 as usize;
-                    assert!(
-                        memory_blocks.contains_key(&block_id),
-                        "Memory block {} not initialized before read",
-                        block_id
-                    );
-                    let block = memory_blocks.get_mut(&block_id).unwrap();
+                        let block_id = block_id.0 as usize;
+                        assert!(
+                            memory_blocks.contains_key(&block_id),
+                            "Memory block {} not initialized before read",
+                            block_id
+                        );
+                        let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
-                    // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
+                        // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
+                        // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
 
-                    // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
-                    // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
-                    let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
+                        // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
+                        // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
+                        let result_of_read_acir_witness = op.value.to_witness().unwrap().0 as usize;
 
-                    // `op.index` is _always_ just a single ACIR witness, not a more complicated expression, and not a constant.
-                    // See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
-                    // Static reads are hard-wired into the circuit, or instead rendered as a
-                    // dummy dynamic read by introducing a new witness constrained to have the value of
-                    // the static address.
-                    let addr_wb = op.index.to_witness().map_or_else(
+                        // `op.index` is _always_ just a single ACIR witness, not a more complicated expression, and not a constant.
+                        // See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                        // Static reads are hard-wired into the circuit, or instead rendered as a
+                        // dummy dynamic read by introducing a new witness constrained to have the value of
+                        // the static address.
+                        let addr_wb = op.index.to_witness().map_or_else(
                         || {
                             unimplemented!("MemoryOp index must be a single witness, not a more general Expression")
                         },
                         |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
                     );
-                    let addr = r1cs.add_witness(addr_wb);
-                    let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
-                        block_id,
-                        addr,
-                        result_of_read_acir_witness,
-                    ));
-                    block.read_operations.push((addr, result_of_read));
+                        let addr = r1cs.add_witness(addr_wb);
+                        let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
+                            block_id,
+                            addr,
+                            result_of_read_acir_witness,
+                        ));
+                        block.read_operations.push((addr, result_of_read));
+                    }
                 }
 
                 // These are calls to built-in functions, for this we need to create.
@@ -318,7 +320,7 @@ impl R1CS {
                             value_to_decomp_map
                                 .entry(*value)
                                 .or_default()
-                                .push((NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, digit_wb_idx));
+                                .push((sum_of_bits_so_far, digit_wb_idx));
                             range_blocks_decomp_sorted
                                 .entry(NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP)
                                 .or_default()
@@ -339,7 +341,7 @@ impl R1CS {
                         value_to_decomp_map
                             .entry(*value)
                             .or_default()
-                            .push((smaller_num_bits, digit_wb_idx));
+                            .push((sum_of_bits_so_far, digit_wb_idx));
                     }
                 } else {
                     range_blocks_decomp_sorted.insert(*num_bits, values_to_lookup.clone());
@@ -353,12 +355,9 @@ impl R1CS {
             .for_each(|(value, le_decomposition)| {
                 let digits_constraint_a: Vec<(FieldElement, usize)> = le_decomposition
                     .iter()
-                    .enumerate()
-                    .map(|(index, (recomp_coeff, digit))| {
-                        let recomp_coeff_scaled = pow_field(
-                            FieldElement::from((1 << *recomp_coeff) as u64),
-                            index as u32,
-                        );
+                    .map(|(bits_so_far, digit)| {
+                        let recomp_coeff_scaled =
+                            pow_field(FieldElement::from(2 as u64), *bits_so_far);
                         (recomp_coeff_scaled, *digit)
                     })
                     .collect();

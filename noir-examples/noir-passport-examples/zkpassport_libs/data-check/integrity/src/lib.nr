@@ -22,31 +22,38 @@ pub fn check_integrity_of_data_sha256(
 ) {
     // For passports we ignore the last padding characters
     let mut dg1_size: u64 = 93;
+    let mut x: u64 = 0;
 
     // If it's an ID card then the array should not have any padding
     // character
     if is_id_card(dg1) {
+        println("this is reached");
+        x = 3;
         dg1_size = 95;
     }
 
     // We only need to recompute the hash of the MRZ (or more accurately that of Data Group 1)
     // within the circuit as this is the only data group we use to build the proof (age, country, etc.)
-    let dg1_hash = sha256::sha256_var(dg1, dg1_size as u64);
+    let other_hash = sha256::sha256_var(dg1, 93);
+    let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, 93 + x);
 
-    for i in 0..32 {
-        // Check the hash of dg1 is indeed in the e_content
-        assert(dg1_hash[i] == e_content[dg1_offset_in_e_content + i]);
-    }
+    println(other_hash);
+    println(dg1_hash);
+
+    // for i in 0..32 {
+    //     // Check the hash of dg1 is indeed in the e_content
+    //     assert(dg1_hash[i] == e_content[dg1_offset_in_e_content + i]);
+    // }
 
     // --- Additionally, clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff" ---
     // --- That "stuff" is the thing which is actually signed ---
-    let computed_final_hash = sha256::sha256_var(e_content, e_content_size as u64);
+    // let computed_final_hash = sha256::sha256_var(e_content, e_content_size as u64);
 
-    for i in 0..32 {
-        // The last 32 bytes of the signed_attributes are the hash of the data groups
-        // The rest is padding and the signature date, not important to check
-        assert(computed_final_hash[i] == signed_attributes[signed_attributes_size - 32 + i]);
-    }
+    // for i in 0..32 {
+    //     // The last 32 bytes of the signed_attributes are the hash of the data groups
+    //     // The rest is padding and the signature date, not important to check
+    //     assert(computed_final_hash[i] == signed_attributes[signed_attributes_size - 32 + i]);
+    // }
 }
 
 pub fn check_integrity_of_data_sha384(

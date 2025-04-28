@@ -136,15 +136,15 @@ impl R1CSSolver {
         // Multiplicities for the various AND and XOR table entries. Note that the
         // entries are stored in "compact" representation, although this is
         // not necessary.
-        let mut and_table_count: HashMap<u32, u32> = (0..255)
+        let mut and_table_count: HashMap<u32, u32> = (0..=255)
             .flat_map(|lhs| {
-                (0..255)
+                (0..=255)
                     .map(move |rhs| (compute_compact_bin_op_logup_repr(lhs, rhs, BinOp::AND), 0))
             })
             .collect();
-        let mut xor_table_count: HashMap<u32, u32> = (0..255)
+        let mut xor_table_count: HashMap<u32, u32> = (0..=255)
             .flat_map(|lhs| {
-                (0..255)
+                (0..=255)
                     .map(move |rhs| (compute_compact_bin_op_logup_repr(lhs, rhs, BinOp::XOR), 0))
             })
             .collect();
@@ -273,6 +273,7 @@ impl R1CSSolver {
                     let witness_value_as_bytes = witness_value.to_be_bytes();
                     // Because we know that witnesses whose multiplicity we want will always
                     // be less than 16 bits, we can just extract the last two bytes.
+                    assert!(NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP <= 16);
                     let significant_witness_bytes =
                         &witness_value_as_bytes[(witness_value_as_bytes.len() - 2)..];
                     let witness_as_usize =
@@ -293,6 +294,15 @@ impl R1CSSolver {
                 witness[witness_index] = Some(value);
                 transcript.append(value);
                 witness_index += 1;
+            }
+
+            if witness_index == 671179 {
+                dbg!("bz");
+                dbg!(&value);
+            }
+            if witness_index == 671228 {
+                dbg!("cz");
+                dbg!(&value);
             }
         });
 

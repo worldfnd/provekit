@@ -1,0 +1,7 @@
+[package]
+name = "main"
+type = "bin"
+authors = [""]
+
+[dependencies]
+noir_native_sha256 = { path = "../../../../noir-examples/noir-passport-examples/noir_native_sha256" }
