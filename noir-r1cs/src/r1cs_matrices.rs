@@ -109,11 +109,9 @@ impl R1CSMatrices {
         self.a.cols
     }
 
-    /// Add a new witness to the R1CS instance, returning its index.
-    pub fn add_witness(&mut self) -> usize {
-        let next_witness_idx = self.num_witnesses();
-        self.grow_matrices(self.num_constraints(), self.num_witnesses() + 1);
-        next_witness_idx
+    /// Add a new witnesses to the R1CS instance.
+    pub fn add_witnesses(&mut self, count: usize) {
+        self.grow_matrices(self.num_constraints(), self.num_witnesses() + count);
     }
 
     // Increase the size of the R1CS matrices to the specified dimensions.

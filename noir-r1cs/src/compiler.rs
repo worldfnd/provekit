@@ -88,14 +88,13 @@ impl R1CS {
                         "Memory block {} already initialized",
                         block_id
                     );
-                    r1cs.solver.memory_lengths.insert(block_id, init.len());
                     let mut block = ReadOnlyMemoryBlock {
                         value_witnesses: vec![],
                         read_operations: vec![],
                     };
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness =
-                            r1cs.add_witness(WitnessBuilder::Acir(acir_witness.0 as usize));
+                            r1cs.add_witnesses(WitnessBuilder::Acir(acir_witness.0 as usize));
                         // Add the witness index to the memory block
                         block.value_witnesses.push(r1cs_witness);
                     });
@@ -123,7 +122,6 @@ impl R1CS {
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
                     // Create a new (as yet unconstrained) witness `result_of_read` for the result of the read; it will be constrained by the lookup for the memory block at the end.
-                    // Use a MemoryRead witness builder so that the solver can determine its value and also count memory accesses to each address.
 
                     // "In read operations, [op.value] corresponds to the witness index at which the value from memory will be written." (from the Noir codebase)
                     // At R1CS solving time, only need to map over the value of the corresponding ACIR witness, whose value is already determined by the ACIR solver.
@@ -140,10 +138,8 @@ impl R1CS {
                         },
                         |acir_witness| WitnessBuilder::Acir(acir_witness.0 as usize),
                     );
-                    let addr = r1cs.add_witness(addr_wb);
-                    let result_of_read = r1cs.add_witness(WitnessBuilder::MemoryRead(
-                        block_id,
-                        addr,
+                    let addr = r1cs.add_witnesses(addr_wb);
+                    let result_of_read = r1cs.add_witnesses(WitnessBuilder::Acir(
                         result_of_read_acir_witness,
                     ));
                     block.read_operations.push((addr, result_of_read));
@@ -157,15 +153,20 @@ impl R1CS {
         }
 
         // For each memory block, use a lookup to enforce that the reads are correct.
-        memory_blocks.iter().for_each(|(block_id, block)| {
+        memory_blocks.iter().for_each(|(_, block)| {
             // Add witness entries for memory access counts, using the WitnessBuilder::MemoryAccessCount
-            let access_counts: Vec<_> = (0..block.value_witnesses.len())
-                .map(|index| r1cs.add_witness(WitnessBuilder::MemoryAccessCount(*block_id, index)))
-                .collect();
+            let addr_witnesses = block
+                .read_operations
+                .iter()
+                .map(|(addr_witness, _)| *addr_witness)
+                .collect::<Vec<_>>();
+            let memory_length = block.value_witnesses.len();
+            let wb = WitnessBuilder::MemoryAccessCounts(memory_length, addr_witnesses);
+            let access_counts_first_witness = r1cs.add_witnesses(wb);
 
             // Add two verifier challenges for the lookup
-            let rs_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
-            let sz_challenge = r1cs.add_witness(WitnessBuilder::Challenge);
+            let rs_challenge = r1cs.add_witnesses(WitnessBuilder::Challenge);
+            let sz_challenge = r1cs.add_witnesses(WitnessBuilder::Challenge);
 
             // Calculate the sum, over all reads, of 1/denominator
             let summands_for_reads = block
@@ -186,9 +187,9 @@ impl R1CS {
             let summands_for_table = block
                 .value_witnesses
                 .iter()
-                .zip(access_counts.iter())
+                .zip(0..memory_length)
                 .enumerate()
-                .map(|(addr, (value, access_count))| {
+                .map(|(addr, (value, access_count_idx_offset))| {
                     let denominator = r1cs.add_indexed_lookup_factor(
                         rs_challenge,
                         sz_challenge,
@@ -196,7 +197,7 @@ impl R1CS {
                         r1cs.solver.witness_one(),
                         *value,
                     );
-                    r1cs.add_product(*access_count, denominator)
+                    r1cs.add_product(access_counts_first_witness + access_count_idx_offset, denominator)
                 })
                 .collect();
             let sum_for_table = r1cs.add_sum(summands_for_table);
@@ -218,33 +219,31 @@ impl R1CS {
             .get(&acir_witness_index.as_usize())
             .copied()
             .unwrap_or_else(|| {
-                self.add_witness(WitnessBuilder::Acir(acir_witness_index.as_usize()))
+                self.add_witnesses(WitnessBuilder::Acir(acir_witness_index.as_usize()))
             })
     }
 
     // Add a new witness to the R1CS instance, returning its index.
     // If the witness builder implicitly maps an ACIR witness to an R1CS witness, then record this.
-    fn add_witness(&mut self, witness_builder: WitnessBuilder) -> usize {
-        let next_witness_idx = self.matrices.add_witness();
+    fn add_witnesses(&mut self, witness_builder: WitnessBuilder) -> usize {
+        // Add as many witnesses as the builder specifies
+        let start_idx = self.matrices.num_witnesses();
+        self.matrices.add_witnesses(witness_builder.num_witnesses());
         // Add the witness to the mapping if it is an ACIR witness
         match &witness_builder {
             WitnessBuilder::Acir(acir_witness) => {
                 self.acir_to_r1cs_witness_map
-                    .insert(*acir_witness, next_witness_idx);
-            }
-            WitnessBuilder::MemoryRead(_, _, value_acir_witness) => {
-                self.acir_to_r1cs_witness_map
-                    .insert(*value_acir_witness, next_witness_idx);
+                    .insert(*acir_witness, start_idx);
             }
             _ => {}
         }
         self.solver.add_witness_builder(witness_builder);
-        next_witness_idx
+        start_idx
     }
 
     // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
     fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
-        let product = self.add_witness(WitnessBuilder::Product(operand_a, operand_b));
+        let product = self.add_witnesses(WitnessBuilder::Product(operand_a, operand_b));
         self.matrices.add_constraint(
             &[(FieldElement::one(), operand_a)],
             &[(FieldElement::one(), operand_b)],
@@ -255,7 +254,7 @@ impl R1CS {
 
     // Add a new witness representing the sum of existing witnesses, and add an R1CS constraint enforcing this.
     fn add_sum(&mut self, summands: Vec<usize>) -> usize {
-        let sum = self.add_witness(WitnessBuilder::Sum(summands.clone()));
+        let sum = self.add_witnesses(WitnessBuilder::Sum(summands.clone()));
         let az = summands
             .iter()
             .map(|&s| (FieldElement::one(), s))
@@ -338,7 +337,7 @@ impl R1CS {
             rs_challenge,
             value,
         );
-        let denominator = self.add_witness(wb);
+        let denominator = self.add_witnesses(wb);
         self.matrices.add_constraint(
             &[(FieldElement::one(), rs_challenge)],
             &[(FieldElement::one(), value)],
@@ -348,7 +347,7 @@ impl R1CS {
                 (index.neg(), index_witness),
             ],
         );
-        let inverse = self.add_witness(WitnessBuilder::Inverse(denominator));
+        let inverse = self.add_witnesses(WitnessBuilder::Inverse(denominator));
         self.matrices.add_constraint(
             &[(FieldElement::one(), denominator)],
             &[(FieldElement::one(), inverse)],
@@ -362,18 +361,10 @@ impl std::fmt::Display for R1CS {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         writeln!(
             f,
-            "R1CS: {} witnesses, {} constraints, {} memory blocks",
+            "R1CS: {} witnesses, {} constraints",
             self.num_witnesses(),
             self.num_constraints(),
-            self.solver.memory_lengths.len()
         )?;
-        if !self.solver.memory_lengths.is_empty() {
-            writeln!(f, "Memory blocks:")?;
-            for (block_id, block) in &self.solver.memory_lengths {
-                write!(f, "  {}: {} elements; ", block_id, block)?;
-            }
-            writeln!(f)?;
-        }
         writeln!(f, "{}", self.matrices)
     }
 }
