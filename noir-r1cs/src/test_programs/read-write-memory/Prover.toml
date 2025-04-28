@@ -1,4 +1,4 @@
-mem = [3, 7, 6, 4, 9, 2]
+mem = [3, 7, 6]
 addr0 = 1
-addr1 = 4
-addr = 0
+addr1 = 2
+addr = 1
