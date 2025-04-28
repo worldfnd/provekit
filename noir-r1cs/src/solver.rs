@@ -2,8 +2,7 @@ use {
     acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
-    },
-    std::collections::BTreeMap
+    }, core::time, std::{collections::BTreeMap, mem}
 };
 use rand::Rng;
 
@@ -28,10 +27,8 @@ pub enum WitnessBuilder {
     /// Implementation note: it would be insufficient to just record the ACIR witness index, since the solver needs to be able to simulate the memory accesses (updating the stored timestamps, in particular).
     ExplicitReadValueFromMemory(usize, usize, usize),
     /// Witness is the result of a memory read from the .0th block at the address determined by the
-    /// .1th R1CS witness, whose value the R1CS solver needs to determine via memory simulation: it
-    /// will be the value at that address which is accompanied by the timestamp whose value is
-    /// already resolved as the R1CS witness with index .2.
-    ImplicitReadValueFromMemory(usize, usize, usize),
+    /// .1th R1CS witness, whose value the R1CS solver needs to determine via memory simulation.
+    ImplicitReadValueFromMemory(usize, usize),
     /// The number of times that the .1th index of the .0th memory block is accessed
     MemoryReadCount(usize, usize),
     /// For solving for the denominator of an indexed lookup.
@@ -48,6 +45,9 @@ pub enum WitnessBuilder {
     /// The timestamp of a memory read (used for read/write memory checking)
     /// Fields are (block id, (raw address, address witness index), only one of which can be non-zero)
     MemoryReadTimestamp(usize, (usize, usize)),
+    /// The final timestamp of a memory read (used for read/write memory checking)
+    /// Fields are (block id, raw address), only one of which can be non-zero)
+    FinalMemoryReadTimestamp(usize, usize),
     /// The final value of a memory cell (used for read/write memory checking)
     /// Fields are block id and address (not a witness index!)
     FinalMemoryValue(usize, usize),
@@ -107,7 +107,7 @@ impl R1CSSolver {
             .map(|(block_id, initial_values)| (*block_id, vec![0u32; initial_values.len()]))
             .collect();
 
-        // The (value, timer) memory state for each block of memory
+        // The (value, timer(=0)) memory state for each block of memory
         // Initial values determined by the ACIR witness
         let mut memory_state = self.initial_memories.iter().map(|(block_id, initial_value_witnesses)| {
             let memory = initial_value_witnesses
@@ -117,7 +117,7 @@ impl R1CSSolver {
             (*block_id, memory)
         }).collect::<BTreeMap<_, _>>();
 
-        let mut mem_op_timer = 0u32;
+        let mut next_write_timestamp = 1u32;
 
         self.witness_builders
             .iter()
@@ -139,27 +139,17 @@ impl R1CSSolver {
                     ) => {
                         let addr =
                             witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
-                        // Track the change to the memory state (increment the counter)
+                        // Increment the memory read count (this for memory checking read-only memory)
                         memory_read_counts.get_mut(block_id).unwrap()[addr] += 1;
-                        mem_op_timer += 1;
-                        memory_state.get_mut(block_id).unwrap()[addr].1 = mem_op_timer;
                         acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)]
                     }
                     WitnessBuilder::ImplicitReadValueFromMemory(
                         block_id,
                         addr_witness_idx,
-                        expected_read_timestamp_witness_idx,
                     ) => {
                         let addr =
                             witness[*addr_witness_idx].unwrap().try_to_u64().unwrap() as usize;
-                        let expected_read_timestamp =
-                            witness[*expected_read_timestamp_witness_idx].unwrap().try_to_u64().unwrap() as u32;
-                        let (value, read_timestamp) =
-                            memory_state.get(block_id).unwrap()[addr];
-                        assert_eq!(
-                            read_timestamp, expected_read_timestamp,
-                            "Memory read timestamp mismatch: expected {expected_read_timestamp}, got {read_timestamp} (ACIR instructions and witness builders are not in a compatible order)"
-                        );
+                        let value = memory_state.get(block_id).unwrap()[addr].0;
                         // Note: we don't change the value of mem_op_timer here since this will be
                         // handled by the ExplicitWriteValueToMemory associated this this
                         // ImplicitReadValueFromMemory.
@@ -205,8 +195,7 @@ impl R1CSSolver {
                         let value = acir_witnesses[&AcirWitness(*value_acir_witness_idx as u32)];
                         // Track the change to the memory state
                         let memory = memory_state.get_mut(block_id).unwrap();
-                        mem_op_timer += 1;
-                        memory[addr] = (value, mem_op_timer);
+                        memory[addr] = (value, memory[addr].1);
                         value
                     }
                     WitnessBuilder::MemOpMultisetFactor(sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness)) => {
@@ -214,10 +203,10 @@ impl R1CSSolver {
                         let rs_challenge = witness[*rs_challenge].unwrap();
                         let addr_witness = witness[*addr_witness].unwrap();
                         let value = witness[*value].unwrap();
-                        let timer_value = *timer * witness[*timer_witness].unwrap();
+                        let timer_witness = witness[*timer_witness].unwrap();
                         sz_challenge - (*addr * addr_witness
                             + rs_challenge * value
-                            + rs_challenge * rs_challenge * timer_value)
+                            + rs_challenge * rs_challenge * *timer * timer_witness)
                     }
                     WitnessBuilder::MemoryReadTimestamp(block_id, (addr, addr_witness)) => {
                         let addr = if *addr_witness == self.witness_one() {
@@ -226,6 +215,13 @@ impl R1CSSolver {
                             witness[*addr_witness].unwrap().try_to_u64().unwrap() as usize
                         };
                         let timer = memory_state.get(block_id).unwrap()[addr].1;
+                        println!("MemoryReadTimestamp: setting timestamp at addr {addr} to {next_write_timestamp}");
+                        memory_state.get_mut(block_id).unwrap()[addr].1 = next_write_timestamp;
+                        next_write_timestamp += 1;
+                        FieldElement::from(timer)
+                    }
+                    WitnessBuilder::FinalMemoryReadTimestamp(block_id, addr) => {
+                        let timer = memory_state.get(block_id).unwrap()[*addr].1;
                         FieldElement::from(timer)
                     }
                     WitnessBuilder::FinalMemoryValue(block_id, addr) => {
