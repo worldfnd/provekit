@@ -22,17 +22,17 @@ lazy_static! {
         let wn = get_root_of_unity(n);
         gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE)
     };
+
+    static ref PRECOMP_S2: Vec<CF> = {
+        let n = 8usize.pow(8);
+        precomp_s2(n)
+    };
 }
 
 fn bench(c: &mut Criterion) {
-    let mut group = c.benchmark_group("ntt_r8_hybrid_p");
+    let mut group = c.benchmark_group("ntt_r8_s2_hybrid_p");
 
-    for log8_n in 7..9 {
-        let n = 8usize.pow(log8_n);
-        //let wn = get_root_of_unity(n);
-        //let precomp_small = precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE));
-        //let precomp_full = gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE);
-
+    for n in [4194304] {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
 
         let mut f = vec![CF::zero(); n];
@@ -44,7 +44,7 @@ fn bench(c: &mut Criterion) {
 
         group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_SMALL, &*PRECOMP_FULL);
+                ntt_r8_s2_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_SMALL, &*PRECOMP_FULL, &*PRECOMP_S2);
             })
         });
     }
@@ -58,4 +58,5 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
+
 

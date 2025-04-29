@@ -37,3 +37,11 @@ harness = false
 [[bench]]
 name = "ntt_r8_hybrid_p"
 harness = false
+
+[[bench]]
+name = "ntt_r8_s2_hybrid_p"
+harness = false
+
+[[bench]]
+name = "ntt_r8_s4_hybrid_p"
+harness = false

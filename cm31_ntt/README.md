@@ -59,6 +59,14 @@ precomputed twiddles for the lowest-level iteration.
 | `ntt_r8_hybrid_p`   | Yes | Hybrid approach using the in-place NTT for a cache-friendly number of inputs, and the Vec method for higher layers. | 320.61 | **3.3997 s** |
 | `ntt_r8_hybrid_ps`  | Yes | Hybrid approach where only the in-place method uses precomputed twiddles. | 450.03 ms | 4.8309 s |
 
+The following functions use `ntt_r8_hybrid_p` under the hood to perform the NTT
+for inputs of length `8^k * 2` and `8^k * 4` respectively.
+
+- `ntt_r8_s2_hybrid_p`
+- `ntt_r8_s4_hybrid_p`
+
+### Hardware
+
 The above benchmarks were performed on a Raspberry Pi 5. No multithreading was used.
 
 The output of `lscpu` on the Raspberry Pi 5 is as follows:

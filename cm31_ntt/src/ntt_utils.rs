@@ -177,56 +177,6 @@ pub fn precompute_twiddles(n: usize, w: CF, radix: usize) -> Vec<CF> {
     twiddles
 }
 
-/// Precomputes twiddle factors needed for a stride-2 combination stage of an NTT.
-/// @param n The size of the full NTT
-/// @return Vector of w^i factors for i in 0..n/2
-pub fn precompute_twiddles_stride2(n: usize) -> Vec<CF> {
-    assert!(n.is_power_of_two(), "n must be a power of 2");
-    assert!(n >= 2, "n must be at least 2");
-    
-    let w = get_root_of_unity(n);
-    
-    // Precompute w^i for i in 0..n/2
-    let mut w_powers = Vec::with_capacity(n/2);
-    let mut w_i = CF::one();
-    
-    for _ in 0..n/2 {
-        w_powers.push(w_i);
-        
-        // Update for next iteration
-        w_i = w_i * w;
-    }
-    
-    w_powers
-}
-
-/// Precomputes twiddle factors needed for a stride-4 combination stage of an NTT.
-/// @param n The size of the full NTT
-/// @return Vector of [w^i, w^(2i), w^(3i)] arrays for i in 0..n/4
-pub fn precompute_twiddles_stride4(n: usize) -> Vec<[CF; 3]> {
-    assert!(n.is_power_of_two(), "n must be a power of 2");
-    assert!(n >= 4, "n must be at least 4");
-    assert!(n % 4 == 0, "n must be divisible by 4");
-    
-    let w = get_root_of_unity(n);
-    
-    // Precompute w^i, w^(2i), w^(3i) for i in 0..n/4
-    let subn = n / 4;
-    let mut w_powers = Vec::with_capacity(subn);
-    let mut w_i = CF::one();
-    
-    for _ in 0..subn {
-        let w_2i = w_i * w_i;       // w^(2i)
-        let w_3i = w_2i * w_i;      // w^(3i)
-        w_powers.push([w_i, w_2i, w_3i]);
-        
-        // Update for next iteration
-        w_i = w_i * w;
-    }
-    
-    w_powers
-}
-
 #[cfg(test)]
 pub mod tests {
     use crate::ntt_utils::*;
