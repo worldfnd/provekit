@@ -63,7 +63,9 @@ The following functions use `ntt_r8_hybrid_p` under the hood to perform the NTT
 for inputs of length `8^k * 2` and `8^k * 4` respectively.
 
 - `ntt_r8_s2_hybrid_p`
+    - For 4194304 inputs (8^7 * 2): 709.36 ms 
 - `ntt_r8_s4_hybrid_p`
+    - For 8388608 inputs (8^7 * 4): 1.5529 s
 
 ### Hardware
 
