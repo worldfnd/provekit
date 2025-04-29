@@ -20,7 +20,7 @@ fn test_compilation_and_solving(
     let acir_witness = witness_stack.pop().unwrap().witness;
 
     let mut transcript = MockTranscript::new();
-    let witness = r1cs.solver.solve(&mut transcript, &acir_witness);
+    let witness = r1cs.solve(&mut transcript, &acir_witness);
     if witness.len() < 100 {
         println!("Witness:");
         for (i, w) in witness.iter().enumerate() {

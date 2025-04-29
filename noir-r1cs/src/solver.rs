@@ -111,6 +111,7 @@ impl WitnessBuilder {
                 let mut memory_read_counts = vec![0u32; *memory_size];
                 for addr_witness_idx in address_witnesses {
                     let addr = witness[*addr_witness_idx].try_to_u64().unwrap() as usize;
+                    dbg!(addr_witness_idx, addr);
                     memory_read_counts[addr] += 1;
                 }
                 for (i, count) in memory_read_counts.iter().enumerate() {
@@ -170,65 +171,5 @@ impl MockTranscript {
         let mut rng = rand::thread_rng();
         let n: u32 = rng.gen();
         n.into()
-    }
-}
-
-pub struct R1CSSolver {
-    /// Indicates how to solve for each R1CS witness
-    pub witness_builders: Vec<WitnessBuilder>,
-
-    /// The ACIR witness indices of the initial values of the memory blocks
-    pub initial_memories: BTreeMap<usize, Vec<usize>>,
-
-    /// Equal to the sum of the lengths of the witness builders + 1 (for the constant one witness)
-    pub next_witness_idx: usize,
-}
-
-impl R1CSSolver {
-    pub fn new() -> Self {
-        Self {
-            witness_builders: vec![WitnessBuilder::Constant(FieldElement::one())],
-            initial_memories: BTreeMap::new(),
-            next_witness_idx: 1,
-        }
-    }
-
-    /// Add a new witness to the R1CS solver.
-    pub fn add_witness_builder(&mut self, witness_builder: WitnessBuilder) {
-        self.next_witness_idx += witness_builder.num_witnesses();
-        self.witness_builders.push(witness_builder);
-    }
-
-    /// Given the ACIR witness values, solve for the R1CS witness values.
-    pub fn solve(
-        &self,
-        transcript: &mut MockTranscript,
-        acir_witnesses: &WitnessMap<FieldElement>,
-    ) -> Vec<FieldElement> {
-        let mut witness = vec![FieldElement::zero(); self.num_witnesses()];
-        let mut witness_idx = 0;
-        self.witness_builders
-            .iter()
-            .for_each(|witness_builder| {
-                witness_builder.solve_and_append_to_transcript(
-                    witness_idx,
-                    &mut witness,
-                    acir_witnesses,
-                    transcript,
-                );
-                witness_idx += witness_builder.num_witnesses();
-            });
-        witness
-    }
-
-    /// The number of witnesses in the R1CS instance.
-    /// This includes the constant one witness.
-    pub fn num_witnesses(&self) -> usize {
-        self.next_witness_idx
-    }
-
-    /// Index of the constant 1 witness
-    pub const fn witness_one(&self) -> usize {
-        0
     }
 }

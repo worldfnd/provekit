@@ -74,7 +74,7 @@ fn main() -> AnyResult<()> {
     let acir_witness = witness_stack.pop().unwrap().witness;
 
     let mut transcript = MockTranscript::new();
-    let witness = r1cs.solver.solve(&mut transcript, &acir_witness);
+    let witness = r1cs.solve(&mut transcript, &acir_witness);
 
     // Check that the witness satisfies the R1CS relation
     if let Some(failing_constraint_idx) = r1cs.matrices.test_satisfaction(&witness) {
