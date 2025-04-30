@@ -36,7 +36,7 @@ $
 
 == Embedding inner products
 
-We are interested in computing inner products over $F_p$, but for technical reasons we often need to work $F_(p^6)$ (the field needs to be large enough for cryptographic applications). The naive way of implementing $F_p^n$ inner products in $F_(p^6)$ results in $n$ large field multiplications. We will construct an embedding of $F_p^6$ inner products into $F_(p^6)$ to reduce this to $ceil(n/6)$ large field multiplications.
+We are interested in computing inner products over $FF_p$, but for technical reasons we often need to work in $FF_(p^6)$ (the field needs to be large enough for cryptographic applications). The naive way of implementing $FF_p^n$ inner products in $FF_(p^6)$ results in $n$ large field multiplications. We will construct an embedding of $FF_p^6$ inner products into $FF_(p^6)$ to reduce this to $ceil(n/6)$ large field multiplications.
 
 Applying @embedding we find embedding matrices for the degree 2 and 3 extensions. Composing these using @tower we obtain an embedding for $FF_(p^6)$ in our chosen basis:
 
@@ -51,11 +51,11 @@ vmat(B) = mat(
 )
 $
 
-Thus to compute the inner product of two vectors $vvec(v), vvec(w) in FF_p^6$ we compute the $FF_(p^6)$ elements $v, w$. We compute $v$ from the coefficient representation $vvec(v)$ and $w$ from the coefficients $vmat(B) dot vvec(w)$. The inner product is then computed as the constant coefficient of $v dot w$. Because of linearity, this alows us to embed $F_p^n$ inner products into an inner product over $ceil(n/6)$ elements of $F_(p^6)$.
+Thus to compute the inner product of two vectors $vvec(v), vvec(w) in FF_p^6$ we compute the $FF_(p^6)$ elements $v, w$. We compute $v$ from the coefficient representation $vvec(v)$ and $w$ from the coefficients $vmat(B) dot vvec(w)$. The inner product is then computed as the constant coefficient of $v dot w$. Because of linearity, this alows us to embed $F_p^n$ inner products into an inner product over $ceil(n/6)$ elements of $FF_(p^6)$.
 
-Applying this to WHIR, we can commit to a $ceil(n/6)$ sized witness vector in $F_(p^6)$ and do opening proofs with weights in $F_(p^6)$ to proof a witness-weight inner product over $F_p^n$.
+Applying this to WHIR, we can commit to a $ceil(n/6)$ sized witness vector in $FF_(p^6)$ and do opening proofs with weights in $FF_(p^6)$ to proof a witness-weight inner product over $FF_p^n$.
 
-If we instead need to do an inner product between a witness in $F_p^n$ and weights in $F_(p^6)^n$ (which may be the case in an adaptation of GR1CS) then we can do this using 6 inner product over $F_p^n$, which can be batched in the WHIR opening. (TODO: Is there a more efficient way to do this?)
+If we instead need to do an inner product between a witness in $FF_p^n$ and weights in $FF_(p^6)^n$ (which may be the case in an adaptation of GR1CS) then we can do this using 6 inner product over $FF_p^n$, which can be batched in the WHIR opening. (TODO: Is there a more efficient way to do this?)
 
 TODO: Appropriate adaptation of GR1CS.
 
