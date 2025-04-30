@@ -1,10 +1,15 @@
-use std::collections::{HashSet, VecDeque};
-use std::fmt::Display;
-
-use crate::FreshAllocator;
-use crate::frontend::FreshVariable;
-use crate::ir::{FreshRegister, Instruction};
-use crate::reification::ReifiedRegister;
+use {
+    crate::{
+        FreshAllocator,
+        frontend::FreshVariable,
+        ir::{FreshRegister, Instruction},
+        reification::ReifiedRegister,
+    },
+    std::{
+        collections::{HashSet, VecDeque},
+        fmt::Display,
+    },
+};
 
 /// Tracks which registers have been seen during analysis.
 ///
@@ -41,7 +46,7 @@ impl Seen {
 #[derive(Clone, Copy)]
 pub struct Lifetime {
     pub(crate) begin: usize,
-    pub(crate) end: usize,
+    pub(crate) end:   usize,
 }
 
 pub struct Lifetimes(Vec<Lifetime>);
@@ -51,7 +56,7 @@ impl Lifetimes {
         Self(vec![
             Lifetime {
                 begin: usize::MAX,
-                end: usize::MAX,
+                end:   usize::MAX,
             };
             nr_fresh_registers
         ])
@@ -74,12 +79,14 @@ impl std::ops::IndexMut<FreshRegister> for Lifetimes {
 
 /// Performs liveness analysis on instructions to determine register lifetimes.
 ///
-/// This function analyzes the instruction sequence to determine at which instructions
-/// each register is last used, allowing for register deallocation at the earliest possible point.
+/// This function analyzes the instruction sequence to determine at which
+/// instructions each register is last used, allowing for register deallocation
+/// at the earliest possible point.
 ///
 /// # Arguments
 ///
-/// * `output_registers` - The registers that contain the results at the end of the instructions.
+/// * `output_registers` - The registers that contain the results at the end of
+///   the instructions.
 /// * `instructions` - The instruction sequence to analyze
 /// * `nr_fresh_registers` - The total number of fresh registers used
 ///
@@ -97,7 +104,8 @@ pub fn liveness_analysis(
     output_variables: &[FreshVariable],
     instructions: &[Instruction<FreshRegister>],
 ) -> (VecDeque<HashSet<FreshRegister>>, Lifetimes) {
-    // Initialize the seen_registers with the output registers such that they won't get released.
+    // Initialize the seen_registers with the output registers such that they won't
+    // get released.
     let mut seen_registers = Seen::new();
     output_variables.iter().for_each(|variable| {
         variable.registers.iter().for_each(|register| {

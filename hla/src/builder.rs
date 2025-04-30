@@ -1,18 +1,23 @@
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
-use std::path::Path;
-
-use crate::AtomicInstructionBlock;
-use crate::backend::{
-    AllocatedVariable, RegisterBank, RegisterMapping, allocate_input_variable,
-    hardware_register_allocation, reserve_output_variable,
+use {
+    crate::{
+        AtomicInstructionBlock,
+        backend::{
+            AllocatedVariable, RegisterBank, RegisterMapping, allocate_input_variable,
+            hardware_register_allocation, reserve_output_variable,
+        },
+        codegen::{generate_rust_global_asm, generate_rust_inline_asm},
+        frontend::{Assembler, FreshAllocator, FreshVariable},
+        ir::{HardwareRegister, Instruction, Variable},
+        liveness::liveness_analysis,
+    },
+    std::{
+        collections::{HashMap, hash_map::Entry},
+        path::Path,
+    },
 };
-use crate::codegen::{generate_rust_global_asm, generate_rust_inline_asm};
-use crate::frontend::{Assembler, FreshAllocator, FreshVariable};
-use crate::ir::{HardwareRegister, Instruction, Variable};
-use crate::liveness::liveness_analysis;
 
-/// A function type that sets up an assembly program, returning input and output variables.
+/// A function type that sets up an assembly program, returning input and output
+/// variables.
 pub type Setup =
     fn(alloc: &mut FreshAllocator, asm: &mut Assembler) -> (Vec<FreshVariable>, FreshVariable);
 
@@ -66,8 +71,8 @@ where
 
     let (input_hw_registers, output_hw_registers, instructions) = run_setups(&mut alloc, algos);
 
-    // We do not check for unique_variables across inputs and outputs. For example when using a input pointer as output as well the name
-    // should be the same.
+    // We do not check for unique_variables across inputs and outputs. For example
+    // when using a input pointer as output as well the name should be the same.
     let input_hw_registers = unique_variable(input_hw_registers);
     let output_hw_registers = unique_variable(output_hw_registers);
 
@@ -163,7 +168,8 @@ fn run_setups(
 ///
 /// # Returns
 ///
-/// A tuple containing input variables, the output variable, and instruction blocks
+/// A tuple containing input variables, the output variable, and instruction
+/// blocks
 fn run_setup(
     alloc: &mut FreshAllocator,
     f: Setup,
@@ -177,10 +183,11 @@ fn run_setup(
     (inputs, outputs, asm.instructions)
 }
 
-/// Ensures all variable labels are unique by adding incremental numbers to duplicates.
+/// Ensures all variable labels are unique by adding incremental numbers to
+/// duplicates.
 ///
-/// When multiple variables would have the same label, this function adds numbers
-/// to make them unique (e.g., "var" becomes "var1", "var2", etc.).
+/// When multiple variables would have the same label, this function adds
+/// numbers to make them unique (e.g., "var" becomes "var1", "var2", etc.).
 ///
 /// # Arguments
 ///
@@ -208,7 +215,7 @@ fn unique_variable<T>(variables: Vec<Variable<T>>) -> Vec<Variable<T>> {
                     *count += 1;
 
                     Variable {
-                        label: new_label,
+                        label:     new_label,
                         registers: variable.registers,
                     }
                 }
@@ -217,11 +224,15 @@ fn unique_variable<T>(variables: Vec<Variable<T>>) -> Vec<Variable<T>> {
         .collect()
 }
 
-/// Represents how setup functions should be executed and their instructions combined.
+/// Represents how setup functions should be executed and their instructions
+/// combined.
 ///
-/// This enum allows for sequential or parallel execution patterns of setup functions.
-/// - `Seq` - Functions are executed sequentially, with their instructions appearing in order
-/// - `Par` - Functions from both branches are executed, with their instructions interleaved
+/// This enum allows for sequential or parallel execution patterns of setup
+/// functions.
+/// - `Seq` - Functions are executed sequentially, with their instructions
+///   appearing in order
+/// - `Par` - Functions from both branches are executed, with their instructions
+///   interleaved
 pub enum Interleaving<T> {
     /// Sequential execution of setup functions
     Seq(Vec<T>),
@@ -286,11 +297,13 @@ fn interleave<T>(lhs: Vec<T>, rhs: Vec<T>) -> Vec<T> {
 
     let long_len = longer.len();
     let mut long_iter = longer.into_iter();
-    // For the first element (short_index = 0 ) -> The location will be ((short_index + 1) * long_len) / short_len
+    // For the first element (short_index = 0 ) -> The location will be
+    // ((short_index + 1) * long_len) / short_len
     let mut next = long_len / short_len;
 
     // With spacing i needs to reach and place the last element of short
-    // ((short_len - 1 + 1) * long_len) / short_len = long_len. Therefore the range is 0..=long_len
+    // ((short_len - 1 + 1) * long_len) / short_len = long_len. Therefore the range
+    // is 0..=long_len
     for i in 0..=long_len {
         if i == next {
             if let Some((short_index, item)) = short_iter.next() {

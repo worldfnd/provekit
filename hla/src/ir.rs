@@ -2,29 +2,31 @@ use crate::reification::ReifiedRegister;
 
 #[derive(Clone, Debug)]
 pub struct Variable<R> {
-    pub(crate) label: String,
+    pub(crate) label:     String,
     pub(crate) registers: Vec<R>,
 }
 
-/// A generic instruction representation that can work with different register types.
+/// A generic instruction representation that can work with different register
+/// types.
 ///
-/// This instruction models both regular machine instructions and register aliases.
-/// It contains the opcode, result registers, operand registers, and any modifiers.
+/// This instruction models both regular machine instructions and register
+/// aliases. It contains the opcode, result registers, operand registers, and
+/// any modifiers.
 ///
 /// # Type Parameters
 ///
-/// * `R` - The register type is either `FreshRegister` for virtual registers
-///   or `HardwareRegister` for physical machine registers.
+/// * `R` - The register type is either `FreshRegister` for virtual registers or
+///   `HardwareRegister` for physical machine registers.
 #[derive(Debug, PartialEq)]
 pub struct Instruction<R> {
-    pub(crate) opcode: String,
+    pub(crate) opcode:    String,
     // Result is a vector because:
     // - Some operations have do not write results to a register
     //   - CMN only affects flags
     //   - STR writes to a destination stored in operands
     // - LDP has 2 destinations
-    pub(crate) results: Vec<ReifiedRegister<R>>,
-    pub(crate) operands: Vec<ReifiedRegister<R>>,
+    pub(crate) results:   Vec<ReifiedRegister<R>>,
+    pub(crate) operands:  Vec<ReifiedRegister<R>>,
     pub(crate) modifiers: Modifier,
 }
 

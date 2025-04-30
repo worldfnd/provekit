@@ -1,13 +1,16 @@
-use std::array;
-use std::{marker::PhantomData, mem};
-
-use crate::ir::{FreshRegister, Instruction, Variable};
-use crate::reification::{ReifiedRegister, ReifyRegister};
+use {
+    crate::{
+        ir::{FreshRegister, Instruction, Variable},
+        reification::{ReifiedRegister, ReifyRegister},
+    },
+    std::{array, marker::PhantomData, mem},
+};
 
 /// A vector of instructions representing an atomic unit of execution.
 ///
-/// This type represents a sequence of instructions that should be executed together
-/// as they rely on side effects such as flag setting that could potentially be disturbed when interleaved.
+/// This type represents a sequence of instructions that should be executed
+/// together as they rely on side effects such as flag setting that could
+/// potentially be disturbed when interleaved.
 pub type AtomicInstructionBlock = Vec<Instruction<FreshRegister>>;
 
 /// A container for assembly instructions.
@@ -85,7 +88,7 @@ impl FreshVariable {
         R: ReifyRegister,
     {
         Self {
-            label: label.to_string(),
+            label:     label.to_string(),
             registers: registers.iter().map(|reg| reg.reify()).collect(),
         }
     }
@@ -97,17 +100,17 @@ impl FreshVariable {
 /// the same register. it's mutability story is similar to interior mutability.
 pub struct Reg<T> {
     pub(crate) reg: FreshRegister,
-    _marker: PhantomData<T>,
+    _marker:        PhantomData<T>,
 }
 
 /// Represents a single hardware register that contains a pointer to a type T
 /// and an offset from that pointer.
 pub struct PointerReg<'a, T> {
-    pub(crate) reg: &'a Reg<T>,
+    pub(crate) reg:    &'a Reg<T>,
     // offset in bytes as that allows for conversions between
     // x and w without having to recalculate the offset
     pub(crate) offset: usize,
-    _marker: PhantomData<T>,
+    _marker:           PhantomData<T>,
 }
 
 impl<T, const N: usize> Reg<*mut [T; N]> {
@@ -115,8 +118,8 @@ impl<T, const N: usize> Reg<*mut [T; N]> {
         assert!(index < N, "out-of-bounds access");
 
         PointerReg {
-            reg: self.as_pointer(),
-            offset: mem::size_of::<T>() * index,
+            reg:     self.as_pointer(),
+            offset:  mem::size_of::<T>() * index,
             _marker: PhantomData,
         }
     }
@@ -127,8 +130,8 @@ impl<T, const N: usize> Reg<*const [T; N]> {
         assert!(index < N, "out-of-bounds access");
 
         PointerReg {
-            reg: self.as_(),
-            offset: mem::size_of::<T>() * index,
+            reg:     self.as_(),
+            offset:  mem::size_of::<T>() * index,
             _marker: PhantomData,
         }
     }
@@ -164,7 +167,7 @@ impl Reg64Bit for f64 {}
 impl<T> Reg<T> {
     pub(crate) fn new(reg: u64) -> Self {
         Self {
-            reg: reg.into(),
+            reg:     reg.into(),
             _marker: Default::default(),
         }
     }

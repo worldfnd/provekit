@@ -1,10 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-
-use crate::{
-    FreshVariable,
-    ir::{FreshRegister, HardwareRegister, Instruction, TypedHardwareRegister, Variable},
-    liveness::{Lifetime, Lifetimes},
-    reification::{Index, RegisterType, ReifiedRegister},
+use {
+    crate::{
+        FreshVariable,
+        ir::{FreshRegister, HardwareRegister, Instruction, TypedHardwareRegister, Variable},
+        liveness::{Lifetime, Lifetimes},
+        reification::{Index, RegisterType, ReifiedRegister},
+    },
+    std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
 };
 
 pub type AllocatedVariable = Variable<TypedHardwareRegister>;
@@ -14,7 +15,7 @@ struct RegisterAllocator {
     // Keeps track of the free hardware during allocations
     free_registers: BTreeSet<HardwareRegister>,
     // Registers that at the end should contain the outputs
-    pinned: PinnedOutputRegisters,
+    pinned:         PinnedOutputRegisters,
 }
 
 #[derive(Debug)]
@@ -23,7 +24,7 @@ struct PinnedOutputRegisters {
     // to hold output variables.
     // We use a BTreeSet as "iterator" here to also support ABI like SYS-V which
     // might use a few low numbered registers and x8.
-    iter: BTreeSet<HardwareRegister>,
+    iter:         BTreeSet<HardwareRegister>,
     // Keep track till when the pinned output register is free to be used
     // for other variables.
     reservations: BTreeMap<HardwareRegister, (FreshRegister, usize)>,
@@ -32,7 +33,7 @@ struct PinnedOutputRegisters {
 impl PinnedOutputRegisters {
     fn new(iter: impl Iterator<Item = u64>) -> Self {
         Self {
-            iter: BTreeSet::from_iter(iter.map(HardwareRegister)),
+            iter:         BTreeSet::from_iter(iter.map(HardwareRegister)),
             reservations: BTreeMap::new(),
         }
     }
@@ -64,25 +65,27 @@ impl RegisterAllocator {
         let pool = BTreeSet::from_iter(registers.clone().map(HardwareRegister));
         RegisterAllocator {
             free_registers: pool,
-            pinned: PinnedOutputRegisters::new(registers),
+            pinned:         PinnedOutputRegisters::new(registers),
         }
     }
 
     fn pop_first(&mut self, reg: FreshRegister, end_lifetime: usize) -> Option<HardwareRegister> {
-        // Find the first register that is free and will be free for the entirety of the lifetime of the fresh register.
+        // Find the first register that is free and will be free for the entirety of the
+        // lifetime of the fresh register.
         let reg = self
             .free_registers
             .iter()
             .find(
-                // Check if the hardware register has been preassigned assigned to this fresh registers
-                // Check if the hardware register can be used before it's preassigned moment
+                // Check if the hardware register has been preassigned assigned to this fresh
+                // registers Check if the hardware register can be used before it's
+                // preassigned moment
                 |&hardware_register| match self.pinned.reservations.get(hardware_register) {
                     Some((tp, _lifetime)) if reg == *tp => true,
                     Some((_tp, lifetime)) if end_lifetime <= *lifetime => true,
                     // Hardware register has not been preassigned
                     None => true,
-                    // Hardware register was preassigned to a different fresh register and it's ownership overlaps
-                    // with the lifetime of reg
+                    // Hardware register was preassigned to a different fresh register and it's
+                    // ownership overlaps with the lifetime of reg
                     _ => false,
                 },
             )
@@ -135,7 +138,8 @@ pub fn allocate_input_variable(
 /// # Arguments
 ///
 /// * `register_bank` - RegisterBank to pin the register in
-/// * `lifetimes` - Register lifetimes for allocation planning. It will use the begin value.
+/// * `lifetimes` - Register lifetimes for allocation planning. It will use the
+///   begin value.
 pub fn reserve_output_variable(
     register_bank: &mut RegisterBank,
     lifetimes: &Lifetimes,
@@ -158,11 +162,12 @@ pub fn reserve_output_variable(
 /// Manages pools of hardware registers for allocation.
 ///
 /// RegisterBank maintains separate pools for general-purpose registers and
-/// vector registers. It handles allocation and deallocation of hardware registers.
+/// vector registers. It handles allocation and deallocation of hardware
+/// registers.
 #[derive(Debug)]
 pub struct RegisterBank {
     general_purpose: RegisterAllocator,
-    vector: RegisterAllocator,
+    vector:          RegisterAllocator,
 }
 
 impl Default for RegisterBank {
@@ -185,7 +190,7 @@ impl RegisterBank {
     pub fn new() -> Self {
         Self {
             general_purpose: RegisterAllocator::new((0..=17).chain(20..29)),
-            vector: RegisterAllocator::new(0..=31),
+            vector:          RegisterAllocator::new(0..=31),
         }
     }
 
@@ -210,11 +215,13 @@ impl RegisterBank {
     /// # Arguments
     ///
     /// * `tp` - The fresh register to allocate for
-    /// * `end_lifetime` - The instruction index after which the register is no longer needed
+    /// * `end_lifetime` - The instruction index after which the register is no
+    ///   longer needed
     ///
     /// # Returns
     ///
-    /// An Option containing the allocated hardware register, or None if allocation failed.
+    /// An Option containing the allocated hardware register, or None if
+    /// allocation failed.
     fn pop_first(
         &mut self,
         reified_register: ReifiedRegister<FreshRegister>,
@@ -231,7 +238,8 @@ impl RegisterBank {
     ///
     /// # Returns
     ///
-    /// `true` if the register was added to the pool, `false` if it was already in the pool.
+    /// `true` if the register was added to the pool, `false` if it was already
+    /// in the pool.
     fn insert(&mut self, register: TypedHardwareRegister) -> bool {
         match register {
             TypedHardwareRegister::General(hardware_register) => {
@@ -246,9 +254,9 @@ impl RegisterBank {
 
 /// Maps fresh registers to their assigned hardware registers.
 ///
-/// RegisterMapping maintains the mapping between virtual registers (FreshRegisters)
-/// and their corresponding physical hardware registers _during_ register allocation.
-/// It represents the active set of allocations.
+/// RegisterMapping maintains the mapping between virtual registers
+/// (FreshRegisters) and their corresponding physical hardware registers
+/// _during_ register allocation. It represents the active set of allocations.
 #[derive(Debug, Default)]
 pub struct RegisterMapping {
     mapping: HashMap<FreshRegister, TypedHardwareRegister>,
@@ -302,7 +310,8 @@ impl RegisterMapping {
     ///
     /// * `register_bank` - The register bank to allocate from
     /// * `typed_register` - The fresh register to get or allocate
-    /// * `end_lifetime` - The instruction index after which the register is no longer needed
+    /// * `end_lifetime` - The instruction index after which the register is no
+    ///   longer needed
     ///
     /// # Returns
     ///
@@ -323,7 +332,13 @@ impl RegisterMapping {
             None => {
                 let hardware_reified_register = register_bank
                     .pop_first(typed_register, lifetime.end)
-                    .unwrap_or_else(||panic!("All register are in use. HLA does not support spilling to stack for performance reasons. Reduce the number of registers simultaneously in use."));
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "All register are in use. HLA does not support spilling to stack for \
+                             performance reasons. Reduce the number of registers simultaneously \
+                             in use."
+                        )
+                    });
 
                 self.mapping.insert(
                     typed_register.reg,
@@ -341,7 +356,8 @@ impl RegisterMapping {
     /// `true` if the register was freed, `false` otherwise.
     fn free_register(&mut self, register_bank: &mut RegisterBank, fresh: FreshRegister) -> bool {
         if let Some(reg) = self.mapping.remove(&fresh) {
-            // TODO this assert needs to be moved into insert and that should also solve the todo
+            // TODO this assert needs to be moved into insert and that should also solve the
+            // todo
             let result = register_bank.insert(reg);
             assert!(
                 result,
@@ -355,7 +371,7 @@ impl RegisterMapping {
 
     pub fn get_allocated_variable(&mut self, variable: &FreshVariable) -> AllocatedVariable {
         AllocatedVariable {
-            label: variable.label.clone(),
+            label:     variable.label.clone(),
             registers: variable
                 .registers
                 .iter()
@@ -365,9 +381,9 @@ impl RegisterMapping {
                             .get(&register.reg)
                             .map(|hw_reg| {
                                 ReifiedRegister {
-                                    reg: hw_reg.reg(),
+                                    reg:    hw_reg.reg(),
                                     r#type: register.r#type,
-                                    idx: Index::None,
+                                    idx:    Index::None,
                                 }
                                 .to_basic_register()
                             })
@@ -383,9 +399,9 @@ impl RegisterMapping {
 
 /// Allocates hardware registers for a sequence of instructions.
 ///
-/// This function transforms instructions using fresh registers into instructions
-/// using hardware registers, performing register allocation based on the results
-/// of liveness analysis.
+/// This function transforms instructions using fresh registers into
+/// instructions using hardware registers, performing register allocation based
+/// on the results of liveness analysis.
 ///
 /// # Arguments
 ///
@@ -443,9 +459,9 @@ pub fn hardware_register_allocation(
 
             // Construct the hardware instruction
             Instruction {
-                opcode: instruction.opcode,
-                results: dest,
-                operands: src,
+                opcode:    instruction.opcode,
+                results:   dest,
+                operands:  src,
                 modifiers: instruction.modifiers,
             }
         })

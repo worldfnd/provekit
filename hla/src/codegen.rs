@@ -1,10 +1,15 @@
-//! Code generators that do ~90% of the work required to incorporate an assembly function into Rust.
-//! It will generate the meat of the functions, the assembly instructions and in/out/lateout for registers, but you'll have to write the interface functions and
-//! for loads/store you'll need to modify the argument a little bit.
-use std::collections::BTreeSet;
-
-use crate::backend::AllocatedVariable;
-use crate::ir::{HardwareRegister, Instruction, TypedHardwareRegister};
+//! Code generators that do ~90% of the work required to incorporate an assembly
+//! function into Rust. It will generate the meat of the functions, the assembly
+//! instructions and in/out/lateout for registers, but you'll have to write the
+//! interface functions and for loads/store you'll need to modify the argument a
+//! little bit.
+use {
+    crate::{
+        backend::AllocatedVariable,
+        ir::{HardwareRegister, Instruction, TypedHardwareRegister},
+    },
+    std::collections::BTreeSet,
+};
 
 pub fn generate_standalone_asm(
     label: &str,
@@ -38,8 +43,8 @@ pub fn format_instructions_rust_inline(instructions: &[Instruction<HardwareRegis
         .join(",\n")
 }
 
-/// Generate a standalone file to be used with global_asm!. The top of file will include a comment
-/// that can be used as basis for the operands in global_asm!.
+/// Generate a standalone file to be used with global_asm!. The top of file will
+/// include a comment that can be used as basis for the operands in global_asm!.
 pub fn generate_rust_global_asm(
     label: &str,
     inputs_registers: &[AllocatedVariable],
@@ -89,7 +94,7 @@ pub fn generate_asm_operands(
 
     let clobbers = format_clobbers(&clobber_registers);
 
-    vec![
+    [
         input_operands,
         output_operands,
         clobbers,
@@ -98,8 +103,9 @@ pub fn generate_asm_operands(
     .join(",\n")
 }
 
-/// Clobber registers are all the registers that have been used in the assembly block minus the
-/// registers that are used for the output. These are needed by Rust to plan which registers need to be saved.
+/// Clobber registers are all the registers that have been used in the assembly
+/// block minus the registers that are used for the output. These are needed by
+/// Rust to plan which registers need to be saved.
 fn get_clobber_registers(
     outputs_registers: &[AllocatedVariable],
     instructions: &[Instruction<HardwareRegister>],
@@ -125,16 +131,20 @@ fn get_clobber_registers(
         .collect()
 }
 
-/// Formats a list of clobbered registers into the appropriate Rust inline assembly syntax.
-/// Each register is formatted as "lateout("REG") _" to indicate to the Rust compiler
-/// that the register is clobbered and needs to be saved.
+/// Formats a list of clobbered registers into the appropriate Rust inline
+/// assembly syntax. Each register is formatted as "lateout("REG") _" to
+/// indicate to the Rust compiler that the register is clobbered and needs to be
+/// saved.
 ///
 /// # Arguments
 ///
-/// * `clobbered_registers` - The list of registers that need to be marked as clobbered
+/// * `clobbered_registers` - The list of registers that need to be marked as
+///   clobbered
 ///
 /// # Returns
 ///
+/// An iterator that produces formatted strings for each clobbered register with
+/// separators
 fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> String {
     clobbered_registers
         .iter()
@@ -145,18 +155,22 @@ fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> String {
 
 /// Formats register operands for Rust inline assembly.
 ///
-/// This function takes a variable (modelled as an array of registers) and formats them according to a provided
-/// formatter function. Each variable is processed separately, with commas separating
-/// registers within a group and newlines separating groups.
+/// This function takes a variable (modelled as an array of registers) and
+/// formats them according to a provided formatter function. Each variable is
+/// processed separately, with commas separating registers within a group and
+/// newlines separating groups.
 ///
 /// # Arguments
 ///
-/// * `variables` - A slice of register vectors, where each vector represents a logical group
-///   (e.g., all input registers for a particular operation)
-/// * `formatter` - A function that formats a single register with its group index and position
+/// * `variables` - A slice of register vectors, where each vector represents a
+///   logical group (e.g., all input registers for a particular operation)
+/// * `formatter` - A function that formats a single register with its group
+///   index and position
 ///
 /// # Returns
 ///
+/// An iterator that produces formatted strings for each register group with
+/// appropriate separators
 fn format_operands(variables: &[AllocatedVariable], direction: &str) -> String {
     // Process each register group (with its index)
     variables

@@ -1,11 +1,13 @@
-use crate::frontend::*;
-use crate::ir::{FreshRegister, HardwareRegister, TypedHardwareRegister};
+use crate::{
+    frontend::*,
+    ir::{FreshRegister, HardwareRegister, TypedHardwareRegister},
+};
 
 #[derive(Debug, PartialOrd, Ord, Eq, Hash, PartialEq, Clone, Copy)]
 pub struct ReifiedRegister<R> {
-    pub reg: R,
+    pub reg:           R,
     pub(crate) r#type: RegisterType,
-    pub(crate) idx: Index,
+    pub(crate) idx:    Index,
 }
 
 #[derive(Debug, Eq, PartialOrd, Ord, Hash, PartialEq, Clone, Copy)]
@@ -99,9 +101,9 @@ impl<T> ReifyRegister for Reg<*mut T> {
 impl<T> ReifyRegister for Reg<*const T> {
     fn reify(&self) -> ReifiedRegister<FreshRegister> {
         ReifiedRegister {
-            reg: self.reg,
+            reg:    self.reg,
             r#type: RegisterType::X,
-            idx: Index::Pointer(0),
+            idx:    Index::Pointer(0),
         }
     }
 }
@@ -109,9 +111,9 @@ impl<T> ReifyRegister for Reg<*const T> {
 impl<T> ReifyRegister for PointerReg<'_, T> {
     fn reify(&self) -> ReifiedRegister<FreshRegister> {
         ReifiedRegister {
-            reg: self.reg.reg,
+            reg:    self.reg.reg,
             r#type: RegisterType::X,
-            idx: Index::Pointer(self.offset),
+            idx:    Index::Pointer(self.offset),
         }
     }
 }
@@ -119,9 +121,9 @@ impl<T> ReifyRegister for PointerReg<'_, T> {
 impl ReifyRegister for Reg<u64> {
     fn reify(&self) -> ReifiedRegister<FreshRegister> {
         ReifiedRegister {
-            reg: self.reg,
+            reg:    self.reg,
             r#type: RegisterType::X,
-            idx: Index::None,
+            idx:    Index::None,
         }
     }
 }
@@ -129,9 +131,9 @@ impl ReifyRegister for Reg<u64> {
 impl ReifyRegister for Reg<f64> {
     fn reify(&self) -> ReifiedRegister<FreshRegister> {
         ReifiedRegister {
-            reg: self.reg,
+            reg:    self.reg,
             r#type: RegisterType::D,
-            idx: Index::None,
+            idx:    Index::None,
         }
     }
 }
@@ -139,9 +141,9 @@ impl ReifyRegister for Reg<f64> {
 impl<T> ReifyRegister for Reg<Simd<T, 2>> {
     fn reify(&self) -> ReifiedRegister<FreshRegister> {
         ReifiedRegister {
-            reg: self.reg,
+            reg:    self.reg,
             r#type: RegisterType::V,
-            idx: Index::None,
+            idx:    Index::None,
         }
     }
 }
