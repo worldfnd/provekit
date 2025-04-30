@@ -1,0 +1,90 @@
+#import "preamble.typst": *
+
+= Mersenne 31
+
+Given $p = 2^31 - 1$ and $FF_p$, construct the extensions
+
+$
+FF_(p^2) &= FF_p [ii]\/(ii^2 + 1) \
+FF_(p^6) &= FF_(p^2) [jj]\/(jj^3 - 5)
+$
+
+Such that $FF_(p^6)$ has $ii^2 = -1$ and $jj^3 = 5$. We represent elements by the $F_p$ coefficients in the basis $(1, ii, jj, ii dot jj, jj^2, ii dot jj^2)$.
+
+== Number Theoretic Transforms (NTTs)
+
+In this tower we can do efficent NTTs since the multiplicative groups have small subgroups:
+
+$
+abs(FF_p^times) &= 2 ⋅ 3^2 ⋅ 7 ⋅ 11 ⋅ 31 ⋅ 151 ⋅ 331 \
+abs(FF_(p^2)^times) &= 2^32 ⋅ 3^2 ⋅ 7 ⋅ 11 ⋅ 31 ⋅ 151 ⋅ 331 \
+abs(FF_(p^6)^times) &= 2^32 ⋅ 3^3 ⋅ 7 ⋅ 11 ⋅ 13 ⋅ 31 ⋅ 43^2 ⋅ 79 ⋅ 151 ⋅ 331 ⋅ 1381 ⋅ 529510939 ⋅ 1758566101 ⋅ 2903110321
+$
+
+In particular it has primitive $2^32$-th roots of unity contained in the $FF_(p^2)$ subfield. The roots up to $8$th order have low hamming weight structure:
+
+$
+omega_8^0 &=&  1  &#h(4em)&
+omega_8^1 &=&  2^15 dot (1 - ii) \
+omega_8^2 &=&  - ii &&
+omega_8^3 &=&  - 2^15 dot (1 + ii) \
+omega_8^4 &=&  - 1 &&
+omega_8^5 &=&  - 2^15 dot (1 - ii) \
+omega_8^6 &=&  ii &&
+omega_8^7 &=&  2^15 dot (1 + ii) \
+$
+
+== Embedding inner products
+
+We are interested in computing inner products over $F_p$, but for technical reasons we often need to work $F_(p^6)$ (the field needs to be large enough for cryptographic applications). The naive way of implementing $F_p^n$ inner products in $F_(p^6)$ results in $n$ large field multiplications. We will construct an embedding of $F_p^6$ inner products into $F_(p^6)$ to reduce this to $ceil(n/6)$ large field multiplications.
+
+Applying @embedding we find embedding matrices for the degree 2 and 3 extensions. Composing these using @tower we obtain an embedding for $FF_(p^6)$ in our chosen basis:
+
+$
+vmat(B) = mat(
+1,  0, 0, 0, 0, 0;
+0, -1, 0, 0, 0, 0;
+0,  0, 0, 0, 5^(-1), 0;
+0, 0, 0, 0,0, -5^(-1);
+0,  0,  5^(-1), 0,0,0;
+0,  0,0, -5^(-1),0,0;
+)
+$
+
+Thus to compute the inner product of two vectors $vvec(v), vvec(w) in FF_p^6$ we compute the $FF_(p^6)$ elements $v, w$. We compute $v$ from the coefficient representation $vvec(v)$ and $w$ from the coefficients $vmat(B) dot vvec(w)$. The inner product is then computed as the constant coefficient of $v dot w$. Because of linearity, this alows us to embed $F_p^n$ inner products into an inner product over $ceil(n/6)$ elements of $F_(p^6)$.
+
+Applying this to WHIR, we can commit to a $ceil(n/6)$ sized witness vector in $F_(p^6)$ and do opening proofs with weights in $F_(p^6)$ to proof a witness-weight inner product over $F_p^n$.
+
+If we instead need to do an inner product between a witness in $F_p^n$ and weights in $F_(p^6)^n$ (which may be the case in an adaptation of GR1CS) then we can do this using 6 inner product over $F_p^n$, which can be batched in the WHIR opening. (TODO: Is there a more efficient way to do this?)
+
+TODO: Appropriate adaptation of GR1CS.
+
+= General results on finite field inner product embeddings
+
+#lemma[Given a field $FF_(q^n)$ over $FF_q$ represented by $FF_q [X]\/(X^n - alpha)$, there exist and embedding of the $FF_q^n$ dot product in $FF_(q^n)$ with $vmat(A) = vmat(I)$, $vmat(C) = (1, 0, dots, 0)$ and
+$
+vmat(B) = mat(
+1, 0, dots.c, 0;
+0, 0, dots.c, alpha^(-1);
+dots.v, dots.v, dots.up, 0;
+0, alpha^(-1), dots.c, 0
+)
+$
+]<embedding>
+
+#proof[
+The embedding of vectors $(a_0, a_1, dots, a_(n-1))$ and $(b_0, b_1, dots, b_(n-1))$ results in
+$
+a & = a_0 + a_1 dot X + dots.c + a_(n-1) dot X^(n-1) \
+b & = b_0 + alpha^(-1) dot ( b_(n-1) dot  X + dots.c + b_1 dot X^(n-1)) \
+$
+The constant term of the reduced product $a dot b$ is given by the $X^0 = 1$ and $X^n = alpha$ terms:
+$
+c_0 = a_0 dot b_0 + alpha dot (a_1 dot alpha^(-1) dot b_1 + dots.c + a_(n_1) dot alpha^(-1) dot b_(n-1))
+$
+which is the dot product as intended.
+]
+
+#lemma("Towers")[Given $m, n$ and a $FF_q^m$ dot product embedding in $FF_(q^m)$ and an $FF_(q^m)^n$ dot product embedding in $FF_(q^(m dot n))$, we can construct an $FF_q^(m dot n)$ dot product embedding in $FF_(q^(m dot n))$ by taking the Kronecker product of the embedding matrics.
+]<tower>
+(Proof TBD)

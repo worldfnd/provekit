@@ -1,0 +1,64 @@
+// Typst Docs: https://typst.app/docs/reference/
+// Symbol finder: https://detypify.quarticcat.com/
+// See https://github.com/qjcg/awesome-typst for more links
+
+#import "@preview/ctheorems:1.1.3": thmrules, thmbox, thmplain, thmproof
+#import "@preview/lovelace:0.3.0": *
+
+#show: thmrules.with(qed-symbol: $square$)
+#let theorem = thmbox("theorem", "Theorem", fill: rgb("#eeffee"), base_level:0)
+#let conjecture = thmbox("theorem", "Conjecture", fill: rgb("#ffeeee"), base_level:0)
+#let corollary = thmbox("theorem", "Corollary", fill: rgb("#eeffee"), base_level:0)
+#let lemma = thmbox("theorem", "Lemma", fill: rgb("#eeffee"), base_level:0)
+#let definition = thmbox("definition", "Definition", fill: rgb("#eef8ff"), base_level:0)
+#let example = thmbox("example", "Example", base_level: 0)
+#let proof = thmproof("proof", "Proof", inset: 0em)
+
+
+// Variable styles for vectors, sets, matrices, ...
+#let vvec = variable => math.bold(variable)
+#let vset = variable => math.cal(variable)
+#let vmat = variable => math.upright(variable)
+#let ii = math.upright("i")
+#let jj = math.upright("j")
+
+// Randomized functions and assignment
+#let arrowrr = math.attach(t: move(dy: 3pt, dx: -1.5pt, "$"), math.arrow.r)
+#let arrowrl = math.attach(t: move(dy: 3pt, dx: 1.5pt, "$"), math.arrow.l)
+
+// MAthe operators
+#let eq = math.op("eq")
+
+#let doc_title = "Notes on Client Side Prover"
+#set document(title: doc_title, author: ("Remco Bloemen"))
+#set page(paper: "a4", margin: (x: 2cm, top: 3cm), numbering: "1", columns: 1)
+// #set text(font: "TeX Gyre Termes", size: 10pt)
+#set par(justify: true)
+#set heading(numbering: "1.1.1")
+#set cite(style: "alphanumeric")
+
+// Small patch to only do equation numbering on labeled equations.
+#set math.equation(numbering: "(1)", supplement: "eq.")
+#show math.equation: it => {
+  if it.block and not it.has("label") [
+    #counter(math.equation).update(v => v - 1)
+    #math.equation(it.body, block: true, numbering: none)#label("")
+  ] else {
+    it
+  }
+}
+
+// Add support for appendices.
+#let appendices(body) = {
+  pagebreak()
+  counter(heading).update(0)
+  set heading(numbering: "A.1.1.");
+  body
+}
+
+// Display the paper's title, authors and abstract
+#place(top + center, float: true, scope: "parent",[
+#v(2cm, weak: true)
+#align(center, text(24pt, doc_title))
+#v(1cm, weak: true)
+])
