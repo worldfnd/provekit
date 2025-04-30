@@ -43,8 +43,8 @@ impl<R: std::fmt::Display> std::fmt::Display for Instruction<R> {
         let regs: String = self
             .extract_registers()
             .map(|x| x.to_string())
-            .intersperse(", ".to_string())
-            .collect();
+            .collect::<Vec<_>>()
+            .join(", ");
 
         let extra = match &self.modifiers {
             Modifier::None => String::new(),

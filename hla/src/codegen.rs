@@ -16,8 +16,8 @@ pub fn generate_standalone_asm(
         .iter()
         // tab instructions by two spaces
         .map(|instruction| format!("  {}", instruction))
-        .intersperse("\n".to_string())
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
 
     format!(
         r#"
@@ -34,8 +34,8 @@ pub fn format_instructions_rust_inline(instructions: &[Instruction<HardwareRegis
     instructions
         .iter()
         .map(|instruction| format!("\"{}\"", instruction))
-        .intersperse(",\n".to_string())
-        .collect()
+        .collect::<Vec<_>>()
+        .join(",\n")
 }
 
 /// Generate a standalone file to be used with global_asm!. The top of file will include a comment
@@ -52,8 +52,8 @@ pub fn generate_rust_global_asm(
     let operands_with_comments: String = operands
         .lines()
         .map(|line| format!("//{line}"))
-        .intersperse("\n".to_string())
-        .collect();
+        .collect::<Vec<_>>()
+        .join("\n");
 
     format!(
         r#"{operands_with_comments}
@@ -89,19 +89,13 @@ pub fn generate_asm_operands(
 
     let clobbers = format_clobbers(&clobber_registers);
 
-    let newline = std::iter::once(",\n".to_string());
-    // When importing with global asm the code will need to jump
-    let lr = std::iter::once("lateout(\"lr\") _".to_string());
-
-    input_operands
-        .into_iter()
-        .chain(newline.clone())
-        .chain(output_operands)
-        .chain(newline.clone())
-        .chain(clobbers)
-        .chain(newline.clone())
-        .chain(lr)
-        .collect()
+    vec![
+        input_operands,
+        output_operands,
+        clobbers,
+        "lateout(\"lr\") _".to_string(),
+    ]
+    .join(",\n")
 }
 
 /// Clobber registers are all the registers that have been used in the assembly block minus the
@@ -141,12 +135,12 @@ fn get_clobber_registers(
 ///
 /// # Returns
 ///
-/// An iterator that produces formatted strings for each clobbered register with separators
-fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> impl Iterator<Item = String> {
+fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> String {
     clobbered_registers
         .iter()
         .map(|register| format!("lateout(\"{}\") _", register))
-        .intersperse(", ".to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Formats register operands for Rust inline assembly.
@@ -163,11 +157,7 @@ fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> impl Iterat
 ///
 /// # Returns
 ///
-/// An iterator that produces formatted strings for each register group with appropriate separators
-fn format_operands(
-    variables: &[AllocatedVariable],
-    direction: &str,
-) -> impl Iterator<Item = String> {
+fn format_operands(variables: &[AllocatedVariable], direction: &str) -> String {
     // Process each register group (with its index)
     variables
         .iter()
@@ -184,8 +174,8 @@ fn format_operands(
                             variable.label
                         )
                     })
-                    .intersperse(", ".to_string())
-                    .collect() // Collect registers within a group with comma separators
+                    .collect::<Vec<_>>()
+                    .join(", ") // Collect registers within a group with comma separators
             } else {
                 format!(
                     "{direction}(\"{}\") {}",
@@ -193,5 +183,6 @@ fn format_operands(
                 )
             }
         })
-        .intersperse(",\n".to_string()) // Separate groups with comma and newline
+        .collect::<Vec<_>>()
+        .join(",\n") // Separate groups with comma and newline
 }
