@@ -1,46 +1,48 @@
-use std::{collections::BTreeMap, mem};
-
 use acir::{
         native_types::{Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     };
 use rand::Rng;
 
-use crate::compiler::{MemoryOperation, SpiceMemoryOperation, SpiceWitnesses};
+use crate::compiler::{SpiceMemoryOperation, SpiceWitnesses};
 
 #[derive(Debug, Clone)]
 /// Indicates how to solve for an R1CS witness value in terms of earlier R1CS witness values and/or
 /// ACIR witness values.
-/// FIXME document that the first arg is always the index of the witness to write to.
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
+    /// (witness index, constant value)
     Constant(usize, FieldElement),
     /// A witness value carried over from the ACIR circuit (at the specified ACIR witness index)
     /// (includes ACIR inputs and outputs)
+    /// (witness index, ACIR witness index)
     Acir(usize, usize),
     /// A Fiat-Shamir challenge value
+    /// (witness index)
     Challenge(usize),
     /// The inverse of the value at a specified witness index
+    /// (witness index, operand witness index)
     Inverse(usize, usize),
     /// The sum of many witness values
+    /// (witness index, vector of operand witness indices)
     Sum(usize, Vec<usize>),
     /// The product of the values at two specified witness indices
+    /// (witness index, operand witness index a, operand witness index b)
     Product(usize, usize, usize),
-    /// Solves for the number of times that each memory address occurs.
-    /// Arguments: (memory size, vector of all address witness indices)
+    /// Solves for the number of times that each memory address occurs in read-only memory.
+    /// Arguments: (first witness index, memory size, vector of all address witness indices)
     MemoryAccessCounts(usize, usize, Vec<usize>),
     /// For solving for the denominator of an indexed lookup.
-    /// Fields are (sz_challenge, (index_coeff, index), rs_challenge, value).
+    /// Fields are (witness index, sz_challenge, (index_coeff, index), rs_challenge, value).
     LogUpDenominator(usize, usize, (FieldElement, usize), usize, usize),
-    /// The factors of the multiset check used in read/write memory checking.
-    /// Values: (sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness))
+    /// A factor of the multiset check used in read/write memory checking.
+    /// Values: (witness index, sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness))
     /// where sz_challenge, rs_challenge, addr_witness, timer_witness are witness indices.
-    /// Solver computes: sz_challenge - (addr * addr_witness + rs_challenge * value + rs_challenge * rs_challenge * timer * timer_witness)
+    /// Solver computes:
+    /// sz_challenge - (addr * addr_witness + rs_challenge * value + rs_challenge * rs_challenge * timer * timer_witness)
     MemOpMultisetFactor(usize, usize, usize, (FieldElement, usize), usize, (FieldElement, usize)),
-    /// The timestamp of a memory read (used for read/write memory checking)
-    /// Fields are (block id, (raw address, address witness index), only one of which can be non-zero)
-
-    /// FIXME
+    /// Builds the witnesses values required for the Spice memory model.
+    /// (Note that some witness values are already solved for by the ACIR solver.)
     SpiceWitnesses(SpiceWitnesses),
 }
 
@@ -77,6 +79,7 @@ impl WitnessBuilder {
         }
     }
 
+    /// As per solve(), but additionally appends the solved witness values to the transcript.
     pub fn solve_and_append_to_transcript(
         &self,
         witness: &mut [FieldElement],
@@ -89,6 +92,7 @@ impl WitnessBuilder {
         }
     }
 
+    /// Solves for the witness value(s) specified by this builder and writes them to the witness vector.
     pub fn solve(&self, witness: &mut [FieldElement], acir_witnesses: &WitnessMap<FieldElement>, transcript: &mut MockTranscript) {
         match self {
             WitnessBuilder::Constant(witness_idx, c) => {

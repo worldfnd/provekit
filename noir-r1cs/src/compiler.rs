@@ -7,12 +7,12 @@ use {
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     }, std::{
-        collections::BTreeMap, fmt::{Debug, Formatter}, mem, ops::Neg, vec
+        collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, vec
     }
 };
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
-/// [R1CSSolver].
+/// a vector of [WitnessBuilder]s.
 pub struct R1CS {
     pub matrices: R1CSMatrices,
 
@@ -39,14 +39,14 @@ impl R1CS {
         self.matrices.add_witnesses(witness_builder.num_witnesses());
         // Add the witness to the mapping if it is an ACIR witness
         match &witness_builder {
-            WitnessBuilder::Acir(r1cs_witness_idx, acir_witness) => { // FIXME not sure if this needs to exist given people are meant to use the fetch method
+            WitnessBuilder::Acir(r1cs_witness_idx, acir_witness) => {
                 self.acir_to_r1cs_witness_map
                     .insert(*acir_witness, *r1cs_witness_idx);
             }
             _ => {}
         }
         self.witness_builders.push(witness_builder);
-        start_idx // FIXME not sure if this return value is needed
+        start_idx
     }
 
     /// Given the ACIR witness values, solve for the R1CS witness values.
@@ -302,7 +302,6 @@ impl R1CS {
                         block.operations.clone());
                 r1cs.add_witness_builder(WitnessBuilder::SpiceWitnesses(spice_witnesses.clone()));
 
-                // FIXME iterate over SpiceWitnesses struct memory operations
                 spice_witnesses.memory_operations.iter().enumerate().for_each(|(mem_op_index, op)| {
                     match op {
                         SpiceMemoryOperation::Load(addr_witness, value_witness, rt_witness) => {
