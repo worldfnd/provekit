@@ -356,8 +356,6 @@ impl RegisterMapping {
     /// `true` if the register was freed, `false` otherwise.
     fn free_register(&mut self, register_bank: &mut RegisterBank, fresh: FreshRegister) -> bool {
         if let Some(reg) = self.mapping.remove(&fresh) {
-            // TODO this assert needs to be moved into insert and that should also solve the
-            // todo
             let result = register_bank.insert(reg);
             assert!(
                 result,
@@ -365,7 +363,10 @@ impl RegisterMapping {
             );
             result
         } else {
-            todo!()
+            panic!(
+                "Trying to free a fresh register that has not been assigned a hardware register: \
+                 {fresh}"
+            )
         }
     }
 
