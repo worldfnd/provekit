@@ -1,13 +1,15 @@
+use serde::{Serialize, Deserialize};
 use crate::cm31::CF;
 use num_traits::{Zero, One, Pow};
 use crate::ntt_utils::*;
 
 pub const NTT_BLOCK_SIZE_FOR_CACHE: usize = 8usize.pow(5);
 
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct PrecomputedTwiddles {
-    pub small: Vec<CF>,
-    pub full: Vec<CF>,
-    pub stride: Vec<CF>,
+    pub small: Vec<CF>,  // for the base NTT of size NTT_BLOCK_SIZE_FOR_CACHE
+    pub full: Vec<CF>,   // for the higher levels of recursion in the radix-8 context
+    pub stride: Vec<CF>, // for stride 2 or stride 4
 }
 
 pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles, String> {
@@ -1217,5 +1219,15 @@ pub mod tests {
                 assert!(res == expected);
             }
         }
+    }
+
+    #[test]
+    pub fn test_serialise_and_deserialise_precomp() {
+        let n = 1024;
+        let precomp = precompute_twiddles(n).unwrap();
+        let serialised = bincode::serialize(&precomp).unwrap();
+        let deserialised = bincode::deserialize::<PrecomputedTwiddles>(&serialised).unwrap();
+
+        assert_eq!(precomp, deserialised);
     }
 }

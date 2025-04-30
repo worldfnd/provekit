@@ -1,3 +1,4 @@
+use serde::{Serialize, Deserialize};
 use core::fmt::Display;
 use num_traits::{ Zero, One, Pow };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
@@ -14,7 +15,7 @@ pub const MASK: u64 = 0xffffffff;
 // bits (x_h).
 // x = x_h * 2^32 + x_l
 // See https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RF {
     pub(crate) val: u32,
 }

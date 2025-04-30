@@ -1,5 +1,6 @@
 /// Complex M31 field arithmetic.
-
+ 
+use serde::{Serialize, Deserialize};
 use crate::rm31::{ RF, P };
 use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
 use core::fmt::Display;
@@ -10,10 +11,10 @@ use num_traits::pow::Pow;
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct CF {
-    pub(crate) a: RF, // the real part
-    pub(crate) b: RF, // the imaginary part
+    pub a: RF, // the real part
+    pub b: RF, // the imaginary part
 }
 
 // The 8th root of unity and its negation
