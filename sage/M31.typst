@@ -11,6 +11,8 @@ $
 
 Such that $FF_(p^6)$ has $ii^2 = -1$ and $jj^3 = 5$. We represent elements by the $F_p$ coefficients in the basis $(1, ii, jj, ii dot jj, jj^2, ii dot jj^2)$.
 
+TODO: An alternative not-cube is $j^3 = 2 + ii$, it's not immediately obvious which will lead to the most performant implementation, but at least the inner product embedding would become more dense.
+
 == Number Theoretic Transforms (NTTs)
 
 In this tower we can do efficent NTTs since the multiplicative groups have small subgroups:
