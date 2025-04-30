@@ -31,7 +31,6 @@ fn test_compilation_and_solving(
     }
 
     // Check that the witness satisfies the R1CS relation
-    println!("{:?}", r1cs.matrices.test_satisfaction(&witness));
     assert!(r1cs.matrices.test_satisfaction(&witness).is_none());
 }
 
@@ -64,5 +63,13 @@ fn test_read_write_memory() {
     test_compilation_and_solving(
         "src/test_programs/read-write-memory/target/main.json",
         "src/test_programs/read-write-memory/target/main.gz",
+    );
+}
+
+#[test]
+fn test_conditional_write() {
+    test_compilation_and_solving(
+        "src/test_programs/conditional-write/target/main.json",
+        "src/test_programs/conditional-write/target/main.gz",
     );
 }
