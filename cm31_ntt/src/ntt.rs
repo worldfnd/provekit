@@ -4,6 +4,51 @@ use crate::ntt_utils::*;
 
 pub const NTT_BLOCK_SIZE_FOR_CACHE: usize = 8usize.pow(5);
 
+pub struct PrecomputedTwiddles {
+    pub small: Vec<CF>,
+    pub full: Vec<CF>,
+    pub stride: Vec<CF>,
+}
+
+pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles, String> {
+    assert!(is_power_of(n as u32, 2), "n must be a power of 2");
+
+    // Case where n is a power of 8
+    if is_power_of(n as u32, 8) {
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n);
+        return Ok(PrecomputedTwiddles {
+            small: precomp_small,
+            full: precomp_full,
+            stride: vec![],
+        });
+    }
+
+    // Case where n is of the form 8^k * 2
+    if is_power_of((n / 2) as u32, 8) {
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 2);
+        let precomp_s2 = precomp_s2(n);
+        return Ok(PrecomputedTwiddles {
+            small: precomp_small,
+            full: precomp_full,
+            stride: precomp_s2,
+        });
+    }
+
+    // Case where n is of the form 8^k * 4
+    if is_power_of((n / 4) as u32, 8) {
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 4);
+        let precomp_s4 = precomp_s4(n);
+        return Ok(PrecomputedTwiddles {
+            small: precomp_small,
+            full: precomp_full,
+            stride: precomp_s4,
+        });
+    }
+    
+
+    Err("n must be a power of 2, or of the form 8^k * 2 or 8^k * 4".to_string())
+}
+
 /// Performs a radix-8 NTT on the polynomial f.
 /// This is unoptimised as it does not use any precomputed twiddles.
 /// It is also slower than ntt_r8_hybrid_p() as it allocates Vecs at each level of recursion, and doing so at
@@ -699,16 +744,14 @@ pub fn gen_precomp_full(n: usize, w: CF, block: usize) -> Vec<CF> {
 /// This function expects a reference to a zero buffer as the scratch parameter, of size
 /// NTT_BLOCK_SIZE_FOR_CACH, of size NTT_BLOCK_SIZE_FOR_CACHE.
 /// The precomp_small and precomp_full parameters are precomputed twiddles for the base NTT and the
-/// higher layers, respectively. They must be generated using precomp_for_ntt_r8_hybrid_p().
+/// higher layers, respectively. They must be generated using precomputed_twiddles().
 /// @param f The coefficients of the polynomial to be transformed.
 /// @param scratch A scratch space for intermediate results.
-/// @param precomp_small Precomputed twiddles for the base NTT.
-/// @param precomp_full Precomputed twiddles for the higher layers.
+/// @param precomp Precomputed twiddles.
 pub fn ntt_r8_hybrid_p(
     f: &Vec<CF>,
     scratch: &mut [CF],
-    precomp_small: &Vec<CF>,
-    precomp_full: &Vec<CF>,
+    precomp: &PrecomputedTwiddles,
 ) -> Vec<CF> {
 
     fn level_offset(n_total: usize, depth: usize) -> usize {
@@ -798,8 +841,8 @@ pub fn ntt_r8_hybrid_p(
     let n = f.len();
     debug_assert!(n > 8 && is_power_of(n as u32, 8), "the input size must be a power of 8 and greater than 8");
     debug_assert!(scratch.len() == NTT_BLOCK_SIZE_FOR_CACHE, "the scratch space must be NTT_BLOCK_SIZE_FOR_CACHE");
-    // TODO: why slice?
-    recurse(f, scratch, &precomp_small[..], &precomp_full[..], 0, n)
+
+    recurse(f, scratch, &precomp.small, &precomp.full, 0, n)
 }
 
 /// Precomputes twiddle factors needed for a stride-2 combination stage of an NTT.
@@ -869,9 +912,7 @@ pub fn precomp_s4(n: usize) -> Vec<CF> {
 pub fn ntt_r8_s2_hybrid_p(
     f: &Vec<CF>,
     scratch: &mut [CF],
-    precomp_small: &Vec<CF>,
-    precomp_full: &Vec<CF>,
-    precomp_s2: &Vec<CF>,
+    precomp: &PrecomputedTwiddles,
 ) -> Vec<CF> {
     let n = f.len();
 
@@ -891,15 +932,15 @@ pub fn ntt_r8_s2_hybrid_p(
     }
     
     // Perform radix-8 NTT on each half using precomputed twiddles
-    let ntt_even = ntt_r8_hybrid_p(&mut f_even, scratch, &precomp_small, &precomp_full);
-    let ntt_odd  = ntt_r8_hybrid_p(&mut f_odd,  scratch, &precomp_small, &precomp_full);
+    let ntt_even = ntt_r8_hybrid_p(&mut f_even, scratch, &precomp);
+    let ntt_odd  = ntt_r8_hybrid_p(&mut f_odd,  scratch, &precomp);
     
     // Combine using radix-2 butterfly operations with precomputed twiddles
     let mut res = vec![CF::zero(); n];
     
     for i in 0..half_n {
         // Get the precomputed twiddle factor
-        let w_i = precomp_s2[i];
+        let w_i = precomp.stride[i];
         
         // Perform the radix-2 butterfly
         res[i] = ntt_even[i] + w_i * ntt_odd[i];
@@ -922,9 +963,7 @@ pub fn ntt_r8_s2_hybrid_p(
 pub fn ntt_r8_s4_hybrid_p(
     f: &Vec<CF>,
     scratch: &mut [CF],
-    precomp_small: &Vec<CF>,
-    precomp_full: &Vec<CF>,
-    precomp_s4: &Vec<CF>
+    precomp: &PrecomputedTwiddles,
 ) -> Vec<CF> {
     let n = f.len();
 
@@ -948,19 +987,19 @@ pub fn ntt_r8_s4_hybrid_p(
     }
     
     // Perform radix-8 NTT on each quarter using precomputed twiddles
-    let ntt_f0 = ntt_r8_hybrid_p(&mut f0, scratch, &precomp_small, &precomp_full);
-    let ntt_f1 = ntt_r8_hybrid_p(&mut f1, scratch, &precomp_small, &precomp_full);
-    let ntt_f2 = ntt_r8_hybrid_p(&mut f2, scratch, &precomp_small, &precomp_full);
-    let ntt_f3 = ntt_r8_hybrid_p(&mut f3, scratch, &precomp_small, &precomp_full);
+    let ntt_f0 = ntt_r8_hybrid_p(&mut f0, scratch, &precomp);
+    let ntt_f1 = ntt_r8_hybrid_p(&mut f1, scratch, &precomp);
+    let ntt_f2 = ntt_r8_hybrid_p(&mut f2, scratch, &precomp);
+    let ntt_f3 = ntt_r8_hybrid_p(&mut f3, scratch, &precomp);
     
     // Combine using radix-4 butterfly operations with precomputed twiddles
     let mut res = vec![CF::zero(); n];
     
     for i in 0..quarter_n {
         // Get precomputed twiddle factors for this position
-        let w_i = precomp_s4[i * 3];
-        let w_2i = precomp_s4[i * 3 + 1];
-        let w_3i = precomp_s4[i * 3 + 2];
+        let w_i =  precomp.stride[i * 3];
+        let w_2i = precomp.stride[i * 3 + 1];
+        let w_3i = precomp.stride[i * 3 + 2];
         
         // Apply twiddle factors to the NTT results
         let t0 = ntt_f0[i];
@@ -1132,12 +1171,12 @@ pub mod tests {
             let mut scratch = vec![CF::zero(); NTT_BLOCK_SIZE_FOR_CACHE];
             let wn = get_root_of_unity(n);
 
-            let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n);
+            let twiddles = precompute_twiddles(n).unwrap();
 
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_hybrid_p(&mut f, &mut scratch, &precomp_small, &precomp_full);
+                let res = ntt_r8_hybrid_p(&mut f, &mut scratch, &twiddles);
                 let expected = ntt_r8_vec(&f, wn);
                 assert!(res == expected);
             }
@@ -1150,13 +1189,12 @@ pub mod tests {
             let mut scratch = vec![CF::zero(); NTT_BLOCK_SIZE_FOR_CACHE];
             let wn = get_root_of_unity(n);
 
-            let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 2);
-            let precomp_s2 = precomp_s2(n);
+            let precomp = precompute_twiddles(n).unwrap();
 
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_s2_hybrid_p(&mut f, &mut scratch, &precomp_small, &precomp_full, &precomp_s2);
+                let res = ntt_r8_s2_hybrid_p(&mut f, &mut scratch, &precomp);
                 let expected = ntt_radix_2(&f, wn);
                 assert!(res == expected);
             }
@@ -1169,13 +1207,12 @@ pub mod tests {
             let mut scratch = vec![CF::zero(); NTT_BLOCK_SIZE_FOR_CACHE];
             let wn = get_root_of_unity(n);
 
-            let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 4);
-            let precomp_s4 = precomp_s4(n);
+            let precomp = precompute_twiddles(n).unwrap();
 
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_s4_hybrid_p(&mut f, &mut scratch, &precomp_small, &precomp_full, &precomp_s4);
+                let res = ntt_r8_s4_hybrid_p(&mut f, &mut scratch, &precomp);
                 let expected = ntt_radix_2(&f, wn);
                 assert!(res == expected);
             }

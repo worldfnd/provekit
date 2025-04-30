@@ -1,6 +1,5 @@
 use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt_utils::get_root_of_unity;
 use cm31_ntt::ntt::*;
 use cm31_ntt::cm31::CF;
 use num_traits::Zero;
@@ -10,17 +9,9 @@ use rand_chacha::rand_core::SeedableRng;
 use lazy_static::lazy_static;
 
 lazy_static! {
-    /// Cached small-block twiddle table (size = NTT_BLOCK_SIZE_FOR_CACHE)
-    static ref PRECOMP_SMALL: Vec<CF> = {
-        let n = NTT_BLOCK_SIZE_FOR_CACHE;
-        let wn = get_root_of_unity(n);
-        precomp_for_ntt_r8_ip_p(n, wn)
-    };
-
-    static ref PRECOMP_FULL: Vec<CF> = {
+    static ref PRECOMP: PrecomputedTwiddles = {
         let n = 8usize.pow(8);
-        let wn = get_root_of_unity(n);
-        gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE)
+        precompute_twiddles(n).unwrap()
     };
 }
 
@@ -44,7 +35,7 @@ fn bench(c: &mut Criterion) {
 
         group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_SMALL, &*PRECOMP_FULL);
+                ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP);
             })
         });
     }
