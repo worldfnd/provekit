@@ -5,8 +5,10 @@ use {
 };
 
 #[inline]
-/// A block multiplier with 3 concurrent multiplications has 2.2 times the
-/// throughput on Raspberry Pi.
+/// A block multiplier with 3 concurrent multiplications.
+///
+/// Raspberry Pi 5:  2.2 times the throughput compared to a single multiplier.
+/// Apple Silicon (M3): same throughput as a single multiplier
 pub fn montgomery_interleaved_3(
     _rtz: &RTZ,
     a: [u64; 4],
@@ -856,8 +858,10 @@ pub fn montgomery_interleaved_3(
     (out, outv)
 }
 
-/// A block multiplier with 4 concurrent multiplications has 2.2 times the
-/// throughput on Raspberry Pi.
+/// A block multiplier with 4 concurrent multiplications.
+///
+/// Raspberry Pi 5:  1.8 times the throughput compared to a single multiplier.
+/// Apple Silicon (M3): ~1.06 times the throughput of a single multiplier
 #[inline]
 pub fn montgomery_interleaved_4(
     _rtz: &RTZ,
