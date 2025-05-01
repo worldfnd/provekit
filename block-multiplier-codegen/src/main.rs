@@ -1,5 +1,7 @@
-use block_multiplier_codegen::{scalar::setup_montgomery, simd::setup_single_step_simd};
-use hla::builder::{Interleaving, build_inline};
+use {
+    block_multiplier_codegen::{scalar::setup_montgomery, simd::setup_single_step_simd},
+    hla::builder::{Interleaving, build_inline},
+};
 
 fn main() {
     build_inline(

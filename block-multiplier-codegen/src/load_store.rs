@@ -9,10 +9,12 @@ pub fn load_floating_simd(
     dup2d(alloc, asm, &c).into_()
 }
 
-// TODO make load_const smart that it knowns when to use mov and when to use a sequence of movk?
-// That would require checking if only one of the 16 bit libs is zero.
+/// Loads a u64 by generating a sequence of movk. It's smart enough to detect
+/// whether a movk is zero but it doesn't have the logic yet to detect whether
+/// the upper bits would fit in the first mov.
 pub fn load_const(alloc: &mut FreshAllocator, asm: &mut Assembler, val: u64) -> Reg<u64> {
-    // The first load we do with mov instead of movk because of the optimization that leaves moves out.
+    // The first load we do with mov instead of movk because of the optimization
+    // that leaves moves out.
     let l0 = val as u16;
     let reg = mov(alloc, asm, l0 as u64);
 
