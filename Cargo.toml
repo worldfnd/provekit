@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "merkle-hash-bench", "rtz"]
+members = ["noir-r1cs", "merkle-hash-bench", "rtz", "block-multiplier-sys"]
 
 [workspace.package]
 edition = "2021"

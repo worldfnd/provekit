@@ -1,0 +1,11 @@
+[package]
+name = "block-multiplier-sys"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rtz = { path = "../rtz" }
+
+[[bench]]
+name = "montgomery_interleaved"
+harness = false
