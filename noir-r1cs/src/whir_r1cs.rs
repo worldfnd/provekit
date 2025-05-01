@@ -11,26 +11,16 @@ use {
             HALF,
         },
         FieldElement, R1CS,
-    },
-    anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
-    ark_ff::UniformRand,
-    serde::{Deserialize, Serialize},
-    spongefish::{
+    }, anyhow::{ensure, Context, Result}, ark_ff::UniformRand, ark_std::{One, Zero}, serde::{Deserialize, Serialize}, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
-    },
-    std::fmt::{Debug, Formatter},
-    tracing::{info, instrument, warn},
-    whir::{
+    }, std::fmt::{Debug, Formatter}, tracing::{info, instrument, warn}, whir::{
         parameters::{
-            default_max_pow, FoldType, FoldingFactor,
-            MultivariateParameters as GenericMultivariateParameters, SoundnessType,
-            ProtocolParameters as GenericWhirParameters,
+            default_max_pow, FoldType, FoldingFactor, MultivariateParameters as GenericMultivariateParameters, ProtocolParameters as GenericWhirParameters, SoundnessType
         },
         poly_utils::{coeffs::CoefficientList, evals::EvaluationsList},
         whir::{
-            committer::{CommitmentReader, CommitmentWriter},
+            committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness},
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
@@ -40,7 +30,7 @@ use {
             verifier::Verifier,
             WhirProof as GenericWhirProof,
         },
-    },
+    }
 };
 
 pub type MultivariateParameters = GenericMultivariateParameters<FieldElement>;
@@ -131,18 +121,35 @@ impl WhirR1CSScheme {
 
         // Set up transcript
         let io: IOPattern = create_io_pattern(self.m_0, &self.whir_config);
-        let merlin = io.to_prover_state();
+        let mut merlin = io.to_prover_state();
 
+        let z = pad_to_power_of_two(witness);
+        let poly = EvaluationsList::new(z);
+        let polynomial = poly.to_coeffs();
+
+        let mut store = Vec::<FieldElement>::with_capacity(polynomial.num_coeffs());
+        let mut rng = ark_std::rand::thread_rng();
+        (0..(polynomial.num_coeffs()))
+            .into_iter()
+            .for_each(|_| store.push(FieldElement::rand(&mut rng)));
+
+        let polynomial_rand = CoefficientList::new(store);
+        let committer = CommitmentWriter::new(self.whir_config.clone());
+        let hidden_witness = committer
+            .commit_batch(&mut merlin, &[polynomial, polynomial_rand])
+            .expect("WHIR prover failed to commit");
+
+        let hidden_witness_coeffs = hidden_witness.batched_poly().coeffs();
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha) = run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
+        let (merlin, alpha) = run_sumcheck_prover(r1cs, hidden_witness_coeffs, merlin, self.m_0);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
         let (whir_proof, merlin, whir_query_answer_sums) =
-            run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
+            run_whir_pcs_prover(hidden_witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
 
@@ -167,6 +174,9 @@ impl WhirR1CSScheme {
             statement_verifier
                 .add_constraint(VerifierWeights::linear(self.m, None), claimed_sum.clone());
         }
+        
+        let commitment_reader = CommitmentReader::new(&self.whir_config);
+        let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
         let data_from_sumcheck_verifier =
             run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
@@ -175,20 +185,21 @@ impl WhirR1CSScheme {
             &self.whir_config,
             &proof.whir_proof,
             &statement_verifier,
+            &parsed_commitment,
         )
         .context("while verifying WHIR proof")?;
 
         //Check the Spartan sumcheck relation.
-        // ensure!(
-        //     data_from_sumcheck_verifier.last_sumcheck_val
-        //         == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
-        //             - proof.whir_query_answer_sums[2])
-        //             * calculate_eq(
-        //                 &data_from_sumcheck_verifier.r,
-        //                 &data_from_sumcheck_verifier.alpha
-        //             ),
-        //     "last sumcheck value does not match"
-        // );
+        ensure!(
+            data_from_sumcheck_verifier.last_sumcheck_val
+                == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
+                    - proof.whir_query_answer_sums[2])
+                    * calculate_eq(
+                        &data_from_sumcheck_verifier.r,
+                        &data_from_sumcheck_verifier.alpha
+                    ),
+            "last sumcheck value does not match"
+        );
 
         // TODO: Verify evaluation of sparse matrices in random point.
 
@@ -294,7 +305,7 @@ pub fn run_sumcheck_prover(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_prover(
-    z: Vec<FieldElement>,
+    hidden_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     params: &WhirConfig,
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
@@ -310,23 +321,7 @@ pub fn run_whir_pcs_prover(
         warn!("More PoW bits required than specified.");
     }
 
-    let z = pad_to_power_of_two(z);
-    let poly = EvaluationsList::new(z);
-    let polynomial = poly.to_coeffs();
-
-    let mut store = Vec::<FieldElement>::with_capacity(polynomial.num_coeffs());
-    let mut rng = ark_std::rand::thread_rng();
-    (0..(polynomial.num_coeffs()))
-        .into_iter()
-        .for_each(|_| store.push(FieldElement::rand(&mut rng)));
-
-    let polynomial_rand = CoefficientList::new(store);
-    let committer = CommitmentWriter::new(params.clone());
-    let witness = committer
-        .commit_batch(&mut merlin, &[polynomial, polynomial_rand])
-        .expect("WHIR prover failed to commit");
-
-    let batched_poly = witness.batched_poly();
+    let batched_poly = hidden_witness.batched_poly();
     let poly_batched = EvaluationsList::from(batched_poly.clone());
 
 
@@ -341,7 +336,7 @@ pub fn run_whir_pcs_prover(
 
     let prover = Prover(params.clone());
     let proof = prover
-        .prove(&mut merlin, statement, witness)
+        .prove(&mut merlin, statement, hidden_witness)
         .expect("WHIR prover failed to generate a proof");
 
     (proof, merlin, sums)
@@ -388,14 +383,13 @@ pub fn run_whir_pcs_verifier(
     params: &WhirConfig,
     proof: &WhirProof,
     statement_verifier: &StatementVerifier,
+    parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
 ) -> Result<()> {
-    let commitment_reader = CommitmentReader::new(&params);
     let verifier = Verifier::new(&params);
     // let verifier = Verifier::new(&params);
-    let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
-
+   
     verifier
-        .verify(arthur, &parsed_commitment, &statement_verifier, &proof)
+        .verify(arthur, parsed_commitment, &statement_verifier, &proof)
         .context("while verifying WHIR")?;
 
     Ok(())
@@ -404,8 +398,8 @@ pub fn run_whir_pcs_verifier(
 #[instrument(skip_all)]
 pub fn create_io_pattern(m_0: usize, whir_params: &WhirConfig) -> IOPattern {
     IOPattern::new("🌪️")
+        .commit_statement(&whir_params)
         .add_rand(m_0)
         .add_sumcheck_polynomials(m_0)
-        .commit_statement(&whir_params)
         .add_whir_proof(&whir_params)
 }

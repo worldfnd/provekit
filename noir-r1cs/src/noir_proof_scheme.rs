@@ -61,7 +61,8 @@ impl NoirProofScheme {
         );
 
         // Compile to R1CS schemes
-        let (r1cs, witness_map) = noir_to_r1cs(&main)?;
+        let (mut r1cs, witness_map) = noir_to_r1cs(&main)?;
+        r1cs.pad_to_power_of_two();
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.constraints,

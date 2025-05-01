@@ -135,6 +135,17 @@ impl R1CS {
         }
         Ok(())
     }
+    pub fn pad_to_power_of_two(&mut self) {
+        let new_constraints = self.constraints.next_power_of_two();
+        let new_witnesses = self.witnesses.next_power_of_two();
+    
+        self.a.grow(new_constraints, new_witnesses);
+        self.b.grow(new_constraints, new_witnesses);
+        self.c.grow(new_constraints, new_witnesses);
+    
+        self.constraints = new_constraints;
+        self.witnesses = new_witnesses;
+    }
 }
 
 // Sparse dot product. `a` is assumed zero. `b` is assumed missing.
@@ -176,3 +187,4 @@ fn solve_dot<'a>(
         }
     })
 }
+
