@@ -1,0 +1,10 @@
+[package]
+name = "mod256-generator"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quickcheck = "1.0.3"
+
+[dev-dependencies]
+quickcheck_macros = "1.0.0"

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "merkle-hash-bench"]
+members = ["noir-r1cs", "merkle-hash-bench", "mod256-generator"]
 
 [workspace.package]
 edition = "2021"
