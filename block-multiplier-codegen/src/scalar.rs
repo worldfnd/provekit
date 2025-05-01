@@ -1,16 +1,13 @@
-use std::array;
+use {
+    crate::{constants::*, load_store::load_const},
+    hla::*,
+    std::array,
+};
 
-use hla::*;
+// BUILDERS
 
-// TODO don't rely on montgomery_reduction for anything other than tests
-// Possible not even then
-use montgomery_reduction::yuval::{U64_2P, U64_I1, U64_I2, U64_I3, U64_MU0, U64_P};
-
-use crate::load_store::load_const;
-
-/* BUILDERS */
-
-/// Sets up the assembly generation context for a widening multiplication of two u256 numbers.
+/// Sets up the assembly generation context for a widening multiplication of two
+/// u256 numbers.
 ///
 /// Initializes the necessary registers and calls `widening_mul_u256`.
 /// Returns the input and output variables for the generated assembly function.
@@ -29,7 +26,8 @@ pub fn setup_widening_mul_u256(
     )
 }
 
-/// Sets up the assembly generation context for Montgomery multiplication of two u256 numbers.
+/// Sets up the assembly generation context for Montgomery multiplication of two
+/// u256 numbers.
 ///
 /// Initializes the necessary registers and calls `montgomery`.
 /// Returns the input and output variables for the generated assembly function.
@@ -47,7 +45,8 @@ pub fn setup_montgomery(
     )
 }
 
-/// Sets up the assembly generation context for a u256 multiply-add-limb operation (`r = r + a * b`).
+/// Sets up the assembly generation context for a u256 multiply-add-limb
+/// operation (`r = r + a * b`).
 ///
 /// Initializes the necessary registers and calls `madd_u256_limb`.
 /// Returns the input and output variables for the generated assembly function.
@@ -72,7 +71,7 @@ pub fn setup_madd_u256_limb(
     )
 }
 
-/* GENERATORS */
+// GENERATORS
 
 /// Performs `ret = s + [0, add]` with carry propagation.
 ///
@@ -92,7 +91,8 @@ pub fn carry_add(
     ret
 }
 
-/// Performs a compare-negative (`cmn s[0], add`) and propagates the carry to `s[1]`.
+/// Performs a compare-negative (`cmn s[0], add`) and propagates the carry to
+/// `s[1]`.
 ///
 /// Returns the updated high limb `s[1]`.
 pub fn carry_cmn(asm: &mut Assembler, s: [Reg<u64>; 2], add: &Reg<u64>) -> Reg<u64> {
@@ -104,7 +104,8 @@ pub fn carry_cmn(asm: &mut Assembler, s: [Reg<u64>; 2], add: &Reg<u64>) -> Reg<u
     out
 }
 
-/// Computes `t += a * b` where `t` is 5 limbs, `a` is 4 limbs, and `b` is 1 limb.
+/// Computes `t += a * b` where `t` is 5 limbs, `a` is 4 limbs, and `b` is 1
+/// limb.
 ///
 /// Performs a sequence of widening multiplications and carry additions.
 /// Returns the 5-limb result `t`.
@@ -116,8 +117,8 @@ pub fn madd_u256_limb(
     b: &Reg<u64>,
 ) -> [Reg<u64>; 5] {
     let mut carry;
-    // First multiplication is outside of the loop as it doesn't have the second carry add
-    // to add the carry of a previous multiplication
+    // First multiplication is outside of the loop as it doesn't have the second
+    // carry add to add the carry of a previous multiplication
     let tmp = widening_mul(alloc, asm, &a[0], &b);
     [t[0], carry] = carry_add(alloc, asm, &tmp, &t[0]);
 
@@ -131,11 +132,11 @@ pub fn madd_u256_limb(
     t
 }
 
-/// Computes `t += a * b` where `t` is 5 limbs, `a` is 4 limbs, and `b` is 1 limb,
-/// truncating the result to the upper 4 limbs.
+/// Computes `t += a * b` where `t` is 5 limbs, `a` is 4 limbs, and `b` is 1
+/// limb, truncating the result to the upper 4 limbs.
 ///
-/// Similar to `madd_u256_limb` but uses `carry_cmn` for the first step and returns only
-/// the upper 4 limbs of the result.
+/// Similar to `madd_u256_limb` but uses `carry_cmn` for the first step and
+/// returns only the upper 4 limbs of the result.
 ///
 /// A variation of madd_u256_limb that truncates the results. This is required
 /// because the assembler checks whether all registers are used. The HLA
@@ -160,7 +161,8 @@ pub fn madd_u256_limb_truncate(
     out
 }
 
-/// Computes the 8-limb (512-bit) widening multiplication of two 4-limb (256-bit) numbers `a` and `b`.
+/// Computes the 8-limb (512-bit) widening multiplication of two 4-limb
+/// (256-bit) numbers `a` and `b`.
 ///
 /// Implements the standard schoolbook multiplication algorithm.
 pub fn widening_mul_u256(
@@ -218,8 +220,8 @@ pub fn sub_u256(
 
 /// Reduces a 4-limb number `a` conditionally modulo `2*P`.
 ///
-/// If the most significant bit of `a` is set (i.e., `a >= 2*P`), it subtracts `2*P`.
-/// Otherwise, it returns `a`.
+/// If the most significant bit of `a` is set (i.e., `a >= 2*P`), it subtracts
+/// `2*P`. Otherwise, it returns `a`.
 ///
 /// Reduce within 2**256-2p
 pub fn reduce(alloc: &mut FreshAllocator, asm: &mut Assembler, a: [Reg<u64>; 4]) -> [Reg<u64>; 4] {
@@ -236,7 +238,8 @@ pub fn reduce(alloc: &mut FreshAllocator, asm: &mut Assembler, a: [Reg<u64>; 4])
     out
 }
 
-/// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a` and `b`.
+/// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
+/// and `b`.
 ///
 /// Implements the Domb's single step Montgomery multiplication algorithm.
 /// The result is less than `2**256 - P`.
@@ -268,7 +271,8 @@ pub fn montgomery(
     reduce(alloc, asm, r4)
 }
 
-/// Computes the 128-bit widening multiplication of two 64-bit registers `a` and `b`.
+/// Computes the 128-bit widening multiplication of two 64-bit registers `a` and
+/// `b`.
 ///
 /// Returns the low 64 bits (`mul a, b`) and high 64 bits (`umulh a, b`).
 pub fn widening_mul(
@@ -281,11 +285,13 @@ pub fn widening_mul(
 }
 
 pub mod experiments {
-    use crate::load_store::{load_const, load_u256, store_u256};
+    use {
+        super::*,
+        crate::load_store::{load_const, load_u256, store_u256},
+    };
 
-    use super::*;
-
-    /// Sets up assembly generation for an loading operands for Montgomery multiplication.
+    /// Sets up assembly generation for an loading operands for Montgomery
+    /// multiplication.
     pub fn setup_single_step_load(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
@@ -300,7 +306,8 @@ pub mod experiments {
         (vec![var_a.clone(), FreshVariable::new("b", &[b])], var_a)
     }
 
-    /// Sets up assembly generation for an experiment using a split Montgomery multiplication approach.
+    /// Sets up assembly generation for an experiment using a split Montgomery
+    /// multiplication approach.
     pub fn setup_single_step_split(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
@@ -315,7 +322,8 @@ pub mod experiments {
         )
     }
 
-    /// Computes `a * b` where `a` is 4 limbs and `b` is 1 limb, returning a 5-limb result.
+    /// Computes `a * b` where `a` is 4 limbs and `b` is 1 limb, returning a
+    /// 5-limb result.
     ///
     /// This is a scalar multiplication used in `single_step_split`.
     pub fn smult(
@@ -336,7 +344,8 @@ pub mod experiments {
         t
     }
 
-    /// Computes the 8-limb widening multiplication of two 4-limb numbers loaded from memory pointers `a` and `b`.
+    /// Computes the 8-limb widening multiplication of two 4-limb numbers loaded
+    /// from memory pointers `a` and `b`.
     ///
     /// Similar to `widening_mul_u256` but loads the limbs when needed.
     pub fn school_method_load(
@@ -385,8 +394,9 @@ pub mod experiments {
         t
     }
 
-    /// Performs a single Montgomery multiplication step where operands `a` and `b` are loaded
-    /// from memory pointers, and the result is stored back into the memory pointed to by `a`.
+    /// Performs a single Montgomery multiplication step where operands `a` and
+    /// `b` are loaded from memory pointers, and the result is stored back
+    /// into the memory pointed to by `a`.
     pub fn single_step_load<'a>(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
@@ -424,9 +434,11 @@ pub mod experiments {
         t
     }
 
-    /// Computes `a + b` for two 5-limb numbers, truncating the result to 4 limbs.
+    /// Computes `a + b` for two 5-limb numbers, truncating the result to 4
+    /// limbs.
     ///
-    /// Similar to `addv` but uses `cmn` for the first step and returns only the upper 4 limbs.
+    /// Similar to `addv` but uses `cmn` for the first step and returns only the
+    /// upper 4 limbs.
     pub fn addv_truncate(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
@@ -446,9 +458,11 @@ pub mod experiments {
         t
     }
 
-    /// Computes the Montgomery multiplication using an alternative split approach.
+    /// Computes the Montgomery multiplication using an alternative split
+    /// approach.
     ///
-    /// This experimental version uses `smult` and `addv`/`addv_truncate` to structure the calculation.
+    /// This experimental version uses `smult` and `addv`/`addv_truncate` to
+    /// structure the calculation.
     pub fn single_step_split(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
