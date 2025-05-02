@@ -1,0 +1,17 @@
+[package]
+name = "block-multiplier"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+seq-macro = "0.3.5"
+rtz = { path = "../rtz" }
+
+[dev-dependencies]
+rand = "0.9.0"
+primitive-types = "0.13.1"
+criterion = "0.5.1"
+
+[[bench]]
+name = "bench"
+harness = false
