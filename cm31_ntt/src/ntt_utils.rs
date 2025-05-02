@@ -1,4 +1,4 @@
-use crate::cm31::{ CF, gen_roots_of_unity, W_8 };
+use crate::cm31::{CF, gen_roots_of_unity, W_8};
 use crate::rm31::RF;
 use num_traits::{Zero, One};
 use num_traits::pow::Pow;
@@ -115,9 +115,14 @@ pub fn naive_ntt(f: &Vec<CF>) -> Vec<CF> {
     // Parallelize the outer loop
     res.par_iter_mut().enumerate().for_each(|(i, res_i)| {
         // Each thread computes one output element
-        for j in 0..n {
-            *res_i += f[j] * wn.pow(i * j);
+        let wni = wn.pow(i);
+        let mut wnij = wni;
+        *res_i = f[0];
+        for j in 1..(n - 1) {
+            *res_i += f[j] * wnij;
+            wnij *= wni;
         }
+        *res_i += f[n - 1] * wnij;
     });
 
     res

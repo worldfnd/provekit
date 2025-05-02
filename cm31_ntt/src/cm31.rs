@@ -1,8 +1,8 @@
 /// Complex M31 field arithmetic.
  
 use serde::{Serialize, Deserialize};
-use crate::rm31::{ RF, P };
-use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
+use crate::rm31::{RF, P};
+use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
 use core::fmt::Display;
 use std::convert::{ From, Into };
 use num_traits::Zero;
@@ -105,17 +105,14 @@ impl CF {
     /// want using the input `i`.
     /// The 4th root of unity is (0, +-1)
     /// The options denoted by `i` are:
-    /// 0. ( 0,  v)
-    /// 1. ( 0, -v)
-    pub fn root_of_unity_4(i: u32) -> Result<CF, String> {
-        assert!(i < 2);
-        if i == 0 {
-            return Ok(CF::new(0, 1));
+    /// 0. (0,  v)
+    /// 1. (0, -v)
+    pub fn root_of_unity_4(i: u32) -> CF {
+        match i {
+            0 => return CF::new(0, 1),
+            1 => return CF::new(0, P - 1),
+            _ => panic!("i must be 0 or 1"),
         }
-        if i == 1 {
-            return Ok(CF::new(0, P - 1));
-        }
-        panic!("i must be 0 or 1");
     }
 
     /// Returns the 8th root of unity. Since there are 4 options for this value, select the one you
@@ -127,27 +124,16 @@ impl CF {
     /// 1. ( v, -v)
     /// 2. (-v,  v)
     /// 3. (-v, -v)
-    pub fn root_of_unity_8(i: u32) -> Result<CF, String> {
-        assert!(i < 4);
+    pub fn root_of_unity_8(i: u32) -> CF {
         let v = 2u32.pow(15);
         let neg_v = P - v;
-        // i = 0: (v, v)
-        // i = 1: (v, -v)
-        // i = 2: (-v, v)
-        // i = 3: (-v, -v)
-        if i == 0 {
-            return Ok(CF::new(v, v));
+        match i {
+            0 => CF::new(v, v),
+            1 => CF::new(v, neg_v),
+            2 => CF::new(neg_v, v),
+            3 => CF::new(neg_v, neg_v),
+            _ => panic!("i must be 0, 1, 2 or 3"),
         }
-        if i == 1 {
-            return Ok(CF::new(v, neg_v));
-        }
-        if i == 2 {
-            return Ok(CF::new(neg_v, v));
-        }
-        if i == 3 {
-            return Ok(CF::new(neg_v, neg_v));
-        }
-        panic!("i must be 0, 1, 2 or 3");
     }
 
     #[inline]
@@ -466,14 +452,14 @@ mod tests {
     #[test]
     fn test_w4() {
         for i in 0..2 {
-            do_root_of_unity_test(CF::root_of_unity_4(i).unwrap(), 4);
+            do_root_of_unity_test(CF::root_of_unity_4(i), 4);
         }
     }
 
     #[test]
     fn test_w8() {
         for i in 0..4 {
-            do_root_of_unity_test(CF::root_of_unity_8(i).unwrap(), 8);
+            do_root_of_unity_test(CF::root_of_unity_8(i), 8);
         }
     }
 
@@ -491,21 +477,21 @@ mod tests {
 
     #[test]
     fn test_w16() {
-        let w8 = CF::root_of_unity_8(0).unwrap();
+        let w8 = CF::root_of_unity_8(0);
         let w16 = w8.try_sqrt().unwrap();
         do_root_of_unity_test(w16, 16);
     }
 
     #[test]
     fn test_w2() {
-        let w4 = CF::root_of_unity_4(0).unwrap();
+        let w4 = CF::root_of_unity_4(0);
         let w2 = w4 * w4;
         do_root_of_unity_test(w2, 2);
     }
 
     #[test]
     fn test_w32() {
-        let w8 = CF::root_of_unity_8(0).unwrap();
+        let w8 = CF::root_of_unity_8(0);
         let w16 = w8.try_sqrt().unwrap();
         let w32 = w16.try_sqrt().unwrap();
         do_root_of_unity_test(w32, 32);
@@ -523,7 +509,7 @@ mod tests {
     #[test]
     fn test_opts() {
         // Test the optimized functions.
-        let w = CF::root_of_unity_8(0).unwrap();
+        let w = CF::root_of_unity_8(0);
         let j = w.pow(2);
         let neg_1 = w.pow(4);
 

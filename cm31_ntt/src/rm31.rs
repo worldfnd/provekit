@@ -1,8 +1,8 @@
 use serde::{Serialize, Deserialize};
 use core::fmt::Display;
-use num_traits::{ Zero, One, Pow };
-use std::ops::{ Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign };
-use std::convert::{ From, Into };
+use num_traits::{Zero, One, Pow};
+use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
+use std::convert::{From, Into};
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 
@@ -13,7 +13,12 @@ pub const MASK: u64 = 0xffffffff;
 
 // The redundant form of the M31 field. It consists of 31 lower bits (x_l) and the rest are higher
 // bits (x_h).
-// x = x_h * 2^32 + x_l
+// 
+// For non-redundant M31 representation:
+//    x is 2^31 * x_h + x_l, and the reduced value is x_h + x_l.
+// For redundant representation: 
+//    x is 2^32 * x_h + x_l, and the (at least partially) reduced value is 2 * x_h + x_l.
+// 
 // See https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RF {
@@ -39,8 +44,7 @@ impl RF {
 
     #[inline]
     fn square(&self) -> Self {
-        // From https://github.com/Plonky3/Plonky3/blob/main/field/src/field.rs
-        self.clone() * self.clone()
+        *self * *self
     }
 
     #[inline]
@@ -276,7 +280,7 @@ impl Distribution<RF> for Standard {
 
 impl Display for RF {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.val)
+        self.val.fmt(f)
     }
 }
 
