@@ -113,6 +113,18 @@ impl RF {
             None
         }
     }
+
+    pub fn mul_by_2_15(&self) -> Self {
+        let x = reduce(self.val);
+        let rotated = ((x << 15) & P) | (x >> (31 - 15));
+        RF { val: rotated }
+    }
+
+    pub fn mul_by_2_16(&self) -> Self {
+        let x = reduce(self.val);
+        let rotated = ((x << 16) & P) | (x >> (31 - 16));
+        RF { val: rotated }
+    }
 }
 
 impl Into<RF> for u32 {
@@ -161,6 +173,7 @@ impl Neg for RF {
         RF { val: out }
     }
 }
+
 impl Mul for RF {
     type Output = Self;
 
@@ -287,6 +300,9 @@ impl Display for RF {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_case::test_case;
+    use rand_chacha::ChaCha8Rng;
+    use rand::SeedableRng;
 
     const TEST_CASES: &[(u32, u32)] = &[
         (0, 0),
@@ -305,43 +321,45 @@ mod tests {
         (0x1234, 0x5678),
         (0xabcd, 0x4680),
         (2, P - 1),
+        (P - 2, P - 2),
     ];
 
-    #[test]
-    fn test_new() {
-        assert_eq!(RF::new(0).val, 0);
-        assert_eq!(RF::new(1).val, 1);
-        assert_eq!(RF::new(P + 1).val, 1);
+    #[test_case(0, 0)]
+    #[test_case(1, 1)]
+    #[test_case(P + 1, 1)]
+    fn test_new(x: u32, y: u32) {
+        assert_eq!(RF::new(x).val, y);
     }
 
-    #[test]
-    fn test_reduce() {
-        let v = P - 123;
-        let expected = v % P;
-        let v31: RF = v.into();
-        assert_eq!(expected, v31.val);
-
-        let v = P;
-        let expected = v % P;
-        let v31: RF = v.into();
-        assert_eq!(expected, v31.val);
-
-        let v = P + 123;
-        let expected = v % P;
-        let v31: RF = v.into();
-        assert_eq!(expected, v31.val);
+    #[test_case(P - 123, (P - 123) % P; "P minus 123")]
+    #[test_case(P + 123, 123; "P plus 123")]
+    #[test_case(P, 0; "P")]
+    fn test_reduce(x: u32, y: u32) {
+        let a: RF = x.into();
+        assert_eq!(a.val, y);
     }
 
     #[test]
     fn test_add() {
+        let mut failing_test_cases = vec![];
         for (lhs, rhs) in TEST_CASES {
             let lhs: RF = (*lhs).into();
             let rhs: RF = (*rhs).into();
             
             let expected = (lhs.val as u64 + rhs.val as u64) % P_64;
             let result = (lhs + rhs).val % P;
-            assert_eq!(expected as u32, result);
+
+            if expected != result as u64 {
+                failing_test_cases.push((lhs, rhs));
+            }
         }
+
+        // Print all faling test cases. This is useful for debugging. I don't use test_case here
+        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
+        if failing_test_cases.len() > 0 {
+            println!("Failed test cases: {:?}", failing_test_cases);
+        }
+        assert_eq!(failing_test_cases.len(), 0);
     }
 
     #[test]
@@ -364,8 +382,24 @@ mod tests {
         }
     }
 
+    //#[test]
+    //fn test_sub() {
+        //for (lhs, rhs) in TEST_CASES {
+            //let lhs: RF = (*lhs).into();
+            //let rhs: RF = (*rhs).into();
+            
+            //let expected = if lhs.val > rhs.val {
+                //(lhs.val - rhs.val) % P
+            //} else {
+                //(P - (rhs.val - lhs.val)) % P
+            //};
+            //let result = (lhs - rhs).val % P;
+            //assert_eq!(expected, result);
+        //}
+    //}
     #[test]
     fn test_sub() {
+        let mut failing_test_cases = vec![];
         for (lhs, rhs) in TEST_CASES {
             let lhs: RF = (*lhs).into();
             let rhs: RF = (*rhs).into();
@@ -376,8 +410,18 @@ mod tests {
                 (P - (rhs.val - lhs.val)) % P
             };
             let result = (lhs - rhs).val % P;
-            assert_eq!(expected, result);
+
+            if expected != result {
+                failing_test_cases.push((lhs, rhs));
+            }
         }
+
+        // Print all faling test cases. This is useful for debugging. I don't use test_case here
+        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
+        if failing_test_cases.len() > 0 {
+            println!("Failed test cases: {:?}", failing_test_cases);
+        }
+        assert_eq!(failing_test_cases.len(), 0);
     }
 
     #[test]
@@ -403,40 +447,44 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_neg() {
-        let vals: &[(u32, u32)] = &[
-            (0, 0),
-            (2, 0),
-            (1234, 0),
-            (P - 1, 0),
-            (P - 2, 0),
-            (P, 0),
-            (P, 1),
-            (P, 2),
-            (P, 1234),
-        ];
-
-        for v in vals {
-            let x = RF::new(v.0) + RF::new(v.1);
-            let n = x.neg();
-            let s = x + n;
-            let expected = RF::new(0);
-            assert_eq!(s, expected);
-        }
+    #[test_case(0, 0)]
+    #[test_case(2, 0)]
+    #[test_case(1234, 0)]
+    #[test_case(P - 1, 0)]
+    #[test_case(P - 2, 0)]
+    #[test_case(P, 0)]
+    #[test_case(P, 1)]
+    #[test_case(P, 2)]
+    #[test_case(P, 1234)]
+    fn test_neg(x: u32, y: u32) {
+        let x = RF::new(x) + RF::new(y);
+        let n = x.neg();
+        let s = x + n;
+        let expected = RF::new(0);
+        assert_eq!(s, expected);
     }
 
     #[test]
     fn test_mul() {
+        let mut failing_test_cases = vec![];
         for (lhs, rhs) in TEST_CASES {
             let lhs: RF = (*lhs).into();
             let rhs: RF = (*rhs).into();
             
-            // The result may not be fully reduced
             let expected = (lhs.val as u64 * rhs.val as u64 ) % P_64;
             let result = (lhs * rhs).val % P;
-            assert_eq!(expected as u32, result);
+
+            if expected as u32 != result {
+                failing_test_cases.push((lhs, rhs));
+            }
         }
+
+        // Print all faling test cases. This is useful for debugging. I don't use test_case here
+        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
+        if failing_test_cases.len() > 0 {
+            println!("Failed test cases: {:?}", failing_test_cases);
+        }
+        assert_eq!(failing_test_cases.len(), 0);
     }
 
     #[test]
@@ -464,30 +512,38 @@ mod tests {
     }
 
     #[test]
-    fn test_inverse() {
+    fn test_inverse_zero() {
         assert!(RF::new(0).try_inverse().is_none());
-
-        let test_cases = [1, 2, 3, 4, 1024, 317002956, 2342343242];
-
-        for t in test_cases {
-            let a = RF::new(t);
-            let a_inv = RF::try_inverse(&a).unwrap();
-            assert_eq!(a * a_inv, RF::new(1));
-        }
     }
 
-    #[test]
-    fn test_mul_2exp_u64() {
-        assert_eq!(RF::new(0).mul_2exp_u64(0),  RF::new(0));
-        assert_eq!(RF::new(1).mul_2exp_u64(0),  RF::new(1));
-        assert_eq!(RF::new(1).mul_2exp_u64(1),  RF::new(2));
-        assert_eq!(RF::new(1).mul_2exp_u64(2),  RF::new(4));
-        assert_eq!(RF::new(2).mul_2exp_u64(30), RF::new(1));
+    #[test_case(1)]
+    #[test_case(2)]
+    #[test_case(3)]
+    #[test_case(4)]
+    #[test_case(1024)]
+    #[test_case(317002956)]
+    #[test_case(2342343242)]
+    fn test_inverse(x: u32) {
+        let a = RF::new(x);
+        let a_inv = RF::try_inverse(&a).unwrap();
+        assert_eq!(a * a_inv, RF::new(1));
+
+        let b = RF::try_inverse(&a_inv).unwrap();
+        assert_eq!(a_inv * b, RF::new(1));
     }
 
-    #[test]
-    fn test_div_2exp_u64() {
-        assert_eq!(RF::new(4096).div_2exp_u64(10), RF::new(4));
+    #[test_case(0, 0, 0)]
+    #[test_case(1, 0, 1)]
+    #[test_case(1, 1, 2)]
+    #[test_case(1, 2, 4)]
+    #[test_case(2, 30, 1)]
+    fn test_mul_2exp_u64(x: u32, y: u64, z: u32) {
+        assert_eq!(RF::new(x).mul_2exp_u64(y),  RF::new(z));
+    }
+
+    #[test_case(4096, 10, 4)]
+    fn test_div_2exp_u64(x: u32, y: u64, z: u32) {
+        assert_eq!(RF::new(x).div_2exp_u64(y), RF::new(z));
     }
 
     #[test]
@@ -506,30 +562,59 @@ mod tests {
         }
     }
 
+    #[test_case(0)]
+    #[test_case(1)]
+    #[test_case(2)]
+    #[test_case(4)]
+    #[test_case(9)]
+    #[test_case(16)]
+    fn test_sqrt(x: u32) {
+        let s = RF::new(x).try_sqrt().unwrap();
+        let s2 = s.square().reduce();
+        assert_eq!(s2, RF::new(x));
+    }
+
+    #[test_case(3)]
+    fn test_sqrt_invalid(x: u32) {
+        let s = RF::new(x).try_sqrt();
+        assert!(s.is_none());
+    }
+
+    #[test_case(0, 0)]
+    #[test_case(P_64, 123)]
+    #[test_case(P_64 - 2, P_64 - 2)]
+    fn test_mul_by_2_15(x: u64, y: u64) {
+        let m = 0x8000;
+        let expected = (x + y) * m % P_64;
+
+        let prod = RF::new(x as u32) + RF::new(y as u32);
+        let result = prod.mul_by_2_15();
+        assert_eq!(result.val, expected as u32);
+    }
+
+    #[test_case(0, 0)]
+    #[test_case(P_64, 123)]
+    #[test_case(P_64 - 2, P_64 - 2)]
+    fn test_mul_by_2_16(x: u64, y: u64) {
+        let m = 0x10000;
+        let expected = (x + y) * m % P_64;
+
+        let prod = RF::new(x as u32) + RF::new(y as u32);
+        let result = prod.mul_by_2_16();
+        assert_eq!(result.val, expected as u32);
+    }
+
     #[test]
-    fn test_sqrt() {
-        let valid_test_cases = [
-            RF::new(0),
-            RF::new(1),
-            RF::new(2),
-            RF::new(4),
-            RF::new(9),
-            RF::new(16),
-        ];
-
-        for t in valid_test_cases {
-            let s = t.try_sqrt().unwrap();
-            let s2 = s.square().reduce();
-            assert_eq!(s2, t);
-        }
-
-        let invalid_test_cases = [
-            RF::new(3),
-        ];
-
-        for t in invalid_test_cases {
-            let s = t.try_sqrt();
-            assert!(s.is_none());
+    fn test_mul_by_2_16_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        let m = 0x10000;
+        for _ in 0..1023 {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let x = a + b;
+            let expected = x.val as u64 * m as u64 % P_64;
+            let result = x.mul_by_2_16();
+            assert_eq!(result.val, expected as u32);
         }
     }
 }

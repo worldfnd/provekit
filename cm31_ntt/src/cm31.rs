@@ -73,6 +73,20 @@ impl CF {
         }
     }
 
+    /// Multiplies by the 8th root of unity, which is (0x00008000, 0x00008000). This is efficient
+    /// as we can use bitshifts to multiply by 0x00008000.
+    pub fn mul_by_w8(self) -> CF {
+        let a = self.a;
+        let b = self.b;
+
+        let ac = a.mul_by_2_15();
+        let bd = b.mul_by_2_15();
+        let real = ac - bd;
+        let imag = ((a + b).mul_by_2_16() - ac) - bd;
+
+        CF { a: real, b: imag }
+    }
+
     pub fn try_inverse(&self) -> Option<Self> {
         if self.a.val == 0 && self.b.val == 0 {
             return None;
@@ -519,5 +533,16 @@ mod tests {
 
         let v_j = v.mul_j();
         assert_eq!(v * j, v_j);
+    }
+
+    #[test]
+    fn test_mul_by_w8() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..1023 {
+            let x: CF = rng.r#gen();
+            let x_w8 = x.mul_by_w8();
+            let expected = x * W_8;
+            assert_eq!(x_w8, expected);
+        }
     }
 }

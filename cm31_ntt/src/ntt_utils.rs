@@ -1,4 +1,4 @@
-use crate::cm31::{CF, gen_roots_of_unity, W_8};
+use crate::cm31::{CF, gen_roots_of_unity};
 use crate::rm31::RF;
 use num_traits::{Zero, One};
 use num_traits::pow::Pow;
@@ -92,8 +92,8 @@ pub fn ntt_block_8(
     // Column 3
     let b5_j = b5.mul_j();
     let b7_j = b7.mul_j();
-    let b6_w8 = b6 * W_8;
-    let b7_j_w8 = b7_j * W_8;
+    let b6_w8 = b6.mul_by_w8();
+    let b7_j_w8 = b7_j.mul_by_w8();
 
     let res0 = b0 + b4;
     let res4 = b0 - b4;
