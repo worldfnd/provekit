@@ -116,13 +116,15 @@ impl RF {
 
     pub fn mul_by_2_15(&self) -> Self {
         let x = reduce(self.val);
-        let rotated = ((x << 15) & P) | (x >> (31 - 15));
+        //let rotated = ((x << 15) & P) | (x >> (31 - 15));
+        let rotated = ((x << 15) & P) | (x >> 16);
         RF { val: rotated }
     }
 
     pub fn mul_by_2_16(&self) -> Self {
         let x = reduce(self.val);
-        let rotated = ((x << 16) & P) | (x >> (31 - 16));
+        //let rotated = ((x << 16) & P) | (x >> (31 - 16));
+        let rotated = ((x << 16) & P) | (x >> 15);
         RF { val: rotated }
     }
 }

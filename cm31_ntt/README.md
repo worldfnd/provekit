@@ -6,7 +6,7 @@
 - [x] M31 field arithmetic using redundant representation
 - [x] Complex M31 field arithmetic (using the redundant representation of M31s)
 - [x] NTT (radix-8)
-- [ ] NTT (any power of 2)
+- [x] NTT (any power of 2)
 - [x] Benchmarks
 - [x] NTT optimsations
 
@@ -52,20 +52,26 @@ precomputed twiddles for the lowest-level iteration.
 
 | Function | Precomputed twiddles? | Description | 8^7 | 8^8 |
 |-|-|-|-|-|
-| `ntt_r8_vec`        | No  | Allocates new `Vec`s per recursive iteration.                         | 759.35 ms | 7.5820 s |
-| `ntt_r8_vec_p`      | Yes | Allocates new `Vec`s per recursive iteration.                         | 452.63 ms | 4.6361 s |
-| `ntt_r8_ip`         | No  | Only allocates memory once, and reuses it to perform an in-place NTT. | 955.20 ms | 11.734 s |
-| `ntt_r8_ip_p`       | Yes | Only allocates memory once, and reuses it to perform an in-place NTT. | 926.22 ms | 13.321 |
-| `ntt_r8_hybrid_p`   | Yes | Hybrid approach using the in-place NTT for a cache-friendly number of inputs, and the Vec method for higher layers. | 320.61 | **3.3997 s** |
-| `ntt_r8_hybrid_ps`  | Yes | Hybrid approach where only the in-place method uses precomputed twiddles. | 450.03 ms | 4.8309 s |
+| `ntt_r8_vec`        | No  | Allocates new `Vec`s per recursive iteration.                         | 817.32 ms | 8.1014 s |
+| `ntt_r8_vec_p`      | Yes | Allocates new `Vec`s per recursive iteration.                         | 451.55 ms | 4.5777 s |
+| `ntt_r8_ip`         | No  | Only allocates memory once, and reuses it to perform an in-place NTT. | 973.99 ms | 13.487 s s |
+| `ntt_r8_ip_p`       | Yes | Only allocates memory once, and reuses it to perform an in-place NTT. | 926.11 ms | 12.324 s |
+| `ntt_r8_hybrid_p`   | Yes | Hybrid approach using the in-place NTT for a cache-friendly number of inputs, and the Vec method for higher layers. | 322.63 ms | **3.3564 s** |
+| `ntt_r8_hybrid_ps`  | Yes | Hybrid approach where only the in-place method uses precomputed twiddles. | 449.37 ms | 4.8272 s |
 
 The following functions use `ntt_r8_hybrid_p` under the hood to perform the NTT
 for inputs of length `8^k * 2` and `8^k * 4` respectively.
 
 - `ntt_r8_s2_hybrid_p`
-    - For 4194304 inputs (8^7 * 2): 709.36 ms 
+    - For 4194304 inputs (8^7 * 2): 707.22 ms
 - `ntt_r8_s4_hybrid_p`
-    - For 8388608 inputs (8^7 * 4): 1.5529 s
+    - For 8388608 inputs (8^7 * 4): 1.5703 s
+
+
+### Caching the precomputed twiddles
+
+We highly recommend using `lazy_static` or `OnceCell` to cache the precomputed
+twiddles. See `benches/ntt_r8_hybrid_p.rs` to see how this can be done.
 
 ### Hardware
 

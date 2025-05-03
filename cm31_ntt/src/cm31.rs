@@ -76,12 +76,16 @@ impl CF {
     /// Multiplies by the 8th root of unity, which is (0x00008000, 0x00008000). This is efficient
     /// as we can use bitshifts to multiply by 0x00008000.
     pub fn mul_by_w8(self) -> CF {
+        // The Karatsuba method. See mul().
         let a = self.a;
         let b = self.b;
 
+        // Since W_8 = (2^15, 2^15), c = 2^15 and d = 2^15.
         let ac = a.mul_by_2_15();
         let bd = b.mul_by_2_15();
         let real = ac - bd;
+
+        // c + d = 2 ^ 16.
         let imag = ((a + b).mul_by_2_16() - ac) - bd;
 
         CF { a: real, b: imag }
