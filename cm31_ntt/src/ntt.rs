@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use crate::cm31::CF;
 use num_traits::{Zero, One, Pow};
 use crate::ntt_utils::*;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 
 pub const NTT_BLOCK_SIZE_FOR_CACHE: usize = 8usize.pow(5);
 
@@ -47,42 +47,44 @@ pub fn ntt(
     Err(anyhow!("Could not perform the NTT"))
 }
 
-pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles, String> {
-    assert!(is_power_of(n as u32, 2), "n must be a power of 2");
+pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles> {
+    ensure!(is_power_of(n as u32, 2), "n must be a power of 2");
 
     // Case where n is a power of 8
     if is_power_of(n as u32, 8) {
         let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n);
-        return Ok(PrecomputedTwiddles {
+        Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
             stride: vec![],
-        });
+        })
     }
 
     // Case where n is of the form 8^k * 2
-    if is_power_of((n / 2) as u32, 8) {
+    else if is_power_of((n / 2) as u32, 8) {
         let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 2);
         let precomp_s2 = precomp_s2(n);
-        return Ok(PrecomputedTwiddles {
+        Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
             stride: precomp_s2,
-        });
+        })
     }
 
     // Case where n is of the form 8^k * 4
-    if is_power_of((n / 4) as u32, 8) {
+    else if is_power_of((n / 4) as u32, 8) {
         let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 4);
         let precomp_s4 = precomp_s4(n);
-        return Ok(PrecomputedTwiddles {
+        Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
             stride: precomp_s4,
-        });
-    }
+        })
+    } 
 
-    Err("n must be a power of 2, or of the form 8^k * 2 or 8^k * 4".to_string())
+    else {
+        Err(anyhow!("n must be a power of 2, or of the form 8^k * 2 or 8^k * 4"))
+    }
 }
 
 /// Performs a radix-8 NTT on the polynomial f.
@@ -99,15 +101,18 @@ pub fn ntt_r8_vec(f: &[CF], w: CF) -> Vec<CF> {
 
     fn do_ntt(f: &[CF], w: CF) -> Vec<CF> {
         let n = f.len();
+
         if n == 1 {
             return f.to_vec();
         }
+
+        assert!(n > 0 && n % 8 == 0);
 
         let m = n / 8;
         let w_pow_8 = w.pow(8);
 
         // Partition f into 8 subarrays.
-        let mut a = vec![vec![CF::zero(); m]; 8];
+        let mut a = [(); 8].map(|_| vec![CF::zero(); m]);
 
         let mut res = vec![CF::zero(); n];
         unsafe {
@@ -119,9 +124,9 @@ pub fn ntt_r8_vec(f: &[CF], w: CF) -> Vec<CF> {
             }
 
             // Recurse
-            let mut ntt_a = Vec::with_capacity(8);
+            let mut ntt_a = [(); 8].map(|_| vec![CF::zero(); m]);
             for i in 0..8 {
-                ntt_a.push(do_ntt(&a[i], w_pow_8));
+                ntt_a[i] = do_ntt(&a[i], w_pow_8);
             }
 
             for k in 0..m {
@@ -858,7 +863,7 @@ pub fn ntt_r8_hybrid_p(
                 let bf = ntt_block_8(
                     f0, f1, f2, f3, f4, f5, f6, f7,
                     wt, wt2, wt3, wt4, wt5, wt6, wt7,
-                    );
+                );
 
                 *res.get_unchecked_mut(k) = bf.0;
                 *res.get_unchecked_mut(k + m) = bf.1;
