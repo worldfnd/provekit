@@ -16,6 +16,7 @@ anyhow = "1.0.98"
 [dev-dependencies]
 rand_chacha = "0.3.1"
 bincode = "1.3.3"
+test-case = "3.3.1"
 
 [[bench]]
 name = "ntt_r8_vec"
@@ -47,4 +48,8 @@ harness = false
 
 [[bench]]
 name = "ntt_r8_s4_hybrid_p"
+harness = false
+
+[[bench]]
+name = "ntt_block_8"
 harness = false
