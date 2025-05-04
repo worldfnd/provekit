@@ -22,7 +22,7 @@ fn bench(c: &mut Criterion) {
             f[i] = rng.r#gen();
         }
 
-        let precomp = precomp_for_ntt_r8_ip_p(n, wn);
+        let precomp = precomp_for_ntt_r8_ip_p(n, wn).unwrap();
 
         let mut scratch = vec![CF::zero(); n];
 

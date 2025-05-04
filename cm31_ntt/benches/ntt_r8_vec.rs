@@ -23,7 +23,7 @@ fn bench(c: &mut Criterion) {
 
         group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_r8_vec(black_box(&f), wn);
+                let _ = ntt_r8_vec(black_box(&f), wn);
             })
         });
     }
@@ -36,4 +36,3 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
-

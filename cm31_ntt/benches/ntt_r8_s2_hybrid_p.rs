@@ -30,7 +30,7 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function(format!("size {N}"), |b| {
         b.iter(|| {
-            ntt_r8_s2_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP);
+            let _ = ntt_r8_s2_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP);
         })
     });
 
@@ -43,5 +43,3 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
-
-

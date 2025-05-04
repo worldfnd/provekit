@@ -14,7 +14,7 @@ lazy_static! {
     static ref PRECOMP: Vec<CF> = {
         let n = 8usize.pow(8);
         let wn = get_root_of_unity(n);
-        precomp_for_ntt_r8_vec_p(n, wn)
+        precomp_for_ntt_r8_vec_p(n, wn).unwrap()
     };
 }
 fn bench(c: &mut Criterion) {
@@ -33,7 +33,7 @@ fn bench(c: &mut Criterion) {
 
         group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_r8_vec_p(black_box(&f), &*PRECOMP);
+                let _ = ntt_r8_vec_p(black_box(&f), &*PRECOMP);
             })
         });
     }
@@ -46,4 +46,3 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
-

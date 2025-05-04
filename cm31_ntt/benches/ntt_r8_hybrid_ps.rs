@@ -22,14 +22,14 @@ fn bench(c: &mut Criterion) {
         }
         // TODO: refactor
         let precomp_small = if n < NTT_BLOCK_SIZE_FOR_CACHE {
-            precomp_for_ntt_r8_ip_p(n, wn)
+            precomp_for_ntt_r8_ip_p(n, wn).unwrap()
         } else {
-            precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE))
+            precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE)).unwrap()
         };
 
         group.bench_function(format!("size {n}"), |b| {
             b.iter(|| {
-                ntt_r8_hybrid_ps(black_box(&f), wn, &precomp_small);
+                let _ = ntt_r8_hybrid_ps(black_box(&f), wn, &precomp_small);
             })
         });
     }

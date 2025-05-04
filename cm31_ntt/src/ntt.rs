@@ -19,28 +19,29 @@ pub fn ntt(
 ) -> Result<Vec<CF>> {
     let n = f.len();
     let mut scratch = vec![CF::zero(); NTT_BLOCK_SIZE_FOR_CACHE];
-    debug_assert!(is_power_of(n as u32, 2), "n must be a power of 2");
-    debug_assert!(n >= 8, "n must be at least 8");
+
+    ensure!(is_power_of(n as u32, 2), "n must be a power of 2");
+    ensure!(n >= 8, "n must be at least 8");
 
     if n <= 64 {
         // Use the radix-2 NTT for very small sizes
         let wn = get_root_of_unity(n);
-        return Ok(ntt_radix_2(f, wn));
+        return ntt_radix_2(f, wn);
     }
 
     // Case where n is a power of 8
     if is_power_of(n as u32, 8) {
-        return Ok(ntt_r8_hybrid_p(f, &mut scratch, precomp));
+        return ntt_r8_hybrid_p(f, &mut scratch, precomp);
     }
 
     // Case where n is of the form 8^k * 2
     if is_power_of((n / 2) as u32, 8) {
-        return Ok(ntt_r8_s2_hybrid_p(f, &mut scratch, precomp));
+        return ntt_r8_s2_hybrid_p(f, &mut scratch, precomp);
     }
 
     // Case where n is of the form 8^k * 4
     if is_power_of((n / 4) as u32, 8) {
-        return Ok(ntt_r8_s4_hybrid_p(f, &mut scratch, precomp));
+        return ntt_r8_s4_hybrid_p(f, &mut scratch, precomp);
     }
 
     // This shouldn't happen...
@@ -52,7 +53,7 @@ pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles> {
 
     // Case where n is a power of 8
     if is_power_of(n as u32, 8) {
-        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n);
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n).unwrap();
         Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
@@ -62,8 +63,8 @@ pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles> {
 
     // Case where n is of the form 8^k * 2
     else if is_power_of((n / 2) as u32, 8) {
-        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 2);
-        let precomp_s2 = precomp_s2(n);
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 2).unwrap();
+        let precomp_s2 = precomp_s2(n).unwrap();
         Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
@@ -73,8 +74,8 @@ pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles> {
 
     // Case where n is of the form 8^k * 4
     else if is_power_of((n / 4) as u32, 8) {
-        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 4);
-        let precomp_s4 = precomp_s4(n);
+        let (precomp_small, precomp_full) = precomp_for_ntt_r8_hybrid_p(n / 4).unwrap();
+        let precomp_s4 = precomp_s4(n).unwrap();
         Ok(PrecomputedTwiddles {
             small: precomp_small,
             full: precomp_full,
@@ -94,10 +95,10 @@ pub fn precompute_twiddles(n: usize) -> Result<PrecomputedTwiddles> {
 /// @param f The coefficients of the polynomial to be transformed.
 /// @param w The n-th root of unity, where n is the length of f.
 /// @return The transformed polynomial in evaluation form.
-pub fn ntt_r8_vec(f: &[CF], w: CF) -> Vec<CF> {
+pub fn ntt_r8_vec(f: &[CF], w: CF) -> Result<Vec<CF>> {
     let n = f.len();
-    debug_assert!(n >= 8, "n must be at least 8");
-    debug_assert!(is_power_of(n as u32, 8), "n must be a power of 8");
+    ensure!(n >= 8, "n must be at least 8");
+    ensure!(is_power_of(n as u32, 8), "n must be a power of 8");
 
     fn do_ntt(f: &[CF], w: CF) -> Vec<CF> {
         let n = f.len();
@@ -166,7 +167,7 @@ pub fn ntt_r8_vec(f: &[CF], w: CF) -> Vec<CF> {
         res
     }
 
-    do_ntt(&f, w)
+    Ok(do_ntt(&f, w))
 }
 
 /// Performs a radix-2 NTT on the polynomial f.
@@ -176,10 +177,10 @@ pub fn ntt_r8_vec(f: &[CF], w: CF) -> Vec<CF> {
 /// @param f The coefficients of the polynomial to be transformed.
 /// @param w The n-th root of unity, where n is the length of f.
 /// @return The transformed polynomial in evaluation form.
-pub fn ntt_radix_2(f: &[CF], w: CF) -> Vec<CF> {
+pub fn ntt_radix_2(f: &[CF], w: CF) -> Result<Vec<CF>> {
     let n = f.len();
-    assert!(n >= 2, "n must be at least 2");
-    assert!(n.is_power_of_two(), "n must be a power of 2");
+    ensure!(n >= 2, "n must be at least 2");
+    ensure!(n.is_power_of_two(), "n must be a power of 2");
 
     fn do_ntt(f: &[CF], w: CF) -> Vec<CF> {
         let n = f.len();
@@ -190,11 +191,13 @@ pub fn ntt_radix_2(f: &[CF], w: CF) -> Vec<CF> {
         }
 
         // Divide
-        let mut f_even = vec![CF::zero(); n/2];
-        let mut f_odd = vec![CF::zero(); n/2];
-        for i in 0..n/2 {
-            f_even[i] = f[2*i];
-            f_odd[i] = f[2*i + 1];
+        let half_n = n / 2;
+        let mut f_even = vec![CF::zero(); half_n];
+        let mut f_odd  = vec![CF::zero(); half_n];
+
+        for i in 0..half_n {
+            f_even[i] = f[2 * i];
+            f_odd[i]  = f[2 * i + 1];
         }
 
         // Recurse
@@ -215,48 +218,47 @@ pub fn ntt_radix_2(f: &[CF], w: CF) -> Vec<CF> {
         res
     }
 
-    do_ntt(f, w)
+    Ok(do_ntt(f, w))
 }
 
 /// Precompute twiddles for use in the ntt_r8_vec_p() function.
-pub fn precomp_for_ntt_r8_vec_p(n: usize, w: CF) -> Vec<CF> {
-    let radix: usize = 8;
-    assert!(n.is_power_of_two(), "n must be a power of 2");
-    assert!(radix.is_power_of_two(), "radix must be a power of 2");
-    assert!(n >= radix, "n must be at least as large as 8");
+pub fn precomp_for_ntt_r8_vec_p(n: usize, w: CF) -> Result<Vec<CF>> {
+    const RADIX: usize = 8;
+    ensure!(n.is_power_of_two(), "n must be a power of 2");
+    ensure!(n >= RADIX, "n must be at least as large as 8");
 
     let mut twiddles = Vec::new();
     let mut current_n = n;
     let mut current_w = w;
     
     while current_n > 1 {
-        let m = current_n / radix;
-        let next_w = current_w.pow(radix);
+        let m = current_n / RADIX;
+        let next_w = current_w.pow(RADIX);
         twiddles.push(next_w.reduce());
         
         for k in 0..m {
             let base = current_w.pow(k);
             let mut factor = CF::one();
-            for _r in 1..radix {
+            for _r in 1..RADIX {
                 factor = factor * base;
                 twiddles.push(factor.reduce());
             }
         }
         
-        current_n /= radix;
+        current_n /= RADIX;
         current_w = next_w;
     }
     
-    twiddles
+    Ok(twiddles)
 }
 
 pub fn ntt_r8_vec_p(
-    f: &Vec<CF>,
-    twiddles: &Vec<CF>,
-) -> Vec<CF> {
+    f: &[CF],
+    twiddles: &[CF],
+) -> Result<Vec<CF>> {
     let n = f.len();
-    debug_assert!(n >= 8, "n must be at least 8");
-    debug_assert!(is_power_of(n as u32, 8), "n must be a power of 8");
+    ensure!(n >= 8, "n must be at least 8");
+    ensure!(is_power_of(n as u32, 8), "n must be a power of 8");
 
     fn level_offset(n_total: usize, depth: usize) -> usize {
         let mut off = 0;
@@ -269,8 +271,8 @@ pub fn ntt_r8_vec_p(
     }
 
     fn do_ntt_precomputed(
-        f: &Vec<CF>,
-        twiddles: &Vec<CF>,
+        f: &[CF],
+        twiddles: &[CF],
         depth: usize,
         overall_transform_size: usize,
     ) -> Vec<CF> {
@@ -278,7 +280,7 @@ pub fn ntt_r8_vec_p(
         
         // Base case
         if n == 1 {
-            return f.clone();
+            return f.to_vec();
         }
 
         // n is divisible by 8
@@ -364,7 +366,7 @@ pub fn ntt_r8_vec_p(
         res
     }
 
-    do_ntt_precomputed(&f, twiddles, 0, n)
+    Ok(do_ntt_precomputed(&f, twiddles, 0, n))
 }
 
 /// An in-place radix-8 NTT without precomputed twiddles.
@@ -443,15 +445,15 @@ pub fn ntt_r8_ip(f: &mut [CF], w: CF) {
     }
 
     let n = f.len();
-    debug_assert!(n >= 8, "N must be at least 8");
-    debug_assert!(is_power_of(n as u32, 8), "N must be a power of 8");
+    assert!(n >= 8, "N must be at least 8");
+    assert!(is_power_of(n as u32, 8), "N must be a power of 8");
 
     let mut scratch = vec![CF::zero(); n];
     do_ntt(f, &mut scratch, 0, 1, n, w);
 }
 
-pub fn precomp_for_ntt_r8_ip_p(n: usize, w: CF) -> Vec<CF> {
-    assert!(n >= 8 && is_power_of(n as u32, 8), "n must be 8^x");
+pub fn precomp_for_ntt_r8_ip_p(n: usize, w: CF) -> Result<Vec<CF>> {
+    ensure!(n >= 8 && is_power_of(n as u32, 8), "n must be 8^x");
 
     fn precomp_stage(n: usize, w: CF) -> Vec<CF> {
         let m = n / 8;
@@ -471,13 +473,15 @@ pub fn precomp_for_ntt_r8_ip_p(n: usize, w: CF) -> Vec<CF> {
     let mut res = Vec::new();
     let mut len = n;
     let mut root = w;
+
     while len >= 8 {
         let stage = precomp_stage(len, root);
         res.extend(stage);
         root = root.pow(8);
         len /= 8;
     }
-    res
+
+    Ok(res)
 }
 
 pub fn ntt_r8_ip_p(
@@ -577,7 +581,7 @@ pub fn ntt_r8_ip_p(
     }
 
     let n = f.len();
-    debug_assert!(n >= 8 && is_power_of(n as u32, 8), "length must be a power of 8");
+    assert!(n >= 8 && is_power_of(n as u32, 8), "length must be a power of 8");
 
     recurse(f, scratch, 0, 1, n, pre, 0);
 }
@@ -593,9 +597,7 @@ pub fn ntt_r8_ip_p(
 pub fn ntt_r8_hybrid(
     f: &Vec<CF>,
     w: CF,
-) -> Vec<CF> {
-    let n = f.len();
-
+) -> Result<Vec<CF>> {
     fn do_ntt(
         f: &Vec<CF>,
         w: CF,
@@ -667,10 +669,18 @@ pub fn ntt_r8_hybrid(
         res
     }
 
-    do_ntt(f, w, n)
+    let n = f.len();
+    ensure!(n >= 8, "n must be at least 8");
+    ensure!(is_power_of(n as u32, 8), "n must be a power of 8");
+
+    Ok(do_ntt(f, w, n))
 }
 
-pub fn ntt_r8_hybrid_ps(f: &Vec<CF>, w: CF, precomp_small: &Vec<CF>) -> Vec<CF> {
+pub fn ntt_r8_hybrid_ps(
+    f: &Vec<CF>,
+    w: CF,
+    precomp_small: &Vec<CF>,
+) -> Result<Vec<CF>> {
     fn do_ntt(
         f: &Vec<CF>,
         scratch: &mut [CF],
@@ -750,18 +760,20 @@ pub fn ntt_r8_hybrid_ps(f: &Vec<CF>, w: CF, precomp_small: &Vec<CF>) -> Vec<CF> 
     if n <= NTT_BLOCK_SIZE_FOR_CACHE {
         let mut res = f.clone();
         ntt_r8_ip_p(&mut res, &mut scratch, precomp_small);
-        return res;
+        return Ok(res);
     }
 
-    do_ntt(f, &mut scratch, w, n, precomp_small)
+    Ok(do_ntt(f, &mut scratch, w, n, precomp_small))
 }
 
-pub fn gen_precomp_full(n: usize, w: CF, block: usize) -> Vec<CF> {
-    debug_assert!(n >= block && is_power_of(n as u32, 8), "n must be power of 8 and >= block");
-    debug_assert!(block >= 8 && block <= n && block % 8 == 0, "block must be a multiple of 8 and <= n");
+pub fn gen_precomp_full(n: usize, w: CF, block: usize) -> Result<Vec<CF>> {
+    ensure!(n >= block && is_power_of(n as u32, 8), "n must be power of 8 and >= block");
+    ensure!(block >= 8 && block <= n && block % 8 == 0, "block must be a multiple of 8 and <= n");
+
     let mut tw: Vec<CF> = Vec::new();
     let mut curr_len = n;
     let mut w_lvl = w;
+
     while curr_len > block {
         let m = curr_len / 8;
         for k in 0..m {
@@ -775,7 +787,8 @@ pub fn gen_precomp_full(n: usize, w: CF, block: usize) -> Vec<CF> {
         w_lvl = w_lvl.pow(8);
         curr_len /= 8;
     }
-    tw
+
+    Ok(tw)
 }
 
 /// Performs a radix-8 NTT on the polynomial f.
@@ -793,7 +806,7 @@ pub fn ntt_r8_hybrid_p(
     f: &[CF],
     scratch: &mut [CF],
     precomp: &PrecomputedTwiddles,
-) -> Vec<CF> {
+) -> Result<Vec<CF>> {
     fn level_offset(n_total: usize, depth: usize) -> usize {
         let mut off = 0;
         let mut len = n_total / 8;
@@ -879,16 +892,16 @@ pub fn ntt_r8_hybrid_p(
     }
 
     let n = f.len();
-    debug_assert!(n > 8 && is_power_of(n as u32, 8), "the input size must be a power of 8 and greater than 8");
-    debug_assert!(scratch.len() == NTT_BLOCK_SIZE_FOR_CACHE, "the scratch space must be NTT_BLOCK_SIZE_FOR_CACHE");
+    ensure!(n > 8 && is_power_of(n as u32, 8), "the input size must be a power of 8 and greater than 8");
+    ensure!(scratch.len() == NTT_BLOCK_SIZE_FOR_CACHE, "the scratch space must be NTT_BLOCK_SIZE_FOR_CACHE");
 
-    recurse(f, scratch, &precomp.small, &precomp.full, 0, n)
+    Ok(recurse(f, scratch, &precomp.small, &precomp.full, 0, n))
 }
 
 /// Precomputes twiddle factors needed for a stride-2 combination stage of an NTT.
 /// @param n The size of the full NTT
 /// @return Vector of w^i factors for i in 0..n/2
-pub fn precomp_s2(n: usize) -> Vec<CF> {
+pub fn precomp_s2(n: usize) -> Result<Vec<CF>> {
     assert!(n.is_power_of_two(), "n must be a power of 2");
     assert!(n >= 2, "n must be at least 2");
     
@@ -905,16 +918,16 @@ pub fn precomp_s2(n: usize) -> Vec<CF> {
         w_i = w_i * w;
     }
     
-    w_powers
+    Ok(w_powers)
 }
 
 /// Precomputes twiddle factors needed for a stride-4 combination stage of an NTT.
 /// @param n The size of the full NTT
 /// @return Vector of [w^i, w^(2i), w^(3i)] arrays for i in 0..n/4
-pub fn precomp_s4(n: usize) -> Vec<CF> {
-    assert!(n.is_power_of_two(), "n must be a power of 2");
-    assert!(n >= 4, "n must be at least 4");
-    assert!(n % 4 == 0, "n must be divisible by 4");
+pub fn precomp_s4(n: usize) -> Result<Vec<CF>> {
+    ensure!(n.is_power_of_two(), "n must be a power of 2");
+    ensure!(n >= 4, "n must be at least 4");
+    ensure!(n % 4 == 0, "n must be divisible by 4");
     
     let w = get_root_of_unity(n);
     
@@ -935,7 +948,7 @@ pub fn precomp_s4(n: usize) -> Vec<CF> {
         w_i = w_i * w;
     }
     
-    w_powers
+    Ok(w_powers)
 }
 
 
@@ -953,14 +966,14 @@ pub fn ntt_r8_s2_hybrid_p(
     f: &[CF],
     scratch: &mut [CF],
     precomp: &PrecomputedTwiddles,
-) -> Vec<CF> {
+) -> Result<Vec<CF>> {
     let n = f.len();
 
     // Input length must be at least 16 and of the form (8^k) * 2
-    assert!(n >= 16, "n must be at least 16");
-    assert!(n % 2 == 0, "n must be divisible by 2");
+    ensure!(n >= 16, "n must be at least 16");
+    ensure!(n % 2 == 0, "n must be divisible by 2");
     let half_n = n / 2;
-    assert!(is_power_of((n / 2) as u32, 8), "n must be of the form (8^k) * 2");
+    ensure!(is_power_of((n / 2) as u32, 8), "n must be of the form (8^k) * 2");
     
     // Split input into even and odd parts
     let mut f_even = vec![CF::zero(); half_n];
@@ -972,8 +985,8 @@ pub fn ntt_r8_s2_hybrid_p(
     }
     
     // Perform radix-8 NTT on each half using precomputed twiddles
-    let ntt_even = ntt_r8_hybrid_p(&mut f_even, scratch, &precomp);
-    let ntt_odd  = ntt_r8_hybrid_p(&mut f_odd,  scratch, &precomp);
+    let ntt_even = ntt_r8_hybrid_p(&mut f_even, scratch, &precomp)?;
+    let ntt_odd  = ntt_r8_hybrid_p(&mut f_odd,  scratch, &precomp)?;
     
     // Combine using radix-2 butterfly operations with precomputed twiddles
     let mut res = vec![CF::zero(); n];
@@ -987,7 +1000,7 @@ pub fn ntt_r8_s2_hybrid_p(
         res[i + half_n] = ntt_even[i] - w_i * ntt_odd[i];
     }
     
-    res
+    Ok(res)
 }
 
 /// Performs a radix-8 NTT on the polynomial f.
@@ -1004,14 +1017,14 @@ pub fn ntt_r8_s4_hybrid_p(
     f: &[CF],
     scratch: &mut [CF],
     precomp: &PrecomputedTwiddles,
-) -> Vec<CF> {
+) -> Result<Vec<CF>> {
     let n = f.len();
 
     // Input length must be at least 16 and of the form (8^k) * 2
-    assert!(n >= 16, "n must be at least 16");
-    assert!(n % 2 == 0, "n must be divisible by 2");
+    ensure!(n >= 16, "n must be at least 16");
+    ensure!(n % 2 == 0, "n must be divisible by 2");
     let quarter_n = n / 4;
-    assert!(is_power_of(quarter_n as u32, 8), "n must be of the form (8^k) * 4");
+    ensure!(is_power_of(quarter_n as u32, 8), "n must be of the form (8^k) * 4");
     
     // Split input into 4 parts with stride 4
     let mut f0 = vec![CF::zero(); quarter_n];
@@ -1027,10 +1040,10 @@ pub fn ntt_r8_s4_hybrid_p(
     }
     
     // Perform radix-8 NTT on each quarter using precomputed twiddles
-    let ntt_f0 = ntt_r8_hybrid_p(&mut f0, scratch, &precomp);
-    let ntt_f1 = ntt_r8_hybrid_p(&mut f1, scratch, &precomp);
-    let ntt_f2 = ntt_r8_hybrid_p(&mut f2, scratch, &precomp);
-    let ntt_f3 = ntt_r8_hybrid_p(&mut f3, scratch, &precomp);
+    let ntt_f0 = ntt_r8_hybrid_p(&mut f0, scratch, &precomp)?;
+    let ntt_f1 = ntt_r8_hybrid_p(&mut f1, scratch, &precomp)?;
+    let ntt_f2 = ntt_r8_hybrid_p(&mut f2, scratch, &precomp)?;
+    let ntt_f3 = ntt_r8_hybrid_p(&mut f3, scratch, &precomp)?;
     
     // Combine using radix-4 butterfly operations with precomputed twiddles
     let mut res = vec![CF::zero(); n];
@@ -1063,23 +1076,23 @@ pub fn ntt_r8_s4_hybrid_p(
         res[i + 3 * quarter_n] = a1 - a3_j;
     }
     
-    res
+    Ok(res)
 }
 
 /// Precompute precomp_full and precomp_small for ntt_r8_hybrid_p().
-pub fn precomp_for_ntt_r8_hybrid_p(n: usize) -> (Vec<CF>, Vec<CF>) {
+pub fn precomp_for_ntt_r8_hybrid_p(n: usize) -> Result<(Vec<CF>, Vec<CF>)> {
     let wn = get_root_of_unity(n);
     let precomp_full = if n < NTT_BLOCK_SIZE_FOR_CACHE {
-        gen_precomp_full(n, wn, n)
+        gen_precomp_full(n, wn, n)?
     } else {
-        gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE)
+        gen_precomp_full(n, wn, NTT_BLOCK_SIZE_FOR_CACHE)?
     };
     let precomp_small = if n < NTT_BLOCK_SIZE_FOR_CACHE {
-        precomp_for_ntt_r8_ip_p(n, wn)
+        precomp_for_ntt_r8_ip_p(n, wn)?
     } else {
-        precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE))
+        precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE))?
     };
-    (precomp_small, precomp_full)
+    Ok((precomp_small, precomp_full))
 }
 
 #[cfg(test)]
@@ -1108,7 +1121,7 @@ pub mod tests {
             for seed in 0..4 {
                 let f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_vec(&f, wn);
+                let res = ntt_r8_vec(&f, wn).unwrap();
                 let expected = naive_ntt(&f);
                 assert_eq!(res, expected);
             }
@@ -1120,11 +1133,11 @@ pub mod tests {
         for log8_n in 1..5 {
             let n = 8usize.pow(log8_n);
             let wn = get_root_of_unity(n);
-            let precomp = precomp_for_ntt_r8_vec_p(n, wn);
+            let precomp = precomp_for_ntt_r8_vec_p(n, wn).unwrap();
             for seed in 0..4 {
                 let f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_vec_p(&f, &precomp);
+                let res = ntt_r8_vec_p(&f, &precomp).unwrap();
                 let expected = naive_ntt(&f);
                 assert_eq!(res, expected);
             }
@@ -1140,7 +1153,7 @@ pub mod tests {
                 let mut f = gen_rand_poly(n, seed);
 
                 let g = f.clone();
-                let expected = ntt_r8_vec(&g, wn);
+                let expected = ntt_r8_vec(&g, wn).unwrap();
 
                 ntt_r8_ip(&mut f, wn);
                 assert_eq!(f, expected);
@@ -1154,12 +1167,12 @@ pub mod tests {
             let n = 8usize.pow(log8_n);
             let mut scratch = vec![CF::zero(); n];
             let wn = get_root_of_unity(n);
-            let precomp = precomp_for_ntt_r8_ip_p(n, wn);
+            let precomp = precomp_for_ntt_r8_ip_p(n, wn).unwrap();
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
                 let g = f.clone();
-                let expected = ntt_r8_vec(&g, wn);
+                let expected = ntt_r8_vec(&g, wn).unwrap();
                 ntt_r8_ip_p(&mut f, &mut scratch, &precomp);
                 assert_eq!(f, expected);
             }
@@ -1174,8 +1187,8 @@ pub mod tests {
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_hybrid(&mut f, wn);
-                let expected = ntt_r8_vec(&f, wn);
+                let res = ntt_r8_hybrid(&mut f, wn).unwrap();
+                let expected = ntt_r8_vec(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }
@@ -1189,16 +1202,16 @@ pub mod tests {
 
             // TODO: refactor
             let precomp_small = if n < NTT_BLOCK_SIZE_FOR_CACHE {
-                precomp_for_ntt_r8_ip_p(n, wn)
+                precomp_for_ntt_r8_ip_p(n, wn).unwrap()
             } else {
-                precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE))
+                precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE)).unwrap()
             };
 
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_hybrid_ps(&mut f, wn, &precomp_small);
-                let expected = ntt_r8_vec(&f, wn);
+                let res = ntt_r8_hybrid_ps(&mut f, wn, &precomp_small).unwrap();
+                let expected = ntt_r8_vec(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }
@@ -1216,8 +1229,8 @@ pub mod tests {
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_hybrid_p(&mut f, &mut scratch, &twiddles);
-                let expected = ntt_r8_vec(&f, wn);
+                let res = ntt_r8_hybrid_p(&mut f, &mut scratch, &twiddles).unwrap();
+                let expected = ntt_r8_vec(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }
@@ -1234,8 +1247,8 @@ pub mod tests {
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_s2_hybrid_p(&mut f, &mut scratch, &precomp);
-                let expected = ntt_radix_2(&f, wn);
+                let res = ntt_r8_s2_hybrid_p(&mut f, &mut scratch, &precomp).unwrap();
+                let expected = ntt_radix_2(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }
@@ -1252,8 +1265,8 @@ pub mod tests {
             for seed in 0..4 {
                 let mut f = gen_rand_poly(n, seed);
 
-                let res = ntt_r8_s4_hybrid_p(&mut f, &mut scratch, &precomp);
-                let expected = ntt_radix_2(&f, wn);
+                let res = ntt_r8_s4_hybrid_p(&mut f, &mut scratch, &precomp).unwrap();
+                let expected = ntt_radix_2(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }
@@ -1271,7 +1284,7 @@ pub mod tests {
                 let f = gen_rand_poly(n, seed);
 
                 let res = ntt(&f, &precomp).unwrap();
-                let expected = ntt_radix_2(&f, wn);
+                let expected = ntt_radix_2(&f, wn).unwrap();
                 assert!(res == expected);
             }
         }

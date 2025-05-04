@@ -37,7 +37,7 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function(format!("size {n}"), |b| {
         b.iter(|| {
-            ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_7);
+            let _ = ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_7);
         })
     });
 
@@ -54,7 +54,7 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function(format!("size {n}"), |b| {
         b.iter(|| {
-            ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_8);
+            let _ = ntt_r8_hybrid_p(black_box(&f), &mut scratch, &*PRECOMP_8);
         })
     });
 
@@ -67,4 +67,3 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
-
