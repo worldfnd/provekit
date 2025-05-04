@@ -304,6 +304,8 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
     use rand::SeedableRng;
 
+    const NUM_FUZZ_TESTS: usize = 1024;
+
     const TEST_CASES: &[(u32, u32)] = &[
         (0, 0),
         (0, 1),
@@ -340,26 +342,63 @@ mod tests {
     }
 
     #[test]
-    fn test_add() {
+    fn test_reduce_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let reduced = (a + b).reduce();
+            let expected = RF::new((a.val + b.val) % P);
+            assert_eq!(reduced.val, expected.val);
+        }
+    }
+
+        // Helper function to test binary operations against test cases
+    fn test_binary_op<F, G>(op_name: &str, rf_op: F, expected_op: G)
+    where
+        F: Fn(RF, RF) -> RF,
+        G: Fn(u32, u32) -> u32,
+    {
         let mut failing_test_cases = vec![];
         for (lhs, rhs) in TEST_CASES {
-            let lhs: RF = (*lhs).into();
-            let rhs: RF = (*rhs).into();
+            let lhs_rf: RF = (*lhs).into();
+            let rhs_rf: RF = (*rhs).into();
             
-            let expected = (lhs.val as u64 + rhs.val as u64) % P_64;
-            let result = (lhs + rhs).val % P;
+            let expected = expected_op(lhs_rf.val, rhs_rf.val);
+            let result = (rf_op(lhs_rf, rhs_rf)).val % P;
 
-            if expected != result as u64 {
-                failing_test_cases.push((lhs, rhs));
+            if expected != result {
+                failing_test_cases.push((lhs_rf, rhs_rf));
             }
         }
 
         // Print all faling test cases. This is useful for debugging. I don't use test_case here
         // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
         if failing_test_cases.len() > 0 {
-            println!("Failed test cases: {:?}", failing_test_cases);
+            println!("Failed {} test cases: {:?}", op_name, failing_test_cases);
         }
         assert_eq!(failing_test_cases.len(), 0);
+    }
+
+    #[test]
+    fn test_add() {
+        test_binary_op(
+            "add",
+            |a, b| a + b,
+            |a, b| ((a as u64 + b as u64) % P_64) as u32
+        );
+    }
+
+    #[test]
+    fn test_add_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let sum = a + b;
+            let expected = (a.val as u64 + b.val as u64) % P_64;
+            assert_eq!(sum.val % P, expected as u32);
+        }
     }
 
     #[test]
@@ -382,46 +421,33 @@ mod tests {
         }
     }
 
-    //#[test]
-    //fn test_sub() {
-        //for (lhs, rhs) in TEST_CASES {
-            //let lhs: RF = (*lhs).into();
-            //let rhs: RF = (*rhs).into();
-            
-            //let expected = if lhs.val > rhs.val {
-                //(lhs.val - rhs.val) % P
-            //} else {
-                //(P - (rhs.val - lhs.val)) % P
-            //};
-            //let result = (lhs - rhs).val % P;
-            //assert_eq!(expected, result);
-        //}
-    //}
     #[test]
     fn test_sub() {
-        let mut failing_test_cases = vec![];
-        for (lhs, rhs) in TEST_CASES {
-            let lhs: RF = (*lhs).into();
-            let rhs: RF = (*rhs).into();
-            
-            let expected = if lhs.val > rhs.val {
-                (lhs.val - rhs.val) % P
+        test_binary_op(
+            "sub",
+            |a, b| a - b,
+            |a, b| if a > b {
+                (a - b) % P
             } else {
-                (P - (rhs.val - lhs.val)) % P
-            };
-            let result = (lhs - rhs).val % P;
-
-            if expected != result {
-                failing_test_cases.push((lhs, rhs));
+                (P - (b - a)) % P
             }
+        );
+    }
+    
+    #[test]
+    fn test_sub_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let diff = a - b;
+            let expected = if a.val > b.val {
+                (a.val - b.val) % P
+            } else {
+                (P - (b.val - a.val)) % P
+            };
+            assert_eq!(diff.val % P, expected);
         }
-
-        // Print all faling test cases. This is useful for debugging. I don't use test_case here
-        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
-        if failing_test_cases.len() > 0 {
-            println!("Failed test cases: {:?}", failing_test_cases);
-        }
-        assert_eq!(failing_test_cases.len(), 0);
     }
 
     #[test]
@@ -463,28 +489,43 @@ mod tests {
         let expected = RF::new(0);
         assert_eq!(s, expected);
     }
+    
+    #[test]
+    fn test_neg_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let neg_a = a.neg();
+            
+            // Test that a + (-a) = 0
+            let sum = a + neg_a;
+            assert_eq!(sum.reduce(), RF::zero());
+            
+            // Test that -(-a) = a
+            let neg_neg_a = neg_a.neg();
+            assert_eq!(neg_neg_a.reduce(), a.reduce());
+        }
+    }
 
     #[test]
     fn test_mul() {
-        let mut failing_test_cases = vec![];
-        for (lhs, rhs) in TEST_CASES {
-            let lhs: RF = (*lhs).into();
-            let rhs: RF = (*rhs).into();
-            
-            let expected = (lhs.val as u64 * rhs.val as u64 ) % P_64;
-            let result = (lhs * rhs).val % P;
-
-            if expected as u32 != result {
-                failing_test_cases.push((lhs, rhs));
-            }
+        test_binary_op(
+            "mul",
+            |a, b| a * b,
+            |a, b| ((a as u64 * b as u64) % P_64) as u32
+        );
+    }
+    
+    #[test]
+    fn test_mul_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let product = a * b;
+            let expected = (a.val as u64 * b.val as u64) % P_64;
+            assert_eq!(product.val % P, expected as u32);
         }
-
-        // Print all faling test cases. This is useful for debugging. I don't use test_case here
-        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
-        if failing_test_cases.len() > 0 {
-            println!("Failed test cases: {:?}", failing_test_cases);
-        }
-        assert_eq!(failing_test_cases.len(), 0);
     }
 
     #[test]
@@ -592,6 +633,20 @@ mod tests {
         assert_eq!(result.val, expected as u32);
     }
 
+    #[test]
+    fn test_mul_by_2_15_fuzz() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        let m = 0x8000;
+        for _ in 0..NUM_FUZZ_TESTS {
+            let a: RF = rng.r#gen();
+            let b: RF = rng.r#gen();
+            let x = a + b;
+            let expected = x.val as u64 * m as u64 % P_64;
+            let result = x.mul_by_2_15();
+            assert_eq!(result.val, expected as u32);
+        }
+    }
+
     #[test_case(0, 0)]
     #[test_case(P_64, 123)]
     #[test_case(P_64 - 2, P_64 - 2)]
@@ -608,7 +663,7 @@ mod tests {
     fn test_mul_by_2_16_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let m = 0x10000;
-        for _ in 0..1023 {
+        for _ in 0..NUM_FUZZ_TESTS {
             let a: RF = rng.r#gen();
             let b: RF = rng.r#gen();
             let x = a + b;
