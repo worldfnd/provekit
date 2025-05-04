@@ -117,6 +117,10 @@ pub fn ntt_r8_vec(f: &[CF], w: CF) -> Result<Vec<CF>> {
 
         let mut res = vec![CF::zero(); n];
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
+            // Partition
             for i in 0..m {
                 let i_8 = i * 8;
                 for j in 0..8 {
@@ -283,6 +287,8 @@ pub fn ntt_r8_vec_p(
             return f.to_vec();
         }
 
+        assert!(n > 0 && n % 8 == 0);
+
         // n is divisible by 8
         let m = n / 8;
 
@@ -302,6 +308,9 @@ pub fn ntt_r8_vec_p(
         let mut res = vec![CF::zero(); n];
 
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
             for i in 0..m {
                 let i_8 = i * 8;
 
@@ -385,6 +394,8 @@ pub fn ntt_r8_ip(f: &mut [CF], w: CF) {
             return;
         }
 
+        assert!(n > 0 && n % 8 == 0);
+
         let m = n / 8;
         let w_next = w_lvl.pow(8);
 
@@ -401,6 +412,9 @@ pub fn ntt_r8_ip(f: &mut [CF], w: CF) {
         }
 
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
             for i in 0..n {
                 scratch[i] = *f.get_unchecked(offset + i * stride);
             }
@@ -499,6 +513,9 @@ pub fn ntt_r8_ip_p(
         mut pre_off: usize,
     ) {
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
             if n == 8 {
                 let bf = ntt_block_8(
                     *f.get_unchecked(offset),
@@ -610,6 +627,8 @@ pub fn ntt_r8_hybrid(
             return res;
         }
 
+        assert!(n > 0 && n % 8 == 0);
+
         let m = n / 8;
         let w_pow_8 = w.pow(8);
 
@@ -617,6 +636,9 @@ pub fn ntt_r8_hybrid(
         let mut res   = vec![CF::zero(); n];
 
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+ 
             // Partition
             for i in 0..m {
                 let base = i * 8;
@@ -695,6 +717,8 @@ pub fn ntt_r8_hybrid_ps(
             return res;
         }
 
+        assert!(n > 0 && n % 8 == 0);
+
         let m = n / 8;
         let w_pow_8 = w.pow(8);
 
@@ -702,6 +726,9 @@ pub fn ntt_r8_hybrid_ps(
         let mut res   = vec![CF::zero(); n];
 
         unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
             // Partition
             for i in 0..m {
                 let base = i * 8;
@@ -828,15 +855,20 @@ pub fn ntt_r8_hybrid_p(
         let n = f.len();
         let mut res = vec![CF::zero(); n];
 
-        unsafe {
-            // Base case
-            if n <= NTT_BLOCK_SIZE_FOR_CACHE {
-                let mut r = f.to_vec();
-                ntt_r8_ip_p(&mut r, scratch, pre_small);
-                return r;
-            }
+        // Base case
+        if n <= NTT_BLOCK_SIZE_FOR_CACHE {
+            let mut r = f.to_vec();
+            ntt_r8_ip_p(&mut r, scratch, pre_small);
+            return r;
+        }
 
-            // Divide
+        assert!(n > 0 && n % 8 == 0);
+
+        unsafe {
+            // SAFETY: n is guaranteed to be a multiple of 8, and m is guaranteed to be either a
+            // multiple of 8, or 1.
+
+            // Partition
             let m = n / 8;
             let mut parts = vec![vec![CF::zero(); m]; 8];
             for i in 0..m {
