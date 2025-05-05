@@ -19,14 +19,14 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
-pendatic = "warn"
+pedantic = "warn"
 nursery = "warn"
 cargo = "warn"
 perf = "warn"
 complexity = "warn"
 style = "warn"
 correctness = "warn"
-suspicous = "warn"
+suspicious = "warn"
 missing_docs_in_private_items = { level = "allow", priority = 1 }
 
 [profile.release]
