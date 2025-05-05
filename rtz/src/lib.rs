@@ -4,18 +4,18 @@
 //! Rust/LLVM does not support different float point mode rounding modes and
 //! this module provides abstractions to able to control the aarch64
 //! FPCR (Floating-point Control Register) rounding mode. For how this module
-//! provides a safe abstraction see the documentation of [`RTZ`].
+//! provides a safe abstraction see the documentation of [`Mode`].
 
 use std::marker::PhantomData;
 
-/// Proof that Round Toward Zero (RTZ) has been set
+/// Proof that the floating-point rounding mode has been set
 ///
 /// This struct must to be passed as a (unused) reference to any function that
-/// requires round toward zero for correct operation. The struct serves as a
-/// proof that RTZ is set and we rely on the lifetime introduced
-/// by the reference to enforce the ordering of the FPCR operations relative to
-/// the multiplication. This way we can prevent the reset of FPCR to bubble up
-/// in front of the multiplication.
+/// requires the non-default rounding mode for correct operation. The struct
+/// serves as a proof that the alternative rounding mode is set and we rely on
+/// the lifetime introduced by the reference to enforce the ordering of the FPCR
+/// operations relative to the multiplication. This way we can prevent the reset
+/// of FPCR to bubble up in front of the multiplication.
 ///
 /// This type provides RAII-style management of the aarch64 FPCR (Floating-point
 /// Control Register), specifically for controlling the rounding mode. When
@@ -31,67 +31,88 @@ use std::marker::PhantomData;
 /// This type is marked !Send + !Sync because FPCR is a per-core / per OS-thread
 /// register.
 #[derive(Debug)]
-pub struct RTZ<'id> {
+pub struct Mode<'id, T> {
     prev_fpcr: u64,
-    /// Acts as both a marker for !Send + !Sync and as branded type.
-    /// In combination with for<'id> in `with_round_mode` this will prevent the
-    /// closure from returning the RTZ token.
-    _not_send: PhantomData<*mut &'id ()>,
+    /// Acts as a marker for:
+    /// - !Send + !Sync;
+    /// - a branded type that in combination with for<'id> in
+    ///   `with_rounding_mode` will prevent the closure from leaking the Mode
+    ///   token.
+    /// - The kind of rounding mode
+    _marker:   PhantomData<*mut &'id T>,
 }
 
-impl RTZ<'_> {
+/// Marker type for the Round Toward Zero (RTZ) rounding mode.
+///
+/// This type is used as a parameter for [`Mode`] to specify the
+/// dependency on RTZ at the type-level.
+pub struct RTZ;
+
+impl<T: ModeMask> Mode<'_, T> {
     ///  `with_rounding_mode` provides a safe-ish abstraction (see Safety
-    /// section) to run a function under round towards zero floating-point
-    /// rounding mode. After the closure has been called the rounding mode is
+    /// section) to run a function under a non-default floating-point
+    /// rounding mode. Once the closure finishes the rounding mode is
     /// restored to what it was before the call.
     ///
     /// # Safety
     ///
-    /// This function is marked unsafe for two reasons:
+    /// This function is marked unsafe for the following reasons:
     ///
     /// 1) Rust/LLVM does not have any built-ins for changing the float point
     ///    mode rounding modes and this won’t prevent the Rust compiler from
     ///    making invalid inferences as described [here](https://github.com/rust-lang/unsafe-code-guidelines/issues/471#issuecomment-1774261953).
     ///
     /// 2) For performance reasons the struct acts as a proof that the rounding
-    ///    mode has been set towards round towards zero. It doesn't do any
-    ///    subsequent changing of the rounding mode.
-    pub unsafe fn with_rounding_mode<R>(f: impl for<'new_id> FnOnce(&RTZ<'new_id>) -> R) -> R {
-        // - The branded lifetime new_id + for prevents the RTZ token from being
-        //   returned by the closure.
-        // - The function f is marked !Send + !Sync due to RTZ
-        // - The function f takes a reference to RTZ such that on nested calls the drop
-        //   order is still correct
-        let rtz = RTZ::new();
-        f(&rtz)
-        // On drop of rtz the previous FPCR value will be restored
+    ///    mode has been set. This means that when you nest two call to
+    ///    `with_rounding_mode` with different rounding modes the closest
+    ///    `with_rounding_mode` in the call stack determines the rounding mode.
+    pub unsafe fn with_rounding_mode<R>(f: impl for<'new_id> FnOnce(&Mode<'new_id, T>) -> R) -> R {
+        // - The branded lifetime new_id + for prevents the Mode token from being leaked
+        //   by the closure.
+        // - The function f is marked !Send + !Sync due to Mode
+        // - The function f takes a reference to [`Mode`] such that on nested calls the
+        //   drop order is still correct
+        let mode = Mode::new();
+        f(&mode)
+        // On drop of mode the previous FPCR value will be restored
     }
 
-    /// Create a new RTZ instance, setting the FPCR to round-toward-zero mode.
-    ///
-    /// panics in debug mode when another RTZ instance already exists in this
-    /// thread. This is done to detect nesting of the same rounding mode
+    /// Create a new Mode instance and setting the FPCR accordingly.
     #[inline]
     unsafe fn new() -> Self {
-        let prev_fpcr = fpcr::set_rounding_mode(RoundingMode::RTZ);
+        let prev_fpcr = fpcr::set_rounding_mode(T::MASK);
         Self {
             prev_fpcr,
-            _not_send: PhantomData,
+            _marker: PhantomData,
         }
     }
 
     #[cfg(not(target_arch = "aarch64"))]
     #[inline]
-    fn new() -> Option<RTZ> {
+    fn new() -> Option<Mode> {
         unimplemented!()
     }
 }
 
-impl Drop for RTZ<'_> {
+/// Trait for defining floating-point rounding mode masks for the rounding mode
+/// marker types
+///
+/// The MASK constant represents the bits that need to be set in the FPCR
+/// to enable the specific rounding mode.
+pub trait ModeMask {
+    /// The bit mask to be applied to the FPCR register
+    const MASK: u64;
+}
+
+impl ModeMask for RTZ {
+    const MASK: u64 = 0b11 << 22;
+}
+
+impl<T> Drop for Mode<'_, T> {
     /// Restores the original FPCR value
     ///
     /// This ensures that the floating-point environment is restored to its
-    /// previous state when the RTZ instance is dropped
+    /// previous state.
     fn drop(&mut self) {
         // Restore the original FPCR value
         unsafe {
@@ -100,26 +121,11 @@ impl Drop for RTZ<'_> {
     }
 }
 
-enum RoundingMode {
-    RTZ = 0b11,
-}
-
-impl RoundingMode {
-    const fn to_mask(self) -> u64 {
-        // The rounding mode itself is encoded as 2 bits and within FPCR it's located at
-        // bits 22 and 23
-        (self as u64) << 22
-    }
-}
-
 mod fpcr {
-    use crate::RoundingMode;
 
     #[inline]
-    pub(super) unsafe fn set_rounding_mode(mode: RoundingMode) -> u64 {
+    pub unsafe fn set_rounding_mode(mode_mask: u64) -> u64 {
         let mut prev_fpcr: u64;
-
-        let mode = mode.to_mask();
 
         unsafe {
             // Read current FPCR value and set round-toward-zero mode
@@ -130,13 +136,14 @@ mod fpcr {
                 "msr fpcr, {tmp}",
                 prev_fpcr = out(reg) prev_fpcr,
                 tmp = out(reg) _,
-                rmode = in(reg) mode,
+                rmode = in(reg) mode_mask,
             );
         }
 
-        // There is no reason to nest calls to with_rounding_mode, but that might
-        // incidentally happen so during CI we check for it here.
-        debug_assert_ne!(prev_fpcr & mode, mode);
+        // There is no reason to nest calls to with_rounding_mode without changing the
+        // rounding mode. However do to it's interface that might accidentally
+        // so during CI we check for it here.
+        debug_assert_ne!(prev_fpcr & mode_mask, mode_mask);
         prev_fpcr
     }
 
@@ -147,7 +154,7 @@ mod fpcr {
     #[cfg(target_arch = "aarch64")]
     #[allow(dead_code)]
     #[inline]
-    pub(super) fn read() -> u64 {
+    pub fn read() -> u64 {
         let mut value: u64;
         unsafe {
             core::arch::asm!(
@@ -192,10 +199,10 @@ mod tests {
     fn test_rtz_single_instance() {
         unsafe {
             // First instance should succeed
-            let _rtz1 = RTZ::new();
+            let _rtz1: Mode<'_, RTZ> = Mode::new();
 
             // Second instance should fail
-            let rtz2 = panic::catch_unwind(|| RTZ::new());
+            let rtz2 = panic::catch_unwind(|| Mode::<'_, RTZ>::new());
             assert!(
                 rtz2.is_err(),
                 "In debug mode having a nested call to RTZ must fail."
@@ -210,7 +217,7 @@ mod tests {
     #[cfg(target_arch = "aarch64")]
     fn test_rtz_read_write() {
         unsafe {
-            let _rtz = RTZ::new();
+            let _rtz: Mode<'_, RTZ> = Mode::new();
             let initial = fpcr::read();
 
             // Verify that the rounding mode bits are set
