@@ -45,9 +45,9 @@ enum FPCRState {
 /// The PhantomData<*mut ()> ensures this. Only one instance can exist per
 /// thread at a time, enforced by the FPCR_OWNED thread-local.
 #[derive(Debug)]
-pub struct RTZ {
+pub struct RTZ<'id> {
     prev_fpcr: u64,
-    _no_send:  PhantomData<*mut ()>,
+    _no_send:  PhantomData<*mut &'id ()>,
 }
 
 thread_local! {
@@ -56,7 +56,13 @@ thread_local! {
     static FPCR_OWNED: std::cell::Cell<FPCRState> = std::cell::Cell::new(FPCRState::Idle);
 }
 
-impl RTZ {
+impl<'id> RTZ<'id> {
+    // Why chose FnOnce of FnMut
+    // The new_id prevents RTZ from being returned by the closure.
+    pub fn new<R>(f: impl for<'new_id> FnOnce(RTZ<'new_id>) -> R) -> R {
+        let rtz = RTZ::set();
+        f(rtz.unwrap())
+    }
     /// Attempts to create a new RTZ instance, setting the FPCR to
     /// round-toward-zero mode.
     ///
@@ -72,7 +78,7 @@ impl RTZ {
     /// - The type cannot be sent between threads
     #[cfg(target_arch = "aarch64")]
     #[inline]
-    pub fn set() -> Option<RTZ> {
+    fn set() -> Option<RTZ<'id>> {
         // Try to acquire ownership of FPCR
         let state = FPCR_OWNED.with(|owned| {
             let observed_state = owned.get();
@@ -119,7 +125,7 @@ impl RTZ {
     /// purposes.
     #[cfg(target_arch = "aarch64")]
     #[inline]
-    pub fn read(&self) -> u64 {
+    fn read(&self) -> u64 {
         let mut value: u64;
         unsafe {
             core::arch::asm!(
@@ -150,7 +156,7 @@ impl RTZ {
     /// - The write operation is atomic
     #[cfg(target_arch = "aarch64")]
     #[inline]
-    pub fn write(&self, value: u64) {
+    fn write(&self, value: u64) {
         unsafe {
             core::arch::asm!(
                 "msr fpcr, {}",
@@ -167,7 +173,7 @@ impl RTZ {
     }
 }
 
-impl Drop for RTZ {
+impl<'id> Drop for RTZ<'id> {
     /// Restores the original FPCR value and releases the thread-local lock.
     ///
     /// This ensures that the floating-point environment is restored to its
@@ -222,5 +228,14 @@ mod tests {
         let test_value = initial & !FPCR_RMODE_BITS; // Clear rounding mode bits
         rtz.write(test_value);
         assert_eq!(rtz.read(), test_value);
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn test_rtz_new() {
+        let out = RTZ::new(|x| {
+            let i = RTZ::new(|_y| drop(x));
+            5
+        });
     }
 }
