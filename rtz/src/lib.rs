@@ -8,9 +8,6 @@
 
 use std::marker::PhantomData;
 
-/// round-toward-zero mode (bits 22-23 to 0b11)
-const FPCR_RMODE_BITS: u64 = 0b11 << 22;
-
 /// Proof that Round Toward Zero (RTZ) has been set
 ///
 /// This struct must to be passed as a (unused) reference to any function that
@@ -76,24 +73,7 @@ impl RTZ<'_> {
     /// thread. This is done to detect nesting of the same rounding mode
     #[inline]
     unsafe fn new() -> Self {
-        let mut prev_fpcr: u64;
-        unsafe {
-            // Read current FPCR value and set round-toward-zero mode
-            core::arch::asm!(
-                // Read current FPCR value
-                "mrs {prev_fpcr}, fpcr",
-                "orr {tmp}, {prev_fpcr}, {rmode}",
-                "msr fpcr, {tmp}",
-                prev_fpcr = out(reg) prev_fpcr,
-                tmp = out(reg) _,
-                rmode = const FPCR_RMODE_BITS,
-            );
-        }
-
-        // There is no reason to nest calls to with_rounding_mode, but that might
-        // incidentally happen so during CI we check for it here.
-        debug_assert_ne!(prev_fpcr & FPCR_RMODE_BITS, FPCR_RMODE_BITS);
-
+        let prev_fpcr = fpcr::set_rounding_mode(RoundingMode::RTZ);
         Self {
             prev_fpcr,
             _not_send: PhantomData,
@@ -105,6 +85,60 @@ impl RTZ<'_> {
     fn new() -> Option<RTZ> {
         unimplemented!()
     }
+}
+
+impl Drop for RTZ<'_> {
+    /// Restores the original FPCR value
+    ///
+    /// This ensures that the floating-point environment is restored to its
+    /// previous state when the RTZ instance is dropped
+    fn drop(&mut self) {
+        // Restore the original FPCR value
+        unsafe {
+            fpcr::write(self.prev_fpcr);
+        }
+    }
+}
+
+enum RoundingMode {
+    RTZ = 0b11,
+}
+
+impl RoundingMode {
+    const fn to_mask(self) -> u64 {
+        // The rounding mode itself is encoded as 2 bits and within FPCR it's located at
+        // bits 22 and 23
+        (self as u64) << 22
+    }
+}
+
+mod fpcr {
+    use crate::RoundingMode;
+
+    #[inline]
+    pub(super) unsafe fn set_rounding_mode(mode: RoundingMode) -> u64 {
+        let mut prev_fpcr: u64;
+
+        let mode = mode.to_mask();
+
+        unsafe {
+            // Read current FPCR value and set round-toward-zero mode
+            core::arch::asm!(
+                // Read current FPCR value
+                "mrs {prev_fpcr}, fpcr",
+                "orr {tmp}, {prev_fpcr}, {rmode}",
+                "msr fpcr, {tmp}",
+                prev_fpcr = out(reg) prev_fpcr,
+                tmp = out(reg) _,
+                rmode = in(reg) mode,
+            );
+        }
+
+        // There is no reason to nest calls to with_rounding_mode, but that might
+        // incidentally happen so during CI we check for it here.
+        debug_assert_ne!(prev_fpcr & mode, mode);
+        prev_fpcr
+    }
 
     /// Reads the current value of the FPCR register.
     ///
@@ -113,8 +147,7 @@ impl RTZ<'_> {
     #[cfg(target_arch = "aarch64")]
     #[allow(dead_code)]
     #[inline]
-    fn read(&self) -> u64 {
-        let _ = self;
+    pub(super) fn read() -> u64 {
         let mut value: u64;
         unsafe {
             core::arch::asm!(
@@ -128,15 +161,14 @@ impl RTZ<'_> {
 
     #[cfg(not(target_arch = "aarch64"))]
     #[inline]
-    fn read(&self) -> u64 {
+    fn read() -> u64 {
         unimplemented!()
     }
 
     /// Writes a new value to the FPCR register.
     #[cfg(target_arch = "aarch64")]
     #[inline]
-    unsafe fn write(&mut self, value: u64) {
-        let _ = self;
+    pub unsafe fn write(value: u64) {
         core::arch::asm!(
             "msr fpcr, {}",
             in(reg) value,
@@ -146,21 +178,8 @@ impl RTZ<'_> {
 
     #[cfg(not(target_arch = "aarch64"))]
     #[inline]
-    fn write(&self, _value: u64) {
+    fn write(_value: u64) {
         unimplemented!()
-    }
-}
-
-impl Drop for RTZ<'_> {
-    /// Restores the original FPCR value
-    ///
-    /// This ensures that the floating-point environment is restored to its
-    /// previous state when the RTZ instance is dropped
-    fn drop(&mut self) {
-        // Restore the original FPCR value
-        unsafe {
-            self.write(self.prev_fpcr);
-        }
     }
 }
 
@@ -184,20 +203,23 @@ mod tests {
         }
     }
 
+    /// round-toward-zero mode (bits 22-23 to 0b11)
+    const FPCR_RMODE_BITS: u64 = 0b11 << 22;
+
     #[test]
     #[cfg(target_arch = "aarch64")]
     fn test_rtz_read_write() {
         unsafe {
-            let mut rtz = RTZ::new();
-            let initial = rtz.read();
+            let _rtz = RTZ::new();
+            let initial = fpcr::read();
 
             // Verify that the rounding mode bits are set
             assert_eq!(initial & FPCR_RMODE_BITS, FPCR_RMODE_BITS);
 
             // Test write and read back
             let test_value = initial & !FPCR_RMODE_BITS; // Clear rounding mode bits
-            rtz.write(test_value);
-            assert_eq!(rtz.read(), test_value);
+            fpcr::write(test_value);
+            assert_eq!(fpcr::read(), test_value);
         }
     }
 }
