@@ -160,7 +160,7 @@ mod fpcr {
             core::arch::asm!(
                 "mrs {}, fpcr",
                 out(reg) value,
-                options(nomem, nostack, preserves_flags)
+                options(nostack, preserves_flags)
             );
         }
         value
@@ -179,7 +179,7 @@ mod fpcr {
         core::arch::asm!(
             "msr fpcr, {}",
             in(reg) value,
-            options(nomem, nostack, preserves_flags)
+            options(nostack, preserves_flags)
         );
     }
 
