@@ -6,7 +6,25 @@
 //! FPCR (Floating-point Control Register) rounding mode. For how this module
 //! provides a safe abstraction see the documentation of [`Mode`].
 
-use std::marker::PhantomData;
+mod arch;
+mod mode_guard;
+mod rounding_mode;
+mod utils;
+
+pub use rounding_mode::RoundingMode;
+use {
+    crate::{mode_guard::ModeGuard, utils::Sealed},
+    core::marker::PhantomData,
+    rounding_mode::RoundingModeMarker,
+};
+
+pub unsafe fn with_rounding_mode<M: RoundingModeMarker, R>(
+    f: impl for<'a> FnOnce(&'a ModeGuard<M>) -> R,
+) -> R {
+    let guard = ModeGuard::<M>::new();
+    let result = f(&guard);
+    result
+}
 
 /// Proof that the floating-point rounding mode has been set
 ///
