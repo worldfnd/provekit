@@ -9,13 +9,13 @@ use crate::utils::Sealed;
 
 /// IEEE 754 floating point rounding modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RoundingMode {
+pub enum RoundingDirection {
     /// Round to nearest, ties to even.
     Nearest,
     /// Round toward positive infinity.
-    Up,
+    Positive,
     /// Round toward negative infinity.
-    Down,
+    Negative,
     /// Round toward zero.
     Zero,
 }
@@ -23,7 +23,7 @@ pub enum RoundingMode {
 /// The IEEE 754 default rounding mode is "round to nearest, ties to even".
 ///
 /// This is what Rust *requires* for correct operation.
-impl Default for RoundingMode {
+impl Default for RoundingDirection {
     fn default() -> Self {
         Self::Nearest
     }
@@ -31,35 +31,35 @@ impl Default for RoundingMode {
 
 /// Type level version of the [`RoundingMode`] enum using a sealed trait.
 #[allow(private_bounds)] // Intentional, this is how it works.
-pub trait RoundingModeMarker: Sealed {
+pub trait RoundingDirectionMarker: Sealed {
     /// The rounding mode represented by this marker.
-    const MODE: RoundingMode;
+    const MODE: RoundingDirection;
 }
 
 /// Round to nearest, ties to even.
 pub struct Nearest;
 impl Sealed for Nearest {}
-impl RoundingModeMarker for Nearest {
-    const MODE: RoundingMode = RoundingMode::Nearest;
+impl RoundingDirectionMarker for Nearest {
+    const MODE: RoundingDirection = RoundingDirection::Nearest;
 }
 
 /// Round toward positive infinity.
-pub struct Up;
-impl Sealed for Up {}
-impl RoundingModeMarker for Up {
-    const MODE: RoundingMode = RoundingMode::Up;
+pub struct Positive;
+impl Sealed for Positive {}
+impl RoundingDirectionMarker for Positive {
+    const MODE: RoundingDirection = RoundingDirection::Positive;
 }
 
 /// Round toward negative infinity.
-pub struct Down;
-impl Sealed for Down {}
-impl RoundingModeMarker for Down {
-    const MODE: RoundingMode = RoundingMode::Down;
+pub struct Negative;
+impl Sealed for Negative {}
+impl RoundingDirectionMarker for Negative {
+    const MODE: RoundingDirection = RoundingDirection::Negative;
 }
 
 /// Round toward zero.
 pub struct Zero;
 impl Sealed for Zero {}
-impl RoundingModeMarker for Zero {
-    const MODE: RoundingMode = RoundingMode::Zero;
+impl RoundingDirectionMarker for Zero {
+    const MODE: RoundingDirection = RoundingDirection::Zero;
 }

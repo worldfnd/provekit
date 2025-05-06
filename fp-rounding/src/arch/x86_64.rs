@@ -4,7 +4,7 @@
 //!
 //! See <https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html> Volume 1, Chapter 10.
 use {
-    crate::RoundingMode,
+    crate::RoundingDirection,
     core::{
         arch::asm,
         sync::atomic::{fence, Ordering},
@@ -15,27 +15,27 @@ const SHIFT: u32 = 13;
 const BIT_MASK: u32 = 0b11 << SHIFT;
 
 #[must_use]
-fn from_bits(bits: u64) -> RoundingMode {
+fn from_bits(bits: u64) -> RoundingDirection {
     match (bits & BIT_MASK) >> SHIFT {
-        0b00 => RoundingMode::Nearest,
-        0b01 => RoundingMode::Up,
-        0b10 => RoundingMode::Down,
-        0b11 => RoundingMode::Zero,
+        0b00 => RoundingDirection::Nearest,
+        0b01 => RoundingDirection::Positive,
+        0b10 => RoundingDirection::Negative,
+        0b11 => RoundingDirection::Zero,
         _ => unreachable!(),
     }
 }
 
 #[must_use]
-const fn to_bits(mode: RoundingMode) -> u64 {
+const fn to_bits(mode: RoundingDirection) -> u64 {
     match mode {
-        RoundingMode::Nearest => 0b00 << SHIFT,
-        RoundingMode::Up => 0b01 << SHIFT,
-        RoundingMode::Down => 0b10 << SHIFT,
-        RoundingMode::Zero => 0b11 << SHIFT,
+        RoundingDirection::Nearest => 0b00 << SHIFT,
+        RoundingDirection::Positive => 0b01 << SHIFT,
+        RoundingDirection::Negative => 0b10 << SHIFT,
+        RoundingDirection::Zero => 0b11 << SHIFT,
     }
 }
 
-pub unsafe fn read_rounding_mode() -> RoundingMode {
+pub unsafe fn read_rounding_mode() -> RoundingDirection {
     let mut mxcsr: u32;
     unsafe {
         asm!(
@@ -47,7 +47,7 @@ pub unsafe fn read_rounding_mode() -> RoundingMode {
     from_bits(mxcsr)
 }
 
-pub unsafe fn write_rounding_mode(mode: RoundingMode) {
+pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
     // Update the rounding mode bits in the FPCR register
     let mut mxcsr: u32;
     unsafe {
