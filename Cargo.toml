@@ -14,6 +14,11 @@ rust-version = "1.85"
 authors = [
     "Remco Bloemen <remco@world.org>",
     "Philipp Sippl <philipp@world.org>",
+    "Yuval Domb",
+    "Xander van der Goot",
+    "Koh Wei Jie",
+    "Tony Wu",
+    # TODO: More contributors
 ]
 license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
