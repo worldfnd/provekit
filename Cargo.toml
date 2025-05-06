@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "merkle-hash-bench", "fp-rounding"]
+members = ["noir-r1cs", "merkle-hash-bench", "cm31_ntt", "fp-rounding"]
 
 [workspace.package]
 edition = "2021"
