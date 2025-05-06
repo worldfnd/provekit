@@ -64,7 +64,7 @@ fn force_evaluation<T, R>(mode: Mode<'_, T>, val: R) -> (Mode<'_, T>, R) {
     // dummy is needed for tieing the mode and val together. Doing read_volatile on
     // either mode or val alone will not have the desired effect.
     let dummy = (mode, val);
-    let copy = unsafe { std::ptr::read_volatile(&dummy) };
+    let copy = unsafe { std::ptr::read_volatile(&raw const dummy) };
     // read_volatile makes a copy, but this is an unintentional side effect.
     // Since running the destructor/Drop twice is undesirable, the memory is
     // freed up here.
