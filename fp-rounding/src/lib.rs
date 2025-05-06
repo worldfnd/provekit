@@ -12,21 +12,9 @@ use std::marker::PhantomData;
 ///
 /// This struct must to be passed as a (unused) reference to any function that
 /// requires the non-default rounding mode for correct operation. The struct
-/// serves as a proof that the alternative rounding mode is set and we rely on
-/// the lifetime introduced by the reference to enforce the ordering of the FPCR
-/// operations relative to the multiplication. This way we can prevent the reset
-/// of FPCR to bubble up in front of the multiplication.
-///
-/// This type provides RAII-style management of the aarch64 FPCR (Floating-point
-/// Control Register), specifically for controlling the rounding mode. When
-/// created, it sets the rounding mode to "round toward zero" and restores the
-/// previous mode when dropped.
+/// serves as a proof that the alternative rounding mode is set.
 ///
 /// # Safety
-///
-/// This struct maintains the following invariants:
-/// - The previous FPCR value is always restored on drop
-/// - The type cannot be sent between threads
 ///
 /// This type is marked !Send + !Sync because FPCR is a per-core / per OS-thread
 /// register.
@@ -48,6 +36,42 @@ pub struct Mode<'id, T> {
 /// dependency on RTZ at the type-level.
 pub struct RTZ;
 
+#[inline(always)]
+/// Force the evaluation of both the mode and val before an operation
+/// that depends on either one of them of them is executed.
+fn force_evaluation<T, R>(mode: Mode<'_, T>, val: R) -> (Mode<'_, T>, R) {
+    // This is based on the old black_box Criterion before it switched
+    // to [`std::hint::black_box`].
+
+    // In tests hint::black_box((mode,val)) works but according to the documentation
+    // it must not be relied upon to control critical program behaviour.
+
+    // Another option that was considered was using an empty assembly block
+    //     unsafe { asm!("/*{in_var}*/", in_var = in(reg) &dummy as *const T); }
+    // Which used to be in libtest albeit using the old LLVM assembly syntax and
+    // from what I can tell this is what hint::black_box does under the hood.
+    // It is based on [CppCon 2015: Chandler Carruth "Tuning C++: Benchmarks, and CPUs, and Compilers! Oh My!"](https://www.youtube.com/watch?v=nXaxk27zwlk&t=2445s)
+    // Caveat in the talk is that this should only be used for benchmarking.
+
+    // Compiler fences have been tried but they do not work. The compiler can see
+    // that the mode has independent memory access from val and thus it doesn't
+    // prevent reordering.
+
+    // This leaves us with read_volatile which is close to C's volatile behaviour.
+    // Downside of this approach is that it adds load and store instructions
+    // compared to no extra instructions for black_box/empty assembly block.
+
+    // dummy is needed for tieing the mode and val together. Doing read_volatile on
+    // either mode or val alone will not have the desired effect.
+    let dummy = (mode, val);
+    let copy = unsafe { std::ptr::read_volatile(&dummy) };
+    // read_volatile makes a copy, but this is an unintentional side effect.
+    // Since running the destructor/Drop twice is undesirable, the memory is
+    // freed up here.
+    std::mem::forget(dummy);
+    copy
+}
+
 impl<T: ModeMask> Mode<'_, T> {
     ///  `with_rounding_mode` provides a safe-ish abstraction (see Safety
     /// section) to run a function under a non-default floating-point
@@ -66,19 +90,32 @@ impl<T: ModeMask> Mode<'_, T> {
     ///    mode has been set. This means that when you nest two call to
     ///    `with_rounding_mode` with different rounding modes the closest
     ///    `with_rounding_mode` in the call stack determines the rounding mode.
-    pub unsafe fn with_rounding_mode<R>(f: impl for<'new_id> FnOnce(&Mode<'new_id, T>) -> R) -> R {
+    pub unsafe fn with_rounding_mode<R, A>(
+        f: impl for<'new_id> FnOnce(&Mode<'new_id, T>, A) -> R,
+        input: A,
+    ) -> R {
         // - The branded lifetime new_id + for prevents the Mode token from being leaked
         //   by the closure.
         // - The function f is marked !Send + !Sync due to Mode
         // - The function f takes a reference to [`Mode`] such that on nested calls the
         //   drop order is still correct
         let mode = Mode::new();
-        f(&mode)
-        // On drop of mode the previous FPCR value will be restored
+        // Tie the mode to the input such that mode will be seated before the first use
+        // of input by f.
+        // Tieing the input to the Mode does not seem to be strictly necessary, but it's
+        // here for added safety.
+        let (mode, input) = force_evaluation(mode, input);
+        let result = f(&mode, input);
+        // Tie the mode to the result such that the computation has to have happened
+        // before the old FPCR is restored.
+        let (mode, result) = force_evaluation(mode, result);
+        unsafe { fpcr::write(mode.prev_fpcr) }
+        result
     }
 
     /// Create a new Mode instance and setting the FPCR accordingly.
     #[inline]
+    #[must_use]
     unsafe fn new() -> Self {
         let prev_fpcr = fpcr::set_rounding_mode(T::MASK);
         Self {
@@ -106,19 +143,6 @@ pub trait ModeMask {
 
 impl ModeMask for RTZ {
     const MASK: u64 = 0b11 << 22;
-}
-
-impl<T> Drop for Mode<'_, T> {
-    /// Restores the original FPCR value
-    ///
-    /// This ensures that the floating-point environment is restored to its
-    /// previous state.
-    fn drop(&mut self) {
-        // Restore the original FPCR value
-        unsafe {
-            fpcr::write(self.prev_fpcr);
-        }
-    }
 }
 
 mod fpcr {
