@@ -19,15 +19,12 @@ use std::marker::PhantomData;
 /// This type is marked !Send + !Sync because FPCR is a per-core / per OS-thread
 /// register.
 #[derive(Debug)]
-pub struct Mode<'id, T> {
+pub struct Mode<T> {
     prev_fpcr: u64,
     /// Acts as a marker for:
     /// - !Send + !Sync;
-    /// - a branded type that in combination with for<'id> in
-    ///   `with_rounding_mode` will prevent the closure from leaking the Mode
-    ///   token.
     /// - The kind of rounding mode
-    _marker:   PhantomData<*mut &'id T>,
+    _marker:   PhantomData<*mut T>,
 }
 
 /// Marker type for the Round Toward Zero (RTZ) rounding mode.
@@ -39,7 +36,7 @@ pub struct RTZ;
 #[inline(always)]
 /// Force the evaluation of both the mode and val before an operation
 /// that depends on either one of them of them is executed.
-fn force_evaluation<T, R>(mode: Mode<'_, T>, val: R) -> (Mode<'_, T>, R) {
+fn force_evaluation<T, R>(mode: Mode<T>, val: R) -> (Mode<T>, R) {
     // This is based on the old black_box Criterion before it switched
     // to [`std::hint::black_box`].
 
@@ -72,7 +69,7 @@ fn force_evaluation<T, R>(mode: Mode<'_, T>, val: R) -> (Mode<'_, T>, R) {
     copy
 }
 
-impl<T: ModeMask> Mode<'_, T> {
+impl<T: ModeMask> Mode<T> {
     ///  `with_rounding_mode` provides a safe-ish abstraction (see Safety
     /// section) to run a function under a non-default floating-point
     /// rounding mode. Once the closure finishes the rounding mode is
@@ -91,11 +88,10 @@ impl<T: ModeMask> Mode<'_, T> {
     ///    `with_rounding_mode` with different rounding modes the closest
     ///    `with_rounding_mode` in the call stack determines the rounding mode.
     pub unsafe fn with_rounding_mode<R, A>(
-        f: impl for<'new_id> FnOnce(&Mode<'new_id, T>, A) -> R,
+        f: impl for<'a> FnOnce(&'a Mode<T>, A) -> R,
         input: A,
     ) -> R {
-        // - The branded lifetime new_id + for prevents the Mode token from being leaked
-        //   by the closure.
+        // - The for 'a prevents the Mode token from being leaked by the closure.
         // - The function f is marked !Send + !Sync due to Mode
         // - The function f takes a reference to [`Mode`] such that on nested calls the
         //   drop order is still correct
@@ -223,10 +219,10 @@ mod tests {
     fn test_rtz_single_instance() {
         unsafe {
             // First instance should succeed
-            let _rtz1: Mode<'_, RTZ> = Mode::new();
+            let _rtz1: Mode<RTZ> = Mode::new();
 
             // Second instance should fail
-            let rtz2 = panic::catch_unwind(|| Mode::<'_, RTZ>::new());
+            let rtz2 = panic::catch_unwind(|| Mode::<RTZ>::new());
             assert!(
                 rtz2.is_err(),
                 "In debug mode having a nested call to RTZ must fail."
@@ -241,7 +237,7 @@ mod tests {
     #[cfg(target_arch = "aarch64")]
     fn test_rtz_read_write() {
         unsafe {
-            let _rtz: Mode<'_, RTZ> = Mode::new();
+            let _rtz: Mode<RTZ> = Mode::new();
             let initial = fpcr::read();
 
             // Verify that the rounding mode bits are set
