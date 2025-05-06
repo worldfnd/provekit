@@ -5,7 +5,7 @@
 //! FPCR (Floating-point Control Register) rounding mode. For how this module
 //! provides a safe abstraction see the documentation of [`Mode`].
 
-use crate::Sealed;
+use crate::utils::Sealed;
 
 /// IEEE 754 floating point rounding modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -25,11 +25,14 @@ pub enum RoundingMode {
 /// This is what Rust *requires* for correct operation.
 impl Default for RoundingMode {
     fn default() -> Self {
-        RoundingMode::Nearest
+        Self::Nearest
     }
 }
+
 /// Type level version of the [`RoundingMode`] enum using a sealed trait.
+#[allow(private_bounds)] // Intentional, this is how it works.
 pub trait RoundingModeMarker: Sealed {
+    /// The rounding mode represented by this marker.
     const MODE: RoundingMode;
 }
 

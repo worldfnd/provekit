@@ -17,7 +17,7 @@ use {
 pub struct ModeGuard<M: RoundingModeMarker> {
     previous: RoundingMode,
     mode:     PhantomData<M>,
-    marker:   NotSendSync,
+    _marker:  NotSendSync,
 }
 
 impl<M: RoundingModeMarker> ModeGuard<M> {
@@ -29,13 +29,13 @@ impl<M: RoundingModeMarker> ModeGuard<M> {
         fence(Ordering::SeqCst);
         Self {
             previous,
-            mode: Default::default(),
-            marker: Default::default(),
+            mode: PhantomData,
+            _marker: NotSendSync::default(),
         }
     }
 }
 
-/// Implement the Drop trait for ModeGuard to make sure the rounding mode is
+/// Implement the Drop trait for `ModeGuard` to make sure the rounding mode is
 /// always reset.
 impl<M: RoundingModeMarker> Drop for ModeGuard<M> {
     fn drop(&mut self) {

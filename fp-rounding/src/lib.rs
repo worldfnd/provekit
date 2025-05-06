@@ -11,19 +11,52 @@ mod mode_guard;
 mod rounding_mode;
 mod utils;
 
-pub use rounding_mode::RoundingMode;
-use {
-    crate::{mode_guard::ModeGuard, utils::Sealed},
-    core::marker::PhantomData,
-    rounding_mode::RoundingModeMarker,
+pub use crate::{
+    mode_guard::ModeGuard,
+    rounding_mode::{Down, Nearest, RoundingMode, RoundingModeMarker, Up, Zero},
 };
+use core::marker::PhantomData;
 
+/// Call closure with a specific rounding mode.
+///
+///  `with_rounding_mode` provides a safe-ish abstraction (see Safety
+/// section) to run a function under a non-default floating-point
+/// rounding mode. Once the closure finishes the rounding mode is
+/// restored to what it was before the call.
+///
+/// # Safety
+///
+/// This function is marked unsafe for the following reasons:
+///
+/// 1) Rust/LLVM does not have any built-ins for changing the float point
+///    mode rounding modes and this won’t prevent the Rust compiler from
+///    making invalid inferences as described [here](https://github.com/rust-lang/unsafe-code-guidelines/issues/471#issuecomment-1774261953).
+///
+/// 2) For performance reasons the struct acts as a proof that the rounding mode
+///    has been set. This means that when you nest two call to
+///    `with_rounding_mode` with different rounding modes the closest
+///    `with_rounding_mode` in the call stack determines the rounding mode.
+///
+/// # Example
+///
+/// ```rust
+/// use fp_rounding::{with_rounding_mode, ModeGuard, Up};
+///
+/// fn requires_round_up(_: &ModeGuard<Up>) {
+///     // ..
+/// }
+///
+/// unsafe {
+///     with_rounding_mode(|guard| {
+///         requires_round_up(guard);
+///     });
+/// }
+/// ```
 pub unsafe fn with_rounding_mode<M: RoundingModeMarker, R>(
     f: impl for<'a> FnOnce(&'a ModeGuard<M>) -> R,
 ) -> R {
     let guard = ModeGuard::<M>::new();
-    let result = f(&guard);
-    result
+    f(&guard)
 }
 
 /// Proof that the floating-point rounding mode has been set

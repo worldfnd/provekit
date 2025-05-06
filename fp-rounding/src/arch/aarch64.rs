@@ -1,5 +1,5 @@
 #![cfg(target_arch = "aarch64")]
-//! Floating point rounding mode control for AArch64 architecture.
+//! Floating point rounding mode control for aarch64 architecture.
 //!
 //! See <https://developer.arm.com/documentation/ddi0595/2021-06/AArch64-Registers/FPCR--Floating-point-Control-Register>
 use {crate::RoundingMode, core::arch::asm};
@@ -8,6 +8,7 @@ use {crate::RoundingMode, core::arch::asm};
 const SHIFT: u32 = 21;
 const BIT_MASK: u64 = 0b11 << SHIFT;
 
+#[must_use]
 fn from_bits(bits: u64) -> RoundingMode {
     match (bits & BIT_MASK) >> SHIFT {
         0b00 => RoundingMode::Nearest,
@@ -18,7 +19,8 @@ fn from_bits(bits: u64) -> RoundingMode {
     }
 }
 
-fn to_bits(mode: RoundingMode) -> u64 {
+#[must_use]
+const fn to_bits(mode: RoundingMode) -> u64 {
     match mode {
         RoundingMode::Nearest => 0b00 << SHIFT,
         RoundingMode::Up => 0b01 << SHIFT,
@@ -28,7 +30,7 @@ fn to_bits(mode: RoundingMode) -> u64 {
 }
 
 /// Read the rounding mode bits from the FPCR register
-pub(crate) unsafe fn read_rounding_mode() -> RoundingMode {
+pub unsafe fn read_rounding_mode() -> RoundingMode {
     let mut bits: u64;
     unsafe {
         asm!(
@@ -41,7 +43,7 @@ pub(crate) unsafe fn read_rounding_mode() -> RoundingMode {
 }
 
 /// Update the rounding mode bits in the FPCR register
-pub(crate) unsafe fn write_rounding_mode(mode: RoundingMode) {
+pub unsafe fn write_rounding_mode(mode: RoundingMode) {
     unsafe {
         asm!(
             "mrs {tmp}, fpcr", // Read Floating Point Control Register into tmp
