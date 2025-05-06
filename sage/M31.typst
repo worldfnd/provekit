@@ -1,4 +1,5 @@
 #import "preamble.typst": *
+#show: thmrules.with(qed-symbol: $square$)
 
 = Mersenne 31
 
