@@ -1,0 +1,15 @@
+[package]
+name = "block-multiplier-sys"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fp-rounding = { path = "../fp-rounding" }
+
+[dev-dependencies]
+criterion = "0.5.1"
+rand.workspace = true
+
+[[bench]]
+name = "montgomery_interleaved"
+harness = false
