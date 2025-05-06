@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["noir-r1cs", "merkle-hash-bench", "cm31_ntt"]
+members = ["noir-r1cs", "merkle-hash-bench", "cm31_ntt", "fp-rounding"]
 
 [workspace.package]
 edition = "2021"
@@ -70,7 +70,9 @@ noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "v1.0.
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
 
 # WHIR
-whir = { git = "https://github.com/WizardOfMenlo/whir", features = ["tracing"], rev = "74936effc0fdac288f2ff4881a04bf41cdf1f78e" }
+whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
+    "tracing",
+], rev = "74936effc0fdac288f2ff4881a04bf41cdf1f78e" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }
