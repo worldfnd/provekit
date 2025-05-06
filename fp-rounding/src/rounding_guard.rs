@@ -27,7 +27,7 @@ pub struct RoundingGuard<M: RoundingDirectionMarker> {
 impl<M: RoundingDirectionMarker> RoundingGuard<M> {
     /// Create a new mode guard.
     pub(crate) unsafe fn new() -> Self {
-        let previous = unsafe { read_rounding_mode() };
+        let previous = read_rounding_mode();
         unsafe { write_rounding_mode(M::MODE) };
         Self {
             previous,

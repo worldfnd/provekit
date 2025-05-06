@@ -30,7 +30,7 @@ const fn to_bits(mode: RoundingDirection) -> u64 {
 }
 
 /// Read the rounding mode bits from the FPCR register
-pub unsafe fn read_rounding_mode() -> RoundingDirection {
+pub fn read_rounding_mode() -> RoundingDirection {
     let mut bits: u64;
     unsafe {
         asm!(
@@ -44,7 +44,6 @@ pub unsafe fn read_rounding_mode() -> RoundingDirection {
 
 /// Update the rounding mode bits in the FPCR register
 pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
-    dbg!(mode);
     unsafe {
         asm!(
             "mrs {tmp}, fpcr", // Read Floating Point Control Register into tmp
@@ -56,5 +55,23 @@ pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
             bits = in(reg) to_bits(mode),
             options(nomem, nostack, preserves_flags)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::test_rounding_mode};
+
+    #[test]
+    fn test_read_write() {
+        use RoundingDirection::*;
+        assert_eq!(read_rounding_mode(), RoundingDirection::Nearest);
+        for mode in [Negative, Positive, Zero, Nearest] {
+            unsafe {
+                write_rounding_mode(mode);
+            }
+            assert_eq!(read_rounding_mode(), mode);
+            test_rounding_mode(mode);
+        }
     }
 }

@@ -31,13 +31,14 @@ pub use crate::{
 /// ```rust
 /// use fp_rounding::{with_rounding_mode, Positive, RoundingGuard};
 ///
-/// fn requires_round_to_positive(_: &RoundingGuard<Positive>, x: f32) {
-///     assert_eq!(x, x - f32::EPSILON);
-///     assert_ne!(x, x + f32::EPSILON);
+/// fn requires_round_to_positive(_: &RoundingGuard<Positive>, a: f64) {
+///     let b = 2.0_f64.powi(-53);
+///     assert_ne!(a + b, a);
+///     assert_eq!(a - b, a);
 /// }
 ///
 /// unsafe {
-///     with_rounding_mode(requires_round_to_positive, 2.0);
+///     with_rounding_mode(requires_round_to_positive, 1.1);
 /// }
 /// ```
 ///
@@ -76,18 +77,60 @@ pub unsafe fn with_rounding_mode<Mode: RoundingDirectionMarker, Input, Result>(
     fence(result)
 }
 
-pub mod test {
+#[cfg(test)]
+#[allow(clippy::float_cmp)]
+fn test_rounding_mode(mode: RoundingDirection) {
+    let a = 1.1;
+    let b = 2.0_f64.powi(-53);
+    let (a, b) = fence((a, b));
+    match mode {
+        RoundingDirection::Nearest => {
+            assert_eq!(a + b, a);
+            assert_eq!(a - b, a);
+        }
+        RoundingDirection::Positive => {
+            assert_ne!(a + b, a);
+            assert_eq!(a - b, a);
+        }
+        RoundingDirection::Negative => {
+            assert_eq!(a + b, a);
+            assert_ne!(a - b, a);
+        }
+        RoundingDirection::Zero => {
+            assert_eq!(a + b, a);
+            assert_ne!(a - b, a);
+            // TODO: Distinguish from Negative
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
     use super::*;
 
-    fn requires_round_to_positive(_: &RoundingGuard<Positive>, x: f64) {
-        assert_ne!(x, x + f64::EPSILON);
-        assert_eq!(x, x - (0.001 * f64::EPSILON));
+    fn requires_round_to_positive(_: &RoundingGuard<Positive>, _: ()) {
+        test_rounding_mode(RoundingDirection::Positive);
+    }
+
+    fn requires_round_to_negative(_: &RoundingGuard<Negative>, _: ()) {
+        test_rounding_mode(RoundingDirection::Negative);
+    }
+
+    fn requires_round_to_nearest(_: &RoundingGuard<Nearest>, _: ()) {
+        test_rounding_mode(RoundingDirection::Nearest);
+    }
+
+    fn requires_round_to_zero(_: &RoundingGuard<Zero>, _: ()) {
+        test_rounding_mode(RoundingDirection::Zero);
     }
 
     #[test]
-    pub fn test() {
+    fn test() {
         unsafe {
-            with_rounding_mode(requires_round_to_positive, 2.0);
+            with_rounding_mode(requires_round_to_nearest, ());
+            with_rounding_mode(requires_round_to_positive, ());
+            with_rounding_mode(requires_round_to_negative, ());
+            with_rounding_mode(requires_round_to_zero, ());
         }
     }
 }

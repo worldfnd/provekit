@@ -35,7 +35,7 @@ const fn to_bits(mode: RoundingDirection) -> u64 {
     }
 }
 
-pub unsafe fn read_rounding_mode() -> RoundingDirection {
+pub fn read_rounding_mode() -> RoundingDirection {
     let mut mxcsr: u32;
     unsafe {
         asm!(
