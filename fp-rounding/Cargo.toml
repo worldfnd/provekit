@@ -1,5 +1,5 @@
 [package]
-name = "rtz"
+name = "fp-rounding"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true

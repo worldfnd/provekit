@@ -1,6 +1,6 @@
 #![feature(portable_simd)]
 use {
-    rtz::RTZ,
+    fp_rounding::{RoundingGuard, Zero},
     std::{arch::asm, simd::Simd},
 };
 
@@ -10,7 +10,7 @@ use {
 /// Raspberry Pi 5:  2.2 times the throughput compared to a single multiplier.
 /// Apple Silicon (M3): same throughput as a single multiplier
 pub fn montgomery_interleaved_3(
-    _rtz: &RTZ,
+    _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
     b: [u64; 4],
     av: [Simd<u64, 2>; 4],
@@ -864,7 +864,7 @@ pub fn montgomery_interleaved_3(
 /// Apple Silicon (M3): ~1.06 times the throughput of a single multiplier
 #[inline]
 pub fn montgomery_interleaved_4(
-    _rtz: &RTZ,
+    _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
     b: [u64; 4],
     a1: [u64; 4],
