@@ -6,6 +6,7 @@ members = [
     "fp-rounding",
     "block-multiplier",
     "block-multiplier-sys",
+    "hla",
 ]
 
 [workspace.package]
