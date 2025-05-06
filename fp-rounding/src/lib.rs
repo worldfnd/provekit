@@ -127,10 +127,10 @@ mod test {
     #[test]
     fn test() {
         unsafe {
-            with_rounding_mode(requires_round_to_nearest, ());
-            with_rounding_mode(requires_round_to_positive, ());
-            with_rounding_mode(requires_round_to_negative, ());
-            with_rounding_mode(requires_round_to_zero, ());
+            with_rounding_mode((), requires_round_to_nearest);
+            with_rounding_mode((), requires_round_to_positive);
+            with_rounding_mode((), requires_round_to_negative);
+            with_rounding_mode((), requires_round_to_zero);
         }
     }
 }
