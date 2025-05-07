@@ -28,9 +28,9 @@ impl<const BITS: usize, const LIMBS: usize> UintMont for Uint<BITS, LIMBS> {
 
     fn random<R: rand::Rng + ?Sized>(rng: &mut R, max: Self) -> Self {
         let mut result = Self::ZERO;
-        unsafe { // TODO: Update rand crate,
-            for limb in  result.as_limbs_mut() {
-                *limb = rng.gen();
+        unsafe {
+            for limb in result.as_limbs_mut() {
+                *limb = rng.random();
             }
         }
         result %= max;
