@@ -131,7 +131,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
-    let duration = Duration::from_secs_f64(args.duration.unwrap_or(0.01));
+    let duration = Duration::from_secs_f64(args.duration.unwrap_or(0.1));
 
     // Consrtuct all hashers.
     let hashes = HASHES.iter().map(|ctor| ctor()).collect::<Vec<_>>();

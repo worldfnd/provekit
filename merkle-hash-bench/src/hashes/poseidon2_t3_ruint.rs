@@ -57,9 +57,9 @@ impl Poseidon2T3Ruint {
     pub fn new() -> Self {
         let mut rng = rand::rng();
         Self {
-            first:  rng.gen(),
-            middle: array::from_fn(|_| rng.gen()),
-            last:   rng.gen(),
+            first:  rng.random(),
+            middle: array::from_fn(|_| rng.random()),
+            last:   rng.random(),
         }
     }
 
