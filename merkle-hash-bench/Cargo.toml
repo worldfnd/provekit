@@ -6,21 +6,21 @@ edition = "2021"
 [features]
 default = ["plonky3", "zkhash"]
 plonky3 = [
-    "dep:p3-bn254-fr",
-    "dep:p3-goldilocks",
-    "dep:p3-mersenne-31",
-    "dep:p3-field",
-    "dep:p3-poseidon2",
-    "dep:p3-symmetric",
-    "dep:p3-monolith",
-    "dep:p3-rescue",
+  "dep:p3-bn254-fr",
+  "dep:p3-goldilocks",
+  "dep:p3-mersenne-31",
+  "dep:p3-field",
+  "dep:p3-poseidon2",
+  "dep:p3-symmetric",
+  "dep:p3-monolith",
+  "dep:p3-rescue",
 ]
 icicle = [
-    "dep:icicle-core",
-    "dep:icicle-runtime",
-    "dep:icicle-hash",
-    "dep:icicle-bn254",
-    "dep:icicle-m31",
+  "dep:icicle-core",
+  "dep:icicle-runtime",
+  "dep:icicle-hash",
+  "dep:icicle-bn254",
+  "dep:icicle-m31",
 ]
 zkhash = ["dep:zkhash"]
 stwo = ["dep:stwo-prover"]
@@ -49,7 +49,7 @@ gensym = "0.1.1"
 
 # Plonky 3
 p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true, features = [
-    "table",
+  "table",
 ] }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
 p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
@@ -67,7 +67,7 @@ icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "m
 icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
 
 # ZKHash
-zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", commit = "f252d2b2767bc88659615601ac13e19f52c2c11f", optional = true }
+zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f", optional = true }
 
 # Stwo
 stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1", optional = true }

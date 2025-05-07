@@ -1,6 +1,7 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use rand::prelude::StdRng;
-use rand::{Rng, SeedableRng};
+use {
+    criterion::{Criterion, black_box, criterion_group, criterion_main},
+    rand::{Rng, SeedableRng, prelude::StdRng},
+};
 
 fn bench_block_multiplier(c: &mut Criterion) {
     let mut group = c.benchmark_group("block_multiplier");
@@ -47,32 +48,18 @@ fn bench_block_multiplier(c: &mut Criterion) {
         rng.random::<u64>(),
     ];
 
-    let rtz = block_multiplier::rtz::RTZ::set().unwrap();
+    let rtz = rtz::RTZ::set().unwrap();
 
     group.bench_function("scalar_mul", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::scalar_mul(
-                black_box(s0_a),
-                black_box(s0_b),
-            )
-        })
+        bencher.iter(|| block_multiplier::scalar_mul(black_box(s0_a), black_box(s0_b)))
     });
 
     group.bench_function("scalar_sqr", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::scalar_sqr(
-                black_box(s0_a),
-            )
-        })
+        bencher.iter(|| block_multiplier::scalar_sqr(black_box(s0_a)))
     });
 
     group.bench_function("simd_sqr", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::simd_sqr(
-                black_box(v0_a),
-                black_box(v1_a),
-            )
-        })
+        bencher.iter(|| block_multiplier::simd_sqr(black_box(v0_a), black_box(v1_a)))
     });
 
     group.bench_function("simd_mul", |bencher| {
@@ -102,12 +89,7 @@ fn bench_block_multiplier(c: &mut Criterion) {
 
     group.bench_function("block_sqr", |bencher| {
         bencher.iter(|| {
-            block_multiplier::block_sqr(
-                &rtz,
-                black_box(s0_a),
-                black_box(v0_a),
-                black_box(v1_a),
-            )
+            block_multiplier::block_sqr(&rtz, black_box(s0_a), black_box(v0_a), black_box(v1_a))
         })
     });
 

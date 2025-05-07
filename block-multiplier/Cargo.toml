@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 seq-macro = "0.3.5"
+fp-rounding = { path = "../fp-rounding" }
 
 [dev-dependencies]
 rand = "0.9.0"

@@ -1,0 +1,11 @@
+[package]
+name = "hla"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+paste = "1.0.15"
+
+[dev-dependencies]
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"

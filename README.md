@@ -10,26 +10,38 @@ First make sure you have the exact correct version of Noir installed [so the art
 noirup -C 03b58fa2
 ```
 
-Compile the Noir circuit and generate the witness:
+Compile the Noir circuit:
 
 ```sh
-cd noir-r1cs/noir-examples/poseidon-rounds
-nargo execute
+cd noir-examples/poseidon-rounds
+nargo compile
 ```
 
-Generate the R1CS instance:
+Generate the Noir Proof Scheme:
 
 ```sh
-cargo run --release --bin noir-r1cs ./noir-r1cs/noir-examples/poseidon-rounds/target/basic.json ./noir-r1cs/noir-examples/poseidon-rounds/target/basic.gz
+cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json -o ./noir-proof-scheme.nps
 ```
 
-Generate the WHIR GR1CS proof:
+(Currently this doesn't write an output file)
+
+Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin prover -- --input_file_path ./noir-r1cs/r1cs.json
+cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
 ```
 
-This will write the proof to `prover/proof`.
+Verify the Noir Proof:
+
+```sh
+cargo run --release --bin noir-r1cs verify ./noir-proof-scheme.nps ./noir-proof.np
+```
+
+Generate inputs for Gnark circuit:
+
+```sh
+cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+```
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
@@ -40,8 +52,21 @@ cd gnark-whir
 go run .
 ```
 
-## Components
+Benchmark against Barretenberg:
 
+```sh
+cd noir-examples/poseidon-rounds
+cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./scheme.nps
+hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml'
+```
+
+Profile
+
+```sh
+samply record -r 10000 -- ../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml
+```
+
+## Components
 
 ## Dependencies
 
