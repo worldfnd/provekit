@@ -79,7 +79,9 @@ impl SmolHasher for Skyscraper<FpBN256, 1, 0, BN256Ext1> {
 
             // This allocates a Vec, which is dumb but it's the only way to get the bytes
             // our of arkworks.
-            hash.copy_from_slice(&cast::<[u64; 4], [u8; 32]>(state[0].data[0].0.into_raw_repr().0));
+            hash.copy_from_slice(&cast::<[u64; 4], [u8; 32]>(
+                state[0].data[0].0.into_raw_repr().0,
+            ));
         }
     }
 }
