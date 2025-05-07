@@ -12,6 +12,10 @@ rand.workspace = true
 divan.workspace = true
 primitive-types = "0.13.1"
 
+[build-dependencies]
+block-multiplier-codegen = { path = "../block-multiplier-codegen" }
+hla = { path = "../hla" }
+
 [[bench]]
 name = "bench"
 harness = false

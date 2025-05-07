@@ -5,7 +5,9 @@ use {
             AllocatedVariable, RegisterBank, RegisterMapping, allocate_input_variable,
             hardware_register_allocation, reserve_output_variable,
         },
-        codegen::{generate_rust_global_asm, generate_rust_inline_asm},
+        codegen::{
+            generate_rust_global_asm, generate_rust_includable_asm, generate_rust_inline_asm,
+        },
         frontend::{Assembler, FreshAllocator, FreshVariable},
         ir::{HardwareRegister, Instruction, Variable},
         liveness::liveness_analysis,
@@ -50,6 +52,10 @@ pub fn build_standalone<P: AsRef<Path>>(path: P, label: &str, algos: Interleavin
     build(path, algos, |inputs, outputs, instructions| {
         generate_rust_global_asm(label, inputs, outputs, instructions)
     })
+}
+
+pub fn build_includable<P: AsRef<Path>>(path: P, algos: Interleaving<Setup>) {
+    build(path, algos, generate_rust_includable_asm)
 }
 
 pub fn build_inline<P: AsRef<Path>>(path: P, algos: Interleaving<Setup>) {

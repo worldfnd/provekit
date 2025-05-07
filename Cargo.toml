@@ -6,7 +6,6 @@ members = [
     "fp-rounding",
     "hla",
     "block-multiplier",
-    "block-multiplier-sys",
     "block-multiplier-codegen",
     "skyscraper",
 ]
