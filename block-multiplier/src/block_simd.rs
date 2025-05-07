@@ -1,12 +1,11 @@
 use {
     crate::{
         constants::*,
-        scalar::reduce_ct,
         subarray,
         utils::{
-            addv, addv_simd, carrying_mul_add, make_initial, reduce_ct_simd, smult_noinit_simd,
-            transpose_simd_to_u256, transpose_u256_to_simd, u256_to_u260_shl2_simd,
-            u260_to_u256_simd,
+            addv, addv_simd, carrying_mul_add, make_initial, reduce_ct, reduce_ct_simd,
+            smult_noinit_simd, transpose_simd_to_u256, transpose_u256_to_simd,
+            u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
     },
     core::{
@@ -509,4 +508,3 @@ pub fn block_mul(
     // ---------------------------------------------------------------------------------------------
     (s0, v[0], v[1])
 }
-// -------------------------------------------------------------------------------------------------

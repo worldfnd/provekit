@@ -1,80 +1,46 @@
 use {
-    criterion::{black_box, criterion_group, criterion_main, Criterion},
+    core::hint::black_box,
+    divan::{counter::ItemsCount, Bencher},
     fp_rounding::with_rounding_mode,
-    rand::{prelude::StdRng, Rng, SeedableRng},
+    rand::{rng, Rng},
+    std::array,
 };
 
-fn bench_skyscraper(c: &mut Criterion) {
-    let mut group = c.benchmark_group("skyscraper");
-    let seed: u64 = rand::random();
-    println!("Using random seed for benchmark: {}", seed);
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    let l_0 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let l_1 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let l_2 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let r_0 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let r_1 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let r_2 = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-
-    group.bench_function("compress", |bencher| {
-        bencher.iter(|| skyscraper::compress(black_box(l_0), black_box(r_0)))
-    });
-
-    group.bench_function("block_compress", |bencher| unsafe {
+#[divan::bench]
+fn compress(bencher: Bencher) {
+    let mut rng = rng();
+    let a = array::from_fn(|_| rng.random());
+    let b = array::from_fn(|_| rng.random());
+    bencher
+        .counter(ItemsCount::new(1_usize))
+        .bench_local(|| skyscraper::compress(black_box(a), black_box(b)))
+}
+#[divan::bench]
+fn block_compress(bencher: Bencher) {
+    let mut rng = rng();
+    let a = array::from_fn(|_| rng.random());
+    let b = array::from_fn(|_| rng.random());
+    let c = array::from_fn(|_| rng.random());
+    let d = array::from_fn(|_| rng.random());
+    let e = array::from_fn(|_| rng.random());
+    let f = array::from_fn(|_| rng.random());
+    unsafe {
         with_rounding_mode((), |guard, _| {
-            bencher.iter(|| {
+            bencher.counter(ItemsCount::new(3_usize)).bench_local(|| {
                 skyscraper::block_compress(
-                    black_box(guard),
-                    black_box(l_0),
-                    black_box(l_1),
-                    black_box(l_2),
-                    black_box(r_0),
-                    black_box(r_1),
-                    black_box(r_2),
+                    guard,
+                    black_box(a),
+                    black_box(b),
+                    black_box(c),
+                    black_box(d),
+                    black_box(e),
+                    black_box(f),
                 )
             })
         });
-    });
+    }
 }
 
-criterion_group!(
-    name = benches;
-    config = Criterion::default()
-        .sample_size(5000)
-        // Warm up is warm because it literally warms up the pi
-        .warm_up_time(std::time::Duration::new(1,0))
-        .measurement_time(std::time::Duration::new(10,0));
-    targets = bench_skyscraper
-);
-criterion_main!(benches);
+fn main() {
+    divan::main();
+}

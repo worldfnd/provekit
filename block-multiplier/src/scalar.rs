@@ -1,4 +1,8 @@
-use crate::{constants::*, subarray};
+use crate::{
+    constants::*,
+    subarray,
+    utils::{addv, carrying_mul_add, reduce_ct},
+};
 
 #[inline]
 pub fn scalar_sqr(a: [u64; 4]) -> [u64; 4] {
@@ -124,43 +128,6 @@ pub fn scalar_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     let r = reduce_ct(subarray!(addv(s, mp), 1, 4));
     // ---------------------------------------------------------------------------------------------
     r
-}
-
-#[inline(always)]
-fn addv<const N: usize>(mut a: [u64; N], b: [u64; N]) -> [u64; N] {
-    let mut carry = 0u64;
-    for i in 0..N {
-        let (sum1, overflow1) = a[i].overflowing_add(b[i]);
-        let (sum2, overflow2) = sum1.overflowing_add(carry);
-        a[i] = sum2;
-        carry = (overflow1 as u64) + (overflow2 as u64);
-    }
-    a
-}
-
-#[inline(always)]
-pub fn reduce_ct(a: [u64; 4]) -> [u64; 4] {
-    let b = [[0_u64; 4], U64_2P];
-    let msb = (a[3] >> 63) & 1;
-    sub(a, b[msb as usize])
-}
-
-#[inline(always)]
-pub fn sub<const N: usize>(a: [u64; N], b: [u64; N]) -> [u64; N] {
-    let mut borrow: i128 = 0;
-    let mut c = [0; N];
-    for i in 0..N {
-        let tmp = a[i] as i128 - b[i] as i128 + borrow as i128;
-        c[i] = tmp as u64;
-        borrow = tmp >> 64
-    }
-    c
-}
-
-#[inline(always)]
-fn carrying_mul_add(a: u64, b: u64, add: u64, carry: u64) -> (u64, u64) {
-    let c: u128 = a as u128 * b as u128 + carry as u128 + add as u128;
-    (c as u64, (c >> 64) as u64)
 }
 
 #[cfg(test)]
