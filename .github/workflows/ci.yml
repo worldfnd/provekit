@@ -20,14 +20,10 @@ jobs:
       - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
       - run: rustup component add rustfmt && rustup component add clippy
       - run: cargo fmt --all --check
-        # TODO: Remove this once formatting and clippy lints have been applied
-        #       for now it's useful to see the feedback frmo fmt as well as build failures
-        continue-on-error: true
       - run: cargo clippy --all-targets --all-features
         env:
           RUSTFLAGS: -Dwarnings
-        # TODO: Remove this once formatting and clippy lints have been applied
-        #       for now it's useful to see the feedback frmo fmt as well as build failures
+        # TODO: Remove this once clippy lints have been applied
         continue-on-error: true
       - run: cargo build --all-targets --all-features --verbose
       - run: cargo test --all-targets --all-features --verbose
