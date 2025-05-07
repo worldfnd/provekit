@@ -65,6 +65,35 @@ pub fn generate_rust_global_asm(
         {standalone}"#
     )
 }
+/// Generate a standalone file to be used with `asm!(include_str!(`. The top of
+/// file will include a comment that can be used as basis for the operands in
+/// asm!.
+pub fn generate_rust_includable_asm(
+    inputs_registers: &[AllocatedVariable],
+    outputs_registers: &[AllocatedVariable],
+    instructions: &[Instruction<HardwareRegister>],
+) -> String {
+    let operands = generate_asm_operands(inputs_registers, outputs_registers, instructions);
+    let formatted_instructions: String = instructions
+        .iter()
+        // tab instructions by two spaces
+        .map(|instruction| format!("  {}", instruction))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let operands_with_comments: String = operands
+        .lines()
+        .map(|line| format!("// {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"// GENERATED FILE, DO NOT EDIT!
+{operands_with_comments}
+{formatted_instructions}
+"#
+    )
+}
 
 pub fn generate_rust_inline_asm(
     inputs_registers: &[AllocatedVariable],

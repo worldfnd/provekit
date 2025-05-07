@@ -6,7 +6,6 @@ members = [
     "fp-rounding",
     "hla",
     "block-multiplier",
-    "block-multiplier-sys",
     "block-multiplier-codegen",
     "skyscraper",
 ]
@@ -58,6 +57,7 @@ opt-level = 3
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22.1"
+divan = "0.1.21"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 rand = "0.9.1"
 subtle = "2.6.1"

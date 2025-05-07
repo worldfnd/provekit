@@ -1,129 +1,152 @@
+#![feature(portable_simd)]
+
 use {
-    criterion::{Criterion, black_box, criterion_group, criterion_main},
-    fp_rounding::{Zero, with_rounding_mode},
-    rand::{Rng, SeedableRng, prelude::StdRng},
+    core::{array, hint::black_box, simd::u64x2},
+    divan::{Bencher, counter::ItemsCount},
+    fp_rounding::with_rounding_mode,
+    rand::{Rng, rng},
 };
 
-fn bench_block_multiplier(c: &mut Criterion) {
-    let mut group = c.benchmark_group("block_multiplier");
+#[divan::bench_group]
+mod mul {
+    use super::*;
 
-    let seed: u64 = rand::random();
-    println!("Using random seed for benchmark: {}", seed);
-    let mut rng = StdRng::seed_from_u64(seed);
+    #[divan::bench]
+    fn scalar_mul(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        bencher
+            .counter(ItemsCount::new(1usize))
+            .bench_local(|| block_multiplier::scalar_mul(black_box(a), black_box(b)));
+    }
 
-    let s0_a = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let s0_b = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-
-    let v0_a = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let v0_b = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let v1_a = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-    let v1_b = [
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-        rng.random::<u64>(),
-    ];
-
-    group.bench_function("scalar_mul", |bencher| {
-        bencher.iter(|| block_multiplier::scalar_mul(black_box(s0_a), black_box(s0_b)))
-    });
-
-    group.bench_function("scalar_sqr", |bencher| {
-        bencher.iter(|| block_multiplier::scalar_sqr(black_box(s0_a)))
-    });
-
-    group.bench_function("simd_sqr", |bencher| {
-        bencher.iter(|| block_multiplier::simd_sqr(black_box(v0_a), black_box(v1_a)))
-    });
-
-    group.bench_function("simd_mul", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::simd_mul(
-                black_box(v0_a),
-                black_box(v0_b),
-                black_box(v1_a),
-                black_box(v1_b),
-            )
-        })
-    });
-
-    group.bench_function("block_mul", |bencher| unsafe {
-        with_rounding_mode((), |guard, _| {
-            bencher.iter(|| {
-                block_multiplier::block_mul(
-                    guard,
-                    black_box(s0_a),
-                    black_box(s0_b),
-                    black_box(v0_a),
-                    black_box(v0_b),
-                    black_box(v1_a),
-                    black_box(v1_b),
-                )
-            })
-        })
-    });
-
-    group.bench_function("block_sqr", |bencher| unsafe {
-        with_rounding_mode((), |guard, _| {
-            bencher.iter(|| {
-                block_multiplier::block_sqr(
-                    guard,
-                    black_box(s0_a),
-                    black_box(v0_a),
-                    black_box(v1_a),
-                )
-            })
+    #[divan::bench]
+    fn simd_mul(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        let c = array::from_fn(|_| rng.random());
+        let d = array::from_fn(|_| rng.random());
+        bencher.counter(ItemsCount::new(2usize)).bench_local(|| {
+            block_multiplier::simd_mul(black_box(a), black_box(b), black_box(c), black_box(d))
         });
-    });
+    }
 
-    group.finish();
+    #[divan::bench]
+    fn block_mul(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        let c = array::from_fn(|_| rng.random());
+        let d = array::from_fn(|_| rng.random());
+        let e = array::from_fn(|_| rng.random());
+        let f = array::from_fn(|_| rng.random());
+        unsafe {
+            with_rounding_mode((), |guard, _| {
+                bencher.counter(ItemsCount::new(3usize)).bench_local(|| {
+                    block_multiplier::block_mul(
+                        guard,
+                        black_box(a),
+                        black_box(b),
+                        black_box(c),
+                        black_box(d),
+                        black_box(e),
+                        black_box(f),
+                    )
+                });
+            });
+        }
+    }
+
+    #[divan::bench]
+    fn montgomery_interleaved_3(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        let av = array::from_fn(|_| u64x2::splat(rng.random()));
+        let bv = array::from_fn(|_| u64x2::splat(rng.random()));
+        unsafe {
+            with_rounding_mode((), |mode_guard, _| {
+                bencher.counter(ItemsCount::new(3usize)).bench_local(|| {
+                    block_multiplier::montgomery_interleaved_3(
+                        mode_guard,
+                        black_box(a),
+                        black_box(b),
+                        black_box(av),
+                        black_box(bv),
+                    )
+                });
+            });
+        }
+    }
+
+    #[divan::bench]
+    fn montgomery_interleaved_4(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let a1 = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        let b1 = array::from_fn(|_| rng.random());
+        let av = array::from_fn(|_| u64x2::splat(rng.random()));
+        let bv = array::from_fn(|_| u64x2::splat(rng.random()));
+        unsafe {
+            with_rounding_mode((), |mode_guard, _| {
+                bencher.counter(ItemsCount::new(4usize)).bench_local(|| {
+                    block_multiplier::montgomery_interleaved_4(
+                        mode_guard,
+                        black_box(a),
+                        black_box(b),
+                        black_box(a1),
+                        black_box(b1),
+                        black_box(av),
+                        black_box(bv),
+                    )
+                });
+            });
+        }
+    }
 }
 
-fn bench_rtz(c: &mut Criterion) {
-    let mut group = c.benchmark_group("with_rounding_mode");
-    group.bench_function("with_rounding_mode", |bencher| {
-        bencher.iter(|| unsafe {
-            with_rounding_mode::<Zero, _, _>((), |guard, _| {
-                black_box(guard);
-            })
-        })
-    });
+#[divan::bench_group]
+mod sqr {
+    use super::*;
 
-    group.finish();
+    #[divan::bench]
+    fn scalar_sqr(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        bencher
+            .counter(ItemsCount::new(1usize))
+            .bench_local(|| block_multiplier::scalar_sqr(black_box(a)));
+    }
+
+    #[divan::bench]
+    fn simd_sqr(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        bencher
+            .counter(ItemsCount::new(2usize))
+            .bench_local(|| block_multiplier::simd_sqr(black_box(a), black_box(b)));
+    }
+
+    #[divan::bench]
+    fn block_sqr(bencher: Bencher) {
+        let mut rng = rng();
+        let a = array::from_fn(|_| rng.random());
+        let b = array::from_fn(|_| rng.random());
+        let c = array::from_fn(|_| rng.random());
+        unsafe {
+            with_rounding_mode((), |guard, _| {
+                bencher.counter(ItemsCount::new(3usize)).bench_local(|| {
+                    block_multiplier::block_sqr(guard, black_box(a), black_box(b), black_box(c))
+                });
+            });
+        }
+    }
 }
 
-criterion_group!(
-    name = benches;
-    config = Criterion::default()
-        .sample_size(5000)
-        // Warm up is warm because it literally warms up the pi
-        .warm_up_time(std::time::Duration::new(1,0))
-        .measurement_time(std::time::Duration::new(10,0));
-    targets = bench_block_multiplier, bench_rtz
-);
-criterion_main!(benches);
+fn main() {
+    divan::main();
+}
