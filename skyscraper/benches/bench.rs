@@ -1,6 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rand::prelude::StdRng;
-use rand::{Rng, SeedableRng};
+use {
+    criterion::{black_box, criterion_group, criterion_main, Criterion},
+    fp_rounding::with_rounding_mode,
+    rand::{prelude::StdRng, Rng, SeedableRng},
+};
 
 fn bench_skyscraper(c: &mut Criterion) {
     let mut group = c.benchmark_group("skyscraper");
@@ -45,22 +47,24 @@ fn bench_skyscraper(c: &mut Criterion) {
         rng.random::<u64>(),
     ];
 
-    let _rtz = block_multiplier::rtz::RTZ::set().unwrap();
-
     group.bench_function("compress", |bencher| {
         bencher.iter(|| skyscraper::compress(black_box(l_0), black_box(r_0)))
     });
 
-    group.bench_function("block_compress", |bencher| {
-        bencher.iter(|| skyscraper::block_compress(
-            black_box(&_rtz),
-            black_box(l_0),
-            black_box(l_1),
-            black_box(l_2),
-            black_box(r_0),
-            black_box(r_1),
-            black_box(r_2)
-        ))
+    group.bench_function("block_compress", |bencher| unsafe {
+        with_rounding_mode((), |guard, _| {
+            bencher.iter(|| {
+                skyscraper::block_compress(
+                    black_box(guard),
+                    black_box(l_0),
+                    black_box(l_1),
+                    black_box(l_2),
+                    black_box(r_0),
+                    black_box(r_1),
+                    black_box(r_2),
+                )
+            })
+        });
     });
 }
 

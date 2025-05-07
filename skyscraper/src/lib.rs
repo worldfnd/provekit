@@ -1,6 +1,8 @@
 #![feature(bigint_helper_methods)]
-use block_multiplier::*;
-use block_multiplier::rtz::RTZ;
+use {
+    block_multiplier::{block_sqr, scalar_sqr},
+    fp_rounding::{RoundingGuard, Zero},
+};
 
 pub const U64_P: [u64; 4] = [
     0x43e1f593f0000001,
@@ -315,13 +317,13 @@ pub fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {
 
 #[inline]
 pub fn block_compress(
-    _rtz: &RTZ,
+    _rtz: &RoundingGuard<Zero>,
     l_0: [u64; 4],
     l_1: [u64; 4],
     l_2: [u64; 4],
     r_0: [u64; 4],
     r_1: [u64; 4],
-    r_2: [u64; 4]
+    r_2: [u64; 4],
 ) -> ([u64; 4], [u64; 4], [u64; 4]) {
     let a_0 = l_0;
     let a_1 = l_1;
@@ -553,7 +555,7 @@ fn x0p_plus_sqr1p_plus_y0p_eq0p(x: [u64; 4], sqr: [u64; 4], y: [u64; 4]) -> [u64
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, fp_rounding::with_rounding_mode};
 
     #[test]
     fn test_compress() {
@@ -570,15 +572,12 @@ mod tests {
             1563325641941659433,
         ];
         let r = compress(l, r);
-        assert_eq!(
-            r,
-            [
-                18095061023341165257,
-                7738479748118643198,
-                13857889271559191300,
-                570841294491851342
-            ]
-        );
+        assert_eq!(r, [
+            18095061023341165257,
+            7738479748118643198,
+            13857889271559191300,
+            570841294491851342
+        ]);
     }
 
     #[test]
@@ -596,35 +595,26 @@ mod tests {
             1563325641941659433,
         ];
 
-        let _rtz = block_multiplier::rtz::RTZ::set().unwrap();
+        let (r_0, r_1, r_2) =
+            unsafe { with_rounding_mode((), |guard, _| block_compress(guard, l, l, l, r, r, r)) };
 
-        let (r_0, r_1, r_2) = block_compress(&_rtz, l, l, l, r, r, r);
-        assert_eq!(
-            r_0,
-            [
-                18095061023341165257,
-                7738479748118643198,
-                13857889271559191300,
-                570841294491851342
-            ]
-        );
-        assert_eq!(
-            r_1,
-            [
-                18095061023341165257,
-                7738479748118643198,
-                13857889271559191300,
-                570841294491851342
-            ]
-        );
-        assert_eq!(
-            r_2,
-            [
-                18095061023341165257,
-                7738479748118643198,
-                13857889271559191300,
-                570841294491851342
-            ]
-        );
+        assert_eq!(r_0, [
+            18095061023341165257,
+            7738479748118643198,
+            13857889271559191300,
+            570841294491851342
+        ]);
+        assert_eq!(r_1, [
+            18095061023341165257,
+            7738479748118643198,
+            13857889271559191300,
+            570841294491851342
+        ]);
+        assert_eq!(r_2, [
+            18095061023341165257,
+            7738479748118643198,
+            13857889271559191300,
+            570841294491851342
+        ]);
     }
 }
