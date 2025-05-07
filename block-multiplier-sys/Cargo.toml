@@ -7,8 +7,8 @@ edition = "2024"
 fp-rounding = { path = "../fp-rounding" }
 
 [dev-dependencies]
-criterion = "0.5.1"
 rand.workspace = true
+divan.workspace = true
 
 [[bench]]
 name = "montgomery_interleaved"

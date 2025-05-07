@@ -1,29 +1,24 @@
 #![feature(portable_simd)]
 use {
-    block_multiplier_sys::{montgomery_interleaved_3, montgomery_interleaved_4},
-    criterion::{Criterion, black_box, criterion_group, criterion_main},
+    divan::{Bencher, black_box, counter::ItemsCount},
     fp_rounding::with_rounding_mode,
-    rand::{Rng, SeedableRng, rngs::StdRng},
+    rand::{Rng, rng},
     std::{array, simd::u64x2},
-}; // Use u64x2 directly
+};
 
-fn bench_montgomery_interleaved(c: &mut Criterion) {
-    // Setup common data
-    let seed: u64 = rand::random();
-    println!("Using random seed for benchmark: {seed}");
-    let mut rng = StdRng::seed_from_u64(seed);
-
+#[divan::bench]
+fn montgomery_interleaved_3(bencher: Bencher) {
+    let mut rng = rng();
     let a = array::from_fn(|_| rng.random());
-    let a1 = array::from_fn(|_| rng.random());
     let b = array::from_fn(|_| rng.random());
-    let b1 = array::from_fn(|_| rng.random());
     let av = array::from_fn(|_| u64x2::splat(rng.random()));
     let bv = array::from_fn(|_| u64x2::splat(rng.random()));
 
-    c.bench_function("montgomery_interleaved_3", |bench| unsafe {
+    // montgomery_interleaved_3
+    unsafe {
         with_rounding_mode((), |mode_guard, _| {
-            bench.iter(|| {
-                montgomery_interleaved_3(
+            bencher.counter(ItemsCount::new(3usize)).bench_local(|| {
+                block_multiplier_sys::montgomery_interleaved_3(
                     mode_guard,
                     black_box(a),
                     black_box(b),
@@ -32,12 +27,23 @@ fn bench_montgomery_interleaved(c: &mut Criterion) {
                 )
             });
         });
-    });
+    }
+}
 
-    c.bench_function("montgomery_interleaved_4", |bench| unsafe {
+#[divan::bench]
+fn montgomery_interleaved_4(bencher: Bencher) {
+    let mut rng = rng();
+    let a = array::from_fn(|_| rng.random());
+    let a1 = array::from_fn(|_| rng.random());
+    let b = array::from_fn(|_| rng.random());
+    let b1 = array::from_fn(|_| rng.random());
+    let av = array::from_fn(|_| u64x2::splat(rng.random()));
+    let bv = array::from_fn(|_| u64x2::splat(rng.random()));
+
+    unsafe {
         with_rounding_mode((), |mode_guard, _| {
-            bench.iter(|| {
-                montgomery_interleaved_4(
+            bencher.counter(ItemsCount::new(4usize)).bench_local(|| {
+                block_multiplier_sys::montgomery_interleaved_4(
                     mode_guard,
                     black_box(a),
                     black_box(b),
@@ -48,16 +54,9 @@ fn bench_montgomery_interleaved(c: &mut Criterion) {
                 )
             });
         });
-    });
+    }
 }
 
-criterion_group!(
-    name = benches;
-    config = Criterion::default()
-        .without_plots()
-        .sample_size(5000)
-        .warm_up_time(std::time::Duration::new(1,0))
-        .measurement_time(std::time::Duration::new(10,0));
-    targets = bench_montgomery_interleaved
-);
-criterion_main!(benches);
+fn main() {
+    divan::main();
+}
