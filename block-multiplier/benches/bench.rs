@@ -1,5 +1,6 @@
 use {
     criterion::{Criterion, black_box, criterion_group, criterion_main},
+    fp_rounding::{Zero, with_rounding_mode},
     rand::{Rng, SeedableRng, prelude::StdRng},
 };
 
@@ -48,8 +49,6 @@ fn bench_block_multiplier(c: &mut Criterion) {
         rng.random::<u64>(),
     ];
 
-    let rtz = rtz::RTZ::set().unwrap();
-
     group.bench_function("scalar_mul", |bencher| {
         bencher.iter(|| block_multiplier::scalar_mul(black_box(s0_a), black_box(s0_b)))
     });
@@ -73,23 +72,45 @@ fn bench_block_multiplier(c: &mut Criterion) {
         })
     });
 
-    group.bench_function("block_mul", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::block_mul(
-                &rtz,
-                black_box(s0_a),
-                black_box(s0_b),
-                black_box(v0_a),
-                black_box(v0_b),
-                black_box(v1_a),
-                black_box(v1_b),
-            )
+    group.bench_function("block_mul", |bencher| unsafe {
+        with_rounding_mode((), |guard, _| {
+            bencher.iter(|| {
+                block_multiplier::block_mul(
+                    guard,
+                    black_box(s0_a),
+                    black_box(s0_b),
+                    black_box(v0_a),
+                    black_box(v0_b),
+                    black_box(v1_a),
+                    black_box(v1_b),
+                )
+            })
         })
     });
 
-    group.bench_function("block_sqr", |bencher| {
-        bencher.iter(|| {
-            block_multiplier::block_sqr(&rtz, black_box(s0_a), black_box(v0_a), black_box(v1_a))
+    group.bench_function("block_sqr", |bencher| unsafe {
+        with_rounding_mode((), |guard, _| {
+            bencher.iter(|| {
+                block_multiplier::block_sqr(
+                    guard,
+                    black_box(s0_a),
+                    black_box(v0_a),
+                    black_box(v1_a),
+                )
+            })
+        });
+    });
+
+    group.finish();
+}
+
+fn bench_rtz(c: &mut Criterion) {
+    let mut group = c.benchmark_group("with_rounding_mode");
+    group.bench_function("with_rounding_mode", |bencher| {
+        bencher.iter(|| unsafe {
+            with_rounding_mode::<Zero, _, _>((), |guard, _| {
+                black_box(guard);
+            })
         })
     });
 
@@ -103,6 +124,6 @@ criterion_group!(
         // Warm up is warm because it literally warms up the pi
         .warm_up_time(std::time::Duration::new(1,0))
         .measurement_time(std::time::Duration::new(10,0));
-    targets = bench_block_multiplier
+    targets = bench_block_multiplier, bench_rtz
 );
 criterion_main!(benches);

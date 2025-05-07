@@ -8,6 +8,7 @@ members = [
     "block-multiplier",
     "block-multiplier-sys",
     "block-multiplier-codegen",
+    "skyscraper",
 ]
 
 [workspace.package]
