@@ -1,7 +1,15 @@
 #![feature(bigint_helper_methods)]
+
+mod constants;
+mod reference;
+
 use {
     block_multiplier::{block_sqr, scalar_sqr},
     fp_rounding::{RoundingGuard, Zero},
+};
+pub use {
+    constants::ROUND_CONSTANTS,
+    reference::{compress as compress_ref, permute as permute_ref},
 };
 
 pub const U64_P: [u64; 4] = [

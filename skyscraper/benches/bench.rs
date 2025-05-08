@@ -1,10 +1,22 @@
 use {
+    ark_bn254::Fr,
+    ark_ff::Field,
     core::hint::black_box,
     divan::{counter::ItemsCount, Bencher},
     fp_rounding::with_rounding_mode,
     rand::{rng, Rng},
     std::array,
 };
+
+#[divan::bench]
+fn reference(bencher: Bencher) {
+    let mut rng = rng();
+    let a = Fr::from_random_bytes(&rng.random::<[u8; 32]>()).unwrap();
+    let b = Fr::from_random_bytes(&rng.random::<[u8; 32]>()).unwrap();
+    bencher
+        .counter(ItemsCount::new(1_usize))
+        .bench_local(|| skyscraper::compress_ref(black_box(a), black_box(b)))
+}
 
 #[divan::bench]
 fn compress(bencher: Bencher) {
@@ -15,6 +27,7 @@ fn compress(bencher: Bencher) {
         .counter(ItemsCount::new(1_usize))
         .bench_local(|| skyscraper::compress(black_box(a), black_box(b)))
 }
+
 #[divan::bench]
 fn block_compress(bencher: Bencher) {
     let mut rng = rng();

@@ -91,6 +91,9 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
+ark-bn254 = { version = "0.5.0", default-features = false, features = [
+    "scalar_field",
+] }
 zeroize = "1.8.1"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
