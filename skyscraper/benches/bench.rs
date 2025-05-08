@@ -11,45 +11,44 @@ mod reduce {
     use super::*;
 
     #[divan::bench]
-    fn reduce_1p(bencher: Bencher) {
+    fn reduce_1_partial(bencher: Bencher) {
+        use skyscraper::reduce::reduce_partial;
         bencher
-            .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::scalar::reduce_1p)
+            .with_inputs(|| reduce_partial(array::from_fn(|_| rng().random())))
+            .bench_values(skyscraper::reduce::reduce_1)
     }
 
     #[divan::bench]
-    fn reduce_2p(bencher: Bencher) {
+    fn reduce_1(bencher: Bencher) {
         bencher
             .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::scalar::reduce_2p)
-    }
-
-    #[divan::bench]
-    fn reduce_3p(bencher: Bencher) {
-        bencher
-            .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::scalar::reduce_3p)
-    }
-
-    #[divan::bench]
-    fn reduce_4p(bencher: Bencher) {
-        bencher
-            .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::scalar::reduce_4p)
+            .bench_values(skyscraper::reduce::reduce_1)
     }
 
     #[divan::bench]
     fn reduce_partial(bencher: Bencher) {
         bencher
             .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::simple::reduce_partial)
+            .bench_values(skyscraper::reduce::reduce_partial)
     }
 
     #[divan::bench]
     fn reduce(bencher: Bencher) {
         bencher
             .with_inputs(|| array::from_fn(|_| rng().random()))
-            .bench_values(skyscraper::simple::reduce)
+            .bench_values(skyscraper::reduce::reduce)
+    }
+
+    #[divan::bench]
+    fn reduce_add_rc(bencher: Bencher) {
+        bencher
+            .with_inputs(|| {
+                (
+                    array::from_fn(|_| rng().random()),
+                    rng().random_range(0..18),
+                )
+            })
+            .bench_values(|(x, rc)| skyscraper::reduce::reduce_partial_add_rc(x, rc))
     }
 }
 

@@ -114,7 +114,7 @@ mod tests {
                 let e = reduce(add(reduce(x), ROUND_CONSTANTS[rc]));
                 let r = reduce_partial_add_rc(x, rc);
                 assert_eq!(reduce(r), e);
-                assert!(r[3] < MODULUS[2][3] + 3);
+                assert!(r[3] < MODULUS[2][3]);
             }
         }
     }
