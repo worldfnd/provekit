@@ -11,9 +11,7 @@ use {
 // Compile time convert round constants to Fr
 seq!(I in 0..18 {
     const ROUND_CONSTANTS: [Fr; 18] = [
-        #(
-            Fr::new(BigInt(crate::constants::ROUND_CONSTANTS[I])),
-        )*
+        #(Fr::new(BigInt(crate::constants::ROUND_CONSTANTS[I])), )*
     ];
 });
 
@@ -96,7 +94,7 @@ fn bar(x: Fr) -> Fr {
     Fr::from_le_bytes_mod_order(bytes.as_slice())
 }
 
-fn sbox(v: u8) -> u8 {
+pub fn sbox(v: u8) -> u8 {
     (v ^ ((!v).rotate_left(1) & v.rotate_left(2) & v.rotate_left(3))).rotate_left(1)
 }
 

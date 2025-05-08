@@ -137,9 +137,25 @@ mod tests {
     use {
         super::*,
         crate::constants,
+        ark_bn254::Fr,
+        ark_ff::{BigInt, Field, PrimeField},
         primitive_types::U256,
+        proptest::proptest,
         rand::{Rng, SeedableRng, rngs},
     };
+
+    #[test]
+    fn test_mul_field() {
+        let sigma = Fr::from(2).pow(&[256]).inverse().unwrap();
+        proptest!(|(l: [u64; 4], r: [u64; 4])| {
+            let fl = Fr::new(BigInt(l));
+            let fr = Fr::new(BigInt(r));
+            let fe = fl * fr * sigma;
+            let r = scalar_mul(l, r);
+            let fr = Fr::new(BigInt(r));
+            assert_eq!(fr, fe);
+        })
+    }
 
     const OUTPUT_MAX: [u64; 4] = [
         0x783c14d81ffffffe,

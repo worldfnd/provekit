@@ -11,6 +11,9 @@ fp-rounding = { path = "../fp-rounding" }
 rand.workspace = true
 divan.workspace = true
 primitive-types = "0.13.1"
+ark-ff.workspace = true
+ark-bn254.workspace = true
+proptest.workspace = true
 
 [build-dependencies]
 block-multiplier-codegen = { path = "../block-multiplier-codegen" }

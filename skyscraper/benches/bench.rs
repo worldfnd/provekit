@@ -1,12 +1,57 @@
 use {
-    ark_bn254::Fr,
-    ark_ff::Field,
     core::hint::black_box,
     divan::{counter::ItemsCount, Bencher},
     fp_rounding::with_rounding_mode,
     rand::{rng, Rng},
     std::array,
 };
+
+#[divan::bench_group]
+mod reduce {
+    use super::*;
+
+    #[divan::bench]
+    fn reduce_1p(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::scalar::reduce_1p)
+    }
+
+    #[divan::bench]
+    fn reduce_2p(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::scalar::reduce_2p)
+    }
+
+    #[divan::bench]
+    fn reduce_3p(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::scalar::reduce_3p)
+    }
+
+    #[divan::bench]
+    fn reduce_4p(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::scalar::reduce_4p)
+    }
+
+    #[divan::bench]
+    fn reduce_partial(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::simple::reduce_partial)
+    }
+
+    #[divan::bench]
+    fn reduce(bencher: Bencher) {
+        bencher
+            .with_inputs(|| array::from_fn(|_| rng().random()))
+            .bench_values(skyscraper::simple::reduce)
+    }
+}
 
 #[divan::bench]
 fn reference(bencher: Bencher) {
@@ -16,16 +61,6 @@ fn reference(bencher: Bencher) {
     bencher
         .counter(ItemsCount::new(1_usize))
         .bench_local(|| skyscraper::reference::compress(black_box(a), black_box(b)))
-}
-
-#[divan::bench]
-fn compress(bencher: Bencher) {
-    let mut rng = rng();
-    let a = array::from_fn(|_| rng.random());
-    let b = array::from_fn(|_| rng.random());
-    bencher
-        .counter(ItemsCount::new(1_usize))
-        .bench_local(|| skyscraper::compress(black_box(a), black_box(b)))
 }
 
 #[divan::bench]
@@ -46,7 +81,7 @@ fn compress_many_scalar(bencher: Bencher) {
     let messages: Vec<u8> = (0..(size * 64)).map(|_| rng.random()).collect();
     let mut hashes = vec![0_u8; size * 32];
     bencher.counter(ItemsCount::new(size)).bench_local(|| {
-        skyscraper::scalar::compress_many(black_box(&messages), black_box(&mut hashes));
+        skyscraper::simple::compress_many(black_box(&messages), black_box(&mut hashes));
     });
 }
 
@@ -62,7 +97,7 @@ fn block_compress(bencher: Bencher) {
     unsafe {
         with_rounding_mode((), |guard, _| {
             bencher.counter(ItemsCount::new(3_usize)).bench_local(|| {
-                skyscraper::block_compress(
+                skyscraper::block::block_compress(
                     guard,
                     black_box(a),
                     black_box(b),
