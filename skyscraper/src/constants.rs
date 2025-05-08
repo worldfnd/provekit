@@ -1,3 +1,14 @@
+/// Bn254 scalar field modulus and multiples
+#[rustfmt::skip]
+pub const MODULUS: [[u64; 4]; 6] = [
+    [0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000],
+    [0x43e1f593f0000001, 0x2833e84879b97091, 0xb85045b68181585d, 0x30644e72e131a029],
+    [0x87c3eb27e0000002, 0x5067d090f372e122, 0x70a08b6d0302b0ba, 0x60c89ce5c2634053],
+    [0xcba5e0bbd0000003, 0x789bb8d96d2c51b3, 0x28f0d12384840917, 0x912ceb58a394e07d],
+    [0x0f87d64fc0000004, 0xa0cfa121e6e5c245, 0xe14116da06056174, 0xc19139cb84c680a6],
+    [0x5369cbe3b0000005, 0xc903896a609f32d6, 0x99915c908786b9d1, 0xf1f5883e65f820d0],
+];
+
 /// Skyscaper round constants for Bn254-Fr and t=1.
 ///
 /// In little-endian reduced non-Montgomery form.

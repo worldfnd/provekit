@@ -1,11 +1,3 @@
-#![feature(bigint_helper_methods)]
-
-pub mod block;
-pub mod constants;
-pub mod reference;
-pub mod scalar;
-pub mod simple;
-
 use {
     block_multiplier::{block_sqr, scalar_sqr},
     fp_rounding::{RoundingGuard, Zero},

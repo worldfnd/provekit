@@ -11,11 +11,11 @@ use {
 #[divan::bench]
 fn reference(bencher: Bencher) {
     let mut rng = rng();
-    let a = Fr::from_random_bytes(&rng.random::<[u8; 32]>()).unwrap();
-    let b = Fr::from_random_bytes(&rng.random::<[u8; 32]>()).unwrap();
+    let a = array::from_fn(|_| rng.random());
+    let b = array::from_fn(|_| rng.random());
     bencher
         .counter(ItemsCount::new(1_usize))
-        .bench_local(|| skyscraper::compress_ref(black_box(a), black_box(b)))
+        .bench_local(|| skyscraper::reference::compress(black_box(a), black_box(b)))
 }
 
 #[divan::bench]
@@ -26,6 +26,28 @@ fn compress(bencher: Bencher) {
     bencher
         .counter(ItemsCount::new(1_usize))
         .bench_local(|| skyscraper::compress(black_box(a), black_box(b)))
+}
+
+#[divan::bench]
+fn compress_many_ref(bencher: Bencher) {
+    let size = 1000_usize;
+    let mut rng = rng();
+    let messages: Vec<u8> = (0..(size * 64)).map(|_| rng.random()).collect();
+    let mut hashes = vec![0_u8; size * 32];
+    bencher.counter(ItemsCount::new(size)).bench_local(|| {
+        skyscraper::reference::compress_many(black_box(&messages), black_box(&mut hashes));
+    });
+}
+
+#[divan::bench]
+fn compress_many_scalar(bencher: Bencher) {
+    let size = 1000_usize;
+    let mut rng = rng();
+    let messages: Vec<u8> = (0..(size * 64)).map(|_| rng.random()).collect();
+    let mut hashes = vec![0_u8; size * 32];
+    bencher.counter(ItemsCount::new(size)).bench_local(|| {
+        skyscraper::scalar::compress_many(black_box(&messages), black_box(&mut hashes));
+    });
 }
 
 #[divan::bench]

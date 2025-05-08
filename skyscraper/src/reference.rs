@@ -12,7 +12,7 @@ use {
 seq!(I in 0..18 {
     const ROUND_CONSTANTS: [Fr; 18] = [
         #(
-            Fr::new(BigInt(crate::ROUND_CONSTANTS[I])),
+            Fr::new(BigInt(crate::constants::ROUND_CONSTANTS[I])),
         )*
     ];
 });
@@ -27,8 +27,25 @@ static SIGMA_INV: LazyLock<Fr> = LazyLock::new(|| {
         .expect("valid field element")
 });
 
-pub fn compress(l: Fr, r: Fr) -> Fr {
-    permute(l, r).0
+pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {
+    assert_eq!(messages.len() % 64, 0);
+    assert_eq!(hashes.len() % 32, 0);
+    for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
+        let (l, r) = message.split_at(32);
+        let l = Fr::from_le_bytes_mod_order(l);
+        let r = Fr::from_le_bytes_mod_order(r);
+        let (l, r) = permute(l, r);
+        let limbs: [u64; 4] = l.into_bigint().0;
+        let bytes: [u8; 32] = transmute!(limbs);
+        hash.copy_from_slice(bytes.as_slice());
+    }
+}
+
+pub fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {
+    let (l, r) = (Fr::new(BigInt(l)), Fr::new(BigInt(r)));
+    let t = l;
+    let (l, _) = permute(l, r);
+    (l + t).into_bigint().0
 }
 
 /// See Figure 2.a
@@ -139,12 +156,33 @@ mod tests {
 
     #[test]
     fn test_zero() {
+        // From Sage notebook example
         let l = Fr::ZERO;
         let r = Fr::ZERO;
         let el = "5793276905781313965269111743763131906666794041798623267477617572701829069290"
             .parse()
             .unwrap();
         let er = "12296274483727574983376829575121280934973829438414198530604912453551798647077"
+            .parse()
+            .unwrap();
+        let (l, r) = permute(l, r);
+        assert_eq!(l, el);
+        assert_eq!(r, er);
+    }
+
+    #[test]
+    fn test_random() {
+        // From Sage notebook example
+        let l = "50417215636675310123686652273432694184389644587803328798109154235492038730484"
+            .parse()
+            .unwrap();
+        let r = "14620920779025509970947930308416120371903474543120179490887326852503500806990"
+            .parse()
+            .unwrap();
+        let el = "8412949970293910117511617126618515787729842528183672400383899220234743146062"
+            .parse()
+            .unwrap();
+        let er = "11868175801025513844525564200589229804433722826344843184417708742749423276015"
             .parse()
             .unwrap();
         let (l, r) = permute(l, r);

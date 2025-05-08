@@ -15,6 +15,7 @@ ark-ff.workspace = true
 ark-bn254.workspace = true
 zerocopy = "0.8.25"
 seq-macro = "0.3.6"
+proptest = "1.6.0"
 
 [dev-dependencies]
 rand.workspace = true
