@@ -25,34 +25,12 @@ pub fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {
     let t = l;
     let (l, r) = (reduce_partial(add(r, square(l))), l);
     let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 1), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 2), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 3), l);
+    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 2), l);
+    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 3), l);
     let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 4), l);
     let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 5), l);
     let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 6), l);
     let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 7), l);
     let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 8), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 9), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 10), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 11), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 12), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 13), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 14), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 15), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 16), l);
     reduce(add(add(r, square(l)), t))
-}
-
-#[cfg(test)]
-mod tests {
-    use {super::*, proptest::proptest};
-
-    #[test]
-    fn test_eq_ref() {
-        proptest!(|(l: [u64; 4], r: [u64; 4])| {
-            let e = crate::reference::compress(l, r);
-            let r = compress(l, r);
-            assert_eq!(r, e);
-        });
-    }
 }

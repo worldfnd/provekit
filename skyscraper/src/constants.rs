@@ -1,4 +1,7 @@
-use seq_macro::seq;
+use {
+    crate::arithmetic::{sub, wrapping_sub},
+    seq_macro::seq,
+};
 
 /// Bn254 scalar field modulus and multiples
 #[rustfmt::skip]
@@ -46,19 +49,10 @@ pub const ROUND_CONSTANTS: [[u64; 4]; 18] = [
 ];
 
 pub const MODULUS_N_MINUS_RC: [[[u64; 4]; 18]; 6] = [
-    seq!(I in 0..18 { [#(const_minus(MODULUS[0], ROUND_CONSTANTS[I], true),)*] }),
-    seq!(I in 0..18 { [#(const_minus(MODULUS[1], ROUND_CONSTANTS[I], false),)*] }),
-    seq!(I in 0..18 { [#(const_minus(MODULUS[2], ROUND_CONSTANTS[I], false),)*] }),
-    seq!(I in 0..18 { [#(const_minus(MODULUS[3], ROUND_CONSTANTS[I], false),)*] }),
-    seq!(I in 0..18 { [#(const_minus(MODULUS[4], ROUND_CONSTANTS[I], false),)*] }),
-    seq!(I in 0..18 { [#(const_minus(MODULUS[5], ROUND_CONSTANTS[I], false),)*] }),
+    seq!(I in 0..18 { [#(wrapping_sub(MODULUS[0], ROUND_CONSTANTS[I]),)*] }),
+    seq!(I in 0..18 { [#(sub(MODULUS[1], ROUND_CONSTANTS[I]),)*] }),
+    seq!(I in 0..18 { [#(sub(MODULUS[2], ROUND_CONSTANTS[I]),)*] }),
+    seq!(I in 0..18 { [#(sub(MODULUS[3], ROUND_CONSTANTS[I]),)*] }),
+    seq!(I in 0..18 { [#(sub(MODULUS[4], ROUND_CONSTANTS[I]),)*] }),
+    seq!(I in 0..18 { [#(sub(MODULUS[5], ROUND_CONSTANTS[I]),)*] }),
 ];
-
-const fn const_minus(l: [u64; 4], r: [u64; 4], may_borrow: bool) -> [u64; 4] {
-    let (r0, borrow) = l[0].overflowing_sub(r[0]);
-    let (r1, borrow) = l[1].borrowing_sub(r[1], borrow);
-    let (r2, borrow) = l[2].borrowing_sub(r[2], borrow);
-    let (r3, borrow) = l[3].borrowing_sub(r[3], borrow);
-    assert!(!borrow || may_borrow);
-    [r0, r1, r2, r3]
-}

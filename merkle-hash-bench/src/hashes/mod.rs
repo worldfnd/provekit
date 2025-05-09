@@ -10,4 +10,5 @@ mod poseidon2_t3_ruint;
 mod sha256_neon;
 mod zkhash;
 // mod skyscraper_bn254_ref;
+mod prove_kit;
 mod skyscraper_bn254_ruint;

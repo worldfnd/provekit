@@ -6,21 +6,21 @@ edition = "2021"
 [features]
 default = ["plonky3", "zkhash"]
 plonky3 = [
-  "dep:p3-bn254-fr",
-  "dep:p3-goldilocks",
-  "dep:p3-mersenne-31",
-  "dep:p3-field",
-  "dep:p3-poseidon2",
-  "dep:p3-symmetric",
-  "dep:p3-monolith",
-  "dep:p3-rescue",
+    "dep:p3-bn254-fr",
+    "dep:p3-goldilocks",
+    "dep:p3-mersenne-31",
+    "dep:p3-field",
+    "dep:p3-poseidon2",
+    "dep:p3-symmetric",
+    "dep:p3-monolith",
+    "dep:p3-rescue",
 ]
 icicle = [
-  "dep:icicle-core",
-  "dep:icicle-runtime",
-  "dep:icicle-hash",
-  "dep:icicle-bn254",
-  "dep:icicle-m31",
+    "dep:icicle-core",
+    "dep:icicle-runtime",
+    "dep:icicle-hash",
+    "dep:icicle-bn254",
+    "dep:icicle-m31",
 ]
 zkhash = ["dep:zkhash"]
 stwo = ["dep:stwo-prover"]
@@ -47,9 +47,12 @@ zerocopy = { version = "0.8.17", features = ["simd"] }
 linkme = "0.3.31"
 gensym = "0.1.1"
 
+skyscraper = { path = "../skyscraper" }
+
+
 # Plonky 3
 p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true, features = [
-  "table",
+    "table",
 ] }
 p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
 p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }

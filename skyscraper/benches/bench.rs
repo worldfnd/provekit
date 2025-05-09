@@ -52,6 +52,85 @@ mod reduce {
     }
 }
 
+#[divan::bench_group]
+mod compress_many {
+    use super::*;
+
+    const SIZE: usize = 256;
+
+    #[divan::bench]
+    fn reference(bencher: Bencher) {
+        let mut rng = rng();
+        let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
+        let mut hashes = vec![0_u8; SIZE * 32];
+        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
+            skyscraper::reference::compress_many(black_box(&messages), black_box(&mut hashes));
+        });
+    }
+
+    #[divan::bench]
+    fn simple(bencher: Bencher) {
+        let mut rng = rng();
+        let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
+        let mut hashes = vec![0_u8; SIZE * 32];
+        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
+            skyscraper::simple::compress_many(black_box(&messages), black_box(&mut hashes));
+        });
+    }
+
+    #[divan::bench]
+    fn v1(bencher: Bencher) {
+        let mut rng = rng();
+        let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
+        let mut hashes = vec![0_u8; SIZE * 32];
+        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
+            skyscraper::v1::compress_many(black_box(&messages), black_box(&mut hashes));
+        });
+    }
+}
+
+#[divan::bench_group]
+mod parts {
+    use super::*;
+
+    #[divan::bench]
+    fn bar(bencher: Bencher) {
+        use skyscraper::reduce::reduce_partial;
+        bencher
+            .with_inputs(|| reduce_partial(array::from_fn(|_| rng().random())))
+            .bench_values(skyscraper::bar::bar)
+    }
+
+    #[divan::bench]
+    fn sbox(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_values(skyscraper::bar::sbox)
+    }
+
+    #[divan::bench]
+    fn sbox_8(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_values(skyscraper::bar::sbox_8)
+    }
+
+    #[divan::bench]
+    fn sbox_16(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_values(skyscraper::bar::sbox_16)
+    }
+
+    #[divan::bench]
+    fn square(bencher: Bencher) {
+        use skyscraper::reduce::reduce_partial;
+        bencher
+            .with_inputs(|| reduce_partial(array::from_fn(|_| rng().random())))
+            .bench_values(block_multiplier::scalar_sqr)
+    }
+}
+
 #[divan::bench]
 fn reference(bencher: Bencher) {
     let mut rng = rng();
@@ -60,17 +139,6 @@ fn reference(bencher: Bencher) {
     bencher
         .counter(ItemsCount::new(1_usize))
         .bench_local(|| skyscraper::reference::compress(black_box(a), black_box(b)))
-}
-
-#[divan::bench]
-fn compress_many_ref(bencher: Bencher) {
-    let size = 1000_usize;
-    let mut rng = rng();
-    let messages: Vec<u8> = (0..(size * 64)).map(|_| rng.random()).collect();
-    let mut hashes = vec![0_u8; size * 32];
-    bencher.counter(ItemsCount::new(size)).bench_local(|| {
-        skyscraper::reference::compress_many(black_box(&messages), black_box(&mut hashes));
-    });
 }
 
 #[divan::bench]
