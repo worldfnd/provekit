@@ -38,7 +38,8 @@ pub enum HashFn {
     Blake3,
     Poseidon(usize),
     Poseidon2(usize),
-    Skyscraper(usize),
+    Skyscraper1(usize),
+    Skyscraper2(usize),
     Monolith(usize),
     Rescue(usize),
     Keccak(usize),
@@ -78,7 +79,8 @@ impl Display for HashFn {
             Self::Blake3 => f.pad("blake3"),
             Self::Poseidon(t) => f.pad(&format!("poseidon:{t}")),
             Self::Poseidon2(t) => f.pad(&format!("poseidon2:{t}")),
-            Self::Skyscraper(t) => f.pad(&format!("skyscraper:{t}")),
+            Self::Skyscraper1(t) => f.pad(&format!("skyscraper_v1:{t}")),
+            Self::Skyscraper2(t) => f.pad(&format!("skyscraper_v2:{t}")),
             Self::Monolith(t) => f.pad(&format!("monolith:{t}")),
             Self::Rescue(t) => f.pad(&format!("rescue:{t}")),
             Self::Keccak(t) => f.pad(&format!("keccak:{t}")),
@@ -89,7 +91,7 @@ impl Display for HashFn {
 fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn SmolHasher>) {
     let mut rng = rand::rng();
     println!("seconds per hash for batches of 512 bit messages.");
-    print!("hash \\ batch size              ");
+    print!("hash \\ batch size                    ");
     let lengths = [4, 16, 64, 256, 1 << 15];
     for length in lengths {
         print!("\t{length}");
@@ -97,7 +99,7 @@ fn print_table<'a>(duration: Duration, hashers: impl Iterator<Item = &'a dyn Smo
     println!();
     for hash in hashers {
         print!(
-            "{:14}{:10}{:7}",
+            "{:18}{:12}{:7}",
             hash.hash_fn(),
             hash.implementation(),
             hash.field()

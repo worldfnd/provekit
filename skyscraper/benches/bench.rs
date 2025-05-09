@@ -79,6 +79,23 @@ mod compress_many {
     }
 
     #[divan::bench]
+    fn block(bencher: Bencher) {
+        bencher
+            .counter(ItemsCount::new(SIZE))
+            .with_inputs(|| {
+                (
+                    (0..(SIZE * 64))
+                        .map(|_| rng().random())
+                        .collect::<Vec<u8>>(),
+                    vec![0_u8; SIZE * 32],
+                )
+            })
+            .bench_local_refs(|(messages, hashes)| {
+                skyscraper::block2::compress_many(messages, hashes);
+            });
+    }
+
+    #[divan::bench]
     fn v1(bencher: Bencher) {
         let mut rng = rng();
         let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();

@@ -28,14 +28,13 @@ static SIGMA_INV: LazyLock<Fr> = LazyLock::new(|| {
 pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {
     assert_eq!(messages.len() % 64, 0);
     assert_eq!(hashes.len() % 32, 0);
+    assert_eq!(messages.len(), hashes.len() * 2);
     for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-        let (l, r) = message.split_at(32);
-        let l = Fr::from_le_bytes_mod_order(l);
-        let r = Fr::from_le_bytes_mod_order(r);
-        let (l, r) = permute(l, r);
-        let limbs: [u64; 4] = l.into_bigint().0;
-        let bytes: [u8; 32] = transmute!(limbs);
-        hash.copy_from_slice(bytes.as_slice());
+        let message: [u8; 64] = message.try_into().unwrap();
+        let [l, r] = transmute!(message);
+        let h = compress(l, r);
+        let h: [u8; 32] = transmute!(h);
+        hash.copy_from_slice(h.as_slice());
     }
 }
 
