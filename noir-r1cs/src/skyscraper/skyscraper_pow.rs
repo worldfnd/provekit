@@ -5,6 +5,10 @@ use {
     },
     ruint::{aliases::U256, uint},
     spongefish_pow::PowStrategy,
+    std::{
+        sync::atomic::{AtomicU64, Ordering},
+        u64,
+    },
     whir::crypto::fields::Field256,
 };
 
@@ -108,6 +112,7 @@ const DIFFICULTY_ARRAY: [Field256; 28] = [
 impl PowStrategy for SkyscraperPoW {
     fn new(challenge: [u8; 32], bits: f64) -> Self {
         assert!((0.0..60.0).contains(&bits), "bits must be smaller than 60");
+        // TOOD: Fractional bits in threshold.
         let threshold = bits.ceil() as usize;
 
         Self {
@@ -122,15 +127,30 @@ impl PowStrategy for SkyscraperPoW {
     }
 
     fn solve(&mut self) -> Option<u64> {
-        // TODO: Parallel solve
-        (0u64..)
-            .step_by(1)
-            .find_map(|nonce| self.check_single(nonce))
+        let challenge = self.challenge;
+        let threshold = self.threshold;
+        let best = AtomicU64::new(u64::MAX);
+        rayon::broadcast(|ctx| {
+            // Find the thread specific subset of nonces
+            for nonce in (ctx.index() as u64..).step_by(ctx.num_threads()) {
+                // Stop if another thread found a solution
+                if nonce >= best.load(Ordering::Acquire) {
+                    break;
+                }
+                // TODO: Use block functions to check multiple nonces at once
+                let fnonce = uint_to_field(U256::from(nonce));
+                if compress(challenge, fnonce) < threshold {
+                    best.fetch_min(nonce, Ordering::AcqRel);
+                    break;
+                }
+            }
+        });
+        Some(best.load(Ordering::Acquire))
     }
 }
 
 impl SkyscraperPoW {
-    fn check_single(&mut self, nonce: u64) -> Option<u64> {
+    fn check_single(self, nonce: u64) -> Option<u64> {
         let res = compress(self.challenge, uint_to_field(U256::from(nonce)));
         if res < self.threshold {
             return Some(nonce);
