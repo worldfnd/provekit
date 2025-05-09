@@ -3,7 +3,7 @@ mod blake3;
 mod blake3_naive;
 mod icicle;
 mod keccak_api;
-mod keccak_neon;
+// mod keccak_neon; // Not available on all aarch64
 mod plonky3;
 mod poseidon2_t2_ruint;
 mod poseidon2_t3_ruint;

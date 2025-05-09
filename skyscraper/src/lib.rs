@@ -5,7 +5,8 @@
 pub mod arithmetic;
 pub mod bar;
 pub mod block;
-pub mod block2;
+pub mod block3;
+pub mod block4;
 pub mod constants;
 pub mod reduce;
 pub mod reference;

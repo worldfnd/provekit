@@ -4,11 +4,13 @@ use crate::{register_hash, Field, HashFn, SmolHasher};
 struct Reference;
 struct Simple;
 struct Ver1;
-struct Block;
+struct Block3;
+struct Block4;
 
 register_hash!(Reference);
 register_hash!(Simple);
-register_hash!(Block);
+register_hash!(Block3);
+register_hash!(Block4);
 register_hash!(Ver1);
 
 impl SmolHasher for Reference {
@@ -46,13 +48,14 @@ impl SmolHasher for Simple {
         skyscraper::simple::compress_many(messages, hashes);
     }
 }
-impl SmolHasher for Block {
+
+impl SmolHasher for Block3 {
     fn hash_fn(&self) -> HashFn {
         HashFn::Skyscraper2(1)
     }
 
     fn implementation(&self) -> &str {
-        "pk-block"
+        "pk-block3"
     }
 
     fn field(&self) -> Field {
@@ -60,7 +63,25 @@ impl SmolHasher for Block {
     }
 
     fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
-        skyscraper::block2::compress_many(messages, hashes);
+        skyscraper::block3::compress_many(messages, hashes);
+    }
+}
+
+impl SmolHasher for Block4 {
+    fn hash_fn(&self) -> HashFn {
+        HashFn::Skyscraper2(1)
+    }
+
+    fn implementation(&self) -> &str {
+        "pk-block4"
+    }
+
+    fn field(&self) -> Field {
+        Field::Bn254
+    }
+
+    fn hash(&self, messages: &[u8], hashes: &mut [u8]) {
+        skyscraper::block4::compress_many(messages, hashes);
     }
 }
 

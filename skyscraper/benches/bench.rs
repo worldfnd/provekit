@@ -79,7 +79,7 @@ mod compress_many {
     }
 
     #[divan::bench]
-    fn block(bencher: Bencher) {
+    fn block3(bencher: Bencher) {
         bencher
             .counter(ItemsCount::new(SIZE))
             .with_inputs(|| {
@@ -91,7 +91,24 @@ mod compress_many {
                 )
             })
             .bench_local_refs(|(messages, hashes)| {
-                skyscraper::block2::compress_many(messages, hashes);
+                skyscraper::block3::compress_many(messages, hashes);
+            });
+    }
+
+    #[divan::bench]
+    fn block4(bencher: Bencher) {
+        bencher
+            .counter(ItemsCount::new(SIZE))
+            .with_inputs(|| {
+                (
+                    (0..(SIZE * 64))
+                        .map(|_| rng().random())
+                        .collect::<Vec<u8>>(),
+                    vec![0_u8; SIZE * 32],
+                )
+            })
+            .bench_local_refs(|(messages, hashes)| {
+                skyscraper::block4::compress_many(messages, hashes);
             });
     }
 

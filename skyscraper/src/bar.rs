@@ -30,6 +30,12 @@ pub fn bar(x: [u64; 4]) -> [u64; 4] {
     reduce_partial(x)
 }
 
+/// Vectorized version of [`bar`]
+#[inline(always)]
+pub fn barv<const N: usize>(x: [[u64; 4]; N]) -> [[u64; 4]; N] {
+    x.map(bar)
+}
+
 #[inline(always)]
 pub fn sbox(v: u8) -> u8 {
     (v ^ ((!v).rotate_left(1) & v.rotate_left(2) & v.rotate_left(3))).rotate_left(1)

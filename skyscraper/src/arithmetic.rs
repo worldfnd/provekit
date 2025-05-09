@@ -1,10 +1,15 @@
-use core::cmp::Ordering;
+use core::{array, cmp::Ordering};
 
 #[inline(always)]
 pub const fn add(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {
     let (r, carry) = overflowing_add(l, r);
     debug_assert!(!carry);
     r
+}
+
+#[inline(always)]
+pub fn addv<const N: usize>(l: [[u64; 4]; N], r: [[u64; 4]; N]) -> [[u64; 4]; N] {
+    array::from_fn(|i| add(l[i], r[i]))
 }
 
 #[inline(always)]

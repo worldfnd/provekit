@@ -54,6 +54,12 @@ pub fn reduce_partial_add_rc(x: [u64; 4], rc: usize) -> [u64; 4] {
     r
 }
 
+/// Vectorized version of [`reduce_partial_add_rc`]
+#[inline(always)]
+pub fn reduce_partial_add_rcv<const N: usize>(x: [[u64; 4]; N], rc: usize) -> [[u64; 4]; N] {
+    x.map(|x| reduce_partial_add_rc(x, rc))
+}
+
 #[cfg(test)]
 mod tests {
     use {
