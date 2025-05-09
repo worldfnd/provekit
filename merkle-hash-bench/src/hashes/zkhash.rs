@@ -52,7 +52,7 @@ impl SmolHasher for Poseidon2<FpBN256> {
 
 impl SmolHasher for Skyscraper<FpBN256, 1, 0, BN256Ext1> {
     fn hash_fn(&self) -> HashFn {
-        HashFn::Skyscraper(1)
+        HashFn::Skyscraper1(1)
     }
 
     fn implementation(&self) -> &str {

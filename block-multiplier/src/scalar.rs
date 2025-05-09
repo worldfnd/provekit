@@ -4,6 +4,10 @@ use crate::{
     utils::{addv, carrying_mul_add, reduce_ct},
 };
 
+/// Montgomery squaring in Bn254 scalar field.
+///
+/// Accepts input in range [0, 2P)
+/// Returns output in range [0, P)
 #[inline]
 pub fn scalar_sqr(a: [u64; 4]) -> [u64; 4] {
     // -- [SCALAR]
@@ -62,9 +66,7 @@ pub fn scalar_sqr(a: [u64; 4]) -> [u64; 4] {
     (mp[2], mp[3]) = carrying_mul_add(m, U64_P[2], mp[2], 0);
     (mp[3], mp[4]) = carrying_mul_add(m, U64_P[3], mp[3], 0);
 
-    let r = reduce_ct(subarray!(addv(s, mp), 1, 4));
-    // ---------------------------------------------------------------------------------------------
-    r
+    reduce_ct(subarray!(addv(s, mp), 1, 4))
 }
 
 #[inline]
@@ -135,9 +137,25 @@ mod tests {
     use {
         super::*,
         crate::constants,
+        ark_bn254::Fr,
+        ark_ff::{BigInt, Field, PrimeField},
         primitive_types::U256,
+        proptest::proptest,
         rand::{Rng, SeedableRng, rngs},
     };
+
+    #[test]
+    fn test_mul_field() {
+        let sigma = Fr::from(2).pow(&[256]).inverse().unwrap();
+        proptest!(|(l: [u64; 4], r: [u64; 4])| {
+            let fl = Fr::new(BigInt(l));
+            let fr = Fr::new(BigInt(r));
+            let fe = fl * fr * sigma;
+            let r = scalar_mul(l, r);
+            let fr = Fr::new(BigInt(r));
+            assert_eq!(fr, fe);
+        })
+    }
 
     const OUTPUT_MAX: [u64; 4] = [
         0x783c14d81ffffffe,

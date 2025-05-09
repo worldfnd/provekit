@@ -43,7 +43,10 @@ suspicious = "warn"
 missing_docs_in_private_items = { level = "allow", priority = 1 }
 
 [profile.release]
-debug = true # Generate symbol info for profiling
+debug = true      # Generate symbol info for profiling
+opt-level = 3
+codegen-units = 1
+lto = "fat"
 
 # Doing light optimizations helps test performance more than it hurts build time.
 [profile.test]
@@ -72,6 +75,8 @@ bincode = "1.3"
 postcard = { version = "1.1.1", features = ["use-std"] }
 zstd = "0.13.3"
 bytes = "1.10.1"
+proptest = "1.6.0"
+
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
@@ -91,6 +96,9 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
     "arkworks-algebra",
 ] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
+ark-bn254 = { version = "0.5.0", default-features = false, features = [
+    "scalar_field",
+] }
 zeroize = "1.8.1"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
