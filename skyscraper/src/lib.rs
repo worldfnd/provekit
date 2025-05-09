@@ -3,9 +3,7 @@
 #![feature(cold_path)]
 
 pub mod arithmetic;
-pub mod autotune;
 pub mod bar;
-pub mod block;
 pub mod block3;
 pub mod block4;
 pub mod constants;
