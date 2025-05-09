@@ -5,7 +5,7 @@ use {
         merkle_tree::{Config, IdentityDigestConverter},
         Error,
     },
-    rand::Rng,
+    rand08::Rng,
     serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{

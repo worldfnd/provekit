@@ -23,8 +23,6 @@ Generate the Noir Proof Scheme:
 cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json -o ./noir-proof-scheme.nps
 ```
 
-(Currently this doesn't write an output file)
-
 Generate the Noir Proof using the input Toml:
 
 ```sh
@@ -63,7 +61,7 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 Profile
 
 ```sh
-samply record -r 10000 -- ../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml
+samply record -r 10000 -- ./target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
 ```
 
 ## Components

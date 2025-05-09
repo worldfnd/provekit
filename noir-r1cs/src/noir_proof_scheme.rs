@@ -8,7 +8,7 @@ use {
     anyhow::{anyhow, ensure, Context as _, Result},
     ark_ff::Field as _,
     noirc_artifacts::program::ProgramArtifact,
-    rand::{thread_rng, Rng as _},
+    rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
     tracing::{info, instrument, span, Level},
@@ -141,14 +141,14 @@ impl NoirProofScheme {
 #[instrument(skip_all, fields(size = witness.len()))]
 fn fill_witness(witness: Vec<Option<FieldElement>>) -> Result<Vec<FieldElement>> {
     // TODO: Use better entropy source and proper sampling.
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let mut count = 0;
     let witness = witness
         .iter()
         .map(|f| {
             f.unwrap_or_else(|| {
                 count += 1;
-                FieldElement::from(rng.gen::<u128>())
+                FieldElement::from(rng.random::<u128>())
             })
         })
         .collect::<Vec<_>>();
