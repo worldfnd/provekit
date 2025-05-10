@@ -76,6 +76,7 @@ postcard = { version = "1.1.1", features = ["use-std"] }
 zstd = "0.13.3"
 bytes = "1.10.1"
 proptest = "1.6.0"
+zerocopy = "0.8.25"
 
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`

@@ -52,6 +52,47 @@ mod reduce {
 }
 
 #[divan::bench_group]
+mod pow {
+    use {super::*, skyscraper::pow::solve};
+
+    #[divan::bench]
+    fn bits_05(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|challenge| solve(challenge, 05.0))
+    }
+
+    #[divan::bench]
+    fn bits_10(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|challenge| solve(challenge, 10.0))
+    }
+
+    #[divan::bench]
+    fn bits_15(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|challenge| solve(challenge, 15.0))
+    }
+
+    #[divan::bench]
+    fn bits_20(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|challenge| solve(challenge, 20.0))
+    }
+
+    #[divan::bench]
+    #[ignore]
+    fn bits_25(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|challenge| solve(challenge, 25.0))
+    }
+}
+
+#[divan::bench_group]
 mod compress_many {
     use super::*;
 

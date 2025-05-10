@@ -13,9 +13,10 @@ block-multiplier = { path = "../block-multiplier" }
 fp-rounding = { path = "../fp-rounding" }
 ark-ff.workspace = true
 ark-bn254.workspace = true
-zerocopy = "0.8.25"
+zerocopy.workspace = true
 seq-macro = "0.3.6"
 proptest.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

@@ -26,6 +26,8 @@ postcard.workspace = true
 zstd.workspace = true
 bytes.workspace = true
 bytemuck.workspace = true
+skyscraper = { path = "../skyscraper" }
+zerocopy.workspace = true
 
 # Ark
 rand08 = { package = "rand", version = "0.8" }
