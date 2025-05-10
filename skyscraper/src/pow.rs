@@ -28,7 +28,7 @@ pub fn threshold(difficulty: f64) -> [u64; 4] {
 }
 
 pub fn verify(challenge: [u64; 4], difficulty: f64, nonce: u64) -> bool {
-    less_than(compress(challenge, [nonce, 0, 0, 0]), threshold(difficulty))
+    difficulty.is_zero() || less_than(compress(challenge, [nonce, 0, 0, 0]), threshold(difficulty))
 }
 
 /// Multi-threaded proof of work solver.
@@ -95,7 +95,8 @@ fn f64_parts(f: f64) -> (bool, i16, u64) {
 /// Convert a float to the nearest u256, clamping to zero and MAX.
 fn f64_to_u256(f: f64) -> [u64; 4] {
     let (sign, exp, significand) = f64_parts(f);
-    if sign || exp < 0 {
+    dbg!(exp, significand);
+    if sign {
         return [0; 4];
     }
     if exp > 256 {
@@ -118,11 +119,14 @@ fn f64_to_u256(f: f64) -> [u64; 4] {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, core::f64};
 
     #[test]
     fn test_f64_to_u256() {
         assert_eq!(f64_to_u256(0.0), [0; 4]);
+        assert_eq!(f64_to_u256(f64::MIN), [0; 4]);
+        assert_eq!(f64_to_u256(0.49), [0; 4]);
+        assert_eq!(f64_to_u256(0.50), [1, 0, 0, 0]);
         assert_eq!(f64_to_u256(1.0), [1, 0, 0, 0]);
         assert_eq!(f64_to_u256(2.0_f64.powi(128)), [0, 0, 1, 0]);
         assert_eq!(f64_to_u256(f64::INFINITY), [u64::MAX; 4]);
@@ -134,11 +138,11 @@ mod tests {
     }
 
     #[test]
-    fn test_solve_verify_pi() {
-        let challenge = [u64::MAX; 4];
-        let difficulty = core::f64::consts::PI;
-        let nonce = solve(challenge, difficulty);
-        assert!(verify(challenge, difficulty, nonce));
-        panic!();
+    fn test_solve_verify() {
+        for difficulty in [0.0_f64, f64::consts::PI] {
+            let challenge = [u64::MAX; 4];
+            let nonce = solve(challenge, difficulty);
+            assert!(verify(challenge, difficulty, nonce));
+        }
     }
 }
