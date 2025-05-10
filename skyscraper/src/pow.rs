@@ -95,7 +95,6 @@ fn f64_parts(f: f64) -> (bool, i16, u64) {
 /// Convert a float to the nearest u256, clamping to zero and MAX.
 fn f64_to_u256(f: f64) -> [u64; 4] {
     let (sign, exp, significand) = f64_parts(f);
-    dbg!(exp, significand);
     if sign {
         return [0; 4];
     }
