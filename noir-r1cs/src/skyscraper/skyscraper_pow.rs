@@ -3,13 +3,17 @@ use {
         skyscraper::skyscraper::{bigint_from_bytes_le, compress},
         utils::uint_to_field,
     },
+    ark_ff::PrimeField,
     ruint::{aliases::U256, uint},
+    skyscraper::{arithmetic::less_than, WIDTH_LCM},
     spongefish_pow::PowStrategy,
     std::{
+        array,
         sync::atomic::{AtomicU64, Ordering},
         u64,
     },
     whir::crypto::fields::Field256,
+    zerocopy::{transmute, transmute_ref, IntoBytes},
 };
 
 /// Skyscraper proof of work
@@ -127,21 +131,31 @@ impl PowStrategy for SkyscraperPoW {
     }
 
     fn solve(&mut self) -> Option<u64> {
-        let challenge = self.challenge;
-        let threshold = self.threshold;
+        const WIDTH: usize = skyscraper::WIDTH_LCM * 10;
+        let challenge = self.challenge.into_bigint().0;
+        let threshold = self.threshold.into_bigint().0;
+        let compress_many = skyscraper::block4::compress_many; // TODO: autotune
+
         let best = AtomicU64::new(u64::MAX);
         rayon::broadcast(|ctx| {
+            let mut input: [[[u64; 4]; 2]; WIDTH] = array::from_fn(|_| [challenge, [0; 4]]);
+            let mut hashes = [[0_u64; 4]; WIDTH];
+
             // Find the thread specific subset of nonces
-            for nonce in (ctx.index() as u64..).step_by(ctx.num_threads()) {
+            for nonce in (ctx.index() as u64..).step_by(ctx.num_threads() * WIDTH) {
                 // Stop if another thread found a solution
                 if nonce >= best.load(Ordering::Acquire) {
                     break;
                 }
-                // TODO: Use block functions to check multiple nonces at once
-                let fnonce = uint_to_field(U256::from(nonce));
-                if compress(challenge, fnonce) < threshold {
-                    best.fetch_min(nonce, Ordering::AcqRel);
-                    break;
+                for i in 0..WIDTH {
+                    input[i][1][0] = nonce + i as u64;
+                }
+                compress_many(input.as_bytes(), hashes.as_mut_bytes());
+                for i in 0..WIDTH {
+                    if less_than(hashes[i], threshold) {
+                        best.fetch_min(nonce + i as u64, Ordering::AcqRel);
+                        return;
+                    }
                 }
             }
         });
