@@ -16,6 +16,7 @@ ark-bn254.workspace = true
 zerocopy.workspace = true
 seq-macro = "0.3.6"
 proptest.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
