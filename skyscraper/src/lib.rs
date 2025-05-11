@@ -7,6 +7,7 @@ pub mod bar;
 pub mod block3;
 pub mod block4;
 pub mod constants;
+pub mod generic;
 pub mod pow;
 pub mod reduce;
 pub mod reference;
