@@ -4,7 +4,7 @@ use acir::{
     };
 use rand::Rng;
 
-use crate::compiler::{SpiceMemoryOperation, SpiceWitnesses};
+use crate::compiler::{DigitalDecompositionWitnesses, SpiceMemoryOperation, SpiceWitnesses};
 
 #[derive(Debug, Clone)]
 /// Indicates how to solve for an R1CS witness value in terms of earlier R1CS witness values and/or
@@ -44,6 +44,9 @@ pub enum WitnessBuilder {
     /// Builds the witnesses values required for the Spice memory model.
     /// (Note that some witness values are already solved for by the ACIR solver.)
     SpiceWitnesses(SpiceWitnesses),
+
+    //FIXME
+    DigitalDecomposition(DigitalDecompositionWitnesses),
 }
 
 impl WitnessBuilder {
@@ -60,6 +63,7 @@ impl WitnessBuilder {
             WitnessBuilder::LogUpDenominator(_, _, _, _, _) => 1,
             WitnessBuilder::MemOpMultisetFactor(_, _, _, _, _, _) => 1,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.num_witnesses,
+            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
         }
     }
 
@@ -76,6 +80,7 @@ impl WitnessBuilder {
             WitnessBuilder::LogUpDenominator(start_idx, _, _, _, _) => *start_idx,
             WitnessBuilder::MemOpMultisetFactor(start_idx, _, _, _, _, _) => *start_idx,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.first_witness_idx,
+            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.first_witness_idx,
         }
     }
 
@@ -171,8 +176,70 @@ impl WitnessBuilder {
                     witness[spice_witnesses.rt_final_start + i] = FieldElement::from(rt_final[i]);
                 }
             }
+            WitnessBuilder::DigitalDecomposition(dd_struct) => {
+                dd_struct.values.iter().enumerate().for_each(|(i, value_witness_idx)| {
+                    let value = witness[*value_witness_idx];
+                    let value_bits = field_to_bits(value);
+                    // Grab the bits of the element that we need for each digit, and turn them back into field elements.
+                    let mut start_bit = 0;
+                    for (digit_idx, digit_start_idx) in dd_struct.digit_start_indices.iter().enumerate() {
+                        let log_base = dd_struct.log_bases[digit_idx];
+                        let digit_bits = &value_bits[start_bit..start_bit + log_base];
+                        let digit_value = bits_to_field(digit_bits);
+                        witness[*digit_start_idx + i] = digit_value;
+                        start_bit += log_base;
+                    }
+                });
+            }
         }
     }
+}
+
+/// Decomposes a field element into its bits, in big-endian order.
+pub(crate) fn field_to_bits(value: FieldElement) -> Vec<bool> {
+    value
+        .to_be_bytes()
+        .iter()
+        .flat_map(|byte| (0..8).rev().map(move |i| (byte >> i) & 1 != 0))
+        .collect()
+}
+
+/// Given the binary representation of a field element in big-endian order, convert it to a field
+/// element. The input is padded to the next multiple of 8 bits.
+pub(crate) fn bits_to_field(bits: &[bool]) -> FieldElement {
+    let next_multiple_of_8 = bits.len().div_ceil(8) * 8;
+    let padding_amt = next_multiple_of_8 - bits.len();
+    let mut padded_bits = vec![false; next_multiple_of_8];
+    padded_bits[padding_amt..].copy_from_slice(bits);
+    let be_byte_vec: Vec<u8> = padded_bits
+        .chunks(8)
+        .map(|chunk_in_bits| {
+            chunk_in_bits
+                .iter()
+                .enumerate()
+                .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << (7 - i)))
+        })
+        .collect();
+    FieldElement::from_be_bytes_reduce(&be_byte_vec)
+}
+
+#[cfg(test)]
+fn test_field_to_bits() {
+    let value = FieldElement::from(5u32);
+    let bits = field_to_bits(value);
+    assert_eq!(bits.len(), 256);
+    assert_eq!(bits[0], false);
+    assert_eq!(bits[1], false);
+    assert_eq!(bits[253], true);
+    assert_eq!(bits[254], false);
+    assert_eq!(bits[255], true);
+}
+
+#[cfg(test)]
+fn test_bits_to_field() {
+    let bits = vec![false, false, true, false, true];
+    let value = bits_to_field(&bits);
+    assert_eq!(value.try_to_u32().unwrap(), 5);
 }
 
 /// Mock transcript. To be replaced.

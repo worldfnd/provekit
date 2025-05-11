@@ -3,13 +3,16 @@ use {
         r1cs_matrices::R1CSMatrices,
         solver::{MockTranscript, WitnessBuilder},
     }, acir::{
-        circuit::{opcodes::BlockType, Circuit, Opcode},
+        circuit::{opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum}, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     }, std::{
         collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, vec
     }
 };
+
+const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
+pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// a vector of [WitnessBuilder]s.
@@ -92,6 +95,10 @@ impl R1CS {
 
         // Read-only memory blocks (used for building the memory lookup constraints at the end)
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
+        // Mapping the log of the range size k to the vector of witness indices that
+        // are to be constrained within the range [0..2^k].
+        // These will be digitally decomposed into smaller ranges, if necessary.
+        let mut range_blocks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -185,9 +192,28 @@ impl R1CS {
                     block.operations.push(op);
                 }
 
-                // These are calls to built-in functions, for this we need to create.
-                Opcode::BlackBoxFuncCall(_) => {
-                    println!("BlackBoxFuncCall")
+                Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
+                    BlackBoxFuncCall::RANGE {
+                        input: function_input,
+                    } => {
+                        let input = function_input.input();
+                        let num_bits = function_input.num_bits();
+                        let input_witness = match input 
+                        {
+                            ConstantOrWitnessEnum::Constant(_) => {
+                                panic!("We should never be range-checking a constant value, as this should already be done by the noir-ACIR compiler");
+                            }
+                            ConstantOrWitnessEnum::Witness(witness) => {
+                                r1cs.fetch_r1cs_witness_index(witness)
+                            }
+                        };
+                        // Add the entry into the range blocks.
+                        range_blocks
+                            .entry(num_bits)
+                            .or_default()
+                            .push(input_witness);
+                    }
+                    _ => println!("BlackBoxFuncCall")
                 }
             }
         }
@@ -389,6 +415,14 @@ impl R1CS {
 
                 // TODO add the two range checks using all_mem_op_index_and_rt
 
+                // Question: do we need to include the final timestamps?
+                let read_timestamps = spice_witnesses.memory_operations.iter().map(|op| {
+                    match op {
+                        SpiceMemoryOperation::Load(_, _, rt_witness) => *rt_witness,
+                        SpiceMemoryOperation::Store(_, _, _, rt_witness) => *rt_witness,
+                    }
+                }).collect::<Vec<_>>();
+
                 // We want to establish that mem_op_index = max(mem_op_index, retrieved_timer)
                 // We do this via two separate range checks:
                 //  1. retrieved_timer in 0..2^K
@@ -402,6 +436,62 @@ impl R1CS {
                 // (in order for this to work, the compilation of the range checks must come after the compilation of the memory checking).
             }
         });
+
+        // ------------------------ Range checks ------------------------
+
+        // Do a pass through everything that needs to be range checked,
+        // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
+        // and creating a map `atomic_range_blocks` of each `num_bits` from 1 to the
+        // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of witness indices that are
+        // constrained to that range.
+
+        // Mapping the log of the range size k to the vector of witness indices that
+        // are to be constrained within the range [0..2^k].
+        // The witnesses of all small range op codes are added to this map, along with witnesses of
+        // digits for digital decompositions of larger range checks.
+        let mut atomic_range_blocks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
+
+        range_blocks
+            .into_iter()
+            .for_each(|(num_bits, values_to_lookup)| {
+                if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
+                    let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
+                    let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
+                    let mut log_bases = vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
+                    log_bases.push(logbase_of_remainder_digit as usize);
+                    let num_values = values_to_lookup.len();
+                    let dd_struct = DigitalDecompositionWitnesses::new(
+                            r1cs.num_witnesses(),
+                            log_bases.clone(),
+                            values_to_lookup,
+                    );
+                    r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
+                    // Add the constraints for the digital recomposition (TODO consider putting this in the witness builder)
+                    let digit_multipliers = DigitalDecompositionWitnesses::get_digit_multipliers(&log_bases);
+                    dd_struct.values.iter().enumerate().for_each(|(i, value)| {
+                        let mut recomp_summands = vec![];
+                        dd_struct.digit_start_indices.iter().zip(digit_multipliers.iter()).for_each(|(digit_start_index, digit_multiplier)| {
+                            let digit_witness = *digit_start_index + i;
+                            recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
+                        });
+                        r1cs.matrices.add_constraint(
+                            &[(FieldElement::one(), r1cs.witness_one())],
+                            &[(FieldElement::one(), *value)],
+                            &recomp_summands,
+                        );
+                    });
+
+                    // Add the digit witness indices to the atomic range blocks
+                    dd_struct.log_bases.iter().zip(dd_struct.digit_start_indices.iter()).for_each(|(log_base, digit_start_index)| {
+                        atomic_range_blocks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
+                    });
+                } else {
+                    atomic_range_blocks[num_bits as usize].push(values_to_lookup);
+                }
+            });
+
+        // TODO implement the range checks for each of the atomic ranges
+
         r1cs
     }
 
@@ -620,6 +710,7 @@ pub enum MemoryOperation {
     Store(usize, usize),
 }
 
+// FIXME where does this belong?
 #[derive(Debug, Clone)]
 pub(crate) struct SpiceWitnesses {
     pub memory_length: usize,
@@ -685,3 +776,46 @@ pub(crate) enum SpiceMemoryOperation {
     /// (R1CS witness index of address, R1CS index of old value, R1CS witness index of value to write, R1CS witness index of the read timestamp)
     Store(usize, usize, usize, usize),
 }
+
+#[derive(Debug, Clone)]
+pub(crate) struct DigitalDecompositionWitnesses {
+    /// The log base of each digit (in big-endian order)
+    pub log_bases: Vec<usize>,
+    /// Witness indices of the values to be decomposed
+    pub values: Vec<usize>,
+    /// Witness indices for the digits of the decomposition of each value (indexed by digital place).
+    pub digit_start_indices: Vec<usize>,
+    /// The index of the first witness written to
+    pub first_witness_idx: usize,
+    /// The number of witnesses written to
+    pub num_witnesses: usize,
+}
+
+impl DigitalDecompositionWitnesses {
+    pub fn new(next_witness_idx: usize, log_bases: Vec<usize>, values: Vec<usize>) -> Self {
+        let num_values = values.len();
+        let digital_decomp_length = log_bases.len();
+        let digit_start_indices = (0..digital_decomp_length)
+            .map(|i| next_witness_idx + i * num_values).collect::<Vec<_>>();
+        Self {
+            log_bases,
+            values,
+            digit_start_indices,
+            first_witness_idx: next_witness_idx,
+            num_witnesses: digital_decomp_length * num_values,
+        }
+    }
+
+    /// Returns the digit multipliers for the digital recomposition, in the same order as self.log_bases.
+    pub fn get_digit_multipliers(log_bases: &Vec<usize>) -> Vec<FieldElement> {
+        // Calculate the partial sums of log bases (in reverse)
+        let log_base_partial_sums_le = log_bases.iter().rev().scan(0, |acc, &x| {
+            let return_value = *acc;
+            *acc += x;
+            Some(return_value)
+        }).collect::<Vec<_>>();
+        // TODO careful with the u128 here!  what is the maximum range check size?
+        log_base_partial_sums_le.iter().rev().map(|x| FieldElement::from(1u128 << *x)).collect::<Vec<_>>()
+    }
+}
+

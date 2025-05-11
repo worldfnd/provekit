@@ -1,7 +1,9 @@
 #![doc = include_str!("../README.md")]
 mod compiler;
+//mod fs_compiler;
 mod r1cs_matrices;
 mod solver;
+//mod fs_solver;
 mod sparse_matrix;
 mod utils;
 #[cfg(test)]
