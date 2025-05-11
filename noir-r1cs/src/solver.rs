@@ -30,11 +30,22 @@ pub enum WitnessBuilder {
     /// (witness index, operand witness index a, operand witness index b)
     Product(usize, usize, usize),
     /// Solves for the number of times that each memory address occurs in read-only memory.
-    /// Arguments: (first witness index, memory size, vector of all address witness indices)
-    MemoryAccessCounts(usize, usize, Vec<usize>),
+    /// Arguments: (first witness index, range size, vector of all witness indices for values purported to be in the range)
+    MultiplicitiesForRange(usize, usize, Vec<usize>),
     /// For solving for the denominator of an indexed lookup.
     /// Fields are (witness index, sz_challenge, (index_coeff, index), rs_challenge, value).
-    LogUpDenominator(usize, usize, (FieldElement, usize), usize, usize),
+    IndexedLogUpDenominator(usize, usize, (FieldElement, usize), usize, usize),
+    /// For solving for the denominator of a lookup (non-indexed).
+    /// Field are (witness index, sz_challenge, (value_coeff, value)).
+    LogUpDenominator(usize, usize, (FieldElement, usize)),
+    /// Products with linear operations on the witness indices.
+    /// Fields are Product(witness_idx, (index, a, b), (index, c, d)) such that
+    /// we wish to compute (ax + b) * (cx + d).
+    ProductLinearOperation(
+        usize,
+        (usize, FieldElement, FieldElement),
+        (usize, FieldElement, FieldElement),
+    ),
     /// A factor of the multiset check used in read/write memory checking.
     /// Values: (witness index, sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness))
     /// where sz_challenge, rs_challenge, addr_witness, timer_witness are witness indices.
@@ -59,8 +70,10 @@ impl WitnessBuilder {
             WitnessBuilder::Inverse(_, _) => 1,
             WitnessBuilder::Sum(_, _) => 1,
             WitnessBuilder::Product(_, _, _) => 1,
-            WitnessBuilder::MemoryAccessCounts(_, memory_size, _) => *memory_size,
-            WitnessBuilder::LogUpDenominator(_, _, _, _, _) => 1,
+            WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
+            WitnessBuilder::IndexedLogUpDenominator(_, _, _, _, _) => 1,
+            WitnessBuilder::LogUpDenominator(_, _, _) => 1,
+            WitnessBuilder::ProductLinearOperation(_, _, _) => 1,
             WitnessBuilder::MemOpMultisetFactor(_, _, _, _, _, _) => 1,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.num_witnesses,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
@@ -76,8 +89,10 @@ impl WitnessBuilder {
             WitnessBuilder::Inverse(start_idx, _) => *start_idx,
             WitnessBuilder::Sum(start_idx, _) => *start_idx,
             WitnessBuilder::Product(start_idx, _, _) => *start_idx,
-            WitnessBuilder::MemoryAccessCounts(start_idx, _, _) => *start_idx,
-            WitnessBuilder::LogUpDenominator(start_idx, _, _, _, _) => *start_idx,
+            WitnessBuilder::MultiplicitiesForRange(start_idx, _, _) => *start_idx,
+            WitnessBuilder::IndexedLogUpDenominator(start_idx, _, _, _, _) => *start_idx,
+            WitnessBuilder::LogUpDenominator(start_idx, _, _) => *start_idx,
+            WitnessBuilder::ProductLinearOperation(start_idx, _, _) => *start_idx,
             WitnessBuilder::MemOpMultisetFactor(start_idx, _, _, _, _, _) => *start_idx,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.first_witness_idx,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.first_witness_idx,
@@ -124,20 +139,26 @@ impl WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b];
                 witness[*witness_idx] = a * b;
             }
-            WitnessBuilder::LogUpDenominator(witness_idx, sz_challenge, (index_coeff, index), rs_challenge, value) => {
+            WitnessBuilder::IndexedLogUpDenominator(witness_idx, sz_challenge, (index_coeff, index), rs_challenge, value) => {
                 let index = witness[*index];
                 let value = witness[*value];
                 let rs_challenge = witness[*rs_challenge];
                 let sz_challenge = witness[*sz_challenge];
                 witness[*witness_idx] = sz_challenge - (*index_coeff * index + rs_challenge * value);
             }
-            WitnessBuilder::MemoryAccessCounts(start_idx, memory_size, address_witnesses) => {
-                let mut memory_read_counts = vec![0u32; *memory_size];
-                for addr_witness_idx in address_witnesses {
-                    let addr = witness[*addr_witness_idx].try_to_u64().unwrap() as usize;
-                    memory_read_counts[addr] += 1;
+            WitnessBuilder::LogUpDenominator(witness_idx, sz_challenge, (value_coeff, value)) => {
+                witness[*witness_idx] = witness[*sz_challenge] - (*value_coeff * witness[*value]);
+            }
+            WitnessBuilder::ProductLinearOperation(witness_idx, (x, a, b), (y, c, d)) => {
+                witness[*witness_idx] = (*a * witness[*x] + *b) * (*c * witness[*y] + *d);
+            }
+            WitnessBuilder::MultiplicitiesForRange(start_idx, range_size, value_witnesses) => {
+                let mut multiplicities = vec![0u32; *range_size];
+                for value_witness_idx in value_witnesses {
+                    let value = witness[*value_witness_idx].try_to_u64().unwrap() as usize;
+                    multiplicities[value] += 1;
                 }
-                for (i, count) in memory_read_counts.iter().enumerate() {
+                for (i, count) in multiplicities.iter().enumerate() {
                     witness[start_idx + i] = FieldElement::from(*count);
                 }
             }

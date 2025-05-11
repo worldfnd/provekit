@@ -7,7 +7,7 @@ use {
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     }, std::{
-        collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, vec
+        collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, sync::atomic, vec
     }
 };
 
@@ -98,7 +98,7 @@ impl R1CS {
         // Mapping the log of the range size k to the vector of witness indices that
         // are to be constrained within the range [0..2^k].
         // These will be digitally decomposed into smaller ranges, if necessary.
-        let mut range_blocks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -208,7 +208,7 @@ impl R1CS {
                             }
                         };
                         // Add the entry into the range blocks.
-                        range_blocks
+                        range_checks
                             .entry(num_bits)
                             .or_default()
                             .push(input_witness);
@@ -233,7 +233,7 @@ impl R1CS {
                     })
                     .collect::<Vec<_>>();
                 let memory_length = block.initial_value_witnesses.len();
-                let wb = WitnessBuilder::MemoryAccessCounts(r1cs.num_witnesses(), memory_length, addr_witnesses);
+                let wb = WitnessBuilder::MultiplicitiesForRange(r1cs.num_witnesses(), memory_length, addr_witnesses);
                 let access_counts_first_witness = r1cs.add_witness_builder(wb);
 
                 // Add two verifier challenges for the lookup
@@ -449,9 +449,9 @@ impl R1CS {
         // are to be constrained within the range [0..2^k].
         // The witnesses of all small range op codes are added to this map, along with witnesses of
         // digits for digital decompositions of larger range checks.
-        let mut atomic_range_blocks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
+        let mut atomic_range_checks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
 
-        range_blocks
+        range_checks
             .into_iter()
             .for_each(|(num_bits, values_to_lookup)| {
                 if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
@@ -483,14 +483,32 @@ impl R1CS {
 
                     // Add the digit witness indices to the atomic range blocks
                     dd_struct.log_bases.iter().zip(dd_struct.digit_start_indices.iter()).for_each(|(log_base, digit_start_index)| {
-                        atomic_range_blocks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
+                        atomic_range_checks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
                     });
                 } else {
-                    atomic_range_blocks[num_bits as usize].push(values_to_lookup);
+                    atomic_range_checks[num_bits as usize].push(values_to_lookup);
                 }
             });
 
-        // TODO implement the range checks for each of the atomic ranges
+        // For each of the atomic range checks, add the range check constraints.
+        // Use logup if the range is large; otherwise use a naive range check.
+        atomic_range_checks
+            .iter()
+            .enumerate()
+            .for_each(|(num_bits, all_values_to_lookup)| {
+                let values_to_lookup = all_values_to_lookup
+                    .iter()
+                    .flat_map(|v| v.iter())
+                    .copied()
+                    .collect::<Vec<_>>();
+                if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
+                    r1cs.add_logup_summations(num_bits as u32, &values_to_lookup);
+                } else {
+                    values_to_lookup.iter().for_each(|value| {
+                        r1cs.add_naive_range_check(num_bits as u32, *value);
+                    })
+                }
+            });
 
         r1cs
     }
@@ -630,7 +648,7 @@ impl R1CS {
         index_witness: usize,
         value: usize,
     ) -> usize {
-        let wb = WitnessBuilder::LogUpDenominator(
+        let wb = WitnessBuilder::IndexedLogUpDenominator(
             self.num_witnesses(),
             sz_challenge,
             (index, index_witness),
@@ -654,6 +672,124 @@ impl R1CS {
             &[(FieldElement::one(), self.witness_one())],
         );
         inverse
+    }
+
+    // FIXME update name: is only for range checks as it stands
+    /// Helper function which computes all the terms of the summation for
+    /// each side (LHS and RHS) of the log-derivative multiset check.
+    ///
+    /// Checks that both sums (LHS and RHS) are equal at the end.
+    pub(crate) fn add_logup_summations(&mut self, num_bits: u32, values_to_lookup: &[usize]) {
+        // Add witnesses for the multiplicities
+        let wb = WitnessBuilder::MultiplicitiesForRange(self.num_witnesses(), 1 << num_bits, values_to_lookup.clone().into());
+        let multiplicities_first_witness = self.add_witness_builder(wb);
+        // Sample the Schwartz-Zippel challenge for the log derivative
+        // multiset check.
+        let sz_challenge = self.add_witness_builder(WitnessBuilder::Challenge(self.num_witnesses()));
+
+        // Compute all the terms in the summation for multiplicity/(X - table_value)
+        // for each table value.
+        let table_summands: Vec<usize> = (0..(1 << num_bits))
+            .map(|table_value| {
+                let table_denom = self.add_lookup_factor(
+                    sz_challenge,
+                    FieldElement::from(table_value),
+                    self.witness_one(),
+                );
+                let multiplicity_witness = multiplicities_first_witness + table_value;
+                self.add_product(table_denom, multiplicity_witness)
+            })
+            .collect();
+        let sum_for_table = self.add_sum(table_summands);
+        // Compute all the terms in the summation for 1/(X - witness_value) for each
+        // witness value.
+        let witness_summands: Vec<usize> = values_to_lookup
+            .iter()
+            .map(|value| self.add_lookup_factor(sz_challenge, FieldElement::one(), *value))
+            .collect();
+        let sum_for_witness = self.add_sum(witness_summands);
+        // Check that these two sums are equal.
+        self.matrices.add_constraint(
+            &[
+                (FieldElement::one(), sum_for_table),
+                (FieldElement::one().neg(), sum_for_witness),
+            ],
+            &[(FieldElement::one(), self.witness_one())],
+            &[(FieldElement::zero(), self.witness_one())],
+        );
+    }
+
+    /// Helper function that computes the LogUp denominator either for
+    /// the table values: (X - t_j), or for the witness values:
+    /// (X - w_i). Computes the inverse and also checks that this is
+    /// the appropriate inverse.
+    pub(crate) fn add_lookup_factor(
+        &mut self,
+        sz_challenge: usize,
+        value_coeff: FieldElement,
+        value_witness: usize,
+    ) -> usize {
+        let denom_wb = WitnessBuilder::LogUpDenominator(self.num_witnesses(), sz_challenge, (value_coeff, value_witness));
+        let denominator = self.add_witness_builder(denom_wb);
+        self.matrices.add_constraint(
+            &[
+                (FieldElement::one(), sz_challenge),
+                (FieldElement::one().neg() * value_coeff, value_witness),
+            ],
+            &[(FieldElement::one(), self.witness_one())],
+            &[(FieldElement::one(), denominator)],
+        );
+        let inverse = self.add_witness_builder(WitnessBuilder::Inverse(self.num_witnesses(), denominator));
+        self.matrices.add_constraint(
+            &[(FieldElement::one(), denominator)],
+            &[(FieldElement::one(), inverse)],
+            &[(FieldElement::one(), self.witness_one())],
+        );
+        inverse
+    }
+
+
+    /// A naive range check helper function, computing the
+    /// $\prod_{i = 0}^{range}(a - i) = 0$ to check whether a witness found at
+    /// `index_witness`, which is $a$, is in the $range$, which is `num_bits`.
+    pub(crate) fn add_naive_range_check(&mut self, num_bits: u32, index_witness: usize) {
+        let mut current_product_witness = index_witness;
+        (1..(1 << num_bits) - 1).for_each(|index: u32| {
+            let next_product_witness = self.add_witness_builder(WitnessBuilder::ProductLinearOperation(
+                self.num_witnesses(),
+                (
+                    current_product_witness,
+                    FieldElement::one(),
+                    FieldElement::zero(),
+                ),
+                (
+                    index_witness,
+                    FieldElement::one(),
+                    FieldElement::from(index).neg(),
+                ),
+            ));
+            self.matrices.add_constraint(
+                &[(FieldElement::one(), current_product_witness)],
+                &[
+                    (FieldElement::one(), index_witness),
+                    (FieldElement::from(index).neg(), self.witness_one()),
+                ],
+                &[(FieldElement::one(), next_product_witness)],
+            );
+            current_product_witness = next_product_witness;
+        });
+
+        self.matrices.add_constraint(
+            &[(FieldElement::one(), current_product_witness)],
+            &[
+                (FieldElement::one(), index_witness),
+                (
+                    FieldElement::from((1 << num_bits) - 1 as u32).neg(),
+                    self.witness_one(),
+                ),
+            ],
+            &[(FieldElement::zero(), self.witness_one())],
+        );
     }
 }
 
