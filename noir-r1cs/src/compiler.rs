@@ -413,27 +413,30 @@ impl R1CS {
                     &[(FieldElement::one(), ws_hash)],
                 );
 
-                // TODO add the two range checks using all_mem_op_index_and_rt
-
-                // Question: do we need to include the final timestamps?
-                let read_timestamps = spice_witnesses.memory_operations.iter().map(|op| {
-                    match op {
-                        SpiceMemoryOperation::Load(_, _, rt_witness) => *rt_witness,
-                        SpiceMemoryOperation::Store(_, _, _, rt_witness) => *rt_witness,
-                    }
-                }).collect::<Vec<_>>();
-
                 // We want to establish that mem_op_index = max(mem_op_index, retrieved_timer)
                 // We do this via two separate range checks:
                 //  1. retrieved_timer in 0..2^K
                 //  2. (mem_op_index - retrieved_time) in 0..2^K
                 // where K is minimal such that 2^K >= block.operations.len().
                 // TODO triple check the following:
-                // This is sound so long as 2^K is less than the characteristic of the field.
+                // The above range check is sound so long as 2^K is less than the characteristic of the field.
                 // (Note that range checks are being implemented only for powers of two).
-                
-                // When merging in Vishruti's code:
-                // (in order for this to work, the compilation of the range checks must come after the compilation of the memory checking).
+                let num_bits = block.operations.len().next_power_of_two().ilog2() as u32;
+                let range_check = range_checks.entry(num_bits).or_default();
+                all_mem_op_index_and_rt
+                    .iter()
+                    .for_each(|(mem_op_index, rt_witness)| {
+                        // Implementation note: we use an auxiliary witness to represent
+                        // mem_op_index - rt_witness, in order to interface with the range checking
+                        // code below.
+                        let difference_witness_idx = r1cs.add_witness_builder(WitnessBuilder::Difference(
+                            r1cs.num_witnesses(),
+                            *mem_op_index,
+                            *rt_witness,
+                        ));
+                        range_check.push(*rt_witness);
+                        range_check.push(difference_witness_idx);
+                    });
             }
         });
 

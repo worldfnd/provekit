@@ -29,6 +29,10 @@ pub enum WitnessBuilder {
     /// The product of the values at two specified witness indices
     /// (witness index, operand witness index a, operand witness index b)
     Product(usize, usize, usize),
+    /// The difference of the values at two specified witness indices
+    /// (witness index, operand witness index a, operand witness index b)
+    /// This is used in interfacing the RAM checking code with the range checking code.
+    Difference(usize, usize, usize),
     /// Solves for the number of times that each memory address occurs in read-only memory.
     /// Arguments: (first witness index, range size, vector of all witness indices for values purported to be in the range)
     MultiplicitiesForRange(usize, usize, Vec<usize>),
@@ -39,7 +43,7 @@ pub enum WitnessBuilder {
     /// Field are (witness index, sz_challenge, (value_coeff, value)).
     LogUpDenominator(usize, usize, (FieldElement, usize)),
     /// Products with linear operations on the witness indices.
-    /// Fields are Product(witness_idx, (index, a, b), (index, c, d)) such that
+    /// Fields are ProductLinearOperation(witness_idx, (index, a, b), (index, c, d)) such that
     /// we wish to compute (ax + b) * (cx + d).
     ProductLinearOperation(
         usize,
@@ -70,6 +74,7 @@ impl WitnessBuilder {
             WitnessBuilder::Inverse(_, _) => 1,
             WitnessBuilder::Sum(_, _) => 1,
             WitnessBuilder::Product(_, _, _) => 1,
+            WitnessBuilder::Difference(_, _, _) => 1,
             WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
             WitnessBuilder::IndexedLogUpDenominator(_, _, _, _, _) => 1,
             WitnessBuilder::LogUpDenominator(_, _, _) => 1,
@@ -89,6 +94,7 @@ impl WitnessBuilder {
             WitnessBuilder::Inverse(start_idx, _) => *start_idx,
             WitnessBuilder::Sum(start_idx, _) => *start_idx,
             WitnessBuilder::Product(start_idx, _, _) => *start_idx,
+            WitnessBuilder::Difference(start_idx, _, _) => *start_idx,
             WitnessBuilder::MultiplicitiesForRange(start_idx, _, _) => *start_idx,
             WitnessBuilder::IndexedLogUpDenominator(start_idx, _, _, _, _) => *start_idx,
             WitnessBuilder::LogUpDenominator(start_idx, _, _) => *start_idx,
@@ -138,6 +144,11 @@ impl WitnessBuilder {
                 let a: FieldElement = witness[*operand_idx_a];
                 let b: FieldElement = witness[*operand_idx_b];
                 witness[*witness_idx] = a * b;
+            }
+            WitnessBuilder::Difference(witness_idx, operand_idx_a, operand_idx_b) => {
+                let a: FieldElement = witness[*operand_idx_a];
+                let b: FieldElement = witness[*operand_idx_b];
+                witness[*witness_idx] = a - b;
             }
             WitnessBuilder::IndexedLogUpDenominator(witness_idx, sz_challenge, (index_coeff, index), rs_challenge, value) => {
                 let index = witness[*index];
