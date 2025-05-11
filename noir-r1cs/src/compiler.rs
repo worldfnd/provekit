@@ -779,7 +779,7 @@ pub(crate) enum SpiceMemoryOperation {
 
 #[derive(Debug, Clone)]
 pub(crate) struct DigitalDecompositionWitnesses {
-    /// The log base of each digit (in big-endian order)
+    /// The log base of each digit (in little-endian order)
     pub log_bases: Vec<usize>,
     /// Witness indices of the values to be decomposed
     pub values: Vec<usize>,
@@ -808,14 +808,15 @@ impl DigitalDecompositionWitnesses {
 
     /// Returns the digit multipliers for the digital recomposition, in the same order as self.log_bases.
     pub fn get_digit_multipliers(log_bases: &Vec<usize>) -> Vec<FieldElement> {
-        // Calculate the partial sums of log bases (in reverse)
-        let log_base_partial_sums_le = log_bases.iter().rev().scan(0, |acc, &x| {
+        // Calculate the partial sums of log bases
+        let log_base_partial_sums_le = log_bases.iter().scan(0, |acc, &x| {
             let return_value = *acc;
             *acc += x;
             Some(return_value)
         }).collect::<Vec<_>>();
         // TODO careful with the u128 here!  what is the maximum range check size?
-        log_base_partial_sums_le.iter().rev().map(|x| FieldElement::from(1u128 << *x)).collect::<Vec<_>>()
+        log_base_partial_sums_le.iter().map(|x| FieldElement::from(1u128 << *x)).collect::<Vec<_>>()
     }
 }
 
+// FIXME test get_digit_multipliers (perhaps should be re-factored?)
