@@ -2,22 +2,18 @@ use {
     crate::{
         arithmetic::add,
         bar::bar,
+        generic,
         reduce::{reduce, reduce_partial, reduce_partial_add_rc},
     },
     block_multiplier::scalar_sqr as square,
-    zerocopy::transmute,
 };
 
 pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {
-    assert_eq!(messages.len() % 64, 0);
-    assert_eq!(hashes.len() % 32, 0);
-    for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-        let message: [u8; 64] = message.try_into().unwrap();
-        let [l, r] = transmute!(message);
-        let h = compress(l, r);
-        let h: [u8; 32] = transmute!(h);
-        hash.copy_from_slice(h.as_slice());
-    }
+    generic::compress_many(
+        |input: [[[u64; 4]; 2]; 1]| [compress(input[0][0], input[0][1])],
+        messages,
+        hashes,
+    )
 }
 
 pub fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {

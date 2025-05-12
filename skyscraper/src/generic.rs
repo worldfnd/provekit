@@ -70,6 +70,9 @@ where
     best.load(Ordering::Acquire)
 }
 
+/// Skyscraper v2 compression function.
+///
+/// Requires an N-way squaring function.
 #[inline(always)]
 pub fn compress<F, const N: usize>(square: F, input: [[[u64; 4]; 2]; N]) -> [[u64; 4]; N]
 where
