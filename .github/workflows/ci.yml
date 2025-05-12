@@ -10,7 +10,7 @@ env:
 
 jobs:
   build_and_test:
-    name: Rust project - latest
+    name: Build and test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -34,8 +34,10 @@ jobs:
           RUSTDOCFLAGS: "--cfg doc_cfg -D warnings"
 
   benchmark:
-    name: Codspeed/Divan benchmark on Raspberry Pi 5
+    name: Benchmark on Raspberry Pi 5
     runs-on: [self-hosted, rpi5]
+    env:
+      DIVAN_MAX_TIME: 5
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and cargo-codspeed binary
