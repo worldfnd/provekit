@@ -15,29 +15,24 @@ pub fn compress_many<F, const N: usize>(compress: F, messages: &[u8], hashes: &m
 where
     F: Fn([[[u64; 4]; 2]; N]) -> [[u64; 4]; N],
 {
-    assert_eq!(messages.len() % 64, 0);
-    assert_eq!(hashes.len() % 32, 0);
-    assert_eq!(hashes.len() * 2, messages.len());
-    let count = hashes.len() / 32;
-    let tail = count % N;
-    let blocks = count - tail;
-    let (msg_blocks, msg_tail) = messages.split_at(blocks * 64);
-    let (hsh_blocks, hsh_tail) = hashes.split_at_mut(blocks * 32);
-    for (message, hash) in msg_blocks
-        .chunks_exact(64 * N)
-        .zip(hsh_blocks.chunks_exact_mut(32 * N))
-    {
-        let input = <[[[u64; 4]; 2]; N]>::read_from_bytes(message).unwrap();
-        let h = compress(input);
-        hash.copy_from_slice(h.as_bytes());
-    }
-    if tail > 0 {
-        let mut input = [[[0_u64; 4]; 2]; N];
-        for (i, msg) in msg_tail.chunks_exact(64).enumerate() {
-            input[i] = <[[u64; 4]; 2]>::read_from_bytes(msg).unwrap();
+    let messages =
+        <[[[u64; 4]; 2]]>::ref_from_bytes(messages).expect("Message length not a multiple of 64");
+    let hashes = <[[u64; 4]]>::mut_from_bytes(hashes).expect("Hashes length not a multiple of 32");
+    assert_eq!(
+        messages.len(),
+        hashes.len(),
+        "Messages and hashes length mismatch"
+    );
+    for (message, hash) in messages.chunks(N).zip(hashes.chunks_mut(N)) {
+        if message.len() == N {
+            let hashes = compress(message.try_into().unwrap());
+            hash.copy_from_slice(hashes.as_slice());
+        } else {
+            let mut input = [[[0_u64; 4]; 2]; N];
+            input[..message.len()].copy_from_slice(message);
+            let output = compress(input);
+            hash.copy_from_slice(&output[..message.len()]);
         }
-        let h = compress(input);
-        hsh_tail.copy_from_slice(&h.as_bytes()[..tail * 32]);
     }
 }
 
