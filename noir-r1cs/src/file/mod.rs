@@ -13,7 +13,7 @@ use {
     crate::{noir_proof_scheme::NoirProof, NoirProofScheme},
     anyhow::Result,
     serde::{Deserialize, Serialize},
-    std::{ffi::OsStr, path::PathBuf},
+    std::{ffi::OsStr, path::Path},
     tracing::instrument,
 };
 
@@ -38,7 +38,7 @@ impl FileFormat for NoirProof {
 
 /// Write a file with format determined from extension.
 #[instrument(skip(value))]
-pub fn write<T: FileFormat>(value: &T, path: &PathBuf) -> Result<()> {
+pub fn write<T: FileFormat>(value: &T, path: &Path) -> Result<()> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => write_json(value, path),
         Some(ext) if ext == T::EXTENSION => write_bin(value, path, T::FORMAT, T::VERSION),
@@ -51,7 +51,7 @@ pub fn write<T: FileFormat>(value: &T, path: &PathBuf) -> Result<()> {
 
 /// Read a file with format determined from extension.
 #[instrument()]
-pub fn read<T: FileFormat>(path: &PathBuf) -> Result<T> {
+pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => read_json(path),
         Some(ext) if ext == T::EXTENSION => read_bin(path, T::FORMAT, T::VERSION),
