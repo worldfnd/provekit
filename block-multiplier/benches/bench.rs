@@ -1,20 +1,20 @@
 #![feature(portable_simd)]
 
 use {
-    core::{array, hint::black_box, simd::u64x2},
-    divan::{Bencher, counter::ItemsCount},
+    core::{array, simd::u64x2},
+    divan::Bencher,
     fp_rounding::with_rounding_mode,
     rand::{Rng, rng},
 };
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod mul {
     use super::*;
 
     #[divan::bench]
     fn scalar_mul(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(1usize))
+            //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b)| block_multiplier::scalar_mul(a, b));
     }
@@ -23,7 +23,7 @@ mod mul {
     fn ark_ff(bencher: Bencher) {
         use {ark_bn254::Fr, ark_ff::BigInt};
         bencher
-            .counter(ItemsCount::new(1usize))
+            //.counter(ItemsCount::new(1usize))
             .with_inputs(|| {
                 (
                     Fr::new(BigInt(rng().random())),
@@ -36,7 +36,7 @@ mod mul {
     #[divan::bench]
     fn simd_mul(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(2usize))
+            //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| block_multiplier::simd_mul(a, b, c, d));
     }
@@ -44,7 +44,7 @@ mod mul {
     #[divan::bench]
     fn block_mul(bencher: Bencher) {
         let bencher = bencher
-            .counter(ItemsCount::new(3usize))
+            //.counter(ItemsCount::new(3usize))
             .with_inputs(|| rng().random());
         unsafe {
             with_rounding_mode((), |guard, _| {
@@ -57,14 +57,16 @@ mod mul {
 
     #[divan::bench]
     fn montgomery_interleaved_3(bencher: Bencher) {
-        let bencher = bencher.counter(ItemsCount::new(3usize)).with_inputs(|| {
-            (
-                rng().random(),
-                rng().random(),
-                array::from_fn(|_| u64x2::from_array(rng().random())),
-                array::from_fn(|_| u64x2::from_array(rng().random())),
-            )
-        });
+        let bencher = bencher
+            //.counter(ItemsCount::new(3usize))
+            .with_inputs(|| {
+                (
+                    rng().random(),
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
         unsafe {
             with_rounding_mode((), |mode_guard, _| {
                 bencher.bench_local_values(|(a, b, c, d)| {
@@ -76,16 +78,18 @@ mod mul {
 
     #[divan::bench]
     fn montgomery_interleaved_4(bencher: Bencher) {
-        let bencher = bencher.counter(ItemsCount::new(4usize)).with_inputs(|| {
-            (
-                rng().random(),
-                rng().random(),
-                rng().random(),
-                rng().random(),
-                array::from_fn(|_| u64x2::from_array(rng().random())),
-                array::from_fn(|_| u64x2::from_array(rng().random())),
-            )
-        });
+        let bencher = bencher
+            //.counter(ItemsCount::new(4usize))
+            .with_inputs(|| {
+                (
+                    rng().random(),
+                    rng().random(),
+                    rng().random(),
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
         unsafe {
             with_rounding_mode((), |mode_guard, _| {
                 bencher.bench_local_values(|(a, b, c, d, e, f)| {
@@ -96,14 +100,14 @@ mod mul {
     }
 }
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod sqr {
     use {super::*, ark_ff::Field};
 
     #[divan::bench]
     fn scalar_sqr(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(1usize))
+            //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
             .bench_local_values(block_multiplier::scalar_sqr);
     }
@@ -112,7 +116,7 @@ mod sqr {
     fn ark_ff(bencher: Bencher) {
         use {ark_bn254::Fr, ark_ff::BigInt};
         bencher
-            .counter(ItemsCount::new(1usize))
+            //.counter(ItemsCount::new(1usize))
             .with_inputs(|| Fr::new(BigInt(rng().random())))
             .bench_local_values(|a: Fr| a.square());
     }
@@ -120,7 +124,7 @@ mod sqr {
     #[divan::bench]
     fn simd_sqr(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(2usize))
+            //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b)| block_multiplier::simd_sqr(a, b));
     }
@@ -128,7 +132,7 @@ mod sqr {
     #[divan::bench]
     fn block_sqr(bencher: Bencher) {
         let bencher = bencher
-            .counter(ItemsCount::new(3usize))
+            //.counter(ItemsCount::new(3usize))
             .with_inputs(|| rng().random());
         unsafe {
             with_rounding_mode((), |guard, _| {

@@ -1,11 +1,11 @@
 use {
     core::hint::black_box,
-    divan::{counter::ItemsCount, Bencher},
+    divan::Bencher,
     rand::{rng, Rng},
     std::array,
 };
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod reduce {
     use super::*;
 
@@ -51,7 +51,7 @@ mod reduce {
     }
 }
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod pow {
     use {super::*, skyscraper::pow::solve};
 
@@ -92,7 +92,7 @@ mod pow {
     }
 }
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod compress_many {
     use super::*;
 
@@ -103,9 +103,11 @@ mod compress_many {
         let mut rng = rng();
         let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
         let mut hashes = vec![0_u8; SIZE * 32];
-        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
-            skyscraper::reference::compress_many(black_box(&messages), black_box(&mut hashes));
-        });
+        bencher
+            //.counter(ItemsCount::new(SIZE))
+            .bench_local(|| {
+                skyscraper::reference::compress_many(black_box(&messages), black_box(&mut hashes));
+            });
     }
 
     #[divan::bench]
@@ -113,15 +115,17 @@ mod compress_many {
         let mut rng = rng();
         let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
         let mut hashes = vec![0_u8; SIZE * 32];
-        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
-            skyscraper::simple::compress_many(black_box(&messages), black_box(&mut hashes));
-        });
+        bencher
+            //.counter(ItemsCount::new(SIZE))
+            .bench_local(|| {
+                skyscraper::simple::compress_many(black_box(&messages), black_box(&mut hashes));
+            });
     }
 
     #[divan::bench]
     fn block3(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(SIZE))
+            //.counter(ItemsCount::new(SIZE))
             .with_inputs(|| {
                 (
                     (0..(SIZE * 64))
@@ -138,7 +142,7 @@ mod compress_many {
     #[divan::bench]
     fn block4(bencher: Bencher) {
         bencher
-            .counter(ItemsCount::new(SIZE))
+            //.counter(ItemsCount::new(SIZE))
             .with_inputs(|| {
                 (
                     (0..(SIZE * 64))
@@ -157,13 +161,15 @@ mod compress_many {
         let mut rng = rng();
         let messages: Vec<u8> = (0..(SIZE * 64)).map(|_| rng.random()).collect();
         let mut hashes = vec![0_u8; SIZE * 32];
-        bencher.counter(ItemsCount::new(SIZE)).bench_local(|| {
-            skyscraper::v1::compress_many(black_box(&messages), black_box(&mut hashes));
-        });
+        bencher
+            //.counter(ItemsCount::new(SIZE))
+            .bench_local(|| {
+                skyscraper::v1::compress_many(black_box(&messages), black_box(&mut hashes));
+            });
     }
 }
 
-#[divan::bench_group]
+// #[divan::bench_group]
 mod parts {
     use super::*;
 
