@@ -37,7 +37,7 @@ jobs:
     name: Benchmark on Raspberry Pi 5
     runs-on: [self-hosted, rpi5]
     env:
-      DIVAN_MAX_TIME: 5
+      DIVAN_MAX_TIME: 30
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and cargo-codspeed binary
