@@ -1,12 +1,16 @@
 use {
     crate::{
-        arithmetic::addv,
+        arithmetic::{addv, less_than},
         bar::barv,
         reduce::{reduce, reduce_partial, reduce_partial_add_rcv},
     },
-    zerocopy::{transmute, FromBytes, IntoBytes},
+    std::sync::atomic::{AtomicU64, Ordering},
+    zerocopy::{FromBytes, IntoBytes},
 };
 
+/// Generic single-threaded batch compression.
+///
+/// Requires an N-way two-to-one hash function `compress`.
 pub fn compress_many<F, const N: usize>(compress: F, messages: &[u8], hashes: &mut [u8])
 where
     F: Fn([[[u64; 4]; 2]; N]) -> [[u64; 4]; N],
@@ -30,12 +34,45 @@ where
     if tail > 0 {
         let mut input = [[[0_u64; 4]; 2]; N];
         for (i, msg) in msg_tail.chunks_exact(64).enumerate() {
-            let msg: [u8; 64] = msg.try_into().unwrap();
-            input[i] = transmute!(msg);
+            input[i] = <[[u64; 4]; 2]>::read_from_bytes(msg).unwrap();
         }
         let h = compress(input);
         hsh_tail.copy_from_slice(&h.as_bytes()[..tail * 32]);
     }
+}
+
+/// Generic multi-threaded proof of work solver.
+///
+/// Requires an N-way two-to-one hash function `compress`.
+pub fn solve<F, const N: usize>(compress_many: F, challenge: [u64; 4], threshold: [u64; 4]) -> u64
+where
+    F: Fn(&[u8], &mut [u8]) + Send + Sync,
+{
+    let best = AtomicU64::new(u64::MAX);
+    rayon::broadcast(|ctx| {
+        let mut input = [[challenge, [0; 4]]; N];
+        let mut hashes = [[0; 4]; N];
+        for nonce in (0..)
+            .step_by(N)
+            .skip(ctx.index())
+            .step_by(ctx.num_threads())
+        {
+            if nonce > best.load(Ordering::Acquire) {
+                return;
+            }
+            for (i, input) in input.iter_mut().enumerate() {
+                input[1][0] = nonce + i as u64;
+            }
+            compress_many(input.as_bytes(), hashes.as_mut_bytes());
+            for (i, hash) in hashes.into_iter().enumerate() {
+                if less_than(hash, threshold) {
+                    best.fetch_min(nonce + i as u64, Ordering::AcqRel);
+                    return;
+                }
+            }
+        }
+    });
+    best.load(Ordering::Acquire)
 }
 
 #[inline(always)]
