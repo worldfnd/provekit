@@ -1,12 +1,6 @@
 use {
-    crate::{arithmetic::less_than, simple::compress, WIDTH_LCM},
+    crate::{arithmetic::less_than, block4::compress_many, generic, simple::compress, WIDTH_LCM},
     ark_ff::Zero,
-    core::{
-        array,
-        sync::atomic::{AtomicU64, Ordering},
-    },
-    rayon,
-    zerocopy::IntoBytes as _,
 };
 
 const PROVER_BIAS: f64 = 0.01;
@@ -37,40 +31,11 @@ pub fn verify(challenge: [u64; 4], difficulty: f64, nonce: u64) -> bool {
 /// threshold is higher than the verifier threshold and there are not rounding
 /// issues affecting completeness.
 pub fn solve(challenge: [u64; 4], difficulty: f64) -> u64 {
-    const WIDTH: usize = WIDTH_LCM * 10;
     if difficulty.is_zero() {
         return 0;
     }
     let threshold = threshold(difficulty + PROVER_BIAS);
-    let compress_many = crate::block4::compress_many; // TODO: autotune
-    let best = AtomicU64::new(u64::MAX);
-    rayon::broadcast(|ctx| {
-        let mut input: [[[u64; 4]; 2]; WIDTH] = array::from_fn(|_| [challenge, [0; 4]]);
-        let mut hashes = [[0_u64; 4]; WIDTH];
-
-        // Find the thread specific subset of nonces
-        for nonce in (0..)
-            .step_by(WIDTH)
-            .skip(ctx.index())
-            .step_by(ctx.num_threads())
-        {
-            // Stop if another thread found a better solution
-            if nonce > best.load(Ordering::Acquire) {
-                return;
-            }
-            for i in 0..WIDTH {
-                input[i][1][0] = nonce + i as u64;
-            }
-            compress_many(input.as_bytes(), hashes.as_mut_bytes());
-            for i in 0..WIDTH {
-                if less_than(hashes[i], threshold) {
-                    best.fetch_min(nonce + i as u64, Ordering::AcqRel);
-                    return;
-                }
-            }
-        }
-    });
-    let nonce = best.load(Ordering::Acquire);
+    let nonce = generic::solve::<_, { WIDTH_LCM * 10 }>(compress_many, challenge, threshold);
     debug_assert!(verify(challenge, difficulty, nonce));
     nonce
 }

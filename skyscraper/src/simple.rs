@@ -1,46 +1,16 @@
-use {
-    crate::{
-        arithmetic::add,
-        bar::bar,
-        reduce::{reduce, reduce_partial, reduce_partial_add_rc},
-    },
-    block_multiplier::scalar_sqr as square,
-    zerocopy::transmute,
-};
+use {crate::generic, block_multiplier::scalar_sqr as square};
 
 pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {
-    assert_eq!(messages.len() % 64, 0);
-    assert_eq!(hashes.len() % 32, 0);
-    for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-        let message: [u8; 64] = message.try_into().unwrap();
-        let [l, r] = transmute!(message);
-        let h = compress(l, r);
-        let h: [u8; 32] = transmute!(h);
-        hash.copy_from_slice(h.as_slice());
-    }
+    generic::compress_many(
+        |input| generic::compress(|x| [square(x[0])], input),
+        messages,
+        hashes,
+    )
 }
 
+#[inline(always)]
 pub fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4] {
-    let (l, r) = (reduce_partial(l), reduce_partial(r));
-    let t = l;
-    let (l, r) = (reduce_partial(add(r, square(l))), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 1), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 2), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 3), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 4), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 5), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 6), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 7), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 8), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 9), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 10), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, bar(l)), 11), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 12), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 13), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 14), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 15), l);
-    let (l, r) = (reduce_partial_add_rc(add(r, square(l)), 16), l);
-    reduce(add(add(r, square(l)), t))
+    generic::compress(|x| [square(x[0])], [[l, r]])[0]
 }
 
 #[cfg(test)]
