@@ -33,9 +33,9 @@ jobs:
           cache-base: main
           components: rustfmt, clippy
           bins: cargo-codspeed
-      - uses: actions-rust-lang/clippy-check@v1
+      - uses: clechasseur/rs-clippy-check@23f6dcf86d7e4e0d98b000bba0bb81ac587c44aa # v4.0.2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
       - run: cargo fmt --all --check
       - run: cargo build --all-targets --all-features --verbose
       - run: cargo test --all-targets --all-features --verbose
