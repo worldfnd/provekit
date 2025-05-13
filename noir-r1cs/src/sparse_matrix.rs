@@ -180,15 +180,3 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
         result
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sparse_matrix() {
-        let rows = 100;
-        let cols = 100;
-        let mut matrix = SparseMatrix::new(rows, cols);
-    }
-}

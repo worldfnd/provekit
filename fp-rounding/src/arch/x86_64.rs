@@ -3,19 +3,13 @@
 //! Floating point rounding mode control for x86_64 architecture.
 //!
 //! See <https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html> Volume 1, Chapter 10.
-use {
-    crate::RoundingDirection,
-    core::{
-        arch::asm,
-        sync::atomic::{fence, Ordering},
-    },
-};
+use {crate::RoundingDirection, core::arch::asm};
 
 const SHIFT: u32 = 13;
 const BIT_MASK: u32 = 0b11 << SHIFT;
 
 #[must_use]
-fn from_bits(bits: u64) -> RoundingDirection {
+fn from_bits(bits: u32) -> RoundingDirection {
     match (bits & BIT_MASK) >> SHIFT {
         0b00 => RoundingDirection::Nearest,
         0b01 => RoundingDirection::Positive,
@@ -26,7 +20,7 @@ fn from_bits(bits: u64) -> RoundingDirection {
 }
 
 #[must_use]
-const fn to_bits(mode: RoundingDirection) -> u64 {
+const fn to_bits(mode: RoundingDirection) -> u32 {
     match mode {
         RoundingDirection::Nearest => 0b00 << SHIFT,
         RoundingDirection::Positive => 0b01 << SHIFT,
@@ -36,7 +30,7 @@ const fn to_bits(mode: RoundingDirection) -> u64 {
 }
 
 pub fn read_rounding_mode() -> RoundingDirection {
-    let mut mxcsr: u32;
+    let mut mxcsr = 0_u32;
     unsafe {
         asm!(
             "stmxcsr [{ptr}]", // Store MXCSR register value into memory.
@@ -49,7 +43,7 @@ pub fn read_rounding_mode() -> RoundingDirection {
 
 pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
     // Update the rounding mode bits in the FPCR register
-    let mut mxcsr: u32;
+    let mut mxcsr = 0_u32;
     unsafe {
         asm!(
             "stmxcsr [{ptr}]", // Store MXCSR register value into memory.
@@ -57,12 +51,30 @@ pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
             options(nostack, preserves_flags)
         );
     }
-    mxcsr = (mxcsr & !Self::BIT_MASK) | self.to_bits();
+    mxcsr = (mxcsr & !BIT_MASK) | to_bits(mode);
     unsafe {
         asm!(
-            "ldmxcsr [{}]", // Load MXCSR from memory into register.
+            "ldmxcsr [{ptr}]", // Load MXCSR from memory into register.
             ptr = in(reg) &mxcsr,
             options(nostack, preserves_flags)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::test_rounding_mode};
+
+    #[test]
+    fn test_read_write() {
+        use RoundingDirection::*;
+        assert_eq!(read_rounding_mode(), RoundingDirection::Nearest);
+        for mode in [Negative, Positive, Zero, Nearest] {
+            unsafe {
+                write_rounding_mode(mode);
+            }
+            assert_eq!(read_rounding_mode(), mode);
+            test_rounding_mode(mode);
+        }
     }
 }

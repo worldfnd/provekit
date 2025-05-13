@@ -56,39 +56,17 @@ mod pow {
     use {super::*, skyscraper::pow::solve};
 
     #[divan::bench]
-    fn bits_05(bencher: Bencher) {
-        bencher
-            .with_inputs(|| rng().random())
-            .bench_local_values(|challenge| solve(challenge, 05.0))
-    }
-
-    #[divan::bench]
-    fn bits_10(bencher: Bencher) {
-        bencher
-            .with_inputs(|| rng().random())
-            .bench_local_values(|challenge| solve(challenge, 10.0))
-    }
-
-    #[divan::bench]
-    fn bits_15(bencher: Bencher) {
-        bencher
-            .with_inputs(|| rng().random())
-            .bench_local_values(|challenge| solve(challenge, 15.0))
-    }
-
-    #[divan::bench]
-    fn bits_20(bencher: Bencher) {
-        bencher
-            .with_inputs(|| rng().random())
-            .bench_local_values(|challenge| solve(challenge, 20.0))
+    fn bits_20_fixed(bencher: Bencher) {
+        let challenge = [0x0123456789abcdef; 4];
+        bencher.bench_local(|| solve(black_box(challenge), 20.0))
     }
 
     #[divan::bench]
     #[ignore]
-    fn bits_25(bencher: Bencher) {
+    fn bits_20(bencher: Bencher) {
         bencher
             .with_inputs(|| rng().random())
-            .bench_local_values(|challenge| solve(challenge, 25.0))
+            .bench_local_values(|challenge| solve(challenge, 20.0))
     }
 }
 
