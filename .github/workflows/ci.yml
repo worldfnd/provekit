@@ -8,6 +8,14 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# When a new job is pushed on a PR, cancel the old one.
+concurrency:
+  group: >
+    ${{ github.event_name == 'pull_request'
+        && format('pr-{0}', github.event.pull_request.number)
+        || format('push-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_and_test:
     name: Build and test
