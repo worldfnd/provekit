@@ -15,7 +15,7 @@ const SHIFT: u32 = 13;
 const BIT_MASK: u32 = 0b11 << SHIFT;
 
 #[must_use]
-fn from_bits(bits: u64) -> RoundingDirection {
+fn from_bits(bits: u32) -> RoundingDirection {
     match (bits & BIT_MASK) >> SHIFT {
         0b00 => RoundingDirection::Nearest,
         0b01 => RoundingDirection::Positive,
@@ -26,7 +26,7 @@ fn from_bits(bits: u64) -> RoundingDirection {
 }
 
 #[must_use]
-const fn to_bits(mode: RoundingDirection) -> u64 {
+const fn to_bits(mode: RoundingDirection) -> u32 {
     match mode {
         RoundingDirection::Nearest => 0b00 << SHIFT,
         RoundingDirection::Positive => 0b01 << SHIFT,
@@ -57,12 +57,30 @@ pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
             options(nostack, preserves_flags)
         );
     }
-    mxcsr = (mxcsr & !Self::BIT_MASK) | self.to_bits();
+    mxcsr = (mxcsr & !BIT_MASK) | to_bits(mode);
     unsafe {
         asm!(
             "ldmxcsr [{}]", // Load MXCSR from memory into register.
             ptr = in(reg) &mxcsr,
             options(nostack, preserves_flags)
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::test_rounding_mode};
+
+    #[test]
+    fn test_read_write() {
+        use RoundingDirection::*;
+        assert_eq!(read_rounding_mode(), RoundingDirection::Nearest);
+        for mode in [Negative, Positive, Zero, Nearest] {
+            unsafe {
+                write_rounding_mode(mode);
+            }
+            assert_eq!(read_rounding_mode(), mode);
+            test_rounding_mode(mode);
+        }
     }
 }
