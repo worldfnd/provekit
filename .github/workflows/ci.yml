@@ -52,6 +52,7 @@ jobs:
     runs-on: [self-hosted, rpi5]
     env:
       DIVAN_MAX_TIME: 30
+      CODSPEED_RUNNER_MODE: walltime
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and cargo-codspeed binary
@@ -66,5 +67,4 @@ jobs:
         uses: CodSpeedHQ/action@v3
         with:
           run: cargo codspeed run
-          mode: walltime
           token: ${{ secrets.CODSPEED_TOKEN }}
