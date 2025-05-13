@@ -36,7 +36,7 @@ const fn to_bits(mode: RoundingDirection) -> u32 {
 }
 
 pub fn read_rounding_mode() -> RoundingDirection {
-    let mut mxcsr: u32;
+    let mut mxcsr = 0_u32;
     unsafe {
         asm!(
             "stmxcsr [{ptr}]", // Store MXCSR register value into memory.
@@ -49,7 +49,7 @@ pub fn read_rounding_mode() -> RoundingDirection {
 
 pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
     // Update the rounding mode bits in the FPCR register
-    let mut mxcsr: u32;
+    let mut mxcsr = 0_u32;
     unsafe {
         asm!(
             "stmxcsr [{ptr}]", // Store MXCSR register value into memory.
