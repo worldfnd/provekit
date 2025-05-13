@@ -55,11 +55,11 @@ fn main(
     // TODO(ryancao): Is this not supposed to be public???
     dg1_offset_in_e_content: u32,
     // ------------- DSC pubkey verification against H(SOD) + "stuff" -------------
-    // dsc_pubkey: [u8; 256],
-    // dsc_pubkey_redc_param: [u8; 257],
-    // sod_signature: [u8; 256],
+    dsc_pubkey: [u8; 256],
+    dsc_pubkey_redc_param: [u8; 257],
+    sod_signature: [u8; 256],
     // pubkey_offset_in_tbs: u32,
-    // dsc_exponent: u32,
+    dsc_exponent: u32,
     // // ------------- CSC pubkey verification against DSC -------------
     // // There is an assumed CSC registry. In particular, it should be a Merkle
     // // tree where the leaves are (registry_id, cert_type, country, csc_pubkey) tuples.
@@ -98,18 +98,18 @@ fn main(
         dg1_offset_in_e_content,
     );
 
-    // // --- DSC signature check ---
-    // // The first thing checks that the appropriate substring of the `tbs_certificate` is equivalent to the `dsc_pubkey`
+    // --- DSC signature check ---
+    // The first thing checks that the appropriate substring of the `tbs_certificate` is equivalent to the `dsc_pubkey`
     // verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate, pubkey_offset_in_tbs);
     // // The second thing asserts verify_sign(message=signed_attributes, sign=sod_signature, pubkey=dsc_pubkey)
-    // assert(verify_signature::<256, 0, 200, 32>(
-    //     dsc_pubkey,
-    //     sod_signature, // Technically this is the signature of `data_to_sign` and not strictly the SOD
-    //     dsc_pubkey_redc_param,
-    //     dsc_exponent,
-    //     signed_attributes, // This is `data_to_sign`
-    //     signed_attributes_size,
-    // ));
+    assert(verify_signature::<256, 0, 200, 32>(
+        dsc_pubkey,
+        sod_signature, // Technically this is the signature of `data_to_sign` and not strictly the SOD
+        dsc_pubkey_redc_param,
+        dsc_exponent,
+        signed_attributes, // This is `data_to_sign`
+        signed_attributes_size,
+    ));
 
     // // Check the signature over the DSC
     // // Uses SHA-256 with a message size of 700 and a prime of 2048 bits,
