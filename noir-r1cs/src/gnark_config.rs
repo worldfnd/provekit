@@ -1,12 +1,10 @@
 use {
     crate::{
-        skyscraper::SkyscraperSponge,
         whir_r1cs::{IOPattern, WhirConfig},
         FieldElement,
     },
     ark_poly::EvaluationDomain,
     serde::{Deserialize, Serialize},
-    spongefish::ProverState,
     std::{fs::File, io::Write as _},
     tracing::instrument,
 };

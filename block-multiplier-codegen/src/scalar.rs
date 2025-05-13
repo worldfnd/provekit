@@ -119,11 +119,11 @@ pub fn madd_u256_limb(
     let mut carry;
     // First multiplication is outside of the loop as it doesn't have the second
     // carry add to add the carry of a previous multiplication
-    let tmp = widening_mul(alloc, asm, &a[0], &b);
+    let tmp = widening_mul(alloc, asm, &a[0], b);
     [t[0], carry] = carry_add(alloc, asm, &tmp, &t[0]);
 
     for i in 1..a.len() {
-        let tmp = widening_mul(alloc, asm, &a[i], &b);
+        let tmp = widening_mul(alloc, asm, &a[i], b);
         let tmp = carry_add(alloc, asm, &tmp, &carry);
         [t[i], carry] = carry_add(alloc, asm, &tmp, &t[i]);
     }
@@ -148,10 +148,10 @@ pub fn madd_u256_limb_truncate(
     a: &[Reg<u64>; 4],
     b: &Reg<u64>,
 ) -> [Reg<u64>; 4] {
-    let tmp = widening_mul(alloc, asm, &a[0], &b);
+    let tmp = widening_mul(alloc, asm, &a[0], b);
     let mut carry = carry_cmn(asm, tmp, &t[0]);
     for i in 1..a.len() {
-        let tmp = widening_mul(alloc, asm, &a[i], &b);
+        let tmp = widening_mul(alloc, asm, &a[i], b);
         let tmp = carry_add(alloc, asm, &tmp, &carry);
         [t[i], carry] = carry_add(alloc, asm, &tmp, &t[i]);
     }

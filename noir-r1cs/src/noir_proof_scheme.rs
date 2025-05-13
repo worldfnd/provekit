@@ -61,7 +61,7 @@ impl NoirProofScheme {
         );
 
         // Compile to R1CS schemes
-        let (r1cs, witness_map) = noir_to_r1cs(&main)?;
+        let (r1cs, witness_map) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.constraints,
@@ -72,7 +72,7 @@ impl NoirProofScheme {
         );
 
         // Configure witness generator
-        let witness_generator = NoirWitnessGenerator::new(&program, witness_map, r1cs.witnesses);
+        let witness_generator = NoirWitnessGenerator::new(program, witness_map, r1cs.witnesses);
 
         // Configure Whir
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
@@ -84,7 +84,8 @@ impl NoirProofScheme {
         })
     }
 
-    pub fn size(&self) -> (usize, usize) {
+    #[must_use]
+    pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.constraints, self.r1cs.witnesses)
     }
 

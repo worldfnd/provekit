@@ -20,7 +20,7 @@ pub fn generate_standalone_asm(
     let formatted_instructions: String = instructions
         .iter()
         // tab instructions by two spaces
-        .map(|instruction| format!("  {}", instruction))
+        .map(|instruction| format!("  {instruction}"))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -38,7 +38,7 @@ pub fn generate_standalone_asm(
 pub fn format_instructions_rust_inline(instructions: &[Instruction<HardwareRegister>]) -> String {
     instructions
         .iter()
-        .map(|instruction| format!("\"{}\"", instruction))
+        .map(|instruction| format!("\"{instruction}\""))
         .collect::<Vec<_>>()
         .join(",\n")
 }
@@ -77,7 +77,7 @@ pub fn generate_rust_includable_asm(
     let formatted_instructions: String = instructions
         .iter()
         // tab instructions by two spaces
-        .map(|instruction| format!("  {}", instruction))
+        .map(|instruction| format!("  {instruction}"))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -177,7 +177,7 @@ fn get_clobber_registers(
 fn format_clobbers(clobbered_registers: &[TypedHardwareRegister]) -> String {
     clobbered_registers
         .iter()
-        .map(|register| format!("lateout(\"{}\") _", register))
+        .map(|register| format!("lateout(\"{register}\") _"))
         .collect::<Vec<_>>()
         .join(", ")
 }

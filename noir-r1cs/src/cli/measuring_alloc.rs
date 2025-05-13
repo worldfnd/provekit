@@ -51,6 +51,6 @@ unsafe impl GlobalAlloc for MeasuringAllocator {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.current.fetch_sub(layout.size(), Ordering::SeqCst);
-        SystemAlloc.dealloc(ptr, layout)
+        SystemAlloc.dealloc(ptr, layout);
     }
 }

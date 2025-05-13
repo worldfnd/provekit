@@ -162,8 +162,7 @@ impl WhirR1CSScheme {
         let mut statement_verifier =
             StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
         for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier
-                .add_constraint(VerifierWeights::linear(self.m, None), claimed_sum.clone());
+            statement_verifier.add_constraint(VerifierWeights::linear(self.m, None), *claimed_sum);
         }
 
         let data_from_sumcheck_verifier =
@@ -376,13 +375,13 @@ pub fn run_whir_pcs_verifier(
     proof: &WhirProof,
     statement_verifier: &StatementVerifier,
 ) -> Result<()> {
-    let commitment_reader = CommitmentReader::new(&params);
-    let verifier = Verifier::new(&params);
+    let commitment_reader = CommitmentReader::new(params);
+    let verifier = Verifier::new(params);
     // let verifier = Verifier::new(&params);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
     verifier
-        .verify(arthur, &parsed_commitment, &statement_verifier, &proof)
+        .verify(arthur, &parsed_commitment, statement_verifier, proof)
         .context("while verifying WHIR")?;
 
     Ok(())
@@ -393,6 +392,6 @@ pub fn create_io_pattern(m_0: usize, whir_params: &WhirConfig) -> IOPattern {
     IOPattern::new("🌪️")
         .add_rand(m_0)
         .add_sumcheck_polynomials(m_0)
-        .commit_statement(&whir_params)
-        .add_whir_proof(&whir_params)
+        .commit_statement(whir_params)
+        .add_whir_proof(whir_params)
 }

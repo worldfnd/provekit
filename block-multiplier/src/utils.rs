@@ -160,7 +160,7 @@ pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     // Select values based on the mask: if mask lane is true, use zeros, else use
     // U52_2P
     let zeros = [Simd::splat(0); 5];
-    let twop = U52_2P.map(|pi| Simd::splat(pi));
+    let twop = U52_2P.map(Simd::splat);
     let b: [_; 5] = array::from_fn(|i| mask.select(zeros[i], twop[i]));
 
     let mut c = [Simd::splat(0); 5];
@@ -185,7 +185,7 @@ pub fn sub<const N: usize>(a: [u64; N], b: [u64; N]) -> [u64; N] {
     let mut borrow: i128 = 0;
     let mut c = [0; N];
     for i in 0..N {
-        let tmp = a[i] as i128 - b[i] as i128 + borrow as i128;
+        let tmp = a[i] as i128 - b[i] as i128 + borrow;
         c[i] = tmp as u64;
         borrow = tmp >> 64
     }

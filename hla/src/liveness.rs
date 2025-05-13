@@ -147,5 +147,5 @@ fn print_instructions<R: Display>(instructions: &[Instruction<R>]) {
     instructions
         .iter()
         .enumerate()
-        .for_each(|(line, inst)| println!("{line}: {}", inst));
+        .for_each(|(line, inst)| println!("{line}: {inst}"));
 }

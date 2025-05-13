@@ -11,7 +11,7 @@ use {
 };
 
 /// Generate input compatible with gnark.
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "generate-gnark-inputs")]
 pub struct Args {
     /// path to the compiled Noir program

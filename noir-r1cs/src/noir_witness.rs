@@ -26,7 +26,7 @@ pub struct NoirWitnessGenerator {
     abi: Abi,
 
     /// ACIR witness index to R1CS witness index
-    /// Index zero is reserved for constant one, so we can use NonZeroU32
+    /// Index zero is reserved for constant one, so we can use `NonZeroU32`
     witness_map: Vec<Option<NonZeroU32>>,
 }
 
@@ -65,7 +65,7 @@ impl NoirWitnessGenerator {
         let mut inputs = Vec::with_capacity(num_inputs);
 
         // Encode to vector of field elements base on Abi type info.
-        for param in self.abi.parameters.iter() {
+        for param in &self.abi.parameters {
             let value = input
                 .remove(&param.name)
                 .ok_or_else(|| anyhow!("Missing input {}", &param.name))?
@@ -89,7 +89,7 @@ impl PartialEq for NoirWitnessGenerator {
 }
 
 /// Recursively encode Noir ABI input to a witness vector
-/// See [noirc_abi::Abi::encode] for the Noir ABI specification.
+/// See [`noirc_abi::Abi::encode`] for the Noir ABI specification.
 fn encode_input(
     input: &mut Vec<FieldElement>,
     value: InputValue,
