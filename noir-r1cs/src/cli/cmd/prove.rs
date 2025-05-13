@@ -8,7 +8,7 @@ use {
 };
 
 /// Prove a prepared Noir program
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
     /// path to the compiled Noir program

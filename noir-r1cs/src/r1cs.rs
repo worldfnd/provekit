@@ -8,7 +8,7 @@ use {
 };
 
 /// Represents a R1CS constraint system.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CS {
     pub public_inputs: usize,
     pub witnesses:     usize,
@@ -19,7 +19,14 @@ pub struct R1CS {
     pub c:             SparseMatrix,
 }
 
+impl Default for R1CS {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl R1CS {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             public_inputs: 0,
@@ -32,15 +39,18 @@ impl R1CS {
         }
     }
 
-    pub fn a(&self) -> HydratedSparseMatrix<'_> {
+    #[must_use]
+    pub const fn a(&self) -> HydratedSparseMatrix<'_> {
         self.a.hydrate(&self.interner)
     }
 
-    pub fn b(&self) -> HydratedSparseMatrix<'_> {
+    #[must_use]
+    pub const fn b(&self) -> HydratedSparseMatrix<'_> {
         self.b.hydrate(&self.interner)
     }
 
-    pub fn c(&self) -> HydratedSparseMatrix<'_> {
+    #[must_use]
+    pub const fn c(&self) -> HydratedSparseMatrix<'_> {
         self.c.hydrate(&self.interner)
     }
 
@@ -67,13 +77,13 @@ impl R1CS {
         self.b.grow(self.constraints, self.witnesses);
         self.c.grow(self.constraints, self.witnesses);
         for (c, col) in a.iter().copied() {
-            self.a.set(row, col, self.interner.intern(c))
+            self.a.set(row, col, self.interner.intern(c));
         }
         for (c, col) in b.iter().copied() {
-            self.b.set(row, col, self.interner.intern(c))
+            self.b.set(row, col, self.interner.intern(c));
         }
         for (c, col) in c.iter().copied() {
-            self.c.set(row, col, self.interner.intern(c))
+            self.c.set(row, col, self.interner.intern(c));
         }
     }
 
@@ -91,9 +101,9 @@ impl R1CS {
         // Solve constraints in order
         // (this is how Noir expects it to be done, judging from ACVM)
         for row in 0..self.constraints {
-            let a = sparse_dot(self.a().iter_row(row), &witness);
-            let b = sparse_dot(self.b().iter_row(row), &witness);
-            let c = sparse_dot(self.c().iter_row(row), &witness);
+            let a = sparse_dot(self.a().iter_row(row), witness);
+            let b = sparse_dot(self.b().iter_row(row), witness);
+            let c = sparse_dot(self.c().iter_row(row), witness);
             let (val, mat) = match (a, b, c) {
                 (Some(a), Some(b), Some(c)) => {
                     ensure!(a * b == c, "Constraint {row} failed");
@@ -106,7 +116,7 @@ impl R1CS {
                     bail!("Can not solve constraint {row}.")
                 }
             };
-            let Some((col, val)) = solve_dot(mat.iter_row(row), &witness, val) else {
+            let Some((col, val)) = solve_dot(mat.iter_row(row), witness, val) else {
                 bail!("Could not solve constraint {row}.")
             };
             witness[col] = Some(val);

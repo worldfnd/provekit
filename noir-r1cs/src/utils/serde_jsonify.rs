@@ -11,7 +11,7 @@ where
     if serializer.is_human_readable() {
         T::serialize(obj, serializer)
     } else {
-        let json = serde_json::to_string(obj).map_err(|e| S::Error::custom(e))?;
+        let json = serde_json::to_string(obj).map_err(S::Error::custom)?;
         serializer.serialize_str(&json)
     }
 }
@@ -25,6 +25,6 @@ where
         T::deserialize(deserializer)
     } else {
         let json: &str = <&str>::deserialize(deserializer)?;
-        serde_json::from_str(json).map_err(|e| D::Error::custom(e))
+        serde_json::from_str(json).map_err(D::Error::custom)
     }
 }

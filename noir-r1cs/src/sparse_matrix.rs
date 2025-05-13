@@ -8,7 +8,7 @@ use {
     },
 };
 /// A sparse matrix with interned field elements
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseMatrix {
     /// The number of rows in the matrix.
     pub rows: usize,
@@ -27,7 +27,7 @@ pub struct SparseMatrix {
 }
 
 /// A hydrated sparse matrix with uninterned field elements
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HydratedSparseMatrix<'a> {
     matrix:   &'a SparseMatrix,
     interner: &'a Interner,
@@ -44,14 +44,14 @@ impl SparseMatrix {
         }
     }
 
-    pub fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
+    pub const fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
         HydratedSparseMatrix {
             matrix: self,
             interner,
         }
     }
 
-    pub fn num_entries(&self) -> usize {
+    pub const fn num_entries(&self) -> usize {
         self.values.len()
     }
 
@@ -98,7 +98,7 @@ impl SparseMatrix {
     ) -> impl Iterator<Item = (usize, InternedFieldElement)> + use<'_> {
         let row_range = self.row_range(row);
         let cols = self.col_indices[row_range.clone()].iter().copied();
-        let values = self.values[row_range.clone()].iter().copied();
+        let values = self.values[row_range].iter().copied();
         cols.zip(values).map(|(col, value)| (col as usize, value))
     }
 
@@ -115,13 +115,12 @@ impl SparseMatrix {
         let end = self
             .row_indices
             .get(row + 1)
-            .map(|&v| v as usize)
-            .unwrap_or(self.values.len());
+            .map_or(self.values.len(), |&v| v as usize);
         start..end
     }
 }
 
-impl<'a> HydratedSparseMatrix<'a> {
+impl HydratedSparseMatrix<'_> {
     /// Iterate over the non-default entries of a row of the matrix.
     pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, FieldElement)> + use<'_> {
         self.matrix.iter_row(row).map(|(col, value)| {
@@ -156,7 +155,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
         );
         let mut result = vec![FieldElement::zero(); self.matrix.rows];
         for ((i, j), value) in self.iter() {
-            result[i] += value * &rhs[j];
+            result[i] += value * rhs[j];
         }
         result
     }
@@ -175,7 +174,7 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
         );
         let mut result = vec![FieldElement::zero(); rhs.matrix.cols];
         for ((i, j), value) in rhs.iter() {
-            result[j] += value * &self[i];
+            result[j] += value * self[i];
         }
         result
     }

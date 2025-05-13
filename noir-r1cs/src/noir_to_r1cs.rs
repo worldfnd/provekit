@@ -40,8 +40,8 @@ impl NoirToR1CSCompiler {
         // Convert witness map to vector
         let len = self
             .witness_map
-            .iter()
-            .map(|(i, _)| *i)
+            .keys()
+            .copied()
             .max()
             .map_or_else(|| 0, |i| i + 1);
         let mut map = vec![None; len];
@@ -52,11 +52,11 @@ impl NoirToR1CSCompiler {
     }
 
     /// Index of the constant one witness
-    pub fn witness_one(&self) -> usize {
+    pub const fn witness_one(&self) -> usize {
         self.witness_one
     }
 
-    /// Map ACIR Witnesses to r1cs_witness indices
+    /// Map ACIR Witnesses to `r1cs_witness` indices
     pub fn map_witness(&mut self, witness: Witness) -> usize {
         self.witness_map
             .get(&witness.as_usize())
@@ -77,7 +77,7 @@ impl NoirToR1CSCompiler {
         let mut a: Vec<(FieldElement, usize)> = vec![];
         let mut b: Vec<(FieldElement, usize)> = vec![];
 
-        if expr.mul_terms.len() >= 1 {
+        if !expr.mul_terms.is_empty() {
             // Process all except the last multiplication term
             linear = expr
                 .mul_terms
@@ -119,7 +119,7 @@ impl NoirToR1CSCompiler {
     }
 
     pub fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<()> {
-        for opcode in circuit.opcodes.iter() {
+        for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_assert_zero(expr),
 

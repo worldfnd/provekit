@@ -36,11 +36,11 @@ impl Command for Args {
 impl Command for Commands {
     fn run(&self) -> Result<()> {
         match self {
-            Commands::Prepare(args) => args.run(),
-            Commands::Prove(args) => args.run(),
-            Commands::CircuitStats(args) => args.run(),
-            Commands::Verify(args) => args.run(),
-            Commands::GenerateGnarkInputs(args) => args.run(),
+            Self::Prepare(args) => args.run(),
+            Self::Prove(args) => args.run(),
+            Self::CircuitStats(args) => args.run(),
+            Self::Verify(args) => args.run(),
+            Self::GenerateGnarkInputs(args) => args.run(),
         }
     }
 }

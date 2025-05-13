@@ -295,8 +295,7 @@ impl RegisterMapping {
         match self.mapping.get(&fresh.reg) {
             Some(reg) => fresh.into_hardware(reg.reg()),
             None => panic!(
-                "Internal error: {:?} has not been assigned yet. This should not be possible.",
-                fresh
+                "Internal error: {fresh:?} has not been assigned yet. This should not be possible."
             ),
         }
     }

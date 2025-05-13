@@ -39,7 +39,7 @@ const SIGMA: Field256 = uint_to_field(uint!(
     9915499612839321149637521777990102151350674507940716049588462388200839649614_U256
 ));
 
-fn sbox(v: u8) -> u8 {
+const fn sbox(v: u8) -> u8 {
     (v ^ ((!v).rotate_left(1) & v.rotate_left(2) & v.rotate_left(3))).rotate_left(1)
 }
 

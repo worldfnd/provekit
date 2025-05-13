@@ -1,6 +1,6 @@
 use bytes::Buf;
 
-/// Helper trait for [bytes::Buf]
+/// Helper trait for [`bytes::Buf`]
 pub trait BufExt {
     fn get_bytes<const N: usize>(&mut self) -> [u8; N];
 }

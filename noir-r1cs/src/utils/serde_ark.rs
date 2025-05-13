@@ -16,7 +16,7 @@ where
     // Convert to bytes
     let mut buf = Vec::with_capacity(obj.compressed_size());
     obj.serialize_compressed(&mut buf)
-        .map_err(|e| S::Error::custom(format!("Failed to serialize: {}", e)))?;
+        .map_err(|e| S::Error::custom(format!("Failed to serialize: {e}")))?;
 
     // Write bytes
     if serializer.is_human_readable() {
@@ -38,8 +38,7 @@ where
     // Read bytes
     let bytes = if deserializer.is_human_readable() {
         let hex = String::deserialize(deserializer)?;
-        hex::decode(hex)
-            .map_err(|e| D::Error::custom(format!("while deserializing bytes: {}", e)))?
+        hex::decode(hex).map_err(|e| D::Error::custom(format!("while deserializing bytes: {e}")))?
     } else {
         <Vec<u8>>::deserialize(deserializer)?
     };
@@ -47,10 +46,10 @@ where
     // Convert to object
     let mut reader = &*bytes;
     let obj = T::deserialize_compressed(&mut reader)
-        .map_err(|e| D::Error::custom(format!("while deserializing: {}", e)))?;
-    if reader.len() != 0 {
-        Err(D::Error::custom("while deserializing: trailing bytes"))
-    } else {
+        .map_err(|e| D::Error::custom(format!("while deserializing: {e}")))?;
+    if reader.is_empty() {
         Ok(obj)
+    } else {
+        Err(D::Error::custom("while deserializing: trailing bytes"))
     }
 }

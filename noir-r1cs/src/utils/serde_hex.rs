@@ -11,7 +11,7 @@ where
         let hex = hex::encode(obj);
         serializer.serialize_str(&hex)
     } else {
-        serializer.serialize_bytes(&obj)
+        serializer.serialize_bytes(obj)
     }
 }
 
@@ -21,7 +21,7 @@ where
 {
     if deserializer.is_human_readable() {
         let hex: String = <String>::deserialize(deserializer)?;
-        hex::decode(hex).map_err(|e| D::Error::custom(e))
+        hex::decode(hex).map_err(D::Error::custom)
     } else {
         <Vec<u8>>::deserialize(deserializer)
     }

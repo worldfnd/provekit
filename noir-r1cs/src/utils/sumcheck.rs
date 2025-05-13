@@ -103,7 +103,7 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-/// Trait which is used to add sumcheck functionality fo IOPattern
+/// Trait which is used to add sumcheck functionality fo `IOPattern`
 pub trait SumcheckIOPattern {
     /// Prover sends coefficients of the qubic sumcheck polynomial and the
     /// verifier sends randomness for the next sumcheck round
@@ -198,7 +198,7 @@ pub fn calculate_external_row_of_r1cs_matrices(
     alpha: &Vec<FieldElement>,
     r1cs: &R1CS,
 ) -> [Vec<FieldElement>; 3] {
-    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha);
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
     let eq_alpha = &eq_alpha[..r1cs.constraints];
     let ((a, b), c) = rayon::join(
         || rayon::join(|| eq_alpha * r1cs.a(), || eq_alpha * r1cs.b()),

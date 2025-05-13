@@ -34,8 +34,8 @@ pub fn load_const_simd(
     val: u64,
 ) -> Reg<Simd<u64, 2>> {
     let val = load_const(alloc, asm, val);
-    let mask = dup2d(alloc, asm, &val);
-    mask
+
+    dup2d(alloc, asm, &val)
 }
 
 pub fn load_tuple(

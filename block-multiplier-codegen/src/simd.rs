@@ -150,10 +150,10 @@ fn u256_to_u260_shl2(
     let shifted_ol3 = usra2d(alloc, asm, shifted_l3, &l2, 26);
 
     [
-        and16(alloc, asm, &shifted_ol0, &mask52),
-        and16(alloc, asm, &shifted_ol1, &mask52),
-        and16(alloc, asm, &shifted_ol2, &mask52),
-        and16(alloc, asm, &shifted_ol3, &mask52),
+        and16(alloc, asm, &shifted_ol0, mask52),
+        and16(alloc, asm, &shifted_ol1, mask52),
+        and16(alloc, asm, &shifted_ol2, mask52),
+        and16(alloc, asm, &shifted_ol3, mask52),
         last,
     ]
 }
@@ -183,7 +183,7 @@ fn make_initials(alloc: &mut FreshAllocator, asm: &mut Assembler) -> [Reg<Simd<u
 
         let j = 10 - 1 - i;
 
-        let upper_val = make_initial(i + 5 * (1 - heaviside(j as isize - 9)), i + 1 + 5 * 1);
+        let upper_val = make_initial(i + 5 * (1 - heaviside(j as isize - 9)), i + 1 + 5);
         let upper_val = mov(alloc, asm, upper_val);
         t[j] = dup2d(alloc, asm, &upper_val);
     }
@@ -214,7 +214,7 @@ fn widening_mul_u256(
             let lc1 = mov16b(alloc, asm, c1);
 
             let hi = fmla2d(alloc, asm, lc1.into_(), &a[i], &b[j]);
-            let tmp = fsub2d(alloc, asm, &c2.as_(), &hi);
+            let tmp = fsub2d(alloc, asm, c2.as_(), &hi);
             let lo = fmla2d(alloc, asm, tmp, &a[i], &b[j]);
 
             t[i + j + 1] = add2d(alloc, asm, &t[i + j + 1], &hi.into_());
@@ -249,7 +249,7 @@ pub fn madd_u256_limb(
         // No measurable difference in loading the vector v completely outside or per
         // element inside the load
         let vs = load_floating_simd(alloc, asm, v[i] as f64);
-        let lc1 = mov16b(alloc, asm, &c1);
+        let lc1 = mov16b(alloc, asm, c1);
 
         let hi = fmla2d(alloc, asm, lc1.into_(), &s, &vs);
         let tmp = fsub2d(alloc, asm, c2.as_(), &hi);
@@ -314,8 +314,8 @@ fn montgomery(
     // Could be replaced with fmul, but the rust compiler generates something close
     // to this
     let u52_np0 = load_const(alloc, asm, U52_NP0);
-    let s00 = umov(alloc, asm, &s[0]._d0());
-    let s01 = umov(alloc, asm, &s[0]._d1());
+    let s00 = umov(alloc, asm, s[0]._d0());
+    let s01 = umov(alloc, asm, s[0]._d1());
     let m0 = mul(alloc, asm, &s00, &u52_np0);
     let m1 = mul(alloc, asm, &s01, &u52_np0);
 
@@ -379,9 +379,9 @@ fn reduce(
     let mut prev = prev.as_();
 
     for i in 0..c.len() {
-        let tmp = sub2d(alloc, asm, minuend[i].as_(), &subtrahend[i].as_());
+        let tmp = sub2d(alloc, asm, minuend[i].as_(), subtrahend[i].as_());
         // tmp + (prev >> 52)
-        let tmp_plus_borrow = ssra2d(alloc, asm, tmp, &prev, 52);
+        let tmp_plus_borrow = ssra2d(alloc, asm, tmp, prev, 52);
         c[i] = tmp_plus_borrow;
         prev = &c[i];
     }

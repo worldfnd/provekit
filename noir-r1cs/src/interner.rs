@@ -3,17 +3,23 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Interner {
     #[serde(with = "serde_ark")]
     values: Vec<FieldElement>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InternedFieldElement(usize);
 
+impl Default for Interner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Interner {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { values: Vec::new() }
     }
 
