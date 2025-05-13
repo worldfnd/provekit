@@ -11,7 +11,7 @@ env:
 jobs:
   build_and_test:
     name: Build and test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-arm
     strategy:
       matrix:
         toolchain:
