@@ -3,13 +3,7 @@
 //! Floating point rounding mode control for x86_64 architecture.
 //!
 //! See <https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html> Volume 1, Chapter 10.
-use {
-    crate::RoundingDirection,
-    core::{
-        arch::asm,
-        sync::atomic::{fence, Ordering},
-    },
-};
+use {crate::RoundingDirection, core::arch::asm};
 
 const SHIFT: u32 = 13;
 const BIT_MASK: u32 = 0b11 << SHIFT;
@@ -60,7 +54,7 @@ pub unsafe fn write_rounding_mode(mode: RoundingDirection) {
     mxcsr = (mxcsr & !BIT_MASK) | to_bits(mode);
     unsafe {
         asm!(
-            "ldmxcsr [{}]", // Load MXCSR from memory into register.
+            "ldmxcsr [{ptr}]", // Load MXCSR from memory into register.
             ptr = in(reg) &mxcsr,
             options(nostack, preserves_flags)
         );
