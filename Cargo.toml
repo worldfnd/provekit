@@ -72,6 +72,15 @@ bytes = "1.10.1"
 proptest = "1.6.0"
 zerocopy = "0.8.25"
 
+# Workspace members
+block-multiplier = { path = "block-multiplier" }
+block-multiplier-codegen = { path = "block-multiplier-codegen" }
+fp-rounding = { path = "fp-rounding" }
+hla = { path = "hla" }
+merkle-hash-bench = { path = "merkle-hash-bench" }
+noir-r1cs = { path = "noir-r1cs" }
+skyscraper = { path = "skyscraper" }
+
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
