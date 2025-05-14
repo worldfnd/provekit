@@ -1,26 +1,26 @@
 [workspace]
 resolver = "2"
 members = [
-    "noir-r1cs", 
-    "merkle-hash-bench",
-    "fp-rounding",
-    "hla",
-    "block-multiplier",
-    "block-multiplier-codegen",
-    "skyscraper",
+  "noir-r1cs",
+  "merkle-hash-bench",
+  "fp-rounding",
+  "hla",
+  "block-multiplier",
+  "block-multiplier-codegen",
+  "skyscraper",
 ]
 
 [workspace.package]
 edition = "2021"
 rust-version = "1.85"
 authors = [
-    "Remco Bloemen <remco@world.org>",
-    "Philipp Sippl <philipp@world.org>",
-    "Yuval Domb",
-    "Xander van der Goot",
-    "Koh Wei Jie",
-    "Tony Wu",
-    # TODO: More contributors
+  "Remco Bloemen <remco@world.org>",
+  "Philipp Sippl <philipp@world.org>",
+  "Yuval Domb",
+  "Xander van der Goot",
+  "Koh Wei Jie",
+  "Tony Wu",
+  # TODO: More contributors
 ]
 license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
@@ -41,6 +41,7 @@ style = "warn"
 correctness = "warn"
 suspicious = "warn"
 missing_docs_in_private_items = { level = "allow", priority = 1 }
+missing_safety_doc = "warn"
 
 [profile.release]
 debug = true      # Generate symbol info for profiling
@@ -91,14 +92,14 @@ bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
-    "tracing",
+  "tracing",
 ], rev = "74936effc0fdac288f2ff4881a04bf41cdf1f78e" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-    "arkworks-algebra",
+  "arkworks-algebra",
 ] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
-    "scalar_field",
+  "scalar_field",
 ] }
 zeroize = "1.8.1"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
