@@ -14,7 +14,7 @@ fp-rounding = { path = "../fp-rounding" }
 ark-ff.workspace = true
 ark-bn254.workspace = true
 zerocopy.workspace = true
-seq-macro = "0.3.6"
+seq-macro.workspace = true
 proptest.workspace = true
 rayon.workspace = true
 
