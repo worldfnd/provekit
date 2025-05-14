@@ -9,5 +9,5 @@ fn main() {
 
 #[divan::bench()]
 fn wrm_overhead() {
-    unsafe { with_rounding_mode::<Zero, _, _>((), |guard, a| black_box(a)) }
+    unsafe { with_rounding_mode::<Zero, _, _>((), |_guard, a| black_box(a)) }
 }

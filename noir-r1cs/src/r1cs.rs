@@ -148,7 +148,7 @@ impl R1CS {
 }
 
 // Sparse dot product. `a` is assumed zero. `b` is assumed missing.
-fn sparse_dot<'a>(
+fn sparse_dot(
     a: impl Iterator<Item = (usize, FieldElement)>,
     b: &[Option<FieldElement>],
 ) -> Option<FieldElement> {
@@ -161,7 +161,7 @@ fn sparse_dot<'a>(
 
 // Returns a pair (i, f) such that, setting `b[i] = f`,
 // ensures `sparse_dot(a, b) = r`.
-fn solve_dot<'a>(
+fn solve_dot(
     a: impl Iterator<Item = (usize, FieldElement)>,
     b: &[Option<FieldElement>],
     r: FieldElement,

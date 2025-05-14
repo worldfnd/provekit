@@ -195,7 +195,7 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
 /// sparseness.
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices(
-    alpha: &Vec<FieldElement>,
+    alpha: &[FieldElement],
     r1cs: &R1CS,
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
