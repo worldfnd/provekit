@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-seq-macro = "0.3.5"
-fp-rounding = { path = "../fp-rounding" }
+seq-macro.workspace = true
+fp-rounding.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
 divan.workspace = true
-primitive-types = "0.13.1"
+primitive-types.workspace = true
 ark-ff.workspace = true
 ark-bn254.workspace = true
 proptest.workspace = true

@@ -37,15 +37,15 @@ hex-literal.workspace = true
 argh.workspace = true
 anyhow.workspace = true
 
-ark-ff = { version = "0.5.0", features = ["asm"] }
-arrayvec = "0.7.6"
-blake3 = "1.5.4"
-halo2curves = { version = "0.7.0", features = ["bn256-table"] }
-num-traits = "0.2.19"
-sha3 = { version = "0.10.8", features = ["asm"] }
-zerocopy = { version = "0.8.17", features = ["simd"] }
-linkme = "0.3.31"
-gensym = "0.1.1"
+ark-ff.workspace = true
+arrayvec.workspace = true
+blake3.workspace = true
+halo2curves.workspace = true
+num-traits.workspace = true
+sha3.workspace = true
+zerocopy.workspace = true
+linkme.workspace = true
+gensym.workspace = true
 
 skyscraper = { path = "../skyscraper" }
 

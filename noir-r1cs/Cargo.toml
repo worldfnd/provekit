@@ -26,7 +26,7 @@ postcard.workspace = true
 zstd.workspace = true
 bytes.workspace = true
 bytemuck.workspace = true
-skyscraper = { path = "../skyscraper" }
+skyscraper.workspace = true
 zerocopy.workspace = true
 
 # Ark

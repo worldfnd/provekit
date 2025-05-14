@@ -19,3 +19,4 @@ divan.workspace = true
 [[bench]]
 name = "main"
 harness = false
+[dependencies]
