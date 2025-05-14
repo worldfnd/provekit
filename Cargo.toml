@@ -33,8 +33,12 @@ complexity = "warn"
 style = "warn"
 correctness = "warn"
 suspicious = "warn"
+
+cargo_common_metadata = { level = "allow", priority = 1 }
+multiple_crate_versions = { level = "allow", priority = 1 }
 missing_docs_in_private_items = { level = "allow", priority = 1 }
-missing_safety_doc = "warn"
+
+missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
 debug = true      # Generate symbol info for profiling
@@ -56,7 +60,21 @@ serde_json = "1.0"
 base64 = "0.22.1"
 divan = { package = "codspeed-divan-compat", version = "2.10.1" }
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
+seq-macro = "0.3.6"
+primitive-types = "0.13.1"
+paste = "1.0.15"
+arrayvec = "0.7.6"
+blake3 = "1.8.2"
+gensym = "0.1.1"
 rand = "0.9.1"
+rand08 = { package = "rand", version = "0.8" }
+halo2curves = { version = "0.7.0", features = ["bn256-table"] }
+criterion = "0.5.1"
+linkme = "0.3.32"
+lazy_static = "1.5.0"
+num-traits = "0.2.19"
+num = "0.4.3"
+sha3 = { version = "0.10.8", features = ["asm"] }
 subtle = "2.6.1"
 tracing = "0.1.41"
 bytemuck = "1.22.0"
@@ -71,7 +89,36 @@ zstd = "0.13.3"
 bytes = "1.10.1"
 proptest = "1.6.0"
 zerocopy = "0.8.25"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+rand_chacha = "0.9.0"
+test-case = "3.3.1"
 
+# Plonky 3
+p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", features = [
+  "table",
+] }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+
+icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+
+# ZKHash
+zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f" }
+
+# Stwo
+stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1" }
+
+# Icicle
 # Workspace members
 block-multiplier = { path = "block-multiplier" }
 block-multiplier-codegen = { path = "block-multiplier-codegen" }

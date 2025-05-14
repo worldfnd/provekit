@@ -30,7 +30,7 @@ skyscraper.workspace = true
 zerocopy.workspace = true
 
 # Ark
-rand08 = { package = "rand", version = "0.8" }
+rand08.workspace = true
 
 # Noir lang
 acir.workspace = true

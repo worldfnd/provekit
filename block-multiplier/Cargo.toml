@@ -16,8 +16,8 @@ ark-bn254.workspace = true
 proptest.workspace = true
 
 [build-dependencies]
-block-multiplier-codegen = { path = "../block-multiplier-codegen" }
-hla = { path = "../hla" }
+block-multiplier-codegen.workspace = true
+hla.workspace = true
 
 [[bench]]
 name = "bench"
