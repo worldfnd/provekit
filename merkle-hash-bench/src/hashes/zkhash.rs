@@ -36,12 +36,12 @@ impl SmolHasher for Poseidon2<FpBN256> {
         }
 
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-            let mut state = [
+            let state = [
                 to_field(message[0..32].try_into().unwrap()),
                 to_field(message[32..64].try_into().unwrap()),
                 FpBN256::zero(),
             ];
-            self.permutation(&mut state);
+            self.permutation(&state);
 
             // This allocates a Vec, which is dumb but it's the only way to get the bytes
             // our of arkworks.
@@ -71,11 +71,11 @@ impl SmolHasher for Skyscraper<FpBN256, 1, 0, BN256Ext1> {
         }
 
         for (message, hash) in messages.chunks_exact(64).zip(hashes.chunks_exact_mut(32)) {
-            let mut state = [
+            let state = [
                 to_field(message[0..32].try_into().unwrap()),
                 to_field(message[32..64].try_into().unwrap()),
             ];
-            self.permutation_extension(&mut state);
+            self.permutation_extension(&state);
 
             // This allocates a Vec, which is dumb but it's the only way to get the bytes
             // our of arkworks.
