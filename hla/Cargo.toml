@@ -7,5 +7,5 @@ edition = "2024"
 paste.workspace = true
 
 [dev-dependencies]
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"
+quickcheck.workspace = true
+quickcheck_macros.workspace = true

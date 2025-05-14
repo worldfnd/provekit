@@ -6,21 +6,21 @@ edition = "2021"
 [features]
 default = ["plonky3", "zkhash"]
 plonky3 = [
-    "dep:p3-bn254-fr",
-    "dep:p3-goldilocks",
-    "dep:p3-mersenne-31",
-    "dep:p3-field",
-    "dep:p3-poseidon2",
-    "dep:p3-symmetric",
-    "dep:p3-monolith",
-    "dep:p3-rescue",
+  "dep:p3-bn254-fr",
+  "dep:p3-goldilocks",
+  "dep:p3-mersenne-31",
+  "dep:p3-field",
+  "dep:p3-poseidon2",
+  "dep:p3-symmetric",
+  "dep:p3-monolith",
+  "dep:p3-rescue",
 ]
 icicle = [
-    "dep:icicle-core",
-    "dep:icicle-runtime",
-    "dep:icicle-hash",
-    "dep:icicle-bn254",
-    "dep:icicle-m31",
+  "dep:icicle-core",
+  "dep:icicle-runtime",
+  "dep:icicle-hash",
+  "dep:icicle-bn254",
+  "dep:icicle-m31",
 ]
 zkhash = ["dep:zkhash"]
 stwo = ["dep:stwo-prover"]
@@ -47,30 +47,27 @@ zerocopy.workspace = true
 linkme.workspace = true
 gensym.workspace = true
 
-skyscraper = { path = "../skyscraper" }
-
+skyscraper.workspace = true
 
 # Plonky 3
-p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true, features = [
-    "table",
-] }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true }
+p3-bn254-fr = { workspace = true, optional = true, features = ["table"] }
+p3-goldilocks = { workspace = true, optional = true }
+p3-mersenne-31 = { workspace = true, optional = true }
+p3-field = { workspace = true, optional = true }
+p3-poseidon2 = { workspace = true, optional = true }
+p3-monolith = { workspace = true, optional = true }
+p3-rescue = { workspace = true, optional = true }
+p3-symmetric = { workspace = true, optional = true }
 
 # Icicle dependenciesp3-bn254-fr = { version = "0.2.0", features = ["table"] }
-icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
-icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
-icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
-icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
-icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
+icicle-core = { workspace = true, optional = true }
+icicle-runtime = { workspace = true, optional = true }
+icicle-hash = { workspace = true, optional = true }
+icicle-bn254 = { workspace = true, optional = true }
+icicle-m31 = { workspace = true, optional = true }
 
 # ZKHash
-zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f", optional = true }
+zkhash = { workspace = true, optional = true }
 
 # Stwo
-stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1", optional = true }
+stwo-prover = { workspace = true, optional = true }
