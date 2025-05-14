@@ -240,7 +240,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
     let next_multiple_of_8 = bits.len().div_ceil(8) * 8;
     let padding_amt = next_multiple_of_8 - bits.len();
     let mut padded_bits_le = vec![false; next_multiple_of_8];
-    padded_bits_le[..padding_amt].copy_from_slice(bits);
+    padded_bits_le[..(next_multiple_of_8 - padding_amt)].copy_from_slice(bits);
     let be_byte_vec: Vec<u8> = padded_bits_le
         .chunks(8)
         .map(|chunk_in_bits| {
@@ -255,6 +255,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
 }
 
 #[cfg(test)]
+#[test]
 fn test_field_to_le_bits() {
     let value = FieldElement::from(5u32);
     let bits = field_to_le_bits(value);
@@ -267,6 +268,7 @@ fn test_field_to_le_bits() {
 }
 
 #[cfg(test)]
+#[test]
 fn test_le_bits_to_field() {
     let bits = vec![true, false, true, false, false];
     let value = le_bits_to_field(&bits);

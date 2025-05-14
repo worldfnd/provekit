@@ -1,6 +1,6 @@
 use std::fs::File;
 use noirc_artifacts::program::ProgramArtifact;
-use crate::{compiler::R1CS, solver::MockTranscript, utils::file_io::deserialize_witness_stack};
+use crate::{compiler::{NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, R1CS}, solver::MockTranscript, utils::file_io::deserialize_witness_stack};
 
 // Tests that an ACIR program containing a can be compiled to R1CS and
 // the R1CS witness solved for given the ACIR witness.
@@ -71,5 +71,25 @@ fn test_conditional_write() {
     test_compilation_and_solving(
         "src/test_programs/conditional-write/target/main.json",
         "src/test_programs/conditional-write/target/main.gz",
+    );
+}
+
+#[test]
+// Test a direct range check (i.e. without a digital decomposition)
+fn test_atomic_range_check() {
+    assert!(8 <= NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
+    test_compilation_and_solving(
+        "src/test_programs/range-check-u8/target/main.json",
+        "src/test_programs/range-check-u8/target/main.gz",
+    );
+}
+
+#[test]
+// Test a range check that requires a digital decomposition
+fn test_digital_decomposition_u16() {
+    assert!(16 > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
+    test_compilation_and_solving(
+        "src/test_programs/range-check-u16/target/main.json",
+        "src/test_programs/range-check-u16/target/main.gz",
     );
 }

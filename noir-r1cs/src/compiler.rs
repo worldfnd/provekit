@@ -6,7 +6,7 @@ use {
         circuit::{opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum}, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
-    }, std::{
+    }, core::num, std::{
         collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, sync::atomic, vec
     }
 };
@@ -207,6 +207,7 @@ impl R1CS {
                                 r1cs.fetch_r1cs_witness_index(witness)
                             }
                         };
+                        println!("RANGE CHECK of witness {} to {} bits", input_witness, num_bits);
                         // Add the entry into the range blocks.
                         range_checks
                             .entry(num_bits)
@@ -465,7 +466,9 @@ impl R1CS {
                     let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                     let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                     let mut log_bases = vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
-                    log_bases.push(logbase_of_remainder_digit as usize);
+                    if logbase_of_remainder_digit != 0 {
+                        log_bases.push(logbase_of_remainder_digit as usize);
+                    }
                     let num_values = values_to_lookup.len();
                     let dd_struct = DigitalDecompositionWitnesses::new(
                             r1cs.num_witnesses(),
@@ -973,6 +976,8 @@ impl DigitalDecompositionWitnesses {
             Some(return_value)
         }).collect::<Vec<_>>();
         // TODO careful with the u128 here!  what is the maximum range check size?
+        // FIXME
+        println!("log_base_partial_sums_le: {:?}", log_base_partial_sums_le);
         log_base_partial_sums_le.iter().map(|x| FieldElement::from(1u128 << *x)).collect::<Vec<_>>()
     }
 }
