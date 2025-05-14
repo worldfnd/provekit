@@ -26,14 +26,7 @@ license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
 repository = "https://github.com/worldfnd/ProveKit"
 
-[workspace.lints.rust]
-unsafe_code = "warn"
-missing_docs = "warn"
-
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
-nursery = "warn"
 cargo = "warn"
 perf = "warn"
 complexity = "warn"
