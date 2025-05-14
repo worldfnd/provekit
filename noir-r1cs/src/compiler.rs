@@ -259,7 +259,9 @@ impl R1CS {
                                 unreachable!();
                             }
                         }
-                    }).collect();
+                    })
+                    .map(|coeff| (None, coeff))
+                    .collect();
                 let sum_for_reads = r1cs.add_sum(summands_for_reads);
 
                 // Calculate the sum over all table elements of multiplicity/factor
@@ -278,6 +280,7 @@ impl R1CS {
                         );
                         r1cs.add_product(access_counts_first_witness + access_count_idx_offset, denominator)
                     })
+                    .map(|coeff| (None, coeff))
                     .collect();
                 let sum_for_table = r1cs.add_sum(summands_for_table);
 
@@ -429,13 +432,14 @@ impl R1CS {
                         // Implementation note: we use an auxiliary witness to represent
                         // mem_op_index - rt_witness, in order to interface with the range checking
                         // code below.
-                        let difference_witness_idx = r1cs.add_witness_builder(WitnessBuilder::Difference(
-                            r1cs.num_witnesses(),
-                            *mem_op_index,
-                            *rt_witness,
-                        ));
+                        let difference_witness_idx = r1cs.add_sum(
+                            vec![
+                                (Some(FieldElement::from(*mem_op_index)), r1cs.witness_one()),
+                                (Some(FieldElement::one().neg()), *rt_witness),
+                            ]
+                        );
                         range_check.push(*rt_witness);
-                        //FIXME range_check.push(difference_witness_idx);
+                        range_check.push(difference_witness_idx);
                     });
             }
         });
@@ -573,11 +577,13 @@ impl R1CS {
     }
 
     // Add a new witness representing the sum of existing witnesses, and add an R1CS constraint enforcing this.
-    fn add_sum(&mut self, summands: Vec<usize>) -> usize {
+    // Vector consists of (optional coefficient, witness index) tuples, one for each summand.
+    // The coefficient is optional, and if it is None, the coefficient is 1.
+    fn add_sum(&mut self, summands: Vec<(Option<FieldElement>, usize)>) -> usize {
         let sum = self.add_witness_builder(WitnessBuilder::Sum(self.num_witnesses(), summands.clone()));
         let az = summands
             .iter()
-            .map(|&s| (FieldElement::one(), s))
+            .map(|(coeff, witness_idx)| (coeff.unwrap_or(FieldElement::one()), *witness_idx))
             .collect::<Vec<_>>();
         self.matrices.add_constraint(
             &az,
@@ -692,7 +698,7 @@ impl R1CS {
 
         // Compute all the terms in the summation for multiplicity/(X - table_value)
         // for each table value.
-        let table_summands: Vec<usize> = (0..(1 << num_bits))
+        let table_summands = (0..(1 << num_bits))
             .map(|table_value| {
                 let table_denom = self.add_lookup_factor(
                     sz_challenge,
@@ -700,15 +706,18 @@ impl R1CS {
                     self.witness_one(),
                 );
                 let multiplicity_witness = multiplicities_first_witness + table_value;
-                self.add_product(table_denom, multiplicity_witness)
+                (None, self.add_product(table_denom, multiplicity_witness))
             })
             .collect();
         let sum_for_table = self.add_sum(table_summands);
         // Compute all the terms in the summation for 1/(X - witness_value) for each
         // witness value.
-        let witness_summands: Vec<usize> = values_to_lookup
+        let witness_summands = values_to_lookup
             .iter()
-            .map(|value| self.add_lookup_factor(sz_challenge, FieldElement::one(), *value))
+            .map(|value| {
+                let witness_idx = self.add_lookup_factor(sz_challenge, FieldElement::one(), *value);
+                (None, witness_idx)
+            })
             .collect();
         let sum_for_witness = self.add_sum(witness_summands);
         // Check that these two sums are equal.
