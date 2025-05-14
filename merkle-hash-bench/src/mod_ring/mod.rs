@@ -185,22 +185,6 @@ impl<Ring: RingRef> ModRingElement<Ring> {
         }
     }
 
-    /// Small exponentiation
-    ///
-    /// Run time may depend on the exponent, use [`pow_ct`] if constant time is
-    /// required.
-    // pub fn pow(self, exponent: u64) -> Self {
-    //     match exponent {
-    //         0 => self.ring.one(),
-    //         1 => self,
-    //         n if n % 2 == 0 => {
-    //             let value = self.pow(n / 2).value;
-    //             let value = self.ring.mont_square(value);
-    //         }
-    //         n => self.pow(n % 4) * self.pow(n / 4),
-    //     }
-    // }
-
     /// Inversion
     ///
     /// Run time may depend on the value.

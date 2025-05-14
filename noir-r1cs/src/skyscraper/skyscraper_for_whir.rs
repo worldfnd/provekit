@@ -1,5 +1,5 @@
 use {
-    crate::skyscraper::skyscraper::{compress, SkyscraperSponge},
+    crate::skyscraper::skyscraper_impl::{compress, SkyscraperSponge},
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},

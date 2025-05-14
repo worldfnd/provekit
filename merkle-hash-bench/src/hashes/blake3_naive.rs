@@ -1,7 +1,4 @@
-use {
-    crate::{register_hash, HashFn, SmolHasher},
-    std::fmt::Display,
-};
+use crate::{register_hash, HashFn, SmolHasher};
 
 register_hash!(Blake3Naive);
 
