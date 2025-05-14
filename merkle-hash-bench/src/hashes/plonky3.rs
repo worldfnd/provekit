@@ -1,11 +1,9 @@
 #![cfg(feature = "plonky3")]
 use {
-    crate::{mod_ring::fields::Bn254Field, register_hash, Field, HashFn, SmolHasher},
+    crate::{register_hash, Field, HashFn, SmolHasher},
     bytemuck::cast_slice_mut,
     p3_bn254_fr::{Bn254Fr, FFBn254Fr, Poseidon2Bn254},
-    p3_field::{
-        integers::QuotientMap as _, Field as _, PrimeCharacteristicRing, PrimeField32, PrimeField64,
-    },
+    p3_field::{integers::QuotientMap as _, PrimeCharacteristicRing, PrimeField32, PrimeField64},
     p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks, Poseidon2Goldilocks},
     p3_mersenne_31::{MdsMatrixMersenne31, Mersenne31, Poseidon2Mersenne31},
     p3_monolith::MonolithMersenne31,

@@ -7,7 +7,7 @@ use {
         IncrementCounter, OUT_LEN,
     },
     core::slice,
-    std::{fmt::Display, iter::zip},
+    std::iter::zip,
 };
 
 register_hash!(Blake3::new());

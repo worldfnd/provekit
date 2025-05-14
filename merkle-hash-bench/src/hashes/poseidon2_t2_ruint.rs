@@ -8,10 +8,7 @@ use {
     },
     rand::Rng,
     ruint::aliases::U256,
-    std::{
-        array,
-        fmt::{self, Display, Formatter},
-    },
+    std::array,
 };
 
 register_hash!(Poseidon2T2Ruint::new());

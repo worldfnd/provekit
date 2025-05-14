@@ -1,7 +1,6 @@
 use {
     crate::{register_hash, HashFn, SmolHasher},
     sha3::{Digest, Sha3_256},
-    std::fmt::Display,
 };
 
 register_hash!(KeccakApi);
