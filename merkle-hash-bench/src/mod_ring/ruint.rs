@@ -19,15 +19,24 @@ impl<const BITS: usize, const LIMBS: usize> UintMont for Uint<BITS, LIMBS> {
         let montgomery_r3 = montgomery_r2.mul_redc(montgomery_r2, modulus, mod_inv);
         ModRing {
             modulus,
-            mod_inv,
             montgomery_r,
             montgomery_r2,
             montgomery_r3,
+            mod_inv,
         }
     }
 
     fn random<R: rand::Rng + ?Sized>(rng: &mut R, max: Self) -> Self {
         let mut result = Self::ZERO;
+        assert!(BITS % LIMBS == 0, "BITS must be evenly divisible by LIMBS");
+
+        // # Safety
+        //
+        // `as_limbs_mut` can result in an invalid representation of a `Uint` if a bit
+        // is set in a limb that falls outside of the valid range. We prevent
+        // this by the assertion above that ensures that all bits in all limbs
+        // are valid for change.
+        #[allow(unsafe_code)]
         unsafe {
             for limb in result.as_limbs_mut() {
                 *limb = rng.random();
@@ -39,12 +48,12 @@ impl<const BITS: usize, const LIMBS: usize> UintMont for Uint<BITS, LIMBS> {
 
     #[inline]
     fn mul_redc(self, other: Self, modulus: Self, mod_inv: u64) -> Self {
-        Uint::mul_redc(self, other, modulus, mod_inv)
+        self.mul_redc(other, modulus, mod_inv)
     }
 
     #[inline]
     fn square_redc(self, modulus: Self, mod_inv: u64) -> Self {
-        Uint::square_redc(self, modulus, mod_inv)
+        self.square_redc(modulus, mod_inv)
     }
 
     #[inline]
@@ -60,6 +69,6 @@ impl<const BITS: usize, const LIMBS: usize> UintMont for Uint<BITS, LIMBS> {
 
     #[inline]
     fn inv_mod(self, modulus: Self) -> Option<Self> {
-        Uint::inv_mod(self, modulus)
+        self.inv_mod(modulus)
     }
 }
