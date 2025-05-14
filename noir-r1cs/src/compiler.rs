@@ -1,18 +1,14 @@
 use {
     crate::{
-        r1cs_matrices::R1CSMatrices,
-        solver::{MockTranscript, WitnessBuilder},
+        memory::{MemoryBlock, MemoryOperation}, r1cs_matrices::R1CSMatrices, ram::add_ram_checking, range_check::add_range_checks, rom::add_rom_checking, solver::{MockTranscript, WitnessBuilder}
     }, acir::{
         circuit::{opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum}, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
-    }, core::num, std::{
-        collections::BTreeMap, fmt::{Debug, Formatter}, ops::Neg, sync::atomic, vec
+    }, std::{
+        collections::BTreeMap, fmt::Formatter, ops::Neg, vec
     }
 };
-
-const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
-pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising the [R1CSMatrices] and
 /// a vector of [WitnessBuilder]s.
@@ -112,9 +108,6 @@ impl R1CS {
                 Opcode::BrilligCall { .. } => {
                     println!("BrilligCall {:?}", opcode)
                 }
-
-                // // Directive is a modern version of Brillig.
-                // Opcode::Directive(..) => unimplemented!("Directive"),
 
                 // Calls to a function, this is to efficiently represent repeated structure in
                 // circuits. TODO: We need to implement this so we can store
@@ -223,342 +216,22 @@ impl R1CS {
         memory_blocks.iter().for_each(|(_, block)| {
             if block.is_read_only() {
                 // Use a lookup to enforce that the reads are correct.
-                let addr_witnesses = block
-                    .operations
-                    .iter()
-                    .map(|op| {
-                        match op {
-                            MemoryOperation::Load(addr_witness, _) => *addr_witness,
-                            MemoryOperation::Store(_, _) => unreachable!(),
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                let memory_length = block.initial_value_witnesses.len();
-                let wb = WitnessBuilder::MultiplicitiesForRange(r1cs.num_witnesses(), memory_length, addr_witnesses);
-                let access_counts_first_witness = r1cs.add_witness_builder(wb);
-
-                // Add two verifier challenges for the lookup
-                let rs_challenge = r1cs.add_witness_builder(WitnessBuilder::Challenge(r1cs.num_witnesses()));
-                let sz_challenge = r1cs.add_witness_builder(WitnessBuilder::Challenge(r1cs.num_witnesses()));
-
-                // Calculate the sum, over all reads, of 1/denominator
-                let summands_for_reads = block
-                    .operations
-                    .iter()
-                    .map(|op| {
-                        match op {
-                            MemoryOperation::Load(addr_witness, value) => {
-                                r1cs.add_indexed_lookup_factor(
-                                    rs_challenge,
-                                    sz_challenge,
-                                    FieldElement::one(),
-                                    *addr_witness,
-                                    *value,
-                                )
-                            }
-                            MemoryOperation::Store(_, _) => {
-                                unreachable!();
-                            }
-                        }
-                    })
-                    .map(|coeff| (None, coeff))
-                    .collect();
-                let sum_for_reads = r1cs.add_sum(summands_for_reads);
-
-                // Calculate the sum over all table elements of multiplicity/factor
-                let summands_for_table = block
-                    .initial_value_witnesses
-                    .iter()
-                    .zip(0..memory_length)
-                    .enumerate()
-                    .map(|(addr, (value, access_count_idx_offset))| {
-                        let denominator = r1cs.add_indexed_lookup_factor(
-                            rs_challenge,
-                            sz_challenge,
-                            addr.into(),
-                            r1cs.witness_one(),
-                            *value,
-                        );
-                        r1cs.add_product(access_counts_first_witness + access_count_idx_offset, denominator)
-                    })
-                    .map(|coeff| (None, coeff))
-                    .collect();
-                let sum_for_table = r1cs.add_sum(summands_for_table);
-
-                // Enforce that the two sums are equal
-                r1cs.matrices.add_constraint(
-                    &[(FieldElement::one(), r1cs.witness_one())],
-                    &[(FieldElement::one(), sum_for_reads)],
-                    &[(FieldElement::one(), sum_for_table)],
-                );
+                add_rom_checking(&mut r1cs, block);
             } else {
-                // Read/write memory block - use Spice offline memory checking
-                // Add two verifier challenges for the multiset check
-                let rs_challenge = r1cs.add_witness_builder(WitnessBuilder::Challenge(r1cs.num_witnesses()));
-                let rs_challenge_sqrd = r1cs.add_product(rs_challenge, rs_challenge);
-                let sz_challenge = r1cs.add_witness_builder(WitnessBuilder::Challenge(r1cs.num_witnesses()));
-
-                // The current witnesses indices for the partial products of the read set (RS) hash
-                // and the write set (WS) hash
-                let mut rs_hash = r1cs.witness_one();
-                let mut ws_hash = r1cs.witness_one();
-
-                let memory_length = block.initial_value_witnesses.len();
-
-                // Track all the (mem_op_index, read timestamp) pairs so we can perform the two
-                // required range checks later.
-                let mut all_mem_op_index_and_rt = vec![];
-
-                println!("INIT");
-                // For each of the writes in the inititialization, add a factor to the write hash
-                block.initial_value_witnesses.iter().enumerate().for_each(|(addr, mem_value)| {
-                    // Initial PUTs. These all use timestamp zero.
-                    let factor = r1cs.add_mem_op_multiset_factor(
-                        sz_challenge,
-                        rs_challenge,
-                        rs_challenge_sqrd,
-                        (FieldElement::from(addr), r1cs.witness_one()),
-                        *mem_value,
-                        (FieldElement::zero(), r1cs.witness_one()),
-                    );
-                    println!("WS factor [{}]: ({}, [{}], 0)", factor, addr, mem_value);
-                    ws_hash = r1cs.add_product(ws_hash, factor);
-                });
-
-                let spice_witnesses = SpiceWitnesses::new(
-                        r1cs.num_witnesses(),
-                        memory_length,
-                        block.initial_value_witnesses[0],
-                        block.operations.clone());
-                r1cs.add_witness_builder(WitnessBuilder::SpiceWitnesses(spice_witnesses.clone()));
-
-                spice_witnesses.memory_operations.iter().enumerate().for_each(|(mem_op_index, op)| {
-                    match op {
-                        SpiceMemoryOperation::Load(addr_witness, value_witness, rt_witness) => {
-                            println!("LOAD (mem op {})", mem_op_index);
-                            // GET
-                            all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
-                            let factor = r1cs.add_mem_op_multiset_factor(
-                                sz_challenge,
-                                rs_challenge,
-                                rs_challenge_sqrd,
-                                (FieldElement::one(), *addr_witness),
-                                *value_witness,
-                                (FieldElement::one(), *rt_witness),
-                            );
-                            println!("RS factor [{}]: ([{}], [{}], [{}])", factor, addr_witness, value_witness, rt_witness);
-                            rs_hash = r1cs.add_product(rs_hash, factor);
-
-                            // PUT
-                            let factor = r1cs.add_mem_op_multiset_factor(
-                                sz_challenge,
-                                rs_challenge,
-                                rs_challenge_sqrd,
-                                (FieldElement::one(), *addr_witness),
-                                *value_witness,
-                                (FieldElement::from(mem_op_index + 1), r1cs.witness_one()),
-                            );
-                            println!("WS factor [{}]: ([{}], [{}], {})", factor, addr_witness, value_witness, mem_op_index + 1);
-                            ws_hash = r1cs.add_product(ws_hash, factor);
-                        }
-                        SpiceMemoryOperation::Store(addr_witness, old_value_witness, new_value_witness, rt_witness) => {
-                            println!("STORE (mem op {})", mem_op_index);
-                            // GET
-                            all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
-                            let factor = r1cs.add_mem_op_multiset_factor(
-                                sz_challenge,
-                                rs_challenge,
-                                rs_challenge_sqrd,
-                                (FieldElement::one(), *addr_witness),
-                                *old_value_witness,
-                                (FieldElement::one(), *rt_witness),
-                            );
-                            println!("RS factor [{}]: ([{}], [{}], [{}])", factor, addr_witness, old_value_witness, rt_witness);
-                            rs_hash = r1cs.add_product(rs_hash, factor);
-
-                            // PUT
-                            let factor = r1cs.add_mem_op_multiset_factor(
-                                sz_challenge,
-                                rs_challenge,
-                                rs_challenge_sqrd,
-                                (FieldElement::one(), *addr_witness),
-                                *new_value_witness,
-                                (FieldElement::from(mem_op_index + 1), r1cs.witness_one()),
-                            );
-                            println!("WS factor [{}]: ([{}], [{}], {})", factor, addr_witness, new_value_witness, mem_op_index + 1);
-                            ws_hash = r1cs.add_product(ws_hash, factor);
-                        }
-                    }
-                });
-
-                println!("AUDIT");
-                // audit(): for each of the cells of the memory block, add a factor to the read hash
-                (0..memory_length).for_each(|addr| {
-                    // GET
-                    let value_witness = spice_witnesses.rv_final_start + addr;
-                    let rt_witness = spice_witnesses.rt_final_start + addr;
-                    all_mem_op_index_and_rt.push((block.operations.len(), rt_witness));
-                    let factor = r1cs.add_mem_op_multiset_factor(
-                        sz_challenge,
-                        rs_challenge,
-                        rs_challenge_sqrd,
-                        (FieldElement::from(addr), r1cs.witness_one()),
-                        value_witness,
-                        (FieldElement::one(), rt_witness),
-                    );
-                    println!("RS factor [{}]: ({}, [{}], [{}])", factor, addr, value_witness, rt_witness);
-                    rs_hash = r1cs.add_product(rs_hash, factor);
-                });
-
-                // Add the final constraint to enforce that the hashes are equal
-                r1cs.matrices.add_constraint(
-                    &[(FieldElement::one(), r1cs.witness_one())],
-                    &[(FieldElement::one(), rs_hash)],
-                    &[(FieldElement::one(), ws_hash)],
-                );
-
-                // We want to establish that mem_op_index = max(mem_op_index, retrieved_timer)
-                // We do this via two separate range checks:
-                //  1. retrieved_timer in 0..2^K
-                //  2. (mem_op_index - retrieved_time) in 0..2^K
-                // where K is minimal such that 2^K >= block.operations.len().
-                // TODO triple check the following:
-                // The above range check is sound so long as 2^K is less than the characteristic of the field.
-                // (Note that range checks are being implemented only for powers of two).
-                let num_bits = block.operations.len().next_power_of_two().ilog2() as u32;
+                // Read/write memory block - use Spice offline memory checking.
+                // Returns witnesses that need to be range checked.
+                let (num_bits, witnesses_to_range_check) = add_ram_checking(&mut r1cs, block);
                 let range_check = range_checks.entry(num_bits).or_default();
-                all_mem_op_index_and_rt
+                witnesses_to_range_check
                     .iter()
-                    .for_each(|(mem_op_index, rt_witness)| {
-                        // Implementation note: we use an auxiliary witness to represent
-                        // mem_op_index - rt_witness, in order to interface with the range checking
-                        // code below.
-                        let difference_witness_idx = r1cs.add_sum(
-                            vec![
-                                (Some(FieldElement::from(*mem_op_index)), r1cs.witness_one()),
-                                (Some(FieldElement::one().neg()), *rt_witness),
-                            ]
-                        );
-                        range_check.push(*rt_witness);
-                        range_check.push(difference_witness_idx);
-                    });
+                    .for_each(|value| range_check.push(*value));
             }
         });
 
-        // ------------------------ Range checks ------------------------
-
-        // Do a pass through everything that needs to be range checked,
-        // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
-        // and creating a map `atomic_range_blocks` of each `num_bits` from 1 to the
-        // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of witness indices that are
-        // constrained to that range.
-
-        // Mapping the log of the range size k to the vector of witness indices that
-        // are to be constrained within the range [0..2^k].
-        // The witnesses of all small range op codes are added to this map, along with witnesses of
-        // digits for digital decompositions of larger range checks.
-        let mut atomic_range_checks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
-
-        range_checks
-            .into_iter()
-            .for_each(|(num_bits, values_to_lookup)| {
-                if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
-                    let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
-                    let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
-                    let mut log_bases = vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
-                    if logbase_of_remainder_digit != 0 {
-                        log_bases.push(logbase_of_remainder_digit as usize);
-                    }
-                    let num_values = values_to_lookup.len();
-                    let dd_struct = DigitalDecompositionWitnesses::new(
-                            r1cs.num_witnesses(),
-                            log_bases.clone(),
-                            values_to_lookup,
-                    );
-                    r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
-                    // Add the constraints for the digital recomposition
-                    let mut digit_multipliers = vec![FieldElement::one()];
-                    for log_base in log_bases[..log_bases.len() - 1].iter() {
-                        let multiplier = *digit_multipliers.last().unwrap() * FieldElement::from(1u128 << *log_base);
-                        digit_multipliers.push(multiplier);
-                    }
-                    dd_struct.values.iter().enumerate().for_each(|(i, value)| {
-                        let mut recomp_summands = vec![];
-                        dd_struct.digit_start_indices.iter().zip(digit_multipliers.iter()).for_each(|(digit_start_index, digit_multiplier)| {
-                            let digit_witness = *digit_start_index + i;
-                            recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
-                        });
-                        r1cs.matrices.add_constraint(
-                            &[(FieldElement::one(), r1cs.witness_one())],
-                            &[(FieldElement::one(), *value)],
-                            &recomp_summands,
-                        );
-                    });
-
-                    // Add the witness indices for the digits to the atomic range checks
-                    dd_struct.log_bases.iter().zip(dd_struct.digit_start_indices.iter()).for_each(|(log_base, digit_start_index)| {
-                        atomic_range_checks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
-                    });
-                } else {
-                    atomic_range_checks[num_bits as usize].push(values_to_lookup);
-                }
-            });
-
-        // For each of the atomic range checks, add the range check constraints.
-        // Use logup if the range is large; otherwise use a naive range check.
-        atomic_range_checks
-            .iter()
-            .enumerate()
-            .for_each(|(num_bits, all_values_to_lookup)| {
-                let values_to_lookup = all_values_to_lookup
-                    .iter()
-                    .flat_map(|v| v.iter())
-                    .copied()
-                    .collect::<Vec<_>>();
-                if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
-                    r1cs.add_range_check(num_bits as u32, &values_to_lookup);
-                } else {
-                    values_to_lookup.iter().for_each(|value| {
-                        r1cs.add_naive_range_check(num_bits as u32, *value);
-                    })
-                }
-            });
+        // Perform all range checks
+        add_range_checks(&mut r1cs, range_checks);
 
         r1cs
-    }
-
-    // Add and return a new witness representing `sz_challenge - hash`, where `hash` is the hash value of a memory operation, adding an R1CS constraint enforcing this.
-    // (This is a helper method for the offline memory checking.)
-    // TODO combine this with Vishruti's add_indexed_lookup_factor (generic over the length of the combination).
-    fn add_mem_op_multiset_factor(
-        &mut self,
-        sz_challenge: usize,
-        rs_challenge: usize,
-        rs_challenge_sqrd: usize,
-        (addr, addr_witness): (FieldElement, usize),
-        value_witness: usize,
-        (timer, timer_witness): (FieldElement, usize),
-    ) -> usize {
-        let factor = self.add_witness_builder(WitnessBuilder::MemOpMultisetFactor(
-            self.num_witnesses(),
-            sz_challenge,
-            rs_challenge,
-            (addr, addr_witness),
-            value_witness,
-            (timer, timer_witness),
-        ));
-        let intermediate = self.add_product(rs_challenge_sqrd, timer_witness);
-        self.matrices.add_constraint(
-            &[(FieldElement::one(), rs_challenge)],
-            &[(FieldElement::one().neg(), value_witness)],
-            &[
-                (FieldElement::one(), factor),
-                (FieldElement::one().neg(), sz_challenge),
-                (timer, intermediate),
-                (addr, addr_witness),
-            ],
-        );
-        factor
     }
 
     // Return the R1CS witness index corresponding to the AcirWitness provided, creating a new R1CS
@@ -572,8 +245,8 @@ impl R1CS {
             })
     }
 
-    // Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
-    fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
+    /// Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
+    pub(crate) fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
         let product = self.add_witness_builder(WitnessBuilder::Product(self.num_witnesses(), operand_a, operand_b));
         self.matrices.add_constraint(
             &[(FieldElement::one(), operand_a)],
@@ -583,10 +256,10 @@ impl R1CS {
         product
     }
 
-    // Add a new witness representing the sum of existing witnesses, and add an R1CS constraint enforcing this.
-    // Vector consists of (optional coefficient, witness index) tuples, one for each summand.
-    // The coefficient is optional, and if it is None, the coefficient is 1.
-    fn add_sum(&mut self, summands: Vec<(Option<FieldElement>, usize)>) -> usize {
+    /// Add a new witness representing the sum of existing witnesses, and add an R1CS constraint enforcing this.
+    /// Vector consists of (optional coefficient, witness index) tuples, one for each summand.
+    /// The coefficient is optional, and if it is None, the coefficient is 1.
+    pub(crate) fn add_sum(&mut self, summands: Vec<(Option<FieldElement>, usize)>) -> usize {
         let sum = self.add_witness_builder(WitnessBuilder::Sum(self.num_witnesses(), summands.clone()));
         let az = summands
             .iter()
@@ -650,165 +323,6 @@ impl R1CS {
         // constraint.
         self.matrices.add_constraint(&a, &b, &linear);
     }
-
-    // Helper function for adding a new lookup factor to the R1CS instance.
-    // Adds a new witness `denominator` and constrains it to represent
-    //    `denominator - (sz_challenge - (index_coeff * index + rs_challenge * value)) == 0`,
-    // where `sz_challenge`, `index`, `rs_challenge` and `value` are the provided R1CS witness indices.
-    // Finally, adds a new witness for its inverse, constrains it to be such, and returns its index.
-    fn add_indexed_lookup_factor(
-        &mut self,
-        rs_challenge: usize,
-        sz_challenge: usize,
-        index: FieldElement,
-        index_witness: usize,
-        value: usize,
-    ) -> usize {
-        let wb = WitnessBuilder::IndexedLogUpDenominator(
-            self.num_witnesses(),
-            sz_challenge,
-            (index, index_witness),
-            rs_challenge,
-            value,
-        );
-        let denominator = self.add_witness_builder(wb);
-        self.matrices.add_constraint(
-            &[(FieldElement::one(), rs_challenge)],
-            &[(FieldElement::one(), value)],
-            &[
-                (FieldElement::one().neg(), denominator),
-                (FieldElement::one(), sz_challenge),
-                (index.neg(), index_witness),
-            ],
-        );
-        let inverse = self.add_witness_builder(WitnessBuilder::Inverse(self.num_witnesses(), denominator));
-        self.matrices.add_constraint(
-            &[(FieldElement::one(), denominator)],
-            &[(FieldElement::one(), inverse)],
-            &[(FieldElement::one(), self.witness_one())],
-        );
-        inverse
-    }
-
-    /// Helper function which computes all the terms of the summation for
-    /// each side (LHS and RHS) of the log-derivative multiset check.
-    ///
-    /// Checks that both sums (LHS and RHS) are equal at the end.
-    pub(crate) fn add_range_check(&mut self, num_bits: u32, values_to_lookup: &[usize]) {
-        // Add witnesses for the multiplicities
-        let wb = WitnessBuilder::MultiplicitiesForRange(self.num_witnesses(), 1 << num_bits, values_to_lookup.clone().into());
-        let multiplicities_first_witness = self.add_witness_builder(wb);
-        // Sample the Schwartz-Zippel challenge for the log derivative
-        // multiset check.
-        let sz_challenge = self.add_witness_builder(WitnessBuilder::Challenge(self.num_witnesses()));
-
-        // Compute all the terms in the summation for multiplicity/(X - table_value)
-        // for each table value.
-        let table_summands = (0..(1 << num_bits))
-            .map(|table_value| {
-                let table_denom = self.add_lookup_factor(
-                    sz_challenge,
-                    FieldElement::from(table_value),
-                    self.witness_one(),
-                );
-                let multiplicity_witness = multiplicities_first_witness + table_value;
-                (None, self.add_product(table_denom, multiplicity_witness))
-            })
-            .collect();
-        let sum_for_table = self.add_sum(table_summands);
-        // Compute all the terms in the summation for 1/(X - witness_value) for each
-        // witness value.
-        let witness_summands = values_to_lookup
-            .iter()
-            .map(|value| {
-                let witness_idx = self.add_lookup_factor(sz_challenge, FieldElement::one(), *value);
-                (None, witness_idx)
-            })
-            .collect();
-        let sum_for_witness = self.add_sum(witness_summands);
-        // Check that these two sums are equal.
-        self.matrices.add_constraint(
-            &[
-                (FieldElement::one(), sum_for_table),
-                (FieldElement::one().neg(), sum_for_witness),
-            ],
-            &[(FieldElement::one(), self.witness_one())],
-            &[(FieldElement::zero(), self.witness_one())],
-        );
-    }
-
-    /// Helper function that computes the LogUp denominator either for
-    /// the table values: (X - t_j), or for the witness values:
-    /// (X - w_i). Computes the inverse and also checks that this is
-    /// the appropriate inverse.
-    pub(crate) fn add_lookup_factor(
-        &mut self,
-        sz_challenge: usize,
-        value_coeff: FieldElement,
-        value_witness: usize,
-    ) -> usize {
-        let denom_wb = WitnessBuilder::LogUpDenominator(self.num_witnesses(), sz_challenge, (value_coeff, value_witness));
-        let denominator = self.add_witness_builder(denom_wb);
-        self.matrices.add_constraint(
-            &[
-                (FieldElement::one(), sz_challenge),
-                (FieldElement::one().neg() * value_coeff, value_witness),
-            ],
-            &[(FieldElement::one(), self.witness_one())],
-            &[(FieldElement::one(), denominator)],
-        );
-        let inverse = self.add_witness_builder(WitnessBuilder::Inverse(self.num_witnesses(), denominator));
-        self.matrices.add_constraint(
-            &[(FieldElement::one(), denominator)],
-            &[(FieldElement::one(), inverse)],
-            &[(FieldElement::one(), self.witness_one())],
-        );
-        inverse
-    }
-
-
-    /// A naive range check helper function, computing the
-    /// $\prod_{i = 0}^{range}(a - i) = 0$ to check whether a witness found at
-    /// `index_witness`, which is $a$, is in the $range$, which is `num_bits`.
-    pub(crate) fn add_naive_range_check(&mut self, num_bits: u32, index_witness: usize) {
-        let mut current_product_witness = index_witness;
-        (1..(1 << num_bits) - 1).for_each(|index: u32| {
-            let next_product_witness = self.add_witness_builder(WitnessBuilder::ProductLinearOperation(
-                self.num_witnesses(),
-                (
-                    current_product_witness,
-                    FieldElement::one(),
-                    FieldElement::zero(),
-                ),
-                (
-                    index_witness,
-                    FieldElement::one(),
-                    FieldElement::from(index).neg(),
-                ),
-            ));
-            self.matrices.add_constraint(
-                &[(FieldElement::one(), current_product_witness)],
-                &[
-                    (FieldElement::one(), index_witness),
-                    (FieldElement::from(index).neg(), self.witness_one()),
-                ],
-                &[(FieldElement::one(), next_product_witness)],
-            );
-            current_product_witness = next_product_witness;
-        });
-
-        self.matrices.add_constraint(
-            &[(FieldElement::one(), current_product_witness)],
-            &[
-                (FieldElement::one(), index_witness),
-                (
-                    FieldElement::from((1 << num_bits) - 1 as u32).neg(),
-                    self.witness_one(),
-                ),
-            ],
-            &[(FieldElement::zero(), self.witness_one())],
-        );
-    }
 }
 
 impl std::fmt::Display for R1CS {
@@ -828,145 +342,5 @@ impl std::fmt::Display for R1CS {
             writeln!(f)?;
         }
         writeln!(f, "{}", self.matrices)
-    }
-}
-
-#[derive(Debug, Clone)]
-/// Used for tracking operations on a memory block.
-pub struct MemoryBlock {
-    /// The R1CS witnesses corresponding to the memory block values
-    pub initial_value_witnesses: Vec<usize>,
-    /// The memory operations, in the order that they occur
-    pub operations: Vec<MemoryOperation>,
-}
-
-impl MemoryBlock {
-    pub fn new() -> Self {
-        Self {
-            initial_value_witnesses: vec![],
-            operations: vec![],
-        }
-    }
-
-    pub fn is_read_only(&self) -> bool {
-        self.operations.iter().all(|op| match op {
-            MemoryOperation::Load(_, _) => true,
-            MemoryOperation::Store(_, _) => false,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum MemoryOperation {
-    /// (R1CS witness index of address, R1CS witness index of value read)
-    Load(usize, usize),
-    /// (R1CS witness index of address, R1CS witness index of value to write)
-    Store(usize, usize),
-}
-
-// FIXME where does this belong?
-#[derive(Debug, Clone)]
-pub(crate) struct SpiceWitnesses {
-    /// The length of the memory block
-    pub memory_length: usize,
-    /// The witness index of the first initial value (they are stored contiguously)
-    /// (Not written to)
-    pub initial_values_start: usize,
-    /// The memory operations, in the order that they occur; each SpiceMemoryOperation contains witness indices that will be written to)
-    pub memory_operations: Vec<SpiceMemoryOperation>,
-    /// The witness index of the first of the memory_length final read values (stored contiguously) (these witnesses are written to)
-    pub rv_final_start: usize,
-    /// The witness index of the first of the memory_length final read timestamps (stored contiguously) (these witnesses are written to)
-    pub rt_final_start: usize,
-    /// The index of the first witness written to by the SpiceWitnesses struct
-    pub first_witness_idx: usize,
-    /// The number of witnesses written to by the SpiceWitnesses struct
-    pub num_witnesses: usize
-}
-
-impl SpiceWitnesses {
-    fn new(
-        next_witness_idx: usize,
-        memory_length: usize,
-        initial_values_start: usize, // already allocated
-        memory_operations: Vec<MemoryOperation>,
-    ) -> Self {
-        let start_witness_idx = next_witness_idx;
-        let mut next_witness_idx = start_witness_idx;
-        let spice_memory_operations = memory_operations
-            .into_iter()
-            .map(|op| match op {
-                MemoryOperation::Load(addr, value) => {
-                    let op = SpiceMemoryOperation::Load(addr, value, next_witness_idx);
-                    next_witness_idx += 1;
-                    op
-                },
-                MemoryOperation::Store(addr, new_value) => {
-                    let old_value = next_witness_idx;
-                    next_witness_idx += 1;
-                    let read_timestamp = next_witness_idx;
-                    next_witness_idx += 1;
-                    SpiceMemoryOperation::Store(addr, old_value, new_value, read_timestamp)
-                }
-            })
-            .collect();
-        let rv_final_start = next_witness_idx;
-        next_witness_idx += memory_length;
-        let rt_final_start = next_witness_idx;
-        next_witness_idx += memory_length;
-        let num_witnesses = next_witness_idx - start_witness_idx;
-
-        Self {
-            memory_length,
-            initial_values_start,
-            memory_operations: spice_memory_operations,
-            rv_final_start,
-            rt_final_start,
-            first_witness_idx: start_witness_idx,
-            num_witnesses
-        }
-    }
-}
-
-/// Like [MemoryOperation], but with the indices of the additional witnesses needed by Spice.
-#[derive(Debug, Clone)]
-pub(crate) enum SpiceMemoryOperation {
-    /// Load operation.  Arguments are R1CS witness indices:
-    /// (address, value read, read timestamp)
-    /// `address` is already solved for by the ACIR solver.
-    Load(usize, usize, usize),
-    /// Store operation.  Arguments are R1CS witness indices:
-    /// (address, old value, new value, read timestamp)
-    /// `address`, `old value`, `new value` are already solved for by the ACIR solver.
-    Store(usize, usize, usize, usize),
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DigitalDecompositionWitnesses {
-    /// The log base of each digit (in little-endian order)
-    pub log_bases: Vec<usize>,
-    /// Witness indices of the values to be decomposed
-    pub values: Vec<usize>,
-    /// Witness indices for the digits of the decomposition of each value (indexed by digital place).
-    pub digit_start_indices: Vec<usize>,
-    /// The index of the first witness written to
-    pub first_witness_idx: usize,
-    /// The number of witnesses written to
-    pub num_witnesses: usize,
-}
-
-impl DigitalDecompositionWitnesses {
-    pub fn new(next_witness_idx: usize, log_bases: Vec<usize>, values: Vec<usize>) -> Self {
-        let num_values = values.len();
-        let digital_decomp_length = log_bases.len();
-        let digit_start_indices = (0..digital_decomp_length)
-            .map(|i| next_witness_idx + i * num_values).collect::<Vec<_>>();
-        Self {
-            log_bases,
-            values,
-            digit_start_indices,
-            first_witness_idx: next_witness_idx,
-            num_witnesses: digital_decomp_length * num_values,
-        }
     }
 }

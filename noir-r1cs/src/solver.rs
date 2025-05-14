@@ -4,11 +4,11 @@ use acir::{
     };
 use rand::Rng;
 
-use crate::compiler::{DigitalDecompositionWitnesses, SpiceMemoryOperation, SpiceWitnesses};
+use crate::{digits::DigitalDecompositionWitnesses, ram::SpiceWitnesses};
 
 #[derive(Debug, Clone)]
-/// Indicates how to solve for an R1CS witness value in terms of earlier R1CS witness values and/or
-/// ACIR witness values.
+/// Indicates how to solve for a collection of R1CS witnesses in terms of earlier (i.e. already
+/// solved for) R1CS witnesses and/or ACIR witness values.
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
     /// (witness index, constant value)
@@ -53,12 +53,12 @@ pub enum WitnessBuilder {
     /// where sz_challenge, rs_challenge, addr_witness, timer_witness are witness indices.
     /// Solver computes:
     /// sz_challenge - (addr * addr_witness + rs_challenge * value + rs_challenge * rs_challenge * timer * timer_witness)
-    MemOpMultisetFactor(usize, usize, usize, (FieldElement, usize), usize, (FieldElement, usize)),
+    SpiceMultisetFactor(usize, usize, usize, (FieldElement, usize), usize, (FieldElement, usize)),
     /// Builds the witnesses values required for the Spice memory model.
     /// (Note that some witness values are already solved for by the ACIR solver.)
     SpiceWitnesses(SpiceWitnesses),
-
-    //FIXME
+    /// Builds the witnesses values required for the mixed base digital decomposition of other
+    /// witness values.
     DigitalDecomposition(DigitalDecompositionWitnesses),
 }
 
@@ -76,7 +76,7 @@ impl WitnessBuilder {
             WitnessBuilder::IndexedLogUpDenominator(_, _, _, _, _) => 1,
             WitnessBuilder::LogUpDenominator(_, _, _) => 1,
             WitnessBuilder::ProductLinearOperation(_, _, _) => 1,
-            WitnessBuilder::MemOpMultisetFactor(_, _, _, _, _, _) => 1,
+            WitnessBuilder::SpiceMultisetFactor(_, _, _, _, _, _) => 1,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.num_witnesses,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
         }
@@ -95,7 +95,7 @@ impl WitnessBuilder {
             WitnessBuilder::IndexedLogUpDenominator(start_idx, _, _, _, _) => *start_idx,
             WitnessBuilder::LogUpDenominator(start_idx, _, _) => *start_idx,
             WitnessBuilder::ProductLinearOperation(start_idx, _, _) => *start_idx,
-            WitnessBuilder::MemOpMultisetFactor(start_idx, _, _, _, _, _) => *start_idx,
+            WitnessBuilder::SpiceMultisetFactor(start_idx, _, _, _, _, _) => *start_idx,
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => spice_witnesses_struct.first_witness_idx,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.first_witness_idx,
         }
@@ -170,109 +170,19 @@ impl WitnessBuilder {
                     witness[start_idx + i] = FieldElement::from(*count);
                 }
             }
-            WitnessBuilder::MemOpMultisetFactor(witness_idx, sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness)) => {
+            WitnessBuilder::SpiceMultisetFactor(witness_idx, sz_challenge, rs_challenge, (addr, addr_witness), value, (timer, timer_witness)) => {
                 witness[*witness_idx] = witness[*sz_challenge] - (*addr * witness[*addr_witness]
                     + witness[*rs_challenge] * witness[*value]
                     + witness[*rs_challenge] * witness[*rs_challenge] * *timer * witness[*timer_witness]);
             }
             WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
-                let mut rv_final = witness[spice_witnesses.initial_values_start..spice_witnesses.initial_values_start + spice_witnesses.memory_length].to_vec();
-                let mut rt_final = vec![0; spice_witnesses.memory_length];
-                for (mem_op_index, mem_op) in spice_witnesses.memory_operations.iter().enumerate() {
-                    match mem_op {
-                        SpiceMemoryOperation::Load(addr, value, read_timestamp) => {
-                            let addr = witness[*addr];
-                            let addr_as_usize = addr.try_to_u64().unwrap() as usize;
-                            witness[*read_timestamp] = FieldElement::from(rt_final[addr_as_usize]);
-                            rv_final[addr_as_usize] = witness[*value];
-                            rt_final[addr_as_usize] = mem_op_index + 1;
-                        }
-                        SpiceMemoryOperation::Store(addr, old_value, new_value, read_timestamp) => {
-                            let addr = witness[*addr];
-                            let addr_as_usize = addr.try_to_u64().unwrap() as usize;
-                            witness[*old_value] = rv_final[addr_as_usize];
-                            witness[*read_timestamp] = FieldElement::from(rt_final[addr_as_usize]);
-                            let new_value = witness[*new_value];
-                            rv_final[addr_as_usize] = new_value;
-                            rt_final[addr_as_usize] = mem_op_index + 1;
-                        }
-                    }
-
-                }
-                // Copy the final values and read timestamps into the witness vector
-                for i in 0..spice_witnesses.memory_length {
-                    witness[spice_witnesses.rv_final_start + i] = rv_final[i];
-                    witness[spice_witnesses.rt_final_start + i] = FieldElement::from(rt_final[i]);
-                }
+                spice_witnesses.solve(witness);
             }
             WitnessBuilder::DigitalDecomposition(dd_struct) => {
-                dd_struct.values.iter().enumerate().for_each(|(i, value_witness_idx)| {
-                    let value = witness[*value_witness_idx];
-                    let value_bits = field_to_le_bits(value);
-                    // Grab the bits of the element that we need for each digit, and turn them back into field elements.
-                    let mut start_bit = 0;
-                    for (digit_idx, digit_start_idx) in dd_struct.digit_start_indices.iter().enumerate() {
-                        let log_base = dd_struct.log_bases[digit_idx];
-                        let digit_bits = &value_bits[start_bit..start_bit + log_base];
-                        let digit_value = le_bits_to_field(digit_bits);
-                        witness[*digit_start_idx + i] = digit_value;
-                        start_bit += log_base;
-                    }
-                });
+                dd_struct.solve(witness);
             }
         }
     }
-}
-
-/// Decomposes a field element into its bits, in little-endian order.
-pub(crate) fn field_to_le_bits(value: FieldElement) -> Vec<bool> {
-    value
-        .to_be_bytes()
-        .iter()
-        .rev()
-        .flat_map(|byte| (0..8).map(move |i| (byte >> i) & 1 != 0))
-        .collect()
-}
-
-/// Given the binary representation of a field element in little-endian order, convert it to a field
-/// element. The input is padded to the next multiple of 8 bits.
-pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
-    let next_multiple_of_8 = bits.len().div_ceil(8) * 8;
-    let padding_amt = next_multiple_of_8 - bits.len();
-    let mut padded_bits_le = vec![false; next_multiple_of_8];
-    padded_bits_le[..(next_multiple_of_8 - padding_amt)].copy_from_slice(bits);
-    let be_byte_vec: Vec<u8> = padded_bits_le
-        .chunks(8)
-        .map(|chunk_in_bits| {
-            chunk_in_bits
-                .iter()
-                .enumerate()
-                .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << i))
-        })
-        .rev()
-        .collect();
-    FieldElement::from_be_bytes_reduce(&be_byte_vec)
-}
-
-#[cfg(test)]
-#[test]
-fn test_field_to_le_bits() {
-    let value = FieldElement::from(5u32);
-    let bits = field_to_le_bits(value);
-    assert_eq!(bits.len(), 256);
-    assert_eq!(bits[0], true);
-    assert_eq!(bits[1], false);
-    assert_eq!(bits[2], true);
-    assert_eq!(bits[254], false);
-    assert_eq!(bits[255], false);
-}
-
-#[cfg(test)]
-#[test]
-fn test_le_bits_to_field() {
-    let bits = vec![true, false, true, false, false];
-    let value = le_bits_to_field(&bits);
-    assert_eq!(value.try_to_u32().unwrap(), 5);
 }
 
 /// Mock transcript. To be replaced.

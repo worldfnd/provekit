@@ -1,6 +1,6 @@
 use std::fs::File;
 use noirc_artifacts::program::ProgramArtifact;
-use crate::{compiler::{NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, R1CS}, solver::MockTranscript, utils::file_io::deserialize_witness_stack};
+use crate::{compiler::R1CS, range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, solver::MockTranscript, utils::file_io::deserialize_witness_stack};
 
 // Tests that an ACIR program containing a can be compiled to R1CS and
 // the R1CS witness solved for given the ACIR witness.

@@ -1,10 +1,16 @@
 #![doc = include_str!("../README.md")]
 mod compiler;
-//mod fs_compiler;
 mod r1cs_matrices;
 mod solver;
-//mod fs_solver;
 mod sparse_matrix;
+mod digits;
+mod memory;
+/// Support for read-only memory (using LogUp).
+mod rom;
+/// Support for read-write memory (using offline memory checking: Spice).
+mod ram;
+/// Support for range checks (using digital decomposition, if required).
+mod range_check;
 mod utils;
 #[cfg(test)]
 mod test_compiler;
