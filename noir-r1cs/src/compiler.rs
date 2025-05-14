@@ -476,8 +476,12 @@ impl R1CS {
                             values_to_lookup,
                     );
                     r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
-                    // Add the constraints for the digital recomposition (TODO consider putting this in the witness builder)
-                    let digit_multipliers = DigitalDecompositionWitnesses::get_digit_multipliers(&log_bases);
+                    // Add the constraints for the digital recomposition
+                    let mut digit_multipliers = vec![FieldElement::one()];
+                    for log_base in log_bases[..log_bases.len() - 1].iter() {
+                        let multiplier = *digit_multipliers.last().unwrap() * FieldElement::from(1u128 << *log_base);
+                        digit_multipliers.push(multiplier);
+                    }
                     dd_struct.values.iter().enumerate().for_each(|(i, value)| {
                         let mut recomp_summands = vec![];
                         dd_struct.digit_start_indices.iter().zip(digit_multipliers.iter()).for_each(|(digit_start_index, digit_multiplier)| {
@@ -491,7 +495,7 @@ impl R1CS {
                         );
                     });
 
-                    // Add the digit witness indices to the atomic range blocks
+                    // Add the witness indices for the digits to the atomic range checks
                     dd_struct.log_bases.iter().zip(dd_struct.digit_start_indices.iter()).for_each(|(log_base, digit_start_index)| {
                         atomic_range_checks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
                     });
@@ -512,7 +516,7 @@ impl R1CS {
                     .copied()
                     .collect::<Vec<_>>();
                 if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
-                    r1cs.add_logup_summations(num_bits as u32, &values_to_lookup);
+                    r1cs.add_range_check(num_bits as u32, &values_to_lookup);
                 } else {
                     values_to_lookup.iter().for_each(|value| {
                         r1cs.add_naive_range_check(num_bits as u32, *value);
@@ -686,12 +690,11 @@ impl R1CS {
         inverse
     }
 
-    // FIXME update name: is only for range checks as it stands
     /// Helper function which computes all the terms of the summation for
     /// each side (LHS and RHS) of the log-derivative multiset check.
     ///
     /// Checks that both sums (LHS and RHS) are equal at the end.
-    pub(crate) fn add_logup_summations(&mut self, num_bits: u32, values_to_lookup: &[usize]) {
+    pub(crate) fn add_range_check(&mut self, num_bits: u32, values_to_lookup: &[usize]) {
         // Add witnesses for the multiplicities
         let wb = WitnessBuilder::MultiplicitiesForRange(self.num_witnesses(), 1 << num_bits, values_to_lookup.clone().into());
         let multiplicities_first_witness = self.add_witness_builder(wb);
@@ -966,20 +969,4 @@ impl DigitalDecompositionWitnesses {
             num_witnesses: digital_decomp_length * num_values,
         }
     }
-
-    /// Returns the digit multipliers for the digital recomposition, in the same order as self.log_bases.
-    pub fn get_digit_multipliers(log_bases: &Vec<usize>) -> Vec<FieldElement> {
-        // Calculate the partial sums of log bases
-        let log_base_partial_sums_le = log_bases.iter().scan(0, |acc, &x| {
-            let return_value = *acc;
-            *acc += x;
-            Some(return_value)
-        }).collect::<Vec<_>>();
-        // TODO careful with the u128 here!  what is the maximum range check size?
-        // FIXME
-        println!("log_base_partial_sums_le: {:?}", log_base_partial_sums_le);
-        log_base_partial_sums_le.iter().map(|x| FieldElement::from(1u128 << *x)).collect::<Vec<_>>()
-    }
 }
-
-// FIXME test get_digit_multipliers (perhaps should be re-factored?)
