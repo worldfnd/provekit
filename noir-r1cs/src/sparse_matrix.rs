@@ -179,11 +179,3 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
         result
     }
 }
-
-pub fn mat_mul(a: &SparseMatrix<FieldElement>, b: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = vec![FieldElement::zero(); a.rows];
-    for ((i, j), &value) in a.iter() {
-        result[i] += value * b[j];
-    }
-    result
-}
