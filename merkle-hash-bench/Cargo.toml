@@ -47,6 +47,9 @@ zerocopy = { version = "0.8.17", features = ["simd"] }
 linkme = "0.3.31"
 gensym = "0.1.1"
 
+skyscraper = { path = "../skyscraper" }
+
+
 # Plonky 3
 p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", optional = true, features = [
     "table",
@@ -67,7 +70,7 @@ icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "m
 icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main", optional = true }
 
 # ZKHash
-zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", commit = "f252d2b2767bc88659615601ac13e19f52c2c11f", optional = true }
+zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f", optional = true }
 
 # Stwo
 stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1", optional = true }

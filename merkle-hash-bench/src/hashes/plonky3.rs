@@ -1,6 +1,6 @@
 #![cfg(feature = "plonky3")]
 use {
-    crate::{register_hash, Field, HashFn, SmolHasher},
+    crate::{mod_ring::fields::Bn254Field, register_hash, Field, HashFn, SmolHasher},
     bytemuck::cast_slice_mut,
     p3_bn254_fr::{Bn254Fr, FFBn254Fr, Poseidon2Bn254},
     p3_field::{
@@ -12,6 +12,7 @@ use {
     p3_rescue::Rescue,
     p3_symmetric::Permutation,
     rand::rng,
+    std::mem::transmute,
 };
 
 type RescueGoldilocks = Rescue<Goldilocks, MdsMatrixGoldilocks, 8, 7>;
@@ -105,7 +106,7 @@ impl SmolHasher for Poseidon2Bn254<3> {
                 Bn254Fr::ZERO,
             ];
             let state = self.permute(state);
-            hash.copy_from_slice(state[0].value.to_bytes().as_slice());
+            hash.copy_from_slice(bytes_from_fr(state[0]).as_slice());
         }
     }
 }
@@ -113,9 +114,12 @@ impl SmolHasher for Poseidon2Bn254<3> {
 fn fr_from_bytes(bytes: &[u8]) -> Bn254Fr {
     let mut bytes: [u8; 32] = bytes.try_into().unwrap();
     bytes[31] = 0; // Force smaller than modulus.
-    Bn254Fr {
-        value: FFBn254Fr::from_bytes(&bytes).unwrap(),
-    }
+    let element = FFBn254Fr::from_bytes(&bytes).unwrap();
+    unsafe { transmute(element) }
+}
+
+fn bytes_from_fr(element: Bn254Fr) -> [u8; 32] {
+    unsafe { transmute(element) }
 }
 
 impl SmolHasher for MonolithMersenne31<MdsMatrixMersenne31, 16, 5> {

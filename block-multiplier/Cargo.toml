@@ -1,0 +1,24 @@
+[package]
+name = "block-multiplier"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+seq-macro = "0.3.5"
+fp-rounding = { path = "../fp-rounding" }
+
+[dev-dependencies]
+rand.workspace = true
+divan.workspace = true
+primitive-types = "0.13.1"
+ark-ff.workspace = true
+ark-bn254.workspace = true
+proptest.workspace = true
+
+[build-dependencies]
+block-multiplier-codegen = { path = "../block-multiplier-codegen" }
+hla = { path = "../hla" }
+
+[[bench]]
+name = "bench"
+harness = false

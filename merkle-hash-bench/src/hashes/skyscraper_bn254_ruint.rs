@@ -26,7 +26,7 @@ pub struct Skyscraper;
 
 impl SmolHasher for Skyscraper {
     fn hash_fn(&self) -> HashFn {
-        HashFn::Skyscraper(1)
+        HashFn::Skyscraper1(1)
     }
 
     fn implementation(&self) -> &str {
