@@ -1,0 +1,60 @@
+#import "preamble.typst": *
+
+= GR1CS applied to R1CS
+
+#definition("R1CS")[An _R1CS_-relation is a triplet of $FF^(m times n)$ matrices $(vmat(A), vmat(B), vmat(C))$ such that a witness $vvec(w) in FF^n$ satisfies
+$
+(vmat(A) dot vvec(w)) dot.circle (vmat(B) dot vvec(w)) = (vmat(C) dot vvec(w)).
+$
+]
+
+#figure(kind: "algorithm", supplement: [Algorithm],
+pseudocode-list(
+  numbered-title: [Client side prover algorithm],
+  booktabs: true, indentation: 2em
+)[
+- Given Noir circuit $cal(C)$ and satisfying arguments $p_i$.
++ *Prover* sends  $sans(op("hash"))(cal(C))$.
++ *Prover* derives R1CS matrices $vmat(A), vmat(B), vmat(C)$ from $cal(C)$.
++ #line-label(<instance>) *Prover* sends the public inputs ${(vvec(x_i), p_i)}_i$.
++ *Prover* computes satisfying witness vector as MLE $w(vvec(x))$ and derives
+- $
+  a(vvec(x)) = sum_(vvec(y) in {0,1}^n) vmat(A)(vvec(x), vvec(y)) dot w(vvec(y)) \
+  b(vvec(x)) = sum_(vvec(y) in {0,1}^n) vmat(B)(vvec(x), vvec(y)) dot w(vvec(y)) \
+  c(vvec(x)) = sum_(vvec(y) in {0,1}^n) vmat(C)(vvec(x), vvec(y)) dot w(vvec(y)).
+  $
++ *Prover* sends $sans(op("commit")_("WHIR"))(w)$.
++ *Prover* and *verifier* use zero-check on the R1CS relation:
+  + *Verifier* send challenge $vvec(r)_0 arrowrl FF^k$.
+  + *Prover* and *verifier* run sumcheck on
+  - $
+    0 = sum_(vvec(x) in {0,1}^m) eq(vvec(r)_0, vvec(x)) dot (a(vvec(x)) dot b(vvec(x)) - c(vvec(x)))
+    $
+    to reduces it to a claim
+    $
+    h = eq(vvec(r)_0, vvec(r)_1) dot (a(vvec(r)_1) dot b(vvec(r)_1) - c(vvec(r)_1)).
+    $
++ *Prover* sends $a_r,b_r,c_r$.
++ *Verifier* checks $h=eq(vvec(r)_0, vvec(r)_1) dot (a_r dot b_r - c_r)$.
++ *Verifier* sends challenge $r_2 arrowrl FF$.
++ *Prover* and *verifier* use WHIR to proof
+-  $
+   p_i &= w(vvec(x_i)) text("for each public input")\
+   a_r &= sum_(vvec(y) in {0,1}^k) vmat(A)(vvec(r)_1, vvec(y)) dot w(vvec(y)) \
+   b_r &= sum_(vvec(y) in {0,1}^k) vmat(B)(vvec(r)_1, vvec(y)) dot w(vvec(y)) \
+   c_r &= sum_(vvec(y) in {0,1}^k) vmat(C)(vvec(r)_1, vvec(y)) dot w(vvec(y)).
+   $
+   $
+   sum_(vvec(y) in {0,1}^k) (
+     vmat(A)(vvec(r)_1, vvec(y)) +
+     r_2 dot vmat(B)(vvec(r)_1, vvec(y)) +
+     r_2^2 dot vmat(C)(vvec(r)_1, vvec(y)) +
+     sum_i r_2^(3+i) dot eq(vvec(x)_i, vvec(y))
+   ) dot w(vvec(y))
+   $
+]
+)
+
+Note that up to @instance the prover work is only circuit specific and can be cached between instances.
+
+Prover needs vectors $w, a, b, c, A+ r dot B+ r^2 dot C$. The first four can be computed in a single pass as part of witness generation. The last three require $vvec(r)_1$ and need to be computed in a second pass.

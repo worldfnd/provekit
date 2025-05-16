@@ -1,0 +1,190 @@
+#import "preamble.typst": *
+#show: thmrules.with(qed-symbol: $square$)
+
+#set page(paper: "a4", margin: (x: 2cm, top: 3cm), numbering: "1", columns: 2)
+#set text(size: 10pt)
+#set par(justify: true)
+#set heading(numbering: "1.1.1")
+#set cite(style: "alphanumeric")
+
+
+#let commit = math.sans(math.upright("commit"))
+#let open = math.sans(math.upright("open"))
+#let verify = math.sans(math.upright("verify"))
+
+#let vx = vvec("x")
+#let vy = vvec("y")
+#let vw = vvec("w")
+#let vb = vvec("b")
+#let vr = vvec("r")
+
+$
+eq(vx, vy) = product_(i in [0,k)) (x_i dot y_i + (1 - x_i) dot (1 - y_i))
+$
+
+From this follows
+- $eq(vx,vy)=eq(vy,vx)$
+- $eq(0, y)= 1- y$
+- $eq(1, y)= y$
+- $sum_(vb in {0,1}^k) eq(vx, vb) dot eq(vb, vy) = eq(vx, vy)$
+
+= Inner Product Arithmetization
+
+
+#definition("IPCS")[A *inner product commitment scheme* (IPCS) over a finite field $FF$ has operations
+
+
+ - $commit(vx) |-> C_vx$ takes a vector $vx in FF^n$ and outputs a commitment $C_vx$.
+ - $open(vx, C_vx, vw, s) -> pi$ proves the value of $vx dot vw = s$.
+ - $verify(C_vx, vw, s, pi)$ verifies the proof $pi$.
+
+where $C_vx$ is constant sized. If the size of $pi$ is sublinear in $n$ we call it succinct in proof size.
+]
+
+Examples are WHIR and Ligerito.
+
+In conventional sumcheck based protocols, we require $n = 2^k$ and the verifier only needs $vw$ to compute $w(vvec(r))$ with $vvec(r) in FF^k$ and $w$ given by:
+
+$
+w(vvec(r)) = sum_(vvec(b) in {0,1}^k) vw_(vvec(b)) dot eq(vvec(b), vvec(r))
+$
+
+If $w$ can be computed sublinearly in $n$, we call it succinctly verifiable.
+
+#lemma("MLE")[
+  An IPCS can succinctly verify an MLE evaluation in $vy in FF^k$ using
+  $
+  w(vr) = eq(vy, vr)
+  $
+]
+#proof[
+  Consider the vector $vx$ as values on the hypercube ${0,1}^k$. Take $f$ to be the multilinear extension of $vx$, then an evaluation $f(vvec(p))$ for $vvec(p) in F^k$ can be done by setting
+  $vvec(w)$.
+  $
+    w(vr) = sum_(vvec(b) in {0,1}^k) eq(vvec(y), vvec(b)) dot eq(vvec(b), vvec(r)) = eq(vy, vvec(r))
+  $
+]
+
+#lemma("Univariate")[
+  Consider the vector $vx$ as evaluations of a polynomial $f(x)$ on $(omega_(2^k)^i)_(i in [0,n))$.
+  An IPCS can succinctly verify an univariate evaluation in $y in FF$ using
+  $
+    w(vr) = eq((1, y, y^2, y^4, dots, y^(2^k)), vr)
+  $
+]
+
+From here we can go further and make make treat the vector as an polynomial on an arbitrary basis
+
+$vvec(omega)_n = (omega_(n_0)^i)_(i in [0,n_0))$
+
+$
+(omega_(n_0)^i)_(i in [0,n_0)) times (omega_(n_1)^i)_(i in [0,n_1)) times dots.c
+$
+
+for an arbitrary factorization $n = n_0 dot n_1 dot dots$. Of course, since $n = 2^k$ all factors will be powers of two.
+
+= Fibonacci
+
+The classic demonstration or AIR style constraint systems is the fibonacci sequence. Given a vector
+
+$
+(1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, dots)
+$
+
+We want the following constraints:
+
+ - $x_0 = 1$
+ - $x_1 = 1$
+ - $x_i = x_(i-1) + x_(i-2)$ for $i in [2, n-1]$
+ - $x_(n-1)$ is the claimed value
+
+This requires pointwise constraints, repeated constraints and constraints containing offsets.
+
+https://hackmd.io/@aztec-network/plonk-arithmetiization-air#fn1
+
+Q: Can we have succinct verification of every $2^l$ sized block in the witness?
+
+#pagebreak()
+
+= Karatsuba
+
+Multiplication in $FF_(p^2)$ can be done in three $FF_p$ multiplications:
+
+$
+(a_0 + a_1 dot ii ) dot (b_0 + b_1 dot ii ) =\
+a_0 dot b_0 - a_1 dot b_1 + (a_0 dot b_1 + a_1 dot b_0) dot ii
+$
+
+Multiplication in $F_q^3$ can be done in 5 operations $FF_(p^2)$ multiplications:
+
+= Zero check
+
+@BDT224, @Gru24, @WWX25
+
+Given MLEs $a, b, c in FF_p [x^k]$ we want to prove that for all $vx in {0,1}^k$ we have $a(vx) dot b(vx) = c(vx)$. In zero-check we do this by proving
+$
+sum_(vb in {0,1}^k) eq(vr, vb) dot (a(vx) dot b(vx) - c(vx)) = 0
+$
+where $vr in FF_p^k$ is randomly drawn. This works when $|FF_p| > 2^lambda$. Furhtermore, sumcheck itself only works when $|FF_p| > 2^lambda$.
+
+= General results on finite field embeddings
+
+Question: Embedding of the Hadamard Product?
+
+#lemma("Dot Product Embedding")[Given a field $FF_(q^n)$ over $FF_q$ represented by $FF_q [X]\/(X^n - m_1 dot X - m_0)$, we can construct an embedding of the $FF_q^n$ inner product in $FF_(q^n)$ in the monomial basis where one vector is transformed with the matrix
+$
+mat(
+1, 0, dots.c, 0;
+0, 0, dots.c, m_0^(-1);
+dots.v, dots.v, dots.up, 0;
+0, m_0^(-1), dots.c, 0
+)
+$
+]<embedding>
+#proof[Since $X^n - m_1 dot X - m_0$ is irreducible we have $m_0 ≠ 0$ and hence $m_0^(-1)$ exists.
+The embedding of vectors $(a_0, a_1, dots, a_(n-1))$ and $(b_0, b_1, dots, b_(n-1))$ results in
+$
+a & = a_0 + a_1 dot X + dots.c + a_(n-1) dot X^(n-1) \
+b & = b_0 + m_0^(-1) dot ( b_(n-1) dot  X + dots.c + b_1 dot X^(n-1)) \
+$
+The product $a dot b$ has powers up to $X^(2 dot (n - 1))$. Note that in the quotient we have $X^n = m_0 + m_1 dot X$. Of the unreduced product, only $X^0$ and $X^n$ contribute to the constant term. To see this, consider a term $X^(n + k)$ with $k in [1, n-2]$.
+$
+X^(n + k) &= X^n dot X^k \
+&= (m_0 + m_1 dot X) dot X^k \
+&= m_0 dot X^k + m_1 dot X^(k+1)
+$
+and since $k > 0$ and $k + 1 < n$ these do not contribute to the constant term. Thus the constant term is given by
+$
+a_0 dot b_0 + m_0 dot (a_1 dot m_0^(-1) dot b_1 + dots.c + a_(n_1) dot m_0^(-1) dot b_(n-1))
+$
+which is the dot product as intended.
+]
+
+#lemma("Towers")[Given $m, n$ and a $FF_q^m$ dot product embedding in $FF_(q^m)$ and an $FF_(q^m)^n$ dot product embedding in $FF_(q^(m dot n))$, we can construct an $FF_q^(m dot n)$ dot product embedding in $FF_(q^(m dot n))$ by taking the Kronecker product of the embedding matrics.
+]<tower>
+(Proof TBD)
+
+
+#lemma[Given a field $FF_(q^n)$ over $FF_q$ with $n = 2^k$ for some $k$, we can construct an embedding of the $FF_q^n$ dot product in $FF_(q^n)$.
+]
+#proof[Consider $FF_(q^n)$ as a tower of quadratic extension over $F_q$. Each quadratic extension
+  has an irreducible polynomial of the form $X^2 - m_1 dot X - m_0$ and hence an embedding by @embedding. By @tower we can compose these embeddings to obtain an embedding for $F_(q^n)$.
+]
+
+The follwing is a theorem, first conjectured in @HM92 and subsequently proven in @Wan97, @HM98.
+
+#theorem("Hansen–Mullen")[
+  Given a field $FF_q$ and positivie integer $n >= 2$. Fix an $i in [0, n)$ and $c in FF_q$, then there exist an irreducible monic polynomial $X^n + sum_(i in [0,n)) c_i X^i$ in $F_q [X]$ with $c_i = c$, except when
+  1. $i = 0$, and $c = 0$, or
+  2. $q = 2^k$, $n = 2$, $i= 1$, and $c = 0$
+]<hm>
+
+The exceptions are natural: any polynomial with $c_0 = 0$ is divisible by $X$ and hence not irreducible. Furthermore in characteristic $2$ every value is a square and $x^2 + c_0$  factors as $(x + sqrt(c_0))^2$.
+
+From @hm follows that for $n= 3$ there always exists an irreducible polynomial $X^3 + m_1 X + m_0$, and hence @embedding applies. Combined with @tower, this gives us embeddings for any $n = 2^k dot 3^l$.
+
+#bibliography("references.bib")
+
+// https://www.cambridge.org/core/services/aop-cambridge-core/content/view/189A3A4627AC3912AC76E77F6E5221E8/S0008414X0005570Xa.pdf/a-new-proof-of-the-hansenmullen-irreducibility-conjecture.pdf
+
+// https://www.cambridge.org/core/journals/glasgow-mathematical-journal/article/padic-formal-series-and-cohens-problem/D6446457B03C1191FFE40CF43318128C
