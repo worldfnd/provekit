@@ -223,6 +223,9 @@ pub fn add_ram_checking(
 
     println!("AUDIT");
     // audit(): for each of the cells of the memory block, add a factor to the read hash
+    // We don't need to keep incrementing the mem op index, since only GET operations remain.
+    // TODO: see what global timestamp is used in the AUDIT phase of the Spice protocol (check the
+    // Jolt implementation).
     (0..memory_length).for_each(|addr| {
         // GET
         let value_witness = spice_witnesses.rv_final_start + addr;
@@ -249,14 +252,19 @@ pub fn add_ram_checking(
     );
 
     // We want to establish that mem_op_index = max(mem_op_index, retrieved_timer)
+    // Or equivalently, that mem_op_index - retrieved_timer >= 0
     // We do this via two separate range checks:
     //  1. retrieved_timer in 0..2^K
-    //  2. (mem_op_index - retrieved_time) in 0..2^K
+    //  2. (mem_op_index - retrieved_timer) in 0..2^K
     // where K is minimal such that 2^K >= block.operations.len().
     // The above range check is sound so long as 2^K is less than the characteristic of the field.
     // (Note that range checks implemented only for powers of two).
-    let num_bits = block.operations.len().next_power_of_two().ilog2() as u32;
-    let mut range_check = vec![]; // TODO can preallocate
+    // The maximum value obtained by the global timestamp is the number of memory operations.
+    // This is also the maximum value for any valid read timestamp.
+
+    // num_bits is the ceil log of one more than the maximum permitted value
+    let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2() as u32;
+    let mut range_check = Vec::with_capacity(2 * all_mem_op_index_and_rt.len());
     all_mem_op_index_and_rt
         .iter()
         .for_each(|(mem_op_index, rt_witness)| {
@@ -275,10 +283,8 @@ pub fn add_ram_checking(
     (num_bits, range_check)
 }
 
-
-// Add and return a new witness representing `sz_challenge - hash`, where `hash` is the hash value of a memory operation, adding an R1CS constraint enforcing this.
-// (This is a helper method for the offline memory checking.)
-// TODO combine this with Vishruti's add_indexed_lookup_factor (generic over the length of the combination).
+// Add and return a new witness representing `sz_challenge - hash`, where `hash` is the hash value
+// of a memory operation, adding an R1CS constraint enforcing this.
 fn add_mem_op_multiset_factor(
     r1cs: &mut R1CS,
     sz_challenge: usize,
