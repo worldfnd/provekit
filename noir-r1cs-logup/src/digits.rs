@@ -1,15 +1,17 @@
 use acir::{AcirField, FieldElement};
+use crate::{compiler::R1CS, solver::WitnessBuilder};
 
 /// Allocates witnesses for the digital decomposition of the given witnesses into its digits in the
 /// given bases.  A log base is specified for each digit (permitting mixed base decompositions). The
-/// order of bases is little-endian. The digits of each value appear contiguously, in the order of
-/// the bases.
+/// order of bases is little-endian. Witnesses for the digits of each value are allocated
+/// contiguously, starting from first_witness_idx, in the order of the bases.
 #[derive(Debug, Clone)]
 pub(crate) struct DigitalDecompositionWitnesses {
     /// The log base of each digit (in little-endian order)
     pub log_bases: Vec<usize>,
     /// Witness indices of the values to be decomposed
-    pub values: Vec<usize>,
+    pub witnesses_to_decompose: Vec<usize>,
+    // TODO(Ben) this is redundant, really, since each value has a fixed number of digits and the witnesses are stored contiguously
     /// Witness indices for the digits of the decomposition of each value (indexed by digital place).
     pub digit_start_indices: Vec<usize>,
     /// The index of the first witness written to
@@ -19,14 +21,14 @@ pub(crate) struct DigitalDecompositionWitnesses {
 }
 
 impl DigitalDecompositionWitnesses {
-    pub fn new(next_witness_idx: usize, log_bases: Vec<usize>, values: Vec<usize>) -> Self {
-        let num_values = values.len();
+    pub fn new(next_witness_idx: usize, log_bases: Vec<usize>, witnesses_to_decompose: Vec<usize>) -> Self {
+        let num_values = witnesses_to_decompose.len();
         let digital_decomp_length = log_bases.len();
         let digit_start_indices = (0..digital_decomp_length)
             .map(|i| next_witness_idx + i * num_values).collect::<Vec<_>>();
         Self {
             log_bases,
-            values,
+            witnesses_to_decompose,
             digit_start_indices,
             first_witness_idx: next_witness_idx,
             num_witnesses: digital_decomp_length * num_values,
@@ -35,7 +37,7 @@ impl DigitalDecompositionWitnesses {
 
     /// Solve for the witness values allocated to the digital decomposition.
     pub fn solve(&self, witness: &mut [FieldElement]) {
-        self.values.iter().enumerate().for_each(|(i, value_witness_idx)| {
+        self.witnesses_to_decompose.iter().enumerate().for_each(|(i, value_witness_idx)| {
             let value = witness[*value_witness_idx];
             let value_bits = field_to_le_bits(value);
             // Grab the bits of the element that we need for each digit, and turn them back into field elements.
@@ -49,6 +51,57 @@ impl DigitalDecompositionWitnesses {
             }
         });
     }
+
+    /// Returns a vector of tuples, where each tuple contains the log base and the witness indices of
+    /// the digits for that base (these may be used to range check the digits, for instance).
+    pub fn digit_ranges(&self) -> Vec<(u32, Vec<usize>)> {
+        let num_witnesses_to_decompose = self.witnesses_to_decompose.len();
+        self
+            .log_bases
+            .iter()
+            .map(|log_base| *log_base as u32)
+            .zip(
+                self
+                    .digit_start_indices
+                    .iter()
+                    .map(|digit_start_index| {
+                        (0..num_witnesses_to_decompose).map(|i| *digit_start_index + i).collect::<Vec<_>>()
+                    })
+            ).collect()
+    }
+}
+
+/// Adds the witnesses and constraints for the digital decomposition of the given witnesses in a
+/// mixed base decomposition (see [DigitalDecompositionWitnesses]).  Does NOT add constraints for
+/// range checking the digits - this is left to the caller (as sometimes these range checks are
+/// obviated e.g. by later lookups, as in the case of the bin op codes).
+pub(crate) fn add_digital_decomposition(
+    r1cs: &mut R1CS,
+    log_bases: Vec<usize>,
+    witnesses_to_decompose: Vec<usize>,
+) -> DigitalDecompositionWitnesses {
+    let next_witness_idx = r1cs.num_witnesses();
+    let dd_struct = DigitalDecompositionWitnesses::new(next_witness_idx, log_bases.clone(), witnesses_to_decompose);
+    r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
+    // Add the constraints for the digital recomposition
+    let mut digit_multipliers = vec![FieldElement::one()];
+    for log_base in log_bases[..log_bases.len() - 1].iter() {
+        let multiplier = *digit_multipliers.last().unwrap() * FieldElement::from(1u64 << *log_base);
+        digit_multipliers.push(multiplier);
+    }
+    dd_struct.witnesses_to_decompose.iter().enumerate().for_each(|(i, value)| {
+        let mut recomp_summands = vec![];
+        dd_struct.digit_start_indices.iter().zip(digit_multipliers.iter()).for_each(|(digit_start_index, digit_multiplier)| {
+            let digit_witness = *digit_start_index + i;
+            recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
+        });
+        r1cs.matrices.add_constraint(
+            &[(FieldElement::one(), r1cs.witness_one())],
+            &[(FieldElement::one(), *value)],
+            &recomp_summands,
+        );
+    });
+    dd_struct
 }
 
 /// Decomposes a field element into its bits, in little-endian order.

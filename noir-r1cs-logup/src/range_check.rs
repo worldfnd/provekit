@@ -1,7 +1,7 @@
 use std::ops::Neg;
 use std::collections::BTreeMap;
 use acir::{AcirField, FieldElement};
-use crate::{compiler::R1CS, digits::DigitalDecompositionWitnesses, solver::WitnessBuilder};
+use crate::{compiler::R1CS, digits::{add_digital_decomposition, DigitalDecompositionWitnesses}, solver::WitnessBuilder};
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
 pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
@@ -39,36 +39,19 @@ pub(crate) fn add_range_checks(
                 if logbase_of_remainder_digit != 0 {
                     log_bases.push(logbase_of_remainder_digit as usize);
                 }
-                let num_values = values_to_lookup.len();
-                let dd_struct = DigitalDecompositionWitnesses::new(
-                        r1cs.num_witnesses(),
-                        log_bases.clone(),
-                        values_to_lookup,
+                let dd_struct = add_digital_decomposition(
+                    r1cs,
+                    log_bases.clone(),
+                    values_to_lookup.clone(),
                 );
-                r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
-                // Add the constraints for the digital recomposition
-                let mut digit_multipliers = vec![FieldElement::one()];
-                for log_base in log_bases[..log_bases.len() - 1].iter() {
-                    let multiplier = *digit_multipliers.last().unwrap() * FieldElement::from(1u128 << *log_base);
-                    digit_multipliers.push(multiplier);
-                }
-                dd_struct.values.iter().enumerate().for_each(|(i, value)| {
-                    let mut recomp_summands = vec![];
-                    dd_struct.digit_start_indices.iter().zip(digit_multipliers.iter()).for_each(|(digit_start_index, digit_multiplier)| {
-                        let digit_witness = *digit_start_index + i;
-                        recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
-                    });
-                    r1cs.matrices.add_constraint(
-                        &[(FieldElement::one(), r1cs.witness_one())],
-                        &[(FieldElement::one(), *value)],
-                        &recomp_summands,
-                    );
-                });
 
                 // Add the witness indices for the digits to the atomic range checks
-                dd_struct.log_bases.iter().zip(dd_struct.digit_start_indices.iter()).for_each(|(log_base, digit_start_index)| {
-                    atomic_range_checks[*log_base].push((0..num_values).map(|i| *digit_start_index + i).collect());
-                });
+                dd_struct
+                    .digit_ranges()
+                    .into_iter()
+                    .for_each(|(log_base, digit_witnesses)| {
+                        atomic_range_checks[log_base as usize].push(digit_witnesses);
+                    });
             } else {
                 atomic_range_checks[num_bits as usize].push(values_to_lookup);
             }
