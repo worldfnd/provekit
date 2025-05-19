@@ -1,7 +1,7 @@
 use std::ops::Neg;
 use std::collections::BTreeMap;
 use acir::{AcirField, FieldElement};
-use crate::{compiler::R1CS, digits::{add_digital_decomposition, DigitalDecompositionWitnesses}, solver::WitnessBuilder};
+use crate::{compiler::R1CS, digits::add_digital_decomposition, solver::WitnessBuilder};
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
 pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;

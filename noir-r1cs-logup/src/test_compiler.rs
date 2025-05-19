@@ -116,3 +116,11 @@ fn test_mixed_base_range_check() {
         "src/test_programs/range-check-mixed-bases/target/main.gz",
     );
 }
+
+#[test]
+fn test_bin_opcode() {
+    test_compilation_and_solving(
+        "src/test_programs/bin-opcode/target/main.json",
+        "src/test_programs/bin-opcode/target/main.gz",
+    );
+}
