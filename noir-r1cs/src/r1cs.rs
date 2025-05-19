@@ -2,6 +2,7 @@ use {
     crate::{
         r1cs_solver::WitnessBuilder, FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
     },
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{ensure, Result},
     serde::{Deserialize, Serialize},
     tracing::instrument,
@@ -110,11 +111,11 @@ impl R1CS {
     pub fn solve_witness_vec(
         &self,
         witness_builder_vec: &[WitnessBuilder],
-        input: &[FieldElement],
+        witness_map: &WitnessMap<NoirFieldElement>,
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
         witness_builder_vec.iter().for_each(|witness_builder| {
-            witness_builder.solve(input, &mut witness);
+            witness_builder.solve(witness_map, &mut witness);
         });
         witness
     }

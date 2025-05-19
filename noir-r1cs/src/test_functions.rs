@@ -1,28 +1,31 @@
-use std::io::Read;
 #[cfg(test)]
-use {crate::NoirProofScheme, anyhow::Context, std::fs::File, std::path::PathBuf};
+use {
+    crate::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
+    acir::native_types::WitnessMap,
+    acir_field::FieldElement as AcirFieldElement,
+    anyhow::Context,
+    std::path::PathBuf,
+};
+
+#[cfg(test)]
+fn test_compiler(circuit_path_str: &str, witness_path_str: &str) {
+    let circuit_path = &PathBuf::from(circuit_path_str);
+    let proof_schema = NoirProofScheme::from_file(circuit_path).unwrap();
+
+    let witness_file_path = &PathBuf::from(witness_path_str);
+    let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
+    let witness_map: WitnessMap<AcirFieldElement> = witness_stack.pop().unwrap().witness;
+
+    let proof = proof_schema
+        .prove(&witness_map)
+        .context("While proving Noir program statement")
+        .unwrap();
+}
 
 #[test]
 fn test_acir_assert_zero() {
-    let circuit_path = &PathBuf::from(
+    test_compiler(
         "../noir-examples/noir-r1cs-test-programs/acir_assert_zero/target/basic.json",
+        "../noir-examples/noir-r1cs-test-programs/acir_assert_zero/target/basic.gz",
     );
-    let proof_schema = NoirProofScheme::from_file(circuit_path).unwrap();
-
-    let input_file_path =
-        &PathBuf::from("../noir-examples/noir-r1cs-test-programs/acir_assert_zero/Prover.toml");
-    let mut input_file = File::open(input_file_path)
-        .context("while opening input file")
-        .unwrap();
-    let mut input_toml =
-        String::with_capacity(input_file.metadata().map(|m| m.len() as usize).unwrap_or(0));
-    input_file
-        .read_to_string(&mut input_toml)
-        .context("while reading input file")
-        .unwrap();
-
-    let proof = proof_schema
-        .prove(&input_toml)
-        .context("While proving Noir program statement")
-        .unwrap();
 }

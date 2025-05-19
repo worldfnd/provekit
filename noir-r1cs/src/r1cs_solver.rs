@@ -1,8 +1,9 @@
 use {
     crate::{
-        utils::{serde_ark, serde_ark_option},
+        utils::{noir_to_native, serde_ark, serde_ark_option},
         FieldElement,
     },
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     ark_std::Zero,
     serde::{Deserialize, Serialize},
 };
@@ -57,13 +58,19 @@ impl WitnessBuilder {
 
     /// Solves for the witness value(s) specified by this builder and writes
     /// them to the witness vector.
-    pub fn solve(&self, input: &[FieldElement], witness: &mut [Option<FieldElement>]) {
+    pub fn solve(
+        &self,
+        witness_map: &WitnessMap<NoirFieldElement>,
+        witness: &mut [Option<FieldElement>],
+    ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
                 witness[*witness_idx] = Some(*c);
             }
             WitnessBuilder::Acir(witness_idx, acir_witness_idx) => {
-                witness[*witness_idx] = Some(input[*acir_witness_idx]);
+                witness[*witness_idx] = Some(noir_to_native(
+                    *witness_map.get_index(*acir_witness_idx as u32).unwrap(),
+                ));
             }
             WitnessBuilder::Sum(witness_idx, operands) => {
                 witness[*witness_idx] = Some(

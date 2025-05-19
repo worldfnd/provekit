@@ -6,6 +6,7 @@ use {
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     rand::{rng, Rng as _},
@@ -92,18 +93,14 @@ impl NoirProofScheme {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
     }
 
-    #[instrument(skip_all, fields(size=input_toml.len()))]
-    pub fn prove(&self, input_toml: &str) -> Result<NoirProof> {
+    #[instrument(skip_all)]
+    pub fn prove(&self, witness_map: &WitnessMap<NoirFieldElement>) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();
 
-        // Create witness for provided input
-        let input = self
-            .witness_generator
-            .input_from_toml(input_toml)
-            .context("while reading input from toml")?;
-
         // Solve R1CS instance
-        let partial_witness = self.r1cs.solve_witness_vec(&self.witness_builders, &input);
+        let partial_witness = self
+            .r1cs
+            .solve_witness_vec(&self.witness_builders, &witness_map);
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness (redudant with solve)
@@ -163,11 +160,7 @@ mod tests {
     #[test]
     fn test_noir_proof_scheme_serde() {
         let path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.json");
-        dbg!(path);
-        let proof_schema = NoirProofScheme::from_file(&PathBuf::from(
-            "../noir-examples/poseidon-rounds/target/basic.json",
-        ))
-        .unwrap();
+        let proof_schema = NoirProofScheme::from_file(path).unwrap();
         test_serde(&proof_schema.r1cs);
         test_serde(&proof_schema.witness_builders);
         test_serde(&proof_schema.witness_generator);

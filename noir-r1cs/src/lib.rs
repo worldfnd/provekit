@@ -11,7 +11,7 @@ mod r1cs_solver;
 mod skyscraper;
 mod sparse_matrix;
 mod test_functions;
-mod utils;
+pub mod utils;
 mod whir_r1cs;
 
 pub use {

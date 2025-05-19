@@ -44,7 +44,6 @@ impl NoirToR1CSCompiler {
         // the current number of witnesses minus one, meaning it is the only
         // witness that has been added so far.
         let witness_one_idx = r1cs.num_witnesses() - 1;
-        dbg!(&r1cs.num_witnesses());
         assert_eq!(witness_one_idx, 0, "R1CS requires first witness to be 1");
         Self {
             r1cs,

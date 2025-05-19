@@ -1,3 +1,4 @@
+pub mod file_io;
 mod print_abi;
 pub mod serde_ark;
 pub mod serde_ark_option;
