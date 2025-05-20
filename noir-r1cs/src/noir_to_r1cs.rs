@@ -6,7 +6,7 @@ use {
     },
     acir::{
         circuit::{Circuit, Opcode},
-        native_types::{Expression, Witness as AcirWitness},
+        native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, Result},
     ark_std::One,
@@ -103,7 +103,7 @@ impl NoirToR1CSCompiler {
 
     // Return the R1CS witness index corresponding to the AcirWitness provided,
     // creating a new R1CS witness (and builder) if required.
-    pub fn fetch_r1cs_witness_index(&mut self, acir_witness_index: AcirWitness) -> usize {
+    pub fn fetch_r1cs_witness_index(&mut self, acir_witness_index: NoirWitness) -> usize {
         self.acir_to_r1cs_witness_map
             .get(&acir_witness_index.as_usize())
             .copied()

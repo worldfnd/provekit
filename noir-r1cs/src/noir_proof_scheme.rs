@@ -94,13 +94,16 @@ impl NoirProofScheme {
     }
 
     #[instrument(skip_all)]
-    pub fn prove(&self, witness_map: &WitnessMap<NoirFieldElement>) -> Result<NoirProof> {
+    pub fn prove(
+        &self,
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
+    ) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();
 
         // Solve R1CS instance
         let partial_witness = self
             .r1cs
-            .solve_witness_vec(&self.witness_builders, &witness_map);
+            .solve_witness_vec(&self.witness_builders, &acir_witness_idx_to_value_map);
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness (redudant with solve)

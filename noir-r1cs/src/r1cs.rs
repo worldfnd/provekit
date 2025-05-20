@@ -111,11 +111,11 @@ impl R1CS {
     pub fn solve_witness_vec(
         &self,
         witness_builder_vec: &[WitnessBuilder],
-        witness_map: &WitnessMap<NoirFieldElement>,
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
         witness_builder_vec.iter().for_each(|witness_builder| {
-            witness_builder.solve(witness_map, &mut witness);
+            witness_builder.solve(acir_witness_idx_to_value_map, &mut witness);
         });
         witness
     }

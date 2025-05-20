@@ -60,7 +60,7 @@ impl WitnessBuilder {
     /// them to the witness vector.
     pub fn solve(
         &self,
-        witness_map: &WitnessMap<NoirFieldElement>,
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
     ) {
         match self {
@@ -69,7 +69,9 @@ impl WitnessBuilder {
             }
             WitnessBuilder::Acir(witness_idx, acir_witness_idx) => {
                 witness[*witness_idx] = Some(noir_to_native(
-                    *witness_map.get_index(*acir_witness_idx as u32).unwrap(),
+                    *acir_witness_idx_to_value_map
+                        .get_index(*acir_witness_idx as u32)
+                        .unwrap(),
                 ));
             }
             WitnessBuilder::Sum(witness_idx, operands) => {
