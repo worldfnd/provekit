@@ -1,12 +1,13 @@
 use {
     crate::{
         noir_to_r1cs,
+        r1cs_solver::WitnessBuilder,
         utils::PrintAbi,
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
-    anyhow::{anyhow, ensure, Context as _, Result},
-    ark_ff::Field as _,
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
+    anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
@@ -18,6 +19,7 @@ use {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProofScheme {
     pub r1cs:              R1CS,
+    pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
     pub whir:              WhirR1CSScheme,
 }
@@ -61,24 +63,26 @@ impl NoirProofScheme {
         );
 
         // Compile to R1CS schemes
-        let (r1cs, witness_map) = noir_to_r1cs(main)?;
+        let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
-            r1cs.constraints,
-            r1cs.witnesses,
+            r1cs.num_constraints(),
+            r1cs.num_witnesses(),
             r1cs.a.num_entries(),
             r1cs.b.num_entries(),
             r1cs.c.num_entries()
         );
 
         // Configure witness generator
-        let witness_generator = NoirWitnessGenerator::new(program, witness_map, r1cs.witnesses);
+        let witness_generator =
+            NoirWitnessGenerator::new(program, witness_map, r1cs.num_witnesses());
 
         // Configure Whir
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
             r1cs,
+            witness_builders,
             witness_generator,
             whir,
         })
@@ -86,39 +90,26 @@ impl NoirProofScheme {
 
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
-        (self.r1cs.constraints, self.r1cs.witnesses)
+        (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
     }
 
-    #[instrument(skip_all, fields(size=input_toml.len()))]
-    pub fn prove(&self, input_toml: &str) -> Result<NoirProof> {
+    #[instrument(skip_all)]
+    pub fn prove(
+        &self,
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
+    ) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();
 
-        // Create partial witness
-        let mut partial_witness = vec![None; self.r1cs.witnesses];
-        partial_witness[0] = Some(FieldElement::ONE);
-
-        // Create witness for provided input
-        let input = self
-            .witness_generator
-            .input_from_toml(input_toml)
-            .context("while reading input from toml")?;
-        for (i, value) in input.into_iter().enumerate() {
-            let j = self.witness_generator.witness_map()[i]
-                .ok_or_else(|| anyhow!("ACIR input witness index {i} unmapped"))?
-                .get() as usize;
-            partial_witness[j] = Some(value);
-        }
-
         // Solve R1CS instance
-        self.r1cs
-            .solve_witness(&mut partial_witness)
-            .context("while solving R1CS witness")?;
+        let partial_witness = self
+            .r1cs
+            .solve_witness_vec(&self.witness_builders, &acir_witness_idx_to_value_map);
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness (redudant with solve)
         #[cfg(test)]
         self.r1cs
-            .verify_witness(&witness)
+            .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
         drop(span);
 
@@ -159,16 +150,33 @@ fn fill_witness(witness: Vec<Option<FieldElement>>) -> Result<Vec<FieldElement>>
 
 #[cfg(test)]
 mod tests {
-    use {super::NoirProofScheme, crate::test_serde, std::path::PathBuf};
+    use {
+        super::NoirProofScheme,
+        crate::{
+            r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
+            test_serde, FieldElement,
+        },
+        ark_std::One,
+        std::path::PathBuf,
+    };
 
     #[test]
     fn test_noir_proof_scheme_serde() {
-        let proof_schema = NoirProofScheme::from_file(&PathBuf::from(
-            "../noir-examples/poseidon-rounds/target/basic.json",
-        ))
-        .unwrap();
+        let path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.json");
+        let proof_schema = NoirProofScheme::from_file(path).unwrap();
         test_serde(&proof_schema.r1cs);
+        test_serde(&proof_schema.witness_builders);
         test_serde(&proof_schema.witness_generator);
         test_serde(&proof_schema.whir);
+    }
+
+    #[test]
+    fn test_witness_builder_serde() {
+        let sum_term = SumTerm(Some(FieldElement::one()), 2);
+        test_serde(&sum_term);
+        let constant_term = ConstantTerm(2, FieldElement::one());
+        test_serde(&constant_term);
+        let witness_builder = WitnessBuilder::Constant(constant_term);
+        test_serde(&witness_builder);
     }
 }

@@ -1,9 +1,10 @@
 use {
     super::Command,
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{self, read, write, NoirProofScheme},
-    std::{fs::File, io::Read, path::PathBuf},
+    noir_r1cs::{self, read, utils::file_io::deserialize_witness_stack, write, NoirProofScheme},
+    std::path::PathBuf,
     tracing::{info, instrument},
 };
 
@@ -17,7 +18,7 @@ pub struct Args {
 
     /// path to the input values
     #[argh(positional)]
-    input_path: PathBuf,
+    witness_path: PathBuf,
 
     /// path to store proof file
     #[argh(
@@ -47,15 +48,14 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
-        let mut file = File::open(&self.input_path).context("while opening input file")?;
-        let mut input_toml =
-            String::with_capacity(file.metadata().map(|m| m.len() as usize).unwrap_or(0));
-        file.read_to_string(&mut input_toml)
-            .context("while reading input file")?;
+        let witness_file_path =
+            &PathBuf::from("../noir-examples/noir-r1cs-test-programs/acir_assert_zero/basic.gz");
+        let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
+        let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
 
         // Generate the proof
         let proof = scheme
-            .prove(&input_toml)
+            .prove(&witness_map)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)

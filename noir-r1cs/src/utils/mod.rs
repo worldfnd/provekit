@@ -1,5 +1,7 @@
+pub mod file_io;
 mod print_abi;
 pub mod serde_ark;
+pub mod serde_ark_option;
 pub mod serde_hex;
 pub mod serde_jsonify;
 pub mod sumcheck;

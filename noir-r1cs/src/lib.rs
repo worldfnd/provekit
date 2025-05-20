@@ -7,9 +7,11 @@ mod noir_proof_scheme;
 mod noir_to_r1cs;
 mod noir_witness;
 mod r1cs;
+mod r1cs_solver;
 mod skyscraper;
 mod sparse_matrix;
-mod utils;
+mod test_functions;
+pub mod utils;
 mod whir_r1cs;
 
 pub use {
