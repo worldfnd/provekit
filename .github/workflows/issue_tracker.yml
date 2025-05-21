@@ -21,7 +21,7 @@ jobs:
         run: pip install PyGithub numpy
       - name: Update issues
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ISSUE_TRACKER_PAT }}
           REPO_NAME: ${{ github.repository }}
           DRY_RUN: false
         run: python3 .github/scripts/issue_tracker.py
