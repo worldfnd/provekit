@@ -28,14 +28,6 @@ pub struct Args {
         default = "PathBuf::from(\"./proof.np\")"
     )]
     proof_path: PathBuf,
-
-    /// path to store Gnark proof file
-    #[argh(
-        option,
-        long = "gnark-out",
-        default = "PathBuf::from(\"./gnark_proof.bin\")"
-    )]
-    gnark_out: PathBuf,
 }
 
 impl Command for Args {
