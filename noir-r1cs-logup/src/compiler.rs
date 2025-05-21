@@ -29,6 +29,7 @@ pub struct R1CS {
 pub const WITNESS_ONE_IDX: usize = 0;
 
 impl R1CS {
+
     /// The number of constraints in the R1CS instance.
     pub fn num_constraints(&self) -> usize {
         self.matrices.num_constraints()
@@ -220,8 +221,7 @@ impl R1CS {
                     }
 
                     // Binary operations:
-                    // No need for a special WitnessBuilder, as they will have already been solved
-                    // for by the ACIR solver.
+                    // The inputs and outputs will have already been solved for by the ACIR solver.
                     // Collect the R1CS witnesses indices so that we can later constrain them
                     // appropriately.
                     BlackBoxFuncCall::AND { lhs, rhs, output } => {

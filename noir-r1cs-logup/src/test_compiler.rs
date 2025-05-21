@@ -118,7 +118,7 @@ fn test_mixed_base_range_check() {
 }
 
 #[test]
-fn test_bin_opcode() {
+fn test_binops() {
     test_compilation_and_solving(
         "src/test_programs/bin-opcode/target/main.json",
         "src/test_programs/bin-opcode/target/main.gz",

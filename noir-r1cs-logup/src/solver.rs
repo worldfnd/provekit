@@ -62,6 +62,8 @@ pub enum WitnessBuilder {
     DigitalDecomposition(DigitalDecompositionWitnesses),
 
     /// A witness value for the denominator of a bin op lookup.
+    /// Arguments: `(witness index, sz_challenge, rs_challenge, rs_challenge_sqrd, lhs, rhs, output)`,
+    /// where `lhs`, `rhs`, and `output` are either constant or witness values.
     BinOpLookupDenominator(
         usize,
         usize,
