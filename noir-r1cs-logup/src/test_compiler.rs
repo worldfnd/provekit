@@ -1,13 +1,15 @@
-use std::fs::File;
-use noirc_artifacts::program::ProgramArtifact;
-use crate::{compiler::R1CS, range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, solver::MockTranscript, utils::file_io::deserialize_witness_stack};
+use {
+    crate::{
+        compiler::R1CS, range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP, solver::MockTranscript,
+        utils::file_io::deserialize_witness_stack,
+    },
+    noirc_artifacts::program::ProgramArtifact,
+    std::fs::File,
+};
 
 // Tests that an ACIR program containing a can be compiled to R1CS and
 // the R1CS witness solved for given the ACIR witness.
-fn test_compilation_and_solving(
-    program_path: &str,
-    witness_path: &str,
-) {
+fn test_compilation_and_solving(program_path: &str, witness_path: &str) {
     let file = File::open(program_path).unwrap();
     let program: ProgramArtifact = serde_json::from_reader(file).unwrap();
     let acir_circuit = &program.bytecode.functions[0];
@@ -103,13 +105,16 @@ fn test_digital_decomposition_u16() {
 //   BrilligCall
 //   RANGE CHECK of witness 7 to 17 bits
 //   ..
-// + The 238 bit range check is done using a digital decomposition using 29 base-2^8 digits and one
+// + The 238 bit range check is done using a digital decomposition using 29
+//   base-2^8 digits and one
 // base-2^6 digit.
-// + The 16 bit range check is done using a digital decomposition using 2 base-2^8 digits.
-// + The 17 bit range check is done using a digital decomposition using 2 base-2^8 digits and one
+// + The 16 bit range check is done using a digital decomposition using 2
+//   base-2^8 digits.
+// + The 17 bit range check is done using a digital decomposition using 2
+//   base-2^8 digits and one
 // base-2^1 digit.
-// Note that the range check of the base-2^1 digit will be done using a direct ("naive") range
-// check.
+// Note that the range check of the base-2^1 digit will be done using a direct
+// ("naive") range check.
 fn test_mixed_base_range_check() {
     test_compilation_and_solving(
         "src/test_programs/range-check-mixed-bases/target/main.json",

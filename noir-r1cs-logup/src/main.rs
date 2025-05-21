@@ -1,19 +1,19 @@
 #![doc = include_str!("../README.md")]
 mod compiler;
-mod r1cs_matrices;
-mod solver;
-mod sparse_matrix;
 mod digits;
 mod memory;
-/// Support for read-only memory (using LogUp).
-mod rom;
+mod r1cs_matrices;
 /// Support for read-write memory (using offline memory checking: Spice).
 mod ram;
 /// Support for range checks (using digital decomposition, if required).
 mod range_check;
-mod utils;
+/// Support for read-only memory (using LogUp).
+mod rom;
+mod solver;
+mod sparse_matrix;
 #[cfg(test)]
 mod test_compiler;
+mod utils;
 
 use {
     acir::FieldElement,
@@ -28,8 +28,9 @@ use {
     utils::{file_io::deserialize_witness_stack, PrintAbi},
 };
 
-/// Compile a R1CS instance and R1CS solver for the compiled Noir program, solve the R1CS witness
-/// values from the provided ACIR witness values, then check that the R1CS instance is satisfied.
+/// Compile a R1CS instance and R1CS solver for the compiled Noir program, solve
+/// the R1CS witness values from the provided ACIR witness values, then check
+/// that the R1CS instance is satisfied.
 #[derive(FromArgs)]
 struct Args {
     /// path to the compiled Noir program
@@ -92,8 +93,11 @@ fn main() -> AnyResult<()> {
         ));
     }
 
-    r1cs.matrices
-        .write_json_to_file(acir_circuit.public_parameters.0.len(), &witness, "r1cs.json")?;
+    r1cs.matrices.write_json_to_file(
+        acir_circuit.public_parameters.0.len(),
+        &witness,
+        "r1cs.json",
+    )?;
 
     Ok(())
 }

@@ -1,23 +1,31 @@
-use std::ops::Neg;
-use acir::{AcirField, FieldElement};
-use crate::{compiler::R1CS, memory::{MemoryBlock, MemoryOperation}, solver::WitnessBuilder};
+use {
+    crate::{
+        compiler::R1CS,
+        memory::{MemoryBlock, MemoryOperation},
+        solver::WitnessBuilder,
+    },
+    acir::{AcirField, FieldElement},
+    std::ops::Neg,
+};
 
 /// Add witnesses and constraints enforcing the integrity of read operations
 /// on a read-only memory block, using LogUp.
 pub(crate) fn add_rom_checking(r1cs: &mut R1CS, block: &MemoryBlock) {
-    assert!(block.is_read_only(), "ROM checking can only be applied to read-only memory blocks");
+    assert!(
+        block.is_read_only(),
+        "ROM checking can only be applied to read-only memory blocks"
+    );
     let addr_witnesses = block
         .operations
         .iter()
-        .map(|op| {
-            match op {
-                MemoryOperation::Load(addr_witness, _) => *addr_witness,
-                MemoryOperation::Store(_, _) => unreachable!(),
-            }
+        .map(|op| match op {
+            MemoryOperation::Load(addr_witness, _) => *addr_witness,
+            MemoryOperation::Store(..) => unreachable!(),
         })
         .collect::<Vec<_>>();
     let memory_length = block.initial_value_witnesses.len();
-    let wb = WitnessBuilder::MultiplicitiesForRange(r1cs.num_witnesses(), memory_length, addr_witnesses);
+    let wb =
+        WitnessBuilder::MultiplicitiesForRange(r1cs.num_witnesses(), memory_length, addr_witnesses);
     let access_counts_first_witness = r1cs.add_witness_builder(wb);
 
     // Add two verifier challenges for the lookup
@@ -28,21 +36,17 @@ pub(crate) fn add_rom_checking(r1cs: &mut R1CS, block: &MemoryBlock) {
     let summands_for_reads = block
         .operations
         .iter()
-        .map(|op| {
-            match op {
-                MemoryOperation::Load(addr_witness, value) => {
-                    add_indexed_lookup_factor(
-                        r1cs,
-                        rs_challenge,
-                        sz_challenge,
-                        FieldElement::one(),
-                        *addr_witness,
-                        *value,
-                    )
-                }
-                MemoryOperation::Store(_, _) => {
-                    unreachable!();
-                }
+        .map(|op| match op {
+            MemoryOperation::Load(addr_witness, value) => add_indexed_lookup_factor(
+                r1cs,
+                rs_challenge,
+                sz_challenge,
+                FieldElement::one(),
+                *addr_witness,
+                *value,
+            ),
+            MemoryOperation::Store(..) => {
+                unreachable!();
             }
         })
         .map(|coeff| (None, coeff))
@@ -64,7 +68,10 @@ pub(crate) fn add_rom_checking(r1cs: &mut R1CS, block: &MemoryBlock) {
                 r1cs.witness_one(),
                 *value,
             );
-            r1cs.add_product(access_counts_first_witness + access_count_idx_offset, denominator)
+            r1cs.add_product(
+                access_counts_first_witness + access_count_idx_offset,
+                denominator,
+            )
         })
         .map(|coeff| (None, coeff))
         .collect();
@@ -80,9 +87,10 @@ pub(crate) fn add_rom_checking(r1cs: &mut R1CS, block: &MemoryBlock) {
 
 // Helper function for adding a new lookup factor to the R1CS instance.
 // Adds a new witness `denominator` and constrains it to represent
-//    `denominator - (sz_challenge - (index_coeff * index + rs_challenge * value)) == 0`,
-// where `sz_challenge`, `index`, `rs_challenge` and `value` are the provided R1CS witness indices.
-// Finally, adds a new witness for its inverse, constrains it to be such, and returns its index.
+//    `denominator - (sz_challenge - (index_coeff * index + rs_challenge *
+// value)) == 0`, where `sz_challenge`, `index`, `rs_challenge` and `value` are
+// the provided R1CS witness indices. Finally, adds a new witness for its
+// inverse, constrains it to be such, and returns its index.
 fn add_indexed_lookup_factor(
     r1cs: &mut R1CS,
     rs_challenge: usize,
@@ -108,7 +116,8 @@ fn add_indexed_lookup_factor(
             (index.neg(), index_witness),
         ],
     );
-    let inverse = r1cs.add_witness_builder(WitnessBuilder::Inverse(r1cs.num_witnesses(), denominator));
+    let inverse =
+        r1cs.add_witness_builder(WitnessBuilder::Inverse(r1cs.num_witnesses(), denominator));
     r1cs.matrices.add_constraint(
         &[(FieldElement::one(), denominator)],
         &[(FieldElement::one(), inverse)],

@@ -7,19 +7,20 @@ use {
 
 #[derive(Serialize)]
 struct JsonR1CS {
-    num_public: usize,
-    num_variables: usize,
+    num_public:      usize,
+    num_variables:   usize,
     num_constraints: usize,
-    a: Vec<MatrixEntry>,
-    b: Vec<MatrixEntry>,
-    c: Vec<MatrixEntry>,
-    witnesses: Vec<Vec<String>>,
+    a:               Vec<MatrixEntry>,
+    b:               Vec<MatrixEntry>,
+    c:               Vec<MatrixEntry>,
+    witnesses:       Vec<Vec<String>>,
 }
 
 /// Represents a R1CS constraint system.
 /// A witness z satisfies the R1CS iff:
 /// Az * Bz = Cz
-/// where Az, Bz, Cz are the vectors formed by multiplying the matrices A, B, C by the witness z.
+/// where Az, Bz, Cz are the vectors formed by multiplying the matrices A, B, C
+/// by the witness z.
 #[derive(Debug, Clone)]
 pub struct R1CSMatrices {
     pub a: SparseMatrix<FieldElement>,
@@ -30,8 +31,8 @@ pub struct R1CSMatrices {
 #[derive(Serialize, Deserialize)]
 struct MatrixEntry {
     constraint: usize,
-    signal: usize,
-    value: String,
+    signal:     usize,
+    value:      String,
 }
 
 impl R1CSMatrices {
@@ -75,8 +76,8 @@ impl R1CSMatrices {
                 if !value.is_zero() {
                     Some(MatrixEntry {
                         constraint: *row,
-                        signal: *col,
-                        value: value.to_string(),
+                        signal:     *col,
+                        value:      value.to_string(),
                     });
                 }
                 None
@@ -104,7 +105,8 @@ impl R1CSMatrices {
         self.a.rows
     }
 
-    /// The number of witnesses in the R1CS instance (including the constant one witness).
+    /// The number of witnesses in the R1CS instance (including the constant one
+    /// witness).
     pub fn num_witnesses(&self) -> usize {
         self.a.cols
     }
@@ -143,8 +145,8 @@ impl R1CSMatrices {
         }
     }
 
-    /// Returns None if this R1CS instance is satisfied, otherwise returns the index of the first
-    /// constraint that is not satisfied.
+    /// Returns None if this R1CS instance is satisfied, otherwise returns the
+    /// index of the first constraint that is not satisfied.
     pub fn test_satisfaction(&self, witness: &[FieldElement]) -> Option<usize> {
         let az = mat_mul(&self.a, witness);
         let bz = mat_mul(&self.b, witness);
@@ -166,7 +168,7 @@ impl R1CSMatrices {
 impl std::fmt::Display for R1CSMatrices {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         if std::cmp::max(self.num_constraints(), self.num_witnesses()) > 25 {
-            return writeln!(f, "R1CS matrices too large to print")
+            return writeln!(f, "R1CS matrices too large to print");
         }
         writeln!(f, "Matrix A:")?;
         write!(f, "{}", self.a)?;

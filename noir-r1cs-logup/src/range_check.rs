@@ -1,33 +1,38 @@
-use std::ops::Neg;
-use std::collections::BTreeMap;
-use acir::{AcirField, FieldElement};
-use crate::{compiler::R1CS, digits::{add_digital_decomposition, DigitalDecompositionWitnesses}, solver::WitnessBuilder};
+use {
+    crate::{
+        compiler::R1CS,
+        digits::{add_digital_decomposition, DigitalDecompositionWitnesses},
+        solver::WitnessBuilder,
+    },
+    acir::{AcirField, FieldElement},
+    std::{collections::BTreeMap, ops::Neg},
+};
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
 pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
 
-/// Add witnesses and constraints that ensure that the values of the witness belong to a range
-/// 0..2^k (for some k). If k is larger than `NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP`, then a digital
-/// decomposition is performed: witnesses are allocated for the digits of the decomposition, a
-/// constraint is added that enforces the correctness of the digital decomposition, and then the
-/// digits themselves are range checked.
-/// `range_checks` is a map from the number of bits k to the vector of witness indices that are to
-/// be constrained within the range [0..2^k].
-pub(crate) fn add_range_checks(
-    r1cs: &mut R1CS,
-    range_checks: BTreeMap<u32, Vec<usize>>,
-) {
+/// Add witnesses and constraints that ensure that the values of the witness
+/// belong to a range 0..2^k (for some k). If k is larger than
+/// `NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP`, then a digital decomposition is
+/// performed: witnesses are allocated for the digits of the decomposition, a
+/// constraint is added that enforces the correctness of the digital
+/// decomposition, and then the digits themselves are range checked.
+/// `range_checks` is a map from the number of bits k to the vector of witness
+/// indices that are to be constrained within the range [0..2^k].
+pub(crate) fn add_range_checks(r1cs: &mut R1CS, range_checks: BTreeMap<u32, Vec<usize>>) {
     // Do a pass through everything that needs to be range checked,
-    // decomposing each value into digits that are at most [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP]
-    // and creating a map `atomic_range_blocks` of each `num_bits` from 1 to the
-    // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of witness indices that are
-    // constrained to that range.
+    // decomposing each value into digits that are at most
+    // [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP] and creating a map
+    // `atomic_range_blocks` of each `num_bits` from 1 to the
+    // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of witness
+    // indices that are constrained to that range.
 
     // Mapping the log of the range size k to the vector of witness indices that
     // are to be constrained within the range [0..2^k].
-    // The witnesses of all small range op codes are added to this map, along with witnesses of
-    // digits for digital decompositions of larger range checks.
-    let mut atomic_range_checks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
+    // The witnesses of all small range op codes are added to this map, along with
+    // witnesses of digits for digital decompositions of larger range checks.
+    let mut atomic_range_checks: Vec<Vec<Vec<usize>>> =
+        vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
 
     range_checks
         .into_iter()
@@ -35,15 +40,13 @@ pub(crate) fn add_range_checks(
             if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                 let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                 let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
-                let mut log_bases = vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
+                let mut log_bases =
+                    vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
                 if logbase_of_remainder_digit != 0 {
                     log_bases.push(logbase_of_remainder_digit as usize);
                 }
-                let dd_struct = add_digital_decomposition(
-                    r1cs,
-                    log_bases.clone(),
-                    values_to_lookup.clone(),
-                );
+                let dd_struct =
+                    add_digital_decomposition(r1cs, log_bases.clone(), values_to_lookup.clone());
 
                 // Add the witness indices for the digits to the atomic range checks
                 dd_struct
@@ -84,7 +87,11 @@ pub(crate) fn add_range_checks(
 /// Checks that both sums (LHS and RHS) are equal at the end.
 fn add_range_check_via_lookup(r1cs: &mut R1CS, num_bits: u32, values_to_lookup: &[usize]) {
     // Add witnesses for the multiplicities
-    let wb = WitnessBuilder::MultiplicitiesForRange(r1cs.num_witnesses(), 1 << num_bits, values_to_lookup.into());
+    let wb = WitnessBuilder::MultiplicitiesForRange(
+        r1cs.num_witnesses(),
+        1 << num_bits,
+        values_to_lookup.into(),
+    );
     let multiplicities_first_witness = r1cs.add_witness_builder(wb);
     // Sample the Schwartz-Zippel challenge for the log derivative
     // multiset check.
@@ -136,7 +143,11 @@ pub(crate) fn add_lookup_factor(
     value_coeff: FieldElement,
     value_witness: usize,
 ) -> usize {
-    let denom_wb = WitnessBuilder::LogUpDenominator(r1cs.num_witnesses(), sz_challenge, (value_coeff, value_witness));
+    let denom_wb = WitnessBuilder::LogUpDenominator(
+        r1cs.num_witnesses(),
+        sz_challenge,
+        (value_coeff, value_witness),
+    );
     let denominator = r1cs.add_witness_builder(denom_wb);
     r1cs.matrices.add_constraint(
         &[
@@ -146,7 +157,8 @@ pub(crate) fn add_lookup_factor(
         &[(FieldElement::one(), r1cs.witness_one())],
         &[(FieldElement::one(), denominator)],
     );
-    let inverse = r1cs.add_witness_builder(WitnessBuilder::Inverse(r1cs.num_witnesses(), denominator));
+    let inverse =
+        r1cs.add_witness_builder(WitnessBuilder::Inverse(r1cs.num_witnesses(), denominator));
     r1cs.matrices.add_constraint(
         &[(FieldElement::one(), denominator)],
         &[(FieldElement::one(), inverse)],
@@ -155,26 +167,26 @@ pub(crate) fn add_lookup_factor(
     inverse
 }
 
-
 /// A naive range check helper function, computing the
 /// $\prod_{i = 0}^{range}(a - i) = 0$ to check whether a witness found at
 /// `index_witness`, which is $a$, is in the $range$, which is `num_bits`.
 fn add_naive_range_check(r1cs: &mut R1CS, num_bits: u32, index_witness: usize) {
     let mut current_product_witness = index_witness;
     (1..(1 << num_bits) - 1).for_each(|index: u32| {
-        let next_product_witness = r1cs.add_witness_builder(WitnessBuilder::ProductLinearOperation(
-            r1cs.num_witnesses(),
-            (
-                current_product_witness,
-                FieldElement::one(),
-                FieldElement::zero(),
-            ),
-            (
-                index_witness,
-                FieldElement::one(),
-                FieldElement::from(index).neg(),
-            ),
-        ));
+        let next_product_witness =
+            r1cs.add_witness_builder(WitnessBuilder::ProductLinearOperation(
+                r1cs.num_witnesses(),
+                (
+                    current_product_witness,
+                    FieldElement::one(),
+                    FieldElement::zero(),
+                ),
+                (
+                    index_witness,
+                    FieldElement::one(),
+                    FieldElement::from(index).neg(),
+                ),
+            ));
         r1cs.matrices.add_constraint(
             &[(FieldElement::one(), current_product_witness)],
             &[

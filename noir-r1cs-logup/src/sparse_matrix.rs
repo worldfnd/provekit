@@ -1,10 +1,11 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display, Formatter},
-    ops::{AddAssign, Index, IndexMut, Mul},
+use {
+    acir::{AcirField, FieldElement},
+    std::{
+        collections::BTreeMap,
+        fmt::{Debug, Display, Formatter},
+        ops::{AddAssign, Index, IndexMut, Mul},
+    },
 };
-
-use acir::{AcirField, FieldElement};
 
 /// A sparse matrix with elements of type `F`.
 #[derive(Debug, Clone, Default)]
@@ -87,7 +88,8 @@ impl<F: PartialEq> SparseMatrix<F> {
         })
     }
 
-    // TODO wouldn't it be better to use the CSR format (not the COO format?) for sparse matrices?  There should never be a row without a non-zero entry.
+    // TODO wouldn't it be better to use the CSR format (not the COO format?) for
+    // sparse matrices?  There should never be a row without a non-zero entry.
     /// Iterate over the non-default entries of the given row.
     pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, &F)> {
         self.entries
