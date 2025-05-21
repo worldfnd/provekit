@@ -22,14 +22,13 @@ jobs:
     runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
-        toolchain:
-          - nightly
+        toolchain: ["nightly-2025-05-21"]
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly
+          channel: ${{ matrix.toolchain }}
           cache-base: main
           components: rustfmt, clippy
       - run: cargo fmt --all --check
