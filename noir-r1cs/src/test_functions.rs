@@ -1,7 +1,9 @@
-use crate::range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
 #[cfg(test)]
 use {
-    crate::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
+    crate::{
+        range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
+        utils::file_io::deserialize_witness_stack, NoirProofScheme,
+    },
     acir::native_types::WitnessMap,
     acir_field::FieldElement as AcirFieldElement,
     anyhow::Context,
