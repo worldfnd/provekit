@@ -1,11 +1,13 @@
 use {
     crate::{
+        memory::{MemoryBlock, MemoryOperation},
         r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
+        rom::add_rom_checking,
         utils::noir_to_native,
         FieldElement, NoirElement, R1CS,
     },
     acir::{
-        circuit::{Circuit, Opcode},
+        circuit::{opcodes::BlockType, Circuit, Opcode},
         native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, Result},
@@ -15,14 +17,17 @@ use {
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
-struct NoirToR1CSCompiler {
-    r1cs: R1CS,
+pub(crate) struct NoirToR1CSCompiler {
+    pub(crate) r1cs: R1CS,
 
     /// Indicates how to solve for each R1CS witness
     pub witness_builders: Vec<WitnessBuilder>,
 
-    // Maps indices of ACIR witnesses to indices of R1CS witnesses
+    /// Maps indices of ACIR witnesses to indices of R1CS witnesses
     acir_to_r1cs_witness_map: BTreeMap<usize, usize>,
+
+    /// The ACIR witness indices of the initial values of the memory blocks
+    pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
 
 /// Compile a Noir circuit to a R1CS relation, returning the R1CS and a map from
@@ -52,6 +57,7 @@ impl NoirToR1CSCompiler {
                 FieldElement::one(),
             ))],
             acir_to_r1cs_witness_map: BTreeMap::new(),
+            initial_memories: BTreeMap::new(),
         }
     }
 
@@ -201,6 +207,10 @@ impl NoirToR1CSCompiler {
     }
 
     pub fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<()> {
+        // Read-only memory blocks (used for building the memory lookup constraints at
+        // the end)
+        let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
+
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
@@ -208,9 +218,98 @@ impl NoirToR1CSCompiler {
                 // Brillig is only for witness generation and does not produce constraints.
                 Opcode::BrilligCall { .. } => {}
 
+                Opcode::MemoryInit {
+                    block_id,
+                    init,
+                    block_type,
+                } => {
+                    if *block_type != BlockType::Memory {
+                        panic!("MemoryInit block type must be Memory")
+                    }
+                    let block_id = block_id.0 as usize;
+                    assert!(
+                        !memory_blocks.contains_key(&block_id),
+                        "Memory block {} already initialized",
+                        block_id
+                    );
+                    self.initial_memories
+                        .insert(block_id, init.iter().map(|w| w.0 as usize).collect());
+                    let mut block = MemoryBlock::new();
+                    init.iter().for_each(|acir_witness| {
+                        let r1cs_witness = self.fetch_r1cs_witness_index(*acir_witness);
+                        block.initial_value_witnesses.push(r1cs_witness);
+                    });
+                    memory_blocks.insert(block_id, block);
+                }
+
+                Opcode::MemoryOp {
+                    block_id,
+                    op,
+                    predicate,
+                } => {
+                    // Panic if the predicate is set (according to Noir developers, predicate is
+                    // always None and will soon be removed).
+                    assert!(predicate.is_none());
+
+                    let block_id = block_id.0 as usize;
+                    assert!(
+                        memory_blocks.contains_key(&block_id),
+                        "Memory block {} not initialized before read",
+                        block_id
+                    );
+                    let block = memory_blocks.get_mut(&block_id).unwrap();
+
+                    // `op.index` is _always_ just a single ACIR witness, not a more complicated
+                    // expression, and not a constant. See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                    // Static reads are hard-wired into the circuit, or instead rendered as a
+                    // dummy dynamic read by introducing a new witness constrained to have the value
+                    // of the static address.
+                    let addr = op.index.to_witness().map_or_else(
+                        || {
+                            unimplemented!(
+                                "MemoryOp index must be a single witness, not a more general \
+                                 Expression"
+                            )
+                        },
+                        |acir_witness| self.fetch_r1cs_witness_index(acir_witness),
+                    );
+
+                    let op = if op.operation.is_zero() {
+                        // Create a new (as yet unconstrained) witness `result_of_read` for the
+                        // result of the read; it will be constrained by later memory block
+                        // processing.
+                        // "In read operations, [op.value] corresponds to the witness index at which
+                        // the value from memory will be written." (from the Noir codebase)
+                        // At R1CS solving time, only need to map over the value of the
+                        // corresponding ACIR witness, whose value is already determined by the ACIR
+                        // solver.
+                        let result_of_read =
+                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
+                        MemoryOperation::Load(addr, result_of_read)
+                    } else {
+                        let new_value =
+                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
+                        MemoryOperation::Store(addr, new_value)
+                    };
+                    block.operations.push(op);
+                }
+
                 op => bail!("Unsupported Opcode {op}"),
             }
         }
+
+        // For each memory block, add appropriate constraints (depending on whether it
+        // is read-only or not)
+        memory_blocks.iter().for_each(|(_, block)| {
+            if block.is_read_only() {
+                // Use a lookup to enforce that the reads are correct.
+                add_rom_checking(self, block);
+            } else {
+                // Read/write memory block - use Spice offline memory checking.
+                // Returns witnesses that need to be range checked.
+                // Not supported yet.
+            }
+        });
         Ok(())
     }
 }
