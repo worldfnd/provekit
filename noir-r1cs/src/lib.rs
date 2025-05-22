@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
+mod digits;
 mod file;
 mod gnark_config;
 mod interner;
@@ -9,6 +10,7 @@ mod noir_to_r1cs;
 mod noir_witness;
 mod r1cs;
 mod r1cs_solver;
+mod range_check;
 mod rom;
 mod skyscraper;
 mod sparse_matrix;
