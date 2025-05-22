@@ -20,13 +20,13 @@ nargo compile
 Generate the Noir Proof Scheme:
 
 ```sh
-cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json -o ./noir-proof-scheme.nps
+cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
 ```
 
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
+cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 
 Verify the Noir Proof:

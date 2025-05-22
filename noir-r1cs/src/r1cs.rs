@@ -1,8 +1,9 @@
 use {
-    crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
-    anyhow::{bail, ensure, Result},
-    ark_ff::One,
-    ark_std::Zero,
+    crate::{
+        r1cs_solver::WitnessBuilder, FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
+    },
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
+    anyhow::{ensure, Result},
     serde::{Deserialize, Serialize},
     tracing::instrument,
 };
@@ -10,13 +11,11 @@ use {
 /// Represents a R1CS constraint system.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CS {
-    pub public_inputs: usize,
-    pub witnesses:     usize,
-    pub constraints:   usize,
-    pub interner:      Interner,
-    pub a:             SparseMatrix,
-    pub b:             SparseMatrix,
-    pub c:             SparseMatrix,
+    pub num_public_inputs: usize,
+    pub interner:          Interner,
+    pub a:                 SparseMatrix,
+    pub b:                 SparseMatrix,
+    pub c:                 SparseMatrix,
 }
 
 impl Default for R1CS {
@@ -29,13 +28,11 @@ impl R1CS {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            public_inputs: 0,
-            witnesses:     0,
-            constraints:   0,
-            interner:      Interner::new(),
-            a:             SparseMatrix::new(0, 0),
-            b:             SparseMatrix::new(0, 0),
-            c:             SparseMatrix::new(0, 0),
+            num_public_inputs: 0,
+            interner:          Interner::new(),
+            a:                 SparseMatrix::new(0, 0),
+            b:                 SparseMatrix::new(0, 0),
+            c:                 SparseMatrix::new(0, 0),
         }
     }
 
@@ -54,14 +51,27 @@ impl R1CS {
         self.c.hydrate(&self.interner)
     }
 
-    /// Create a new witness variable
-    pub fn new_witness(&mut self) -> usize {
-        let value = self.witnesses;
-        self.witnesses += 1;
-        self.a.grow(self.constraints, self.witnesses);
-        self.b.grow(self.constraints, self.witnesses);
-        self.c.grow(self.constraints, self.witnesses);
-        value
+    /// The number of constraints in the R1CS instance.
+    pub const fn num_constraints(&self) -> usize {
+        self.a.num_rows
+    }
+
+    /// The number of witnesses in the R1CS instance (including the constant one
+    /// witness).
+    pub const fn num_witnesses(&self) -> usize {
+        self.a.num_cols
+    }
+
+    // Increase the size of the R1CS matrices to the specified dimensions.
+    pub fn grow_matrices(&mut self, num_rows: usize, num_cols: usize) {
+        self.a.grow(num_rows, num_cols);
+        self.b.grow(num_rows, num_cols);
+        self.c.grow(num_rows, num_cols);
+    }
+
+    /// Add a new witnesses to the R1CS instance.
+    pub fn add_witnesses(&mut self, count: usize) {
+        self.grow_matrices(self.num_constraints(), self.num_witnesses() + count);
     }
 
     /// Add an R1CS constraint.
@@ -71,63 +81,51 @@ impl R1CS {
         b: &[(FieldElement, usize)],
         c: &[(FieldElement, usize)],
     ) {
-        let row = self.constraints;
-        self.constraints += 1;
-        self.a.grow(self.constraints, self.witnesses);
-        self.b.grow(self.constraints, self.witnesses);
-        self.c.grow(self.constraints, self.witnesses);
-        for (c, col) in a.iter().copied() {
-            self.a.set(row, col, self.interner.intern(c));
+        let next_constraint_idx = self.num_constraints();
+        self.grow_matrices(self.num_constraints() + 1, self.num_witnesses());
+
+        for (coeff, witness_idx) in a.iter().copied() {
+            self.a.set(
+                next_constraint_idx,
+                witness_idx,
+                self.interner.intern(coeff),
+            );
         }
-        for (c, col) in b.iter().copied() {
-            self.b.set(row, col, self.interner.intern(c));
+        for (coeff, witness_idx) in b.iter().copied() {
+            self.b.set(
+                next_constraint_idx,
+                witness_idx,
+                self.interner.intern(coeff),
+            );
         }
-        for (c, col) in c.iter().copied() {
-            self.c.set(row, col, self.interner.intern(c));
+        for (coeff, witness_idx) in c.iter().copied() {
+            self.c.set(
+                next_constraint_idx,
+                witness_idx,
+                self.interner.intern(coeff),
+            );
         }
     }
 
-    /// Take a partially solved witness and try to complete it using the R1CS
-    /// relations.
-    #[instrument(skip_all, fields(size = witness.len()))]
-    pub fn solve_witness(&self, witness: &mut [Option<FieldElement>]) -> Result<()> {
-        ensure!(
-            witness.len() == self.witnesses,
-            "Witness size does not match (got {} expected {})",
-            witness.len(),
-            self.witnesses
-        );
-
-        // Solve constraints in order
-        // (this is how Noir expects it to be done, judging from ACVM)
-        for row in 0..self.constraints {
-            let a = sparse_dot(self.a().iter_row(row), witness);
-            let b = sparse_dot(self.b().iter_row(row), witness);
-            let c = sparse_dot(self.c().iter_row(row), witness);
-            let (val, mat) = match (a, b, c) {
-                (Some(a), Some(b), Some(c)) => {
-                    ensure!(a * b == c, "Constraint {row} failed");
-                    continue;
-                }
-                (Some(a), Some(b), None) => (a * b, self.c()),
-                (Some(a), None, Some(c)) => (c / a, self.b()),
-                (None, Some(b), Some(c)) => (c / b, self.a()),
-                _ => {
-                    bail!("Can not solve constraint {row}.")
-                }
-            };
-            let Some((col, val)) = solve_dot(mat.iter_row(row), witness, val) else {
-                bail!("Could not solve constraint {row}.")
-            };
-            witness[col] = Some(val);
-        }
-        Ok(())
+    /// Given the ACIR witness values, solve for the R1CS witness values.
+    pub fn solve_witness_vec(
+        &self,
+        witness_builder_vec: &[WitnessBuilder],
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
+    ) -> Vec<Option<FieldElement>> {
+        let mut witness = vec![None; self.num_witnesses()];
+        witness_builder_vec.iter().for_each(|witness_builder| {
+            witness_builder.solve(acir_witness_idx_to_value_map, &mut witness);
+        });
+        witness
     }
 
+    // Tests R1CS Witness satisfaction given the constraints provided by the
+    // R1CS Matrices.
     #[instrument(skip_all, fields(size = witness.len()))]
-    pub fn verify_witness(&self, witness: &[FieldElement]) -> Result<()> {
+    pub fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()> {
         ensure!(
-            witness.len() == self.witnesses,
+            witness.len() == self.num_witnesses(),
             "Witness size does not match"
         );
 
@@ -145,44 +143,4 @@ impl R1CS {
         }
         Ok(())
     }
-}
-
-// Sparse dot product. `a` is assumed zero. `b` is assumed missing.
-fn sparse_dot<'a>(
-    a: impl Iterator<Item = (usize, FieldElement)>,
-    b: &[Option<FieldElement>],
-) -> Option<FieldElement> {
-    let mut accumulator = FieldElement::zero();
-    for (col, a) in a {
-        accumulator += a * b[col]?;
-    }
-    Some(accumulator)
-}
-
-// Returns a pair (i, f) such that, setting `b[i] = f`,
-// ensures `sparse_dot(a, b) = r`.
-fn solve_dot<'a>(
-    a: impl Iterator<Item = (usize, FieldElement)>,
-    b: &[Option<FieldElement>],
-    r: FieldElement,
-) -> Option<(usize, FieldElement)> {
-    let mut accumulator = -r;
-    let mut missing = None;
-    for (col, a) in a {
-        if let Some(b) = b[col] {
-            accumulator += a * b;
-        } else if missing.is_none() {
-            missing = Some((col, a));
-        } else {
-            return None;
-        }
-    }
-    missing.map(|(col, coeff)| {
-        if coeff.is_one() {
-            // Very common case
-            (col, -accumulator)
-        } else {
-            (col, -accumulator / coeff)
-        }
-    })
 }

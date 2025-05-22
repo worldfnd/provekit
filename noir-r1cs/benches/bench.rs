@@ -1,9 +1,10 @@
 //! Divan benchmarks for noir-r1cs
 use {
+    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     core::hint::black_box,
     divan::Bencher,
-    noir_r1cs::{read, NoirProof, NoirProofScheme},
-    std::path::Path,
+    noir_r1cs::{read, utils::file_io::deserialize_witness_stack, NoirProof, NoirProofScheme},
+    std::path::{Path, PathBuf},
 };
 
 #[divan::bench]
@@ -20,8 +21,10 @@ fn prove_poseidon_1000(bencher: Bencher) {
         .join("benches")
         .join("poseidon-1000.nps");
     let scheme: NoirProofScheme = read(&path).unwrap();
-    let input_toml = include_str!("poseidon-1000.toml");
-    bencher.bench(|| black_box(&scheme).prove(black_box(input_toml)));
+    let witness_file_path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.gz");
+    let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
+    let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
+    bencher.bench(|| black_box(&scheme).prove(black_box(&witness_map)));
 }
 
 #[divan::bench]

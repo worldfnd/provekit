@@ -76,7 +76,7 @@ struct DataFromSumcheckVerifier {
 
 impl WhirR1CSScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        Self::new_for_size(r1cs.witnesses, r1cs.constraints)
+        Self::new_for_size(r1cs.num_witnesses(), r1cs.num_constraints())
     }
 
     pub fn new_for_size(witnesses: usize, constraints: usize) -> Self {
@@ -115,15 +115,15 @@ impl WhirR1CSScheme {
     #[instrument(skip_all)]
     pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
-            witness.len() == r1cs.witnesses,
+            witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            r1cs.witnesses <= 1 << self.m,
+            r1cs.num_witnesses() <= 1 << self.m,
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
-            r1cs.constraints <= 1 << self.m_0,
+            r1cs.num_constraints() <= 1 << self.m_0,
             "R1CS constraints exceed scheme capacity"
         );
 
