@@ -10,6 +10,7 @@ mod noir_to_r1cs;
 mod noir_witness;
 mod r1cs;
 mod r1cs_solver;
+mod ram;
 mod range_check;
 mod rom;
 mod skyscraper;
