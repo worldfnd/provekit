@@ -3,6 +3,8 @@ mod compiler;
 mod r1cs_matrices;
 mod solver;
 mod sparse_matrix;
+/// Support for AND and XOR opcodes (using LogUp).
+mod binops;
 mod digits;
 mod memory;
 /// Support for read-only memory (using LogUp).

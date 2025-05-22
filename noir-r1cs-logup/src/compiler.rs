@@ -1,8 +1,8 @@
 use {
     crate::{
-        memory::{MemoryBlock, MemoryOperation}, r1cs_matrices::R1CSMatrices, ram::add_ram_checking, range_check::add_range_checks, rom::add_rom_checking, solver::{MockTranscript, WitnessBuilder}
+        binops::{add_binop, BinOp}, memory::{MemoryBlock, MemoryOperation}, r1cs_matrices::R1CSMatrices, ram::add_ram_checking, range_check::add_range_checks, rom::add_rom_checking, solver::{MockTranscript, WitnessBuilder}
     }, acir::{
-        circuit::{opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum}, Circuit, Opcode},
+        circuit::{opcodes::{BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum as ConstantOrACIRWitness}, Circuit, Opcode},
         native_types::{Expression, Witness as AcirWitness, WitnessMap},
         AcirField, FieldElement,
     }, std::{
@@ -25,7 +25,11 @@ pub struct R1CS {
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
 
+/// The index of the constant 1 witness in the R1CS instance
+pub const WITNESS_ONE_IDX: usize = 0;
+
 impl R1CS {
+
     /// The number of constraints in the R1CS instance.
     pub fn num_constraints(&self) -> usize {
         self.matrices.num_constraints()
@@ -75,7 +79,7 @@ impl R1CS {
 
     /// Index of the constant 1 witness
     pub const fn witness_one(&self) -> usize {
-        0
+        WITNESS_ONE_IDX
     }
 
     /// Create an R1CS instance from an ACIR circuit, introducing R1CS witnesses and constraints as
@@ -85,16 +89,24 @@ impl R1CS {
         let mut r1cs = Self {
             matrices: R1CSMatrices::new(),
             acir_to_r1cs_witness_map: BTreeMap::new(),
-            witness_builders: vec![WitnessBuilder::Constant(0, FieldElement::one())], // FIXME magic
+            witness_builders: vec![WitnessBuilder::Constant(WITNESS_ONE_IDX, FieldElement::one())],
             initial_memories: BTreeMap::new(),
         };
 
         // Read-only memory blocks (used for building the memory lookup constraints at the end)
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
+        
+        // (input, input, output) tuples for AND and XOR operations.
+        // Inputs may be either constants or R1CS witnesses.
+        // Outputs are always R1CS witnesses.
+        let mut and_ops = vec![];
+        let mut xor_ops = vec![];
+
         // Mapping the log of the range size k to the vector of witness indices that
         // are to be constrained within the range [0..2^k].
         // These will be digitally decomposed into smaller ranges, if necessary.
         let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+
         for opcode in circuit.opcodes.iter() {
             match opcode {
                 Opcode::AssertZero(expr) => {
@@ -193,10 +205,10 @@ impl R1CS {
                         let num_bits = function_input.num_bits();
                         let input_witness = match input 
                         {
-                            ConstantOrWitnessEnum::Constant(_) => {
+                            ConstantOrACIRWitness::Constant(_) => {
                                 panic!("We should never be range-checking a constant value, as this should already be done by the noir-ACIR compiler");
                             }
-                            ConstantOrWitnessEnum::Witness(witness) => {
+                            ConstantOrACIRWitness::Witness(witness) => {
                                 r1cs.fetch_r1cs_witness_index(witness)
                             }
                         };
@@ -207,7 +219,29 @@ impl R1CS {
                             .or_default()
                             .push(input_witness);
                     }
-                    _ => println!("BlackBoxFuncCall")
+
+                    // Binary operations:
+                    // The inputs and outputs will have already been solved for by the ACIR solver.
+                    // Collect the R1CS witnesses indices so that we can later constrain them
+                    // appropriately.
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                        and_ops.push((
+                            r1cs.fetch_constant_or_r1cs_witness(lhs.input()),
+                            r1cs.fetch_constant_or_r1cs_witness(rhs.input()),
+                            r1cs.fetch_r1cs_witness_index(*output),
+                        ));
+                    }
+                    BlackBoxFuncCall::XOR { lhs, rhs, output } => {
+                        xor_ops.push((
+                            r1cs.fetch_constant_or_r1cs_witness(lhs.input()),
+                            r1cs.fetch_constant_or_r1cs_witness(rhs.input()),
+                            r1cs.fetch_r1cs_witness_index(*output),
+                        ));
+                    }
+
+                    _ => {
+                        unimplemented!("Other black box function: {:?}", black_box_func_call);
+                    }
                 }
             }
         }
@@ -228,6 +262,10 @@ impl R1CS {
             }
         });
 
+        // For the AND and XOR operations, add the appropriate constraints.
+        add_binop(&mut r1cs, BinOp::AND, and_ops);
+        add_binop(&mut r1cs, BinOp::XOR, xor_ops);
+
         // Perform all range checks
         add_range_checks(&mut r1cs, range_checks);
 
@@ -243,6 +281,21 @@ impl R1CS {
             .unwrap_or_else(|| {
                 self.add_witness_builder(WitnessBuilder::Acir(self.num_witnesses(), acir_witness_index.as_usize()))
             })
+    }
+
+    // Convert a ConstantOrACIRWitness into a ConstantOrR1CSWitness, creating a new R1CS
+    // witness (and builder) if required.
+    fn fetch_constant_or_r1cs_witness(
+        &mut self,
+        constant_or_witness: ConstantOrACIRWitness<FieldElement>,
+    ) -> ConstantOrR1CSWitness {
+        match constant_or_witness {
+            ConstantOrACIRWitness::Constant(c) => ConstantOrR1CSWitness::Constant(c),
+            ConstantOrACIRWitness::Witness(w) => {
+                let r1cs_witness = self.fetch_r1cs_witness_index(w);
+                ConstantOrR1CSWitness::Witness(r1cs_witness)
+            }
+        }
     }
 
     /// Add a new witness representing the product of two existing witnesses, and add an R1CS constraint enforcing this.
@@ -342,5 +395,20 @@ impl std::fmt::Display for R1CS {
             writeln!(f)?;
         }
         writeln!(f, "{}", self.matrices)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ConstantOrR1CSWitness {
+    Constant(FieldElement),
+    Witness(usize),
+}
+
+impl ConstantOrR1CSWitness {
+    pub fn to_tuple(&self) -> (FieldElement, usize) {
+        match self {
+            ConstantOrR1CSWitness::Constant(c) => (*c, WITNESS_ONE_IDX),
+            ConstantOrR1CSWitness::Witness(w) => (FieldElement::one(), *w),
+        }
     }
 }
