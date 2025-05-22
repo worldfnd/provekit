@@ -1,5 +1,6 @@
 use {
     crate::{
+        digits::DigitalDecompositionWitnesses,
         utils::{noir_to_native, serde_ark, serde_ark_option},
         FieldElement,
     },
@@ -21,6 +22,13 @@ pub struct ConstantTerm(pub usize, #[serde(with = "serde_ark")] pub FieldElement
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WitnessCoefficient(#[serde(with = "serde_ark")] pub FieldElement, pub usize);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductLinearTerm(
+    pub usize,
+    #[serde(with = "serde_ark")] pub FieldElement,
+    #[serde(with = "serde_ark")] pub FieldElement,
+);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Indicates how to solve for a collection of R1CS witnesses in terms of
@@ -56,6 +64,16 @@ pub enum WitnessBuilder {
     /// The inverse of the value at a specified witness index
     /// (witness index, operand witness index)
     Inverse(usize, usize),
+    /// Products with linear operations on the witness indices.
+    /// Fields are ProductLinearOperation(witness_idx, (index, a, b), (index, c,
+    /// d)) such that we wish to compute (ax + b) * (cx + d).
+    ProductLinearOperation(usize, ProductLinearTerm, ProductLinearTerm),
+    /// For solving for the denominator of a lookup (non-indexed).
+    /// Field are (witness index, sz_challenge, (value_coeff, value)).
+    LogUpDenominator(usize, usize, WitnessCoefficient),
+    /// Builds the witnesses values required for the mixed base digital
+    /// decomposition of other witness values.
+    DigitalDecomposition(DigitalDecompositionWitnesses),
 }
 
 impl WitnessBuilder {
@@ -64,6 +82,7 @@ impl WitnessBuilder {
     pub fn num_witnesses(&self) -> usize {
         match self {
             WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
+            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
             _ => 1,
         }
     }
@@ -79,6 +98,9 @@ impl WitnessBuilder {
             WitnessBuilder::IndexedLogUpDenominator(start_idx, ..) => *start_idx,
             WitnessBuilder::Challenge(start_idx) => *start_idx,
             WitnessBuilder::Inverse(start_idx, _) => *start_idx,
+            WitnessBuilder::LogUpDenominator(start_idx, ..) => *start_idx,
+            WitnessBuilder::ProductLinearOperation(start_idx, ..) => *start_idx,
+            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.first_witness_idx,
         }
     }
 
@@ -167,6 +189,26 @@ impl WitnessBuilder {
             }
             WitnessBuilder::Challenge(witness_idx) => {
                 witness[*witness_idx] = Some(transcript.draw_challenge());
+            }
+            WitnessBuilder::LogUpDenominator(
+                witness_idx,
+                sz_challenge,
+                WitnessCoefficient(value_coeff, value),
+            ) => {
+                witness[*witness_idx] = Some(
+                    witness[*sz_challenge].unwrap() - (*value_coeff * witness[*value].unwrap()),
+                );
+            }
+            WitnessBuilder::ProductLinearOperation(
+                witness_idx,
+                ProductLinearTerm(x, a, b),
+                ProductLinearTerm(y, c, d),
+            ) => {
+                witness[*witness_idx] =
+                    Some((*a * witness[*x].unwrap() + *b) * (*c * witness[*y].unwrap() + *d));
+            }
+            WitnessBuilder::DigitalDecomposition(dd_struct) => {
+                dd_struct.solve(witness);
             }
         }
     }

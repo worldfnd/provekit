@@ -1,6 +1,6 @@
 use {
-    crate::{compiler::R1CS, solver::WitnessBuilder},
-    acir::{AcirField, FieldElement},
+    crate::{noir_to_r1cs::NoirToR1CSCompiler, r1cs_solver::WitnessBuilder, FieldElement},
+    ark_ff::{BigInteger, One, PrimeField, Zero},
     serde::{Deserialize, Serialize},
 };
 
@@ -52,12 +52,12 @@ impl DigitalDecompositionWitnesses {
     }
 
     /// Solve for the witness values allocated to the digital decomposition.
-    pub fn solve(&self, witness: &mut [FieldElement]) {
+    pub fn solve(&self, witness: &mut [Option<FieldElement>]) {
         self.witnesses_to_decompose
             .iter()
             .enumerate()
             .for_each(|(i, value_witness_idx)| {
-                let value = witness[*value_witness_idx];
+                let value = witness[*value_witness_idx].unwrap();
                 let digits = decompose_into_digits(value, &self.log_bases);
                 digits
                     .iter()
@@ -65,7 +65,7 @@ impl DigitalDecompositionWitnesses {
                     .for_each(|(digit_place, digit_value)| {
                         witness[self.first_witness_idx
                             + digit_place * self.witnesses_to_decompose.len()
-                            + i] = *digit_value;
+                            + i] = Some(*digit_value);
                     });
             });
     }
@@ -78,17 +78,17 @@ impl DigitalDecompositionWitnesses {
 /// range checks are obviated e.g. by later lookups, as in the case of the binop
 /// codes).
 pub(crate) fn add_digital_decomposition(
-    r1cs: &mut R1CS,
+    r1cs_compiler: &mut NoirToR1CSCompiler,
     log_bases: Vec<usize>,
     witnesses_to_decompose: Vec<usize>,
 ) -> DigitalDecompositionWitnesses {
-    let next_witness_idx = r1cs.num_witnesses();
+    let next_witness_idx = r1cs_compiler.num_witnesses();
     let dd_struct = DigitalDecompositionWitnesses::new(
         next_witness_idx,
         log_bases.clone(),
         witnesses_to_decompose,
     );
-    r1cs.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
+    r1cs_compiler.add_witness_builder(WitnessBuilder::DigitalDecomposition(dd_struct.clone()));
     // Add the constraints for the digital recomposition
     let mut digit_multipliers = vec![FieldElement::one()];
     for log_base in log_bases[..log_bases.len() - 1].iter() {
@@ -108,8 +108,8 @@ pub(crate) fn add_digital_decomposition(
                     let digit_witness = dd_struct.get_digit_witness_index(digit_place, i);
                     recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
                 });
-            r1cs.matrices.add_constraint(
-                &[(FieldElement::one(), r1cs.witness_one())],
+            r1cs_compiler.r1cs.add_constraint(
+                &[(FieldElement::one(), r1cs_compiler.witness_one())],
                 &[(FieldElement::one(), *value)],
                 &recomp_summands,
             );
@@ -147,12 +147,7 @@ pub(crate) fn decompose_into_digits(
 
 /// Decomposes a field element into its bits, in little-endian order.
 pub(crate) fn field_to_le_bits(value: FieldElement) -> Vec<bool> {
-    value
-        .to_be_bytes()
-        .iter()
-        .rev()
-        .flat_map(|byte| (0..8).map(move |i| (byte >> i) & 1 != 0))
-        .collect()
+    value.into_bigint().to_bits_le()
 }
 
 /// Given the binary representation of a field element in little-endian order,
@@ -173,7 +168,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
         })
         .rev()
         .collect();
-    FieldElement::from_be_bytes_reduce(&be_byte_vec)
+    FieldElement::from_be_bytes_mod_order(&be_byte_vec)
 }
 
 #[cfg(test)]
@@ -206,5 +201,5 @@ fn test_field_to_le_bits() {
 fn test_le_bits_to_field() {
     let bits = vec![true, false, true, false, false];
     let value = le_bits_to_field(&bits);
-    assert_eq!(value.try_to_u32().unwrap(), 5);
+    assert_eq!(value.into_bigint().0[0], 5);
 }

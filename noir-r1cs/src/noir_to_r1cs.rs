@@ -2,12 +2,18 @@ use {
     crate::{
         memory::{MemoryBlock, MemoryOperation},
         r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
+        range_check::add_range_checks,
         rom::add_rom_checking,
         utils::noir_to_native,
         FieldElement, NoirElement, R1CS,
     },
     acir::{
-        circuit::{opcodes::BlockType, Circuit, Opcode},
+        circuit::{
+            opcodes::{
+                BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum as ConstantOrACIRWitness,
+            },
+            Circuit, Opcode,
+        },
         native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, Result},
@@ -210,6 +216,10 @@ impl NoirToR1CSCompiler {
         // Read-only memory blocks (used for building the memory lookup constraints at
         // the end)
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
+        // Mapping the log of the range size k to the vector of witness indices that
+        // are to be constrained within the range [0..2^k].
+        // These will be digitally decomposed into smaller ranges, if necessary.
+        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
 
         for opcode in &circuit.opcodes {
             match opcode {
@@ -294,6 +304,39 @@ impl NoirToR1CSCompiler {
                     block.operations.push(op);
                 }
 
+                Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
+                    BlackBoxFuncCall::RANGE {
+                        input: function_input,
+                    } => {
+                        let input = function_input.input();
+                        let num_bits = function_input.num_bits();
+                        let input_witness = match input {
+                            ConstantOrACIRWitness::Constant(_) => {
+                                panic!(
+                                    "We should never be range-checking a constant value, as this \
+                                     should already be done by the noir-ACIR compiler"
+                                );
+                            }
+                            ConstantOrACIRWitness::Witness(witness) => {
+                                self.fetch_r1cs_witness_index(witness)
+                            }
+                        };
+                        println!(
+                            "RANGE CHECK of witness {} to {} bits",
+                            input_witness, num_bits
+                        );
+                        // Add the entry into the range blocks.
+                        range_checks
+                            .entry(num_bits)
+                            .or_default()
+                            .push(input_witness);
+                    }
+
+                    _ => {
+                        unimplemented!("Other black box function: {:?}", black_box_func_call);
+                    }
+                },
+
                 op => bail!("Unsupported Opcode {op}"),
             }
         }
@@ -310,6 +353,10 @@ impl NoirToR1CSCompiler {
                 // Not supported yet.
             }
         });
+
+        // Perform all range checks
+        add_range_checks(self, range_checks);
+
         Ok(())
     }
 }
