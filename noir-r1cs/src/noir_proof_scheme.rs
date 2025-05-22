@@ -1,7 +1,7 @@
 use {
     crate::{
         noir_to_r1cs,
-        r1cs_solver::WitnessBuilder,
+        r1cs_solver::{MockTranscript, WitnessBuilder},
         utils::PrintAbi,
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
@@ -101,9 +101,12 @@ impl NoirProofScheme {
         let span = span!(Level::INFO, "generate_witness").entered();
 
         // Solve R1CS instance
-        let partial_witness = self
-            .r1cs
-            .solve_witness_vec(&self.witness_builders, &acir_witness_idx_to_value_map);
+        let mut transcript = MockTranscript::new();
+        let partial_witness = self.r1cs.solve_witness_vec(
+            &self.witness_builders,
+            &acir_witness_idx_to_value_map,
+            &mut transcript,
+        );
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness (redudant with solve)

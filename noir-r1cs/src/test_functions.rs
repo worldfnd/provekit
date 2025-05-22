@@ -29,3 +29,19 @@ fn test_acir_assert_zero() {
         "../noir-examples/noir-r1cs-test-programs/acir_assert_zero/target/basic.gz",
     );
 }
+
+#[test]
+fn test_simplest_read_only_memory() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory/target/main.json",
+        "../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory/target/main.gz",
+    );
+}
+
+#[test]
+fn test_read_only_memory() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/read-only-memory/target/main.json",
+        "../noir-examples/noir-r1cs-test-programs/read-only-memory/target/main.gz",
+    );
+}

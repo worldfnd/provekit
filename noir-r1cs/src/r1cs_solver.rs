@@ -4,7 +4,9 @@ use {
         FieldElement,
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
+    ark_ff::{Field, PrimeField},
     ark_std::Zero,
+    rand::Rng,
     serde::{Deserialize, Serialize},
 };
 
@@ -16,6 +18,9 @@ pub struct SumTerm(
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConstantTerm(pub usize, #[serde(with = "serde_ark")] pub FieldElement);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WitnessCoefficient(#[serde(with = "serde_ark")] pub FieldElement, pub usize);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Indicates how to solve for a collection of R1CS witnesses in terms of
@@ -37,13 +42,30 @@ pub enum WitnessBuilder {
     /// The product of the values at two specified witness indices
     /// (witness index, operand witness index a, operand witness index b)
     Product(usize, usize, usize),
+    /// Solves for the number of times that each memory address occurs in
+    /// read-only memory. Arguments: (first witness index, range size,
+    /// vector of all witness indices for values purported to be in the range)
+    MultiplicitiesForRange(usize, usize, Vec<usize>),
+    /// A Fiat-Shamir challenge value
+    /// (witness index)
+    Challenge(usize),
+    /// For solving for the denominator of an indexed lookup.
+    /// Fields are (witness index, sz_challenge, (index_coeff, index),
+    /// rs_challenge, value).
+    IndexedLogUpDenominator(usize, usize, WitnessCoefficient, usize, usize),
+    /// The inverse of the value at a specified witness index
+    /// (witness index, operand witness index)
+    Inverse(usize, usize),
 }
 
 impl WitnessBuilder {
     /// The number of witness values that this builder writes to the witness
     /// vector.
     pub fn num_witnesses(&self) -> usize {
-        1
+        match self {
+            WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
+            _ => 1,
+        }
     }
 
     /// Return the index of the first witness value that this builder writes to.
@@ -53,6 +75,25 @@ impl WitnessBuilder {
             WitnessBuilder::Acir(start_idx, _) => *start_idx,
             WitnessBuilder::Sum(start_idx, _) => *start_idx,
             WitnessBuilder::Product(start_idx, ..) => *start_idx,
+            WitnessBuilder::MultiplicitiesForRange(start_idx, ..) => *start_idx,
+            WitnessBuilder::IndexedLogUpDenominator(start_idx, ..) => *start_idx,
+            WitnessBuilder::Challenge(start_idx) => *start_idx,
+            WitnessBuilder::Inverse(start_idx, _) => *start_idx,
+        }
+    }
+
+    /// As per solve(), but additionally appends the solved witness values to
+    /// the transcript.
+    pub fn solve_and_append_to_transcript(
+        &self,
+        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
+        witness: &mut [Option<FieldElement>],
+        transcript: &mut MockTranscript,
+    ) {
+        self.solve(acir_witness_idx_to_value_map, witness, transcript);
+
+        for i in 0..self.num_witnesses() {
+            transcript.append(witness[self.first_witness_idx() + i].unwrap());
         }
     }
 
@@ -62,6 +103,7 @@ impl WitnessBuilder {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
+        transcript: &mut MockTranscript,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
@@ -93,6 +135,56 @@ impl WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 witness[*witness_idx] = Some(a * b);
             }
+            WitnessBuilder::Inverse(witness_idx, operand_idx) => {
+                let operand: FieldElement = witness[*operand_idx].unwrap();
+                witness[*witness_idx] = Some(operand.inverse().unwrap());
+            }
+            WitnessBuilder::IndexedLogUpDenominator(
+                witness_idx,
+                sz_challenge,
+                WitnessCoefficient(index_coeff, index),
+                rs_challenge,
+                value,
+            ) => {
+                let index = witness[*index].unwrap();
+                let value = witness[*value].unwrap();
+                let rs_challenge = witness[*rs_challenge].unwrap();
+                let sz_challenge = witness[*sz_challenge].unwrap();
+                witness[*witness_idx] =
+                    Some(sz_challenge - (*index_coeff * index + rs_challenge * value));
+            }
+            WitnessBuilder::MultiplicitiesForRange(start_idx, range_size, value_witnesses) => {
+                let mut multiplicities = vec![0u32; *range_size];
+                for value_witness_idx in value_witnesses {
+                    // If the value is representable as just a u64, then it should be the least
+                    // significant value in the BigInt representation.
+                    let value = witness[*value_witness_idx].unwrap().into_bigint().0[0];
+                    multiplicities[value as usize] += 1;
+                }
+                for (i, count) in multiplicities.iter().enumerate() {
+                    witness[start_idx + i] = Some(FieldElement::from(*count));
+                }
+            }
+            WitnessBuilder::Challenge(witness_idx) => {
+                witness[*witness_idx] = Some(transcript.draw_challenge());
+            }
         }
+    }
+}
+
+/// Mock transcript. To be replaced.
+pub struct MockTranscript {}
+
+impl MockTranscript {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn append(&mut self, _value: FieldElement) {}
+
+    pub fn draw_challenge(&mut self) -> FieldElement {
+        let mut rng = rand::rng();
+        let n: u32 = rng.random();
+        n.into()
     }
 }

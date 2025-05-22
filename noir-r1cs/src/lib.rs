@@ -3,11 +3,13 @@
 mod file;
 mod gnark_config;
 mod interner;
+mod memory;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
 mod noir_witness;
 mod r1cs;
 mod r1cs_solver;
+mod rom;
 mod skyscraper;
 mod sparse_matrix;
 mod test_functions;
