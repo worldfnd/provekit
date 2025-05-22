@@ -118,3 +118,11 @@ fn test_binops() {
         "../noir-examples/noir-r1cs-test-programs/bin-opcode/target/main.gz",
     );
 }
+
+#[test]
+fn test_small_sha() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/small-sha/target/basic.json",
+        "../noir-examples/noir-r1cs-test-programs/small-sha/target/basic.gz",
+    );
+}
