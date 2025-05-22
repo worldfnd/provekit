@@ -7,7 +7,6 @@ use {
     },
     ark_std::One,
     std::ops::Neg,
-    tracing::field::Field,
 };
 
 /// Add witnesses and constraints enforcing the integrity of read operations

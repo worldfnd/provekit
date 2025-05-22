@@ -1,7 +1,9 @@
-use crate::range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
 #[cfg(test)]
 use {
-    crate::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
+    crate::{
+        range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
+        utils::file_io::deserialize_witness_stack, NoirProofScheme,
+    },
     acir::native_types::WitnessMap,
     acir_field::FieldElement as AcirFieldElement,
     anyhow::Context,
@@ -106,5 +108,13 @@ fn test_conditional_write() {
     test_compiler(
         "../noir-examples/noir-r1cs-test-programs/conditional-write/target/main.json",
         "../noir-examples/noir-r1cs-test-programs/conditional-write/target/main.gz",
+    );
+}
+
+#[test]
+fn test_binops() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/bin-opcode/target/main.json",
+        "../noir-examples/noir-r1cs-test-programs/bin-opcode/target/main.gz",
     );
 }

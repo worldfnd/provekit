@@ -1,10 +1,12 @@
 use {
     crate::{
+        binops::{add_binop, BinOp},
         memory::{MemoryBlock, MemoryOperation},
         r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
         ram::add_ram_checking,
         range_check::add_range_checks,
         rom::add_rom_checking,
+        serde_ark,
         utils::noir_to_native,
         FieldElement, NoirElement, R1CS,
     },
@@ -19,8 +21,11 @@ use {
     },
     anyhow::{bail, Result},
     ark_std::One,
+    serde::{Deserialize, Serialize},
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };
+/// The index of the constant 1 witness in the R1CS instance
+pub const WITNESS_ONE_IDX: usize = 0;
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
@@ -128,6 +133,23 @@ impl NoirToR1CSCompiler {
             })
     }
 
+    // Convert a ConstantOrACIRWitness into a ConstantOrR1CSWitness, creating a new
+    // R1CS witness (and builder) if required.
+    fn fetch_constant_or_r1cs_witness(
+        &mut self,
+        constant_or_witness: ConstantOrACIRWitness<NoirElement>,
+    ) -> ConstantOrR1CSWitness {
+        match constant_or_witness {
+            ConstantOrACIRWitness::Constant(c) => {
+                ConstantOrR1CSWitness::Constant(noir_to_native(c))
+            }
+            ConstantOrACIRWitness::Witness(w) => {
+                let r1cs_witness = self.fetch_r1cs_witness_index(w);
+                ConstantOrR1CSWitness::Witness(r1cs_witness)
+            }
+        }
+    }
+
     /// Add a new witness representing the product of two existing witnesses,
     /// and add an R1CS constraint enforcing this.
     pub(crate) fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
@@ -221,6 +243,11 @@ impl NoirToR1CSCompiler {
         // are to be constrained within the range [0..2^k].
         // These will be digitally decomposed into smaller ranges, if necessary.
         let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        // (input, input, output) tuples for AND and XOR operations.
+        // Inputs may be either constants or R1CS witnesses.
+        // Outputs are always R1CS witnesses.
+        let mut and_ops = vec![];
+        let mut xor_ops = vec![];
 
         for opcode in &circuit.opcodes {
             match opcode {
@@ -333,6 +360,25 @@ impl NoirToR1CSCompiler {
                             .push(input_witness);
                     }
 
+                    // Binary operations:
+                    // The inputs and outputs will have already been solved for by the ACIR solver.
+                    // Collect the R1CS witnesses indices so that we can later constrain them
+                    // appropriately.
+                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                        and_ops.push((
+                            self.fetch_constant_or_r1cs_witness(lhs.input()),
+                            self.fetch_constant_or_r1cs_witness(rhs.input()),
+                            self.fetch_r1cs_witness_index(*output),
+                        ));
+                    }
+                    BlackBoxFuncCall::XOR { lhs, rhs, output } => {
+                        xor_ops.push((
+                            self.fetch_constant_or_r1cs_witness(lhs.input()),
+                            self.fetch_constant_or_r1cs_witness(rhs.input()),
+                            self.fetch_r1cs_witness_index(*output),
+                        ));
+                    }
+
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
                     }
@@ -359,9 +405,28 @@ impl NoirToR1CSCompiler {
             }
         });
 
+        // For the AND and XOR operations, add the appropriate constraints.
+        add_binop(self, BinOp::AND, and_ops);
+        add_binop(self, BinOp::XOR, xor_ops);
+
         // Perform all range checks
         add_range_checks(self, range_checks);
 
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ConstantOrR1CSWitness {
+    Constant(#[serde(with = "serde_ark")] FieldElement),
+    Witness(usize),
+}
+
+impl ConstantOrR1CSWitness {
+    pub fn to_tuple(&self) -> (FieldElement, usize) {
+        match self {
+            ConstantOrR1CSWitness::Constant(c) => (*c, WITNESS_ONE_IDX),
+            ConstantOrR1CSWitness::Witness(w) => (FieldElement::one(), *w),
+        }
     }
 }

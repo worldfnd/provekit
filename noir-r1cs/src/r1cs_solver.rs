@@ -1,6 +1,8 @@
 use {
     crate::{
+        binops::BINOP_ATOMIC_BITS,
         digits::DigitalDecompositionWitnesses,
+        noir_to_r1cs::ConstantOrR1CSWitness,
         ram::SpiceWitnesses,
         utils::{noir_to_native, serde_ark, serde_ark_option},
         FieldElement,
@@ -94,6 +96,22 @@ pub enum WitnessBuilder {
     /// (Note that some witness values are already solved for by the ACIR
     /// solver.)
     SpiceWitnesses(SpiceWitnesses),
+    /// A witness value for the denominator of a bin op lookup.
+    /// Arguments: `(witness index, sz_challenge, rs_challenge,
+    /// rs_challenge_sqrd, lhs, rhs, output)`, where `lhs`, `rhs`, and
+    /// `output` are either constant or witness values.
+    BinOpLookupDenominator(
+        usize,
+        usize,
+        usize,
+        usize,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+    ),
+    /// Witness values for the number of times that each pair of input values
+    /// occurs in the bin op.
+    MultiplicitiesForBinOp(usize, Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>),
 }
 
 impl WitnessBuilder {
@@ -106,6 +124,7 @@ impl WitnessBuilder {
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
                 spice_witnesses_struct.num_witnesses
             }
+            WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
             _ => 1,
         }
     }
@@ -128,6 +147,9 @@ impl WitnessBuilder {
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
                 spice_witnesses_struct.first_witness_idx
             }
+
+            WitnessBuilder::BinOpLookupDenominator(start_idx, ..) => *start_idx,
+            WitnessBuilder::MultiplicitiesForBinOp(start_idx, _) => *start_idx,
         }
     }
 
@@ -257,6 +279,57 @@ impl WitnessBuilder {
             }
             WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
                 spice_witnesses.solve(witness);
+            }
+            WitnessBuilder::BinOpLookupDenominator(
+                witness_idx,
+                sz_challenge,
+                rs_challenge,
+                rs_challenge_sqrd,
+                lhs,
+                rhs,
+                output,
+            ) => {
+                let lhs = match lhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let rhs = match rhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let output = match output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                witness[*witness_idx] = Some(
+                    witness[*sz_challenge].unwrap()
+                        - (lhs
+                            + witness[*rs_challenge].unwrap() * rhs
+                            + witness[*rs_challenge_sqrd].unwrap() * output),
+                );
+            }
+            WitnessBuilder::MultiplicitiesForBinOp(witness_idx, operands) => {
+                let mut multiplicities = vec![0u32; 2usize.pow(2 * BINOP_ATOMIC_BITS as u32)];
+                for (lhs, rhs) in operands {
+                    let lhs = match lhs {
+                        ConstantOrR1CSWitness::Constant(c) => *c,
+                        ConstantOrR1CSWitness::Witness(witness_idx) => {
+                            witness[*witness_idx].unwrap()
+                        }
+                    };
+                    let rhs = match rhs {
+                        ConstantOrR1CSWitness::Constant(c) => *c,
+                        ConstantOrR1CSWitness::Witness(witness_idx) => {
+                            witness[*witness_idx].unwrap()
+                        }
+                    };
+                    let index =
+                        (lhs.into_bigint().0[0] << BINOP_ATOMIC_BITS) + rhs.into_bigint().0[0];
+                    multiplicities[index as usize] += 1;
+                }
+                for (i, count) in multiplicities.iter().enumerate() {
+                    witness[witness_idx + i] = Some(FieldElement::from(*count));
+                }
             }
         }
     }
