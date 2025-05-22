@@ -92,3 +92,19 @@ fn test_mixed_base_range_check() {
         "../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases/target/main.gz",
     );
 }
+
+#[test]
+fn test_read_write_memory() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/read-write-memory/target/main.json",
+        "../noir-examples/noir-r1cs-test-programs/read-write-memory/target/main.gz",
+    );
+}
+
+#[test]
+fn test_conditional_write() {
+    test_compiler(
+        "../noir-examples/noir-r1cs-test-programs/conditional-write/target/main.json",
+        "../noir-examples/noir-r1cs-test-programs/conditional-write/target/main.gz",
+    );
+}

@@ -2,6 +2,7 @@ use {
     crate::{
         memory::{MemoryBlock, MemoryOperation},
         r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
+        ram::add_ram_checking,
         range_check::add_range_checks,
         rom::add_rom_checking,
         utils::noir_to_native,
@@ -350,7 +351,11 @@ impl NoirToR1CSCompiler {
             } else {
                 // Read/write memory block - use Spice offline memory checking.
                 // Returns witnesses that need to be range checked.
-                // Not supported yet.
+                let (num_bits, witnesses_to_range_check) = add_ram_checking(self, block);
+                let range_check = range_checks.entry(num_bits).or_default();
+                witnesses_to_range_check
+                    .iter()
+                    .for_each(|value| range_check.push(*value));
             }
         });
 

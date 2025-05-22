@@ -1,6 +1,7 @@
 use {
     crate::{
         digits::DigitalDecompositionWitnesses,
+        ram::SpiceWitnesses,
         utils::{noir_to_native, serde_ark, serde_ark_option},
         FieldElement,
     },
@@ -74,6 +75,25 @@ pub enum WitnessBuilder {
     /// Builds the witnesses values required for the mixed base digital
     /// decomposition of other witness values.
     DigitalDecomposition(DigitalDecompositionWitnesses),
+    /// A factor of the multiset check used in read/write memory checking.
+    /// Values: (witness index, sz_challenge, rs_challenge, (addr,
+    /// addr_witness), value, (timer, timer_witness)) where sz_challenge,
+    /// rs_challenge, addr_witness, timer_witness are witness indices.
+    /// Solver computes:
+    /// sz_challenge - (addr * addr_witness + rs_challenge * value +
+    /// rs_challenge * rs_challenge * timer * timer_witness)
+    SpiceMultisetFactor(
+        usize,
+        usize,
+        usize,
+        WitnessCoefficient,
+        usize,
+        WitnessCoefficient,
+    ),
+    /// Builds the witnesses values required for the Spice memory model.
+    /// (Note that some witness values are already solved for by the ACIR
+    /// solver.)
+    SpiceWitnesses(SpiceWitnesses),
 }
 
 impl WitnessBuilder {
@@ -83,6 +103,9 @@ impl WitnessBuilder {
         match self {
             WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
+            WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
+                spice_witnesses_struct.num_witnesses
+            }
             _ => 1,
         }
     }
@@ -101,6 +124,10 @@ impl WitnessBuilder {
             WitnessBuilder::LogUpDenominator(start_idx, ..) => *start_idx,
             WitnessBuilder::ProductLinearOperation(start_idx, ..) => *start_idx,
             WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.first_witness_idx,
+            WitnessBuilder::SpiceMultisetFactor(start_idx, ..) => *start_idx,
+            WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
+                spice_witnesses_struct.first_witness_idx
+            }
         }
     }
 
@@ -209,6 +236,27 @@ impl WitnessBuilder {
             }
             WitnessBuilder::DigitalDecomposition(dd_struct) => {
                 dd_struct.solve(witness);
+            }
+            WitnessBuilder::SpiceMultisetFactor(
+                witness_idx,
+                sz_challenge,
+                rs_challenge,
+                WitnessCoefficient(addr, addr_witness),
+                value,
+                WitnessCoefficient(timer, timer_witness),
+            ) => {
+                witness[*witness_idx] = Some(
+                    witness[*sz_challenge].unwrap()
+                        - (*addr * witness[*addr_witness].unwrap()
+                            + witness[*rs_challenge].unwrap() * witness[*value].unwrap()
+                            + witness[*rs_challenge].unwrap()
+                                * witness[*rs_challenge].unwrap()
+                                * *timer
+                                * witness[*timer_witness].unwrap()),
+                );
+            }
+            WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
+                spice_witnesses.solve(witness);
             }
         }
     }
