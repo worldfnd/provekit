@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
+mod binops;
 mod digits;
 mod file;
 mod gnark_config;

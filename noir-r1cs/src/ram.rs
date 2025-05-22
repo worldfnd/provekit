@@ -13,7 +13,7 @@ use {
 /// Like [MemoryOperation], but with the indices of the additional witnesses
 /// needed by Spice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) enum SpiceMemoryOperation {
+pub enum SpiceMemoryOperation {
     /// Load operation.  Arguments are R1CS witness indices:
     /// (address, value read, read timestamp)
     /// `address` is already solved for by the ACIR solver.
@@ -26,7 +26,7 @@ pub(crate) enum SpiceMemoryOperation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct SpiceWitnesses {
+pub struct SpiceWitnesses {
     /// The length of the memory block
     pub memory_length:        usize,
     /// The witness index of the first initial value (they are stored

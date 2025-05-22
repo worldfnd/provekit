@@ -11,7 +11,7 @@ use {
 /// where each group of witnesses is in 1:1 correspondence with
 /// witnesses_to_decompose.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub(crate) struct DigitalDecompositionWitnesses {
+pub struct DigitalDecompositionWitnesses {
     /// The log base of each digit (in little-endian order)
     pub log_bases:                  Vec<usize>,
     /// The number of witnesses to decompose
