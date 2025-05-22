@@ -9,6 +9,8 @@ use crate::{compiler::R1CS, solver::WitnessBuilder};
 pub(crate) struct DigitalDecompositionWitnesses {
     /// The log base of each digit (in little-endian order)
     pub log_bases: Vec<usize>,
+    /// The number of witnesses to decompose
+    pub num_witnesses_to_decompose: usize,
     /// Witness indices of the values to be decomposed
     pub witnesses_to_decompose: Vec<usize>,
     /// The index of the first witness written to
@@ -19,14 +21,24 @@ pub(crate) struct DigitalDecompositionWitnesses {
 
 impl DigitalDecompositionWitnesses {
     pub fn new(next_witness_idx: usize, log_bases: Vec<usize>, witnesses_to_decompose: Vec<usize>) -> Self {
-        let num_values = witnesses_to_decompose.len();
+        let num_witnesses_to_decompose = witnesses_to_decompose.len();
         let digital_decomp_length = log_bases.len();
         Self {
             log_bases,
+            num_witnesses_to_decompose,
             witnesses_to_decompose,
             first_witness_idx: next_witness_idx,
-            num_witnesses: digital_decomp_length * num_values,
+            num_witnesses: digital_decomp_length * num_witnesses_to_decompose,
         }
+    }
+
+    /// Returns the witness index of the `value_offset`-th witness of the `digit_place`-th digit.
+    /// Note that `value_offset` is the index of the witness in the original list of witnesses (not
+    /// itself a witness index).
+    pub fn get_digit_witness_index(&self, digit_place: usize, value_offset: usize) -> usize {
+        debug_assert!(digit_place < self.log_bases.len());
+        debug_assert!(value_offset < self.num_witnesses_to_decompose);
+        self.first_witness_idx + digit_place * self.num_witnesses_to_decompose + value_offset
     }
 
     /// Solve for the witness values allocated to the digital decomposition.
@@ -35,30 +47,16 @@ impl DigitalDecompositionWitnesses {
             let value = witness[*value_witness_idx];
             let digits = decompose_into_digits(value, &self.log_bases);
             digits.iter().enumerate().for_each(|(digit_place, digit_value)| {
-                witness[digit_place * self.witnesses_to_decompose.len() + i] = *digit_value;
+                witness[self.first_witness_idx + digit_place * self.witnesses_to_decompose.len() + i] = *digit_value;
             });
         });
-    }
-
-    /// Returns a vector of tuples, where each tuple contains the log base and the witness indices of
-    /// the digits for that base (these may be used to range check the digits, for instance).
-    pub fn digit_ranges(&self) -> Vec<(u32, Vec<usize>)> {
-        let num_witnesses_to_decompose = self.witnesses_to_decompose.len();
-        self
-            .log_bases
-            .iter()
-            .enumerate()
-            .map(|(digit_place, log_base)| {
-                (*log_base as u32, (0..num_witnesses_to_decompose).map(|i| digit_place * num_witnesses_to_decompose + i).collect::<Vec<_>>())
-            })
-            .collect()
     }
 }
 
 /// Adds the witnesses and constraints for the digital decomposition of the given witnesses in a
 /// mixed base decomposition (see [DigitalDecompositionWitnesses]).  Does NOT add constraints for
 /// range checking the digits - this is left to the caller (as sometimes these range checks are
-/// obviated e.g. by later lookups, as in the case of the bin op codes).
+/// obviated e.g. by later lookups, as in the case of the binop codes).
 pub(crate) fn add_digital_decomposition(
     r1cs: &mut R1CS,
     log_bases: Vec<usize>,
@@ -76,7 +74,7 @@ pub(crate) fn add_digital_decomposition(
     dd_struct.witnesses_to_decompose.iter().enumerate().for_each(|(i, value)| {
         let mut recomp_summands = vec![];
         digit_multipliers.iter().enumerate().for_each(|(digit_place, digit_multiplier)| {
-            let digit_witness = dd_struct.witnesses_to_decompose.len() * digit_place + i;
+            let digit_witness = dd_struct.get_digit_witness_index(digit_place, i);
             recomp_summands.push((FieldElement::from(*digit_multiplier), digit_witness));
         });
         r1cs.matrices.add_constraint(

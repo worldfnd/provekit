@@ -57,7 +57,7 @@ pub(crate) fn add_binop(
         let lh_atoms = match lh {
             ConstantOrR1CSWitness::Witness(_) => {
                 let digit_witnesses = (0..NUM_DIGITS).map(|digit_place| {
-                    digit_place * dd_struct.witnesses_to_decompose.len() + witness_dd_counter
+                    dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
                 }).collect::<Vec<_>>();
                 witness_dd_counter += 1;
                 digit_witnesses.iter().map(|witness| ConstantOrR1CSWitness::Witness(*witness)).collect::<Vec<_>>()
@@ -72,7 +72,7 @@ pub(crate) fn add_binop(
         let rh_atoms = match rh {
             ConstantOrR1CSWitness::Witness(_) => {
                 let digit_witnesses = (0..NUM_DIGITS).map(|digit_place| {
-                    digit_place * dd_struct.witnesses_to_decompose.len() + witness_dd_counter
+                    dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
                 }).collect::<Vec<_>>();
                 witness_dd_counter += 1;
                 digit_witnesses.iter().map(|witness| ConstantOrR1CSWitness::Witness(*witness)).collect::<Vec<_>>()
@@ -85,7 +85,7 @@ pub(crate) fn add_binop(
             }
         };
         let output_atoms = (0..NUM_DIGITS).map(|digit_place| {
-            digit_place * dd_struct.witnesses_to_decompose.len() + witness_dd_counter
+            dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
         }).collect::<Vec<_>>();
         witness_dd_counter += 1;
 

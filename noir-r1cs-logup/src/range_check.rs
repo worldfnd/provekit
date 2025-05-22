@@ -47,8 +47,12 @@ pub(crate) fn add_range_checks(
 
                 // Add the witness indices for the digits to the atomic range checks
                 dd_struct
-                    .digit_ranges()
-                    .into_iter()
+                    .log_bases
+                    .iter()
+                    .enumerate()
+                    .map(|(digit_place, log_base)| {
+                        (*log_base as u32, (0..dd_struct.num_witnesses_to_decompose).map(|i| dd_struct.get_digit_witness_index(digit_place, i)).collect::<Vec<_>>())
+                    })
                     .for_each(|(log_base, digit_witnesses)| {
                         atomic_range_checks[log_base as usize].push(digit_witnesses);
                     });
