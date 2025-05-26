@@ -44,7 +44,7 @@ impl Command for Args {
             scheme.whir.m,
         );
 
-        let mut file = File::create("./prover/proof").unwrap();
+        let mut file = File::create("./proof_for_recursive_verifier").unwrap();
         let mut proof_bytes = vec![];
         proof
             .whir_r1cs_proof

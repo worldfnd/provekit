@@ -109,7 +109,7 @@ pub fn write_gnark_parameters_to_file(
 ) {
     let gnark_config = gnark_parameters(whir_params, transcript, io, sums, m_0, m);
     println!("round config {:?}", whir_params.round_parameters);
-    let mut file_params = File::create("./prover/params").unwrap();
+    let mut file_params = File::create("./params_for_recursive_verifier").unwrap();
     file_params
         .write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
