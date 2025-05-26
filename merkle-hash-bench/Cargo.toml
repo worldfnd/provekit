@@ -15,13 +15,13 @@ plonky3 = [
   "dep:p3-monolith",
   "dep:p3-rescue",
 ]
-icicle = [
-  "dep:icicle-core",
-  "dep:icicle-runtime",
-  "dep:icicle-hash",
-  "dep:icicle-bn254",
-  "dep:icicle-m31",
-]
+# icicle = [
+#   "dep:icicle-core",
+#   "dep:icicle-runtime",
+#   "dep:icicle-hash",
+#   "dep:icicle-bn254",
+#   "dep:icicle-m31",
+# ]
 zkhash = ["dep:zkhash"]
 stwo = ["dep:stwo-prover"]
 
@@ -60,11 +60,11 @@ p3-rescue = { workspace = true, optional = true }
 p3-symmetric = { workspace = true, optional = true }
 
 # Icicle dependenciesp3-bn254-fr = { version = "0.2.0", features = ["table"] }
-icicle-core = { workspace = true, optional = true }
-icicle-runtime = { workspace = true, optional = true }
-icicle-hash = { workspace = true, optional = true }
-icicle-bn254 = { workspace = true, optional = true }
-icicle-m31 = { workspace = true, optional = true }
+# icicle-core = { workspace = true, optional = true }
+# icicle-runtime = { workspace = true, optional = true }
+# icicle-hash = { workspace = true, optional = true }
+# icicle-bn254 = { workspace = true, optional = true }
+# icicle-m31 = { workspace = true, optional = true }
 
 # ZKHash
 zkhash = { workspace = true, optional = true }

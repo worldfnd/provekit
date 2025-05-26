@@ -107,11 +107,12 @@ p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" 
 p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
 p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
 
-icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+# Icicle
+# icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+# icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+# icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+# icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+# icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
 
 # ZKHash
 zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f" }
@@ -119,7 +120,6 @@ zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", r
 # Stwo
 stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1" }
 
-# Icicle
 # Workspace members
 block-multiplier = { path = "block-multiplier" }
 block-multiplier-codegen = { path = "block-multiplier-codegen" }

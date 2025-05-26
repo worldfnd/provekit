@@ -1,7 +1,7 @@
 mod blake2s_stwo;
 mod blake3;
 mod blake3_naive;
-mod icicle;
+// mod icicle;
 mod keccak_api;
 // mod keccak_neon; // Not available on all aarch64
 mod plonky3;
