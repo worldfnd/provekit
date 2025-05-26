@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
   "noir-r1cs",
-  "merkle-hash-bench",
   "fp-rounding",
   "hla",
   "block-multiplier",
@@ -55,6 +54,15 @@ opt-level = 2
 opt-level = 3
 
 [workspace.dependencies]
+# Workspace members
+block-multiplier = { path = "block-multiplier" }
+block-multiplier-codegen = { path = "block-multiplier-codegen" }
+fp-rounding = { path = "fp-rounding" }
+hla = { path = "hla" }
+noir-r1cs = { path = "noir-r1cs" }
+skyscraper = { path = "skyscraper" }
+
+# 3rd party
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22.1"
@@ -94,40 +102,6 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rand_chacha = "0.9.0"
 test-case = "3.3.1"
-
-# Plonky 3
-p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24", features = [
-  "table",
-] }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
-
-# Icicle
-# icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-# icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-# icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-# icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-# icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
-
-# ZKHash
-zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f" }
-
-# Stwo
-stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", version = "0.1.1" }
-
-# Workspace members
-block-multiplier = { path = "block-multiplier" }
-block-multiplier-codegen = { path = "block-multiplier-codegen" }
-fp-rounding = { path = "fp-rounding" }
-hla = { path = "hla" }
-merkle-hash-bench = { path = "merkle-hash-bench" }
-noir-r1cs = { path = "noir-r1cs" }
-skyscraper = { path = "skyscraper" }
 
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
