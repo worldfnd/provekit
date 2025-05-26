@@ -49,13 +49,13 @@ pub struct SpiceWitnesses {
 
 impl SpiceWitnesses {
     pub fn new(
-        next_witness_idx: usize,
+        mut next_witness_idx: usize,
         memory_length: usize,
         initial_values_start: usize,
         memory_operations: Vec<MemoryOperation>,
     ) -> Self {
         let start_witness_idx = next_witness_idx;
-        let mut next_witness_idx = start_witness_idx;
+
         let spice_memory_operations = memory_operations
             .into_iter()
             .map(|op| match op {

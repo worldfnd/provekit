@@ -120,10 +120,7 @@ pub(crate) fn add_digital_decomposition(
 /// Compute a mixed-base decomposition of a field element into its digits, using
 /// the given log bases. Decomposition is little-endian.
 /// Panics if the value provided can not be represented in the given bases.
-pub(crate) fn decompose_into_digits(
-    value: FieldElement,
-    log_bases: &Vec<usize>,
-) -> Vec<FieldElement> {
+pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
     let num_digits = log_bases.len();
     let mut digits = vec![FieldElement::zero(); num_digits];
     let value_bits = field_to_le_bits(value);

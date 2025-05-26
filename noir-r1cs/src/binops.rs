@@ -11,8 +11,8 @@ use {
 
 #[derive(Clone, Debug, Copy)]
 pub enum BinOp {
-    AND,
-    XOR,
+    And,
+    Xor,
 }
 
 /// The number of bits that ACIR uses for the inputs and output of the binop.
@@ -153,8 +153,8 @@ pub(crate) fn add_binop(
         .flat_map(|lh_operand: u32| {
             (0..1 << BINOP_ATOMIC_BITS).map(move |rh_operand: u32| {
                 let output = match op {
-                    BinOp::AND => lh_operand & rh_operand,
-                    BinOp::XOR => lh_operand ^ rh_operand,
+                    BinOp::And => lh_operand & rh_operand,
+                    BinOp::Xor => lh_operand ^ rh_operand,
                 };
                 (lh_operand, rh_operand, output)
             })

@@ -403,8 +403,8 @@ impl NoirToR1CSCompiler {
         });
 
         // For the AND and XOR operations, add the appropriate constraints.
-        add_binop(self, BinOp::AND, and_ops);
-        add_binop(self, BinOp::XOR, xor_ops);
+        add_binop(self, BinOp::And, and_ops);
+        add_binop(self, BinOp::Xor, xor_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);
