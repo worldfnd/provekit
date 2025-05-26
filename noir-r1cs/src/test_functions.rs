@@ -19,7 +19,7 @@ fn test_compiler(circuit_path_str: &str, witness_path_str: &str) {
     let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
     let witness_map: WitnessMap<AcirFieldElement> = witness_stack.pop().unwrap().witness;
 
-    let proof = proof_schema
+    let _proof = proof_schema
         .prove(&witness_map)
         .context("While proving Noir program statement")
         .unwrap();
