@@ -96,22 +96,22 @@ rand_chacha = "0.9.0"
 test-case = "3.3.1"
 
 # Plonky 3
-p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main", features = [
+p3-bn254-fr = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24", features = [
   "table",
 ] }
-p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-field = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", branch = "main" }
+p3-goldilocks = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-mersenne-31 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-monolith = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-rescue = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3.git", rev = "ad4fd24" }
 
-icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
-icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", branch = "main" }
+icicle-core = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+icicle-runtime = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+icicle-hash = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+icicle-bn254 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
+icicle-m31 = { git = "https://github.com/ingonyama-zk/icicle.git", rev = "3fbdaba" }
 
 # ZKHash
 zkhash = { git = "https://extgit.isec.tugraz.at/krypto/zkfriendlyhashzoo.git", rev = "f252d2b2767bc88659615601ac13e19f52c2c11f" }
