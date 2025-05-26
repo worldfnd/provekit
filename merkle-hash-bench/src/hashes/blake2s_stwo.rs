@@ -25,7 +25,9 @@ impl SmolHasher for Blake2Stwo {
     }
 }
 
+// TODO: There has to be a better way of doing the tranmutes. Maybe `bytemuck`?
 /// Compress 16x64 bytes into 16x32 bytes
+#[allow(clippy::missing_transmute_annotations)]
 fn compress(msg: &[u8; 1024], out: &mut [u8; 512]) {
     let mut state: [u32x16; 8] = [u32x16::splat(0); 8];
     let zeros = u32x16::splat(0);
