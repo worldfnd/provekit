@@ -62,15 +62,87 @@ If we instead need to do an inner product between a witness in $FF_p^n$ and weig
 
 TODO: Appropriate adaptation of GR1CS.
 
+= Equality function
+
+== Isomorphisms and representations of the vector space $𝔽^(2^k)$.
+
+The boolean hypercube evaluation basis of size $n = 2^k$ is $vset(B)_n = {0,1}^k$.
+
+The an evaluation basis of size $n$ is
+
+The Fourier basis $vset(F)_n = {1, ω, ω^2, dots, ω^(n-1)}$ where $ω$ is a primitive $n$-th root of unity.
+
+
+Q: We have $vset(B)_2 ≠ vset(L)_2$, but we could construct a $vset(B)_2$ hypercube fine.
+
+The basis functions for $vset(B)_2$ are
+$
+  x ⋅ y + (x - 1) ⋅ (y - 1)
+$
+
+The basis functions for $vset(L)_n$ are
+$
+  (x^n - 1) / (x - y)
+$
+
+
+
+
+
+#definition[Given a basis $vset(B)$ for an $𝔽$ vector-space $V$ define ${eq_vvec(y)}_(vvec(y) ∈ vset(B))$ to be a basis of multivariate polynomial $𝔽[X^(dim V)]$ where each $eq_vvec(y)$ is a multivariate polynomial of minimal degree such that for all $vvec(x) in V$
+$
+  eq_vvec(y)(vvec(x)) = cases(
+    1 "if" vvec(x) = vvec(y),
+    0 "otherwise"
+  )
+$
+]
+We will leave out $vset(B)$ where it is clear from context.
+
+#example[Given a basis of evaluation points ${1, ω, ω^2, dots, ω^(n-1)}$ for $𝔽[X^(<n)]$ where $ω$ is a primitive $n$-th root of unity, we have
+$
+  eq(x, y) = (x^n - 1) / (x - y)
+$
+]
+Q: Why is this not symmetrical in $x$ and $y$.
+
+#example[Given a basis ${0, 1}$ where $ω$ is a primitive $n$-th root of unity, we have
+$
+  eq(x, y) = (x^n - 1) / (x - y)
+$
+]
+
+
+#lemma[Given a product basis $vset(B) = vset(B_0) × vset(B_1)$ the $eq_vset(B)$ function factors as
+$
+  eq_vset(B)(vvec(x_0) × vvec(x_1), vvec(y_0) × vvec(y_1)) =
+  eq_vset(B_0)(vvec(x_0), vvec(y_0)) ⋅ eq_vset(B_1)(vvec(x_1), vvec(x_1))
+$
+]
+
+#definition("Extension")[Given an ordered basis $vset(B) = {vvec(b)_0, dots, vvec(b)_(n-1)}$ and a vector $vvec(f) ∈ 𝔽^n$ define the _extension_ $hat(f)$ as.
+$
+hat(f)(vvec(x)) = sum_(i ∈ [0, n)) f_i ⋅ eq_vset(B) (vvec(x), vvec(b)_i)
+$
+]
+
 = General results on finite field inner product embeddings
 
-#lemma[Given a field $FF_(q^n)$ over $FF_q$ represented by $FF_q [X]\/(X^n - alpha)$, there exist and embedding of the $FF_q^n$ dot product in $FF_(q^n)$ with $vmat(A) = vmat(I)$, $vmat(C) = (1, 0, dots, 0)$ and
+#definition("Embedding")[Given a bilinear map $f:𝔽^n × 𝔽^m → 𝔽^k$ and a finite $𝔽$-algebra $K$, an _embedding of $f$ in $K$_ is a triplet of linear maps $(vmat(A), vmat(B), vmat(C))$ such that for all $vvec(x) ∈ 𝔽^n, vvec(y) ∈ 𝔽^m$
+$
+  f(vvec(x), vvec(y)) = vmat(C) (vmat(A)(vvec(x)) ⋅_K vmat(B)(vvec(y)))
+$
+where $vmat(A): 𝔽^n → K, vmat(B): 𝔽^m → K$ and $vmat(C): K → 𝔽^k$.
+]
+This is also called _packing_. Note that $K$ is isomorphic to $𝔽^l$ for some $l$ and given a representaion of $K$ the $vmat(A), vmat(B), vmat(C)$ are represented by matrices.
+
+#lemma[Given a field $FF_(q^n)$ over $FF_q$ represented by $FF_q [X]\/(X^n - m_1 ⋅ X - m_0)$, there exist and embedding of the $FF_q^n$ dot product in $FF_(q^n)$ with $vmat(A) = vmat(I)$, $vmat(C) = (1, 0, dots, 0)$ and
 $
 vmat(B) = mat(
 1, 0, dots.c, 0;
-0, 0, dots.c, alpha^(-1);
+0, 0, dots.c, m_0^(-1);
 dots.v, dots.v, dots.up, 0;
-0, alpha^(-1), dots.c, 0
+0, m_0^(-1), dots.c, 0
 )
 $
 ]<embedding>
@@ -79,11 +151,15 @@ $
 The embedding of vectors $(a_0, a_1, dots, a_(n-1))$ and $(b_0, b_1, dots, b_(n-1))$ results in
 $
 a & = a_0 + a_1 dot X + dots.c + a_(n-1) dot X^(n-1) \
-b & = b_0 + alpha^(-1) dot ( b_(n-1) dot  X + dots.c + b_1 dot X^(n-1)) \
+b & = b_0 + m_0^(-1) dot ( b_(n-1) dot  X + dots.c + b_1 dot X^(n-1)) \
 $
-The constant term of the reduced product $a dot b$ is given by the $X^0 = 1$ and $X^n = alpha$ terms:
+The product $a⋅b$ has powers up to $X^(2⋅(n-1))$. Note that in the quotient we have $X^n = m_0 + m_1 ⋅ X$. Of the unreduced product, only $X^0 and X^n$ contribute to the constant term of the reduced result. To see this, consider a term $X^(n + k)$ with $k ∈ [1, n-2]$:
 $
-c_0 = a_0 dot b_0 + alpha dot (a_1 dot alpha^(-1) dot b_1 + dots.c + a_(n_1) dot alpha^(-1) dot b_(n-1))
+X^(n + k) = (m_0 + m_1 ⋅ X) ⋅ X^k = m_0⋅X^k + m_1⋅X^{k+1}
+$
+since $k >0$ and $k+1 < n$ this does not contribute to $X^0$. Thus the constant term is given by
+$
+c_0 = a_0 dot b_0 + m_0 dot (a_1 dot m_0^(-1) dot b_1 + dots.c + a_(n_1) dot m_0^(-1) dot b_(n-1))
 $
 which is the dot product as intended.
 ]
@@ -91,3 +167,8 @@ which is the dot product as intended.
 #lemma("Towers")[Given $m, n$ and a $FF_q^m$ dot product embedding in $FF_(q^m)$ and an $FF_(q^m)^n$ dot product embedding in $FF_(q^(m dot n))$, we can construct an $FF_q^(m dot n)$ dot product embedding in $FF_(q^(m dot n))$ by taking the Kronecker product of the embedding matrics.
 ]<tower>
 (Proof TBD)
+
+
+#theorem("Hansen-Muller")[
+
+]<thm-hm>

@@ -31,7 +31,7 @@ From this follows
 = Inner Product Arithmetization
 
 
-#definition("IPCS")[A *inner product commitment scheme* (IPCS) over a finite field $FF$ has operations
+#definition("SCS")[A *sumcheck commitment scheme* (SCS) over a finite field $FF$ has operations
 
 
  - $commit(vx) |-> C_vx$ takes a vector $vx in FF^n$ and outputs a commitment $C_vx$.
