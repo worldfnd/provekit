@@ -8,7 +8,6 @@ use {
         poseidon2::create_poseidon2_hasher,
     },
     icicle_hash::{blake2s::Blake2s, keccak::Keccak256},
-    icicle_m31::field::ScalarField as M31,
     icicle_runtime::memory::HostSlice,
 };
 
