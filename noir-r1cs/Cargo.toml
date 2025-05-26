@@ -27,6 +27,7 @@ zstd.workspace = true
 bytes.workspace = true
 bytemuck.workspace = true
 skyscraper.workspace = true
+static_assertions.workspace = true
 zerocopy.workspace = true
 
 # Ark

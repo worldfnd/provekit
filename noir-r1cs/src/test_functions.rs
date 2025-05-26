@@ -1,4 +1,5 @@
-#[cfg(test)]
+#![cfg(test)]
+
 use {
     crate::{
         range_check::NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP,
@@ -7,10 +8,10 @@ use {
     acir::native_types::WitnessMap,
     acir_field::FieldElement as AcirFieldElement,
     anyhow::Context,
+    static_assertions::const_assert,
     std::path::PathBuf,
 };
 
-#[cfg(test)]
 fn test_compiler(circuit_path_str: &str, witness_path_str: &str) {
     let circuit_path = &PathBuf::from(circuit_path_str);
     let proof_schema = NoirProofScheme::from_file(circuit_path).unwrap();
@@ -52,7 +53,7 @@ fn test_read_only_memory() {
 #[test]
 // Test a direct range check (i.e. without a digital decomposition)
 fn test_atomic_range_check() {
-    assert!(8 <= NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
+    const_assert!(8 <= NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
     test_compiler(
         "../noir-examples/noir-r1cs-test-programs/range-check-u8/target/main.json",
         "../noir-examples/noir-r1cs-test-programs/range-check-u8/target/main.gz",
@@ -62,7 +63,7 @@ fn test_atomic_range_check() {
 #[test]
 // Test a range check that requires a digital decomposition
 fn test_digital_decomposition_u16() {
-    assert!(16 > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
+    const_assert!(16 > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP);
     test_compiler(
         "../noir-examples/noir-r1cs-test-programs/range-check-u16/target/main.json",
         "../noir-examples/noir-r1cs-test-programs/range-check-u16/target/main.gz",

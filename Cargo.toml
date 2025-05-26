@@ -76,6 +76,7 @@ num-traits = "0.2.19"
 num = "0.4.3"
 sha3 = { version = "0.10.8", features = ["asm"] }
 subtle = "2.6.1"
+static_assertions = "1.1"
 tracing = "0.1.41"
 bytemuck = "1.22.0"
 hex-literal = "1"
