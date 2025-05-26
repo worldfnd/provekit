@@ -324,7 +324,7 @@ pub fn add_ram_checking(
     // timestamp.
 
     // num_bits is the ceil log of one more than the maximum permitted value
-    let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2() as u32;
+    let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2();
     let mut range_check = Vec::with_capacity(2 * all_mem_op_index_and_rt.len());
     all_mem_op_index_and_rt
         .iter()

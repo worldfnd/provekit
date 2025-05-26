@@ -338,6 +338,12 @@ impl WitnessBuilder {
 /// Mock transcript. To be replaced.
 pub struct MockTranscript {}
 
+impl Default for MockTranscript {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockTranscript {
     pub fn new() -> Self {
         Self {}

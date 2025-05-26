@@ -174,7 +174,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
 #[cfg(test)]
 #[test]
 fn test_decompose_into_digits() {
-    let value = FieldElement::from(3 + 2u32 * 256 + 1u32 * 256 * 256);
+    let value = FieldElement::from(3 + 2u32 * 256 + 256 * 256);
     let log_bases = vec![8, 8, 4];
     let digits = decompose_into_digits(value, &log_bases);
     assert_eq!(digits.len(), log_bases.len());
@@ -189,11 +189,11 @@ fn test_field_to_le_bits() {
     let value = FieldElement::from(5u32);
     let bits = field_to_le_bits(value);
     assert_eq!(bits.len(), 256);
-    assert_eq!(bits[0], true);
-    assert_eq!(bits[1], false);
-    assert_eq!(bits[2], true);
-    assert_eq!(bits[254], false);
-    assert_eq!(bits[255], false);
+    assert!(bits[0]);
+    assert!(!bits[1]);
+    assert!(bits[2]);
+    assert!(!bits[254]);
+    assert!(!bits[255]);
 }
 
 #[cfg(test)]
