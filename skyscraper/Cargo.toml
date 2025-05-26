@@ -9,19 +9,19 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-block-multiplier = { path = "../block-multiplier" }
-fp-rounding = { path = "../fp-rounding" }
+block-multiplier.workspace = true
+fp-rounding.workspace = true
 ark-ff.workspace = true
 ark-bn254.workspace = true
 zerocopy.workspace = true
-seq-macro = "0.3.6"
+seq-macro.workspace = true
 proptest.workspace = true
 rayon.workspace = true
 
 [dev-dependencies]
 rand.workspace = true
 divan.workspace = true
-primitive-types = "0.13.1"
+primitive-types.workspace = true
 
 [[bench]]
 name = "bench"

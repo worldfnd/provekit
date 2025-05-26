@@ -62,6 +62,8 @@ pub fn reduce_partial_add_rcv<const N: usize>(x: [[u64; 4]; N], rc: usize) -> [[
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::needless_range_loop)]
+
     use {
         super::*,
         crate::{arithmetic::add, constants::ROUND_CONSTANTS},

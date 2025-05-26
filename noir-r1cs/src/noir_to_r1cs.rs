@@ -108,12 +108,9 @@ impl NoirToR1CSCompiler {
         let start_idx = self.num_witnesses();
         self.r1cs.add_witnesses(witness_builder.num_witnesses());
         // Add the witness to the mapping if it is an ACIR witness
-        match &witness_builder {
-            WitnessBuilder::Acir(r1cs_witness_idx, acir_witness) => {
-                self.acir_to_r1cs_witness_map
-                    .insert(*acir_witness, *r1cs_witness_idx);
-            }
-            _ => {}
+        if let WitnessBuilder::Acir(r1cs_witness_idx, acir_witness) = &witness_builder {
+            self.acir_to_r1cs_witness_map
+                .insert(*acir_witness, *r1cs_witness_idx);
         }
         self.witness_builders.push(witness_builder);
         start_idx
@@ -406,8 +403,8 @@ impl NoirToR1CSCompiler {
         });
 
         // For the AND and XOR operations, add the appropriate constraints.
-        add_binop(self, BinOp::AND, and_ops);
-        add_binop(self, BinOp::XOR, xor_ops);
+        add_binop(self, BinOp::And, and_ops);
+        add_binop(self, BinOp::Xor, xor_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);

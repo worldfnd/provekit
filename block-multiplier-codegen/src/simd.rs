@@ -108,23 +108,6 @@ pub fn setup_reduce_ct_simd(
     (vec![var_red], FreshVariable::new("out", &res))
 }
 
-//*******  SIMD **********/
-/// Transposes two u256 values (represented as arrays of u64 limbs) into an
-/// array of SIMD registers.
-fn transpose_u256_to_simd(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    limbs: [[Reg<u64>; 4]; 2],
-) -> [Reg<Simd<u64, 2>>; 4] {
-    let [[l00, l01, l02, l03], [l10, l11, l12, l13]] = limbs;
-    [
-        load_tuple(alloc, asm, l00, l10),
-        load_tuple(alloc, asm, l01, l11),
-        load_tuple(alloc, asm, l02, l12),
-        load_tuple(alloc, asm, l03, l13),
-    ]
-}
-
 /// Converts a u256 represented by SIMD registers to a u260 representation with
 /// a left shift by 2. This involves shifting and masking operations to pack the
 /// 256 bits into 5 limbs of 52 bits each.

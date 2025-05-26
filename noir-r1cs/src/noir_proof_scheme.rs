@@ -104,7 +104,7 @@ impl NoirProofScheme {
         let mut transcript = MockTranscript::new();
         let partial_witness = self.r1cs.solve_witness_vec(
             &self.witness_builders,
-            &acir_witness_idx_to_value_map,
+            acir_witness_idx_to_value_map,
             &mut transcript,
         );
         let witness = fill_witness(partial_witness).context("while filling witness")?;

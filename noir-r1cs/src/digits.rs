@@ -120,10 +120,7 @@ pub(crate) fn add_digital_decomposition(
 /// Compute a mixed-base decomposition of a field element into its digits, using
 /// the given log bases. Decomposition is little-endian.
 /// Panics if the value provided can not be represented in the given bases.
-pub(crate) fn decompose_into_digits(
-    value: FieldElement,
-    log_bases: &Vec<usize>,
-) -> Vec<FieldElement> {
+pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
     let num_digits = log_bases.len();
     let mut digits = vec![FieldElement::zero(); num_digits];
     let value_bits = field_to_le_bits(value);
@@ -174,7 +171,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
 #[cfg(test)]
 #[test]
 fn test_decompose_into_digits() {
-    let value = FieldElement::from(3 + 2u32 * 256 + 1u32 * 256 * 256);
+    let value = FieldElement::from(3 + 2u32 * 256 + 256 * 256);
     let log_bases = vec![8, 8, 4];
     let digits = decompose_into_digits(value, &log_bases);
     assert_eq!(digits.len(), log_bases.len());
@@ -189,11 +186,11 @@ fn test_field_to_le_bits() {
     let value = FieldElement::from(5u32);
     let bits = field_to_le_bits(value);
     assert_eq!(bits.len(), 256);
-    assert_eq!(bits[0], true);
-    assert_eq!(bits[1], false);
-    assert_eq!(bits[2], true);
-    assert_eq!(bits[254], false);
-    assert_eq!(bits[255], false);
+    assert!(bits[0]);
+    assert!(!bits[1]);
+    assert!(bits[2]);
+    assert!(!bits[254]);
+    assert!(!bits[255]);
 }
 
 #[cfg(test)]

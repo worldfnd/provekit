@@ -38,7 +38,7 @@ pub use crate::{
 /// }
 ///
 /// unsafe {
-///     with_rounding_mode(requires_round_to_positive, 1.1);
+///     with_rounding_mode(1.1, requires_round_to_positive);
 /// }
 /// ```
 ///

@@ -231,7 +231,7 @@ fn add_naive_range_check(
         &[
             (FieldElement::one(), index_witness),
             (
-                FieldElement::from((1 << num_bits) - 1 as u32).neg(),
+                FieldElement::from((1 << num_bits) - 1_u32).neg(),
                 r1cs_compiler.witness_one(),
             ),
         ],

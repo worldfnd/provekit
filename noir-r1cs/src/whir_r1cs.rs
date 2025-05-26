@@ -346,12 +346,12 @@ pub fn run_sumcheck_verifier(
 
     let mut alpha = vec![FieldElement::zero(); m_0];
 
-    for i in 0..m_0 {
+    for item in alpha.iter_mut().take(m_0) {
         let mut hhat_i = [FieldElement::zero(); 4];
         let mut alpha_i = [FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
-        alpha[i] = alpha_i[0];
+        *item = alpha_i[0];
         let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &FieldElement::zero());
         let hhat_i_at_one = eval_qubic_poly(&hhat_i, &FieldElement::one());
         ensure!(

@@ -445,14 +445,14 @@ fn main(arg: &Args) {
     println!("Num `mul_term`s: {total_num_mul_terms:}");
 
     // --- Blackbox functions ---
-    for (k, v) in blackbox_func_call_variants.iter() {
+    for (k, v) in &blackbox_func_call_variants {
         if *v > 0 {
             println!("Blackbox fn {k:?}: {v:?}");
         }
     }
     let mut key_value_pairs: Vec<(u32, usize)> = range_check_bit_counts.into_iter().collect();
     key_value_pairs.sort_by(|x, y| y.1.cmp(&x.1));
-    for (k, v) in key_value_pairs.iter() {
+    for (k, v) in &key_value_pairs {
         println!("RANGE check: {k:?} bits had {v:?} lookups");
     }
 
