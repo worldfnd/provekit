@@ -4,21 +4,21 @@ pub struct MemoryBlock {
     /// The R1CS witnesses corresponding to the memory block values
     pub initial_value_witnesses: Vec<usize>,
     /// The memory operations, in the order that they occur
-    pub operations: Vec<MemoryOperation>,
+    pub operations:              Vec<MemoryOperation>,
 }
 
 impl MemoryBlock {
     pub fn new() -> Self {
         Self {
             initial_value_witnesses: vec![],
-            operations: vec![],
+            operations:              vec![],
         }
     }
 
     pub fn is_read_only(&self) -> bool {
         self.operations.iter().all(|op| match op {
-            MemoryOperation::Load(_, _) => true,
-            MemoryOperation::Store(_, _) => false,
+            MemoryOperation::Load(..) => true,
+            MemoryOperation::Store(..) => false,
         })
     }
 }
