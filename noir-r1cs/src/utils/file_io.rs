@@ -6,13 +6,13 @@ use {
     std::{
         fs::File,
         io::{BufReader, Read},
-        path::PathBuf,
+        path::Path,
     },
 };
 
 /// Deserialize WitnessStack from basic.gz
 pub fn deserialize_witness_stack<F: for<'a> Deserialize<'a>>(
-    file_path: &PathBuf,
+    file_path: impl AsRef<Path>,
 ) -> Result<WitnessStack<F>, WitnessStackError> {
     let file = File::open(file_path)
         .context("while opening witness file")

@@ -30,8 +30,8 @@ pub struct NoirProof {
 }
 
 impl NoirProofScheme {
-    #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
-    pub fn from_file(path: &Path) -> Result<Self> {
+    #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
+    pub fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
         let program = {
             let file = File::open(path).context("while opening Noir program")?;
             let _span = span!(
@@ -40,6 +40,7 @@ impl NoirProofScheme {
                 size = file.metadata().map(|m| m.len()).ok(),
             )
             .entered();
+
             serde_json::from_reader(file).context("while reading Noir program")?
         };
         Self::from_program(&program)
