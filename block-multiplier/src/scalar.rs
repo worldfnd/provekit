@@ -147,15 +147,15 @@ mod tests {
         rand::{Rng, SeedableRng, rngs},
     };
 
-    /// Given a multiprecision integer in LSB form returns a Strategy that will
-    /// return values in the range of 0..=max
+    /// Given a multiprecision integer in little-endian format, returns a
+    /// `Strategy` that generates values uniformly in the range `0..=max`.
     fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
-        // Takes a vector and takes ownership of it to deal with the 'static requirement
-        // of boxed.
+        // Takes ownership of a vector rather to deal with the 'static
+        // requirement of boxed()
         let size = max.len();
         (0..=max[size - 1]).prop_flat_map(move |limb| {
-            // If the generated most significant limb is smaller than the MSL of max, we
-            // know that the other limbs are unconstrained
+            // If the generated most significant limb is smaller than the MSL of max the
+            // the remaining limbs can be unconstrained.
             if limb < max[size - 1] {
                 collection::vec(any::<u64>(), size..size + 1)
                     .prop_map(move |mut arr| {
@@ -165,8 +165,7 @@ mod tests {
                     })
                     .boxed()
             } else {
-                // If MSL is equal to max so we make a recursive call to constrain
-                // the next limb
+                // If MSL is equal to max constrain the next limbs
                 max_multiprecision(max[..size - 1].to_owned())
                     .prop_map(move |mut arr| {
                         arr.push(limb);
@@ -268,21 +267,21 @@ mod tests {
         }))| {
             let (upper_bound, value) = pair;
             // Check if value <= max by comparing limbs from most significant to least
-            assert!(value[3] <= upper_bound[3], "Value[3] exceeds max[3]");
+            assert!(value[3] <= upper_bound[3], "value[3] exceeds max[3]");
             assert!(
                 !(value[3] == upper_bound[3] && value[2] > upper_bound[2]),
-                "Value[2] exceeds max[2] when value[3] == max[3]"
+                "value[2] exceeds max[2] when higher limbs are equal"
             );
             assert!(
                 !(value[3] == upper_bound[3] && value[2] == upper_bound[2] && value[1] > upper_bound[1]),
-                "Value[1] exceeds max[1] when higher limbs equal"
+                "value[1] exceeds max[1] when higher limbs are equal"
             );
             assert!(
                 !(value[3] == upper_bound[3]
                     && value[2] == upper_bound[2]
                     && value[1] == upper_bound[1]
                     && value[0] > upper_bound[0]),
-                "Value[0] exceeds max[0] when higher limbs equal"
+                "value[0] exceeds max[0] when higher limbs are equal"
             );
         });
     }
