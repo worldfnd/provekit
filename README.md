@@ -10,12 +10,11 @@ First make sure you have the exact correct version of Noir installed [so the art
 noirup -C 03b58fa2
 ```
 
-Compile and execute the Noir circuit:
+Compile the Noir circuit:
 
 ```sh
 cd noir-examples/poseidon-rounds
 nargo compile
-nargo execute witness
 ```
 
 Generate the Noir Proof Scheme:
@@ -27,7 +26,7 @@ cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./target/witness.gz -o ./noir-proof.np
+cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 
 Verify the Noir Proof:
