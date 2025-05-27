@@ -165,7 +165,7 @@ mod tests {
                     })
                     .boxed()
             } else {
-                // In MSL is equal to max so we make a recursive call to handle the constrain on
+                // If MSL is equal to max so we make a recursive call to constrain
                 // the next limb
                 max_multiprecision(max[..size - 1].to_owned())
                     .prop_map(move |mut arr| {
@@ -263,55 +263,27 @@ mod tests {
 
     #[test]
     fn test_max_field_strategy() {
-        use proptest::test_runner::{TestCaseError, TestRunner};
-
-        // Define a maximum value
-        let max = [
-            0x1234567890abcdef,
-            0xfedcba0987654321,
-            0x5555555555555555,
-            0x1111111111111111,
-        ];
-
-        // Create a test runner
-        let mut runner = TestRunner::default();
-
-        // Test 1000 values to ensure they're all <= max
-        for _ in 0..1000 {
-            let result = runner.run(&max_multiprecision(max.to_vec()), |value| {
-                // Check if value <= max by comparing limbs from most significant to least
-                if value[3] > max[3] {
-                    return Err(TestCaseError::Fail("Value[3] exceeds max[3]".into()));
-                }
-
-                if value[3] == max[3] && value[2] > max[2] {
-                    return Err(TestCaseError::Fail(
-                        "Value[2] exceeds max[2] when value[3] == max[3]".into(),
-                    ));
-                }
-
-                if value[3] == max[3] && value[2] == max[2] && value[1] > max[1] {
-                    return Err(TestCaseError::Fail(
-                        "Value[1] exceeds max[1] when higher limbs equal".into(),
-                    ));
-                }
-
-                if value[3] == max[3]
-                    && value[2] == max[2]
-                    && value[1] == max[1]
-                    && value[0] > max[0]
-                {
-                    return Err(TestCaseError::Fail(
-                        "Value[0] exceeds max[0] when higher limbs equal".into(),
-                    ));
-                }
-
-                // Value is <= max
-                Ok(())
-            });
-
-            // Ensure test passed
-            assert!(result.is_ok(), "Generated value exceeded maximum");
-        }
+        proptest!(|(pair in proptest::array::uniform4(any::<u64>()).prop_flat_map(|upper_bound| {
+            max_multiprecision(upper_bound.to_vec()).prop_map(move |value| (upper_bound, value))
+        }))| {
+            let (upper_bound, value) = pair;
+            // Check if value <= max by comparing limbs from most significant to least
+            assert!(value[3] <= upper_bound[3], "Value[3] exceeds max[3]");
+            assert!(
+                !(value[3] == upper_bound[3] && value[2] > upper_bound[2]),
+                "Value[2] exceeds max[2] when value[3] == max[3]"
+            );
+            assert!(
+                !(value[3] == upper_bound[3] && value[2] == upper_bound[2] && value[1] > upper_bound[1]),
+                "Value[1] exceeds max[1] when higher limbs equal"
+            );
+            assert!(
+                !(value[3] == upper_bound[3]
+                    && value[2] == upper_bound[2]
+                    && value[1] == upper_bound[1]
+                    && value[0] > upper_bound[0]),
+                "Value[0] exceeds max[0] when higher limbs equal"
+            );
+        });
     }
 }
