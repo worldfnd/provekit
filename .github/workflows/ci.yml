@@ -35,7 +35,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
       - run: cargo build --all-targets --all-features --verbose
-        # TODO: Change to the official version once https://github.com/noir-lang/noirup/pull/54 is merged
+      # TODO: Change to the official version once https://github.com/noir-lang/noirup/pull/54 is merged
       - uses: dzejkop/noirup@0.2.1
         with:
           commit: 2a79d90
