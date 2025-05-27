@@ -177,16 +177,8 @@ mod tests {
         })
     }
 
-    /// Upper bound of 2**256-2p
-    const UPPER_BOUND_MONTGOMERY: [u64; 4] = [
-        0x783c14d81ffffffe,
-        0xaf982f6f0c8d1edd,
-        0x8f5f7492fcfd4f45,
-        0x9f37631a3d9cbfac,
-    ];
-
     fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
-        max_multiprecision(UPPER_BOUND_MONTGOMERY.to_vec()).prop_map(|vec| vec.try_into().unwrap())
+        max_multiprecision(OUTPUT_MAX.to_vec()).prop_map(|vec| vec.try_into().unwrap())
     }
 
     #[test]
@@ -202,6 +194,7 @@ mod tests {
         })
     }
 
+    /// Upper bound of 2**256-2p
     const OUTPUT_MAX: [u64; 4] = [
         0x783c14d81ffffffe,
         0xaf982f6f0c8d1edd,
