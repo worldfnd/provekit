@@ -48,8 +48,7 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
-        let witness_file_path =
-            &PathBuf::from("../noir-examples/noir-r1cs-test-programs/acir_assert_zero/basic.gz");
+        let witness_file_path = &PathBuf::from(&self.witness_path);
         let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
         let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
 

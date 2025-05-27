@@ -21,6 +21,22 @@ pub struct Args {
     /// path to the proof file
     #[argh(positional)]
     proof_path: PathBuf,
+
+    /// path to the proof file for gnark recursive verifier
+    #[argh(
+        option,
+        long = "proof",
+        default = "String::from(\"./proof_for_recursive_verifier\")"
+    )]
+    proof_for_recursive_verifier: String,
+
+    /// path to the parameters file for gnark recursive verifier
+    #[argh(
+        option,
+        long = "params",
+        default = "String::from(\"./params_for_recursive_verifier\")"
+    )]
+    params_for_recursive_verifier: String,
 }
 
 impl Command for Args {
@@ -42,9 +58,10 @@ impl Command for Args {
             proof.whir_r1cs_proof.whir_query_answer_sums,
             scheme.whir.m_0,
             scheme.whir.m,
+            &self.params_for_recursive_verifier,
         );
 
-        let mut file = File::create("./prover/proof").unwrap();
+        let mut file = File::create(&self.proof_for_recursive_verifier).unwrap();
         let mut proof_bytes = vec![];
         proof
             .whir_r1cs_proof
