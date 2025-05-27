@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn test_max_field_strategy() {
+    fn test_max_multiprecision_strategy() {
         proptest!(|(pair in proptest::array::uniform4(any::<u64>()).prop_flat_map(|upper_bound| {
             max_multiprecision(upper_bound.to_vec()).prop_map(move |value| (upper_bound, value))
         }))| {
