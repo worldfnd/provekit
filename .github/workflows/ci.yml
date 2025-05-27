@@ -35,7 +35,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
       - run: cargo build --all-targets --all-features --verbose
-      - uses: dzejkop/noirup@291c271
+      - uses: dzejkop/noirup@0.2.1
         with:
           commit: 2a79d90
       - run: cargo test --no-fail-fast --all-targets --all-features --verbose
