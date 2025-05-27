@@ -139,14 +139,61 @@ mod tests {
         ark_bn254::Fr,
         ark_ff::{BigInt, Field},
         primitive_types::U256,
-        proptest::proptest,
+        proptest::{
+            collection,
+            prelude::{Strategy, any},
+            proptest,
+        },
         rand::{Rng, SeedableRng, rngs},
     };
+
+    /// Given a multiprecision integer in LSB form returns a Strategy that will
+    /// return values in the range of 0..=max
+    fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
+        // Takes a vector and takes ownership of it to deal with the 'static requirement
+        // of boxed.
+        let size = max.len();
+        (0..=max[size - 1]).prop_flat_map(move |limb| {
+            // If the generated most significant limb is smaller than the MSL of max, we
+            // know that the other limbs are unconstrained
+            if limb < max[size - 1] {
+                collection::vec(any::<u64>(), size..size + 1)
+                    .prop_map(move |mut arr| {
+                        arr[size - 1] = limb;
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            } else {
+                // In MSL is equal to max so we make a recursive call to handle the constrain on
+                // the next limb
+                max_multiprecision(max[..size - 1].to_owned())
+                    .prop_map(move |mut arr| {
+                        arr.push(limb);
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            }
+        })
+    }
+
+    /// Upper bound of 2**256-2p
+    const UPPER_BOUND_MONTGOMERY: [u64; 4] = [
+        0x783c14d81ffffffe,
+        0xaf982f6f0c8d1edd,
+        0x8f5f7492fcfd4f45,
+        0x9f37631a3d9cbfac,
+    ];
+
+    fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
+        max_multiprecision(UPPER_BOUND_MONTGOMERY.to_vec()).prop_map(|vec| vec.try_into().unwrap())
+    }
 
     #[test]
     fn test_mul_field() {
         let sigma = Fr::from(2).pow([256]).inverse().unwrap();
-        proptest!(|(l: [u64; 4], r: [u64; 4])| {
+        proptest!(|(l in safe_bn254_montgomery_input(), r in safe_bn254_montgomery_input())| {
             let fl = Fr::new(BigInt(l));
             let fr = Fr::new(BigInt(r));
             let fe = fl * fr * sigma;
@@ -211,6 +258,60 @@ mod tests {
             let s0 = scalar_sqr(s0_a_mont.0);
             assert!(U256(s0) < U256(OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_a));
+        }
+    }
+
+    #[test]
+    fn test_max_field_strategy() {
+        use proptest::test_runner::{TestCaseError, TestRunner};
+
+        // Define a maximum value
+        let max = [
+            0x1234567890abcdef,
+            0xfedcba0987654321,
+            0x5555555555555555,
+            0x1111111111111111,
+        ];
+
+        // Create a test runner
+        let mut runner = TestRunner::default();
+
+        // Test 1000 values to ensure they're all <= max
+        for _ in 0..1000 {
+            let result = runner.run(&max_multiprecision(max.to_vec()), |value| {
+                // Check if value <= max by comparing limbs from most significant to least
+                if value[3] > max[3] {
+                    return Err(TestCaseError::Fail("Value[3] exceeds max[3]".into()));
+                }
+
+                if value[3] == max[3] && value[2] > max[2] {
+                    return Err(TestCaseError::Fail(
+                        "Value[2] exceeds max[2] when value[3] == max[3]".into(),
+                    ));
+                }
+
+                if value[3] == max[3] && value[2] == max[2] && value[1] > max[1] {
+                    return Err(TestCaseError::Fail(
+                        "Value[1] exceeds max[1] when higher limbs equal".into(),
+                    ));
+                }
+
+                if value[3] == max[3]
+                    && value[2] == max[2]
+                    && value[1] == max[1]
+                    && value[0] > max[0]
+                {
+                    return Err(TestCaseError::Fail(
+                        "Value[0] exceeds max[0] when higher limbs equal".into(),
+                    ));
+                }
+
+                // Value is <= max
+                Ok(())
+            });
+
+            // Ensure test passed
+            assert!(result.is_ok(), "Generated value exceeded maximum");
         }
     }
 }
