@@ -127,3 +127,11 @@ fn test_small_sha() {
         "../noir-examples/noir-r1cs-test-programs/small-sha/target/basic.gz",
     );
 }
+
+#[test]
+fn test_complete_age_check() {
+    test_compiler(
+        "../noir-examples/complete_age_check/target/complete_age_check.json",
+        "../noir-examples/complete_age_check/target/complete_age_check.gz",
+    );
+}
