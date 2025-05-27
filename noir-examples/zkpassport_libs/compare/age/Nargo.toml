@@ -1,0 +1,9 @@
+[package]
+name = "compare_age_lib"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.22.0"
+
+[dependencies]
+date = { tag = "v0.4.5", git = "https://github.com/madztheo/noir-date.git" }
+utils = { path = "../../utils" }

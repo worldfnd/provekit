@@ -1,0 +1,14 @@
+[package]
+name = "complete_age_check"
+type = "bin"
+compiler_version = ">=0.32.0"
+
+[dependencies]
+compare_age = { path = "../zkpassport_libs/compare/age" }
+data_check_integrity = { path = "../zkpassport_libs/data-check/integrity" }
+data_check_expiry = { path = "../zkpassport_libs/data-check/expiry" }
+sig_check_rsa = { path = "../zkpassport_libs/sig-check/rsa" }
+utils = { path = "../zkpassport_libs/utils" }
+commitment = { path = "../zkpassport_libs/commitment/csc-to-dsc" }
+data_check_tbs_pubkey = { path = "../zkpassport_libs/data-check/tbs-pubkey" }
+noir_native_sha256 = { path = "../noir_native_sha256" }
