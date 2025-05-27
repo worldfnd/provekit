@@ -1,9 +1,7 @@
-#![cfg(test)]
-
 use {
-    crate::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
     acir::native_types::WitnessMap,
     acir_field::FieldElement as AcirFieldElement,
+    noir_r1cs::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
     serde::Deserialize,
     std::path::Path,
     test_case::test_case,

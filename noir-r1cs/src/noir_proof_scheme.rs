@@ -158,16 +158,45 @@ mod tests {
         super::NoirProofScheme,
         crate::{
             r1cs_solver::{ConstantTerm, SumTerm, WitnessBuilder},
-            test_serde, FieldElement,
+            FieldElement,
         },
         ark_std::One,
+        serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
 
+    #[track_caller]
+    fn test_serde<T>(value: &T)
+    where
+        T: std::fmt::Debug + PartialEq + Serialize + for<'a> Deserialize<'a>,
+    {
+        // Test JSON
+        let json = serde_json::to_string(value).unwrap();
+        let deserialized = serde_json::from_str(&json).unwrap();
+        assert_eq!(value, &deserialized);
+
+        // Test Postcard
+        let bin = postcard::to_allocvec(value).unwrap();
+        let deserialized = postcard::from_bytes(&bin).unwrap();
+        assert_eq!(value, &deserialized);
+    }
+
     #[test]
     fn test_noir_proof_scheme_serde() {
-        let path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.json");
+        let directory = "../noir-examples/poseidon-rounds";
+
+        let status = std::process::Command::new("nargo")
+            .arg("compile")
+            .current_dir(directory)
+            .status()
+            .expect("Running nargo compile");
+        if !status.success() {
+            panic!("Failed to run nargo compile");
+        }
+
+        let path = PathBuf::from(directory).join("target/basic.json");
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
+
         test_serde(&proof_schema.r1cs);
         test_serde(&proof_schema.witness_builders);
         test_serde(&proof_schema.witness_generator);
