@@ -139,14 +139,51 @@ mod tests {
         ark_bn254::Fr,
         ark_ff::{BigInt, Field},
         primitive_types::U256,
-        proptest::proptest,
+        proptest::{
+            collection,
+            prelude::{Strategy, any},
+            proptest,
+        },
         rand::{Rng, SeedableRng, rngs},
     };
+
+    /// Given a multiprecision integer in little-endian format, returns a
+    /// `Strategy` that generates values uniformly in the range `0..=max`.
+    fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
+        // Takes ownership of a vector to deal with the 'static requirement of boxed()
+        let size = max.len();
+        (0..=max[size - 1]).prop_flat_map(move |limb| {
+            // If the generated most significant limb is smaller than the MSL of max the
+            // the remaining limbs can be unconstrained.
+            if limb < max[size - 1] {
+                collection::vec(any::<u64>(), size..size + 1)
+                    .prop_map(move |mut arr| {
+                        arr[size - 1] = limb;
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            } else {
+                // If MSL is equal to max constrain the next limbs
+                max_multiprecision(max[..size - 1].to_owned())
+                    .prop_map(move |mut arr| {
+                        arr.push(limb);
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            }
+        })
+    }
+
+    fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
+        max_multiprecision(OUTPUT_MAX.to_vec()).prop_map(|vec| vec.try_into().unwrap())
+    }
 
     #[test]
     fn test_mul_field() {
         let sigma = Fr::from(2).pow([256]).inverse().unwrap();
-        proptest!(|(l: [u64; 4], r: [u64; 4])| {
+        proptest!(|(l in safe_bn254_montgomery_input(), r in safe_bn254_montgomery_input())| {
             let fl = Fr::new(BigInt(l));
             let fr = Fr::new(BigInt(r));
             let fe = fl * fr * sigma;
@@ -156,6 +193,7 @@ mod tests {
         })
     }
 
+    /// Upper bound of 2**256-2p
     const OUTPUT_MAX: [u64; 4] = [
         0x783c14d81ffffffe,
         0xaf982f6f0c8d1edd,
@@ -212,5 +250,33 @@ mod tests {
             assert!(U256(s0) < U256(OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_a));
         }
+    }
+
+    #[test]
+    fn test_max_multiprecision_strategy() {
+        let upper_bounds = proptest::array::uniform4(any::<u64>());
+        let pairs = upper_bounds.prop_flat_map(|upper_bound| {
+            max_multiprecision(upper_bound.to_vec()).prop_map(move |value| (upper_bound, value))
+        });
+        proptest!(|(pair in pairs)| {
+            let (upper_bound, value) = pair;
+            // Check if value <= max by comparing limbs from most significant to least
+            assert!(value[3] <= upper_bound[3], "value[3] exceeds max[3]");
+            assert!(
+                !(value[3] == upper_bound[3] && value[2] > upper_bound[2]),
+                "value[2] exceeds max[2] when higher limbs are equal"
+            );
+            assert!(
+                !(value[3] == upper_bound[3] && value[2] == upper_bound[2] && value[1] > upper_bound[1]),
+                "value[1] exceeds max[1] when higher limbs are equal"
+            );
+            assert!(
+                !(value[3] == upper_bound[3]
+                    && value[2] == upper_bound[2]
+                    && value[1] == upper_bound[1]
+                    && value[0] > upper_bound[0]),
+                "value[0] exceeds max[0] when higher limbs are equal"
+            );
+        });
     }
 }
