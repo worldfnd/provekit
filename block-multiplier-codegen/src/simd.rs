@@ -296,7 +296,7 @@ fn montgomery(
     a: [Reg<Simd<u64, 2>>; 4],
     b: [Reg<Simd<u64, 2>>; 4],
 ) -> [Reg<Simd<u64, 2>>; 4] {
-    montgomeryF(alloc, asm, |alloc, asm, mask52, c1, c2| {
+    montgomery_f(alloc, asm, |alloc, asm, mask52, c1, c2| {
         montgomery_mul(alloc, asm, mask52, c1, c2, a, b)
     })
 }
@@ -306,7 +306,7 @@ fn montgomery_squaring(
     asm: &mut Assembler,
     a: [Reg<Simd<u64, 2>>; 4],
 ) -> [Reg<Simd<u64, 2>>; 4] {
-    montgomeryF(alloc, asm, |alloc, asm, mask52, c1, c2| {
+    montgomery_f(alloc, asm, |alloc, asm, mask52, c1, c2| {
         montgomery_square(alloc, asm, mask52, c1, c2, a)
     })
 }
@@ -347,7 +347,7 @@ fn montgomery_square(
 
 /// Performs a full Montgomery multiplication of two pairs of two u256 numbers
 /// `a` and `b` using SIMD instructions.
-fn montgomeryF(
+fn montgomery_f(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     f: impl FnOnce(
