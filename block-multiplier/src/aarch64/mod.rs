@@ -124,3 +124,97 @@ pub fn montgomery_square_interleaved_4(
     };
     (out, out1, outv)
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        core::simd::Simd,
+        fp_rounding::with_rounding_mode,
+        proptest::{
+            collection,
+            prelude::{Strategy, any},
+            proptest,
+        },
+    };
+
+    /// Given a multiprecision integer in little-endian format, returns a
+    /// `Strategy` that generates values uniformly in the range `0..=max`.
+    fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
+        let size = max.len();
+        (0..=max[size - 1]).prop_flat_map(move |limb| {
+            if limb < max[size - 1] {
+                collection::vec(any::<u64>(), size..size + 1)
+                    .prop_map(move |mut arr| {
+                        arr[size - 1] = limb;
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            } else {
+                max_multiprecision(max[..size - 1].to_owned())
+                    .prop_map(move |mut arr| {
+                        arr.push(limb);
+                        assert_eq!(arr.len(), size);
+                        arr
+                    })
+                    .boxed()
+            }
+        })
+    }
+
+    /// Upper bound of 2**256-2p
+    const OUTPUT_MAX: [u64; 4] = [
+        0x783c14d81ffffffe,
+        0xaf982f6f0c8d1edd,
+        0x8f5f7492fcfd4f45,
+        0x9f37631a3d9cbfac,
+    ];
+
+    fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
+        max_multiprecision(OUTPUT_MAX.to_vec()).prop_map(|vec| vec.try_into().unwrap())
+    }
+
+    fn safe_simd_input() -> impl Strategy<Value = [Simd<u64, 2>; 4]> {
+        (safe_bn254_montgomery_input(), safe_bn254_montgomery_input()).prop_map(|(a, b)| {
+            let mut result = [Simd::splat(0); 4];
+            for i in 0..4 {
+                result[i] = Simd::from_array([a[i], b[i]]);
+            }
+            result
+        })
+    }
+
+    /// Property test that verifies `montgomery_interleaved_3` and
+    /// `montgomery_square_interleaved_3` produce identical results when
+    /// multiplying a value by itself.
+    ///
+    /// This test ensures that the optimized squaring function
+    /// `montgomery_square_interleaved_3` is mathematically equivalent to
+    /// using the general multiplication function `montgomery_interleaved_3`
+    /// with identical inputs (i.e., a * a == square(a)).
+    #[test]
+    fn test_montgomery_interleaved_vs_square() {
+        proptest!(|(
+            a in safe_bn254_montgomery_input(),
+            av in safe_simd_input()
+        )| {
+            unsafe {
+                with_rounding_mode((), |rtz, _| {
+                    // Test that montgomery_interleaved_3(a, a, av, av) == montgomery_square_interleaved_3(a, av)
+                    let (result_mul, result_mul_v) = montgomery_interleaved_3(rtz, a, a, av, av);
+                    let (result_sqr, result_sqr_v) = montgomery_square_interleaved_3(rtz, a, av);
+
+                    // Compare scalar results
+                    assert_eq!(result_mul, result_sqr, "Scalar results should be equal");
+
+                    // Compare SIMD results
+                    for i in 0..4 {
+                        assert_eq!(result_mul_v[i].to_array(), result_sqr_v[i].to_array(),
+                                   "SIMD results at index {} should be equal", i);
+                    }
+                });
+            }
+        });
+    }
+}
