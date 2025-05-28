@@ -150,8 +150,7 @@ mod tests {
     /// Given a multiprecision integer in little-endian format, returns a
     /// `Strategy` that generates values uniformly in the range `0..=max`.
     fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
-        // Takes ownership of a vector rather to deal with the 'static
-        // requirement of boxed()
+        // Takes ownership of a vector to deal with the 'static requirement of boxed()
         let size = max.len();
         (0..=max[size - 1]).prop_flat_map(move |limb| {
             // If the generated most significant limb is smaller than the MSL of max the
