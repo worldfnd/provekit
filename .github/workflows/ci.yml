@@ -35,7 +35,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
       - run: cargo build --all-targets --all-features --verbose
-      - uses: noir-lang/noirup@0.1.2
+      - uses: noir-lang/noirup@v0.1.2
         with:
           toolchain: nightly-2025-05-28
       - run: cargo test --no-fail-fast --all-targets --all-features --verbose
