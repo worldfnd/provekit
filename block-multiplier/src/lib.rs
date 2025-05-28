@@ -11,6 +11,7 @@ mod utils;
 pub use crate::{
     aarch64::{
         montgomery_interleaved_3, montgomery_interleaved_4, montgomery_square_interleaved_3,
+        montgomery_square_interleaved_4,
     },
     block_simd::{block_mul, block_sqr},
     portable_simd::{simd_mul, simd_sqr},

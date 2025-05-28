@@ -21,7 +21,7 @@ fn compress(guard: &RoundingGuard<Zero>, input: [[[u64; 4]; 2]; 3]) -> [[u64; 4]
 fn square(guard: &RoundingGuard<Zero>, n: [[u64; 4]; 3]) -> [[u64; 4]; 3] {
     let [a, b, c] = n;
     let v = array::from_fn(|i| std::simd::u64x2::from_array([b[i], c[i]]));
-    let (a, v) = block_multiplier::montgomery_interleaved_3(guard, a, a, v, v);
+    let (a, v) = block_multiplier::montgomery_square_interleaved_3(guard, a, v);
     let b = v.map(|e| e[0]);
     let c = v.map(|e| e[1]);
     [a, b, c]
