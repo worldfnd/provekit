@@ -7,7 +7,7 @@ Zero-knowledge proof toolkit targeting mobile devices.
 First make sure you have the exact correct version of Noir installed [so the artifacts can be read](./Cargo.toml#L58):
 
 ```sh
-noirup -C 2a79d90
+noirup --version nightly-2025-05-28
 ```
 
 Compile the Noir circuit:
