@@ -88,6 +88,18 @@ pub fn setup_single_step_simd(
     (vec![var_a, var_b], FreshVariable::new("outv", &res))
 }
 
+pub fn setup_single_step_squaring_simd(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+) -> (Vec<FreshVariable>, FreshVariable) {
+    let a = alloc.fresh_array();
+
+    let var_a = FreshVariable::new("av", &a);
+    let res = montgomery_squaring(alloc, asm, a);
+
+    (vec![var_a], FreshVariable::new("outv", &res))
+}
+
 /// Sets up the assembly code generation for a constant-time reduction using
 /// SIMD instructions.
 ///
@@ -207,6 +219,40 @@ fn widening_mul_u256(
     t
 }
 
+fn square_mul_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    c1: &Reg<Simd<u64, 2>>,
+    c2: &Reg<Simd<u64, 2>>,
+    mut t: [Reg<Simd<u64, 2>>; 10],
+    a: [Reg<Simd<u64, 2>>; 5],
+) -> [Reg<Simd<u64, 2>>; 10] {
+    let a = a.map(|ai| ucvtf2d(alloc, asm, &ai));
+    for i in 0..a.len() {
+        for j in i..a.len() {
+            let lc1 = mov16b(alloc, asm, c1);
+
+            let hi = fmla2d(alloc, asm, lc1.into_(), &a[i], &a[j]);
+            let tmp = fsub2d(alloc, asm, c2.as_(), &hi);
+            let lo = fmla2d(alloc, asm, tmp, &a[i], &a[j]);
+
+            let (hi, lo) = if i == j {
+                (hi.into_(), lo.into_())
+            } else {
+                // Doubling through addition has higher throughput than through shifting
+                (
+                    add2d(alloc, asm, hi.as_(), hi.as_()),
+                    add2d(alloc, asm, lo.as_(), lo.as_()),
+                )
+            };
+
+            t[i + j + 1] = add2d(alloc, asm, &t[i + j + 1], &hi);
+            t[i + j] = add2d(alloc, asm, &t[i + j], &lo);
+        }
+    }
+    t
+}
+
 /// Performs a multiply-add operation: `t += s * v`, where `t` is an array of 6
 /// u260 limbs, `s` is a single u260 limb, and `v` is a constant array of 5 u64
 /// values. Uses floating-point SIMD instructions with biasing constants `c1`
@@ -244,24 +290,76 @@ pub fn madd_u256_limb(
     t
 }
 
-/// Performs a full Montgomery multiplication of two pairs of two u256 numbers
-/// `a` and `b` using SIMD instructions.
 fn montgomery(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: [Reg<Simd<u64, 2>>; 4],
     b: [Reg<Simd<u64, 2>>; 4],
 ) -> [Reg<Simd<u64, 2>>; 4] {
-    let mask = mov(alloc, asm, MASK52);
-    let mask52 = dup2d(alloc, asm, &mask);
+    montgomeryF(alloc, asm, |alloc, asm, mask52, c1, c2| {
+        montgomery_mul(alloc, asm, mask52, c1, c2, a, b)
+    })
+}
 
+fn montgomery_squaring(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: [Reg<Simd<u64, 2>>; 4],
+) -> [Reg<Simd<u64, 2>>; 4] {
+    montgomeryF(alloc, asm, |alloc, asm, mask52, c1, c2| {
+        montgomery_square(alloc, asm, mask52, c1, c2, a)
+    })
+}
+
+fn montgomery_mul(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    mask52: &Reg<Simd<u64, 2>>,
+    c1: &Reg<Simd<u64, 2>>,
+    c2: &Reg<Simd<u64, 2>>,
+    a: [Reg<Simd<u64, 2>>; 4],
+    b: [Reg<Simd<u64, 2>>; 4],
+) -> [Reg<Simd<u64, 2>>; 10] {
     // The be interoperable with the scalar montgomery multiplication we have to
     // compensate for SIMD's mod 260 instead of 256. This is achieved by
     // shifting both inputs by 2.
-    let a = u256_to_u260_shl2(alloc, asm, &mask52, a);
-    let b = u256_to_u260_shl2(alloc, asm, &mask52, b);
-
+    let a = u256_to_u260_shl2(alloc, asm, mask52, a);
+    let b = u256_to_u260_shl2(alloc, asm, mask52, b);
     let t = make_initials(alloc, asm);
+    widening_mul_u256(alloc, asm, &c1, &c2, t, a, b)
+}
+
+fn montgomery_square(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    mask52: &Reg<Simd<u64, 2>>,
+    c1: &Reg<Simd<u64, 2>>,
+    c2: &Reg<Simd<u64, 2>>,
+    a: [Reg<Simd<u64, 2>>; 4],
+) -> [Reg<Simd<u64, 2>>; 10] {
+    // The be interoperable with the scalar montgomery multiplication we have to
+    // compensate for SIMD's mod 260 instead of 256. This is achieved by
+    // shifting both inputs by 2.
+    let a = u256_to_u260_shl2(alloc, asm, mask52, a);
+    let t = make_initials(alloc, asm);
+    square_mul_u256(alloc, asm, &c1, &c2, t, a)
+}
+
+/// Performs a full Montgomery multiplication of two pairs of two u256 numbers
+/// `a` and `b` using SIMD instructions.
+fn montgomeryF(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    f: impl FnOnce(
+        &mut FreshAllocator,
+        &mut Assembler,
+        &Reg<Simd<u64, 2>>,
+        &Reg<Simd<u64, 2>>,
+        &Reg<Simd<u64, 2>>,
+    ) -> [Reg<Simd<u64, 2>>; 10],
+) -> [Reg<Simd<u64, 2>>; 4] {
+    let mask = mov(alloc, asm, MASK52);
+    let mask52 = dup2d(alloc, asm, &mask);
 
     // Biasing constants are kept in registers and passed to functions that require
     // them.
@@ -273,8 +371,7 @@ fn montgomery(
     let c2 = load_const(alloc, asm, C2.to_bits());
     let c2 = dup2d(alloc, asm, &c2);
 
-    let [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9] = widening_mul_u256(alloc, asm, &c1, &c2, t, a, b);
-
+    let [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9] = f(alloc, asm, &mask52, &c1, &c2);
     let t1 = usra2d(alloc, asm, t1, &t0, 52);
     let t2 = usra2d(alloc, asm, t2, &t1, 52);
     let t3 = usra2d(alloc, asm, t3, &t2, 52);
