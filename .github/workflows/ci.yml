@@ -37,7 +37,7 @@ jobs:
       - run: cargo build --all-targets --all-features --verbose
       - uses: noir-lang/noirup@0.1.2
         with:
-          version: nightly-2025-05-28
+          toolchain: nightly-2025-05-28
       - run: cargo test --no-fail-fast --all-targets --all-features --verbose
       - run: cargo test --doc --all-features --verbose
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
