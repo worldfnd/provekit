@@ -65,6 +65,7 @@ skyscraper = { path = "skyscraper" }
 # 3rd party
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 base64 = "0.22.1"
 divan = { package = "codspeed-divan-compat", version = "2.10.1" }
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
@@ -106,13 +107,13 @@ test-case = "3.3.1"
 
 # Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
-acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.3" }
+acir = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
