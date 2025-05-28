@@ -113,6 +113,35 @@ pub struct PointerReg<'a, T> {
     _marker:           PhantomData<T>,
 }
 
+pub enum Lazy<'a, T> {
+    Thunk(Box<dyn Fn(&mut FreshAllocator, &mut Assembler) -> T + 'a>),
+    Forced(T),
+}
+
+impl<T> Lazy<'_, T> {
+    fn force(&mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) {
+        if let Lazy::Thunk(f) = self {
+            *self = Lazy::Forced(f(alloc, asm));
+        }
+    }
+
+    pub fn as_(&mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) -> &T {
+        self.force(alloc, asm);
+        match self {
+            Lazy::Forced(t) => t,
+            Lazy::Thunk(_) => unreachable!(),
+        }
+    }
+
+    pub fn into_(mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) -> T {
+        self.force(alloc, asm);
+        match self {
+            Lazy::Forced(t) => t,
+            Lazy::Thunk(_) => unreachable!(),
+        }
+    }
+}
+
 impl<T, const N: usize> Reg<*mut [T; N]> {
     pub fn get(&self, index: usize) -> PointerReg<*mut T> {
         assert!(index < N, "out-of-bounds access");
