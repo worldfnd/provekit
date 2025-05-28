@@ -1,6 +1,7 @@
 use {
     block_multiplier_codegen::{
-        scalar::setup_montgomery_single_step, simd::setup_single_step_simd,
+        scalar::{setup_montgomery_single_step, setup_montgomery_squaring_single_step},
+        simd::setup_single_step_simd,
     },
     hla::builder::{Interleaving, build_inline},
 };
@@ -26,5 +27,9 @@ fn main() {
     build_inline(
         "./asm/montgomery.s",
         Interleaving::single(setup_montgomery_single_step),
+    );
+    build_inline(
+        "./asm/montgomery_square.s",
+        Interleaving::single(setup_montgomery_squaring_single_step),
     );
 }

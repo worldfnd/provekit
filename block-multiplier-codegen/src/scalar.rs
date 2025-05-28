@@ -1,7 +1,12 @@
 use {
     crate::{constants::*, load_store::load_const},
     hla::*,
-    std::{array, mem},
+    std::{
+        array,
+        cmp::{max, min},
+        mem,
+        ops::{Index, IndexMut},
+    },
 };
 
 // BUILDERS
@@ -18,7 +23,7 @@ pub fn setup_widening_mul_u256(
     let a = alloc.fresh_array();
     let b = alloc.fresh_array();
 
-    let s = lazy_widening_mul_u256(alloc, asm, &a, &b);
+    let s = widening_mul_u256(alloc, asm, &a, &b);
 
     (
         vec![FreshVariable::new("a", &a), FreshVariable::new("b", &b)],
@@ -229,7 +234,7 @@ pub fn montgomery_single_step(
     a: &[Reg<u64>; 4],
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 4] {
-    let t = lazy_widening_mul_u256(alloc, asm, a, b);
+    let t = widening_mul_u256(alloc, asm, a, b);
     single_step_reduction(alloc, asm, t)
 }
 
@@ -291,29 +296,36 @@ fn squaring_u256(
     asm: &mut Assembler,
     a: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 8] {
-    todo!()
+    let mult = LazySymmetricMatrix(lazy_outer_product(a, a));
+    lazy_macc(alloc, asm, mult)
+}
+
+pub fn widening_mul_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+    b: &[Reg<u64>; 4],
+) -> [Reg<u64>; 8] {
+    let mult = lazy_outer_product(a, b);
+    lazy_macc(alloc, asm, mult)
 }
 
 pub fn lazy_widening_mul<'a>(a: &'a Reg<u64>, b: &'a Reg<u64>) -> Lazy<'a, [Reg<u64>; 2]> {
     Lazy::Thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
 }
 
-pub fn lazy_widening_mul_u256(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    a: &[Reg<u64>; 4],
-    b: &[Reg<u64>; 4],
-) -> [Reg<u64>; 8] {
-    let mult: [[Lazy<_>; 4]; 4] =
-        array::from_fn(|i| array::from_fn(|j| lazy_widening_mul(&a[i], &b[j])));
-    multiplication_accumulator(alloc, asm, mult)
+fn lazy_outer_product<'a>(
+    a: &'a [Reg<u64>; 4],
+    b: &'a [Reg<u64>; 4],
+) -> SquareMatrix<Lazy<'a, [Reg<u64>; 2]>, 4> {
+    let mult = array::from_fn(|i| array::from_fn(|j| lazy_widening_mul(&a[i], &b[j])));
+    SquareMatrix(mult)
 }
 
-pub fn multiplication_accumulator(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    mut mult: [[Lazy<[Reg<u64>; 2]>; 4]; 4],
-) -> [Reg<u64>; 8] {
+fn lazy_macc<'a, T>(alloc: &mut FreshAllocator, asm: &mut Assembler, mut mult: T) -> [Reg<u64>; 8]
+where
+    T: LazyMatrix<'a, [Reg<u64>; 2]>,
+{
     let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
     // The all multiplication of a with the lowest limb of b do not have a previous
     // round to add to. That's why this loop is separated.
@@ -322,15 +334,15 @@ pub fn multiplication_accumulator(
     let rows = 4;
     let columns = 4;
 
-    // Replace because we want to use the registers for mult[0][0] in the output
+    // replace such that we can use the registers of mult[0][0] in the output.
     let tmp = mem::replace(
-        &mut mult[0][0],
+        &mut mult[(0, 0)],
         Lazy::Forced([alloc.fresh(), alloc.fresh()]),
     );
 
     [t[0], carry] = tmp.into_(alloc, asm);
     for i in 1..rows {
-        let tmp = &mut mult[i][0];
+        let tmp = &mut mult[(i, 0)];
         let tmp = tmp.as_(alloc, asm);
         [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
     }
@@ -339,11 +351,11 @@ pub fn multiplication_accumulator(
     // 2nd and later carry chain
     for j in 1..columns {
         let mut carry;
-        let tmp = &mut mult[0][j];
+        let tmp = &mut mult[(0, j)];
         let tmp = tmp.as_(alloc, asm);
         [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
         for i in 1..rows {
-            let tmp = &mut mult[i][j];
+            let tmp = &mut mult[(i, j)];
             let tmp = tmp.as_(alloc, asm);
             let tmp = carry_add(alloc, asm, &tmp, &carry);
             [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
@@ -353,3 +365,52 @@ pub fn multiplication_accumulator(
 
     t
 }
+
+struct SquareMatrix<T, const N: usize>([[T; N]; N]);
+
+impl<const N: usize, T> Index<(usize, usize)> for SquareMatrix<T, N> {
+    type Output = T;
+
+    fn index(&self, index: (usize, usize)) -> &T {
+        &self.0[index.0][index.1]
+    }
+}
+
+impl<T, const N: usize> IndexMut<(usize, usize)> for SquareMatrix<T, N> {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut T {
+        &mut self.0[index.0][index.1]
+    }
+}
+
+// Not a real symmetric matrix that only stores the upper or lower triangle.
+// We get around this by storing a Lazy SquareMatrix and only evaluate the lower
+// triangle
+struct LazySymmetricMatrix<'a, T, const N: usize>(SquareMatrix<Lazy<'a, T>, N>);
+
+impl<'a, const N: usize, T> Index<(usize, usize)> for LazySymmetricMatrix<'a, T, N> {
+    type Output = Lazy<'a, T>;
+
+    fn index(&self, index: (usize, usize)) -> &Self::Output {
+        let (i, j) = index;
+        let x = min(i, j);
+        let y = max(i, j);
+        &self.0[(x, y)]
+    }
+}
+
+impl<'a, T, const N: usize> IndexMut<(usize, usize)> for LazySymmetricMatrix<'a, T, N> {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut Lazy<'a, T> {
+        let (i, j) = index;
+        let x = min(i, j);
+        let y = max(i, j);
+        &mut self.0[(x, y)]
+    }
+}
+
+trait LazyMatrix<'a, T>:
+    Index<(usize, usize), Output = Lazy<'a, T>> + IndexMut<(usize, usize)>
+{
+}
+
+impl<'a, T, const N: usize> LazyMatrix<'a, T> for SquareMatrix<Lazy<'a, T>, N> {}
+impl<'a, T, const N: usize> LazyMatrix<'a, T> for LazySymmetricMatrix<'a, T, N> {}
