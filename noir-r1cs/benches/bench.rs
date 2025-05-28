@@ -21,6 +21,27 @@ fn prove_poseidon_1000(bencher: Bencher) {
         .join("benches")
         .join("poseidon-1000.nps");
     let scheme: NoirProofScheme = read(&path).unwrap();
+
+    // Run nargo compile
+    let status = std::process::Command::new("nargo")
+        .arg("compile")
+        .current_dir("../noir-examples/poseidon-rounds")
+        .status()
+        .expect("Running nargo compile");
+    if !status.success() {
+        panic!("Failed to run nargo compile");
+    }
+
+    // Run nargo execute
+    let status = std::process::Command::new("nargo")
+        .arg("execute")
+        .current_dir("../noir-examples/poseidon-rounds")
+        .status()
+        .expect("Running nargo execute");
+    if !status.success() {
+        panic!("Failed to run nargo execute");
+    }
+
     let witness_file_path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.gz");
     let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
     let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
