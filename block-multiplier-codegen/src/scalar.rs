@@ -1,7 +1,7 @@
 use {
     crate::{constants::*, load_store::load_const},
     hla::*,
-    std::array,
+    std::{array, mem},
 };
 
 // BUILDERS
@@ -18,7 +18,7 @@ pub fn setup_widening_mul_u256(
     let a = alloc.fresh_array();
     let b = alloc.fresh_array();
 
-    let s = widening_mul_u256(alloc, asm, &a, &b);
+    let s = lazy_widening_mul_u256(alloc, asm, &a, &b);
 
     (
         vec![FreshVariable::new("a", &a), FreshVariable::new("b", &b)],
@@ -178,43 +178,6 @@ pub fn madd_u256_limb_truncate(
     out
 }
 
-/// Computes the 8-limb (512-bit) widening multiplication of two 4-limb
-/// (256-bit) numbers `a` and `b`.
-///
-/// Implements the standard schoolbook multiplication algorithm.
-pub fn widening_mul_u256(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    a: &[Reg<u64>; 4],
-    b: &[Reg<u64>; 4],
-) -> [Reg<u64>; 8] {
-    let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
-    let mut carry;
-    // The all multiplication of a with the lowest limb of b do not have a previous
-    // round to add to. That's why this loop is separated.
-    [t[0], carry] = widening_mul(alloc, asm, &a[0], &b[0]);
-    for i in 1..a.len() {
-        let tmp = widening_mul(alloc, asm, &a[i], &b[0]);
-        [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
-    }
-    t[a.len()] = carry;
-
-    // 2nd and later carry chain
-    for j in 1..b.len() {
-        let mut carry;
-        let tmp = widening_mul(alloc, asm, &a[0], &b[j]);
-        [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
-        for i in 1..a.len() {
-            let tmp = widening_mul(alloc, asm, &a[i], &b[j]);
-            let tmp = carry_add(alloc, asm, &tmp, &carry);
-            [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
-        }
-        t[j + a.len()] = carry;
-    }
-
-    t
-}
-
 /// Computes `a - b` for two 4-limb (256-bit) numbers with borrow propagation.
 ///
 /// Uses `subs` and `sbcs` instructions.
@@ -266,7 +229,7 @@ pub fn montgomery_single_step(
     a: &[Reg<u64>; 4],
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 4] {
-    let t = widening_mul_u256(alloc, asm, a, b);
+    let t = lazy_widening_mul_u256(alloc, asm, a, b);
     single_step_reduction(alloc, asm, t)
 }
 
@@ -335,38 +298,57 @@ pub fn lazy_widening_mul<'a>(a: &'a Reg<u64>, b: &'a Reg<u64>) -> Lazy<'a, [Reg<
     Lazy::Thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
 }
 
-pub fn lazy_mul_u256(
+pub fn lazy_widening_mul_u256(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: &[Reg<u64>; 4],
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 8] {
+    let mult: [[Lazy<_>; 4]; 4] =
+        array::from_fn(|i| array::from_fn(|j| lazy_widening_mul(&a[i], &b[j])));
+    multiplication_accumulator(alloc, asm, mult)
+}
+
+pub fn multiplication_accumulator(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    mut mult: [[Lazy<[Reg<u64>; 2]>; 4]; 4],
+) -> [Reg<u64>; 8] {
     let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
-    let mut carry;
     // The all multiplication of a with the lowest limb of b do not have a previous
     // round to add to. That's why this loop is separated.
-    let tmp = lazy_widening_mul(&a[0], &b[0]);
+    let mut carry;
+
+    let rows = 4;
+    let columns = 4;
+
+    // Replace because we want to use the registers for mult[0][0] in the output
+    let tmp = mem::replace(
+        &mut mult[0][0],
+        Lazy::Forced([alloc.fresh(), alloc.fresh()]),
+    );
+
     [t[0], carry] = tmp.into_(alloc, asm);
-    for i in 1..a.len() {
-        let mut tmp = lazy_widening_mul(&a[i], &b[0]);
+    for i in 1..rows {
+        let tmp = &mut mult[i][0];
         let tmp = tmp.as_(alloc, asm);
         [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
     }
-    t[a.len()] = carry;
+    t[rows] = carry;
 
     // 2nd and later carry chain
-    for j in 1..b.len() {
+    for j in 1..columns {
         let mut carry;
-        let mut tmp = lazy_widening_mul(&a[0], &b[j]);
+        let tmp = &mut mult[0][j];
         let tmp = tmp.as_(alloc, asm);
         [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
-        for i in 1..a.len() {
-            let mut tmp = lazy_widening_mul(&a[i], &b[j]);
+        for i in 1..rows {
+            let tmp = &mut mult[i][j];
             let tmp = tmp.as_(alloc, asm);
             let tmp = carry_add(alloc, asm, &tmp, &carry);
             [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
         }
-        t[j + a.len()] = carry;
+        t[j + rows] = carry;
     }
 
     t
