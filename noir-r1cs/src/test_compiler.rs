@@ -80,3 +80,11 @@ fn test_small_sha() {
         "src/test_programs/small-sha/target/main.gz",
     );
 }
+
+#[test]
+fn test_sha_debugging() {
+    test_compilation_and_solving(
+        "../noir-examples/noir-passport-examples/sha256_debugging/target/sha256_debugging.json",
+        "../noir-examples/noir-passport-examples/sha256_debugging/target/sha256_debugging.gz",
+    );
+}

@@ -6,13 +6,65 @@ pub mod ryan_sha256_noir;
 pub(crate) mod ryan_sha256_compression;
 pub(crate) mod ryan_sha256_constants;
 
+fn is_id_card(dg1: [u8; 95]) -> bool {
+    // For passport, the last two bytes are 0
+    // since the real length is 93 for passports
+    // while it is 95 for ID cards
+    (dg1[93] != 0) & (dg1[94] != 0)
+}
+
+#[test]
+fn test_failing_sha256_var() {
+    let dg1: [u8; 95] = [
+        42, 19, 88, 237, 91, 63, 129, 7, 250, 198, 14, 76, 211, 45, 5, 99, 170, 38, 240, 201, 64,
+        123, 3, 81, 33, 156, 212, 18, 199, 111, 222, 61, 143, 247, 8, 195, 29, 157, 132, 71, 102,
+        17, 173, 108, 245, 214, 224, 66, 115, 86, 189, 234, 90, 44, 207, 16, 58, 134, 103, 251, 193,
+        35, 140, 248, 79, 105, 202, 137, 100, 196, 125, 31, 83, 41, 209, 93, 10, 229, 144, 116, 225,
+        67, 133, 204, 77, 112, 69, 253, 154, 246, 17, 99, 88, 0, 0,
+    ];
+
+    // For passports we ignore the last padding characters
+    let mut dg1_size: u64 = 93;
+    let mut x: u64 = 0;
+
+    // If it's an ID card then the array should not have any padding
+    // character
+    if is_id_card(dg1) {
+        println("this is reached");
+        x = 3;
+        dg1_size = 95;
+    }
+
+    // We only need to recompute the hash of the MRZ (or more accurately that of Data Group 1)
+    // within the circuit as this is the only data group we use to build the proof (age, country, etc.)
+    // let other_hash = sha256::sha256_var(dg1, dg1_size);
+    let dg1_hash_attempt_1 = ryan_sha256_noir::sha256_var(dg1, x + 95 - x); // So this gives the correct result but falsely fails R1CS constraints
+    let dg1_hash_attempt_2 = ryan_sha256_noir::sha256_var(dg1, dg1.len() as u64); // This gives the wrong result but succeeds in R1CS constraints
+    let other_dg1_hash = sha256::digest(dg1);
+    println("This is Noir's dg1_hash");
+    println(other_dg1_hash);
+
+    // println(other_hash);
+    println("This is the dg1_hash_attempt_1");
+    println(dg1_hash_attempt_1);
+
+    println("This is the dg1_hash_attempt_2");
+    println(dg1_hash_attempt_2);
+}
+
 #[test]
 fn test_sha256_var() {
     // --- Let's test two versions of `sha256_var` against each other ---
     for idx in 0..10 {
         let thing_to_absorb: [u8; MAX_MSG_LEN] = RANDOM_BYTES_MANY_ROUNDS[idx];
-        let blackbox_result = sha256::sha256_var(thing_to_absorb, MAX_MSG_LEN as u64);
-        let ryan_result = ryan_sha256_noir::sha256_var(thing_to_absorb, MAX_MSG_LEN as u64);
+
+        let mut msg_len = MAX_MSG_LEN;
+        if thing_to_absorb[0] == 0 {
+            msg_len -= 2;
+        }
+
+        let blackbox_result = sha256::sha256_var(thing_to_absorb, msg_len as u64);
+        let ryan_result = ryan_sha256_noir::sha256_var(thing_to_absorb, msg_len as u64);
 
         println(blackbox_result);
         println(ryan_result);

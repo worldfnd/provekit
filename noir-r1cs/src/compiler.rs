@@ -287,6 +287,9 @@ impl R1CS {
             let sum_for_table = r1cs.add_sum(summands_for_table);
 
             // Enforce that the two sums are equal
+            // RYAN SAYS: COULD BE HERE
+            dbg!(sum_for_reads);
+            dbg!(sum_for_table);
             r1cs.matrices.add_constraint(
                 &[(FieldElement::one(), r1cs.solver.witness_one())],
                 &[(FieldElement::one(), sum_for_reads)],

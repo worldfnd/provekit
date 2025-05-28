@@ -486,6 +486,9 @@ fn verify_msg_len(
 fn hash_final_block(msg_block: MSG_BLOCK, mut state: STATE) -> HASH {
     let mut out_h: HASH = [0; 32]; // Digest as sequence of bytes
     // Hash final padded block
+    // println("--------- Hashing final block ---------");
+    // println(state);
+    // println(msg_block);
     state = ryan_sha256_digest_block_u32(state, msg_block);
 
     // Return final hash as byte array

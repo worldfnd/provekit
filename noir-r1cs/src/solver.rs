@@ -296,11 +296,11 @@ impl R1CSSolver {
                 witness_index += 1;
             }
 
-            if witness_index == 671179 {
+            if witness_index == 1269894 {
                 dbg!("bz");
                 dbg!(&value);
             }
-            if witness_index == 671228 {
+            if witness_index == 1269943 {
                 dbg!("cz");
                 dbg!(&value);
             }
