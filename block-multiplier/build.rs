@@ -1,5 +1,7 @@
 use {
-    block_multiplier_codegen::{scalar::setup_montgomery, simd::setup_single_step_simd},
+    block_multiplier_codegen::{
+        scalar::setup_montgomery_single_step, simd::setup_single_step_simd,
+    },
     hla::builder::{Interleaving, build_includable},
     std::path::Path,
 };
@@ -10,7 +12,7 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::single(setup_montgomery),
+                Interleaving::single(setup_montgomery_single_step),
                 Interleaving::single(setup_single_step_simd),
             ),
         );
@@ -20,7 +22,10 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::seq(vec![setup_montgomery, setup_montgomery]),
+                Interleaving::seq(vec![
+                    setup_montgomery_single_step,
+                    setup_montgomery_single_step,
+                ]),
                 Interleaving::single(setup_single_step_simd),
             ),
         );

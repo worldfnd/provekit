@@ -31,16 +31,33 @@ pub fn setup_widening_mul_u256(
 ///
 /// Initializes the necessary registers and calls `montgomery`.
 /// Returns the input and output variables for the generated assembly function.
-pub fn setup_montgomery(
+pub fn setup_montgomery_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
 ) -> (Vec<FreshVariable>, FreshVariable) {
     let a = alloc.fresh_array();
     let b = alloc.fresh_array();
 
-    let s = montgomery(alloc, asm, &a, &b);
+    let s = montgomery_single_step(alloc, asm, &a, &b);
     (
         vec![FreshVariable::new("a", &a), FreshVariable::new("b", &b)],
+        FreshVariable::new("out", &s),
+    )
+}
+
+/// Sets up the assembly generation context for bn254 u256 Montgomery squaring.
+///
+/// Initializes the necessary registers and calls `montgomery`.
+/// Returns the input and output variables for the generated assembly function.
+pub fn setup_montgomery_squaring_single_step(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+) -> (Vec<FreshVariable>, FreshVariable) {
+    let a = alloc.fresh_array();
+
+    let s = montgomery_squaring_single_step(alloc, asm, &a);
+    (
+        vec![FreshVariable::new("a", &a)],
         FreshVariable::new("out", &s),
     )
 }
@@ -242,15 +259,22 @@ pub fn reduce(alloc: &mut FreshAllocator, asm: &mut Assembler, a: [Reg<u64>; 4])
 /// and `b`.
 ///
 /// Implements the Domb's single step Montgomery multiplication algorithm.
-/// The result is less than `2**256 - P`.
-pub fn montgomery(
+/// The result is less than `4P`.
+pub fn montgomery_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: &[Reg<u64>; 4],
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 4] {
     let t = widening_mul_u256(alloc, asm, a, b);
-    // let [t0, t1, t2, s @ ..] = t;
+    single_step_reduction(alloc, asm, t)
+}
+
+fn single_step_reduction(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    t: [Reg<u64>; 8],
+) -> [Reg<u64>; 4] {
     let [t0, t1, t2, s @ ..] = t;
 
     let i3 = U64_I3.map(|val| load_const(alloc, asm, val));
@@ -268,6 +292,7 @@ pub fn montgomery(
     let p = U64_P.map(|val| load_const(alloc, asm, val));
     let r4 = madd_u256_limb_truncate(alloc, asm, r3, &p, &m);
 
+    // TODO(xrvdg): take out this reducer. Let the caller reduce.
     reduce(alloc, asm, r4)
 }
 
@@ -282,4 +307,67 @@ pub fn widening_mul(
     b: &Reg<u64>,
 ) -> [Reg<u64>; 2] {
     [mul(alloc, asm, a, b), umulh(alloc, asm, a, b)]
+}
+
+/// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
+/// and `b`.
+///
+/// Implements the Domb's single step Montgomery multiplication algorithm.
+/// The result is less than `4P`.
+pub fn montgomery_squaring_single_step(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+) -> [Reg<u64>; 4] {
+    let t = squaring_u256(alloc, asm, a);
+    single_step_reduction(alloc, asm, t)
+}
+
+fn squaring_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+) -> [Reg<u64>; 8] {
+    todo!()
+}
+
+pub fn lazy_widening_mul<'a>(a: &'a Reg<u64>, b: &'a Reg<u64>) -> Lazy<'a, [Reg<u64>; 2]> {
+    Lazy::Thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
+}
+
+pub fn lazy_mul_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+    b: &[Reg<u64>; 4],
+) -> [Reg<u64>; 8] {
+    let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
+    let mut carry;
+    // The all multiplication of a with the lowest limb of b do not have a previous
+    // round to add to. That's why this loop is separated.
+    let tmp = lazy_widening_mul(&a[0], &b[0]);
+    [t[0], carry] = tmp.into_(alloc, asm);
+    for i in 1..a.len() {
+        let mut tmp = lazy_widening_mul(&a[i], &b[0]);
+        let tmp = tmp.as_(alloc, asm);
+        [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
+    }
+    t[a.len()] = carry;
+
+    // 2nd and later carry chain
+    for j in 1..b.len() {
+        let mut carry;
+        let mut tmp = lazy_widening_mul(&a[0], &b[j]);
+        let tmp = tmp.as_(alloc, asm);
+        [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
+        for i in 1..a.len() {
+            let mut tmp = lazy_widening_mul(&a[i], &b[j]);
+            let tmp = tmp.as_(alloc, asm);
+            let tmp = carry_add(alloc, asm, &tmp, &carry);
+            [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
+        }
+        t[j + a.len()] = carry;
+    }
+
+    t
 }
