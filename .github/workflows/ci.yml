@@ -23,7 +23,7 @@ jobs:
     strategy:
       matrix:
         toolchain:
-          - nightly
+          - nightly-2025-04-05
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and bins
