@@ -1,155 +1,184 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display, Formatter},
-    ops::{AddAssign, Index, IndexMut, Mul},
+use {
+    crate::{FieldElement, InternedFieldElement, Interner},
+    ark_std::Zero,
+    serde::{Deserialize, Serialize},
+    std::{
+        fmt::Debug,
+        ops::{Mul, Range},
+    },
 };
-
-use acir::{AcirField, FieldElement};
-
-/// A sparse matrix with elements of type `F`.
-#[derive(Debug, Clone, Default)]
-pub struct SparseMatrix<F> {
+/// A sparse matrix with interned field elements
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SparseMatrix {
     /// The number of rows in the matrix.
-    pub rows: usize,
+    pub num_rows: usize,
 
     /// The number of columns in the matrix.
-    pub cols: usize,
+    pub num_cols: usize,
 
-    /// The default value of the matrix.
-    pub default: F,
+    // List of indices in `col_indices` such that the column index is the start of a new row.
+    new_row_indices: Vec<u32>,
 
-    /// The non-default entries of the matrix.
-    pub entries: BTreeMap<(usize, usize), F>,
+    // List of column indices that have values
+    col_indices: Vec<u32>,
+
+    // List of values
+    values: Vec<InternedFieldElement>,
 }
 
-impl<F> SparseMatrix<F> {
-    pub fn new(rows: usize, cols: usize, default: F) -> Self {
+/// A hydrated sparse matrix with uninterned field elements
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HydratedSparseMatrix<'a> {
+    matrix:   &'a SparseMatrix,
+    interner: &'a Interner,
+}
+
+impl SparseMatrix {
+    pub fn new(rows: usize, cols: usize) -> Self {
         Self {
-            rows,
-            cols,
-            default,
-            entries: BTreeMap::new(),
+            num_rows:        rows,
+            num_cols:        cols,
+            new_row_indices: vec![0; rows],
+            col_indices:     Vec::new(),
+            values:          Vec::new(),
         }
+    }
+
+    pub const fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
+        HydratedSparseMatrix {
+            matrix: self,
+            interner,
+        }
+    }
+
+    pub const fn num_entries(&self) -> usize {
+        self.values.len()
     }
 
     pub fn grow(&mut self, rows: usize, cols: usize) {
         // TODO: Make it default infinite size instead.
-        assert!(rows >= self.rows);
-        assert!(cols >= self.cols);
-        self.rows = rows;
-        self.cols = cols;
+        assert!(rows >= self.num_rows);
+        assert!(cols >= self.num_cols);
+        self.num_rows = rows;
+        self.num_cols = cols;
+        self.new_row_indices.resize(rows, self.values.len() as u32);
     }
 
     /// Set the value at the given row and column.
-    pub fn set(&mut self, row: usize, col: usize, value: F) {
-        assert!(row < self.rows, "row index out of bounds");
-        assert!(col < self.cols, "column index out of bounds");
-        self.entries.insert((row, col), value);
-    }
+    pub fn set(&mut self, row: usize, col: usize, value: InternedFieldElement) {
+        assert!(row < self.num_rows, "row index out of bounds");
+        assert!(col < self.num_cols, "column index out of bounds");
 
-    /// Return a dense representation of the matrix.
-    /// (This is a helper method for debugging.)
-    fn to_dense(&self) -> Vec<Vec<F>>
-    where
-        F: Clone,
-    {
-        let mut result = vec![vec![self.default.clone(); self.cols]; self.rows];
-        for ((i, j), value) in self.entries.iter() {
-            result[*i][*j] = value.clone();
-        }
-        result
-    }
-}
+        // Find the row
+        let row_range = self.row_range(row);
+        let cols = &self.col_indices[row_range.clone()];
 
-/// Print a dense representation of the matrix, for debugging.
-impl<F: Debug + Clone> Display for SparseMatrix<F> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let dense = self.to_dense();
-        for row in dense.iter() {
-            for value in row.iter() {
-                write!(f, "{:?}\t", value)?;
+        // Find the column
+        match cols.binary_search(&(col as u32)) {
+            Ok(i) => {
+                // Column already exists
+                self.values[row_range][i] = value;
             }
-            writeln!(f)?;
+            Err(i) => {
+                // Need to insert column at i
+                let i = i + row_range.start;
+                self.col_indices.insert(i, col as u32);
+                self.values.insert(i, value);
+                for index in &mut self.new_row_indices[row + 1..] {
+                    *index += 1;
+                }
+            }
         }
-        Ok(())
     }
-}
 
-impl<F: PartialEq> SparseMatrix<F> {
+    /// Iterate over the non-default entries of a row of the matrix.
+    pub fn iter_row(
+        &self,
+        row: usize,
+    ) -> impl Iterator<Item = (usize, InternedFieldElement)> + use<'_> {
+        let row_range = self.row_range(row);
+        let cols = self.col_indices[row_range.clone()].iter().copied();
+        let values = self.values[row_range].iter().copied();
+        cols.zip(values).map(|(col, value)| (col as usize, value))
+    }
+
     /// Iterate over the non-default entries of the matrix.
-    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), &F)> {
-        self.entries.iter().filter_map(|(k, v)| {
-            if v != &self.default {
-                Some((*k, v))
-            } else {
-                None
-            }
+    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), InternedFieldElement)> + use<'_> {
+        (0..self.new_row_indices.len()).flat_map(|row| {
+            self.iter_row(row)
+                .map(move |(col, value)| ((row, col), value))
         })
     }
 
-    // TODO wouldn't it be better to use the CSR format (not the COO format?) for sparse matrices?  There should never be a row without a non-zero entry.
-    /// Iterate over the non-default entries of the given row.
-    pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, &F)> {
-        self.entries
-            .range((row, 0)..(row + 1, 0))
-            .filter_map(|((_, c), v)| {
-                if v != &self.default {
-                    Some((*c, v))
-                } else {
-                    None
-                }
-            })
-    }
-
-    /// Remove the default entries from the entries list.
-    pub fn cleanup(&mut self) {
-        self.entries.retain(|_, v| v != &self.default);
+    fn row_range(&self, row: usize) -> Range<usize> {
+        let start = *self
+            .new_row_indices
+            .get(row)
+            .expect("Row index out of bounds") as usize;
+        let end = self
+            .new_row_indices
+            .get(row + 1)
+            .map_or(self.values.len(), |&v| v as usize);
+        start..end
     }
 }
 
-impl<F> Index<(usize, usize)> for SparseMatrix<F> {
-    type Output = F;
+impl HydratedSparseMatrix<'_> {
+    /// Iterate over the non-default entries of a row of the matrix.
+    pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, FieldElement)> + use<'_> {
+        self.matrix.iter_row(row).map(|(col, value)| {
+            (
+                col,
+                self.interner.get(value).expect("Value not in interner."),
+            )
+        })
+    }
 
-    fn index(&self, (i, j): (usize, usize)) -> &Self::Output {
-        assert!(i < self.rows, "row index out of bounds");
-        assert!(j < self.cols, "column index out of bounds");
-        self.entries.get(&(i, j)).unwrap_or(&self.default)
+    /// Iterate over the non-default entries of the matrix.
+    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), FieldElement)> + use<'_> {
+        self.matrix.iter().map(|((i, j), v)| {
+            (
+                (i, j),
+                self.interner.get(v).expect("Value not in interner."),
+            )
+        })
     }
 }
 
-impl<F: Clone> IndexMut<(usize, usize)> for SparseMatrix<F> {
-    fn index_mut(&mut self, (i, j): (usize, usize)) -> &mut Self::Output {
-        assert!(i < self.rows, "row index out of bounds");
-        assert!(j < self.cols, "column index out of bounds");
-        self.entries.entry((i, j)).or_insert(self.default.clone())
-    }
-}
+/// Right multiplication by vector
+// OPT: Paralelize
+impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
+    type Output = Vec<FieldElement>;
 
-impl<F> Mul<&[F]> for &SparseMatrix<F>
-where
-    F: Clone + AddAssign,
-    for<'a> &'a F: Mul<Output = F>,
-{
-    type Output = Vec<F>;
-
-    fn mul(self, rhs: &[F]) -> Self::Output {
+    fn mul(self, rhs: &[FieldElement]) -> Self::Output {
         assert_eq!(
-            self.cols,
+            self.matrix.num_cols,
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![self.default.clone(); self.rows];
-        for ((i, j), value) in self.entries.iter() {
-            result[*i] += value * &rhs[*j];
+        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
+        for ((i, j), value) in self.iter() {
+            result[i] += value * rhs[j];
         }
         result
     }
 }
 
-pub fn mat_mul(a: &SparseMatrix<FieldElement>, b: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = vec![FieldElement::zero(); a.rows];
-    for ((i, j), &value) in a.iter() {
-        result[i] += value * b[j];
+/// Left multiplication by vector
+// OPT: Paralelize
+impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
+    type Output = Vec<FieldElement>;
+
+    fn mul(self, rhs: HydratedSparseMatrix<'_>) -> Self::Output {
+        assert_eq!(
+            self.len(),
+            rhs.matrix.num_rows,
+            "Vector length does not match number of rows."
+        );
+        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
+        for ((i, j), value) in rhs.iter() {
+            result[j] += value * self[i];
+        }
+        result
     }
-    result
 }

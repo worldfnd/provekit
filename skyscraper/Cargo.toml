@@ -1,0 +1,28 @@
+[package]
+name = "skyscraper"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+block-multiplier.workspace = true
+fp-rounding.workspace = true
+ark-ff.workspace = true
+ark-bn254.workspace = true
+zerocopy.workspace = true
+seq-macro.workspace = true
+proptest.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+divan.workspace = true
+primitive-types.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false
