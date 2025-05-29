@@ -44,9 +44,7 @@ cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.np
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh
-cd ..
-git clone https://github.com/reilabs/gnark-whir
-cd gnark-whir
+cd ../../gnark-whir
 go run .
 ```
 
