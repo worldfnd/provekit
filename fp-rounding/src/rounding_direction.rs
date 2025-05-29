@@ -3,7 +3,7 @@
 //! Rust/LLVM does not support different float point mode rounding modes and
 //! this module provides abstractions to able to control the aarch64
 //! FPCR (Floating-point Control Register) rounding mode. For how this module
-//! provides a safe abstraction see the documentation of [`Mode`].
+//! provides a safe abstraction see the documentation of [`RoundingDirection`].
 
 use crate::utils::Sealed;
 
@@ -29,7 +29,7 @@ impl Default for RoundingDirection {
     }
 }
 
-/// Type level version of the [`RoundingMode`] enum using a sealed trait.
+/// Type level version of the [`RoundingDirection`] enum using a sealed trait.
 #[allow(private_bounds)] // Intentional, this is how it works.
 pub trait RoundingDirectionMarker: Sealed {
     /// The rounding mode represented by this marker.

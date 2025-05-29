@@ -4,7 +4,7 @@
 //! Rust/LLVM does not support different float point mode rounding modes and
 //! this module provides abstractions to able to control the aarch64
 //! FPCR (Floating-point Control Register) rounding mode. For how this module
-//! provides a safe abstraction see the documentation of [`Mode`].
+//! provides a safe abstraction see the documentation of [`RoundingDirection`].
 
 mod arch;
 mod rounding_direction;

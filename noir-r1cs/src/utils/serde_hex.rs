@@ -1,5 +1,5 @@
-//! Serde workaround to encode Vec<u8> as hexadecimal strings in human-readable
-//! formats.
+//! Serde workaround to encode `Vec<u8>` as hexadecimal strings in
+//! human-readable formats.
 
 use serde::{de::Error as _, Deserialize, Deserializer, Serializer};
 

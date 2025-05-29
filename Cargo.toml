@@ -105,15 +105,14 @@ rand_chacha = "0.9.0"
 test-case = "3.3.1"
 
 
-# Noir lang: make sure it matches installed version `noirup -C v1.0.0-beta.3`
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
-acir = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "2a79d90" }
+acir = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
