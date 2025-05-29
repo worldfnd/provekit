@@ -113,8 +113,9 @@ pub struct PointerReg<'a, T> {
     _marker:           PhantomData<T>,
 }
 
+type DelayedInstruction<'a, T> = Box<dyn Fn(&mut FreshAllocator, &mut Assembler) -> T + 'a>;
 pub enum Lazy<'a, T> {
-    Thunk(Box<dyn Fn(&mut FreshAllocator, &mut Assembler) -> T + 'a>),
+    Thunk(DelayedInstruction<'a, T>),
     Forced(T),
 }
 

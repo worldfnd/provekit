@@ -326,7 +326,7 @@ fn montgomery_mul(
     let a = u256_to_u260_shl2(alloc, asm, mask52, a);
     let b = u256_to_u260_shl2(alloc, asm, mask52, b);
     let t = make_initials(alloc, asm);
-    widening_mul_u256(alloc, asm, &c1, &c2, t, a, b)
+    widening_mul_u256(alloc, asm, c1, c2, t, a, b)
 }
 
 fn montgomery_square(
@@ -342,7 +342,7 @@ fn montgomery_square(
     // shifting both inputs by 2.
     let a = u256_to_u260_shl2(alloc, asm, mask52, a);
     let t = make_initials(alloc, asm);
-    square_mul_u256(alloc, asm, &c1, &c2, t, a)
+    square_mul_u256(alloc, asm, c1, c2, t, a)
 }
 
 /// Performs a full Montgomery multiplication of two pairs of two u256 numbers

@@ -344,7 +344,7 @@ where
     for i in 1..rows {
         let tmp = &mut mult[(i, 0)];
         let tmp = tmp.as_(alloc, asm);
-        [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
+        [t[i], carry] = carry_add(alloc, asm, tmp, &carry);
     }
     t[rows] = carry;
 
@@ -353,11 +353,11 @@ where
         let mut carry;
         let tmp = &mut mult[(0, j)];
         let tmp = tmp.as_(alloc, asm);
-        [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
+        [t[j], carry] = carry_add(alloc, asm, tmp, &t[j]);
         for i in 1..rows {
             let tmp = &mut mult[(i, j)];
             let tmp = tmp.as_(alloc, asm);
-            let tmp = carry_add(alloc, asm, &tmp, &carry);
+            let tmp = carry_add(alloc, asm, tmp, &carry);
             [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
         }
         t[j + rows] = carry;
