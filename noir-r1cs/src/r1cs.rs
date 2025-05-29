@@ -130,6 +130,7 @@ impl R1CS {
     // R1CS Matrices.
     #[instrument(skip_all, fields(size = witness.len()))]
     pub fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()> {
+        dbg!("Actually got here");
         ensure!(
             witness.len() == self.num_witnesses(),
             "Witness size does not match"

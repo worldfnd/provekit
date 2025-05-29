@@ -60,9 +60,9 @@ fn debug_sha256(
         "-----------------------------------------------------------------------------",
     );
 
-    // println("This is the dg1_hash_attempt_2");
-    // let dg1_hash_attempt_2 = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, 65 as u64); // This gives the wrong result but succeeds in R1CS constraints
-    // println(dg1_hash_attempt_2);
+    println("This is the dg1_hash_attempt_2");
+    let dg1_hash_attempt_2 = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, 65 as u64); // This gives the wrong result but succeeds in R1CS constraints
+    println(dg1_hash_attempt_2);
 }
 
 // ------ Rotate left / rotate right functionality ------
