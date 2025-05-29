@@ -1,0 +1,68 @@
+name: Go CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+# Minimal permissions so golangci-lint can annotate PRs
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+env:
+  PROJECT_DIR: "gnark-whir"
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+
+    strategy:
+      matrix:
+        go-version: ["1.22", "1.21"] # test against the two most-recent releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true # enables built-in module/cache restore
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code   # fails if tidy changed files
+
+      - name: Compile (go build)
+        run: go build ./...
+
+      - name: Run tests
+        run: go test -v -cover ./...
+
+      - name: Check formatting (gofmt)
+        run: |
+          fmt_out=$(gofmt -s -l .)
+          if [[ -n "$fmt_out" ]]; then
+            echo "These files need gofmt:"
+            echo "$fmt_out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7 # latest major as of Mar 2025
+        with:
+          version: v2.1.0 # pick a specific linter version
+          working-directory: ${{ env.PROJECT_DIR }}
+          args: --timeout=5m
