@@ -74,7 +74,7 @@ pub fn setup_widening_mul_u256_simd(
 /// step using SIMD instructions.
 ///
 /// Returns the input and output variables for the generated assembly function.
-pub fn setup_single_step_simd(
+pub fn setup_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
 ) -> (Vec<FreshVariable>, FreshVariable) {
@@ -83,19 +83,19 @@ pub fn setup_single_step_simd(
 
     let var_a = FreshVariable::new("av", &a);
     let var_b = FreshVariable::new("bv", &b);
-    let res = montgomery(alloc, asm, a, b);
+    let res = single_step(alloc, asm, a, b);
 
     (vec![var_a, var_b], FreshVariable::new("outv", &res))
 }
 
-pub fn setup_single_step_squaring_simd(
+pub fn setup_square_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
 ) -> (Vec<FreshVariable>, FreshVariable) {
     let a = alloc.fresh_array();
 
     let var_a = FreshVariable::new("av", &a);
-    let res = montgomery_squaring(alloc, asm, a);
+    let res = square_single_step(alloc, asm, a);
 
     (vec![var_a], FreshVariable::new("outv", &res))
 }
@@ -260,12 +260,11 @@ fn square_mul_u256(
 ///
 /// Requires the callee to remove the bias that has been used to shift the
 /// multiplication operation into the mantissa
-pub fn madd_u256_limb(
+fn madd_u256_limb(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     mut t: [Reg<Simd<u64, 2>>; 6],
-    c1: &Reg<Simd<u64, 2>>,
-    c2: &Reg<Simd<u64, 2>>,
+    constants: &RegisterConstants,
     s: Reg<Simd<u64, 2>>,
     v: [u64; 5],
 ) -> [Reg<Simd<u64, 2>>; 6] {
@@ -278,10 +277,10 @@ pub fn madd_u256_limb(
         // No measurable difference in loading the vector v completely outside or per
         // element inside the load
         let vs = load_floating_simd(alloc, asm, v[i] as f64);
-        let lc1 = mov16b(alloc, asm, c1);
+        let lc1 = mov16b(alloc, asm, &constants.c1);
 
         let hi = fmla2d(alloc, asm, lc1.into_(), &s, &vs);
-        let tmp = fsub2d(alloc, asm, c2.as_(), &hi);
+        let tmp = fsub2d(alloc, asm, constants.c2.as_(), &hi);
         let lo = fmla2d(alloc, asm, tmp, &s, &vs);
 
         t[i + 1] = add2d(alloc, asm, &t[i + 1], hi.as_());
@@ -290,73 +289,55 @@ pub fn madd_u256_limb(
     t
 }
 
-fn montgomery(
+fn single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: [Reg<Simd<u64, 2>>; 4],
     b: [Reg<Simd<u64, 2>>; 4],
 ) -> [Reg<Simd<u64, 2>>; 4] {
-    montgomery_f(alloc, asm, |alloc, asm, mask52, c1, c2| {
-        montgomery_mul(alloc, asm, mask52, c1, c2, a, b)
+    single_step_base(alloc, asm, |alloc, asm, constants| {
+        {
+            // The be interoperable with the scalar montgomery multiplication we have to
+            // compensate for SIMD's mod 260 instead of 256. This is achieved by
+            // shifting both inputs by 2.
+            let a = u256_to_u260_shl2(alloc, asm, &constants.mask52, a);
+            let b = u256_to_u260_shl2(alloc, asm, &constants.mask52, b);
+            let t = make_initials(alloc, asm);
+            widening_mul_u256(alloc, asm, &constants.c1, &constants.c2, t, a, b)
+        }
     })
 }
 
-fn montgomery_squaring(
+fn square_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: [Reg<Simd<u64, 2>>; 4],
 ) -> [Reg<Simd<u64, 2>>; 4] {
-    montgomery_f(alloc, asm, |alloc, asm, mask52, c1, c2| {
-        montgomery_square(alloc, asm, mask52, c1, c2, a)
+    single_step_base(alloc, asm, |alloc, asm, constants| {
+        {
+            // The be interoperable with the scalar montgomery multiplication we have to
+            // compensate for SIMD's mod 260 instead of 256. This is achieved by
+            // shifting both inputs by 2.
+            let a = u256_to_u260_shl2(alloc, asm, &constants.mask52, a);
+            let t = make_initials(alloc, asm);
+            square_mul_u256(alloc, asm, &constants.c1, &constants.c2, t, a)
+        }
     })
 }
 
-fn montgomery_mul(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    mask52: &Reg<Simd<u64, 2>>,
-    c1: &Reg<Simd<u64, 2>>,
-    c2: &Reg<Simd<u64, 2>>,
-    a: [Reg<Simd<u64, 2>>; 4],
-    b: [Reg<Simd<u64, 2>>; 4],
-) -> [Reg<Simd<u64, 2>>; 10] {
-    // The be interoperable with the scalar montgomery multiplication we have to
-    // compensate for SIMD's mod 260 instead of 256. This is achieved by
-    // shifting both inputs by 2.
-    let a = u256_to_u260_shl2(alloc, asm, mask52, a);
-    let b = u256_to_u260_shl2(alloc, asm, mask52, b);
-    let t = make_initials(alloc, asm);
-    widening_mul_u256(alloc, asm, c1, c2, t, a, b)
-}
-
-fn montgomery_square(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    mask52: &Reg<Simd<u64, 2>>,
-    c1: &Reg<Simd<u64, 2>>,
-    c2: &Reg<Simd<u64, 2>>,
-    a: [Reg<Simd<u64, 2>>; 4],
-) -> [Reg<Simd<u64, 2>>; 10] {
-    // The be interoperable with the scalar montgomery multiplication we have to
-    // compensate for SIMD's mod 260 instead of 256. This is achieved by
-    // shifting both inputs by 2.
-    let a = u256_to_u260_shl2(alloc, asm, mask52, a);
-    let t = make_initials(alloc, asm);
-    square_mul_u256(alloc, asm, c1, c2, t, a)
+struct RegisterConstants {
+    mask:   Reg<u64>,
+    mask52: Reg<Simd<u64, 2>>,
+    c1:     Reg<Simd<u64, 2>>,
+    c2:     Reg<Simd<u64, 2>>,
 }
 
 /// Performs a full Montgomery multiplication of two pairs of two u256 numbers
 /// `a` and `b` using SIMD instructions.
-fn montgomery_f(
+fn single_step_base(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
-    f: impl FnOnce(
-        &mut FreshAllocator,
-        &mut Assembler,
-        &Reg<Simd<u64, 2>>,
-        &Reg<Simd<u64, 2>>,
-        &Reg<Simd<u64, 2>>,
-    ) -> [Reg<Simd<u64, 2>>; 10],
+    f: impl FnOnce(&mut FreshAllocator, &mut Assembler, &RegisterConstants) -> [Reg<Simd<u64, 2>>; 10],
 ) -> [Reg<Simd<u64, 2>>; 4] {
     let mask = mov(alloc, asm, MASK52);
     let mask52 = dup2d(alloc, asm, &mask);
@@ -371,7 +352,14 @@ fn montgomery_f(
     let c2 = load_const(alloc, asm, C2.to_bits());
     let c2 = dup2d(alloc, asm, &c2);
 
-    let [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9] = f(alloc, asm, &mask52, &c1, &c2);
+    let constants = RegisterConstants {
+        mask,
+        mask52,
+        c1,
+        c2,
+    };
+
+    let [t0, t1, t2, t3, t4, t5, t6, t7, t8, t9] = f(alloc, asm, &constants);
     let t1 = usra2d(alloc, asm, t1, &t0, 52);
     let t2 = usra2d(alloc, asm, t2, &t1, 52);
     let t3 = usra2d(alloc, asm, t3, &t2, 52);
@@ -379,17 +367,17 @@ fn montgomery_f(
 
     let t4_10 = [t4, t5, t6, t7, t8, t9];
 
-    let t0 = and16(alloc, asm, &t0, &mask52);
-    let t1 = and16(alloc, asm, &t1, &mask52);
-    let t2 = and16(alloc, asm, &t2, &mask52);
-    let t3 = and16(alloc, asm, &t3, &mask52);
+    let t0 = and16(alloc, asm, &t0, &constants.mask52);
+    let t1 = and16(alloc, asm, &t1, &constants.mask52);
+    let t2 = and16(alloc, asm, &t2, &constants.mask52);
+    let t3 = and16(alloc, asm, &t3, &constants.mask52);
 
     // loading rho interleaved with multiplication to prevent to prevent allocation
     // a lot of X-registers
-    let r0 = madd_u256_limb(alloc, asm, t4_10, &c1, &c2, t0, RHO_4);
-    let r1 = madd_u256_limb(alloc, asm, r0, &c1, &c2, t1, RHO_3);
-    let r2 = madd_u256_limb(alloc, asm, r1, &c1, &c2, t2, RHO_2);
-    let s = madd_u256_limb(alloc, asm, r2, &c1, &c2, t3, RHO_1);
+    let r0 = madd_u256_limb(alloc, asm, t4_10, &constants, t0, RHO_4);
+    let r1 = madd_u256_limb(alloc, asm, r0, &constants, t1, RHO_3);
+    let r2 = madd_u256_limb(alloc, asm, r1, &constants, t2, RHO_2);
+    let s = madd_u256_limb(alloc, asm, r2, &constants, t3, RHO_1);
 
     // Could be replaced with fmul, but the rust compiler generates something close
     // to this
@@ -399,11 +387,11 @@ fn montgomery_f(
     let m0 = mul(alloc, asm, &s00, &u52_np0);
     let m1 = mul(alloc, asm, &s01, &u52_np0);
 
-    let m0 = and(alloc, asm, &m0, &mask);
-    let m1 = and(alloc, asm, &m1, &mask);
+    let m0 = and(alloc, asm, &m0, &constants.mask);
+    let m1 = and(alloc, asm, &m1, &constants.mask);
     let m = load_tuple(alloc, asm, m0, m1);
 
-    let s = madd_u256_limb(alloc, asm, s, &c1, &c2, m, U52_P);
+    let s = madd_u256_limb(alloc, asm, s, &constants, m, U52_P);
 
     let rs = reduce(alloc, asm, s);
 

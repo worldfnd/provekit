@@ -137,14 +137,7 @@ mod tests {
         std::array,
     };
 
-    /// Property test that verifies `montgomery_interleaved_3` and
-    /// `montgomery_square_interleaved_3` produce identical results when
-    /// multiplying a value by itself.
-    ///
-    /// This test ensures that the optimized squaring function
-    /// `montgomery_square_interleaved_3` is mathematically equivalent to
-    /// using the general multiplication function `montgomery_interleaved_3`
-    /// with identical inputs (i.e., a * a == square(a)).
+    /// test that compares square interleaved with ark_ff
     #[test]
     fn test_montgomery_square() {
         proptest!(|(
