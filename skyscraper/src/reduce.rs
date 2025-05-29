@@ -16,11 +16,11 @@ pub fn reduce(x: [u64; 4]) -> [u64; 4] {
     reduce_1(reduce_partial(x))
 }
 
-/// Fully reduce an input in range [0, 2M) to [0, M)
+/// Reduces an input by at most M.
+/// Accepts inputs in the range [0, 2^256)
 /// Optimized for likely x < M, e.g. a partially reduced input.
 #[inline(always)]
 pub fn reduce_1(x: [u64; 4]) -> [u64; 4] {
-    debug_assert!(less_than(x, MODULUS[2]));
     let (r, borrow) = overflowing_sub(x, MODULUS[1]);
     if borrow {
         x
