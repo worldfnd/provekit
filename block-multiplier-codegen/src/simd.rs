@@ -154,7 +154,7 @@ pub const fn make_initial(low_count: usize, high_count: usize) -> u64 {
 /// Generates assembly instructions to load the initial floating Montgomery
 /// constants into SIMD registers to counteract the biasses that are added to be
 /// able to perform 52bit multiplication in the mantissa of a 64 bit floating
-/// point. See Emmart https://ieeexplore.ieee.org/abstract/document/8464792
+/// point. See Emmart <https://ieeexplore.ieee.org/abstract/document/8464792>
 fn make_initials(alloc: &mut FreshAllocator, asm: &mut Assembler) -> [Reg<Simd<u64, 2>>; 10] {
     let mut t: [Reg<Simd<u64, 2>>; 10] = array::from_fn(|_| alloc.fresh());
 

@@ -15,7 +15,7 @@ seq!(I in 0..18 {
     ];
 });
 
-/// ``python
+/// ```python
 /// load('skyscraper.sage')
 /// Sky_BN254_1.sigma_inv
 /// ```
