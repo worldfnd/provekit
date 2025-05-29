@@ -56,9 +56,11 @@ pub fn ark_ff_reference(l: [u64; 4], r: [u64; 4]) -> Fr {
 
 #[test]
 fn test_max_multiprecision_strategy() {
-    proptest!(|(pair in proptest::array::uniform4(any::<u64>()).prop_flat_map(|upper_bound| {
+    let upper_bounds = proptest::array::uniform4(any::<u64>());
+    let pairs = upper_bounds.prop_flat_map(|upper_bound| {
         max_multiprecision(upper_bound.to_vec()).prop_map(move |value| (upper_bound, value))
-    }))| {
+    });
+    proptest!(|(pair in pairs)| {
         let (upper_bound, value) = pair;
         // Check if value <= max by comparing limbs from most significant to least
         assert!(value[3] <= upper_bound[3], "value[3] exceeds max[3]");

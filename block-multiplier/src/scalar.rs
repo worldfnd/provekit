@@ -203,32 +203,4 @@ mod tests {
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_a));
         }
     }
-
-    #[test]
-    fn test_max_multiprecision_strategy() {
-        let upper_bounds = proptest::array::uniform4(any::<u64>());
-        let pairs = upper_bounds.prop_flat_map(|upper_bound| {
-            max_multiprecision(upper_bound.to_vec()).prop_map(move |value| (upper_bound, value))
-        });
-        proptest!(|(pair in pairs)| {
-            let (upper_bound, value) = pair;
-            // Check if value <= max by comparing limbs from most significant to least
-            assert!(value[3] <= upper_bound[3], "value[3] exceeds max[3]");
-            assert!(
-                !(value[3] == upper_bound[3] && value[2] > upper_bound[2]),
-                "value[2] exceeds max[2] when higher limbs are equal"
-            );
-            assert!(
-                !(value[3] == upper_bound[3] && value[2] == upper_bound[2] && value[1] > upper_bound[1]),
-                "value[1] exceeds max[1] when higher limbs are equal"
-            );
-            assert!(
-                !(value[3] == upper_bound[3]
-                    && value[2] == upper_bound[2]
-                    && value[1] == upper_bound[1]
-                    && value[0] > upper_bound[0]),
-                "value[0] exceeds max[0] when higher limbs are equal"
-            );
-        });
-    }
 }
