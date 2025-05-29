@@ -61,8 +61,8 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7 # latest major as of Mar 2025
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1.0 # pick a specific linter version
+          version: v2.1.0
           working-directory: ${{ env.PROJECT_DIR }}
           args: --timeout=5m
