@@ -311,7 +311,7 @@ pub fn widening_mul_u256(
 }
 
 pub fn lazy_widening_mul<'a>(a: &'a Reg<u64>, b: &'a Reg<u64>) -> Lazy<'a, [Reg<u64>; 2]> {
-    Lazy::Thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
+    Lazy::thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
 }
 
 fn lazy_outer_product<'a>(
@@ -337,7 +337,7 @@ where
     // replace such that we can use the registers of mult[0][0] in the output.
     let tmp = mem::replace(
         &mut mult[(0, 0)],
-        Lazy::Forced([alloc.fresh(), alloc.fresh()]),
+        Lazy::forced([alloc.fresh(), alloc.fresh()]),
     );
 
     [t[0], carry] = tmp.into_(alloc, asm);
