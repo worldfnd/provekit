@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/big"
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
@@ -43,7 +44,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return err
 		}
 
-		roundOODAnswers := []frontend.Variable{}
+		var roundOODAnswers []frontend.Variable
 		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.RoundParametersOODSamples[r], arthur)
 		if err != nil {
 			return err
@@ -63,7 +64,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
-		roundFoldingRandomness := []frontend.Variable{}
+		var roundFoldingRandomness []frontend.Variable
 		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
@@ -192,7 +193,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 	}
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
-	foldingFactor := cfg.FoldingFactor
+	var foldingFactor []int
 	var finalSumcheckRounds int
 
 	if len(cfg.FoldingFactor) > 1 {
@@ -355,5 +356,8 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
 	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	groth16.Verify(proof, vk, publicWitness)
+	err := groth16.Verify(proof, vk, publicWitness)
+	if err != nil {
+		fmt.Println(err)
+	}
 }

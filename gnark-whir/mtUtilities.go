@@ -426,13 +426,13 @@ func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness [
 	return utilities.DotProduct(api, append(oodAnswers, computedFold...), combinationRandomness)
 }
 
-func mustBigInt(s string) *big.Int {
-	n, ok := new(big.Int).SetString(s, 10)
-	if !ok {
-		panic("invalid big.Int string: " + s)
-	}
-	return n
-}
+// func mustBigInt(s string) *big.Int {
+// 	n, ok := new(big.Int).SetString(s, 10)
+// 	if !ok {
+// 		panic("invalid big.Int string: " + s)
+// 	}
+// 	return n
+// }
 
 func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
 	ansA := frontend.Variable(0)
