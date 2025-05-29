@@ -6,6 +6,7 @@ mod block_simd;
 pub mod constants;
 mod portable_simd;
 mod scalar;
+mod test_utils;
 mod utils;
 
 pub use crate::{

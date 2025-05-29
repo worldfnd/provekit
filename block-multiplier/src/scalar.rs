@@ -135,50 +135,13 @@ pub fn scalar_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 mod tests {
     use {
         super::*,
-        crate::constants,
+        crate::{constants, test_utils::*},
         ark_bn254::Fr,
         ark_ff::{BigInt, Field},
         primitive_types::U256,
-        proptest::{
-            collection,
-            prelude::{Strategy, any},
-            proptest,
-        },
+        proptest::proptest,
         rand::{Rng, SeedableRng, rngs},
     };
-
-    /// Given a multiprecision integer in little-endian format, returns a
-    /// `Strategy` that generates values uniformly in the range `0..=max`.
-    fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
-        // Takes ownership of a vector to deal with the 'static requirement of boxed()
-        let size = max.len();
-        (0..=max[size - 1]).prop_flat_map(move |limb| {
-            // If the generated most significant limb is smaller than the MSL of max the
-            // the remaining limbs can be unconstrained.
-            if limb < max[size - 1] {
-                collection::vec(any::<u64>(), size..size + 1)
-                    .prop_map(move |mut arr| {
-                        arr[size - 1] = limb;
-                        assert_eq!(arr.len(), size);
-                        arr
-                    })
-                    .boxed()
-            } else {
-                // If MSL is equal to max constrain the next limbs
-                max_multiprecision(max[..size - 1].to_owned())
-                    .prop_map(move |mut arr| {
-                        arr.push(limb);
-                        assert_eq!(arr.len(), size);
-                        arr
-                    })
-                    .boxed()
-            }
-        })
-    }
-
-    fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
-        max_multiprecision(OUTPUT_MAX.to_vec()).prop_map(|vec| vec.try_into().unwrap())
-    }
 
     #[test]
     fn test_mul_field() {
@@ -192,14 +155,6 @@ mod tests {
             assert_eq!(fr, fe);
         })
     }
-
-    /// Upper bound of 2**256-2p
-    const OUTPUT_MAX: [u64; 4] = [
-        0x783c14d81ffffffe,
-        0xaf982f6f0c8d1edd,
-        0x8f5f7492fcfd4f45,
-        0x9f37631a3d9cbfac,
-    ];
 
     fn mod_mul(a: U256, b: U256) -> U256 {
         let p = U256(constants::U64_P);
@@ -227,7 +182,7 @@ mod tests {
             let s0_b_mont = mod_mul(s0_b, r);
 
             let s0 = scalar_mul(s0_a_mont.0, s0_b_mont.0);
-            assert!(U256(s0) < U256(OUTPUT_MAX));
+            assert!(U256(s0) < U256(constants::OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_b));
         }
     }
