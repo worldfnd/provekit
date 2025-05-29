@@ -78,6 +78,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
 #[test_case("../noir-examples/noir-r1cs-test-programs/conditional-write")]
 #[test_case("../noir-examples/noir-r1cs-test-programs/bin-opcode")]
 #[test_case("../noir-examples/noir-r1cs-test-programs/small-sha")]
+#[test_case("../noir-examples/noir-r1cs-test-programs/ryan-write-test")]
 fn case(path: &str) {
     test_compiler(path);
 }
