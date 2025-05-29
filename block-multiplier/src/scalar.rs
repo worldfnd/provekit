@@ -137,7 +137,7 @@ mod tests {
         super::*,
         crate::{constants, test_utils::*},
         ark_bn254::Fr,
-        ark_ff::{BigInt, Field},
+        ark_ff::BigInt,
         primitive_types::U256,
         proptest::proptest,
         rand::{Rng, SeedableRng, rngs},
@@ -145,11 +145,8 @@ mod tests {
 
     #[test]
     fn test_mul_field() {
-        let sigma = Fr::from(2).pow([256]).inverse().unwrap();
         proptest!(|(l in safe_bn254_montgomery_input(), r in safe_bn254_montgomery_input())| {
-            let fl = Fr::new(BigInt(l));
-            let fr = Fr::new(BigInt(r));
-            let fe = fl * fr * sigma;
+            let fe = ark_ff_reference(l, r);
             let r = scalar_mul(l, r);
             let fr = Fr::new(BigInt(r));
             assert_eq!(fr, fe);

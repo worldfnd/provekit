@@ -2,12 +2,13 @@
 
 use {
     crate::constants::OUTPUT_MAX,
+    ark_bn254::Fr,
+    ark_ff::{BigInt, Field},
     proptest::{
         collection,
         prelude::{Strategy, any},
         proptest,
     },
-    std::simd::Simd,
 };
 
 /// Given a multiprecision integer in little-endian format, returns a
@@ -40,18 +41,17 @@ fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
     })
 }
 
+/// Generates a value between [0, 2ˆ256-2p]
 pub fn safe_bn254_montgomery_input() -> impl Strategy<Value = [u64; 4]> {
     max_multiprecision(OUTPUT_MAX.to_vec()).prop_map(|vec| vec.try_into().unwrap())
 }
 
-pub fn safe_simd_input() -> impl Strategy<Value = [Simd<u64, 2>; 4]> {
-    (safe_bn254_montgomery_input(), safe_bn254_montgomery_input()).prop_map(|(a, b)| {
-        let mut result = [Simd::splat(0); 4];
-        for i in 0..4 {
-            result[i] = Simd::from_array([a[i], b[i]]);
-        }
-        result
-    })
+/// Reference for montgomery multiplication l*r*Rˆ-1
+pub fn ark_ff_reference(l: [u64; 4], r: [u64; 4]) -> Fr {
+    let sigma = Fr::from(2).pow([256]).inverse().unwrap();
+    let fl = Fr::new(BigInt(l));
+    let fr = Fr::new(BigInt(r));
+    fl * fr * sigma
 }
 
 #[test]

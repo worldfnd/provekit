@@ -129,9 +129,12 @@ pub fn montgomery_square_interleaved_4(
 mod tests {
     use {
         super::*,
-        crate::test_utils::{safe_bn254_montgomery_input, safe_simd_input},
+        crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
+        ark_bn254::Fr,
+        ark_ff::BigInt,
         fp_rounding::with_rounding_mode,
         proptest::proptest,
+        std::array,
     };
 
     /// Property test that verifies `montgomery_interleaved_3` and
@@ -143,25 +146,25 @@ mod tests {
     /// using the general multiplication function `montgomery_interleaved_3`
     /// with identical inputs (i.e., a * a == square(a)).
     #[test]
-    fn test_montgomery_interleaved_vs_square() {
+    fn test_montgomery_square() {
         proptest!(|(
             a in safe_bn254_montgomery_input(),
-            av in safe_simd_input()
+            b in safe_bn254_montgomery_input(),
+            c in safe_bn254_montgomery_input(),
         )| {
+            let av = array::from_fn(|i| Simd::from_array([b[i],c[i]]));
             unsafe {
                 with_rounding_mode((), |rtz, _| {
-                    // Test that montgomery_interleaved_3(a, a, av, av) == montgomery_square_interleaved_3(a, av)
-                    let (result_mul, result_mul_v) = montgomery_interleaved_3(rtz, a, a, av, av);
                     let (result_sqr, result_sqr_v) = montgomery_square_interleaved_3(rtz, a, av);
-
-                    // Compare scalar results
-                    assert_eq!(result_mul, result_sqr, "Scalar results should be equal");
-
-                    // Compare SIMD results
-                    for i in 0..4 {
-                        assert_eq!(result_mul_v[i].to_array(), result_sqr_v[i].to_array(),
-                                   "SIMD results at index {} should be equal", i);
-                    }
+                    let a_squared = ark_ff_reference(a, a);
+                    let b_squared = ark_ff_reference(b, b);
+                    let c_squared = ark_ff_reference(c, c);
+                    let a_squared_interleaved = Fr::new(BigInt(result_sqr));
+                    let b_squared_interleaved = Fr::new(BigInt(result_sqr_v.map(|e| e[0])));
+                    let c_squared_interleaved = Fr::new(BigInt(result_sqr_v.map(|e| e[1])));
+                    assert_eq!(a_squared, a_squared_interleaved);
+                    assert_eq!(b_squared, b_squared_interleaved);
+                    assert_eq!(c_squared, c_squared_interleaved);
                 });
             }
         });
