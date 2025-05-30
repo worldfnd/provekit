@@ -124,7 +124,6 @@ mod sqr {
     #[divan::bench]
     fn montgomery_square_log_interleaved_3(bencher: Bencher) {
         let bencher = bencher
-            //.counter(ItemsCount::new(3usize))
             .with_inputs(|| {
                 (
                     rng().random(),
@@ -143,7 +142,6 @@ mod sqr {
     #[divan::bench]
     fn montgomery_square_log_interleaved_4(bencher: Bencher) {
         let bencher = bencher
-            //.counter(ItemsCount::new(4usize))
             .with_inputs(|| {
                 (
                     rng().random(),
@@ -162,7 +160,6 @@ mod sqr {
         #[divan::bench]
         fn montgomery_square_interleaved_3(bencher: Bencher) {
             let bencher = bencher
-                //.counter(ItemsCount::new(3usize))
                 .with_inputs(|| {
                     (
                         rng().random(),
@@ -181,7 +178,6 @@ mod sqr {
         #[divan::bench]
         fn montgomery_square_interleaved_4(bencher: Bencher) {
             let bencher = bencher
-                //.counter(ItemsCount::new(4usize))
                 .with_inputs(|| {
                     (
                         rng().random(),
