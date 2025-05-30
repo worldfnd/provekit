@@ -4,7 +4,7 @@ use {
         load_store::{load_const, load_const_simd, load_floating_simd, load_tuple},
     },
     hla::*,
-    std::array,
+    std::{array, mem},
 };
 
 /// Sets up the assembly code generation for converting u256 to u260 with a left
@@ -115,7 +115,7 @@ pub fn setup_reduce_ct_simd(
 
     let var_red = FreshVariable::new("red", &red);
 
-    let res = reduce(alloc, asm, red).map(|reg| and16(alloc, asm, &reg, &mask52));
+    let res = distribute_carries(alloc, asm, red).map(|reg| and16(alloc, asm, &reg, &mask52));
 
     (vec![var_red], FreshVariable::new("out", &res))
 }
@@ -393,7 +393,7 @@ fn single_step_base(
 
     let s = madd_u256_limb(alloc, asm, s, &constants, m, U52_P);
 
-    let rs = reduce(alloc, asm, s);
+    let rs = distribute_carries(alloc, asm, s);
 
     u260_to_u256(alloc, asm, rs)
 }
@@ -450,6 +450,29 @@ fn reduce(
         let tmp = sub2d(alloc, asm, minuend[i].as_(), subtrahend[i].as_());
         // tmp + (prev >> 52)
         let tmp_plus_borrow = ssra2d(alloc, asm, tmp, prev, 52);
+        c[i] = tmp_plus_borrow;
+        prev = &c[i];
+    }
+
+    c.map(|ci| ci.into_())
+}
+
+/// Processes the carries in the upper 52 bits to the next limb.
+/// NOTE: This DOESN'T return clean 52 bit limbs as there is still junk in the
+/// upper 12 bits. u260-to-u256 will take care of the junk and this allows for
+/// saving 5 vector instructions.
+fn distribute_carries(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    red: [Reg<Simd<u64, 2>>; 6],
+) -> [Reg<Simd<u64, 2>>; 5] {
+    let mut c = array::from_fn(|_| alloc.fresh());
+    let [prev, minuend @ ..] = red;
+    let mut prev = prev.as_();
+
+    for (i, tmp) in minuend.into_iter().enumerate() {
+        // tmp + (prev >> 52)
+        let tmp_plus_borrow = ssra2d(alloc, asm, tmp.into_(), prev, 52);
         c[i] = tmp_plus_borrow;
         prev = &c[i];
     }
