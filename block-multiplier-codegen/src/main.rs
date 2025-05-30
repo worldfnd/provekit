@@ -43,4 +43,8 @@ fn main() {
         "./asm/montgomery_square.s",
         Interleaving::single(scalar::setup_square_single_step),
     );
+    build_includable(
+        "./asm/montgomery_log_jump.s",
+        Interleaving::single(scalar::setup_log_jump),
+    );
 }
