@@ -322,10 +322,7 @@ fn single_step_reduction(
     let m = mul(alloc, asm, &mu0, &r3[0]);
 
     let p = U64_P.map(|val| load_const(alloc, asm, val));
-    let r4 = madd_u256_limb_truncate(alloc, asm, r3, &p, &m);
-
-    // TODO(xrvdg): take out this reducer. Let the caller reduce.
-    reduce(alloc, asm, r4)
+    madd_u256_limb_truncate(alloc, asm, r3, &p, &m)
 }
 
 /// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
@@ -377,10 +374,7 @@ fn log_jump_reduction(
     let m = mul(alloc, asm, &mu0, &r3[0]);
 
     let p = U64_P.map(|val| load_const(alloc, asm, val));
-    let r4 = madd_u256_limb_truncate(alloc, asm, r3, &p, &m);
-
-    // TODO(xrvdg): take out this reducer. Let the caller reduce.
-    reduce(alloc, asm, r4)
+    madd_u256_limb_truncate(alloc, asm, r3, &p, &m)
 }
 
 /// Computes the 128-bit widening multiplication of two 64-bit registers `a` and

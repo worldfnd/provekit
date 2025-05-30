@@ -230,28 +230,3 @@
   adds x2, x5, x2
   cinc x4, x4, hs
   add x3, x3, x4
-  mov x4, #2
-  movk x4, #57344, lsl 16
-  movk x4, #60199, lsl 32
-  movk x4, #34755, lsl 48
-  mov x5, #57634
-  movk x5, #62322, lsl 16
-  movk x5, #53392, lsl 32
-  movk x5, #20583, lsl 48
-  mov x6, #45242
-  movk x6, #770, lsl 16
-  movk x6, #35693, lsl 32
-  movk x6, #28832, lsl 48
-  mov x7, #16467
-  movk x7, #49763, lsl 16
-  movk x7, #40165, lsl 32
-  movk x7, #24776, lsl 48
-  subs x4, x0, x4
-  sbcs x5, x1, x5
-  sbcs x6, x2, x6
-  sbcs x7, x3, x7
-  tst x3, #9223372036854775808
-  csel x0, x4, x0, mi
-  csel x1, x5, x1, mi
-  csel x2, x6, x2, mi
-  csel x3, x7, x3, mi
