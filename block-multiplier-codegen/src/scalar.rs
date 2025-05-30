@@ -33,9 +33,6 @@ pub fn setup_widening_mul_u256(
 
 /// Sets up the assembly generation context for Montgomery multiplication of two
 /// u256 numbers.
-///
-/// Initializes the necessary registers and calls `montgomery`.
-/// Returns the input and output variables for the generated assembly function.
 pub fn setup_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -49,10 +46,8 @@ pub fn setup_single_step(
         FreshVariable::new("out", &s),
     )
 }
+
 /// Sets up the assembly generation context for bn254 u256 Montgomery squaring.
-///
-/// Initializes the necessary registers and calls `montgomery`.
-/// Returns the input and output variables for the generated assembly function.
 pub fn setup_square_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -66,11 +61,8 @@ pub fn setup_square_single_step(
     )
 }
 
-/// Sets up the assembly generation context for Montgomery multiplication of two
-/// u256 numbers.
-///
-/// Initializes the necessary registers and calls `montgomery`.
-/// Returns the input and output variables for the generated assembly function.
+/// Sets up the assembly generation context for Montgomery log jump
+/// multiplication.
 pub fn setup_log_jump(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -85,10 +77,8 @@ pub fn setup_log_jump(
     )
 }
 
-/// Sets up the assembly generation context for bn254 u256 Montgomery squaring.
-///
-/// Initializes the necessary registers and calls `montgomery`.
-/// Returns the input and output variables for the generated assembly function.
+/// Sets up the assembly generation context for bn254 u256 Montgomery squaring
+/// using Domb's log jump.
 pub fn setup_square_log_jump(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -162,9 +152,6 @@ pub fn carry_cmn(asm: &mut Assembler, s: [Reg<u64>; 2], add: &Reg<u64>) -> Reg<u
 
 /// Computes `t += a * b` where `t` is 5 limbs, `a` is 4 limbs, and `b` is 1
 /// limb.
-///
-/// Performs a sequence of widening multiplications and carry additions.
-/// Returns the 5-limb result `t`.
 pub fn madd_u256_limb(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -191,8 +178,8 @@ pub fn madd_u256_limb(
 /// Computes `t += a * b` where `t` is 6 limbs, `a` is 4 limbs, and `b` is 1
 /// limb.
 ///
-/// Performs a sequence of widening multiplications and carry additions.
-/// Returns the 6-limb result `t`.
+/// A variation of [`madd_u256_limb`] where t is one limb larger to deal with
+/// the potential carry of the lower 5 limbs + a*b
 pub fn maddc_u256_limb(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
@@ -343,7 +330,7 @@ pub fn log_jump(
 /// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
 /// and `b`.
 ///
-/// Implements the Domb's log jump Montgomery multiplication algorithm.
+/// Implements the Domb's log jump Montgomery squaring algorithm.
 /// The result is less than `3P`.
 pub fn square_log_jump(
     alloc: &mut FreshAllocator,
