@@ -56,7 +56,7 @@ pub fn check_integrity_of_data_sha256(
     // let ryan_computed_final_hash =
     //     noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, x + 64 - x); // Correct result, but false fails R1CS constraints
     let ryan_computed_final_hash =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, e_content.len() as u64); // Wrong result but passes R1CS constraints
+        noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, e_content_size as u64); // Wrong result but passes R1CS constraints
     // println("This is the Noir computed final hash");
     // println(noir_computed_final_hash);
     println("This is the ryan computed final hash");

@@ -224,16 +224,16 @@ fn sha256_digest_round_x2(cdgh: [u32; 4], abef: [u32; 4], wk: [u32; 4]) -> [u32;
     // println(g0);
 
     // --- Ryan debugging pass ---
-    let hello = big_sigma1(e0);
-    let goodbye = bool3ary_202(e0, f0, g0);
+    // let hello = big_sigma1(e0);
+    // let goodbye = bool3ary_202(e0, f0, g0);
     // print("hello: ");
     // println(hello);
     // print("goodbye: ");
     // println(goodbye);
 
     // Okay so one of these is wrong. Let's see which one
-    let ryan_e0 = 3584795861;
-    let hello_constant = big_sigma1(ryan_e0);
+    // let ryan_e0 = 3584795861;
+    // let hello_constant = big_sigma1(ryan_e0);
     // print("hello_constant: ");
     // println(hello_constant);
     // println(

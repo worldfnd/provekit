@@ -101,7 +101,7 @@ fn main(
     // --- DSC signature check ---
     // The first thing checks that the appropriate substring of the `tbs_certificate` is equivalent to the `dsc_pubkey`
     // verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate, pubkey_offset_in_tbs);
-    // // The second thing asserts verify_sign(message=signed_attributes, sign=sod_signature, pubkey=dsc_pubkey)
+    // The second thing asserts verify_sign(message=signed_attributes, sign=sod_signature, pubkey=dsc_pubkey)
     assert(verify_signature::<256, 0, 200, 32>(
         dsc_pubkey,
         sod_signature, // Technically this is the signature of `data_to_sign` and not strictly the SOD
