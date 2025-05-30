@@ -106,22 +106,13 @@ test-case = "3.3.1"
 
 
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
-# acir = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# acvm = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# acir_field = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-
-acir = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-acvm = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-acir_field = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "ceaa198" }
-# ceaa198
+acir = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+acvm = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+acir_field = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_printable_type = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
