@@ -43,22 +43,11 @@ fn vec_eltwise_xor_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 /// WARNING: CANNOT USE THIS IF ROTATION_AMT == 0
 fn rotate_left_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
     let rotation_amt = rotation_amt % 32;
-    // print("val: ");
-    // println(val);
-    // print("rotation_amt: ");
-    // println(rotation_amt);
     // 01234567|
     // 012|34567 -> 34567|012
     // We can do this with bit-masking and/or shifting
     let left_side_already_moved = val >> (32 - rotation_amt);
-    let manual_left_side_already_moved = val >> 6;
-    // print("left_side_already_moved: ");
-    // println(left_side_already_moved);
-    // print("manual_left_side_already_moved: ");
-    // println(manual_left_side_already_moved);
     let right_side_already_moved = val << rotation_amt;
-    // print("right_side_already_moved: ");
-    // println(right_side_already_moved);
     left_side_already_moved | right_side_already_moved
 }
 
@@ -77,39 +66,6 @@ fn big_sigma0(a: u32) -> u32 {
 }
 
 fn big_sigma1(a: u32) -> u32 {
-    // print("a: ");
-    // println(a);
-
-    // let a_right_shift_1 = a >> 1;
-    // print("a right shift by 1: ");
-    // println(a_right_shift_1);
-    // let a_plus_1 = a + 1;
-    // print("a plus 1: ");
-    // println(a_plus_1);
-
-    // let a_left_shift_1 = a << 1;
-    // print("a left shift by 1: ");
-    // println(a_left_shift_1);
-
-    // let b = a + 1;
-    // let alt_a_right_shift_1 = (b - 1) >> 1;
-    // print("alt a right shift 1: ");
-    // println(alt_a_right_shift_1);
-
-    // let alt_alt_a_right_shift_1 = ((a + 1) - 1) >> 1;
-    // print("alt alt a right shift 1: ");
-    // println(alt_alt_a_right_shift_1);
-
-    // let first = rotate_right_via_shift_u32(a, 6);
-    // print("a rotate right by 6: ");
-    // println(first);
-    // let second = rotate_right_via_shift_u32(a, 11);
-    // print("a rotate right by 11: ");
-    // println(second);
-    // let third = rotate_right_via_shift_u32(a, 25);
-    // print("a rotate right by 25: ");
-    // println(third);
-
     rotate_right_via_shift_u32(a, 6)
         ^ rotate_right_via_shift_u32(a, 11)
         ^ rotate_right_via_shift_u32(a, 25)
@@ -216,36 +172,6 @@ fn sha256_digest_round_x2(cdgh: [u32; 4], abef: [u32; 4], wk: [u32; 4]) -> [u32;
     let g0 = cdgh[2];
     let h0 = cdgh[3];
 
-    // print("e0: ");
-    // println(e0);
-    // print("f0: ");
-    // println(f0);
-    // print("g0: ");
-    // println(g0);
-
-    // --- Ryan debugging pass ---
-    // let hello = big_sigma1(e0);
-    // let goodbye = bool3ary_202(e0, f0, g0);
-    // print("hello: ");
-    // println(hello);
-    // print("goodbye: ");
-    // println(goodbye);
-
-    // Okay so one of these is wrong. Let's see which one
-    // let ryan_e0 = 3584795861;
-    // let hello_constant = big_sigma1(ryan_e0);
-    // print("hello_constant: ");
-    // println(hello_constant);
-    // println(
-    //     "===================================== STOP =====================================",
-    // );
-
-    // let ryan_f0 = 3682752712;
-    // let ryan_g0 = 2829609811;
-    // let goodbye_constant = bool3ary_202(ryan_e0, ryan_f0, ryan_g0);
-    // print("goodbye_constant: ");
-    // println(goodbye_constant);
-
     // a round
     // --- Take the `e` state and compute a "permutation" thingy on itself ---
     // --- Then add the boolean functions against `e, f, g` ---
@@ -255,11 +181,6 @@ fn sha256_digest_round_x2(cdgh: [u32; 4], abef: [u32; 4], wk: [u32; 4]) -> [u32;
         big_sigma1(e0),
         add_u32_with_wraparound(bool3ary_202(e0, f0, g0), add_u32_with_wraparound(wk0, h0)),
     );
-
-    // x0: 3384363102
-    // x0: 3438100945
-    // print("x0: ");
-    // println(x0);
 
     // --- Take the `a` state and compute a "permutation" ---
     // --- Then add the boolean functions against `a, b, c` ---
@@ -292,11 +213,6 @@ fn rounds4(abef: [u32; 4], cdgh: [u32; 4], rest: [u32; 4], round_idx: u32) -> ([
     // --- We update the cdgh part of the state (this is roughly two rounds) ---
     let updated_cdgh = sha256_digest_round_x2(cdgh, abef, t1);
 
-    // [4142839077, 3868641870, 173515134, 3527081958]
-    // [3904543462, 3884449719, 2424174730, 3580819801]
-    // print("Updated cdgh: ");
-    // println(updated_cdgh);
-
     // --- [0, 1, 2, 3] --> [2, 3, 0, 1] ---
     let t2 = sha256swap(t1);
     // --- We update the abef part of the state (again, roughly two rounds) ---
@@ -319,14 +235,6 @@ pub fn ryan_sha256_digest_block_u32(state: STATE, block: MSG_BLOCK) -> [u32; 8] 
     let mut w4: [u32; 4] = [0, 0, 0, 0];
 
     let (abef, cdgh) = rounds4(abef, cdgh, w0, 0);
-
-    // Already different in the final block
-    // println("After rounds4");
-    // print("abef: ");
-    // println(abef);
-    // print("cdgh: ");
-    // println(cdgh);
-
     let (abef, cdgh) = rounds4(abef, cdgh, w1, 1);
     let (abef, cdgh) = rounds4(abef, cdgh, w2, 2);
     let (abef, cdgh) = rounds4(abef, cdgh, w3, 3);
