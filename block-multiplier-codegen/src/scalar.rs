@@ -49,6 +49,22 @@ pub fn setup_single_step(
         FreshVariable::new("out", &s),
     )
 }
+/// Sets up the assembly generation context for bn254 u256 Montgomery squaring.
+///
+/// Initializes the necessary registers and calls `montgomery`.
+/// Returns the input and output variables for the generated assembly function.
+pub fn setup_square_single_step(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+) -> (Vec<FreshVariable>, FreshVariable) {
+    let a = alloc.fresh_array();
+
+    let s = square_single_step(alloc, asm, &a);
+    (
+        vec![FreshVariable::new("a", &a)],
+        FreshVariable::new("out", &s),
+    )
+}
 
 /// Sets up the assembly generation context for Montgomery multiplication of two
 /// u256 numbers.
@@ -73,19 +89,18 @@ pub fn setup_log_jump(
 ///
 /// Initializes the necessary registers and calls `montgomery`.
 /// Returns the input and output variables for the generated assembly function.
-pub fn setup_square_single_step(
+pub fn setup_square_log_jump(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
 ) -> (Vec<FreshVariable>, FreshVariable) {
     let a = alloc.fresh_array();
 
-    let s = square_single_step(alloc, asm, &a);
+    let s = square_log_jump(alloc, asm, &a);
     (
         vec![FreshVariable::new("a", &a)],
         FreshVariable::new("out", &s),
     )
 }
-
 /// Sets up the assembly generation context for a u256 multiply-add-limb
 /// operation (`r = r + a * b`).
 ///
@@ -325,6 +340,20 @@ pub fn log_jump(
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 4] {
     let t = widening_mul_u256(alloc, asm, a, b);
+    log_jump_reduction(alloc, asm, t)
+}
+
+/// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
+/// and `b`.
+///
+/// Implements the Domb's log jump Montgomery multiplication algorithm.
+/// The result is less than `3P`.
+pub fn square_log_jump(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+) -> [Reg<u64>; 4] {
+    let t = square_u256(alloc, asm, a);
     log_jump_reduction(alloc, asm, t)
 }
 
