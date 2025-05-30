@@ -1,7 +1,12 @@
 use {
     crate::{constants::*, load_store::load_const},
     hla::*,
-    std::array,
+    std::{
+        array,
+        cmp::{max, min},
+        mem,
+        ops::{Index, IndexMut},
+    },
 };
 
 // BUILDERS
@@ -31,16 +36,33 @@ pub fn setup_widening_mul_u256(
 ///
 /// Initializes the necessary registers and calls `montgomery`.
 /// Returns the input and output variables for the generated assembly function.
-pub fn setup_montgomery(
+pub fn setup_single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
 ) -> (Vec<FreshVariable>, FreshVariable) {
     let a = alloc.fresh_array();
     let b = alloc.fresh_array();
 
-    let s = montgomery(alloc, asm, &a, &b);
+    let s = single_step(alloc, asm, &a, &b);
     (
         vec![FreshVariable::new("a", &a), FreshVariable::new("b", &b)],
+        FreshVariable::new("out", &s),
+    )
+}
+
+/// Sets up the assembly generation context for bn254 u256 Montgomery squaring.
+///
+/// Initializes the necessary registers and calls `montgomery`.
+/// Returns the input and output variables for the generated assembly function.
+pub fn setup_square_single_step(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+) -> (Vec<FreshVariable>, FreshVariable) {
+    let a = alloc.fresh_array();
+
+    let s = square_single_step(alloc, asm, &a);
+    (
+        vec![FreshVariable::new("a", &a)],
         FreshVariable::new("out", &s),
     )
 }
@@ -161,43 +183,6 @@ pub fn madd_u256_limb_truncate(
     out
 }
 
-/// Computes the 8-limb (512-bit) widening multiplication of two 4-limb
-/// (256-bit) numbers `a` and `b`.
-///
-/// Implements the standard schoolbook multiplication algorithm.
-pub fn widening_mul_u256(
-    alloc: &mut FreshAllocator,
-    asm: &mut Assembler,
-    a: &[Reg<u64>; 4],
-    b: &[Reg<u64>; 4],
-) -> [Reg<u64>; 8] {
-    let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
-    let mut carry;
-    // The all multiplication of a with the lowest limb of b do not have a previous
-    // round to add to. That's why this loop is separated.
-    [t[0], carry] = widening_mul(alloc, asm, &a[0], &b[0]);
-    for i in 1..a.len() {
-        let tmp = widening_mul(alloc, asm, &a[i], &b[0]);
-        [t[i], carry] = carry_add(alloc, asm, &tmp, &carry);
-    }
-    t[a.len()] = carry;
-
-    // 2nd and later carry chain
-    for j in 1..b.len() {
-        let mut carry;
-        let tmp = widening_mul(alloc, asm, &a[0], &b[j]);
-        [t[j], carry] = carry_add(alloc, asm, &tmp, &t[j]);
-        for i in 1..a.len() {
-            let tmp = widening_mul(alloc, asm, &a[i], &b[j]);
-            let tmp = carry_add(alloc, asm, &tmp, &carry);
-            [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
-        }
-        t[j + a.len()] = carry;
-    }
-
-    t
-}
-
 /// Computes `a - b` for two 4-limb (256-bit) numbers with borrow propagation.
 ///
 /// Uses `subs` and `sbcs` instructions.
@@ -242,15 +227,22 @@ pub fn reduce(alloc: &mut FreshAllocator, asm: &mut Assembler, a: [Reg<u64>; 4])
 /// and `b`.
 ///
 /// Implements the Domb's single step Montgomery multiplication algorithm.
-/// The result is less than `2**256 - P`.
-pub fn montgomery(
+/// The result is less than `4P`.
+pub fn single_step(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     a: &[Reg<u64>; 4],
     b: &[Reg<u64>; 4],
 ) -> [Reg<u64>; 4] {
     let t = widening_mul_u256(alloc, asm, a, b);
-    // let [t0, t1, t2, s @ ..] = t;
+    single_step_reduction(alloc, asm, t)
+}
+
+fn single_step_reduction(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    t: [Reg<u64>; 8],
+) -> [Reg<u64>; 4] {
     let [t0, t1, t2, s @ ..] = t;
 
     let i3 = U64_I3.map(|val| load_const(alloc, asm, val));
@@ -268,6 +260,7 @@ pub fn montgomery(
     let p = U64_P.map(|val| load_const(alloc, asm, val));
     let r4 = madd_u256_limb_truncate(alloc, asm, r3, &p, &m);
 
+    // TODO(xrvdg): take out this reducer. Let the caller reduce.
     reduce(alloc, asm, r4)
 }
 
@@ -283,3 +276,145 @@ pub fn widening_mul(
 ) -> [Reg<u64>; 2] {
     [mul(alloc, asm, a, b), umulh(alloc, asm, a, b)]
 }
+
+/// Computes the Montgomery square of a 4-limb (256-bit) number `a`
+///
+/// Implements the Domb's single step Montgomery multiplication algorithm.
+/// The result is less than `4P`.
+pub fn square_single_step(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+) -> [Reg<u64>; 4] {
+    let t = square_u256(alloc, asm, a);
+    single_step_reduction(alloc, asm, t)
+}
+
+fn square_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+) -> [Reg<u64>; 8] {
+    let mult = LazySymmetricMatrix(lazy_outer_product(a, a));
+    accumulate(alloc, asm, mult)
+}
+
+/// Widening multiplication u256 x u256 -> u512
+pub fn widening_mul_u256(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    a: &[Reg<u64>; 4],
+    b: &[Reg<u64>; 4],
+) -> [Reg<u64>; 8] {
+    let outer_product = lazy_outer_product(a, b);
+    accumulate(alloc, asm, outer_product)
+}
+
+fn lazy_widening_mul<'a>(a: &'a Reg<u64>, b: &'a Reg<u64>) -> Lazy<'a, [Reg<u64>; 2]> {
+    Lazy::thunk(Box::new(|alloc, asm| widening_mul(alloc, asm, a, b)))
+}
+
+/// Compute the outer product of two vectors
+fn lazy_outer_product<'a>(
+    a: &'a [Reg<u64>; 4],
+    b: &'a [Reg<u64>; 4],
+) -> SquareMatrix<Lazy<'a, [Reg<u64>; 2]>, 4> {
+    let mult = array::from_fn(|i| array::from_fn(|j| lazy_widening_mul(&a[i], &b[j])));
+    SquareMatrix(mult)
+}
+
+fn accumulate<'a, T>(
+    alloc: &mut FreshAllocator,
+    asm: &mut Assembler,
+    mut outer_product: T,
+) -> [Reg<u64>; 8]
+where
+    T: LazyMatrix<'a, [Reg<u64>; 2]>,
+{
+    let rows = 4;
+    let columns = 4;
+
+    let mut t: [Reg<u64>; 8] = array::from_fn(|_| alloc.fresh());
+    // The all multiplication of a with the lowest limb of b do not have a previous
+    // round to add to. That's why this loop is separated.
+    let mut carry;
+
+    // replace such that we can use the registers of mult[0][0] in the output.
+    let tmp = mem::replace(
+        &mut outer_product[(0, 0)],
+        Lazy::forced([alloc.fresh(), alloc.fresh()]),
+    );
+
+    [t[0], carry] = tmp.into_(alloc, asm);
+    for i in 1..rows {
+        let tmp = &mut outer_product[(i, 0)];
+        let tmp = tmp.as_(alloc, asm);
+        [t[i], carry] = carry_add(alloc, asm, tmp, &carry);
+    }
+    t[rows] = carry;
+
+    // 2nd and later carry chain
+    for j in 1..columns {
+        let mut carry;
+        let tmp = &mut outer_product[(0, j)];
+        let tmp = tmp.as_(alloc, asm);
+        [t[j], carry] = carry_add(alloc, asm, tmp, &t[j]);
+        for i in 1..rows {
+            let tmp = &mut outer_product[(i, j)];
+            let tmp = tmp.as_(alloc, asm);
+            let tmp = carry_add(alloc, asm, tmp, &carry);
+            [t[i + j], carry] = carry_add(alloc, asm, &tmp, &t[i + j]);
+        }
+        t[j + rows] = carry;
+    }
+
+    t
+}
+
+struct SquareMatrix<T, const N: usize>([[T; N]; N]);
+
+impl<const N: usize, T> Index<(usize, usize)> for SquareMatrix<T, N> {
+    type Output = T;
+
+    fn index(&self, index: (usize, usize)) -> &T {
+        &self.0[index.0][index.1]
+    }
+}
+
+impl<T, const N: usize> IndexMut<(usize, usize)> for SquareMatrix<T, N> {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut T {
+        &mut self.0[index.0][index.1]
+    }
+}
+
+// For simplicity the backing store is a lazy square matrix where we only
+// evaluate the upper triangle
+struct LazySymmetricMatrix<'a, T, const N: usize>(SquareMatrix<Lazy<'a, T>, N>);
+
+impl<'a, const N: usize, T> Index<(usize, usize)> for LazySymmetricMatrix<'a, T, N> {
+    type Output = Lazy<'a, T>;
+
+    fn index(&self, index: (usize, usize)) -> &Self::Output {
+        let (i, j) = index;
+        let x = min(i, j);
+        let y = max(i, j);
+        &self.0[(x, y)]
+    }
+}
+
+impl<'a, T, const N: usize> IndexMut<(usize, usize)> for LazySymmetricMatrix<'a, T, N> {
+    fn index_mut(&mut self, index: (usize, usize)) -> &mut Lazy<'a, T> {
+        let (i, j) = index;
+        let x = min(i, j);
+        let y = max(i, j);
+        &mut self.0[(x, y)]
+    }
+}
+
+trait LazyMatrix<'a, T>:
+    Index<(usize, usize), Output = Lazy<'a, T>> + IndexMut<(usize, usize)>
+{
+}
+
+impl<'a, T, const N: usize> LazyMatrix<'a, T> for SquareMatrix<Lazy<'a, T>, N> {}
+impl<'a, T, const N: usize> LazyMatrix<'a, T> for LazySymmetricMatrix<'a, T, N> {}

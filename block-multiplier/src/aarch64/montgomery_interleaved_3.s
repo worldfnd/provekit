@@ -10,84 +10,84 @@
   mov x8, #4503599627370495
   dup.2d v8, x8
   mul x9, x0, x4
-  shl.2d v9, v1, #14
-  shl.2d v10, v2, #26
-  shl.2d v11, v3, #38
-  umulh x10, x0, x4
-  ushr.2d v3, v3, #14
-  shl.2d v12, v0, #2
-  usra.2d v9, v0, #50
-  mul x11, x1, x4
-  usra.2d v10, v1, #38
-  usra.2d v11, v2, #26
+  mov x10, #5075556780046548992
+  dup.2d v9, x10
+  mov x10, #1
+  umulh x11, x0, x4
+  movk x10, #18032, lsl 48
+  dup.2d v10, x10
+  shl.2d v11, v1, #14
+  mul x10, x1, x4
+  shl.2d v12, v2, #26
+  shl.2d v13, v3, #38
   umulh x12, x1, x4
-  and.16b v0, v12, v8
-  and.16b v1, v9, v8
-  and.16b v2, v10, v8
-  adds x10, x11, x10
+  ushr.2d v3, v3, #14
+  shl.2d v14, v0, #2
+  usra.2d v11, v0, #50
+  adds x10, x10, x11
   cinc x11, x12, hs
-  and.16b v9, v11, v8
-  shl.2d v10, v5, #14
-  shl.2d v11, v6, #26
+  usra.2d v12, v1, #38
+  usra.2d v13, v2, #26
+  and.16b v0, v14, v8
   mul x12, x2, x4
-  shl.2d v12, v7, #38
-  ushr.2d v7, v7, #14
+  and.16b v1, v11, v8
+  and.16b v2, v12, v8
   umulh x13, x2, x4
-  shl.2d v13, v4, #2
-  usra.2d v10, v4, #50
-  usra.2d v11, v5, #38
+  and.16b v11, v13, v8
+  shl.2d v12, v5, #14
+  shl.2d v13, v6, #26
   adds x11, x12, x11
   cinc x12, x13, hs
-  usra.2d v12, v6, #26
-  and.16b v4, v13, v8
-  and.16b v5, v10, v8
+  shl.2d v14, v7, #38
+  ushr.2d v7, v7, #14
+  shl.2d v15, v4, #2
   mul x13, x3, x4
-  and.16b v6, v11, v8
-  and.16b v10, v12, v8
-  mov x14, #13605374474286268416
+  usra.2d v12, v4, #50
+  usra.2d v13, v5, #38
+  usra.2d v14, v6, #26
   umulh x4, x3, x4
-  dup.2d v11, x14
-  mov x14, #6440147467139809280
+  and.16b v4, v15, v8
+  and.16b v5, v12, v8
   adds x12, x13, x12
   cinc x4, x4, hs
-  dup.2d v12, x14
-  mov x13, #3688448094816436224
+  and.16b v6, v13, v8
+  and.16b v12, v14, v8
+  mov x13, #13605374474286268416
+  mul x14, x0, x5
   dup.2d v13, x13
-  mul x13, x0, x5
+  mov x13, #6440147467139809280
+  dup.2d v14, x13
+  umulh x13, x0, x5
+  mov x15, #3688448094816436224
+  dup.2d v15, x15
+  adds x10, x14, x10
+  cinc x13, x13, hs
   mov x14, #9209861237972664320
-  dup.2d v14, x14
-  mov x14, #12218265789056155648
-  umulh x15, x0, x5
-  dup.2d v15, x14
-  mov x14, #17739678932212383744
-  adds x10, x13, x10
-  cinc x13, x15, hs
   dup.2d v16, x14
-  mov x14, #2301339409586323456
+  mov x14, #12218265789056155648
+  mul x15, x1, x5
   dup.2d v17, x14
-  mul x14, x1, x5
+  mov x14, #17739678932212383744
+  dup.2d v18, x14
+  umulh x14, x1, x5
+  mov x16, #2301339409586323456
+  dup.2d v19, x16
+  adds x13, x15, x13
+  cinc x14, x14, hs
   mov x15, #7822752552742551552
-  dup.2d v18, x15
-  mov x15, #5071053180419178496
-  umulh x16, x1, x5
-  dup.2d v19, x15
-  mov x15, #16352570246982270976
-  adds x13, x14, x13
-  cinc x14, x16, hs
   dup.2d v20, x15
-  mov x15, #5075556780046548992
-  dup.2d v21, x15
+  mov x15, #5071053180419178496
   adds x11, x13, x11
   cinc x13, x14, hs
-  mov x14, #1
-  movk x14, #18032, lsl 48
+  dup.2d v21, x15
+  mov x14, #16352570246982270976
   dup.2d v22, x14
   mul x14, x2, x5
   ucvtf.2d v0, v0
   ucvtf.2d v1, v1
   ucvtf.2d v2, v2
   umulh x15, x2, x5
-  ucvtf.2d v9, v9
+  ucvtf.2d v11, v11
   ucvtf.2d v3, v3
   adds x13, x14, x13
   cinc x14, x15, hs
@@ -96,244 +96,244 @@
   ucvtf.2d v6, v6
   adds x12, x13, x12
   cinc x13, x14, hs
-  ucvtf.2d v10, v10
+  ucvtf.2d v12, v12
   ucvtf.2d v7, v7
-  mov.16b v23, v21
+  mov.16b v23, v9
   mul x14, x3, x5
   fmla.2d v23, v0, v4
-  fsub.2d v24, v22, v23
+  fsub.2d v24, v10, v23
   umulh x5, x3, x5
   fmla.2d v24, v0, v4
-  add.2d v13, v13, v23
-  add.2d v11, v11, v24
+  add.2d v15, v15, v23
+  add.2d v13, v13, v24
   adds x13, x14, x13
   cinc x5, x5, hs
-  mov.16b v23, v21
+  mov.16b v23, v9
   fmla.2d v23, v0, v5
-  fsub.2d v24, v22, v23
+  fsub.2d v24, v10, v23
   adds x4, x13, x4
   cinc x5, x5, hs
   fmla.2d v24, v0, v5
-  add.2d v15, v15, v23
+  add.2d v17, v17, v23
   mul x13, x0, x6
-  add.2d v13, v13, v24
-  mov.16b v23, v21
+  add.2d v15, v15, v24
+  mov.16b v23, v9
   fmla.2d v23, v0, v6
   umulh x14, x0, x6
-  fsub.2d v24, v22, v23
+  fsub.2d v24, v10, v23
   fmla.2d v24, v0, v6
-  add.2d v17, v17, v23
+  add.2d v19, v19, v23
   adds x11, x13, x11
   cinc x13, x14, hs
-  add.2d v15, v15, v24
-  mov.16b v23, v21
-  fmla.2d v23, v0, v10
-  mul x14, x1, x6
-  fsub.2d v24, v22, v23
-  fmla.2d v24, v0, v10
-  umulh x15, x1, x6
-  add.2d v19, v19, v23
   add.2d v17, v17, v24
-  mov.16b v23, v21
+  mov.16b v23, v9
+  fmla.2d v23, v0, v12
+  mul x14, x1, x6
+  fsub.2d v24, v10, v23
+  fmla.2d v24, v0, v12
+  umulh x15, x1, x6
+  add.2d v21, v21, v23
+  add.2d v19, v19, v24
+  mov.16b v23, v9
   adds x13, x14, x13
   cinc x14, x15, hs
   fmla.2d v23, v0, v7
-  fsub.2d v24, v22, v23
+  fsub.2d v24, v10, v23
   fmla.2d v24, v0, v7
   adds x12, x13, x12
   cinc x13, x14, hs
-  add.2d v0, v20, v23
-  add.2d v19, v19, v24
+  add.2d v0, v22, v23
+  add.2d v21, v21, v24
   mul x14, x2, x6
-  mov.16b v20, v21
-  fmla.2d v20, v1, v4
-  fsub.2d v23, v22, v20
+  mov.16b v22, v9
+  fmla.2d v22, v1, v4
+  fsub.2d v23, v10, v22
   umulh x15, x2, x6
   fmla.2d v23, v1, v4
-  add.2d v15, v15, v20
-  add.2d v13, v13, v23
+  add.2d v17, v17, v22
+  add.2d v15, v15, v23
   adds x13, x14, x13
   cinc x14, x15, hs
-  mov.16b v20, v21
-  fmla.2d v20, v1, v5
+  mov.16b v22, v9
+  fmla.2d v22, v1, v5
   adds x4, x13, x4
   cinc x13, x14, hs
-  fsub.2d v23, v22, v20
+  fsub.2d v23, v10, v22
   fmla.2d v23, v1, v5
-  add.2d v17, v17, v20
+  add.2d v19, v19, v22
   mul x14, x3, x6
-  add.2d v15, v15, v23
-  mov.16b v20, v21
-  fmla.2d v20, v1, v6
+  add.2d v17, v17, v23
+  mov.16b v22, v9
+  fmla.2d v22, v1, v6
   umulh x6, x3, x6
-  fsub.2d v23, v22, v20
+  fsub.2d v23, v10, v22
   fmla.2d v23, v1, v6
-  add.2d v19, v19, v20
+  add.2d v21, v21, v22
   adds x13, x14, x13
   cinc x6, x6, hs
-  add.2d v17, v17, v23
-  mov.16b v20, v21
+  add.2d v19, v19, v23
+  mov.16b v22, v9
   adds x5, x13, x5
   cinc x6, x6, hs
-  fmla.2d v20, v1, v10
-  fsub.2d v23, v22, v20
-  fmla.2d v23, v1, v10
+  fmla.2d v22, v1, v12
+  fsub.2d v23, v10, v22
+  fmla.2d v23, v1, v12
   mul x13, x0, x7
-  add.2d v0, v0, v20
-  add.2d v19, v19, v23
-  mov.16b v20, v21
+  add.2d v0, v0, v22
+  add.2d v21, v21, v23
+  mov.16b v22, v9
   umulh x0, x0, x7
-  fmla.2d v20, v1, v7
-  fsub.2d v23, v22, v20
+  fmla.2d v22, v1, v7
+  fsub.2d v23, v10, v22
   adds x12, x13, x12
   cinc x0, x0, hs
   fmla.2d v23, v1, v7
-  add.2d v1, v18, v20
+  add.2d v1, v20, v22
   add.2d v0, v0, v23
   mul x13, x1, x7
-  mov.16b v18, v21
-  fmla.2d v18, v2, v4
-  fsub.2d v20, v22, v18
-  umulh x1, x1, x7
+  mov.16b v20, v9
   fmla.2d v20, v2, v4
-  add.2d v17, v17, v18
+  fsub.2d v22, v10, v20
+  umulh x1, x1, x7
+  fmla.2d v22, v2, v4
+  add.2d v19, v19, v20
   adds x0, x13, x0
   cinc x1, x1, hs
-  add.2d v15, v15, v20
-  mov.16b v18, v21
-  fmla.2d v18, v2, v5
+  add.2d v17, v17, v22
+  mov.16b v20, v9
+  fmla.2d v20, v2, v5
   adds x0, x0, x4
   cinc x1, x1, hs
-  fsub.2d v20, v22, v18
-  fmla.2d v20, v2, v5
-  add.2d v18, v19, v18
+  fsub.2d v22, v10, v20
+  fmla.2d v22, v2, v5
+  add.2d v20, v21, v20
   mul x4, x2, x7
-  add.2d v17, v17, v20
-  mov.16b v19, v21
-  fmla.2d v19, v2, v6
+  add.2d v19, v19, v22
+  mov.16b v21, v9
+  fmla.2d v21, v2, v6
   umulh x2, x2, x7
-  fsub.2d v20, v22, v19
-  fmla.2d v20, v2, v6
+  fsub.2d v22, v10, v21
+  fmla.2d v22, v2, v6
   adds x1, x4, x1
   cinc x2, x2, hs
-  add.2d v0, v0, v19
-  add.2d v18, v18, v20
-  mov.16b v19, v21
+  add.2d v0, v0, v21
+  add.2d v20, v20, v22
+  mov.16b v21, v9
   adds x1, x1, x5
   cinc x2, x2, hs
-  fmla.2d v19, v2, v10
-  fsub.2d v20, v22, v19
-  fmla.2d v20, v2, v10
+  fmla.2d v21, v2, v12
+  fsub.2d v22, v10, v21
+  fmla.2d v22, v2, v12
   mul x4, x3, x7
-  add.2d v1, v1, v19
-  add.2d v0, v0, v20
+  add.2d v1, v1, v21
+  add.2d v0, v0, v22
   umulh x3, x3, x7
-  mov.16b v19, v21
-  fmla.2d v19, v2, v7
-  fsub.2d v20, v22, v19
+  mov.16b v21, v9
+  fmla.2d v21, v2, v7
+  fsub.2d v22, v10, v21
   adds x2, x4, x2
   cinc x3, x3, hs
-  fmla.2d v20, v2, v7
-  add.2d v2, v16, v19
-  add.2d v1, v1, v20
+  fmla.2d v22, v2, v7
+  add.2d v2, v18, v21
+  add.2d v1, v1, v22
   adds x2, x2, x6
   cinc x3, x3, hs
-  mov.16b v16, v21
-  fmla.2d v16, v9, v4
+  mov.16b v18, v9
+  fmla.2d v18, v11, v4
   mov x4, #48718
-  fsub.2d v19, v22, v16
-  fmla.2d v19, v9, v4
-  add.2d v16, v18, v16
+  fsub.2d v21, v10, v18
+  fmla.2d v21, v11, v4
+  add.2d v18, v20, v18
   movk x4, #4732, lsl 16
-  add.2d v17, v17, v19
-  mov.16b v18, v21
-  fmla.2d v18, v9, v5
+  add.2d v19, v19, v21
+  mov.16b v20, v9
+  fmla.2d v20, v11, v5
   movk x4, #45078, lsl 32
-  fsub.2d v19, v22, v18
-  fmla.2d v19, v9, v5
-  add.2d v0, v0, v18
+  fsub.2d v21, v10, v20
+  fmla.2d v21, v11, v5
+  add.2d v0, v0, v20
   movk x4, #39852, lsl 48
-  add.2d v16, v16, v19
-  mov.16b v18, v21
+  add.2d v18, v18, v21
+  mov.16b v20, v9
   mov x5, #16676
-  fmla.2d v18, v9, v6
-  fsub.2d v19, v22, v18
-  fmla.2d v19, v9, v6
+  fmla.2d v20, v11, v6
+  fsub.2d v21, v10, v20
+  fmla.2d v21, v11, v6
   movk x5, #12692, lsl 16
-  add.2d v1, v1, v18
-  add.2d v0, v0, v19
-  mov.16b v18, v21
+  add.2d v1, v1, v20
+  add.2d v0, v0, v21
+  mov.16b v20, v9
   movk x5, #20986, lsl 32
-  fmla.2d v18, v9, v10
-  fsub.2d v19, v22, v18
+  fmla.2d v20, v11, v12
+  fsub.2d v21, v10, v20
   movk x5, #2848, lsl 48
-  fmla.2d v19, v9, v10
-  add.2d v2, v2, v18
-  add.2d v1, v1, v19
+  fmla.2d v21, v11, v12
+  add.2d v2, v2, v20
+  add.2d v1, v1, v21
   mov x6, #51052
-  mov.16b v18, v21
-  fmla.2d v18, v9, v7
-  fsub.2d v19, v22, v18
+  mov.16b v20, v9
+  fmla.2d v20, v11, v7
+  fsub.2d v21, v10, v20
   movk x6, #24721, lsl 16
-  fmla.2d v19, v9, v7
-  add.2d v9, v14, v18
+  fmla.2d v21, v11, v7
+  add.2d v11, v16, v20
   movk x6, #61092, lsl 32
-  add.2d v2, v2, v19
-  mov.16b v14, v21
-  fmla.2d v14, v3, v4
+  add.2d v2, v2, v21
+  mov.16b v16, v9
+  fmla.2d v16, v3, v4
   movk x6, #45156, lsl 48
-  fsub.2d v18, v22, v14
-  fmla.2d v18, v3, v4
-  add.2d v0, v0, v14
-  mov x7, #3197
-  add.2d v4, v16, v18
-  mov.16b v14, v21
-  fmla.2d v14, v3, v5
-  movk x7, #18936, lsl 16
-  fsub.2d v16, v22, v14
-  fmla.2d v16, v3, v5
-  movk x7, #10922, lsl 32
-  add.2d v1, v1, v14
+  fsub.2d v20, v10, v16
+  fmla.2d v20, v3, v4
   add.2d v0, v0, v16
-  mov.16b v5, v21
+  mov x7, #3197
+  add.2d v4, v18, v20
+  mov.16b v16, v9
+  fmla.2d v16, v3, v5
+  movk x7, #18936, lsl 16
+  fsub.2d v18, v10, v16
+  fmla.2d v18, v3, v5
+  movk x7, #10922, lsl 32
+  add.2d v1, v1, v16
+  add.2d v0, v0, v18
+  mov.16b v5, v9
   movk x7, #11014, lsl 48
   fmla.2d v5, v3, v6
-  fsub.2d v14, v22, v5
-  fmla.2d v14, v3, v6
+  fsub.2d v16, v10, v5
+  fmla.2d v16, v3, v6
   mul x13, x4, x9
   add.2d v2, v2, v5
-  add.2d v1, v1, v14
+  add.2d v1, v1, v16
   umulh x4, x4, x9
-  mov.16b v5, v21
-  fmla.2d v5, v3, v10
-  fsub.2d v6, v22, v5
+  mov.16b v5, v9
+  fmla.2d v5, v3, v12
+  fsub.2d v6, v10, v5
   adds x12, x13, x12
   cinc x4, x4, hs
-  fmla.2d v6, v3, v10
-  add.2d v5, v9, v5
+  fmla.2d v6, v3, v12
+  add.2d v5, v11, v5
   add.2d v2, v2, v6
   mul x13, x5, x9
-  mov.16b v6, v21
+  mov.16b v6, v9
   fmla.2d v6, v3, v7
   umulh x5, x5, x9
-  fsub.2d v9, v22, v6
-  fmla.2d v9, v3, v7
-  add.2d v3, v12, v6
+  fsub.2d v11, v10, v6
+  fmla.2d v11, v3, v7
+  add.2d v3, v14, v6
   adds x4, x13, x4
   cinc x5, x5, hs
-  add.2d v5, v5, v9
-  usra.2d v13, v11, #52
+  add.2d v5, v5, v11
   usra.2d v15, v13, #52
+  usra.2d v17, v15, #52
   adds x0, x4, x0
   cinc x4, x5, hs
-  usra.2d v17, v15, #52
-  usra.2d v4, v17, #52
-  and.16b v6, v11, v8
+  usra.2d v19, v17, #52
+  usra.2d v4, v19, #52
+  and.16b v6, v13, v8
   mul x5, x6, x9
-  and.16b v7, v13, v8
-  and.16b v9, v15, v8
+  and.16b v7, v15, v8
+  and.16b v11, v17, v8
   umulh x6, x6, x9
-  and.16b v8, v17, v8
+  and.16b v8, v19, v8
   ucvtf.2d v6, v6
   mov x13, #37864
   adds x4, x5, x4
@@ -343,15 +343,15 @@
   movk x13, #17153, lsl 48
   adds x1, x4, x1
   cinc x4, x5, hs
-  dup.2d v10, x13
-  mov.16b v11, v21
+  dup.2d v12, x13
+  mov.16b v13, v9
   mul x5, x7, x9
-  fmla.2d v11, v6, v10
-  fsub.2d v12, v22, v11
-  fmla.2d v12, v6, v10
+  fmla.2d v13, v6, v12
+  fsub.2d v14, v10, v13
+  fmla.2d v14, v6, v12
   umulh x6, x7, x9
-  add.2d v0, v0, v11
-  add.2d v4, v4, v12
+  add.2d v0, v0, v13
+  add.2d v4, v4, v14
   mov x7, #46128
   adds x4, x5, x4
   cinc x5, x6, hs
@@ -360,60 +360,60 @@
   adds x2, x4, x2
   cinc x4, x5, hs
   movk x7, #17161, lsl 48
-  dup.2d v10, x7
-  mov.16b v11, v21
+  dup.2d v12, x7
+  mov.16b v13, v9
   add x3, x3, x4
-  fmla.2d v11, v6, v10
-  fsub.2d v12, v22, v11
-  fmla.2d v12, v6, v10
+  fmla.2d v13, v6, v12
+  fsub.2d v14, v10, v13
+  fmla.2d v14, v6, v12
   mov x4, #56431
-  add.2d v1, v1, v11
-  add.2d v0, v0, v12
+  add.2d v1, v1, v13
+  add.2d v0, v0, v14
   mov x5, #52826
   movk x4, #30457, lsl 16
   movk x5, #57790, lsl 16
   movk x5, #55431, lsl 32
   movk x4, #30012, lsl 32
   movk x5, #17196, lsl 48
-  dup.2d v10, x5
-  mov.16b v11, v21
+  dup.2d v12, x5
+  mov.16b v13, v9
   movk x4, #6382, lsl 48
-  fmla.2d v11, v6, v10
-  fsub.2d v12, v22, v11
-  fmla.2d v12, v6, v10
+  fmla.2d v13, v6, v12
+  fsub.2d v14, v10, v13
+  fmla.2d v14, v6, v12
   mov x5, #59151
-  add.2d v2, v2, v11
-  add.2d v1, v1, v12
+  add.2d v2, v2, v13
+  add.2d v1, v1, v14
   movk x5, #41769, lsl 16
   mov x6, #31276
   movk x6, #21262, lsl 16
   movk x6, #2304, lsl 32
   movk x5, #32276, lsl 32
   movk x6, #17182, lsl 48
-  dup.2d v10, x6
-  mov.16b v11, v21
+  dup.2d v12, x6
+  mov.16b v13, v9
   movk x5, #21677, lsl 48
-  fmla.2d v11, v6, v10
-  fsub.2d v12, v22, v11
+  fmla.2d v13, v6, v12
+  fsub.2d v14, v10, v13
   mov x6, #34015
-  fmla.2d v12, v6, v10
-  add.2d v5, v5, v11
-  add.2d v2, v2, v12
+  fmla.2d v14, v6, v12
+  add.2d v5, v5, v13
+  add.2d v2, v2, v14
   movk x6, #20342, lsl 16
   mov x7, #28672
   movk x7, #24515, lsl 16
   movk x7, #54929, lsl 32
   movk x6, #13935, lsl 32
   movk x7, #17064, lsl 48
-  dup.2d v10, x7
-  mov.16b v11, v21
+  dup.2d v12, x7
+  mov.16b v13, v9
   movk x6, #11030, lsl 48
-  fmla.2d v11, v6, v10
-  fsub.2d v12, v22, v11
+  fmla.2d v13, v6, v12
+  fsub.2d v14, v10, v13
   mov x7, #13689
-  fmla.2d v12, v6, v10
-  add.2d v3, v3, v11
-  add.2d v5, v5, v12
+  fmla.2d v14, v6, v12
+  add.2d v3, v3, v13
+  add.2d v5, v5, v14
   movk x7, #8159, lsl 16
   ucvtf.2d v6, v7
   mov x9, #44768
@@ -423,14 +423,14 @@
   movk x9, #17133, lsl 48
   movk x7, #4913, lsl 48
   dup.2d v7, x9
-  mov.16b v10, v21
-  fmla.2d v10, v6, v7
+  mov.16b v12, v9
+  fmla.2d v12, v6, v7
   mul x9, x4, x10
-  fsub.2d v11, v22, v10
-  fmla.2d v11, v6, v7
-  add.2d v0, v0, v10
+  fsub.2d v13, v10, v12
+  fmla.2d v13, v6, v7
+  add.2d v0, v0, v12
   umulh x4, x4, x10
-  add.2d v4, v4, v11
+  add.2d v4, v4, v13
   mov x13, #47492
   adds x9, x9, x12
   cinc x4, x4, hs
@@ -439,15 +439,15 @@
   movk x13, #17168, lsl 48
   mul x12, x5, x10
   dup.2d v7, x13
-  mov.16b v10, v21
-  fmla.2d v10, v6, v7
+  mov.16b v12, v9
+  fmla.2d v12, v6, v7
   umulh x5, x5, x10
-  fsub.2d v11, v22, v10
-  fmla.2d v11, v6, v7
-  add.2d v1, v1, v10
+  fsub.2d v13, v10, v12
+  fmla.2d v13, v6, v7
+  add.2d v1, v1, v12
   adds x4, x12, x4
   cinc x5, x5, hs
-  add.2d v0, v0, v11
+  add.2d v0, v0, v13
   mov x12, #57936
   adds x0, x4, x0
   cinc x4, x5, hs
@@ -456,15 +456,15 @@
   movk x12, #17197, lsl 48
   mul x5, x6, x10
   dup.2d v7, x12
-  mov.16b v10, v21
-  fmla.2d v10, v6, v7
+  mov.16b v12, v9
+  fmla.2d v12, v6, v7
   umulh x6, x6, x10
-  fsub.2d v11, v22, v10
-  fmla.2d v11, v6, v7
+  fsub.2d v13, v10, v12
+  fmla.2d v13, v6, v7
   adds x4, x5, x4
   cinc x5, x6, hs
-  add.2d v2, v2, v10
-  add.2d v1, v1, v11
+  add.2d v2, v2, v12
+  add.2d v1, v1, v13
   mov x6, #17708
   adds x1, x4, x1
   cinc x4, x5, hs
@@ -473,15 +473,15 @@
   movk x6, #17188, lsl 48
   mul x5, x7, x10
   dup.2d v7, x6
-  mov.16b v10, v21
+  mov.16b v12, v9
   umulh x6, x7, x10
-  fmla.2d v10, v6, v7
-  fsub.2d v11, v22, v10
-  fmla.2d v11, v6, v7
+  fmla.2d v12, v6, v7
+  fsub.2d v13, v10, v12
+  fmla.2d v13, v6, v7
   adds x4, x5, x4
   cinc x5, x6, hs
-  add.2d v5, v5, v10
-  add.2d v2, v2, v11
+  add.2d v5, v5, v12
+  add.2d v2, v2, v13
   mov x6, #29184
   adds x2, x4, x2
   cinc x4, x5, hs
@@ -490,15 +490,15 @@
   movk x6, #17083, lsl 48
   add x3, x3, x4
   dup.2d v7, x6
-  mov.16b v10, v21
+  mov.16b v12, v9
   mov x4, #61005
-  fmla.2d v10, v6, v7
-  fsub.2d v11, v22, v10
-  fmla.2d v11, v6, v7
+  fmla.2d v12, v6, v7
+  fsub.2d v13, v10, v12
+  fmla.2d v13, v6, v7
   movk x4, #58262, lsl 16
-  add.2d v3, v3, v10
-  add.2d v5, v5, v11
-  ucvtf.2d v6, v9
+  add.2d v3, v3, v12
+  add.2d v5, v5, v13
+  ucvtf.2d v6, v11
   movk x4, #32851, lsl 32
   mov x5, #58856
   movk x5, #14953, lsl 16
@@ -507,14 +507,14 @@
   movk x5, #17181, lsl 48
   dup.2d v7, x5
   mov x5, #37581
-  mov.16b v9, v21
-  fmla.2d v9, v6, v7
-  fsub.2d v10, v22, v9
+  mov.16b v11, v9
+  fmla.2d v11, v6, v7
+  fsub.2d v12, v10, v11
   movk x5, #43836, lsl 16
-  fmla.2d v10, v6, v7
-  add.2d v0, v0, v9
+  fmla.2d v12, v6, v7
+  add.2d v0, v0, v11
   movk x5, #36286, lsl 32
-  add.2d v4, v4, v10
+  add.2d v4, v4, v12
   mov x6, #35392
   movk x6, #12477, lsl 16
   movk x5, #51783, lsl 48
@@ -522,14 +522,14 @@
   movk x6, #17142, lsl 48
   dup.2d v7, x6
   mov x6, #10899
-  mov.16b v9, v21
-  fmla.2d v9, v6, v7
-  fsub.2d v10, v22, v9
+  mov.16b v11, v9
+  fmla.2d v11, v6, v7
+  fsub.2d v12, v10, v11
   movk x6, #30709, lsl 16
-  fmla.2d v10, v6, v7
-  add.2d v1, v1, v9
+  fmla.2d v12, v6, v7
+  add.2d v1, v1, v11
   movk x6, #61551, lsl 32
-  add.2d v0, v0, v10
+  add.2d v0, v0, v12
   mov x7, #9848
   movk x7, #54501, lsl 16
   movk x6, #45784, lsl 48
@@ -537,14 +537,14 @@
   movk x7, #17170, lsl 48
   dup.2d v7, x7
   mov x7, #36612
-  mov.16b v9, v21
-  fmla.2d v9, v6, v7
+  mov.16b v11, v9
+  fmla.2d v11, v6, v7
   movk x7, #63402, lsl 16
-  fsub.2d v10, v22, v9
-  fmla.2d v10, v6, v7
-  add.2d v2, v2, v9
+  fsub.2d v12, v10, v11
+  fmla.2d v12, v6, v7
+  add.2d v2, v2, v11
   movk x7, #47623, lsl 32
-  add.2d v1, v1, v10
+  add.2d v1, v1, v12
   mov x10, #9584
   movk x10, #63883, lsl 16
   movk x7, #9430, lsl 48
@@ -552,15 +552,15 @@
   movk x10, #17190, lsl 48
   mul x12, x4, x11
   dup.2d v7, x10
-  mov.16b v9, v21
-  fmla.2d v9, v6, v7
+  mov.16b v11, v9
+  fmla.2d v11, v6, v7
   umulh x4, x4, x11
-  fsub.2d v10, v22, v9
-  fmla.2d v10, v6, v7
-  add.2d v5, v5, v9
+  fsub.2d v12, v10, v11
+  fmla.2d v12, v6, v7
+  add.2d v5, v5, v11
   adds x9, x12, x9
   cinc x4, x4, hs
-  add.2d v2, v2, v10
+  add.2d v2, v2, v12
   mov x10, #51712
   movk x10, #16093, lsl 16
   mul x12, x5, x11
@@ -568,16 +568,16 @@
   movk x10, #17068, lsl 48
   umulh x5, x5, x11
   dup.2d v7, x10
-  mov.16b v9, v21
-  fmla.2d v9, v6, v7
+  mov.16b v11, v9
+  fmla.2d v11, v6, v7
   adds x4, x12, x4
   cinc x5, x5, hs
-  fsub.2d v10, v22, v9
-  fmla.2d v10, v6, v7
-  add.2d v3, v3, v9
+  fsub.2d v12, v10, v11
+  fmla.2d v12, v6, v7
+  add.2d v3, v3, v11
   adds x0, x4, x0
   cinc x4, x5, hs
-  add.2d v5, v5, v10
+  add.2d v5, v5, v12
   ucvtf.2d v6, v8
   mul x5, x6, x11
   mov x10, #34724
@@ -586,16 +586,16 @@
   umulh x6, x6, x11
   movk x10, #17184, lsl 48
   dup.2d v7, x10
-  mov.16b v8, v21
+  mov.16b v8, v9
   adds x4, x5, x4
   cinc x5, x6, hs
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v11, v10, v8
   adds x1, x4, x1
   cinc x4, x5, hs
-  fmla.2d v9, v6, v7
+  fmla.2d v11, v6, v7
   add.2d v0, v0, v8
-  add.2d v4, v4, v9
+  add.2d v4, v4, v11
   mul x5, x7, x11
   mov x6, #25532
   movk x6, #31025, lsl 16
@@ -603,16 +603,16 @@
   umulh x7, x7, x11
   movk x6, #17199, lsl 48
   dup.2d v7, x6
-  mov.16b v8, v21
+  mov.16b v8, v9
   adds x4, x5, x4
   cinc x5, x7, hs
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v11, v10, v8
   adds x2, x4, x2
   cinc x4, x5, hs
-  fmla.2d v9, v6, v7
+  fmla.2d v11, v6, v7
   add.2d v1, v1, v8
-  add.2d v0, v0, v9
+  add.2d v0, v0, v11
   add x3, x3, x4
   mov x4, #18830
   movk x4, #2465, lsl 16
@@ -621,13 +621,13 @@
   movk x4, #17194, lsl 48
   dup.2d v7, x4
   movk x5, #61439, lsl 16
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v11, v10, v8
   movk x5, #62867, lsl 32
-  fmla.2d v9, v6, v7
+  fmla.2d v11, v6, v7
   add.2d v2, v2, v8
-  add.2d v1, v1, v9
+  add.2d v1, v1, v11
   movk x5, #49889, lsl 48
   mov x4, #21566
   movk x4, #43708, lsl 16
@@ -636,13 +636,13 @@
   movk x4, #17185, lsl 48
   dup.2d v7, x4
   mov x4, #1
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v11, v10, v8
   movk x4, #61440, lsl 16
-  fmla.2d v9, v6, v7
+  fmla.2d v11, v6, v7
   add.2d v5, v5, v8
-  add.2d v2, v2, v9
+  add.2d v2, v2, v11
   movk x4, #62867, lsl 32
   mov x6, #3072
   movk x6, #8058, lsl 16
@@ -651,14 +651,14 @@
   movk x6, #17047, lsl 48
   dup.2d v7, x6
   mov x6, #28817
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v11, v10, v8
   movk x6, #31161, lsl 16
-  fmla.2d v9, v6, v7
+  fmla.2d v11, v6, v7
   add.2d v3, v3, v8
   movk x6, #59464, lsl 32
-  add.2d v5, v5, v9
+  add.2d v5, v5, v11
   mov x7, #65535
   movk x7, #61439, lsl 16
   movk x6, #10291, lsl 48
@@ -682,14 +682,14 @@
   movk x7, #17151, lsl 48
   dup.2d v7, x7
   mov x7, #41001
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
   movk x7, #57649, lsl 16
-  fsub.2d v9, v22, v8
-  fmla.2d v9, v6, v7
+  fsub.2d v11, v10, v8
+  fmla.2d v11, v6, v7
   add.2d v0, v0, v8
   movk x7, #20082, lsl 32
-  add.2d v4, v4, v9
+  add.2d v4, v4, v11
   mov x8, #20728
   movk x8, #23588, lsl 16
   movk x7, #12388, lsl 48
@@ -697,15 +697,15 @@
   movk x8, #17170, lsl 48
   mul x10, x4, x5
   dup.2d v7, x8
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
   umulh x4, x4, x5
-  fsub.2d v9, v22, v8
-  fmla.2d v9, v6, v7
+  fsub.2d v11, v10, v8
+  fmla.2d v11, v6, v7
   add.2d v1, v1, v8
   cmn x10, x9
   cinc x4, x4, hs
-  add.2d v0, v0, v9
+  add.2d v0, v0, v11
   mov x8, #16000
   mul x9, x6, x5
   movk x8, #53891, lsl 16
@@ -713,16 +713,16 @@
   movk x8, #17144, lsl 48
   umulh x6, x6, x5
   dup.2d v7, x8
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
   adds x4, x9, x4
   cinc x6, x6, hs
-  fsub.2d v9, v22, v8
-  fmla.2d v9, v6, v7
+  fsub.2d v11, v10, v8
+  fmla.2d v11, v6, v7
   add.2d v2, v2, v8
   adds x0, x4, x0
   cinc x4, x6, hs
-  add.2d v1, v1, v9
+  add.2d v1, v1, v11
   mov x6, #46800
   mul x8, x11, x5
   movk x6, #2568, lsl 16
@@ -730,16 +730,16 @@
   movk x6, #17188, lsl 48
   umulh x9, x11, x5
   dup.2d v7, x6
-  mov.16b v8, v21
+  mov.16b v8, v9
   fmla.2d v8, v6, v7
   adds x4, x8, x4
   cinc x6, x9, hs
-  fsub.2d v9, v22, v8
-  fmla.2d v9, v6, v7
+  fsub.2d v11, v10, v8
+  fmla.2d v11, v6, v7
   adds x1, x4, x1
   cinc x4, x6, hs
   add.2d v5, v5, v8
-  add.2d v2, v2, v9
+  add.2d v2, v2, v11
   mov x6, #39040
   mul x8, x7, x5
   movk x6, #14704, lsl 16
@@ -747,11 +747,11 @@
   movk x6, #17096, lsl 48
   umulh x5, x7, x5
   dup.2d v7, x6
-  mov.16b v8, v21
+  mov.16b v8, v9
   adds x4, x8, x4
   cinc x5, x5, hs
   fmla.2d v8, v6, v7
-  fsub.2d v9, v22, v8
+  fsub.2d v9, v10, v8
   fmla.2d v9, v6, v7
   adds x2, x4, x2
   cinc x4, x5, hs
