@@ -20,16 +20,12 @@ jobs:
   build_and_test:
     name: Build and test
     runs-on: ubuntu-24.04-arm
-    strategy:
-      matrix:
-        toolchain:
-          - nightly-2025-04-05
     steps:
       - uses: actions/checkout@v4
       - name: Setup rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly
+          channel: nightly-2025-04-05
           cache-base: main
           components: rustfmt, clippy
       - run: cargo fmt --all --check
@@ -55,7 +51,7 @@ jobs:
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly
+          channel: nightly-2025-04-05
           cache-base: main
           cache-target: release
           bins: cargo-codspeed

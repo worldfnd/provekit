@@ -1,2 +1,3 @@
 [toolchain]
 channel = "nightly-2025-04-05"
+components = ["rustfmt", "rust-analyzer", "clippy"]
