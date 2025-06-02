@@ -123,13 +123,12 @@ mod sqr {
 
     #[divan::bench]
     fn montgomery_square_log_interleaved_3(bencher: Bencher) {
-        let bencher = bencher
-            .with_inputs(|| {
-                (
-                    rng().random(),
-                    array::from_fn(|_| u64x2::from_array(rng().random())),
-                )
-            });
+        let bencher = bencher.with_inputs(|| {
+            (
+                rng().random(),
+                array::from_fn(|_| u64x2::from_array(rng().random())),
+            )
+        });
         unsafe {
             with_rounding_mode((), |mode_guard, _| {
                 bencher.bench_local_values(|(a, b)| {
@@ -141,14 +140,13 @@ mod sqr {
 
     #[divan::bench]
     fn montgomery_square_log_interleaved_4(bencher: Bencher) {
-        let bencher = bencher
-            .with_inputs(|| {
-                (
-                    rng().random(),
-                    rng().random(),
-                    array::from_fn(|_| u64x2::from_array(rng().random())),
-                )
-            });
+        let bencher = bencher.with_inputs(|| {
+            (
+                rng().random(),
+                rng().random(),
+                array::from_fn(|_| u64x2::from_array(rng().random())),
+            )
+        });
         unsafe {
             with_rounding_mode((), |mode_guard, _| {
                 bencher.bench_local_values(|(a, b, c)| {
@@ -159,13 +157,12 @@ mod sqr {
 
         #[divan::bench]
         fn montgomery_square_interleaved_3(bencher: Bencher) {
-            let bencher = bencher
-                .with_inputs(|| {
-                    (
-                        rng().random(),
-                        array::from_fn(|_| u64x2::from_array(rng().random())),
-                    )
-                });
+            let bencher = bencher.with_inputs(|| {
+                (
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b)| {
@@ -177,14 +174,13 @@ mod sqr {
 
         #[divan::bench]
         fn montgomery_square_interleaved_4(bencher: Bencher) {
-            let bencher = bencher
-                .with_inputs(|| {
-                    (
-                        rng().random(),
-                        rng().random(),
-                        array::from_fn(|_| u64x2::from_array(rng().random())),
-                    )
-                });
+            let bencher = bencher.with_inputs(|| {
+                (
+                    rng().random(),
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c)| {
