@@ -122,6 +122,76 @@ mod sqr {
     }
 
     #[divan::bench]
+    fn montgomery_square_log_interleaved_3(bencher: Bencher) {
+        let bencher = bencher.with_inputs(|| {
+            (
+                rng().random(),
+                array::from_fn(|_| u64x2::from_array(rng().random())),
+            )
+        });
+        unsafe {
+            with_rounding_mode((), |mode_guard, _| {
+                bencher.bench_local_values(|(a, b)| {
+                    block_multiplier::montgomery_square_log_interleaved_3(mode_guard, a, b)
+                });
+            });
+        }
+    }
+
+    #[divan::bench]
+    fn montgomery_square_log_interleaved_4(bencher: Bencher) {
+        let bencher = bencher.with_inputs(|| {
+            (
+                rng().random(),
+                rng().random(),
+                array::from_fn(|_| u64x2::from_array(rng().random())),
+            )
+        });
+        unsafe {
+            with_rounding_mode((), |mode_guard, _| {
+                bencher.bench_local_values(|(a, b, c)| {
+                    block_multiplier::montgomery_square_log_interleaved_4(mode_guard, a, b, c)
+                });
+            });
+        }
+
+        #[divan::bench]
+        fn montgomery_square_interleaved_3(bencher: Bencher) {
+            let bencher = bencher.with_inputs(|| {
+                (
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
+            unsafe {
+                with_rounding_mode((), |mode_guard, _| {
+                    bencher.bench_local_values(|(a, b)| {
+                        block_multiplier::montgomery_square_interleaved_3(mode_guard, a, b)
+                    });
+                });
+            }
+        }
+
+        #[divan::bench]
+        fn montgomery_square_interleaved_4(bencher: Bencher) {
+            let bencher = bencher.with_inputs(|| {
+                (
+                    rng().random(),
+                    rng().random(),
+                    array::from_fn(|_| u64x2::from_array(rng().random())),
+                )
+            });
+            unsafe {
+                with_rounding_mode((), |mode_guard, _| {
+                    bencher.bench_local_values(|(a, b, c)| {
+                        block_multiplier::montgomery_square_interleaved_4(mode_guard, a, b, c)
+                    });
+                });
+            }
+        }
+    }
+
+    #[divan::bench]
     fn simd_sqr(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(2usize))

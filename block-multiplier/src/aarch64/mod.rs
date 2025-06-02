@@ -1,30 +1,20 @@
+//! The domain and range of Montgomery multiplication vary based on the
+//! algorithm used. This table shows the output range (in multiples of bn254
+//! prime) for different input sizes. The bracketed numbers indicate the maximum
+//! number of prime multiples that can be added before a U256 overflow occurs.
+//!
+//! Input Size | single_step | single_step_simd | log_jump
+//! -----------|-------------|------------------|---------
+//! p          | 3.24 [2.05] |    2.43 [2.8639] | 2.35 [2.94]
+//! 2p         | 3.80 [1.49] |    2.99 [2.2968] | 2.91 [2.38]
+//! 3p         | 4.75 [0.54] |    3.94 [1.3517] | 3.86 [1.43]
+//! 2ˆ256-2p   | 5.09 [0.20] |    4.28 [1.0067] | 4.20 [1.09]
 use {
     core::{arch::asm, simd::Simd},
     fp_rounding::{RoundingGuard, Zero},
 };
 
-#[inline]
-pub fn montgomery_log_jump(_rtz: &RoundingGuard<Zero>, a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-    let mut out = [0; 4];
-    unsafe {
-        asm!(
-            include_str!("montgomery_log_jump.s"),
-            in("x0") a[0], in("x1") a[1], in("x2") a[2], in("x3") a[3],
-            in("x4") b[0], in("x5") b[1], in("x6") b[2], in("x7") b[3],
-            lateout("x0") out[0], lateout("x1") out[1], lateout("x2") out[2], lateout("x3") out[3],
-            lateout("x4") _, lateout("x5") _, lateout("x6") _, lateout("x7") _,
-            lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _,
-            lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("lr") _,
-            options(nomem, nostack)
-        )
-    };
-    out
-}
-
 /// A block multiplier with 3 concurrent multiplications.
-///
-/// Raspberry Pi 5:  2.2 times the throughput compared to a single multiplier.
-/// Apple Silicon (M3): same throughput as a single multiplier
 #[inline]
 pub fn montgomery_interleaved_3(
     _rtz: &RoundingGuard<Zero>,
@@ -52,6 +42,11 @@ pub fn montgomery_interleaved_3(
 }
 
 #[inline]
+/// A block squarer with 3 concurrent multiplications
+///
+/// The scalar input uses `single_step` and the SIMD input uses
+/// `single_step_simd`. See the module documentation for the implications of
+/// this.
 pub fn montgomery_square_interleaved_3(
     _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
@@ -74,6 +69,11 @@ pub fn montgomery_square_interleaved_3(
 }
 
 #[inline]
+/// A block squarer with 3 concurrent multiplications
+///
+/// The scalar input uses `log_jump` and the SIMD input uses
+/// `single_step_simd`. See the module documentation for the implications of
+/// this.
 pub fn montgomery_square_log_interleaved_3(
     _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
@@ -104,8 +104,9 @@ pub fn montgomery_square_log_interleaved_3(
 
 /// A block multiplier with 4 concurrent multiplications.
 ///
-/// Raspberry Pi 5:  1.8 times the throughput compared to a single multiplier.
-/// Apple Silicon (M3): ~1.06 times the throughput of a single multiplier
+/// The scalar inputs uses `single_step` and the SIMD input uses
+/// `single_step_simd`. See the module documentation for the implications of
+/// this.
 #[inline]
 pub fn montgomery_interleaved_4(
     _rtz: &RoundingGuard<Zero>,
@@ -139,6 +140,11 @@ pub fn montgomery_interleaved_4(
 }
 
 #[inline]
+/// A block multiplier with 4 concurrent multiplications.
+///
+/// The scalar inputs use `single_step` and the SIMD input uses
+/// `single_step_simd`. See the module documentation for the implications of
+/// this.
 pub fn montgomery_square_interleaved_4(
     _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
@@ -173,6 +179,11 @@ pub fn montgomery_square_interleaved_4(
 }
 
 #[inline]
+/// A block multiplier with 4 concurrent multiplications.
+///
+/// The scalar inputs use `log_jump` and the SIMD input uses
+/// `single_step_simd`. See the module documentation for the implications of
+/// this.
 pub fn montgomery_square_log_interleaved_4(
     _rtz: &RoundingGuard<Zero>,
     a: [u64; 4],
@@ -265,23 +276,6 @@ mod tests {
                     assert_eq!(a_squared, a_squared_interleaved);
                     assert_eq!(b_squared, b_squared_interleaved);
                     assert_eq!(c_squared, c_squared_interleaved);
-                });
-            }
-        });
-    }
-
-    #[test]
-    fn test_montgomery_log_jump() {
-        proptest!(|(
-            a in safe_bn254_montgomery_input(),
-            b in safe_bn254_montgomery_input(),
-        )| {
-            unsafe {
-                with_rounding_mode((), |rtz, _| {
-                    let ab_log = montgomery_log_jump(rtz, a, b);
-                    let ab_ff = ark_ff_reference(a, b);
-                    let ab_log = Fr::new(BigInt(ab_log));
-                    assert_eq!(ab_ff, ab_log);
                 });
             }
         });
