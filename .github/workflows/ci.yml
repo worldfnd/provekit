@@ -64,9 +64,8 @@ jobs:
           token: ${{ secrets.CODSPEED_TOKEN }}
 
   end-to-end:
-    name: End-to-end test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    name: End-to-end tests
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -95,7 +94,6 @@ jobs:
         run: |
           nargo compile
           nargo execute
-
       # basic.gz should be changed to .toml file in the future when faulty command is removed
       - name: Generate Gnark inputs
         working-directory: noir-examples/poseidon-rounds
@@ -103,7 +101,6 @@ jobs:
           cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
           cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./target/basic.gz -o ./noir-proof.np
           cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
-
       - name: Upload proof artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -111,8 +108,6 @@ jobs:
           path: |
             noir-examples/poseidon-rounds/noir-proof-scheme.nps
             noir-examples/poseidon-rounds/noir-proof.np
-
       - name: Run Gnark verifier
         working-directory: gnark-whir
         run: go run .
-
