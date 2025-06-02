@@ -115,7 +115,7 @@ pub fn setup_reduce_ct_simd(
 
     let var_red = FreshVariable::new("red", &red);
 
-    let res = reduce(alloc, asm, red).map(|reg| and16(alloc, asm, &reg, &mask52));
+    let res = distribute_carries(alloc, asm, red).map(|reg| and16(alloc, asm, &reg, &mask52));
 
     (vec![var_red], FreshVariable::new("out", &res))
 }
@@ -393,7 +393,7 @@ fn single_step_base(
 
     let s = madd_u256_limb(alloc, asm, s, &constants, m, U52_P);
 
-    let rs = reduce(alloc, asm, s);
+    let rs = distribute_carries(alloc, asm, s);
 
     u260_to_u256(alloc, asm, rs)
 }
@@ -419,37 +419,22 @@ fn u260_to_u256(
     ]
 }
 
-/// Performs a reduction step using subtraction of 2*P (U52_2P) conditionally
-/// based on the most significant bit. NOTE: This DOESN'T return clean 52 bit
-/// limbs as there is still junk in the upper 12 bits. u260-to-u256 will take
-/// care of the junk and this allows for saving 5 vector instructions.
-fn reduce(
+/// Processes the carries in the upper 52 bits to the next limb.
+/// NOTE: This DOESN'T return clean 52 bit limbs as there is still junk in the
+/// upper 12 bits. u260-to-u256 will take care of the junk and this allows for
+/// saving 5 vector instructions.
+fn distribute_carries(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     red: [Reg<Simd<u64, 2>>; 6],
 ) -> [Reg<Simd<u64, 2>>; 5] {
-    // Set cmp to zero if the msb (4x52 + 47) is set.
-    let msb_mask = mov(alloc, asm, 1 << 47);
-    let msb_mask = dup2d(alloc, asm, &msb_mask);
-    let msb = and16(alloc, asm, &red[5], &msb_mask);
-    // The comparison state is stored in a vector register instead of NCVF
-    // Therefore these operations can be interleaved without making it atomic
-    let cmp = cmeq2d(alloc, asm, &msb, 0);
-
-    let subtrahend: [Reg<Simd<_, 2>>; 5] = U52_2P.map(|i| {
-        let p = load_const_simd(alloc, asm, i);
-        // p & (~cmp) -> if msb is set return p else return 0
-        bic16(alloc, asm, &p, &cmp)
-    });
-
     let mut c = array::from_fn(|_| alloc.fresh());
     let [prev, minuend @ ..] = red;
     let mut prev = prev.as_();
 
-    for i in 0..c.len() {
-        let tmp = sub2d(alloc, asm, minuend[i].as_(), subtrahend[i].as_());
+    for (i, tmp) in minuend.into_iter().enumerate() {
         // tmp + (prev >> 52)
-        let tmp_plus_borrow = ssra2d(alloc, asm, tmp, prev, 52);
+        let tmp_plus_borrow = ssra2d(alloc, asm, tmp.into_(), prev, 52);
         c[i] = tmp_plus_borrow;
         prev = &c[i];
     }
