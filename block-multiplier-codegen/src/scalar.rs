@@ -267,26 +267,6 @@ pub fn sub_u256(
     out
 }
 
-/// Reduces a 4-limb number `a` conditionally modulo `2*P`.
-///
-/// If the most significant bit of `a` is set (i.e., `a >= 2*P`), it subtracts
-/// `2*P`. Otherwise, it returns `a`.
-///
-/// Reduce within 2**256-2p
-pub fn reduce(alloc: &mut FreshAllocator, asm: &mut Assembler, a: [Reg<u64>; 4]) -> [Reg<u64>; 4] {
-    let p2 = U64_2P.map(|val| load_const(alloc, asm, val));
-    let red = sub_u256(alloc, asm, &a, &p2);
-    let out = array::from_fn(|_| alloc.fresh());
-    asm.append_instruction(vec![
-        tst_inst(&a[3], 1 << 63),
-        csel_inst(&out[0], &red[0], &a[0], "mi"),
-        csel_inst(&out[1], &red[1], &a[1], "mi"),
-        csel_inst(&out[2], &red[2], &a[2], "mi"),
-        csel_inst(&out[3], &red[3], &a[3], "mi"),
-    ]);
-    out
-}
-
 /// Computes the Montgomery multiplication of two 4-limb (256-bit) numbers `a`
 /// and `b`.
 ///
