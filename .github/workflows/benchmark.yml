@@ -28,7 +28,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-binaries
-          path: target/release
+          path: target/codspeed
 
   benchmark:
     name: Run benchmarks on Raspberry Pi 5
@@ -50,7 +50,7 @@ jobs:
       - name: Copy binaries to target directory
         run: |
           mkdir -p target/release
-          cp -r bench_bin/* target/release/
+          cp -r bench_bin/* target/codspeed/
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
