@@ -184,7 +184,6 @@ mod tests {
 
     #[test]
     fn test_noir_proof_scheme_serde() {
-        println!("working directory: {:?}", std::env::current_dir().unwrap());
         let directory = "../noir-examples/poseidon-rounds";
 
         compile_workspace(directory).expect("Compiling workspace");

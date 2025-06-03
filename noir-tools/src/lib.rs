@@ -23,9 +23,6 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     // up path resolution
     let workspace_path = workspace_path.canonicalize()?;
 
-    println!("working directory: {:?}", std::env::current_dir().unwrap());
-    println!("Resolving workspace from {}", workspace_path.display());
-
     let workspace =
         resolve_workspace_from_toml(&workspace_path, PackageSelection::DefaultOrAll, None)?;
     let compile_options = CompileOptions::default();
