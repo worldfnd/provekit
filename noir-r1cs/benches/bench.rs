@@ -4,6 +4,7 @@ use {
     core::hint::black_box,
     divan::Bencher,
     noir_r1cs::{read, utils::file_io::deserialize_witness_stack, NoirProof, NoirProofScheme},
+    noir_tools::execute_program_witness,
     std::path::{Path, PathBuf},
 };
 
@@ -22,29 +23,23 @@ fn prove_poseidon_1000(bencher: Bencher) {
         .join("poseidon-1000.nps");
     let scheme: NoirProofScheme = read(&path).unwrap();
 
+    let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
+
     // Run nargo compile
     let status = std::process::Command::new("nargo")
         .arg("compile")
-        .current_dir("../noir-examples/poseidon-rounds")
+        .current_dir(crate_dir)
         .status()
         .expect("Running nargo compile");
     if !status.success() {
         panic!("Failed to run nargo compile");
     }
 
-    // Run nargo execute
-    let status = std::process::Command::new("nargo")
-        .arg("execute")
-        .current_dir("../noir-examples/poseidon-rounds")
-        .status()
-        .expect("Running nargo execute");
-    if !status.success() {
-        panic!("Failed to run nargo execute");
-    }
+    let program_path = crate_dir.join("target/basic.json");
+    let witness_path = crate_dir.join("Prover.toml");
 
-    let witness_file_path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.gz");
-    let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
-    let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
+    let witness_map = execute_program_witness(program_path, witness_path).unwrap();
+
     bencher.bench(|| black_box(&scheme).prove(black_box(&witness_map)));
 }
 
