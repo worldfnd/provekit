@@ -50,10 +50,9 @@ jobs:
       - name: Copy binaries to target directory
         run: |
           mkdir -p target/release
-          cp bench_bin/* target/release/
+          cp -r bench_bin/* target/release/
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
           run: cargo codspeed run
           token: ${{ secrets.CODSPEED_TOKEN }}
-
