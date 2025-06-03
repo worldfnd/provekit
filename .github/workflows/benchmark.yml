@@ -1,0 +1,64 @@
+name: Benchmark on Raspberry Pi 5
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DIVAN_MAX_TIME: 30
+  CODSPEED_RUNNER_MODE: walltime
+
+jobs:
+  build:
+    name: Build benchmark binaries (cross-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross-compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Setup Rust toolchain, cache and cargo-codspeed binary
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2025-04-05
+          cache-base: main
+          cache-target: release
+          bins: cargo-codspeed
+      - name: Add aarch64 target
+        run: rustup target add aarch64-unknown-linux-gnu
+      - name: Build the benchmark target(s)
+        run: cargo codspeed build --release --target aarch64-unknown-linux-gnu
+      - name: Upload benchmark binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-binaries
+          path: target/aarch64-unknown-linux-gnu/release
+
+  benchmark:
+    name: Run benchmarks on Raspberry Pi 5
+    runs-on: [self-hosted, rpi5]
+    needs: build
+    steps:
+      - name: Download benchmark binaries
+        uses: actions/download-artifact@v3
+        with:
+          name: benchmark-binaries
+          path: ./bench_bin
+      - name: Setup Rust toolchain, cache and cargo-codspeed binary
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2025-04-05
+          cache-base: main
+          cache-target: release
+          bins: cargo-codspeed
+      - name: Copy binaries to target directory
+        run: |
+          mkdir -p target/aarch64-unknown-linux-gnu/release
+          cp bench_bin/* target/aarch64-unknown-linux-gnu/release/
+      - name: Run the benchmarks
+        uses: CodSpeedHQ/action@v3
+        with:
+          run: cargo codspeed run
+          token: ${{ secrets.CODSPEED_TOKEN }}
