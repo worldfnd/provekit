@@ -1,11 +1,10 @@
 //! Divan benchmarks for noir-r1cs
 use {
-    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     core::hint::black_box,
     divan::Bencher,
-    noir_r1cs::{read, utils::file_io::deserialize_witness_stack, NoirProof, NoirProofScheme},
-    noir_tools::execute_program_witness,
-    std::path::{Path, PathBuf},
+    noir_r1cs::{read, NoirProof, NoirProofScheme},
+    noir_tools::{compile_workspace, execute_program_witness},
+    std::path::Path,
 };
 
 #[divan::bench]
@@ -25,15 +24,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
 
     let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
 
-    // Run nargo compile
-    let status = std::process::Command::new("nargo")
-        .arg("compile")
-        .current_dir(crate_dir)
-        .status()
-        .expect("Running nargo compile");
-    if !status.success() {
-        panic!("Failed to run nargo compile");
-    }
+    compile_workspace(crate_dir).expect("Compiling workspace");
 
     let program_path = crate_dir.join("target/basic.json");
     let witness_path = crate_dir.join("Prover.toml");

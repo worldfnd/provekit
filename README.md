@@ -28,7 +28,7 @@ cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin noir-r1cs prove ./target/basic.json ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 
 Verify the Noir Proof:

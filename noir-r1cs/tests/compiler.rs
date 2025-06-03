@@ -1,8 +1,6 @@
 use {
-    acir::{circuit, native_types::WitnessMap},
-    acir_field::FieldElement as AcirFieldElement,
-    noir_r1cs::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
-    noir_tools::execute_program_witness,
+    noir_r1cs::NoirProofScheme,
+    noir_tools::{compile_workspace, execute_program_witness},
     serde::Deserialize,
     std::path::Path,
     test_case::test_case,
@@ -18,22 +16,10 @@ struct NargoTomlPackage {
     name: String,
 }
 
-fn run_nargo(path: impl AsRef<Path>) {
-    let status = std::process::Command::new("nargo")
-        .arg("compile")
-        .current_dir(path.as_ref())
-        .status()
-        .expect("Running nargo compile");
-
-    if !status.success() {
-        panic!("Failed to compile the test case");
-    }
-}
-
 fn test_compiler(test_case_path: impl AsRef<Path>) {
     let test_case_path = test_case_path.as_ref();
 
-    run_nargo(test_case_path);
+    compile_workspace(test_case_path).expect("Compiling workspace");
 
     let nargo_toml_path = test_case_path.join("Nargo.toml");
 

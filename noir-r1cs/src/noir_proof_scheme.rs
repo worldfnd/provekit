@@ -161,6 +161,7 @@ mod tests {
             FieldElement,
         },
         ark_std::One,
+        noir_tools::compile_workspace,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
@@ -183,16 +184,10 @@ mod tests {
 
     #[test]
     fn test_noir_proof_scheme_serde() {
+        println!("working directory: {:?}", std::env::current_dir().unwrap());
         let directory = "../noir-examples/poseidon-rounds";
 
-        let status = std::process::Command::new("nargo")
-            .arg("compile")
-            .current_dir(directory)
-            .status()
-            .expect("Running nargo compile");
-        if !status.success() {
-            panic!("Failed to run nargo compile");
-        }
+        compile_workspace(directory).expect("Compiling workspace");
 
         let path = PathBuf::from(directory).join("target/basic.json");
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
