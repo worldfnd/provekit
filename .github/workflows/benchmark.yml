@@ -11,14 +11,10 @@ env:
 
 jobs:
   build:
-    name: Build benchmark binaries (cross-compile)
-    runs-on: ubuntu-latest
+    name: Build benchmark binaries
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross-compiler dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
@@ -26,15 +22,13 @@ jobs:
           cache-base: main
           cache-target: release
           bins: cargo-codspeed
-      - name: Add aarch64 target
-        run: rustup target add aarch64-unknown-linux-gnu
       - name: Build the benchmark target(s)
-        run: cargo codspeed build --release --target aarch64-unknown-linux-gnu
+        run: cargo codspeed build
       - name: Upload benchmark binaries
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-binaries
-          path: target/aarch64-unknown-linux-gnu/release
+          path: target/release
 
   benchmark:
     name: Run benchmarks on Raspberry Pi 5
@@ -55,8 +49,8 @@ jobs:
           bins: cargo-codspeed
       - name: Copy binaries to target directory
         run: |
-          mkdir -p target/aarch64-unknown-linux-gnu/release
-          cp bench_bin/* target/aarch64-unknown-linux-gnu/release/
+          mkdir -p target/release
+          cp bench_bin/* target/release/
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
