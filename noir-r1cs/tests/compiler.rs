@@ -1,7 +1,8 @@
 use {
-    acir::native_types::WitnessMap,
+    acir::{circuit, native_types::WitnessMap},
     acir_field::FieldElement as AcirFieldElement,
     noir_r1cs::{utils::file_io::deserialize_witness_stack, NoirProofScheme},
+    noir_tools::execute_program_witness,
     serde::Deserialize,
     std::path::Path,
     test_case::test_case,
@@ -27,16 +28,6 @@ fn run_nargo(path: impl AsRef<Path>) {
     if !status.success() {
         panic!("Failed to compile the test case");
     }
-
-    let status = std::process::Command::new("nargo")
-        .arg("execute")
-        .current_dir(path.as_ref())
-        .status()
-        .expect("Running nargo execute");
-
-    if !status.success() {
-        panic!("Failed to execute the test case");
-    }
 }
 
 fn test_compiler(test_case_path: impl AsRef<Path>) {
@@ -52,16 +43,12 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let package_name = nargo_toml.package.name;
 
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
-    let witness_file_path = test_case_path.join(format!("target/{package_name}.gz"));
+    let witness_file_path = test_case_path.join("Prover.toml");
 
     let proof_schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
 
-    let mut witness_stack =
-        deserialize_witness_stack(&witness_file_path).expect("Deserializing witness stack");
-    let witness_map: WitnessMap<AcirFieldElement> = witness_stack
-        .pop()
-        .expect("Popping witness from stack")
-        .witness;
+    let witness_map =
+        execute_program_witness(circuit_path, &witness_file_path).expect("Executing program");
 
     let _proof = proof_schema
         .prove(&witness_map)
