@@ -56,6 +56,9 @@ jobs:
       - name: Make benchmark binaries executable
         run: chmod +x target/codspeed/*
 
+      - name: DEBUGL List files
+        run: ls -alh target/codspeed
+
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
