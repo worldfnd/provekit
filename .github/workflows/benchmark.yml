@@ -47,9 +47,10 @@ jobs:
           cache-base: main
           cache-target: release
           bins: cargo-codspeed
+
       - name: Copy binaries to target directory
         run: |
-          mkdir -p target/release
+          mkdir -p target/codspeed
           cp -r bench_bin/* target/codspeed/
 
       - name: Make benchmark binaries executable
