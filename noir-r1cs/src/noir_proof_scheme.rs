@@ -16,8 +16,9 @@ use {
 };
 
 /// A scheme for proving a Noir program.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
+    pub program:           ProgramArtifact,
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
@@ -43,11 +44,11 @@ impl NoirProofScheme {
 
             serde_json::from_reader(file).context("while reading Noir program")?
         };
-        Self::from_program(&program)
+        Self::from_program(program)
     }
 
     #[instrument(skip_all)]
-    pub fn from_program(program: &ProgramArtifact) -> Result<Self> {
+    pub fn from_program(program: ProgramArtifact) -> Result<Self> {
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(
@@ -76,12 +77,13 @@ impl NoirProofScheme {
 
         // Configure witness generator
         let witness_generator =
-            NoirWitnessGenerator::new(program, witness_map, r1cs.num_witnesses());
+            NoirWitnessGenerator::new(&program, witness_map, r1cs.num_witnesses());
 
         // Configure Whir
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
+            program,
             r1cs,
             witness_builders,
             witness_generator,
