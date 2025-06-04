@@ -2,8 +2,8 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noir_r1cs::{self, read, write, NoirProofScheme},
-    noir_tools::execute_program_witness,
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -12,10 +12,6 @@ use {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
-    /// path to the compile Noir program
-    #[argh(positional)]
-    program_path: PathBuf,
-
     /// path to the prepared proof scheme
     #[argh(positional)]
     scheme_path: PathBuf,
@@ -51,7 +47,10 @@ impl Command for Args {
         let (constraints, witnesses) = scheme.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        let witness_map = execute_program_witness(&self.program_path, &self.witness_path)?;
+        // Generate the witness
+        let (input_map, _expected_return) =
+            read_inputs_from_file(&self.witness_path, &scheme.program.abi)?;
+        let witness_map = scheme.generate_witness(&input_map)?;
 
         // Generate the proof
         let proof = scheme

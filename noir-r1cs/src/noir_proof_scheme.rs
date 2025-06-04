@@ -8,7 +8,11 @@ use {
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{ensure, Context as _, Result},
+    bn254_blackbox_solver::Bn254BlackBoxSolver,
+    nargo::foreign_calls::DefaultForeignCallBuilder,
+    noirc_abi::InputMap,
     noirc_artifacts::program::ProgramArtifact,
+    noirc_driver::CompiledProgram,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
@@ -18,7 +22,7 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:           ProgramArtifact,
+    pub program:           CompiledProgram,
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
@@ -83,7 +87,7 @@ impl NoirProofScheme {
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
-            program,
+            program: program.into(),
             r1cs,
             witness_builders,
             witness_generator,
@@ -94,6 +98,38 @@ impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    }
+
+    pub fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirFieldElement>> {
+        let span = span!(Level::INFO, "generate_witness").entered();
+        let solver = Bn254BlackBoxSolver::default();
+        let mut output_buffer = Vec::new();
+        let mut foreign_call_executor = DefaultForeignCallBuilder {
+            output:       &mut output_buffer,
+            enable_mocks: false,
+            resolver_url: None,
+            root_path:    None,
+            package_name: None,
+        }
+        .build();
+
+        let circuit: &CompiledProgram = &self.program;
+
+        let initial_witness = circuit.abi.encode(input_map, None)?;
+
+        let mut witness_stack = nargo::ops::execute_program(
+            &circuit.program,
+            initial_witness,
+            &solver,
+            &mut foreign_call_executor,
+        )?;
+
+        drop(span);
+
+        Ok(witness_stack
+            .pop()
+            .context("Missing witness results")?
+            .witness)
     }
 
     #[instrument(skip_all)]
