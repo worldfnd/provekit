@@ -54,7 +54,7 @@ jobs:
           cp -r bench_bin/* target/codspeed/
 
       - name: Make benchmark binaries executable
-        run: chmod +x target/codspeed/*
+        run: chmod -R +x target/codspeed
 
       - name: DEBUGL List files
         run: ls -alh target/codspeed
