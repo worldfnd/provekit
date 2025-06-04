@@ -22,7 +22,7 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:           CompiledProgram,
+    pub program:           ProgramArtifact,
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
@@ -87,7 +87,7 @@ impl NoirProofScheme {
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
-            program: program.into(),
+            program,
             r1cs,
             witness_builders,
             witness_generator,
@@ -113,7 +113,7 @@ impl NoirProofScheme {
         }
         .build();
 
-        let circuit: &CompiledProgram = &self.program;
+        let circuit: CompiledProgram = self.program.clone().into();
 
         let initial_witness = circuit.abi.encode(input_map, None)?;
 
@@ -200,6 +200,7 @@ mod tests {
         },
         ark_std::One,
         noir_tools::compile_workspace,
+        noirc_abi::Abi,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
@@ -243,5 +244,20 @@ mod tests {
         test_serde(&constant_term);
         let witness_builder = WitnessBuilder::Constant(constant_term);
         test_serde(&witness_builder);
+    }
+
+    #[test]
+    fn postcard_fuckery() {
+        println!("{}", std::env::current_dir().unwrap().display());
+        let nps = NoirProofScheme::from_file("../noir-examples/poseidon-rounds/target/basic.json")
+            .unwrap();
+
+        let nps_abi_encoded: Vec<u8> = postcard::to_stdvec(&nps.program.abi).unwrap();
+        let nps_abi = postcard::from_bytes::<Abi>(&nps_abi_encoded);
+
+        match nps_abi {
+            Ok(_) => {}
+            Err(err) => panic!("{}", err),
+        }
     }
 }

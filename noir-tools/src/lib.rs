@@ -7,6 +7,8 @@ use {
     std::path::Path,
 };
 
+pub mod serializable_program;
+
 pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> {
     let workspace_path = workspace_path.as_ref();
     let workspace_path = if workspace_path.ends_with("Nargo.toml") {

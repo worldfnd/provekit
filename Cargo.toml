@@ -117,6 +117,8 @@ bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "nigh
 nargo = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+noirc_errors = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+fm = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
