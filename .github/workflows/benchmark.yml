@@ -51,6 +51,10 @@ jobs:
         run: |
           mkdir -p target/release
           cp -r bench_bin/* target/codspeed/
+
+      - name: Make benchmark binaries executable
+        run: chmod +x target/codspeed/*
+
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
