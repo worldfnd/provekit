@@ -37,6 +37,8 @@ jobs:
     steps:
       # We need repo files for the benchmark input files
       - uses: actions/checkout@v4
+      - name: DEBUG List repo files
+        run: ls -alh .
       - name: Download benchmark binaries
         uses: actions/download-artifact@v4
         with:
@@ -58,7 +60,10 @@ jobs:
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
 
-      - name: DEBUGL List files
+      - name: DEBUG List noir-examples files
+        run: ls -alhR noir-examples
+
+      - name: DEBUG List files
         run: ls -alh target/codspeed
 
       - name: Run the benchmarks
