@@ -1,6 +1,8 @@
 name: Benchmark on Raspberry Pi 5
 
 on:
+  schedule: # Runs at midnight (0:00 UTC) every day
+    - cron: "0 0 * * *"
   push:
     branches: [main]
   pull_request:
@@ -37,41 +39,23 @@ jobs:
     steps:
       # We need repo files for the benchmark input files
       - uses: actions/checkout@v4
-      - name: DEBUG List repo files
-        run: ls -alh .
       - name: Download benchmark binaries
         uses: actions/download-artifact@v4
         with:
           name: benchmark-binaries
           path: ./bench_bin
-
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
-
       - name: Copy binaries to target directory
         run: |
           mkdir -p target/codspeed
           cp -r bench_bin/* target/codspeed/
-
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
-
-      - name: DEBUG pwd
-        run: pwd
-
-      - name: DEBUG List noir-examples files
-        run: ls -alhR noir-examples
-
-      - name: DEBUG List noir-r1cs
-        run: ls -alhR noir-r1cs
-
-      - name: DEBUG List files
-        run: ls -alh target/codspeed
-
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
