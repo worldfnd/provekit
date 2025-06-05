@@ -18,45 +18,46 @@ concurrency:
 
 jobs:
   end-to-end:
-      name: End-to-end tests
-      runs-on: ubuntu-24.04-arm
-      steps:
-        - uses: actions/checkout@v4
+    name: End-to-end tests
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Setup Rust toolchain, cache and bins
-          uses: moonrepo/setup-rust@v1
-          with:
-            channel: nightly-2025-04-05
-            cache-base: main
-            components: rustfmt, clippy
+      - name: Setup Rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2025-04-05
+          cache-base: main
+          components: rustfmt, clippy
 
-        - name: Build all Rust targets
-          run: cargo build --all-targets --all-features --verbose
+      - name: Build all Rust targets
+        run: cargo build --all-targets --all-features --verbose
 
-        - uses: noir-lang/noirup@v0.1.2
-          with:
-            toolchain: nightly-2025-05-28
+      - uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: nightly-2025-05-28
 
-        - name: Setup Go
-          uses: actions/setup-go@v5
-          with:
-            go-version: 1.24
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24
 
-        # nargo execute is a faulty command that should be removed when toml reader is implemented
-        - name: Compile and execute Nargo circuit
-          working-directory: noir-examples/poseidon-rounds
-          run: |
-            nargo compile
-            nargo execute
-        # basic.gz should be changed to .toml file in the future when faulty command is removed
-        - name: Generate Gnark inputs
-          working-directory: noir-examples/poseidon-rounds
-          run:  |
-            cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
-            cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./target/basic.gz -o ./noir-proof.np
-            cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
-        - name: Run Gnark verifier
-          working-directory: gnark-whir
-          run: |
-            go build -o gnark-verifier .
-            ./gnark-verifier
+      # nargo execute is a faulty command that should be removed when toml reader is implemented
+      - name: Compile and execute Nargo circuit
+        working-directory: noir-examples/poseidon-rounds
+        run: |
+          nargo compile
+          nargo execute
+      # basic.gz should be changed to .toml file in the future when faulty command is removed
+      - name: Generate Gnark inputs
+        working-directory: noir-examples/poseidon-rounds
+        run: |
+          cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
+          cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+          cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+      - name: Run Gnark verifier
+        working-directory: gnark-whir
+        run: |
+          go build -o gnark-verifier .
+          ./gnark-verifier
+
