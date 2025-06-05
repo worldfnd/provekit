@@ -52,6 +52,10 @@ impl NoirWitnessGenerator {
         &self.witness_map
     }
 
+    pub fn abi(&self) -> &Abi {
+        &self.abi
+    }
+
     /// Noir inputs are in order at the start of the witness vector
     #[instrument(skip_all, fields(size = toml.len()))]
     pub fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>> {

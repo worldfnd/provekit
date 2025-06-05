@@ -1,6 +1,6 @@
 use {
-    noir_artifact_cli::fs::inputs::read_inputs_from_file, noir_r1cs::NoirProofScheme,
-    noir_tools::compile_workspace, serde::Deserialize, std::path::Path, test_case::test_case,
+    noir_r1cs::NoirProofScheme, noir_tools::compile_workspace, serde::Deserialize, std::path::Path,
+    test_case::test_case,
 };
 
 #[derive(Debug, Deserialize)]
@@ -29,16 +29,12 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let witness_file_path = test_case_path.join("Prover.toml");
 
     let proof_schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
-    let (input_map, _expected_return) =
-        read_inputs_from_file(&witness_file_path, &proof_schema.program.abi)
-            .expect("Reading witness");
-
-    let witness_map = proof_schema
-        .generate_witness(&input_map)
-        .expect("Generating witness");
+    let input_map = proof_schema
+        .read_witness(&witness_file_path)
+        .expect("Reading witness data");
 
     let _proof = proof_schema
-        .prove(&witness_map)
+        .prove(&input_map)
         .expect("While proving Noir program statement");
 }
 

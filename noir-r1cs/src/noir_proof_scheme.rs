@@ -6,13 +6,13 @@ use {
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
-    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
+    acir::{circuit::Program, native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{ensure, Context as _, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     noirc_artifacts::program::ProgramArtifact,
-    noirc_driver::CompiledProgram,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
@@ -22,7 +22,7 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:           ProgramArtifact,
+    pub program:           Program<NoirFieldElement>,
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
@@ -87,7 +87,7 @@ impl NoirProofScheme {
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
-            program,
+            program: program.bytecode,
             r1cs,
             witness_builders,
             witness_generator,
@@ -98,6 +98,13 @@ impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    }
+
+    pub fn read_witness(&self, prover_toml: impl AsRef<Path>) -> Result<InputMap> {
+        let (input_map, _expected_return) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+
+        Ok(input_map)
     }
 
     pub fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirFieldElement>> {
@@ -113,12 +120,10 @@ impl NoirProofScheme {
         }
         .build();
 
-        let circuit: CompiledProgram = self.program.clone().into();
-
-        let initial_witness = circuit.abi.encode(input_map, None)?;
+        let initial_witness = self.witness_generator.abi().encode(input_map, None)?;
 
         let mut witness_stack = nargo::ops::execute_program(
-            &circuit.program,
+            &self.program,
             initial_witness,
             &solver,
             &mut foreign_call_executor,
@@ -133,17 +138,16 @@ impl NoirProofScheme {
     }
 
     #[instrument(skip_all)]
-    pub fn prove(
-        &self,
-        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
-    ) -> Result<NoirProof> {
+    pub fn prove(&self, input_map: &InputMap) -> Result<NoirProof> {
         let span = span!(Level::INFO, "generate_witness").entered();
+
+        let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Solve R1CS instance
         let mut transcript = MockTranscript::new();
         let partial_witness = self.r1cs.solve_witness_vec(
             &self.witness_builders,
-            acir_witness_idx_to_value_map,
+            &acir_witness_idx_to_value_map,
             &mut transcript,
         );
         let witness = fill_witness(partial_witness).context("while filling witness")?;
@@ -200,7 +204,6 @@ mod tests {
         },
         ark_std::One,
         noir_tools::compile_workspace,
-        noirc_abi::Abi,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
@@ -244,20 +247,5 @@ mod tests {
         test_serde(&constant_term);
         let witness_builder = WitnessBuilder::Constant(constant_term);
         test_serde(&witness_builder);
-    }
-
-    #[test]
-    fn postcard_fuckery() {
-        println!("{}", std::env::current_dir().unwrap().display());
-        let nps = NoirProofScheme::from_file("../noir-examples/poseidon-rounds/target/basic.json")
-            .unwrap();
-
-        let nps_abi_encoded: Vec<u8> = postcard::to_stdvec(&nps.program.abi).unwrap();
-        let nps_abi = postcard::from_bytes::<Abi>(&nps_abi_encoded);
-
-        match nps_abi {
-            Ok(_) => {}
-            Err(err) => panic!("{}", err),
-        }
     }
 }

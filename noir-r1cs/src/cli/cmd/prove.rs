@@ -2,7 +2,6 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noir_r1cs::{self, read, write, NoirProofScheme},
     std::path::PathBuf,
     tracing::{info, instrument},
@@ -47,14 +46,12 @@ impl Command for Args {
         let (constraints, witnesses) = scheme.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        // Generate the witness
-        let (input_map, _expected_return) =
-            read_inputs_from_file(&self.witness_path, &scheme.program.abi)?;
-        let witness_map = scheme.generate_witness(&input_map)?;
+        // Read witness data
+        let input_map = scheme.read_witness(&self.witness_path)?;
 
         // Generate the proof
         let proof = scheme
-            .prove(&witness_map)
+            .prove(&input_map)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)

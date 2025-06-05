@@ -2,7 +2,6 @@
 use {
     core::hint::black_box,
     divan::Bencher,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noir_r1cs::{read, NoirProof, NoirProofScheme},
     noir_tools::compile_workspace,
     std::path::Path,
@@ -29,14 +28,11 @@ fn prove_poseidon_1000(bencher: Bencher) {
 
     let witness_path = crate_dir.join("Prover.toml");
 
-    let (input_map, _expected_return) =
-        read_inputs_from_file(&witness_path, &scheme.program.abi).expect("Failed reading witness");
+    let input_map = scheme
+        .read_witness(&witness_path)
+        .expect("Failed reading witness");
 
-    bencher.bench(|| {
-        let scheme = black_box(&scheme);
-        let witness_map = scheme.generate_witness(&input_map).unwrap();
-        scheme.prove(black_box(&witness_map))
-    });
+    bencher.bench(|| black_box(&scheme).prove(black_box(&input_map)));
 }
 
 #[divan::bench]
@@ -52,13 +48,9 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 
     bencher.bench(|| {
         let scheme: NoirProofScheme = read(&path).unwrap();
-        let (input_map, _expected_return) =
-            read_inputs_from_file(&witness_path, &scheme.program.abi)
-                .expect("Failed reading witness");
-
         let scheme = black_box(&scheme);
-        let witness_map = scheme.generate_witness(&input_map).unwrap();
-        scheme.prove(black_box(&witness_map))
+        let input_map = scheme.read_witness(&witness_path).unwrap();
+        scheme.prove(black_box(&input_map))
     });
 }
 
