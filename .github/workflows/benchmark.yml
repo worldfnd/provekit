@@ -66,6 +66,9 @@ jobs:
       - name: DEBUG List noir-examples files
         run: ls -alhR noir-examples
 
+      - name: DEBUG List noir-r1cs
+        run: ls -alhR noir-r1cs
+
       - name: DEBUG List files
         run: ls -alh target/codspeed
 
