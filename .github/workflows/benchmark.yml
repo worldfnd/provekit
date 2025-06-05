@@ -60,6 +60,9 @@ jobs:
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
 
+      - name: DEBUG pwd
+        run: pwd
+
       - name: DEBUG List noir-examples files
         run: ls -alhR noir-examples
 
