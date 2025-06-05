@@ -22,6 +22,7 @@ pub struct NoirWitnessGenerator {
     // Note: Abi uses an [internally tagged] enum format in Serde, which is not compatible
     // with some schemaless formats like Postcard.
     // [internally-tagged]: https://serde.rs/enum-representations.html
+    // TODO: serializes the ABI as a json string. Something like CBOR might be better.
     #[serde(with = "serde_jsonify")]
     abi: Abi,
 
