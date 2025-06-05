@@ -44,12 +44,12 @@ jobs:
         with:
           name: benchmark-binaries
           path: ./bench_bin
+
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
           channel: nightly-2025-04-05
-          cache-base: main
-          cache-target: release
+          cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
 
       - name: Copy binaries to target directory
