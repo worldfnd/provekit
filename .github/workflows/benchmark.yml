@@ -35,6 +35,8 @@ jobs:
     runs-on: [self-hosted, rpi5]
     needs: build
     steps:
+      # We need repo files for the benchmark input files
+      - uses: actions/checkout@v4
       - name: Download benchmark binaries
         uses: actions/download-artifact@v4
         with:
