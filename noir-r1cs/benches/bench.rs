@@ -1,10 +1,10 @@
 //! Divan benchmarks for noir-r1cs
 use {
-    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     core::hint::black_box,
     divan::Bencher,
-    noir_r1cs::{read, utils::file_io::deserialize_witness_stack, NoirProof, NoirProofScheme},
-    std::path::{Path, PathBuf},
+    noir_r1cs::{read, NoirProof, NoirProofScheme},
+    noir_tools::compile_workspace,
+    std::path::Path,
 };
 
 #[divan::bench]
@@ -22,30 +22,36 @@ fn prove_poseidon_1000(bencher: Bencher) {
         .join("poseidon-1000.nps");
     let scheme: NoirProofScheme = read(&path).unwrap();
 
-    // Run nargo compile
-    let status = std::process::Command::new("nargo")
-        .arg("compile")
-        .current_dir("../noir-examples/poseidon-rounds")
-        .status()
-        .expect("Running nargo compile");
-    if !status.success() {
-        panic!("Failed to run nargo compile");
-    }
+    let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
 
-    // Run nargo execute
-    let status = std::process::Command::new("nargo")
-        .arg("execute")
-        .current_dir("../noir-examples/poseidon-rounds")
-        .status()
-        .expect("Running nargo execute");
-    if !status.success() {
-        panic!("Failed to run nargo execute");
-    }
+    compile_workspace(crate_dir).expect("Compiling workspace");
 
-    let witness_file_path = &PathBuf::from("../noir-examples/poseidon-rounds/target/basic.gz");
-    let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
-    let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
-    bencher.bench(|| black_box(&scheme).prove(black_box(&witness_map)));
+    let witness_path = crate_dir.join("Prover.toml");
+
+    let input_map = scheme
+        .read_witness(&witness_path)
+        .expect("Failed reading witness");
+
+    bencher.bench(|| black_box(&scheme).prove(black_box(&input_map)));
+}
+
+#[divan::bench]
+fn prove_poseidon_1000_with_io(bencher: Bencher) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("benches")
+        .join("poseidon-1000.nps");
+
+    let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
+    let witness_path = crate_dir.join("Prover.toml");
+
+    compile_workspace(crate_dir).expect("Compiling workspace");
+
+    bencher.bench(|| {
+        let scheme: NoirProofScheme = read(&path).unwrap();
+        let scheme = black_box(&scheme);
+        let input_map = scheme.read_witness(&witness_path).unwrap();
+        scheme.prove(black_box(&input_map))
+    });
 }
 
 #[divan::bench]

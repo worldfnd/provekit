@@ -6,8 +6,8 @@ use {
     acir::{
         circuit::{opcodes::BlackBoxFuncCall, Opcode, Program},
         native_types::Expression,
+        FieldElement,
     },
-    acir_field::FieldElement,
     anyhow::Result,
     argh::FromArgs,
     base64::Engine,

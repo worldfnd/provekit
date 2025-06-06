@@ -1,9 +1,8 @@
 use {
     super::Command,
-    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{self, read, utils::file_io::deserialize_witness_stack, write, NoirProofScheme},
+    noir_r1cs::{self, read, write, NoirProofScheme},
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -12,13 +11,13 @@ use {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
-    /// path to the compiled Noir program
+    /// path to the prepared proof scheme
     #[argh(positional)]
     scheme_path: PathBuf,
 
     /// path to the input values
     #[argh(positional)]
-    witness_path: PathBuf,
+    input_path: PathBuf,
 
     /// path to store proof file
     #[argh(
@@ -48,13 +47,11 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
-        let witness_file_path = &PathBuf::from(&self.witness_path);
-        let mut witness_stack = deserialize_witness_stack(witness_file_path).unwrap();
-        let witness_map: WitnessMap<NoirFieldElement> = witness_stack.pop().unwrap().witness;
+        let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
         let proof = scheme
-            .prove(&witness_map)
+            .prove(&input_map)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)
