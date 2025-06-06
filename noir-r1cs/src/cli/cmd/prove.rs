@@ -17,7 +17,7 @@ pub struct Args {
 
     /// path to the input values
     #[argh(positional)]
-    witness_path: PathBuf,
+    input_path: PathBuf,
 
     /// path to store proof file
     #[argh(
@@ -47,7 +47,7 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read witness data
-        let input_map = scheme.read_witness(&self.witness_path)?;
+        let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
         let proof = scheme
