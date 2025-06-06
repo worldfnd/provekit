@@ -16,7 +16,7 @@ use {
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
-    tracing::{info, instrument, span, Level},
+    tracing::{info, instrument},
 };
 
 /// A scheme for proving a Noir program.
@@ -35,19 +35,18 @@ pub struct NoirProof {
 }
 
 impl NoirProofScheme {
+    #[instrument]
+    pub fn read_program_from_file(
+        path: impl AsRef<Path> + std::fmt::Debug,
+    ) -> Result<ProgramArtifact> {
+        let file = File::open(path).context("while opening Noir program")?;
+        serde_json::from_reader(file).context("while reading Noir program")
+    }
+
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     pub fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
-        let program = {
-            let file = File::open(path).context("while opening Noir program")?;
-            let _span = span!(
-                Level::INFO,
-                "serde_json",
-                size = file.metadata().map(|m| m.len()).ok(),
-            )
-            .entered();
+        let program = Self::read_program_from_file(path)?;
 
-            serde_json::from_reader(file).context("while reading Noir program")?
-        };
         Self::from_program(program)
     }
 
@@ -107,8 +106,8 @@ impl NoirProofScheme {
         Ok(input_map)
     }
 
+    #[instrument(skip_all)]
     pub fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirFieldElement>> {
-        let span = span!(Level::INFO, "generate_witness").entered();
         let solver = Bn254BlackBoxSolver::default();
         let mut output_buffer = Vec::new();
         let mut foreign_call_executor = DefaultForeignCallBuilder {
@@ -129,8 +128,6 @@ impl NoirProofScheme {
             &mut foreign_call_executor,
         )?;
 
-        drop(span);
-
         Ok(witness_stack
             .pop()
             .context("Missing witness results")?
@@ -139,8 +136,6 @@ impl NoirProofScheme {
 
     #[instrument(skip_all)]
     pub fn prove(&self, input_map: &InputMap) -> Result<NoirProof> {
-        let span = span!(Level::INFO, "generate_witness").entered();
-
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Solve R1CS instance
@@ -157,7 +152,6 @@ impl NoirProofScheme {
         self.r1cs
             .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
-        drop(span);
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
