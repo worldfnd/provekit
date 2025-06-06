@@ -11,9 +11,6 @@ name = "noir-r1cs"
 path = "src/cli/main.rs"
 
 [dependencies]
-# Internal
-noir-tools.workspace = true
-
 # 3rd party
 serde.workspace = true
 serde_json.workspace = true
@@ -40,16 +37,10 @@ rand08.workspace = true
 
 # Noir lang
 acir.workspace = true
-# acvm.workspace = true
-acir_field.workspace = true
 noirc_artifacts.workspace = true
 noirc_abi.workspace = true
 nargo.workspace = true
-nargo_toml.workspace = true
-noirc_driver.workspace = true
-nargo_cli.workspace = true
 noir_artifact_cli.workspace = true
-# noirc_printable_type.workspace = true
 bn254_blackbox_solver.workspace = true
 
 # WHIR
@@ -70,6 +61,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# Internal
+noir-tools.workspace = true
+
+# 3rd Party
 rand.workspace = true
 divan.workspace = true
 test-case.workspace = true
