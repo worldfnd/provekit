@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/urfave/cli/v2"
+
 	gnark_nimue "github.com/reilabs/gnark-nimue"
 	go_ark_serialize "github.com/reilabs/go-ark-serialize"
 )
@@ -83,126 +85,148 @@ type R1CS struct {
 }
 
 func main() {
-	configFile, err := os.ReadFile("../noir-examples/poseidon-rounds/params_for_recursive_verifier")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	app := &cli.App{
+		Name:  "Verifier",
+		Usage: "Verifies proof with given parameters",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "config",
+				Usage:    "Path to the config file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
+			},
+			&cli.StringFlag{
+				Name:     "r1cs",
+				Usage:    "Path to the r1cs json file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			configFilePath := c.String("config")
+			r1csFilePath := c.String("r1cs")
 
-	var config Config
-	if err := json.Unmarshal(configFile, &config); err != nil {
-		log.Fatalf("Error unmarshalling JSON: %v\n", err)
-	}
-
-	io := gnark_nimue.IOPattern{}
-	err = io.Parse([]byte(config.IOPattern))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var pointer uint64
-	var truncated []byte
-
-	var merkle_paths []MultiPath[KeccakDigest]
-	var stir_answers [][][]Fp256
-	var deferred []Fp256
-
-	for _, op := range io.Ops {
-		switch op.Kind {
-		case gnark_nimue.Hint:
-			if pointer+4 > uint64(len(config.Transcript)) {
-				fmt.Println("insufficient bytes for hint length")
-				return
-			}
-			hintLen := binary.LittleEndian.Uint32(config.Transcript[pointer : pointer+4])
-			start := pointer + 4
-			end := start + uint64(hintLen)
-
-			if end > uint64(len(config.Transcript)) {
-				fmt.Println("insufficient bytes for merkle proof")
-				return
-			}
-
-			switch string(op.Label) {
-			case "merkle_proof":
-				var path MultiPath[KeccakDigest]
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&path,
-					false, false,
-				)
-				merkle_paths = append(merkle_paths, path)
-			case "stir_answers":
-				var stirAnswers [][]Fp256
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&stirAnswers,
-					false, false,
-				)
-				stir_answers = append(stir_answers, stirAnswers)
-			case "deferred_weight_evaluations":
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&deferred,
-					false, false,
-				)
-				if err != nil {
-					fmt.Println("failed to deserialize deferred hint:", err)
-					return
-				}
-				fmt.Print(deferred)
-			}
-
+			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
-				fmt.Println("failed to deserialize merkle proof:", err)
-				return
+				return fmt.Errorf("failed to read config file: %w", err)
 			}
 
-			pointer = end
-
-		case gnark_nimue.Absorb:
-			start := pointer
-			if string(op.Label) == "pow-nonce" {
-				pointer += op.Size
-			} else {
-				pointer += op.Size * 32
+			var config Config
+			if err := json.Unmarshal(configFile, &config); err != nil {
+				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 			}
 
-			if pointer > uint64(len(config.Transcript)) {
-				fmt.Println("absorb exceeds transcript length")
-				return
+			io := gnark_nimue.IOPattern{}
+			err = io.Parse([]byte(config.IOPattern))
+			if err != nil {
+				return fmt.Errorf("failed to parse IO pattern: %w", err)
 			}
 
-			truncated = append(truncated, config.Transcript[start:pointer]...)
-		}
+			var pointer uint64
+			var truncated []byte
+
+			var merkle_paths []MultiPath[KeccakDigest]
+			var stir_answers [][][]Fp256
+			var deferred []Fp256
+
+			for _, op := range io.Ops {
+				switch op.Kind {
+				case gnark_nimue.Hint:
+					if pointer+4 > uint64(len(config.Transcript)) {
+						return fmt.Errorf("insufficient bytes for hint length")
+					}
+					hintLen := binary.LittleEndian.Uint32(config.Transcript[pointer : pointer+4])
+					start := pointer + 4
+					end := start + uint64(hintLen)
+
+					if end > uint64(len(config.Transcript)) {
+						return fmt.Errorf("insufficient bytes for merkle proof")
+					}
+
+					switch string(op.Label) {
+					case "merkle_proof":
+						var path MultiPath[KeccakDigest]
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&path,
+							false, false,
+						)
+						merkle_paths = append(merkle_paths, path)
+					case "stir_answers":
+						var stirAnswers [][]Fp256
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&stirAnswers,
+							false, false,
+						)
+						stir_answers = append(stir_answers, stirAnswers)
+					case "deferred_weight_evaluations":
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&deferred,
+							false, false,
+						)
+						if err != nil {
+							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
+						}
+						fmt.Print(deferred)
+					}
+
+					if err != nil {
+						return fmt.Errorf("failed to deserialize merkle proof: %w", err)
+					}
+
+					pointer = end
+
+				case gnark_nimue.Absorb:
+					start := pointer
+					if string(op.Label) == "pow-nonce" {
+						pointer += op.Size
+					} else {
+						pointer += op.Size * 32
+					}
+
+					if pointer > uint64(len(config.Transcript)) {
+						return fmt.Errorf("absorb exceeds transcript length")
+					}
+
+					truncated = append(truncated, config.Transcript[start:pointer]...)
+				}
+			}
+
+			config.Transcript = truncated
+
+			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
+			if r1csErr != nil {
+				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
+			}
+
+			var r1cs R1CS
+			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
+				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
+			}
+
+			internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+			if err != nil {
+				return fmt.Errorf("failed to decode interner values: %w", err)
+			}
+
+			var interner Interner
+			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				bytes.NewReader(internerBytes), &interner, false, false,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize interner: %w", err)
+			}
+
+			verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers)
+
+			return nil
+		},
 	}
 
-	config.Transcript = truncated
-
-	r1csFile, r1csErr := os.ReadFile("../noir-examples/poseidon-rounds/r1cs.json")
-	if r1csErr != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var r1cs R1CS
-	if err := json.Unmarshal(r1csFile, &r1cs); err != nil {
-		log.Fatalf("Error unmarshalling JSON: %v\n", err)
-	}
-
-	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+	err := app.Run(os.Args)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
-
-	var interner Interner
-	_, err = go_ark_serialize.CanonicalDeserializeWithMode(bytes.NewReader(internerBytes), &interner, false, false)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers)
 }
