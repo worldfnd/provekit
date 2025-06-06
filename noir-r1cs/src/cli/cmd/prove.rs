@@ -46,7 +46,7 @@ impl Command for Args {
         let (constraints, witnesses) = scheme.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        // Read witness data
+        // Read the input toml
         let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
