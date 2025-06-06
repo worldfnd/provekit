@@ -56,12 +56,6 @@ type Config struct {
 	StatementEvaluations []string `json:"statement_evaluations"`
 }
 
-type Item struct {
-	Constraint int    `json:"constraint"`
-	Signal     int    `json:"signal"`
-	Value      string `json:"value"`
-}
-
 type SparseMatrix struct {
 	Rows       uint64   `json:"num_rows"`
 	Cols       uint64   `json:"num_cols"`
