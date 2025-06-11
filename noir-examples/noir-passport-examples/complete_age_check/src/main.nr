@@ -33,102 +33,86 @@ use data_check_integrity::check_integrity_of_data_sha256;
 use data_check_tbs_pubkey::verify_rsa_pubkey_in_tbs;
 
 // --- Needed to check the CSCA signature over the DSC pubkey ---
-use commitment::check_csc_certificate_exists_within_registry;
 use sig_check_rsa::verify_signature;
 
 fn main(
     // ------------- DSC pubkey verification against H(SOD) + "stuff" -------------
     dg1: [u8; 95],
-    // current_date: pub str<8>,
-    // min_age_required: pub u8,
+    current_date: pub str<8>,
+    min_age_required: pub u8,
     // // The maximum age required is public so verifiers can check
     // // the age provided to the proof is correct
     // // If the maximum age is 0, it is not checked
-    // max_age_required: pub u8,
+    max_age_required: pub u8,
     // This is the thing which is actually signed by the DSC
-    signed_attributes: [u8; 200],
-    signed_attributes_size: u64,
+    passport_signed_attributes: [u8; 200],
+    passport_signed_attributes_size: u64,
     // This is the SOD, i.e. the concatenation of the hashes of all the DGs
-    e_content: [u8; 700],
-    e_content_size: u32,
+    // The hash of `e_content` should be contained within `signed_attributes`
+    passport_sod: [u8; 700],
+    passport_sod_size: u32,
     // This is just the offset within the SOD string where the DG1 hash is supposed to live.
     // TODO(ryancao): Is this not supposed to be public???
-    dg1_offset_in_e_content: u32,
+    dg1_hash_offset_in_sod: u32,
     // ------------- DSC pubkey verification against H(SOD) + "stuff" -------------
     dsc_pubkey: [u8; 256],
-    dsc_pubkey_redc_param: [u8; 257],
-    sod_signature: [u8; 256],
-    // pubkey_offset_in_tbs: u32,
-    dsc_exponent: u32,
-    // // ------------- CSC pubkey verification against DSC -------------
-    // // There is an assumed CSC registry. In particular, it should be a Merkle
-    // // tree where the leaves are (registry_id, cert_type, country, csc_pubkey) tuples.
-    // certificate_registry_root: pub Field,
-    // certificate_registry_index: Field, // This is helpful for the Merkle proof for some reason
-    // certificate_registry_hash_path: [Field; 14],
-    // certificate_registry_id: Field,
-    // // This is the DSC certificate. I have no idea why it's called the TBS
-    // tbs_certificate: [u8; 700],
-    // tbs_certificate_len: u64,
-    // // This is the country signing certificate's associated public key
-    // csc_pubkey: [u8; 256],
-    // csc_pubkey_redc_param: [u8; 257],
-    // // The signature for the DSC (i.e. that which is to be verified against the CSC pubkey)
-    // dsc_signature: [u8; 256],
-    // csc_exponent: u32,
-    // country: str<3>,
+    dsc_barrett_mu: [u8; 257],
+    passport_signed_attributes_signature: [u8; 256],
+    dsc_pubkey_offset_in_dsc_cert: u32,
+    dsc_rsa_exponent: u32,
+    // ------------- CSC pubkey verification against DSC -------------
+    // This is the DSC certificate, i.e. the cert which contains the DSC within.
+    dsc_cert: [u8; 700],
+    dsc_cert_len: u64,
+    // This is the country signing certificate's associated public key
+    csc_pubkey: [u8; 256],
+    csc_barrett_mu: [u8; 257],
+    // The signature for the DSC (i.e. that which is to be verified against the CSC pubkey)
+    dsc_cert_signature: [u8; 256],
+    csc_rsa_exponent: u32,
 ) {
-    // // Verify the age of the ID holder
-    // compare_age(
-    //     dg1,
-    //     min_age_required,
-    //     max_age_required,
-    //     current_date.as_bytes(),
-    // );
+    // Verify the age of the ID holder
+    compare_age(
+        dg1,
+        min_age_required,
+        max_age_required,
+        current_date.as_bytes(),
+    );
 
     // // Check the ID is not expired first
-    // check_expiry(dg1, current_date.as_bytes());
+    check_expiry(dg1, current_date.as_bytes());
     // Check the integrity of the data
     check_integrity_of_data_sha256(
         dg1,
-        signed_attributes,
-        signed_attributes_size,
-        e_content,
-        e_content_size,
-        dg1_offset_in_e_content,
+        passport_signed_attributes,
+        passport_signed_attributes_size as u32,
+        passport_sod,
+        passport_sod_size,
+        dg1_hash_offset_in_sod,
     );
 
     // --- DSC signature check ---
     // The first thing checks that the appropriate substring of the `tbs_certificate` is equivalent to the `dsc_pubkey`
-    // verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate, pubkey_offset_in_tbs);
+    verify_rsa_pubkey_in_tbs(dsc_pubkey, dsc_cert, dsc_pubkey_offset_in_dsc_cert);
     // The second thing asserts verify_sign(message=signed_attributes, sign=sod_signature, pubkey=dsc_pubkey)
     assert(verify_signature::<256, 0, 200, 32>(
         dsc_pubkey,
-        sod_signature, // Technically this is the signature of `data_to_sign` and not strictly the SOD
-        dsc_pubkey_redc_param,
-        dsc_exponent,
-        signed_attributes, // This is `data_to_sign`
-        signed_attributes_size,
+        passport_signed_attributes_signature, // Technically this is the signature of `data_to_sign` and not strictly the SOD
+        dsc_barrett_mu,
+        dsc_rsa_exponent,
+        passport_signed_attributes,
+        passport_signed_attributes_size,
     ));
 
-    // // Check the signature over the DSC
-    // // Uses SHA-256 with a message size of 700 and a prime of 2048 bits,
-    // // using PKCS rather than PSS.
-    // assert(verify_signature::<256, 0, 700, 32>(
-    //     csc_pubkey, // This is the pubkey to verify against
-    //     dsc_signature, // This is the actual signature
-    //     csc_pubkey_redc_param,
-    //     csc_exponent,
-    //     tbs_certificate, // This is `data_to_sign`, i.e. the message
-    //     tbs_certificate_len,
-    // ));
-    // // Check that the CSC pubkey belongs in the registry.
-    // check_csc_certificate_exists_within_registry(
-    //     certificate_registry_root,
-    //     certificate_registry_index,
-    //     certificate_registry_hash_path,
-    //     certificate_registry_id,
-    //     country,
-    //     csc_pubkey,
-    // );
+    // Check the signature over the DSC
+    // Uses SHA-256 with a message size of 700 and a prime of 2048 bits,
+    // using PKCS rather than PSS.
+    assert(verify_signature::<256, 0, 700, 32>(
+        csc_pubkey, // This is the pubkey to verify against
+        dsc_cert_signature, // This is the actual signature
+        csc_barrett_mu,
+        csc_rsa_exponent,
+        dsc_cert, // This is `data_to_sign`, i.e. the message
+        dsc_cert_len,
+    ));
 }

@@ -14,7 +14,7 @@ pub fn check_integrity_of_data_sha256(
     dg1: [u8; 95],
     // --- This is clearly the thing which is actually signed ---
     signed_attributes: [u8; 200],
-    signed_attributes_size: u64,
+    signed_attributes_size: u32,
     // --- Okay so this is clearly the SOD, i.e. the thing which the hash of DG1 is supposed to be contained in ---
     e_content: [u8; 700],
     e_content_size: u32,
@@ -34,16 +34,7 @@ pub fn check_integrity_of_data_sha256(
 
     // We only need to recompute the hash of the MRZ (or more accurately that of Data Group 1)
     // within the circuit as this is the only data group we use to build the proof (age, country, etc.)
-    // let other_hash = sha256::sha256_var(dg1, dg1_size);
-    // let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, x + 95 - x); // So this gives the correct result but falsely fails R1CS constraints
     let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, dg1.len() as u64); // This gives the wrong result but succeeds in R1CS constraints
-    // let other_dg1_hash = sha256::digest(dg1);
-    // println("This is Noir's dg1_hash");
-    // println(other_dg1_hash);
-
-    // println(other_hash);
-    println("This is the dg1_hash");
-    println(dg1_hash);
 
     for i in 0..32 {
         // Check the hash of dg1 is indeed in the e_content
@@ -52,15 +43,8 @@ pub fn check_integrity_of_data_sha256(
 
     // --- Additionally, clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff" ---
     // --- That "stuff" is the thing which is actually signed ---
-    // let noir_computed_final_hash = sha256::sha256_var(e_content, e_content_size as u64);
-    // let ryan_computed_final_hash =
-    //     noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, x + 64 - x); // Correct result, but false fails R1CS constraints
     let ryan_computed_final_hash =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, e_content_size as u64); // Wrong result but passes R1CS constraints
-    // println("This is the Noir computed final hash");
-    // println(noir_computed_final_hash);
-    println("This is the ryan computed final hash");
-    println(ryan_computed_final_hash);
+        noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, e_content.len() as u64); // Wrong result but passes R1CS constraints
 
     for i in 0..32 {
         // The last 32 bytes of the signed_attributes are the hash of the data groups

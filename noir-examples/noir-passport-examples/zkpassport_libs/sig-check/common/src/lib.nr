@@ -1,4 +1,3 @@
-use sha256;
 use sha512::{sha384, sha512};
 use utils::check_zero_padding;
 
@@ -11,7 +10,10 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_LEN: u32>(
     // to manipulate it in their favor
     check_zero_padding(data_to_sign, data_to_sign_len as u32);
 
-    sha256::sha256_var(data_to_sign, data_to_sign_len)
+    let ret =
+        noir_native_sha256::ryan_sha256_noir::sha256_var(data_to_sign, data_to_sign.len() as u64);
+
+    ret
 }
 
 pub fn sha384_and_check_data_to_sign<let DATA_TO_SIGN_LEN: u32>(
