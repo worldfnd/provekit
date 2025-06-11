@@ -1,6 +1,7 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
+    rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator},
     serde::{Deserialize, Serialize},
     std::{
         fmt::Debug,
@@ -156,11 +157,14 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
-        for ((i, j), value) in self.iter() {
-            result[i] += value * rhs[j];
-        }
-        result
+
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|i| {
+                self.iter_row(i)
+                    .fold(FieldElement::zero(), |sum, (j, value)| sum + value * rhs[j])
+            })
+            .collect()
     }
 }
 
@@ -176,9 +180,16 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             "Vector length does not match number of rows."
         );
         let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
-        for ((i, j), value) in rhs.iter() {
-            result[j] += value * self[i];
+
+        let mult: Vec<_> = (0..rhs.matrix.num_rows)
+            .into_par_iter()
+            .flat_map_iter(|i| rhs.iter_row(i).map(move |(j, value)| (j, value * self[i])))
+            .collect();
+
+        for (j, value) in mult {
+            result[j] += value;
         }
+
         result
     }
 }
