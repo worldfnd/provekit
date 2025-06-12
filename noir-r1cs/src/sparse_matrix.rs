@@ -6,6 +6,7 @@ use {
     },
     serde::{Deserialize, Serialize},
     std::{
+        cell::UnsafeCell,
         fmt::Debug,
         ops::{Mul, Range},
     },
@@ -173,6 +174,17 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     }
 }
 
+struct LeftVec<T>(UnsafeCell<Vec<T>>);
+unsafe impl<T: Sync + Send> Send for LeftVec<T> {}
+unsafe impl<T: Sync + Send> Sync for LeftVec<T> {}
+
+impl<T> LeftVec<T> {
+    fn insert(&self, index: usize, value: T) {
+        let vec = unsafe { &mut *self.0.get() };
+        vec[index] = value;
+    }
+}
+
 /// Left multiplication by vector
 // OPT: Paralelize
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
@@ -186,12 +198,21 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
         );
         let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
 
-        let mult: Vec<_> = (0..rhs.matrix.num_rows)
-            .into_par_iter()
-            .flat_map_iter(|i| rhs.iter_row(i).map(move |(j, value)| (j, value * self[i])))
-            .collect();
+        let mut intermediate = LeftVec(UnsafeCell::new(vec![
+            (0, FieldElement::zero());
+            rhs.matrix.values.len()
+        ]));
 
-        for (j, value) in mult {
+        let int_ref = &intermediate;
+
+        (0..rhs.matrix.num_rows).into_par_iter().for_each(|row| {
+            let range = rhs.matrix.row_range(row);
+            rhs.iter_row(row)
+                .zip(range)
+                .for_each(move |((col, value), ind)| int_ref.insert(ind, (col, value * self[row])))
+        });
+
+        for (j, value) in intermediate.0.into_inner() {
             result[j] += value;
         }
 
