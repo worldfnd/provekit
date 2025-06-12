@@ -1,7 +1,9 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
-    rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator},
+    rayon::iter::{
+        IndexedParallelIterator, IntoParallelIterator, ParallelBridge, ParallelIterator,
+    },
     serde::{Deserialize, Serialize},
     std::{
         fmt::Debug,
@@ -158,13 +160,16 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             "Vector length does not match number of columns."
         );
 
+        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
+
         (0..self.matrix.num_rows)
             .into_par_iter()
             .map(|i| {
                 self.iter_row(i)
                     .fold(FieldElement::zero(), |sum, (j, value)| sum + value * rhs[j])
             })
-            .collect()
+            .collect_into_vec(&mut result);
+        result
     }
 }
 
