@@ -150,7 +150,6 @@ impl HydratedSparseMatrix<'_> {
 }
 
 /// Right multiplication by vector
-// OPT: Paralelize
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     type Output = Vec<FieldElement>;
 
@@ -174,19 +173,26 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     }
 }
 
-struct LeftVec<T>(UnsafeCell<Vec<T>>);
-unsafe impl<T: Sync + Send> Send for LeftVec<T> {}
-unsafe impl<T: Sync + Send> Sync for LeftVec<T> {}
+// Provide interior mutability where
+struct LockFreeArray<T>(UnsafeCell<Box<[T]>>);
+unsafe impl<T: Sync + Send> Send for LockFreeArray<T> {}
+unsafe impl<T: Sync + Send> Sync for LockFreeArray<T> {}
 
-impl<T> LeftVec<T> {
-    fn insert(&self, index: usize, value: T) {
-        let vec = unsafe { &mut *self.0.get() };
+impl<T> LockFreeArray<T> {
+    fn new(vec: Vec<T>) -> Self {
+        let arr = vec.into_boxed_slice();
+        LockFreeArray(UnsafeCell::new(arr))
+    }
+
+    // Requires that only one thread has access to index and that the index is
+    // within bounds.
+    unsafe fn insert(&self, index: usize, value: T) {
+        let vec = { &mut **self.0.get() };
         vec[index] = value;
     }
 }
 
 /// Left multiplication by vector
-// OPT: Paralelize
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 
@@ -196,23 +202,42 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             rhs.matrix.num_rows,
             "Vector length does not match number of rows."
         );
-        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
 
-        let mut intermediate = LeftVec(UnsafeCell::new(vec![
-            (0, FieldElement::zero());
-            rhs.matrix.values.len()
-        ]));
+        // E
+        let intermediate_multiplication =
+            LockFreeArray::new(vec![(0, FieldElement::zero()); rhs.matrix.num_entries()]);
 
-        let int_ref = &intermediate;
+        let intermediate_reference = &intermediate_multiplication;
+
+        // Mapping phase
+        //
+        // Parallelize the multiplication
+        // Use a lock-free array to prevent constant resizing when collecting the
+        // iterator as the size is not known to Rayon. Collecting without a
+        // preallocating the intermediate vector is >15% slower
+        // Other options that have been explored
+        // - An IndexedParallelIterator on the values of the sparse matrix also wasn't
+        //   an option as it requires random access which we can't provide as we
+        //   wouldn't know the row a value belongs to. That's why the rows drive the
+        //   iterator below.
+        // - Acquiring a mutex per column in the result was too expensive (even with
+        //   parking_lot)
 
         (0..rhs.matrix.num_rows).into_par_iter().for_each(|row| {
             let range = rhs.matrix.row_range(row);
             rhs.iter_row(row)
                 .zip(range)
-                .for_each(move |((col, value), ind)| int_ref.insert(ind, (col, value * self[row])))
+                .for_each(move |((col, value), ind)| unsafe {
+                    intermediate_reference.insert(ind, (col, value * self[row]))
+                })
         });
 
-        for (j, value) in intermediate.0.into_inner() {
+        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
+
+        // Reduce phase
+        // Single thread for folding to not have a mutex per column in the result.
+
+        for (j, value) in intermediate_multiplication.0.into_inner() {
             result[j] += value;
         }
 
