@@ -203,7 +203,6 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             "Vector length does not match number of rows."
         );
 
-        // E
         let intermediate_multiplication =
             LockFreeArray::new(vec![(0, FieldElement::zero()); rhs.matrix.num_entries()]);
 
