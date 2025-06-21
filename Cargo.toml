@@ -7,7 +7,7 @@ members = [
     "hla",
     "block-multiplier",
     "block-multiplier-codegen",
-    "skyscraper",
+    "skyscraper", "tensor",
 ]
 
 [workspace.package]
