@@ -2,7 +2,6 @@
 #![allow(unsafe_code)]
 
 use std::{
-    array,
     marker::PhantomData,
     ops::{Index, IndexMut, Range},
 };
@@ -167,7 +166,7 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     ) -> (TensorMut<'_, T, MAX_RANK>, TensorMut<'_, T, MAX_RANK>) {
         assert!(dim < self.rank(), "Dimension {dim} out of bounds");
         assert!(
-            index < self.shape[dim].0 as usize,
+            index < self.shape[dim] as usize,
             "Index {index} out of bounds for dimension {dim}",
         );
         let mut left_shape = self.shape;
@@ -217,16 +216,17 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
         );
         assert_eq!(
             sizes.iter().product::<usize>(),
-            self.shape[dim].0 as usize,
+            self.shape[dim] as usize,
             "The product of sis must equal the original size."
         );
 
         let mut shape = self.shape;
         let mut stride = self.stride;
-        let mut stride = self.shape[dim];
+        let mut s = self.stride[dim];
         for (i, &size) in sizes.iter().enumerate().rev() {
-            shape[dim + i] = (size as u32, stride);
-            stride *= size as u32;
+            shape[dim + i] = size as u32;
+            stride[dim + i] = s;
+            s *= size as u32;
         }
         for i in (dim + sizes.len())..self.rank() {
             shape[i] = self.shape[i + 1 - sizes.len()];
@@ -306,7 +306,7 @@ where
 {
     type Output = T;
 
-    fn index(&self, index: I) -> &'a Self::Output {
+    fn index(&self, index: I) -> &Self::Output {
         let index = index.as_ref();
         assert!(
             index.len() == self.rank(),
@@ -327,7 +327,32 @@ where
     }
 }
 
-// TODO: tensor[(.., 2, 3..4, ..)]
+impl<T, const MAX_RANK: usize, I> IndexMut<I> for TensorMut<'_, T, MAX_RANK>
+where
+    I: AsRef<[usize]>,
+{
+    fn index_mut(&mut self, index: I) -> &mut T {
+        let index = index.as_ref();
+        assert!(
+            index.len() == self.rank(),
+            "Index size {} does not match tensor rank {}",
+            index.len(),
+            self.rank()
+        );
+        let mut offset = 0;
+        for (d, &i) in index.iter().enumerate() {
+            assert!(
+                i < self.shape[d] as usize,
+                "Index {i} out of bounds for dimension {d} with size {}",
+                self.shape[d]
+            );
+            offset += i * self.stride[d] as usize;
+        }
+        unsafe { &mut *self.data.add(offset) }
+    }
+}
+
+// TODO: tensor[(.., 2, 3..4, ..)] notation to get subtensors
 
 #[cfg(test)]
 mod tests {
@@ -361,7 +386,6 @@ mod tests {
     fn test_unflatten() {
         let mut data = [1_u32, 2, 3, 4, 5, 6, 7, 8];
         let mut tensor: TensorMut<_> = data.as_mut_slice().into();
-
         let tensor = tensor.unflatten(0, [2, 2, 2]);
         assert_eq!(tensor.rank(), 3);
         assert_eq!(tensor.shape, [2, 2, 2]);
