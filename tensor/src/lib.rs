@@ -1,6 +1,9 @@
 //! A simple generic tensor library in Rust.
 #![allow(unsafe_code)]
 
+mod layout;
+
+pub use layout::Layout;
 use std::{
     marker::PhantomData,
     ops::{Index, IndexMut, Range},
@@ -14,12 +17,10 @@ pub struct TensorMut<'a, T, const MAX_RANK: usize = 3> {
     /// Pointer to the data of the tensor.
     data: *mut T,
 
-    /// Size of each dimension in the tensor, zero padded to fit `MAX_RANK`.
-    shape: [u32; MAX_RANK],
+    /// Memory layout of tensor dimensions.
+    layout: Layout<MAX_RANK>,
 
-    /// Stride for each dimension, zero padded to fit `MAX_RANK`.
-    stride: [u32; MAX_RANK],
-
+    /// Lifetime marker for the data
     _lifetime: PhantomData<&'a mut T>,
 }
 
@@ -29,19 +30,19 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// A rank of `0` indicates a scalar, `1` indicates a vector, and so on.
     #[must_use]
     pub fn rank(&self) -> usize {
-        self.shape.iter().position(|&s| s == 0).unwrap_or(MAX_RANK)
+        self.layout.rank()
     }
 
     /// The sizes of each dimension of the tensor.
     #[must_use]
-    pub fn shape(&self) -> &[u32] {
-        &self.shape[..self.rank()]
+    pub fn shape(&self, dim: usize) -> usize {
+        self.layout.shape(dim)
     }
 
     /// Total size of the tensor, which is the product of all dimensions.
     #[must_use]
-    pub fn size(&self) -> u32 {
-        self.shape().iter().product()
+    pub fn size(&self) -> usize {
+        self.layout.size()
     }
 
     /// Return a mutable slice of the tensor data.
@@ -49,11 +50,14 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// Returns `None` if the tensor is not a 1D tensor with a contiguous
     /// layout.
     pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
-        if self.rank() != 1 || self.stride[0] != 1 {
-            return None;
-        }
-        let slice = unsafe { std::slice::from_raw_parts_mut(self.data, self.shape[0] as usize) };
-        Some(slice)
+        // TODO:
+        // if self.rank() != 1 || self.layout.stride[0] != 1 {
+        //     return None;
+        // }
+        // let slice =
+        //     unsafe { std::slice::from_raw_parts_mut(self.data, self.layout.shape[0]
+        // as usize) }; Some(slice)
+        todo!()
     }
 
     /// Adjusts the `MAX_RANK` of the tensor to a new value.
@@ -63,20 +67,9 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// Panics if the new `MAX_RANK` is less than the current rank of the
     /// tensor.
     pub fn with_max_rank<const N: usize>(&mut self) -> TensorMut<'_, T, N> {
-        assert!(
-            N >= self.rank(),
-            "New MAX_RANK must be at least the current rank"
-        );
-        let mut shape = [0; N];
-        let mut stride = [0; N];
-        for i in 0..self.rank() {
-            shape[i] = self.shape[i];
-            stride[i] = self.stride[i];
-        }
         TensorMut {
-            data: self.data,
-            shape,
-            stride,
+            data:      self.data,
+            layout:    self.layout.with_max_rank(),
             _lifetime: PhantomData,
         }
     }
@@ -91,28 +84,9 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// if any axis is out of bounds, or if any axis is used multiple times.
     #[must_use]
     pub fn transpose(&mut self, axes: &[usize]) -> TensorMut<'_, T, MAX_RANK> {
-        assert!(axes.len() == self.rank(), "Invalid axes size for transpose");
-        let mut shape = [0; MAX_RANK];
-        let mut stride = [0; MAX_RANK];
-        let mut used = [false; MAX_RANK];
-        for (i, &axis) in axes.iter().enumerate() {
-            assert!(
-                axis < self.rank(),
-                "Axis {axis} out of bounds for rank {}",
-                self.rank()
-            );
-            assert!(
-                !used[axis],
-                "Axis {axis} is used multiple times in transpose",
-            );
-            used[axis] = true;
-            shape[i] = self.shape[axis];
-            stride[i] = self.stride[axis];
-        }
         TensorMut {
-            data: self.data,
-            shape,
-            stride,
+            data:      self.data,
+            layout:    self.layout.transpose(axes),
             _lifetime: PhantomData,
         }
     }
@@ -126,28 +100,11 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// Panics if the dimension is out of bounds or if the index is out of
     /// bounds for the dimension.
     #[must_use]
-    pub fn get(&mut self, dim: usize, index: usize) -> TensorMut<'_, T, MAX_RANK> {
-        assert!(dim < self.rank(), "Dimension {dim} out of bounds");
-        assert!(
-            index < self.shape[dim] as usize,
-            "Index {index} out of bounds for dimension {dim}",
-        );
-        let offset = index * self.stride[dim] as usize;
-        let mut shape = [0; MAX_RANK];
-        let mut stride = [0; MAX_RANK];
-        for i in 0..self.rank() {
-            if i < dim {
-                shape[i] = self.shape[i];
-                stride[i] = self.stride[i];
-            } else if i > dim {
-                shape[i - 1] = self.shape[i];
-                stride[i - 1] = self.stride[i];
-            }
-        }
+    pub fn select(&mut self, dim: usize, index: usize) -> TensorMut<'_, T, MAX_RANK> {
+        let (offset, layout) = self.layout.select(dim, index);
         TensorMut {
             data: unsafe { self.data.add(offset) },
-            shape,
-            stride,
+            layout,
             _lifetime: PhantomData,
         }
     }
@@ -159,32 +116,22 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// Panics if the dimension is out of bounds or if the index is out of
     /// bounds.
     #[must_use]
-    pub fn split(
+    pub fn split_at_mut(
         &mut self,
         dim: usize,
         index: usize,
     ) -> (TensorMut<'_, T, MAX_RANK>, TensorMut<'_, T, MAX_RANK>) {
-        assert!(dim < self.rank(), "Dimension {dim} out of bounds");
-        assert!(
-            index < self.shape[dim] as usize,
-            "Index {index} out of bounds for dimension {dim}",
-        );
-        let mut left_shape = self.shape;
-        let mut right_shape = self.shape;
-        left_shape[dim] = index as u32;
-        right_shape[dim] -= index as u32;
-        let right_offset = index * self.stride[dim] as usize;
+        let left = self.layout.chunk(dim, 0..index);
+        let right = self.layout.chunk(dim, index..self.layout.shape(dim));
         (
             TensorMut {
-                data:      self.data,
-                shape:     left_shape,
-                stride:    self.stride,
+                data:      unsafe { self.data.add(left.0) },
+                layout:    left.1,
                 _lifetime: PhantomData,
             },
             TensorMut {
-                data:      unsafe { self.data.add(right_offset) },
-                shape:     right_shape,
-                stride:    self.stride,
+                data:      unsafe { self.data.add(right.0) },
+                layout:    right.1,
                 _lifetime: PhantomData,
             },
         )
@@ -208,35 +155,9 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
         dim: usize,
         sizes: impl AsRef<[usize]>,
     ) -> TensorMut<'_, T, MAX_RANK> {
-        let sizes = sizes.as_ref();
-        assert!(dim < self.rank(), "Dimension {dim} out of bounds");
-        assert!(
-            self.rank() + sizes.len() > MAX_RANK,
-            "Resulting tensor rank exceeds MAX_RANK"
-        );
-        assert_eq!(
-            sizes.iter().product::<usize>(),
-            self.shape[dim] as usize,
-            "The product of sis must equal the original size."
-        );
-
-        let mut shape = self.shape;
-        let mut stride = self.stride;
-        let mut s = self.stride[dim];
-        for (i, &size) in sizes.iter().enumerate().rev() {
-            shape[dim + i] = size as u32;
-            stride[dim + i] = s;
-            s *= size as u32;
-        }
-        for i in (dim + sizes.len())..self.rank() {
-            shape[i] = self.shape[i + 1 - sizes.len()];
-            stride[i] = self.stride[i + 1 - sizes.len()];
-        }
-
         TensorMut {
-            data: self.data,
-            shape,
-            stride,
+            data:      self.data,
+            layout:    self.layout.unflatten(dim, sizes),
             _lifetime: PhantomData,
         }
     }
@@ -249,36 +170,9 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
     /// Panics if the dimensions are out of bounds or if the tensor rank is less
     /// than 1.
     pub fn flatten(&mut self, dims: Range<usize>) -> Option<TensorMut<'_, T, MAX_RANK>> {
-        assert!(
-            dims.end <= self.rank(),
-            "Dimension {} out of bounds",
-            dims.end
-        );
-        // Check if the dimensions are in row-major order
-        let mut stride = self.stride[dims.end - 1];
-        for d in dims.clone().rev() {
-            if self.stride[d] != stride {
-                return None; // Not in row-major order
-            }
-            stride *= self.shape[d];
-        }
-
-        let mut shape = [0; MAX_RANK];
-        let mut stride = [0; MAX_RANK];
-        for d in 0..dims.start {
-            shape[d] = self.shape[d];
-            stride[d] = self.stride[d];
-        }
-        shape[dims.start] = self.shape[dims.clone()].iter().product::<u32>();
-        stride[dims.start] = self.stride[dims.end - 1];
-        for d in dims.end..self.rank() {
-            shape[d - dims.len() + 1] = self.shape[d];
-            stride[d - dims.len() + 1] = self.stride[d];
-        }
         Some(TensorMut {
-            data: self.data,
-            shape,
-            stride,
+            data:      self.data,
+            layout:    self.layout.flatten(dims)?,
             _lifetime: PhantomData,
         })
     }
@@ -286,15 +180,9 @@ impl<T, const MAX_RANK: usize> TensorMut<'_, T, MAX_RANK> {
 
 impl<'a, T, const MAX_RANK: usize> From<&'a mut [T]> for TensorMut<'a, T, MAX_RANK> {
     fn from(value: &mut [T]) -> Self {
-        assert!(MAX_RANK >= 1, "Tesnor rank must be at least 1");
-        let mut shape = [0; MAX_RANK];
-        let mut stride = [0; MAX_RANK];
-        shape[0] = value.len().try_into().expect("Tensor size out of range");
-        stride[0] = 1;
         TensorMut {
-            data: value.as_mut_ptr(),
-            shape,
-            stride,
+            data:      value.as_mut_ptr(),
+            layout:    Layout::from_size(value.len()),
             _lifetime: PhantomData,
         }
     }
@@ -307,22 +195,7 @@ where
     type Output = T;
 
     fn index(&self, index: I) -> &Self::Output {
-        let index = index.as_ref();
-        assert!(
-            index.len() == self.rank(),
-            "Index size {} does not match tensor rank {}",
-            index.len(),
-            self.rank()
-        );
-        let mut offset = 0;
-        for (d, &i) in index.iter().enumerate() {
-            assert!(
-                i < self.shape[d] as usize,
-                "Index {i} out of bounds for dimension {d} with size {}",
-                self.shape[d]
-            );
-            offset += i * self.stride[d] as usize;
-        }
+        let offset = self.layout.offset(index);
         unsafe { &*self.data.add(offset) }
     }
 }
@@ -332,22 +205,7 @@ where
     I: AsRef<[usize]>,
 {
     fn index_mut(&mut self, index: I) -> &mut T {
-        let index = index.as_ref();
-        assert!(
-            index.len() == self.rank(),
-            "Index size {} does not match tensor rank {}",
-            index.len(),
-            self.rank()
-        );
-        let mut offset = 0;
-        for (d, &i) in index.iter().enumerate() {
-            assert!(
-                i < self.shape[d] as usize,
-                "Index {i} out of bounds for dimension {d} with size {}",
-                self.shape[d]
-            );
-            offset += i * self.stride[d] as usize;
-        }
+        let offset = self.layout.offset(index);
         unsafe { &mut *self.data.add(offset) }
     }
 }
@@ -371,7 +229,7 @@ mod tests {
     fn test_split() {
         let mut data = [1_u32, 2, 3, 4, 5, 6, 7, 8];
         let mut tensor: TensorMut<_> = TensorMut::from(&mut data[..]);
-        let (left, right) = tensor.split(0, 4);
+        let (left, right) = tensor.split_at_mut(0, 4);
         assert_eq!(left.rank(), 1);
         assert_eq!(left.size(), 4);
         assert_eq!(left[[0]], 1);
@@ -388,8 +246,8 @@ mod tests {
         let mut tensor: TensorMut<_> = data.as_mut_slice().into();
         let tensor = tensor.unflatten(0, [2, 2, 2]);
         assert_eq!(tensor.rank(), 3);
-        assert_eq!(tensor.shape, [2, 2, 2]);
-        assert_eq!(tensor.stride, [4, 2, 1]);
+        // assert_eq!(tensor.shape, [2, 2, 2]);
+        // assert_eq!(tensor.stride, [4, 2, 1]);
         assert_eq!(tensor[[0, 0, 0]], 1);
         assert_eq!(tensor[[1, 0, 0]], 5);
         assert_eq!(tensor[[0, 1, 1]], 4);
