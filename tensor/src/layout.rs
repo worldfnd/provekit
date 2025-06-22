@@ -1,6 +1,14 @@
 use std::ops::Range;
 
-/// Tensor memory layout
+/// Tensor memory layout.
+///
+/// # Guarantees
+///
+/// The set of valid offsets produces by [`offset`] is perserved.
+/// All the functions deriving new [`Layout`]s (e.g. [`transpose`],
+/// [`unflatten`], and [`select`]) will produce `Layout`s that are a subset of
+/// the original layout, meaning that they will only produce offsets that are
+/// valid in the original layout.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Layout<const MAX_RANK: usize = 3> {
     /// Size of each dimension in the tensor, zero padded to fit `MAX_RANK`.
@@ -8,6 +16,7 @@ pub struct Layout<const MAX_RANK: usize = 3> {
 
     /// Stride for each dimension, zero padded to fit `MAX_RANK`.
     stride: [u32; MAX_RANK],
+    // TODO: Base offset? This allows a fully safe implementation.
 }
 
 impl<const MAX_RANK: usize> Default for Layout<MAX_RANK> {
@@ -21,6 +30,8 @@ impl<const MAX_RANK: usize> Default for Layout<MAX_RANK> {
 
 impl<const MAX_RANK: usize> Layout<MAX_RANK> {
     /// Create a contiguous one dimensional vector.
+    ///
+    /// The set of valid offsets for this layout is 0..size.
     #[must_use]
     pub fn from_size(size: usize) -> Self {
         assert!(MAX_RANK >= 1, "Tensor rank must be at least 1");
@@ -51,6 +62,14 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
         self.shape[dim] as usize
     }
 
+    /// Compute the offset to the element with the provided index.
+    ///
+    /// This will produce a valid offset for the tensor, or panic.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index size does not match the tensor rank, or if any
+    /// dimension is out of bounds.
     #[must_use]
     #[inline(always)]
     pub fn offset(&self, index: impl AsRef<[usize]>) -> usize {
@@ -129,6 +148,11 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
     ///
     /// The returned tensor will have lower rank by one.
     ///
+    /// # Guarantees
+    ///
+    /// For a given `dim` and distinct `index` values, the returned tensors will
+    /// have disjoint sets of valid offsets.
+    ///
     /// # Panics
     ///
     /// Panics if the dimension is out of bounds or if the index is out of
@@ -155,6 +179,17 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
         (offset, Self { shape, stride })
     }
 
+    /// Get the subtensor by taking a contiguous subrange along a dimension.
+    ///
+    /// # Guarantees
+    ///
+    /// For a given `dim`, non-overlapping `ranges` values will result in
+    /// tensors with disjoint sets of valid offsets.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the dimension is out of bounds or if the index is out of
+    /// bounds for the dimension.
     #[must_use]
     pub fn chunk(&self, dim: usize, range: Range<usize>) -> (usize, Self) {
         assert!(dim < self.rank(), "Dimension {dim} out of bounds");
@@ -186,9 +221,11 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
     pub fn unflatten(&self, dim: usize, sizes: impl AsRef<[usize]>) -> Self {
         let sizes = sizes.as_ref();
         assert!(dim < self.rank(), "Dimension {dim} out of bounds");
+        dbg!(self.rank() + sizes.len() - 1, MAX_RANK);
         assert!(
-            self.rank() + sizes.len() > MAX_RANK,
-            "Resulting tensor rank exceeds MAX_RANK"
+            self.rank() + sizes.len() - 1 <= MAX_RANK,
+            "Resulting tensor rank {} exceeds MAX_RANK {MAX_RANK}",
+            self.rank() + sizes.len() - 1
         );
         assert_eq!(
             sizes.iter().product::<usize>(),
@@ -217,7 +254,8 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
     /// # Panics
     /// Panics if the dimensions are out of bounds or if the tensor rank is less
     /// than 1.
-    pub fn flatten(&self, dims: Range<usize>) -> Option<Layout<MAX_RANK>> {
+    #[must_use]
+    pub fn flatten(&self, dims: Range<usize>) -> Option<Self> {
         if dims.start >= dims.end {
             // Empty range
             return Some(*self);
@@ -243,15 +281,82 @@ impl<const MAX_RANK: usize> Layout<MAX_RANK> {
             result.shape[d - dims.len() + 1] = self.shape[d];
             result.stride[d - dims.len() + 1] = self.stride[d];
         }
+        for d in (self.rank() - dims.len() + 1)..MAX_RANK {
+            result.shape[d] = 0; // Zero out unused dimensions
+            result.stride[d] = 0;
+        }
         Some(result)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use {super::*, proptest::prelude::*};
 
     // TODO: enumerate the set of accessible offsets and make sure they satisfy
     // invariants.
     // - No offsets out of bounds,
     // - No overlap in disjunct views using `select` and `chunk`.
+
+    #[test]
+    fn test_layout() {
+        let layout = Layout::<3>::from_size(12);
+        assert_eq!(layout.rank(), 1);
+        assert_eq!(layout.size(), 12);
+        assert_eq!(layout.shape(0), 12);
+        assert_eq!(layout.offset([0]), 0);
+        assert_eq!(layout.offset([11]), 11);
+    }
+
+    #[test]
+    fn test_unflatten() {
+        let dims = 1_usize..=3;
+        proptest!(|(d0 in &dims, d1 in &dims, d2 in &dims, d3 in &dims)| {
+            let layout = Layout::<4>::from_size(d0 * d1 * d2 * d3);
+            let unflattened = layout.unflatten(0, [d0, d1, d2, d3]);
+            assert_eq!(unflattened.size(), layout.size());
+            assert_eq!(unflattened.rank(), 4);
+            assert_eq!(unflattened.shape(0), d0);
+            assert_eq!(unflattened.shape(1), d1);
+            assert_eq!(unflattened.shape(2), d2);
+            assert_eq!(unflattened.shape(3), d3);
+
+            // Make sure all offsets are valid.
+            // Iterate through all indices in lexicographic order.
+            let mut i = 0;
+            for i0 in 0..d0 {
+                for i1 in 0..d1 {
+                    for i2 in 0..d2 {
+                        for i3 in 0..d3 {
+                            let index = [i0, i1, i2, i3];
+                            let offset = unflattened.offset(index);
+                            assert!(offset < layout.size());
+                            assert_eq!(offset, layout.offset([i]));
+                            i += 1;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn test_unflatten_flatten() {
+        let dims = 1_usize..=3;
+        proptest!(|(d0 in &dims, d1 in &dims, d2 in &dims, d3 in &dims)| {
+            let layout = Layout::<4>::from_size(d0 * d1 * d2 * d3);
+            let unflattened = layout.unflatten(0, [d0, d1, d2, d3]);
+            dbg!();
+            let flattened = unflattened.flatten(0..4).expect("Should be in row-major order");
+            dbg!();
+            dbg!(layout, unflattened, flattened);
+            assert_eq!(flattened, layout);
+            dbg!();
+
+            // Make sure all offsets are valid
+            for i in 0..layout.size() {
+                assert_eq!(layout.offset([i]), flattened.offset([i]))
+            }
+        });
+    }
 }

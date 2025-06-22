@@ -188,7 +188,7 @@ impl<'a, T, const MAX_RANK: usize> From<&'a mut [T]> for TensorMut<'a, T, MAX_RA
     }
 }
 
-impl<'a, T, const MAX_RANK: usize, I> Index<I> for TensorMut<'a, T, MAX_RANK>
+impl<T, const MAX_RANK: usize, I> Index<I> for TensorMut<'_, T, MAX_RANK>
 where
     I: AsRef<[usize]>,
 {
