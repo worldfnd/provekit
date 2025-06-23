@@ -94,6 +94,53 @@ impl FreshVariable {
     }
 }
 
+/// [`Lazy`] allows for defining operations beforehand and defer the execution
+/// till the first time the result is needed. This is useful in situations where
+/// otherwise too many registers will be allocated at once.
+pub struct Lazy<'a, T>(LazyInner<'a, T>);
+enum LazyInner<'a, T> {
+    // To extract FnOnce without having to resort to unsafe we wrap it in an Option.
+    Thunk(Option<DelayedInstruction<'a, T>>),
+    Forced(T),
+}
+
+type DelayedInstruction<'a, T> = Box<dyn FnOnce(&mut FreshAllocator, &mut Assembler) -> T + 'a>;
+
+impl<T> Lazy<'_, T> {
+    pub fn thunk<'a>(inst: DelayedInstruction<'a, T>) -> Lazy<'a, T> {
+        Lazy(LazyInner::Thunk(Some(inst)))
+    }
+
+    pub fn forced<'a>(val: T) -> Lazy<'a, T> {
+        Lazy(LazyInner::Forced(val))
+    }
+
+    fn force(&mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) {
+        if let LazyInner::Thunk(optf) = &mut self.0 {
+            match optf.take() {
+                Some(f) => self.0 = LazyInner::Forced(f(alloc, asm)),
+                None => unreachable!(),
+            };
+        }
+    }
+
+    pub fn as_(&mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) -> &T {
+        self.force(alloc, asm);
+        match &self.0 {
+            LazyInner::Forced(t) => t,
+            LazyInner::Thunk(_) => unreachable!(),
+        }
+    }
+
+    pub fn into_(mut self, alloc: &mut FreshAllocator, asm: &mut Assembler) -> T {
+        self.force(alloc, asm);
+        match self.0 {
+            LazyInner::Forced(t) => t,
+            LazyInner::Thunk(_) => unreachable!(),
+        }
+    }
+}
+
 /// Represents a single hardware registers by modelling it as
 /// a fresh variable.
 /// This value does not have a clone or copy trait to prevent aliasing

@@ -6,18 +6,23 @@ use {
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
-    acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
+    acir::{circuit::Program, native_types::WitnessMap, FieldElement as NoirFieldElement},
     anyhow::{ensure, Context as _, Result},
+    bn254_blackbox_solver::Bn254BlackBoxSolver,
+    nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file,
+    noirc_abi::InputMap,
     noirc_artifacts::program::ProgramArtifact,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
     std::{fs::File, path::Path},
-    tracing::{info, instrument, span, Level},
+    tracing::{info, instrument},
 };
 
 /// A scheme for proving a Noir program.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
+    pub program:           Program<NoirFieldElement>,
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
@@ -32,22 +37,14 @@ pub struct NoirProof {
 impl NoirProofScheme {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     pub fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
-        let program = {
-            let file = File::open(path).context("while opening Noir program")?;
-            let _span = span!(
-                Level::INFO,
-                "serde_json",
-                size = file.metadata().map(|m| m.len()).ok(),
-            )
-            .entered();
+        let file = File::open(path).context("while opening Noir program")?;
+        let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
-            serde_json::from_reader(file).context("while reading Noir program")?
-        };
-        Self::from_program(&program)
+        Self::from_program(program)
     }
 
     #[instrument(skip_all)]
-    pub fn from_program(program: &ProgramArtifact) -> Result<Self> {
+    pub fn from_program(program: ProgramArtifact) -> Result<Self> {
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(
@@ -76,12 +73,13 @@ impl NoirProofScheme {
 
         // Configure witness generator
         let witness_generator =
-            NoirWitnessGenerator::new(program, witness_map, r1cs.num_witnesses());
+            NoirWitnessGenerator::new(&program, witness_map, r1cs.num_witnesses());
 
         // Configure Whir
         let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
+            program: program.bytecode,
             r1cs,
             witness_builders,
             witness_generator,
@@ -94,18 +92,50 @@ impl NoirProofScheme {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
     }
 
+    pub fn read_witness(&self, prover_toml: impl AsRef<Path>) -> Result<InputMap> {
+        let (input_map, _expected_return) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+
+        Ok(input_map)
+    }
+
     #[instrument(skip_all)]
-    pub fn prove(
-        &self,
-        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
-    ) -> Result<NoirProof> {
-        let span = span!(Level::INFO, "generate_witness").entered();
+    pub fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirFieldElement>> {
+        let solver = Bn254BlackBoxSolver::default();
+        let mut output_buffer = Vec::new();
+        let mut foreign_call_executor = DefaultForeignCallBuilder {
+            output:       &mut output_buffer,
+            enable_mocks: false,
+            resolver_url: None,
+            root_path:    None,
+            package_name: None,
+        }
+        .build();
+
+        let initial_witness = self.witness_generator.abi().encode(input_map, None)?;
+
+        let mut witness_stack = nargo::ops::execute_program(
+            &self.program,
+            initial_witness,
+            &solver,
+            &mut foreign_call_executor,
+        )?;
+
+        Ok(witness_stack
+            .pop()
+            .context("Missing witness results")?
+            .witness)
+    }
+
+    #[instrument(skip_all)]
+    pub fn prove(&self, input_map: &InputMap) -> Result<NoirProof> {
+        let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Solve R1CS instance
         let mut transcript = MockTranscript::new();
         let partial_witness = self.r1cs.solve_witness_vec(
             &self.witness_builders,
-            acir_witness_idx_to_value_map,
+            &acir_witness_idx_to_value_map,
             &mut transcript,
         );
         let witness = fill_witness(partial_witness).context("while filling witness")?;
@@ -115,7 +145,6 @@ impl NoirProofScheme {
         self.r1cs
             .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
-        drop(span);
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
@@ -161,6 +190,7 @@ mod tests {
             FieldElement,
         },
         ark_std::One,
+        noir_tools::compile_workspace,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
@@ -185,14 +215,7 @@ mod tests {
     fn test_noir_proof_scheme_serde() {
         let directory = "../noir-examples/poseidon-rounds";
 
-        let status = std::process::Command::new("nargo")
-            .arg("compile")
-            .current_dir(directory)
-            .status()
-            .expect("Running nargo compile");
-        if !status.success() {
-            panic!("Failed to run nargo compile");
-        }
+        compile_workspace(directory).expect("Compiling workspace");
 
         let path = PathBuf::from(directory).join("target/basic.json");
         let proof_schema = NoirProofScheme::from_file(path).unwrap();

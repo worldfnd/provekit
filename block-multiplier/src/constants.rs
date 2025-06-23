@@ -140,3 +140,12 @@ const fn pow_2(n: u32) -> f64 {
     let exp = ((n as u64 + 1023) & 0x7ff) << 52;
     f64::from_bits(exp)
 }
+
+// BOUNDS
+/// Upper bound of 2**256-2p
+pub const OUTPUT_MAX: [u64; 4] = [
+    0x783c14d81ffffffe,
+    0xaf982f6f0c8d1edd,
+    0x8f5f7492fcfd4f45,
+    0x9f37631a3d9cbfac,
+];

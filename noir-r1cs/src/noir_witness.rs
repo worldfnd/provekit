@@ -22,6 +22,7 @@ pub struct NoirWitnessGenerator {
     // Note: Abi uses an [internally tagged] enum format in Serde, which is not compatible
     // with some schemaless formats like Postcard.
     // [internally-tagged]: https://serde.rs/enum-representations.html
+    // TODO: serializes the ABI as a json string. Something like CBOR might be better.
     #[serde(with = "serde_jsonify")]
     abi: Abi,
 
@@ -50,6 +51,10 @@ impl NoirWitnessGenerator {
 
     pub fn witness_map(&self) -> &[Option<NonZeroU32>] {
         &self.witness_map
+    }
+
+    pub fn abi(&self) -> &Abi {
+        &self.abi
     }
 
     /// Noir inputs are in order at the start of the witness vector
