@@ -31,7 +31,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         let num_blocks = N / BLOCK_SIZE;
         for i in 0..num_blocks {
             let msg_start = BLOCK_SIZE * i;
-            // Safety: No clue lol
+            // Safety: The `verify_msg_block` function should cover this.
             let (new_msg_block, new_msg_byte_ptr) =
                 unsafe { build_msg_block(msg, message_size, msg_start) };
 
@@ -58,7 +58,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         // or our message cannot be evenly split into blocks.
         if modulo != 0 {
             let msg_start = BLOCK_SIZE * num_blocks;
-            // Safety: No clue lol
+            // Safety: The `verify_msg_block` function should cover this.
             let (new_msg_block, new_msg_byte_ptr) =
                 unsafe { build_msg_block(msg, message_size, msg_start) };
 
@@ -95,7 +95,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
             msg_byte_ptr = 0;
         }
 
-        // Safety: No clue lol
+        // Safety: The `verify_msg_block` function should cover this.
         msg_block = unsafe { attach_len_to_msg_block(msg_block, msg_byte_ptr, message_size) };
 
         verify_msg_len(msg_block, last_block, msg_byte_ptr, message_size);
