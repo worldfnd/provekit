@@ -61,16 +61,6 @@ impl Command for Args {
             &self.params_for_recursive_verifier,
         );
 
-        let mut file = File::create(&self.proof_for_recursive_verifier).unwrap();
-        let mut proof_bytes = vec![];
-        proof
-            .whir_r1cs_proof
-            .whir_proof
-            .serialize_compressed(&mut proof_bytes)
-            .unwrap();
-        file.write_all(&proof_bytes)
-            .expect("Writing proof bytes to a file failed");
-
         let json = serde_json::to_string_pretty(&scheme.r1cs).unwrap(); // Or `to_string` for compact
         let mut file = File::create("r1cs.json")?;
         file.write_all(json.as_bytes())?;

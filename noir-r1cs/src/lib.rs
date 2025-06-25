@@ -38,7 +38,6 @@ use {
         noir_witness::NoirWitnessGenerator,
         sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
         utils::serde_ark,
-        whir_r1cs::WhirProof,
     },
     serde::{Deserialize, Serialize},
 };
@@ -47,6 +46,4 @@ use {
 pub struct Proof {
     #[serde(with = "serde_ark")]
     transcript: Vec<FieldElement>,
-    #[serde(with = "serde_ark")]
-    whir_proof: WhirProof,
 }

@@ -120,7 +120,7 @@ noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-
 # WHIR (note that WHIR repo needs to implement HintSerialize and HintDeserialize for generic types, not just the default ones)
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "6ded35c03246c36123caecf7d447d66e1bdc068d" }
+], rev = "1e1ace6c9bd47dfdfa178f0267937156090080a7" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
