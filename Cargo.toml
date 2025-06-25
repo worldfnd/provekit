@@ -117,10 +117,10 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
-# WHIR
+# WHIR (note that WHIR repo needs to implement HintSerialize and HintDeserialize for generic types, not just the default ones)
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "605e7a67da63217cc973978c01d5d5882856fff9" }
+], rev = "6ded35c03246c36123caecf7d447d66e1bdc068d" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }

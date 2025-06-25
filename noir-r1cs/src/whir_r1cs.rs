@@ -45,7 +45,7 @@ use {
 pub type MultivariateParameters = GenericMultivariateParameters<FieldElement>;
 pub type ProtocolParameters = GenericProtocolParameters<SkyscraperMerkleConfig, SkyscraperPoW>;
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
-pub type WhirProof = GenericWhirProof<SkyscraperMerkleConfig, FieldElement>;
+pub type WhirProof = GenericWhirProof<FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
