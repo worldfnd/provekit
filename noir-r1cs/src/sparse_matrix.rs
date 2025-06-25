@@ -160,7 +160,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             "Vector length does not match number of columns."
         );
 
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
+        let mut result = Vec::with_capacity(self.matrix.num_rows);
 
         (0..self.matrix.num_rows)
             .into_par_iter()
