@@ -2,14 +2,12 @@ use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
     rayon::iter::{
-        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelBridge,
-        ParallelIterator,
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
     },
     serde::{Deserialize, Serialize},
     std::{
-        cell::UnsafeCell,
         fmt::Debug,
-        ops::{Div, Mul, Range},
+        ops::{Mul, Range},
     },
 };
 /// A sparse matrix with interned field elements
@@ -174,25 +172,6 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     }
 }
 
-// Provide interior mutability where
-struct LockFreeArray<T>(UnsafeCell<Box<[T]>>);
-unsafe impl<T: Sync + Send> Send for LockFreeArray<T> {}
-unsafe impl<T: Sync + Send> Sync for LockFreeArray<T> {}
-
-impl<T> LockFreeArray<T> {
-    fn new(vec: Vec<T>) -> Self {
-        let arr = vec.into_boxed_slice();
-        LockFreeArray(UnsafeCell::new(arr))
-    }
-
-    // Requires that only one thread has access to index and that the index is
-    // within bounds.
-    unsafe fn insert(&self, index: usize, value: T) {
-        let vec = { &mut **self.0.get() };
-        vec[index] = value;
-    }
-}
-
 /// Left multiplication by vector
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
@@ -209,6 +188,7 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
 
         let chunk_size = result.len().div_ceil(num_threads);
 
+        // In microbenchmarks par_iter_mut.chunks outperforms par_chunks_mut slightly.
         result
             .par_iter_mut()
             .chunks(chunk_size)
