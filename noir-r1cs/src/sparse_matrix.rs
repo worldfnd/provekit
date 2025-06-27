@@ -2,13 +2,14 @@ use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
     rayon::iter::{
-        IndexedParallelIterator, IntoParallelIterator, ParallelBridge, ParallelIterator,
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelBridge,
+        ParallelIterator,
     },
     serde::{Deserialize, Serialize},
     std::{
         cell::UnsafeCell,
         fmt::Debug,
-        ops::{Mul, Range},
+        ops::{Div, Mul, Range},
     },
 };
 /// A sparse matrix with interned field elements
@@ -203,42 +204,25 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             "Vector length does not match number of rows."
         );
 
-        let intermediate_multiplication =
-            LockFreeArray::new(vec![(0, FieldElement::zero()); rhs.matrix.num_entries()]);
-
-        let intermediate_reference = &intermediate_multiplication;
-
-        // Mapping phase
-        //
-        // Parallelize the multiplication
-        // Use a lock-free array to prevent constant resizing when collecting the
-        // iterator as the size is not known to Rayon. Collecting without a
-        // preallocating the intermediate vector is >15% slower
-        // Other options that have been explored
-        // - An IndexedParallelIterator on the values of the sparse matrix also wasn't
-        //   an option as it requires random access which we can't provide as we
-        //   wouldn't know the row a value belongs to. That's why the rows drive the
-        //   iterator below.
-        // - Acquiring a mutex per column in the result was too expensive (even with
-        //   parking_lot)
-
-        (0..rhs.matrix.num_rows).into_par_iter().for_each(|row| {
-            let range = rhs.matrix.row_range(row);
-            rhs.iter_row(row)
-                .zip(range)
-                .for_each(move |((col, value), ind)| unsafe {
-                    intermediate_reference.insert(ind, (col, value * self[row]))
-                })
-        });
-
+        let num_threads = rayon::current_num_threads();
         let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
 
-        // Reduce phase
-        // Single thread for folding to not have a mutex per column in the result.
+        let chunk_size = result.len().div_ceil(num_threads);
 
-        for (j, value) in intermediate_multiplication.0.into_inner() {
-            result[j] += value;
-        }
+        result
+            .par_iter_mut()
+            .chunks(chunk_size)
+            .enumerate()
+            .for_each(|(chunk_number, mut chunk)| {
+                let base = chunk_number * chunk_size;
+                let col_range = base..base + chunk_size;
+                rhs.iter()
+                    .filter(|((_row, col), _value)| col_range.contains(col))
+                    .for_each(|((row, col), value)| {
+                        let index = col - base;
+                        *(chunk[index]) += self[row] * value;
+                    });
+            });
 
         result
     }
