@@ -24,8 +24,8 @@ use {
     whir::{
         parameters::{
             default_max_pow, FoldingFactor,
-            MultivariateParameters as GenericMultivariateParameters, SoundnessType,
-            ProtocolParameters as GenericProtocolParameters,
+            MultivariateParameters as GenericMultivariateParameters,
+            ProtocolParameters as GenericProtocolParameters, SoundnessType,
         },
         poly_utils::evals::EvaluationsList,
         whir::{
@@ -33,9 +33,7 @@ use {
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
-            statement::{
-                Statement, Weights,
-            },
+            statement::{Statement, Weights},
             verifier::Verifier,
         },
     },
@@ -152,20 +150,21 @@ impl WhirR1CSScheme {
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
         // Compute statement verifier
-        let mut statement_verifier =
-            Statement::<FieldElement>::new(self.m);
+        let mut statement_verifier = Statement::<FieldElement>::new(self.m);
         for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier.add_constraint(Weights::linear(EvaluationsList::new(vec![FieldElement::zero();1<<self.m])), *claimed_sum);
+            statement_verifier.add_constraint(
+                Weights::linear(EvaluationsList::new(vec![
+                    FieldElement::zero();
+                    1 << self.m
+                ])),
+                *claimed_sum,
+            );
         }
 
         let data_from_sumcheck_verifier =
             run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
-        run_whir_pcs_verifier(
-            &mut arthur,
-            &self.whir_config,
-            &statement_verifier,
-        )
-        .context("while verifying WHIR proof")?;
+        run_whir_pcs_verifier(&mut arthur, &self.whir_config, &statement_verifier)
+            .context("while verifying WHIR proof")?;
 
         // Check the Spartan sumcheck relation.
         ensure!(
