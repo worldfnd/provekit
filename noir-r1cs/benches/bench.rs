@@ -1,8 +1,12 @@
 //! Divan benchmarks for noir-r1cs
 use {
+    bincode,
     core::hint::black_box,
     divan::Bencher,
-    noir_r1cs::{read, NoirProof, NoirProofScheme},
+    noir_r1cs::{
+        read, utils::sumcheck::calculate_external_row_of_r1cs_matrices, FieldElement, NoirProof,
+        NoirProofScheme, R1CS,
+    },
     noir_tools::compile_workspace,
     std::path::Path,
 };
@@ -65,6 +69,36 @@ fn verify_poseidon_1000(bencher: Bencher) {
         .join("poseidon-1000.np");
     let proof: NoirProof = read(&path).unwrap();
     bencher.bench(|| black_box(&scheme).verify(black_box(&proof)));
+}
+
+#[divan::bench]
+fn calculate_external_row_from_serialized_data(bencher: Bencher) {
+    let alpha_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("benches")
+        .join("alpha.bin");
+    let r1cs_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("benches")
+        .join("r1cs.bin");
+
+    // Load serialized data with bincode
+    let alpha_raw: Vec<u64> =
+        bincode::deserialize(&std::fs::read(&alpha_path).expect("Failed to read alpha.bin"))
+            .expect("Failed to deserialize alpha");
+    let alpha: Vec<FieldElement> = alpha_raw
+        .into_iter()
+        .map(|v| FieldElement::from(v))
+        .collect();
+
+    let r1cs: R1CS =
+        bincode::deserialize(&std::fs::read(&r1cs_path).expect("Failed to read r1cs.bin"))
+            .expect("Failed to deserialize r1cs");
+
+    bencher.bench(|| {
+        black_box(calculate_external_row_of_r1cs_matrices(
+            black_box(&alpha),
+            black_box(&r1cs),
+        ))
+    });
 }
 
 fn main() {

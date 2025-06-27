@@ -1,6 +1,9 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
+    rayon::iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
+    },
     serde::{Deserialize, Serialize},
     std::{
         fmt::Debug,
@@ -146,7 +149,6 @@ impl HydratedSparseMatrix<'_> {
 }
 
 /// Right multiplication by vector
-// OPT: Paralelize
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     type Output = Vec<FieldElement>;
 
@@ -156,16 +158,21 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
-        for ((i, j), value) in self.iter() {
-            result[i] += value * rhs[j];
-        }
+
+        let mut result = Vec::with_capacity(self.matrix.num_rows);
+
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|i| {
+                self.iter_row(i)
+                    .fold(FieldElement::zero(), |sum, (j, value)| sum + value * rhs[j])
+            })
+            .collect_into_vec(&mut result);
         result
     }
 }
 
 /// Left multiplication by vector
-// OPT: Paralelize
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 
@@ -175,10 +182,28 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             rhs.matrix.num_rows,
             "Vector length does not match number of rows."
         );
+
+        let num_threads = rayon::current_num_threads();
         let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
-        for ((i, j), value) in rhs.iter() {
-            result[j] += value * self[i];
-        }
+
+        let chunk_size = result.len().div_ceil(num_threads);
+
+        // In microbenchmarks par_iter_mut.chunks outperforms par_chunks_mut slightly.
+        result
+            .par_iter_mut()
+            .chunks(chunk_size)
+            .enumerate()
+            .for_each(|(chunk_number, mut chunk)| {
+                let base = chunk_number * chunk_size;
+                let col_range = base..base + chunk_size;
+                rhs.iter()
+                    .filter(|((_row, col), _value)| col_range.contains(col))
+                    .for_each(|((row, col), value)| {
+                        let index = col - base;
+                        *(chunk[index]) += self[row] * value;
+                    });
+            });
+
         result
     }
 }

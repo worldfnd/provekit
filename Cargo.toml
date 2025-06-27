@@ -41,10 +41,8 @@ missing_docs_in_private_items = { level = "allow", priority = 1 }
 missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
-debug = true      # Generate symbol info for profiling
+debug = true  # Generate symbol info for profiling
 opt-level = 3
-codegen-units = 1
-lto = "fat"
 
 # Doing light optimizations helps test performance more than it hurts build time.
 [profile.test]
