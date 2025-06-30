@@ -24,7 +24,7 @@ fn main() {
     // string, to be written to file.
     let prover_toml_string = generate_prover_toml_string_from_custom_dg1_date_and_required_age(
         &custom_dg1_with_birthdate_expiry,
-        20,
+        5,
         50,
         current_date,
     );

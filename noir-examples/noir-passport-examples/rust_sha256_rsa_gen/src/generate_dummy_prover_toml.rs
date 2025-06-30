@@ -16,7 +16,7 @@ pub fn generate_passport_validity_contents_prover_toml(
     sod_cert: &[u8; 200],
     sod_cert_signature_bytes: &[u8; 256],
 ) -> String {
-    let mut prover_toml_str = String::from("[[passport_validity_contents]]\n\n");
+    let mut prover_toml_str = String::from("[passport_validity_contents]\n\n");
 
     // --- Purely passport DG1/SOD stuff ---
     prover_toml_str += &format!("passport_sod = {:?}\n\n", passport_sod);
