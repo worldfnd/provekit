@@ -13,8 +13,8 @@ use {
         FieldElement, R1CS,
     },
     anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
     ark_ff::UniformRand,
+    ark_std::{One, Zero},
     serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
@@ -25,8 +25,8 @@ use {
     whir::{
         parameters::{
             default_max_pow, FoldType, FoldingFactor,
-            MultivariateParameters as GenericMultivariateParameters, SoundnessType,
-            ProtocolParameters as GenericWhirParameters,
+            MultivariateParameters as GenericMultivariateParameters,
+            ProtocolParameters as GenericWhirParameters, SoundnessType,
         },
         poly_utils::{coeffs::CoefficientList, evals::EvaluationsList},
         whir::{
@@ -92,7 +92,7 @@ impl WhirR1CSScheme {
 
         // Whir parameters
         let mv_params = MultivariateParameters::new(m);
-        let whir_params = WhirParameters{
+        let whir_params = WhirParameters {
             initial_statement:     true,
             security_level:        128,
             pow_bits:              default_max_pow(m, 1),
@@ -177,14 +177,13 @@ impl WhirR1CSScheme {
         )
         .context("while verifying WHIR proof")?;
 
-        //Check the Spartan sumcheck relation.
+        // Check the Spartan sumcheck relation.
         // ensure!(
         //     data_from_sumcheck_verifier.last_sumcheck_val
         //         == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
         //             - proof.whir_query_answer_sums[2])
-        //             * calculate_eq(
-        //                 &data_from_sumcheck_verifier.r,
-        //                 &data_from_sumcheck_verifier.alpha
+        //             * calculate_eq( &data_from_sumcheck_verifier.r,
+        //               &data_from_sumcheck_verifier.alpha
         //             ),
         //     "last sumcheck value does not match"
         // );
@@ -327,7 +326,6 @@ pub fn run_whir_pcs_prover(
 
     let batched_poly = witness.batched_poly();
     let poly_batched = EvaluationsList::from(batched_poly.clone());
-
 
     let mut statement = Statement::<FieldElement>::new(m);
 
