@@ -120,7 +120,7 @@ noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-
 # WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "b49625a4924f4cf216dc1d13c805f300d3ff1082" }
+], rev = "97218f5066094a53a27c4aa6dac7401f87799b90" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
