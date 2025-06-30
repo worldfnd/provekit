@@ -13,7 +13,7 @@ pub fn calculate_scoped_nullifier(
     Poseidon2::hash([private_nullifier, service_scope, service_subscope], 3)
 }
 
-/// Wait what the hell lol this literally just concatenates them and computes
+/// Wait what lol this literally just concatenates them and computes
 /// the Poseidon hash of that thing
 pub fn calculate_certificate_registry_leaf<let N: u32>(
     registry_id: Field,
