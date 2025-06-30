@@ -1,0 +1,24 @@
+[package]
+name = "block-multiplier"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+seq-macro.workspace = true
+fp-rounding.workspace = true
+
+[dev-dependencies]
+rand.workspace = true
+divan.workspace = true
+primitive-types.workspace = true
+ark-ff.workspace = true
+ark-bn254.workspace = true
+proptest.workspace = true
+
+[build-dependencies]
+block-multiplier-codegen.workspace = true
+hla.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false

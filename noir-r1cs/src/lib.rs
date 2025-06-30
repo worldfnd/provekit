@@ -1,15 +1,22 @@
 #![doc = include_str!("../README.md")]
 #![allow(missing_docs)]
+mod binops;
+mod digits;
 mod file;
 mod gnark_config;
 mod interner;
+mod memory;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
 mod noir_witness;
 mod r1cs;
+mod r1cs_solver;
+mod ram;
+mod range_check;
+mod rom;
 mod skyscraper;
 mod sparse_matrix;
-mod utils;
+pub mod utils;
 mod whir_r1cs;
 
 pub use {
@@ -42,18 +49,4 @@ pub struct Proof {
     transcript: Vec<FieldElement>,
     #[serde(with = "serde_ark")]
     whir_proof: WhirProof,
-}
-
-#[cfg(test)]
-#[track_caller]
-fn test_serde<T: std::fmt::Debug + PartialEq + Serialize + for<'a> Deserialize<'a>>(value: &T) {
-    // Test JSON
-    let json = serde_json::to_string(value).unwrap();
-    let deserialized = serde_json::from_str(&json).unwrap();
-    assert_eq!(value, &deserialized);
-
-    // Test Postcard
-    let bin = postcard::to_allocvec(value).unwrap();
-    let deserialized = postcard::from_bytes(&bin).unwrap();
-    assert_eq!(value, &deserialized);
 }

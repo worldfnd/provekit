@@ -3,15 +3,15 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     noir_r1cs::{self, read, write, NoirProofScheme},
-    std::{fs::File, io::Read, path::PathBuf},
+    std::path::PathBuf,
     tracing::{info, instrument},
 };
 
 /// Prove a prepared Noir program
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
-    /// path to the compiled Noir program
+    /// path to the prepared proof scheme
     #[argh(positional)]
     scheme_path: PathBuf,
 
@@ -47,15 +47,11 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the input toml
-        let mut file = File::open(&self.input_path).context("while opening input file")?;
-        let mut input_toml =
-            String::with_capacity(file.metadata().map(|m| m.len() as usize).unwrap_or(0));
-        file.read_to_string(&mut input_toml)
-            .context("while reading input file")?;
+        let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
         let proof = scheme
-            .prove(&input_toml)
+            .prove(&input_map)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)

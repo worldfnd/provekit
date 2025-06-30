@@ -1,5 +1,7 @@
+pub mod file_io;
 mod print_abi;
 pub mod serde_ark;
+pub mod serde_ark_option;
 pub mod serde_hex;
 pub mod serde_jsonify;
 pub mod sumcheck;
@@ -58,7 +60,7 @@ pub const fn uint_to_field(i: U256) -> FieldElement {
     FieldElement::new(BigInt(i.into_limbs()))
 }
 
-/// Convert a Noir field element to a native FieldElement
+/// Convert a Noir field element to a native `FieldElement`
 #[inline(always)]
 pub fn noir_to_native(n: NoirElement) -> FieldElement {
     let limbs = n.into_repr().into_bigint().0;
@@ -66,7 +68,7 @@ pub fn noir_to_native(n: NoirElement) -> FieldElement {
 }
 
 /// Calculates the degree of the next smallest power of two
-pub fn next_power_of_two(n: usize) -> usize {
+pub const fn next_power_of_two(n: usize) -> usize {
     let mut power = 1;
     let mut ans = 0;
     while power < n {
@@ -89,6 +91,7 @@ pub fn pad_to_power_of_two<T: Default>(mut witness: Vec<T>) -> Vec<T> {
 }
 
 /// Pretty print a float using SI-prefixes.
+#[must_use]
 pub fn human(value: f64) -> impl Display {
     struct Human(f64);
     impl Display for Human {
@@ -100,7 +103,8 @@ pub fn human(value: f64) -> impl Display {
             };
             let si_power = ((log10 / 3.0).floor() as isize).clamp(-10, 10);
             let value = self.0 * 10_f64.powi((-si_power * 3) as i32);
-            let digits = f.precision().unwrap_or(3) - 1 - (log10 - 3.0 * si_power as f64) as usize;
+            let digits =
+                f.precision().unwrap_or(3) - 1 - 3.0f64.mul_add(-(si_power as f64), log10) as usize;
             let separator = if f.alternate() { "" } else { "\u{202F}" };
             if f.width() == Some(6) && digits == 0 {
                 write!(f, " ")?;

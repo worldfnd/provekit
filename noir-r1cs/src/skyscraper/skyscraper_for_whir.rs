@@ -1,11 +1,11 @@
 use {
-    crate::skyscraper::skyscraper::{compress, SkyscraperSponge},
+    crate::skyscraper::skyscraper_impl::{compress, SkyscraperSponge},
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
         Error,
     },
-    rand::Rng,
+    rand08::Rng,
     serde::{Deserialize, Serialize},
     spongefish::{
         codecs::arkworks_algebra::{
@@ -43,7 +43,7 @@ impl CRHScheme for SkyscraperCRH {
         let elems = input.borrow();
         elems
             .iter()
-            .cloned()
+            .copied()
             .reduce(compress)
             .ok_or(Error::IncorrectInputLength(0))
     }
@@ -63,14 +63,11 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
     }
 
     fn evaluate<T: Borrow<Self::Input>>(
-        _: &Self::Parameters,
+        (): &Self::Parameters,
         left_input: T,
         right_input: T,
     ) -> Result<Self::Output, Error> {
-        Ok(compress(
-            left_input.borrow().clone(),
-            right_input.borrow().clone(),
-        ))
+        Ok(compress(*left_input.borrow(), *right_input.borrow()))
     }
 
     fn compress<T: Borrow<Self::Output>>(
@@ -107,8 +104,8 @@ impl DigestToUnitSerialize<SkyscraperMerkleConfig> for ProverState<SkyscraperSpo
     }
 }
 
-impl<'a> DigestToUnitDeserialize<SkyscraperMerkleConfig>
-    for VerifierState<'a, SkyscraperSponge, Field256>
+impl DigestToUnitDeserialize<SkyscraperMerkleConfig>
+    for VerifierState<'_, SkyscraperSponge, Field256>
 {
     fn read_digest(&mut self) -> ProofResult<Field256> {
         let [r] = self.next_scalars()?;

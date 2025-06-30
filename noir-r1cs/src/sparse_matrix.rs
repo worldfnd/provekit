@@ -8,16 +8,16 @@ use {
     },
 };
 /// A sparse matrix with interned field elements
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseMatrix {
     /// The number of rows in the matrix.
-    pub rows: usize,
+    pub num_rows: usize,
 
     /// The number of columns in the matrix.
-    pub cols: usize,
+    pub num_cols: usize,
 
-    // Start of each row
-    row_indices: Vec<u32>,
+    // List of indices in `col_indices` such that the column index is the start of a new row.
+    new_row_indices: Vec<u32>,
 
     // List of column indices that have values
     col_indices: Vec<u32>,
@@ -27,7 +27,7 @@ pub struct SparseMatrix {
 }
 
 /// A hydrated sparse matrix with uninterned field elements
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HydratedSparseMatrix<'a> {
     matrix:   &'a SparseMatrix,
     interner: &'a Interner,
@@ -36,38 +36,38 @@ pub struct HydratedSparseMatrix<'a> {
 impl SparseMatrix {
     pub fn new(rows: usize, cols: usize) -> Self {
         Self {
-            rows,
-            cols,
-            row_indices: vec![0; rows],
-            col_indices: Vec::new(),
-            values: Vec::new(),
+            num_rows:        rows,
+            num_cols:        cols,
+            new_row_indices: vec![0; rows],
+            col_indices:     Vec::new(),
+            values:          Vec::new(),
         }
     }
 
-    pub fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
+    pub const fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
         HydratedSparseMatrix {
             matrix: self,
             interner,
         }
     }
 
-    pub fn num_entries(&self) -> usize {
+    pub const fn num_entries(&self) -> usize {
         self.values.len()
     }
 
     pub fn grow(&mut self, rows: usize, cols: usize) {
         // TODO: Make it default infinite size instead.
-        assert!(rows >= self.rows);
-        assert!(cols >= self.cols);
-        self.rows = rows;
-        self.cols = cols;
-        self.row_indices.resize(rows, self.values.len() as u32);
+        assert!(rows >= self.num_rows);
+        assert!(cols >= self.num_cols);
+        self.num_rows = rows;
+        self.num_cols = cols;
+        self.new_row_indices.resize(rows, self.values.len() as u32);
     }
 
     /// Set the value at the given row and column.
     pub fn set(&mut self, row: usize, col: usize, value: InternedFieldElement) {
-        assert!(row < self.rows, "row index out of bounds");
-        assert!(col < self.cols, "column index out of bounds");
+        assert!(row < self.num_rows, "row index out of bounds");
+        assert!(col < self.num_cols, "column index out of bounds");
 
         // Find the row
         let row_range = self.row_range(row);
@@ -84,7 +84,7 @@ impl SparseMatrix {
                 let i = i + row_range.start;
                 self.col_indices.insert(i, col as u32);
                 self.values.insert(i, value);
-                for index in &mut self.row_indices[row + 1..] {
+                for index in &mut self.new_row_indices[row + 1..] {
                     *index += 1;
                 }
             }
@@ -98,30 +98,32 @@ impl SparseMatrix {
     ) -> impl Iterator<Item = (usize, InternedFieldElement)> + use<'_> {
         let row_range = self.row_range(row);
         let cols = self.col_indices[row_range.clone()].iter().copied();
-        let values = self.values[row_range.clone()].iter().copied();
+        let values = self.values[row_range].iter().copied();
         cols.zip(values).map(|(col, value)| (col as usize, value))
     }
 
     /// Iterate over the non-default entries of the matrix.
     pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), InternedFieldElement)> + use<'_> {
-        (0..self.row_indices.len()).flat_map(|row| {
+        (0..self.new_row_indices.len()).flat_map(|row| {
             self.iter_row(row)
                 .map(move |(col, value)| ((row, col), value))
         })
     }
 
     fn row_range(&self, row: usize) -> Range<usize> {
-        let start = *self.row_indices.get(row).expect("Row index out of bounds") as usize;
+        let start = *self
+            .new_row_indices
+            .get(row)
+            .expect("Row index out of bounds") as usize;
         let end = self
-            .row_indices
+            .new_row_indices
             .get(row + 1)
-            .map(|&v| v as usize)
-            .unwrap_or(self.values.len());
+            .map_or(self.values.len(), |&v| v as usize);
         start..end
     }
 }
 
-impl<'a> HydratedSparseMatrix<'a> {
+impl HydratedSparseMatrix<'_> {
     /// Iterate over the non-default entries of a row of the matrix.
     pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, FieldElement)> + use<'_> {
         self.matrix.iter_row(row).map(|(col, value)| {
@@ -150,13 +152,13 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
 
     fn mul(self, rhs: &[FieldElement]) -> Self::Output {
         assert_eq!(
-            self.matrix.cols,
+            self.matrix.num_cols,
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.rows];
+        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
         for ((i, j), value) in self.iter() {
-            result[i] += value * &rhs[j];
+            result[i] += value * rhs[j];
         }
         result
     }
@@ -170,25 +172,13 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     fn mul(self, rhs: HydratedSparseMatrix<'_>) -> Self::Output {
         assert_eq!(
             self.len(),
-            rhs.matrix.rows,
+            rhs.matrix.num_rows,
             "Vector length does not match number of rows."
         );
-        let mut result = vec![FieldElement::zero(); rhs.matrix.cols];
+        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
         for ((i, j), value) in rhs.iter() {
-            result[j] += value * &self[i];
+            result[j] += value * self[i];
         }
         result
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_sparse_matrix() {
-        let rows = 100;
-        let cols = 100;
-        let mut matrix = SparseMatrix::new(rows, cols);
     }
 }

@@ -17,11 +17,11 @@ use {
     tracing_subscriber::{self, layer::Context, registry::LookupSpan, Layer},
 };
 
-const DIM: &'static str = "\x1b[2m";
-const UNDIM: &'static str = "\x1b[22m";
+const DIM: &str = "\x1b[2m";
+const UNDIM: &str = "\x1b[22m";
 
 // Span extension data
-pub(crate) struct Data {
+pub struct Data {
     depth:       usize,
     time:        Instant,
     memory:      usize,
@@ -51,20 +51,20 @@ impl Data {
 
 impl Visit for Data {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        self.kvs.push((field.name(), format!("{:?}", value)))
+        self.kvs.push((field.name(), format!("{value:?}")));
     }
 }
 
 pub struct FmtEvent<'a>(&'a mut String);
 
-impl<'a> Visit for FmtEvent<'a> {
+impl Visit for FmtEvent<'_> {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
         match field.name() {
             "message" => {
-                write!(self.0, " {:?}", value).unwrap();
+                write!(self.0, " {value:?}").unwrap();
             }
             name => {
-                write!(self.0, " {}={:?}", name, value).unwrap();
+                write!(self.0, " {name}={value:?}").unwrap();
             }
         }
     }
@@ -91,16 +91,13 @@ where
 
         // Add Data if it hasn't already
         if span.extensions().get::<Data>().is_none() {
-            let depth = span
-                .parent()
-                .map(|s| {
-                    s.extensions()
-                        .get::<Data>()
-                        .expect("parent span has no data")
-                        .depth
-                        + 1
-                })
-                .unwrap_or(0);
+            let depth = span.parent().map_or(0, |s| {
+                s.extensions()
+                    .get::<Data>()
+                    .expect("parent span has no data")
+                    .depth
+                    + 1
+            });
             let data = Data::new(attrs, depth);
             span.extensions_mut().insert(data);
         }
@@ -130,10 +127,10 @@ where
 
         // KV args
         for (key, val) in &data.kvs {
-            let _ = write!(&mut buffer, " {}={}", key, val);
+            let _ = write!(&mut buffer, " {key}={val}");
         }
 
-        eprintln!("{}", buffer);
+        eprintln!("{buffer}");
     }
 
     fn on_event(&self, event: &tracing::Event<'_>, ctx: Context<'_, S>) {
@@ -152,7 +149,7 @@ where
 
             if let Some(data) = span.extensions().get::<Data>() {
                 // Box draw tree indentation
-                for _ in 0..(data.depth + 1) {
+                for _ in 0..=data.depth {
                     let _ = write!(&mut buffer, "│ ");
                 }
 
@@ -179,7 +176,7 @@ where
         let mut visitor = FmtEvent(&mut buffer);
         event.record(&mut visitor);
 
-        eprintln!("{}", buffer);
+        eprintln!("{buffer}");
     }
 
     fn on_close(&self, id: Id, ctx: Context<S>) {
@@ -226,6 +223,6 @@ where
             human(allocations as f64)
         );
 
-        eprintln!("{}", buffer);
+        eprintln!("{buffer}");
     }
 }

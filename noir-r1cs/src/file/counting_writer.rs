@@ -8,12 +8,12 @@ pub struct CountingWriter<T: Write> {
 
 impl<T: Write> CountingWriter<T> {
     #[must_use]
-    pub fn new(writer: T) -> Self {
+    pub const fn new(writer: T) -> Self {
         Self { writer, count: 0 }
     }
 
     #[must_use]
-    pub fn count(&self) -> usize {
+    pub const fn count(&self) -> usize {
         self.count
     }
 }

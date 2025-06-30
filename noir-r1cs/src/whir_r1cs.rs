@@ -77,7 +77,7 @@ struct DataFromSumcheckVerifier {
 
 impl WhirR1CSScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        Self::new_for_size(r1cs.witnesses, r1cs.constraints)
+        Self::new_for_size(r1cs.num_witnesses(), r1cs.num_constraints())
     }
 
     pub fn new_for_size(witnesses: usize, constraints: usize) -> Self {
@@ -117,15 +117,15 @@ impl WhirR1CSScheme {
     #[instrument(skip_all)]
     pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
-            witness.len() == r1cs.witnesses,
+            witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            r1cs.witnesses <= 1 << self.m,
+            r1cs.num_witnesses() <= 1 << self.m,
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
-            r1cs.constraints <= 1 << self.m_0,
+            r1cs.num_constraints() <= 1 << self.m_0,
             "R1CS constraints exceed scheme capacity"
         );
 
@@ -164,8 +164,7 @@ impl WhirR1CSScheme {
         let mut statement_verifier =
             StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
         for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier
-                .add_constraint(VerifierWeights::linear(self.m, None), claimed_sum.clone());
+            statement_verifier.add_constraint(VerifierWeights::linear(self.m, None), *claimed_sum);
         }
 
         let data_from_sumcheck_verifier =
@@ -360,12 +359,12 @@ pub fn run_sumcheck_verifier(
 
     let mut alpha = vec![FieldElement::zero(); m_0];
 
-    for i in 0..m_0 {
+    for item in alpha.iter_mut().take(m_0) {
         let mut hhat_i = [FieldElement::zero(); 4];
         let mut alpha_i = [FieldElement::zero(); 1];
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
-        alpha[i] = alpha_i[0];
+        *item = alpha_i[0];
         let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &FieldElement::zero());
         let hhat_i_at_one = eval_qubic_poly(&hhat_i, &FieldElement::one());
         ensure!(
@@ -389,13 +388,13 @@ pub fn run_whir_pcs_verifier(
     proof: &WhirProof,
     statement_verifier: &StatementVerifier,
 ) -> Result<()> {
-    let commitment_reader = CommitmentReader::new(&params);
-    let verifier = Verifier::new(&params);
+    let commitment_reader = CommitmentReader::new(params);
+    let verifier = Verifier::new(params);
     // let verifier = Verifier::new(&params);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
     verifier
-        .verify(arthur, &parsed_commitment, &statement_verifier, &proof)
+        .verify(arthur, &parsed_commitment, statement_verifier, proof)
         .context("while verifying WHIR")?;
 
     Ok(())
@@ -406,6 +405,6 @@ pub fn create_io_pattern(m_0: usize, whir_params: &WhirConfig) -> IOPattern {
     IOPattern::new("🌪️")
         .add_rand(m_0)
         .add_sumcheck_polynomials(m_0)
-        .commit_statement(&whir_params)
-        .add_whir_proof(&whir_params)
+        .commit_statement(whir_params)
+        .add_whir_proof(whir_params)
 }

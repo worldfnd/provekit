@@ -2,13 +2,15 @@
 
 Zero-knowledge proof toolkit targeting mobile devices.
 
-## Demo instructions
+## Requirements
 
-First make sure you have the exact correct version of Noir installed [so the artifacts can be read](./Cargo.toml#L58):
+This project makes use of Noir's `nargo` to compile circuits and generate test artifacts. Make sure to walk through the [Quick Start](https://noir-lang.org/docs/getting_started/quick_start#noir) section to install the noir toolchain. Note that we require a specific version of the toolchain, so make sure to override the version with the following command.
 
 ```sh
-noirup -C 03b58fa2
+noirup --version nightly-2025-05-28
 ```
+
+## Demo instructions
 
 Compile the Noir circuit:
 
@@ -20,15 +22,13 @@ nargo compile
 Generate the Noir Proof Scheme:
 
 ```sh
-cargo run --release --bin noir-r1cs prepare ./noir-examples/poseidon-rounds/target/basic.json -o ./noir-proof-scheme.nps
+cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
 ```
-
-(Currently this doesn't write an output file)
 
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
+cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 
 Verify the Noir Proof:
@@ -46,9 +46,7 @@ cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.np
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh
-cd ..
-git clone https://github.com/reilabs/gnark-whir
-cd gnark-whir
+cd ../../gnark-whir
 go run .
 ```
 
@@ -63,7 +61,7 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 Profile
 
 ```sh
-samply record -r 10000 -- ../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml
+samply record -r 10000 -- ./target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
 ```
 
 ## Components

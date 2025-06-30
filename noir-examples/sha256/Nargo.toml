@@ -3,5 +3,3 @@ name = "sha256"
 type = "bin"
 authors = [""]
 compiler_version = ">=0.36.0"
-
-[dependencies]

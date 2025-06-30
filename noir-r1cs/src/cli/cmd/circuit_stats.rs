@@ -6,8 +6,8 @@ use {
     acir::{
         circuit::{opcodes::BlackBoxFuncCall, Opcode, Program},
         native_types::Expression,
+        FieldElement,
     },
-    acir_field::FieldElement,
     anyhow::Result,
     argh::FromArgs,
     base64::Engine,
@@ -21,7 +21,7 @@ use {
 };
 
 /// Simple program to show circuit statistics
-#[derive(FromArgs, PartialEq, Debug)]
+#[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "circuit_stats")]
 pub struct Args {
     /// path to circuit file
@@ -130,7 +130,7 @@ fn main(arg: &Args) {
     // --- I'm guessing Noir does it so that you just "execute" the opcodes in a
     // linear manner --- --- Or at least that they correspond to constraints
     // which should be satisfied in that "order" ---
-    for opcode in circuit.opcodes.iter() {
+    for opcode in &circuit.opcodes {
         match opcode {
             Opcode::AssertZero(expr) => {
                 // println!("AssertZero: {:?}", opcode);
@@ -441,35 +441,35 @@ fn main(arg: &Args) {
     }
 
     // --- AssertZero ---
-    println!("Num AssertZero: {:}", total_num_assert_zero_opcodes,);
-    println!("Num `mul_term`s: {:}", total_num_mul_terms);
+    println!("Num AssertZero: {total_num_assert_zero_opcodes:}",);
+    println!("Num `mul_term`s: {total_num_mul_terms:}");
 
     // --- Blackbox functions ---
-    blackbox_func_call_variants.iter().for_each(|(k, v)| {
+    for (k, v) in &blackbox_func_call_variants {
         if *v > 0 {
-            println!("Blackbox fn {:?}: {:?}", k, v);
+            println!("Blackbox fn {k:?}: {v:?}");
         }
-    });
+    }
     let mut key_value_pairs: Vec<(u32, usize)> = range_check_bit_counts.into_iter().collect();
     key_value_pairs.sort_by(|x, y| y.1.cmp(&x.1));
-    key_value_pairs.iter().for_each(|(k, v)| {
-        println!("RANGE check: {:?} bits had {:?} lookups", k, v);
-    });
+    for (k, v) in &key_value_pairs {
+        println!("RANGE check: {k:?} bits had {v:?} lookups");
+    }
 
     // --- Memory operations ---
-    println!("Num Memory inits: {:?}", mem_alloc_counter);
-    println!("Total memory alloc size: {:?}", mem_alloc_total_size);
-    println!("Num Memory writes: {:?}", mem_write_counter);
-    println!("Num Memory reads: {:?}", mem_read_counter);
-    println!("Read-only: {:?}", all_reads_after_writes);
+    println!("Num Memory inits: {mem_alloc_counter:?}");
+    println!("Total memory alloc size: {mem_alloc_total_size:?}");
+    println!("Num Memory writes: {mem_write_counter:?}");
+    println!("Num Memory reads: {mem_read_counter:?}");
+    println!("Read-only: {all_reads_after_writes:?}");
 
     // --- Brillig + Call operations ---
-    println!("Num Brillig calls: {:?}", num_brillig_call_opcodes);
+    println!("Num Brillig calls: {num_brillig_call_opcodes:?}");
     println!(
         "Num Unique Brillig opcodes: {:?}",
         unique_brillig_call_opcodes.len()
     );
-    println!("Num Calls: {:?}", num_call_opcodes);
+    println!("Num Calls: {num_call_opcodes:?}");
     println!("Num Unique calls: {:?}", unique_call_opcodes.len());
 
     println!("----------------------------------------------------------------");
@@ -499,19 +499,13 @@ fn main(arg: &Args) {
     // We do a simple (i.e. non-LogUp) approach for computing range checks
     let mut total_num_range_check_constraints = 0;
     let mut total_num_range_check_witnesses = 0;
-    key_value_pairs.iter().for_each(|(k, v)| {
+    for (k, v) in &key_value_pairs {
         total_num_range_check_constraints += 2 * v; // Let's assume for now that we can do the decomp in a single R1CS row
         total_num_range_check_witnesses += (*k as usize) * v; // Total # of
                                                               // extra witnesses
-    });
-    println!(
-        "{:?} constraints from range checks",
-        total_num_range_check_constraints
-    );
-    println!(
-        "{:?} witnesses from range checks",
-        total_num_range_check_witnesses
-    );
+    }
+    println!("{total_num_range_check_constraints:?} constraints from range checks");
+    println!("{total_num_range_check_witnesses:?} witnesses from range checks");
     total_num_r1cs_rows += total_num_range_check_constraints;
     total_num_witness_size += total_num_range_check_witnesses;
 

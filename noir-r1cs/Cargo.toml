@@ -11,8 +11,10 @@ name = "noir-r1cs"
 path = "src/cli/main.rs"
 
 [dependencies]
+# 3rd party
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 base64.workspace = true
 zeroize.workspace = true
 itertools.workspace = true
@@ -26,15 +28,20 @@ postcard.workspace = true
 zstd.workspace = true
 bytes.workspace = true
 bytemuck.workspace = true
+skyscraper.workspace = true
+static_assertions.workspace = true
+zerocopy.workspace = true
+
+# Ark
+rand08.workspace = true
 
 # Noir lang
 acir.workspace = true
-# acvm.workspace = true
-acir_field.workspace = true
 noirc_artifacts.workspace = true
 noirc_abi.workspace = true
-# noirc_printable_type.workspace = true
-# bn254_blackbox_solver.workspace = true
+nargo.workspace = true
+noir_artifact_cli.workspace = true
+bn254_blackbox_solver.workspace = true
 
 # WHIR
 whir.workspace = true
@@ -46,9 +53,22 @@ ark-poly.workspace = true
 ark-std.workspace = true
 ark-serialize.workspace = true
 
-# Binary 
+# Binary
 # See <https://github.com/rust-lang/cargo/issues/1982>
 argh.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+# Internal
+noir-tools.workspace = true
+
+# 3rd Party
+rand.workspace = true
+divan.workspace = true
+test-case.workspace = true
+
+[[bench]]
+name = "bench"
+harness = false

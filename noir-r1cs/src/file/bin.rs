@@ -7,7 +7,7 @@ use {
     std::{
         fs::File,
         io::{Read, Write},
-        path::PathBuf,
+        path::Path,
     },
     tracing::{info, instrument},
     zstd::stream::{Decoder as ZstdDecoder, Encoder as ZstdEncoder},
@@ -21,7 +21,7 @@ const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
 #[instrument(skip(value))]
 pub fn write_bin<T: Serialize>(
     value: &T,
-    path: &PathBuf,
+    path: &Path,
     format: [u8; 8],
     (major, minor): (u16, u16),
 ) -> Result<()> {
@@ -73,7 +73,7 @@ pub fn write_bin<T: Serialize>(
 /// Read a compressed binary file.
 #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
 pub fn read_bin<T: for<'a> Deserialize<'a>>(
-    path: &PathBuf,
+    path: &Path,
     format: [u8; 8],
     (major, minor): (u16, u16),
 ) -> Result<T> {

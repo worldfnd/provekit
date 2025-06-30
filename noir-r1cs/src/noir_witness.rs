@@ -22,11 +22,12 @@ pub struct NoirWitnessGenerator {
     // Note: Abi uses an [internally tagged] enum format in Serde, which is not compatible
     // with some schemaless formats like Postcard.
     // [internally-tagged]: https://serde.rs/enum-representations.html
+    // TODO: serializes the ABI as a json string. Something like CBOR might be better.
     #[serde(with = "serde_jsonify")]
     abi: Abi,
 
     /// ACIR witness index to R1CS witness index
-    /// Index zero is reserved for constant one, so we can use NonZeroU32
+    /// Index zero is reserved for constant one, so we can use `NonZeroU32`
     witness_map: Vec<Option<NonZeroU32>>,
 }
 
@@ -52,6 +53,10 @@ impl NoirWitnessGenerator {
         &self.witness_map
     }
 
+    pub fn abi(&self) -> &Abi {
+        &self.abi
+    }
+
     /// Noir inputs are in order at the start of the witness vector
     #[instrument(skip_all, fields(size = toml.len()))]
     pub fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>> {
@@ -65,7 +70,7 @@ impl NoirWitnessGenerator {
         let mut inputs = Vec::with_capacity(num_inputs);
 
         // Encode to vector of field elements base on Abi type info.
-        for param in self.abi.parameters.iter() {
+        for param in &self.abi.parameters {
             let value = input
                 .remove(&param.name)
                 .ok_or_else(|| anyhow!("Missing input {}", &param.name))?
@@ -89,7 +94,7 @@ impl PartialEq for NoirWitnessGenerator {
 }
 
 /// Recursively encode Noir ABI input to a witness vector
-/// See [noirc_abi::Abi::encode] for the Noir ABI specification.
+/// See [`noirc_abi::Abi::encode`] for the Noir ABI specification.
 fn encode_input(
     input: &mut Vec<FieldElement>,
     value: InputValue,
