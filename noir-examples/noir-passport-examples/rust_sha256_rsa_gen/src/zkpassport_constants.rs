@@ -4,7 +4,7 @@
 //! contains within itself the DSC_PUBKEY (so we can check the country's
 //! signature over a certificate containing the DSC).
 pub const PASSPORT_SOD_SIZE: u64 = 64;
-pub const PASSPORT_SIGNED_ATTRIBUTES_SIZE: u64 = 32;
+pub const SOD_CERT_SIZE: u64 = 32;
 
 // This is `n`
 pub const DSC_RSA_PUBKEY_BYTES: [u8; 256] = [

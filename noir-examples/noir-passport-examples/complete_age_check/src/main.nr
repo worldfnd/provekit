@@ -33,19 +33,17 @@ use passport_validity_check::{
     check_dg1_hash_within_sod, check_passport_validity, PassportValidityContents,
 };
 
-// dg1_hash_offset_in_sod: u32, // Probably not needed here
-
 fn main(
     dg1: [u8; 95],
+    // This is just the offset within the SOD string where the DG1 hash is supposed to live.
+    // TODO(ryancao): Is this not supposed to be public???
+    dg1_hash_offset_in_sod: u32,
     current_date: pub str<8>,
     min_age_required: pub u8,
     // The maximum age required is public so verifiers can check
     // the age provided to the proof is correct
     // If the maximum age is 0, it is not checked
     max_age_required: pub u8,
-    // This is just the offset within the SOD string where the DG1 hash is supposed to live.
-    // TODO(ryancao): Is this not supposed to be public???
-    dg1_hash_offset_in_sod: u32,
     passport_validity_contents: PassportValidityContents,
 ) {
     // Verify the age of the ID holder

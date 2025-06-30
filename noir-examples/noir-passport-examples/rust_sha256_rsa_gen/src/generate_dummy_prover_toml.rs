@@ -3,45 +3,33 @@ use {
         rsa_stuff::generate_rsa_signature_pkcs_from_priv_key,
         zkpassport_constants::{
             CSC_PUBKEY, CSC_PUBKEY_MU, DSC_CERT, DSC_CERT_SIGNATURE_BYTES, DSC_MU_BYTES,
-            DSC_P_BYTES, DSC_Q_BYTES, DSC_RSA_PUBKEY_BYTES, PASSPORT_SIGNED_ATTRIBUTES_SIZE,
-            PASSPORT_SOD_SIZE,
+            DSC_P_BYTES, DSC_Q_BYTES, DSC_RSA_PUBKEY_BYTES, PASSPORT_SOD_SIZE, SOD_CERT_SIZE,
         },
     },
     std::iter::repeat_n,
 };
 
-/// Assuming here that we use all the RSA keys from `zkpassport_constants`
-pub fn generate_dummy_prover_toml_string_with_data(
-    dg1_bytes: &[u8; 95],
+/// Assuming here that we use all the RSA keys from `zkpassport_constants`.
+/// This essentially generates the struct `PassportValidityContents`.
+pub fn generate_passport_validity_contents_prover_toml(
     passport_sod: &[u8; 700],
-    passport_signed_attributes: &[u8; 200],
-    passport_signed_attributes_signature_bytes: &[u8; 256],
+    sod_cert: &[u8; 200],
+    sod_cert_signature_bytes: &[u8; 256],
 ) -> String {
-    let mut prover_toml_str = String::new();
+    let mut prover_toml_str = String::from("[[passport_validity_contents]]\n\n");
 
     // --- Purely passport DG1/SOD stuff ---
     prover_toml_str += &format!("passport_sod = {:?}\n\n", passport_sod);
     prover_toml_str += &format!("passport_sod_size = {:?}\n\n", PASSPORT_SOD_SIZE);
-    prover_toml_str += &format!("dg1_hash_offset_in_sod = {:?}\n\n", 0);
-    prover_toml_str += &format!("dg1 = {:?}\n\n", dg1_bytes);
 
     // --- DSC signature over signed attributes stuff ---
-    prover_toml_str += &format!(
-        "passport_signed_attributes = {:?}\n\n",
-        passport_signed_attributes
-    );
-    prover_toml_str += &format!(
-        "passport_signed_attributes_size = {:?}\n\n",
-        PASSPORT_SIGNED_ATTRIBUTES_SIZE,
-    );
+    prover_toml_str += &format!("sod_cert = {:?}\n\n", sod_cert);
+    prover_toml_str += &format!("sod_cert_size = {:?}\n\n", SOD_CERT_SIZE);
 
     prover_toml_str += &format!("dsc_pubkey = {:?}\n\n", DSC_RSA_PUBKEY_BYTES);
     prover_toml_str += &format!("dsc_barrett_mu = {:?}\n\n", DSC_MU_BYTES);
 
-    prover_toml_str += &format!(
-        "passport_signed_attributes_signature = {:?}\n\n",
-        passport_signed_attributes_signature_bytes
-    );
+    prover_toml_str += &format!("sod_cert_signature = {:?}\n\n", sod_cert_signature_bytes);
     prover_toml_str += &format!("dsc_rsa_exponent = {:?}\n\n", 65537);
 
     // --- CSC signature over DSC cert stuff ---
@@ -107,20 +95,21 @@ pub fn generate_prover_toml_string_from_custom_dg1_date_and_required_age(
         &passport_signed_attributes,
     );
 
+    let mut prover_toml_str = format!("dg1_hash_offset_in_sod = {:?}\n\n", 0);
+    prover_toml_str += &format!("dg1 = {:?}\n\n", custom_dg1_bytes);
+    prover_toml_str += &format!("min_age_required = {:?}\n\n", min_age_required);
+    prover_toml_str += &format!("max_age_required = {:?}\n\n", max_age_required);
+    prover_toml_str += &format!("current_date = {:?}\n\n", current_date);
+
     // The DSC_CERT and everything afterwards should be deterministic, since
     // we are not changing the DSC_KEY.
-    let mut prover_toml_str = generate_dummy_prover_toml_string_with_data(
-        custom_dg1_bytes,
+    prover_toml_str += &generate_passport_validity_contents_prover_toml(
         &passport_sod.try_into().unwrap(),
         &passport_signed_attributes.try_into().unwrap(),
         &passport_signed_attributes_signature_bytes
             .try_into()
             .unwrap(),
     );
-
-    prover_toml_str += &format!("min_age_required = {:?}\n\n", min_age_required);
-    prover_toml_str += &format!("max_age_required = {:?}\n\n", max_age_required);
-    prover_toml_str += &format!("current_date = {:?}\n\n", current_date);
 
     prover_toml_str
 }

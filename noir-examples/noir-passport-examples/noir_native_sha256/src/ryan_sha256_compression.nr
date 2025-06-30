@@ -2,6 +2,7 @@
 /// function, i.e. (state: [u32; 8], block: [u32; 16]) -> updated_state: [u32; 8].
 
 use super::{ryan_sha256_constants::{MSG_BLOCK, STATE}, ryan_sha256_constants::K32X4};
+use std::static_assert;
 
 // ------------------- ALL THE SHA STUFF -------------------
 
@@ -43,6 +44,10 @@ fn vec_eltwise_xor_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 /// WARNING: CANNOT USE THIS IF ROTATION_AMT == 0
 fn rotate_left_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
     let rotation_amt = rotation_amt % 32;
+    static_assert(
+        rotation_amt != 0,
+        "Cannot use this function with `rotation_amt` = 0",
+    );
     // 01234567|
     // 012|34567 -> 34567|012
     // We can do this with bit-masking and/or shifting
@@ -55,6 +60,10 @@ fn rotate_left_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
 /// Also small note -- this is the elegant but probably inefficient way of doing it
 fn rotate_right_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
     let rotation_amt = rotation_amt % 32;
+    static_assert(
+        rotation_amt != 0,
+        "Cannot use this function with `rotation_amt` = 0",
+    );
     rotate_left_via_shift_u32(val, 32 - rotation_amt)
 }
 
