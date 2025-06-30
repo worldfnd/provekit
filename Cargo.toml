@@ -7,7 +7,6 @@ members = [
   "block-multiplier",
   "block-multiplier-codegen",
   "skyscraper",
-  "noir-examples/noir-passport-examples/rust_sha256_rsa_gen",
   "noir-tools",
 ]
 
