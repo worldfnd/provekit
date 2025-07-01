@@ -12,14 +12,6 @@ import (
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
-func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Variable) frontend.Variable {
-	ans := frontend.Variable(1)
-	for i, alpha := range alphas {
-		ans = api.Mul(ans, api.Add(api.Mul(alpha, r[i]), api.Mul(api.Sub(frontend.Variable(1), alpha), api.Sub(frontend.Variable(1), r[i]))))
-	}
-	return ans
-}
-
 func GetStirChallenges(
 	api frontend.API,
 	circuit Circuit,
@@ -230,34 +222,6 @@ func GenerateCombinationRandomness(api frontend.API, arthur gnark_nimue.Arthur, 
 
 	return combinationRandomness, nil
 
-}
-
-func oodData(api frontend.API, oodAnswers [][]frontend.Variable, batchingRandomness frontend.Variable) []frontend.Variable {
-	if len(oodAnswers) == 0 {
-		return []frontend.Variable{}
-	}
-
-	result := make([]frontend.Variable, len(oodAnswers[0]))
-	for i, v := range oodAnswers[0] {
-		result[i] = v
-	}
-
-	multiplier := batchingRandomness
-
-	for round := 1; round < len(oodAnswers); round++ {
-		thisRound := oodAnswers[round]
-		currentMultiplier := multiplier
-		multiplier = api.Mul(multiplier, batchingRandomness)
-
-		api.AssertIsEqual(len(thisRound), len(result))
-
-		for i := range result {
-			term := api.Mul(thisRound[i], currentMultiplier)
-			result[i] = api.Add(result[i], term)
-		}
-	}
-
-	return result
 }
 
 func runSumcheckRounds(
@@ -481,14 +445,6 @@ func combineFirstRoundLeaves(api frontend.API, firstRoundPath [][][]frontend.Var
 
 func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness []frontend.Variable, computedFold []frontend.Variable, api frontend.API) frontend.Variable {
 	return utilities.DotProduct(api, append(oodAnswers, computedFold...), combinationRandomness)
-}
-
-func mustBigInt(s string) *big.Int {
-	n, ok := new(big.Int).SetString(s, 10)
-	if !ok {
-		panic("invalid big.Int string: " + s)
-	}
-	return n
 }
 
 func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
