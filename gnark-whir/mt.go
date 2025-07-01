@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/big"
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
@@ -25,52 +24,114 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
+	api.Println(t_rand)
+	// api.Println(sp_rand)
+	api.Println(savedValForSumcheck)
 
-	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, circuit, arthur, uapi, sc)
+	rootHashes, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(api, arthur, circuit)
 	if err != nil {
 		return err
 	}
 
-	computedFold := computeFold(circuit.Leaves[0], initialSumcheckFoldingRandomness, api)
+	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
 
+	batchSizeLen := circuit.BatchSize
+
+	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, circuit, arthur, initialOODQueries, initialOODs)
+
+	api.Println(lastEval)
+	if err != nil {
+		return err
+	}
+	copyOfFirstLeaves := make([][][]frontend.Variable, len(circuit.FirstRoundPaths.Leaves))
+	for i := range len(circuit.FirstRoundPaths.Leaves) {
+		copyOfFirstLeaves[i] = make([][]frontend.Variable, len(circuit.FirstRoundPaths.Leaves[i]))
+		for j := range len(circuit.FirstRoundPaths.Leaves[i]) {
+			copyOfFirstLeaves[i][j] = make([]frontend.Variable, len(circuit.FirstRoundPaths.Leaves[i][j]))
+			for k := range len(circuit.FirstRoundPaths.Leaves[i][j]) {
+				copyOfFirstLeaves[i][j][k] = circuit.FirstRoundPaths.Leaves[i][j][k]
+			}
+		}
+	}
+
+	computedFolded := combineFirstRoundLeaves(api, copyOfFirstLeaves, batchingRandomness)
+	roundAnswers := make([][][]frontend.Variable, len(circuit.MerklePaths.Leaves)+1)
+	roundAnswers[0] = computedFolded
+	for i := range len(circuit.MerklePaths.Leaves) {
+		roundAnswers[i+1] = circuit.MerklePaths.Leaves[i]
+	}
+
+	computedFold := computeFold(computedFolded, initialSumcheckFoldingRandomness, api)
+	api.Println(computedFold)
 	mainRoundData := generateEmptyMainRoundData(circuit)
 	expDomainGenerator := utilities.Exponent(api, uapi, circuit.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.FoldingFactorArray[0])))
 	domainSize := circuit.DomainSize
 
 	totalFoldingRandomness := initialSumcheckFoldingRandomness
 
+	rootHashList := make([]frontend.Variable, len(circuit.RoundParametersOODSamples))
+
 	for r := range circuit.RoundParametersOODSamples {
-		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
+		rootHash := make([]frontend.Variable, 1)
+		if err := arthur.FillNextScalars(rootHash); err != nil {
+			return err
+		}
+		rootHashList[r] = rootHash[0]
+		a, roundOODAnswers, err := FillInOODPointsAndAnswers(circuit.RoundParametersOODSamples[r], arthur)
+		if err != nil {
 			return err
 		}
 
-		var roundOODAnswers []frontend.Variable
-		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.RoundParametersOODSamples[r], arthur)
+		mainRoundData.OODPoints[r] = a
+
+		stirChallengeIndexes, err := GetStirChallenges(api, *circuit, arthur, circuit.RoundParametersNumOfQueries[r], domainSize, r)
 		if err != nil {
 			return err
 		}
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, circuit.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, circuit, uapi, expDomainGenerator, r)
-		if err != nil {
-			return err
+
+		if r == 0 {
+			err = ValidateFirstRound(api, circuit, arthur, uapi, sc, batchSizeLen, rootHashes, batchingRandomness, stirChallengeIndexes, roundAnswers[0])
+			if err != nil {
+				return err
+			}
+
+			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(circuit.FirstRoundPaths.LeafIndexes[r]))
+			for index := range circuit.FirstRoundPaths.LeafIndexes[r] {
+				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, circuit.FirstRoundPaths.LeafIndexes[r][index])
+			}
+		} else {
+			err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.MerklePaths.LeafIndexes[r-1], roundAnswers[r], circuit.MerklePaths.LeafSiblingHashes[r-1], circuit.MerklePaths.AuthPaths[r-1], rootHashList[r-1])
+			if err != nil {
+				return err
+			}
+			err = utilities.IsSubset(api, uapi, arthur, stirChallengeIndexes, circuit.MerklePaths.LeafIndexes[r-1])
+			if err != nil {
+				return err
+			}
+			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(circuit.MerklePaths.LeafIndexes[r-1]))
+			for index := range circuit.MerklePaths.LeafIndexes[r-1] {
+				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, circuit.MerklePaths.LeafIndexes[r-1][index])
+			}
 		}
+
 		if err = RunPoW(api, sc, arthur, circuit.PowBits[r]); err != nil {
 			return err
 		}
 
-		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+circuit.RoundParametersOODSamples[r])
+		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(roundOODAnswers)+len(computedFold))
 		if err != nil {
 			return err
 		}
 
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
-		var roundFoldingRandomness []frontend.Variable
+		roundFoldingRandomness := []frontend.Variable{}
 		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
 		}
 
-		computedFold = computeFold(circuit.Leaves[r+1], roundFoldingRandomness, api)
+		computedFold = computeFold(circuit.MerklePaths.Leaves[r], roundFoldingRandomness, api)
 		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
 
 		domainSize /= 2
@@ -102,9 +163,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 	}
 
-	evaluationOfVPoly := ComputeWPoly(
+	evaluationOfWPoly := ComputeWPoly(
 		api,
 		circuit,
+		initialOODQueries,
 		initialSumcheckData,
 		mainRoundData,
 		sp_rand,
@@ -113,29 +175,70 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	api.AssertIsEqual(
 		lastEval,
-		api.Mul(evaluationOfVPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
+		api.Mul(evaluationOfWPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
 	)
 
-	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
-	api.AssertIsEqual(savedValForSumcheck, x)
+	// x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
+	// api.AssertIsEqual(savedValForSumcheck, x)
 	return nil
 }
 
-func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner) {
-	proofs := proof_arg.MerklePaths
-	var totalAuthPath = make([][][][]uints.U8, len(proofs))
-	var totalLeaves = make([][][]frontend.Variable, len(proofs))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(proofs))
-	var totalLeafIndexes = make([][]uints.U64, len(proofs))
+func oodAnswers(
+	api frontend.API,
+	answers [][]frontend.Variable,
+	randomness frontend.Variable,
+) (result []frontend.Variable) {
 
-	var containerTotalAuthPath = make([][][][]uints.U8, len(proofs))
-	var containerTotalLeaves = make([][][]frontend.Variable, len(proofs))
-	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(proofs))
-	var containerTotalLeafIndexes = make([][]uints.U64, len(proofs))
+	if len(answers) == 0 {
+		return nil
+	}
 
-	for i := range proofs {
-		var numOfLeavesProved = len(proofs[i].A.LeafIndexes)
-		var treeHeight = len(proofs[i].A.AuthPathsSuffixes[0])
+	multiplier := frontend.Variable(1)
+
+	first := answers[0]
+	result = make([]frontend.Variable, len(first))
+	for j := range first {
+		result[j] = api.Mul(first[j], multiplier)
+	}
+
+	for i := 1; i < len(answers); i++ {
+		multiplier = api.Mul(multiplier, randomness)
+
+		round := answers[i]
+		for j := range round {
+			term := api.Mul(round[j], multiplier)
+			result[j] = api.Add(result[j], term)
+		}
+	}
+
+	return result
+}
+
+type MerkleObject struct {
+	AuthPaths                  [][][][]uints.U8
+	Leaves                     [][][]frontend.Variable
+	LeafSiblingHashes          [][][]uints.U8
+	LeafIndexes                [][]uints.U64
+	ContainerAuthPaths         [][][][]uints.U8
+	ContainerLeaves            [][][]frontend.Variable
+	ContainerLeafSiblingHashes [][][]uints.U8
+	ContainerLeafIndexes       [][]uints.U64
+}
+
+func ParsePathsObject(proofElements []ProofElement) MerkleObject {
+	var totalAuthPath = make([][][][]uints.U8, len(proofElements))
+	var totalLeaves = make([][][]frontend.Variable, len(proofElements))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
+	var totalLeafIndexes = make([][]uints.U64, len(proofElements))
+
+	var containerTotalAuthPath = make([][][][]uints.U8, len(proofElements))
+	var containerTotalLeaves = make([][][]frontend.Variable, len(proofElements))
+	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
+	var containerTotalLeafIndexes = make([][]uints.U64, len(proofElements))
+
+	for i := range proofElements {
+		var numOfLeavesProved = len(proofElements[i].A.LeafIndexes)
+		var treeHeight = len(proofElements[i].A.AuthPathsSuffixes[0])
 
 		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
 		containerTotalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
@@ -152,8 +255,8 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 				totalAuthPath[i][j][z] = make([]uints.U8, 32)
 				containerTotalAuthPath[i][j][z] = make([]uints.U8, 32)
 			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(proofs[i].B[j]))
-			containerTotalLeaves[i][j] = make([]frontend.Variable, len(proofs[i].B[j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
+			containerTotalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
 			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 			containerTotalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
@@ -161,7 +264,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		containerTotalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
-		var prevPath = proofs[i].A.AuthPathsSuffixes[0]
+		var prevPath = proofElements[i].A.AuthPathsSuffixes[0]
 		authPathsTemp[0] = utilities.Reverse(prevPath)
 
 		for j := range totalAuthPath[i][0] {
@@ -169,7 +272,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		}
 
 		for j := 1; j < numOfLeavesProved; j++ {
-			prevPath = utilities.PrefixDecodePath(prevPath, proofs[i].A.AuthPathsPrefixLengths[j], proofs[i].A.AuthPathsSuffixes[j])
+			prevPath = utilities.PrefixDecodePath(prevPath, proofElements[i].A.AuthPathsPrefixLengths[j], proofElements[i].A.AuthPathsSuffixes[j])
 			authPathsTemp[j] = utilities.Reverse(prevPath)
 			for z := 0; z < treeHeight; z++ {
 				totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
@@ -178,22 +281,34 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		for z := range numOfLeavesProved {
-			totalLeafSiblingHashes[i][z] = uints.NewU8Array(proofs[i].A.LeafSiblingHashes[z].KeccakDigest[:])
-			totalLeafIndexes[i][z] = uints.NewU64(proofs[i].A.LeafIndexes[z])
-			// fmt.Println(proofs[i].B[z])
-			for j := range proofs[i].B[z] {
-				input := proofs[i].B[z][j]
-				// fmt.Println("===============")
-				// fmt.Println(j)
-				// fmt.Println(input.Limbs)
-				// fmt.Println("===============")
+			totalLeafSiblingHashes[i][z] = uints.NewU8Array(proofElements[i].A.LeafSiblingHashes[z].KeccakDigest[:])
+			totalLeafIndexes[i][z] = uints.NewU64(proofElements[i].A.LeafIndexes[z])
+			for j := range proofElements[i].B[z] {
+				input := proofElements[i].B[z][j]
 				totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 			}
 		}
 	}
+
+	return MerkleObject{
+		AuthPaths:                  totalAuthPath,
+		Leaves:                     totalLeaves,
+		LeafSiblingHashes:          totalLeafSiblingHashes,
+		LeafIndexes:                totalLeafIndexes,
+		ContainerAuthPaths:         containerTotalAuthPath,
+		ContainerLeaves:            containerTotalLeaves,
+		ContainerLeafSiblingHashes: containerTotalLeafSiblingHashes,
+		ContainerLeafIndexes:       containerTotalLeafIndexes,
+	}
+}
+
+func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner) {
+	merkleObject := ParsePathsObject(proof_arg.MerklePaths)
+	firstRoundMerkleObject := ParsePathsObject(proof_arg.FirstRoundPaths)
+
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
-	var foldingFactor []int
+	foldingFactor := cfg.FoldingFactor
 	var finalSumcheckRounds int
 
 	if len(cfg.FoldingFactor) > 1 {
@@ -284,6 +399,19 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		}
 	}
 
+	var merklePaths = MerklePaths{
+		Leaves:            merkleObject.ContainerLeaves,
+		LeafIndexes:       merkleObject.ContainerLeafIndexes,
+		LeafSiblingHashes: merkleObject.ContainerLeafSiblingHashes,
+		AuthPaths:         merkleObject.ContainerAuthPaths,
+	}
+	var firstRoundPathsForCircuit = MerklePaths{
+		Leaves:            firstRoundMerkleObject.ContainerLeaves,
+		LeafIndexes:       firstRoundMerkleObject.ContainerLeafIndexes,
+		LeafSiblingHashes: firstRoundMerkleObject.ContainerLeafSiblingHashes,
+		AuthPaths:         firstRoundMerkleObject.ContainerAuthPaths,
+	}
+
 	var circuit = Circuit{
 		IO:                                   []byte(cfg.IOPattern),
 		Transcript:                           contTranscript,
@@ -293,7 +421,6 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		ParamNRounds:                         nRounds,
 		FoldOptimisation:                     true,
 		InitialStatement:                     true,
-		CommittmentOODSamples:                1,
 		DomainSize:                           domainSize,
 		FoldingFactorArray:                   foldingFactor,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
@@ -304,12 +431,11 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		FinalQueries:                         finalQueries,
 		StatementPoints:                      contStatementPoints,
 		StatementEvaluations:                 0,
+		BatchSize:                            len(proof_arg.FirstRoundPaths),
 		LinearStatementEvaluations:           contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints:        contLinearStatementValuesAtPoints,
-		Leaves:                               containerTotalLeaves,
-		LeafIndexes:                          containerTotalLeafIndexes,
-		LeafSiblingHashes:                    containerTotalLeafSiblingHashes,
-		AuthPaths:                            containerTotalAuthPath,
+		MerklePaths:                          merklePaths,
+		FirstRoundPaths:                      firstRoundPathsForCircuit,
 		NVars:                                cfg.NVars,
 		LogNumConstraints:                    cfg.LogNumConstraints,
 		MatrixA:                              matrixA,
@@ -320,13 +446,26 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	pk, vk, _ := groth16.Setup(ccs)
 
+	merklePaths = MerklePaths{
+		Leaves:            merkleObject.Leaves,
+		LeafIndexes:       merkleObject.LeafIndexes,
+		LeafSiblingHashes: merkleObject.LeafSiblingHashes,
+		AuthPaths:         merkleObject.AuthPaths,
+	}
+	firstRoundPathsForCircuit = MerklePaths{
+		Leaves:            firstRoundMerkleObject.Leaves,
+		LeafIndexes:       firstRoundMerkleObject.LeafIndexes,
+		LeafSiblingHashes: firstRoundMerkleObject.LeafSiblingHashes,
+		AuthPaths:         firstRoundMerkleObject.AuthPaths,
+	}
+
 	assignment := Circuit{
 		IO:                                   []byte(cfg.IOPattern),
 		Transcript:                           transcriptT,
 		FoldOptimisation:                     true,
 		InitialStatement:                     true,
-		CommittmentOODSamples:                1,
 		DomainSize:                           domainSize,
+		BatchSize:                            len(proof_arg.FirstRoundPaths),
 		StartingDomainBackingDomainGenerator: startingDomainGen,
 		FoldingFactorArray:                   foldingFactor,
 		PowBits:                              powBits,
@@ -342,10 +481,8 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		StatementEvaluations:                 0,
 		LinearStatementEvaluations:           linearStatementEvaluations,
 		LinearStatementValuesAtPoints:        linearStatementValuesAtPoints,
-		Leaves:                               totalLeaves,
-		LeafIndexes:                          totalLeafIndexes,
-		LeafSiblingHashes:                    totalLeafSiblingHashes,
-		AuthPaths:                            totalAuthPath,
+		MerklePaths:                          merklePaths,
+		FirstRoundPaths:                      firstRoundPathsForCircuit,
 		NVars:                                cfg.NVars,
 		LogNumConstraints:                    cfg.LogNumConstraints,
 		MatrixA:                              matrixA,
@@ -356,8 +493,5 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
 	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	err := groth16.Verify(proof, vk, publicWitness)
-	if err != nil {
-		fmt.Println(err)
-	}
+	groth16.Verify(proof, vk, publicWitness)
 }

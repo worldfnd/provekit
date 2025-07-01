@@ -33,8 +33,9 @@ type ProofElement struct {
 }
 
 type ProofObject struct {
-	MerklePaths                  []ProofElement
-	StatementValuesAtRandomPoint []Fp256
+	FirstRoundPaths              []ProofElement `json:"round0_merkle_paths"`
+	MerklePaths                  []ProofElement `json:"merkle_paths"`
+	StatementValuesAtRandomPoint []Fp256        `json:"statement_values_at_random_point"`
 }
 
 type Config struct {
@@ -103,6 +104,7 @@ func main() {
 	}
 
 	configFile, err := os.ReadFile("../noir-examples/poseidon-rounds/params_for_recursive_verifier")
+
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -112,6 +114,7 @@ func main() {
 	if err := json.Unmarshal(configFile, &config); err != nil {
 		log.Fatalf("Error unmarshalling JSON: %v\n", err)
 	}
+	fmt.Printf("Parsed configuration:\n%+v\n", config)
 
 	io := gnark_nimue.IOPattern{}
 	err = io.Parse([]byte(config.IOPattern))
@@ -119,6 +122,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+	fmt.Printf("io: %s\n", io.PPrint())
 
 	r1csFile, r1csErr := os.ReadFile("../noir-examples/poseidon-rounds/r1cs.json")
 	if r1csErr != nil {
