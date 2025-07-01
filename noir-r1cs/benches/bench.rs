@@ -1,5 +1,6 @@
 //! Divan benchmarks for noir-r1cs
 use {
+    anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
     noir_r1cs::{read, NoirProof, NoirProofScheme},
@@ -9,18 +10,16 @@ use {
 
 #[divan::bench]
 fn read_poseidon_1000(bencher: Bencher) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("poseidon-1000.nps");
-    bencher.bench(|| read::<NoirProofScheme>(&path));
+    bencher.bench(|| read::<NoirProofScheme>("benches/poseidon-1000.nps".as_ref()));
 }
 
 #[divan::bench]
 fn prove_poseidon_1000(bencher: Bencher) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("poseidon-1000.nps");
-    let scheme: NoirProofScheme = read(&path).unwrap();
+    let path: &Path = "benches/poseidon-1000.nps".as_ref();
+
+    let scheme: NoirProofScheme = read(path)
+        .with_context(|| format!("Reading {}", path.display()))
+        .expect("Reading proof scheme");
 
     let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
 
@@ -56,14 +55,8 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 
 #[divan::bench]
 fn verify_poseidon_1000(bencher: Bencher) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("poseidon-1000.nps");
-    let scheme: NoirProofScheme = read(&path).unwrap();
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("poseidon-1000.np");
-    let proof: NoirProof = read(&path).unwrap();
+    let scheme: NoirProofScheme = read("benches/poseidon-1000.nps".as_ref()).unwrap();
+    let proof: NoirProof = read("benches/poseidon-1000.np".as_ref()).unwrap();
     bencher.bench(|| black_box(&scheme).verify(black_box(&proof)));
 }
 
