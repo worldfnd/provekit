@@ -25,7 +25,7 @@ use {
         parameters::{
             default_max_pow, FoldType, FoldingFactor,
             MultivariateParameters as GenericMultivariateParameters, SoundnessType,
-            WhirParameters as GenericWhirParameters,
+            ProtocolParameters as GenericProtocolParameters,
         },
         poly_utils::evals::EvaluationsList,
         whir::{
@@ -43,7 +43,7 @@ use {
 };
 
 pub type MultivariateParameters = GenericMultivariateParameters<FieldElement>;
-pub type WhirParameters = GenericWhirParameters<SkyscraperMerkleConfig, SkyscraperPoW>;
+pub type ProtocolParameters = GenericProtocolParameters<SkyscraperMerkleConfig, SkyscraperPoW>;
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
 pub type WhirProof = GenericWhirProof<SkyscraperMerkleConfig, FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
@@ -91,7 +91,7 @@ impl WhirR1CSScheme {
 
         // Whir parameters
         let mv_params = MultivariateParameters::new(m);
-        let whir_params = WhirParameters {
+        let whir_params = ProtocolParameters {
             initial_statement:     true,
             security_level:        128,
             pow_bits:              default_max_pow(m, 1),
