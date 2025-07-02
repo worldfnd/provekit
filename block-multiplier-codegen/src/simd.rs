@@ -1,7 +1,7 @@
 use {
     crate::{
         constants::*,
-        load_store::{load_const, load_const_simd, load_floating_simd, load_tuple},
+        load_store::{load_const, load_floating_simd, load_tuple},
     },
     hla::*,
     std::array,
