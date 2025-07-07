@@ -126,7 +126,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 func verify_circuit(
 	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest],
-	stir_answers [][][]Fp256, outputCcsPath string,
+	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
 ) {
 	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
 	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
@@ -338,9 +338,15 @@ func verify_circuit(
 		}
 		log.Printf("ccs written to %s", outputCcsPath)
 	}
-	pk, vk, err := groth16.Setup(ccs)
-	if err != nil {
-		log.Fatalf("Failed to setup groth16: %v", err)
+
+	if pk == nil || vk == nil {
+		log.Printf("PK/VK not provided, generating new keys unsafely. Consider providing keys from an MPC ceremony.")
+		unsafePk, unsafeVk, err := groth16.Setup(ccs)
+		if err != nil {
+			log.Fatalf("Failed to setup groth16: %v", err)
+		}
+		pk = &unsafePk
+		vk = &unsafeVk
 	}
 
 	assignment := Circuit{
@@ -378,8 +384,8 @@ func verify_circuit(
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	err = groth16.Verify(proof, vk, publicWitness)
+	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		fmt.Println(err)
 	}
