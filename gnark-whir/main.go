@@ -34,7 +34,6 @@ type ProofElement struct {
 }
 
 type ProofObject struct {
-	MerklePaths                  []ProofElement
 	StatementValuesAtRandomPoint []Fp256
 }
 
@@ -124,6 +123,9 @@ func main() {
 	var pointer uint64
 	var truncated []byte
 
+	var merkle_paths []MultiPath[KeccakDigest]
+	var stir_answers [][][]Fp256
+
 	for _, op := range io.Ops {
 		switch op.Kind {
 		case gnark_nimue.Hint:
@@ -140,12 +142,25 @@ func main() {
 				return
 			}
 
-			var proof MultiPath[KeccakDigest]
-			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-				bytes.NewReader(config.Transcript[start:end]),
-				&proof,
-				false, false,
-			)
+			switch string(op.Label) {
+			case "merkle_proof":
+				var path MultiPath[KeccakDigest]
+				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&path,
+					false, false,
+				)
+				merkle_paths = append(merkle_paths, path)
+			case "stir_answers":
+				var stirAnswers [][]Fp256
+				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&stirAnswers,
+					false, false,
+				)
+				stir_answers = append(stir_answers, stirAnswers)
+			}
+
 			if err != nil {
 				fmt.Println("failed to deserialize merkle proof:", err)
 				return
@@ -196,5 +211,5 @@ func main() {
 		return
 	}
 
-	verify_circuit(proof, config, r1cs, interner)
+	verify_circuit(proof, config, r1cs, interner, merkle_paths, stir_answers)
 }

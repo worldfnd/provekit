@@ -120,7 +120,7 @@ noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-
 # WHIR (Note that HintDeserialize is only implemented for default values for generic parameters. This issue was fixed in a later commit)
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "6e128ca8ff68aa62a20c230b109e47995f173c87" }
+], rev = "6ded35c03246c36123caecf7d447d66e1bdc068d" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
