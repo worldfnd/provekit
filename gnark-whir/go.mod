@@ -10,6 +10,9 @@ require (
 	github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3
 )
 
+// Remove replace directive for gnark-nimue when changes are pushed to gnark-nimue
+replace github.com/reilabs/gnark-nimue => ../../gnark-nimue
+
 require (
 	github.com/bits-and-blooms/bitset v1.17.0 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect

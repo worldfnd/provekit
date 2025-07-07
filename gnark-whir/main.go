@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -119,6 +120,57 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+
+	var pointer uint64
+	var truncated []byte
+
+	for _, op := range io.Ops {
+		switch op.Kind {
+		case gnark_nimue.Hint:
+			if pointer+4 > uint64(len(config.Transcript)) {
+				fmt.Println("insufficient bytes for hint length")
+				return
+			}
+			hintLen := binary.LittleEndian.Uint32(config.Transcript[pointer : pointer+4])
+			start := pointer + 4
+			end := start + uint64(hintLen)
+
+			if end > uint64(len(config.Transcript)) {
+				fmt.Println("insufficient bytes for merkle proof")
+				return
+			}
+
+			var proof MultiPath[KeccakDigest]
+			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				bytes.NewReader(config.Transcript[start:end]),
+				&proof,
+				false, false,
+			)
+			if err != nil {
+				fmt.Println("failed to deserialize merkle proof:", err)
+				return
+			}
+
+			pointer = end
+
+		case gnark_nimue.Absorb:
+			start := pointer
+			if string(op.Label) == "pow-nonce" {
+				pointer += op.Size
+			} else {
+				pointer += op.Size * 32
+			}
+
+			if pointer > uint64(len(config.Transcript)) {
+				fmt.Println("absorb exceeds transcript length")
+				return
+			}
+
+			truncated = append(truncated, config.Transcript[start:pointer]...)
+		}
+	}
+
+	config.Transcript = truncated
 
 	r1csFile, r1csErr := os.ReadFile("../noir-examples/poseidon-rounds/r1cs.json")
 	if r1csErr != nil {
