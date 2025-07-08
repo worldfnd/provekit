@@ -117,11 +117,9 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
-# WHIR (Note that HintDeserialize is only implemented for default values for generic parameters. This issue was fixed in a later commit)
-# (Note that WHIR had a bug where it didn't defer linear evaluations. This issue was later fixed)
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "a893c846d61ee1bde15db57466593e4cbbc5c0f4" }
+], rev = "88cbde0bff773104af4a09c639a32b6eff339e82" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
