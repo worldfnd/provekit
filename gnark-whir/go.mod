@@ -5,13 +5,10 @@ go 1.23.3
 require (
 	github.com/consensys/gnark v0.11.0
 	github.com/consensys/gnark-crypto v0.14.1-0.20241217131346-b998989abdbe
-	github.com/reilabs/gnark-nimue v0.0.5
+	github.com/reilabs/gnark-nimue v0.0.6
 	github.com/reilabs/gnark-skyscraper v0.0.0-20250529113204-fda06626925b
 	github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3
 )
-
-// Remove replace directive for gnark-nimue when changes are pushed to gnark-nimue
-replace github.com/reilabs/gnark-nimue => ../../gnark-nimue
 
 require (
 	github.com/bits-and-blooms/bitset v1.17.0 // indirect
