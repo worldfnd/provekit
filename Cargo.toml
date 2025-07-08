@@ -118,10 +118,10 @@ nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
 # WHIR (Note that HintDeserialize is only implemented for default values for generic parameters. This issue was fixed in a later commit)
-# (Note that WHIR verify had a bug where compute_w_poly didn't multiply deferred values with combination randomness. This issue was later fixed)
+# (Note that WHIR had a bug where it didn't defer linear evaluations. This issue was later fixed)
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "1e1ace6c9bd47dfdfa178f0267937156090080a7" }
+], rev = "8eb151550a8eb79e1679838bedddbdd868412379" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }

@@ -147,7 +147,7 @@ func main() {
 					false, false,
 				)
 				stir_answers = append(stir_answers, stirAnswers)
-			case "deferred":
+			case "deferred_weight_evaluations":
 				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&deferred,
