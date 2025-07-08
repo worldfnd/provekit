@@ -23,7 +23,7 @@ use {
     tracing::{info, instrument, warn},
     whir::{
         parameters::{
-            default_max_pow, FoldType, FoldingFactor,
+            default_max_pow, FoldingFactor,
             MultivariateParameters as GenericMultivariateParameters, SoundnessType,
             ProtocolParameters as GenericProtocolParameters,
         },
@@ -94,7 +94,6 @@ impl WhirR1CSScheme {
             leaf_hash_params:      (),
             two_to_one_params:     (),
             soundness_type:        SoundnessType::ConjectureList,
-            fold_optimisation:     FoldType::ProverHelps,
             _pow_parameters:       Default::default(),
             starting_log_inv_rate: 1,
         };
