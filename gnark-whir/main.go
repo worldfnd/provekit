@@ -89,19 +89,6 @@ type R1CS struct {
 }
 
 func main() {
-	proofFile, err := os.Open("../noir-examples/poseidon-rounds/proof_for_recursive_verifier")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var proof ProofObject
-	_, err = go_ark_serialize.CanonicalDeserializeWithMode(proofFile, &proof, false, false)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
 	configFile, err := os.ReadFile("../noir-examples/poseidon-rounds/params_for_recursive_verifier")
 	if err != nil {
 		fmt.Println(err)
@@ -125,6 +112,7 @@ func main() {
 
 	var merkle_paths []MultiPath[KeccakDigest]
 	var stir_answers [][][]Fp256
+	var deferred []Fp256
 
 	for _, op := range io.Ops {
 		switch op.Kind {
@@ -159,6 +147,17 @@ func main() {
 					false, false,
 				)
 				stir_answers = append(stir_answers, stirAnswers)
+			case "deferred":
+				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&deferred,
+					false, false,
+				)
+				if err != nil {
+					fmt.Println("failed to deserialize deferred hint:", err)
+					return
+				}
+				fmt.Print(deferred)
 			}
 
 			if err != nil {
@@ -211,5 +210,5 @@ func main() {
 		return
 	}
 
-	verify_circuit(proof, config, r1cs, interner, merkle_paths, stir_answers)
+	verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers)
 }

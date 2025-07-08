@@ -121,7 +121,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest], stir_answers [][][]Fp256) {
+func verify_circuit(deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest], stir_answers [][][]Fp256) {
 	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
 	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
 	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
@@ -225,14 +225,14 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		contTranscript[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
-	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
+	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
 	linearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
 	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	for i := range len(proof_arg.StatementValuesAtRandomPoint) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
-		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
+	for i := range len(deferred) {
+		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
+		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
 		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
 		linearStatementEvaluations[i] = frontend.Variable(x)
 		contLinearStatementEvaluations[i] = frontend.Variable(x)

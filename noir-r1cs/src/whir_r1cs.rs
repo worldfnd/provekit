@@ -34,10 +34,9 @@ use {
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
             statement::{
-                Statement, StatementVerifier as GenericStatementVerifier, VerifierWeights, Weights,
+                Statement, Weights,
             },
             verifier::Verifier,
-            WhirProof as GenericWhirProof,
         },
     },
 };
@@ -45,9 +44,7 @@ use {
 pub type MultivariateParameters = GenericMultivariateParameters<FieldElement>;
 pub type ProtocolParameters = GenericProtocolParameters<SkyscraperMerkleConfig, SkyscraperPoW>;
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
-pub type WhirProof = GenericWhirProof<FieldElement>;
 pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
-pub type StatementVerifier = GenericStatementVerifier<FieldElement>;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
@@ -60,8 +57,6 @@ pub struct WhirR1CSScheme {
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
     pub transcript: Vec<u8>,
-
-    pub whir_proof: WhirProof,
 
     // TODO: Derive from transcript
     #[serde(with = "serde_ark")]
@@ -139,14 +134,13 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_proof, merlin, whir_query_answer_sums) =
+        let (merlin, whir_query_answer_sums) =
             run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
 
         Ok(WhirR1CSProof {
             transcript,
-            whir_proof,
             whir_query_answer_sums,
         })
     }
@@ -160,9 +154,9 @@ impl WhirR1CSScheme {
 
         // Compute statement verifier
         let mut statement_verifier =
-            StatementVerifier::from_statement(&Statement::<FieldElement>::new(self.m));
+            Statement::<FieldElement>::new(self.m);
         for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier.add_constraint(VerifierWeights::linear(self.m, None), *claimed_sum);
+            statement_verifier.add_constraint(Weights::linear(EvaluationsList::new(vec![FieldElement::zero();1<<self.m])), *claimed_sum);
         }
 
         let data_from_sumcheck_verifier =
@@ -170,7 +164,6 @@ impl WhirR1CSScheme {
         run_whir_pcs_verifier(
             &mut arthur,
             &self.whir_config,
-            &proof.whir_proof,
             &statement_verifier,
         )
         .context("while verifying WHIR proof")?;
@@ -297,7 +290,6 @@ pub fn run_whir_pcs_prover(
     m: usize,
     alphas: [Vec<FieldElement>; 3],
 ) -> (
-    WhirProof,
     ProverState<SkyscraperSponge, FieldElement>,
     [FieldElement; 3],
 ) {
@@ -326,11 +318,11 @@ pub fn run_whir_pcs_prover(
     });
 
     let prover = Prover(params.clone());
-    let proof = prover
+    prover
         .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (proof, merlin, sums)
+    (merlin, sums)
 }
 
 #[instrument(skip_all)]
@@ -372,8 +364,7 @@ pub fn run_sumcheck_verifier(
 pub fn run_whir_pcs_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     params: &WhirConfig,
-    proof: &WhirProof,
-    statement_verifier: &StatementVerifier,
+    statement_verifier: &Statement<FieldElement>,
 ) -> Result<()> {
     let commitment_reader = CommitmentReader::new(params);
     let verifier = Verifier::new(params);
@@ -381,7 +372,7 @@ pub fn run_whir_pcs_verifier(
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
     verifier
-        .verify(arthur, &parsed_commitment, statement_verifier, proof)
+        .verify(arthur, &parsed_commitment, statement_verifier)
         .context("while verifying WHIR")?;
 
     Ok(())
