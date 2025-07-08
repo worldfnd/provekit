@@ -73,6 +73,5 @@ This project depends on the following libraries, which are developed in lockstep
 - [🌪️ WHIR](https://github.com/WizardOfMenlo/whir)
 - [Spongefish](https://github.com/arkworks-rs/spongefish)
 - [gnark-skyscraper](https://github.com/reilabs/gnark-skyscraper)
-- [gnark-nimue](https://github.com/reilabs/gnark-nimue)
-- [gnark-whir](https://github.com/reilabs/gnark-whir)
+- [gnark-whir](./gnark-whir/README.md)
 - [noir](https://github.com/noir-lang/noir)
