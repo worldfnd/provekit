@@ -121,21 +121,20 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner) {
-	proofs := proof_arg.MerklePaths
-	var totalAuthPath = make([][][][]uints.U8, len(proofs))
-	var totalLeaves = make([][][]frontend.Variable, len(proofs))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(proofs))
-	var totalLeafIndexes = make([][]uints.U64, len(proofs))
+func verify_circuit(deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest], stir_answers [][][]Fp256) {
+	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
+	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
+	var totalLeafIndexes = make([][]uints.U64, len(merkle_paths))
 
-	var containerTotalAuthPath = make([][][][]uints.U8, len(proofs))
-	var containerTotalLeaves = make([][][]frontend.Variable, len(proofs))
-	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(proofs))
-	var containerTotalLeafIndexes = make([][]uints.U64, len(proofs))
+	var containerTotalAuthPath = make([][][][]uints.U8, len(merkle_paths))
+	var containerTotalLeaves = make([][][]frontend.Variable, len(merkle_paths))
+	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
+	var containerTotalLeafIndexes = make([][]uints.U64, len(merkle_paths))
 
-	for i := range proofs {
-		var numOfLeavesProved = len(proofs[i].A.LeafIndexes)
-		var treeHeight = len(proofs[i].A.AuthPathsSuffixes[0])
+	for i, merkle_path := range merkle_paths {
+		var numOfLeavesProved = len(merkle_path.LeafIndexes)
+		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
 		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
 		containerTotalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
@@ -152,8 +151,8 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 				totalAuthPath[i][j][z] = make([]uints.U8, 32)
 				containerTotalAuthPath[i][j][z] = make([]uints.U8, 32)
 			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(proofs[i].B[j]))
-			containerTotalLeaves[i][j] = make([]frontend.Variable, len(proofs[i].B[j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
+			containerTotalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
 			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 			containerTotalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
@@ -161,7 +160,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		containerTotalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
-		var prevPath = proofs[i].A.AuthPathsSuffixes[0]
+		var prevPath = merkle_path.AuthPathsSuffixes[0]
 		authPathsTemp[0] = utilities.Reverse(prevPath)
 
 		for j := range totalAuthPath[i][0] {
@@ -169,7 +168,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		}
 
 		for j := 1; j < numOfLeavesProved; j++ {
-			prevPath = utilities.PrefixDecodePath(prevPath, proofs[i].A.AuthPathsPrefixLengths[j], proofs[i].A.AuthPathsSuffixes[j])
+			prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
 			authPathsTemp[j] = utilities.Reverse(prevPath)
 			for z := 0; z < treeHeight; z++ {
 				totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
@@ -178,11 +177,11 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		for z := range numOfLeavesProved {
-			totalLeafSiblingHashes[i][z] = uints.NewU8Array(proofs[i].A.LeafSiblingHashes[z].KeccakDigest[:])
-			totalLeafIndexes[i][z] = uints.NewU64(proofs[i].A.LeafIndexes[z])
-			// fmt.Println(proofs[i].B[z])
-			for j := range proofs[i].B[z] {
-				input := proofs[i].B[z][j]
+			totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
+			totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
+			// fmt.Println(stir_answers[i][z])
+			for j := range stir_answers[i][z] {
+				input := stir_answers[i][z][j]
 				// fmt.Println("===============")
 				// fmt.Println(j)
 				// fmt.Println(input.Limbs)
@@ -226,14 +225,14 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		contTranscript[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
-	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
+	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
 	linearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
 	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	for i := range len(proof_arg.StatementValuesAtRandomPoint) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
-		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
+	for i := range len(deferred) {
+		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
+		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
 		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
 		linearStatementEvaluations[i] = frontend.Variable(x)
 		contLinearStatementEvaluations[i] = frontend.Variable(x)

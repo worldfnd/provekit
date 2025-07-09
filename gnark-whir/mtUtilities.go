@@ -403,7 +403,7 @@ func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark
 
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnark_nimue.Arthur, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	arthur, err := gnark_nimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:])
+	arthur, err := gnark_nimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:], true)
 	if err != nil {
 		return nil, nil, nil, err
 	}

@@ -123,10 +123,9 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
-# WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
-], rev = "74936effc0fdac288f2ff4881a04bf41cdf1f78e" }
+], rev = "88cbde0bff773104af4a09c639a32b6eff339e82" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
