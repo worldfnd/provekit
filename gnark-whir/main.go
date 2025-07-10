@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -59,32 +58,6 @@ type Config struct {
 	StatementEvaluations []string `json:"statement_evaluations"`
 }
 
-type SparseMatrix struct {
-	Rows       uint64   `json:"num_rows"`
-	Cols       uint64   `json:"num_cols"`
-	RowIndices []uint64 `json:"new_row_indices"`
-	ColIndices []uint64 `json:"col_indices"`
-	Values     []uint64 `json:"values"`
-}
-
-type Interner struct {
-	Values []Fp256 `json:"values"`
-}
-
-type InternerAsString struct {
-	Values string `json:"values"`
-}
-
-type R1CS struct {
-	PublicInputs uint64           `json:"public_inputs"`
-	Witnesses    uint64           `json:"witnesses"`
-	Constraints  uint64           `json:"constraints"`
-	Interner     InternerAsString `json:"interner"`
-	A            SparseMatrix     `json:"a"`
-	B            SparseMatrix     `json:"b"`
-	C            SparseMatrix     `json:"c"`
-}
-
 func main() {
 	app := &cli.App{
 		Name:  "Verifier",
@@ -95,12 +68,6 @@ func main() {
 				Usage:    "Path to the config file",
 				Required: false,
 				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
-			},
-			&cli.StringFlag{
-				Name:     "r1cs",
-				Usage:    "Path to the r1cs json file",
-				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
 			},
 			&cli.StringFlag{
 				Name:     "ccs",
@@ -125,7 +92,6 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			configFilePath := c.String("config")
-			r1csFilePath := c.String("r1cs")
 			outputCcsPath := c.String("ccs")
 			pkPath := c.String("pk")
 			vkPath := c.String("vk")
@@ -220,29 +186,6 @@ func main() {
 
 			config.Transcript = truncated
 
-			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
-			if r1csErr != nil {
-				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
-			}
-
-			var r1cs R1CS
-			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
-				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
-			}
-
-			internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
-			if err != nil {
-				return fmt.Errorf("failed to decode interner values: %w", err)
-			}
-
-			var interner Interner
-			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-				bytes.NewReader(internerBytes), &interner, false, false,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to deserialize interner: %w", err)
-			}
-
 			var pk *groth16.ProvingKey
 			var vk *groth16.VerifyingKey
 			if pkPath != "" && vkPath != "" {
@@ -255,7 +198,7 @@ func main() {
 				vk = &restoredVk
 			}
 
-			verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers, pk, vk, outputCcsPath)
+			verify_circuit(deferred, config, merkle_paths, stir_answers, pk, vk, outputCcsPath)
 			return nil
 		},
 	}

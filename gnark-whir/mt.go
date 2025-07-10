@@ -125,7 +125,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verify_circuit(
-	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest],
+	deferred []Fp256, cfg Config, merkle_paths []MultiPath[KeccakDigest],
 	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
 ) {
 	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
@@ -244,51 +244,6 @@ func verify_circuit(
 		contLinearStatementEvaluations[i] = frontend.Variable(x)
 	}
 
-	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
-	for i := range len(internedR1CS.A.RowIndices) {
-		end := len(internedR1CS.A.Values) - 1
-		if i < len(internedR1CS.A.RowIndices)-1 {
-			end = int(internedR1CS.A.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-			matrixA[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.A.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
-			}
-		}
-	}
-
-	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
-	for i := range len(internedR1CS.B.RowIndices) {
-		end := len(internedR1CS.B.Values) - 1
-		if i < len(internedR1CS.B.RowIndices)-1 {
-			end = int(internedR1CS.B.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-			matrixB[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.B.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
-			}
-		}
-	}
-
-	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
-	for i := range len(internedR1CS.C.RowIndices) {
-		end := len(internedR1CS.C.Values) - 1
-		if i < len(internedR1CS.C.RowIndices)-1 {
-			end = int(internedR1CS.C.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-			matrixC[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.C.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
-			}
-		}
-	}
-
 	var circuit = Circuit{
 		IO:                                   []byte(cfg.IOPattern),
 		Transcript:                           contTranscript,
@@ -317,9 +272,6 @@ func verify_circuit(
 		AuthPaths:                            containerTotalAuthPath,
 		NVars:                                cfg.NVars,
 		LogNumConstraints:                    cfg.LogNumConstraints,
-		MatrixA:                              matrixA,
-		MatrixB:                              matrixB,
-		MatrixC:                              matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -377,9 +329,6 @@ func verify_circuit(
 		AuthPaths:                            totalAuthPath,
 		NVars:                                cfg.NVars,
 		LogNumConstraints:                    cfg.LogNumConstraints,
-		MatrixA:                              matrixA,
-		MatrixB:                              matrixB,
-		MatrixC:                              matrixC,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

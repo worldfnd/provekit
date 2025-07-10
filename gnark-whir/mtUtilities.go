@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/big"
 	"math/bits"
 	"os"
 
@@ -86,9 +85,6 @@ type Circuit struct {
 	LinearStatementEvaluations           []frontend.Variable
 	NVars                                int
 	LogNumConstraints                    int
-	MatrixA                              []MatrixCell
-	MatrixB                              []MatrixCell
-	MatrixC                              []MatrixCell
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -306,10 +302,8 @@ func ComputeWPoly(
 		value = api.Add(value, api.Mul(initialSumcheckData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialSumcheckData.InitialOODQueries[j], numberVars), foldingRandomnessReversed)))
 	}
 
-	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, sp_rand, foldingRandomnessReversed)
-
-	for j := range circuit.LinearStatementValuesAtPoints {
-		value = api.Add(value, api.Mul(initialSumcheckData.InitialCombinationRandomness[len(initialSumcheckData.InitialOODQueries)+j], matrixExtensionEvals[j]))
+	for j, linearStatementValueAtPoint := range circuit.LinearStatementValuesAtPoints {
+		value = api.Add(value, api.Mul(initialSumcheckData.InitialCombinationRandomness[len(initialSumcheckData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
 
 	for r := range mainRoundData.OODPoints {
@@ -441,51 +435,24 @@ func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness [
 // 	return n
 // }
 
-func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
-	ansA := frontend.Variable(0)
-	ansB := frontend.Variable(0)
-	ansC := frontend.Variable(0)
+// func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
+// 	ans := []frontend.Variable{frontend.Variable(1)}
 
-	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
-	colEval := calculateEQOverBooleanHypercube(api, colRand)
+// 	for i := len(r) - 1; i >= 0; i-- {
+// 		x := r[i]
+// 		left := make([]frontend.Variable, len(ans))
+// 		right := make([]frontend.Variable, len(ans))
 
-	for i := range len(circuit.MatrixA) {
-		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
-	}
-	for i := range circuit.MatrixB {
-		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
-	}
-	for i := range circuit.MatrixC {
-		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
-	}
+// 		for j, y := range ans {
+// 			left[j] = api.Mul(y, api.Sub(1, x))
+// 			right[j] = api.Mul(y, x)
+// 		}
 
-	return []frontend.Variable{ansA, ansB, ansC}
-}
+// 		ans = append(left, right...)
+// 	}
 
-func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
-	ans := []frontend.Variable{frontend.Variable(1)}
-
-	for i := len(r) - 1; i >= 0; i-- {
-		x := r[i]
-		left := make([]frontend.Variable, len(ans))
-		right := make([]frontend.Variable, len(ans))
-
-		for j, y := range ans {
-			left[j] = api.Mul(y, api.Sub(1, x))
-			right[j] = api.Mul(y, x)
-		}
-
-		ans = append(left, right...)
-	}
-
-	return ans
-}
-
-type MatrixCell struct {
-	row    int
-	column int
-	value  *big.Int
-}
+// 	return ans
+// }
 
 func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
