@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/big"
+	"os"
+
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
 
@@ -121,7 +124,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func verify_circuit(deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest], stir_answers [][][]Fp256) {
+func verify_circuit(
+	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest],
+	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
+) {
 	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
 	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
 	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
@@ -316,8 +322,32 @@ func verify_circuit(deferred []Fp256, cfg Config, internedR1CS R1CS, interner In
 		MatrixC:                              matrixC,
 	}
 
-	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
-	pk, vk, _ := groth16.Setup(ccs)
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
+	if err != nil {
+		log.Fatalf("Failed to compile circuit: %v", err)
+	}
+	if outputCcsPath != "" {
+		ccsFile, err := os.Create(outputCcsPath)
+		if err != nil {
+			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+		} else {
+			_, err = ccs.WriteTo(ccsFile)
+			if err != nil {
+				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+			}
+		}
+		log.Printf("ccs written to %s", outputCcsPath)
+	}
+
+	if pk == nil || vk == nil {
+		log.Printf("PK/VK not provided, generating new keys unsafely. Consider providing keys from an MPC ceremony.")
+		unsafePk, unsafeVk, err := groth16.Setup(ccs)
+		if err != nil {
+			log.Fatalf("Failed to setup groth16: %v", err)
+		}
+		pk = &unsafePk
+		vk = &unsafeVk
+	}
 
 	assignment := Circuit{
 		IO:                                   []byte(cfg.IOPattern),
@@ -354,8 +384,8 @@ func verify_circuit(deferred []Fp256, cfg Config, internedR1CS R1CS, interner In
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	err := groth16.Verify(proof, vk, publicWitness)
+	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		fmt.Println(err)
 	}
