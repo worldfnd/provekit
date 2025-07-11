@@ -8,6 +8,10 @@ use {
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_qubic_poly,
                 sumcheck_fold_map_reduce, SumcheckIOPattern,
             },
+            zk_utils::{
+                create_masked_polynomial, create_virtual_polynomial,
+                generate_random_multilinear_polynomial, generate_zero_sum_mask,
+            },
             HALF,
         },
         FieldElement, R1CS,
@@ -28,7 +32,9 @@ use {
             MultivariateParameters as GenericMultivariateParameters,
             ProtocolParameters as GenericWhirParameters, SoundnessType,
         },
-        poly_utils::{coeffs::CoefficientList, evals::EvaluationsList},
+        poly_utils::{
+            coeffs::CoefficientList, evals::EvaluationsList, multilinear::MultilinearPoint,
+        },
         whir::{
             committer::{CommitmentReader, CommitmentWriter},
             domainsep::WhirDomainSeparator,
@@ -91,11 +97,11 @@ impl WhirR1CSScheme {
         let m_0 = next_power_of_two(constraints);
 
         // Whir parameters
-        let mv_params = MultivariateParameters::new(m);
+        let mv_params = MultivariateParameters::new(m + 1);
         let whir_params = WhirParameters {
             initial_statement:     true,
             security_level:        128,
-            pow_bits:              default_max_pow(m, 1),
+            pow_bits:              default_max_pow(m + 1, 1),
             folding_factor:        FoldingFactor::Constant(4),
             leaf_hash_params:      (),
             two_to_one_params:     (),
@@ -108,7 +114,7 @@ impl WhirR1CSScheme {
         let whir_config = WhirConfig::new(mv_params, whir_params);
 
         Self {
-            m,
+            m: m + 1,
             m_0,
             whir_config,
         }
@@ -310,18 +316,21 @@ pub fn run_whir_pcs_prover(
 
     let z = pad_to_power_of_two(z);
     let poly = EvaluationsList::new(z);
+
     let polynomial = poly.to_coeffs();
+    let mask = generate_zero_sum_mask(poly.evals().len());
+    let masked_polynomial = create_masked_polynomial(&poly, &mask);
 
-    let mut store = Vec::<FieldElement>::with_capacity(polynomial.num_coeffs());
-    let mut rng = ark_std::rand::thread_rng();
-    (0..(polynomial.num_coeffs()))
-        .into_iter()
-        .for_each(|_| store.push(FieldElement::rand(&mut rng)));
+    let masked_polynomial_coeff = masked_polynomial.to_coeffs();
 
-    let polynomial_rand = CoefficientList::new(store);
+    let random_polynomial = generate_random_multilinear_polynomial(m);
+
     let committer = CommitmentWriter::new(params.clone());
     let witness = committer
-        .commit_batch(&mut merlin, &[polynomial, polynomial_rand])
+        .commit_batch(&mut merlin, &[
+            masked_polynomial_coeff.clone(),
+            random_polynomial.clone(),
+        ])
         .expect("WHIR prover failed to commit");
 
     let batched_poly = witness.batched_poly();
@@ -330,6 +339,10 @@ pub fn run_whir_pcs_prover(
     let mut statement = Statement::<FieldElement>::new(m);
 
     let sums: [FieldElement; 3] = alphas.map(|alpha| {
+        // THIS NEEDS TO BE REMOVED after Spartan sumcheck is implemented
+        let mut alpha = pad_to_power_of_two(alpha.clone());
+        alpha.extend_from_slice(&alpha.clone());
+
         let weight = Weights::linear(EvaluationsList::new(pad_to_power_of_two(alpha)));
         let sum = weight.weighted_sum(&poly_batched);
         statement.add_constraint(weight, sum);
