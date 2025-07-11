@@ -69,25 +69,29 @@ struct DataFromSumcheckVerifier {
 
 impl WhirR1CSScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        Self::new_for_size(r1cs.num_witnesses(), r1cs.num_constraints())
-    }
-
-    pub fn new_for_size(witnesses: usize, constraints: usize) -> Self {
         // m is equal to ceiling(log(number of variables in constraint system)). It is
         // equal to the log of the width of the matrices.
-        let m = next_power_of_two(witnesses);
+        let m = next_power_of_two(r1cs.num_witnesses());
 
         // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the
         // number of variables in the multilinear polynomial we are running our sumcheck
         // on.
-        let m_0 = next_power_of_two(constraints);
+        let m_0 = next_power_of_two(r1cs.num_constraints());
 
         // Whir parameters
-        let mv_params = MultivariateParameters::new(m);
+        Self {
+            m,
+            m_0,
+            whir_config: Self::new_whir_config_for_size(m)
+        }
+    }
+
+    pub fn new_whir_config_for_size(num_variables: usize) -> WhirConfig {
+        let mv_params = MultivariateParameters::new(num_variables);
         let whir_params = ProtocolParameters {
             initial_statement:     true,
             security_level:        128,
-            pow_bits:              default_max_pow(m, 1),
+            pow_bits:              default_max_pow(num_variables, 1),
             folding_factor:        FoldingFactor::Constant(4),
             leaf_hash_params:      (),
             two_to_one_params:     (),
@@ -95,13 +99,7 @@ impl WhirR1CSScheme {
             _pow_parameters:       Default::default(),
             starting_log_inv_rate: 1,
         };
-        let whir_config = WhirConfig::new(mv_params, whir_params);
-
-        Self {
-            m,
-            m_0,
-            whir_config,
-        }
+        WhirConfig::new(mv_params, whir_params)
     }
 
     #[instrument(skip_all)]
