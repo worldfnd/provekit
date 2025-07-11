@@ -121,18 +121,18 @@ impl WhirR1CSScheme {
 
         // Set up transcript
         let io: IOPattern = create_io_pattern(self.m_0, &self.whir_config);
-        let merlin = io.to_prover_state();
+        let mut merlin = io.to_prover_state();
 
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha) = run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
+        let alpha = run_sumcheck_prover(r1cs, &witness, &mut merlin, self.m_0);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (merlin, whir_query_answer_sums) =
-            run_whir_pcs_prover(witness, &self.whir_config, merlin, self.m, alphas);
+        let whir_query_answer_sums =
+            run_whir_pcs_prover(witness, &self.whir_config, &mut merlin, self.m, alphas);
 
         let transcript = merlin.narg_string().to_vec();
 
@@ -198,12 +198,9 @@ impl Debug for WhirR1CSScheme {
 pub fn run_sumcheck_prover(
     r1cs: &R1CS,
     z: &[FieldElement],
-    mut merlin: ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     m_0: usize,
-) -> (
-    ProverState<SkyscraperSponge, FieldElement>,
-    Vec<FieldElement>,
-) {
+) -> Vec<FieldElement> {
     let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
@@ -277,20 +274,17 @@ pub fn run_sumcheck_prover(
 
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
     }
-    (merlin, alpha)
+    alpha
 }
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_prover(
     z: Vec<FieldElement>,
     params: &WhirConfig,
-    mut merlin: ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
     alphas: [Vec<FieldElement>; 3],
-) -> (
-    ProverState<SkyscraperSponge, FieldElement>,
-    [FieldElement; 3],
-) {
+) -> [FieldElement; 3] {
     info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
@@ -303,7 +297,7 @@ pub fn run_whir_pcs_prover(
 
     let committer = CommitmentWriter::new(params.clone());
     let witness = committer
-        .commit(&mut merlin, polynomial)
+        .commit(merlin, polynomial)
         .expect("WHIR prover failed to commit");
 
     let mut statement = Statement::<FieldElement>::new(m);
@@ -317,10 +311,10 @@ pub fn run_whir_pcs_prover(
 
     let prover = Prover(params.clone());
     prover
-        .prove(&mut merlin, statement, witness)
+        .prove(merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (merlin, sums)
+    sums
 }
 
 #[instrument(skip_all)]
