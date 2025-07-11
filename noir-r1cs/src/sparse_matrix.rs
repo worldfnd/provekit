@@ -29,7 +29,7 @@ pub struct SparseMatrix {
 /// A hydrated sparse matrix with uninterned field elements
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HydratedSparseMatrix<'a> {
-    matrix:   &'a SparseMatrix,
+    pub matrix:   &'a SparseMatrix,
     interner: &'a Interner,
 }
 

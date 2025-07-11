@@ -18,6 +18,7 @@ mod skyscraper;
 mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
+mod spark;
 
 pub use {
     crate::{
@@ -30,7 +31,6 @@ pub use {
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
     whir::crypto::fields::Field256 as FieldElement,
-    whir_r1cs::create_io_pattern,
 };
 use {
     crate::{

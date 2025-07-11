@@ -2,9 +2,8 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    ark_serialize::CanonicalSerialize,
     noir_r1cs::{
-        create_io_pattern, read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme,
+        read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme,
     },
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
@@ -52,9 +51,9 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &scheme.whir.whir_config,
+            &scheme.whir.whir_config_col,
             &proof.whir_r1cs_proof.transcript,
-            &create_io_pattern(scheme.whir.m_0, &scheme.whir.whir_config),
+            &scheme.whir.create_io_pattern(),
             proof.whir_r1cs_proof.whir_query_answer_sums,
             scheme.whir.m_0,
             scheme.whir.m,
