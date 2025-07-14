@@ -34,7 +34,7 @@ func GetStirChallenges(
 	domainSize int,
 	roundIndex int,
 ) ([]frontend.Variable, error) {
-	foldedDomainSize := domainSize / (1 << circuit.FoldingFactorArray[roundIndex])
+	foldedDomainSize := domainSize / (1 << circuit.WHIRCircuitCol.FoldingFactorArray[roundIndex])
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
 
 	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
@@ -60,34 +60,37 @@ func GetStirChallenges(
 
 type Circuit struct {
 	// Inputs
-	DomainSize                           int
-	StartingDomainBackingDomainGenerator frontend.Variable
-	CommittmentOODSamples                int
-	FoldingFactorArray                   []int
-	FinalSumcheckRounds                  int
-	ParamNRounds                         int
-	MVParamsNumberOfVariables            int
-	RoundParametersOODSamples            []int
-	RoundParametersNumOfQueries          []int
-	InitialStatement                     bool
-	FoldOptimisation                     bool
-	PowBits                              []int
-	FinalPowBits                         int
-	FinalFoldingPowBits                  int
-	FinalQueries                         int
-	Leaves                               [][][]frontend.Variable
-	LeafIndexes                          [][]uints.U64
-	LeafSiblingHashes                    [][][]uints.U8
-	AuthPaths                            [][][][]uints.U8
-	StatementPoints                      [][]frontend.Variable
-	StatementEvaluations                 int
-	LinearStatementValuesAtPoints        []frontend.Variable
-	LinearStatementEvaluations           []frontend.Variable
-	NVars                                int
-	LogNumConstraints                    int
+	DomainSize                    int
+	CommittmentOODSamples         int
+	FinalSumcheckRounds           int
+	MVParamsNumberOfVariables     int
+	InitialStatement              bool
+	FoldOptimisation              bool
+	Leaves                        [][][]frontend.Variable
+	LeafIndexes                   [][]uints.U64
+	LeafSiblingHashes             [][][]uints.U8
+	AuthPaths                     [][][][]uints.U8
+	StatementPoints               [][]frontend.Variable
+	StatementEvaluations          int
+	LinearStatementValuesAtPoints []frontend.Variable
+	LinearStatementEvaluations    []frontend.Variable
+	LogNumConstraints             int
+	WHIRCircuitCol                WHIRCircuit
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
+}
+
+type WHIRCircuit struct {
+	ParamNRounds                         int
+	FoldingFactorArray                   []int
+	RoundParametersOODSamples            []int
+	RoundParametersNumOfQueries          []int
+	PowBits                              []int
+	FinalQueries                         int
+	FinalPowBits                         int
+	FinalFoldingPowBits                  int
+	StartingDomainBackingDomainGenerator frontend.Variable
 }
 
 type MainRoundData struct {
@@ -98,9 +101,9 @@ type MainRoundData struct {
 
 func generateEmptyMainRoundData(circuit *Circuit) MainRoundData {
 	return MainRoundData{
-		OODPoints:             make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
-		StirChallengesPoints:  make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
-		CombinationRandomness: make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
+		OODPoints:             make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
+		StirChallengesPoints:  make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
+		CombinationRandomness: make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
 	}
 }
 
@@ -168,7 +171,7 @@ func initialSumcheck(
 	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
-	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[0], 3)
+	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
@@ -202,31 +205,6 @@ func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnark_nimue.Arth
 		}
 	}
 	return nil
-}
-
-func FillInSumcheckPolynomialsAndRandomnessAndRunPoW(NVars int, arthur gnark_nimue.Arthur, api frontend.API, sc *skyscraper.Skyscraper, NpowBits int) ([][]frontend.Variable, []frontend.Variable, error) {
-	mainRoundSumcheckPolynomials := make([][]frontend.Variable, NVars)
-	sumcheckRandomness := make([]frontend.Variable, NVars)
-
-	for i := range NVars {
-		mainRoundSumcheckPolynomials[i] = make([]frontend.Variable, 3) // Sumcheck polynomial in the evaluations form
-		sumcheckRanomnessTemp := make([]frontend.Variable, 1)          // Sumcheck folding randomness
-
-		if err := arthur.FillNextScalars(mainRoundSumcheckPolynomials[i]); err != nil {
-			return nil, nil, err
-		}
-
-		if err := arthur.FillChallengeScalars(sumcheckRanomnessTemp); err != nil {
-			return nil, nil, err
-		}
-
-		sumcheckRandomness[i] = sumcheckRanomnessTemp[0]
-		if err := RunPoW(api, sc, arthur, NpowBits); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	return mainRoundSumcheckPolynomials, sumcheckRandomness, nil
 }
 
 func GenerateStirChallengePoints(api frontend.API, arthur gnark_nimue.Arthur, NQueries int, leafIndexes []uints.U64, domainSize int, circuit *Circuit, uapi *uints.BinaryField[uints.U64], expDomainGenerator frontend.Variable, roundIndex int) ([]frontend.Variable, error) {
@@ -307,7 +285,7 @@ func ComputeWPoly(
 	}
 
 	for r := range mainRoundData.OODPoints {
-		numberVars -= circuit.FoldingFactorArray[r]
+		numberVars -= circuit.WHIRCircuitCol.FoldingFactorArray[r]
 		newTmpArr := append(mainRoundData.OODPoints[r], mainRoundData.StirChallengesPoints[r]...)
 
 		sumOfClaims := frontend.Variable(0)
@@ -392,11 +370,11 @@ func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return nil, nil, err
 	}
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.FinalQueries, circuit.LeafIndexes[len(circuit.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.FoldingFactorArray)-1)
+	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.FinalQueries, circuit.LeafIndexes[len(circuit.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.WHIRCircuitCol.FoldingFactorArray)-1)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := RunPoW(api, sc, arthur, circuit.FinalPowBits); err != nil {
+	if err := RunPoW(api, sc, arthur, circuit.WHIRCircuitCol.FinalPowBits); err != nil {
 		return nil, nil, err
 	}
 	return finalCoefficients, finalRandomnessPoints, nil

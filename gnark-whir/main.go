@@ -40,22 +40,27 @@ type ProofObject struct {
 }
 
 type Config struct {
-	LogNumConstraints    int      `json:"log_num_constraints"`
-	NRounds              int      `json:"n_rounds"`
-	NVars                int      `json:"n_vars"`
-	FoldingFactor        []int    `json:"folding_factor"`
-	OODSamples           []int    `json:"ood_samples"`
-	NumQueries           []int    `json:"num_queries"`
-	PowBits              []int    `json:"pow_bits"`
-	FinalQueries         int      `json:"final_queries"`
-	FinalPowBits         int      `json:"final_pow_bits"`
-	FinalFoldingPowBits  int      `json:"final_folding_pow_bits"`
-	DomainGenerator      string   `json:"domain_generator"`
-	Rate                 int      `json:"rate"`
-	IOPattern            string   `json:"io_pattern"`
-	Transcript           []byte   `json:"transcript"`
-	TranscriptLen        int      `json:"transcript_len"`
-	StatementEvaluations []string `json:"statement_evaluations"`
+	WHIRConfigCol        WHIRConfig `json:"whir_config_col"`
+	WHIRConfigA          WHIRConfig `json:"whir_config_a_num_terms"`
+	LogNumConstraints    int        `json:"log_num_constraints"`
+	IOPattern            string     `json:"io_pattern"`
+	Transcript           []byte     `json:"transcript"`
+	TranscriptLen        int        `json:"transcript_len"`
+	StatementEvaluations []string   `json:"statement_evaluations"`
+}
+
+type WHIRConfig struct {
+	NRounds             int    `json:"n_rounds"`
+	Rate                int    `json:"rate"`
+	NVars               int    `json:"n_vars"`
+	FoldingFactor       []int  `json:"folding_factor"`
+	OODSamples          []int  `json:"ood_samples"`
+	NumQueries          []int  `json:"num_queries"`
+	PowBits             []int  `json:"pow_bits"`
+	FinalQueries        int    `json:"final_queries"`
+	FinalPowBits        int    `json:"final_pow_bits"`
+	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
+	DomainGenerator     string `json:"domain_generator"`
 }
 
 func main() {

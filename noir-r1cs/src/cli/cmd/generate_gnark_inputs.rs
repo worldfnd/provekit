@@ -52,6 +52,7 @@ impl Command for Args {
 
         write_gnark_parameters_to_file(
             &scheme.whir.whir_config_col,
+            &scheme.whir.whir_config_a_num_terms,
             &proof.whir_r1cs_proof.transcript,
             &scheme.whir.create_io_pattern(),
             proof.whir_r1cs_proof.whir_query_answer_sums,

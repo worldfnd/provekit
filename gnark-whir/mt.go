@@ -37,30 +37,30 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	computedFold := computeFold(circuit.Leaves[0], initialSumcheckFoldingRandomness, api)
 
 	mainRoundData := generateEmptyMainRoundData(circuit)
-	expDomainGenerator := utilities.Exponent(api, uapi, circuit.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.FoldingFactorArray[0])))
+	expDomainGenerator := utilities.Exponent(api, uapi, circuit.WHIRCircuitCol.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.WHIRCircuitCol.FoldingFactorArray[0])))
 	domainSize := circuit.DomainSize
 
 	totalFoldingRandomness := initialSumcheckFoldingRandomness
 
-	for r := range circuit.RoundParametersOODSamples {
+	for r := range circuit.WHIRCircuitCol.ParamNRounds {
 		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
 			return err
 		}
 
 		var roundOODAnswers []frontend.Variable
-		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.RoundParametersOODSamples[r], arthur)
+		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.RoundParametersOODSamples[r], arthur)
 		if err != nil {
 			return err
 		}
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, circuit.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, circuit, uapi, expDomainGenerator, r)
+		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, circuit, uapi, expDomainGenerator, r)
 		if err != nil {
 			return err
 		}
-		if err = RunPoW(api, sc, arthur, circuit.PowBits[r]); err != nil {
+		if err = RunPoW(api, sc, arthur, circuit.WHIRCircuitCol.PowBits[r]); err != nil {
 			return err
 		}
 
-		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+circuit.RoundParametersOODSamples[r])
+		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+circuit.WHIRCircuitCol.RoundParametersOODSamples[r])
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
 		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[r], 3)
+		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
 		}
@@ -98,8 +98,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
 
-	if circuit.FinalFoldingPowBits > 0 {
-		_, _, err := utilities.PoW(api, sc, arthur, circuit.FinalFoldingPowBits)
+	if circuit.WHIRCircuitCol.FinalFoldingPowBits > 0 {
+		_, _, err := utilities.PoW(api, sc, arthur, circuit.WHIRCircuitCol.FinalPowBits)
 		if err != nil {
 			return err
 		}
@@ -121,6 +121,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
 	api.AssertIsEqual(savedValForSumcheck, x)
+
 	return nil
 }
 
@@ -196,24 +197,24 @@ func verify_circuit(
 			}
 		}
 	}
-	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
-	mvParamsNumberOfVariables := cfg.NVars
+	startingDomainGen, _ := new(big.Int).SetString(cfg.WHIRConfigCol.DomainGenerator, 10)
+	mvParamsNumberOfVariables := cfg.WHIRConfigCol.NVars
 	var foldingFactor []int
 	var finalSumcheckRounds int
 
-	if len(cfg.FoldingFactor) > 1 {
-		foldingFactor = append(cfg.FoldingFactor, cfg.FoldingFactor[len(cfg.FoldingFactor)-1])
+	if len(cfg.WHIRConfigCol.FoldingFactor) > 1 {
+		foldingFactor = append(cfg.WHIRConfigCol.FoldingFactor, cfg.WHIRConfigCol.FoldingFactor[len(cfg.WHIRConfigCol.FoldingFactor)-1])
 		finalSumcheckRounds = mvParamsNumberOfVariables % foldingFactor[len(foldingFactor)-1]
 	} else {
 		foldingFactor = []int{4}
 		finalSumcheckRounds = mvParamsNumberOfVariables % 4
 	}
-	domainSize := (2 << mvParamsNumberOfVariables) * (1 << cfg.Rate) / 2
-	oodSamples := cfg.OODSamples
-	numOfQueries := cfg.NumQueries
-	powBits := cfg.PowBits
-	finalQueries := cfg.FinalQueries
-	nRounds := cfg.NRounds
+	domainSize := (2 << mvParamsNumberOfVariables) * (1 << cfg.WHIRConfigCol.Rate) / 2
+	oodSamples := cfg.WHIRConfigCol.OODSamples
+	numOfQueries := cfg.WHIRConfigCol.NumQueries
+	powBits := cfg.WHIRConfigCol.PowBits
+	finalQueries := cfg.WHIRConfigCol.FinalQueries
+	nRounds := cfg.WHIRConfigCol.NRounds
 	statementPoints := make([][]frontend.Variable, 1)
 	statementPoints[0] = make([]frontend.Variable, mvParamsNumberOfVariables)
 	contStatementPoints := make([][]frontend.Variable, 1)
@@ -244,34 +245,37 @@ func verify_circuit(
 		contLinearStatementEvaluations[i] = frontend.Variable(x)
 	}
 
-	var circuit = Circuit{
-		IO:                                   []byte(cfg.IOPattern),
-		Transcript:                           contTranscript,
+	whir_circuit_col := WHIRCircuit{
+		ParamNRounds:                         nRounds,
+		FoldingFactorArray:                   foldingFactor,
 		RoundParametersOODSamples:            oodSamples,
 		RoundParametersNumOfQueries:          numOfQueries,
-		StartingDomainBackingDomainGenerator: startingDomainGen,
-		ParamNRounds:                         nRounds,
-		FoldOptimisation:                     true,
-		InitialStatement:                     true,
-		CommittmentOODSamples:                1,
-		DomainSize:                           domainSize,
-		FoldingFactorArray:                   foldingFactor,
-		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		FinalSumcheckRounds:                  finalSumcheckRounds,
 		PowBits:                              powBits,
-		FinalPowBits:                         cfg.FinalPowBits,
-		FinalFoldingPowBits:                  cfg.FinalFoldingPowBits,
 		FinalQueries:                         finalQueries,
-		StatementPoints:                      contStatementPoints,
-		StatementEvaluations:                 0,
-		LinearStatementEvaluations:           contLinearStatementEvaluations,
-		LinearStatementValuesAtPoints:        contLinearStatementValuesAtPoints,
-		Leaves:                               containerTotalLeaves,
-		LeafIndexes:                          containerTotalLeafIndexes,
-		LeafSiblingHashes:                    containerTotalLeafSiblingHashes,
-		AuthPaths:                            containerTotalAuthPath,
-		NVars:                                cfg.NVars,
-		LogNumConstraints:                    cfg.LogNumConstraints,
+		FinalPowBits:                         cfg.WHIRConfigCol.FinalPowBits,
+		FinalFoldingPowBits:                  cfg.WHIRConfigCol.FinalFoldingPowBits,
+		StartingDomainBackingDomainGenerator: startingDomainGen,
+	}
+
+	var circuit = Circuit{
+		IO:                            []byte(cfg.IOPattern),
+		Transcript:                    contTranscript,
+		FoldOptimisation:              true,
+		InitialStatement:              true,
+		CommittmentOODSamples:         1,
+		DomainSize:                    domainSize,
+		MVParamsNumberOfVariables:     mvParamsNumberOfVariables,
+		FinalSumcheckRounds:           finalSumcheckRounds,
+		StatementPoints:               contStatementPoints,
+		StatementEvaluations:          0,
+		LinearStatementEvaluations:    contLinearStatementEvaluations,
+		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
+		Leaves:                        containerTotalLeaves,
+		LeafIndexes:                   containerTotalLeafIndexes,
+		LeafSiblingHashes:             containerTotalLeafSiblingHashes,
+		AuthPaths:                     containerTotalAuthPath,
+		WHIRCircuitCol:                whir_circuit_col,
+		LogNumConstraints:             cfg.LogNumConstraints,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -302,33 +306,23 @@ func verify_circuit(
 	}
 
 	assignment := Circuit{
-		IO:                                   []byte(cfg.IOPattern),
-		Transcript:                           transcriptT,
-		FoldOptimisation:                     true,
-		InitialStatement:                     true,
-		CommittmentOODSamples:                1,
-		DomainSize:                           domainSize,
-		StartingDomainBackingDomainGenerator: startingDomainGen,
-		FoldingFactorArray:                   foldingFactor,
-		PowBits:                              powBits,
-		FinalPowBits:                         cfg.FinalPowBits,
-		FinalFoldingPowBits:                  cfg.FinalFoldingPowBits,
-		FinalSumcheckRounds:                  finalSumcheckRounds,
-		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		RoundParametersOODSamples:            oodSamples,
-		RoundParametersNumOfQueries:          numOfQueries,
-		ParamNRounds:                         nRounds,
-		FinalQueries:                         finalQueries,
-		StatementPoints:                      statementPoints,
-		StatementEvaluations:                 0,
-		LinearStatementEvaluations:           linearStatementEvaluations,
-		LinearStatementValuesAtPoints:        linearStatementValuesAtPoints,
-		Leaves:                               totalLeaves,
-		LeafIndexes:                          totalLeafIndexes,
-		LeafSiblingHashes:                    totalLeafSiblingHashes,
-		AuthPaths:                            totalAuthPath,
-		NVars:                                cfg.NVars,
-		LogNumConstraints:                    cfg.LogNumConstraints,
+		IO:                            []byte(cfg.IOPattern),
+		Transcript:                    transcriptT,
+		FoldOptimisation:              true,
+		InitialStatement:              true,
+		CommittmentOODSamples:         1,
+		DomainSize:                    domainSize,
+		FinalSumcheckRounds:           finalSumcheckRounds,
+		MVParamsNumberOfVariables:     mvParamsNumberOfVariables,
+		StatementPoints:               statementPoints,
+		StatementEvaluations:          0,
+		LinearStatementEvaluations:    linearStatementEvaluations,
+		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
+		Leaves:                        totalLeaves,
+		LeafIndexes:                   totalLeafIndexes,
+		LeafSiblingHashes:             totalLeafSiblingHashes,
+		AuthPaths:                     totalAuthPath,
+		WHIRCircuitCol:                whir_circuit_col,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
