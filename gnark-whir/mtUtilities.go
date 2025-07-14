@@ -60,16 +60,6 @@ func GetStirChallenges(
 
 type Circuit struct {
 	// Inputs
-	DomainSize                    int
-	CommittmentOODSamples         int
-	FinalSumcheckRounds           int
-	MVParamsNumberOfVariables     int
-	InitialStatement              bool
-	Leaves                        [][][]frontend.Variable
-	LeafIndexes                   [][]uints.U64
-	LeafSiblingHashes             [][][]uints.U8
-	AuthPaths                     [][][][]uints.U8
-	StatementEvaluations          int
 	LinearStatementValuesAtPoints []frontend.Variable
 	LinearStatementEvaluations    []frontend.Variable
 	LogNumConstraints             int
@@ -89,6 +79,14 @@ type WHIRCircuit struct {
 	FinalPowBits                         int
 	FinalFoldingPowBits                  int
 	StartingDomainBackingDomainGenerator frontend.Variable
+	DomainSize                           int
+	CommittmentOODSamples                int
+	FinalSumcheckRounds                  int
+	MVParamsNumberOfVariables            int
+	Leaves                               [][][]frontend.Variable
+	LeafIndexes                          [][]uints.U64
+	LeafSiblingHashes                    [][][]uints.U8
+	AuthPaths                            [][][][]uints.U8
 }
 
 type MainRoundData struct {
@@ -156,12 +154,12 @@ func initialSumcheck(
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.CommittmentOODSamples, arthur)
+	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.CommittmentOODSamples+len(circuit.LinearStatementEvaluations))
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.WHIRCircuitCol.CommittmentOODSamples+len(circuit.LinearStatementEvaluations))
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
@@ -271,7 +269,7 @@ func ComputeWPoly(
 	totalFoldingRandomness []frontend.Variable,
 ) frontend.Variable {
 	foldingRandomnessReversed := utilities.Reverse(totalFoldingRandomness)
-	numberVars := circuit.MVParamsNumberOfVariables
+	numberVars := circuit.WHIRCircuitCol.MVParamsNumberOfVariables
 
 	value := frontend.Variable(0)
 	for j := range initialSumcheckData.InitialOODQueries {
@@ -330,7 +328,7 @@ func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryF
 	if err := arthur.FillNextScalars(rootHash); err != nil {
 		return err
 	}
-	err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[roundNum], circuit.Leaves[roundNum], circuit.LeafSiblingHashes[roundNum], circuit.AuthPaths[roundNum], rootHash[0])
+	err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.WHIRCircuitCol.LeafIndexes[roundNum], circuit.WHIRCircuitCol.Leaves[roundNum], circuit.WHIRCircuitCol.LeafSiblingHashes[roundNum], circuit.WHIRCircuitCol.AuthPaths[roundNum], rootHash[0])
 	if err != nil {
 		return err
 	}
@@ -338,11 +336,11 @@ func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryF
 }
 
 func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark_nimue.Arthur, circuit *Circuit, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
-	finalCoefficients := make([]frontend.Variable, 1<<circuit.FinalSumcheckRounds)
+	finalCoefficients := make([]frontend.Variable, 1<<circuit.WHIRCircuitCol.FinalSumcheckRounds)
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return nil, nil, err
 	}
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.FinalQueries, circuit.LeafIndexes[len(circuit.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.WHIRCircuitCol.FoldingFactorArray)-1)
+	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.FinalQueries, circuit.WHIRCircuitCol.LeafIndexes[len(circuit.WHIRCircuitCol.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.WHIRCircuitCol.FoldingFactorArray)-1)
 	if err != nil {
 		return nil, nil, err
 	}
