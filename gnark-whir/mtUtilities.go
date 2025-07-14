@@ -65,7 +65,6 @@ type Circuit struct {
 	FinalSumcheckRounds           int
 	MVParamsNumberOfVariables     int
 	InitialStatement              bool
-	FoldOptimisation              bool
 	Leaves                        [][][]frontend.Variable
 	LeafIndexes                   [][]uints.U64
 	LeafSiblingHashes             [][][]uints.U8
@@ -297,32 +296,6 @@ func ComputeWPoly(
 	}
 
 	return value
-}
-
-func ComputeFoldsHelped(api frontend.API, circuit *Circuit, initialSumcheckFoldingRandomness []frontend.Variable, mainRoundFoldingRandomness [][]frontend.Variable) [][]frontend.Variable {
-	foldingRandomness := append([][]frontend.Variable{initialSumcheckFoldingRandomness}, mainRoundFoldingRandomness...)
-	result := make([][]frontend.Variable, len(circuit.Leaves))
-
-	for i := range len(circuit.Leaves) {
-		result[i] = make([]frontend.Variable, len(circuit.Leaves[i]))
-		for j := range circuit.Leaves[i] {
-			result[i][j] = utilities.MultivarPoly(circuit.Leaves[i][j], foldingRandomness[i], api)
-		}
-	}
-
-	return result
-}
-
-func ComputeFoldsFull(api frontend.API, circuit *Circuit) [][]frontend.Variable {
-	return nil
-}
-
-func ComputeFolds(api frontend.API, circuit *Circuit, initialSumcheckFoldingRandomness []frontend.Variable, mainRoundFoldingRandomness [][]frontend.Variable) [][]frontend.Variable {
-	if circuit.FoldOptimisation {
-		return ComputeFoldsHelped(api, circuit, initialSumcheckFoldingRandomness, mainRoundFoldingRandomness)
-	} else {
-		return ComputeFoldsFull(api, circuit)
-	}
 }
 
 func SumcheckForR1CSIOP(api frontend.API, arthur gnark_nimue.Arthur, circuit *Circuit) ([]frontend.Variable, []frontend.Variable, frontend.Variable, error) {

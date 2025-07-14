@@ -260,7 +260,6 @@ func verify_circuit(
 	var circuit = Circuit{
 		IO:                            []byte(cfg.IOPattern),
 		Transcript:                    contTranscript,
-		FoldOptimisation:              true,
 		InitialStatement:              true,
 		CommittmentOODSamples:         1,
 		DomainSize:                    domainSize,
@@ -308,7 +307,6 @@ func verify_circuit(
 	assignment := Circuit{
 		IO:                            []byte(cfg.IOPattern),
 		Transcript:                    transcriptT,
-		FoldOptimisation:              true,
 		InitialStatement:              true,
 		CommittmentOODSamples:         1,
 		DomainSize:                    domainSize,
