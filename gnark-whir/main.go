@@ -164,7 +164,6 @@ func main() {
 						if err != nil {
 							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 						}
-						fmt.Print(deferred)
 					}
 
 					if err != nil {
