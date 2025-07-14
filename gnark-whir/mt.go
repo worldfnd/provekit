@@ -215,14 +215,6 @@ func verify_circuit(
 	powBits := cfg.WHIRConfigCol.PowBits
 	finalQueries := cfg.WHIRConfigCol.FinalQueries
 	nRounds := cfg.WHIRConfigCol.NRounds
-	statementPoints := make([][]frontend.Variable, 1)
-	statementPoints[0] = make([]frontend.Variable, mvParamsNumberOfVariables)
-	contStatementPoints := make([][]frontend.Variable, 1)
-	contStatementPoints[0] = make([]frontend.Variable, mvParamsNumberOfVariables)
-	for i := range mvParamsNumberOfVariables {
-		statementPoints[0][i] = frontend.Variable(0)
-		contStatementPoints[0][i] = frontend.Variable(0)
-	}
 
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -265,7 +257,6 @@ func verify_circuit(
 		DomainSize:                    domainSize,
 		MVParamsNumberOfVariables:     mvParamsNumberOfVariables,
 		FinalSumcheckRounds:           finalSumcheckRounds,
-		StatementPoints:               contStatementPoints,
 		StatementEvaluations:          0,
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
@@ -312,7 +303,6 @@ func verify_circuit(
 		DomainSize:                    domainSize,
 		FinalSumcheckRounds:           finalSumcheckRounds,
 		MVParamsNumberOfVariables:     mvParamsNumberOfVariables,
-		StatementPoints:               statementPoints,
 		StatementEvaluations:          0,
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,

@@ -69,7 +69,6 @@ type Circuit struct {
 	LeafIndexes                   [][]uints.U64
 	LeafSiblingHashes             [][][]uints.U8
 	AuthPaths                     [][][][]uints.U8
-	StatementPoints               [][]frontend.Variable
 	StatementEvaluations          int
 	LinearStatementValuesAtPoints []frontend.Variable
 	LinearStatementEvaluations    []frontend.Variable
