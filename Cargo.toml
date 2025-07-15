@@ -113,24 +113,15 @@ rand_chacha = "0.9.0"
 test-case = "3.3.1"
 
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
-acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-# acir = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# nargo = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
-# noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
+acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
+noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.8" }
 
 whir = { git = "https://github.com/WizardOfMenlo/whir/", features = [
   "tracing",
