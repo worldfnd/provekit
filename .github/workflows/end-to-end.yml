@@ -35,7 +35,7 @@ jobs:
 
       - uses: noir-lang/noirup@v0.1.2
         with:
-          toolchain: nightly-2025-05-28
+          toolchain: v1.0.0-beta.6
 
       - name: Setup Go
         uses: actions/setup-go@v5
