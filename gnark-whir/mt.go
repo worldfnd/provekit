@@ -146,6 +146,26 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	//
 
+	rowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(rowRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	colRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(colRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
 	valRootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(valRootHash); err != nil {
 		return err
@@ -165,7 +185,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
-
 	e_ryRootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(e_ryRootHash); err != nil {
 		return err
@@ -175,7 +194,42 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
+	readTSRowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(readTSRowRootHash); err != nil {
+		return err
+	}
 
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	readTSColRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(readTSColRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	finalCTSRowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(finalCTSRowRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	finalCTSColRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(finalCTSColRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
