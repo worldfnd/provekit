@@ -1,7 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"math/big"
+	"os"
+
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
 
@@ -302,7 +306,10 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 	}
 }
 
-func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner) {
+func verify_circuit(
+	proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner, pk *groth16.ProvingKey,
+	vk *groth16.VerifyingKey, outputCcsPath string,
+) {
 	merkleObject := ParsePathsObject(proof_arg.MerklePaths)
 	firstRoundMerkleObject := ParsePathsObject(proof_arg.FirstRoundPaths)
 
@@ -443,8 +450,32 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		MatrixC:                              matrixC,
 	}
 
-	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
-	pk, vk, _ := groth16.Setup(ccs)
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
+	if err != nil {
+		log.Fatalf("Failed to compile circuit: %v", err)
+	}
+	if outputCcsPath != "" {
+		ccsFile, err := os.Create(outputCcsPath)
+		if err != nil {
+			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+		} else {
+			_, err = ccs.WriteTo(ccsFile)
+			if err != nil {
+				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+			}
+		}
+		log.Printf("ccs written to %s", outputCcsPath)
+	}
+
+	if pk == nil || vk == nil {
+		log.Printf("PK/VK not provided, generating new keys unsafely. Consider providing keys from an MPC ceremony.")
+		unsafePk, unsafeVk, err := groth16.Setup(ccs)
+		if err != nil {
+			log.Fatalf("Failed to setup groth16: %v", err)
+		}
+		pk = &unsafePk
+		vk = &unsafeVk
+	}
 
 	merklePaths = MerklePaths{
 		Leaves:            merkleObject.Leaves,
@@ -492,9 +523,9 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	resp := groth16.Verify(proof, vk, publicWitness)
-	if resp != nil {
-		panic("proof verification failed")
+	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+	err = groth16.Verify(proof, *vk, publicWitness)
+	if err != nil {
+		fmt.Println(err)
 	}
 }

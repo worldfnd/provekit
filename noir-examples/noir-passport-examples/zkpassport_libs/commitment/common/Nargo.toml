@@ -1,0 +1,8 @@
+[package]
+name = "commitment_common"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.22.0"
+
+[dependencies]
+utils = { path = "../../utils" }

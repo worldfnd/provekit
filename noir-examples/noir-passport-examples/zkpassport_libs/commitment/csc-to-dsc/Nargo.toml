@@ -1,0 +1,9 @@
+[package]
+name = "csc_to_dsc_commitment"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=0.22.0"
+
+[dependencies]
+utils = { path = "../../utils" }
+common = { path = "../common" }

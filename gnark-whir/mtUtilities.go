@@ -1,8 +1,15 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"math/big"
 	"math/bits"
+	"os"
+
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend/groth16"
+
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
 
@@ -409,7 +416,7 @@ func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark
 
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnark_nimue.Arthur, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	arthur, err := gnark_nimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:])
+	arthur, err := gnark_nimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:], true)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -491,4 +498,43 @@ type MatrixCell struct {
 	row    int
 	column int
 	value  *big.Int
+}
+
+func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+	pkFile, err := os.Open(pkPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open proving key file: %w", err)
+	}
+	defer func(pkFile *os.File) {
+		err := pkFile.Close()
+		if err != nil {
+			log.Printf("failed to close proving key file: %v", err)
+		}
+	}(pkFile)
+
+	pk := groth16.NewProvingKey(ecc.BN254)
+	_, err = pk.ReadFrom(pkFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to restore proving key: %w", err)
+
+	}
+
+	vkFile, err := os.Open(vkPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open verifying key file: %w", err)
+	}
+	defer func(vkFile *os.File) {
+		err := vkFile.Close()
+		if err != nil {
+			log.Printf("failed to close verifying key file: %v", err)
+		}
+	}(vkFile)
+
+	vk := groth16.NewVerifyingKey(ecc.BN254)
+	_, err = vk.ReadFrom(vkFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to restore verifying key: %w", err)
+	}
+
+	return pk, vk, nil
 }

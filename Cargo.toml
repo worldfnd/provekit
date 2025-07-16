@@ -20,6 +20,10 @@ authors = [
   "Xander van der Goot",
   "Koh Wei Jie",
   "Tony Wu",
+  "Vishruti Ganesh",
+  "Benjamin Wilson",
+  "Yogesh Swami",
+  "Ryan Cao",
   # TODO: More contributors
 ]
 license = "MIT"
@@ -77,6 +81,7 @@ paste = "1.0.15"
 arrayvec = "0.7.6"
 blake3 = "1.8.2"
 gensym = "0.1.1"
+rsa = { version = "0.9.8", features = ["sha2"] }
 rand = "0.9.1"
 rand08 = { package = "rand", version = "0.8" }
 halo2curves = { version = "0.7.0", features = ["bn256-table"] }
@@ -86,6 +91,7 @@ lazy_static = "1.5.0"
 num-traits = "0.2.19"
 num = "0.4.3"
 sha3 = { version = "0.10.8", features = ["asm"] }
+sha2 = { version = "0.10", features = ["compress"] }
 subtle = "2.6.1"
 static_assertions = "1.1"
 tracing = "0.1.41"
@@ -117,7 +123,6 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
-# WHIR
 whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
   "tracing",
 ], rev = "97218f5066094a53a27c4aa6dac7401f87799b90" }

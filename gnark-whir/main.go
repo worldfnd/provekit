@@ -5,8 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/consensys/gnark/backend/groth16"
 	"log"
 	"os"
+
+	"github.com/urfave/cli/v2"
 
 	gnark_nimue "github.com/reilabs/gnark-nimue"
 	go_ark_serialize "github.com/reilabs/go-ark-serialize"
@@ -57,12 +60,6 @@ type Config struct {
 	StatementEvaluations []string `json:"statement_evaluations"`
 }
 
-type Item struct {
-	Constraint int    `json:"constraint"`
-	Signal     int    `json:"signal"`
-	Value      string `json:"value"`
-}
-
 type SparseMatrix struct {
 	Rows       uint64   `json:"num_rows"`
 	Cols       uint64   `json:"num_cols"`
@@ -90,63 +87,126 @@ type R1CS struct {
 }
 
 func main() {
-	proofFile, err := os.Open("../noir-examples/poseidon-rounds/proof_for_recursive_verifier")
+	app := &cli.App{
+		Name:  "Verifier",
+		Usage: "Verifies proof with given parameters",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "config",
+				Usage:    "Path to the config file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
+			},
+			&cli.StringFlag{
+				Name:     "proof",
+				Usage:    "Path to the proof file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/proof_for_recursive_verifier",
+			},
+			&cli.StringFlag{
+				Name:     "r1cs",
+				Usage:    "Path to the r1cs json file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
+			},
+			&cli.StringFlag{
+				Name:     "ccs",
+				Usage:    "Optional path to store the constraint system object",
+				Required: false,
+				Value:    "",
+			},
+			&cli.StringFlag{
+				Name: "pk",
+				Usage: "Optional path to load Proving Key from (if not provided, " +
+					"PK and VK will be generated unsafely)",
+				Required: false,
+				Value:    "",
+			},
+			&cli.StringFlag{
+				Name: "vk",
+				Usage: "Optional path to load Verifying Key from (if not provided, " +
+					"PK and VK will be generated unsafely)",
+				Required: false,
+				Value:    "",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			proofFilePath := c.String("proof")
+			configFilePath := c.String("config")
+			r1csFilePath := c.String("r1cs")
+			outputCcsPath := c.String("ccs")
+			pkPath := c.String("pk")
+			vkPath := c.String("vk")
+
+			proofFile, err := os.Open(proofFilePath)
+			if err != nil {
+				return fmt.Errorf("failed to open proof file to read: %w", err)
+			}
+
+			var proof ProofObject
+			_, err = go_ark_serialize.CanonicalDeserializeWithMode(proofFile, &proof, false, false)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize proof file: %w", err)
+			}
+
+			configFile, err := os.ReadFile(configFilePath)
+			if err != nil {
+				return fmt.Errorf("failed to read config file: %w", err)
+			}
+
+			var config Config
+			if err := json.Unmarshal(configFile, &config); err != nil {
+				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
+			}
+
+			io := gnark_nimue.IOPattern{}
+			err = io.Parse([]byte(config.IOPattern))
+			if err != nil {
+				return fmt.Errorf("failed to parse IO pattern: %w", err)
+			}
+
+			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
+			if r1csErr != nil {
+				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
+			}
+
+			var r1cs R1CS
+			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
+				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
+			}
+
+			internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+			if err != nil {
+				return fmt.Errorf("failed to decode interner values: %w", err)
+			}
+
+			var interner Interner
+			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				bytes.NewReader(internerBytes), &interner, false, false,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize interner: %w", err)
+			}
+
+			var pk *groth16.ProvingKey
+			var vk *groth16.VerifyingKey
+			if pkPath != "" && vkPath != "" {
+				log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
+				restoredPk, restoredVk, err := keys_from_files(pkPath, vkPath)
+				if err != nil {
+					return err
+				}
+				pk = &restoredPk
+				vk = &restoredVk
+			}
+
+			verify_circuit(proof, config, r1cs, interner, pk, vk, outputCcsPath)
+			return nil
+		},
+	}
+
+	err := app.Run(os.Args)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
-
-	var proof ProofObject
-	_, err = go_ark_serialize.CanonicalDeserializeWithMode(proofFile, &proof, false, false)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	configFile, err := os.ReadFile("../noir-examples/poseidon-rounds/params_for_recursive_verifier")
-
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var config Config
-	if err := json.Unmarshal(configFile, &config); err != nil {
-		log.Fatalf("Error unmarshalling JSON: %v\n", err)
-	}
-	fmt.Printf("Parsed configuration:\n%+v\n", config)
-
-	io := gnark_nimue.IOPattern{}
-	err = io.Parse([]byte(config.IOPattern))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	fmt.Printf("io: %s\n", io.PPrint())
-
-	r1csFile, r1csErr := os.ReadFile("../noir-examples/poseidon-rounds/r1cs.json")
-	if r1csErr != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var r1cs R1CS
-	if err := json.Unmarshal(r1csFile, &r1cs); err != nil {
-		log.Fatalf("Error unmarshalling JSON: %v\n", err)
-	}
-
-	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	var interner Interner
-	_, err = go_ark_serialize.CanonicalDeserializeWithMode(bytes.NewReader(internerBytes), &interner, false, false)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	verify_circuit(proof, config, r1cs, interner)
 }
