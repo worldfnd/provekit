@@ -29,9 +29,31 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, circuit, arthur, uapi, sc)
+	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
+		return err
+	}
+
+	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
+	}
+
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.WHIRCircuitCol.CommittmentOODSamples+len(circuit.LinearStatementEvaluations))
+	if err != nil {
+		return err
+	}
+
+	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
+	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
+
+	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
+	if err != nil {
+		return err
+	}
+
+	initialData := InitialSumcheckData{
+		InitialOODQueries:            initialOODQueries,
+		InitialCombinationRandomness: initialCombinationRandomness,
 	}
 
 	computedFold := computeFold(circuit.WHIRCircuitCol.Leaves[0], initialSumcheckFoldingRandomness, api)
@@ -108,7 +130,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	evaluationOfVPoly := ComputeWPoly(
 		api,
 		circuit,
-		initialSumcheckData,
+		initialData,
 		mainRoundData,
 		sp_rand,
 		totalFoldingRandomness,
@@ -121,6 +143,38 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
 	api.AssertIsEqual(savedValForSumcheck, x)
+
+	//
+
+	valRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(valRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	e_rxRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(e_rxRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	e_ryRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(e_ryRootHash); err != nil {
+		return err
+	}
+
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

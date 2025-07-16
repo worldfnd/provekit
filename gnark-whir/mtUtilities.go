@@ -143,41 +143,6 @@ type InitialSumcheckData struct {
 	InitialCombinationRandomness []frontend.Variable
 }
 
-func initialSumcheck(
-	api frontend.API,
-	circuit *Circuit,
-	arthur gnark_nimue.Arthur,
-	uapi *uints.BinaryField[uints.U64],
-	sc *skyscraper.Skyscraper,
-) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
-	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
-	if err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.WHIRCircuitCol.CommittmentOODSamples+len(circuit.LinearStatementEvaluations))
-	if err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
-
-	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
-	if err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	return InitialSumcheckData{
-		InitialOODQueries:            initialOODQueries,
-		InitialCombinationRandomness: initialCombinationRandomness,
-	}, lastEval, initialSumcheckFoldingRandomness, nil
-}
-
 func FillInOODPointsAndAnswers(numberOfOODPoints int, arthur gnark_nimue.Arthur) ([]frontend.Variable, []frontend.Variable, error) {
 	oodPoints := make([]frontend.Variable, numberOfOODPoints)
 	oodAnswers := make([]frontend.Variable, numberOfOODPoints)
@@ -263,7 +228,7 @@ func runSumcheckRounds(
 func ComputeWPoly(
 	api frontend.API,
 	circuit *Circuit,
-	initialSumcheckData InitialSumcheckData,
+	initialData InitialSumcheckData,
 	mainRoundData MainRoundData,
 	sp_rand []frontend.Variable,
 	totalFoldingRandomness []frontend.Variable,
@@ -272,12 +237,12 @@ func ComputeWPoly(
 	numberVars := circuit.WHIRCircuitCol.MVParamsNumberOfVariables
 
 	value := frontend.Variable(0)
-	for j := range initialSumcheckData.InitialOODQueries {
-		value = api.Add(value, api.Mul(initialSumcheckData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialSumcheckData.InitialOODQueries[j], numberVars), foldingRandomnessReversed)))
+	for j := range initialData.InitialOODQueries {
+		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialData.InitialOODQueries[j], numberVars), foldingRandomnessReversed)))
 	}
 
 	for j, linearStatementValueAtPoint := range circuit.LinearStatementValuesAtPoints {
-		value = api.Add(value, api.Mul(initialSumcheckData.InitialCombinationRandomness[len(initialSumcheckData.InitialOODQueries)+j], linearStatementValueAtPoint))
+		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
 
 	for r := range mainRoundData.OODPoints {
