@@ -46,6 +46,7 @@ pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub struct WhirR1CSScheme {
     pub m:           usize,
     pub m_0:         usize,
+    pub whir_config_row: WhirConfig,
     pub whir_config_col: WhirConfig,
     pub whir_config_a_num_terms: WhirConfig,
 }
@@ -81,6 +82,7 @@ impl WhirR1CSScheme {
         Self {
             m,
             m_0,
+            whir_config_row: Self::new_whir_config_for_size(m_0),
             whir_config_col: Self::new_whir_config_for_size(m),
             whir_config_a_num_terms: Self::new_whir_config_for_size(next_power_of_two(r1cs.a().matrix.num_entries())),
         }
@@ -136,6 +138,8 @@ impl WhirR1CSScheme {
             r1cs.a(), 
             &mut merlin,
             &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
             &alpha,
             &col_randomness.0,
         );
@@ -184,7 +188,12 @@ impl WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        verify_spark(&mut arthur, &self.whir_config_a_num_terms);
+        verify_spark(
+            &mut arthur, 
+            &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+        );
 
         Ok(())
     }
@@ -197,7 +206,11 @@ impl WhirR1CSScheme {
             .commit_statement(&self.whir_config_col)
             .add_whir_proof(&self.whir_config_col);
 
-        io = io.spark(&self.whir_config_a_num_terms);
+        io = io.spark(
+            &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+        );
         io
     }
 
