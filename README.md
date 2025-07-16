@@ -7,7 +7,7 @@ Zero-knowledge proof toolkit targeting mobile devices.
 This project makes use of Noir's `nargo` to compile circuits and generate test artifacts. Make sure to walk through the [Quick Start](https://noir-lang.org/docs/getting_started/quick_start#noir) section to install the noir toolchain. Note that we require a specific version of the toolchain, so make sure to override the version with the following command.
 
 ```sh
-noirup --version nightly-2025-05-28
+noirup --version v1.0.0-beta.6
 ```
 
 ## Demo instructions
