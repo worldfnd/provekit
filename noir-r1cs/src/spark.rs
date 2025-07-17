@@ -1,11 +1,12 @@
+use anyhow::{Context, Error, Result};
 use ark_crypto_primitives::merkle_tree::Config;
 use ark_ff::FftField;
-use spongefish::{codecs::arkworks_algebra::FieldDomainSeparator, ByteDomainSeparator, ProverState, VerifierState};
-use whir::{poly_utils::evals::EvaluationsList, whir::{
-    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig
+use spongefish::{codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitSerialize, UnitToField}, ByteDomainSeparator, ProverState, VerifierState};
+use whir::{poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
+    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::HintSerialize
 }};
 
-use crate::{skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{pad_to_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, SumcheckIOPattern}}, FieldElement};
+use crate::{skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{pad_to_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly, sumcheck_fold_map_reduce, SumcheckIOPattern}, HALF}, FieldElement};
 
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
 
@@ -17,8 +18,9 @@ pub fn prove_spark (
     whir_config_col: &WhirConfig,
     row_randomness: &Vec<FieldElement>,
     col_randomness: &Vec<FieldElement>,
-) {
-    SparkInstance::new(
+    claimed_value: FieldElement,
+) -> Result<()> {
+    let spark = SparkInstance::new(
         &matrix,
         merlin,
         whir_config_num_terms.clone(),
@@ -27,8 +29,99 @@ pub fn prove_spark (
         row_randomness,
         col_randomness,
     );
+
+    let (final_folds, randomness) = run_sumcheck_prover_spark(
+        merlin,
+        spark.sumcheck.values.clone(),
+        claimed_value,
+    );
+
+    merlin.hint::<[FieldElement; 3]>(&final_folds)?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(randomness.clone()),
+        final_folds[0],
+        whir_config_num_terms.clone(),
+        spark.sumcheck.witnesses.val,
+    )?;
+
+    Ok(())
 }
 
+pub fn run_sumcheck_prover_spark(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    mles: SPARKSumcheckValues,
+    mut saved_val_for_sumcheck_equality_assertion: FieldElement,
+) -> ([FieldElement; 3], Vec<FieldElement>) {
+    let mut alpha_i_wrapped_in_vector = [FieldElement::from(0)];
+    let mut alpha = Vec::<FieldElement>::new();
+    let mut fold = None;
+
+    let mut m0 = mles.val.clone();
+    let mut m1 = mles.e_rx.clone();
+    let mut m2 = mles.e_ry.clone();
+
+    loop {
+        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
+            sumcheck_fold_map_reduce([&mut m0, &mut m1, &mut m2], fold, |[m0, m1, m2]| {
+                [
+                    // Evaluation at 0
+                    m0.0 * m1.0 * m2.0,
+                    // Evaluation at -1
+                    (m0.0 + m0.0 - m0.1) * (m1.0 + m1.0 - m1.1) * (m2.0 + m2.0 - m2.1),
+                    // Evaluation at infinity
+                    (m0.1 - m0.0) * (m1.1 - m1.0) * (m2.1 - m2.0),
+                ]
+            });
+
+        if fold.is_some() {
+            m0.truncate(m0.len() / 2);
+            m1.truncate(m1.len() / 2);
+            m2.truncate(m2.len() / 2);
+        }
+
+        let mut hhat_i_coeffs = [FieldElement::from(0); 4];
+
+        hhat_i_coeffs[0] = hhat_i_at_0;
+        hhat_i_coeffs[2] = HALF
+            * (saved_val_for_sumcheck_equality_assertion + hhat_i_at_em1
+                - hhat_i_at_0
+                - hhat_i_at_0
+                - hhat_i_at_0);
+        hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube;
+        hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
+            - hhat_i_coeffs[0]
+            - hhat_i_coeffs[0]
+            - hhat_i_coeffs[3]
+            - hhat_i_coeffs[2];
+
+        assert_eq!(
+            saved_val_for_sumcheck_equality_assertion,
+            hhat_i_coeffs[0]
+                + hhat_i_coeffs[0]
+                + hhat_i_coeffs[1]
+                + hhat_i_coeffs[2]
+                + hhat_i_coeffs[3]
+        );
+
+        let _ = merlin.add_scalars(&hhat_i_coeffs[..]);
+        let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
+        fold = Some(alpha_i_wrapped_in_vector[0]);
+        saved_val_for_sumcheck_equality_assertion =
+            eval_qubic_poly(&hhat_i_coeffs, &alpha_i_wrapped_in_vector[0]);
+        alpha.push(alpha_i_wrapped_in_vector[0]);
+        if m0.len() <= 2 {
+            break;
+        }
+    }
+
+    let folded_v0 = m0[0] + (m0[1] - m0[0]) * alpha_i_wrapped_in_vector[0];
+    let folded_v1 = m1[0] + (m1[1] - m1[0]) * alpha_i_wrapped_in_vector[0];
+    let folded_v2 = m2[0] + (m2[1] - m2[0]) * alpha_i_wrapped_in_vector[0];
+
+    ([folded_v0, folded_v1, folded_v2], alpha)
+}
 
 pub struct SparkInstance {
     pub sumcheck: SPARKSumcheckValuesAndWitnesses,
@@ -234,6 +327,7 @@ pub struct SPARKSumcheckValuesAndWitnesses {
     pub witnesses: SPARKSumcheckWitnesses,
 }
 
+#[derive(Clone)]
 pub struct SPARKSumcheckValues {
     pub val: Vec<FieldElement>,
     pub e_rx: Vec<FieldElement>,
@@ -276,12 +370,18 @@ pub trait SparkIOPattern<F: FftField, MerkleConfig: Config>{
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+        num_terms: usize,
     ) -> Self;
     fn spark_commit<PowStrategy>(
         self, 
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+    ) -> Self;
+    fn spark_sumcheck<PowStrategy>(
+        self,
+        num_terms: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self;
 }
 
@@ -298,12 +398,16 @@ where
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+        num_terms: usize,
     ) -> Self {
         let io = self
             .spark_commit(
                 whir_config_num_terms,
                 whir_config_row,
                 whir_config_col,
+            ).spark_sumcheck(
+                num_terms, 
+                whir_config_num_terms
             );
         io
     }
@@ -324,6 +428,20 @@ where
             .commit_statement(whir_config_num_terms)
             .commit_statement(whir_config_row)
             .commit_statement(whir_config_col);
+        io
+    }
+
+    fn spark_sumcheck<PowStrategy>(
+        self,
+        num_terms: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>
+    ) -> Self {
+        let io = self
+            .add_sumcheck_polynomials(num_terms)
+            .hint("last folds")
+            // .add_whir_proof(whir_config_num_terms)
+            // .add_whir_proof(whir_config_num_terms)
+            .add_whir_proof(whir_config_num_terms);
         io
     }
 }
@@ -350,15 +468,15 @@ pub fn parse_spark_commitments (
 ) -> SparkCommitments{
     let commitment_reader_row = CommitmentReader::new(whir_config_row);
     let commitment_reader_col = CommitmentReader::new(whir_config_col);
-    let commitment_reader_a = CommitmentReader::new(whir_config_terms);
+    let commitment_reader_term = CommitmentReader::new(whir_config_terms);
     
-    let row_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let col_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let val_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let e_rx_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let e_ry_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let read_ts_row_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
-    let read_ts_col_commitment = commitment_reader_a.parse_commitment(arthur).unwrap();
+    let row_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let col_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let val_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let e_rx_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let e_ry_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let read_ts_row_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
+    let read_ts_col_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
     let final_cts_row_commitment = commitment_reader_row.parse_commitment(arthur).unwrap();
     let final_cts_col_commitment = commitment_reader_col.parse_commitment(arthur).unwrap();
     
@@ -446,4 +564,22 @@ pub struct SPARKWitnesses {
     pub read_time_stamps: Witness<FieldElement, SkyscraperMerkleConfig>,
     pub values: Witness<FieldElement, SkyscraperMerkleConfig>,
     pub final_counters: Witness<FieldElement, SkyscraperMerkleConfig>,
+}
+
+pub fn produce_whir_proof(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    evaluation_point: MultilinearPoint<FieldElement>,
+    evaluated_value: FieldElement,
+    config: WhirConfig,
+    witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+) -> Result<()> {
+    let mut statement = Statement::<FieldElement>::new(evaluation_point.num_variables());
+    statement.add_constraint(Weights::evaluation(evaluation_point), evaluated_value);
+    let prover = Prover(config);
+
+    prover
+        .prove(merlin, statement, witness)
+        .context("while generating WHIR proof")?;
+
+    Ok(())
 }

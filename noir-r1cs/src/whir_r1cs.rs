@@ -46,6 +46,7 @@ pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 pub struct WhirR1CSScheme {
     pub m:           usize,
     pub m_0:         usize,
+    pub a_num_terms: usize,
     pub whir_config_row: WhirConfig,
     pub whir_config_col: WhirConfig,
     pub whir_config_a_num_terms: WhirConfig,
@@ -82,6 +83,7 @@ impl WhirR1CSScheme {
         Self {
             m,
             m_0,
+            a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             whir_config_row: Self::new_whir_config_for_size(m_0),
             whir_config_col: Self::new_whir_config_for_size(m),
             whir_config_a_num_terms: Self::new_whir_config_for_size(next_power_of_two(r1cs.a().matrix.num_entries())),
@@ -131,7 +133,7 @@ impl WhirR1CSScheme {
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
 
         // Compute WHIR weighted batch opening proof
-        let (whir_query_answer_sums, col_randomness) =
+        let (whir_query_answer_sums, col_randomness, deferred) =
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
 
         prove_spark(
@@ -142,7 +144,8 @@ impl WhirR1CSScheme {
             &self.whir_config_col,
             &alpha,
             &col_randomness.0,
-        );
+            deferred[0]
+        )?;
 
         let transcript = merlin.narg_string().to_vec();
 
@@ -210,6 +213,7 @@ impl WhirR1CSScheme {
             &self.whir_config_a_num_terms,
             &self.whir_config_row,
             &self.whir_config_col,
+            self.a_num_terms,
         );
         io
     }
@@ -316,7 +320,7 @@ pub fn run_whir_pcs_prover(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
     alphas: [Vec<FieldElement>; 3],
-) -> ([FieldElement; 3], MultilinearPoint<FieldElement>) {
+) -> ([FieldElement; 3], MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
@@ -346,7 +350,7 @@ pub fn run_whir_pcs_prover(
         .prove(merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    (sums, randomness)
+    (sums, randomness, deferred)
 }
 
 #[instrument(skip_all)]
