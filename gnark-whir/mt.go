@@ -46,7 +46,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
-	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
+	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
 		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[r], 3)
+		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
 		}
@@ -113,7 +113,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
 	}
 
-	finalSumcheckRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FinalSumcheckRounds, 3)
+	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FinalSumcheckRounds, 3)
 	if err != nil {
 		return err
 	}
@@ -230,6 +230,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
+
+	// runSumcheckRounds(api, circuit.LinearStatementValuesAtPoints[0], arthur, circuit., 4);
 	return nil
 }
 

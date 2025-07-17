@@ -200,7 +200,7 @@ func GenerateCombinationRandomness(api frontend.API, arthur gnark_nimue.Arthur, 
 
 }
 
-func runSumcheckRounds(
+func runWhirSumcheckRounds(
 	api frontend.API,
 	lastEval frontend.Variable,
 	arthur gnark_nimue.Arthur,
@@ -404,4 +404,33 @@ func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.
 	}
 
 	return pk, vk, nil
+}
+
+func runSumcheckRounds(
+	api frontend.API,
+	lastEval frontend.Variable,
+	arthur gnark_nimue.Arthur,
+	foldingFactor int,
+	polynomialDegree int,
+) ([]frontend.Variable, frontend.Variable, error) {
+	sumcheckPolynomial := make([]frontend.Variable, polynomialDegree)
+	foldingRandomness := make([]frontend.Variable, foldingFactor)
+	foldingRandomnessTemp := make([]frontend.Variable, 1)
+
+	for i := range foldingFactor {
+		if err := arthur.FillNextScalars(sumcheckPolynomial); err != nil {
+			return nil, nil, err
+		}
+		if err := arthur.FillChallengeScalars(foldingRandomnessTemp); err != nil {
+			return nil, nil, err
+		}
+		foldingRandomness[i] = foldingRandomnessTemp[0]
+		sumcheckVal := api.Add(
+			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{0})[0],
+			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{1})[0],
+		)
+		api.AssertIsEqual(sumcheckVal, lastEval)
+		lastEval = utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{foldingRandomness[i]})[0]
+	}
+	return foldingRandomness, lastEval, nil
 }
