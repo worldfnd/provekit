@@ -1,10 +1,11 @@
-use anyhow::{Context, Error, Result};
+use anyhow::{ensure, Context, Error, Result};
 use ark_crypto_primitives::merkle_tree::Config;
 use ark_ff::FftField;
-use spongefish::{codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitSerialize, UnitToField}, ByteDomainSeparator, ProverState, VerifierState};
+use spongefish::{codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField}, ByteDomainSeparator, ProverState, VerifierState};
 use whir::{poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
-    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::HintSerialize
+    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}
 }};
+use ark_std::{Zero, One};
 
 use crate::{skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{pad_to_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly, sumcheck_fold_map_reduce, SumcheckIOPattern}, HALF}, FieldElement};
 
@@ -458,6 +459,13 @@ pub fn verify_spark(
         whir_config_col,
         whir_config_terms,
     );
+    
+    // verify_spark_sumcheck(
+    //     arthur,
+    //     claimed_value,
+    //     num_terms,
+    // )?;
+
 }
 
 pub fn parse_spark_commitments (
@@ -582,4 +590,51 @@ pub fn produce_whir_proof(
         .context("while generating WHIR proof")?;
 
     Ok(())
+}
+
+pub fn verify_spark_sumcheck (
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    claimed_value: FieldElement,
+    num_terms: usize,
+) -> Result<()>{
+    let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
+        arthur,
+        num_terms,
+        claimed_value,
+    )
+    .context("while verifying sumcheck 2")?;
+
+    let final_folds: Vec<FieldElement> = arthur.hint()?;
+
+    Ok(())
+}
+
+pub fn run_sumcheck_verifier_spark(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    variable_count: usize,
+    initial_sumcheck_val: FieldElement,
+) -> Result<(Vec<FieldElement>, FieldElement)> {
+    // r is the combination randomness from the 2nd item of the interaction phase
+
+    let mut saved_val_for_sumcheck_equality_assertion = initial_sumcheck_val;
+
+    let mut alpha = vec![FieldElement::zero(); variable_count];
+
+    for i in 0..variable_count {
+        let mut hhat_i = [FieldElement::zero(); 4];
+        let mut alpha_i = [FieldElement::zero(); 1];
+        let _ = arthur.fill_next_scalars(&mut hhat_i);
+        let _ = arthur.fill_challenge_scalars(&mut alpha_i);
+        alpha[i] = alpha_i[0];
+
+        let hhat_i_at_zero = eval_qubic_poly(&hhat_i, &FieldElement::zero());
+        let hhat_i_at_one = eval_qubic_poly(&hhat_i, &FieldElement::one());
+        ensure!(
+            saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
+            "Sumcheck equality assertion failed"
+        );
+        saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
+    }
+
+    Ok((alpha, saved_val_for_sumcheck_equality_assertion))
 }
