@@ -9,17 +9,10 @@ use {
             },
             HALF,
         }, FieldElement, R1CS
-    },
-    anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
-    serde::{Deserialize, Serialize},
-    spongefish::{
+    }, anyhow::{ensure, Context, Result}, ark_std::{One, Zero}, bincode::de, serde::{Deserialize, Serialize}, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         DomainSeparator, ProverState, VerifierState,
-    },
-    std::fmt::{Debug, Formatter},
-    tracing::{info, instrument, warn},
-    whir::{
+    }, std::fmt::{Debug, Formatter}, tracing::{info, instrument, warn}, whir::{
         parameters::{
             default_max_pow, FoldingFactor,
             MultivariateParameters as GenericMultivariateParameters,
@@ -29,7 +22,7 @@ use {
         whir::{
             committer::{CommitmentReader, CommitmentWriter}, domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}, verifier::Verifier
         },
-    },
+    }
 };
 
 pub type MultivariateParameters = GenericMultivariateParameters<FieldElement>;
@@ -131,8 +124,6 @@ impl WhirR1CSScheme {
         let (whir_query_answer_sums, col_randomness, deferred) =
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
 
-        merlin.hint(&deferred)?;
-
         prove_spark(
             r1cs.a(), 
             &mut merlin,
@@ -173,7 +164,7 @@ impl WhirR1CSScheme {
 
         let data_from_sumcheck_verifier =
             run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
-        run_whir_pcs_verifier(&mut arthur, &self.whir_config_col, &statement_verifier)
+        let (folding_randomness, deferred) = run_whir_pcs_verifier(&mut arthur, &self.whir_config_col, &statement_verifier)
             .context("while verifying WHIR proof")?;
 
         // Check the Spartan sumcheck relation.
@@ -187,15 +178,13 @@ impl WhirR1CSScheme {
                     ),
             "last sumcheck value does not match"
         );
-
-        let deferred_values: Vec<FieldElement> = arthur.hint()?;
         
         verify_spark(
             &mut arthur, 
             &self.whir_config_a_num_terms,
             &self.whir_config_row,
             &self.whir_config_col,
-            deferred_values[0],
+            deferred[0],
             self.a_num_terms,
         );
 
@@ -208,8 +197,7 @@ impl WhirR1CSScheme {
             .add_rand(self.m_0)
             .add_sumcheck_polynomials(self.m_0)
             .commit_statement(&self.whir_config_col)
-            .add_whir_proof(&self.whir_config_col)
-            .hint("deferred_values");
+            .add_whir_proof(&self.whir_config_col);
 
         io = io.spark(
             &self.whir_config_a_num_terms,
@@ -395,16 +383,16 @@ pub fn run_whir_pcs_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     params: &WhirConfig,
     statement_verifier: &Statement<FieldElement>,
-) -> Result<()> {
+) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let commitment_reader = CommitmentReader::new(params);
     let verifier = Verifier::new(params);
     // let verifier = Verifier::new(&params);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
-    verifier
+    let (folding_randomness, deferred) = verifier
         .verify(arthur, &parsed_commitment, statement_verifier)
         .context("while verifying WHIR")?;
 
-    Ok(())
+    Ok((folding_randomness, deferred))
 }
 
