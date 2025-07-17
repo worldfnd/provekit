@@ -38,13 +38,13 @@ pub fn prove_spark (
 
     merlin.hint::<[FieldElement; 3]>(&final_folds)?;
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(randomness.clone()),
-        final_folds[0],
-        whir_config_num_terms.clone(),
-        spark.sumcheck.witnesses.val,
-    )?;
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(randomness.clone()),
+    //     final_folds[0],
+    //     whir_config_num_terms.clone(),
+    //     spark.sumcheck.witnesses.val,
+    // )?;
 
     Ok(())
 }
@@ -438,10 +438,10 @@ where
     ) -> Self {
         let io = self
             .add_sumcheck_polynomials(num_terms)
-            .hint("last folds")
+            .hint("last folds");
             // .add_whir_proof(whir_config_num_terms)
             // .add_whir_proof(whir_config_num_terms)
-            .add_whir_proof(whir_config_num_terms);
+            // .add_whir_proof(whir_config_num_terms);
         io
     }
 }
