@@ -452,20 +452,23 @@ pub fn verify_spark(
     whir_config_terms: &WhirConfig,
     whir_config_row: &WhirConfig,
     whir_config_col: &WhirConfig,
-) {
+    claimed_value: FieldElement,
+    num_terms: usize,
+) -> Result<()> {
     let spark_commitments = parse_spark_commitments(
         arthur,
         whir_config_row,
         whir_config_col,
         whir_config_terms,
     );
-    
-    // verify_spark_sumcheck(
-    //     arthur,
-    //     claimed_value,
-    //     num_terms,
-    // )?;
 
+    verify_spark_sumcheck(
+        arthur,
+        claimed_value,
+        num_terms,
+    )?;
+
+    Ok(())
 }
 
 pub fn parse_spark_commitments (
@@ -604,7 +607,7 @@ pub fn verify_spark_sumcheck (
     )
     .context("while verifying sumcheck 2")?;
 
-    let final_folds: Vec<FieldElement> = arthur.hint()?;
+    let final_folds: [FieldElement; 3] = arthur.hint()?;
 
     Ok(())
 }

@@ -27,12 +27,7 @@ use {
         },
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
-            committer::{CommitmentReader, CommitmentWriter},
-            domainsep::WhirDomainSeparator,
-            parameters::WhirConfig as GenericWhirConfig,
-            prover::Prover,
-            statement::{Statement, Weights},
-            verifier::Verifier,
+            committer::{CommitmentReader, CommitmentWriter}, domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}, verifier::Verifier
         },
     },
 };
@@ -136,6 +131,8 @@ impl WhirR1CSScheme {
         let (whir_query_answer_sums, col_randomness, deferred) =
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
 
+        merlin.hint(&deferred)?;
+
         prove_spark(
             r1cs.a(), 
             &mut merlin,
@@ -191,11 +188,15 @@ impl WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
+        let deferred_values: Vec<FieldElement> = arthur.hint()?;
+        
         verify_spark(
             &mut arthur, 
             &self.whir_config_a_num_terms,
             &self.whir_config_row,
             &self.whir_config_col,
+            deferred_values[0],
+            self.a_num_terms,
         );
 
         Ok(())
@@ -207,7 +208,8 @@ impl WhirR1CSScheme {
             .add_rand(self.m_0)
             .add_sumcheck_polynomials(self.m_0)
             .commit_statement(&self.whir_config_col)
-            .add_whir_proof(&self.whir_config_col);
+            .add_whir_proof(&self.whir_config_col)
+            .hint("deferred_values");
 
         io = io.spark(
             &self.whir_config_a_num_terms,
