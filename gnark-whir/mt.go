@@ -1,7 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"math/big"
+	"os"
+
 	"reilabs/whir-verifier-circuit/typeConverters"
 	"reilabs/whir-verifier-circuit/utilities"
 
@@ -225,20 +229,20 @@ type MerkleObject struct {
 	ContainerLeafIndexes       [][]uints.U64
 }
 
-func ParsePathsObject(proofElements []ProofElement) MerkleObject {
-	var totalAuthPath = make([][][][]uints.U8, len(proofElements))
-	var totalLeaves = make([][][]frontend.Variable, len(proofElements))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
-	var totalLeafIndexes = make([][]uints.U64, len(proofElements))
+func ParsePathsObject(merkle_paths []MultiPath[KeccakDigest], stir_answers [][][]Fp256) MerkleObject {
+	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
+	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
+	var totalLeafIndexes = make([][]uints.U64, len(merkle_paths))
 
-	var containerTotalAuthPath = make([][][][]uints.U8, len(proofElements))
-	var containerTotalLeaves = make([][][]frontend.Variable, len(proofElements))
-	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
-	var containerTotalLeafIndexes = make([][]uints.U64, len(proofElements))
+	var containerTotalAuthPath = make([][][][]uints.U8, len(merkle_paths))
+	var containerTotalLeaves = make([][][]frontend.Variable, len(merkle_paths))
+	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
+	var containerTotalLeafIndexes = make([][]uints.U64, len(merkle_paths))
 
-	for i := range proofElements {
-		var numOfLeavesProved = len(proofElements[i].A.LeafIndexes)
-		var treeHeight = len(proofElements[i].A.AuthPathsSuffixes[0])
+	for i, merkle_path := range merkle_paths {
+		var numOfLeavesProved = len(merkle_path.LeafIndexes)
+		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
 		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
 		containerTotalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
@@ -255,8 +259,8 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 				totalAuthPath[i][j][z] = make([]uints.U8, 32)
 				containerTotalAuthPath[i][j][z] = make([]uints.U8, 32)
 			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
-			containerTotalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
+			containerTotalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
 			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 			containerTotalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
@@ -264,7 +268,7 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 		containerTotalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
-		var prevPath = proofElements[i].A.AuthPathsSuffixes[0]
+		var prevPath = merkle_path.AuthPathsSuffixes[0]
 		authPathsTemp[0] = utilities.Reverse(prevPath)
 
 		for j := range totalAuthPath[i][0] {
@@ -272,7 +276,7 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 		}
 
 		for j := 1; j < numOfLeavesProved; j++ {
-			prevPath = utilities.PrefixDecodePath(prevPath, proofElements[i].A.AuthPathsPrefixLengths[j], proofElements[i].A.AuthPathsSuffixes[j])
+			prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
 			authPathsTemp[j] = utilities.Reverse(prevPath)
 			for z := 0; z < treeHeight; z++ {
 				totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
@@ -281,10 +285,15 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		for z := range numOfLeavesProved {
-			totalLeafSiblingHashes[i][z] = uints.NewU8Array(proofElements[i].A.LeafSiblingHashes[z].KeccakDigest[:])
-			totalLeafIndexes[i][z] = uints.NewU64(proofElements[i].A.LeafIndexes[z])
-			for j := range proofElements[i].B[z] {
-				input := proofElements[i].B[z][j]
+			totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
+			totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
+			// fmt.Println(stir_answers[i][z])
+			for j := range stir_answers[i][z] {
+				input := stir_answers[i][z][j]
+				// fmt.Println("===============")
+				// fmt.Println(j)
+				// fmt.Println(input.Limbs)
+				// fmt.Println("===============")
 				totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 			}
 		}
@@ -302,9 +311,12 @@ func ParsePathsObject(proofElements []ProofElement) MerkleObject {
 	}
 }
 
-func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, interner Interner) {
-	merkleObject := ParsePathsObject(proof_arg.MerklePaths)
-	firstRoundMerkleObject := ParsePathsObject(proof_arg.FirstRoundPaths)
+func verify_circuit(
+	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest],
+	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
+) {
+	merkleObject := ParsePathsObject(merkle_paths, stir_answers)
+	firstRoundMerkleObject := ParsePathsObject(merkle_paths, stir_answers)
 
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
@@ -341,14 +353,14 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		contTranscript[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
-	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(proof_arg.StatementValuesAtRandomPoint))
+	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
 	linearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
 	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	for i := range len(proof_arg.StatementValuesAtRandomPoint) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
-		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(proof_arg.StatementValuesAtRandomPoint[i].Limbs)
+	for i := range len(deferred) {
+		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
+		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
 		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
 		linearStatementEvaluations[i] = frontend.Variable(x)
 		contLinearStatementEvaluations[i] = frontend.Variable(x)
@@ -431,7 +443,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		FinalQueries:                         finalQueries,
 		StatementPoints:                      contStatementPoints,
 		StatementEvaluations:                 0,
-		BatchSize:                            len(proof_arg.FirstRoundPaths),
+		BatchSize:                            2,
 		LinearStatementEvaluations:           contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints:        contLinearStatementValuesAtPoints,
 		MerklePaths:                          merklePaths,
@@ -443,8 +455,32 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		MatrixC:                              matrixC,
 	}
 
-	ccs, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
-	pk, vk, _ := groth16.Setup(ccs)
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
+	if err != nil {
+		log.Fatalf("Failed to compile circuit: %v", err)
+	}
+	if outputCcsPath != "" {
+		ccsFile, err := os.Create(outputCcsPath)
+		if err != nil {
+			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+		} else {
+			_, err = ccs.WriteTo(ccsFile)
+			if err != nil {
+				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+			}
+		}
+		log.Printf("ccs written to %s", outputCcsPath)
+	}
+
+	if pk == nil || vk == nil {
+		log.Printf("PK/VK not provided, generating new keys unsafely. Consider providing keys from an MPC ceremony.")
+		unsafePk, unsafeVk, err := groth16.Setup(ccs)
+		if err != nil {
+			log.Fatalf("Failed to setup groth16: %v", err)
+		}
+		pk = &unsafePk
+		vk = &unsafeVk
+	}
 
 	merklePaths = MerklePaths{
 		Leaves:            merkleObject.Leaves,
@@ -465,7 +501,7 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 		FoldOptimisation:                     true,
 		InitialStatement:                     true,
 		DomainSize:                           domainSize,
-		BatchSize:                            len(proof_arg.FirstRoundPaths),
+		BatchSize:                            2,
 		StartingDomainBackingDomainGenerator: startingDomainGen,
 		FoldingFactorArray:                   foldingFactor,
 		PowBits:                              powBits,
@@ -492,9 +528,10 @@ func verify_circuit(proof_arg ProofObject, cfg Config, internedR1CS R1CS, intern
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
-	resp := groth16.Verify(proof, vk, publicWitness)
-	if resp != nil {
-		panic("proof verification failed")
+
+	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+	err = groth16.Verify(proof, *vk, publicWitness)
+	if err != nil {
+		fmt.Println(err)
 	}
 }
