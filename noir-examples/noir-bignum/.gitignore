@@ -1,0 +1,5 @@
+target
+.vscode/launch.json
+export/* 
+gates_report.json
+opcode_report.json
