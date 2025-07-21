@@ -434,3 +434,76 @@ func runSumcheckRounds(
 	}
 	return foldingRandomness, lastEval, nil
 }
+
+func new_merkle(
+	merkle_paths []MultiPath[KeccakDigest],
+	stir_answers [][][]Fp256,
+	is_container bool,
+) Merkle {
+	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
+	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
+	var totalLeafIndexes = make([][]uints.U64, len(merkle_paths))
+
+	for i, merkle_path := range merkle_paths {
+		var numOfLeavesProved = len(merkle_path.LeafIndexes)
+		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
+
+		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
+		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
+		totalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
+
+		for j := range numOfLeavesProved {
+			totalAuthPath[i][j] = make([][]uints.U8, treeHeight)
+
+			for z := range treeHeight {
+				totalAuthPath[i][j][z] = make([]uints.U8, 32)
+			}
+			totalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
+			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
+		}
+
+		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
+
+		if !is_container {
+			var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
+			var prevPath = merkle_path.AuthPathsSuffixes[0]
+			authPathsTemp[0] = utilities.Reverse(prevPath)
+
+			for j := range totalAuthPath[i][0] {
+				totalAuthPath[i][0][j] = uints.NewU8Array(authPathsTemp[0][j].KeccakDigest[:])
+			}
+
+			for j := 1; j < numOfLeavesProved; j++ {
+				prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
+				authPathsTemp[j] = utilities.Reverse(prevPath)
+				for z := 0; z < treeHeight; z++ {
+					totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
+				}
+			}
+
+			for z := range numOfLeavesProved {
+				totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
+				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
+				for j := range stir_answers[i][z] {
+					input := stir_answers[i][z][j]
+					totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
+				}
+			}
+		}
+	}
+
+	return Merkle{
+		totalAuthPath:          totalAuthPath,
+		totalLeaves:            totalLeaves,
+		totalLeafSiblingHashes: totalLeafSiblingHashes,
+		totalLeafIndexes:       totalLeafIndexes,
+	}
+}
+
+type Merkle struct {
+	totalAuthPath          [][][][]uints.U8
+	totalLeaves            [][][]frontend.Variable
+	totalLeafSiblingHashes [][][]uints.U8
+	totalLeafIndexes       [][]uints.U64
+}

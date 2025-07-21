@@ -239,74 +239,8 @@ func verify_circuit(
 	deferred []Fp256, cfg Config, merkle_paths []MultiPath[KeccakDigest],
 	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
 ) {
-	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
-	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
-	var totalLeafIndexes = make([][]uints.U64, len(merkle_paths))
-
-	var containerTotalAuthPath = make([][][][]uints.U8, len(merkle_paths))
-	var containerTotalLeaves = make([][][]frontend.Variable, len(merkle_paths))
-	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
-	var containerTotalLeafIndexes = make([][]uints.U64, len(merkle_paths))
-
-	for i, merkle_path := range merkle_paths {
-		var numOfLeavesProved = len(merkle_path.LeafIndexes)
-		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
-
-		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
-		containerTotalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
-		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
-		containerTotalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
-		totalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
-		containerTotalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
-
-		for j := range numOfLeavesProved {
-			totalAuthPath[i][j] = make([][]uints.U8, treeHeight)
-			containerTotalAuthPath[i][j] = make([][]uints.U8, treeHeight)
-
-			for z := range treeHeight {
-				totalAuthPath[i][j][z] = make([]uints.U8, 32)
-				containerTotalAuthPath[i][j][z] = make([]uints.U8, 32)
-			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
-			containerTotalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
-			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
-			containerTotalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
-		}
-
-		containerTotalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
-
-		var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
-		var prevPath = merkle_path.AuthPathsSuffixes[0]
-		authPathsTemp[0] = utilities.Reverse(prevPath)
-
-		for j := range totalAuthPath[i][0] {
-			totalAuthPath[i][0][j] = uints.NewU8Array(authPathsTemp[0][j].KeccakDigest[:])
-		}
-
-		for j := 1; j < numOfLeavesProved; j++ {
-			prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
-			authPathsTemp[j] = utilities.Reverse(prevPath)
-			for z := 0; z < treeHeight; z++ {
-				totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
-			}
-		}
-		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
-
-		for z := range numOfLeavesProved {
-			totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
-			totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-			// fmt.Println(stir_answers[i][z])
-			for j := range stir_answers[i][z] {
-				input := stir_answers[i][z][j]
-				// fmt.Println("===============")
-				// fmt.Println(j)
-				// fmt.Println(input.Limbs)
-				// fmt.Println("===============")
-				totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
-			}
-		}
-	}
+	container_merkle := new_merkle(merkle_paths, stir_answers, true)
+	merkle := new_merkle(merkle_paths, stir_answers, false)
 	startingDomainGen, _ := new(big.Int).SetString(cfg.WHIRConfigCol.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.WHIRConfigCol.NVars
 	var foldingFactor []int
@@ -361,10 +295,10 @@ func verify_circuit(
 		CommittmentOODSamples:                1,
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		Leaves:                               containerTotalLeaves,
-		LeafIndexes:                          containerTotalLeafIndexes,
-		LeafSiblingHashes:                    containerTotalLeafSiblingHashes,
-		AuthPaths:                            containerTotalAuthPath,
+		Leaves:                               container_merkle.totalLeaves,
+		LeafIndexes:                          container_merkle.totalLeafIndexes,
+		LeafSiblingHashes:                    container_merkle.totalLeafSiblingHashes,
+		AuthPaths:                            container_merkle.totalAuthPath,
 	}
 
 	var circuit = Circuit{
@@ -418,10 +352,10 @@ func verify_circuit(
 		CommittmentOODSamples:                1,
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		Leaves:                               totalLeaves,
-		LeafIndexes:                          totalLeafIndexes,
-		LeafSiblingHashes:                    totalLeafSiblingHashes,
-		AuthPaths:                            totalAuthPath,
+		Leaves:                               merkle.totalLeaves,
+		LeafIndexes:                          merkle.totalLeafIndexes,
+		LeafSiblingHashes:                    merkle.totalLeafSiblingHashes,
+		AuthPaths:                            merkle.totalAuthPath,
 	}
 
 	assignment := Circuit{
