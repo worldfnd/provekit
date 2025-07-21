@@ -80,7 +80,7 @@ type Circuit struct {
 	StatementPoints                      [][]frontend.Variable
 	StatementEvaluations                 int
 	LinearStatementValuesAtPoints        []frontend.Variable
-	LinearStatementEvaluations           []frontend.Variable
+	LinearStatementEvaluations           [][]frontend.Variable
 	NVars                                int
 	LogNumConstraints                    int
 	MatrixA                              []MatrixCell
@@ -107,7 +107,6 @@ func generateEmptyMainRoundData(circuit *Circuit) MainRoundData {
 
 func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes [][]uints.U8, authPaths [][][]uints.U8, rootHash frontend.Variable) error {
 	numOfLeavesProved := len(leaves)
-
 	for i := range numOfLeavesProved {
 		treeHeight := len(authPaths[i]) + 1
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
@@ -148,16 +147,28 @@ func initialSumcheck(
 	api frontend.API,
 	circuit *Circuit,
 	arthur gnark_nimue.Arthur,
+	batchingRandomness frontend.Variable,
 	initialOODQueries []frontend.Variable,
 	initialOODAnswers []frontend.Variable,
 ) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
 
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+len(circuit.LinearStatementEvaluations))
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+len(circuit.LinearStatementEvaluations[0]))
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
+	combinedLinearStatementEvaluations := make([]frontend.Variable, len(circuit.LinearStatementEvaluations[0])) //[0, 1, 2]
+	for evaluationIndex := range len(circuit.LinearStatementEvaluations[0]) {
+		sum := frontend.Variable(0)
+		multiplier := frontend.Variable(1)
+		for j := range len(circuit.LinearStatementEvaluations) {
+			sum = api.Add(sum, api.Mul(circuit.LinearStatementEvaluations[j][evaluationIndex], multiplier))
+			multiplier = api.Mul(multiplier, batchingRandomness)
+		}
+		combinedLinearStatementEvaluations[evaluationIndex] = sum
+	}
+	api.Println(combinedLinearStatementEvaluations)
+	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
 
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[0], 3)
@@ -491,6 +502,14 @@ func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []
 		ans = append(left, right...)
 	}
 
+	return ans
+}
+
+func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Variable) frontend.Variable {
+	ans := frontend.Variable(1)
+	for i, alpha := range alphas {
+		ans = api.Mul(ans, api.Add(api.Mul(alpha, r[i]), api.Mul(api.Sub(frontend.Variable(1), alpha), api.Sub(frontend.Variable(1), r[i]))))
+	}
 	return ans
 }
 

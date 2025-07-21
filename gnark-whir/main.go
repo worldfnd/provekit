@@ -37,28 +37,27 @@ type ProofElement struct {
 }
 
 type ProofObject struct {
-	// FirstRoundPaths              []ProofElement `json:"round0_merkle_paths"`
-	// MerklePaths                  []ProofElement `json:"merkle_paths"`
 	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
 }
 
 type Config struct {
-	LogNumConstraints    int      `json:"log_num_constraints"`
-	NRounds              int      `json:"n_rounds"`
-	NVars                int      `json:"n_vars"`
-	FoldingFactor        []int    `json:"folding_factor"`
-	OODSamples           []int    `json:"ood_samples"`
-	NumQueries           []int    `json:"num_queries"`
-	PowBits              []int    `json:"pow_bits"`
-	FinalQueries         int      `json:"final_queries"`
-	FinalPowBits         int      `json:"final_pow_bits"`
-	FinalFoldingPowBits  int      `json:"final_folding_pow_bits"`
-	DomainGenerator      string   `json:"domain_generator"`
-	Rate                 int      `json:"rate"`
-	IOPattern            string   `json:"io_pattern"`
-	Transcript           []byte   `json:"transcript"`
-	TranscriptLen        int      `json:"transcript_len"`
-	StatementEvaluations []string `json:"statement_evaluations"`
+	LogNumConstraints            int      `json:"log_num_constraints"`
+	NRounds                      int      `json:"n_rounds"`
+	NVars                        int      `json:"n_vars"`
+	FoldingFactor                []int    `json:"folding_factor"`
+	OODSamples                   []int    `json:"ood_samples"`
+	NumQueries                   []int    `json:"num_queries"`
+	PowBits                      []int    `json:"pow_bits"`
+	FinalQueries                 int      `json:"final_queries"`
+	FinalPowBits                 int      `json:"final_pow_bits"`
+	FinalFoldingPowBits          int      `json:"final_folding_pow_bits"`
+	DomainGenerator              string   `json:"domain_generator"`
+	Rate                         int      `json:"rate"`
+	IOPattern                    string   `json:"io_pattern"`
+	Transcript                   []byte   `json:"transcript"`
+	TranscriptLen                int      `json:"transcript_len"`
+	WitnessStatementEvaluations  []string `json:"witness_statement_evaluations"`
+	BlindingStatementEvaluations []string `json:"blinding_statement_evaluations"`
 }
 
 type SparseMatrix struct {
@@ -152,6 +151,7 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
+			var first_round_merkle_paths []ProofElement
 			var merkle_paths []MultiPath[KeccakDigest]
 			var stir_answers [][][]Fp256
 			var deferred []Fp256
@@ -173,7 +173,13 @@ func main() {
 					switch string(op.Label) {
 
 					case "first_round_merkle_proof":
-						fmt.Println("first_round_merkle_proof")
+						var path []ProofElement
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&path,
+							false, false,
+						)
+						first_round_merkle_paths = path
 					case "merkle_proof":
 						var path MultiPath[KeccakDigest]
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -182,6 +188,7 @@ func main() {
 							false, false,
 						)
 						merkle_paths = append(merkle_paths, path)
+
 					case "stir_answers":
 						var stirAnswers [][]Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -190,6 +197,7 @@ func main() {
 							false, false,
 						)
 						stir_answers = append(stir_answers, stirAnswers)
+
 					case "deferred_weight_evaluations":
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
@@ -261,7 +269,7 @@ func main() {
 				vk = &restoredVk
 			}
 
-			verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers, pk, vk, outputCcsPath)
+			verify_circuit(deferred, config, r1cs, interner, first_round_merkle_paths, merkle_paths, stir_answers, pk, vk, outputCcsPath)
 			return nil
 		},
 	}

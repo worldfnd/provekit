@@ -24,15 +24,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	t_rand, sp_rand, savedValForSumcheck, err := SumcheckForR1CSIOP(api, arthur, circuit)
+	rootHashes, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(api, arthur, circuit)
 	if err != nil {
 		return err
 	}
-	api.Println(t_rand)
-	// api.Println(sp_rand)
-	api.Println(savedValForSumcheck)
 
-	rootHashes, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(api, arthur, circuit)
+	t_rand, sp_rand, savedValForSumcheck, err := SumcheckForR1CSIOP(api, arthur, circuit)
 	if err != nil {
 		return err
 	}
@@ -41,9 +38,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	batchSizeLen := circuit.BatchSize
 
-	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, circuit, arthur, initialOODQueries, initialOODs)
+	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, circuit, arthur, batchingRandomness, initialOODQueries, initialOODs)
 
-	api.Println(lastEval)
 	if err != nil {
 		return err
 	}
@@ -66,7 +62,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	computedFold := computeFold(computedFolded, initialSumcheckFoldingRandomness, api)
-	api.Println(computedFold)
 	mainRoundData := generateEmptyMainRoundData(circuit)
 	expDomainGenerator := utilities.Exponent(api, uapi, circuit.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.FoldingFactorArray[0])))
 	domainSize := circuit.DomainSize
@@ -75,7 +70,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	rootHashList := make([]frontend.Variable, len(circuit.RoundParametersOODSamples))
 
-	for r := range circuit.RoundParametersOODSamples {
+	for r := range len(circuit.RoundParametersOODSamples) {
 		rootHash := make([]frontend.Variable, 1)
 		if err := arthur.FillNextScalars(rootHash); err != nil {
 			return err
@@ -182,8 +177,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		api.Mul(evaluationOfWPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
 	)
 
-	// x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
-	// api.AssertIsEqual(savedValForSumcheck, x)
+	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0][0], circuit.LinearStatementEvaluations[0][1]), circuit.LinearStatementEvaluations[0][2]), calculateEQ(api, sp_rand, t_rand))
+	api.AssertIsEqual(savedValForSumcheck, x)
 	return nil
 }
 
@@ -287,13 +282,86 @@ func ParsePathsObject(merkle_paths []MultiPath[KeccakDigest], stir_answers [][][
 		for z := range numOfLeavesProved {
 			totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 			totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-			// fmt.Println(stir_answers[i][z])
 			for j := range stir_answers[i][z] {
 				input := stir_answers[i][z][j]
-				// fmt.Println("===============")
-				// fmt.Println(j)
-				// fmt.Println(input.Limbs)
-				// fmt.Println("===============")
+				totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
+			}
+		}
+	}
+
+	return MerkleObject{
+		AuthPaths:                  totalAuthPath,
+		Leaves:                     totalLeaves,
+		LeafSiblingHashes:          totalLeafSiblingHashes,
+		LeafIndexes:                totalLeafIndexes,
+		ContainerAuthPaths:         containerTotalAuthPath,
+		ContainerLeaves:            containerTotalLeaves,
+		ContainerLeafSiblingHashes: containerTotalLeafSiblingHashes,
+		ContainerLeafIndexes:       containerTotalLeafIndexes,
+	}
+}
+
+// TODO: refactor this function
+func ParsePathsObjectFromProofElement(proofElements []ProofElement) MerkleObject {
+	var totalAuthPath = make([][][][]uints.U8, len(proofElements))
+	var totalLeaves = make([][][]frontend.Variable, len(proofElements))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
+	var totalLeafIndexes = make([][]uints.U64, len(proofElements))
+
+	var containerTotalAuthPath = make([][][][]uints.U8, len(proofElements))
+	var containerTotalLeaves = make([][][]frontend.Variable, len(proofElements))
+	var containerTotalLeafSiblingHashes = make([][][]uints.U8, len(proofElements))
+	var containerTotalLeafIndexes = make([][]uints.U64, len(proofElements))
+
+	for i := range proofElements {
+		var numOfLeavesProved = len(proofElements[i].A.LeafIndexes)
+		var treeHeight = len(proofElements[i].A.AuthPathsSuffixes[0])
+
+		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
+		containerTotalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
+		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
+		containerTotalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
+		totalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
+		containerTotalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
+
+		for j := range numOfLeavesProved {
+			totalAuthPath[i][j] = make([][]uints.U8, treeHeight)
+			containerTotalAuthPath[i][j] = make([][]uints.U8, treeHeight)
+
+			for z := range treeHeight {
+				totalAuthPath[i][j][z] = make([]uints.U8, 32)
+				containerTotalAuthPath[i][j][z] = make([]uints.U8, 32)
+			}
+			totalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
+			containerTotalLeaves[i][j] = make([]frontend.Variable, len(proofElements[i].B[j]))
+			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
+			containerTotalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
+		}
+
+		containerTotalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
+
+		var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
+		var prevPath = proofElements[i].A.AuthPathsSuffixes[0]
+		authPathsTemp[0] = utilities.Reverse(prevPath)
+
+		for j := range totalAuthPath[i][0] {
+			totalAuthPath[i][0][j] = uints.NewU8Array(authPathsTemp[0][j].KeccakDigest[:])
+		}
+
+		for j := 1; j < numOfLeavesProved; j++ {
+			prevPath = utilities.PrefixDecodePath(prevPath, proofElements[i].A.AuthPathsPrefixLengths[j], proofElements[i].A.AuthPathsSuffixes[j])
+			authPathsTemp[j] = utilities.Reverse(prevPath)
+			for z := 0; z < treeHeight; z++ {
+				totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
+			}
+		}
+		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
+
+		for z := range numOfLeavesProved {
+			totalLeafSiblingHashes[i][z] = uints.NewU8Array(proofElements[i].A.LeafSiblingHashes[z].KeccakDigest[:])
+			totalLeafIndexes[i][z] = uints.NewU64(proofElements[i].A.LeafIndexes[z])
+			for j := range proofElements[i].B[z] {
+				input := proofElements[i].B[z][j]
 				totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 			}
 		}
@@ -312,11 +380,11 @@ func ParsePathsObject(merkle_paths []MultiPath[KeccakDigest], stir_answers [][][
 }
 
 func verify_circuit(
-	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, merkle_paths []MultiPath[KeccakDigest],
+	deferred []Fp256, cfg Config, internedR1CS R1CS, interner Interner, first_round_merkle_paths []ProofElement, merkle_paths []MultiPath[KeccakDigest],
 	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
 ) {
-	merkleObject := ParsePathsObject(merkle_paths, stir_answers)
-	firstRoundMerkleObject := ParsePathsObject(merkle_paths, stir_answers)
+	merkleObject := ParsePathsObject(merkle_paths, stir_answers[1:])
+	firstRoundMerkleObject := ParsePathsObjectFromProofElement(first_round_merkle_paths)
 
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
@@ -356,14 +424,26 @@ func verify_circuit(
 	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
-	linearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	for i := range len(deferred) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
-		linearStatementEvaluations[i] = frontend.Variable(x)
-		contLinearStatementEvaluations[i] = frontend.Variable(x)
+	linearStatementEvaluations := make([][]frontend.Variable, len(first_round_merkle_paths))
+	contLinearStatementEvaluations := make([][]frontend.Variable, len(first_round_merkle_paths))
+
+	for j := range len(first_round_merkle_paths) {
+		linearStatementEvaluations[j] = make([]frontend.Variable, len(cfg.WitnessStatementEvaluations))
+		contLinearStatementEvaluations[j] = make([]frontend.Variable, len(cfg.WitnessStatementEvaluations))
+
+		for i := range len(deferred) {
+			linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
+			contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
+			if j == 0 {
+				x, _ := new(big.Int).SetString(cfg.WitnessStatementEvaluations[i], 10)
+				linearStatementEvaluations[j][i] = frontend.Variable(x)
+				contLinearStatementEvaluations[j][i] = frontend.Variable(x)
+			} else {
+				x, _ := new(big.Int).SetString(cfg.BlindingStatementEvaluations[i], 10)
+				linearStatementEvaluations[j][i] = frontend.Variable(x)
+				contLinearStatementEvaluations[j][i] = frontend.Variable(x)
+			}
+		}
 	}
 
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
@@ -443,7 +523,7 @@ func verify_circuit(
 		FinalQueries:                         finalQueries,
 		StatementPoints:                      contStatementPoints,
 		StatementEvaluations:                 0,
-		BatchSize:                            2,
+		BatchSize:                            len(first_round_merkle_paths),
 		LinearStatementEvaluations:           contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints:        contLinearStatementValuesAtPoints,
 		MerklePaths:                          merklePaths,
@@ -501,7 +581,7 @@ func verify_circuit(
 		FoldOptimisation:                     true,
 		InitialStatement:                     true,
 		DomainSize:                           domainSize,
-		BatchSize:                            2,
+		BatchSize:                            len(first_round_merkle_paths),
 		StartingDomainBackingDomainGenerator: startingDomainGen,
 		FoldingFactorArray:                   foldingFactor,
 		PowBits:                              powBits,

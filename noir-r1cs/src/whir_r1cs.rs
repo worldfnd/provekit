@@ -382,7 +382,6 @@ pub fn run_zk_whir_pcs_prover(
     m: usize,
     alphas: [Vec<FieldElement>; 3],
 ) -> (
-    WhirProof,
     ProverState<SkyscraperSponge, FieldElement>,
     ([FieldElement; 3], [FieldElement; 3]),
 ) {
