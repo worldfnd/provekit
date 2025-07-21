@@ -32,7 +32,7 @@ use crate::params::BigNumParams as P;
 * @param linear_flags an array of sign flags
 **/
 
-unconstrained fn compute_quadratic_expression_with_borrow_flags<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
+unconstrained fn __compute_quadratic_expression_with_borrow_flags<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
     params: P<N, MOD_BITS>,
     lhs_terms: [[[u128; N]; LHS_N]; NUM_PRODUCTS],
     lhs_flags: [[bool; LHS_N]; NUM_PRODUCTS],
@@ -42,7 +42,7 @@ unconstrained fn compute_quadratic_expression_with_borrow_flags<let N: u32, let 
     linear_flags: [bool; ADD_N],
 ) -> ([u128; N], [u128; N], [Field; 2 * N - 2]) {
     // TODO, validate we do not overflow N2 when multiplying and N when adding
-    let mut mulout_p = compute_quadratic_expression_product(
+    let mut mulout_p = __compute_quadratic_expression_product(
         params,
         lhs_terms,
         lhs_flags,
@@ -134,9 +134,9 @@ unconstrained fn __add_linear_expression<let N: u32, let MOD_BITS: u32, let M: u
 
 /**
 * @brief computes the limb products of a quadratic expression
-* @details see compute_quadratic_expression_with_borrow_flags for full description
+* @details see __compute_quadratic_expression_with_borrow_flags for full description
 **/
-unconstrained fn compute_quadratic_expression_product<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
+unconstrained fn __compute_quadratic_expression_product<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
     params: P<N, MOD_BITS>,
     lhs_terms: [[[u128; N]; LHS_N]; NUM_PRODUCTS],
     lhs_flags: [[bool; LHS_N]; NUM_PRODUCTS],
@@ -171,9 +171,9 @@ unconstrained fn compute_quadratic_expression_product<let N: u32, let MOD_BITS: 
 
 /**
 * @brief computes the quotient/remainder of a quadratic expression
-* @details see compute_quadratic_expression_with_borrow_flags for full description
+* @details see __compute_quadratic_expression_with_borrow_flags for full description
 **/
-pub(crate) unconstrained fn compute_quadratic_expression<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
+pub(crate) unconstrained fn __compute_quadratic_expression<let N: u32, let MOD_BITS: u32, let LHS_N: u32, let RHS_N: u32, let NUM_PRODUCTS: u32, let ADD_N: u32>(
     params: P<N, MOD_BITS>,
     lhs_terms: [[[u128; N]; LHS_N]; NUM_PRODUCTS],
     lhs_flags: [[bool; LHS_N]; NUM_PRODUCTS],
@@ -183,7 +183,7 @@ pub(crate) unconstrained fn compute_quadratic_expression<let N: u32, let MOD_BIT
     linear_flags: [bool; ADD_N],
 ) -> ([u128; N], [u128; N]) {
     // TODO, validate we do not overflow N2 when multiplying and N when adding
-    let mulout: [Field; (N * 2)] = compute_quadratic_expression_product(
+    let mulout: [Field; (N * 2)] = __compute_quadratic_expression_product(
         params,
         lhs_terms,
         lhs_flags,
@@ -255,7 +255,7 @@ pub(crate) fn evaluate_quadratic_expression<let N: u32, let MOD_BITS: u32, let L
 ) {
     // use an unconstrained function to compute the value of the quotient
     let (quotient, _, borrow_flags): ([u128; N], [u128; N], [Field; 2 * N - 2]) = unsafe {
-        compute_quadratic_expression_with_borrow_flags::<_, MOD_BITS, _, _, _, _>(
+        __compute_quadratic_expression_with_borrow_flags::<_, MOD_BITS, _, _, _, _>(
             params,
             lhs_terms,
             lhs_flags,

@@ -32,21 +32,3 @@ done
 
 echo "]}" >> gates_report.json 
 
-# Convert the gates report into separate benchmark files
-output_file_opcodes="benchmark-opcodes.json"
-output_file_circuit="benchmark-circuit.json"
-
-# Convert gates report - opcodes
-jq -r '[.programs[] | {
-    "name": "\(.package_name)/main",
-    "unit": "acir_opcodes",
-    "value": (.functions[0].acir_opcodes // 0)
-}]' gates_report.json > $output_file_opcodes
-
-# Convert gates report - circuit size
-jq -r '[.programs[] | {
-    "name": "\(.package_name)/main",
-    "unit": "circuit_size",
-    "value": (.functions[0].circuit_size // 0)
-}]' gates_report.json > $output_file_circuit
-

@@ -18,8 +18,18 @@
 //!    * B = Fq2(0, 155198655607781456406391640216936120121836107652948796323930557600032281009004493664981332883744016074664192874906)
 
 use crate::bignum::BigNum;
-use crate::bignum::derive_bignum;
 use crate::params::BigNumParams;
+use crate::params::BigNumParamsGetter;
+
+pub struct BLS12_377_Fr_Params {}
+
+pub type BLS12_377_Fr = BigNum<3, 253, BLS12_377_Fr_Params>;
+
+impl BigNumParamsGetter<3, 253> for BLS12_377_Fr_Params {
+    fn get_params() -> BigNumParams<3, 253> {
+        BLS12_377_Fr_PARAMS
+    }
+}
 
 pub global BLS12_377_Fr_PARAMS: BigNumParams<3, 253> = BigNumParams {
     has_multiplicative_inverse: true,
@@ -31,8 +41,3 @@ pub global BLS12_377_Fr_PARAMS: BigNumParams<3, 253> = BigNumParams {
     ],
     redc_param: [0xa180b8d69e258f5204c21151e79ea1, 0x91ec40b2c9ee4e51e49faa80548fd0, 0x036d94],
 };
-
-#[derive_bignum(3, 253, quote {BLS12_377_Fr_PARAMS})]
-pub struct BLS12_377_Fr {
-    limbs: [u128; 3],
-}

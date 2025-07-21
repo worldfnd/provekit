@@ -1,6 +1,16 @@
 use crate::bignum::BigNum;
-use crate::bignum::derive_bignum;
 use crate::params::BigNumParams;
+use crate::params::BigNumParamsGetter;
+
+pub struct BN254_Fq_Params {}
+
+pub type BN254_Fq = BigNum<3, 254, BN254_Fq_Params>;
+
+impl BigNumParamsGetter<3, 254> for BN254_Fq_Params {
+    fn get_params() -> BigNumParams<3, 254> {
+        BN254_Fq_PARAMS
+    }
+}
 
 pub global BN254_Fq_PARAMS: BigNumParams<3, 254> = BigNumParams {
     has_multiplicative_inverse: true,
@@ -12,8 +22,3 @@ pub global BN254_Fq_PARAMS: BigNumParams<3, 254> = BigNumParams {
     ],
     redc_param: [0x65e1767cd4c086f3aed8a19bf90e51, 0x462623a04a7ab074a5868073013ae9, 0x054a47],
 };
-
-#[derive_bignum(3, 254, quote {BN254_Fq_PARAMS})]
-pub struct BN254_Fq {
-    limbs: [u128; 3],
-}

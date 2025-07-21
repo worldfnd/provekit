@@ -57,12 +57,16 @@ pub(crate) unconstrained fn __is_zero<let N: u32>(limbs: [u128; N]) -> bool {
 *              N.B. constrained BigNum operations do not fully constrain outputs to be in the range [0, p-1]
 *              because such a check is expensive and usually unneccesary.
 */
-pub(crate) unconstrained fn __neg<let N: u32>(modulus: [u128; N], limbs: [u128; N]) -> [u128; N] {
-    __helper_sub(modulus, limbs)
+pub(crate) unconstrained fn __neg<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
+    limbs: [u128; N],
+) -> [u128; N] {
+    let f: [u128; N] = limbs;
+    __helper_sub(params.modulus, f)
 }
 
-pub(crate) unconstrained fn __add<let N: u32>(
-    modulus: [u128; N],
+pub(crate) unconstrained fn __add<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
     lhs: [u128; N],
     rhs: [u128; N],
 ) -> [u128; N] {
@@ -75,8 +79,8 @@ pub(crate) unconstrained fn __add<let N: u32>(
         result[i] = add_term;
     }
     // check if the result is greater than the modulus
-    if __gte(result, modulus) {
-        __helper_sub(result, modulus)
+    if __gte(result, params.modulus) {
+        __helper_sub(result, params.modulus)
     } else {
         result
     }
@@ -86,12 +90,12 @@ pub(crate) unconstrained fn __add<let N: u32>(
 * @brief given inputs `x, y` compute 2p + x - y (unconstrained)
 * @description see `__neg` for why we use 2p instead of p
 **/
-pub(crate) unconstrained fn __sub<let N: u32>(
-    modulus: [u128; N],
+pub(crate) unconstrained fn __sub<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
     lhs: [u128; N],
     rhs: [u128; N],
 ) -> [u128; N] {
-    __add(modulus, lhs, __neg(modulus, rhs))
+    __add(params, lhs, __neg(params, rhs))
 }
 
 pub(crate) unconstrained fn __mul_with_quotient<let N: u32, let MOD_BITS: u32>(
@@ -107,6 +111,7 @@ pub(crate) unconstrained fn __mul_with_quotient<let N: u32, let MOD_BITS: u32>(
     }
     let to_reduce: [u128; (N * 2)] = split_bits::__normalize_limbs(mul, 2 * N);
     let (q, r) = __barrett_reduction(to_reduce, params.redc_param, MOD_BITS, params.modulus);
+    // ([0; N], [0; N])
     (q, r)
 }
 
@@ -206,7 +211,7 @@ pub(crate) unconstrained fn __pow<let N: u32, let MOD_BITS: u32>(
     accumulator
 }
 
-pub(crate) unconstrained fn batch_invert<let N: u32, let MOD_BITS: u32, let M: u32>(
+pub(crate) unconstrained fn __batch_invert<let N: u32, let MOD_BITS: u32, let M: u32>(
     params: P<N, MOD_BITS>,
     x: [[u128; N]; M],
 ) -> [[u128; N]; M] {
@@ -235,7 +240,7 @@ pub(crate) unconstrained fn batch_invert<let N: u32, let MOD_BITS: u32, let M: u
     result
 }
 
-pub(crate) unconstrained fn batch_invert_slice<let N: u32, let MOD_BITS: u32>(
+pub(crate) unconstrained fn __batch_invert_slice<let N: u32, let MOD_BITS: u32>(
     params: P<N, MOD_BITS>,
     x: [[u128; N]],
 ) -> [[u128; N]] {
@@ -353,7 +358,10 @@ pub(crate) unconstrained fn __tonelli_shanks_sqrt<let N: u32, let MOD_BITS: u32>
     result
 }
 
-pub(crate) unconstrained fn __gte<let N: u32>(lhs: [u128; N], rhs: [u128; N]) -> bool {
+pub(crate) unconstrained fn __gte<let N: u32, let MOD_BITS: u32>(
+    lhs: [u128; N],
+    rhs: [u128; N],
+) -> bool {
     let mut result = false;
     let mut early_exit = false;
     for i in 0..(N) {

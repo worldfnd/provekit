@@ -1,6 +1,16 @@
 use crate::bignum::BigNum;
-use crate::bignum::derive_bignum;
 use crate::params::BigNumParams;
+use crate::params::BigNumParamsGetter;
+
+pub struct Secp256k1_Fr_Params {}
+
+pub type Secp256k1_Fr = BigNum<3, 256, Secp256k1_Fr_Params>;
+
+impl BigNumParamsGetter<3, 256> for Secp256k1_Fr_Params {
+    fn get_params() -> BigNumParams<3, 256> {
+        Secp256k1_Fr_PARAMS
+    }
+}
 
 pub global Secp256k1_Fr_PARAMS: BigNumParams<3, 256> = BigNumParams {
     has_multiplicative_inverse: true,
@@ -12,8 +22,3 @@ pub global Secp256k1_Fr_PARAMS: BigNumParams<3, 256> = BigNumParams {
     ],
     redc_param: [0x1231950b75fc4402da1732fc9bec09, 0x1455, 0x100000],
 };
-
-#[derive_bignum(3, 256, quote {Secp256k1_Fr_PARAMS})]
-pub struct Secp256k1_Fr {
-    limbs: [u128; 3],
-}

@@ -21,7 +21,6 @@ pub(crate) unconstrained fn __normalize_limbs<let N: u32>(
     }
     {
         let (lo, hi) = split_120_bits(next);
-
         normalized[range - 1] = lo as u128;
         assert(hi == 0);
     }

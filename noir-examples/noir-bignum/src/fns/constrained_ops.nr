@@ -62,49 +62,24 @@ pub(crate) fn limbs_to_field<let N: u32, let MOD_BITS: u32>(
     }
 }
 
-pub(crate) fn from_field<let N: u32, let MOD_BITS: u32>(
-    _params: P<N, MOD_BITS>,
-    field: Field,
-) -> [u128; N] {
+pub(crate) fn from_field<let N: u32, let MOD_BITS: u32>(field: Field) -> [u128; N] {
     // Safety: we check that the resulting limbs represent the intended field element
     // we check the bit length, the limbs being max 120 bits, and the value in total is less than the field modulus
     let result: [u128; N] = unsafe { __from_field::<N>(field) };
     if !std::runtime::is_unconstrained() {
         // validate the limbs are in range and the value in total is less than 2^254
-        let mut grumpkin_modulus = [0; N];
+
+        // validate that the last limb is less than the modulus
         if N > 2 {
+            // validate that the result is less than the modulus
+            let mut grumpkin_modulus = [0; N];
             grumpkin_modulus[0] = 0x33e84879b9709143e1f593f0000001;
             grumpkin_modulus[1] = 0x4e72e131a029b85045b68181585d28;
             grumpkin_modulus[2] = 0x3064;
-        }
-        if MOD_BITS > 253 {
-            // this means that the field modulus is larger than grumpkin modulus so we have to check if the element fields in the field size are less than the grumpkin modulus.
-            // also for correct params N is always larger than 3 here
             validate_gt::<N, MOD_BITS>(grumpkin_modulus, result);
-        } else if MOD_BITS < 253 {
-            // this means that the field modulus is smaller than grumpkin modulus so we have to check if the element fields in the field size
-            validate_in_field(_params, result);
-        } else {
-            // this is the tricky part, when MOD_BITS = 253, so we have to compare the limbs of the modulus to the grumpkin modulus limbs
-            // any bignum with 253 bits will have 3 limbs
-
-            // if modulus is larger than grumpkin modulus, this will be true
-            let mut gt_grumpkin = false;
-            for i in 0..3 {
-                if !gt_grumpkin {
-                    if _params.modulus[2 - i] < grumpkin_modulus[2 - i] {
-                        gt_grumpkin = true;
-                    }
-                }
-            }
-            let result_2 = if gt_grumpkin {
-                _params.modulus
-            } else {
-                grumpkin_modulus
-            };
-            validate_gt::<N, MOD_BITS>(result_2, result);
+            // validate that the limbs are in range
+            validate_in_range::<_, N, MOD_BITS>(result);
         }
-
         // validate the limbs sum up to the field value
         let TWO_POW_120_FIELD = TWO_POW_120 as Field;
         let field_val = if N < 2 {
@@ -159,12 +134,12 @@ pub(crate) fn derive_from_seed<let N: u32, let MOD_BITS: u32, let SeedBytes: u32
     }
 
     let compressed =
-        poseidon::poseidon2::Poseidon2::hash(rolling_hash_fields, (SeedBytes / 31) + 1);
+        std::hash::poseidon2::Poseidon2::hash(rolling_hash_fields, (SeedBytes / 31) + 1);
     let mut rolling_hash: [Field; 2] = [compressed, 0];
 
     let num_hashes = (240 * N) / 254 + (((30 * N) % 32) != 0) as u32;
     for i in 0..num_hashes - 1 {
-        let hash: Field = poseidon::poseidon2::Poseidon2::hash(rolling_hash, 2);
+        let hash: Field = std::hash::poseidon2::Poseidon2::hash(rolling_hash, 2);
         let hash: [u8; 32] = hash.to_le_bytes();
         for j in 0..30 {
             hash_buffer[i * 30 + j] = hash[j];
@@ -173,7 +148,7 @@ pub(crate) fn derive_from_seed<let N: u32, let MOD_BITS: u32, let SeedBytes: u32
     }
 
     {
-        let hash: Field = poseidon::poseidon2::Poseidon2::hash(rolling_hash, 2);
+        let hash: Field = std::hash::poseidon2::Poseidon2::hash(rolling_hash, 2);
         let hash: [u8; 32] = hash.to_le_bytes();
         let remaining_bytes = 30 * N - (num_hashes - 1) * 30;
         for j in 0..remaining_bytes {
@@ -202,27 +177,25 @@ pub(crate) fn derive_from_seed<let N: u32, let MOD_BITS: u32, let SeedBytes: u32
     for k in 0..num_bigfield_chunks {
         let mut bigfield_limbs: [u128; N] = [0; N];
         let mut num_filled_bytes = (k * 30);
-        if num_bytes >= num_filled_bytes {
-            let mut num_remaining_bytes = num_bytes - num_filled_bytes;
-            let mut num_remaining_limbs =
-                (num_remaining_bytes / 15) + (num_remaining_bytes % 15 > 0) as u32;
-            let mut more_than_N_minus_one_limbs = (num_remaining_limbs > (N - 1)) as u32;
-            let mut num_limbs_in_bigfield = more_than_N_minus_one_limbs * (N - 1)
-                + num_remaining_limbs * (1 - more_than_N_minus_one_limbs);
+        let mut num_remaining_bytes = num_bytes - num_filled_bytes;
+        let mut num_remaining_limbs =
+            (num_remaining_bytes / 15) + (num_remaining_bytes % 15 > 0) as u32;
+        let mut more_than_N_minus_one_limbs = (num_remaining_limbs > (N - 1)) as u32;
+        let mut num_limbs_in_bigfield = more_than_N_minus_one_limbs * (N - 1)
+            + num_remaining_limbs * (1 - more_than_N_minus_one_limbs);
 
-            for j in 0..num_limbs_in_bigfield {
-                let mut limb: u128 = 0;
-                for _ in 0..15 {
-                    let need_more_bytes = (byte_ptr < num_bytes);
-                    let mut byte = hash_buffer[byte_ptr];
-                    limb *= (256 * need_more_bytes as u128 + (1 - need_more_bytes as u128));
-                    limb += byte as u128 * need_more_bytes as u128;
-                    byte_ptr += need_more_bytes as u32;
-                }
-                bigfield_limbs[num_limbs_in_bigfield - 1 - j] = limb;
+        for j in 0..num_limbs_in_bigfield {
+            let mut limb: u128 = 0;
+            for _ in 0..15 {
+                let need_more_bytes = (byte_ptr < num_bytes);
+                let mut byte = hash_buffer[byte_ptr];
+                limb *= (256 * need_more_bytes as u128 + (1 - need_more_bytes as u128));
+                limb += byte as u128 * need_more_bytes as u128;
+                byte_ptr += need_more_bytes as u32;
             }
-            bigfield_chunks[num_bigfield_chunks - 1 - k] = bigfield_limbs;
+            bigfield_limbs[num_limbs_in_bigfield - 1 - j] = limb;
         }
+        bigfield_chunks[num_bigfield_chunks - 1 - k] = bigfield_limbs;
     }
 
     let mut bigfield_rhs_limbs: [u128; N] = [0; N];
@@ -234,10 +207,28 @@ pub(crate) fn derive_from_seed<let N: u32, let MOD_BITS: u32, let SeedBytes: u32
     for i in 0..num_bigfield_chunks {
         let bigfield_lhs_limbs = bigfield_chunks[i];
 
-        result = mul(params, result, bigfield_rhs_limbs);
+        // result = mul(params, result, bigfield_rhs_limbs);
         result = add(params, result, bigfield_lhs_limbs);
     }
 
+    result
+}
+
+/**
+* @brief conditional_select given the value of `predicate` return either `self` (if 0) or `other` (if 1)
+* @description should be cheaper than using an IF statement (TODO: check!)
+**/
+pub(crate) fn conditional_select<let N: u32>(
+    lhs: [u128; N],
+    rhs: [u128; N],
+    predicate: bool,
+) -> [u128; N] {
+    let mut result: [u128; N] = lhs;
+    for i in 0..N {
+        // (lhs[i] - rhs[i]) * predicate + rhs[i]
+        // in case lhs < rhs, this will underflow so we have to do one extra multiplication to prevent it
+        result[i] = lhs[i] * predicate as u128 + rhs[i] * (1 - predicate as u128);
+    }
     result
 }
 
@@ -366,11 +357,11 @@ pub(crate) fn neg<let N: u32, let MOD_BITS: u32>(
     if std::runtime::is_unconstrained() {
         // Safety: not need to constrain in unconstrained runtime
         unsafe {
-            __neg(params.modulus, val)
+            __neg(params, val)
         }
     } else {
         // so we do... p - x - r = 0 and there might be borrow flags
-        let (result, borrow_flags) = unsafe { __neg_with_flags(params.modulus, val) };
+        let (result, borrow_flags) = unsafe { __neg_with_flags(params, val) };
         validate_in_range::<_, _, MOD_BITS>(result);
         let modulus = params.modulus;
         let result_limb = modulus[0] + (borrow_flags[0] as u128 * TWO_POW_120) - val[0] - result[0];
@@ -397,12 +388,12 @@ pub(crate) fn add<let N: u32, let MOD_BITS: u32>(
         // Safety: not need to constrain in unconstrained runtime
         unsafe {
             // __add_u128(params, lhs, rhs)
-            __add(params.modulus, lhs, rhs)
+            __add(params, lhs, rhs)
         }
     } else {
         // so we do... p - x - r = 0 and there might be borrow flags
         let (result, carry_flags, borrow_flags, overflow_modulus) =
-            unsafe { __add_with_flags(params.modulus, lhs, rhs) };
+            unsafe { __add_with_flags(params, lhs, rhs) };
         validate_in_range::<_, _, MOD_BITS>(result);
         let modulus = params.modulus;
 
@@ -444,14 +435,14 @@ pub(crate) fn sub<let N: u32, let MOD_BITS: u32>(
     if std::runtime::is_unconstrained() {
         // Safety: not need to constrain in unconstrained runtime
         unsafe {
-            __sub(params.modulus, lhs, rhs)
+            __sub(params, lhs, rhs)
         }
     } else {
         // so we do... p - x - r = 0 and there might be borrow flags
         // a - b = r
         // p + a - b - r = 0
         let (result, carry_flags, borrow_flags, underflow) =
-            unsafe { __sub_with_flags(params.modulus, lhs, rhs) };
+            unsafe { __sub_with_flags(params, lhs, rhs) };
 
         validate_in_range::<_, _, MOD_BITS>(result);
         let modulus = params.modulus;
@@ -602,7 +593,6 @@ pub(crate) fn cmp<let N: u32, let MOD_BITS: u32>(lhs: [u128; N], rhs: [u128; N])
         unsafe { __validate_gt_remainder(lhs, rhs) };
     // if underflow is true, swap lhs and rhs
     let (lhs, rhs) = if underflow { (rhs, lhs) } else { (lhs, rhs) };
-
     check_gt_with_flags::<N, MOD_BITS>(lhs, rhs, result, borrow_flags, carry_flags);
     if lhs == rhs {
         Ordering::equal()
@@ -622,7 +612,7 @@ pub(crate) fn check_gt_with_flags<let N: u32, let MOD_BITS: u32>(
     carry_flags: [bool; N],
 ) {
     let mut addend: [Field; N] = [0; N];
-    let result_limb = lhs[0] as Field - rhs[0] as Field + addend[0] - result[0] as Field
+    let result_limb = lhs[0] as Field - rhs[0] as Field + addend[0] - result[0] as Field - 1
         + (borrow_flags[0] as Field - carry_flags[0] as Field) * TWO_POW_120 as Field;
     assert(result_limb == 0);
 

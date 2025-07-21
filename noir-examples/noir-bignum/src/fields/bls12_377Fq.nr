@@ -17,8 +17,18 @@
 //! * G2 curve equation: y^2 = x^3 + B, where
 //!    * B = Fq2(0, 155198655607781456406391640216936120121836107652948796323930557600032281009004493664981332883744016074664192874906)
 use crate::bignum::BigNum;
-use crate::bignum::derive_bignum;
 use crate::params::BigNumParams;
+use crate::params::BigNumParamsGetter;
+
+pub struct BLS12_377_Fq_Params {}
+
+pub type BLS12_377_Fq = BigNum<4, 377, BLS12_377_Fq_Params>;
+
+impl BigNumParamsGetter<4, 377> for BLS12_377_Fq_Params {
+    fn get_params() -> BigNumParams<4, 377> {
+        BLS12_377_Fq_PARAMS
+    }
+}
 
 pub global BLS12_377_Fq_PARAMS: BigNumParams<4, 377> = BigNumParams {
     has_multiplicative_inverse: true,
@@ -41,8 +51,3 @@ pub global BLS12_377_Fq_PARAMS: BigNumParams<4, 377> = BigNumParams {
         0x261508,
     ],
 };
-
-#[derive_bignum(4, 377, quote {BLS12_377_Fq_PARAMS})]
-pub struct BLS12_377_Fq {
-    limbs: [u128; 4],
-}

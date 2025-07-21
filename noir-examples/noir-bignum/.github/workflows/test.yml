@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  MINIMUM_NOIR_VERSION: v1.0.0-beta.7
+  MINIMUM_NOIR_VERSION: v1.0.0-beta.3
 
 jobs:
   noir-version-list:

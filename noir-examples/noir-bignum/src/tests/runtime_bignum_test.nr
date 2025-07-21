@@ -1,8 +1,9 @@
-use crate::fields::bn254Fq::BN254_Fq_PARAMS;
 use crate::fns::constrained_ops::{sub, udiv};
 use crate::fns::unconstrained_helpers::__barrett_reduction;
-use crate::params::BigNumParams;
+use crate::params::{BigNumParams, BigNumParamsGetter};
 use crate::runtime_bignum::RuntimeBigNum;
+
+use crate::fields::bn254Fq::BN254_Fq_Params;
 
 global TEST_2048_PARAMS: BigNumParams<18, 2048> = BigNumParams {
     has_multiplicative_inverse: false,
@@ -68,10 +69,24 @@ global TEST_2048_PARAMS: BigNumParams<18, 2048> = BigNumParams {
     ],
 };
 
+pub(crate) struct Test2048Params {}
+
+// See https://github.com/noir-lang/noir/issues/6172
+#[test]
+fn silence_warning() {
+    let _ = Test2048Params {};
+}
+
+impl BigNumParamsGetter<18, 2048> for Test2048Params {
+    fn get_params() -> BigNumParams<18, 2048> {
+        TEST_2048_PARAMS
+    }
+}
+
 /**
  * @brief experimenting with macro madness and code generation to make some tests that apply to multiple BigNum parametrisations!
  **/
-comptime fn make_test(_m: Module, N: u32, MOD_BITS: u32, params: Quoted) -> Quoted {
+comptime fn make_test(_m: Module, N: u32, MOD_BITS: u32, typ: Quoted) -> Quoted {
     let RuntimeBigNum = quote { crate::RuntimeBigNum };
     let __helper_add = quote { crate::fns::unconstrained_helpers::__helper_add };
     let __helper_sub = quote { crate::fns::unconstrained_helpers::__helper_sub };
@@ -82,7 +97,7 @@ comptime fn make_test(_m: Module, N: u32, MOD_BITS: u32, params: Quoted) -> Quot
     quote {
 #[test]
 fn test_add() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
     
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [4, 5, 6, 7]);
@@ -107,7 +122,7 @@ fn test_add() {
 
 #[test]
 fn test_sub() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     // 0 - 1 should equal p - 1
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
@@ -123,7 +138,7 @@ fn test_sub() {
 
 #[test]
 fn test_sub_modulus_limit() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
     // if we underflow, maximum result should be ...
     // 0 - 1 = o-1
     // 0 - p = 0
@@ -138,7 +153,7 @@ fn test_sub_modulus_limit() {
 
 #[test(should_fail_with = "call to assert_max_bit_size")]
 fn test_sub_modulus_underflow() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     // 0 - (p + 1) is smaller than p and should produce unsatisfiable constraints
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
@@ -153,7 +168,7 @@ fn test_sub_modulus_underflow() {
 
 #[test]
 fn test_add_modulus_limit() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     // p + 2^{modulus_bits()} - 1 should be the maximum allowed value fed into an add operation
     // when adding, if the result overflows the modulus, we conditionally subtract the modulus, producing 2^{254} -  1
@@ -173,7 +188,7 @@ fn test_add_modulus_limit() {
 
 #[test(should_fail_with = "call to assert_max_bit_size")]
 fn test_add_modulus_overflow() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let p: [u128; $N] = params.modulus;
     // Safety: test code
@@ -192,7 +207,7 @@ fn test_add_modulus_overflow() {
 
 #[test]
 fn test_mul() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [4, 5, 6, 7]);
@@ -204,15 +219,15 @@ fn test_mul() {
 
 #[test]
 fn test_quadratic_expression() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     for i in 0..32 {
         let X1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, 2, 3, 4]);
         let Y1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [i as u8, i as u8, 6, 7]);
         let Z1: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::one(params);
 
-        let (_, YY_mul_2): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Y1, Y1]], [[false, false]], [], []);
-        let mut (_, XX_mul_3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
+        let (_, YY_mul_2): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = $RuntimeBigNum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Y1, Y1]], [[false, false]], [], []);
+        let mut (_, XX_mul_3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = $RuntimeBigNum::__compute_quadratic_expression(
             params,
             [[X1]],
             [[false]],
@@ -221,8 +236,8 @@ fn test_quadratic_expression() {
             [],
             []
         );
-        let (_, D): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[X1, X1]], [[false, false]], [[YY_mul_2]], [[false]], [], []);
-        let mut (_, X3) =  crate::runtime_bignum::__compute_quadratic_expression(
+        let (_, D): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = $RuntimeBigNum::__compute_quadratic_expression(params, [[X1, X1]], [[false, false]], [[YY_mul_2]], [[false]], [], []);
+        let mut (_, X3) =  $RuntimeBigNum::__compute_quadratic_expression(
             params,
             [[XX_mul_3]],
             [[false]],
@@ -231,7 +246,7 @@ fn test_quadratic_expression() {
             [D, D],
             [true, true]
         );
-        let (_, Y3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(
+        let (_, Y3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = $RuntimeBigNum::__compute_quadratic_expression(
             params,
             [[XX_mul_3], [YY_mul_2]],
             [[false], [true]],
@@ -242,7 +257,7 @@ fn test_quadratic_expression() {
         );
         // 3XX * (D - X3) - 8YYYY
 
-        let (_, Z3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = crate::runtime_bignum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Z1, Z1]], [[false, false]], [], []);
+        let (_, Z3): ($RuntimeBigNum<$N, $MOD_BITS>, $RuntimeBigNum<$N, $MOD_BITS>) = $RuntimeBigNum::__compute_quadratic_expression(params, [[Y1]], [[false]], [[Z1, Z1]], [[false, false]], [], []);
 
         X3.validate_in_field();
         Y3.validate_in_field();
@@ -252,7 +267,7 @@ fn test_quadratic_expression() {
 
 #[test]
 fn assert_is_not_equal() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [4, 5, 6, 7]);
@@ -262,7 +277,7 @@ fn assert_is_not_equal() {
 
 #[test(should_fail_with = "asssert_is_not_equal fail")]
 fn assert_is_not_equal_fail() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -272,7 +287,7 @@ fn assert_is_not_equal_fail() {
 
 #[test(should_fail_with = "asssert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_lhs_fail() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -289,7 +304,7 @@ fn assert_is_not_equal_overloaded_lhs_fail() {
 
 #[test(should_fail_with = "asssert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_rhs_fail() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -306,7 +321,7 @@ fn assert_is_not_equal_overloaded_rhs_fail() {
 
 #[test(should_fail_with = "asssert_is_not_equal fail")]
 fn assert_is_not_equal_overloaded_fail() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -328,7 +343,7 @@ fn assert_is_not_equal_overloaded_fail() {
 #[test]
 fn test_derive()
 {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     // let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, "hello".as_bytes());
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -338,7 +353,7 @@ fn test_derive()
 
 #[test]
 fn test_eq() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -360,7 +375,7 @@ fn test_eq() {
 
 #[test]
 fn test_is_zero() {
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
 
     let a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::zero(params);
     let b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, [1, 2, 3, 4]);
@@ -371,8 +386,8 @@ fn test_is_zero() {
 
 #[test]
 fn test_cmp() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-    let modulus = params.modulus;
+    let modulus = $typ ::get_params().modulus;
+    let params = $typ ::get_params();
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
     let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
 
@@ -383,8 +398,8 @@ fn test_cmp() {
 
 #[test(should_fail_with = "Failed constraint")]
 fn test_cmp_BN_fail() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-    let modulus = params.modulus;
+    let modulus = $typ ::get_params().modulus;
+    let params = $typ ::get_params();
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
     let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
 
@@ -397,8 +412,8 @@ fn test_cmp_BN_fail() {
 
 #[test]
 fn test_cmp_BN_2() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-    let modulus = params.modulus;
+    let modulus = $typ ::get_params().modulus;
+    let params = $typ ::get_params();
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
     let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
 
@@ -410,8 +425,8 @@ fn test_cmp_BN_2() {
 
 #[test(should_fail_with = "Failed constraint")]
 fn test_cmp_BN_fail_2() {
-    let params: crate::params::BigNumParams<_,_> = $params;
-    let modulus = params.modulus;
+    let modulus = $typ ::get_params().modulus;
+    let params = $typ ::get_params();
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
     let mut b: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum { limbs: modulus, params };
 
@@ -423,7 +438,7 @@ fn test_cmp_BN_fail_2() {
 
 #[test]
 fn test_cmp_fuzz(seed: [u8; 2]){
-    let params: crate::params::BigNumParams<_,_> = $params;
+    let params = $typ ::get_params();
     let modulus = params.modulus;
     let mut a: $RuntimeBigNum<$N, $MOD_BITS> = $RuntimeBigNum::derive_from_seed(params, seed);
     let mut half_modulus = $RuntimeBigNum::zero(params);
@@ -452,26 +467,40 @@ fn test_cmp_fuzz(seed: [u8; 2]){
 }
 }
 
-#[make_test(3, 254, quote {crate::fields::bn254Fq::BN254_Fq_PARAMS})]
-pub mod BNTests {}
+#[make_test(3, 254, quote {crate::fields::bn254Fq::BN254_Fq_Params})]
+pub mod BNTests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(3, 256, quote {crate::fields::secp256k1Fq::Secp256k1_Fq_PARAMS})]
-pub mod Secp256K1FqTests {}
+#[make_test(3, 256, quote {crate::fields::secp256k1Fq::Secp256k1_Fq_Params})]
+pub mod Secp256K1FqTests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(4, 381, quote {crate::fields::bls12_381Fq::BLS12_381_Fq_PARAMS})]
-pub mod BLS12_381FqTests {}
+#[make_test(4, 381, quote {crate::fields::bls12_381Fq::BLS12_381_Fq_Params})]
+pub mod BLS12_381FqTests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(18, 2048, quote {super::TEST_2048_PARAMS})]
-pub mod Test2048Tests {}
+#[make_test(18, 2048, quote {super::Test2048Params})]
+pub mod Test2048Tests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(3, 255, quote {crate::fields::bls12_381Fr::BLS12_381_Fr_PARAMS})]
-pub mod BLS12_381_Fr_ParamsTests {}
+#[make_test(3, 255, quote {crate::fields::bls12_381Fr::BLS12_381_Fr_Params})]
+pub mod BLS12_381_Fr_ParamsTests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(4, 377, quote {crate::fields::bls12_377Fq::BLS12_377_Fq_PARAMS})]
-pub mod BLS12_377_Fq_ParamsTests {}
+#[make_test(4, 377, quote {crate::fields::bls12_377Fq::BLS12_377_Fq_Params})]
+pub mod BLS12_377_Fq_ParamsTests {
+    use crate::params::BigNumParamsGetter;
+}
 
-#[make_test(3, 253, quote {crate::fields::bls12_377Fr::BLS12_377_Fr_PARAMS})]
-pub mod BLS12_377_Fr_ParamsTests {}
+#[make_test(3, 253, quote {crate::fields::bls12_377Fr::BLS12_377_Fr_Params})]
+pub mod BLS12_377_Fr_ParamsTests {
+    use crate::params::BigNumParamsGetter;
+}
 
 // 98760
 // 99689
@@ -497,13 +526,13 @@ unconstrained fn test_invmod<let N: u32, let MOD_BITS: u32>(params: BigNumParams
 
 #[test]
 fn test_div_BN() {
-    let params = BN254_Fq_PARAMS;
+    let params = BN254_Fq_Params::get_params();
     test_div(params);
 }
 
 #[test]
 fn test_invmod_BN() {
-    let params = BN254_Fq_PARAMS;
+    let params = BN254_Fq_Params::get_params();
     // Safety: test code
     unsafe { test_invmod(params) };
 }
@@ -593,7 +622,7 @@ fn test_2048_bit_quadratic_expression() {
 
     a_bn.validate_in_range();
 
-    crate::runtime_bignum::evaluate_quadratic_expression(
+    RuntimeBigNum::evaluate_quadratic_expression(
         params,
         [[a_bn]],
         [[false]],
@@ -606,7 +635,7 @@ fn test_2048_bit_quadratic_expression() {
 
 #[test]
 fn test_sqrt_BN() {
-    let params = BN254_Fq_PARAMS;
+    let params = BN254_Fq_Params::get_params();
 
     let x = RuntimeBigNum { limbs: [9, 0, 0], params };
 

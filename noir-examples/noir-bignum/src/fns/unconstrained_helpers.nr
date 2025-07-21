@@ -1,7 +1,7 @@
-use crate::constants::{TWO_POW_119, TWO_POW_120};
+use crate::constants::{TWO_POW_119, TWO_POW_120, TWO_POW_60};
 use crate::fns::unconstrained_ops::{__add, __gte, __mul, __neg, __one, __pow};
 use crate::params::BigNumParams as P;
-use crate::utils::msb::get_msb;
+use crate::utils::msb::get_msb64;
 use crate::utils::split_bits::__normalize_limbs;
 
 pub(crate) unconstrained fn __from_field<let N: u32>(field: Field) -> [u128; N] {
@@ -56,7 +56,7 @@ pub(crate) unconstrained fn __validate_gt_remainder<let N: u32>(
     // swap a and b if there's an underflow
     let (a, b) = if underflow { (b, a) } else { (a, b) };
     let mut carry_in: u128 = 0;
-    let mut borrow_in: u128 = 0;
+    let mut borrow_in: u128 = 1;
     let mut borrow_flags: [bool; N] = [false; N];
     let mut carry_flags: [bool; N] = [false; N];
     for i in 0..N {
@@ -73,15 +73,15 @@ pub(crate) unconstrained fn __validate_gt_remainder<let N: u32>(
 
         // Only set `borrow` and `carry` if they differ
         if (carry != borrow) {
-            carry_flags[i] = carry != 0;
-            borrow_flags[i] = borrow != 0;
+            carry_flags[i] = carry as bool;
+            borrow_flags[i] = borrow as bool;
         }
     }
     (underflow, result, carry_flags, borrow_flags)
 }
 
-pub(crate) unconstrained fn __neg_with_flags<let N: u32>(
-    modulus: [u128; N],
+pub(crate) unconstrained fn __neg_with_flags<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
     val: [u128; N],
 ) -> ([u128; N], [bool; N - 1]) {
     let mut result: [u128; N] = [0; N];
@@ -90,30 +90,30 @@ pub(crate) unconstrained fn __neg_with_flags<let N: u32>(
     let mut borrow_flags: [bool; N - 1] = [false; N - 1];
     for i in 0..N {
         let sub_term = val[i] + borrow_in;
-        let borrow = (sub_term > modulus[i]) as u128;
-        result[i] = borrow * TWO_POW_120 + modulus[i] - sub_term;
+        let borrow = (sub_term > params.modulus[i]) as u128;
+        result[i] = borrow * TWO_POW_120 + params.modulus[i] - sub_term;
 
         borrow_in = borrow;
         if (i < N - 1) {
-            borrow_flags[i] = borrow != 0;
+            borrow_flags[i] = borrow as bool;
         }
     }
     (result, borrow_flags)
 }
 
-pub(crate) unconstrained fn __add_with_flags<let N: u32>(
-    modulus: [u128; N],
+pub(crate) unconstrained fn __add_with_flags<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
     lhs: [u128; N],
     rhs: [u128; N],
 ) -> ([u128; N], [bool; N], [bool; N - 1], bool) {
     let add_res = __helper_add(lhs, rhs);
-    let overflow = __gte(add_res, modulus);
+    let overflow = __gte(add_res, params.modulus);
 
     let mut subtrahend: [u128; N] = [0; N];
     let mut result: [u128; N] = [0; N];
 
     if overflow {
-        subtrahend = modulus;
+        subtrahend = params.modulus;
     }
 
     let mut carry_in: u128 = 0;
@@ -134,24 +134,24 @@ pub(crate) unconstrained fn __add_with_flags<let N: u32>(
 
         // Only set `borrow` and `carry` if they differ
         if (carry != borrow) {
-            carry_flags[i] = carry != 0;
+            carry_flags[i] = carry as bool;
             if (i < N - 1) {
-                borrow_flags[i] = borrow != 0;
+                borrow_flags[i] = borrow as bool;
             }
         }
     }
     (result, carry_flags, borrow_flags, overflow)
 }
 
-pub(crate) unconstrained fn __sub_with_flags<let N: u32>(
-    modulus: [u128; N],
+pub(crate) unconstrained fn __sub_with_flags<let N: u32, let MOD_BITS: u32>(
+    params: P<N, MOD_BITS>,
     lhs: [u128; N],
     rhs: [u128; N],
 ) -> ([u128; N], [bool; N], [bool; N - 1], bool) {
     let mut one: [u128; N] = [0; N];
     one[0] = 1;
     let underflow = !__gte(lhs, rhs);
-    let addend: [u128; N] = if underflow { modulus } else { [0; N] };
+    let addend: [u128; N] = if underflow { params.modulus } else { [0; N] };
     let mut result: [u128; N] = [0; N];
 
     let mut carry_in: u128 = 0;
@@ -171,9 +171,9 @@ pub(crate) unconstrained fn __sub_with_flags<let N: u32>(
 
         // Only set `borrow` and `carry` if they differ
         if (carry != borrow) {
-            carry_flags[i] = carry != 0;
+            carry_flags[i] = carry as bool;
             if (i < N - 1) {
-                borrow_flags[i] = borrow != 0;
+                borrow_flags[i] = borrow as bool;
             }
         }
     }
@@ -200,7 +200,7 @@ pub(crate) unconstrained fn __barrett_reduction<let N: u32>(
         }
     }
 
-    let mulout: [u128; 3 * N] = __normalize_limbs(mulout_field, 3 * N);
+    let mulout: [u128; 3 * N] = __normalize_limbs(mulout_field, 3 * N - 1);
 
     // When we apply the barrett reduction, the maximum value of the output will be
     // <= p * (1 + x/2^{2k})
@@ -302,11 +302,11 @@ unconstrained fn __recursively_find_multiplicative_generator<let N: u32, let MOD
 ) -> (bool, [u128; N]) {
     let exped = __pow(params, target, p_minus_one_over_two);
     let one: [u128; N] = __one();
-    let neg_one = __neg(params.modulus, one);
+    let neg_one = __neg(params, one);
     let found = exped == neg_one;
     let mut result: (bool, [u128; N]) = (found, target);
     if (!found) {
-        let _target: [u128; N] = __add(params.modulus, target, one);
+        let _target: [u128; N] = __add(params, target, one);
         result = __recursively_find_multiplicative_generator::<_, MOD_BITS>(
             params,
             _target,
@@ -449,9 +449,15 @@ pub(crate) unconstrained fn __shr1<let N: u32>(mut input: [u128; N]) -> [u128; N
 pub(crate) unconstrained fn __get_msb<let N: u32>(val: [u128; N]) -> u32 {
     let mut count = 0;
     for i in 0..N {
-        let v = val[(N - 1 - i)];
-        if (v > 0) {
-            count = 120 * (N - 1 - i) + get_msb(v);
+        let v = val[((N) - 1 - i)];
+        let v_low = v as u64 % TWO_POW_60 as u64;
+        let v_high = ((v - v_low as u128) / TWO_POW_60) as u64;
+        if (v_high > 0) {
+            count = 60 * ((2 * N) - 1 - (i * 2)) + get_msb64(v_high);
+            break;
+        }
+        if (v_low > 0) {
+            count = 60 * ((2 * N) - 1 - (i * 2 + 1)) + get_msb64(v_low);
             break;
         }
     }

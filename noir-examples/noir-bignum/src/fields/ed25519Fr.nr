@@ -1,6 +1,16 @@
 use crate::bignum::BigNum;
-use crate::bignum::derive_bignum;
 use crate::params::BigNumParams;
+use crate::params::BigNumParamsGetter;
+
+pub struct ED25519_Fr_Params {}
+
+pub type ED25519_Fr = BigNum<3, 255, ED25519_Fr_Params>;
+
+impl BigNumParamsGetter<3, 255> for ED25519_Fr_Params {
+    fn get_params() -> BigNumParams<3, 255> {
+        ED25519_Fr_PARAMS
+    }
+}
 
 pub global ED25519_Fr_PARAMS: BigNumParams<3, 255> = BigNumParams {
     has_multiplicative_inverse: true,
@@ -12,8 +22,3 @@ pub global ED25519_Fr_PARAMS: BigNumParams<3, 255> = BigNumParams {
     ],
     redc_param: [0x4188574218ca69fb673968c28b04c6, 0xfffffffffffffffffffffffffffac8, 0x03ffff],
 };
-
-#[derive_bignum(3, 255, quote {ED25519_Fr_PARAMS})]
-pub struct ED25519_Fr {
-    limbs: [u128; 3],
-}

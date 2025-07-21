@@ -48,7 +48,7 @@ For the arithmetic operations it is important to notice the difference between c
 
 This library is tested with all stable releases since 1.0.0-beta.0 as well as nightly.
 
-Refer to [Noir's docs](https://noir-lang.org/docs/getting_started/noir_installation) for installation steps.
+Refer to [Noir's docs](https://noir-lang.org/docs/getting_started/installation/) for installation steps.
 
 ## Installation
 
@@ -79,11 +79,7 @@ use dep::bignum::BigNum;
 
 // Define (compile-time) BigNum type
 // number of limbs, number of bits of modulus, parameter set
-// implement the BigNum trait for the custom bignum type
-#[derive_bignum(3, 257, quote {U256_PARAMS})]
-pub struct U256 {
-    limbs: [u128; 3],
-}
+type U256 = BigNum<3, 257, U256Params>;
 ```
 
 ### Quick example: Addition in U256
@@ -106,36 +102,16 @@ fn main() {
 
 ### `BigNum` / `RuntimeBigNum` definition
 
-A BigNum is a number modulo `modulus` and is represented as an array of 120-bit limbs in little endian format. When the `modulus` is known at compile-time, use `BigNum` type. For instance, to build a 5-limb bignum, you can use the following definition:
+A BigNum is a number modulo `modulus` and is represented as an array of 120-bit limbs in little endian format. When the `modulus` is known at compile-time, use this type:
 
 ```rust
-pub struct MyBignum {
-    pub limbs: [Field; 5],
+pub struct BigNum<let N: u32, let MOD_BITS: u32, Params> {
+    pub limbs: [Field; N],
 }
 ```
-The `BigNum` trait can be implemented for this type by using the `derive_bignum` macro.
-
-```rust
-pub(crate) comptime fn derive_bignum(
-    strukt: TypeDefinition,
-    N: u32,
-    MOD_BITS: u32,
-    params: Quoted,
-) -> Quoted
-```
-
 - `N` is the number of limbs needed to represent the number. Each limb is a `Field`, which contains max 120 bits. The field type has 254 bits of space and by only using 120 bits, there is space for multiplications and additions without overflowing. 
 - `MOD_BITS` is the number of bits needed to represent the modulus.
 - `Params` is a parameter set (`BigNumParams`) associated with the big number. More information below.
-
-To implement the trait for your bignum type, you need to provide the number of limbs and the number of bits of the modulus and the parameters. 
-
-```rust 
-#[derive_bignum(4, 377, quote {BLS12_377_Fq_PARAMS})]
-pub struct MyBignum {
-    pub limbs: [Field; 4],
-}
-```
 
 The actual value of a BigNum can be calculated by multiplying each limb by an increasing power of $2^{120}$. For example `[1,20,300]` represents $1 \cdot 2^{120\cdot0} + 20 \cdot 2^{120 \cdot 1} + 300 \cdot 2^{120 \cdot 2}$. We say that the BigNum is represented in radix- $2^{120}$. 
 
@@ -161,7 +137,7 @@ To define a `BigNum` or `RuntimeBigNum`, you need to provide a `BigNumParams`. F
 
 - `double_modulus` is derived via the method `compute_double_modulus` in `runtime_bignum.nr`. If you want to provide this value as a compile-time constant (see `fields/bn254Fq.nr` for an example), follow the algorithm `compute_double_modulus` as this parameter is _not_ structly 2 \* modulus. Each limb except the most significant limb borrows 2^120 from the next most significant limb. This ensure that when performing limb subtractions `double_modulus.limbs[i] - x.limbs[i]`, we know that the result will not underflow
 
-- `has_multiplicative_inverse`, a boolean indicating whether all elements have a multiplicative inverse, i.e. whether modulus is a prime.
+- `has_multiplicative_inverse`, a boolean indicating whether the elements have a multiplicative inverse or not
 
 
 ## `BigNum` / `RuntimeBigNum` methods
@@ -216,25 +192,12 @@ Constrained arithmetic operations. These perform the expected arithmetic operati
 
 These methods can be used using operators (`+`, `-`, `*`, `/`). 
 
-`derive_bignum` will also implement conversions from a native `Field` type. For example, if you have a `Field` type `Fq`, you can convert it to your `BigNum` type `MyBigNum` by using the following syntax:
-
-```rust
-let a: Field = 10;
-let my_bignum: Fq = Fq::from(a);
-```
-We also support comparison operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) for `BigNum` types.
-
-
 > **Note:** `div`, `udiv` and `umod` are expensive due to requiring modular exponentiations during witness computation. It is worth modifying witness generation algorithms to minimize the number of modular exponentiations required. (for example, using batch inverses)
 
 Other constrained functions:
-- `zero`, returns a bignum with value 0
+- `new`, returns a bignum with value 0
 - `one`, returns a bignum with value 1
 - `modulus`, returns `modulus` from the parameters
-- `from_limbs`, returns a bignum from an array of limbs 
-- `from_slice`, returns a bignum from a slice of limbs 
-- `get_limbs`, returns the limbs of the bignum
-- `set_limb(idx, value)`, set limbs `idx` to new value
 - `modulus_bits`, returns nr of bits from the parameters
 - `num_limbs`, returns N, the number of limbs needed to represent the bignum for the current parameters
 - `evaluate_quadratic_expression`, more explanation below
@@ -242,9 +205,11 @@ Other constrained functions:
 - `validate_in_field(val)`, validates `val` < `modulus`
 - `assert_is_not_equal`, assert 2 bignums are distinct
 - `eq`, also available with operator `==`
+- `get(idx)`, return value of limbs `idx` (this is a field)
+- `set_limb(idx, value)`, set limbs `idx` to new value
 - `conditional_select(lhs, rhs, predicate)`, if `predicate` is 0 returns `lhs`, else if `predicate` is 1 returns `rhs` 
 - `to_le_bytes`, returns the little-endian byte representation of a bignum
-- `from_be_bytes`, returns a bignum from a big-endian byte array
+
 ### `evaluate_quadratic_expression`
 
 For a lower gatecount and thus better performance perform multiple unconstrained arithmetic operations and then constrain them at once using `evaluate_quadratic_expression`.
@@ -313,7 +278,10 @@ In the base field of Ed25519, which is the integers mod $2^{255}-19$, perform si
 
 ```rust
 use dep::bignum::BigNum;
-use dep::bignum::fields::ed25519Fq::ED25519_Fq as Fq;
+use dep::bignum::fields::ed25519Fq::ED25519_Fq_Params;
+
+// Prime field mod 2^255-19
+type Fq = BigNum<3, 255, ED25519_Fq_Params>;
 
 // Check that (x1 * x2) + x3 equals `expected`
 fn main(x1: Fq, x2: Fq, x3: Fq, expected: Fq) {
@@ -357,8 +325,10 @@ BigNum supports operations over unsigned integers, with predefined types for 256
 All arithmetic operations are supported including integer div and mod functions (make sure to use udiv, umod). Bit shifts and comparison operators are not yet implemented.
 
 ```rust
-use dep::bignum::fields::U256;
+use dep::bignum::fields::U256::U256Params;
 use dep::bignum::BigNum;
+
+type U256 = BigNum<3, 257, U256Params>;
 
 fn foo(x: U256, y: U256) -> U256 {
     x.udiv(y)
@@ -387,9 +357,15 @@ Feature requests and/or pull requests welcome for missing fields you need.
 
 ### Create a new parameter set for custom modulus
 
+TODO: the paramgen tool is not up to date for `BigNum` version >= `0.4`, an issue has been created for this [here](https://github.com/noir-lang/noir-bignum-paramgen/issues/4). This section should be adjusted after this fix.
+
 The easiest way to generate everything you need for a parameter set is to use [this tool](https://github.com/noir-lang/noir-bignum-paramgen). 
 
-For example, after cloning and building the tool, for a `modulus` of 1024 bits for RSA run `./target/release/paramgen instance <modulus> RSA1024_example > out.txt`. This prints the parameter set to `out.txt`. 
+For example, after cloning and building the tool, for a `modulus` of 1024 bits for RSA run `./target/release/paramgen instance <modulus> RSA1024_example > out.txt`. This prints the parameter set to `out.txt`. Since this is not a field, also add: 
+```rust
+fn has_multiplicative_inverse() -> bool { false }
+```
+to the traits implementations for the parameter set. 
 
 #### Provide parameters for runtime known modulus
 
