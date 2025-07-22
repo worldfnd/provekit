@@ -77,6 +77,10 @@ runs.
 
 Tracy tool [website](https://github.com/wolfpld/tracy). To install tracy tool on OSX use brew: `brew install tracy`.
 
+> **Important**: integration is done with `Tracy Profiler 0.11.1`. It is newest version available from brew. Newer
+> version may require updating dependencies as tracy is using its own protocol between app and tracy tool that changes
+> with each major version.
+
 TLDR; Tracy is an interactive tool to profile application. There is integration plugin for rust that works with
 standard tracing annotation. For now it is integrated into `noir-r1cs` binary only. Collecting profiling data requires
 tracy to run during application profiling. You may noticed that it makes application to run much longer but mostly
