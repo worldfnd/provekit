@@ -27,6 +27,12 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-tracy = { workspace = true, features = ["default", "manual-lifetime"] }
+tracy-client = { workspace = true, features = ["default", "manual-lifetime"] }
+tracy-client-sys = { workspace = true, features = ["default", "manual-lifetime"] }
 
 [lints]
 workspace = true
+
+[features]
+cli-profiled = []
