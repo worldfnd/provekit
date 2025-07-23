@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/big"
 	"math/bits"
 	"os"
 
@@ -64,6 +65,7 @@ type Circuit struct {
 	LinearStatementEvaluations    []frontend.Variable
 	LogNumConstraints             int
 	WHIRCircuitCol                WHIRCircuit
+	WHIRCircuitA                  WHIRCircuit
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -436,16 +438,15 @@ func runSumcheckRounds(
 }
 
 func new_merkle(
-	merkle_paths []MultiPath[KeccakDigest],
-	stir_answers [][][]Fp256,
+	hint Hint,
 	is_container bool,
 ) Merkle {
-	var totalAuthPath = make([][][][]uints.U8, len(merkle_paths))
-	var totalLeaves = make([][][]frontend.Variable, len(merkle_paths))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(merkle_paths))
-	var totalLeafIndexes = make([][]uints.U64, len(merkle_paths))
+	var totalAuthPath = make([][][][]uints.U8, len(hint.merkle_paths))
+	var totalLeaves = make([][][]frontend.Variable, len(hint.merkle_paths))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(hint.merkle_paths))
+	var totalLeafIndexes = make([][]uints.U64, len(hint.merkle_paths))
 
-	for i, merkle_path := range merkle_paths {
+	for i, merkle_path := range hint.merkle_paths {
 		var numOfLeavesProved = len(merkle_path.LeafIndexes)
 		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
@@ -459,7 +460,7 @@ func new_merkle(
 			for z := range treeHeight {
 				totalAuthPath[i][j][z] = make([]uints.U8, 32)
 			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(stir_answers[i][j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stir_answers[i][j]))
 			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
 
@@ -485,8 +486,8 @@ func new_merkle(
 			for z := range numOfLeavesProved {
 				totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-				for j := range stir_answers[i][z] {
-					input := stir_answers[i][z][j]
+				for j := range hint.stir_answers[i][z] {
+					input := hint.stir_answers[i][z][j]
 					totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 				}
 			}
@@ -506,4 +507,61 @@ type Merkle struct {
 	totalLeaves            [][][]frontend.Variable
 	totalLeafSiblingHashes [][][]uints.U8
 	totalLeafIndexes       [][]uints.U64
+}
+
+type WHIRParams struct {
+	startingDomainGen         big.Int
+	finalSumcheckRounds       int
+	domainSize                int
+	folding_factor            []int
+	mvParamsNumberOfVariables int
+}
+
+func new_whir_params(cfg WHIRConfig) WHIRParams {
+	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
+	mvParamsNumberOfVariables := cfg.NVars
+	var foldingFactor []int
+	var finalSumcheckRounds int
+
+	if len(cfg.FoldingFactor) > 1 {
+		foldingFactor = append(cfg.FoldingFactor, cfg.FoldingFactor[len(cfg.FoldingFactor)-1])
+		finalSumcheckRounds = mvParamsNumberOfVariables % foldingFactor[len(foldingFactor)-1]
+	} else {
+		foldingFactor = []int{4}
+		finalSumcheckRounds = mvParamsNumberOfVariables % 4
+	}
+	domainSize := (2 << mvParamsNumberOfVariables) * (1 << cfg.Rate) / 2
+	return WHIRParams{
+		startingDomainGen:         *startingDomainGen,
+		finalSumcheckRounds:       finalSumcheckRounds,
+		domainSize:                domainSize,
+		folding_factor:            foldingFactor,
+		mvParamsNumberOfVariables: mvParamsNumberOfVariables,
+	}
+}
+
+func new_whir_circuit(
+	cfg WHIRConfig,
+	params WHIRParams,
+	merkle Merkle,
+) WHIRCircuit {
+	return WHIRCircuit{
+		ParamNRounds:                         cfg.NRounds,
+		FoldingFactorArray:                   params.folding_factor,
+		RoundParametersOODSamples:            cfg.OODSamples,
+		RoundParametersNumOfQueries:          cfg.NumQueries,
+		PowBits:                              cfg.PowBits,
+		FinalQueries:                         cfg.FinalQueries,
+		FinalPowBits:                         cfg.FinalPowBits,
+		FinalFoldingPowBits:                  cfg.FinalFoldingPowBits,
+		StartingDomainBackingDomainGenerator: params.startingDomainGen,
+		DomainSize:                           params.domainSize,
+		CommittmentOODSamples:                1,
+		FinalSumcheckRounds:                  params.finalSumcheckRounds,
+		MVParamsNumberOfVariables:            params.mvParamsNumberOfVariables,
+		Leaves:                               merkle.totalLeaves,
+		LeafIndexes:                          merkle.totalLeafIndexes,
+		LeafSiblingHashes:                    merkle.totalLeafSiblingHashes,
+		AuthPaths:                            merkle.totalAuthPath,
+	}
 }

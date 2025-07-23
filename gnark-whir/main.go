@@ -63,6 +63,16 @@ type WHIRConfig struct {
 	DomainGenerator     string `json:"domain_generator"`
 }
 
+type Hints struct {
+	col_hints Hint
+	a_hints   Hint
+}
+
+type Hint struct {
+	merkle_paths []MultiPath[KeccakDigest]
+	stir_answers [][][]Fp256
+}
+
 func main() {
 	app := &cli.App{
 		Name:  "Verifier",
@@ -202,7 +212,18 @@ func main() {
 				vk = &restoredVk
 			}
 
-			verify_circuit(deferred, config, merkle_paths, stir_answers, pk, vk, outputCcsPath)
+			hints := Hints{
+				col_hints: Hint{
+					merkle_paths: merkle_paths,
+					stir_answers: stir_answers,
+				},
+				a_hints: Hint{
+					merkle_paths: []MultiPath[KeccakDigest]{},
+					stir_answers: [][][]Fp256{},
+				},
+			}
+
+			verify_circuit(deferred, config, hints, pk, vk, outputCcsPath)
 			return nil
 		},
 	}

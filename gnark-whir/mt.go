@@ -231,41 +231,26 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	// runSumcheckRounds(api, circuit.LinearStatementValuesAtPoints[0], arthur, circuit., 4);
+	runSumcheckRounds(api, circuit.LinearStatementValuesAtPoints[0], arthur, circuit.WHIRCircuitA.MVParamsNumberOfVariables, 4)
 	return nil
 }
 
 func verify_circuit(
-	deferred []Fp256, cfg Config, merkle_paths []MultiPath[KeccakDigest],
-	stir_answers [][][]Fp256, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
 ) {
-	container_merkle := new_merkle(merkle_paths, stir_answers, true)
-	merkle := new_merkle(merkle_paths, stir_answers, false)
-	startingDomainGen, _ := new(big.Int).SetString(cfg.WHIRConfigCol.DomainGenerator, 10)
-	mvParamsNumberOfVariables := cfg.WHIRConfigCol.NVars
-	var foldingFactor []int
-	var finalSumcheckRounds int
+	container_merkle_col := new_merkle(hints.col_hints, true)
+	merkle_col := new_merkle(hints.col_hints, false)
+	whir_params_col := new_whir_params(cfg.WHIRConfigCol)
 
-	if len(cfg.WHIRConfigCol.FoldingFactor) > 1 {
-		foldingFactor = append(cfg.WHIRConfigCol.FoldingFactor, cfg.WHIRConfigCol.FoldingFactor[len(cfg.WHIRConfigCol.FoldingFactor)-1])
-		finalSumcheckRounds = mvParamsNumberOfVariables % foldingFactor[len(foldingFactor)-1]
-	} else {
-		foldingFactor = []int{4}
-		finalSumcheckRounds = mvParamsNumberOfVariables % 4
-	}
-	domainSize := (2 << mvParamsNumberOfVariables) * (1 << cfg.WHIRConfigCol.Rate) / 2
-	oodSamples := cfg.WHIRConfigCol.OODSamples
-	numOfQueries := cfg.WHIRConfigCol.NumQueries
-	powBits := cfg.WHIRConfigCol.PowBits
-	finalQueries := cfg.WHIRConfigCol.FinalQueries
-	nRounds := cfg.WHIRConfigCol.NRounds
+	container_merkle_a := new_merkle(hints.a_hints, true)
+	merkle_a := new_merkle(hints.a_hints, false)
+	whir_params_a := new_whir_params(cfg.WHIRConfigA)
 
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
 	for i := range cfg.Transcript {
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
-		contTranscript[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
 	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
@@ -275,30 +260,8 @@ func verify_circuit(
 	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
 	for i := range len(deferred) {
 		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		contLinearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
 		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
 		linearStatementEvaluations[i] = frontend.Variable(x)
-		contLinearStatementEvaluations[i] = frontend.Variable(x)
-	}
-
-	whir_circuit_col := WHIRCircuit{
-		ParamNRounds:                         nRounds,
-		FoldingFactorArray:                   foldingFactor,
-		RoundParametersOODSamples:            oodSamples,
-		RoundParametersNumOfQueries:          numOfQueries,
-		PowBits:                              powBits,
-		FinalQueries:                         finalQueries,
-		FinalPowBits:                         cfg.WHIRConfigCol.FinalPowBits,
-		FinalFoldingPowBits:                  cfg.WHIRConfigCol.FinalFoldingPowBits,
-		StartingDomainBackingDomainGenerator: startingDomainGen,
-		DomainSize:                           domainSize,
-		CommittmentOODSamples:                1,
-		FinalSumcheckRounds:                  finalSumcheckRounds,
-		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		Leaves:                               container_merkle.totalLeaves,
-		LeafIndexes:                          container_merkle.totalLeafIndexes,
-		LeafSiblingHashes:                    container_merkle.totalLeafSiblingHashes,
-		AuthPaths:                            container_merkle.totalAuthPath,
 	}
 
 	var circuit = Circuit{
@@ -308,7 +271,8 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		WHIRCircuitCol:                whir_circuit_col,
+		WHIRCircuitCol:                new_whir_circuit(cfg.WHIRConfigCol, whir_params_col, container_merkle_col),
+		WHIRCircuitA:                  new_whir_circuit(cfg.WHIRConfigA, whir_params_a, container_merkle_a),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -338,26 +302,6 @@ func verify_circuit(
 		vk = &unsafeVk
 	}
 
-	whir_circuit_assignment := WHIRCircuit{
-		ParamNRounds:                         nRounds,
-		FoldingFactorArray:                   foldingFactor,
-		RoundParametersOODSamples:            oodSamples,
-		RoundParametersNumOfQueries:          numOfQueries,
-		PowBits:                              powBits,
-		FinalQueries:                         finalQueries,
-		FinalPowBits:                         cfg.WHIRConfigCol.FinalPowBits,
-		FinalFoldingPowBits:                  cfg.WHIRConfigCol.FinalFoldingPowBits,
-		StartingDomainBackingDomainGenerator: startingDomainGen,
-		DomainSize:                           domainSize,
-		CommittmentOODSamples:                1,
-		FinalSumcheckRounds:                  finalSumcheckRounds,
-		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
-		Leaves:                               merkle.totalLeaves,
-		LeafIndexes:                          merkle.totalLeafIndexes,
-		LeafSiblingHashes:                    merkle.totalLeafSiblingHashes,
-		AuthPaths:                            merkle.totalAuthPath,
-	}
-
 	assignment := Circuit{
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        transcriptT,
@@ -365,7 +309,8 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		WHIRCircuitCol:                whir_circuit_assignment,
+		WHIRCircuitCol:                new_whir_circuit(cfg.WHIRConfigCol, whir_params_col, merkle_col),
+		WHIRCircuitA:                  new_whir_circuit(cfg.WHIRConfigA, whir_params_a, merkle_a),
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
