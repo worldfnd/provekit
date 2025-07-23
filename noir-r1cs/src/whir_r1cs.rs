@@ -125,7 +125,7 @@ impl WhirR1CSScheme {
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
 
         prove_spark(
-            r1cs.a(), 
+            r1cs.a(),
             &mut merlin,
             &self.whir_config_a_num_terms,
             &self.whir_config_row,

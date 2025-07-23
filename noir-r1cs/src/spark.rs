@@ -1,9 +1,11 @@
+use std::ops::Mul;
+
 use anyhow::{ensure, Context, Error, Result};
 use ark_crypto_primitives::merkle_tree::Config;
 use ark_ff::FftField;
 use spongefish::{codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField}, ByteDomainSeparator, ProverState, VerifierState};
 use whir::{poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
-    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}
+    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}, verifier::Verifier
 }};
 use ark_std::{Zero, One};
 
@@ -39,13 +41,13 @@ pub fn prove_spark (
 
     merlin.hint::<[FieldElement; 3]>(&final_folds)?;
 
-    // produce_whir_proof(
-    //     merlin,
-    //     MultilinearPoint(randomness.clone()),
-    //     final_folds[0],
-    //     whir_config_num_terms.clone(),
-    //     spark.sumcheck.witnesses.val,
-    // )?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(randomness.clone()),
+        final_folds[0],
+        whir_config_num_terms.clone(),
+        spark.sumcheck.witnesses.val,
+    )?;
 
     Ok(())
 }
@@ -439,8 +441,8 @@ where
     ) -> Self {
         let io = self
             .add_sumcheck_polynomials(num_terms)
-            .hint("last folds");
-            // .add_whir_proof(whir_config_num_terms)
+            .hint("last folds")
+            .add_whir_proof(whir_config_num_terms);
             // .add_whir_proof(whir_config_num_terms)
             // .add_whir_proof(whir_config_num_terms);
         io
@@ -466,6 +468,8 @@ pub fn verify_spark(
         arthur,
         claimed_value,
         num_terms,
+        spark_commitments.sumcheck,
+        whir_config_terms,
     )?;
 
     Ok(())
@@ -599,6 +603,8 @@ pub fn verify_spark_sumcheck (
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     claimed_value: FieldElement,
     num_terms: usize,
+    sumcheck_commitments: SparkSumcheckCommitments,
+    whir_config_terms: &WhirConfig,
 ) -> Result<()>{
     let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
         arthur,
@@ -608,6 +614,15 @@ pub fn verify_spark_sumcheck (
     .context("while verifying sumcheck 2")?;
 
     let final_folds: [FieldElement; 3] = arthur.hint()?;
+
+    let mut statement_verifier = Statement::<FieldElement>::new(num_terms);
+    statement_verifier.add_constraint(Weights::evaluation(MultilinearPoint(randomness)), final_folds[0]);
+
+    let verifier = Verifier::new(whir_config_terms);
+
+    let (folding_randomness, deferred) = verifier
+        .verify(arthur, &sumcheck_commitments.value_commitment, &statement_verifier)
+        .context("while verifying WHIR")?;
 
     Ok(())
 }
