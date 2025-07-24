@@ -51,6 +51,7 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
+            &scheme.whir.whir_config_row,
             &scheme.whir.whir_config_col,
             &scheme.whir.whir_config_a_num_terms,
             &proof.whir_r1cs_proof.transcript,

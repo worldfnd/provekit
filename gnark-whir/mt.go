@@ -47,7 +47,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}

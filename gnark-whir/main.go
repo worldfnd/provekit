@@ -40,6 +40,7 @@ type ProofObject struct {
 }
 
 type Config struct {
+	WHIRConfigRow     WHIRConfig `json:"whir_config_row"`
 	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
 	WHIRConfigA       WHIRConfig `json:"whir_config_a_num_terms"`
 	LogNumConstraints int        `json:"log_num_constraints"`
