@@ -1,19 +1,45 @@
-use std::ops::Mul;
-
-use anyhow::{ensure, Context, Error, Result};
-use ark_crypto_primitives::merkle_tree::Config;
-use ark_ff::FftField;
-use spongefish::{codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField}, ByteDomainSeparator, ProverState, VerifierState};
-use whir::{poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
-    committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness}, domainsep::{DigestDomainSeparator, WhirDomainSeparator}, parameters::WhirConfig as GenericWhirConfig, prover::Prover, statement::{Statement, Weights}, utils::{HintDeserialize, HintSerialize}, verifier::Verifier
-}};
-use ark_std::{Zero, One};
-
-use crate::{skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{pad_to_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly, sumcheck_fold_map_reduce, SumcheckIOPattern}, HALF}, FieldElement};
+use {
+    crate::{
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        sparse_matrix::HydratedSparseMatrix,
+        utils::{
+            pad_to_power_of_two,
+            sumcheck::{
+                calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly,
+                sumcheck_fold_map_reduce, SumcheckIOPattern,
+            },
+            HALF,
+        },
+        FieldElement,
+    },
+    anyhow::{ensure, Context, Error, Result},
+    ark_crypto_primitives::merkle_tree::Config,
+    ark_ff::FftField,
+    ark_std::{One, Zero},
+    spongefish::{
+        codecs::arkworks_algebra::{
+            FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField,
+        },
+        ByteDomainSeparator, ProverState, VerifierState,
+    },
+    std::ops::Mul,
+    whir::{
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
+        whir::{
+            committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness},
+            domainsep::{DigestDomainSeparator, WhirDomainSeparator},
+            parameters::WhirConfig as GenericWhirConfig,
+            prover::Prover,
+            statement::{Statement, Weights},
+            utils::{HintDeserialize, HintSerialize},
+            verifier::Verifier,
+        },
+    },
+};
 
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
 
-pub fn prove_spark (
+pub fn prove_spark(
     matrix: HydratedSparseMatrix,
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     whir_config_num_terms: &WhirConfig,
@@ -33,11 +59,8 @@ pub fn prove_spark (
         col_randomness,
     );
 
-    let (final_folds, randomness) = run_sumcheck_prover_spark(
-        merlin,
-        spark.sumcheck.values.clone(),
-        claimed_value,
-    );
+    let (final_folds, randomness) =
+        run_sumcheck_prover_spark(merlin, spark.sumcheck.values.clone(), claimed_value);
 
     merlin.hint::<[FieldElement; 3]>(&final_folds)?;
 
@@ -128,8 +151,8 @@ pub fn run_sumcheck_prover_spark(
 
 pub struct SparkInstance {
     pub sumcheck: SPARKSumcheckValuesAndWitnesses,
-    pub rowwise: SPARKValuesAndWitnesses,
-    pub colwise: SPARKValuesAndWitnesses,
+    pub rowwise:  SPARKValuesAndWitnesses,
+    pub colwise:  SPARKValuesAndWitnesses,
 }
 
 impl SparkInstance {
@@ -142,48 +165,61 @@ impl SparkInstance {
         row_randomness: &Vec<FieldElement>,
         col_randomness: &Vec<FieldElement>,
     ) -> Self {
-        let (matrix_witnesses, matrix_values) = Self::calculate_matrix_values_and_witnesses(&s, merlin, whir_config_num_terms.clone());
-        let (e_witnesses, e_values) = Self::calculate_e_witnesses(&s, merlin, whir_config_num_terms.clone(), row_randomness, col_randomness);
-        let (time_stamp_witnesses, time_stamp_values) = Self::calculate_timestamp_witnesses(&s, merlin, whir_config_num_terms.clone(), whir_config_row.clone(), whir_config_col.clone());
-        Self { 
-            rowwise: SPARKValuesAndWitnesses { 
-                values: SPARKValues { 
-                    addresses: matrix_values.row_values.clone(), 
+        let (matrix_witnesses, matrix_values) =
+            Self::calculate_matrix_values_and_witnesses(&s, merlin, whir_config_num_terms.clone());
+        let (e_witnesses, e_values) = Self::calculate_e_witnesses(
+            &s,
+            merlin,
+            whir_config_num_terms.clone(),
+            row_randomness,
+            col_randomness,
+        );
+        let (time_stamp_witnesses, time_stamp_values) = Self::calculate_timestamp_witnesses(
+            &s,
+            merlin,
+            whir_config_num_terms.clone(),
+            whir_config_row.clone(),
+            whir_config_col.clone(),
+        );
+        Self {
+            rowwise:  SPARKValuesAndWitnesses {
+                values:    SPARKValues {
+                    addresses:        matrix_values.row_values.clone(),
                     read_time_stamps: time_stamp_values.read_ts_row_values.clone(),
-                    values: e_values.e_rx_values.clone(), 
-                    final_counters: time_stamp_values.final_cts_row_values.clone(), 
-                    memory: e_values.eq_rx_values.clone(), 
+                    values:           e_values.e_rx_values.clone(),
+                    final_counters:   time_stamp_values.final_cts_row_values.clone(),
+                    memory:           e_values.eq_rx_values.clone(),
                 },
-                witnesses: SPARKWitnesses { 
-                    addresses: matrix_witnesses.row_witness.clone(), 
-                    read_time_stamps: time_stamp_witnesses.read_ts_row_witness.clone(), 
-                    values: e_witnesses.e_rx_witness.clone(), 
-                    final_counters: time_stamp_witnesses.final_cts_row_witness.clone() 
+                witnesses: SPARKWitnesses {
+                    addresses:        matrix_witnesses.row_witness.clone(),
+                    read_time_stamps: time_stamp_witnesses.read_ts_row_witness.clone(),
+                    values:           e_witnesses.e_rx_witness.clone(),
+                    final_counters:   time_stamp_witnesses.final_cts_row_witness.clone(),
                 },
             },
-            colwise: SPARKValuesAndWitnesses { 
-                values: SPARKValues { 
-                    addresses: matrix_values.col_values.clone(), 
+            colwise:  SPARKValuesAndWitnesses {
+                values:    SPARKValues {
+                    addresses:        matrix_values.col_values.clone(),
                     read_time_stamps: time_stamp_values.read_ts_col_values.clone(),
-                    values: e_values.e_ry_values.clone(), 
-                    final_counters: time_stamp_values.final_cts_col_values.clone(), 
-                    memory: e_values.eq_ry_values.clone(), 
+                    values:           e_values.e_ry_values.clone(),
+                    final_counters:   time_stamp_values.final_cts_col_values.clone(),
+                    memory:           e_values.eq_ry_values.clone(),
                 },
-                witnesses: SPARKWitnesses { 
-                    addresses: matrix_witnesses.col_witness.clone(), 
-                    read_time_stamps: time_stamp_witnesses.read_ts_col_witness.clone(), 
-                    values: e_witnesses.e_ry_witness.clone(), 
-                    final_counters: time_stamp_witnesses.final_cts_col_witness.clone() 
+                witnesses: SPARKWitnesses {
+                    addresses:        matrix_witnesses.col_witness.clone(),
+                    read_time_stamps: time_stamp_witnesses.read_ts_col_witness.clone(),
+                    values:           e_witnesses.e_ry_witness.clone(),
+                    final_counters:   time_stamp_witnesses.final_cts_col_witness.clone(),
                 },
             },
             sumcheck: SPARKSumcheckValuesAndWitnesses {
-                values: SPARKSumcheckValues {
-                    val: matrix_values.val_values,
+                values:    SPARKSumcheckValues {
+                    val:  matrix_values.val_values,
                     e_rx: e_values.e_rx_values,
                     e_ry: e_values.e_ry_values,
                 },
                 witnesses: SPARKSumcheckWitnesses {
-                    val: matrix_witnesses.val_witness,
+                    val:  matrix_witnesses.val_witness,
                     e_rx: e_witnesses.e_rx_witness,
                     e_ry: e_witnesses.e_ry_witness,
                 },
@@ -192,11 +228,11 @@ impl SparkInstance {
     }
 
     pub fn calculate_matrix_values_and_witnesses(
-        s: &HydratedSparseMatrix, 
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>, 
-        whir_config_a: WhirConfig
+        s: &HydratedSparseMatrix,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        whir_config_a: WhirConfig,
     ) -> (MatrixWitnesses, MatrixValues) {
-        let mut row_spark   = Vec::<FieldElement>::new();
+        let mut row_spark = Vec::<FieldElement>::new();
         let mut col_spark = Vec::<FieldElement>::new();
         let mut val_spark = Vec::<FieldElement>::new();
 
@@ -211,23 +247,24 @@ impl SparkInstance {
         val_spark = pad_to_power_of_two(val_spark);
 
         let committer = CommitmentWriter::new(whir_config_a);
-        
-        (MatrixWitnesses {
-            row_witness: Self::commit_to_vector(&committer, merlin, row_spark.clone()),
-            col_witness: Self::commit_to_vector(&committer, merlin, col_spark.clone()),
-            val_witness: Self::commit_to_vector(&committer, merlin, val_spark.clone()),
-        }, 
-        MatrixValues {
-            row_values: row_spark,
-            col_values: col_spark,
-            val_values: val_spark,
-        })
+
+        (
+            MatrixWitnesses {
+                row_witness: Self::commit_to_vector(&committer, merlin, row_spark.clone()),
+                col_witness: Self::commit_to_vector(&committer, merlin, col_spark.clone()),
+                val_witness: Self::commit_to_vector(&committer, merlin, val_spark.clone()),
+            },
+            MatrixValues {
+                row_values: row_spark,
+                col_values: col_spark,
+                val_values: val_spark,
+            },
+        )
     }
 
-
     pub fn calculate_e_witnesses(
-        s: &HydratedSparseMatrix, 
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>, 
+        s: &HydratedSparseMatrix,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         whir_config_num_terms: WhirConfig,
         row_randomness: &Vec<FieldElement>,
         col_randomness: &Vec<FieldElement>,
@@ -246,24 +283,29 @@ impl SparkInstance {
         e_ry = pad_to_power_of_two(e_ry);
 
         let committer = CommitmentWriter::new(whir_config_num_terms);
-        (EWitnesses {
-            e_rx_witness: Self::commit_to_vector(&committer, merlin, e_rx.clone()),
-            e_ry_witness: Self::commit_to_vector(&committer, merlin, e_ry.clone()),
-        }, 
-        EValues {
-            e_rx_values: e_rx,
-            e_ry_values: e_ry,
-            eq_rx_values: eq_rx,
-            eq_ry_values: eq_ry,
-        })
-    }       
+        (
+            EWitnesses {
+                e_rx_witness: Self::commit_to_vector(&committer, merlin, e_rx.clone()),
+                e_ry_witness: Self::commit_to_vector(&committer, merlin, e_ry.clone()),
+            },
+            EValues {
+                e_rx_values:  e_rx,
+                e_ry_values:  e_ry,
+                eq_rx_values: eq_rx,
+                eq_ry_values: eq_ry,
+            },
+        )
+    }
 
     pub fn commit_to_vector(
         committer: &CommitmentWriter<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         vector: Vec<FieldElement>,
     ) -> Witness<FieldElement, SkyscraperMerkleConfig> {
-        assert!(vector.len().is_power_of_two(), "Committed vector length must be a power of two");
+        assert!(
+            vector.len().is_power_of_two(),
+            "Committed vector length must be a power of two"
+        );
         let evals = EvaluationsList::new(vector);
         let coeffs = evals.to_coeffs();
         committer
@@ -272,8 +314,8 @@ impl SparkInstance {
     }
 
     pub fn calculate_timestamp_witnesses(
-        s: &HydratedSparseMatrix, 
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>, 
+        s: &HydratedSparseMatrix,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         whir_config_a: WhirConfig,
         whir_config_row: WhirConfig,
         whir_config_col: WhirConfig,
@@ -284,7 +326,8 @@ impl SparkInstance {
         let mut read_ts_col_counters = vec![0; s.matrix.num_cols];
         let mut read_ts_col = Vec::<FieldElement>::new();
 
-        // Note: Possible optimization: this can be done once when the matrix is created.
+        // Note: Possible optimization: this can be done once when the matrix is
+        // created.
         for ((r, c), _) in s.iter() {
             read_ts_row.push(FieldElement::from(read_ts_row_counters[r] as u64));
             read_ts_row_counters[r] += 1;
@@ -293,7 +336,7 @@ impl SparkInstance {
         }
         read_ts_row = pad_to_power_of_two(read_ts_row);
         read_ts_col = pad_to_power_of_two(read_ts_col);
-        
+
         let final_cts_row = read_ts_row_counters
             .iter()
             .map(|&x| FieldElement::from(x as u64))
@@ -310,35 +353,53 @@ impl SparkInstance {
         let committer_row = CommitmentWriter::new(whir_config_row);
         let committer_col = CommitmentWriter::new(whir_config_col);
 
-        (TimeStampWitnesses {
-            read_ts_row_witness: Self::commit_to_vector(&committer, merlin, read_ts_row.clone()),
-            read_ts_col_witness: Self::commit_to_vector(&committer, merlin, read_ts_col.clone()),
-            final_cts_row_witness: Self::commit_to_vector(&committer_row, merlin, final_cts_row.clone()),
-            final_cts_col_witness: Self::commit_to_vector(&committer_col, merlin, final_cts_col.clone()),
-        }, 
-        TimeStampValues {
-            read_ts_row_values: read_ts_row,
-            read_ts_col_values: read_ts_col,
-            final_cts_row_values: final_cts_row,
-            final_cts_col_values: final_cts_col,
-        })
+        (
+            TimeStampWitnesses {
+                read_ts_row_witness:   Self::commit_to_vector(
+                    &committer,
+                    merlin,
+                    read_ts_row.clone(),
+                ),
+                read_ts_col_witness:   Self::commit_to_vector(
+                    &committer,
+                    merlin,
+                    read_ts_col.clone(),
+                ),
+                final_cts_row_witness: Self::commit_to_vector(
+                    &committer_row,
+                    merlin,
+                    final_cts_row.clone(),
+                ),
+                final_cts_col_witness: Self::commit_to_vector(
+                    &committer_col,
+                    merlin,
+                    final_cts_col.clone(),
+                ),
+            },
+            TimeStampValues {
+                read_ts_row_values:   read_ts_row,
+                read_ts_col_values:   read_ts_col,
+                final_cts_row_values: final_cts_row,
+                final_cts_col_values: final_cts_col,
+            },
+        )
     }
 }
 
 pub struct SPARKSumcheckValuesAndWitnesses {
-    pub values: SPARKSumcheckValues,
+    pub values:    SPARKSumcheckValues,
     pub witnesses: SPARKSumcheckWitnesses,
 }
 
 #[derive(Clone)]
 pub struct SPARKSumcheckValues {
-    pub val: Vec<FieldElement>,
+    pub val:  Vec<FieldElement>,
     pub e_rx: Vec<FieldElement>,
     pub e_ry: Vec<FieldElement>,
 }
 
 pub struct SPARKSumcheckWitnesses {
-    pub val: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub val:  Witness<FieldElement, SkyscraperMerkleConfig>,
     pub e_rx: Witness<FieldElement, SkyscraperMerkleConfig>,
     pub e_ry: Witness<FieldElement, SkyscraperMerkleConfig>,
 }
@@ -352,12 +413,12 @@ pub struct MatrixValues {
 pub struct MatrixWitnesses {
     pub row_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     pub col_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-    pub val_witness: Witness<FieldElement, SkyscraperMerkleConfig>
+    pub val_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
 }
 
 pub struct EValues {
-    pub e_rx_values: Vec<FieldElement>,
-    pub e_ry_values: Vec<FieldElement>,
+    pub e_rx_values:  Vec<FieldElement>,
+    pub e_ry_values:  Vec<FieldElement>,
     pub eq_rx_values: Vec<FieldElement>,
     pub eq_ry_values: Vec<FieldElement>,
 }
@@ -367,16 +428,16 @@ pub struct EWitnesses {
     pub e_ry_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
 }
 
-pub trait SparkIOPattern<F: FftField, MerkleConfig: Config>{
+pub trait SparkIOPattern<F: FftField, MerkleConfig: Config> {
     fn spark<PowStrategy>(
-        self, 
+        self,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         num_terms: usize,
     ) -> Self;
     fn spark_commit<PowStrategy>(
-        self, 
+        self,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
@@ -392,31 +453,27 @@ impl<F, MerkleConfig, DomainSeparator> SparkIOPattern<F, MerkleConfig> for Domai
 where
     F: FftField,
     MerkleConfig: Config,
-    DomainSeparator:
-        ByteDomainSeparator + FieldDomainSeparator<F> + DigestDomainSeparator<MerkleConfig> + WhirDomainSeparator<F, MerkleConfig> + SumcheckIOPattern,
-
+    DomainSeparator: ByteDomainSeparator
+        + FieldDomainSeparator<F>
+        + DigestDomainSeparator<MerkleConfig>
+        + WhirDomainSeparator<F, MerkleConfig>
+        + SumcheckIOPattern,
 {
-    fn spark<PowStrategy> (
-        self, 
+    fn spark<PowStrategy>(
+        self,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         num_terms: usize,
     ) -> Self {
         let io = self
-            .spark_commit(
-                whir_config_num_terms,
-                whir_config_row,
-                whir_config_col,
-            ).spark_sumcheck(
-                num_terms, 
-                whir_config_num_terms
-            );
+            .spark_commit(whir_config_num_terms, whir_config_row, whir_config_col)
+            .spark_sumcheck(num_terms, whir_config_num_terms);
         io
     }
 
-    fn spark_commit<PowStrategy> (
-        self, 
+    fn spark_commit<PowStrategy>(
+        self,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
@@ -437,14 +494,14 @@ where
     fn spark_sumcheck<PowStrategy>(
         self,
         num_terms: usize,
-        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self {
         let io = self
             .add_sumcheck_polynomials(num_terms)
             .hint("last folds")
             .add_whir_proof(whir_config_num_terms);
-            // .add_whir_proof(whir_config_num_terms)
-            // .add_whir_proof(whir_config_num_terms);
+        // .add_whir_proof(whir_config_num_terms)
+        // .add_whir_proof(whir_config_num_terms);
         io
     }
 }
@@ -457,12 +514,8 @@ pub fn verify_spark(
     claimed_value: FieldElement,
     num_terms: usize,
 ) -> Result<()> {
-    let spark_commitments = parse_spark_commitments(
-        arthur,
-        whir_config_row,
-        whir_config_col,
-        whir_config_terms,
-    );
+    let spark_commitments =
+        parse_spark_commitments(arthur, whir_config_row, whir_config_col, whir_config_terms);
 
     verify_spark_sumcheck(
         arthur,
@@ -475,16 +528,16 @@ pub fn verify_spark(
     Ok(())
 }
 
-pub fn parse_spark_commitments (
+pub fn parse_spark_commitments(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     whir_config_row: &WhirConfig,
     whir_config_col: &WhirConfig,
     whir_config_terms: &WhirConfig,
-) -> SparkCommitments{
+) -> SparkCommitments {
     let commitment_reader_row = CommitmentReader::new(whir_config_row);
     let commitment_reader_col = CommitmentReader::new(whir_config_col);
     let commitment_reader_term = CommitmentReader::new(whir_config_terms);
-    
+
     let row_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
     let col_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
     let val_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
@@ -494,11 +547,11 @@ pub fn parse_spark_commitments (
     let read_ts_col_commitment = commitment_reader_term.parse_commitment(arthur).unwrap();
     let final_cts_row_commitment = commitment_reader_row.parse_commitment(arthur).unwrap();
     let final_cts_col_commitment = commitment_reader_col.parse_commitment(arthur).unwrap();
-    
+
     SparkCommitments {
         rowwise: MemoryCheckCommitments {
-            rs_ws: SparkWhirRSWSCommitments {
-                addr_commitment:    row_commitment.clone(),
+            rs_ws:     SparkWhirRSWSCommitments {
+                addr_commitment:       row_commitment.clone(),
                 value_commitment:      e_rx_commitment.clone(),
                 time_stamp_commitment: read_ts_row_commitment.clone(),
             },
@@ -506,8 +559,8 @@ pub fn parse_spark_commitments (
         },
 
         colwise: MemoryCheckCommitments {
-            rs_ws: SparkWhirRSWSCommitments {
-                addr_commitment:    col_commitment.clone(),
+            rs_ws:     SparkWhirRSWSCommitments {
+                addr_commitment:       col_commitment.clone(),
                 value_commitment:      e_ry_commitment.clone(),
                 time_stamp_commitment: read_ts_col_commitment.clone(),
             },
@@ -516,26 +569,26 @@ pub fn parse_spark_commitments (
 
         sumcheck: SparkSumcheckCommitments {
             value_commitment: val_commitment,
-            e_rx_commitment:  e_rx_commitment,
-            e_ry_commitment:  e_ry_commitment,
+            e_rx_commitment,
+            e_ry_commitment,
         },
     }
 }
 
 pub struct SparkCommitments {
     sumcheck: SparkSumcheckCommitments,
-    rowwise: MemoryCheckCommitments,
-    colwise: MemoryCheckCommitments,
+    rowwise:  MemoryCheckCommitments,
+    colwise:  MemoryCheckCommitments,
 }
 
 pub struct MemoryCheckCommitments {
-    rs_ws: SparkWhirRSWSCommitments,
+    rs_ws:     SparkWhirRSWSCommitments,
     final_cts: ParsedCommitment<FieldElement, FieldElement>,
 }
 
 pub struct SparkWhirRSWSCommitments {
-    addr_commitment:    ParsedCommitment<FieldElement, FieldElement>,
-    value_commitment:  ParsedCommitment<FieldElement, FieldElement>,
+    addr_commitment:       ParsedCommitment<FieldElement, FieldElement>,
+    value_commitment:      ParsedCommitment<FieldElement, FieldElement>,
     time_stamp_commitment: ParsedCommitment<FieldElement, FieldElement>,
 }
 
@@ -546,39 +599,39 @@ pub struct SparkSumcheckCommitments {
 }
 
 pub struct TimeStampWitnesses {
-    pub read_ts_row_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-    pub read_ts_col_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub read_ts_row_witness:   Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub read_ts_col_witness:   Witness<FieldElement, SkyscraperMerkleConfig>,
     pub final_cts_row_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     pub final_cts_col_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
 }
 
 pub struct TimeStampValues {
-    pub read_ts_row_values: Vec<FieldElement>,
-    pub read_ts_col_values: Vec<FieldElement>,
+    pub read_ts_row_values:   Vec<FieldElement>,
+    pub read_ts_col_values:   Vec<FieldElement>,
     pub final_cts_row_values: Vec<FieldElement>,
     pub final_cts_col_values: Vec<FieldElement>,
 }
 
 pub struct SPARKValuesAndWitnesses {
-    pub values: SPARKValues,
+    pub values:    SPARKValues,
     pub witnesses: SPARKWitnesses,
 }
 
 #[derive(Clone)]
 pub struct SPARKValues {
-    pub addresses: Vec<FieldElement>,
+    pub addresses:        Vec<FieldElement>,
     pub read_time_stamps: Vec<FieldElement>,
-    pub values: Vec<FieldElement>,
-    pub final_counters: Vec<FieldElement>,
-    pub memory: Vec<FieldElement>,
+    pub values:           Vec<FieldElement>,
+    pub final_counters:   Vec<FieldElement>,
+    pub memory:           Vec<FieldElement>,
 }
 
 #[derive(Clone)]
 pub struct SPARKWitnesses {
-    pub addresses: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub addresses:        Witness<FieldElement, SkyscraperMerkleConfig>,
     pub read_time_stamps: Witness<FieldElement, SkyscraperMerkleConfig>,
-    pub values: Witness<FieldElement, SkyscraperMerkleConfig>,
-    pub final_counters: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub values:           Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub final_counters:   Witness<FieldElement, SkyscraperMerkleConfig>,
 }
 
 pub fn produce_whir_proof(
@@ -599,29 +652,33 @@ pub fn produce_whir_proof(
     Ok(())
 }
 
-pub fn verify_spark_sumcheck (
+pub fn verify_spark_sumcheck(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     claimed_value: FieldElement,
     num_terms: usize,
     sumcheck_commitments: SparkSumcheckCommitments,
     whir_config_terms: &WhirConfig,
-) -> Result<()>{
-    let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
-        arthur,
-        num_terms,
-        claimed_value,
-    )
-    .context("while verifying sumcheck 2")?;
+) -> Result<()> {
+    let (randomness, last_sumcheck_value) =
+        run_sumcheck_verifier_spark(arthur, num_terms, claimed_value)
+            .context("while verifying sumcheck 2")?;
 
     let final_folds: [FieldElement; 3] = arthur.hint()?;
 
     let mut statement_verifier = Statement::<FieldElement>::new(num_terms);
-    statement_verifier.add_constraint(Weights::evaluation(MultilinearPoint(randomness)), final_folds[0]);
+    statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness)),
+        final_folds[0],
+    );
 
     let verifier = Verifier::new(whir_config_terms);
 
     let (folding_randomness, deferred) = verifier
-        .verify(arthur, &sumcheck_commitments.value_commitment, &statement_verifier)
+        .verify(
+            arthur,
+            &sumcheck_commitments.value_commitment,
+            &statement_verifier,
+        )
         .context("while verifying WHIR")?;
 
     Ok(())

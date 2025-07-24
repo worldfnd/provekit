@@ -127,7 +127,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
+	_, _, err = runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

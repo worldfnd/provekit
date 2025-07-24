@@ -13,23 +13,23 @@ use {
 /// Configuration for Gnark
 pub struct GnarkConfig {
     /// WHIR parameters for row
-    pub whir_config_row:            WHIRConfigGnark,
+    pub whir_config_row:         WHIRConfigGnark,
     /// WHIR parameters for column
-    pub whir_config_col:            WHIRConfigGnark,
+    pub whir_config_col:         WHIRConfigGnark,
     /// WHIR parameters for number of terms in the matrix A
-    pub whir_config_a_num_terms:    WHIRConfigGnark,
+    pub whir_config_a_num_terms: WHIRConfigGnark,
     /// log of number of constraints in R1CS
-    pub log_num_constraints:    usize,
+    pub log_num_constraints:     usize,
     /// log of number of variables in R1CS
-    pub log_num_variables:    usize,
+    pub log_num_variables:       usize,
     /// log of number of non-zero terms matrix A
-    pub log_a_num_terms:    usize,
+    pub log_a_num_terms:         usize,
     /// nimue input output pattern
-    pub io_pattern:             String,
+    pub io_pattern:              String,
     /// transcript in byte form
-    pub transcript:             Vec<u8>,
+    pub transcript:              Vec<u8>,
     /// length of the transcript
-    pub transcript_len:         usize,
+    pub transcript_len:          usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -60,29 +60,35 @@ pub struct WHIRConfigGnark {
 }
 
 impl WHIRConfigGnark {
-    pub fn new (whir_params: &WhirConfig) -> Self {
+    pub fn new(whir_params: &WhirConfig) -> Self {
         WHIRConfigGnark {
-            n_rounds:               whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0,
+            n_rounds:               whir_params
+                .folding_factor
+                .compute_number_of_rounds(whir_params.mv_parameters.num_variables)
+                .0,
             rate:                   whir_params.starting_log_inv_rate,
             n_vars:                 whir_params.mv_parameters.num_variables,
-            folding_factor:         (0..(whir_params.folding_factor.compute_number_of_rounds(whir_params.mv_parameters.num_variables).0))
-            .map(|round| whir_params.folding_factor.at_round(round))
-            .collect(),
+            folding_factor:         (0..(whir_params
+                .folding_factor
+                .compute_number_of_rounds(whir_params.mv_parameters.num_variables)
+                .0))
+                .map(|round| whir_params.folding_factor.at_round(round))
+                .collect(),
             ood_samples:            whir_params
-            .round_parameters
-            .iter()
-            .map(|x| x.ood_samples)
-            .collect(),
+                .round_parameters
+                .iter()
+                .map(|x| x.ood_samples)
+                .collect(),
             num_queries:            whir_params
-            .round_parameters
-            .iter()
-            .map(|x| x.num_queries)
-            .collect(),
+                .round_parameters
+                .iter()
+                .map(|x| x.num_queries)
+                .collect(),
             pow_bits:               whir_params
-            .round_parameters
-            .iter()
-            .map(|x| x.pow_bits as i32)
-            .collect(),
+                .round_parameters
+                .iter()
+                .map(|x| x.pow_bits as i32)
+                .collect(),
             final_queries:          whir_params.final_queries,
             final_pow_bits:         whir_params.final_pow_bits as i32,
             final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
@@ -93,7 +99,6 @@ impl WHIRConfigGnark {
         }
     }
 }
-
 
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
@@ -108,15 +113,15 @@ pub fn gnark_parameters(
     a_num_terms: usize,
 ) -> GnarkConfig {
     GnarkConfig {
-        whir_config_row: WHIRConfigGnark::new(whir_params_row),
-        whir_config_col: WHIRConfigGnark::new(whir_params_col),
+        whir_config_row:         WHIRConfigGnark::new(whir_params_row),
+        whir_config_col:         WHIRConfigGnark::new(whir_params_col),
         whir_config_a_num_terms: WHIRConfigGnark::new(whir_params_a_num_terms),
-        log_num_constraints: m_0,
-        log_num_variables: m,
-        log_a_num_terms: a_num_terms,
-        io_pattern:             String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript:             transcript.to_vec(),
-        transcript_len:         transcript.to_vec().len(),
+        log_num_constraints:     m_0,
+        log_num_variables:       m,
+        log_a_num_terms:         a_num_terms,
+        io_pattern:              String::from_utf8(io.as_bytes().to_vec()).unwrap(),
+        transcript:              transcript.to_vec(),
+        transcript_len:          transcript.to_vec().len(),
     }
 }
 
@@ -133,7 +138,16 @@ pub fn write_gnark_parameters_to_file(
     a_num_terms: usize,
     file_path: &str,
 ) {
-    let gnark_config = gnark_parameters(whir_params_row, whir_params_col, whir_params_a_num_terms, transcript, io, m_0, m, a_num_terms);
+    let gnark_config = gnark_parameters(
+        whir_params_row,
+        whir_params_col,
+        whir_params_a_num_terms,
+        transcript,
+        io,
+        m_0,
+        m,
+        a_num_terms,
+    );
     println!("round config {:?}", whir_params_col.round_parameters);
     let mut file_params = File::create(file_path).unwrap();
     file_params
