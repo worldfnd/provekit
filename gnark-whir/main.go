@@ -166,14 +166,16 @@ func main() {
 						)
 						stir_answers = append(stir_answers, stirAnswers)
 					case "deferred_weight_evaluations":
+						var deferred_temp []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&deferred,
+							&deferred_temp,
 							false, false,
 						)
 						if err != nil {
 							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 						}
+						deferred = append(deferred, deferred_temp...)
 					}
 
 					if err != nil {
@@ -212,17 +214,20 @@ func main() {
 				vk = &restoredVk
 			}
 
+			spartan_end := config.WHIRConfigCol.NRounds + 1
+			spark_val_end := spartan_end + (config.WHIRConfigA.NRounds + 1)
+
 			hints := Hints{
 				col_hints: Hint{
-					merkle_paths: merkle_paths,
-					stir_answers: stir_answers,
+					merkle_paths: merkle_paths[:spartan_end],
+					stir_answers: stir_answers[:spartan_end],
 				},
 				a_hints: Hint{
-					merkle_paths: []MultiPath[KeccakDigest]{},
-					stir_answers: [][][]Fp256{},
+					merkle_paths: merkle_paths[spartan_end:spark_val_end],
+					stir_answers: stir_answers[spartan_end:spark_val_end],
 				},
 			}
-
+			fmt.Print(config.StatementEvaluations)
 			verify_circuit(deferred, config, hints, pk, vk, outputCcsPath)
 			return nil
 		},
