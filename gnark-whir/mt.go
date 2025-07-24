@@ -29,12 +29,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	spartan_sumcheck_rand, spartan_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.WHIRCircuitCol.MVParamsNumberOfVariables, 4)
+	spartan_sumcheck_rand, spartan_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
 
-	err = run_whir(api, arthur, uapi, sc, circuit.WHIRCircuitCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+	err = run_whir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -77,7 +77,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitA.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -122,28 +122,18 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	// Change it to Row
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
+	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsRow.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
 
-	runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.WHIRCircuitA.MVParamsNumberOfVariables, 4)
+	runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
 	return nil
 }
 
 func verify_circuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimed_evalutations []Fp256,
 ) {
-	whir_params_a := new_whir_params(cfg.WHIRConfigA)
-	whir_params_col := new_whir_params(cfg.WHIRConfigCol)
-
-	container_merkle_col := new_merkle(hints.col_hints, true)
-	merkle_col := new_merkle(hints.col_hints, false)
-
-	container_merkle_a := new_merkle(hints.a_hints, true)
-	merkle_a := new_merkle(hints.a_hints, false)
-
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
@@ -170,8 +160,11 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		WHIRCircuitCol:                new_whir_circuit(cfg.WHIRConfigCol, whir_params_col, container_merkle_col),
-		WHIRCircuitA:                  new_whir_circuit(cfg.WHIRConfigA, whir_params_a, container_merkle_a),
+		SpartanMerkle:                 new_merkle(hints.col_hints, true),
+		SparkValueMerkle:              new_merkle(hints.a_hints, true),
+
+		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
+		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -208,8 +201,12 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		WHIRCircuitCol:                new_whir_circuit(cfg.WHIRConfigCol, whir_params_col, merkle_col),
-		WHIRCircuitA:                  new_whir_circuit(cfg.WHIRConfigA, whir_params_a, merkle_a),
+		SpartanMerkle:                 new_merkle(hints.col_hints, false),
+		SparkValueMerkle:              new_merkle(hints.a_hints, false),
+
+		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
+		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
+		WHIRParamsA:   new_whir_params(cfg.WHIRConfigA),
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
