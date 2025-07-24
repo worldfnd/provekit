@@ -29,128 +29,18 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	spark_sumcheck_rand, spark_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.WHIRCircuitCol.MVParamsNumberOfVariables, 4)
+	spartan_sumcheck_rand, spartan_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.WHIRCircuitCol.MVParamsNumberOfVariables, 4)
 	if err != nil {
 		return err
 	}
 
-	err = run_whir(api, arthur, uapi, sc, circuit.WHIRCircuitCol)
+	err = run_whir(api, arthur, uapi, sc, circuit.WHIRCircuitCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
 	if err != nil {
 		return err
 	}
 
-	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.WHIRCircuitCol.CommittmentOODSamples+len(circuit.LinearStatementEvaluations))
-	if err != nil {
-		return err
-	}
-
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, circuit.LinearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
-
-	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[0], 3)
-	if err != nil {
-		return err
-	}
-
-	initialData := InitialSumcheckData{
-		InitialOODQueries:            initialOODQueries,
-		InitialCombinationRandomness: initialCombinationRandomness,
-	}
-
-	computedFold := computeFold(circuit.WHIRCircuitCol.Leaves[0], initialSumcheckFoldingRandomness, api)
-
-	mainRoundData := generateEmptyMainRoundData(circuit)
-	expDomainGenerator := utilities.Exponent(api, uapi, circuit.WHIRCircuitCol.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.WHIRCircuitCol.FoldingFactorArray[0])))
-	domainSize := circuit.WHIRCircuitCol.DomainSize
-
-	totalFoldingRandomness := initialSumcheckFoldingRandomness
-
-	for r := range circuit.WHIRCircuitCol.ParamNRounds {
-		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit.WHIRCircuitCol, arthur); err != nil {
-			return err
-		}
-
-		var roundOODAnswers []frontend.Variable
-		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.RoundParametersOODSamples[r], arthur)
-		if err != nil {
-			return err
-		}
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.RoundParametersNumOfQueries[r], circuit.WHIRCircuitCol.LeafIndexes[r], domainSize, circuit, uapi, expDomainGenerator, r)
-		if err != nil {
-			return err
-		}
-		if err = RunPoW(api, sc, arthur, circuit.WHIRCircuitCol.PowBits[r]); err != nil {
-			return err
-		}
-
-		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.WHIRCircuitCol.LeafIndexes[r])+circuit.WHIRCircuitCol.RoundParametersOODSamples[r])
-		if err != nil {
-			return err
-		}
-
-		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
-
-		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FoldingFactorArray[r], 3)
-		if err != nil {
-			return nil
-		}
-
-		computedFold = computeFold(circuit.WHIRCircuitCol.Leaves[r+1], roundFoldingRandomness, api)
-		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
-
-		domainSize /= 2
-		expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
-	}
-
-	finalCoefficients, finalRandomnessPoints, err := generateFinalCoefficientsAndRandomnessPoints(api, arthur, circuit, uapi, sc, domainSize, expDomainGenerator)
-	if err != nil {
-		return err
-	}
-
-	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
-
-	for foldIndex := range computedFold {
-		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
-	}
-
-	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.WHIRCircuitCol.FinalSumcheckRounds, 3)
-	if err != nil {
-		return err
-	}
-
-	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
-
-	if circuit.WHIRCircuitCol.FinalFoldingPowBits > 0 {
-		_, _, err := utilities.PoW(api, sc, arthur, circuit.WHIRCircuitCol.FinalPowBits)
-		if err != nil {
-			return err
-		}
-	}
-
-	evaluationOfVPoly := ComputeWPoly(
-		api,
-		circuit,
-		initialData,
-		mainRoundData,
-		spark_sumcheck_rand,
-		totalFoldingRandomness,
-	)
-
-	api.AssertIsEqual(
-		lastEval,
-		api.Mul(evaluationOfVPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
-	)
-
-	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spark_sumcheck_rand, t_rand))
-	api.AssertIsEqual(spark_sumcheck_last_value, x)
-
-	//
+	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartan_sumcheck_rand, t_rand))
+	api.AssertIsEqual(spartan_sumcheck_last_value, x)
 
 	rowRootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rowRootHash); err != nil {

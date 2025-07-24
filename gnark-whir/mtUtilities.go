@@ -29,13 +29,13 @@ func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Vari
 
 func GetStirChallenges(
 	api frontend.API,
-	circuit Circuit,
+	circuit WHIRCircuit,
 	arthur gnark_nimue.Arthur,
 	numQueries int,
 	domainSize int,
 	roundIndex int,
 ) ([]frontend.Variable, error) {
-	foldedDomainSize := domainSize / (1 << circuit.WHIRCircuitCol.FoldingFactorArray[roundIndex])
+	foldedDomainSize := domainSize / (1 << circuit.FoldingFactorArray[roundIndex])
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
 
 	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
@@ -97,11 +97,11 @@ type MainRoundData struct {
 	CombinationRandomness [][]frontend.Variable
 }
 
-func generateEmptyMainRoundData(circuit *Circuit) MainRoundData {
+func generateEmptyMainRoundData(circuit WHIRCircuit) MainRoundData {
 	return MainRoundData{
-		OODPoints:             make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
-		StirChallengesPoints:  make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
-		CombinationRandomness: make([][]frontend.Variable, len(circuit.WHIRCircuitCol.RoundParametersOODSamples)),
+		OODPoints:             make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
+		StirChallengesPoints:  make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
+		CombinationRandomness: make([][]frontend.Variable, len(circuit.RoundParametersOODSamples)),
 	}
 }
 
@@ -170,8 +170,8 @@ func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnark_nimue.Arth
 	return nil
 }
 
-func GenerateStirChallengePoints(api frontend.API, arthur gnark_nimue.Arthur, NQueries int, leafIndexes []uints.U64, domainSize int, circuit *Circuit, uapi *uints.BinaryField[uints.U64], expDomainGenerator frontend.Variable, roundIndex int) ([]frontend.Variable, error) {
-	finalIndexes, err := GetStirChallenges(api, *circuit, arthur, NQueries, domainSize, roundIndex)
+func GenerateStirChallengePoints(api frontend.API, arthur gnark_nimue.Arthur, NQueries int, leafIndexes []uints.U64, domainSize int, circuit WHIRCircuit, uapi *uints.BinaryField[uints.U64], expDomainGenerator frontend.Variable, roundIndex int) ([]frontend.Variable, error) {
+	finalIndexes, err := GetStirChallenges(api, circuit, arthur, NQueries, domainSize, roundIndex)
 	if err != nil {
 		api.Println(err)
 		return nil, err
@@ -229,26 +229,26 @@ func runWhirSumcheckRounds(
 
 func ComputeWPoly(
 	api frontend.API,
-	circuit *Circuit,
+	circuit WHIRCircuit,
 	initialData InitialSumcheckData,
 	mainRoundData MainRoundData,
-	sp_rand []frontend.Variable,
 	totalFoldingRandomness []frontend.Variable,
+	linear_statement_values_at_points []frontend.Variable,
 ) frontend.Variable {
 	foldingRandomnessReversed := utilities.Reverse(totalFoldingRandomness)
-	numberVars := circuit.WHIRCircuitCol.MVParamsNumberOfVariables
+	numberVars := circuit.MVParamsNumberOfVariables
 
 	value := frontend.Variable(0)
 	for j := range initialData.InitialOODQueries {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialData.InitialOODQueries[j], numberVars), foldingRandomnessReversed)))
 	}
 
-	for j, linearStatementValueAtPoint := range circuit.LinearStatementValuesAtPoints {
+	for j, linearStatementValueAtPoint := range linear_statement_values_at_points {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
 
 	for r := range mainRoundData.OODPoints {
-		numberVars -= circuit.WHIRCircuitCol.FoldingFactorArray[r]
+		numberVars -= circuit.FoldingFactorArray[r]
 		newTmpArr := append(mainRoundData.OODPoints[r], mainRoundData.StirChallengesPoints[r]...)
 
 		sumOfClaims := frontend.Variable(0)
@@ -274,16 +274,16 @@ func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryF
 	return nil
 }
 
-func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark_nimue.Arthur, circuit *Circuit, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
-	finalCoefficients := make([]frontend.Variable, 1<<circuit.WHIRCircuitCol.FinalSumcheckRounds)
+func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark_nimue.Arthur, circuit WHIRCircuit, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
+	finalCoefficients := make([]frontend.Variable, 1<<circuit.FinalSumcheckRounds)
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return nil, nil, err
 	}
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.WHIRCircuitCol.FinalQueries, circuit.WHIRCircuitCol.LeafIndexes[len(circuit.WHIRCircuitCol.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.WHIRCircuitCol.FoldingFactorArray)-1)
+	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, circuit.FinalQueries, circuit.LeafIndexes[len(circuit.LeafIndexes)-1], domainSize, circuit, uapi, expDomainGenerator, len(circuit.FoldingFactorArray)-1)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := RunPoW(api, sc, arthur, circuit.WHIRCircuitCol.FinalPowBits); err != nil {
+	if err := RunPoW(api, sc, arthur, circuit.FinalPowBits); err != nil {
 		return nil, nil, err
 	}
 	return finalCoefficients, finalRandomnessPoints, nil
@@ -538,9 +538,127 @@ func new_whir_circuit(
 	}
 }
 
-func run_whir(api frontend.API, arthur gnark_nimue.Arthur, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, circuit WHIRCircuit) error {
+func run_whir(
+	api frontend.API,
+	arthur gnark_nimue.Arthur,
+	uapi *uints.BinaryField[uints.U64],
+	sc *skyscraper.Skyscraper,
+	circuit WHIRCircuit,
+	linear_statement_evaluations []frontend.Variable,
+	linear_statement_values_at_points []frontend.Variable,
+) error {
 	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
 		return err
 	}
+
+	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(circuit.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, circuit.CommittmentOODSamples+len(linear_statement_evaluations))
+	if err != nil {
+		return err
+	}
+
+	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linear_statement_evaluations...)
+	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
+
+	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[0], 3)
+	if err != nil {
+		return err
+	}
+
+	initialData := InitialSumcheckData{
+		InitialOODQueries:            initialOODQueries,
+		InitialCombinationRandomness: initialCombinationRandomness,
+	}
+
+	computedFold := computeFold(circuit.Leaves[0], initialSumcheckFoldingRandomness, api)
+
+	mainRoundData := generateEmptyMainRoundData(circuit)
+
+	expDomainGenerator := utilities.Exponent(api, uapi, circuit.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<circuit.FoldingFactorArray[0])))
+	domainSize := circuit.DomainSize
+
+	totalFoldingRandomness := initialSumcheckFoldingRandomness
+
+	for r := range circuit.ParamNRounds {
+		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
+			return err
+		}
+
+		var roundOODAnswers []frontend.Variable
+		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(circuit.RoundParametersOODSamples[r], arthur)
+		if err != nil {
+			return err
+		}
+		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, circuit.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, circuit, uapi, expDomainGenerator, r)
+		if err != nil {
+			return err
+		}
+		if err = RunPoW(api, sc, arthur, circuit.PowBits[r]); err != nil {
+			return err
+		}
+
+		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+circuit.RoundParametersOODSamples[r])
+		if err != nil {
+			return err
+		}
+
+		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
+
+		var roundFoldingRandomness []frontend.Variable
+		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, circuit.FoldingFactorArray[r], 3)
+		if err != nil {
+			return nil
+		}
+
+		computedFold = computeFold(circuit.Leaves[r+1], roundFoldingRandomness, api)
+		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
+
+		domainSize /= 2
+		expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
+	}
+
+	finalCoefficients, finalRandomnessPoints, err := generateFinalCoefficientsAndRandomnessPoints(api, arthur, circuit, uapi, sc, domainSize, expDomainGenerator)
+	if err != nil {
+		return err
+	}
+
+	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
+
+	for foldIndex := range computedFold {
+		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
+	}
+
+	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, circuit.FinalSumcheckRounds, 3)
+	if err != nil {
+		return err
+	}
+
+	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
+
+	if circuit.FinalFoldingPowBits > 0 {
+		_, _, err := utilities.PoW(api, sc, arthur, circuit.FinalPowBits)
+		if err != nil {
+			return err
+		}
+	}
+
+	evaluationOfVPoly := ComputeWPoly(
+		api,
+		circuit,
+		initialData,
+		mainRoundData,
+		totalFoldingRandomness,
+		linear_statement_values_at_points,
+	)
+
+	api.AssertIsEqual(
+		lastEval,
+		api.Mul(evaluationOfVPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
+	)
+
 	return nil
 }
