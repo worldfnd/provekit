@@ -24,7 +24,13 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	t_rand, sp_rand, savedValForSumcheck, err := SumcheckForR1CSIOP(api, arthur, circuit)
+	t_rand := make([]frontend.Variable, circuit.LogNumConstraints)
+	err = arthur.FillChallengeScalars(t_rand)
+	if err != nil {
+		return err
+	}
+
+	spark_sumcheck_rand, spark_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.WHIRCircuitCol.MVParamsNumberOfVariables, 4)
 	if err != nil {
 		return err
 	}
@@ -132,7 +138,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		circuit,
 		initialData,
 		mainRoundData,
-		sp_rand,
+		spark_sumcheck_rand,
 		totalFoldingRandomness,
 	)
 
@@ -141,8 +147,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		api.Mul(evaluationOfVPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
 	)
 
-	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, sp_rand, t_rand))
-	api.AssertIsEqual(savedValForSumcheck, x)
+	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spark_sumcheck_rand, t_rand))
+	api.AssertIsEqual(spark_sumcheck_last_value, x)
 
 	//
 
@@ -231,7 +237,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	runSumcheckRounds(api, circuit.LinearStatementValuesAtPoints[0], arthur, circuit.WHIRCircuitA.MVParamsNumberOfVariables, 4)
+	runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.WHIRCircuitA.MVParamsNumberOfVariables, 4)
 	return nil
 }
 

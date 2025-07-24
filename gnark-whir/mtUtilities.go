@@ -262,34 +262,6 @@ func ComputeWPoly(
 	return value
 }
 
-func SumcheckForR1CSIOP(api frontend.API, arthur gnark_nimue.Arthur, circuit *Circuit) ([]frontend.Variable, []frontend.Variable, frontend.Variable, error) {
-	t_rand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err := arthur.FillChallengeScalars(t_rand)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	sp_rand := make([]frontend.Variable, circuit.LogNumConstraints)
-	savedValForSumcheck := frontend.Variable(0)
-
-	sp_rand_temp := make([]frontend.Variable, 1)
-	for i := 0; i < circuit.LogNumConstraints; i++ {
-		sp := make([]frontend.Variable, 4)
-		if err = arthur.FillNextScalars(sp); err != nil {
-			return nil, nil, nil, err
-		}
-		if err = arthur.FillChallengeScalars(sp_rand_temp); err != nil {
-			return nil, nil, nil, err
-		}
-		sp_rand[i] = sp_rand_temp[0]
-		sumcheckVal := api.Add(utilities.UnivarPoly(api, sp, []frontend.Variable{0})[0], utilities.UnivarPoly(api, sp, []frontend.Variable{1})[0])
-		api.AssertIsEqual(sumcheckVal, savedValForSumcheck)
-		savedValForSumcheck = utilities.UnivarPoly(api, sp, []frontend.Variable{sp_rand[i]})[0]
-	}
-
-	return t_rand, sp_rand, savedValForSumcheck, nil
-}
-
 func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, circuit *Circuit, arthur gnark_nimue.Arthur) error {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {
@@ -408,10 +380,10 @@ func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.
 	return pk, vk, nil
 }
 
-func runSumcheckRounds(
+func runSumcheck(
 	api frontend.API,
-	lastEval frontend.Variable,
 	arthur gnark_nimue.Arthur,
+	lastEval frontend.Variable,
 	foldingFactor int,
 	polynomialDegree int,
 ) ([]frontend.Variable, frontend.Variable, error) {
