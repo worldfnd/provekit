@@ -20,6 +20,10 @@ pub struct GnarkConfig {
     pub whir_config_a_num_terms:    WHIRConfigGnark,
     /// log of number of constraints in R1CS
     pub log_num_constraints:    usize,
+    /// log of number of variables in R1CS
+    pub log_num_variables:    usize,
+    /// log of number of non-zero terms matrix A
+    pub log_a_num_terms:    usize,
     /// nimue input output pattern
     pub io_pattern:             String,
     /// transcript in byte form
@@ -101,12 +105,15 @@ pub fn gnark_parameters(
     io: &IOPattern,
     m_0: usize,
     m: usize,
+    a_num_terms: usize,
 ) -> GnarkConfig {
     GnarkConfig {
         whir_config_row: WHIRConfigGnark::new(whir_params_row),
         whir_config_col: WHIRConfigGnark::new(whir_params_col),
         whir_config_a_num_terms: WHIRConfigGnark::new(whir_params_a_num_terms),
         log_num_constraints: m_0,
+        log_num_variables: m,
+        log_a_num_terms: a_num_terms,
         io_pattern:             String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript:             transcript.to_vec(),
         transcript_len:         transcript.to_vec().len(),
@@ -123,9 +130,10 @@ pub fn write_gnark_parameters_to_file(
     io: &IOPattern,
     m_0: usize,
     m: usize,
+    a_num_terms: usize,
     file_path: &str,
 ) {
-    let gnark_config = gnark_parameters(whir_params_row, whir_params_col, whir_params_a_num_terms, transcript, io, m_0, m);
+    let gnark_config = gnark_parameters(whir_params_row, whir_params_col, whir_params_a_num_terms, transcript, io, m_0, m, a_num_terms);
     println!("round config {:?}", whir_params_col.round_parameters);
     let mut file_params = File::create(file_path).unwrap();
     file_params

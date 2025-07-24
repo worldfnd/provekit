@@ -122,6 +122,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
+	// Change it to Row
 	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRCircuitCol.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
@@ -134,13 +135,14 @@ func (circuit *Circuit) Define(api frontend.API) error {
 func verify_circuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimed_evalutations []Fp256,
 ) {
+	whir_params_a := new_whir_params(cfg.WHIRConfigA)
+	whir_params_col := new_whir_params(cfg.WHIRConfigCol)
+
 	container_merkle_col := new_merkle(hints.col_hints, true)
 	merkle_col := new_merkle(hints.col_hints, false)
-	whir_params_col := new_whir_params(cfg.WHIRConfigCol)
 
 	container_merkle_a := new_merkle(hints.a_hints, true)
 	merkle_a := new_merkle(hints.a_hints, false)
-	whir_params_a := new_whir_params(cfg.WHIRConfigA)
 
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -163,6 +165,8 @@ func verify_circuit(
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        contTranscript,
 		LogNumConstraints: cfg.LogNumConstraints,
+		LogNumVariables:   cfg.LogNumVariables,
+		LogANumTerms:      cfg.LogANumTerms,
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,

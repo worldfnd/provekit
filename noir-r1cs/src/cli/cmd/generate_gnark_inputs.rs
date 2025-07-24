@@ -58,6 +58,7 @@ impl Command for Args {
             &scheme.whir.create_io_pattern(),
             scheme.whir.m_0,
             scheme.whir.m,
+            scheme.whir.a_num_terms,
             &self.params_for_recursive_verifier,
         );
 

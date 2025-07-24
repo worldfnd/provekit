@@ -64,6 +64,8 @@ type Circuit struct {
 	LinearStatementValuesAtPoints []frontend.Variable
 	LinearStatementEvaluations    []frontend.Variable
 	LogNumConstraints             int
+	LogNumVariables               int
+	LogANumTerms                  int
 	WHIRCircuitCol                WHIRCircuit
 	WHIRCircuitA                  WHIRCircuit
 	// Public Input
