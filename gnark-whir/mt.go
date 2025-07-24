@@ -35,7 +35,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
+	err = run_whir(api, arthur, uapi, sc, circuit.WHIRCircuitCol)
+	if err != nil {
 		return err
 	}
 
@@ -71,7 +72,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	totalFoldingRandomness := initialSumcheckFoldingRandomness
 
 	for r := range circuit.WHIRCircuitCol.ParamNRounds {
-		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
+		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit.WHIRCircuitCol, arthur); err != nil {
 			return err
 		}
 

@@ -262,12 +262,12 @@ func ComputeWPoly(
 	return value
 }
 
-func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, circuit *Circuit, arthur gnark_nimue.Arthur) error {
+func FillInAndVerifyRootHash(roundNum int, api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, circuit WHIRCircuit, arthur gnark_nimue.Arthur) error {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {
 		return err
 	}
-	err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.WHIRCircuitCol.LeafIndexes[roundNum], circuit.WHIRCircuitCol.Leaves[roundNum], circuit.WHIRCircuitCol.LeafSiblingHashes[roundNum], circuit.WHIRCircuitCol.AuthPaths[roundNum], rootHash[0])
+	err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[roundNum], circuit.Leaves[roundNum], circuit.LeafSiblingHashes[roundNum], circuit.AuthPaths[roundNum], rootHash[0])
 	if err != nil {
 		return err
 	}
@@ -536,4 +536,11 @@ func new_whir_circuit(
 		LeafSiblingHashes:                    merkle.totalLeafSiblingHashes,
 		AuthPaths:                            merkle.totalAuthPath,
 	}
+}
+
+func run_whir(api frontend.API, arthur gnark_nimue.Arthur, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, circuit WHIRCircuit) error {
+	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
+		return err
+	}
+	return nil
 }
