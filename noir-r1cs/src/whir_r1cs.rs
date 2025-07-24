@@ -44,10 +44,6 @@ pub struct WhirR1CSScheme {
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
     pub transcript: Vec<u8>,
-
-    // TODO: Derive from transcript
-    #[serde(with = "serde_ark")]
-    pub whir_query_answer_sums: [FieldElement; 3],
 }
 
 struct DataFromSumcheckVerifier {
@@ -119,7 +115,7 @@ impl WhirR1CSScheme {
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
-
+        
         // Compute WHIR weighted batch opening proof
         let (whir_query_answer_sums, col_randomness, deferred) =
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
@@ -139,7 +135,6 @@ impl WhirR1CSScheme {
 
         Ok(WhirR1CSProof {
             transcript,
-            whir_query_answer_sums,
         })
     }
 
@@ -150,28 +145,18 @@ impl WhirR1CSScheme {
         let io = self.create_io_pattern();
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
-        // Compute statement verifier
-        let mut statement_verifier = Statement::<FieldElement>::new(self.m);
-        for claimed_sum in &proof.whir_query_answer_sums {
-            statement_verifier.add_constraint(
-                Weights::linear(EvaluationsList::new(vec![
-                    FieldElement::zero();
-                    1 << self.m
-                ])),
-                *claimed_sum,
-            );
-        }
-
+        
         let data_from_sumcheck_verifier =
-            run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
-        let (folding_randomness, deferred) = run_whir_pcs_verifier(&mut arthur, &self.whir_config_col, &statement_verifier)
+        run_sumcheck_verifier(&mut arthur, self.m_0).context("while verifying sumcheck")?;
+
+        let (folding_randomness, deferred, claimed_sums) = run_whir_pcs_verifier(&mut arthur, &self.whir_config_col, self.m)
             .context("while verifying WHIR proof")?;
 
         // Check the Spartan sumcheck relation.
         ensure!(
             data_from_sumcheck_verifier.last_sumcheck_val
-                == (proof.whir_query_answer_sums[0] * proof.whir_query_answer_sums[1]
-                    - proof.whir_query_answer_sums[2])
+                == (claimed_sums[0] * claimed_sums[1]
+                    - claimed_sums[2])
                     * calculate_eq(
                         &data_from_sumcheck_verifier.r,
                         &data_from_sumcheck_verifier.alpha
@@ -196,9 +181,10 @@ impl WhirR1CSScheme {
         let mut io = IOPattern::new("🌪️")
             .add_rand(self.m_0)
             .add_sumcheck_polynomials(self.m_0)
+            .hint("claimed_evaluations")
             .commit_statement(&self.whir_config_col)
             .add_whir_proof(&self.whir_config_col);
-
+            
         io = io.spark(
             &self.whir_config_a_num_terms,
             &self.whir_config_row,
@@ -321,11 +307,6 @@ pub fn run_whir_pcs_prover(
     let poly = EvaluationsList::new(z);
     let polynomial = poly.to_coeffs();
 
-    let committer = CommitmentWriter::new(params.clone());
-    let witness = committer
-        .commit(merlin, polynomial)
-        .expect("WHIR prover failed to commit");
-
     let mut statement = Statement::<FieldElement>::new(m);
 
     let sums: [FieldElement; 3] = alphas.map(|alpha| {
@@ -334,6 +315,14 @@ pub fn run_whir_pcs_prover(
         statement.add_constraint(weight, sum);
         sum
     });
+
+    merlin.hint::<Vec<FieldElement>>(&sums.to_vec());
+
+    let committer = CommitmentWriter::new(params.clone());
+    let witness = committer
+        .commit(merlin, polynomial)
+        .expect("WHIR prover failed to commit");
+
 
     let prover = Prover(params.clone());
     let (randomness, deferred) = prover
@@ -382,17 +371,31 @@ pub fn run_sumcheck_verifier(
 pub fn run_whir_pcs_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     params: &WhirConfig,
-    statement_verifier: &Statement<FieldElement>,
-) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
+    m: usize
+) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>, Vec<FieldElement>)> {
+    // Compute statement verifier
+    let claimed_sums: Vec<FieldElement> = arthur.hint()?;
+
+    let mut statement_verifier = Statement::<FieldElement>::new(m);
+    for claimed_sum in &claimed_sums {
+        statement_verifier.add_constraint(
+            Weights::linear(EvaluationsList::new(vec![
+                FieldElement::zero();
+                1 << m
+            ])),
+            *claimed_sum,
+        );
+    }
+
     let commitment_reader = CommitmentReader::new(params);
     let verifier = Verifier::new(params);
     // let verifier = Verifier::new(&params);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
     let (folding_randomness, deferred) = verifier
-        .verify(arthur, &parsed_commitment, statement_verifier)
+        .verify(arthur, &parsed_commitment, &statement_verifier)
         .context("while verifying WHIR")?;
 
-    Ok((folding_randomness, deferred))
+    Ok((folding_randomness, deferred, claimed_sums))
 }
 

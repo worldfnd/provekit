@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 
 	"reilabs/whir-verifier-circuit/typeConverters"
@@ -243,7 +242,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verify_circuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimed_evalutations []Fp256,
 ) {
 	container_merkle_col := new_merkle(hints.col_hints, true)
 	merkle_col := new_merkle(hints.col_hints, false)
@@ -263,12 +262,11 @@ func verify_circuit(
 	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
-	linearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
-	contLinearStatementEvaluations := make([]frontend.Variable, len(cfg.StatementEvaluations))
+	linearStatementEvaluations := make([]frontend.Variable, len(claimed_evalutations))
+	contLinearStatementEvaluations := make([]frontend.Variable, len(claimed_evalutations))
 	for i := range len(deferred) {
 		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		x, _ := new(big.Int).SetString(cfg.StatementEvaluations[i], 10)
-		linearStatementEvaluations[i] = frontend.Variable(x)
+		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimed_evalutations[i].Limbs)
 	}
 
 	var circuit = Circuit{

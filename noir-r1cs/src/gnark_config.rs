@@ -24,8 +24,6 @@ pub struct GnarkConfig {
     pub transcript:             Vec<u8>,
     /// length of the transcript
     pub transcript_len:         usize,
-    /// statement evaluations
-    pub statement_evaluations:  Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,7 +96,6 @@ pub fn gnark_parameters(
     whir_params_a_num_terms: &WhirConfig,
     transcript: &[u8],
     io: &IOPattern,
-    sums: [FieldElement; 3],
     m_0: usize,
     m: usize,
 ) -> GnarkConfig {
@@ -109,11 +106,6 @@ pub fn gnark_parameters(
         io_pattern:             String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript:             transcript.to_vec(),
         transcript_len:         transcript.to_vec().len(),
-        statement_evaluations:  vec![
-            sums[0].to_string(),
-            sums[1].to_string(),
-            sums[2].to_string(),
-        ],
     }
 }
 
@@ -124,12 +116,11 @@ pub fn write_gnark_parameters_to_file(
     whir_params_a_num_terms: &WhirConfig,
     transcript: &[u8],
     io: &IOPattern,
-    sums: [FieldElement; 3],
     m_0: usize,
     m: usize,
     file_path: &str,
 ) {
-    let gnark_config = gnark_parameters(whir_params_col, whir_params_a_num_terms, transcript, io, sums, m_0, m);
+    let gnark_config = gnark_parameters(whir_params_col, whir_params_a_num_terms, transcript, io, m_0, m);
     println!("round config {:?}", whir_params_col.round_parameters);
     let mut file_params = File::create(file_path).unwrap();
     file_params

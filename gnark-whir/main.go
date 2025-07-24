@@ -40,13 +40,12 @@ type ProofObject struct {
 }
 
 type Config struct {
-	WHIRConfigCol        WHIRConfig `json:"whir_config_col"`
-	WHIRConfigA          WHIRConfig `json:"whir_config_a_num_terms"`
-	LogNumConstraints    int        `json:"log_num_constraints"`
-	IOPattern            string     `json:"io_pattern"`
-	Transcript           []byte     `json:"transcript"`
-	TranscriptLen        int        `json:"transcript_len"`
-	StatementEvaluations []string   `json:"statement_evaluations"`
+	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
+	WHIRConfigA       WHIRConfig `json:"whir_config_a_num_terms"`
+	LogNumConstraints int        `json:"log_num_constraints"`
+	IOPattern         string     `json:"io_pattern"`
+	Transcript        []byte     `json:"transcript"`
+	TranscriptLen     int        `json:"transcript_len"`
 }
 
 type WHIRConfig struct {
@@ -133,6 +132,7 @@ func main() {
 			var merkle_paths []MultiPath[KeccakDigest]
 			var stir_answers [][][]Fp256
 			var deferred []Fp256
+			var claimed_evaluations []Fp256
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -176,6 +176,15 @@ func main() {
 							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 						}
 						deferred = append(deferred, deferred_temp...)
+					case "claimed_evaluations":
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&claimed_evaluations,
+							false, false,
+						)
+						if err != nil {
+							return fmt.Errorf("failed to deserialize claimed_evaluations: %w", err)
+						}
 					}
 
 					if err != nil {
@@ -227,8 +236,8 @@ func main() {
 					stir_answers: stir_answers[spartan_end:spark_val_end],
 				},
 			}
-			fmt.Print(config.StatementEvaluations)
-			verify_circuit(deferred, config, hints, pk, vk, outputCcsPath)
+
+			verify_circuit(deferred, config, hints, pk, vk, outputCcsPath, claimed_evaluations)
 			return nil
 		},
 	}

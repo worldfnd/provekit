@@ -55,7 +55,6 @@ impl Command for Args {
             &scheme.whir.whir_config_a_num_terms,
             &proof.whir_r1cs_proof.transcript,
             &scheme.whir.create_io_pattern(),
-            proof.whir_r1cs_proof.whir_query_answer_sums,
             scheme.whir.m_0,
             scheme.whir.m,
             &self.params_for_recursive_verifier,
