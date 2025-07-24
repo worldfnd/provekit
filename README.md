@@ -12,6 +12,8 @@ noirup --version nightly-2025-05-28
 
 ## Demo instructions
 
+> _NOTE:_ The example below is being run for single example `poseidon-rounds`. You can use different example to run same commands.
+
 Compile the Noir circuit:
 
 ```sh
@@ -50,7 +52,13 @@ cd ../../gnark-whir
 go run .
 ```
 
+### Benchmarking
+
 Benchmark against Barretenberg:
+
+> _Note_: You can install Barretenberg from [here](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md).
+
+> _Note_: You can install [hyperfine](https://github.com/sharkdp/hyperfine) using brew on OSX: `brew install hyperfine`.
 
 ```sh
 cd noir-examples/poseidon-rounds
@@ -58,10 +66,63 @@ cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./scheme.nps
 hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/noir-r1cs prove ./scheme.nps ./Prover.toml'
 ```
 
-Profile
+### Profiling
+
+#### Custom built-in profile (Memory usage)
+
+The `noir-r1cs` application has written custom memory profiler that prints basic info about memory usage when application
+runs.
+
+#### Using tracy (CPU and Memory usage)
+
+Tracy tool [website](https://github.com/wolfpld/tracy). To install tracy tool on OSX use brew: `brew install tracy`.
+
+> **Important**: integration is done with `Tracy Profiler 0.11.1`. It is newest version available from brew. Newer
+> version may require updating dependencies as tracy is using its own protocol between app and tracy tool that changes
+> with each major version.
+
+TLDR; Tracy is an interactive tool to profile application. There is integration plugin for rust that works with
+standard tracing annotation. For now it is integrated into `noir-r1cs` binary only. Collecting profiling data requires
+tracy to run during application profiling. You may noticed that it makes application to run much longer but mostly
+due to data transfer between the application and the tracy running along.
+
+Usage:
+
+1. Start tracy from command line
+```sh
+tracy
+```
+2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
+   localhost for incoming data.
+3. Now start the application to profile:
+```sh
+cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+```
+4. Go back to tracy tool. You should see that it receives data. App is interactive.
+
+#### Using samply (CPU usage)
+
+Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
+open a webpage with interactive app to view results.
 
 ```sh
-samply record -r 10000 -- ./target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
+samply record -r 10000 -- ./../../target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
+```
+
+#### Using instruments (Memory usage) - OSX only
+
+Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) with instructions to install. It will open
+results using built-in Instruments app. Results are interactive.
+
+```sh
+cargo instruments --template Allocations --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+```
+
+Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
+open a webpage with interactive app to view results.
+
+```sh
+samply record -r 10000 -- ./../../target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
 ```
 
 ## Components

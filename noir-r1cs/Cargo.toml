@@ -30,6 +30,9 @@ bytes.workspace = true
 bytemuck.workspace = true
 skyscraper.workspace = true
 static_assertions.workspace = true
+tracing-tracy = { workspace = true, features = ["default", "manual-lifetime"] }
+tracy-client = { workspace = true, features = ["default", "manual-lifetime"] }
+tracy-client-sys = { workspace = true, features = ["default", "manual-lifetime"] }
 zerocopy.workspace = true
 
 # Ark
