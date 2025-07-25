@@ -3,21 +3,20 @@ mod cmd;
 mod measuring_alloc;
 mod span_stats;
 
-use std::clone::Clone;
-use std::convert::Into;
-use tracing::subscriber;
-use tracing_subscriber::Layer;
 use {
     self::{cmd::Command, measuring_alloc::MeasuringAllocator, span_stats::SpanStats},
+    crate::measuring_alloc::MeasuringAllocatorState,
     anyhow::Result,
-    tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
+    std::{clone::Clone, convert::Into},
+    tracing::subscriber,
+    tracing_subscriber::{self, layer::SubscriberExt as _, Layer, Registry},
 };
-use crate::measuring_alloc::MeasuringAllocatorState;
 
 static ALLOC_STATE: MeasuringAllocatorState = MeasuringAllocatorState::new();
 
 #[global_allocator]
-static ALLOC_TRACY: tracy_client::ProfiledAllocator<MeasuringAllocator> = tracy_client::ProfiledAllocator::new(MeasuringAllocator::new(&ALLOC_STATE), 100);
+static ALLOC_TRACY: tracy_client::ProfiledAllocator<MeasuringAllocator> =
+    tracy_client::ProfiledAllocator::new(MeasuringAllocator::new(&ALLOC_STATE), 100);
 
 fn main() -> Result<()> {
     let subscriber = Registry::default()
