@@ -5,17 +5,17 @@ mod measuring_alloc;
 #[cfg(feature = "cli-profiled")]
 mod span_stats;
 
-use std::clone::Clone;
-use std::convert::Into;
-use self::cmd::Command;
-use anyhow::Result;
-
+use {
+    self::cmd::Command,
+    anyhow::Result,
+    std::{clone::Clone, convert::Into},
+};
 #[cfg(feature = "cli-profiled")]
 use {
+    crate::measuring_alloc::{MeasuringAllocator, MeasuringAllocatorState},
+    span_stats::SpanStats,
     tracing::subscriber,
     tracing_subscriber::Layer,
-    crate::measuring_alloc::{MeasuringAllocatorState, MeasuringAllocator},
-    span_stats::SpanStats,
     tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
 };
 
@@ -24,7 +24,8 @@ static ALLOC_STATE: MeasuringAllocatorState = MeasuringAllocatorState::new();
 
 #[cfg(feature = "cli-profiled")]
 #[global_allocator]
-static ALLOC_TRACY: tracy_client::ProfiledAllocator<MeasuringAllocator> = tracy_client::ProfiledAllocator::new(MeasuringAllocator::new(&ALLOC_STATE), 100);
+static ALLOC_TRACY: tracy_client::ProfiledAllocator<MeasuringAllocator> =
+    tracy_client::ProfiledAllocator::new(MeasuringAllocator::new(&ALLOC_STATE), 100);
 
 #[cfg(not(feature = "cli-profiled"))]
 fn main() -> Result<()> {
