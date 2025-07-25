@@ -71,7 +71,11 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 #### Custom built-in profile (Memory usage)
 
 The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
-runs.
+runs. To run binary with profiling enabled run it with cargo `--features cli-profiled` param or compile with it.
+
+```sh
+cargo run --release --bin provekit-cli --features cli-profiled prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+```
 
 #### Using tracy (CPU and Memory usage)
 
@@ -103,7 +107,8 @@ cargo run --release --bin provekit-cli prove --features cli-profiled ./noir-proo
 #### Using samply (CPU usage)
 
 Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results.
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
 
 ```sh
 samply record -r 10000 -- ./../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
@@ -119,7 +124,8 @@ cargo instruments --template Allocations --release --bin provekit-cli prove ./no
 ```
 
 Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results.
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
 
 ```sh
 samply record -r 10000 -- ./../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
