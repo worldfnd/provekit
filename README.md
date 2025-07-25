@@ -71,7 +71,11 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 #### Custom built-in profile (Memory usage)
 
 The `noir-r1cs` application has written custom memory profiler that prints basic info about memory usage when application
-runs.
+runs. To run binary with profiling enabled use `noir-r1cs-profiled` as binary name.
+
+```sh
+cargo run --release --bin noir-r1cs-profiled prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+```
 
 #### Using tracy (CPU and Memory usage)
 
@@ -96,14 +100,15 @@ tracy
    localhost for incoming data.
 3. Now start the application to profile:
 ```sh
-cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin noir-r1cs-profiled prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 4. Go back to tracy tool. You should see that it receives data. App is interactive.
 
 #### Using samply (CPU usage)
 
 Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results.
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
 
 ```sh
 samply record -r 10000 -- ./../../target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
@@ -119,7 +124,8 @@ cargo instruments --template Allocations --release --bin noir-r1cs prove ./noir-
 ```
 
 Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results.
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
 
 ```sh
 samply record -r 10000 -- ./../../target/release/noir-r1cs prove ./noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-proof.np
