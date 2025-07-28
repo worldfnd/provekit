@@ -10,6 +10,10 @@ workspace = true
 name = "noir-r1cs"
 path = "src/cli/main.rs"
 
+[[bin]]
+name = "noir-r1cs-profiled"
+path = "src/cli/main_profiled.rs"
+
 [dependencies]
 # 3rd party
 serde.workspace = true
