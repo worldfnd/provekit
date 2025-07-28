@@ -66,13 +66,13 @@ type WHIRConfig struct {
 }
 
 type Hints struct {
-	col_hints Hint
-	a_hints   Hint
+	colHints Hint
+	aHints   Hint
 }
 
 type Hint struct {
-	merkle_paths []MultiPath[KeccakDigest]
-	stir_answers [][][]Fp256
+	merklePaths []MultiPath[KeccakDigest]
+	stirAnswers [][][]Fp256
 }
 
 func main() {
@@ -132,10 +132,10 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
-			var merkle_paths []MultiPath[KeccakDigest]
-			var stir_answers [][][]Fp256
+			var merklePaths []MultiPath[KeccakDigest]
+			var stirAnswers [][][]Fp256
 			var deferred []Fp256
-			var claimed_evaluations []Fp256
+			var claimedEvaluations []Fp256
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -159,30 +159,30 @@ func main() {
 							&path,
 							false, false,
 						)
-						merkle_paths = append(merkle_paths, path)
+						merklePaths = append(merklePaths, path)
 					case "stir_answers":
-						var stirAnswers [][]Fp256
+						var stirAnswersTemporary [][]Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&stirAnswers,
+							&stirAnswersTemporary,
 							false, false,
 						)
-						stir_answers = append(stir_answers, stirAnswers)
+						stirAnswers = append(stirAnswers, stirAnswersTemporary)
 					case "deferred_weight_evaluations":
-						var deferred_temp []Fp256
+						var deferredTemporary []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&deferred_temp,
+							&deferredTemporary,
 							false, false,
 						)
 						if err != nil {
 							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 						}
-						deferred = append(deferred, deferred_temp...)
+						deferred = append(deferred, deferredTemporary...)
 					case "claimed_evaluations":
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&claimed_evaluations,
+							&claimedEvaluations,
 							false, false,
 						)
 						if err != nil {
@@ -218,7 +218,7 @@ func main() {
 			var vk *groth16.VerifyingKey
 			if pkPath != "" && vkPath != "" {
 				log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
-				restoredPk, restoredVk, err := keys_from_files(pkPath, vkPath)
+				restoredPk, restoredVk, err := keysFromFiles(pkPath, vkPath)
 				if err != nil {
 					return err
 				}
@@ -226,21 +226,21 @@ func main() {
 				vk = &restoredVk
 			}
 
-			spartan_end := config.WHIRConfigCol.NRounds + 1
-			spark_val_end := spartan_end + (config.WHIRConfigA.NRounds + 1)
+			spartanEnd := config.WHIRConfigCol.NRounds + 1
+			sparkValEnd := spartanEnd + (config.WHIRConfigA.NRounds + 1)
 
 			hints := Hints{
-				col_hints: Hint{
-					merkle_paths: merkle_paths[:spartan_end],
-					stir_answers: stir_answers[:spartan_end],
+				colHints: Hint{
+					merklePaths: merklePaths[:spartanEnd],
+					stirAnswers: stirAnswers[:spartanEnd],
 				},
-				a_hints: Hint{
-					merkle_paths: merkle_paths[spartan_end:spark_val_end],
-					stir_answers: stir_answers[spartan_end:spark_val_end],
+				aHints: Hint{
+					merklePaths: merklePaths[spartanEnd:sparkValEnd],
+					stirAnswers: stirAnswers[spartanEnd:sparkValEnd],
 				},
 			}
 
-			verify_circuit(deferred, config, hints, pk, vk, outputCcsPath, claimed_evaluations)
+			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations)
 			return nil
 		},
 	}

@@ -23,24 +23,24 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	t_rand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err = arthur.FillChallengeScalars(t_rand)
+	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
+	err = arthur.FillChallengeScalars(tRand)
 	if err != nil {
 		return err
 	}
 
-	spartan_sumcheck_rand, spartan_sumcheck_last_value, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4)
+	spartanSumcheckRand, spartanSumcheckLastValue, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
 
-	err = run_whir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+	err = runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
 	if err != nil {
 		return err
 	}
 
-	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartan_sumcheck_rand, t_rand))
-	api.AssertIsEqual(spartan_sumcheck_last_value, x)
+	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
+	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
 	rowRootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rowRootHash); err != nil {
@@ -72,8 +72,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	e_rxRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(e_rxRootHash); err != nil {
+	eRxRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(eRxRootHash); err != nil {
 		return err
 	}
 
@@ -81,8 +81,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
-	e_ryRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(e_ryRootHash); err != nil {
+	eRyRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(eRyRootHash); err != nil {
 		return err
 	}
 
@@ -134,8 +134,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func verify_circuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimed_evalutations []Fp256,
+func verifyCircuit(
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256,
 ) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -147,11 +147,11 @@ func verify_circuit(
 	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
 
-	linearStatementEvaluations := make([]frontend.Variable, len(claimed_evalutations))
-	contLinearStatementEvaluations := make([]frontend.Variable, len(claimed_evalutations))
+	linearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
+	contLinearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
 	for i := range len(deferred) {
 		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimed_evalutations[i].Limbs)
+		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
 	var circuit = Circuit{
@@ -163,8 +163,8 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 new_merkle(hints.col_hints, true),
-		SparkValueMerkle:              new_merkle(hints.a_hints, true),
+		SpartanMerkle:                 newMerkle(hints.colHints, true),
+		SparkValueMerkle:              newMerkle(hints.aHints, true),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
 		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
@@ -204,8 +204,8 @@ func verify_circuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 new_merkle(hints.col_hints, false),
-		SparkValueMerkle:              new_merkle(hints.a_hints, false),
+		SpartanMerkle:                 newMerkle(hints.colHints, false),
+		SparkValueMerkle:              newMerkle(hints.aHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),

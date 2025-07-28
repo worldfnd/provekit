@@ -139,10 +139,10 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 
 		dir := leafIndexBits[0]
 
-		x_leftChild := api.Select(dir, leafSiblingHash, claimedLeafHash)
-		x_rightChild := api.Select(dir, claimedLeafHash, leafSiblingHash)
+		xLeftChild := api.Select(dir, leafSiblingHash, claimedLeafHash)
+		xRightChild := api.Select(dir, claimedLeafHash, leafSiblingHash)
 
-		currentHash := sc.Compress(x_leftChild, x_rightChild)
+		currentHash := sc.Compress(xLeftChild, xRightChild)
 
 		for level := 1; level < treeHeight; level++ {
 			indexBit := leafIndexBits[level]
@@ -263,7 +263,7 @@ func ComputeWPoly(
 	initialData InitialSumcheckData,
 	mainRoundData MainRoundData,
 	totalFoldingRandomness []frontend.Variable,
-	linear_statement_values_at_points []frontend.Variable,
+	linearStatementValuesAtPoints []frontend.Variable,
 ) frontend.Variable {
 	foldingRandomnessReversed := utilities.Reverse(totalFoldingRandomness)
 	numberVars := circuit.MVParamsNumberOfVariables
@@ -273,7 +273,7 @@ func ComputeWPoly(
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialData.InitialOODQueries[j], numberVars), foldingRandomnessReversed)))
 	}
 
-	for j, linearStatementValueAtPoint := range linear_statement_values_at_points {
+	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
 
@@ -363,7 +363,7 @@ func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness [
 // 	return ans
 // }
 
-func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open proving key file: %w", err)
@@ -431,16 +431,16 @@ func runSumcheck(
 	return foldingRandomness, lastEval, nil
 }
 
-func new_merkle(
+func newMerkle(
 	hint Hint,
-	is_container bool,
+	isContainer bool,
 ) Merkle {
-	var totalAuthPath = make([][][][]uints.U8, len(hint.merkle_paths))
-	var totalLeaves = make([][][]frontend.Variable, len(hint.merkle_paths))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(hint.merkle_paths))
-	var totalLeafIndexes = make([][]uints.U64, len(hint.merkle_paths))
+	var totalAuthPath = make([][][][]uints.U8, len(hint.merklePaths))
+	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
+	var totalLeafSiblingHashes = make([][][]uints.U8, len(hint.merklePaths))
+	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
 
-	for i, merkle_path := range hint.merkle_paths {
+	for i, merkle_path := range hint.merklePaths {
 		var numOfLeavesProved = len(merkle_path.LeafIndexes)
 		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
@@ -454,13 +454,13 @@ func new_merkle(
 			for z := range treeHeight {
 				totalAuthPath[i][j][z] = make([]uints.U8, 32)
 			}
-			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stir_answers[i][j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
 			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
 
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
-		if !is_container {
+		if !isContainer {
 			var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
 			var prevPath = merkle_path.AuthPathsSuffixes[0]
 			authPathsTemp[0] = utilities.Reverse(prevPath)
@@ -480,8 +480,8 @@ func new_merkle(
 			for z := range numOfLeavesProved {
 				totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-				for j := range hint.stir_answers[i][z] {
-					input := hint.stir_answers[i][z][j]
+				for j := range hint.stirAnswers[i][z] {
+					input := hint.stirAnswers[i][z][j]
 					totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 				}
 			}
@@ -503,34 +503,34 @@ type Merkle struct {
 	AuthPaths         [][][][]uints.U8
 }
 
-func run_whir(
+func runWhir(
 	api frontend.API,
 	arthur gnark_nimue.Arthur,
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	circuit Merkle,
-	whir_params WHIRParams,
-	linear_statement_evaluations []frontend.Variable,
-	linear_statement_values_at_points []frontend.Variable,
+	whirParams WHIRParams,
+	linearStatementEvaluations []frontend.Variable,
+	linearStatementValuesAtPoints []frontend.Variable,
 ) error {
 	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
 		return err
 	}
 
-	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(whir_params.CommittmentOODSamples, arthur)
+	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(whirParams.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
 
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, whir_params.CommittmentOODSamples+len(linear_statement_evaluations))
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, whirParams.CommittmentOODSamples+len(linearStatementEvaluations))
 	if err != nil {
 		return err
 	}
 
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linear_statement_evaluations...)
+	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linearStatementEvaluations...)
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
-	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whir_params.FoldingFactorArray[0], 3)
+	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if err != nil {
 		return err
 	}
@@ -542,32 +542,32 @@ func run_whir(
 
 	computedFold := computeFold(circuit.Leaves[0], initialSumcheckFoldingRandomness, api)
 
-	mainRoundData := generateEmptyMainRoundData(whir_params)
+	mainRoundData := generateEmptyMainRoundData(whirParams)
 
-	expDomainGenerator := utilities.Exponent(api, uapi, whir_params.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<whir_params.FoldingFactorArray[0])))
-	domainSize := whir_params.DomainSize
+	expDomainGenerator := utilities.Exponent(api, uapi, whirParams.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<whirParams.FoldingFactorArray[0])))
+	domainSize := whirParams.DomainSize
 
 	totalFoldingRandomness := initialSumcheckFoldingRandomness
 
-	for r := range whir_params.ParamNRounds {
+	for r := range whirParams.ParamNRounds {
 		if err = FillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
 			return err
 		}
 
 		var roundOODAnswers []frontend.Variable
-		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(whir_params.RoundParametersOODSamples[r], arthur)
+		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(whirParams.RoundParametersOODSamples[r], arthur)
 		if err != nil {
 			return err
 		}
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, whir_params.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, uapi, expDomainGenerator, whir_params.FoldingFactorArray[r])
+		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, whirParams.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[r])
 		if err != nil {
 			return err
 		}
-		if err = RunPoW(api, sc, arthur, whir_params.PowBits[r]); err != nil {
+		if err = RunPoW(api, sc, arthur, whirParams.PowBits[r]); err != nil {
 			return err
 		}
 
-		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+whir_params.RoundParametersOODSamples[r])
+		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+whirParams.RoundParametersOODSamples[r])
 		if err != nil {
 			return err
 		}
@@ -575,7 +575,7 @@ func run_whir(
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
 		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, whir_params.FoldingFactorArray[r], 3)
+		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
 		}
@@ -587,15 +587,15 @@ func run_whir(
 		expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
 	}
 
-	finalCoefficients := make([]frontend.Variable, 1<<whir_params.FinalSumcheckRounds)
+	finalCoefficients := make([]frontend.Variable, 1<<whirParams.FinalSumcheckRounds)
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return err
 	}
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, whir_params.FinalQueries, circuit.LeafIndexes[whir_params.ParamNRounds], domainSize, uapi, expDomainGenerator, whir_params.FoldingFactorArray[whir_params.ParamNRounds])
+	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, whirParams.FinalQueries, circuit.LeafIndexes[whirParams.ParamNRounds], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[whirParams.ParamNRounds])
 	if err != nil {
 		return err
 	}
-	if err := RunPoW(api, sc, arthur, whir_params.FinalPowBits); err != nil {
+	if err := RunPoW(api, sc, arthur, whirParams.FinalPowBits); err != nil {
 		return err
 	}
 	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
@@ -604,15 +604,15 @@ func run_whir(
 		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
 	}
 
-	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whir_params.FinalSumcheckRounds, 3)
+	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FinalSumcheckRounds, 3)
 	if err != nil {
 		return err
 	}
 
 	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
 
-	if whir_params.FinalFoldingPowBits > 0 {
-		_, _, err := utilities.PoW(api, sc, arthur, whir_params.FinalPowBits)
+	if whirParams.FinalFoldingPowBits > 0 {
+		_, _, err := utilities.PoW(api, sc, arthur, whirParams.FinalPowBits)
 		if err != nil {
 			return err
 		}
@@ -620,11 +620,11 @@ func run_whir(
 
 	evaluationOfVPoly := ComputeWPoly(
 		api,
-		whir_params,
+		whirParams,
 		initialData,
 		mainRoundData,
 		totalFoldingRandomness,
-		linear_statement_values_at_points,
+		linearStatementValuesAtPoints,
 	)
 
 	api.AssertIsEqual(
