@@ -13,10 +13,10 @@ pub fn generate_mask(num_vars: usize) -> Vec<FieldElement> {
 
 pub fn create_masked_polynomial(
     original: &EvaluationsList<FieldElement>,
-    mask: &Vec<FieldElement>,
+    mask: &[FieldElement],
 ) -> EvaluationsList<FieldElement> {
     let mut combined = Vec::with_capacity(original.num_evals() * 2);
-    combined.extend_from_slice(&original.evals());
+    combined.extend_from_slice(original.evals());
     combined.extend_from_slice(mask);
     EvaluationsList::new(combined)
 }

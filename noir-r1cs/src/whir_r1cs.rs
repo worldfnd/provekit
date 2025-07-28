@@ -16,6 +16,7 @@ use {
         FieldElement, R1CS,
     },
     anyhow::{ensure, Context, Result},
+    ark_ff::UniformRand,
     ark_std::{One, Zero},
     serde::{Deserialize, Serialize},
     spongefish::{
@@ -64,7 +65,7 @@ pub struct WhirR1CSProof {
     pub whir_query_answer_sums: ([FieldElement; 3], [FieldElement; 3]),
 }
 
-struct DataFromSumcheckVerifier {
+pub struct DataFromSumcheckVerifier {
     r:                 Vec<FieldElement>,
     alpha:             Vec<FieldElement>,
     last_sumcheck_val: FieldElement,
@@ -162,7 +163,7 @@ impl WhirR1CSScheme {
 
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha) = run_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
+        let (merlin, alpha) = run_zk_sumcheck_prover(r1cs, &witness, merlin, self.m_0);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
@@ -249,8 +250,85 @@ impl Debug for WhirR1CSScheme {
     }
 }
 
+pub fn compute_g_poly(
+    g_univariates: &[[FieldElement; 4]],
+    compute_for: usize,
+    alphas: &[FieldElement],
+) -> [FieldElement; 4] {
+    let mut compute_for = compute_for;
+    let n = g_univariates.len();
+    assert!(compute_for <= n);
+    assert_eq!(alphas.len(), compute_for);
+    let mut all_fixed = false;
+    if compute_for == n {
+        all_fixed = true;
+        compute_for = n - 1;
+    }
+
+    // p = Σ_{i<r} g_i(α_i)
+    let mut prefix_sum = FieldElement::zero();
+    for i in 0..compute_for {
+        prefix_sum += eval_qubic_poly(&g_univariates[i], &alphas[i]);
+    }
+
+    // s = Σ_{i>r}(g_i(0) + g_i(1))
+    let mut suffix_sum = FieldElement::zero();
+    for g_coeffs in g_univariates.iter().skip(compute_for + 1) {
+        suffix_sum += eval_qubic_poly(g_coeffs, &FieldElement::zero())
+            + eval_qubic_poly(g_coeffs, &FieldElement::one());
+    }
+
+    let two = FieldElement::one() + FieldElement::one();
+    let mut prefix_multiplier = FieldElement::one();
+    for _ in 0..(n - 1 - compute_for) {
+        prefix_multiplier = prefix_multiplier + prefix_multiplier;
+    }
+    let suffix_multiplier: ark_ff::Fp<
+        ark_ff::MontBackend<whir::crypto::fields::BN254Config, 4>,
+        4,
+    > = prefix_multiplier / two;
+
+    let constant_term_from_other_items =
+        prefix_multiplier * prefix_sum + suffix_multiplier * suffix_sum;
+
+    let coefficient_for_current_index = &g_univariates[compute_for];
+
+    if all_fixed {
+        let value = eval_qubic_poly(
+            &[
+                prefix_multiplier * coefficient_for_current_index[0]
+                    + constant_term_from_other_items,
+                prefix_multiplier * coefficient_for_current_index[1],
+                prefix_multiplier * coefficient_for_current_index[2],
+                prefix_multiplier * coefficient_for_current_index[3],
+            ],
+            &alphas[compute_for],
+        );
+        return [
+            value,
+            FieldElement::zero(),
+            FieldElement::zero(),
+            FieldElement::zero(),
+        ];
+    }
+
+    [
+        prefix_multiplier * coefficient_for_current_index[0] + constant_term_from_other_items,
+        prefix_multiplier * coefficient_for_current_index[1],
+        prefix_multiplier * coefficient_for_current_index[2],
+        prefix_multiplier * coefficient_for_current_index[3],
+    ]
+}
+
+pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
+    let alphas: &[FieldElement] = &[];
+    let h0 = compute_g_poly(g_univariates, 0, alphas);
+
+    eval_qubic_poly(&h0, &FieldElement::zero()) + eval_qubic_poly(&h0, &FieldElement::one())
+}
+
 #[instrument(skip_all)]
-pub fn run_sumcheck_prover(
+pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
     z: &[FieldElement],
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
@@ -259,7 +337,6 @@ pub fn run_sumcheck_prover(
     ProverState<SkyscraperSponge, FieldElement>,
     Vec<FieldElement>,
 ) {
-    let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
     merlin
@@ -274,9 +351,32 @@ pub fn run_sumcheck_prover(
 
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
-    let mut fold = None;
+    let mut rng = ark_std::rand::thread_rng();
+    let mut g_univariates = Vec::with_capacity(m_0);
 
     for _ in 0..m_0 {
+        let coeffs: [FieldElement; 4] = [
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+        ];
+        g_univariates.push(coeffs);
+    }
+
+    let sum_g_reduce = sum_over_hypercube(g_univariates.as_slice());
+
+    let _ = merlin.add_scalars(&[sum_g_reduce]);
+
+    let mut rho_buf = [FieldElement::zero()];
+    let _ = merlin.fill_challenge_scalars(&mut rho_buf);
+    let rho = rho_buf[0];
+
+    let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
+
+    let mut fold = None;
+
+    for idx in 0..m_0 {
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
         let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
@@ -295,31 +395,39 @@ pub fn run_sumcheck_prover(
             eq.truncate(eq.len() / 2);
         }
 
-        let mut hhat_i_coeffs = [FieldElement::zero(); 4];
+        let g_poly = compute_g_poly(g_univariates.as_slice(), idx, alpha.as_slice());
 
-        hhat_i_coeffs[0] = hhat_i_at_0;
-        hhat_i_coeffs[2] = HALF
-            * (saved_val_for_sumcheck_equality_assertion + hhat_i_at_em1
-                - hhat_i_at_0
-                - hhat_i_at_0
-                - hhat_i_at_0);
-        hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube;
-        hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
-            - hhat_i_coeffs[0]
-            - hhat_i_coeffs[0]
-            - hhat_i_coeffs[3]
-            - hhat_i_coeffs[2];
+        let mut combined_hhat_i_coeffs = [FieldElement::zero(); 4];
+
+        combined_hhat_i_coeffs[0] = hhat_i_at_0 + rho * g_poly[0];
+
+        let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
+        let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
+
+        combined_hhat_i_coeffs[2] = HALF
+            * (saved_val_for_sumcheck_equality_assertion + combined_at_em1
+                - combined_hhat_i_coeffs[0]
+                - combined_hhat_i_coeffs[0]
+                - combined_hhat_i_coeffs[0]);
+
+        combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
+
+        combined_hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[3]
+            - combined_hhat_i_coeffs[2];
 
         assert_eq!(
             saved_val_for_sumcheck_equality_assertion,
-            hhat_i_coeffs[0]
-                + hhat_i_coeffs[0]
-                + hhat_i_coeffs[1]
-                + hhat_i_coeffs[2]
-                + hhat_i_coeffs[3]
+            combined_hhat_i_coeffs[0]
+                + combined_hhat_i_coeffs[0]
+                + combined_hhat_i_coeffs[1]
+                + combined_hhat_i_coeffs[2]
+                + combined_hhat_i_coeffs[3]
         );
 
-        let _ = merlin.add_scalars(&hhat_i_coeffs[..]);
+        let _ = merlin.add_scalars(&combined_hhat_i_coeffs[..]);
         let mut alpha_i_wrapped_in_vector = [FieldElement::zero()];
         let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
         let alpha_i = alpha_i_wrapped_in_vector[0];
@@ -327,50 +435,16 @@ pub fn run_sumcheck_prover(
 
         fold = Some(alpha_i);
 
-        saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i_coeffs, &alpha_i);
+        saved_val_for_sumcheck_equality_assertion =
+            eval_qubic_poly(&combined_hhat_i_coeffs, &alpha_i);
     }
+
+    let g_alpha_eval = compute_g_poly(g_univariates.as_slice(), alpha.len(), alpha.as_slice())[0];
+    let _ = merlin.add_scalars(&[g_alpha_eval]);
+
     (merlin, alpha)
 }
 
-#[instrument(skip_all)]
-pub fn run_whir_pcs_prover(
-    z: Vec<FieldElement>,
-    params: &WhirConfig,
-    mut merlin: ProverState<SkyscraperSponge, FieldElement>,
-    m: usize,
-    alphas: [Vec<FieldElement>; 3],
-) -> (
-    ProverState<SkyscraperSponge, FieldElement>,
-    [FieldElement; 3],
-) {
-    info!("WHIR Parameters: {params}");
-    if !params.check_pow_bits() {
-        warn!("More PoW bits required than specified.");
-    }
-
-    let z = pad_to_power_of_two(z);
-    let poly = EvaluationsList::new(z);
-    let polynomial = poly.to_coeffs();
-
-    let committer = CommitmentWriter::new(params.clone());
-    let witness = committer
-        .commit(&mut merlin, polynomial)
-        .expect("WHIR prover failed to commit");
-
-    let mut statement = Statement::<FieldElement>::new(m);
-
-    let sums: [FieldElement; 3] = alphas.map(|alpha| {
-        let weight = Weights::linear(EvaluationsList::new(pad_to_power_of_two(alpha)));
-        let sum = weight.weighted_sum(&poly);
-        statement.add_constraint(weight, sum);
-        sum
-    });
-    let prover = Prover(params.clone());
-    prover
-        .prove(&mut merlin, statement, witness)
-        .expect("WHIR prover failed to generate a proof");
-    (merlin, sums)
-}
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_prover(
@@ -425,7 +499,14 @@ pub fn run_sumcheck_verifier(
     let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
 
-    let mut saved_val_for_sumcheck_equality_assertion = FieldElement::zero();
+    let mut sum_g_buf = [FieldElement::zero()];
+    arthur.fill_next_scalars(&mut sum_g_buf)?;
+
+    let mut rho_buf = [FieldElement::zero()];
+    arthur.fill_challenge_scalars(&mut rho_buf)?;
+    let rho = rho_buf[0];
+
+    let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_buf[0];
 
     let mut alpha = vec![FieldElement::zero(); m_0];
 
@@ -444,10 +525,16 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_qubic_poly(&hhat_i, &alpha_i[0]);
     }
 
+    let mut g_alpha_eval_buf = [FieldElement::zero()];
+    arthur.fill_next_scalars(&mut g_alpha_eval_buf)?;
+    let g_alpha = g_alpha_eval_buf[0];
+
+    let f_at_alpha = saved_val_for_sumcheck_equality_assertion - rho * g_alpha;
+
     Ok(DataFromSumcheckVerifier {
         r,
         alpha,
-        last_sumcheck_val: saved_val_for_sumcheck_equality_assertion,
+        last_sumcheck_val: f_at_alpha,
     })
 }
 
@@ -461,7 +548,7 @@ pub fn run_whir_pcs_verifier(
     let verifier = Verifier::new(params);
 
     verifier
-        .verify(arthur, &parsed_commitment, statement_verifier)
+        .verify(arthur, parsed_commitment, statement_verifier)
         .context("while verifying WHIR")?;
 
     Ok(())

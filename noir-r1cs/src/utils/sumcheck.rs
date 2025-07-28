@@ -119,10 +119,13 @@ where
     IOPattern: FieldDomainSeparator<FieldElement>,
 {
     fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
+        self = self.add_scalars(1, "Sum of G over boolean hypercube");
+        self = self.challenge_scalars(1, "Rho");
         for _ in 0..num_vars {
             self = self.add_scalars(4, "Sumcheck Polynomials");
             self = self.challenge_scalars(1, "Sumcheck Random");
         }
+        self = self.add_scalars(1, "Value of G at alpha");
         self
     }
 
