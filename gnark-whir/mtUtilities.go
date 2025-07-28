@@ -559,11 +559,13 @@ func runWhir(
 		if err != nil {
 			return err
 		}
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, whirParams.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[r])
-		if err != nil {
+
+		if err = RunPoW(api, sc, arthur, whirParams.PowBits[r]); err != nil {
 			return err
 		}
-		if err = RunPoW(api, sc, arthur, whirParams.PowBits[r]); err != nil {
+
+		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, whirParams.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[r])
+		if err != nil {
 			return err
 		}
 
@@ -591,13 +593,16 @@ func runWhir(
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return err
 	}
+
+	if err := RunPoW(api, sc, arthur, whirParams.FinalPowBits); err != nil {
+		return err
+	}
+
 	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, whirParams.FinalQueries, circuit.LeafIndexes[whirParams.ParamNRounds], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[whirParams.ParamNRounds])
 	if err != nil {
 		return err
 	}
-	if err := RunPoW(api, sc, arthur, whirParams.FinalPowBits); err != nil {
-		return err
-	}
+
 	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
 
 	for foldIndex := range computedFold {
@@ -610,13 +615,6 @@ func runWhir(
 	}
 
 	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
-
-	if whirParams.FinalFoldingPowBits > 0 {
-		_, _, err := utilities.PoW(api, sc, arthur, whirParams.FinalPowBits)
-		if err != nil {
-			return err
-		}
-	}
 
 	evaluationOfVPoly := ComputeWPoly(
 		api,
