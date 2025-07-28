@@ -98,11 +98,23 @@ tracy
 ```
 2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
    localhost for incoming data.
-3. Now start the application to profile:
+3.  Compile `noir-r1cs-profiled` binary.
 ```sh
-cargo run --release --bin provekit-cli prove --features cli-profiled ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo build --release --bin provekit-cli --features cli-profiled
 ```
-4. Go back to tracy tool. You should see that it receives data. App is interactive.
+4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
+   command must be run against each binary that is being profiled by tracy. This will create directory next to the 
+   binary provided with `.dSYM` suffix (ex. `../../target/profiled-cli.dSYM`). Directory will contain the
+   debug symbols and paths extracted with different format that is compatible with tracy tool. It must be rerun after
+   each changes made to `provekit-cli` app.
+```sh
+ dsymutil ../../target/release/provekit-cli
+```
+5. Now start the application to profile:
+```sh
+../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+```
+6. Go back to tracy tool. You should see that it receives data. App is interactive.
 
 #### Using samply (CPU usage)
 
