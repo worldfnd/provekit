@@ -58,8 +58,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         if modulo != 0 {
             let msg_start = BLOCK_SIZE * num_blocks;
             // Safety: The `verify_msg_block` function should cover this.
-            let (new_msg_block, new_msg_byte_ptr) =
-                unsafe { build_msg_block(msg, message_size, msg_start) };
+            let (new_msg_block, new_msg_byte_ptr) = build_msg_block(msg, message_size, msg_start);
 
             if msg_start < message_size {
                 msg_block = new_msg_block;
@@ -441,9 +440,6 @@ fn attach_len_to_msg_block(
     unsafe {
         zero_rest_of_msg_block(msg_block, msg_byte_ptr);
     }
-    // for i in (msg_byte_ptr / INT_SIZE)..INT_SIZE_PTR {
-    //     msg_block[i] = 0;
-    // }
 
     // Set the last two 4 byte ints as the first/second half of the 8 bytes of the length.
     let len = 8 * message_size;
@@ -460,6 +456,7 @@ fn attach_len_to_msg_block(
     msg_block
 }
 
+/// The only function which actually needs to be placed in an `unsafe` block.
 unconstrained fn zero_rest_of_msg_block(mut msg_block: MSG_BLOCK, msg_byte_ptr: BLOCK_BYTE_PTR) {
     for i in (msg_byte_ptr / INT_SIZE)..INT_SIZE_PTR {
         msg_block[i] = 0;
