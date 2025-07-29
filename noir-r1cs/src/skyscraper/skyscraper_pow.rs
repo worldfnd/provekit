@@ -29,7 +29,6 @@ impl PowStrategy for SkyscraperPoW {
     }
 }
 
-#[ignore = "Takes a long time during testing"]
 #[test]
 fn test_pow_skyscraper() {
     use {
