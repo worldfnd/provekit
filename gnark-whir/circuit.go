@@ -180,8 +180,8 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, true),
-		SparkValueMerkle:              newMerkle(hints.aHints, true),
+		SpartanMerkle:                 newMerkle(hints.spartanHints, true),
+		SparkValueMerkle:              newMerkle(hints.sparkASumcheckValHints, true),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
 		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
@@ -221,8 +221,8 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, false),
-		SparkValueMerkle:              newMerkle(hints.aHints, false),
+		SpartanMerkle:                 newMerkle(hints.spartanHints, false),
+		SparkValueMerkle:              newMerkle(hints.sparkASumcheckValHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),

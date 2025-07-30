@@ -66,8 +66,8 @@ type WHIRConfig struct {
 }
 
 type Hints struct {
-	colHints Hint
-	aHints   Hint
+	spartanHints           Hint
+	sparkASumcheckValHints Hint
 }
 
 type Hint struct {
@@ -230,11 +230,11 @@ func main() {
 			sparkValEnd := spartanEnd + (config.WHIRConfigA.NRounds + 1)
 
 			hints := Hints{
-				colHints: Hint{
+				spartanHints: Hint{
 					merklePaths: merklePaths[:spartanEnd],
 					stirAnswers: stirAnswers[:spartanEnd],
 				},
-				aHints: Hint{
+				sparkASumcheckValHints: Hint{
 					merklePaths: merklePaths[spartanEnd:sparkValEnd],
 					stirAnswers: stirAnswers[spartanEnd:sparkValEnd],
 				},
