@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -41,48 +40,39 @@ type ProofObject struct {
 }
 
 type Config struct {
-	LogNumConstraints    int      `json:"log_num_constraints"`
-	NRounds              int      `json:"n_rounds"`
-	NVars                int      `json:"n_vars"`
-	FoldingFactor        []int    `json:"folding_factor"`
-	OODSamples           []int    `json:"ood_samples"`
-	NumQueries           []int    `json:"num_queries"`
-	PowBits              []int    `json:"pow_bits"`
-	FinalQueries         int      `json:"final_queries"`
-	FinalPowBits         int      `json:"final_pow_bits"`
-	FinalFoldingPowBits  int      `json:"final_folding_pow_bits"`
-	DomainGenerator      string   `json:"domain_generator"`
-	Rate                 int      `json:"rate"`
-	IOPattern            string   `json:"io_pattern"`
-	Transcript           []byte   `json:"transcript"`
-	TranscriptLen        int      `json:"transcript_len"`
-	StatementEvaluations []string `json:"statement_evaluations"`
+	WHIRConfigRow     WHIRConfig `json:"whir_config_row"`
+	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
+	WHIRConfigA       WHIRConfig `json:"whir_config_a_num_terms"`
+	LogNumConstraints int        `json:"log_num_constraints"`
+	LogNumVariables   int        `json:"log_num_variables"`
+	LogANumTerms      int        `json:"log_a_num_terms"`
+	IOPattern         string     `json:"io_pattern"`
+	Transcript        []byte     `json:"transcript"`
+	TranscriptLen     int        `json:"transcript_len"`
 }
 
-type SparseMatrix struct {
-	Rows       uint64   `json:"num_rows"`
-	Cols       uint64   `json:"num_cols"`
-	RowIndices []uint64 `json:"new_row_indices"`
-	ColIndices []uint64 `json:"col_indices"`
-	Values     []uint64 `json:"values"`
+type WHIRConfig struct {
+	NRounds             int    `json:"n_rounds"`
+	Rate                int    `json:"rate"`
+	NVars               int    `json:"n_vars"`
+	FoldingFactor       []int  `json:"folding_factor"`
+	OODSamples          []int  `json:"ood_samples"`
+	NumQueries          []int  `json:"num_queries"`
+	PowBits             []int  `json:"pow_bits"`
+	FinalQueries        int    `json:"final_queries"`
+	FinalPowBits        int    `json:"final_pow_bits"`
+	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
+	DomainGenerator     string `json:"domain_generator"`
 }
 
-type Interner struct {
-	Values []Fp256 `json:"values"`
+type Hints struct {
+	colHints Hint
+	aHints   Hint
 }
 
-type InternerAsString struct {
-	Values string `json:"values"`
-}
-
-type R1CS struct {
-	PublicInputs uint64           `json:"public_inputs"`
-	Witnesses    uint64           `json:"witnesses"`
-	Constraints  uint64           `json:"constraints"`
-	Interner     InternerAsString `json:"interner"`
-	A            SparseMatrix     `json:"a"`
-	B            SparseMatrix     `json:"b"`
-	C            SparseMatrix     `json:"c"`
+type Hint struct {
+	merklePaths []MultiPath[KeccakDigest]
+	stirAnswers [][][]Fp256
 }
 
 func main() {
@@ -95,12 +85,6 @@ func main() {
 				Usage:    "Path to the config file",
 				Required: false,
 				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
-			},
-			&cli.StringFlag{
-				Name:     "r1cs",
-				Usage:    "Path to the r1cs json file",
-				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
 			},
 			&cli.StringFlag{
 				Name:     "ccs",
@@ -125,7 +109,6 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			configFilePath := c.String("config")
-			r1csFilePath := c.String("r1cs")
 			outputCcsPath := c.String("ccs")
 			pkPath := c.String("pk")
 			vkPath := c.String("vk")
@@ -149,9 +132,10 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
-			var merkle_paths []MultiPath[KeccakDigest]
-			var stir_answers [][][]Fp256
+			var merklePaths []MultiPath[KeccakDigest]
+			var stirAnswers [][][]Fp256
 			var deferred []Fp256
+			var claimedEvaluations []Fp256
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -175,25 +159,35 @@ func main() {
 							&path,
 							false, false,
 						)
-						merkle_paths = append(merkle_paths, path)
+						merklePaths = append(merklePaths, path)
 					case "stir_answers":
-						var stirAnswers [][]Fp256
+						var stirAnswersTemporary [][]Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&stirAnswers,
+							&stirAnswersTemporary,
 							false, false,
 						)
-						stir_answers = append(stir_answers, stirAnswers)
+						stirAnswers = append(stirAnswers, stirAnswersTemporary)
 					case "deferred_weight_evaluations":
+						var deferredTemporary []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&deferred,
+							&deferredTemporary,
 							false, false,
 						)
 						if err != nil {
 							return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 						}
-						fmt.Print(deferred)
+						deferred = append(deferred, deferredTemporary...)
+					case "claimed_evaluations":
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&claimedEvaluations,
+							false, false,
+						)
+						if err != nil {
+							return fmt.Errorf("failed to deserialize claimed_evaluations: %w", err)
+						}
 					}
 
 					if err != nil {
@@ -220,34 +214,11 @@ func main() {
 
 			config.Transcript = truncated
 
-			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
-			if r1csErr != nil {
-				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
-			}
-
-			var r1cs R1CS
-			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
-				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
-			}
-
-			internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
-			if err != nil {
-				return fmt.Errorf("failed to decode interner values: %w", err)
-			}
-
-			var interner Interner
-			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-				bytes.NewReader(internerBytes), &interner, false, false,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to deserialize interner: %w", err)
-			}
-
 			var pk *groth16.ProvingKey
 			var vk *groth16.VerifyingKey
 			if pkPath != "" && vkPath != "" {
 				log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
-				restoredPk, restoredVk, err := keys_from_files(pkPath, vkPath)
+				restoredPk, restoredVk, err := keysFromFiles(pkPath, vkPath)
 				if err != nil {
 					return err
 				}
@@ -255,7 +226,21 @@ func main() {
 				vk = &restoredVk
 			}
 
-			verify_circuit(deferred, config, r1cs, interner, merkle_paths, stir_answers, pk, vk, outputCcsPath)
+			spartanEnd := config.WHIRConfigCol.NRounds + 1
+			sparkValEnd := spartanEnd + (config.WHIRConfigA.NRounds + 1)
+
+			hints := Hints{
+				colHints: Hint{
+					merklePaths: merklePaths[:spartanEnd],
+					stirAnswers: stirAnswers[:spartanEnd],
+				},
+				aHints: Hint{
+					merklePaths: merklePaths[spartanEnd:sparkValEnd],
+					stirAnswers: stirAnswers[spartanEnd:sparkValEnd],
+				},
+			}
+
+			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations)
 			return nil
 		},
 	}

@@ -15,6 +15,7 @@ mod ram;
 mod range_check;
 mod rom;
 mod skyscraper;
+mod spark;
 mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
@@ -30,7 +31,6 @@ pub use {
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
     whir::crypto::fields::Field256 as FieldElement,
-    whir_r1cs::create_io_pattern,
 };
 use {
     crate::{
