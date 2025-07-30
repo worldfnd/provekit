@@ -17,6 +17,23 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
+type Circuit struct {
+	// Inputs
+	LinearStatementValuesAtPoints []frontend.Variable
+	LinearStatementEvaluations    []frontend.Variable
+	LogNumConstraints             int
+	LogNumVariables               int
+	LogANumTerms                  int
+	SpartanMerkle                 Merkle
+	SparkValueMerkle              Merkle
+	WHIRParamsCol                 WHIRParams
+	WHIRParamsRow                 WHIRParams
+	WHIRParamsA                   WHIRParams
+	// Public Input
+	IO         []byte
+	Transcript []uints.U8 `gnark:",public"`
+}
+
 func (circuit *Circuit) Define(api frontend.API) error {
 	sc, arthur, uapi, err := initializeComponents(api, circuit)
 	if err != nil {
