@@ -125,7 +125,6 @@ where
             self = self.add_scalars(4, "Sumcheck Polynomials");
             self = self.challenge_scalars(1, "Sumcheck Random");
         }
-        self = self.add_scalars(1, "Value of G at alpha");
         self
     }
 
@@ -163,8 +162,8 @@ fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement
     }
 }
 
-/// Evaluates a qubic polynomial on a value
-pub fn eval_qubic_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElement {
+/// Evaluates a cubic polynomial on a value
+pub fn eval_cubic_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElement {
     poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
 }
 
