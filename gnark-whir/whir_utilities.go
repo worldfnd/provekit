@@ -136,11 +136,6 @@ func runWhir(
 
 	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
 
-	eqValues := []frontend.Variable{}
-	for _, evaluationPoint := range evaluationPoints {
-		eqValues = append(eqValues, calculateEQ(api, totalFoldingRandomness, evaluationPoint))
-	}
-
 	evaluationOfVPoly := ComputeWPoly(
 		api,
 		whirParams,
@@ -148,7 +143,7 @@ func runWhir(
 		mainRoundData,
 		totalFoldingRandomness,
 		linearStatementValuesAtPoints,
-		eqValues,
+		evaluationPoints,
 	)
 
 	api.AssertIsEqual(
@@ -343,9 +338,15 @@ func ComputeWPoly(
 	mainRoundData MainRoundData,
 	totalFoldingRandomness []frontend.Variable,
 	linearStatementValuesAtPoints []frontend.Variable,
-	eqValues []frontend.Variable,
+	evaluationPoints [][]frontend.Variable,
 ) frontend.Variable {
 	foldingRandomnessReversed := utilities.Reverse(totalFoldingRandomness)
+
+	eqValues := []frontend.Variable{}
+	for _, evaluationPoint := range evaluationPoints {
+		eqValues = append(eqValues, calculateEQ(api, foldingRandomnessReversed, evaluationPoint))
+	}
+
 	numberVars := circuit.MVParamsNumberOfVariables
 
 	value := frontend.Variable(0)
