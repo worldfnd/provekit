@@ -72,6 +72,22 @@ pub fn prove_spark(
         spark.sumcheck.witnesses.val,
     )?;
 
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(randomness.clone()),
+        final_folds[1],
+        whir_config_num_terms.clone(),
+        spark.sumcheck.witnesses.e_rx,
+    )?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(randomness.clone()),
+        final_folds[2],
+        whir_config_num_terms.clone(),
+        spark.sumcheck.witnesses.e_ry,
+    )?;
+
     Ok(())
 }
 
@@ -499,6 +515,8 @@ where
         let io = self
             .add_sumcheck_polynomials(num_terms)
             .hint("sumcheck_last_folds")
+            .add_whir_proof(whir_config_num_terms)
+            .add_whir_proof(whir_config_num_terms)
             .add_whir_proof(whir_config_num_terms);
         // .add_whir_proof(whir_config_num_terms)
         // .add_whir_proof(whir_config_num_terms);
@@ -670,19 +688,51 @@ pub fn verify_spark_sumcheck(
         "Spark sumcheck last value isn't equal to the final folds sent"
     );    
 
-    let mut statement_verifier = Statement::<FieldElement>::new(num_terms);
-    statement_verifier.add_constraint(
-        Weights::evaluation(MultilinearPoint(randomness)),
+    let mut val_statement_verifier = Statement::<FieldElement>::new(num_terms);
+    val_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
         final_folds[0],
     );
 
-    let verifier = Verifier::new(whir_config_terms);
+    let val_verifier = Verifier::new(whir_config_terms);
 
-    let (folding_randomness, deferred) = verifier
+    val_verifier
         .verify(
             arthur,
             &sumcheck_commitments.value_commitment,
-            &statement_verifier,
+            &val_statement_verifier,
+        )
+        .context("while verifying WHIR")?;
+
+    let mut erx_statement_verifier = Statement::<FieldElement>::new(num_terms);
+    erx_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
+        final_folds[1],
+    );
+
+    let erx_verifier = Verifier::new(whir_config_terms);
+
+    erx_verifier
+        .verify(
+            arthur,
+            &sumcheck_commitments.e_rx_commitment,
+            &erx_statement_verifier,
+        )
+        .context("while verifying WHIR")?;
+
+    let mut ery_statement_verifier = Statement::<FieldElement>::new(num_terms);
+    ery_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness)),
+        final_folds[2],
+    );
+
+    let ery_verifier = Verifier::new(whir_config_terms);
+
+    ery_verifier
+        .verify(
+            arthur,
+            &sumcheck_commitments.e_ry_commitment,
+            &ery_statement_verifier,
         )
         .context("while verifying WHIR")?;
 
