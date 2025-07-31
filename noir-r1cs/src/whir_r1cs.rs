@@ -187,7 +187,7 @@ impl WhirR1CSScheme {
             &self.whir_config_col,
             deferred[0],
             self.a_num_terms,
-        );
+        )?;
 
         Ok(())
     }

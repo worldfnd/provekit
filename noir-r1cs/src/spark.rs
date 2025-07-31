@@ -62,7 +62,7 @@ pub fn prove_spark(
     let (final_folds, randomness) =
         run_sumcheck_prover_spark(merlin, spark.sumcheck.values.clone(), claimed_value);
 
-    merlin.hint::<[FieldElement; 3]>(&final_folds)?;
+    merlin.hint::<Vec<FieldElement>>(&final_folds.to_vec())?;
 
     produce_whir_proof(
         merlin,
@@ -498,7 +498,7 @@ where
     ) -> Self {
         let io = self
             .add_sumcheck_polynomials(num_terms)
-            .hint("last folds")
+            .hint("sumcheck_last_folds")
             .add_whir_proof(whir_config_num_terms);
         // .add_whir_proof(whir_config_num_terms)
         // .add_whir_proof(whir_config_num_terms);
@@ -663,7 +663,12 @@ pub fn verify_spark_sumcheck(
         run_sumcheck_verifier_spark(arthur, num_terms, claimed_value)
             .context("while verifying sumcheck 2")?;
 
-    let final_folds: [FieldElement; 3] = arthur.hint()?;
+    let final_folds: Vec<FieldElement> = arthur.hint()?;
+
+    ensure!(
+        last_sumcheck_value == final_folds[0] * final_folds[1] * final_folds[2],
+        "Spark sumcheck last value isn't equal to the final folds sent"
+    );    
 
     let mut statement_verifier = Statement::<FieldElement>::new(num_terms);
     statement_verifier.add_constraint(

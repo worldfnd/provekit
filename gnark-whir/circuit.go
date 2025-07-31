@@ -25,10 +25,11 @@ type Circuit struct {
 	LogNumVariables               int
 	LogANumTerms                  int
 	SpartanMerkle                 Merkle
-	SparkValueMerkle              Merkle
+	SparkASumcheckValueMerkle     Merkle
 	WHIRParamsCol                 WHIRParams
 	WHIRParamsRow                 WHIRParams
 	WHIRParamsA                   WHIRParams
+	SumcheckLastFolds             []frontend.Variable
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -51,7 +52,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit.SpartanMerkle, arthur); err != nil {
+		return err
+	}
+
+	spartanInitialOODQueries, spartanInitialOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	err = runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints, []frontend.Variable{}, [][]frontend.Variable{}, spartanInitialOODQueries, spartanInitialOODAnswers)
 	if err != nil {
 		return err
 	}
@@ -84,7 +94,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
+	valOODQueries, valOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -144,15 +154,33 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
+	sparkSumcheckFoldingRandomness, sparkSumcheckLastValue, err := runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
 	if err != nil {
 		return err
 	}
+
+	_ = sparkSumcheckFoldingRandomness
+	_ = valOODQueries
+	_ = valOODAnswers
+
+	api.AssertIsEqual(sparkSumcheckLastValue, api.Mul(circuit.SumcheckLastFolds[0], circuit.SumcheckLastFolds[1], circuit.SumcheckLastFolds[2]))
+	// err = runWhir(api, arthur, uapi, sc, circuit.SparkASumcheckValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[0]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, valOODQueries, valOODAnswers)
+	// if err != nil {
+	// 	return err
+	// }
+
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256,
+	deferred []Fp256,
+	cfg Config,
+	hints Hints,
+	pk *groth16.ProvingKey,
+	vk *groth16.VerifyingKey,
+	outputCcsPath string,
+	claimedEvaluations []Fp256,
+	sumcheckLastFolds []Fp256,
 ) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -171,6 +199,12 @@ func verifyCircuit(
 		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
+	sumcheckLastFoldsCircuit := make([]frontend.Variable, len(sumcheckLastFolds))
+	contSumcheckLastFoldsCircuit := make([]frontend.Variable, len(sumcheckLastFolds))
+	for i := range len(deferred) {
+		sumcheckLastFoldsCircuit[i] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[i].Limbs)
+	}
+
 	var circuit = Circuit{
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        contTranscript,
@@ -180,8 +214,10 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.spartanHints, true),
-		SparkValueMerkle:              newMerkle(hints.sparkASumcheckValHints, true),
+		SumcheckLastFolds:             contSumcheckLastFoldsCircuit,
+
+		SpartanMerkle:             newMerkle(hints.spartanHints, true),
+		SparkASumcheckValueMerkle: newMerkle(hints.sparkASumcheckValHints, true),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
 		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
@@ -221,8 +257,10 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.spartanHints, false),
-		SparkValueMerkle:              newMerkle(hints.sparkASumcheckValHints, false),
+		SumcheckLastFolds:             sumcheckLastFoldsCircuit,
+
+		SpartanMerkle:             newMerkle(hints.spartanHints, false),
+		SparkASumcheckValueMerkle: newMerkle(hints.sparkASumcheckValHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),

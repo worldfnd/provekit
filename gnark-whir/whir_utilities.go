@@ -37,22 +37,17 @@ func runWhir(
 	whirParams WHIRParams,
 	linearStatementEvaluations []frontend.Variable,
 	linearStatementValuesAtPoints []frontend.Variable,
+	evaluationStatementClaimedValues []frontend.Variable,
+	evaluationPoints [][]frontend.Variable,
+	initialOODQueries []frontend.Variable,
+	initialOODAnswers []frontend.Variable,
 ) error {
-	if err := FillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
-		return err
-	}
-
-	initialOODQueries, initialOODAnswers, err := FillInOODPointsAndAnswers(whirParams.CommittmentOODSamples, arthur)
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, whirParams.CommittmentOODSamples+len(linearStatementEvaluations)+len(evaluationStatementClaimedValues))
 	if err != nil {
 		return err
 	}
 
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, whirParams.CommittmentOODSamples+len(linearStatementEvaluations))
-	if err != nil {
-		return err
-	}
-
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linearStatementEvaluations...)
+	OODAnswersAndStatmentEvaluations := append(append(initialOODAnswers, linearStatementEvaluations...), evaluationStatementClaimedValues...)
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
 	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
@@ -141,6 +136,11 @@ func runWhir(
 
 	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
 
+	eqValues := []frontend.Variable{}
+	for _, evaluationPoint := range evaluationPoints {
+		eqValues = append(eqValues, calculateEQ(api, totalFoldingRandomness, evaluationPoint))
+	}
+
 	evaluationOfVPoly := ComputeWPoly(
 		api,
 		whirParams,
@@ -148,6 +148,7 @@ func runWhir(
 		mainRoundData,
 		totalFoldingRandomness,
 		linearStatementValuesAtPoints,
+		eqValues,
 	)
 
 	api.AssertIsEqual(
@@ -342,6 +343,7 @@ func ComputeWPoly(
 	mainRoundData MainRoundData,
 	totalFoldingRandomness []frontend.Variable,
 	linearStatementValuesAtPoints []frontend.Variable,
+	eqValues []frontend.Variable,
 ) frontend.Variable {
 	foldingRandomnessReversed := utilities.Reverse(totalFoldingRandomness)
 	numberVars := circuit.MVParamsNumberOfVariables
@@ -353,6 +355,10 @@ func ComputeWPoly(
 
 	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
+	}
+
+	for j, eqValue := range eqValues {
+		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+len(linearStatementValuesAtPoints)+j], eqValue))
 	}
 
 	for r := range mainRoundData.OODPoints {

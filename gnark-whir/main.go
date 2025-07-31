@@ -136,6 +136,7 @@ func main() {
 			var stirAnswers [][][]Fp256
 			var deferred []Fp256
 			var claimedEvaluations []Fp256
+			var sumcheck_last_folds []Fp256
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -187,6 +188,15 @@ func main() {
 						)
 						if err != nil {
 							return fmt.Errorf("failed to deserialize claimed_evaluations: %w", err)
+						}
+					case "sumcheck_last_folds":
+						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+							bytes.NewReader(config.Transcript[start:end]),
+							&sumcheck_last_folds,
+							false, false,
+						)
+						if err != nil {
+							return fmt.Errorf("failed to deserialize sumcheck_last_folds: %w", err)
 						}
 					}
 
@@ -240,7 +250,7 @@ func main() {
 				},
 			}
 
-			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations)
+			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, sumcheck_last_folds)
 			return nil
 		},
 	}
