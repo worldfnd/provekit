@@ -11,19 +11,12 @@ use {
             HALF,
         },
         FieldElement,
-    },
-    anyhow::{ensure, Context, Error, Result},
-    ark_crypto_primitives::merkle_tree::Config,
-    ark_ff::FftField,
-    ark_std::{One, Zero},
-    spongefish::{
+    }, anyhow::{ensure, Context, Error, Result}, ark_crypto_primitives::merkle_tree::Config, ark_ff::FftField, ark_std::{One, Zero}, spongefish::{
         codecs::arkworks_algebra::{
             FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField,
         },
         ByteDomainSeparator, ProverState, VerifierState,
-    },
-    std::ops::Mul,
-    whir::{
+    }, std::ops::Mul, tracing::subscriber::SetGlobalDefaultError, whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness},
@@ -34,7 +27,7 @@ use {
             utils::{HintDeserialize, HintSerialize},
             verifier::Verifier,
         },
-    },
+    }
 };
 
 pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
@@ -87,6 +80,8 @@ pub fn prove_spark(
         whir_config_num_terms.clone(),
         spark.sumcheck.witnesses.e_ry,
     )?;
+
+    prove_offline_memory_check(merlin)?;
 
     Ok(())
 }
@@ -463,6 +458,7 @@ pub trait SparkIOPattern<F: FftField, MerkleConfig: Config> {
         num_terms: usize,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self;
+    fn offline_memory_check(self) -> Self;
 }
 
 impl<F, MerkleConfig, DomainSeparator> SparkIOPattern<F, MerkleConfig> for DomainSeparator
@@ -484,7 +480,8 @@ where
     ) -> Self {
         let io = self
             .spark_commit(whir_config_num_terms, whir_config_row, whir_config_col)
-            .spark_sumcheck(num_terms, whir_config_num_terms);
+            .spark_sumcheck(num_terms, whir_config_num_terms)
+            .offline_memory_check();
         io
     }
 
@@ -522,6 +519,12 @@ where
         // .add_whir_proof(whir_config_num_terms);
         io
     }
+
+    fn offline_memory_check(self) -> Self {
+        self
+            .challenge_scalars(1, "tau")
+            .challenge_scalars(1, "gamma")
+    }
 }
 
 pub fn verify_spark(
@@ -541,7 +544,9 @@ pub fn verify_spark(
         num_terms,
         spark_commitments.sumcheck,
         whir_config_terms,
-    )?;
+    )?; 
+
+    verify_offline_memory_check(arthur)?;
 
     Ok(())
 }
@@ -767,4 +772,32 @@ pub fn run_sumcheck_verifier_spark(
     }
 
     Ok((alpha, saved_val_for_sumcheck_equality_assertion))
+}
+
+pub fn prove_offline_memory_check(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+) -> Result<()> {
+    let mut tau = [FieldElement::from(0); 1];
+    merlin.fill_challenge_scalars(&mut tau)?;
+    let tau = tau[0];
+
+    let mut gamma = [FieldElement::from(0); 1];
+    merlin.fill_challenge_scalars(&mut gamma)?;
+    let gamma = gamma[0];
+
+    Ok(())
+}
+
+pub fn verify_offline_memory_check(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+) -> Result<()> {
+    let mut tau = [FieldElement::from(0); 1];
+    arthur.fill_challenge_scalars(&mut tau)?;
+    let tau = tau[0];
+
+    let mut gamma = [FieldElement::from(0); 1];
+    arthur.fill_challenge_scalars(&mut gamma)?;
+    let gamma = gamma[0];
+
+    Ok(())
 }

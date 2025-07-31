@@ -181,6 +181,11 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
+	err = offline_memory_check(arthur)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
