@@ -181,7 +181,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	err = offline_memory_check(arthur)
+	err = offlineMemoryCheck(
+		api,
+		arthur,
+		spartanSumcheckRand,
+		circuit.LogNumConstraints,
+	)
 	if err != nil {
 		return err
 	}
