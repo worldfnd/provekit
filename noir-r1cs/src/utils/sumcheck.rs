@@ -109,6 +109,8 @@ pub trait SumcheckIOPattern {
     /// verifier sends randomness for the next sumcheck round
     fn add_sumcheck_polynomials(self, num_vars: usize) -> Self;
 
+    fn add_sumcheck_quadratic_polynomials(self, num_vars: usize) -> Self;
+
     /// Verifier sends the randomness on which the supposed 0-polynomial is
     /// evaluated
     fn add_rand(self, num_rand: usize) -> Self;
@@ -121,6 +123,15 @@ where
     fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
         for _ in 0..num_vars {
             self = self.add_scalars(4, "Sumcheck Polynomials");
+            self = self.challenge_scalars(1, "Sumcheck Random");
+        }
+        self
+    }
+
+    //TODO: Potentially merge this with add_sumcheck_polynomials
+    fn add_sumcheck_quadratic_polynomials(mut self, num_vars: usize) -> Self {
+        for _ in 0..num_vars {
+            self = self.add_scalars(2, "Sumcheck Polynomials");
             self = self.challenge_scalars(1, "Sumcheck Random");
         }
         self

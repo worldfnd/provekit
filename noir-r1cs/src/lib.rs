@@ -19,6 +19,8 @@ mod spark;
 mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
+mod memory_check;
+mod grand_product_argument;
 
 pub use {
     crate::{

@@ -186,7 +186,9 @@ impl WhirR1CSScheme {
             &self.whir_config_row,
             &self.whir_config_col,
             deferred[0],
+            data_from_sumcheck_verifier.alpha,
             self.a_num_terms,
+            self.m_0,
         )?;
 
         Ok(())
@@ -206,6 +208,8 @@ impl WhirR1CSScheme {
             &self.whir_config_row,
             &self.whir_config_col,
             self.a_num_terms,
+            self.m_0,
+            self.m,
         );
         io
     }
