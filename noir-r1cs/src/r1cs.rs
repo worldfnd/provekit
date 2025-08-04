@@ -1,3 +1,4 @@
+use file_vec::{filevec, FileVec};
 use {
     crate::{
         r1cs_solver::{MockTranscript, WitnessBuilder},
@@ -114,8 +115,8 @@ impl R1CS {
         witness_builder_vec: &[WitnessBuilder],
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         transcript: &mut MockTranscript,
-    ) -> Vec<Option<FieldElement>> {
-        let mut witness = vec![None; self.num_witnesses()];
+    ) -> FileVec<Option<FieldElement>> {
+        let mut witness = filevec![None; self.num_witnesses()];
         witness_builder_vec.iter().for_each(|witness_builder| {
             witness_builder.solve_and_append_to_transcript(
                 acir_witness_idx_to_value_map,

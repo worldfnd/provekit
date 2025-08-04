@@ -1,3 +1,4 @@
+use file_vec::{filevec, FileVec};
 use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
@@ -137,7 +138,7 @@ impl WhirR1CSScheme {
     }
 
     #[instrument(skip_all)]
-    pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
+    pub fn prove(&self, r1cs: &R1CS, witness: FileVec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -202,7 +203,7 @@ impl WhirR1CSScheme {
             let claimed_sum = proof.whir_query_answer_sums.0[i]
                 + proof.whir_query_answer_sums.1[i] * parsed_commitment.batching_randomness;
             statement_verifier.add_constraint(
-                Weights::linear(EvaluationsList::new(vec![
+                Weights::linear(EvaluationsList::new(filevec![
                     FieldElement::zero();
                     1 << self.m
                 ])),
@@ -334,11 +335,11 @@ pub fn run_sumcheck_prover(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_prover(
-    z: Vec<FieldElement>,
+    z: FileVec<FieldElement>,
     params: &WhirConfig,
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
-    alphas: [Vec<FieldElement>; 3],
+    alphas: [FileVec<FieldElement>; 3],
 ) -> (
     ProverState<SkyscraperSponge, FieldElement>,
     [FieldElement; 3],
@@ -380,7 +381,7 @@ pub fn run_zk_whir_pcs_prover(
     params: &WhirConfig,
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m: usize,
-    alphas: [Vec<FieldElement>; 3],
+    alphas: [FileVec<FieldElement>; 3],
 ) -> (
     ProverState<SkyscraperSponge, FieldElement>,
     ([FieldElement; 3], [FieldElement; 3]),

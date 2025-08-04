@@ -1,3 +1,4 @@
+use file_vec::{filevec, FileVec};
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
@@ -148,7 +149,7 @@ impl HydratedSparseMatrix<'_> {
 /// Right multiplication by vector
 // OPT: Paralelize
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
-    type Output = Vec<FieldElement>;
+    type Output = FileVec<FieldElement>;
 
     fn mul(self, rhs: &[FieldElement]) -> Self::Output {
         assert_eq!(
@@ -156,7 +157,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
+        let mut result = filevec![FieldElement::zero(); self.matrix.num_rows];
         for ((i, j), value) in self.iter() {
             result[i] += value * rhs[j];
         }
@@ -167,7 +168,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
 /// Left multiplication by vector
 // OPT: Paralelize
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
-    type Output = Vec<FieldElement>;
+    type Output = FileVec<FieldElement>;
 
     fn mul(self, rhs: HydratedSparseMatrix<'_>) -> Self::Output {
         assert_eq!(
@@ -175,7 +176,7 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             rhs.matrix.num_rows,
             "Vector length does not match number of rows."
         );
-        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
+        let mut result = filevec![FieldElement::zero(); rhs.matrix.num_cols];
         for ((i, j), value) in rhs.iter() {
             result[j] += value * self[i];
         }

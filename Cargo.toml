@@ -126,9 +126,12 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "nightly-2025-05-28" }
 
-whir = { git = "https://github.com/WizardOfMenlo/whir", features = [
+whir = { path = "./../whir", features = [
   "tracing",
-], rev = "c6de34cbfafb1f00538510a720f4f148f474f84c" }
+]}
+file_vec = { path = "./../file_vec", features = [
+  "tracing",
+]}
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
@@ -137,7 +140,7 @@ ark-bn254 = { version = "0.5.0", default-features = false, features = [
   "scalar_field",
 ] }
 zeroize = "1.8.1"
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+ark-crypto-primitives = { path = "./../crypto-primitives/crypto-primitives", features = ["merkle_tree"] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
 ark-poly = "0.5"
 ark-std = { version = "0.5", features = ["std"] }

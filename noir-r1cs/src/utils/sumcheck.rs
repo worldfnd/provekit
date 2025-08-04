@@ -1,3 +1,4 @@
+use file_vec::{filevec, FileVec};
 use {
     crate::{
         utils::{pad_to_power_of_two, unzip_double_array, workload_size},
@@ -135,8 +136,8 @@ where
 #[instrument(skip_all)]
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
     r: &[FieldElement],
-) -> Vec<FieldElement> {
-    let mut result = vec![FieldElement::zero(); 1 << r.len()];
+) -> FileVec<FieldElement> {
+    let mut result = filevec![FieldElement::zero(); 1 << r.len()];
     eval_eq(r, &mut result, FieldElement::one());
     result
 }
@@ -171,9 +172,10 @@ pub fn eval_qubic_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElem
 pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &[FieldElement],
-) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
+) -> (FileVec<FieldElement>, FileVec<FieldElement>, FileVec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
     // Derive C from R1CS relation (faster than matrix multiplication)
+    // let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
     let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
     (
         pad_to_power_of_two(a),
@@ -197,7 +199,7 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
 pub fn calculate_external_row_of_r1cs_matrices(
     alpha: &[FieldElement],
     r1cs: &R1CS,
-) -> [Vec<FieldElement>; 3] {
+) -> [FileVec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
     let eq_alpha = &eq_alpha[..r1cs.num_constraints()];
     let ((a, b), c) = rayon::join(

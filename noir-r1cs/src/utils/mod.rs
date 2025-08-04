@@ -7,6 +7,7 @@ pub mod serde_jsonify;
 pub mod sumcheck;
 pub mod zk_utils;
 
+use file_vec::FileVec;
 pub use self::print_abi::PrintAbi;
 use {
     crate::{FieldElement, NoirElement},
@@ -82,7 +83,7 @@ pub const fn next_power_of_two(n: usize) -> usize {
 /// Pads the vector with 0 so that the number of elements in the vector is a
 /// power of 2
 #[instrument(skip_all)]
-pub fn pad_to_power_of_two<T: Default>(mut witness: Vec<T>) -> Vec<T> {
+pub fn pad_to_power_of_two<T: Default>(mut witness: FileVec<T>) -> FileVec<T> {
     let target_len = 1 << next_power_of_two(witness.len());
     witness.reserve_exact(target_len - witness.len());
     while witness.len() < target_len {
