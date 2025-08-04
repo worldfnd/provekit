@@ -1,7 +1,7 @@
 use spongefish::{codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField}, ProverState, VerifierState};
-use whir::{poly_utils::{evals::EvaluationsList}};
+use whir::{poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{committer::{reader::ParsedCommitment, Witness}, statement::{Statement, Weights}, verifier::Verifier}};
 
-use crate::{skyscraper::SkyscraperSponge, utils::{sumcheck::{calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly, sumcheck_fold_map_reduce}, HALF}, FieldElement};
+use crate::{skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge}, spark::{produce_whir_proof, WhirConfig}, utils::{sumcheck::{calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly, sumcheck_fold_map_reduce}, HALF}, FieldElement};
 use anyhow::{ensure, Context, Result};
 use ark_std::Zero;
 
@@ -296,4 +296,100 @@ pub fn run_gpa_init_prover (
         gamma,
         merlin,
     );
+}
+
+pub fn run_gpa_final_prover (
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    tau: FieldElement,
+    gamma: FieldElement,
+    eq: Vec<FieldElement>,
+    time_stamp: Vec<FieldElement>,
+    time_stamp_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    whir_config_memory: &WhirConfig,
+) {
+    let memory_size = eq.len();
+    print!("Memory size {:?}", memory_size);
+    print!("Time stamp length {:?}", time_stamp.len());
+    let gpa = GrandProductArgument::new(
+        (0..memory_size as u64)
+            .map(FieldElement::from)
+            .collect(),
+        eq,
+        time_stamp.clone(),
+        tau,
+        gamma,
+        merlin,
+    );
+
+    let randomness_point = MultilinearPoint(gpa.randomness.clone());
+    let eval = EvaluationsList::new(time_stamp).evaluate(&randomness_point);
+    merlin.add_scalars([eval].as_slice());
+
+    produce_whir_proof(
+        merlin,
+        randomness_point,
+        eval,
+        whir_config_memory.clone(),
+        time_stamp_witness,
+    );
+}
+
+
+pub fn run_gpa_final_verifier(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    tau: &FieldElement,
+    gamma: &FieldElement,
+    layer_count: usize,
+    randomness:  Vec<FieldElement>,
+    time_stamp_commitment: ParsedCommitment<FieldElement, FieldElement>,
+    whir_config: &WhirConfig,
+) -> Result<FieldElement> {
+    let gpa_result = gpa_sumcheck_verifier(arthur, layer_count)
+        .context("while verifying GPA sumcheck")?;
+
+    let mut time_stamp_evaluation = [FieldElement::from(0); 1];
+    arthur
+        .fill_next_scalars(&mut time_stamp_evaluation)
+        .expect("Failed to fill next scalars");
+
+    verify_evaluation(
+        arthur,
+        MultilinearPoint(gpa_result.randomness.clone()),
+        time_stamp_evaluation[0],
+        whir_config,
+        &time_stamp_commitment,
+    )?;
+
+    let adr = calculate_adr(&gpa_result.randomness.clone());
+    let mem = calculate_eq(&randomness, &gpa_result.randomness);
+    let cntr = time_stamp_evaluation[0];
+
+    ensure!(
+        gpa_result.last_sumcheck_value == adr * gamma * gamma + mem * gamma + cntr - tau,
+        "spark last failed"
+    );
+
+
+    Ok(gpa_result.claimed_product)
+}
+
+pub fn verify_evaluation(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    point_to_evaluate: MultilinearPoint<FieldElement>,
+    claimed_value: FieldElement,
+    config: &WhirConfig,
+    commitment: &ParsedCommitment<FieldElement, FieldElement>,
+) -> Result<()> {
+    let mut statement_verifier = Statement::<FieldElement>::new(point_to_evaluate.num_variables());
+    statement_verifier.add_constraint(
+        Weights::evaluation(point_to_evaluate),
+        claimed_value,
+    );
+
+    let verifier_final = Verifier::new(config);
+    verifier_final
+        .verify(arthur, commitment, &statement_verifier)
+        .context("while verifying WHIR proof for A")?;
+
+    Ok(())
 }
