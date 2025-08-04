@@ -33,6 +33,15 @@ func UnivarPoly(api frontend.API, coefficients []frontend.Variable, points []fro
 	return results
 }
 
+func CalculateAdr(api frontend.API, coefficients []frontend.Variable) frontend.Variable {
+	ans := frontend.Variable(0)
+	for _, coefficient := range coefficients {
+		ans = api.Add(api.Mul(ans, 2), coefficient)
+	}
+
+	return ans
+}
+
 func IndexOf(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
 	if len(outputs) != 1 {
 		return fmt.Errorf("expecting one output")

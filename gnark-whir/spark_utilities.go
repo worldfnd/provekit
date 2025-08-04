@@ -24,7 +24,7 @@ func offlineMemoryCheck(
 	}
 	gamma := gammaTemp[0]
 
-	gpaInitVerifier(
+	gpa_init_claimed_val := gpaInitVerifier(
 		api,
 		arthur,
 		tau,
@@ -32,6 +32,8 @@ func offlineMemoryCheck(
 		logMemorySize+1,
 		randomness,
 	)
+
+	_ = gpa_init_claimed_val
 
 	return nil
 }
@@ -43,8 +45,8 @@ func gpaInitVerifier(
 	gamma frontend.Variable,
 	layerCount int,
 	randomness []frontend.Variable,
-) error {
-	_, err := gpaSumcheckVerifier(
+) frontend.Variable {
+	gpaSumcheckResult, err := gpaSumcheckVerifier(
 		api,
 		arthur,
 		layerCount,
@@ -53,11 +55,13 @@ func gpaInitVerifier(
 		return err
 	}
 
-	_ = tau
-	_ = gamma
-	_ = randomness
+	addr := utilities.CalculateAdr(api, gpaSumcheckResult.randomness)
+	mem := calculateEQ(api, randomness, gpaSumcheckResult.randomness)
+	cntr := 0
 
-	return nil
+	api.AssertIsEqual(gpaSumcheckResult.lastSumcheckValue, api.Sub(api.Add(api.Mul(api, addr, gamma, gamma), api.Mul(mem, gamma), cntr), tau))
+
+	return gpaSumcheckResult.claimedProduct
 }
 
 func gpaSumcheckVerifier(
