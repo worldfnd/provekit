@@ -1,6 +1,6 @@
 use {
     crate::{
-        grand_product_argument::{run_gpa_final_prover, run_gpa_final_verifier, run_gpa_init_prover, run_gpa_init_verifier}, skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{
+        grand_product_argument::{run_gpa_final_prover, run_gpa_final_verifier, run_gpa_init_prover, run_gpa_init_verifier, run_gpa_rs_prover, run_gpa_rs_verifier}, skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{
             pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly,
@@ -82,6 +82,7 @@ pub fn prove_spark(
         merlin,
         spark.rowwise,
         whir_config_row,
+        whir_config_num_terms,
     )?;
 
     Ok(())
@@ -465,6 +466,8 @@ pub trait SparkIOPattern<F: FftField, MerkleConfig: Config> {
         self,
         log_memory_size: usize,
         whir_config_memory: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+        log_term_size: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>
     ) -> Self;
     fn spark_gpa_init(
         self,
@@ -474,6 +477,11 @@ pub trait SparkIOPattern<F: FftField, MerkleConfig: Config> {
         self,
         log_memory_size: usize,
         whir_config_memory: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+    ) -> Self;
+    fn spark_gpa_rs<PowStrategy>(
+        self,
+        log_term_size: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self;
 }
 
@@ -499,7 +507,12 @@ where
         let io = self
             .spark_commit(whir_config_num_terms, whir_config_row, whir_config_col)
             .spark_sumcheck(num_terms, whir_config_num_terms)
-            .offline_memory_check(log_row_count, whir_config_row);
+            .offline_memory_check(
+                log_row_count, 
+                whir_config_row,
+                num_terms,
+                whir_config_num_terms,
+            );
         io
     }
 
@@ -542,12 +555,15 @@ where
         self, 
         log_memory_size: usize, 
         whir_config_memory: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+        log_term_size: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self {
         self
             .challenge_scalars(1, "tau")
             .challenge_scalars(1, "gamma")
             .spark_gpa_init(log_memory_size)
             .spark_gpa_final(log_memory_size, whir_config_memory)
+            .spark_gpa_rs(log_term_size, whir_config_num_terms)
     }
 
     fn spark_gpa_init (
@@ -582,6 +598,29 @@ where
             .add_whir_proof(whir_config_memory);
         io
     }
+    
+    fn spark_gpa_rs<PowStrategy> (
+        self,
+        log_term_size: usize,
+        whir_config_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+    ) -> Self {
+        //TODO Should this be sent over a hint
+        let mut io = self.add_scalars(1, "rs gpa answer");
+            
+        for i in 0..log_term_size {
+            io = io.add_sumcheck_polynomials(i);
+            io = io.add_sumcheck_quadratic_polynomials(1);
+        };
+
+        io = io
+            .add_scalars(1, "GPA RS address opening")
+            .add_whir_proof(whir_config_terms)
+            .add_scalars(1, "GPA RS value opening")
+            .add_whir_proof(whir_config_terms)
+            .add_scalars(1, "GPA RS timestamp opening")
+            .add_whir_proof(whir_config_terms);
+        io
+    }
 }
 
 pub fn verify_spark(
@@ -611,6 +650,7 @@ pub fn verify_spark(
         row_randomness,
         spark_commitments.rowwise,
         whir_config_row,
+        whir_config_terms,
     )?;
 
     Ok(())
@@ -675,9 +715,9 @@ pub struct MemoryCheckCommitments {
 }
 
 pub struct SparkWhirRSWSCommitments {
-    addr_commitment:       ParsedCommitment<FieldElement, FieldElement>,
-    value_commitment:      ParsedCommitment<FieldElement, FieldElement>,
-    time_stamp_commitment: ParsedCommitment<FieldElement, FieldElement>,
+    pub addr_commitment:       ParsedCommitment<FieldElement, FieldElement>,
+    pub value_commitment:      ParsedCommitment<FieldElement, FieldElement>,
+    pub time_stamp_commitment: ParsedCommitment<FieldElement, FieldElement>,
 }
 
 pub struct SparkSumcheckCommitments {
@@ -843,6 +883,7 @@ pub fn prove_offline_memory_check(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     values_and_witnesses: SPARKValuesAndWitnesses,
     whir_config_memory: &WhirConfig,
+    whir_config_num_terms: &WhirConfig,
 ) -> Result<()> {
     let mut tau = [FieldElement::from(0); 1];
     merlin.fill_challenge_scalars(&mut tau)?;
@@ -869,6 +910,19 @@ pub fn prove_offline_memory_check(
         whir_config_memory,
     );
 
+    run_gpa_rs_prover(
+        merlin,
+        tau,
+        gamma,
+        values_and_witnesses.values.addresses, 
+        values_and_witnesses.values.values,
+        values_and_witnesses.values.read_time_stamps,
+        values_and_witnesses.witnesses.addresses,
+        values_and_witnesses.witnesses.values,
+        values_and_witnesses.witnesses.read_time_stamps,
+        whir_config_num_terms,
+    );
+
     Ok(())
 }
 
@@ -878,6 +932,7 @@ pub fn verify_offline_memory_check(
     random_point: Vec<FieldElement>,
     commitments: MemoryCheckCommitments,
     whir_config_memory: &WhirConfig,
+    whir_config_terms: &WhirConfig,
 ) -> Result<()> {
     let mut tau = [FieldElement::from(0); 1];
     arthur.fill_challenge_scalars(&mut tau)?;
@@ -900,9 +955,19 @@ pub fn verify_offline_memory_check(
         &tau,
         &gamma,
         log_memory_size + 1,
-        random_point,
+        random_point.clone(),
         commitments.final_cts,
         whir_config_memory,
+    );
+
+    let rs_gpa_claimed_value = run_gpa_rs_verifier(
+        arthur,
+        &tau,
+        &gamma,
+        log_memory_size + 1,
+        random_point,
+        whir_config_terms,
+        commitments.rs_ws,
     );
 
     Ok(())

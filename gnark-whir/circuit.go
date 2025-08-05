@@ -31,6 +31,9 @@ type Circuit struct {
 	SparkASumcheckERXMerkle              Merkle
 	SparkASumcheckERYMerkle              Merkle
 	SparkAMemCheckFinalGPAFinalCTCMerkle Merkle
+	SparkAMemCheckRSGPAAddrMerkle        Merkle
+	SparkAMemCheckRSGPAValueMerkle       Merkle
+	SparkAMemCheckRSGPATimeStampMerkle   Merkle
 
 	WHIRParamsCol     WHIRParams
 	WHIRParamsRow     WHIRParams
@@ -80,7 +83,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
+	rowOODQueries, rowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -128,7 +131,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
+	readTSRowOODQueries, readTSRowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -192,6 +195,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		circuit.LogNumConstraints,
 		finalCTSRowOODPoints,
 		finalCTSRowOODAnswers,
+		rowOODQueries,
+		rowOODAnswers,
+		eRxOODQueries,
+		eRxOODAnswers,
+		readTSRowOODQueries,
+		readTSRowOODAnswers,
 	)
 
 	if err != nil {
@@ -250,6 +259,9 @@ func verifyCircuit(
 		SparkASumcheckERXMerkle:              newMerkle(hints.sparkASumcheckERXHints, true),
 		SparkASumcheckERYMerkle:              newMerkle(hints.sparkASumcheckERYHints, true),
 		SparkAMemCheckFinalGPAFinalCTCMerkle: newMerkle(hints.sparkMemCheckRowFinalGPAFinalCTRHints, true),
+		SparkAMemCheckRSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowRSGPAAddrHints, true),
+		SparkAMemCheckRSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowRSGPAValueHints, true),
+		SparkAMemCheckRSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowRSGPATimeStampHints, true),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
@@ -297,6 +309,9 @@ func verifyCircuit(
 		SparkASumcheckERXMerkle:              newMerkle(hints.sparkASumcheckERXHints, false),
 		SparkASumcheckERYMerkle:              newMerkle(hints.sparkASumcheckERYHints, false),
 		SparkAMemCheckFinalGPAFinalCTCMerkle: newMerkle(hints.sparkMemCheckRowFinalGPAFinalCTRHints, false),
+		SparkAMemCheckRSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowRSGPAAddrHints, false),
+		SparkAMemCheckRSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowRSGPAValueHints, false),
+		SparkAMemCheckRSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowRSGPATimeStampHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),

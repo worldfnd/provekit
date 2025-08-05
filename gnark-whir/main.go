@@ -71,6 +71,9 @@ type Hints struct {
 	sparkASumcheckERXHints                Hint
 	sparkASumcheckERYHints                Hint
 	sparkMemCheckRowFinalGPAFinalCTRHints Hint
+	sparkMemCheckRowRSGPAAddrHints        Hint
+	sparkMemCheckRowRSGPAValueHints       Hint
+	sparkMemCheckRowRSGPATimeStampHints   Hint
 }
 
 type Hint struct {
@@ -244,6 +247,9 @@ func main() {
 			sparkERXEnd := sparkValEnd + (config.WHIRConfigA.NRounds + 1)
 			sparkERYEnd := sparkERXEnd + (config.WHIRConfigA.NRounds + 1)
 			sparkMemCheckRowFinalGPAFinalCTREnd := sparkERYEnd + (config.WHIRConfigRow.NRounds + 1)
+			sparkMemCheckRowRSGPAAddrEnd := sparkMemCheckRowFinalGPAFinalCTREnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowRSGPAValueEnd := sparkMemCheckRowRSGPAAddrEnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowRSGPATimeStampEnd := sparkMemCheckRowRSGPAValueEnd + (config.WHIRConfigA.NRounds + 1)
 
 			hints := Hints{
 				spartanHints: Hint{
@@ -265,6 +271,18 @@ func main() {
 				sparkMemCheckRowFinalGPAFinalCTRHints: Hint{
 					merklePaths: merklePaths[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
 					stirAnswers: stirAnswers[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
+				},
+				sparkMemCheckRowRSGPAAddrHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowFinalGPAFinalCTREnd:sparkMemCheckRowRSGPAAddrEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowFinalGPAFinalCTREnd:sparkMemCheckRowRSGPAAddrEnd],
+				},
+				sparkMemCheckRowRSGPAValueHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowRSGPAAddrEnd:sparkMemCheckRowRSGPAValueEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowRSGPAAddrEnd:sparkMemCheckRowRSGPAValueEnd],
+				},
+				sparkMemCheckRowRSGPATimeStampHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
 				},
 			}
 
