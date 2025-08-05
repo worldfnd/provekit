@@ -211,31 +211,101 @@ pub fn is_id_card(dg1: [u8; 95]) -> bool {
     (dg1[93] != 0) & (dg1[94] != 0)
 }
 
-pub fn pack_be_bytes_into_fields<let NBytes: u32, let N: u32, let MAX_FIELD_SIZE: u32>(
+pub unconstrained fn __pack_le_bytes_into_limbs<let NBytes: u32, let N: u32>(
     x: [u8; NBytes],
-) -> [u128; N] {
-    let mut result = [0 as u128; N];
+) -> [u64; N] {
+    let mut result = [0 as u64; N];
+    let n_iterations = (NBytes + 3) / 4; // splitting into chunks of 4 bytes
 
-    let mut limb: Field = 0;
-    let mut k = 0;
-    for _j in 0..(MAX_FIELD_SIZE - (N * MAX_FIELD_SIZE - NBytes)) {
-        limb *= 256;
-        limb += x[k] as Field;
-        k += 1;
-    }
-    std::as_witness(limb);
+    for i in 0..n_iterations {
+        let byte_start = i * 4;
+        let bytes_in_chunk = if byte_start + 4 <= NBytes {
+            4
+        } else {
+            NBytes - byte_start
+        };
 
-    result[N - 1] = limb as u128;
-
-    for i in 1..N {
-        let mut limb: Field = 0;
-        for _j in 0..MAX_FIELD_SIZE {
-            limb *= 256;
-            limb += x[k] as Field;
-            k += 1;
+        let mut chunk_value: u64 = 0;
+        let mut power_of_2 = 1;
+        for j in 0..bytes_in_chunk {
+            chunk_value += power_of_2 * (x[byte_start + j] as u64);
+            power_of_2 *= 256;
         }
-        std::as_witness(limb);
-        result[N - i - 1] = limb as u128;
+
+        if i < N {
+            result[i] = chunk_value;
+        }
+    }
+
+    result
+}
+
+/**
+ * @brief Convert big-endian bytes to 32-bit limbs (unconstrained)
+ * @description Converts bytes to bits, then packs into 32-bit limbs
+ * @note Assumes limbs are 32 bits each
+ */
+pub unconstrained fn __pack_be_bytes_into_limbs<let NBytes: u32, let N: u32>(
+    x: [u8; NBytes],
+) -> [u64; N] {
+    let mut x_rev = [0 as u8; NBytes];
+    for i in 0..NBytes {
+        // Reverse bytes
+        x_rev[i] = x[NBytes - 1 - i];
+    }
+    __pack_le_bytes_into_limbs(x_rev)
+}
+
+/**
+ * @brief Prove that a chunk of bytes equals a limb
+ * @description Both representations should equal the same 32-bit (or less) number
+ */
+fn prove_chunk_equivalence(bytes: [u8; 4], limb: u64, num_bytes: u32) {
+    let mut byte_value: u64 = 0;
+    let mut power_of_2: u64 = 1;
+    for i in 0..num_bytes {
+        byte_value += power_of_2 * (bytes[i] as u64);
+        power_of_2 *= 256;
+    }
+
+    // Ensure the limb is within 32-bit range
+    (limb as Field).assert_max_bit_size::<32>();
+
+    // Prove equivalence
+    assert(byte_value == limb, "Byte and limb representations must be equal");
+}
+
+pub fn pack_be_bytes_into_limbs<let NBytes: u32, let N: u32>(x: [u8; NBytes]) -> [u64; N] {
+    // safety: Get the unconstrained result
+    let result = unsafe { __pack_be_bytes_into_limbs(x) };
+
+    let x_rev = reverse_bytes_array(x);
+
+    // Prove equivalence by processing 4 bytes = 1 limb at a time
+    let chunks_of_4_bytes = (NBytes + 3) / 4; // Ceiling division
+
+    for chunk_idx in 0..chunks_of_4_bytes {
+        let byte_start = chunk_idx * 4;
+
+        // Extract up to 4 bytes for this chunk
+        let mut chunk_bytes: [u8; 4] = [0; 4];
+        let bytes_in_chunk = if (byte_start + 4 <= NBytes) {
+            4
+        } else {
+            NBytes - byte_start
+        };
+
+        for i in 0..bytes_in_chunk {
+            chunk_bytes[i] = x_rev[byte_start + i];
+        }
+
+        // Get the corresponding limb
+        if chunk_idx < N {
+            let chunk_limb = result[chunk_idx];
+
+            // Prove that the byte representation equals the limb representation
+            prove_chunk_equivalence(chunk_bytes, chunk_limb, bytes_in_chunk);
+        }
     }
 
     result

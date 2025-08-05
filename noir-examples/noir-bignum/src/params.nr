@@ -1,15 +1,17 @@
+use super::constants::{LIMB_SIZE, TWO_POW_32};
+
 pub struct BigNumParams<let N: u32, let MOD_BITS: u32> {
     pub has_multiplicative_inverse: bool,
 
     // @brief modulus: all BigNum operations are evaluated modulo this value
-    pub modulus: [u128; N],
+    pub modulus: [u64; N],
 
     // @brief double_modulus: used when performing negations and subtractions
     // @note we borrow 1 from the last limb. This is for easing up the operations that might underflow
-    pub double_modulus: [u128; N],
+    pub double_modulus: [u64; N],
 
     // @brief redc_param used for __barrett_reduction. See https://en.wikipedia.org/wiki/Barrett_reduction
-    pub redc_param: [u128; N],
+    pub redc_param: [u64; N],
 }
 
 // To be implemented by the user for any BigNum they define, or within the predefined BigNums in the `fields/` dir.
@@ -18,11 +20,7 @@ pub trait BigNumParamsGetter<let N: u32, let MOD_BITS: u32> {
 }
 
 impl<let N: u32, let MOD_BITS: u32> BigNumParams<N, MOD_BITS> {
-    pub fn new(
-        has_multiplicative_inverse: bool,
-        modulus: [u128; N],
-        redc_param: [u128; N],
-    ) -> Self {
+    pub fn new(has_multiplicative_inverse: bool, modulus: [u64; N], redc_param: [u64; N]) -> Self {
         Self {
             has_multiplicative_inverse,
             modulus,
@@ -41,20 +39,19 @@ impl<let N: u32, let MOD_BITS: u32> std::cmp::Eq for BigNumParams<N, MOD_BITS> {
     }
 }
 
-fn get_double_modulus<let N: u32>(modulus: [u128; N]) -> [u128; N] {
-    let TWO_POW_120: u128 = 0x1000000000000000000000000000000;
-    let mut result: [u128; N] = [0; N];
-    let mut carry: u128 = 0;
+fn get_double_modulus<let N: u32>(modulus: [u64; N]) -> [u64; N] {
+    let mut result: [u64; N] = [0; N];
+    let mut carry: u64 = 0;
     for i in 0..N {
         let mut add_term = (modulus[i] + modulus[i] + carry);
-        carry = add_term >> 120;
-        add_term = add_term - (carry << 120);
+        carry = add_term >> (LIMB_SIZE as u8);
+        add_term = add_term - (carry << (LIMB_SIZE as u8));
         result[i] = add_term;
     }
 
-    result[0] += TWO_POW_120;
+    result[0] += TWO_POW_32;
     for i in 1..N - 1 {
-        result[i] += (TWO_POW_120 - 1);
+        result[i] += (TWO_POW_32 - 1);
     }
     result[N - 1] -= 1;
     result

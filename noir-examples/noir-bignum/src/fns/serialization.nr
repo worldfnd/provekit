@@ -1,3 +1,36 @@
+use crate::constants::LIMB_SIZE;
+use super::unconstrained_helpers::__pack_be_bytes_into_limbs;
+
+// Reverse the bytes of an array so you can switch from
+// big endian to little endian order and vice versa
+pub fn reverse_bytes_array<let N: u32>(arr: [u8; N]) -> [u8; N] {
+    let mut reversed_arr = [0 as u8; N];
+    for i in 0..N {
+        // Reverse
+        reversed_arr[i] = arr[N - 1 - i];
+    }
+    reversed_arr
+}
+
+/**
+ * @brief Prove that a chunk of bytes equals a limb
+ * @description Both representations should equal the same 32-bit (or less) number
+ */
+fn prove_chunk_equivalence(bytes: [u8; 4], limb: u64, num_bytes: u32) {
+    let mut byte_value: u64 = 0;
+    let mut power_of_2: u64 = 1;
+    for i in 0..num_bytes {
+        byte_value += power_of_2 * (bytes[i] as u64);
+        power_of_2 *= 256;
+    }
+
+    // Ensure the limb is within 32-bit range
+    (limb as Field).assert_max_bit_size::<LIMB_SIZE>();
+
+    // Prove equivalence
+    assert(byte_value == limb, "Byte and limb representations must be equal");
+}
+
 /**
 * @brief construct a BigNum instance out of an array of bytes in BIG ENDIAN format
 * @description: each 120-bit limb represents 15 bytes, we require that the size of the byte array
@@ -6,56 +39,63 @@
 **/
 pub(crate) fn from_be_bytes<let N: u32, let MOD_BITS: u32, let NBytes: u32>(
     x: [u8; NBytes],
-) -> [u128; N] {
-    let num_bits = NBytes * 8;
-    assert(num_bits >= MOD_BITS);
-    assert(num_bits - MOD_BITS < 8);
-    let mut result: [u128; N] = [0; N];
+) -> [u64; N] {
+    // safety: Get the unconstrained result
+    let result = unsafe { __pack_be_bytes_into_limbs(x) };
 
-    let excess_bytes = N * 15 - NBytes;
-    let final_limb_bytes = 15 - excess_bytes;
-    let mut limb: u128 = 0;
-    let mut k = 0;
-    for _j in 0..final_limb_bytes {
-        limb *= 256;
-        limb += x[k] as u128;
-        k += 1;
-    }
-    result[N - 1] = limb;
+    let x_rev = reverse_bytes_array(x);
 
-    for i in 1..N {
-        let mut limb: u128 = 0;
-        for _j in 0..15 {
-            limb *= 256;
-            limb += x[k] as u128;
-            k += 1;
+    // Prove equivalence by processing 4 bytes = 1 limb at a time
+    let chunks_of_4_bytes = (NBytes + 3) / 4; // Ceiling division
+
+    for chunk_idx in 0..chunks_of_4_bytes {
+        let byte_start = chunk_idx * 4;
+
+        // Extract up to 4 bytes for this chunk
+        let mut chunk_bytes: [u8; 4] = [0; 4];
+        let bytes_in_chunk = if (byte_start + 4 <= NBytes) {
+            4
+        } else {
+            NBytes - byte_start
+        };
+
+        for i in 0..bytes_in_chunk {
+            chunk_bytes[i] = x_rev[byte_start + i];
         }
-        result[N - i - 1] = limb;
+
+        // Get the corresponding limb
+        if chunk_idx < N {
+            let chunk_limb = result[chunk_idx];
+
+            // Prove that the byte representation equals the limb representation
+            prove_chunk_equivalence(chunk_bytes, chunk_limb, bytes_in_chunk);
+        }
     }
 
-    let most_significant_byte: Field = x[0] as Field;
-
-    most_significant_byte.assert_max_bit_size::<8 - (NBytes * 8 - MOD_BITS)>();
     result
 }
 
 pub(crate) fn to_le_bytes<let N: u32, let MOD_BITS: u32, let NBytes: u32>(
-    val: [u128; N],
+    val: [u64; N],
 ) -> [u8; NBytes] {
     let nbytes = (MOD_BITS / 8) + (MOD_BITS % 8 != 0) as u32;
     assert(nbytes <= NBytes);
 
     let mut result: [u8; NBytes] = [0; NBytes];
-    for i in 0..N - 1 {
-        let limb_bytes: [u8; 15] = (val[i] as Field).to_le_bytes();
-        for j in 0..15 {
-            result[i * 15 + j] = limb_bytes[j];
+
+    // With 32-bit limbs, each limb is exactly 4 bytes
+    for i in 0..N {
+        let limb = val[i];
+        let byte_start = i * 4;
+
+        // Extract 4 bytes from each limb (little-endian byte order)
+        for j in 0..4 {
+            let byte_index = byte_start + j;
+            if byte_index < NBytes {
+                result[byte_index] = ((limb >> (j * 8) as u8) & 0xFF) as u8;
+            }
         }
     }
-    let last_limb_bytes: [u8; 15] = (val[N - 1] as Field).to_le_bytes();
-    let num_last_bytes = (NBytes - (N - 1) * 15);
-    for i in 0..num_last_bytes {
-        result[(N - 1) * 15 + i] = last_limb_bytes[i];
-    }
+
     result
 }

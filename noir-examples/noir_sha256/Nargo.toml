@@ -1,0 +1,7 @@
+[package]
+name = "sha256"
+type = "lib"
+authors = ["noir-lang"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
