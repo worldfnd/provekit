@@ -66,10 +66,11 @@ type WHIRConfig struct {
 }
 
 type Hints struct {
-	spartanHints           Hint
-	sparkASumcheckValHints Hint
-	sparkASumcheckERXHints Hint
-	sparkASumcheckERYHints Hint
+	spartanHints                          Hint
+	sparkASumcheckValHints                Hint
+	sparkASumcheckERXHints                Hint
+	sparkASumcheckERYHints                Hint
+	sparkMemCheckRowFinalGPAFinalCTRHints Hint
 }
 
 type Hint struct {
@@ -242,6 +243,7 @@ func main() {
 			sparkValEnd := spartanEnd + (config.WHIRConfigA.NRounds + 1)
 			sparkERXEnd := sparkValEnd + (config.WHIRConfigA.NRounds + 1)
 			sparkERYEnd := sparkERXEnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowFinalGPAFinalCTREnd := sparkERYEnd + (config.WHIRConfigRow.NRounds + 1)
 
 			hints := Hints{
 				spartanHints: Hint{
@@ -259,6 +261,10 @@ func main() {
 				sparkASumcheckERYHints: Hint{
 					merklePaths: merklePaths[sparkERXEnd:sparkERYEnd],
 					stirAnswers: stirAnswers[sparkERXEnd:sparkERYEnd],
+				},
+				sparkMemCheckRowFinalGPAFinalCTRHints: Hint{
+					merklePaths: merklePaths[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
+					stirAnswers: stirAnswers[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
 				},
 			}
 

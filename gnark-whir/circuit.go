@@ -27,9 +27,10 @@ type Circuit struct {
 
 	SpartanMerkle Merkle
 
-	SparkASumcheckValueMerkle Merkle
-	SparkASumcheckERXMerkle   Merkle
-	SparkASumcheckERYMerkle   Merkle
+	SparkASumcheckValueMerkle            Merkle
+	SparkASumcheckERXMerkle              Merkle
+	SparkASumcheckERYMerkle              Merkle
+	SparkAMemCheckFinalGPAFinalCTCMerkle Merkle
 
 	WHIRParamsCol     WHIRParams
 	WHIRParamsRow     WHIRParams
@@ -145,7 +146,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
+	finalCTSRowOODPoints, finalCTSRowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
 	if err != nil {
 		return err
 	}
@@ -183,10 +184,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	err = offlineMemoryCheck(
 		api,
+		uapi,
+		sc,
 		arthur,
+		circuit,
 		spartanSumcheckRand,
 		circuit.LogNumConstraints,
+		finalCTSRowOODPoints,
+		finalCTSRowOODAnswers,
 	)
+
 	if err != nil {
 		return err
 	}
@@ -238,13 +245,15 @@ func verifyCircuit(
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
 		SumcheckLastFolds:             contSumcheckLastFoldsCircuit,
 
-		SpartanMerkle:             newMerkle(hints.spartanHints, true),
-		SparkASumcheckValueMerkle: newMerkle(hints.sparkASumcheckValHints, true),
-		SparkASumcheckERXMerkle:   newMerkle(hints.sparkASumcheckERXHints, true),
-		SparkASumcheckERYMerkle:   newMerkle(hints.sparkASumcheckERYHints, true),
+		SpartanMerkle:                        newMerkle(hints.spartanHints, true),
+		SparkASumcheckValueMerkle:            newMerkle(hints.sparkASumcheckValHints, true),
+		SparkASumcheckERXMerkle:              newMerkle(hints.sparkASumcheckERXHints, true),
+		SparkASumcheckERYMerkle:              newMerkle(hints.sparkASumcheckERYHints, true),
+		SparkAMemCheckFinalGPAFinalCTCMerkle: newMerkle(hints.sparkMemCheckRowFinalGPAFinalCTRHints, true),
 
-		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
-		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
+		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
+		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
+		WHIRParamsA:   new_whir_params(cfg.WHIRConfigA),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -283,10 +292,11 @@ func verifyCircuit(
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
 		SumcheckLastFolds:             sumcheckLastFoldsCircuit,
 
-		SpartanMerkle:             newMerkle(hints.spartanHints, false),
-		SparkASumcheckValueMerkle: newMerkle(hints.sparkASumcheckValHints, false),
-		SparkASumcheckERXMerkle:   newMerkle(hints.sparkASumcheckERXHints, false),
-		SparkASumcheckERYMerkle:   newMerkle(hints.sparkASumcheckERYHints, false),
+		SpartanMerkle:                        newMerkle(hints.spartanHints, false),
+		SparkASumcheckValueMerkle:            newMerkle(hints.sparkASumcheckValHints, false),
+		SparkASumcheckERXMerkle:              newMerkle(hints.sparkASumcheckERXHints, false),
+		SparkASumcheckERYMerkle:              newMerkle(hints.sparkASumcheckERYHints, false),
+		SparkAMemCheckFinalGPAFinalCTCMerkle: newMerkle(hints.sparkMemCheckRowFinalGPAFinalCTRHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
