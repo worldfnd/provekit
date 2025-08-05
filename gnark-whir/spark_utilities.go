@@ -58,6 +58,22 @@ func offlineMemoryCheck(
 
 	_ = gpa_final_claimed_val
 
+	gpa_rs_claimed_val := gpaRSVerifier(
+		api,
+		uapi,
+		sc,
+		arthur,
+		circuit,
+		tau,
+		gamma,
+		logMemorySize+1,
+		randomness,
+		finalCTSRowOODPoints,
+		finalCTSRowOODAnswers,
+	)
+
+	_ = gpa_rs_claimed_val
+
 	return nil
 }
 
@@ -186,4 +202,45 @@ type GPASumcheckResult struct {
 	claimedProduct    frontend.Variable
 	lastSumcheckValue frontend.Variable
 	randomness        []frontend.Variable
+}
+
+func gpaRSVerifier(
+	api frontend.API,
+	uapi *uints.BinaryField[uints.U64],
+	sc *skyscraper.Skyscraper,
+	arthur gnark_nimue.Arthur,
+	circuit *Circuit,
+	tau frontend.Variable,
+	gamma frontend.Variable,
+	layerCount int,
+	randomness []frontend.Variable,
+	finalCTSRowOODPoints []frontend.Variable,
+	finalCTSRowOODAnswers []frontend.Variable,
+) frontend.Variable {
+	gpaSumcheckResult, err := gpaSumcheckVerifier(
+		api,
+		arthur,
+		layerCount,
+	)
+	if err != nil {
+		return err
+	}
+
+	// claimedFinalCTSValue := make([]frontend.Variable, 1)
+	// if err := arthur.FillNextScalars(claimedFinalCTSValue); err != nil {
+	// 	return err
+	// }
+
+	// err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckFinalGPAFinalCTCMerkle, circuit.WHIRParamsRow, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedFinalCTSValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, finalCTSRowOODPoints, finalCTSRowOODAnswers)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// addr := utilities.CalculateAdr(api, gpaSumcheckResult.randomness)
+	// mem := calculateEQ(api, randomness, gpaSumcheckResult.randomness)
+	// cntr := claimedFinalCTSValue[0]
+
+	// api.AssertIsEqual(gpaSumcheckResult.lastSumcheckValue, api.Sub(api.Add(api.Mul(api, addr, gamma, gamma), api.Mul(mem, gamma), cntr), tau))
+
+	return gpaSumcheckResult.claimedProduct
 }
