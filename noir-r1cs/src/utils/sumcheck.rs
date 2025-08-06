@@ -105,22 +105,30 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
 
 /// Trait which is used to add sumcheck functionality fo `IOPattern`
 pub trait SumcheckIOPattern {
-    /// Prover sends coefficients of the qubic sumcheck polynomial and the
+    /// Prover sends coefficients of the cubic sumcheck polynomial and the
     /// verifier sends randomness for the next sumcheck round
     fn add_sumcheck_polynomials(self, num_vars: usize) -> Self;
 
     /// Verifier sends the randomness on which the supposed 0-polynomial is
     /// evaluated
     fn add_rand(self, num_rand: usize) -> Self;
+
+    fn add_zk_sumcheck_polynomials(self, num_vars: usize) -> Self;
 }
 
 impl<IOPattern> SumcheckIOPattern for IOPattern
 where
     IOPattern: FieldDomainSeparator<FieldElement>,
 {
-    fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
+    fn add_zk_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
         self = self.add_scalars(1, "Sum of G over boolean hypercube");
         self = self.challenge_scalars(1, "Rho");
+        self = self.add_sumcheck_polynomials(num_vars);
+        self = self.add_scalars(2, "Polynomial sums");
+        self
+    }
+
+    fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
         for _ in 0..num_vars {
             self = self.add_scalars(4, "Sumcheck Polynomials");
             self = self.challenge_scalars(1, "Sumcheck Random");

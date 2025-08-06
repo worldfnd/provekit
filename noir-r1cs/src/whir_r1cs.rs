@@ -1,8 +1,9 @@
 use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        spark::{prove_spark, verify_spark, SparkIOPattern},
         utils::{
-            next_power_of_two, pad_to_power_of_two, serde_ark, serde_hex,
+            next_power_of_two, pad_to_power_of_two, serde_hex,
             sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
@@ -31,13 +32,14 @@ use {
             MultivariateParameters as GenericMultivariateParameters,
             ProtocolParameters as GenericProtocolParameters, SoundnessType,
         },
-        poly_utils::evals::EvaluationsList,
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{reader::ParsedCommitment, CommitmentReader, CommitmentWriter, Witness},
             domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
             statement::{Statement, Weights},
+            utils::{HintDeserialize, HintSerialize},
             verifier::Verifier,
         },
     },
@@ -50,22 +52,20 @@ pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
-    pub m:           usize,
-    pub m_0:         usize,
-    pub whir_config: WhirConfig,
+    pub m: usize,
+    pub m_0: usize,
+    pub a_num_terms: usize,
+    pub whir_witness: WhirConfig,
+    pub whir_config_row: WhirConfig,
+    pub whir_config_col: WhirConfig,
+    pub whir_config_a_num_terms: WhirConfig,
+    pub whir_for_hiding_spartan: WhirConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
     pub transcript: Vec<u8>,
-
-    // TODO: Derive from transcript
-    #[serde(with = "serde_ark")]
-    pub whir_query_answer_sums: ([FieldElement; 3], [FieldElement; 3]),
-
-    #[serde(with = "serde_ark")]
-    pub whir_spartan_blinding_values: (FieldElement, FieldElement),
 }
 
 pub struct DataFromSumcheckVerifier {
@@ -76,49 +76,53 @@ pub struct DataFromSumcheckVerifier {
 
 impl WhirR1CSScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        Self::new_for_size(r1cs.num_witnesses(), r1cs.num_constraints())
-    }
-
-    pub fn new_for_size(witnesses: usize, constraints: usize) -> Self {
         // m is equal to ceiling(log(number of variables in constraint system)). It is
         // equal to the log of the width of the matrices.
-        let m = next_power_of_two(witnesses);
+        let m = next_power_of_two(r1cs.num_witnesses());
 
         // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the
         // number of variables in the multilinear polynomial we are running our sumcheck
         // on.
-        let m_0 = next_power_of_two(constraints);
+        let m_0 = next_power_of_two(r1cs.num_constraints());
 
         // Whir parameters
-        let mv_params = MultivariateParameters::new(m + 1);
-        let whir_params = ProtocolParameters {
-            initial_statement:     true,
-            security_level:        128,
-            pow_bits:              default_max_pow(m + 1, 1),
-            folding_factor:        FoldingFactor::Constant(4),
-            leaf_hash_params:      (),
-            two_to_one_params:     (),
-            soundness_type:        SoundnessType::ConjectureList,
-            _pow_parameters:       Default::default(),
-            starting_log_inv_rate: 1,
-            batch_size:            2,
-        };
-        let whir_config = WhirConfig::new(mv_params, whir_params);
-
         Self {
             m: m + 1,
             m_0,
-            whir_config,
+            a_num_terms: next_power_of_two(r1cs.a().iter().count()),
+            whir_config_row: Self::new_whir_config_for_size(m_0, 1),
+            whir_config_col: Self::new_whir_config_for_size(m, 1),
+            whir_witness: Self::new_whir_config_for_size(m + 1, 2),
+            whir_config_a_num_terms: Self::new_whir_config_for_size(
+                next_power_of_two(r1cs.a().matrix.num_entries()),
+                1,
+            ),
+            whir_for_hiding_spartan: Self::new_whir_config_for_size(
+                next_power_of_two(4 * m_0) + 1,
+                2,
+            ),
         }
     }
 
+    pub fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
+        let mv_params = MultivariateParameters::new(num_variables);
+        let whir_params = ProtocolParameters {
+            initial_statement: true,
+            security_level: 128,
+            pow_bits: default_max_pow(num_variables, 1),
+            folding_factor: FoldingFactor::Constant(4),
+            leaf_hash_params: (),
+            two_to_one_params: (),
+            soundness_type: SoundnessType::ConjectureList,
+            _pow_parameters: Default::default(),
+            starting_log_inv_rate: 1,
+            batch_size,
+        };
+        WhirConfig::new(mv_params, whir_params)
+    }
+
     #[instrument(skip_all)]
-    pub fn prove(
-        &self,
-        r1cs: &R1CS,
-        whir_for_blinding_of_spartan_config: &WhirConfig,
-        witness: Vec<FieldElement>,
-    ) -> Result<WhirR1CSProof> {
+    pub fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -133,11 +137,8 @@ impl WhirR1CSScheme {
         );
 
         // Set up transcript
-        let io: IOPattern = create_io_pattern(
-            self.m_0,
-            &self.whir_config,
-            whir_for_blinding_of_spartan_config,
-        );
+        let io: IOPattern = self.create_io_pattern();
+
         let mut merlin = io.to_prover_state();
         let z = pad_to_power_of_two(witness.clone());
         let witness_polynomial_evals = EvaluationsList::new(z.clone());
@@ -145,19 +146,19 @@ impl WhirR1CSScheme {
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
             batch_commmit_to_polynomial(
                 self.m,
-                &self.whir_config,
+                &self.whir_witness,
                 &witness_polynomial_evals,
                 &mut merlin,
             );
 
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let (merlin, alpha, (f, g)) = run_zk_sumcheck_prover(
+        let (mut merlin, alpha) = run_zk_sumcheck_prover(
             r1cs,
             &witness,
             merlin,
             self.m_0,
-            &whir_for_blinding_of_spartan_config,
+            &self.whir_for_hiding_spartan,
         );
 
         // Compute weights from R1CS instance
@@ -171,56 +172,67 @@ impl WhirR1CSScheme {
             &alphas,
         );
 
+        let _ = merlin
+            .hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums.to_vec(), g_sums.to_vec()));
+
         // Compute WHIR weighted batch opening proof
-        let merlin =
-            run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_config, merlin);
+        let (mut merlin, col_randomness, deferred) =
+            run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
+
+        prove_spark(
+            r1cs.a(),
+            &mut merlin,
+            &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            &alpha,
+            &col_randomness.0,
+            deferred[0],
+        )?;
 
         let transcript = merlin.narg_string().to_vec();
 
         Ok(WhirR1CSProof {
-            transcript,
-            // TODO: might go to the transcript
-            whir_query_answer_sums: (f_sums, g_sums),
-            whir_spartan_blinding_values: (f, g),
+            transcript
         })
     }
 
     #[instrument(skip_all)]
     #[allow(unused)] // TODO: Fix implementation
-    pub fn verify(
-        &self,
-        proof: &WhirR1CSProof,
-        whir_for_blinding_of_spartan_config: &WhirConfig,
-    ) -> Result<()> {
+    pub fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
         // Set up transcript
-        let io = create_io_pattern(
-            self.m_0,
-            &self.whir_config,
-            whir_for_blinding_of_spartan_config,
-        );
+        let io = self.create_io_pattern();
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
-        let commitment_reader = CommitmentReader::new(&self.whir_config);
+        let commitment_reader = CommitmentReader::new(&self.whir_witness);
         let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
         let data_from_sumcheck_verifier = run_sumcheck_verifier(
             &mut arthur,
             self.m_0,
-            whir_for_blinding_of_spartan_config,
-            proof.whir_spartan_blinding_values,
+            &self.whir_for_hiding_spartan,
+            // proof.whir_spartan_blinding_values,
         )
         .context("while verifying sumcheck")?;
+
+        let whir_query_answer_sum_vectors: (Vec<FieldElement>, Vec<FieldElement>) =
+            arthur.hint().unwrap();
+
+        let whir_query_answer_sums = (
+            whir_query_answer_sum_vectors.0.try_into().unwrap(),
+            whir_query_answer_sum_vectors.1.try_into().unwrap(),
+        );
 
         let statement_verifier = prepare_statement_for_witness_verifier::<3>(
             self.m,
             &parsed_commitment,
-            &proof.whir_query_answer_sums,
+            &whir_query_answer_sums,
         );
 
-        run_whir_pcs_verifier(
+        let (folding_randomness, deferred) = run_whir_pcs_verifier(
             &mut arthur,
             &parsed_commitment,
-            &self.whir_config,
+            &self.whir_witness,
             &statement_verifier,
         )
         .context("while verifying WHIR proof")?;
@@ -228,8 +240,8 @@ impl WhirR1CSScheme {
         // Check the Spartan sumcheck relation.
         ensure!(
             data_from_sumcheck_verifier.last_sumcheck_val
-                == (proof.whir_query_answer_sums.0[0] * proof.whir_query_answer_sums.0[1]
-                    - proof.whir_query_answer_sums.0[2])
+                == (whir_query_answer_sums.0[0] * whir_query_answer_sums.0[1]
+                    - whir_query_answer_sums.0[2])
                     * calculate_eq(
                         &data_from_sumcheck_verifier.r,
                         &data_from_sumcheck_verifier.alpha
@@ -237,9 +249,36 @@ impl WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        // TODO: Verify evaluation of sparse matrices in random point.
+        verify_spark(
+            &mut arthur,
+            &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            deferred[0],
+            self.a_num_terms,
+        );
 
         Ok(())
+    }
+
+    #[instrument(skip_all)]
+    pub fn create_io_pattern(&self) -> IOPattern {
+        let mut io = IOPattern::new("🌪️")
+            .commit_statement(&self.whir_witness)
+            .add_rand(self.m_0)
+            .commit_statement(&self.whir_for_hiding_spartan)
+            .add_zk_sumcheck_polynomials(self.m_0)
+            .add_whir_proof(&self.whir_for_hiding_spartan)
+            .hint("claimed_evaluations")
+            .add_whir_proof(&self.whir_witness);
+
+        io = io.spark(
+            &self.whir_config_a_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            self.a_num_terms,
+        );
+        io
     }
 }
 
@@ -404,7 +443,6 @@ pub fn run_zk_sumcheck_prover(
 ) -> (
     ProverState<SkyscraperSponge, FieldElement>,
     Vec<FieldElement>,
-    (FieldElement, FieldElement),
 ) {
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
@@ -425,10 +463,10 @@ pub fn run_zk_sumcheck_prover(
     let blinding_polynomial_for_commiting = EvaluationsList::new(pad_to_power_of_two(
         blinding_polynomial.iter().flatten().cloned().collect(),
     ));
-    let blinding_polynomial_variables = blinding_polynomial_for_commiting.num_variables() + 1;
+    let blinding_polynomial_variables = blinding_polynomial_for_commiting.num_variables();
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
         batch_commmit_to_polynomial(
-            blinding_polynomial_variables,
+            blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
             &blinding_polynomial_for_commiting,
             &mut merlin,
@@ -517,13 +555,19 @@ pub fn run_zk_sumcheck_prover(
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
         create_combined_statement_over_two_polynomials::<1>(
-            blinding_polynomial_variables,
+            blinding_polynomial_variables + 1,
             &commitment_to_blinding_polynomial,
             &blindings_mask_polynomial,
             &blindings_blind_polynomial,
             &[expand_powers(alpha.as_slice())],
         );
-    merlin = run_zk_whir_pcs_prover(
+
+    let _ = merlin.add_scalars(&[
+        blinding_mask_polynomial_sum[0],
+        blinding_blind_polynomial_sum[0],
+    ]);
+
+    let (merlin, _sums, _deferred) = run_zk_whir_pcs_prover(
         commitment_to_blinding_polynomial,
         statement,
         whir_for_blinding_of_spartan_config,
@@ -532,11 +576,7 @@ pub fn run_zk_sumcheck_prover(
 
     (
         merlin,
-        alpha,
-        (
-            blinding_mask_polynomial_sum[0],
-            blinding_blind_polynomial_sum[0],
-        ),
+        alpha
     )
 }
 
@@ -589,7 +629,11 @@ pub fn run_zk_whir_pcs_prover(
     statement: Statement<FieldElement>,
     params: &WhirConfig,
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
-) -> ProverState<SkyscraperSponge, FieldElement> {
+) -> (
+    ProverState<SkyscraperSponge, FieldElement>,
+    MultilinearPoint<FieldElement>,
+    Vec<FieldElement>,
+) {
     info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
@@ -597,11 +641,11 @@ pub fn run_zk_whir_pcs_prover(
     }
 
     let prover = Prover(params.clone());
-    prover
+    let (randomness, deferred) = prover
         .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
-    merlin
+    (merlin, randomness, deferred)
 }
 
 #[instrument(skip_all)]
@@ -609,7 +653,6 @@ pub fn run_sumcheck_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     m_0: usize,
     whir_for_spartan_blinding_config: &WhirConfig,
-    whir_spartan_blinding_values: (FieldElement, FieldElement),
 ) -> Result<DataFromSumcheckVerifier> {
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
@@ -643,12 +686,14 @@ pub fn run_sumcheck_verifier(
         );
         saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(&hhat_i, &alpha_i[0]);
     }
+    let mut values_of_polynomial_sums = [FieldElement::zero(); 2];
+    let _ = arthur.fill_next_scalars(&mut values_of_polynomial_sums);
 
     let statement_verifier = prepare_statement_for_witness_verifier::<1>(
-        m_0,
+        whir_for_spartan_blinding_config.mv_parameters.num_variables,
         &parsed_commitment,
-        &([whir_spartan_blinding_values.0], [
-            whir_spartan_blinding_values.1,
+        &([values_of_polynomial_sums[0]], [
+            values_of_polynomial_sums[1]
         ]),
     );
     run_whir_pcs_verifier(
@@ -659,8 +704,7 @@ pub fn run_sumcheck_verifier(
     )
     .context("while verifying WHIR")?;
 
-    let f_at_alpha =
-        saved_val_for_sumcheck_equality_assertion - rho * whir_spartan_blinding_values.0;
+    let f_at_alpha = saved_val_for_sumcheck_equality_assertion - rho * values_of_polynomial_sums[0];
 
     Ok(DataFromSumcheckVerifier {
         r,
@@ -675,27 +719,12 @@ pub fn run_whir_pcs_verifier(
     parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
     params: &WhirConfig,
     statement_verifier: &Statement<FieldElement>,
-) -> Result<()> {
+) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let verifier = Verifier::new(params);
 
-    verifier
+    let (folding_randomness, deferred) = verifier
         .verify(arthur, parsed_commitment, statement_verifier)
         .context("while verifying WHIR")?;
 
-    Ok(())
-}
-
-#[instrument(skip_all)]
-pub fn create_io_pattern(
-    m_0: usize,
-    whir_params: &WhirConfig,
-    whir_for_spartan_config: &WhirConfig,
-) -> IOPattern {
-    IOPattern::new("🌪️")
-        .commit_statement(whir_params)
-        .add_rand(m_0)
-        .commit_statement(whir_for_spartan_config)
-        .add_sumcheck_polynomials(m_0)
-        .add_whir_proof(whir_for_spartan_config)
-        .add_whir_proof(whir_params)
+    Ok((folding_randomness, deferred))
 }

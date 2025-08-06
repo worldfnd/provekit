@@ -82,16 +82,13 @@ func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnark_nimue.Arthur,
 	if err := arthur.FillChallengeBytes(challenge); err != nil {
 		return nil, nil, err
 	}
-	// api.Println(challenge)
 	nonce := make([]uints.U8, 8)
 
 	if err := arthur.FillNextBytes(nonce); err != nil {
 		return nil, nil, err
 	}
-	// api.Println(nonce)
 	challengeFieldElement := typeConverters.LittleEndianFromUints(api, challenge)
 	nonceFieldElement := typeConverters.BigEndianFromUints(api, nonce)
-	// api.Println(nonceFieldElement)
 	err := CheckPoW(api, sc, challengeFieldElement, nonceFieldElement, difficulty)
 	if err != nil {
 		return nil, nil, err
@@ -204,7 +201,6 @@ func IsSubset(api frontend.API, uapi *uints.BinaryField[uints.U64], arthur gnark
 			return newerr
 		}
 		searchRes := dedupedLUT.Lookup(res[0])
-		//api.Println(searchRes...)
 		api.AssertIsEqual(x, searchRes[0])
 	}
 	return nil

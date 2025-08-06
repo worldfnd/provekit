@@ -2,7 +2,7 @@ use {
     crate::{
         noir_to_r1cs,
         r1cs_solver::{MockTranscript, WitnessBuilder},
-        utils::{next_power_of_two, PrintAbi},
+        utils::PrintAbi,
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
@@ -22,12 +22,11 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:                 Program<NoirFieldElement>,
-    pub r1cs:                    R1CS,
-    pub witness_builders:        Vec<WitnessBuilder>,
-    pub witness_generator:       NoirWitnessGenerator,
-    pub whir_for_witness:        WhirR1CSScheme,
-    pub whir_for_hiding_spartan: WhirR1CSScheme,
+    pub program:           Program<NoirFieldElement>,
+    pub r1cs:              R1CS,
+    pub witness_builders:  Vec<WitnessBuilder>,
+    pub witness_generator: NoirWitnessGenerator,
+    pub whir_for_witness:  WhirR1CSScheme,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -79,18 +78,12 @@ impl NoirProofScheme {
         // Configure Whir
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
-        let whir_for_hiding_spartan = WhirR1CSScheme::new_for_size(
-            4 * whir_for_witness.m_0,
-            next_power_of_two(4 * whir_for_witness.m_0),
-        );
-
         Ok(Self {
             program: program.bytecode,
             r1cs,
             witness_builders,
             witness_generator,
             whir_for_witness,
-            whir_for_hiding_spartan,
         })
     }
 
@@ -156,11 +149,7 @@ impl NoirProofScheme {
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(
-                &self.r1cs,
-                &self.whir_for_hiding_spartan.whir_config,
-                witness,
-            )
+            .prove(&self.r1cs, witness)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
@@ -168,10 +157,7 @@ impl NoirProofScheme {
 
     #[instrument(skip_all)]
     pub fn verify(&self, proof: &NoirProof) -> Result<()> {
-        self.whir_for_witness.verify(
-            &proof.whir_r1cs_proof,
-            &self.whir_for_hiding_spartan.whir_config,
-        )?;
+        self.whir_for_witness.verify(&proof.whir_r1cs_proof)?;
         Ok(())
     }
 }
@@ -238,7 +224,6 @@ mod tests {
         test_serde(&proof_schema.witness_builders);
         test_serde(&proof_schema.witness_generator);
         test_serde(&proof_schema.whir_for_witness);
-        test_serde(&proof_schema.whir_for_hiding_spartan);
     }
 
     #[test]

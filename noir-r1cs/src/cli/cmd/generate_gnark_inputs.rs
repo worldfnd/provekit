@@ -2,9 +2,7 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{
-        create_io_pattern, read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme,
-    },
+    noir_r1cs::{read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme},
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
 };
@@ -51,16 +49,16 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &scheme.whir_for_witness.whir_config,
+            &scheme.whir_for_witness.whir_config_row,
+            &scheme.whir_for_witness.whir_config_col,
+            &scheme.whir_for_witness.whir_config_a_num_terms,
+            &scheme.whir_for_witness.whir_witness,
+            &scheme.whir_for_witness.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,
-            &create_io_pattern(
-                scheme.whir_for_witness.m_0,
-                &scheme.whir_for_witness.whir_config,
-                &scheme.whir_for_hiding_spartan.whir_config,
-            ),
-            proof.whir_r1cs_proof.whir_query_answer_sums,
+            &scheme.whir_for_witness.create_io_pattern(),
             scheme.whir_for_witness.m_0,
             scheme.whir_for_witness.m,
+            scheme.whir_for_witness.a_num_terms,
             &self.params_for_recursive_verifier,
         );
 
