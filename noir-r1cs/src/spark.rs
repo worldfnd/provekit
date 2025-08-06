@@ -1,12 +1,10 @@
 use {
     crate::{
         grand_product_argument::{run_gpa_final_prover, run_gpa_final_verifier, run_gpa_init_prover, run_gpa_init_verifier, run_gpa_rs_prover, run_gpa_rs_verifier}, skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{
-            pad_to_power_of_two,
-            sumcheck::{
+            next_power_of_two, pad_to_power_of_two, sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly,
                 sumcheck_fold_map_reduce, SumcheckIOPattern,
-            },
-            HALF,
+            }, HALF
         }, FieldElement
     }, anyhow::{ensure, Context, Error, Result}, ark_crypto_primitives::merkle_tree::Config, ark_ff::FftField, ark_std::{One, Zero}, spongefish::{
         codecs::arkworks_algebra::{
@@ -292,8 +290,11 @@ impl SparkInstance {
             e_ry.push(eq_ry[c]);
         }
 
-        e_rx = pad_to_power_of_two(e_rx);
-        e_ry = pad_to_power_of_two(e_ry);
+        let e_rx_target_len = 1 << next_power_of_two(e_rx.len());
+        e_rx.resize(e_rx_target_len, eq_rx[0]);
+
+        let e_ry_target_len = 1 << next_power_of_two(e_ry.len());
+        e_ry.resize(e_ry_target_len, eq_ry[0]);
 
         let committer = CommitmentWriter::new(whir_config_num_terms);
         (
@@ -347,8 +348,13 @@ impl SparkInstance {
             read_ts_col.push(FieldElement::from(read_ts_col_counters[c] as u64));
             read_ts_col_counters[c] += 1;
         }
-        read_ts_row = pad_to_power_of_two(read_ts_row);
-        read_ts_col = pad_to_power_of_two(read_ts_col);
+        let pad_len = (1<<next_power_of_two(read_ts_row.len())) - read_ts_row.len();
+        for _ in 0..pad_len {
+            read_ts_row.push(FieldElement::from(read_ts_row_counters[0] as u64));
+            read_ts_row_counters[0] += 1;
+            read_ts_col.push(FieldElement::from(read_ts_col_counters[0] as u64));
+            read_ts_col_counters[0] += 1;
+        }
 
         let final_cts_row = read_ts_row_counters
             .iter()
