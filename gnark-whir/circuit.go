@@ -34,6 +34,9 @@ type Circuit struct {
 	SparkAMemCheckRSGPAAddrMerkle        Merkle
 	SparkAMemCheckRSGPAValueMerkle       Merkle
 	SparkAMemCheckRSGPATimeStampMerkle   Merkle
+	SparkAMemCheckWSGPAAddrMerkle        Merkle
+	SparkAMemCheckWSGPAValueMerkle       Merkle
+	SparkAMemCheckWSGPATimeStampMerkle   Merkle
 
 	WHIRParamsCol     WHIRParams
 	WHIRParamsRow     WHIRParams
@@ -193,6 +196,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		circuit,
 		spartanSumcheckRand,
 		circuit.LogNumConstraints,
+		circuit.LogANumTerms,
 		finalCTSRowOODPoints,
 		finalCTSRowOODAnswers,
 		rowOODQueries,
@@ -262,6 +266,9 @@ func verifyCircuit(
 		SparkAMemCheckRSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowRSGPAAddrHints, true),
 		SparkAMemCheckRSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowRSGPAValueHints, true),
 		SparkAMemCheckRSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowRSGPATimeStampHints, true),
+		SparkAMemCheckWSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowWSGPAAddrHints, true),
+		SparkAMemCheckWSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowWSGPAValueHints, true),
+		SparkAMemCheckWSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowWSGPATimeStampHints, true),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
@@ -299,6 +306,8 @@ func verifyCircuit(
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        transcriptT,
 		LogNumConstraints: cfg.LogNumConstraints,
+		LogNumVariables:   cfg.LogNumVariables,
+		LogANumTerms:      cfg.LogANumTerms,
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
@@ -312,6 +321,9 @@ func verifyCircuit(
 		SparkAMemCheckRSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowRSGPAAddrHints, false),
 		SparkAMemCheckRSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowRSGPAValueHints, false),
 		SparkAMemCheckRSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowRSGPATimeStampHints, false),
+		SparkAMemCheckWSGPAAddrMerkle:        newMerkle(hints.sparkMemCheckRowWSGPAAddrHints, false),
+		SparkAMemCheckWSGPAValueMerkle:       newMerkle(hints.sparkMemCheckRowWSGPAValueHints, false),
+		SparkAMemCheckWSGPATimeStampMerkle:   newMerkle(hints.sparkMemCheckRowWSGPATimeStampHints, false),
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
