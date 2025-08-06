@@ -17,6 +17,7 @@ func offlineMemoryCheck(
 	circuit *Circuit,
 	randomness []frontend.Variable,
 	logMemorySize int,
+	logNumTerms int,
 	finalCTSRowOODPoints []frontend.Variable,
 	finalCTSRowOODAnswers []frontend.Variable,
 	addressOODPoints []frontend.Variable,
@@ -72,7 +73,7 @@ func offlineMemoryCheck(
 		circuit,
 		tau,
 		gamma,
-		logMemorySize+1,
+		logNumTerms+1,
 		randomness,
 		addressOODPoints,
 		addressOODAnswers,
@@ -83,6 +84,26 @@ func offlineMemoryCheck(
 	)
 
 	_ = gpa_rs_claimed_val
+
+	gpa_ws_claimed_val := gpaWSVerifier(
+		api,
+		uapi,
+		sc,
+		arthur,
+		circuit,
+		tau,
+		gamma,
+		logNumTerms+1,
+		randomness,
+		addressOODPoints,
+		addressOODAnswers,
+		valueOODPoints,
+		valueOODAnswers,
+		timeStampOODPoints,
+		timeStampOODAnswers,
+	)
+
+	_ = gpa_ws_claimed_val
 
 	return nil
 }
@@ -273,6 +294,71 @@ func gpaRSVerifier(
 	addr := claimedAddress[0]
 	mem := claimedValue[0]
 	cntr := claimedTimeStamp[0]
+
+	api.AssertIsEqual(gpaSumcheckResult.lastSumcheckValue, api.Sub(api.Add(api.Mul(api, addr, gamma, gamma), api.Mul(mem, gamma), cntr), tau))
+
+	return gpaSumcheckResult.claimedProduct
+}
+
+func gpaWSVerifier(
+	api frontend.API,
+	uapi *uints.BinaryField[uints.U64],
+	sc *skyscraper.Skyscraper,
+	arthur gnark_nimue.Arthur,
+	circuit *Circuit,
+	tau frontend.Variable,
+	gamma frontend.Variable,
+	layerCount int,
+	randomness []frontend.Variable,
+	addressOODPoints []frontend.Variable,
+	addressOODAnswers []frontend.Variable,
+	valueOODPoints []frontend.Variable,
+	valueOODAnswers []frontend.Variable,
+	timeStampOODPoints []frontend.Variable,
+	timeStampOODAnswers []frontend.Variable,
+) frontend.Variable {
+	gpaSumcheckResult, err := gpaSumcheckVerifier(
+		api,
+		arthur,
+		layerCount,
+	)
+	if err != nil {
+		return err
+	}
+
+	claimedAddress := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(claimedAddress); err != nil {
+		return err
+	}
+
+	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPAAddrMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedAddress[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, addressOODPoints, addressOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	claimedValue := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(claimedValue); err != nil {
+		return err
+	}
+
+	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPAValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, valueOODPoints, valueOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	claimedTimeStamp := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(claimedTimeStamp); err != nil {
+		return err
+	}
+
+	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPATimeStampMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedTimeStamp[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, timeStampOODPoints, timeStampOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	addr := claimedAddress[0]
+	mem := claimedValue[0]
+	cntr := api.Add(claimedTimeStamp[0], 1)
 
 	api.AssertIsEqual(gpaSumcheckResult.lastSumcheckValue, api.Sub(api.Add(api.Mul(api, addr, gamma, gamma), api.Mul(mem, gamma), cntr), tau))
 

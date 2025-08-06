@@ -74,6 +74,9 @@ type Hints struct {
 	sparkMemCheckRowRSGPAAddrHints        Hint
 	sparkMemCheckRowRSGPAValueHints       Hint
 	sparkMemCheckRowRSGPATimeStampHints   Hint
+	sparkMemCheckRowWSGPAAddrHints        Hint
+	sparkMemCheckRowWSGPAValueHints       Hint
+	sparkMemCheckRowWSGPATimeStampHints   Hint
 }
 
 type Hint struct {
@@ -250,6 +253,9 @@ func main() {
 			sparkMemCheckRowRSGPAAddrEnd := sparkMemCheckRowFinalGPAFinalCTREnd + (config.WHIRConfigA.NRounds + 1)
 			sparkMemCheckRowRSGPAValueEnd := sparkMemCheckRowRSGPAAddrEnd + (config.WHIRConfigA.NRounds + 1)
 			sparkMemCheckRowRSGPATimeStampEnd := sparkMemCheckRowRSGPAValueEnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowWSGPAAddrEnd := sparkMemCheckRowRSGPATimeStampEnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowWSGPAValueEnd := sparkMemCheckRowWSGPAAddrEnd + (config.WHIRConfigA.NRounds + 1)
+			sparkMemCheckRowWSGPATimeStampEnd := sparkMemCheckRowWSGPAValueEnd + (config.WHIRConfigA.NRounds + 1)
 
 			hints := Hints{
 				spartanHints: Hint{
@@ -283,6 +289,18 @@ func main() {
 				sparkMemCheckRowRSGPATimeStampHints: Hint{
 					merklePaths: merklePaths[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
 					stirAnswers: stirAnswers[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
+				},
+				sparkMemCheckRowWSGPAAddrHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowRSGPATimeStampEnd:sparkMemCheckRowWSGPAAddrEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowRSGPATimeStampEnd:sparkMemCheckRowWSGPAAddrEnd],
+				},
+				sparkMemCheckRowWSGPAValueHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowWSGPAAddrEnd:sparkMemCheckRowWSGPAValueEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowWSGPAAddrEnd:sparkMemCheckRowWSGPAValueEnd],
+				},
+				sparkMemCheckRowWSGPATimeStampHints: Hint{
+					merklePaths: merklePaths[sparkMemCheckRowWSGPAValueEnd:sparkMemCheckRowWSGPATimeStampEnd],
+					stirAnswers: stirAnswers[sparkMemCheckRowWSGPAValueEnd:sparkMemCheckRowWSGPATimeStampEnd],
 				},
 			}
 
