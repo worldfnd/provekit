@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -200,31 +199,7 @@ func combineFirstRoundLeaves(api frontend.API, firstRoundPath [][][]frontend.Var
 	return combinedFirstRound
 }
 
-func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
-	ans := []frontend.Variable{frontend.Variable(1)}
-
-	for i := len(r) - 1; i >= 0; i-- {
-		x := r[i]
-		left := make([]frontend.Variable, len(ans))
-		right := make([]frontend.Variable, len(ans))
-
-		for j, y := range ans {
-			left[j] = api.Mul(y, api.Sub(1, x))
-			right[j] = api.Mul(y, x)
-		}
-
-		ans = append(left, right...)
-	}
-
-	return ans
-}
-
-type MatrixCell struct {
-	row    int
-	column int
-	value  *big.Int
-}
-
+//nolint:unused
 func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
 	if err != nil {

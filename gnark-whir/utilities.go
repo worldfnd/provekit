@@ -118,6 +118,9 @@ func runZKSumcheck(
 ) ([]frontend.Variable, frontend.Variable, error) {
 
 	rootHashes, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(api, arthur, whirParams)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(arthur)
 	if err != nil {

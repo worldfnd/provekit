@@ -191,6 +191,7 @@ func runZKWhir(
 	return nil
 }
 
+//nolint:unused
 func runWhir(
 	api frontend.API,
 	arthur gnark_nimue.Arthur,
@@ -473,6 +474,7 @@ func GenerateCombinationRandomness(api frontend.API, arthur gnark_nimue.Arthur, 
 
 }
 
+//nolint:unused
 func runWhirSumcheckRounds(
 	api frontend.API,
 	lastEval frontend.Variable,
@@ -630,26 +632,11 @@ func newMerkle(
 	}
 }
 
-func newZKMerkle(
-	hint ZKHint,
-	isContainer bool,
-) ZKMerkle {
-	return ZKMerkle{
-		firstRound: newMerkle(hint.firstRoundMerklePaths.path, isContainer),
-		rounds:     newMerkle(hint.roundHints, isContainer),
-	}
-}
-
 type Merkle struct {
 	Leaves            [][][]frontend.Variable
 	LeafIndexes       [][]uints.U64
 	LeafSiblingHashes [][][]uints.U8
 	AuthPaths         [][][][]uints.U8
-}
-
-type ZKMerkle struct {
-	firstRound Merkle
-	rounds     Merkle
 }
 
 func new_whir_params(cfg WHIRConfig) WHIRParams {
