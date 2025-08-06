@@ -512,3 +512,127 @@ pub fn run_gpa_rs_verifier(
 
     Ok(gpa_result.claimed_product)
 }
+
+
+pub fn run_gpa_ws_prover(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    tau: FieldElement,
+    gamma: FieldElement,
+    address:            Vec<FieldElement>,
+    value:              Vec<FieldElement>,
+    time_stamp:         Vec<FieldElement>,
+    address_witness:    Witness<FieldElement, SkyscraperMerkleConfig>,
+    value_witness:      Witness<FieldElement, SkyscraperMerkleConfig>,
+    time_stamp_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    whir_config:        &WhirConfig,
+) {
+    let time_stamp_plus_one: Vec<FieldElement> = time_stamp
+        .iter()
+        .map(|x| *x + FieldElement::from(1))
+        .collect();
+    let gpa = GrandProductArgument::new(
+        address.clone(),
+        value.clone(),
+        time_stamp_plus_one,
+        tau,
+        gamma,
+        merlin,
+    );
+
+    let randomness_point = MultilinearPoint(gpa.randomness.clone());
+
+    let address_eval = EvaluationsList::new(address).evaluate(&randomness_point);
+    merlin.add_scalars([address_eval].as_slice());
+
+    produce_whir_proof(
+        merlin,
+        randomness_point.clone(),
+        address_eval,
+        whir_config.clone(),
+        address_witness,
+    );
+
+    let value_eval = EvaluationsList::new(value).evaluate(&randomness_point);
+    merlin.add_scalars([value_eval].as_slice());
+
+    produce_whir_proof(
+        merlin,
+        randomness_point.clone(),
+        value_eval,
+        whir_config.clone(),
+        value_witness,
+    );
+
+    let time_stamp_eval = EvaluationsList::new(time_stamp).evaluate(&randomness_point);
+    merlin.add_scalars([time_stamp_eval].as_slice());
+
+    produce_whir_proof(
+        merlin,
+        randomness_point,
+        time_stamp_eval,
+        whir_config.clone(),
+        time_stamp_witness,
+    );
+}
+
+pub fn run_gpa_ws_verifier(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    tau: &FieldElement,
+    gamma: &FieldElement,
+    layer_count: usize,
+    randomness:  Vec<FieldElement>,
+    whir_config_terms: &WhirConfig,
+    commitments: SparkWhirRSWSCommitments,
+) -> Result<FieldElement> {
+    let gpa_result = gpa_sumcheck_verifier(arthur, layer_count)
+        .context("while verifying GPA sumcheck")?;
+
+    let mut address_evaluation = [FieldElement::from(0); 1];
+    arthur
+        .fill_next_scalars(&mut address_evaluation)
+        .expect("Failed to fill next scalars");
+
+    verify_evaluation(
+        arthur,
+        MultilinearPoint(gpa_result.randomness.clone()),
+        address_evaluation[0],
+        whir_config_terms,
+        &commitments.addr_commitment,
+    )?;
+
+    let mut value_evaluation = [FieldElement::from(0); 1];
+    arthur
+        .fill_next_scalars(&mut value_evaluation)
+        .expect("Failed to fill next scalars");
+
+    verify_evaluation(
+        arthur,
+        MultilinearPoint(gpa_result.randomness.clone()),
+        value_evaluation[0],
+        whir_config_terms,
+        &commitments.value_commitment,
+    )?;
+
+    let mut time_stamp_evaluation = [FieldElement::from(0); 1];
+    arthur
+        .fill_next_scalars(&mut time_stamp_evaluation)
+        .expect("Failed to fill next scalars");
+
+    verify_evaluation(
+        arthur,
+        MultilinearPoint(gpa_result.randomness.clone()),
+        time_stamp_evaluation[0],
+        whir_config_terms,
+        &commitments.time_stamp_commitment,
+    )?;
+
+    let time_stamp_evaluation = time_stamp_evaluation[0] + FieldElement::from(1);
+
+    ensure!(
+        gpa_result.last_sumcheck_value == address_evaluation[0] * gamma * gamma + value_evaluation[0] * gamma + time_stamp_evaluation - tau,
+        "spark last failed"
+    );
+
+
+    Ok(gpa_result.claimed_product)
+}

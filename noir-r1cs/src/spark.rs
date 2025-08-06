@@ -1,6 +1,6 @@
 use {
     crate::{
-        grand_product_argument::{run_gpa_final_prover, run_gpa_final_verifier, run_gpa_init_prover, run_gpa_init_verifier, run_gpa_rs_prover, run_gpa_rs_verifier}, skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{
+        grand_product_argument::{run_gpa_final_prover, run_gpa_final_verifier, run_gpa_init_prover, run_gpa_init_verifier, run_gpa_rs_prover, run_gpa_rs_verifier, run_gpa_ws_prover, run_gpa_ws_verifier}, skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge}, sparse_matrix::HydratedSparseMatrix, utils::{
             next_power_of_two, pad_to_power_of_two, sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_qubic_poly,
                 sumcheck_fold_map_reduce, SumcheckIOPattern,
@@ -489,6 +489,11 @@ pub trait SparkIOPattern<F: FftField, MerkleConfig: Config> {
         log_term_size: usize,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self;
+    fn spark_gpa_ws<PowStrategy>(
+        self,
+        log_term_size: usize,
+        whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+    ) -> Self;
 }
 
 impl<F, MerkleConfig, DomainSeparator> SparkIOPattern<F, MerkleConfig> for DomainSeparator
@@ -570,6 +575,7 @@ where
             .spark_gpa_init(log_memory_size)
             .spark_gpa_final(log_memory_size, whir_config_memory)
             .spark_gpa_rs(log_term_size, whir_config_num_terms)
+            .spark_gpa_ws(log_term_size, whir_config_num_terms)
     }
 
     fn spark_gpa_init (
@@ -624,6 +630,29 @@ where
             .add_scalars(1, "GPA RS value opening")
             .add_whir_proof(whir_config_terms)
             .add_scalars(1, "GPA RS timestamp opening")
+            .add_whir_proof(whir_config_terms);
+        io
+    }
+
+    fn spark_gpa_ws<PowStrategy> (
+        self,
+        log_term_size: usize,
+        whir_config_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
+    ) -> Self {
+        //TODO Should this be sent over a hint
+        let mut io = self.add_scalars(1, "ws gpa answer");
+            
+        for i in 0..log_term_size {
+            io = io.add_sumcheck_polynomials(i);
+            io = io.add_sumcheck_quadratic_polynomials(1);
+        };
+
+        io = io
+            .add_scalars(1, "GPA WS address opening")
+            .add_whir_proof(whir_config_terms)
+            .add_scalars(1, "GPA WS value opening")
+            .add_whir_proof(whir_config_terms)
+            .add_scalars(1, "GPA WS timestamp opening")
             .add_whir_proof(whir_config_terms);
         io
     }
@@ -720,6 +749,7 @@ pub struct MemoryCheckCommitments {
     final_cts: ParsedCommitment<FieldElement, FieldElement>,
 }
 
+#[derive(Clone)]
 pub struct SparkWhirRSWSCommitments {
     pub addr_commitment:       ParsedCommitment<FieldElement, FieldElement>,
     pub value_commitment:      ParsedCommitment<FieldElement, FieldElement>,
@@ -920,6 +950,19 @@ pub fn prove_offline_memory_check(
         merlin,
         tau,
         gamma,
+        values_and_witnesses.values.addresses.clone(), 
+        values_and_witnesses.values.values.clone(),
+        values_and_witnesses.values.read_time_stamps.clone(),
+        values_and_witnesses.witnesses.addresses.clone(),
+        values_and_witnesses.witnesses.values.clone(),
+        values_and_witnesses.witnesses.read_time_stamps.clone(),
+        whir_config_num_terms,
+    );
+
+    run_gpa_ws_prover(
+        merlin,
+        tau,
+        gamma,
         values_and_witnesses.values.addresses, 
         values_and_witnesses.values.values,
         values_and_witnesses.values.read_time_stamps,
@@ -967,6 +1010,16 @@ pub fn verify_offline_memory_check(
     );
 
     let rs_gpa_claimed_value = run_gpa_rs_verifier(
+        arthur,
+        &tau,
+        &gamma,
+        log_memory_size + 1,
+        random_point.clone(),
+        whir_config_terms,
+        commitments.rs_ws.clone(),
+    );
+
+    let rs_gpa_claimed_value = run_gpa_ws_verifier(
         arthur,
         &tau,
         &gamma,
