@@ -192,9 +192,7 @@ impl WhirR1CSScheme {
 
         let transcript = merlin.narg_string().to_vec();
 
-        Ok(WhirR1CSProof {
-            transcript
-        })
+        Ok(WhirR1CSProof { transcript })
     }
 
     #[instrument(skip_all)]
@@ -574,10 +572,7 @@ pub fn run_zk_sumcheck_prover(
         merlin,
     );
 
-    (
-        merlin,
-        alpha
-    )
+    (merlin, alpha)
 }
 
 fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {

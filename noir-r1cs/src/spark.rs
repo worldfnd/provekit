@@ -467,8 +467,7 @@ where
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         num_terms: usize,
     ) -> Self {
-        self
-            .spark_commit(whir_config_num_terms, whir_config_row, whir_config_col)
+        self.spark_commit(whir_config_num_terms, whir_config_row, whir_config_col)
             .spark_sumcheck(num_terms, whir_config_num_terms)
     }
 
@@ -478,8 +477,7 @@ where
         whir_config_row: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
         whir_config_col: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self {
-        self
-            .commit_statement(whir_config_num_terms)
+        self.commit_statement(whir_config_num_terms)
             .commit_statement(whir_config_num_terms)
             .commit_statement(whir_config_num_terms)
             .commit_statement(whir_config_num_terms)
@@ -495,8 +493,7 @@ where
         num_terms: usize,
         whir_config_num_terms: &GenericWhirConfig<F, MerkleConfig, PowStrategy>,
     ) -> Self {
-        self
-            .add_sumcheck_polynomials(num_terms)
+        self.add_sumcheck_polynomials(num_terms)
             .hint("last folds")
             .add_whir_proof(whir_config_num_terms)
         // .add_whir_proof(whir_config_num_terms)
