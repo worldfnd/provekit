@@ -682,6 +682,7 @@ pub fn verify_spark(
     verify_offline_memory_check(
         arthur,
         log_row_count,
+        num_terms,
         row_randomness,
         spark_commitments.rowwise,
         whir_config_row,
@@ -978,6 +979,7 @@ pub fn prove_offline_memory_check(
 pub fn verify_offline_memory_check(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     log_memory_size: usize,
+    log_num_terms: usize,
     random_point: Vec<FieldElement>,
     commitments: MemoryCheckCommitments,
     whir_config_memory: &WhirConfig,
@@ -997,7 +999,7 @@ pub fn verify_offline_memory_check(
         &gamma,
         log_memory_size + 1,
         random_point.clone(),
-    ); 
+    )?; 
 
     let final_gpa_claimed_value = run_gpa_final_verifier(
         arthur,
@@ -1007,26 +1009,31 @@ pub fn verify_offline_memory_check(
         random_point.clone(),
         commitments.final_cts,
         whir_config_memory,
-    );
+    )?;
 
     let rs_gpa_claimed_value = run_gpa_rs_verifier(
         arthur,
         &tau,
         &gamma,
-        log_memory_size + 1,
+        log_num_terms + 1,
         random_point.clone(),
         whir_config_terms,
         commitments.rs_ws.clone(),
-    );
+    )?;
 
-    let rs_gpa_claimed_value = run_gpa_ws_verifier(
+    let ws_gpa_claimed_value = run_gpa_ws_verifier(
         arthur,
         &tau,
         &gamma,
-        log_memory_size + 1,
+        log_num_terms + 1,
         random_point,
         whir_config_terms,
         commitments.rs_ws,
+    )?;
+
+    ensure!(
+        rs_gpa_claimed_value * final_gpa_claimed_value == ws_gpa_claimed_value * init_gpa_claimed_value, 
+        "GPA relation does not hold"
     );
 
     Ok(())
