@@ -83,6 +83,13 @@ pub fn prove_spark(
         whir_config_num_terms,
     )?;
 
+    prove_offline_memory_check(
+        merlin,
+        spark.colwise,
+        whir_config_col,
+        whir_config_num_terms,
+    )?;
+
     Ok(())
 }
 
@@ -523,6 +530,12 @@ where
                 whir_config_row,
                 num_terms,
                 whir_config_num_terms,
+            )
+            .offline_memory_check(
+                log_col_count, 
+                whir_config_col,
+                num_terms,
+                whir_config_num_terms,
             );
         io
     }
@@ -665,8 +678,10 @@ pub fn verify_spark(
     whir_config_col: &WhirConfig,
     claimed_value: FieldElement,
     row_randomness: Vec<FieldElement>,
+    col_randomness: Vec<FieldElement>,
     num_terms: usize,
     log_row_count: usize,
+    log_col_count: usize,
 ) -> Result<()> {
     let spark_commitments =
         parse_spark_commitments(arthur, whir_config_row, whir_config_col, whir_config_terms);
@@ -686,6 +701,16 @@ pub fn verify_spark(
         row_randomness,
         spark_commitments.rowwise,
         whir_config_row,
+        whir_config_terms,
+    )?;
+
+    verify_offline_memory_check(
+        arthur,
+        log_col_count,
+        num_terms,
+        col_randomness,
+        spark_commitments.colwise,
+        whir_config_col,
         whir_config_terms,
     )?;
 
