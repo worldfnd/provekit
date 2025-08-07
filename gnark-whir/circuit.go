@@ -17,6 +17,15 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
+type SparkMatrixMerkle struct {
+	SumcheckValueMerkle Merkle
+	SumcheckERXMerkle   Merkle
+	SumcheckERYMerkle   Merkle
+
+	Rowwise MemoryCheckCircuits
+	Colwise MemoryCheckCircuits
+}
+
 type Circuit struct {
 	// Inputs
 	LinearStatementValuesAtPoints []frontend.Variable
@@ -29,12 +38,9 @@ type Circuit struct {
 
 	SpartanMerkle Merkle
 
-	SparkASumcheckValueMerkle Merkle
-	SparkASumcheckERXMerkle   Merkle
-	SparkASumcheckERYMerkle   Merkle
-
-	SparkRowwise MemoryCheckCircuits
-	SparkColwise MemoryCheckCircuits
+	MatrixA SparkMatrixMerkle
+	MatrixB SparkMatrixMerkle
+	MatrixC SparkMatrixMerkle
 
 	WHIRParamsCol     WHIRParams
 	WHIRParamsRow     WHIRParams
@@ -183,17 +189,17 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	api.AssertIsEqual(sparkSumcheckLastValue, api.Mul(circuit.SumcheckLastFolds[0], circuit.SumcheckLastFolds[1], circuit.SumcheckLastFolds[2]))
 
-	_, err = runWhir(api, arthur, uapi, sc, circuit.SparkASumcheckValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[0]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, valOODQueries, valOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[0]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, valOODQueries, valOODAnswers)
 	if err != nil {
 		return err
 	}
 
-	_, err = runWhir(api, arthur, uapi, sc, circuit.SparkASumcheckERXMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[1]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRxOODQueries, eRxOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckERXMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[1]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRxOODQueries, eRxOODAnswers)
 	if err != nil {
 		return err
 	}
 
-	_, err = runWhir(api, arthur, uapi, sc, circuit.SparkASumcheckERYMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[2]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRyOODQueries, eRyOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckERYMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[2]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRyOODQueries, eRyOODAnswers)
 	if err != nil {
 		return err
 	}
@@ -203,7 +209,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		uapi,
 		sc,
 		arthur,
-		circuit.SparkRowwise,
+		circuit.MatrixA.Rowwise,
 		spartanSumcheckRand,
 		circuit.LogNumConstraints,
 		circuit.LogANumTerms,
@@ -228,7 +234,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		uapi,
 		sc,
 		arthur,
-		circuit.SparkColwise,
+		circuit.MatrixA.Colwise,
 		spartanWhirRand,
 		circuit.LogNumVariables,
 		circuit.LogANumTerms,
@@ -297,29 +303,84 @@ func verifyCircuit(
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
 		SumcheckLastFolds:             contSumcheckLastFoldsCircuit,
 
-		SpartanMerkle:             newMerkle(hints.spartanHints, true),
-		SparkASumcheckValueMerkle: newMerkle(hints.matrixA.SumcheckValHints, true),
-		SparkASumcheckERXMerkle:   newMerkle(hints.matrixA.SumcheckERXHints, true),
-		SparkASumcheckERYMerkle:   newMerkle(hints.matrixA.SumcheckERYHints, true),
+		SpartanMerkle: newMerkle(hints.spartanHints, true),
 
-		SparkRowwise: MemoryCheckCircuits{
-			FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.rowwise.FinalGPAFinalCTRHints, true),
-			RSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.RSGPAAddrHints, true),
-			RSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.RSGPAValueHints, true),
-			RSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.RSGPATimeStampHints, true),
-			WSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.WSGPAAddrHints, true),
-			WSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.WSGPAValueHints, true),
-			WSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.WSGPATimeStampHints, true),
+		MatrixA: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixA.SumcheckValHints, true),
+			SumcheckERXMerkle:   newMerkle(hints.matrixA.SumcheckERXHints, true),
+			SumcheckERYMerkle:   newMerkle(hints.matrixA.SumcheckERYHints, true),
+
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.rowwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.WSGPATimeStampHints, true),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.colwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.WSGPATimeStampHints, true),
+			},
 		},
 
-		SparkColwise: MemoryCheckCircuits{
-			FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.colwise.FinalGPAFinalCTRHints, true),
-			RSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.RSGPAAddrHints, true),
-			RSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.RSGPAValueHints, true),
-			RSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.RSGPATimeStampHints, true),
-			WSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.WSGPAAddrHints, true),
-			WSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.WSGPAValueHints, true),
-			WSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.WSGPATimeStampHints, true),
+		MatrixB: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixB.SumcheckValHints, true),
+			SumcheckERXMerkle:   newMerkle(hints.matrixB.SumcheckERXHints, true),
+			SumcheckERYMerkle:   newMerkle(hints.matrixB.SumcheckERYHints, true),
+
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixB.rowwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixB.rowwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixB.rowwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixB.rowwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixB.rowwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixB.rowwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixB.rowwise.WSGPATimeStampHints, true),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixB.colwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixB.colwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixB.colwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixB.colwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixB.colwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixB.colwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixB.colwise.WSGPATimeStampHints, true),
+			},
+		},
+
+		MatrixC: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixC.SumcheckValHints, true),
+			SumcheckERXMerkle:   newMerkle(hints.matrixC.SumcheckERXHints, true),
+			SumcheckERYMerkle:   newMerkle(hints.matrixC.SumcheckERYHints, true),
+
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixC.rowwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixC.rowwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixC.rowwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixC.rowwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixC.rowwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixC.rowwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixC.rowwise.WSGPATimeStampHints, true),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixC.colwise.FinalGPAFinalCTRHints, true),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixC.colwise.RSGPAAddrHints, true),
+				RSGPAValueMerkle:       newMerkle(hints.matrixC.colwise.RSGPAValueHints, true),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixC.colwise.RSGPATimeStampHints, true),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixC.colwise.WSGPAAddrHints, true),
+				WSGPAValueMerkle:       newMerkle(hints.matrixC.colwise.WSGPAValueHints, true),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixC.colwise.WSGPATimeStampHints, true),
+			},
 		},
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
@@ -369,29 +430,82 @@ func verifyCircuit(
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
 		SumcheckLastFolds:             sumcheckLastFoldsCircuit,
 
-		SpartanMerkle:             newMerkle(hints.spartanHints, false),
-		SparkASumcheckValueMerkle: newMerkle(hints.matrixA.SumcheckValHints, false),
-		SparkASumcheckERXMerkle:   newMerkle(hints.matrixA.SumcheckERXHints, false),
-		SparkASumcheckERYMerkle:   newMerkle(hints.matrixA.SumcheckERYHints, false),
+		MatrixA: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixA.SumcheckValHints, false),
+			SumcheckERXMerkle:   newMerkle(hints.matrixA.SumcheckERXHints, false),
+			SumcheckERYMerkle:   newMerkle(hints.matrixA.SumcheckERYHints, false),
 
-		SparkRowwise: MemoryCheckCircuits{
-			FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.rowwise.FinalGPAFinalCTRHints, false),
-			RSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.RSGPAAddrHints, false),
-			RSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.RSGPAValueHints, false),
-			RSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.RSGPATimeStampHints, false),
-			WSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.WSGPAAddrHints, false),
-			WSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.WSGPAValueHints, false),
-			WSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.WSGPATimeStampHints, false),
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.rowwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixA.rowwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixA.rowwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixA.rowwise.WSGPATimeStampHints, false),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.colwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.WSGPATimeStampHints, false),
+			},
 		},
 
-		SparkColwise: MemoryCheckCircuits{
-			FinalGPAFinalCTCMerkle: newMerkle(hints.matrixA.colwise.FinalGPAFinalCTRHints, false),
-			RSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.RSGPAAddrHints, false),
-			RSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.RSGPAValueHints, false),
-			RSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.RSGPATimeStampHints, false),
-			WSGPAAddrMerkle:        newMerkle(hints.matrixA.colwise.WSGPAAddrHints, false),
-			WSGPAValueMerkle:       newMerkle(hints.matrixA.colwise.WSGPAValueHints, false),
-			WSGPATimeStampMerkle:   newMerkle(hints.matrixA.colwise.WSGPATimeStampHints, false),
+		MatrixB: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixB.SumcheckValHints, false),
+			SumcheckERXMerkle:   newMerkle(hints.matrixB.SumcheckERXHints, false),
+			SumcheckERYMerkle:   newMerkle(hints.matrixB.SumcheckERYHints, false),
+
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixB.rowwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixB.rowwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixB.rowwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixB.rowwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixB.rowwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixB.rowwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixB.rowwise.WSGPATimeStampHints, false),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixB.colwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixB.colwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixB.colwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixB.colwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixB.colwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixB.colwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixB.colwise.WSGPATimeStampHints, false),
+			},
+		},
+
+		MatrixC: SparkMatrixMerkle{
+			SumcheckValueMerkle: newMerkle(hints.matrixC.SumcheckValHints, false),
+			SumcheckERXMerkle:   newMerkle(hints.matrixC.SumcheckERXHints, false),
+			SumcheckERYMerkle:   newMerkle(hints.matrixC.SumcheckERYHints, false),
+
+			Rowwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixC.rowwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixC.rowwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixC.rowwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixC.rowwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixC.rowwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixC.rowwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixC.rowwise.WSGPATimeStampHints, false),
+			},
+
+			Colwise: MemoryCheckCircuits{
+				FinalGPAFinalCTCMerkle: newMerkle(hints.matrixC.colwise.FinalGPAFinalCTRHints, false),
+				RSGPAAddrMerkle:        newMerkle(hints.matrixC.colwise.RSGPAAddrHints, false),
+				RSGPAValueMerkle:       newMerkle(hints.matrixC.colwise.RSGPAValueHints, false),
+				RSGPATimeStampMerkle:   newMerkle(hints.matrixC.colwise.RSGPATimeStampHints, false),
+				WSGPAAddrMerkle:        newMerkle(hints.matrixC.colwise.WSGPAAddrHints, false),
+				WSGPAValueMerkle:       newMerkle(hints.matrixC.colwise.WSGPAValueHints, false),
+				WSGPATimeStampMerkle:   newMerkle(hints.matrixC.colwise.WSGPATimeStampHints, false),
+			},
 		},
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),

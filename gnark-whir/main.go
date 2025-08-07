@@ -72,6 +72,8 @@ type WHIRConfig struct {
 type Hints struct {
 	spartanHints Hint
 	matrixA      SparkHints
+	matrixB      SparkHints
+	matrixC      SparkHints
 }
 
 type SparkHints struct {
@@ -259,11 +261,24 @@ func main() {
 
 			hints := Hints{}
 			hints.spartanHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigCol.NRounds+1)
+
 			hints.matrixA.SumcheckValHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
 			hints.matrixA.SumcheckERXHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
 			hints.matrixA.SumcheckERYHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
 			hints.matrixA.rowwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigA.NRounds)
 			hints.matrixA.colwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigA.NRounds)
+
+			hints.matrixB.SumcheckValHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigB.NRounds+1)
+			hints.matrixB.SumcheckERXHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigB.NRounds+1)
+			hints.matrixB.SumcheckERYHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigB.NRounds+1)
+			hints.matrixB.rowwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigB.NRounds)
+			hints.matrixB.colwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigB.NRounds)
+
+			hints.matrixC.SumcheckValHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigC.NRounds+1)
+			hints.matrixC.SumcheckERXHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigC.NRounds+1)
+			hints.matrixC.SumcheckERYHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigC.NRounds+1)
+			hints.matrixC.rowwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigC.NRounds)
+			hints.matrixC.colwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigC.NRounds)
 
 			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, sumcheck_last_folds)
 			return nil
