@@ -136,7 +136,7 @@ func runZKWhir(
 		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
 
 		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[r], 3)
+		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[r], 3)
 		if err != nil {
 			return nil
 		}
@@ -159,7 +159,7 @@ func runZKWhir(
 		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
 	}
 
-	finalSumcheckRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, whirParams.FinalSumcheckRounds, 3)
+	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FinalSumcheckRounds, 3)
 	if err != nil {
 		return err
 	}
@@ -324,8 +324,8 @@ func runWhir(
 }
 
 func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes [][]uints.U8, authPaths [][][]uints.U8, rootHash frontend.Variable) error {
-	// numOfLeavesProved := len(leaves)
-	for i := range 1 {
+	numOfLeavesProved := len(leaves)
+	for i := range numOfLeavesProved {
 		treeHeight := len(authPaths[i]) + 1
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
 		leafSiblingHash := typeConverters.LittleEndianFromUints(api, leafSiblingHashes[i])
@@ -474,7 +474,6 @@ func GenerateCombinationRandomness(api frontend.API, arthur gnark_nimue.Arthur, 
 
 }
 
-//nolint:unused
 func runWhirSumcheckRounds(
 	api frontend.API,
 	lastEval frontend.Variable,

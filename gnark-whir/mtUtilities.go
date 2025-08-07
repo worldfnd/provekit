@@ -1,13 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"os"
-
-	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/groth16"
-
 	"reilabs/whir-verifier-circuit/utilities"
 
 	"github.com/consensys/gnark/frontend"
@@ -51,7 +44,7 @@ func initialSumcheck(
 	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
-	initialSumcheckFoldingRandomness, lastEval, err := runSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
+	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
@@ -60,60 +53,6 @@ func initialSumcheck(
 		InitialOODQueries:            initialOODQueries,
 		InitialCombinationRandomness: initialCombinationRandomness,
 	}, lastEval, initialSumcheckFoldingRandomness, nil
-}
-
-func runSumcheckRounds(
-	api frontend.API,
-	lastEval frontend.Variable,
-	arthur gnark_nimue.Arthur,
-	foldingFactor int,
-	polynomialDegree int,
-) ([]frontend.Variable, frontend.Variable, error) {
-	sumcheckPolynomial := make([]frontend.Variable, polynomialDegree)
-	foldingRandomness := make([]frontend.Variable, foldingFactor)
-	foldingRandomnessTemp := make([]frontend.Variable, 1)
-
-	for i := range foldingFactor {
-		if err := arthur.FillNextScalars(sumcheckPolynomial); err != nil {
-			return nil, nil, err
-		}
-		if err := arthur.FillChallengeScalars(foldingRandomnessTemp); err != nil {
-			return nil, nil, err
-		}
-		foldingRandomness[i] = foldingRandomnessTemp[0]
-
-		utilities.CheckSumOverBool(api, lastEval, sumcheckPolynomial)
-		lastEval = utilities.EvaluateQuadraticPolynomialFromEvaluationList(api, sumcheckPolynomial, foldingRandomness[i])
-	}
-	return foldingRandomness, lastEval, nil
-}
-
-func SumcheckForR1CSIOP(api frontend.API, arthur gnark_nimue.Arthur, circuit *Circuit) ([]frontend.Variable, []frontend.Variable, frontend.Variable, error) {
-	t_rand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err := arthur.FillChallengeScalars(t_rand)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	sp_rand := make([]frontend.Variable, circuit.LogNumConstraints)
-	savedValForSumcheck := frontend.Variable(0)
-
-	sp_rand_temp := make([]frontend.Variable, 1)
-	for i := 0; i < circuit.LogNumConstraints; i++ {
-		sp := make([]frontend.Variable, 4)
-		if err = arthur.FillNextScalars(sp); err != nil {
-			return nil, nil, nil, err
-		}
-		if err = arthur.FillChallengeScalars(sp_rand_temp); err != nil {
-			return nil, nil, nil, err
-		}
-		sp_rand[i] = sp_rand_temp[0]
-		sumcheckVal := api.Add(utilities.UnivarPoly(api, sp, []frontend.Variable{0})[0], utilities.UnivarPoly(api, sp, []frontend.Variable{1})[0])
-		api.AssertIsEqual(sumcheckVal, savedValForSumcheck)
-		savedValForSumcheck = utilities.UnivarPoly(api, sp, []frontend.Variable{sp_rand[i]})[0]
-	}
-
-	return t_rand, sp_rand, savedValForSumcheck, nil
 }
 
 func ValidateFirstRound(api frontend.API, circuit Merkle, arthur gnark_nimue.Arthur, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, batchSizeLen frontend.Variable, rootHashes []frontend.Variable, batchingRandomness frontend.Variable, stirChallengeIndexes []frontend.Variable, roundAnswers [][]frontend.Variable) error {
@@ -197,44 +136,4 @@ func combineFirstRoundLeaves(api frontend.API, firstRoundPath [][][]frontend.Var
 		multiplier = api.Mul(multiplier, combinationRandomness)
 	}
 	return combinedFirstRound
-}
-
-//nolint:unused
-func keys_from_files(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
-	pkFile, err := os.Open(pkPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open proving key file: %w", err)
-	}
-	defer func(pkFile *os.File) {
-		err := pkFile.Close()
-		if err != nil {
-			log.Printf("failed to close proving key file: %v", err)
-		}
-	}(pkFile)
-
-	pk := groth16.NewProvingKey(ecc.BN254)
-	_, err = pk.ReadFrom(pkFile)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore proving key: %w", err)
-
-	}
-
-	vkFile, err := os.Open(vkPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open verifying key file: %w", err)
-	}
-	defer func(vkFile *os.File) {
-		err := vkFile.Close()
-		if err != nil {
-			log.Printf("failed to close verifying key file: %v", err)
-		}
-	}(vkFile)
-
-	vk := groth16.NewVerifyingKey(ecc.BN254)
-	_, err = vk.ReadFrom(vkFile)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore verifying key: %w", err)
-	}
-
-	return pk, vk, nil
 }
