@@ -52,9 +52,13 @@ pub struct WhirR1CSScheme {
     pub m: usize,
     pub m_0: usize,
     pub a_num_terms: usize,
+    pub b_num_terms: usize,
+    pub c_num_terms: usize,
     pub whir_config_row: WhirConfig,
     pub whir_config_col: WhirConfig,
     pub whir_config_a_num_terms: WhirConfig,
+    pub whir_config_b_num_terms: WhirConfig,
+    pub whir_config_c_num_terms: WhirConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -84,11 +88,19 @@ impl WhirR1CSScheme {
         Self {
             m,
             m_0,
-            a_num_terms: next_power_of_two(r1cs.a().iter().count()),
+            a_num_terms: next_power_of_two(r1cs.a().matrix.num_entries()),
+            b_num_terms: next_power_of_two(r1cs.b().matrix.num_entries()),
+            c_num_terms: next_power_of_two(r1cs.c().matrix.num_entries()),
             whir_config_row: Self::new_whir_config_for_size(m_0),
             whir_config_col: Self::new_whir_config_for_size(m),
             whir_config_a_num_terms: Self::new_whir_config_for_size(next_power_of_two(
                 r1cs.a().matrix.num_entries(),
+            )),
+            whir_config_b_num_terms: Self::new_whir_config_for_size(next_power_of_two(
+                r1cs.b().matrix.num_entries(),
+            )),
+            whir_config_c_num_terms: Self::new_whir_config_for_size(next_power_of_two(
+                r1cs.c().matrix.num_entries(),
             )),
         }
     }
@@ -150,6 +162,28 @@ impl WhirR1CSScheme {
             deferred[0],
         )?;
 
+        prove_spark(
+            r1cs.b(),
+            &mut merlin,
+            &self.whir_config_b_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            &alpha,
+            &col_randomness.0,
+            deferred[1],
+        )?;
+
+        prove_spark(
+            r1cs.c(),
+            &mut merlin,
+            &self.whir_config_c_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            &alpha,
+            &col_randomness.0,
+            deferred[2],
+        )?;
+
         let transcript = merlin.narg_string().to_vec();
 
         Ok(WhirR1CSProof { transcript })
@@ -186,9 +220,35 @@ impl WhirR1CSScheme {
             &self.whir_config_row,
             &self.whir_config_col,
             deferred[0],
+            data_from_sumcheck_verifier.alpha.clone(),
+            folding_randomness.0.clone(),
+            self.a_num_terms,
+            self.m_0,
+            self.m,
+        )?;
+
+        verify_spark(
+            &mut arthur,
+            &self.whir_config_b_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            deferred[1],
+            data_from_sumcheck_verifier.alpha.clone(),
+            folding_randomness.0.clone(),
+            self.b_num_terms,
+            self.m_0,
+            self.m,
+        )?;
+
+        verify_spark(
+            &mut arthur,
+            &self.whir_config_c_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            deferred[2],
             data_from_sumcheck_verifier.alpha,
             folding_randomness.0,
-            self.a_num_terms,
+            self.c_num_terms,
             self.m_0,
             self.m,
         )?;
@@ -210,6 +270,24 @@ impl WhirR1CSScheme {
             &self.whir_config_row,
             &self.whir_config_col,
             self.a_num_terms,
+            self.m_0,
+            self.m,
+        );
+
+        io = io.spark(
+            &self.whir_config_b_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            self.b_num_terms,
+            self.m_0,
+            self.m,
+        );
+
+        io = io.spark(
+            &self.whir_config_c_num_terms,
+            &self.whir_config_row,
+            &self.whir_config_col,
+            self.c_num_terms,
             self.m_0,
             self.m,
         );
