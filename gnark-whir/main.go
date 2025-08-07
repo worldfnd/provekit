@@ -43,9 +43,13 @@ type Config struct {
 	WHIRConfigRow     WHIRConfig `json:"whir_config_row"`
 	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
 	WHIRConfigA       WHIRConfig `json:"whir_config_a_num_terms"`
+	WHIRConfigB       WHIRConfig `json:"whir_config_b_num_terms"`
+	WHIRConfigC       WHIRConfig `json:"whir_config_c_num_terms"`
 	LogNumConstraints int        `json:"log_num_constraints"`
 	LogNumVariables   int        `json:"log_num_variables"`
 	LogANumTerms      int        `json:"log_a_num_terms"`
+	LogBNumTerms      int        `json:"log_b_num_terms"`
+	LogCNumTerms      int        `json:"log_c_num_terms"`
 	IOPattern         string     `json:"io_pattern"`
 	Transcript        []byte     `json:"transcript"`
 	TranscriptLen     int        `json:"transcript_len"`

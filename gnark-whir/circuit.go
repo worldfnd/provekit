@@ -24,6 +24,8 @@ type Circuit struct {
 	LogNumConstraints             int
 	LogNumVariables               int
 	LogANumTerms                  int
+	LogBNumTerms                  int
+	LogCNumTerms                  int
 
 	SpartanMerkle Merkle
 
@@ -37,6 +39,8 @@ type Circuit struct {
 	WHIRParamsCol     WHIRParams
 	WHIRParamsRow     WHIRParams
 	WHIRParamsA       WHIRParams
+	WHIRParamsB       WHIRParams
+	WHIRParamsC       WHIRParams
 	SumcheckLastFolds []frontend.Variable
 	// Public Input
 	IO         []byte
@@ -286,6 +290,8 @@ func verifyCircuit(
 		LogNumConstraints: cfg.LogNumConstraints,
 		LogNumVariables:   cfg.LogNumVariables,
 		LogANumTerms:      cfg.LogANumTerms,
+		LogBNumTerms:      cfg.LogBNumTerms,
+		LogCNumTerms:      cfg.LogCNumTerms,
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
@@ -319,6 +325,8 @@ func verifyCircuit(
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
 		WHIRParamsA:   new_whir_params(cfg.WHIRConfigA),
+		WHIRParamsB:   new_whir_params(cfg.WHIRConfigB),
+		WHIRParamsC:   new_whir_params(cfg.WHIRConfigC),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -354,6 +362,8 @@ func verifyCircuit(
 		LogNumConstraints: cfg.LogNumConstraints,
 		LogNumVariables:   cfg.LogNumVariables,
 		LogANumTerms:      cfg.LogANumTerms,
+		LogBNumTerms:      cfg.LogBNumTerms,
+		LogCNumTerms:      cfg.LogCNumTerms,
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
@@ -387,6 +397,8 @@ func verifyCircuit(
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
 		WHIRParamsA:   new_whir_params(cfg.WHIRConfigA),
+		WHIRParamsB:   new_whir_params(cfg.WHIRConfigB),
+		WHIRParamsC:   new_whir_params(cfg.WHIRConfigC),
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

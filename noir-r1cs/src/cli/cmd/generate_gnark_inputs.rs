@@ -52,11 +52,15 @@ impl Command for Args {
             &scheme.whir.whir_config_row,
             &scheme.whir.whir_config_col,
             &scheme.whir.whir_config_a_num_terms,
+            &scheme.whir.whir_config_b_num_terms,
+            &scheme.whir.whir_config_c_num_terms,
             &proof.whir_r1cs_proof.transcript,
             &scheme.whir.create_io_pattern(),
             scheme.whir.m_0,
             scheme.whir.m,
             scheme.whir.a_num_terms,
+            scheme.whir.b_num_terms,
+            scheme.whir.c_num_terms,
             &self.params_for_recursive_verifier,
         );
 
