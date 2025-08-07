@@ -66,22 +66,30 @@ type WHIRConfig struct {
 }
 
 type Hints struct {
-	spartanHints                          Hint
-	sparkASumcheckValHints                Hint
-	sparkASumcheckERXHints                Hint
-	sparkASumcheckERYHints                Hint
-	sparkMemCheckRowFinalGPAFinalCTRHints Hint
-	sparkMemCheckRowRSGPAAddrHints        Hint
-	sparkMemCheckRowRSGPAValueHints       Hint
-	sparkMemCheckRowRSGPATimeStampHints   Hint
-	sparkMemCheckRowWSGPAAddrHints        Hint
-	sparkMemCheckRowWSGPAValueHints       Hint
-	sparkMemCheckRowWSGPATimeStampHints   Hint
+	spartanHints Hint
+	matrixA      SparkHints
+}
+
+type SparkHints struct {
+	SumcheckValHints Hint
+	SumcheckERXHints Hint
+	SumcheckERYHints Hint
+	rowwise          MemoryCheckHints
 }
 
 type Hint struct {
 	merklePaths []MultiPath[KeccakDigest]
 	stirAnswers [][][]Fp256
+}
+
+type MemoryCheckHints struct {
+	FinalGPAFinalCTRHints Hint
+	RSGPAAddrHints        Hint
+	RSGPAValueHints       Hint
+	RSGPATimeStampHints   Hint
+	WSGPAAddrHints        Hint
+	WSGPAValueHints       Hint
+	WSGPATimeStampHints   Hint
 }
 
 func main() {
@@ -141,8 +149,7 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
-			var merklePaths []MultiPath[KeccakDigest]
-			var stirAnswers [][][]Fp256
+			var combinedWHIRHints Hint
 			var deferred []Fp256
 			var claimedEvaluations []Fp256
 			var sumcheck_last_folds []Fp256
@@ -169,7 +176,7 @@ func main() {
 							&path,
 							false, false,
 						)
-						merklePaths = append(merklePaths, path)
+						combinedWHIRHints.merklePaths = append(combinedWHIRHints.merklePaths, path)
 					case "stir_answers":
 						var stirAnswersTemporary [][]Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -177,7 +184,7 @@ func main() {
 							&stirAnswersTemporary,
 							false, false,
 						)
-						stirAnswers = append(stirAnswers, stirAnswersTemporary)
+						combinedWHIRHints.stirAnswers = append(combinedWHIRHints.stirAnswers, stirAnswersTemporary)
 					case "deferred_weight_evaluations":
 						var deferredTemporary []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -245,64 +252,12 @@ func main() {
 				vk = &restoredVk
 			}
 
-			spartanEnd := config.WHIRConfigCol.NRounds + 1
-			sparkValEnd := spartanEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkERXEnd := sparkValEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkERYEnd := sparkERXEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowFinalGPAFinalCTREnd := sparkERYEnd + (config.WHIRConfigRow.NRounds + 1)
-			sparkMemCheckRowRSGPAAddrEnd := sparkMemCheckRowFinalGPAFinalCTREnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowRSGPAValueEnd := sparkMemCheckRowRSGPAAddrEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowRSGPATimeStampEnd := sparkMemCheckRowRSGPAValueEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowWSGPAAddrEnd := sparkMemCheckRowRSGPATimeStampEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowWSGPAValueEnd := sparkMemCheckRowWSGPAAddrEnd + (config.WHIRConfigA.NRounds + 1)
-			sparkMemCheckRowWSGPATimeStampEnd := sparkMemCheckRowWSGPAValueEnd + (config.WHIRConfigA.NRounds + 1)
-
-			hints := Hints{
-				spartanHints: Hint{
-					merklePaths: merklePaths[:spartanEnd],
-					stirAnswers: stirAnswers[:spartanEnd],
-				},
-				sparkASumcheckValHints: Hint{
-					merklePaths: merklePaths[spartanEnd:sparkValEnd],
-					stirAnswers: stirAnswers[spartanEnd:sparkValEnd],
-				},
-				sparkASumcheckERXHints: Hint{
-					merklePaths: merklePaths[sparkValEnd:sparkERXEnd],
-					stirAnswers: stirAnswers[sparkValEnd:sparkERXEnd],
-				},
-				sparkASumcheckERYHints: Hint{
-					merklePaths: merklePaths[sparkERXEnd:sparkERYEnd],
-					stirAnswers: stirAnswers[sparkERXEnd:sparkERYEnd],
-				},
-				sparkMemCheckRowFinalGPAFinalCTRHints: Hint{
-					merklePaths: merklePaths[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
-					stirAnswers: stirAnswers[sparkERYEnd:sparkMemCheckRowFinalGPAFinalCTREnd],
-				},
-				sparkMemCheckRowRSGPAAddrHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowFinalGPAFinalCTREnd:sparkMemCheckRowRSGPAAddrEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowFinalGPAFinalCTREnd:sparkMemCheckRowRSGPAAddrEnd],
-				},
-				sparkMemCheckRowRSGPAValueHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowRSGPAAddrEnd:sparkMemCheckRowRSGPAValueEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowRSGPAAddrEnd:sparkMemCheckRowRSGPAValueEnd],
-				},
-				sparkMemCheckRowRSGPATimeStampHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowRSGPAValueEnd:sparkMemCheckRowRSGPATimeStampEnd],
-				},
-				sparkMemCheckRowWSGPAAddrHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowRSGPATimeStampEnd:sparkMemCheckRowWSGPAAddrEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowRSGPATimeStampEnd:sparkMemCheckRowWSGPAAddrEnd],
-				},
-				sparkMemCheckRowWSGPAValueHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowWSGPAAddrEnd:sparkMemCheckRowWSGPAValueEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowWSGPAAddrEnd:sparkMemCheckRowWSGPAValueEnd],
-				},
-				sparkMemCheckRowWSGPATimeStampHints: Hint{
-					merklePaths: merklePaths[sparkMemCheckRowWSGPAValueEnd:sparkMemCheckRowWSGPATimeStampEnd],
-					stirAnswers: stirAnswers[sparkMemCheckRowWSGPAValueEnd:sparkMemCheckRowWSGPATimeStampEnd],
-				},
-			}
+			hints := Hints{}
+			hints.spartanHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigCol.NRounds+1)
+			hints.matrixA.SumcheckValHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
+			hints.matrixA.SumcheckERXHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
+			hints.matrixA.SumcheckERYHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
+			hints.matrixA.rowwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigA.NRounds)
 
 			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, sumcheck_last_folds)
 			return nil
@@ -313,4 +268,31 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func parseHint(combined Hint, n int) (parsed, remaining Hint) {
+	parsed = Hint{
+		merklePaths: combined.merklePaths[:n],
+		stirAnswers: combined.stirAnswers[:n],
+	}
+
+	remaining = Hint{
+		merklePaths: combined.merklePaths[n:],
+		stirAnswers: combined.stirAnswers[n:],
+	}
+
+	return
+}
+
+func parseMemoryCheckHints(combined Hint, memoryRounds int, numTermsRounds int) (parsed MemoryCheckHints, remaining Hint) {
+	parsed.FinalGPAFinalCTRHints, combined = parseHint(combined, (memoryRounds + 1))
+	parsed.RSGPAAddrHints, combined = parseHint(combined, (numTermsRounds + 1))
+	parsed.RSGPAValueHints, combined = parseHint(combined, (numTermsRounds + 1))
+	parsed.RSGPATimeStampHints, combined = parseHint(combined, (numTermsRounds + 1))
+	parsed.WSGPAAddrHints, combined = parseHint(combined, (numTermsRounds + 1))
+	parsed.WSGPAValueHints, combined = parseHint(combined, (numTermsRounds + 1))
+	parsed.WSGPATimeStampHints, combined = parseHint(combined, (numTermsRounds + 1))
+
+	remaining = combined
+	return
 }
