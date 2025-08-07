@@ -382,3 +382,180 @@ func gpaWSVerifier(
 
 	return gpaSumcheckResult.claimedProduct, nil
 }
+
+func runSpark(
+	arthur gnark_nimue.Arthur,
+	termParams WHIRParams,
+	logNumTerms int,
+	logRowSize int,
+	logColSize int,
+	rowParams WHIRParams,
+	colParams WHIRParams,
+	claimedValue frontend.Variable,
+	api frontend.API,
+	uapi *uints.BinaryField[uints.U64],
+	sc *skyscraper.Skyscraper,
+	hints SparkMatrixMerkle,
+	rowRand []frontend.Variable,
+	colRand []frontend.Variable,
+	sumcheckLastFolds []frontend.Variable,
+) error {
+	rowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(rowRootHash); err != nil {
+		return err
+	}
+
+	rowOODQueries, rowOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	colRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(colRootHash); err != nil {
+		return err
+	}
+
+	colOODQueries, colOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	valRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(valRootHash); err != nil {
+		return err
+	}
+
+	valOODQueries, valOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	eRxRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(eRxRootHash); err != nil {
+		return err
+	}
+
+	eRxOODQueries, eRxOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	eRyRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(eRyRootHash); err != nil {
+		return err
+	}
+
+	eRyOODQueries, eRyOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	readTSRowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(readTSRowRootHash); err != nil {
+		return err
+	}
+
+	readTSRowOODQueries, readTSRowOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	readTSColRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(readTSColRootHash); err != nil {
+		return err
+	}
+
+	readTSColOODQueries, readTSColOODAnswers, err := FillInOODPointsAndAnswers(termParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	finalCTSRowRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(finalCTSRowRootHash); err != nil {
+		return err
+	}
+
+	finalCTSRowOODPoints, finalCTSRowOODAnswers, err := FillInOODPointsAndAnswers(colParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+	finalCTSColRootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(finalCTSColRootHash); err != nil {
+		return err
+	}
+
+	finalCTSColOODPoints, finalCTSColOODAnswers, err := FillInOODPointsAndAnswers(rowParams.CommittmentOODSamples, arthur)
+	if err != nil {
+		return err
+	}
+
+	sparkSumcheckFoldingRandomness, sparkSumcheckLastValue, err := runSumcheck(api, arthur, claimedValue, logNumTerms, 4)
+	if err != nil {
+		return err
+	}
+
+	api.AssertIsEqual(sparkSumcheckLastValue, api.Mul(sumcheckLastFolds[0], sumcheckLastFolds[1], sumcheckLastFolds[2]))
+
+	_, err = runWhir(api, arthur, uapi, sc, hints.SumcheckValueMerkle, termParams, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{sumcheckLastFolds[0]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, valOODQueries, valOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	_, err = runWhir(api, arthur, uapi, sc, hints.SumcheckERXMerkle, termParams, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{sumcheckLastFolds[1]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRxOODQueries, eRxOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	_, err = runWhir(api, arthur, uapi, sc, hints.SumcheckERYMerkle, termParams, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{sumcheckLastFolds[2]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRyOODQueries, eRyOODAnswers)
+	if err != nil {
+		return err
+	}
+
+	err = offlineMemoryCheck(
+		api,
+		uapi,
+		sc,
+		arthur,
+		hints.Rowwise,
+		rowRand,
+		logRowSize,
+		logNumTerms,
+		finalCTSRowOODPoints,
+		finalCTSRowOODAnswers,
+		rowOODQueries,
+		rowOODAnswers,
+		eRxOODQueries,
+		eRxOODAnswers,
+		readTSRowOODQueries,
+		readTSRowOODAnswers,
+		rowParams,
+		termParams,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	err = offlineMemoryCheck(
+		api,
+		uapi,
+		sc,
+		arthur,
+		hints.Colwise,
+		colRand,
+		logColSize,
+		logNumTerms,
+		finalCTSColOODPoints,
+		finalCTSColOODAnswers,
+		colOODQueries,
+		colOODAnswers,
+		eRyOODQueries,
+		eRyOODAnswers,
+		readTSColOODQueries,
+		readTSColOODAnswers,
+		colParams,
+		termParams,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -213,14 +213,16 @@ func main() {
 							return fmt.Errorf("failed to deserialize claimed_evaluations: %w", err)
 						}
 					case "sumcheck_last_folds":
+						var sumcheck_last_folds_temp []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
-							&sumcheck_last_folds,
+							&sumcheck_last_folds_temp,
 							false, false,
 						)
 						if err != nil {
 							return fmt.Errorf("failed to deserialize sumcheck_last_folds: %w", err)
 						}
+						sumcheck_last_folds = append(sumcheck_last_folds, sumcheck_last_folds_temp...)
 					}
 
 					if err != nil {

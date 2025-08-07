@@ -42,12 +42,14 @@ type Circuit struct {
 	MatrixB SparkMatrixMerkle
 	MatrixC SparkMatrixMerkle
 
-	WHIRParamsCol     WHIRParams
-	WHIRParamsRow     WHIRParams
-	WHIRParamsA       WHIRParams
-	WHIRParamsB       WHIRParams
-	WHIRParamsC       WHIRParams
-	SumcheckLastFolds []frontend.Variable
+	WHIRParamsCol      WHIRParams
+	WHIRParamsRow      WHIRParams
+	WHIRParamsA        WHIRParams
+	WHIRParamsB        WHIRParams
+	WHIRParamsC        WHIRParams
+	SumcheckLastFoldsA []frontend.Variable
+	SumcheckLastFoldsB []frontend.Variable
+	SumcheckLastFoldsC []frontend.Variable
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -97,157 +99,66 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	rowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(rowRootHash); err != nil {
-		return err
-	}
-
-	rowOODQueries, rowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	colRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(colRootHash); err != nil {
-		return err
-	}
-
-	colOODQueries, colOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	valRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(valRootHash); err != nil {
-		return err
-	}
-
-	valOODQueries, valOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	eRxRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRxRootHash); err != nil {
-		return err
-	}
-
-	eRxOODQueries, eRxOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	eRyRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRyRootHash); err != nil {
-		return err
-	}
-
-	eRyOODQueries, eRyOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSRowRootHash); err != nil {
-		return err
-	}
-
-	readTSRowOODQueries, readTSRowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSColRootHash); err != nil {
-		return err
-	}
-
-	readTSColOODQueries, readTSColOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSRowRootHash); err != nil {
-		return err
-	}
-
-	finalCTSRowOODPoints, finalCTSRowOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSColRootHash); err != nil {
-		return err
-	}
-
-	finalCTSColOODPoints, finalCTSColOODAnswers, err := FillInOODPointsAndAnswers(circuit.WHIRParamsRow.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	sparkSumcheckFoldingRandomness, sparkSumcheckLastValue, err := runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
-	if err != nil {
-		return err
-	}
-
-	api.AssertIsEqual(sparkSumcheckLastValue, api.Mul(circuit.SumcheckLastFolds[0], circuit.SumcheckLastFolds[1], circuit.SumcheckLastFolds[2]))
-
-	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[0]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, valOODQueries, valOODAnswers)
-	if err != nil {
-		return err
-	}
-
-	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckERXMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[1]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRxOODQueries, eRxOODAnswers)
-	if err != nil {
-		return err
-	}
-
-	_, err = runWhir(api, arthur, uapi, sc, circuit.MatrixA.SumcheckERYMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{circuit.SumcheckLastFolds[2]}, [][]frontend.Variable{sparkSumcheckFoldingRandomness}, eRyOODQueries, eRyOODAnswers)
-	if err != nil {
-		return err
-	}
-
-	err = offlineMemoryCheck(
+	err = runSpark(
+		arthur,
+		circuit.WHIRParamsA,
+		circuit.LogANumTerms,
+		circuit.LogNumConstraints,
+		circuit.LogNumVariables,
+		circuit.WHIRParamsRow,
+		circuit.WHIRParamsCol,
+		circuit.LinearStatementValuesAtPoints[0],
 		api,
 		uapi,
 		sc,
-		arthur,
-		circuit.MatrixA.Rowwise,
+		circuit.MatrixA,
 		spartanSumcheckRand,
-		circuit.LogNumConstraints,
-		circuit.LogANumTerms,
-		finalCTSRowOODPoints,
-		finalCTSRowOODAnswers,
-		rowOODQueries,
-		rowOODAnswers,
-		eRxOODQueries,
-		eRxOODAnswers,
-		readTSRowOODQueries,
-		readTSRowOODAnswers,
-		circuit.WHIRParamsRow,
-		circuit.WHIRParamsA,
+		spartanWhirRand,
+		circuit.SumcheckLastFoldsA,
 	)
 
 	if err != nil {
 		return err
 	}
 
-	err = offlineMemoryCheck(
+	err = runSpark(
+		arthur,
+		circuit.WHIRParamsB,
+		circuit.LogBNumTerms,
+		circuit.LogNumConstraints,
+		circuit.LogNumVariables,
+		circuit.WHIRParamsRow,
+		circuit.WHIRParamsCol,
+		circuit.LinearStatementValuesAtPoints[1],
 		api,
 		uapi,
 		sc,
-		arthur,
-		circuit.MatrixA.Colwise,
+		circuit.MatrixB,
+		spartanSumcheckRand,
 		spartanWhirRand,
+		circuit.SumcheckLastFoldsB,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	err = runSpark(
+		arthur,
+		circuit.WHIRParamsC,
+		circuit.LogCNumTerms,
+		circuit.LogNumConstraints,
 		circuit.LogNumVariables,
-		circuit.LogANumTerms,
-		finalCTSColOODPoints,
-		finalCTSColOODAnswers,
-		colOODQueries,
-		colOODAnswers,
-		eRyOODQueries,
-		eRyOODAnswers,
-		readTSColOODQueries,
-		readTSColOODAnswers,
+		circuit.WHIRParamsRow,
 		circuit.WHIRParamsCol,
-		circuit.WHIRParamsA,
+		circuit.LinearStatementValuesAtPoints[2],
+		api,
+		uapi,
+		sc,
+		circuit.MatrixC,
+		spartanSumcheckRand,
+		spartanWhirRand,
+		circuit.SumcheckLastFoldsC,
 	)
 
 	if err != nil {
@@ -284,11 +195,23 @@ func verifyCircuit(
 		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
-	sumcheckLastFoldsCircuit := make([]frontend.Variable, len(sumcheckLastFolds))
-	contSumcheckLastFoldsCircuit := make([]frontend.Variable, len(sumcheckLastFolds))
-	for i := range len(deferred) {
-		sumcheckLastFoldsCircuit[i] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[i].Limbs)
-	}
+	sumcheckLastFoldsACircuit := make([]frontend.Variable, 3)
+	contSumcheckLastFoldsACircuit := make([]frontend.Variable, 3)
+	sumcheckLastFoldsACircuit[0] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[0].Limbs)
+	sumcheckLastFoldsACircuit[1] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[1].Limbs)
+	sumcheckLastFoldsACircuit[2] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[2].Limbs)
+
+	sumcheckLastFoldsBCircuit := make([]frontend.Variable, 3)
+	contSumcheckLastFoldsBCircuit := make([]frontend.Variable, 3)
+	sumcheckLastFoldsBCircuit[0] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[3].Limbs)
+	sumcheckLastFoldsBCircuit[1] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[4].Limbs)
+	sumcheckLastFoldsBCircuit[2] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[5].Limbs)
+
+	sumcheckLastFoldsCCircuit := make([]frontend.Variable, 3)
+	contSumcheckLastFoldsCCircuit := make([]frontend.Variable, 3)
+	sumcheckLastFoldsCCircuit[0] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[6].Limbs)
+	sumcheckLastFoldsCCircuit[1] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[7].Limbs)
+	sumcheckLastFoldsCCircuit[2] = typeConverters.LimbsToBigIntMod(sumcheckLastFolds[8].Limbs)
 
 	var circuit = Circuit{
 		IO:                []byte(cfg.IOPattern),
@@ -301,7 +224,9 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SumcheckLastFolds:             contSumcheckLastFoldsCircuit,
+		SumcheckLastFoldsA:            contSumcheckLastFoldsACircuit,
+		SumcheckLastFoldsB:            contSumcheckLastFoldsBCircuit,
+		SumcheckLastFoldsC:            contSumcheckLastFoldsCCircuit,
 
 		SpartanMerkle: newMerkle(hints.spartanHints, true),
 
@@ -428,7 +353,9 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SumcheckLastFolds:             sumcheckLastFoldsCircuit,
+		SumcheckLastFoldsA:            sumcheckLastFoldsACircuit,
+		SumcheckLastFoldsB:            sumcheckLastFoldsBCircuit,
+		SumcheckLastFoldsC:            sumcheckLastFoldsCCircuit,
 
 		MatrixA: SparkMatrixMerkle{
 			SumcheckValueMerkle: newMerkle(hints.matrixA.SumcheckValHints, false),
