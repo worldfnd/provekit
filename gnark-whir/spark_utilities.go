@@ -14,7 +14,7 @@ func offlineMemoryCheck(
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	arthur gnark_nimue.Arthur,
-	circuit *Circuit,
+	circuit MemoryCheckCircuits,
 	randomness []frontend.Variable,
 	logMemorySize int,
 	logNumTerms int,
@@ -26,6 +26,8 @@ func offlineMemoryCheck(
 	valueOODAnswers []frontend.Variable,
 	timeStampOODPoints []frontend.Variable,
 	timeStampOODAnswers []frontend.Variable,
+	whirConfigMemory WHIRParams,
+	whirConfigTerms WHIRParams,
 ) error {
 	tauTemp := make([]frontend.Variable, 1)
 	if err := arthur.FillChallengeScalars(tauTemp); err != nil {
@@ -63,6 +65,7 @@ func offlineMemoryCheck(
 		randomness,
 		finalCTSRowOODPoints,
 		finalCTSRowOODAnswers,
+		whirConfigMemory,
 	)
 
 	if err != nil {
@@ -85,6 +88,7 @@ func offlineMemoryCheck(
 		valueOODAnswers,
 		timeStampOODPoints,
 		timeStampOODAnswers,
+		whirConfigTerms,
 	)
 
 	if err != nil {
@@ -107,6 +111,7 @@ func offlineMemoryCheck(
 		valueOODAnswers,
 		timeStampOODPoints,
 		timeStampOODAnswers,
+		whirConfigTerms,
 	)
 
 	if err != nil {
@@ -149,13 +154,14 @@ func gpaFinalVerifier(
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	arthur gnark_nimue.Arthur,
-	circuit *Circuit,
+	circuit MemoryCheckCircuits,
 	tau frontend.Variable,
 	gamma frontend.Variable,
 	layerCount int,
 	randomness []frontend.Variable,
 	finalCTSRowOODPoints []frontend.Variable,
 	finalCTSRowOODAnswers []frontend.Variable,
+	memoryWhirParams WHIRParams,
 ) (frontend.Variable, error) {
 	gpaSumcheckResult, err := gpaSumcheckVerifier(
 		api,
@@ -171,7 +177,7 @@ func gpaFinalVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckFinalGPAFinalCTCMerkle, circuit.WHIRParamsRow, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedFinalCTSValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, finalCTSRowOODPoints, finalCTSRowOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.FinalGPAFinalCTCMerkle, memoryWhirParams, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedFinalCTSValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, finalCTSRowOODPoints, finalCTSRowOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -250,7 +256,7 @@ func gpaRSVerifier(
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	arthur gnark_nimue.Arthur,
-	circuit *Circuit,
+	circuit MemoryCheckCircuits,
 	tau frontend.Variable,
 	gamma frontend.Variable,
 	layerCount int,
@@ -261,6 +267,7 @@ func gpaRSVerifier(
 	valueOODAnswers []frontend.Variable,
 	timeStampOODPoints []frontend.Variable,
 	timeStampOODAnswers []frontend.Variable,
+	whirConfigTerms WHIRParams,
 ) (frontend.Variable, error) {
 	gpaSumcheckResult, err := gpaSumcheckVerifier(
 		api,
@@ -276,7 +283,7 @@ func gpaRSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckRSGPAAddrMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedAddress[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, addressOODPoints, addressOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.RSGPAAddrMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedAddress[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, addressOODPoints, addressOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -286,7 +293,7 @@ func gpaRSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckRSGPAValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, valueOODPoints, valueOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.RSGPAValueMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, valueOODPoints, valueOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -296,7 +303,7 @@ func gpaRSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckRSGPATimeStampMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedTimeStamp[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, timeStampOODPoints, timeStampOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.RSGPATimeStampMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedTimeStamp[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, timeStampOODPoints, timeStampOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -315,7 +322,7 @@ func gpaWSVerifier(
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	arthur gnark_nimue.Arthur,
-	circuit *Circuit,
+	circuit MemoryCheckCircuits,
 	tau frontend.Variable,
 	gamma frontend.Variable,
 	layerCount int,
@@ -326,6 +333,7 @@ func gpaWSVerifier(
 	valueOODAnswers []frontend.Variable,
 	timeStampOODPoints []frontend.Variable,
 	timeStampOODAnswers []frontend.Variable,
+	whirConfigTerms WHIRParams,
 ) (frontend.Variable, error) {
 	gpaSumcheckResult, err := gpaSumcheckVerifier(
 		api,
@@ -341,7 +349,7 @@ func gpaWSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPAAddrMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedAddress[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, addressOODPoints, addressOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.WSGPAAddrMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedAddress[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, addressOODPoints, addressOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -351,7 +359,7 @@ func gpaWSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPAValueMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, valueOODPoints, valueOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.WSGPAValueMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedValue[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, valueOODPoints, valueOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}
@@ -361,7 +369,7 @@ func gpaWSVerifier(
 		return frontend.Variable(0), err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SparkAMemCheckWSGPATimeStampMerkle, circuit.WHIRParamsA, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedTimeStamp[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, timeStampOODPoints, timeStampOODAnswers)
+	_, err = runWhir(api, arthur, uapi, sc, circuit.WSGPATimeStampMerkle, whirConfigTerms, []frontend.Variable{}, []frontend.Variable{}, []frontend.Variable{claimedTimeStamp[0]}, [][]frontend.Variable{gpaSumcheckResult.randomness}, timeStampOODPoints, timeStampOODAnswers)
 	if err != nil {
 		return frontend.Variable(0), err
 	}

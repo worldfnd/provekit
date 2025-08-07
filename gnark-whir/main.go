@@ -75,6 +75,7 @@ type SparkHints struct {
 	SumcheckERXHints Hint
 	SumcheckERYHints Hint
 	rowwise          MemoryCheckHints
+	colwise          MemoryCheckHints
 }
 
 type Hint struct {
@@ -258,6 +259,7 @@ func main() {
 			hints.matrixA.SumcheckERXHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
 			hints.matrixA.SumcheckERYHints, combinedWHIRHints = parseHint(combinedWHIRHints, config.WHIRConfigA.NRounds+1)
 			hints.matrixA.rowwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigA.NRounds)
+			hints.matrixA.colwise, combinedWHIRHints = parseMemoryCheckHints(combinedWHIRHints, config.WHIRConfigRow.NRounds, config.WHIRConfigA.NRounds)
 
 			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, sumcheck_last_folds)
 			return nil
