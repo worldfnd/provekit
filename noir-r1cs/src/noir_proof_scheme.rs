@@ -1,8 +1,9 @@
 use {
     crate::{
         noir_to_r1cs,
-        r1cs_solver::{Transcript, WitnessBuilder},
-        utils::PrintAbi,
+        r1cs_solver::WitnessBuilder,
+        skyscraper::SkyscraperSponge,
+        utils::{noir_to_native, PrintAbi},
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
@@ -15,9 +16,12 @@ use {
     noirc_artifacts::program::ProgramArtifact,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
+    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, DomainSeparator, ProverState},
     std::{fs::File, path::Path},
     tracing::{info, instrument},
 };
+
+type WitnessIOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,12 +136,14 @@ impl NoirProofScheme {
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Solve R1CS instance
-        let mut transcript = Transcript::new(&self.witness_builders);
+        let witness_io = self.create_witness_io_pattern();
+        let mut witness_rng = witness_io.to_prover_state();
+        self.seed_witness_rng(&mut witness_rng, &acir_witness_idx_to_value_map)?;
 
         let partial_witness = self.r1cs.solve_witness_vec(
             &self.witness_builders,
             &acir_witness_idx_to_value_map,
-            &mut transcript,
+            &mut witness_rng,
         );
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
@@ -159,6 +165,65 @@ impl NoirProofScheme {
     #[instrument(skip_all)]
     pub fn verify(&self, proof: &NoirProof) -> Result<()> {
         self.whir.verify(&proof.whir_r1cs_proof)?;
+        Ok(())
+    }
+
+    /// Create witness RNG IO pattern
+    fn create_witness_io_pattern(&self) -> WitnessIOPattern {
+        let circuit = &self.program.functions[0];
+        let public_idxs = circuit.public_inputs().indices();
+        let num_challenges = self
+            .witness_builders
+            .iter()
+            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
+            .count();
+
+        let mut io = WitnessIOPattern::new("noir.wb.v1").absorb(2, "shape");
+
+        if !public_idxs.is_empty() {
+            io = io.absorb(public_idxs.len(), "pub_inputs");
+        }
+
+        if num_challenges > 0 {
+            io =
+                spongefish::codecs::arkworks_algebra::FieldDomainSeparator::<FieldElement>::challenge_scalars(
+                    io,
+                    num_challenges,
+                    "wb:challenges"
+                );
+        }
+
+        io
+    }
+
+    /// Seed witness RNG with public instance data
+    fn seed_witness_rng(
+        &self,
+        witness_rng: &mut ProverState<SkyscraperSponge, FieldElement>,
+        acir_witness: &WitnessMap<NoirFieldElement>,
+    ) -> Result<()> {
+        // Add shape scalars
+        let _ = witness_rng.add_scalars(&[
+            FieldElement::from(self.r1cs.num_constraints() as u64),
+            FieldElement::from(self.r1cs.num_witnesses() as u64),
+        ]);
+
+        // Add public input values
+        let circuit = &self.program.functions[0];
+        let public_idxs = circuit.public_inputs().indices();
+        if !public_idxs.is_empty() {
+            let pub_vals: Vec<FieldElement> = public_idxs
+                .iter()
+                .map(|&i| {
+                    let noir_val = acir_witness
+                        .get_index(i)
+                        .with_context(|| format!("missing public input at index {i}"))?;
+                    Ok(noir_to_native(*noir_val))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let _ = witness_rng.add_scalars(&pub_vals);
+        }
+
         Ok(())
     }
 }

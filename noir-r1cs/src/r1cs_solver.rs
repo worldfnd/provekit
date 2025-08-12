@@ -6,18 +6,13 @@ use {
         ram::SpiceWitnesses,
         skyscraper::SkyscraperSponge,
         utils::{noir_to_native, serde_ark, serde_ark_option},
-        whir_r1cs::IOPattern,
         FieldElement,
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     ark_ff::{Field, PrimeField},
     ark_std::Zero,
     serde::{Deserialize, Serialize},
-    spongefish::{
-        codecs::arkworks_algebra::{
-            FieldDomainSeparator, UnitToField, FieldToUnitSerialize, FieldToUnitDeserialize
-        }, ProverState,
-    },
+    spongefish::{codecs::arkworks_algebra::UnitToField, ProverState},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,28 +154,13 @@ impl WitnessBuilder {
         }
     }
 
-    /// As per solve(), but additionally appends the solved witness values to
-    /// the transcript.
-    pub fn solve_and_append_to_transcript(
-        &self,
-        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
-        witness: &mut [Option<FieldElement>],
-        transcript: &mut Transcript,
-    ) {
-        self.solve(acir_witness_idx_to_value_map, witness, transcript);
-
-        for i in 0..self.num_witnesses() {
-            transcript.append(witness[self.first_witness_idx() + i].unwrap());
-        }
-    }
-
     /// Solves for the witness value(s) specified by this builder and writes
     /// them to the witness vector.
     pub fn solve(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut Transcript,
+        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
@@ -243,7 +223,9 @@ impl WitnessBuilder {
                 }
             }
             WitnessBuilder::Challenge(witness_idx) => {
-                witness[*witness_idx] = Some(transcript.draw_challenge());
+                let mut one = [FieldElement::zero(); 1];
+                let _ = transcript.fill_challenge_scalars(&mut one);
+                witness[*witness_idx] = Some(one[0]);
             }
             WitnessBuilder::LogUpDenominator(
                 witness_idx,
@@ -340,67 +322,3 @@ impl WitnessBuilder {
         }
     }
 }
-
-pub struct Transcript {
-    prover_state: ProverState<SkyscraperSponge, FieldElement>,
-}
-
-pub trait R1CSSolverIOPattern {
-    fn add_r1cs_solver_operations(self, witness_builders: &[WitnessBuilder]) -> Self;
-}
-
-impl<IOPattern> R1CSSolverIOPattern for IOPattern
-where
-    IOPattern: FieldDomainSeparator<FieldElement>,
-{
-    fn add_r1cs_solver_operations(mut self, witness_builders: &[WitnessBuilder]) -> Self {
-
-        // No. of challenge draw
-        for builder in witness_builders {
-            match builder {
-                WitnessBuilder::Challenge(_) => {
-                    self = self.challenge_scalars(1, "R1CS Challenge");
-                }
-                _ => {}
-            }
-            if builder.num_witnesses() > 0 {
-                self = self.add_scalars(builder.num_witnesses(), "R1CS Witness");
-            }
-        }
-        self
-    }
-}
-
-impl Default for Transcript {
-    fn default() -> Self {
-        Self::new(&[])
-    }
-}
-
-impl Transcript {
-    pub fn new(witness_builders: &[WitnessBuilder]) -> Self {
-        let domain_separator = IOPattern::new("noir-r1cs🌪️")
-        .add_r1cs_solver_operations(witness_builders);
-
-        let prover_state = domain_separator.to_prover_state();
-        
-        Self { prover_state }
-    }
-
-    pub fn append(&mut self, value: FieldElement) {
-        self.prover_state.add_scalars(&[value]).expect("Failed to add scalar to transcript");
-    }
-
-    pub fn draw_challenge(&mut self) -> FieldElement {
-        let mut challenges = [FieldElement::zero()];
-        self.prover_state.fill_challenge_scalars(&mut challenges).expect("Failed to generate challenge");
-        let challenge = challenges[0];
-        challenge
-    }
-
-    pub fn finalize(&self) -> Vec<u8> {
-        self.prover_state.narg_string().to_vec()
-    }
-
-}
-
