@@ -1,6 +1,6 @@
 use {
     crate::{
-        r1cs_solver::{MockTranscript, WitnessBuilder},
+        r1cs_solver::{Transcript, WitnessBuilder},
         FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
@@ -113,7 +113,7 @@ impl R1CS {
         &self,
         witness_builder_vec: &[WitnessBuilder],
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
-        transcript: &mut MockTranscript,
+        transcript: &mut Transcript,
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
         witness_builder_vec.iter().for_each(|witness_builder| {

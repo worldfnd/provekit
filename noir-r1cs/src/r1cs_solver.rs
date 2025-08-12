@@ -4,14 +4,20 @@ use {
         digits::DigitalDecompositionWitnesses,
         noir_to_r1cs::ConstantOrR1CSWitness,
         ram::SpiceWitnesses,
+        skyscraper::SkyscraperSponge,
         utils::{noir_to_native, serde_ark, serde_ark_option},
+        whir_r1cs::IOPattern,
         FieldElement,
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     ark_ff::{Field, PrimeField},
     ark_std::Zero,
-    rand::Rng,
     serde::{Deserialize, Serialize},
+    spongefish::{
+        codecs::arkworks_algebra::{
+            FieldDomainSeparator, UnitToField, FieldToUnitSerialize, FieldToUnitDeserialize
+        }, ProverState,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,7 +165,7 @@ impl WitnessBuilder {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut MockTranscript,
+        transcript: &mut Transcript,
     ) {
         self.solve(acir_witness_idx_to_value_map, witness, transcript);
 
@@ -174,7 +180,7 @@ impl WitnessBuilder {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut MockTranscript,
+        transcript: &mut Transcript,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
@@ -335,25 +341,66 @@ impl WitnessBuilder {
     }
 }
 
-/// Mock transcript. To be replaced.
-pub struct MockTranscript {}
+pub struct Transcript {
+    prover_state: ProverState<SkyscraperSponge, FieldElement>,
+}
 
-impl Default for MockTranscript {
-    fn default() -> Self {
-        Self::new()
+pub trait R1CSSolverIOPattern {
+    fn add_r1cs_solver_operations(self, witness_builders: &[WitnessBuilder]) -> Self;
+}
+
+impl<IOPattern> R1CSSolverIOPattern for IOPattern
+where
+    IOPattern: FieldDomainSeparator<FieldElement>,
+{
+    fn add_r1cs_solver_operations(mut self, witness_builders: &[WitnessBuilder]) -> Self {
+
+        // No. of challenge draw
+        for builder in witness_builders {
+            match builder {
+                WitnessBuilder::Challenge(_) => {
+                    self = self.challenge_scalars(1, "R1CS Challenge");
+                }
+                _ => {}
+            }
+            self = self.add_scalars(1, "R1CS Witness");     
+        }
+        self
     }
 }
 
-impl MockTranscript {
-    pub fn new() -> Self {
-        Self {}
+impl Default for Transcript {
+    fn default() -> Self {
+        Self::new(&[])
+    }
+}
+
+impl Transcript {
+    pub fn new(witness_builders: &[WitnessBuilder]) -> Self {
+        let domain_separator = IOPattern::new("noir-r1cs🌪️")
+        .add_r1cs_solver_operations(witness_builders); 
+
+        let prover_state = domain_separator.to_prover_state();
+        
+        Self { prover_state }
     }
 
-    pub fn append(&mut self, _value: FieldElement) {}
+    pub fn append(&mut self, value: FieldElement) {
+        self.prover_state.add_scalars(&[value]).expect("Failed to add scalar to transcript");
+    }
 
     pub fn draw_challenge(&mut self) -> FieldElement {
-        let mut rng = rand::rng();
-        let n: u32 = rng.random();
-        n.into()
+        // let [challenge] = self.prover_state.challenge_scalars::<1>().expect("Failed to generate challenge");
+        let mut challenges = [FieldElement::zero()];
+        self.prover_state.fill_challenge_scalars(&mut challenges).expect("Failed to generate challenge");
+        let challenge = challenges[0];
+        println!("challenge: {:?}", challenge);
+        challenge
     }
+
+    pub fn finalize(&self) -> Vec<u8> {
+        self.prover_state.narg_string().to_vec()
+    } 
+
 }
+
