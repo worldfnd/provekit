@@ -363,8 +363,9 @@ where
                 }
                 _ => {}
             }
-            self = self.add_scalars(1, "R1CS Witness");     
-        }
+            if builder.num_witnesses() > 0 {
+                self = self.add_scalars(builder.num_witnesses(), "R1CS Witness");
+            }        }
         self
     }
 }
