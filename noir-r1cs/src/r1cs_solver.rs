@@ -365,7 +365,8 @@ where
             }
             if builder.num_witnesses() > 0 {
                 self = self.add_scalars(builder.num_witnesses(), "R1CS Witness");
-            }        }
+            }
+        }
         self
     }
 }
@@ -379,7 +380,7 @@ impl Default for Transcript {
 impl Transcript {
     pub fn new(witness_builders: &[WitnessBuilder]) -> Self {
         let domain_separator = IOPattern::new("noir-r1cs🌪️")
-        .add_r1cs_solver_operations(witness_builders); 
+        .add_r1cs_solver_operations(witness_builders);
 
         let prover_state = domain_separator.to_prover_state();
         
@@ -391,17 +392,15 @@ impl Transcript {
     }
 
     pub fn draw_challenge(&mut self) -> FieldElement {
-        // let [challenge] = self.prover_state.challenge_scalars::<1>().expect("Failed to generate challenge");
         let mut challenges = [FieldElement::zero()];
         self.prover_state.fill_challenge_scalars(&mut challenges).expect("Failed to generate challenge");
         let challenge = challenges[0];
-        println!("challenge: {:?}", challenge);
         challenge
     }
 
     pub fn finalize(&self) -> Vec<u8> {
         self.prover_state.narg_string().to_vec()
-    } 
+    }
 
 }
 
