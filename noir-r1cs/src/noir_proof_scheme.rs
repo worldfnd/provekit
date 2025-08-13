@@ -1,10 +1,11 @@
 use {
     crate::{
         noir_to_r1cs,
+        noir_witness::WitnessIOPattern,
         r1cs_solver::WitnessBuilder,
         skyscraper::SkyscraperSponge,
         utils::{noir_to_native, PrintAbi},
-        whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
+        whir_r1cs::{IOPattern, WhirR1CSProof, WhirR1CSScheme},
         FieldElement, NoirWitnessGenerator, R1CS,
     },
     acir::{circuit::Program, native_types::WitnessMap, FieldElement as NoirFieldElement},
@@ -16,13 +17,10 @@ use {
     noirc_artifacts::program::ProgramArtifact,
     rand::{rng, Rng as _},
     serde::{Deserialize, Serialize},
-    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, DomainSeparator, ProverState},
+    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
     std::{fs::File, path::Path},
     tracing::{info, instrument},
 };
-
-type WitnessIOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
-
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
@@ -137,13 +135,13 @@ impl NoirProofScheme {
 
         // Solve R1CS instance
         let witness_io = self.create_witness_io_pattern();
-        let mut witness_rng = witness_io.to_prover_state();
-        self.seed_witness_rng(&mut witness_rng, &acir_witness_idx_to_value_map)?;
+        let mut witness_merlin = witness_io.to_prover_state();
+        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
 
         let partial_witness = self.r1cs.solve_witness_vec(
             &self.witness_builders,
             &acir_witness_idx_to_value_map,
-            &mut witness_rng,
+            &mut witness_merlin,
         );
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
@@ -168,8 +166,7 @@ impl NoirProofScheme {
         Ok(())
     }
 
-    /// Create witness RNG IO pattern
-    fn create_witness_io_pattern(&self) -> WitnessIOPattern {
+    fn create_witness_io_pattern(&self) -> IOPattern {
         let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
@@ -178,50 +175,34 @@ impl NoirProofScheme {
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
             .count();
 
-        let mut io = WitnessIOPattern::new("noir.wb.v1").absorb(2, "shape");
-
-        if !public_idxs.is_empty() {
-            io = io.absorb(public_idxs.len(), "pub_inputs");
-        }
-
-        if num_challenges > 0 {
-            io =
-                spongefish::codecs::arkworks_algebra::FieldDomainSeparator::<FieldElement>::challenge_scalars(
-                    io,
-                    num_challenges,
-                    "wb:challenges"
-                );
-        }
-
-        io
+        // Create witness IO pattern
+        // TODO: Use a more specific domain separator.
+        IOPattern::new("noir.wb.v1")
+            .add_shape()
+            .add_public_inputs(public_idxs.len())
+            .add_logup_challenges(num_challenges)
     }
 
-    /// Seed witness RNG with public instance data
-    fn seed_witness_rng(
+    fn seed_witness_merlin(
         &self,
-        witness_rng: &mut ProverState<SkyscraperSponge, FieldElement>,
-        acir_witness: &WitnessMap<NoirFieldElement>,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        witness: &WitnessMap<NoirFieldElement>,
     ) -> Result<()> {
-        // Add shape scalars
-        let _ = witness_rng.add_scalars(&[
+        // Absorb circuit shape
+        let _ = merlin.add_scalars(&[
             FieldElement::from(self.r1cs.num_constraints() as u64),
             FieldElement::from(self.r1cs.num_witnesses() as u64),
         ]);
 
-        // Add public input values
+        // Absorb public inputs (values) in canonical order
         let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         if !public_idxs.is_empty() {
             let pub_vals: Vec<FieldElement> = public_idxs
                 .iter()
-                .map(|&i| {
-                    let noir_val = acir_witness
-                        .get_index(i)
-                        .with_context(|| format!("missing public input at index {i}"))?;
-                    Ok(noir_to_native(*noir_val))
-                })
-                .collect::<Result<Vec<_>>>()?;
-            let _ = witness_rng.add_scalars(&pub_vals);
+                .map(|&i| noir_to_native(*witness.get_index(i).expect("missing public input")))
+                .collect();
+            let _ = merlin.add_scalars(&pub_vals);
         }
 
         Ok(())
