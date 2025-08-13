@@ -237,7 +237,6 @@ mod tests {
             FieldElement,
         },
         ark_std::One,
-        noir_tools::compile_workspace,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };
@@ -260,11 +259,7 @@ mod tests {
 
     #[test]
     fn test_noir_proof_scheme_serde() {
-        let directory = "../noir-examples/poseidon-rounds";
-
-        compile_workspace(directory).expect("Compiling workspace");
-
-        let path = PathBuf::from(directory).join("target/basic.json");
+        let path = PathBuf::from("benches/poseidon_rounds.json");
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
 
         test_serde(&proof_schema.r1cs);

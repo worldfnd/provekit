@@ -4,7 +4,6 @@ use {
     core::hint::black_box,
     divan::Bencher,
     noir_r1cs::{read, NoirProof, NoirProofScheme},
-    noir_tools::compile_workspace,
     std::path::Path,
 };
 
@@ -23,8 +22,6 @@ fn prove_poseidon_1000(bencher: Bencher) {
 
     let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
 
-    compile_workspace(crate_dir).expect("Compiling workspace");
-
     let witness_path = crate_dir.join("Prover.toml");
 
     let input_map = scheme
@@ -42,8 +39,6 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 
     let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
     let witness_path = crate_dir.join("Prover.toml");
-
-    compile_workspace(crate_dir).expect("Compiling workspace");
 
     bencher.bench(|| {
         let scheme: NoirProofScheme = read(&path).unwrap();
