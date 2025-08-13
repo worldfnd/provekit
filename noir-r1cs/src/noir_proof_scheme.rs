@@ -177,7 +177,7 @@ impl NoirProofScheme {
 
         // Create witness IO pattern
         // TODO: Use a more specific domain separator.
-        IOPattern::new("noir.wb.v1")
+        IOPattern::new("📜")
             .add_shape()
             .add_public_inputs(public_idxs.len())
             .add_logup_challenges(num_challenges)

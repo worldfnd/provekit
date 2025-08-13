@@ -173,11 +173,7 @@ where
 
     fn add_logup_challenges(self, num_challenges: usize) -> Self {
         if num_challenges > 0 {
-            FieldDomainSeparator::<FieldElement>::challenge_scalars(
-                self,
-                num_challenges,
-                "wb:challenges",
-            )
+            self.challenge_scalars(num_challenges, "wb:challenges")
         } else {
             self
         }
