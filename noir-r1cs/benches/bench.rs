@@ -33,17 +33,32 @@ fn prove_poseidon_1000(bencher: Bencher) {
 
 #[divan::bench]
 fn prove_poseidon_1000_with_io(bencher: Bencher) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("benches")
-        .join("poseidon-1000.nps");
+    let path: &Path = "benches/poseidon-1000.nps".as_ref();
 
     let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {
-        let scheme: NoirProofScheme = read(&path).unwrap();
+        let scheme: NoirProofScheme = read(path)
+            .with_context(|| {
+                format!(
+                    "Failed to read scheme from path: {} (working dir: {:?})",
+                    path.display(),
+                    std::env::current_dir().unwrap()
+                )
+            })
+            .expect("Reading proof scheme failed");
         let scheme = black_box(&scheme);
-        let input_map = scheme.read_witness(&witness_path).unwrap();
+        let input_map = scheme
+            .read_witness(&witness_path)
+            .with_context(|| {
+                format!(
+                    "Failed to read witness from path: {} (working dir: {:?})",
+                    witness_path.display(),
+                    std::env::current_dir().unwrap()
+                )
+            })
+            .expect("Reading witness failed");
         scheme.prove(black_box(&input_map))
     });
 }

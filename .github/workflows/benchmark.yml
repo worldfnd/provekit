@@ -49,8 +49,8 @@ jobs:
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
-          channel: stable
-          cache-target: release
+          channel: nightly-2025-04-05
+          cache: false # We don't actually use any build files, no need to restore cache
     
       - name: Install cargo-codspeed with all dependencies
         run: |
