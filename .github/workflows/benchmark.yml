@@ -56,6 +56,8 @@ jobs:
           cp -r bench_bin/* target/codspeed/
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
+      - name: Compile workspace
+        run: cd noir-examples/poseidon-rounds && cargo build --release
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
