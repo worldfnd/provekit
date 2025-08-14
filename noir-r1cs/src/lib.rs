@@ -27,10 +27,12 @@ pub use {
         noir_to_r1cs::noir_to_r1cs,
         r1cs::R1CS,
         utils::human,
+        whir_r1cs::WhirR1CSScheme,
     },
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
     whir::crypto::fields::Field256 as FieldElement,
+    WhirR1CSScheme as create_io_pattern,
 };
 use {
     crate::{

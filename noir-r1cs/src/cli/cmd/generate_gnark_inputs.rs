@@ -2,9 +2,7 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    noir_r1cs::{
-        create_io_pattern, read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme,
-    },
+    noir_r1cs::{read, write_gnark_parameters_to_file, NoirProof, NoirProofScheme},
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
 };
