@@ -15,7 +15,6 @@ mod ram;
 mod range_check;
 mod rom;
 mod skyscraper;
-mod spark;
 mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
