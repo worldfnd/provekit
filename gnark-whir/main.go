@@ -65,7 +65,6 @@ type WHIRConfig struct {
 
 type Hints struct {
 	colHints Hint
-	aHints   Hint
 }
 
 type Hint struct {
