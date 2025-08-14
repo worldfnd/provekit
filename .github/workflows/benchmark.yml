@@ -53,6 +53,11 @@ jobs:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
+      - name: Install codspeed-post-bench script
+        run: |
+          sudo mkdir -p /usr/local/bin
+          sudo ln -s $(which cargo-codspeed) /usr/local/bin/codspeed-post-bench
+          sudo chmod +x /usr/local/bin/codspeed-post-bench
       - name: Copy binaries and input files to target directories
         run: |
           mkdir -p target/codspeed
