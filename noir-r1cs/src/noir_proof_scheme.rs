@@ -176,7 +176,6 @@ impl NoirProofScheme {
             .count();
 
         // Create witness IO pattern
-        // TODO: Use a more specific domain separator.
         IOPattern::new("📜")
             .add_shape()
             .add_public_inputs(public_idxs.len())

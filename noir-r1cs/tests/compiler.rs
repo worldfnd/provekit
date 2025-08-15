@@ -18,7 +18,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
 
     compile_workspace(test_case_path).expect("Compiling workspace");
 
-    let nargo_toml_path: std::path::PathBuf = test_case_path.join("Nargo.toml");
+    let nargo_toml_path = test_case_path.join("Nargo.toml");
 
     let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
     let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");

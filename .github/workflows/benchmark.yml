@@ -51,10 +51,10 @@ jobs:
         with:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
+          bins: cargo-codspeed
     
-      - name: Install cargo-codspeed with all dependencies
+      - name: Create codespeed-post-bench symlink
         run: |
-          cargo install cargo-codspeed --force
           # codspeed-post-bench is just a sym-link
           which codspeed-post-bench || echo "codspeed-post-bench not found"
           sudo ln -sf ~/.cargo/bin/cargo-codspeed /usr/local/bin/codspeed-post-bench
