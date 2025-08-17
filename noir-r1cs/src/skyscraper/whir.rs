@@ -20,7 +20,7 @@ use {
 fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
     let l64 = l.into_bigint().0;
     let r64 = r.into_bigint().0;
-    let out = skyscraper::reference::compress(l64, r64);
+    let out = skyscraper::v1::compress(l64, r64);
     FieldElement::new(BigInt(out))
 }
 
