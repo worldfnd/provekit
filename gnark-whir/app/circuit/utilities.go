@@ -1,4 +1,4 @@
-package main
+package circuit
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -37,40 +37,41 @@ func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skysc
 	return sc, arthur, uapi, nil
 }
 
-func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+func KeysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
+	fmt.Println("pkPath", pkPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open proving key file: %w", err)
+		return nil, nil, fmt.Errorf("failed to open proving key file")
 	}
 	defer func(pkFile *os.File) {
 		err := pkFile.Close()
 		if err != nil {
-			log.Printf("failed to close proving key file: %v", err)
+			log.Printf("failed to close proving key file")
 		}
 	}(pkFile)
 
 	pk := groth16.NewProvingKey(ecc.BN254)
 	_, err = pk.ReadFrom(pkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore proving key: %w", err)
+		return nil, nil, fmt.Errorf("failed to restore proving key")
 
 	}
 
 	vkFile, err := os.Open(vkPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open verifying key file: %w", err)
+		return nil, nil, fmt.Errorf("failed to open verifying key file")
 	}
 	defer func(vkFile *os.File) {
 		err := vkFile.Close()
 		if err != nil {
-			log.Printf("failed to close verifying key file: %v", err)
+			log.Printf("failed to close verifying key file")
 		}
 	}(vkFile)
 
 	vk := groth16.NewVerifyingKey(ecc.BN254)
 	_, err = vk.ReadFrom(vkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore verifying key: %w", err)
+		return nil, nil, fmt.Errorf("failed to restore verifying key")
 	}
 
 	return pk, vk, nil

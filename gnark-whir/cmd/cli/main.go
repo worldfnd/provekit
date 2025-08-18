@@ -12,65 +12,11 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/urfave/cli/v2"
 
+	"reilabs/whir-verifier-circuit/app/circuit"
+
 	gnark_nimue "github.com/reilabs/gnark-nimue"
 	go_ark_serialize "github.com/reilabs/go-ark-serialize"
 )
-
-type KeccakDigest struct {
-	KeccakDigest [32]uint8
-}
-
-type Fp256 struct {
-	Limbs [4]uint64
-}
-
-type MultiPath[Digest any] struct {
-	LeafSiblingHashes      []Digest
-	AuthPathsPrefixLengths []uint64
-	AuthPathsSuffixes      [][]Digest
-	LeafIndexes            []uint64
-}
-
-type ProofElement struct {
-	A MultiPath[KeccakDigest]
-	B [][]Fp256
-}
-
-type ProofObject struct {
-	StatementValuesAtRandomPoint []Fp256
-}
-
-type Config struct {
-	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
-	LogNumConstraints int        `json:"log_num_constraints"`
-	LogNumVariables   int        `json:"log_num_variables"`
-	IOPattern         string     `json:"io_pattern"`
-	Transcript        []byte     `json:"transcript"`
-	TranscriptLen     int        `json:"transcript_len"`
-}
-
-type WHIRConfig struct {
-	NRounds             int    `json:"n_rounds"`
-	Rate                int    `json:"rate"`
-	NVars               int    `json:"n_vars"`
-	FoldingFactor       []int  `json:"folding_factor"`
-	OODSamples          []int  `json:"ood_samples"`
-	NumQueries          []int  `json:"num_queries"`
-	PowBits             []int  `json:"pow_bits"`
-	FinalQueries        int    `json:"final_queries"`
-	FinalPowBits        int    `json:"final_pow_bits"`
-	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
-	DomainGenerator     string `json:"domain_generator"`
-}
-
-type Hints struct {
-	colHints Hint
-}
-
-type Hint struct {
-	merklePaths []MultiPath[KeccakDigest]
-	stirAnswers [][][]Fp256
-}
 
 func main() {
 	app := &cli.App{
@@ -122,7 +68,7 @@ func main() {
 				return fmt.Errorf("failed to read config file: %w", err)
 			}
 
-			var config Config
+			var config circuit.Config
 			if err := json.Unmarshal(configFile, &config); err != nil {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 			}
@@ -136,10 +82,10 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
-			var merklePaths []MultiPath[KeccakDigest]
-			var stirAnswers [][][]Fp256
-			var deferred []Fp256
-			var claimedEvaluations []Fp256
+			var merklePaths []circuit.MultiPath[circuit.KeccakDigest]
+			var stirAnswers [][][]circuit.Fp256
+			var deferred []circuit.Fp256
+			var claimedEvaluations []circuit.Fp256
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -157,7 +103,7 @@ func main() {
 
 					switch string(op.Label) {
 					case "merkle_proof":
-						var path MultiPath[KeccakDigest]
+						var path circuit.MultiPath[circuit.KeccakDigest]
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
 							&path,
@@ -165,7 +111,7 @@ func main() {
 						)
 						merklePaths = append(merklePaths, path)
 					case "stir_answers":
-						var stirAnswersTemporary [][]Fp256
+						var stirAnswersTemporary [][]circuit.Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
 							&stirAnswersTemporary,
@@ -173,7 +119,7 @@ func main() {
 						)
 						stirAnswers = append(stirAnswers, stirAnswersTemporary)
 					case "deferred_weight_evaluations":
-						var deferredTemporary []Fp256
+						var deferredTemporary []circuit.Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 							bytes.NewReader(config.Transcript[start:end]),
 							&deferredTemporary,
@@ -223,7 +169,7 @@ func main() {
 				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
 			}
 
-			var r1cs R1CS
+			var r1cs circuit.R1CS
 			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 			}
@@ -233,7 +179,7 @@ func main() {
 				return fmt.Errorf("failed to decode interner values: %w", err)
 			}
 
-			var interner Interner
+			var interner circuit.Interner
 			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 				bytes.NewReader(internerBytes), &interner, false, false,
 			)
@@ -245,24 +191,29 @@ func main() {
 			var vk *groth16.VerifyingKey
 			if pkPath != "" && vkPath != "" {
 				log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
-				restoredPk, restoredVk, err := keysFromFiles(pkPath, vkPath)
+				restoredPk, restoredVk, err := circuit.KeysFromFiles(pkPath, vkPath)
 				if err != nil {
 					return err
 				}
 				pk = &restoredPk
 				vk = &restoredVk
+				log.Printf("Successfully loaded PK/VK")
 			}
 
 			spartanEnd := config.WHIRConfigCol.NRounds + 1
 
-			hints := Hints{
-				colHints: Hint{
-					merklePaths: merklePaths[:spartanEnd],
-					stirAnswers: stirAnswers[:spartanEnd],
+			hints := circuit.Hints{
+				ColHints: circuit.Hint{
+					MerklePaths: merklePaths[:spartanEnd],
+					StirAnswers: stirAnswers[:spartanEnd],
 				},
 			}
 
-			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+			err = circuit.VerifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+			if err != nil {
+				return fmt.Errorf("failed to verify circuit: %w", err)
+			}
+
 			return nil
 		},
 	}

@@ -1,0 +1,53 @@
+services:
+  verifier:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gnark-verifier
+    ports:
+      - "3000:3000"
+    environment:
+      - GOMEMLIMIT=0
+      - GOGC=50
+      - GOMAXPROCS=0
+    deploy:
+      resources:
+        limits:
+          memory: "0"    # Fixed: string value
+          cpus: "0"      # Fixed: string value
+        reservations:
+          memory: "1G"   # Fixed: string value
+          cpus: "1.0"    # Fixed: string value
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 32768
+        hard: 32768
+    shm_size: "2g"       # Fixed: string value
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - ./keys:/app/keys
+      - ./logs:/app/logs
+    networks:
+      - verifier-network
+
+networks:
+  verifier-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  keys:
+    driver: local
+  logs:
+    driver: local

@@ -1,20 +1,21 @@
-package main
+package circuit
 
 import (
 	"fmt"
 	"log"
 	"os"
 
-	"reilabs/whir-verifier-circuit/typeConverters"
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/math/uints"
+
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 )
 
 type Circuit struct {
@@ -67,9 +68,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	return nil
 }
 
-func verifyCircuit(
+func VerifyCircuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256, internedR1CS R1CS, interner Interner,
-) {
+) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
@@ -140,7 +141,7 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, true),
+		SpartanMerkle:                 newMerkle(hints.ColHints, true),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -151,29 +152,33 @@ func verifyCircuit(
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
-		log.Fatalf("Failed to compile circuit: %v", err)
+		log.Printf("Failed to compile circuit")
+		return fmt.Errorf("failed to compile circuit")
 	}
 	if outputCcsPath != "" {
 		ccsFile, err := os.Create(outputCcsPath)
 		if err != nil {
-			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+			log.Printf("Cannot create ccs file")
 		} else {
 			_, err = ccs.WriteTo(ccsFile)
 			if err != nil {
-				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+				log.Printf("Cannot write ccs file")
 			}
 		}
-		log.Printf("ccs written to %s", outputCcsPath)
+		log.Printf("ccs written to")
 	}
 
 	if pk == nil || vk == nil {
 		log.Printf("PK/VK not provided, generating new keys unsafely. Consider providing keys from an MPC ceremony.")
 		unsafePk, unsafeVk, err := groth16.Setup(ccs)
 		if err != nil {
-			log.Fatalf("Failed to setup groth16: %v", err)
+			log.Printf("Failed to setup groth16: %v", err)
+			return fmt.Errorf("failed to setup groth16: %w", err)
 		}
 		pk = &unsafePk
 		vk = &unsafeVk
+
+		log.Printf("Successfully generated keys, saving to files...")
 	}
 
 	assignment := Circuit{
@@ -183,7 +188,7 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, false),
+		SpartanMerkle:                 newMerkle(hints.ColHints, false),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -196,7 +201,11 @@ func verifyCircuit(
 	publicWitness, _ := witness.Public()
 	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
 	err = groth16.Verify(proof, *vk, publicWitness)
+
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("Verification failed: %v", err) 
+		return fmt.Errorf("verification failed: %w", err) 
 	}
+
+	return nil
 }

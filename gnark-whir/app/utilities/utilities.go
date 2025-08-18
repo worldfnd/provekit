@@ -3,11 +3,12 @@ package utilities
 import (
 	"fmt"
 	"math/big"
-	"reilabs/whir-verifier-circuit/typeConverters"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"github.com/consensys/gnark/std/math/uints"
+
 	gnark_nimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
