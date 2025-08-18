@@ -44,13 +44,13 @@ jobs:
 
       # nargo execute is a faulty command that should be removed when toml reader is implemented
       - name: Compile and execute Nargo circuit
-        working-directory: noir-examples/poseidon-rounds
+        working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
           nargo compile
           nargo execute
       # basic.gz should be changed to .toml file in the future when faulty command is removed
       - name: Generate Gnark inputs
-        working-directory: noir-examples/poseidon-rounds
+        working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
           cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
           cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
@@ -60,4 +60,3 @@ jobs:
         run: |
           go build -o gnark-verifier .
           ./gnark-verifier
-
