@@ -23,12 +23,11 @@ type Circuit struct {
 	LinearStatementEvaluations    []frontend.Variable
 	LogNumConstraints             int
 	LogNumVariables               int
-	LogANumTerms                  int
 	SpartanMerkle                 Merkle
-	SparkValueMerkle              Merkle
 	WHIRParamsCol                 WHIRParams
-	WHIRParamsRow                 WHIRParams
-	WHIRParamsA                   WHIRParams
+	MatrixA                       []MatrixCell
+	MatrixB                       []MatrixCell
+	MatrixC                       []MatrixCell
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -51,7 +50,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	err = runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+	whirFoldingRandomness, err := runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
 	if err != nil {
 		return err
 	}
@@ -59,100 +58,17 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	rowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(rowRootHash); err != nil {
-		return err
+	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+
+	for i := 0; i < 3; i++ {
+		api.AssertIsEqual(matrixExtensionEvals[i], circuit.LinearStatementValuesAtPoints[i])
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	colRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(colRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	valRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(valRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	eRxRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRxRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	eRyRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRyRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSRowRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSColRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSRowRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSColRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsRow.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	_, _, err = runSumcheck(api, arthur, circuit.LinearStatementValuesAtPoints[0], circuit.LogANumTerms, 4)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256, internedR1CS R1CS, interner Interner,
 ) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -171,20 +87,66 @@ func verifyCircuit(
 		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
+	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
+	for i := range len(internedR1CS.A.RowIndices) {
+		end := len(internedR1CS.A.Values) - 1
+		if i < len(internedR1CS.A.RowIndices)-1 {
+			end = int(internedR1CS.A.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
+			matrixA[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.A.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
+			}
+		}
+	}
+
+	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
+	for i := range len(internedR1CS.B.RowIndices) {
+		end := len(internedR1CS.B.Values) - 1
+		if i < len(internedR1CS.B.RowIndices)-1 {
+			end = int(internedR1CS.B.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
+			matrixB[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.B.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
+			}
+		}
+	}
+
+	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
+	for i := range len(internedR1CS.C.RowIndices) {
+		end := len(internedR1CS.C.Values) - 1
+		if i < len(internedR1CS.C.RowIndices)-1 {
+			end = int(internedR1CS.C.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
+			matrixC[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.C.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
+			}
+		}
+	}
+
 	var circuit = Circuit{
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        contTranscript,
 		LogNumConstraints: cfg.LogNumConstraints,
 		LogNumVariables:   cfg.LogNumVariables,
-		LogANumTerms:      cfg.LogANumTerms,
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
 		SpartanMerkle:                 newMerkle(hints.colHints, true),
-		SparkValueMerkle:              newMerkle(hints.aHints, true),
 
-		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol), WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
-		WHIRParamsA: new_whir_params(cfg.WHIRConfigA),
+		MatrixA: matrixA,
+		MatrixB: matrixB,
+		MatrixC: matrixC,
+
+		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -222,11 +184,12 @@ func verifyCircuit(
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
 		SpartanMerkle:                 newMerkle(hints.colHints, false),
-		SparkValueMerkle:              newMerkle(hints.aHints, false),
+
+		MatrixA: matrixA,
+		MatrixB: matrixB,
+		MatrixC: matrixC,
 
 		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
-		WHIRParamsRow: new_whir_params(cfg.WHIRConfigRow),
-		WHIRParamsA:   new_whir_params(cfg.WHIRConfigA),
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

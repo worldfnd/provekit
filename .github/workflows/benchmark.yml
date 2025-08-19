@@ -25,6 +25,7 @@ jobs:
           cache-target: release
           bins: cargo-codspeed
       - name: Build the benchmark target(s)
+        timeout-minutes: 30
         run: cargo codspeed build
       - name: Upload benchmark binaries and input files
         uses: actions/upload-artifact@v4
@@ -47,12 +48,14 @@ jobs:
         with:
           name: benchmark-binaries
           path: ./bench_bin
-      - name: Setup Rust toolchain, cache and cargo-codspeed binary
+
+      - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
+<<<<<<< HEAD
       - name: Install codspeed-post-bench script
         run: |
           sudo mkdir -p /usr/local/bin
@@ -64,8 +67,31 @@ jobs:
           cp -r bench_bin/target/codspeed/* target/codspeed/
           mkdir -p noir-r1cs/benches
           cp bench_bin/noir-r1cs/benches/poseidon-1000.* noir-r1cs/benches/
+=======
+    
+      - name: Create codespeed-post-bench symlink
+        run: |
+          # codspeed-post-bench is just a sym-link
+          which codspeed-post-bench || echo "codspeed-post-bench not found"
+          sudo ln -sf ~/.cargo/bin/cargo-codspeed /usr/local/bin/codspeed-post-bench
+          ls -la /usr/local/bin/codspeed-post-bench
+
+      - name: Copy binaries to target directory
+        run: |
+          mkdir -p target/codspeed
+          cp -r bench_bin/* target/codspeed/
+
+>>>>>>> main
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
+
+      - name: Verify codspeed installation
+        run: |
+          echo "cargo-codspeed location:"
+          which cargo-codspeed 
+          echo "codspeed-post-bench location:"
+          which codspeed-post-bench
+        
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:

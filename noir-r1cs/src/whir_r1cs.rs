@@ -1,7 +1,6 @@
 use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        spark::{prove_spark, verify_spark, SparkIOPattern},
         utils::{
             next_power_of_two, pad_to_power_of_two, serde_ark, serde_hex,
             sumcheck::{
@@ -143,17 +142,6 @@ impl WhirR1CSScheme {
         let (whir_query_answer_sums, col_randomness, deferred) =
             run_whir_pcs_prover(witness, &self.whir_config_col, &mut merlin, self.m, alphas);
 
-        prove_spark(
-            r1cs.a(),
-            &mut merlin,
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            &alpha,
-            &col_randomness.0,
-            deferred[0],
-        )?;
-
         let transcript = merlin.narg_string().to_vec();
 
         Ok(WhirR1CSProof { transcript })
@@ -184,33 +172,18 @@ impl WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        verify_spark(
-            &mut arthur,
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            deferred[0],
-            self.a_num_terms,
-        );
-
         Ok(())
     }
 
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        let mut io = IOPattern::new("🌪️")
+        let io = IOPattern::new("🌪️")
             .add_rand(self.m_0)
             .add_sumcheck_polynomials(self.m_0)
             .hint("claimed_evaluations")
             .commit_statement(&self.whir_config_col)
             .add_whir_proof(&self.whir_config_col);
 
-        io = io.spark(
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            self.a_num_terms,
-        );
         io
     }
 }

@@ -4,14 +4,15 @@ use {
         digits::DigitalDecompositionWitnesses,
         noir_to_r1cs::ConstantOrR1CSWitness,
         ram::SpiceWitnesses,
+        skyscraper::SkyscraperSponge,
         utils::{noir_to_native, serde_ark, serde_ark_option},
         FieldElement,
     },
     acir::{native_types::WitnessMap, FieldElement as NoirFieldElement},
     ark_ff::{Field, PrimeField},
     ark_std::Zero,
-    rand::Rng,
     serde::{Deserialize, Serialize},
+    spongefish::{codecs::arkworks_algebra::UnitToField, ProverState},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -153,28 +154,13 @@ impl WitnessBuilder {
         }
     }
 
-    /// As per solve(), but additionally appends the solved witness values to
-    /// the transcript.
-    pub fn solve_and_append_to_transcript(
-        &self,
-        acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
-        witness: &mut [Option<FieldElement>],
-        transcript: &mut MockTranscript,
-    ) {
-        self.solve(acir_witness_idx_to_value_map, witness, transcript);
-
-        for i in 0..self.num_witnesses() {
-            transcript.append(witness[self.first_witness_idx() + i].unwrap());
-        }
-    }
-
     /// Solves for the witness value(s) specified by this builder and writes
     /// them to the witness vector.
     pub fn solve(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirFieldElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut MockTranscript,
+        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
@@ -237,7 +223,9 @@ impl WitnessBuilder {
                 }
             }
             WitnessBuilder::Challenge(witness_idx) => {
-                witness[*witness_idx] = Some(transcript.draw_challenge());
+                let mut one = [FieldElement::zero(); 1];
+                let _ = transcript.fill_challenge_scalars(&mut one);
+                witness[*witness_idx] = Some(one[0]);
             }
             WitnessBuilder::LogUpDenominator(
                 witness_idx,
@@ -332,28 +320,5 @@ impl WitnessBuilder {
                 }
             }
         }
-    }
-}
-
-/// Mock transcript. To be replaced.
-pub struct MockTranscript {}
-
-impl Default for MockTranscript {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MockTranscript {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn append(&mut self, _value: FieldElement) {}
-
-    pub fn draw_challenge(&mut self) -> FieldElement {
-        let mut rng = rand::rng();
-        let n: u32 = rng.random();
-        n.into()
     }
 }
