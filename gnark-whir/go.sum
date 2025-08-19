@@ -32,10 +32,10 @@ github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/reilabs/gnark-nimue v0.0.6 h1:arZmu0g00SyhMqiWa4eQ19AgUj6xMgqc9GjuO3EZ6M4=
-github.com/reilabs/gnark-nimue v0.0.6/go.mod h1:HZvEohNWtV3PHogGBe2HziYXX0CetYPxfLapf5NW6ss=
-github.com/reilabs/gnark-skyscraper v0.0.0-20250708070614-c31a7530dec0 h1:4vdKtREoH2c4/BRmP8IatjLsmf4svWGU9ByJhQ2axBI=
-github.com/reilabs/gnark-skyscraper v0.0.0-20250708070614-c31a7530dec0/go.mod h1:kUPBp0nHa5TpefcqeK4Otfpz8WHgpXpQ8f+NgfEF5Ks=
+github.com/reilabs/gnark-nimue v0.0.7-0.20250819071945-7382324c8642 h1:yszb3+OVg17bugNU8L7oXAyvJGj0LsZt82TXAyi9muw=
+github.com/reilabs/gnark-nimue v0.0.7-0.20250819071945-7382324c8642/go.mod h1:HZvEohNWtV3PHogGBe2HziYXX0CetYPxfLapf5NW6ss=
+github.com/reilabs/gnark-skyscraper v0.0.0-20250819020215-db52e4ee2949 h1:ywiOSRWCIaOpSg0exeNRG0+rz4c62J6Z+IrJpKTso+c=
+github.com/reilabs/gnark-skyscraper v0.0.0-20250819020215-db52e4ee2949/go.mod h1:kUPBp0nHa5TpefcqeK4Otfpz8WHgpXpQ8f+NgfEF5Ks=
 github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3 h1:EZA/mA0ju0eAsvcBADuKRPYSL1UYoeGCAM/vNEWeCoA=
 github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3/go.mod h1:o5H86RiZONz84eiTtg6HzZpg3M/xvAHqTyAOXRzbmmI=
 github.com/ronanh/intcomp v1.1.1 h1:+1bGV/wEBiHI0FvzS7RHgzqOpfbBJzLIxkqMJ9e6yxY=
