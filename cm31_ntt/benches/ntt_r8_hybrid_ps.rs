@@ -1,12 +1,11 @@
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt_utils::get_root_of_unity;
-use cm31_ntt::ntt::*;
-use cm31_ntt::cm31::CF;
-use num_traits::Zero;
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::SeedableRng;
+use {
+    cm31_ntt::{cm31::CF, ntt::*, ntt_utils::get_root_of_unity},
+    criterion::{Criterion, criterion_group, criterion_main},
+    num_traits::Zero,
+    rand::Rng,
+    rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    std::hint::black_box,
+};
 
 fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("ntt_r8_hybrid_ps");
@@ -24,7 +23,11 @@ fn bench(c: &mut Criterion) {
         let precomp_small = if n < NTT_BLOCK_SIZE_FOR_CACHE {
             precomp_for_ntt_r8_ip_p(n, wn).unwrap()
         } else {
-            precomp_for_ntt_r8_ip_p(NTT_BLOCK_SIZE_FOR_CACHE, get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE)).unwrap()
+            precomp_for_ntt_r8_ip_p(
+                NTT_BLOCK_SIZE_FOR_CACHE,
+                get_root_of_unity(NTT_BLOCK_SIZE_FOR_CACHE),
+            )
+            .unwrap()
         };
 
         group.bench_function(format!("size {n}"), |b| {
@@ -43,4 +46,3 @@ criterion_group! {
     targets = bench
 }
 criterion_main!(benches);
-

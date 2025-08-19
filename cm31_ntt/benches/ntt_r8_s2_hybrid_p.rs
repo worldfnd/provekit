@@ -1,19 +1,17 @@
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt::*;
-use cm31_ntt::cm31::CF;
-use num_traits::Zero;
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::SeedableRng;
-use lazy_static::lazy_static;
+use {
+    cm31_ntt::{cm31::CF, ntt::*},
+    criterion::{Criterion, criterion_group, criterion_main},
+    lazy_static::lazy_static,
+    num_traits::Zero,
+    rand::Rng,
+    rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    std::hint::black_box,
+};
 
 const N: usize = 4194304;
 
 lazy_static! {
-    static ref PRECOMP: PrecomputedTwiddles = {
-        precompute_twiddles(N).unwrap()
-    };
+    static ref PRECOMP: PrecomputedTwiddles = { precompute_twiddles(N).unwrap() };
 }
 
 fn bench(c: &mut Criterion) {

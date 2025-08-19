@@ -1,8 +1,11 @@
-use crate::cm31::{CF, gen_roots_of_unity};
-use crate::rm31::RF;
-use num_traits::{Zero, One};
-use num_traits::pow::Pow;
-use rayon::prelude::*;
+use {
+    crate::{
+        cm31::{CF, gen_roots_of_unity},
+        rm31::RF,
+    },
+    num_traits::{One, Zero, pow::Pow},
+    rayon::prelude::*,
+};
 
 pub fn is_power_of(n: u32, x: u32) -> bool {
     if n == 0 {
@@ -24,7 +27,6 @@ pub fn is_power_of(n: u32, x: u32) -> bool {
 
     num == 1
 }
-
 
 /// Helper function to get the n-th root of unity in CF.
 pub fn get_root_of_unity(n: usize) -> CF {
@@ -111,7 +113,7 @@ pub fn naive_ntt(f: &Vec<CF>) -> Vec<CF> {
     let n = f.len();
     let wn = get_root_of_unity(n);
     let mut res = vec![CF::zero(); n];
-    
+
     // Parallelize the outer loop
     res.par_iter_mut().enumerate().for_each(|(i, res_i)| {
         // Each thread computes one output element
@@ -134,7 +136,7 @@ pub fn naive_intt(f: &Vec<CF>) -> Vec<CF> {
     let n_inv = RF::new(n as u32).try_inverse().unwrap();
 
     let mut res = vec![CF::zero(); n];
-    
+
     // Parallelize the outer loop for computing values
     res.par_iter_mut().enumerate().for_each(|(i, res_i)| {
         for j in 0..n {
@@ -160,12 +162,12 @@ pub fn precompute_twiddles(n: usize, w: CF, radix: usize) -> Vec<CF> {
     let mut twiddles = Vec::new();
     let mut current_n = n;
     let mut current_w = w;
-    
+
     while current_n > 1 {
         let m = current_n / radix;
         let next_w = current_w.pow(radix);
         twiddles.push(next_w.reduce());
-        
+
         for k in 0..m {
             let base = current_w.pow(k);
             let mut factor = CF::one();
@@ -174,21 +176,22 @@ pub fn precompute_twiddles(n: usize, w: CF, radix: usize) -> Vec<CF> {
                 twiddles.push(factor.reduce());
             }
         }
-        
+
         current_n /= radix;
         current_w = next_w;
     }
-    
+
     twiddles
 }
 
 #[cfg(test)]
 pub mod tests {
-    use crate::ntt_utils::*;
-    use num_traits::Zero;
-    use rand::Rng;
-    use rand_chacha::ChaCha8Rng;
-    use rand_chacha::rand_core::SeedableRng;
+    use {
+        crate::ntt_utils::*,
+        num_traits::Zero,
+        rand::Rng,
+        rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    };
 
     #[test]
     fn test_is_power_of() {
@@ -202,10 +205,7 @@ pub mod tests {
     }
 
     // Schoolbook multiplication
-    fn naive_poly_mul(
-        f1: &Vec<CF>,
-        f2: &Vec<CF>,
-    ) -> Vec<CF> {
+    fn naive_poly_mul(f1: &Vec<CF>, f2: &Vec<CF>) -> Vec<CF> {
         let n = f1.len();
         assert_eq!(n, f2.len());
         let mut res = vec![CF::zero(); 2 * n - 1];
@@ -222,7 +222,15 @@ pub mod tests {
         let f1 = vec![CF::new(1, 0), CF::new(2, 0), CF::new(3, 0), CF::new(4, 0)];
         let f3 = vec![CF::new(1, 0), CF::new(3, 0), CF::new(5, 0), CF::new(7, 0)];
         let res = naive_poly_mul(&f1, &f3);
-        let expected = vec![CF::new(1, 0), CF::new(5, 0), CF::new(14, 0), CF::new(30, 0), CF::new(41, 0), CF::new(41, 0), CF::new(28, 0)];
+        let expected = vec![
+            CF::new(1, 0),
+            CF::new(5, 0),
+            CF::new(14, 0),
+            CF::new(30, 0),
+            CF::new(41, 0),
+            CF::new(41, 0),
+            CF::new(28, 0),
+        ];
         assert_eq!(res, expected);
     }
 
