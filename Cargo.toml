@@ -7,7 +7,7 @@ members = [
   "block-multiplier",
   "block-multiplier-codegen",
   "skyscraper",
-  "noir-tools",
+  "noir-tools", "spark/spark-prover",
 ]
 
 [workspace.package]
