@@ -1,6 +1,9 @@
 # SPARK 
 Experimental Rust prover and gnark recursive prover circuit will be implemented and optimized here.
 
+## Running SPARK (under development)
+```cargo run --bin spark-prover```
+
 ## Test matrix generation (for development)
 A development utility is provided to generate test matrices.
 To generate a test matrix, run the following command:
