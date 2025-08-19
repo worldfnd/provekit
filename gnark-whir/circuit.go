@@ -32,10 +32,12 @@ type Circuit struct {
 	WitnessFirstRound                       Merkle
 	SparkValueMerkle                        Merkle
 	WHIRParamsCol                           WHIRParams
-	WHIRParamsRow                           WHIRParams
-	WHIRParamsA                             WHIRParams
 	WHIRParamsWitness                       WHIRParams
 	WHIRParamsHidingSpartan                 WHIRParams
+
+	MatrixA []MatrixCell
+	MatrixB []MatrixCell
+	MatrixC []MatrixCell
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -64,7 +66,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	err = runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHashes)
+	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHashes)
+
+	// whirFoldingRandomness, err := runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+
 	if err != nil {
 		return err
 	}
@@ -72,100 +77,17 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	rowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(rowRootHash); err != nil {
-		return err
+	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+
+	for i := 0; i < 3; i++ {
+		api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
 	}
 
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	colRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(colRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	valRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(valRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	eRxRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRxRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	eRyRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(eRyRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSRowRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	readTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(readTSColRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsA.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSRowRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSRowRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsCol.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-	finalCTSColRootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(finalCTSColRootHash); err != nil {
-		return err
-	}
-
-	_, _, err = FillInOODPointsAndAnswers(circuit.WHIRParamsRow.CommittmentOODSamples, arthur)
-	if err != nil {
-		return err
-	}
-
-	_, _, err = runSumcheck(api, arthur, circuit.WitnessLinearStatementEvaluations[0], circuit.LogANumTerms, 4)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
 ) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -186,6 +108,51 @@ func verifyCircuit(
 
 	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 
+	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
+	for i := range len(internedR1CS.A.RowIndices) {
+		end := len(internedR1CS.A.Values) - 1
+		if i < len(internedR1CS.A.RowIndices)-1 {
+			end = int(internedR1CS.A.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
+			matrixA[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.A.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
+			}
+		}
+	}
+
+	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
+	for i := range len(internedR1CS.B.RowIndices) {
+		end := len(internedR1CS.B.Values) - 1
+		if i < len(internedR1CS.B.RowIndices)-1 {
+			end = int(internedR1CS.B.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
+			matrixB[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.B.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
+			}
+		}
+	}
+
+	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
+	for i := range len(internedR1CS.C.RowIndices) {
+		end := len(internedR1CS.C.Values) - 1
+		if i < len(internedR1CS.C.RowIndices)-1 {
+			end = int(internedR1CS.C.RowIndices[i+1] - 1)
+		}
+		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
+			matrixC[j] = MatrixCell{
+				row:    i,
+				column: int(internedR1CS.C.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
+			}
+		}
+	}
+
 	var circuit = Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
@@ -200,13 +167,15 @@ func verifyCircuit(
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
-		SparkValueMerkle:                        newMerkle(hints.aHints, true),
+		SparkValueMerkle:                        newMerkle(hints.colHints, true),
 
 		WHIRParamsCol:           new_whir_params(cfg.WHIRConfigCol),
-		WHIRParamsRow:           new_whir_params(cfg.WHIRConfigRow),
-		WHIRParamsA:             new_whir_params(cfg.WHIRConfigA),
 		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+
+		MatrixA: matrixA,
+		MatrixB: matrixB,
+		MatrixC: matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -252,13 +221,15 @@ func verifyCircuit(
 		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
 		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
 		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
-		SparkValueMerkle:        newMerkle(hints.aHints, false),
+		SparkValueMerkle:        newMerkle(hints.colHints, false),
 
 		WHIRParamsCol:           new_whir_params(cfg.WHIRConfigCol),
-		WHIRParamsRow:           new_whir_params(cfg.WHIRConfigRow),
-		WHIRParamsA:             new_whir_params(cfg.WHIRConfigA),
 		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+
+		MatrixA: matrixA,
+		MatrixB: matrixB,
+		MatrixC: matrixC,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

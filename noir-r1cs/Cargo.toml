@@ -62,7 +62,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 # Internal
-noir-tools.workspace = true
+#noir-tools.workspace = true
 
 # 3rd Party
 rand.workspace = true

@@ -1,7 +1,6 @@
 use {
     crate::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        spark::{prove_spark, verify_spark, SparkIOPattern},
         utils::{
             next_power_of_two, pad_to_power_of_two, serde_hex,
             sumcheck::{
@@ -179,17 +178,6 @@ impl WhirR1CSScheme {
         let (mut merlin, col_randomness, deferred) =
             run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
 
-        prove_spark(
-            r1cs.a(),
-            &mut merlin,
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            &alpha,
-            &col_randomness.0,
-            deferred[0],
-        )?;
-
         let transcript = merlin.narg_string().to_vec();
 
         Ok(WhirR1CSProof { transcript })
@@ -247,21 +235,12 @@ impl WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        verify_spark(
-            &mut arthur,
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            deferred[0],
-            self.a_num_terms,
-        );
-
         Ok(())
     }
 
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        let mut io = IOPattern::new("🌪️")
+        let io = IOPattern::new("🌪️")
             .commit_statement(&self.whir_witness)
             .add_rand(self.m_0)
             .commit_statement(&self.whir_for_hiding_spartan)
@@ -270,12 +249,6 @@ impl WhirR1CSScheme {
             .hint("claimed_evaluations")
             .add_whir_proof(&self.whir_witness);
 
-        io = io.spark(
-            &self.whir_config_a_num_terms,
-            &self.whir_config_row,
-            &self.whir_config_col,
-            self.a_num_terms,
-        );
         io
     }
 }

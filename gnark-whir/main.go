@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -40,9 +41,7 @@ type ProofObject struct {
 }
 
 type Config struct {
-	WHIRConfigRow                WHIRConfig `json:"whir_config_row"`
 	WHIRConfigCol                WHIRConfig `json:"whir_config_col"`
-	WHIRConfigA                  WHIRConfig `json:"whir_config_a_num_terms"`
 	WHIRConfigWitness            WHIRConfig `json:"whir_config_witness"`
 	WHIRConfigHidingSpartan      WHIRConfig `json:"whir_config_hiding_spartan"`
 	LogNumConstraints            int        `json:"log_num_constraints"`
@@ -73,8 +72,7 @@ type WHIRConfig struct {
 type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
-	// colHints          Hint
-	aHints Hint
+	colHints          Hint
 }
 
 type Hint struct {
@@ -115,6 +113,12 @@ func main() {
 				Value:    "",
 			},
 			&cli.StringFlag{
+				Name:     "r1cs",
+				Usage:    "Path to the r1cs json file",
+				Required: false,
+				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
+			},
+			&cli.StringFlag{
 				Name: "pk",
 				Usage: "Optional path to load Proving Key from (if not provided, " +
 					"PK and VK will be generated unsafely)",
@@ -131,6 +135,7 @@ func main() {
 		},
 		Action: func(c *cli.Context) error {
 			configFilePath := c.String("config")
+			r1csFilePath := c.String("r1cs")
 			outputCcsPath := c.String("ccs")
 			pkPath := c.String("pk")
 			vkPath := c.String("vk")
@@ -249,6 +254,29 @@ func main() {
 
 			config.Transcript = truncated
 
+			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
+			if r1csErr != nil {
+				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
+			}
+
+			var r1cs R1CS
+			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
+				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
+			}
+
+			internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+			if err != nil {
+				return fmt.Errorf("failed to decode interner values: %w", err)
+			}
+
+			var interner Interner
+			_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				bytes.NewReader(internerBytes), &interner, false, false,
+			)
+			if err != nil {
+				return fmt.Errorf("failed to deserialize interner: %w", err)
+			}
+
 			var pk *groth16.ProvingKey
 			var vk *groth16.VerifyingKey
 			if pkPath != "" && vkPath != "" {
@@ -268,12 +296,12 @@ func main() {
 			hints := Hints{
 				witnessHints:      witnessData,
 				spartanHidingHint: hidingSpartanData,
-				aHints: Hint{
+				colHints: Hint{
 					merklePaths: merkle_paths,
 					stirAnswers: stir_answers,
 				},
 			}
-			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations)
+			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
 			return nil
 		},
 	}
