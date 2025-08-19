@@ -92,12 +92,11 @@ jobs:
         id: find-benchmarks
         run: |
           BENCH_PACKAGES=""
-          for toml in $(find . -name "Cargo.toml" -not -path "./target/*"); do
-            if grep -q "^\[\[bench\]\]" "$toml"; then
-              pkg_name=$(grep -m1 "^name = " "$toml" | sed 's/name = "\(.*\)"/\1/')
-              if [ -n "$pkg_name" ]; then
-                BENCH_PACKAGES="$BENCH_PACKAGES -p $pkg_name"
-              fi
+          # Get workspace members and check if they have benchmarks
+          for member in $(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]' | cut -d' ' -f1); do
+            pkg_name=$(echo "$member" | cut -d'#' -f1)
+            if cargo metadata --no-deps --format-version 1 | jq -e ".packages[] | select(.name == \"$pkg_name\") | .targets[] | select(.kind[] == \"bench\")" > /dev/null 2>&1; then
+              BENCH_PACKAGES="$BENCH_PACKAGES -p $pkg_name"
             fi
           done
           echo "packages=$BENCH_PACKAGES" >> $GITHUB_OUTPUT
