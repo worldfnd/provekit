@@ -13,8 +13,8 @@ fn main() {
     r1cs.a.set(1, 0, interned_1);
 
     let json = serde_json::to_string(&r1cs).expect("Error: Failed to serialize R1CS to JSON");
-    let mut r1cs_file =
-        File::create("spark/spark-prover/r1cs.json").expect("Error: Failed to create the r1cs.json file");
+    let mut r1cs_file = File::create("spark/spark-prover/r1cs.json")
+        .expect("Error: Failed to create the r1cs.json file");
     r1cs_file
         .write_all(json.as_bytes())
         .expect("Error: Failed to write JSON data to r1cs.json");
