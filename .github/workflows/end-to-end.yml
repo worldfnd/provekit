@@ -46,7 +46,7 @@ jobs:
       - name: Compile and execute Nargo circuit
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
-          nargo compile --skip-underconstrained-check --skip-brillig-constraints-check --force
+          nargo compile --skip-underconstrained-check --skip-brillig-constraints-check --force --package complete_age_check
           nargo execute
       # basic.gz should be changed to .toml file in the future when faulty command is removed
       - name: Generate Gnark inputs
