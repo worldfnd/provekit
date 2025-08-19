@@ -9,6 +9,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+noir-r1cs.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
