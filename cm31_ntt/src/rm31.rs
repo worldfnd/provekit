@@ -3,7 +3,7 @@ use core::fmt::Display;
 use num_traits::{Zero, One, Pow};
 use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
 use std::convert::{From, Into};
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
 use rand::Rng;
 
 pub const P: u32 = 0x7fffffff;
@@ -279,7 +279,7 @@ impl Pow<usize> for RF {
     }
 }
 
-impl Distribution<RF> for Standard {
+impl Distribution<RF> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RF {
         let threshold = u32::MAX - (u32::MAX % P);
         loop {
@@ -345,8 +345,8 @@ mod tests {
     fn test_reduce_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let reduced = (a + b).reduce();
             let expected = RF::new((a.val + b.val) % P);
             assert_eq!(reduced.val, expected.val);
@@ -393,8 +393,8 @@ mod tests {
     fn test_add_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let sum = a + b;
             let expected = (a.val as u64 + b.val as u64) % P_64;
             assert_eq!(sum.val % P, expected as u32);
@@ -438,8 +438,8 @@ mod tests {
     fn test_sub_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let diff = a - b;
             let expected = if a.val > b.val {
                 (a.val - b.val) % P
@@ -494,7 +494,7 @@ mod tests {
     fn test_neg_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
+            let a: RF = rng.random();
             let neg_a = a.neg();
             
             // Test that a + (-a) = 0
@@ -520,8 +520,8 @@ mod tests {
     fn test_mul_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let product = a * b;
             let expected = (a.val as u64 * b.val as u64) % P_64;
             assert_eq!(product.val % P, expected as u32);
@@ -638,8 +638,8 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let m = 0x8000;
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let x = a + b;
             let expected = x.val as u64 * m as u64 % P_64;
             let result = x.mul_by_2_15();
@@ -664,8 +664,8 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let m = 0x10000;
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let x = a + b;
             let expected = x.val as u64 * m as u64 % P_64;
             let result = x.mul_by_2_16();

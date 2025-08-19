@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "cm31_ntt",
   "noir-r1cs",
   "skyscraper/fp-rounding",
   "skyscraper/hla",

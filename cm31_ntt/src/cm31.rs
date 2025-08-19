@@ -1,5 +1,5 @@
 /// Complex M31 field arithmetic.
- 
+
 use serde::{Serialize, Deserialize};
 use crate::rm31::{RF, P};
 use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
@@ -8,7 +8,7 @@ use std::convert::{ From, Into };
 use num_traits::Zero;
 use num_traits::identities::One;
 use num_traits::pow::Pow;
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
 use rand::Rng;
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -367,7 +367,7 @@ impl Pow<usize> for CF {
     }
 }
 
-impl Distribution<CF> for Standard {
+impl Distribution<CF> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CF {
         CF {
             a: rng.r#gen(),
