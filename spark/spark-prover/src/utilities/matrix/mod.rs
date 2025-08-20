@@ -25,7 +25,7 @@ pub struct TimeStamps {
     pub final_col: Vec<FieldElement>,
 }
 
-pub fn get_spark_r1cs(r1cs: R1CS) -> SparkR1CS {
+pub fn get_spark_r1cs(r1cs: &R1CS) -> SparkR1CS {
     SparkR1CS {
         a: get_spark_matrix(&r1cs.a()),
         b: get_spark_matrix(&r1cs.b()),

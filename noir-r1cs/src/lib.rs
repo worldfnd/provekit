@@ -29,6 +29,7 @@ pub use {
     },
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
+    skyscraper::SkyscraperSponge,
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     whir::crypto::fields::Field256 as FieldElement,
     whir_r1cs::IOPattern,

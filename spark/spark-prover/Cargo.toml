@@ -13,6 +13,7 @@ noir-r1cs.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 anyhow.workspace = true
+spongefish.workspace = true
 
 [lints]
 workspace = true
