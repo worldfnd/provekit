@@ -57,7 +57,7 @@ func initialSumcheck(
 
 func ValidateFirstRound(api frontend.API, circuit Merkle, arthur gnark_nimue.Arthur, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, batchSizeLen frontend.Variable, rootHashes []frontend.Variable, batchingRandomness frontend.Variable, stirChallengeIndexes []frontend.Variable, roundAnswers [][]frontend.Variable) error {
 
-	for i := range circuit.Leaves {
+	for i := range len(circuit.LeafIndexes) {
 		err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[i], circuit.Leaves[i], circuit.LeafSiblingHashes[i], circuit.AuthPaths[i], rootHashes[i])
 		if err != nil {
 			return err

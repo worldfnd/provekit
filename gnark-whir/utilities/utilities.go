@@ -22,6 +22,10 @@ func MultivarPoly(coefs []frontend.Variable, vars []frontend.Variable, api front
 }
 
 func UnivarPoly(api frontend.API, coefficients []frontend.Variable, points []frontend.Variable) []frontend.Variable {
+	if len(points) == 0 {
+		return coefficients
+	}
+
 	results := make([]frontend.Variable, len(points))
 	for j := range points {
 		ans := frontend.Variable(0)

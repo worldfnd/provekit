@@ -49,9 +49,6 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &scheme.whir_for_witness.whir_config_row,
-            &scheme.whir_for_witness.whir_config_col,
-            &scheme.whir_for_witness.whir_config_a_num_terms,
             &scheme.whir_for_witness.whir_witness,
             &scheme.whir_for_witness.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,

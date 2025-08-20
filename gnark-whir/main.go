@@ -41,7 +41,6 @@ type ProofObject struct {
 }
 
 type Config struct {
-	WHIRConfigCol                WHIRConfig `json:"whir_config_col"`
 	WHIRConfigWitness            WHIRConfig `json:"whir_config_witness"`
 	WHIRConfigHidingSpartan      WHIRConfig `json:"whir_config_hiding_spartan"`
 	LogNumConstraints            int        `json:"log_num_constraints"`
@@ -72,7 +71,6 @@ type WHIRConfig struct {
 type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
-	colHints          Hint
 }
 
 type Hint struct {
@@ -296,10 +294,6 @@ func main() {
 			hints := Hints{
 				witnessHints:      witnessData,
 				spartanHidingHint: hidingSpartanData,
-				colHints: Hint{
-					merklePaths: merkle_paths,
-					stirAnswers: stir_answers,
-				},
 			}
 			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
 			return nil

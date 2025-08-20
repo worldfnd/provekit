@@ -173,10 +173,11 @@ func runZKWhir(
 		}
 	}
 
+	totalFoldingRandomness = utilities.Reverse(totalFoldingRandomness)
+
 	evaluationOfWPoly := ComputeWPoly(
 		api,
 		whirParams,
-		initialOODQueries,
 		initialSumcheckData,
 		mainRoundData,
 		totalFoldingRandomness,
@@ -314,7 +315,6 @@ func runWhir(
 	evaluationOfVPoly := ComputeWPoly(
 		api,
 		whirParams,
-		[]frontend.Variable{},
 		initialData,
 		mainRoundData,
 		totalFoldingRandomness,
@@ -509,7 +509,6 @@ func runWhirSumcheckRounds(
 func ComputeWPoly(
 	api frontend.API,
 	circuit WHIRParams,
-	initialQueries []frontend.Variable,
 	initialData InitialSumcheckData,
 	mainRoundData MainRoundData,
 	totalFoldingRandomness []frontend.Variable,
@@ -525,7 +524,6 @@ func ComputeWPoly(
 	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
-
 	for r := range mainRoundData.OODPoints {
 		numberVars -= circuit.FoldingFactorArray[r]
 		newTmpArr := append(mainRoundData.OODPoints[r], mainRoundData.StirChallengesPoints[r]...)

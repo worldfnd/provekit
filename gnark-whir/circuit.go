@@ -30,8 +30,6 @@ type Circuit struct {
 	HidingSpartanMerkle                     Merkle
 	WitnessMerkle                           Merkle
 	WitnessFirstRound                       Merkle
-	SparkValueMerkle                        Merkle
-	WHIRParamsCol                           WHIRParams
 	WHIRParamsWitness                       WHIRParams
 	WHIRParamsHidingSpartan                 WHIRParams
 
@@ -67,8 +65,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHashes)
-
-	// whirFoldingRandomness, err := runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
 
 	if err != nil {
 		return err
@@ -167,9 +163,7 @@ func verifyCircuit(
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
-		SparkValueMerkle:                        newMerkle(hints.colHints, true),
 
-		WHIRParamsCol:           new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
 
@@ -221,9 +215,7 @@ func verifyCircuit(
 		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
 		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
 		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
-		SparkValueMerkle:        newMerkle(hints.colHints, false),
 
-		WHIRParamsCol:           new_whir_params(cfg.WHIRConfigCol),
 		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
 

@@ -55,9 +55,6 @@ pub struct WhirR1CSScheme {
     pub m_0: usize,
     pub a_num_terms: usize,
     pub whir_witness: WhirConfig,
-    pub whir_config_row: WhirConfig,
-    pub whir_config_col: WhirConfig,
-    pub whir_config_a_num_terms: WhirConfig,
     pub whir_for_hiding_spartan: WhirConfig,
 }
 
@@ -89,13 +86,7 @@ impl WhirR1CSScheme {
             m: m + 1,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
-            whir_config_row: Self::new_whir_config_for_size(m_0, 1),
-            whir_config_col: Self::new_whir_config_for_size(m, 1),
             whir_witness: Self::new_whir_config_for_size(m + 1, 2),
-            whir_config_a_num_terms: Self::new_whir_config_for_size(
-                next_power_of_two(r1cs.a().matrix.num_entries()),
-                1,
-            ),
             whir_for_hiding_spartan: Self::new_whir_config_for_size(
                 next_power_of_two(4 * m_0) + 1,
                 2,
@@ -159,10 +150,8 @@ impl WhirR1CSScheme {
             self.m_0,
             &self.whir_for_hiding_spartan,
         );
-
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, r1cs);
-
         let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
             self.m,
             &commitment_to_witness,

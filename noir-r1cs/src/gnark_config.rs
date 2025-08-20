@@ -9,12 +9,6 @@ use {
 #[derive(Debug, Serialize, Deserialize)]
 /// Configuration for Gnark
 pub struct GnarkConfig {
-    /// WHIR parameters for row
-    pub whir_config_row:            WHIRConfigGnark,
-    /// WHIR parameters for column
-    pub whir_config_col:            WHIRConfigGnark,
-    /// WHIR parameters for number of terms in the matrix A
-    pub whir_config_a_num_terms:    WHIRConfigGnark,
     /// WHIR parameters for witness
     pub whir_config_witness:        WHIRConfigGnark,
     /// WHIR parameters for hiding spartan
@@ -107,9 +101,6 @@ impl WHIRConfigGnark {
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    whir_params_row: &WhirConfig,
-    whir_params_col: &WhirConfig,
-    whir_params_a_num_terms: &WhirConfig,
     whir_params_witness: &WhirConfig,
     whir_params_hiding_spartan: &WhirConfig,
     transcript: &[u8],
@@ -119,9 +110,6 @@ pub fn gnark_parameters(
     a_num_terms: usize,
 ) -> GnarkConfig {
     GnarkConfig {
-        whir_config_row:            WHIRConfigGnark::new(whir_params_row),
-        whir_config_col:            WHIRConfigGnark::new(whir_params_col),
-        whir_config_a_num_terms:    WHIRConfigGnark::new(whir_params_a_num_terms),
         whir_config_witness:        WHIRConfigGnark::new(whir_params_witness),
         whir_config_hiding_spartan: WHIRConfigGnark::new(whir_params_hiding_spartan),
         log_num_constraints:        m_0,
@@ -136,9 +124,6 @@ pub fn gnark_parameters(
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    whir_params_row: &WhirConfig,
-    whir_params_col: &WhirConfig,
-    whir_params_a_num_terms: &WhirConfig,
     whir_params_witness: &WhirConfig,
     whir_params_hiding_spartan: &WhirConfig,
     transcript: &[u8],
@@ -149,9 +134,6 @@ pub fn write_gnark_parameters_to_file(
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
-        whir_params_row,
-        whir_params_col,
-        whir_params_a_num_terms,
         whir_params_witness,
         whir_params_hiding_spartan,
         transcript,
@@ -160,7 +142,6 @@ pub fn write_gnark_parameters_to_file(
         m,
         a_num_terms,
     );
-    println!("round config {:?}", whir_params_col.round_parameters);
     let mut file_params = File::create(file_path).unwrap();
     file_params
         .write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes())
