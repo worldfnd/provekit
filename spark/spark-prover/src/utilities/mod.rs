@@ -2,7 +2,10 @@ mod iopattern;
 mod matrix;
 use {
     anyhow::{Context, Result},
-    noir_r1cs::{utils::serde_ark, FieldElement, R1CS},
+    noir_r1cs::{
+        utils::{serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq},
+        FieldElement, R1CS,
+    },
     serde::{Deserialize, Serialize},
     std::fs,
 };
@@ -42,4 +45,17 @@ pub struct ClaimedValues {
     pub b: FieldElement,
     #[serde(with = "serde_ark")]
     pub c: FieldElement,
+}
+
+#[derive(Debug)]
+pub struct Memory {
+    eq_rx: Vec<FieldElement>,
+    eq_ry: Vec<FieldElement>,
+}
+
+pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
+    Memory {
+        eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(&point_to_evaluate.row),
+        eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(&point_to_evaluate.col),
+    }
 }

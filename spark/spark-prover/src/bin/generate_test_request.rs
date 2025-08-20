@@ -1,5 +1,5 @@
 use {
-    noir_r1cs::{FieldElement, R1CS},
+    noir_r1cs::FieldElement,
     spark_prover::utilities::{ClaimedValues, Point, SPARKRequest},
     std::{fs::File, io::Write},
 };
@@ -7,8 +7,8 @@ use {
 fn main() {
     let spark_request = SPARKRequest {
         point_to_evaluate: Point {
-            row: vec![FieldElement::from(0); 1024],
-            col: vec![FieldElement::from(0); 512],
+            row: vec![FieldElement::from(0); 10],
+            col: vec![FieldElement::from(0); 9],
         },
         claimed_values:    ClaimedValues {
             a: FieldElement::from(1),
