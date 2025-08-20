@@ -29,6 +29,7 @@ pub use {
     },
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
+    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     whir::crypto::fields::Field256 as FieldElement,
     whir_r1cs::IOPattern,
 };
@@ -36,7 +37,6 @@ use {
     crate::{
         interner::{InternedFieldElement, Interner},
         noir_witness::NoirWitnessGenerator,
-        sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
         utils::serde_ark,
     },
     serde::{Deserialize, Serialize},
