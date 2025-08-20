@@ -102,7 +102,7 @@ func main() {
 				Name:     "config",
 				Usage:    "Path to the config file",
 				Required: false,
-				Value:    "../noir-examples/basic-2/params_for_recursive_verifier",
+				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
 			},
 			&cli.StringFlag{
 				Name:     "ccs",
