@@ -24,31 +24,9 @@ jobs:
           cache-base: main
           cache-target: release
           bins: cargo-codspeed
-      - name: Find packages with benchmarks
-        id: find-benchmarks
-        run: |
-          # Find all Cargo.toml files that contain [[bench]] sections
-          BENCH_PACKAGES=""
-          for toml in $(find . -name "Cargo.toml" -not -path "./target/*"); do
-            if grep -q "^\[\[bench\]\]" "$toml"; then
-              # Extract package name from the Cargo.toml
-              pkg_name=$(grep -m1 "^name = " "$toml" | sed 's/name = "\(.*\)"/\1/')
-              if [ -n "$pkg_name" ]; then
-                BENCH_PACKAGES="$BENCH_PACKAGES -p $pkg_name"
-              fi
-            fi
-          done
-          echo "packages=$BENCH_PACKAGES" >> $GITHUB_OUTPUT
-          echo "Found benchmark packages:$BENCH_PACKAGES"
       - name: Build the benchmark target(s)
         timeout-minutes: 30
-        run: |
-          if [ -n "${{ steps.find-benchmarks.outputs.packages }}" ]; then
-            cargo codspeed build ${{ steps.find-benchmarks.outputs.packages }}
-          else
-            echo "No packages with benchmarks found"
-            exit 1
-          fi
+        run: cargo codspeed build
       - name: Upload benchmark binaries
         uses: actions/upload-artifact@v4
         with:
@@ -60,6 +38,7 @@ jobs:
     runs-on: [self-hosted, rpi5]
     needs: build
     steps:
+      # We need repo files for the benchmark input files
       - uses: actions/checkout@v4
       - name: Download benchmark binaries
         uses: actions/download-artifact@v4
@@ -71,11 +50,12 @@ jobs:
         uses: moonrepo/setup-rust@v1
         with:
           channel: nightly-2025-04-05
-          cache: false
+          cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
     
       - name: Create codespeed-post-bench symlink
         run: |
+          # codspeed-post-bench is just a sym-link
           which codspeed-post-bench || echo "codspeed-post-bench not found"
           sudo ln -sf ~/.cargo/bin/cargo-codspeed /usr/local/bin/codspeed-post-bench
           ls -la /usr/local/bin/codspeed-post-bench
@@ -88,20 +68,6 @@ jobs:
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
 
-      - name: Find packages with benchmarks
-        id: find-benchmarks
-        run: |
-          BENCH_PACKAGES=""
-          # Get workspace members and check if they have benchmarks
-          for member in $(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]' | cut -d' ' -f1); do
-            pkg_name=$(echo "$member" | cut -d'#' -f1)
-            if cargo metadata --no-deps --format-version 1 | jq -e ".packages[] | select(.name == \"$pkg_name\") | .targets[] | select(.kind[] == \"bench\")" > /dev/null 2>&1; then
-              BENCH_PACKAGES="$BENCH_PACKAGES -p $pkg_name"
-            fi
-          done
-          echo "packages=$BENCH_PACKAGES" >> $GITHUB_OUTPUT
-          echo "Found benchmark packages:$BENCH_PACKAGES"
-
       - name: Verify codspeed installation
         run: |
           echo "cargo-codspeed location:"
@@ -112,5 +78,5 @@ jobs:
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
-          run: cargo codspeed run ${{ steps.find-benchmarks.outputs.packages }}
+          run: cargo codspeed run
           token: ${{ secrets.CODSPEED_TOKEN }}
