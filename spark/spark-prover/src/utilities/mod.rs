@@ -1,3 +1,6 @@
+mod iopattern;
+
+pub use iopattern::create_io_pattern;
 use {
     anyhow::{Context, Result},
     noir_r1cs::R1CS,
