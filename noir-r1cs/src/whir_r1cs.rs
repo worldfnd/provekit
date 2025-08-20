@@ -164,7 +164,7 @@ impl WhirR1CSScheme {
             .hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums.to_vec(), g_sums.to_vec()));
 
         // Compute WHIR weighted batch opening proof
-        let (merlin, _, _) =
+        let (merlin, ..) =
             run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
 
         let transcript = merlin.narg_string().to_vec();
