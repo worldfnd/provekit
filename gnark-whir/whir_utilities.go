@@ -589,10 +589,6 @@ func newMerkle(
 
 		for j := range numOfLeavesProved {
 			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
-
-			// for z := range treeHeight {
-			// 	totalAuthPath[i][j][z] = make([]uints.U8, 32)
-			// }
 			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
 		}
 
