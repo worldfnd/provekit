@@ -29,10 +29,10 @@ pub use {
     },
     acir::FieldElement as NoirElement,
     gnark_config::write_gnark_parameters_to_file,
-    skyscraper::SkyscraperSponge,
+    skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     whir::crypto::fields::Field256 as FieldElement,
-    whir_r1cs::IOPattern,
+    whir_r1cs::{new_whir_config_for_size, IOPattern, WhirConfig},
 };
 use {
     crate::{

@@ -84,28 +84,12 @@ impl WhirR1CSScheme {
             m,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
-            whir_config_row: Self::new_whir_config_for_size(m_0),
-            whir_config_col: Self::new_whir_config_for_size(m),
-            whir_config_a_num_terms: Self::new_whir_config_for_size(next_power_of_two(
+            whir_config_row: new_whir_config_for_size(m_0),
+            whir_config_col: new_whir_config_for_size(m),
+            whir_config_a_num_terms: new_whir_config_for_size(next_power_of_two(
                 r1cs.a().matrix.num_entries(),
             )),
         }
-    }
-
-    pub fn new_whir_config_for_size(num_variables: usize) -> WhirConfig {
-        let mv_params = MultivariateParameters::new(num_variables);
-        let whir_params = ProtocolParameters {
-            initial_statement:     true,
-            security_level:        128,
-            pow_bits:              default_max_pow(num_variables, 1),
-            folding_factor:        FoldingFactor::Constant(4),
-            leaf_hash_params:      (),
-            two_to_one_params:     (),
-            soundness_type:        SoundnessType::ConjectureList,
-            _pow_parameters:       Default::default(),
-            starting_log_inv_rate: 1,
-        };
-        WhirConfig::new(mv_params, whir_params)
     }
 
     #[instrument(skip_all)]
@@ -389,4 +373,20 @@ pub fn run_whir_pcs_verifier(
         .context("while verifying WHIR")?;
 
     Ok((folding_randomness, deferred, claimed_sums))
+}
+
+pub fn new_whir_config_for_size(num_variables: usize) -> WhirConfig {
+    let mv_params = MultivariateParameters::new(num_variables);
+    let whir_params = ProtocolParameters {
+        initial_statement:     true,
+        security_level:        128,
+        pow_bits:              default_max_pow(num_variables, 1),
+        folding_factor:        FoldingFactor::Constant(4),
+        leaf_hash_params:      (),
+        two_to_one_params:     (),
+        soundness_type:        SoundnessType::ConjectureList,
+        _pow_parameters:       Default::default(),
+        starting_log_inv_rate: 1,
+    };
+    WhirConfig::new(mv_params, whir_params)
 }

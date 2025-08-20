@@ -2,9 +2,11 @@ use {
     crate::{
         memory::{EValuesForMatrix, Memory},
         utilities::matrix::SparkMatrix,
+        whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs},
     },
     anyhow::Result,
     noir_r1cs::{
+        new_whir_config_for_size,
         utils::{
             sumcheck::{eval_qubic_poly, sumcheck_fold_map_reduce},
             HALF,
@@ -15,6 +17,10 @@ use {
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
     },
+    whir::{
+        poly_utils::multilinear::MultilinearPoint,
+        whir::{committer::CommitmentWriter, utils::HintSerialize},
+    },
 };
 
 pub fn prove_spark_for_single_matrix(
@@ -23,9 +29,22 @@ pub fn prove_spark_for_single_matrix(
     memory: Memory,
     e_values: EValuesForMatrix,
     claimed_value: FieldElement,
+    whir_configs: &SPARKWHIRConfigs,
 ) -> Result<()> {
+    let committer = CommitmentWriter::new(whir_configs.a.clone());
+    let val_witness = commit_to_vector(&committer, merlin, matrix.coo.val.clone());
+
     let mles = [matrix.coo.val.clone(), e_values.e_rx, e_values.e_ry];
-    run_spark_sumcheck(merlin, mles, claimed_value)?;
+    let (sumcheck_final_folds, folding_randomness) =
+        run_spark_sumcheck(merlin, mles, claimed_value)?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.clone()),
+        sumcheck_final_folds[0],
+        whir_configs.a.clone(),
+        val_witness,
+    )?;
     Ok(())
 }
 
@@ -96,6 +115,7 @@ pub fn run_spark_sumcheck(
     let folded_v1 = m1[0] + (m1[1] - m1[0]) * sumcheck_randomness[0];
     let folded_v2 = m2[0] + (m2[1] - m2[0]) * sumcheck_randomness[0];
 
+    merlin.hint::<Vec<FieldElement>>(&[folded_v0, folded_v1, folded_v2].to_vec())?;
     Ok((
         [folded_v0, folded_v1, folded_v2],
         sumcheck_randomness_accumulator,
