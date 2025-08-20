@@ -7,6 +7,7 @@ use {
         utilities::{create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs},
         whir::create_whir_configs,
     },
+    std::{fs::File, io::Write},
 };
 
 fn main() -> Result<()> {
@@ -30,6 +31,13 @@ fn main() -> Result<()> {
         request.claimed_values.a,
         &spark_whir_configs,
     )?;
+
+    let spark_transcript = merlin.narg_string();
+    let mut spark_transcript_file = File::create("spark/spark-prover/spark_transcript")
+        .context("Error: Failed to create the spark transcript file")?;
+    spark_transcript_file
+        .write_all(serde_json::to_string(&spark_transcript).unwrap().as_bytes())
+        .expect("Writing gnark parameters to a file failed");
 
     Ok(())
 }
