@@ -330,12 +330,12 @@ func runWhir(
 	return
 }
 
-func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes [][]uints.U8, authPaths [][][]uints.U8, rootHash frontend.Variable) error {
+func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes []frontend.Variable, authPaths [][]frontend.Variable, rootHash frontend.Variable) error {
 	numOfLeavesProved := len(leaves)
 	for i := range numOfLeavesProved {
 		treeHeight := len(authPaths[i]) + 1
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
-		leafSiblingHash := typeConverters.LittleEndianFromUints(api, leafSiblingHashes[i])
+		leafSiblingHash := leafSiblingHashes[i]
 
 		claimedLeafHash := sc.Compress(leaves[i][0], leaves[i][1])
 		for x := range len(leaves[i]) - 2 {
@@ -352,7 +352,7 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 		for level := 1; level < treeHeight; level++ {
 			indexBit := leafIndexBits[level]
 
-			siblingHash := typeConverters.LittleEndianFromUints(api, authPaths[i][level-1])
+			siblingHash := authPaths[i][level-1]
 
 			dir := api.And(indexBit, 1)
 			left := api.Select(dir, siblingHash, currentHash)
@@ -574,27 +574,26 @@ func newMerkle(
 	hint Hint,
 	isContainer bool,
 ) Merkle {
-	var totalAuthPath = make([][][][]uints.U8, len(hint.merklePaths))
+	var totalAuthPath = make([][][]frontend.Variable, len(hint.merklePaths))
 	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(hint.merklePaths))
+	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.merklePaths))
 	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
 
 	for i, merkle_path := range hint.merklePaths {
 		var numOfLeavesProved = len(merkle_path.LeafIndexes)
 		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
-		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
+		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
-		totalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
+		totalLeafSiblingHashes[i] = make([]frontend.Variable, numOfLeavesProved)
 
 		for j := range numOfLeavesProved {
-			totalAuthPath[i][j] = make([][]uints.U8, treeHeight)
+			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
 
-			for z := range treeHeight {
-				totalAuthPath[i][j][z] = make([]uints.U8, 32)
-			}
+			// for z := range treeHeight {
+			// 	totalAuthPath[i][j][z] = make([]uints.U8, 32)
+			// }
 			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
-			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
 
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
@@ -605,19 +604,19 @@ func newMerkle(
 			authPathsTemp[0] = utilities.Reverse(prevPath)
 
 			for j := range totalAuthPath[i][0] {
-				totalAuthPath[i][0][j] = uints.NewU8Array(authPathsTemp[0][j].KeccakDigest[:])
+				totalAuthPath[i][0][j] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[0][j].KeccakDigest[:])
 			}
 
 			for j := 1; j < numOfLeavesProved; j++ {
 				prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
 				authPathsTemp[j] = utilities.Reverse(prevPath)
 				for z := 0; z < treeHeight; z++ {
-					totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
+					totalAuthPath[i][j][z] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[j][z].KeccakDigest[:])
 				}
 			}
 
 			for z := range numOfLeavesProved {
-				totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
+				totalLeafSiblingHashes[i][z] = typeConverters.LittleEndianUint8ToBigInt(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
 				for j := range hint.stirAnswers[i][z] {
 					input := hint.stirAnswers[i][z][j]
@@ -638,8 +637,8 @@ func newMerkle(
 type Merkle struct {
 	Leaves            [][][]frontend.Variable
 	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
+	LeafSiblingHashes [][]frontend.Variable
+	AuthPaths         [][][]frontend.Variable
 }
 
 func new_whir_params(cfg WHIRConfig) WHIRParams {

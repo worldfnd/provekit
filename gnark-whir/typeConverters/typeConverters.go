@@ -80,3 +80,14 @@ func ByteArrToVarArr(uint8Arr []uint8) []frontend.Variable {
 	}
 	return frontendArr
 }
+
+func LittleEndianUint8ToBigInt(bytes []uint8) *big.Int {
+	reversed := make([]byte, len(bytes))
+	for i, b := range bytes {
+		reversed[len(bytes)-1-i] = b
+	}
+
+	result := new(big.Int)
+	result.SetBytes(reversed)
+	return result
+}
