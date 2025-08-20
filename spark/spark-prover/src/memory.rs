@@ -14,15 +14,15 @@ pub struct Memory {
 
 #[derive(Debug)]
 pub struct EValuesForMatrix {
-    e_rx: Vec<FieldElement>,
-    e_ry: Vec<FieldElement>,
+    pub e_rx: Vec<FieldElement>,
+    pub e_ry: Vec<FieldElement>,
 }
 
 #[derive(Debug)]
 pub struct EValues {
-    a: EValuesForMatrix,
-    b: EValuesForMatrix,
-    c: EValuesForMatrix,
+    pub a: EValuesForMatrix,
+    pub b: EValuesForMatrix,
+    pub c: EValuesForMatrix,
 }
 
 pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
