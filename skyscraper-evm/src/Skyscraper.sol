@@ -50,6 +50,12 @@ contract Skyscraper {
     uint256 internal constant BYTES_MASK_HIGH =
         0x8080808080808080808080808080808080808080808080808080808080808080;
 
+    function compress(uint256 l, uint256 r) public pure returns (uint256) {
+        uint256 t = l;
+        (l, r) = permute(l, r);
+        return addmod(t, l, P);
+    }
+
     // SkyscraperV2 over Bn254 scalar field with no Montgomery factor.
     // Requires l and r to be in the range [0, P-1].
     function permute(
