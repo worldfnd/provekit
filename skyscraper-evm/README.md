@@ -6,8 +6,8 @@ It comes in two flavors: `compress` and `compress_sigma`. The former has $σ = 1
 
 The gas costs are approximately 1665 and 1906 gas respectively. Compare with other 64 byte to 32 byte hash functions:
 
-* SkyscraperV2: 1665 gas.
-* SkyscraperV2 native friendly: 1906 gas.
+* SkyscraperV2: 1557 gas.
+* SkyscraperV2 native friendly: 1798 gas.
 * PosseidonV2: 14,934 gas [1]
 * Posseidon: 21,124 gas [2]
 * Keccak256: 266 gas
