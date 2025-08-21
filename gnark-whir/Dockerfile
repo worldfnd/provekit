@@ -1,5 +1,8 @@
 FROM golang:1.23.3-alpine AS builder
 
+ARG TARGETOS
+ARG TARGETARCH
+
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -13,14 +16,13 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
     -o verifier-server \
     ./cmd/server
 
 FROM alpine:latest
 
-# Install Python and required packages
 RUN apk add --no-cache \
     ca-certificates \
     python3 \
@@ -28,23 +30,16 @@ RUN apk add --no-cache \
     wget \
     && rm -rf /var/cache/apk/*
 
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
-
 WORKDIR /app
 
-# Copy the Go binary
 COPY --from=builder /app/verifier-server .
 
-# Copy the scripts folder
 COPY scripts/ .
 
-# Set proper permissions (AFTER copying scripts)
-RUN chown -R appuser:appgroup /app && \
-    chmod +x start.sh
-
-# Switch to non-root user
-USER appuser
+# Set proper permissions (AFTER copying scripts and binary)
+RUN mkdir -p /app/keys && \
+    chmod +x start.sh && \
+    chmod +x verifier-server
 
 EXPOSE 3000
 
@@ -53,4 +48,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/ping || exit 1
 
 # Run the start script
-ENTRYPOINT ["./start.sh"]
+CMD ["./start.sh"]

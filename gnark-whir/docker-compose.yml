@@ -3,21 +3,20 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: gnark-verifier
+      args:
+        TARGETOS: linux
+        TARGETARCH: arm64
+    container_name: gnark-whir-verifier
     ports:
       - "3000:3000"
-    environment:
-      - GOMEMLIMIT=0
-      - GOGC=50
-      - GOMAXPROCS=0
     deploy:
       resources:
         limits:
-          memory: "0"    # Fixed: string value
-          cpus: "0"      # Fixed: string value
+          memory: 20G
         reservations:
-          memory: "1G"   # Fixed: string value
-          cpus: "1.0"    # Fixed: string value
+          memory: 10G
+    memswap_limit: 20G
+    shm_size: 3g
     ulimits:
       nofile:
         soft: 65536
@@ -25,7 +24,6 @@ services:
       nproc:
         soft: 32768
         hard: 32768
-    shm_size: "2g"       # Fixed: string value
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/ping"]
@@ -35,19 +33,9 @@ services:
       start_period: 5s
     volumes:
       - ./keys:/app/keys
-      - ./logs:/app/logs
     networks:
-      - verifier-network
+      - gnark-network
 
 networks:
-  verifier-network:
+  gnark-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-
-volumes:
-  keys:
-    driver: local
-  logs:
-    driver: local
