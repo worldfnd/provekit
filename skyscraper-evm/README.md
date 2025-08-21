@@ -9,7 +9,7 @@ The gas costs are approximately 1665 and 1906 gas respectively. Compare with oth
 * SkyscraperV2: 1665 gas.
 * SkyscraperV2 native friendly: 1906 gas.
 * PosseidonV2: 14,934 gas [1]
-* Posseidon: 13,488 gas [2]
+* Posseidon: 21,124 gas [2]
 * Keccak256: 266 gas
 * Sha256: 495 gas
 * Ripemd160: 1263 gas
