@@ -45,9 +45,9 @@ contract Skyscraper {
     uint256 internal constant RC_16 =
         13066217995902074168664295654459329310074418852039335279433003242098078040116;
 
-    uint256 internal constant BYTES_MASK_LOW =
+    uint256 internal constant MASK_LOW =
         0x7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f;
-    uint256 internal constant BYTES_MASK_HIGH =
+    uint256 internal constant MASK_HIGH =
         0x8080808080808080808080808080808080808080808080808080808080808080;
 
     function compress(uint256 l, uint256 r) public pure returns (uint256) {
@@ -64,17 +64,43 @@ contract Skyscraper {
     ) public pure returns (uint256, uint256) {
         (l, r) = ss(l, r, 0, RC_1);
         (l, r) = ss(l, r, RC_2, RC_3);
-        (l, r) = ss(l, r, RC_4, RC_5);
+        (l, r) = ss_reduce_l(l, r, RC_4, RC_5);
         (l, r) = bb(l, r, RC_6, RC_7);
-        (l, r) = ss(l, r, RC_8, RC_9);
+        (l, r) = ss_reduce_l(l, r, RC_8, RC_9);
         (l, r) = bb(l, r, RC_10, RC_11);
         (l, r) = ss(l, r, RC_12, RC_13);
         (l, r) = ss(l, r, RC_14, RC_15);
-        (l, r) = ss(l, r, RC_16, 0);
+        (l, r) = ss_reduce_lr(l, r, RC_16, 0);
         return (l, r);
     }
 
     function ss(
+        uint256 l,
+        uint256 r,
+        uint256 rc_a,
+        uint256 rc_b
+    ) public pure returns (uint256, uint256) {
+        r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
+        l = rc_b + addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P);
+        return (l, r);
+    }
+
+    function ss_reduce_l(
+        uint256 l,
+        uint256 r,
+        uint256 rc_a,
+        uint256 rc_b
+    ) public pure returns (uint256, uint256) {
+        r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
+        l = addmod(
+            rc_b,
+            addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P),
+            P
+        );
+        return (l, r);
+    }
+
+    function ss_reduce_lr(
         uint256 l,
         uint256 r,
         uint256 rc_a,
@@ -93,34 +119,53 @@ contract Skyscraper {
         return (l, r);
     }
 
+    // Requires l to be reduced.
     function bb(
         uint256 l,
         uint256 r,
         uint256 rc_a,
         uint256 rc_b
     ) public pure returns (uint256, uint256) {
-        r = addmod(rc_a, addmod(bar(l), r, P), P);
-        l = addmod(rc_b, addmod(bar(r), l, P), P);
+        uint256 x = (l << 128) | (l >> 128); // Rotate left by 128 bits
+        uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7); // Bytewise rotate left 1
+        uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
+        uint256 x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
+        uint256 x4 = ((x3 & MASK_LOW) << 1) | ((x3 & MASK_HIGH) >> 7);
+        x = x1 ^ ((~x2) & x3 & x4);
+        r = addmod(rc_a, addmod(x, r, P), P);
+
+        x = (r << 128) | (r >> 128); // Rotate left by 128 bits
+        x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7); // Bytewise rotate left 1
+        x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
+        x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
+        x4 = ((x3 & MASK_LOW) << 1) | ((x3 & MASK_HIGH) >> 7);
+        x = x1 ^ ((~x2) & x3 & x4);
+        l = rc_b + addmod(x, l, P);
         return (l, r);
     }
 
     function bar(uint256 x) public pure returns (uint256) {
-        return sbox((x << 128) | (x >> 128)) % P;
+        x = (x << 128) | (x >> 128); // Rotate left by 128 bits
+        uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7); // Bytewise rotate left 1
+        uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
+        uint256 x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
+        uint256 x4 = ((x3 & MASK_LOW) << 1) | ((x3 & MASK_HIGH) >> 7);
+        return x1 ^ ((~x2) & x3 & x4);
     }
 
     // SWAR 32-byte parallel SBOX.
     function sbox(uint256 x) public pure returns (uint256) {
-        uint256 x1 = rot1(x);
-        uint256 x2 = rot1(x1);
-        uint256 x3 = rot1(x2);
-        uint256 x4 = rot1(x3);
+        uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7);
+        uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
+        uint256 x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
+        uint256 x4 = ((x3 & MASK_LOW) << 1) | ((x3 & MASK_HIGH) >> 7);
         return x1 ^ ((~x2) & x3 & x4);
     }
 
     // Bitwise rotate a byte left one place, rotates 32 bytes in parallel using SWAR.
     function rot1(uint256 x) public pure returns (uint256) {
-        uint256 left = (x & BYTES_MASK_LOW) << 1;
-        uint256 right = (x & BYTES_MASK_HIGH) >> 7;
+        uint256 left = (x & MASK_LOW) << 1;
+        uint256 right = (x & MASK_HIGH) >> 7;
         return left | right;
     }
 }
