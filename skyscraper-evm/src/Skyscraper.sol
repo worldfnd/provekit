@@ -197,7 +197,7 @@ contract Skyscraper {
         uint256 x1 = ((x & MASK_L1) << 1) | ((x & MASK_H1) >> 7); // Bytewise rotate left 1
         uint256 x2 = ((x1 & MASK_L1) << 1) | ((x1 & MASK_H1) >> 7);
         uint256 x3 = x1 & x2;
-        uint256 x4 = ((x3 & MASK_L2) << 2) | ((x3 & MASK_H2) >> 6);
+        uint256 x4 = ((x3 & MASK_L2) << 2) | ((x3 & MASK_H2) >> 6); // Bytewise rotate left 2
         return x1 ^ ((~x2) & x4);
     }
 
@@ -205,10 +205,8 @@ contract Skyscraper {
     function sbox(uint256 x) internal pure returns (uint256) {
         uint256 x1 = ((x & MASK_L1) << 1) | ((x & MASK_H1) >> 7);
         uint256 x2 = ((x1 & MASK_L1) << 1) | ((x1 & MASK_H1) >> 7);
-
         uint256 t = x & x1;
         t = ((t & MASK_L3) << 3) | ((t & MASK_H3) >> 5);
-
         return x1 ^ ((~x2) & t);
     }
 
