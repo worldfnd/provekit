@@ -9,7 +9,7 @@ use {
                 sumcheck_fold_map_reduce, SumcheckIOPattern,
             },
             zk_utils::{
-                create_masked_polynomial, generate_mask, generate_random_multilinear_polynomial,
+                create_masked_polynomial, generate_random_multilinear_polynomial,
             },
             HALF,
         },
@@ -134,7 +134,7 @@ impl WhirR1CSScheme {
         let witness_polynomial_evals = EvaluationsList::new(z.clone());
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
-            batch_commmit_to_polynomial(
+            batch_commit_to_polynomial(
                 self.m,
                 &self.whir_witness,
                 &witness_polynomial_evals,
@@ -348,7 +348,7 @@ fn prepare_statement_for_witness_verifier<const N: usize>(
     statement_verifier
 }
 
-pub fn batch_commmit_to_polynomial(
+pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
     witness: &EvaluationsList<FieldElement>,
@@ -358,12 +358,12 @@ pub fn batch_commmit_to_polynomial(
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
 ) {
-    let mask = generate_mask(witness.evals().len());
+    let mask = generate_random_multilinear_polynomial(witness.num_variables());
     let masked_polynomial = create_masked_polynomial(witness, &mask);
 
     let masked_polynomial_coeff = masked_polynomial.to_coeffs();
 
-    let random_polynomial_eval = generate_random_multilinear_polynomial(m);
+    let random_polynomial_eval = EvaluationsList::new(generate_random_multilinear_polynomial(m));
     let random_polynomial_coeff = random_polynomial_eval.to_coeffs();
 
     let committer = CommitmentWriter::new(whir_config.clone());
@@ -425,7 +425,7 @@ pub fn run_zk_sumcheck_prover(
     ));
     let blinding_polynomial_variables = blinding_polynomial_for_commiting.num_variables();
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
-        batch_commmit_to_polynomial(
+        batch_commit_to_polynomial(
             blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
             &blinding_polynomial_for_commiting,
