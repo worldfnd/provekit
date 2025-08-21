@@ -1,66 +1,17 @@
-## Foundry
+## Skyscraper in EVM
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This is an optimized EVM implementation of SkyscraperV2 [0].
 
-Foundry consists of:
+It comes in two flavors: `compress` and `compress_sigma`. The former has $σ = 1$ and the latter sets $σ$ to the value typical for Montgomery multiplication (which gives better native performance).
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+The gas costs are approximately 1665 and 1906 gas respectively.
 
-## Documentation
+* Skyscraper: 1665 gas.
+* PosseidonV2: 14,934 gas [1]
+* Posseidon: 13,488 gas [2]
 
-https://book.getfoundry.sh/
+Analysis of the EVM assembly code shows that there is at most around 200 gas that can be optimized away with manual stack management. Despite not using inline assembly and manual inlining, the current implementation is already very close to the theoretical minimum gas cost when compiled with optimizations.
 
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+[0]: https://eprint.iacr.org/2025/058
+[1]: https://github.com/zemse/poseidon2-evm
+[2]: https://github.com/chancehudson/poseidon-solidity
