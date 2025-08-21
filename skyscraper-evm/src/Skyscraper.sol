@@ -61,7 +61,7 @@ contract Skyscraper {
     function permute(
         uint256 l,
         uint256 r
-    ) public pure returns (uint256, uint256) {
+    ) internal pure returns (uint256, uint256) {
         (l, r) = ss(l, r, 0, RC_1);
         (l, r) = ss(l, r, RC_2, RC_3);
         (l, r) = ss_reduce_l(l, r, RC_4, RC_5);
@@ -70,7 +70,7 @@ contract Skyscraper {
         (l, r) = bb(l, r, RC_10, RC_11);
         (l, r) = ss(l, r, RC_12, RC_13);
         (l, r) = ss(l, r, RC_14, RC_15);
-        (l, r) = ss_reduce_lr(l, r, RC_16, 0);
+        (l, r) = ss(l, r, RC_16, 0);
         return (l, r);
     }
 
@@ -79,9 +79,11 @@ contract Skyscraper {
         uint256 r,
         uint256 rc_a,
         uint256 rc_b
-    ) public pure returns (uint256, uint256) {
-        r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
-        l = rc_b + addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P);
+    ) internal pure returns (uint256, uint256) {
+        unchecked {
+            r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
+            l = rc_b + addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P);
+        }
         return (l, r);
     }
 
@@ -90,27 +92,10 @@ contract Skyscraper {
         uint256 r,
         uint256 rc_a,
         uint256 rc_b
-    ) public pure returns (uint256, uint256) {
-        r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
-        l = addmod(
-            rc_b,
-            addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P),
-            P
-        );
-        return (l, r);
-    }
-
-    function ss_reduce_lr(
-        uint256 l,
-        uint256 r,
-        uint256 rc_a,
-        uint256 rc_b
-    ) public pure returns (uint256, uint256) {
-        r = addmod(
-            rc_a,
-            addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P),
-            P
-        );
+    ) internal pure returns (uint256, uint256) {
+        unchecked {
+            r = rc_a + addmod(mulmod(mulmod(l, l, P), SIGMA_INV, P), r, P);
+        }
         l = addmod(
             rc_b,
             addmod(mulmod(mulmod(r, r, P), SIGMA_INV, P), l, P),
@@ -125,7 +110,7 @@ contract Skyscraper {
         uint256 r,
         uint256 rc_a,
         uint256 rc_b
-    ) public pure returns (uint256, uint256) {
+    ) internal pure returns (uint256, uint256) {
         uint256 x = (l << 128) | (l >> 128); // Rotate left by 128 bits
         uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7); // Bytewise rotate left 1
         uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
@@ -140,11 +125,13 @@ contract Skyscraper {
         x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
         x4 = ((x3 & MASK_LOW) << 1) | ((x3 & MASK_HIGH) >> 7);
         x = x1 ^ ((~x2) & x3 & x4);
-        l = rc_b + addmod(x, l, P);
+        unchecked {
+            l = rc_b + addmod(x, l, P);
+        }
         return (l, r);
     }
 
-    function bar(uint256 x) public pure returns (uint256) {
+    function bar(uint256 x) internal pure returns (uint256) {
         x = (x << 128) | (x >> 128); // Rotate left by 128 bits
         uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7); // Bytewise rotate left 1
         uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
@@ -154,7 +141,7 @@ contract Skyscraper {
     }
 
     // SWAR 32-byte parallel SBOX.
-    function sbox(uint256 x) public pure returns (uint256) {
+    function sbox(uint256 x) internal pure returns (uint256) {
         uint256 x1 = ((x & MASK_LOW) << 1) | ((x & MASK_HIGH) >> 7);
         uint256 x2 = ((x1 & MASK_LOW) << 1) | ((x1 & MASK_HIGH) >> 7);
         uint256 x3 = ((x2 & MASK_LOW) << 1) | ((x2 & MASK_HIGH) >> 7);
@@ -163,7 +150,7 @@ contract Skyscraper {
     }
 
     // Bitwise rotate a byte left one place, rotates 32 bytes in parallel using SWAR.
-    function rot1(uint256 x) public pure returns (uint256) {
+    function rot1(uint256 x) internal pure returns (uint256) {
         uint256 left = (x & MASK_LOW) << 1;
         uint256 right = (x & MASK_HIGH) >> 7;
         return left | right;

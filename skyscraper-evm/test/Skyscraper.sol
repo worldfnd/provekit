@@ -57,11 +57,11 @@ contract SkyscraperTest is Test, Skyscraper {
     function test_zero() public {
         (uint256 l, uint256 r) = permute(0, 0);
         assertEq(
-            l,
+            l % P,
             5793276905781313965269111743763131906666794041798623267477617572701829069290
         );
         assertEq(
-            r,
+            r % P,
             12296274483727574983376829575121280934973829438414198530604912453551798647077
         );
     }
