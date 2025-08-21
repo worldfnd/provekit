@@ -29,7 +29,7 @@ contract SkyscraperTest is Test, Skyscraper {
     function test_ss_2() public {
         uint256 l = 11818428481613126259506041491792444971306025298632020312923851211664140080269;
         uint256 r = 16089984100220651117533376273482359701319211672522891227502963383930673183481;
-        (uint256 l_out, uint256 r_out) = ss(l, r, RC_2, RC_3);
+        (uint256 l_out, uint256 r_out) = sss(l, r, RC_2, RC_3);
         assertEq(
             l_out % P,
             2897520731550929941842826131888578795995028656093850302425034320680216166225
@@ -55,7 +55,7 @@ contract SkyscraperTest is Test, Skyscraper {
     }
 
     function test_zero() public {
-        (uint256 l, uint256 r) = permute(0, 0);
+        (uint256 l, uint256 r) = permute_sigma(0, 0);
         assertEq(
             l % P,
             5793276905781313965269111743763131906666794041798623267477617572701829069290
@@ -77,6 +77,17 @@ contract SkyscraperTest is Test, Skyscraper {
         emit log_named_uint("gas per call", gasUsed / 1000);
     }
 
+    function test_bench_ss_sigma() public {
+        uint256 startGas = gasleft();
+        uint256 l = 0;
+        uint256 r = 0;
+        for (uint256 i = 0; i < 1000; i++) {
+            (l, r) = sss(l, r, RC_2, RC_3);
+        }
+        uint256 gasUsed = startGas - gasleft();
+        emit log_named_uint("gas per call", gasUsed / 1000);
+    }
+
     function test_bench_bb() public {
         uint256 startGas = gasleft();
         uint256 l = 0;
@@ -88,23 +99,23 @@ contract SkyscraperTest is Test, Skyscraper {
         emit log_named_uint("gas per call", gasUsed / 1000);
     }
 
-    function test_bench_permute() public {
-        uint256 startGas = gasleft();
-        uint256 l = RC_9;
-        uint256 r = RC_12;
-        for (uint256 i = 0; i < 1000; i++) {
-            (l, r) = permute(l, r);
-        }
-        uint256 gasUsed = startGas - gasleft();
-        emit log_named_uint("gas per call", gasUsed / 1000);
-    }
-
     function test_bench_compress() public {
         uint256 startGas = gasleft();
         uint256 l = RC_5;
         uint256 r = RC_8;
         for (uint256 i = 0; i < 1000; i++) {
             l = compress(l, r);
+        }
+        uint256 gasUsed = startGas - gasleft();
+        emit log_named_uint("gas per call", gasUsed / 1000);
+    }
+
+    function test_bench_compress_sigma() public {
+        uint256 startGas = gasleft();
+        uint256 l = RC_5;
+        uint256 r = RC_8;
+        for (uint256 i = 0; i < 1000; i++) {
+            l = compress_sigma(l, r);
         }
         uint256 gasUsed = startGas - gasleft();
         emit log_named_uint("gas per call", gasUsed / 1000);

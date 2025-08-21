@@ -56,6 +56,15 @@ contract Skyscraper {
         return addmod(t, l, P);
     }
 
+    function compress_sigma(
+        uint256 l,
+        uint256 r
+    ) public pure returns (uint256) {
+        uint256 t = l;
+        (l, r) = permute_sigma(l, r);
+        return addmod(t, l, P);
+    }
+
     // SkyscraperV2 over Bn254 scalar field with no Montgomery factor.
     // Requires l and r to be in the range [0, P-1].
     function permute(
@@ -74,7 +83,51 @@ contract Skyscraper {
         return (l, r);
     }
 
+    // SkyscraperV2 over Bn254 scalar field with Montgomery factor.
+    // Requires l and r to be in the range [0, P-1].
+    function permute_sigma(
+        uint256 l,
+        uint256 r
+    ) internal pure returns (uint256, uint256) {
+        (l, r) = sss(l, r, 0, RC_1);
+        (l, r) = sss(l, r, RC_2, RC_3);
+        (l, r) = sss_reduce_l(l, r, RC_4, RC_5);
+        (l, r) = bb(l, r, RC_6, RC_7);
+        (l, r) = sss_reduce_l(l, r, RC_8, RC_9);
+        (l, r) = bb(l, r, RC_10, RC_11);
+        (l, r) = sss(l, r, RC_12, RC_13);
+        (l, r) = sss(l, r, RC_14, RC_15);
+        (l, r) = sss(l, r, RC_16, 0);
+        return (l, r);
+    }
+
     function ss(
+        uint256 l,
+        uint256 r,
+        uint256 rc_a,
+        uint256 rc_b
+    ) internal pure returns (uint256, uint256) {
+        unchecked {
+            r = rc_a + addmod(mulmod(l, l, P), r, P);
+            l = rc_b + addmod(mulmod(r, r, P), l, P);
+        }
+        return (l, r);
+    }
+
+    function ss_reduce_l(
+        uint256 l,
+        uint256 r,
+        uint256 rc_a,
+        uint256 rc_b
+    ) internal pure returns (uint256, uint256) {
+        unchecked {
+            r = rc_a + addmod(mulmod(l, l, P), r, P);
+        }
+        l = addmod(rc_b, addmod(mulmod(r, r, P), l, P), P);
+        return (l, r);
+    }
+
+    function sss(
         uint256 l,
         uint256 r,
         uint256 rc_a,
@@ -87,7 +140,7 @@ contract Skyscraper {
         return (l, r);
     }
 
-    function ss_reduce_l(
+    function sss_reduce_l(
         uint256 l,
         uint256 r,
         uint256 rc_a,
