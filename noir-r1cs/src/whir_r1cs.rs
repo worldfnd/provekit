@@ -8,9 +8,7 @@ use {
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
                 sumcheck_fold_map_reduce, SumcheckIOPattern,
             },
-            zk_utils::{
-                create_masked_polynomial, generate_random_multilinear_polynomial,
-            },
+            zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
         FieldElement, R1CS,
