@@ -131,4 +131,26 @@ contract SkyscraperTest is Test, Skyscraper {
         uint256 gasUsed = startGas - gasleft();
         emit log_named_uint("gas per call", gasUsed / 1000);
     }
+
+    function test_bench_sha256() public {
+        uint256 startGas = gasleft();
+        uint256 l = RC_5;
+        uint256 r = RC_8;
+        for (uint256 i = 0; i < 1000; i++) {
+            l = uint256(sha256(abi.encodePacked(l, r)));
+        }
+        uint256 gasUsed = startGas - gasleft();
+        emit log_named_uint("gas per call", gasUsed / 1000);
+    }
+
+    function test_bench_ripemd160() public {
+        uint256 startGas = gasleft();
+        uint256 l = RC_5;
+        uint256 r = RC_8;
+        for (uint256 i = 0; i < 1000; i++) {
+            l = uint256(bytes32(ripemd160(abi.encodePacked(l, r))));
+        }
+        uint256 gasUsed = startGas - gasleft();
+        emit log_named_uint("gas per call", gasUsed / 1000);
+    }
 }
