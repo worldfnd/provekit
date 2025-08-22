@@ -1,0 +1,7 @@
+[package]
+name = "skyscraper_noir_bench"
+type = "bin"
+authors = [""]
+
+[dependencies]
+skyscraper_noir = { path = "../skyscraper-noir" }
