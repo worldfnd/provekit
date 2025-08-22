@@ -48,10 +48,10 @@ type WHIRConfig struct {
 }
 
 type Hints struct {
-	ColHints Hint
+	colHints Hint
 }
 
 type Hint struct {
-	MerklePaths []MultiPath[KeccakDigest]
-	StirAnswers [][][]Fp256
+	merklePaths []MultiPath[KeccakDigest]
+	stirAnswers [][][]Fp256
 }

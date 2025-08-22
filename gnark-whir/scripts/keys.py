@@ -12,8 +12,8 @@ KEYS_DIR = Path("./keys")
 KEYS = [
     "basic2_vk.bin",
     "basic2_pk.bin", 
-    # "agecheck_vk.bin",
-    # "agecheck_pk.bin",
+    "age_check_vk.bin",
+    "age_check_pk.bin",
 ]
 
 def download_key(filename):

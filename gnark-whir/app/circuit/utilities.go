@@ -37,41 +37,40 @@ func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skysc
 	return sc, arthur, uapi, nil
 }
 
-func KeysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
 	pkFile, err := os.Open(pkPath)
-	fmt.Println("pkPath", pkPath)
+	log.Printf("pkPath: %s", pkPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open proving key file")
+		return nil, nil, fmt.Errorf("failed to open proving key file: %w", err)
 	}
 	defer func(pkFile *os.File) {
 		err := pkFile.Close()
 		if err != nil {
-			log.Printf("failed to close proving key file")
+			log.Printf("failed to close proving key file: %v", err)
 		}
 	}(pkFile)
 
 	pk := groth16.NewProvingKey(ecc.BN254)
 	_, err = pk.ReadFrom(pkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore proving key")
-
+		return nil, nil, fmt.Errorf("failed to restore proving key: %w", err)
 	}
 
 	vkFile, err := os.Open(vkPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open verifying key file")
+		return nil, nil, fmt.Errorf("failed to open verifying key file: %w", err)
 	}
 	defer func(vkFile *os.File) {
 		err := vkFile.Close()
 		if err != nil {
-			log.Printf("failed to close verifying key file")
+			log.Printf("failed to close verifying key file: %v", err)
 		}
 	}(vkFile)
 
 	vk := groth16.NewVerifyingKey(ecc.BN254)
 	_, err = vk.ReadFrom(vkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to restore verifying key")
+		return nil, nil, fmt.Errorf("failed to restore verifying key: %w", err)
 	}
 
 	return pk, vk, nil

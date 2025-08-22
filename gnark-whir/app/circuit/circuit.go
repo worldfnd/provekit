@@ -141,7 +141,7 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    contLinearStatementEvaluations,
 		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.ColHints, true),
+		SpartanMerkle:                 newMerkle(hints.colHints, true),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -152,20 +152,20 @@ func verifyCircuit(
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
-		log.Printf("Failed to compile circuit")
-		return fmt.Errorf("failed to compile circuit")
+		log.Printf("Failed to compile circuit: %v", err)
+		return fmt.Errorf("failed to compile circuit: %w", err)
 	}
 	if outputCcsPath != "" {
 		ccsFile, err := os.Create(outputCcsPath)
 		if err != nil {
-			log.Printf("Cannot create ccs file")
+			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
 		} else {
 			_, err = ccs.WriteTo(ccsFile)
 			if err != nil {
-				log.Printf("Cannot write ccs file")
+				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
 			}
 		}
-		log.Printf("ccs written to")
+		log.Printf("ccs written to %s", outputCcsPath)
 	}
 
 	if pk == nil || vk == nil {
@@ -188,7 +188,7 @@ func verifyCircuit(
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.ColHints, false),
+		SpartanMerkle:                 newMerkle(hints.colHints, false),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,

@@ -123,7 +123,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, vkPath string, pkPath str
 	var vk *groth16.VerifyingKey
 	if pkPath != "" && vkPath != "" {
 		log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
-		restoredPk, restoredVk, err := KeysFromFiles(pkPath, vkPath)
+		restoredPk, restoredVk, err := keysFromFiles(pkPath, vkPath)
 		if err != nil {
 			log.Printf("Failed to load keys from files: %v", err)
 			return fmt.Errorf("failed to load keys from files: %w", err)
@@ -136,9 +136,9 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, vkPath string, pkPath str
 	spartanEnd := config.WHIRConfigCol.NRounds + 1
 
 	hints := Hints{
-		ColHints: Hint{
-			MerklePaths: merklePaths[:spartanEnd],
-			StirAnswers: stirAnswers[:spartanEnd],
+		colHints: Hint{
+			merklePaths: merklePaths[:spartanEnd],
+			stirAnswers: stirAnswers[:spartanEnd],
 		},
 	}
 
