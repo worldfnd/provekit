@@ -7,7 +7,7 @@ fn posseidon2_compress(l: Field, r: Field) -> Field {
 
 fn main(l: pub Field, r: pub Field) -> pub Field {
     let mut h = l;
-    for _ in 0..10 {
+    for _ in 0..1 {
         h = compress(h, r);
     }
     h
