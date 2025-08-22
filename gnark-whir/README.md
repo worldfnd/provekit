@@ -33,7 +33,7 @@ This repository provides an HTTP API for verifying proofs.
 ### Base URL
 
 ```
-http://localhost:3000
+http://localhost:3000 (when running locally)
 ```
 
 ### Endpoints
