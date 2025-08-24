@@ -102,7 +102,12 @@ func verify(configFile []byte, r1csFile []byte, vkPath string, pkPath string, ou
 		return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 	}
 
-	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, vkPath, pkPath, outputCcsPath); err != nil {
+	pk, vk, err := circuit.GetPkAndVkFromPath(pkPath, vkPath)
+	if err != nil {
+		return fmt.Errorf("failed to get PK/VK: %w", err)
+	}
+
+	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
 		return fmt.Errorf("failed to verify circuit: %w", err)
 	}
 

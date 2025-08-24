@@ -34,6 +34,18 @@ func main() {
 				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
 			},
 			&cli.StringFlag{
+				Name:     "config_url",
+				Usage:    "Publicly downloadable URL to the config file",
+				Required: false,
+				Value:    "",
+			},
+			&cli.StringFlag{
+				Name:     "r1cs_url",
+				Usage:    "Publicly downloadable URL to the r1cs json file",
+				Required: false,
+				Value:    "",
+			},
+			&cli.StringFlag{
 				Name: "pk",
 				Usage: "Optional path to load Proving Key from (if not provided, " +
 					"PK and VK will be generated unsafely)",
@@ -75,7 +87,12 @@ func main() {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 			}
 
-			if err := circuit.PrepareAndVerifyCircuit(config, r1cs, vkPath, pkPath, outputCcsPath); err != nil {
+			pk, vk, err := circuit.GetPkAndVkFromPath(pkPath, vkPath)
+			if err != nil {
+				return fmt.Errorf("failed to get PK/VK: %w", err)
+			}
+
+			if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
 				return fmt.Errorf("failed to verify circuit: %w", err)
 			}
 
