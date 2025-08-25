@@ -4,7 +4,7 @@ use {
     spark_prover::{
         memory::{calculate_e_values_for_r1cs, calculate_memory},
         spark::prove_spark_for_single_matrix,
-        utilities::{create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs},
+        utilities::{create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs, SPARKProof},
         whir::create_whir_configs,
     },
     std::{fs::File, io::Write},
@@ -21,7 +21,8 @@ fn main() -> Result<()> {
         .context("Error: Failed to create the request object")?;
     let memory = calculate_memory(request.point_to_evaluate);
     let e_values = calculate_e_values_for_r1cs(&memory, &r1cs);
-    let mut merlin = create_io_pattern(&r1cs, &spark_whir_configs).to_prover_state();
+    let io_pattern = create_io_pattern(&r1cs, &spark_whir_configs);
+    let mut merlin = io_pattern.to_prover_state();
 
     prove_spark_for_single_matrix(
         &mut merlin,
@@ -32,11 +33,15 @@ fn main() -> Result<()> {
         &spark_whir_configs,
     )?;
 
-    let spark_transcript = merlin.narg_string();
-    let mut spark_transcript_file = File::create("spark/spark-prover/spark_transcript")
-        .context("Error: Failed to create the spark transcript file")?;
-    spark_transcript_file
-        .write_all(serde_json::to_string(&spark_transcript).unwrap().as_bytes())
+    let spark_proof = SPARKProof {
+        transcript: merlin.narg_string().to_vec(),
+        io_pattern: String::from_utf8(io_pattern.as_bytes().to_vec()).unwrap(),
+    };
+
+    let mut spark_proof_file = File::create("spark/spark-prover/spark_proof")
+        .context("Error: Failed to create the spark proof file")?;
+    spark_proof_file
+        .write_all(serde_json::to_string(&spark_proof).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
 
     Ok(())

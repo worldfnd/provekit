@@ -46,3 +46,9 @@ pub struct ClaimedValues {
     #[serde(with = "serde_ark")]
     pub c: FieldElement,
 }
+
+#[derive(Serialize)]
+pub struct SPARKProof {
+    pub transcript: Vec<u8>,
+    pub io_pattern: String,
+}
