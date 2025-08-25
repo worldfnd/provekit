@@ -55,9 +55,30 @@ jobs:
           cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
           cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
           cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
-      - name: Run Gnark verifier
+      - name: Run Gnark verifier with monitoring
         working-directory: gnark-whir
+        timeout-minutes: 45
         run: |
           go build -o gnark-verifier cmd/cli/main.go
+          
+          # Start monitoring in background
+          (
+            while true; do
+              echo "=== $(date) ==="
+              echo "Memory:"
+              free -h
+              echo "Disk:"
+              df -h
+              echo "Processes:"
+              ps aux --sort=-%mem | head -5
+              echo "=================="
+              sleep 10  # Check every 10 seconds
+            done
+          ) &
+          MONITOR_PID=$!
+          
+          # Run the main process
           ./gnark-verifier --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
-
+          
+          # Stop monitoring
+          kill $MONITOR_PID
