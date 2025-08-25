@@ -42,11 +42,11 @@ func runZKWhir(
 	batchingRandomness frontend.Variable,
 	initialOODQueries []frontend.Variable,
 	initialOODAnswers [][]frontend.Variable,
-	rootHashes []frontend.Variable,
+	rootHashes frontend.Variable,
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 
 	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
-	batchSizeLen := whirParams.BatchSize
+	// batchSizeLen := whirParams.BatchSize
 
 	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations)
 	if err != nil {
@@ -64,14 +64,20 @@ func runZKWhir(
 		}
 	}
 
-	computedFolded := combineFirstRoundLeaves(api, copyOfFirstLeaves, batchingRandomness)
+	// Replace precomputed combine with per-leaf RLC after opening round 0
+	// computedFolded := combineFirstRoundLeaves(api, copyOfFirstLeaves, batchingRandomness)
 	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)
-	roundAnswers[0] = computedFolded
+	// roundAnswers[0] = computedFolded
+
+	foldSize := 1 << whirParams.FoldingFactorArray[0]
+	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, batchingRandomness)
+	roundAnswers[0] = collapsed
+
 	for i := range len(circuit.Leaves) {
 		roundAnswers[i+1] = circuit.Leaves[i]
 	}
 
-	computedFold := computeFold(computedFolded, initialSumcheckFoldingRandomness, api)
+	computedFold := computeFold(collapsed, initialSumcheckFoldingRandomness, api)
 
 	mainRoundData := generateEmptyMainRoundData(whirParams)
 	expDomainGenerator := utilities.Exponent(api, uapi, whirParams.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<whirParams.FoldingFactorArray[0])))
@@ -104,7 +110,12 @@ func runZKWhir(
 		}
 
 		if r == 0 {
-			err = ValidateFirstRound(api, firstRound, arthur, uapi, sc, batchSizeLen, rootHashes, batchingRandomness, mainRoundData.StirChallengesPoints[r], roundAnswers[0])
+			err = VerifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
+			if err != nil {
+				return
+			}
+
+			err = utilities.IsSubset(api, uapi, arthur, mainRoundData.StirChallengesPoints[r], firstRound.LeafIndexes[0])
 			if err != nil {
 				return
 			}
@@ -570,6 +581,13 @@ func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness [
 	return utilities.DotProduct(api, append(oodAnswers, computedFold...), combinationRandomness)
 }
 
+type Merkle struct {
+	Leaves            [][][]frontend.Variable
+	LeafIndexes       [][]uints.U64
+	LeafSiblingHashes [][]frontend.Variable
+	AuthPaths         [][][]frontend.Variable
+}
+
 func newMerkle(
 	hint Hint,
 	isContainer bool,
@@ -628,13 +646,6 @@ func newMerkle(
 		LeafSiblingHashes: totalLeafSiblingHashes,
 		AuthPaths:         totalAuthPath,
 	}
-}
-
-type Merkle struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][]frontend.Variable
-	AuthPaths         [][][]frontend.Variable
 }
 
 func new_whir_params(cfg WHIRConfig) WHIRParams {

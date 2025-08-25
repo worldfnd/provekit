@@ -31,11 +31,6 @@ type MultiPath[Digest any] struct {
 	LeafIndexes            []uint64
 }
 
-type ProofElement struct {
-	A MultiPath[KeccakDigest]
-	B [][]Fp256
-}
-
 type ProofObject struct {
 	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
 }
@@ -158,7 +153,6 @@ func main() {
 			var pointer uint64
 			var truncated []byte
 
-			var first_round_merkle_paths [][]ProofElement
 			var merkle_paths []MultiPath[KeccakDigest]
 			var stir_answers [][][]Fp256
 			var deferred []Fp256
@@ -179,15 +173,6 @@ func main() {
 					}
 
 					switch string(op.Label) {
-
-					case "first_round_merkle_proof":
-						var path []ProofElement
-						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
-							bytes.NewReader(config.Transcript[start:end]),
-							&path,
-							false, false,
-						)
-						first_round_merkle_paths = append(first_round_merkle_paths, path)
 					case "merkle_proof":
 						var path MultiPath[KeccakDigest]
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -287,9 +272,9 @@ func main() {
 				vk = &restoredVk
 			}
 
-			var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &first_round_merkle_paths, &merkle_paths, &stir_answers)
+			var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merkle_paths, &stir_answers)
 
-			var witnessData = consumeWhirData(config.WHIRConfigWitness, &first_round_merkle_paths, &merkle_paths, &stir_answers)
+			var witnessData = consumeWhirData(config.WHIRConfigWitness, &merkle_paths, &stir_answers)
 
 			hints := Hints{
 				witnessHints:      witnessData,
@@ -316,30 +301,20 @@ func consumeFront[T any](slice *[]T) T {
 	return head
 }
 
-func consumeWhirData(whirConfig WHIRConfig, first_round_merkle_paths *[][]ProofElement, merkle_paths *[]MultiPath[KeccakDigest], stir_answers *[][][]Fp256) ZKHint {
+func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]MultiPath[KeccakDigest], stir_answers *[][][]Fp256) ZKHint {
 	var zkHint ZKHint
 
-	if len(*first_round_merkle_paths) > 0 && len(*stir_answers) > 0 {
-		firstRoundProof := consumeFront(first_round_merkle_paths)
-		firstRoundMerklePathsa := firstRoundProof
-
+	if len(*merkle_paths) > 0 && len(*stir_answers) > 0 {
+		firstRoundMerklePath := consumeFront(merkle_paths)
 		firstRoundStirAnswers := consumeFront(stir_answers)
 
-		var firstRoundMerklePaths []MultiPath[KeccakDigest]
-		var firstRoundStirAnswersConverted [][][]Fp256
-
-		for _, proofElement := range firstRoundMerklePathsa {
-			firstRoundMerklePaths = append(firstRoundMerklePaths, proofElement.A)
-			firstRoundStirAnswersConverted = append(firstRoundStirAnswersConverted, proofElement.B)
-		}
 		zkHint.firstRoundMerklePaths = FirstRoundHint{
 			path: Hint{
-				merklePaths: firstRoundMerklePaths,
-				stirAnswers: firstRoundStirAnswersConverted,
+				merklePaths: []MultiPath[KeccakDigest]{firstRoundMerklePath},
+				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
 			},
 			expectedStirAnswers: firstRoundStirAnswers,
 		}
-
 	}
 
 	expectedRounds := whirConfig.NRounds

@@ -47,7 +47,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	rootHashes, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(api, arthur, circuit.WHIRParamsWitness)
+	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHashes)
+	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
 
 	if err != nil {
 		return err

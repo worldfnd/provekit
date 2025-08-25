@@ -55,34 +55,11 @@ func initialSumcheck(
 	}, lastEval, initialSumcheckFoldingRandomness, nil
 }
 
-func ValidateFirstRound(api frontend.API, circuit Merkle, arthur gnark_nimue.Arthur, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, batchSizeLen frontend.Variable, rootHashes []frontend.Variable, batchingRandomness frontend.Variable, stirChallengeIndexes []frontend.Variable, roundAnswers [][]frontend.Variable) error {
-
-	for i := range len(circuit.LeafIndexes) {
-		err := VerifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[i], circuit.Leaves[i], circuit.LeafSiblingHashes[i], circuit.AuthPaths[i], rootHashes[i])
-		if err != nil {
-			return err
-		}
-
-		err = utilities.IsSubset(api, uapi, arthur, stirChallengeIndexes, circuit.LeafIndexes[i])
-		if err != nil {
-			return err
-		}
+func parseBatchedCommitment(arthur gnark_nimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
+	rootHash := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(rootHash); err != nil {
+		return nil, nil, nil, [][]frontend.Variable{}, err
 	}
-
-	return nil
-}
-
-func parseBatchedCommitment(api frontend.API, arthur gnark_nimue.Arthur, whir_params WHIRParams) ([]frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
-
-	rootHashes := make([]frontend.Variable, whir_params.BatchSize)
-	for i := range whir_params.BatchSize {
-		rootHash := make([]frontend.Variable, 1)
-		if err := arthur.FillNextScalars(rootHash); err != nil {
-			return []frontend.Variable{}, 0, []frontend.Variable{}, [][]frontend.Variable{}, err
-		}
-		rootHashes[i] = rootHash[0]
-	}
-
 	oodPoints := make([]frontend.Variable, 1)
 	oodAnswers := make([][]frontend.Variable, whir_params.BatchSize)
 
@@ -100,9 +77,9 @@ func parseBatchedCommitment(api frontend.API, arthur gnark_nimue.Arthur, whir_pa
 
 	batchingRandomness := make([]frontend.Variable, 1)
 	if err := arthur.FillChallengeScalars(batchingRandomness); err != nil {
-		return []frontend.Variable{}, 0, []frontend.Variable{}, [][]frontend.Variable{}, err
+		return nil, 0, nil, nil, err
 	}
-	return rootHashes, batchingRandomness[0], oodPoints, oodAnswers, nil
+	return rootHash[0], batchingRandomness[0], oodPoints, oodAnswers, nil
 }
 
 func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark_nimue.Arthur, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
@@ -121,6 +98,26 @@ func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark
 	}
 
 	return finalCoefficients, finalRandomnessPoints, nil
+}
+
+// rlcBatchedLeaves collapses a wide leaf (length foldSize * batchSize) into foldSize via
+// out[j] = sum_{b=0..batchSize-1} B^b * leaf[b*foldSize + j]
+func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize int, batchSize int, B frontend.Variable) [][]frontend.Variable {
+	collapsed := make([][]frontend.Variable, len(leaves))
+	for i := range leaves {
+		collapsed[i] = make([]frontend.Variable, foldSize)
+		for j := 0; j < foldSize; j++ {
+			sum := frontend.Variable(0)
+			pow := frontend.Variable(1)
+			for b := 0; b < batchSize; b++ {
+				idx := b*foldSize + j
+				sum = api.Add(sum, api.Mul(pow, leaves[i][idx]))
+				pow = api.Mul(pow, B)
+			}
+			collapsed[i][j] = sum
+		}
+	}
+	return collapsed
 }
 
 func combineFirstRoundLeaves(api frontend.API, firstRoundPath [][][]frontend.Variable, combinationRandomness frontend.Variable) [][]frontend.Variable {
