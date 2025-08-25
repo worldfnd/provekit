@@ -23,28 +23,20 @@ fi
 echo "Downloading ZK proof keys..."
 python3 keys.py
 
-if [ $? -eq 0 ]; then
-    echo "Keys downloaded successfully. Starting verifier server..."
-    
-    # Check if verifier-server exists and is executable
-    if [ ! -f "./verifier-server" ]; then
-        echo "Error: verifier-server binary not found!"
-        ls -la
-        exit 1
-    fi
-    
-    if [ ! -x "./verifier-server" ]; then
-        echo "Error: verifier-server is not executable!"
-        ls -la
-        chmod +x ./verifier-server
-    fi
-    
-    echo "Binary details:"
-    ls -la ./verifier-server
-    echo "Starting server..."
-    
-    exec ./verifier-server
-else
-    echo "Failed to download keys. Exiting."
+if [ ! -f "./verifier-server" ]; then
+    echo "Error: verifier-server binary not found!"
+    ls -la
     exit 1
 fi
+
+if [ ! -x "./verifier-server" ]; then
+    echo "Error: verifier-server is not executable!"
+    ls -la
+    chmod +x ./verifier-server
+fi
+
+echo "Binary details:"
+ls -la ./verifier-server
+echo "Starting server..."
+
+exec ./verifier-server

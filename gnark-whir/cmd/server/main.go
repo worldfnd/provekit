@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/consensys/gnark/backend/groth16"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
@@ -42,14 +43,16 @@ func main() {
 	v1.Get("/ping", ping)
 
 	v1.Post("/verify", func(c *fiber.Ctx) error {
-		return getFileAndVerify(c, "", "")
+		return verify(c, "", "", false)
 	})
 
+	// TODO: Remove Functions for internal testing - to remove
 	v1.Post("/verifybasic2", func(c *fiber.Ctx) error {
-		return getFileAndVerify(c, "keys/basic2_vk.bin", "keys/basic2_pk.bin")
+		return verify(c, "keys/basic2_vk.bin", "keys/basic2_pk.bin", true)
 	})
+
 	v1.Post("/verifyagecheck", func(c *fiber.Ctx) error {
-		return getFileAndVerify(c, "keys/age_check_vk.bin", "keys/age_check_pk.bin")
+		return verify(c, "keys/age_check_vk.bin", "keys/age_check_pk.bin", true)
 	})
 
 	log.Fatal(app.Listen(":3000"))
@@ -59,8 +62,8 @@ func ping(c *fiber.Ctx) error {
 	return c.SendString("pong")
 }
 
-func getFileAndVerify(c *fiber.Ctx, vkPath string, pkPath string) error {
-	outputCcsPath := "" // TODO
+func verify(c *fiber.Ctx, vkPathOrUrl string, pkPathOrUrl string, isTesting bool) error {
+	outputCcsPath := "" // TODO: Handle
 
 	r1csFile, err := getFile(c, "r1cs")
 	if err != nil {
@@ -74,24 +77,6 @@ func getFileAndVerify(c *fiber.Ctx, vkPath string, pkPath string) error {
 		return c.Status(400).SendString("Failed to get config file")
 	}
 
-	if vkPath != "" && pkPath != "" {
-		err = verify(configFile, r1csFile, vkPath, pkPath, outputCcsPath)
-	} else {
-		err = verify(configFile, r1csFile, "", "", outputCcsPath)
-	}
-
-	if err != nil {
-		log.Printf("Verification failed: %v", err)
-		return c.Status(400).SendString("Verification failed")
-	}
-
-	log.Printf("Verification successful")
-	return c.SendString("Verification successful")
-}
-
-func verify(configFile []byte, r1csFile []byte, vkPath string, pkPath string, outputCcsPath string) error {
-	// outputCcsPath := "" // TODO : Handle returning/saving, what to do with Ccs File
-
 	var config circuit.Config
 	if err := json.Unmarshal(configFile, &config); err != nil {
 		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
@@ -102,16 +87,35 @@ func verify(configFile []byte, r1csFile []byte, vkPath string, pkPath string, ou
 		return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 	}
 
-	pk, vk, err := circuit.GetPkAndVkFromPath(pkPath, vkPath)
-	if err != nil {
-		return fmt.Errorf("failed to get PK/VK: %w", err)
+	var pk *groth16.ProvingKey = nil
+	var vk *groth16.VerifyingKey = nil
+
+	if isTesting {
+		if vkPathOrUrl != "" && pkPathOrUrl != "" {
+			pk, vk, err = circuit.GetPkAndVkFromPath(pkPathOrUrl, vkPathOrUrl)
+		} else {
+			return c.Status(400).SendString("Internal error: Internal path for vk/pk is required for this endpoint")
+		}
+	} else {
+		pkUrl := c.FormValue("pk_url")
+		vkUrl := c.FormValue("vk_url")
+
+		if vkUrl != "" && pkUrl != "" {
+			pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
+		}
 	}
 
 	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
 		return fmt.Errorf("failed to verify circuit: %w", err)
 	}
 
-	return nil
+	if err != nil {
+		log.Printf("Verification failed: %v", err)
+		return c.Status(400).SendString("Verification failed")
+	}
+
+	log.Printf("Verification successful")
+	return c.SendString("Verification successful")
 }
 
 func getFile(c *fiber.Ctx, name string) ([]byte, error) {

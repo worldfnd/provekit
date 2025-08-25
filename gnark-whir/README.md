@@ -60,12 +60,14 @@ Send a `multipart/form-data` POST request with the following fields:
 
 - `config` (required): JSON configuration file containing verifier circuit parameters
 - `r1cs` (required): R1CS JSON file describing the constraint system of the inner circuit
+- `pk_url` (optional): Publicly exposed url for downloading proving key
+- `vk_url` (optional): Publicly exposed url for downloading verifying key
 
 **Response:**
 - **Success (200)**: `Verification successful`
 - **Error (400)**: Error message describing the failure
 
-## Endpoints for Internal Testing 
+## Endpoints for Internal Testing (Will be removed cache implementation)
 
 We store vk/pk keys for common circuits for testing for quicker verification.
 

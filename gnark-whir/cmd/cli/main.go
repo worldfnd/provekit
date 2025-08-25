@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/urfave/cli/v2"
 	"reilabs/whir-verifier-circuit/app/circuit"
+
+	"github.com/consensys/gnark/backend/groth16"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -34,14 +36,14 @@ func main() {
 				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
 			},
 			&cli.StringFlag{
-				Name:     "config_url",
-				Usage:    "Publicly downloadable URL to the config file",
+				Name:     "pk_url",
+				Usage:    "Optional publicly downloadable URL to the proving key",
 				Required: false,
 				Value:    "",
 			},
 			&cli.StringFlag{
-				Name:     "r1cs_url",
-				Usage:    "Publicly downloadable URL to the r1cs json file",
+				Name:     "vk_url",
+				Usage:    "Optional publicly downloadable URL to the verifying key",
 				Required: false,
 				Value:    "",
 			},
@@ -66,6 +68,8 @@ func main() {
 			outputCcsPath := c.String("ccs")
 			pkPath := c.String("pk")
 			vkPath := c.String("vk")
+			pkUrl := c.String("pk_url")
+			vkUrl := c.String("vk_url")
 
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
@@ -87,9 +91,18 @@ func main() {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 			}
 
-			pk, vk, err := circuit.GetPkAndVkFromPath(pkPath, vkPath)
-			if err != nil {
-				return fmt.Errorf("failed to get PK/VK: %w", err)
+			var pk *groth16.ProvingKey = nil
+			var vk *groth16.VerifyingKey = nil
+			if pkUrl != "" && vkUrl != "" {
+				pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
+				if err != nil {
+					return fmt.Errorf("failed to get PK/VK: %w", err)
+				}
+			} else if pkPath != "" && vkPath != "" {
+				pk, vk, err = circuit.GetPkAndVkFromPath(pkPath, vkPath)
+				if err != nil {
+					return fmt.Errorf("failed to get PK/VK: %w", err)
+				}
 			}
 
 			if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {

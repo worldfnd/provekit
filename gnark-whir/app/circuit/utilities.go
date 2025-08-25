@@ -1,8 +1,11 @@
 package circuit
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -74,6 +77,62 @@ func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.Ve
 	}
 
 	return pk, vk, nil
+}
+
+func keysFromUrl(pkUrl string, vkUrl string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+
+	vkBytes, err := downloadFromUrl(vkUrl)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to download verifying key: %w", err)
+	}
+	log.Printf("Downloaded VK")
+
+	vk := groth16.NewVerifyingKey(ecc.BN254)
+	_, err = vk.UnsafeReadFrom(bytes.NewReader(vkBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to deserialize verifying key: %w", err)
+	}
+	log.Printf("Loaded VK")
+
+	pkBytes, err := downloadFromUrl(pkUrl)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to download proving key: %v", err)
+	}
+	log.Printf("Downloaded PK")
+
+	pk := groth16.NewProvingKey(ecc.BN254)
+	_, err = pk.UnsafeReadFrom(bytes.NewReader(pkBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to deserialize proving key: %w", err)
+	}
+	log.Printf("Loaded PK")
+
+	return pk, vk, nil
+}
+
+func downloadFromUrl(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download from %s: %w", url, err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error %d when downloading from %s", resp.StatusCode, url)
+	}
+
+	buffer := &bytes.Buffer{}
+
+	_, err = io.Copy(buffer, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy to buffer: %w", err)
+	}
+
+	return buffer.Bytes(), nil
 }
 
 func runSumcheck(
