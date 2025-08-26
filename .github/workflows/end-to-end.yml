@@ -58,5 +58,4 @@ jobs:
       - name: Run Gnark verifier
         working-directory: gnark-whir
         run: |
-          go build -o gnark-verifier .
-          ./gnark-verifier
+          go test -v -short
