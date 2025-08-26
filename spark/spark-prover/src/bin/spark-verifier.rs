@@ -38,6 +38,8 @@ fn main() -> Result<()> {
 
     let commitment_reader = CommitmentReader::new(&spark_proof.whir_params.a);
     let val_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
+    let e_rx_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
+    let e_ry_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
     let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
         &mut arthur,
@@ -55,13 +57,35 @@ fn main() -> Result<()> {
         Weights::evaluation(MultilinearPoint(randomness.clone())),
         final_folds[0],
     );
-
     let val_verifier = Verifier::new(&spark_proof.whir_params.a);
-
     val_verifier
         .verify(&mut arthur, &val_commitment, &val_statement_verifier)
         .context("while verifying WHIR")?;
 
+    let mut e_rx_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
+        spark_proof.matrix_dimensions.a_nonzero_terms,
+    ));
+    e_rx_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
+        final_folds[1],
+    );
+    let e_rx_verifier = Verifier::new(&spark_proof.whir_params.a);
+    e_rx_verifier
+        .verify(&mut arthur, &e_rx_commitment, &e_rx_statement_verifier)
+        .context("while verifying WHIR")?;
+
+    let mut e_ry_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
+        spark_proof.matrix_dimensions.a_nonzero_terms,
+    ));
+    e_ry_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
+        final_folds[1],
+    );
+    let e_ry_verifier = Verifier::new(&spark_proof.whir_params.a);
+    e_ry_verifier
+        .verify(&mut arthur, &e_ry_commitment, &e_ry_statement_verifier)
+        .context("while verifying WHIR")?;
+        
     Ok(())
 }
 

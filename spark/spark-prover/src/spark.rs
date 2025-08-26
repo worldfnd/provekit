@@ -33,6 +33,8 @@ pub fn prove_spark_for_single_matrix(
 ) -> Result<()> {
     let committer = CommitmentWriter::new(whir_configs.a.clone());
     let val_witness = commit_to_vector(&committer, merlin, matrix.coo.val.clone());
+    let e_rx_witness = commit_to_vector(&committer, merlin, e_values.e_rx.clone());
+    let e_ry_witness = commit_to_vector(&committer, merlin, e_values.e_ry.clone());
 
     let mles = [matrix.coo.val.clone(), e_values.e_rx, e_values.e_ry];
     let (sumcheck_final_folds, folding_randomness) =
@@ -44,6 +46,22 @@ pub fn prove_spark_for_single_matrix(
         sumcheck_final_folds[0],
         whir_configs.a.clone(),
         val_witness,
+    )?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.clone()),
+        sumcheck_final_folds[1],
+        whir_configs.b.clone(),
+        e_rx_witness,
+    )?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.clone()),
+        sumcheck_final_folds[2],
+        whir_configs.c.clone(),
+        e_ry_witness,
     )?;
     Ok(())
 }
