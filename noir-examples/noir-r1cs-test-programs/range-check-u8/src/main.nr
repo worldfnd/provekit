@@ -1,1 +1,3 @@
-fn main(x: u8) { }
+fn main(x: u8) -> pub u8 {
+    x
+}

@@ -27,11 +27,14 @@ jobs:
       - name: Build the benchmark target(s)
         timeout-minutes: 30
         run: cargo codspeed build
-      - name: Upload benchmark binaries
+      - name: Upload benchmark binaries and input files
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-binaries
-          path: target/codspeed
+          path: |
+            target/codspeed
+            noir-r1cs/benches/poseidon-1000.nps
+            noir-r1cs/benches/poseidon-1000.np
 
   benchmark:
     name: Run benchmarks on Raspberry Pi 5
@@ -52,6 +55,19 @@ jobs:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
+<<<<<<< HEAD
+      - name: Install codspeed-post-bench script
+        run: |
+          sudo mkdir -p /usr/local/bin
+          sudo ln -s $(which cargo-codspeed) /usr/local/bin/codspeed-post-bench
+          sudo chmod +x /usr/local/bin/codspeed-post-bench
+      - name: Copy binaries and input files to target directories
+        run: |
+          mkdir -p target/codspeed
+          cp -r bench_bin/target/codspeed/* target/codspeed/
+          mkdir -p noir-r1cs/benches
+          cp bench_bin/noir-r1cs/benches/poseidon-1000.* noir-r1cs/benches/
+=======
     
       - name: Create codespeed-post-bench symlink
         run: |
@@ -65,6 +81,7 @@ jobs:
           mkdir -p target/codspeed
           cp -r bench_bin/* target/codspeed/
 
+>>>>>>> main
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
 

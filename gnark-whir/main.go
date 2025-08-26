@@ -81,7 +81,7 @@ func main() {
 				Name:     "config",
 				Usage:    "Path to the config file",
 				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
+				Value:    "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier",
 			},
 			&cli.StringFlag{
 				Name:     "ccs",
@@ -93,7 +93,7 @@ func main() {
 				Name:     "r1cs",
 				Usage:    "Path to the r1cs json file",
 				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
+				Value:    "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json",
 			},
 			&cli.StringFlag{
 				Name: "pk",

@@ -32,8 +32,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         for i in 0..num_blocks {
             let msg_start = BLOCK_SIZE * i;
             // Safety: The `verify_msg_block` function should cover this.
-            let (new_msg_block, new_msg_byte_ptr) =
-                unsafe { build_msg_block(msg, message_size, msg_start) };
+            let (new_msg_block, new_msg_byte_ptr) = build_msg_block(msg, message_size, msg_start);
 
             if msg_start < message_size {
                 msg_block = new_msg_block;
@@ -59,8 +58,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         if modulo != 0 {
             let msg_start = BLOCK_SIZE * num_blocks;
             // Safety: The `verify_msg_block` function should cover this.
-            let (new_msg_block, new_msg_byte_ptr) =
-                unsafe { build_msg_block(msg, message_size, msg_start) };
+            let (new_msg_block, new_msg_byte_ptr) = build_msg_block(msg, message_size, msg_start);
 
             if msg_start < message_size {
                 msg_block = new_msg_block;
@@ -96,7 +94,7 @@ pub fn sha256_var<let N: u32>(msg: [u8; N], message_size: u64) -> HASH {
         }
 
         // Safety: The `verify_msg_block` function should cover this.
-        msg_block = unsafe { attach_len_to_msg_block(msg_block, msg_byte_ptr, message_size) };
+        msg_block = attach_len_to_msg_block(msg_block, msg_byte_ptr, message_size);
 
         verify_msg_len(msg_block, last_block, msg_byte_ptr, message_size);
 
@@ -150,7 +148,7 @@ unconstrained fn __sha256_var<let N: u32>(msg: [u8; N], message_size: u32) -> HA
 
 // Take `BLOCK_SIZE` number of bytes from `msg` starting at `msg_start`.
 // Returns the block and the length that has been copied rather than padded with zeros.
-unconstrained fn build_msg_block<let N: u32>(
+fn build_msg_block<let N: u32>(
     msg: [u8; N],
     message_size: u32,
     msg_start: u32,
@@ -420,7 +418,7 @@ fn rshift8(item: u32, shifts: u8) -> u32 {
 
 // Zero out all bytes between the end of the message and where the length is appended,
 // then write the length into the last 8 bytes of the block.
-unconstrained fn attach_len_to_msg_block(
+fn attach_len_to_msg_block(
     mut msg_block: MSG_BLOCK,
     mut msg_byte_ptr: BLOCK_BYTE_PTR,
     message_size: u32,
@@ -438,8 +436,9 @@ unconstrained fn attach_len_to_msg_block(
     }
 
     // The rest can be zeroed without bit shifting anything.
-    for i in (msg_byte_ptr / INT_SIZE)..INT_SIZE_PTR {
-        msg_block[i] = 0;
+    // Safety: We should be checking the zero-ing out later
+    unsafe {
+        zero_rest_of_msg_block(msg_block, msg_byte_ptr);
     }
 
     // Set the last two 4 byte ints as the first/second half of the 8 bytes of the length.
@@ -455,6 +454,13 @@ unconstrained fn attach_len_to_msg_block(
         );
     }
     msg_block
+}
+
+/// The only function which actually needs to be placed in an `unsafe` block.
+unconstrained fn zero_rest_of_msg_block(mut msg_block: MSG_BLOCK, msg_byte_ptr: BLOCK_BYTE_PTR) {
+    for i in (msg_byte_ptr / INT_SIZE)..INT_SIZE_PTR {
+        msg_block[i] = 0;
+    }
 }
 
 // Verify that the message length was correctly written by `attach_len_to_msg_block`,
