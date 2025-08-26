@@ -1,6 +1,6 @@
 use {
     ark_bn254::Fr,
-    ark_ff::{AdditiveGroup, FftField, Field},
+    ark_ff::{FftField, Field},
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
@@ -15,9 +15,24 @@ pub const fn workload_size<T: Sized>() -> usize {
     CACHE_SIZE / size_of::<T>()
 }
 
-/// NTT from normal order to reverse order
+// TODO(xrvdg) Deal with reversed_ordered_roots that are finer grained than
+// required for the current NTT . Could make a datatype around it that requires
+// it to match, and that will handle the stepping.
+// So jumps will still happen. Can we do a performance analysis of it.
+
+/// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
+/// order.
+///
+/// # Arguments
+/// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
+///   order.
+/// * `input` - The input slice to be transformed in place.
 pub fn ntt(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
+
+    // TODO(xrvdg) check the length of the roots and input
+    // How to ensure that the right roots has been used. -> Typed argument for root
+    // creation?
 
     let n = input.len();
 
@@ -103,13 +118,23 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
 }
 
 /// Bit reverses val given that for a given bit size
-pub fn reverse_bits(val: usize, bits: u32) -> usize {
+fn reverse_bits(val: usize, bits: u32) -> usize {
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
-/// Initialize roots and store them in reverse bit order for linear access in
-/// ntt  
-/// This will allocate a vector of len/2
+// TODO(xrvdg) Reuse the caching engine from WHIR to hide the generation
+/// Precomputes the NTT roots of unity and stores them in bit-reversed order.
+///
+/// # Arguments
+/// * `len` - The size of the NTT (must be a power of two).
+///
+/// # Returns
+/// A vector of length `len / 2` containing the precomputed roots in
+/// bit-reversed order.
+///
+/// # Panics
+/// Panics if `len` is not a power of two or if a suitable root of unity does
+/// not exist.
 pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
     assert!(len.is_power_of_two());
     let root = Fr::get_root_of_unity(len as u64).unwrap();
@@ -134,4 +159,8 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
 }
 
 // proptest that takes a regular NTT written using horner multiplication and
-// compare it to the reverse ordered NTT That would require
+// compare it to the reverse ordered NTT. Or just another simpler FFT
+// implementation?
+
+#[cfg(test)]
+mod tests {}
