@@ -119,18 +119,3 @@ func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize i
 	}
 	return collapsed
 }
-
-func combineFirstRoundLeaves(api frontend.API, firstRoundPath [][][]frontend.Variable, combinationRandomness frontend.Variable) [][]frontend.Variable {
-	combinedFirstRound := firstRoundPath[0]
-
-	multiplier := combinationRandomness
-	for i := 1; i < len(firstRoundPath); i++ {
-		for j := range firstRoundPath[i] {
-			for k := range firstRoundPath[i][j] {
-				combinedFirstRound[j][k] = api.Add(combinedFirstRound[j][k], api.Mul(multiplier, firstRoundPath[i][j][k]))
-			}
-		}
-		multiplier = api.Mul(multiplier, combinationRandomness)
-	}
-	return combinedFirstRound
-}

@@ -64,10 +64,7 @@ func runZKWhir(
 		}
 	}
 
-	// Replace precomputed combine with per-leaf RLC after opening round 0
-	// computedFolded := combineFirstRoundLeaves(api, copyOfFirstLeaves, batchingRandomness)
 	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)
-	// roundAnswers[0] = computedFolded
 
 	foldSize := 1 << whirParams.FoldingFactorArray[0]
 	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, batchingRandomness)
