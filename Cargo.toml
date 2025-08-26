@@ -14,6 +14,7 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
+  "ntt",
 ]
 exclude = [
   "playground/passport-input-gen",
@@ -137,12 +138,16 @@ noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-bet
 noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
 
 # Cryptography and proof systems
-ark-bn254 = { version = "0.5.0", default-features = false, features = ["scalar_field"] }
+ark-bn254 = { version = "0.5.0", default-features = false, features = [
+  "scalar_field",
+] }
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = ["arkworks-algebra"] }
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
+  "arkworks-algebra",
+] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
 whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "48fc0909d6a0d803d61c35b0c18499ad704da211" }
