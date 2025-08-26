@@ -1,5 +1,6 @@
 use {
     ark_bn254::Fr,
+    ark_ff::{AdditiveGroup, FftField, Field},
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
@@ -99,6 +100,37 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
         num_of_groups *= 2;
         distance /= 2;
     }
+}
+
+/// Bit reverses val given that for a given bit size
+pub fn reverse_bits(val: usize, bits: u32) -> usize {
+    val.reverse_bits() >> (usize::BITS - bits)
+}
+
+/// Initialize roots and store them in reverse bit order for linear access in
+/// ntt  
+/// This will allocate a vector of len/2
+pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
+    assert!(len.is_power_of_two());
+    let root = Fr::get_root_of_unity(len as u64).unwrap();
+
+    let n = len / 2;
+
+    let mut roots = Vec::with_capacity(n);
+    let uninit = roots.spare_capacity_mut();
+
+    let mut omega_k = Fr::ONE;
+
+    for index in (0..n).map(|val| reverse_bits(val, n.trailing_zeros())) {
+        uninit[index].write(omega_k);
+        omega_k *= root;
+    }
+
+    unsafe {
+        roots.set_len(n);
+    }
+
+    roots
 }
 
 // proptest that takes a regular NTT written using horner multiplication and
