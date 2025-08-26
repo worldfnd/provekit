@@ -1,10 +1,11 @@
 mod iopattern;
 pub mod matrix;
 use {
+    crate::whir::SPARKWHIRConfigs,
     anyhow::{Context, Result},
     noir_r1cs::{
         utils::{serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq},
-        FieldElement, HydratedSparseMatrix, R1CS,
+        FieldElement, HydratedSparseMatrix, WhirConfig, R1CS,
     },
     serde::{Deserialize, Serialize},
     std::fs,
@@ -47,8 +48,29 @@ pub struct ClaimedValues {
     pub c: FieldElement,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SPARKProof {
-    pub transcript: Vec<u8>,
-    pub io_pattern: String,
+    pub transcript:        Vec<u8>,
+    pub io_pattern:        String,
+    pub whir_params:       SPARKWHIRConfigs,
+    pub matrix_dimensions: MatrixDimensions,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MatrixDimensions {
+    pub num_rows:        usize,
+    pub num_cols:        usize,
+    pub a_nonzero_terms: usize,
+    pub b_nonzero_terms: usize,
+    pub c_nonzero_terms: usize,
+}
+
+pub fn calculate_matrix_dimensions(r1cs: &R1CS) -> MatrixDimensions {
+    MatrixDimensions {
+        num_rows:        r1cs.a.num_rows,
+        num_cols:        r1cs.a.num_cols,
+        a_nonzero_terms: r1cs.a.num_entries(),
+        b_nonzero_terms: r1cs.b.num_entries(),
+        c_nonzero_terms: r1cs.c.num_entries(),
+    }
 }

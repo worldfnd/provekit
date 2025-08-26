@@ -4,6 +4,7 @@ use {
         new_whir_config_for_size, utils::next_power_of_two, FieldElement, SkyscraperMerkleConfig,
         SkyscraperPoW, SkyscraperSponge, WhirConfig, R1CS,
     },
+    serde::{Deserialize, Serialize},
     spongefish::ProverState,
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
@@ -31,6 +32,7 @@ pub fn commit_to_vector(
         .expect("WHIR prover failed to commit")
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct SPARKWHIRConfigs {
     pub row: WhirConfig,
     pub col: WhirConfig,
