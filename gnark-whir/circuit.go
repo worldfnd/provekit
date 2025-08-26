@@ -19,15 +19,23 @@ import (
 
 type Circuit struct {
 	// Inputs
-	LinearStatementValuesAtPoints []frontend.Variable
-	LinearStatementEvaluations    []frontend.Variable
-	LogNumConstraints             int
-	LogNumVariables               int
-	SpartanMerkle                 Merkle
-	WHIRParamsCol                 WHIRParams
-	MatrixA                       []MatrixCell
-	MatrixB                       []MatrixCell
-	MatrixC                       []MatrixCell
+	WitnessLinearStatementEvaluations       []frontend.Variable
+	HidingSpartanLinearStatementEvaluations []frontend.Variable
+	LogNumConstraints                       int
+	LogNumVariables                         int
+	LogANumTerms                            int
+	WitnessClaimedEvaluations               []frontend.Variable
+	WitnessBlindingEvaluations              []frontend.Variable
+	HidingSpartanFirstRound                 Merkle
+	HidingSpartanMerkle                     Merkle
+	WitnessMerkle                           Merkle
+	WitnessFirstRound                       Merkle
+	WHIRParamsWitness                       WHIRParams
+	WHIRParamsHidingSpartan                 WHIRParams
+
+	MatrixA []MatrixCell
+	MatrixB []MatrixCell
+	MatrixC []MatrixCell
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -39,36 +47,43 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
+	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+
+	if err != nil {
+		return err
+	}
+
 	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
 	err = arthur.FillChallengeScalars(tRand)
 	if err != nil {
 		return err
 	}
 
-	spartanSumcheckRand, spartanSumcheckLastValue, err := runSumcheck(api, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4)
+	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
 	if err != nil {
 		return err
 	}
 
-	whirFoldingRandomness, err := runWhir(api, arthur, uapi, sc, circuit.SpartanMerkle, circuit.WHIRParamsCol, circuit.LinearStatementEvaluations, circuit.LinearStatementValuesAtPoints)
+	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+
 	if err != nil {
 		return err
 	}
 
-	x := api.Mul(api.Sub(api.Mul(circuit.LinearStatementEvaluations[0], circuit.LinearStatementEvaluations[1]), circuit.LinearStatementEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
+	x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
 	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
 
 	for i := 0; i < 3; i++ {
-		api.AssertIsEqual(matrixExtensionEvals[i], circuit.LinearStatementValuesAtPoints[i])
+		api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
 	}
 
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations []Fp256, internedR1CS R1CS, interner Interner,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
 ) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -77,15 +92,17 @@ func verifyCircuit(
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
-	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+	witnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
+	contWitnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
 
-	linearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
-	contLinearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
-	for i := range len(deferred) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
-	}
+	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
+	witnessLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[1].Limbs)
+	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
+	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
+
+	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
@@ -133,20 +150,26 @@ func verifyCircuit(
 	}
 
 	var circuit = Circuit{
-		IO:                []byte(cfg.IOPattern),
-		Transcript:        contTranscript,
-		LogNumConstraints: cfg.LogNumConstraints,
-		LogNumVariables:   cfg.LogNumVariables,
+		IO:                                      []byte(cfg.IOPattern),
+		Transcript:                              contTranscript,
+		LogNumConstraints:                       cfg.LogNumConstraints,
+		LogNumVariables:                         cfg.LogNumVariables,
+		LogANumTerms:                            cfg.LogANumTerms,
+		WitnessClaimedEvaluations:               fSums,
+		WitnessBlindingEvaluations:              gSums,
+		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
+		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
+		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
+		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
+		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
+		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
 
-		LinearStatementEvaluations:    contLinearStatementEvaluations,
-		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, true),
+		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
 		MatrixC: matrixC,
-
-		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -176,20 +199,29 @@ func verifyCircuit(
 		vk = &unsafeVk
 	}
 
+	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
+
 	assignment := Circuit{
 		IO:                []byte(cfg.IOPattern),
 		Transcript:        transcriptT,
 		LogNumConstraints: cfg.LogNumConstraints,
 
-		LinearStatementEvaluations:    linearStatementEvaluations,
-		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, false),
+		WitnessClaimedEvaluations:               fSums,
+		WitnessBlindingEvaluations:              gSums,
+		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
+		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
+
+		HidingSpartanFirstRound: newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
+		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
+		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
+		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
+
+		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
 		MatrixC: matrixC,
-
-		WHIRParamsCol: new_whir_params(cfg.WHIRConfigCol),
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
@@ -199,4 +231,18 @@ func verifyCircuit(
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer bool) ([]frontend.Variable, []frontend.Variable) {
+	fSums := make([]frontend.Variable, len(claimedEvaluations.FSums))
+	gSums := make([]frontend.Variable, len(claimedEvaluations.GSums))
+
+	if !isContainer {
+		for i := range claimedEvaluations.FSums {
+			fSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.FSums[i].Limbs)
+			gSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.GSums[i].Limbs)
+		}
+	}
+
+	return fSums, gSums
 }

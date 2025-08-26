@@ -26,8 +26,181 @@ type WHIRParams struct {
 	CommittmentOODSamples                int
 	FinalSumcheckRounds                  int
 	MVParamsNumberOfVariables            int
+	BatchSize                            int
 }
 
+func runZKWhir(
+	api frontend.API,
+	arthur gnark_nimue.Arthur,
+	uapi *uints.BinaryField[uints.U64],
+	sc *skyscraper.Skyscraper,
+	circuit Merkle,
+	firstRound Merkle,
+	whirParams WHIRParams,
+	linearStatementEvaluations [][]frontend.Variable,
+	linearStatementValuesAtPoints []frontend.Variable,
+	batchingRandomness frontend.Variable,
+	initialOODQueries []frontend.Variable,
+	initialOODAnswers [][]frontend.Variable,
+	rootHashes frontend.Variable,
+) (totalFoldingRandomness []frontend.Variable, err error) {
+
+	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
+	// batchSizeLen := whirParams.BatchSize
+
+	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations)
+	if err != nil {
+		return
+	}
+
+	copyOfFirstLeaves := make([][][]frontend.Variable, len(firstRound.Leaves))
+	for i := range len(firstRound.Leaves) {
+		copyOfFirstLeaves[i] = make([][]frontend.Variable, len(firstRound.Leaves[i]))
+		for j := range len(firstRound.Leaves[i]) {
+			copyOfFirstLeaves[i][j] = make([]frontend.Variable, len(firstRound.Leaves[i][j]))
+			for k := range len(firstRound.Leaves[i][j]) {
+				copyOfFirstLeaves[i][j][k] = firstRound.Leaves[i][j][k]
+			}
+		}
+	}
+
+	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)
+
+	foldSize := 1 << whirParams.FoldingFactorArray[0]
+	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, batchingRandomness)
+	roundAnswers[0] = collapsed
+
+	for i := range len(circuit.Leaves) {
+		roundAnswers[i+1] = circuit.Leaves[i]
+	}
+
+	computedFold := computeFold(collapsed, initialSumcheckFoldingRandomness, api)
+
+	mainRoundData := generateEmptyMainRoundData(whirParams)
+	expDomainGenerator := utilities.Exponent(api, uapi, whirParams.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<whirParams.FoldingFactorArray[0])))
+	domainSize := whirParams.DomainSize
+
+	totalFoldingRandomness = initialSumcheckFoldingRandomness
+
+	rootHashList := make([]frontend.Variable, len(whirParams.RoundParametersOODSamples))
+
+	for r := range whirParams.ParamNRounds {
+		rootHash := make([]frontend.Variable, 1)
+		if err = arthur.FillNextScalars(rootHash); err != nil {
+			return
+		}
+		var roundOODAnswers []frontend.Variable
+
+		rootHashList[r] = rootHash[0]
+		mainRoundData.OODPoints[r], roundOODAnswers, err = FillInOODPointsAndAnswers(whirParams.RoundParametersOODSamples[r], arthur)
+		if err != nil {
+			return
+		}
+
+		if err = RunPoW(api, sc, arthur, whirParams.PowBits[r]); err != nil {
+			return
+		}
+
+		mainRoundData.StirChallengesPoints[r], err = GetStirChallenges(api, arthur, whirParams.RoundParametersNumOfQueries[r], domainSize, 1<<whirParams.FoldingFactorArray[r])
+		if err != nil {
+			return
+		}
+
+		if r == 0 {
+			err = VerifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
+			if err != nil {
+				return
+			}
+
+			err = utilities.IsSubset(api, uapi, arthur, mainRoundData.StirChallengesPoints[r], firstRound.LeafIndexes[0])
+			if err != nil {
+				return
+			}
+
+			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(firstRound.LeafIndexes[r]))
+			for index := range firstRound.LeafIndexes[r] {
+				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, firstRound.LeafIndexes[r][index])
+			}
+		} else {
+			err = VerifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
+			if err != nil {
+				return
+			}
+			err = utilities.IsSubset(api, uapi, arthur, mainRoundData.StirChallengesPoints[r], circuit.LeafIndexes[r-1])
+			if err != nil {
+				return
+			}
+			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(circuit.LeafIndexes[r-1]))
+			for index := range circuit.LeafIndexes[r-1] {
+				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, circuit.LeafIndexes[r-1][index])
+			}
+		}
+
+		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(mainRoundData.OODPoints[r])+len(computedFold))
+		if err != nil {
+			return
+		}
+
+		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
+
+		var roundFoldingRandomness []frontend.Variable
+		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[r], 3)
+		if err != nil {
+			return
+		}
+
+		computedFold = computeFold(circuit.Leaves[r], roundFoldingRandomness, api)
+		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
+
+		domainSize /= 2
+		expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
+	}
+
+	finalCoefficients, finalRandomnessPoints, err := generateFinalCoefficientsAndRandomnessPoints(api, arthur, whirParams, circuit, uapi, sc, domainSize, expDomainGenerator)
+	if err != nil {
+		return
+	}
+
+	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
+
+	for foldIndex := range computedFold {
+		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
+	}
+
+	finalSumcheckRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FinalSumcheckRounds, 3)
+	if err != nil {
+		return
+	}
+
+	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
+
+	if whirParams.FinalFoldingPowBits > 0 {
+		_, _, err = utilities.PoW(api, sc, arthur, whirParams.FinalFoldingPowBits)
+		if err != nil {
+			return
+		}
+	}
+
+	totalFoldingRandomness = utilities.Reverse(totalFoldingRandomness)
+
+	evaluationOfWPoly := ComputeWPoly(
+		api,
+		whirParams,
+		initialSumcheckData,
+		mainRoundData,
+		totalFoldingRandomness,
+		linearStatementValuesAtPoints,
+	)
+
+	api.AssertIsEqual(
+		lastEval,
+		api.Mul(evaluationOfWPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
+	)
+
+	return totalFoldingRandomness, nil
+}
+
+//nolint:unused
 func runWhir(
 	api frontend.API,
 	arthur gnark_nimue.Arthur,
@@ -165,12 +338,12 @@ func runWhir(
 	return
 }
 
-func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes [][]uints.U8, authPaths [][][]uints.U8, rootHash frontend.Variable) error {
+func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, leafIndexes []uints.U64, leaves [][]frontend.Variable, leafSiblingHashes []frontend.Variable, authPaths [][]frontend.Variable, rootHash frontend.Variable) error {
 	numOfLeavesProved := len(leaves)
 	for i := range numOfLeavesProved {
 		treeHeight := len(authPaths[i]) + 1
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
-		leafSiblingHash := typeConverters.LittleEndianFromUints(api, leafSiblingHashes[i])
+		leafSiblingHash := leafSiblingHashes[i]
 
 		claimedLeafHash := sc.Compress(leaves[i][0], leaves[i][1])
 		for x := range len(leaves[i]) - 2 {
@@ -187,7 +360,7 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 		for level := 1; level < treeHeight; level++ {
 			indexBit := leafIndexBits[level]
 
-			siblingHash := typeConverters.LittleEndianFromUints(api, authPaths[i][level-1])
+			siblingHash := authPaths[i][level-1]
 
 			dir := api.And(indexBit, 1)
 			left := api.Select(dir, siblingHash, currentHash)
@@ -288,7 +461,6 @@ func GenerateStirChallengePoints(
 	foldingFactorPower := 1 << foldingFactor
 	finalIndexes, err := GetStirChallenges(api, arthur, NQueries, domainSize, foldingFactorPower)
 	if err != nil {
-		api.Println(err)
 		return nil, err
 	}
 
@@ -360,7 +532,6 @@ func ComputeWPoly(
 	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
-
 	for r := range mainRoundData.OODPoints {
 		numberVars -= circuit.FoldingFactorArray[r]
 		newTmpArr := append(mainRoundData.OODPoints[r], mainRoundData.StirChallengesPoints[r]...)
@@ -407,31 +578,33 @@ func calculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness [
 	return utilities.DotProduct(api, append(oodAnswers, computedFold...), combinationRandomness)
 }
 
+type Merkle struct {
+	Leaves            [][][]frontend.Variable
+	LeafIndexes       [][]uints.U64
+	LeafSiblingHashes [][]frontend.Variable
+	AuthPaths         [][][]frontend.Variable
+}
+
 func newMerkle(
 	hint Hint,
 	isContainer bool,
 ) Merkle {
-	var totalAuthPath = make([][][][]uints.U8, len(hint.merklePaths))
+	var totalAuthPath = make([][][]frontend.Variable, len(hint.merklePaths))
 	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafSiblingHashes = make([][][]uints.U8, len(hint.merklePaths))
+	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.merklePaths))
 	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
 
 	for i, merkle_path := range hint.merklePaths {
 		var numOfLeavesProved = len(merkle_path.LeafIndexes)
 		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
-		totalAuthPath[i] = make([][][]uints.U8, numOfLeavesProved)
+		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
-		totalLeafSiblingHashes[i] = make([][]uints.U8, numOfLeavesProved)
+		totalLeafSiblingHashes[i] = make([]frontend.Variable, numOfLeavesProved)
 
 		for j := range numOfLeavesProved {
-			totalAuthPath[i][j] = make([][]uints.U8, treeHeight)
-
-			for z := range treeHeight {
-				totalAuthPath[i][j][z] = make([]uints.U8, 32)
-			}
+			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
 			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
-			totalLeafSiblingHashes[i][j] = make([]uints.U8, 32)
 		}
 
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
@@ -442,19 +615,19 @@ func newMerkle(
 			authPathsTemp[0] = utilities.Reverse(prevPath)
 
 			for j := range totalAuthPath[i][0] {
-				totalAuthPath[i][0][j] = uints.NewU8Array(authPathsTemp[0][j].KeccakDigest[:])
+				totalAuthPath[i][0][j] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[0][j].KeccakDigest[:])
 			}
 
 			for j := 1; j < numOfLeavesProved; j++ {
 				prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
 				authPathsTemp[j] = utilities.Reverse(prevPath)
 				for z := 0; z < treeHeight; z++ {
-					totalAuthPath[i][j][z] = uints.NewU8Array(authPathsTemp[j][z].KeccakDigest[:])
+					totalAuthPath[i][j][z] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[j][z].KeccakDigest[:])
 				}
 			}
 
 			for z := range numOfLeavesProved {
-				totalLeafSiblingHashes[i][z] = uints.NewU8Array(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
+				totalLeafSiblingHashes[i][z] = typeConverters.LittleEndianUint8ToBigInt(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
 				for j := range hint.stirAnswers[i][z] {
 					input := hint.stirAnswers[i][z][j]
@@ -470,13 +643,6 @@ func newMerkle(
 		LeafSiblingHashes: totalLeafSiblingHashes,
 		AuthPaths:         totalAuthPath,
 	}
-}
-
-type Merkle struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
 }
 
 func new_whir_params(cfg WHIRConfig) WHIRParams {
@@ -508,5 +674,6 @@ func new_whir_params(cfg WHIRConfig) WHIRParams {
 		CommittmentOODSamples:                1,
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
+		BatchSize:                            cfg.BatchSize,
 	}
 }

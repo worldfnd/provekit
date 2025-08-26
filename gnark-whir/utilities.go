@@ -104,3 +104,71 @@ func runSumcheck(
 	}
 	return foldingRandomness, lastEval, nil
 }
+
+func runZKSumcheck(
+	api frontend.API,
+	sc *skyscraper.Skyscraper,
+	uapi *uints.BinaryField[uints.U64],
+	circuit *Circuit,
+	arthur gnark_nimue.Arthur,
+	lastEval frontend.Variable,
+	foldingFactor int,
+	polynomialDegree int,
+	whirParams WHIRParams,
+) ([]frontend.Variable, frontend.Variable, error) {
+
+	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, whirParams)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(arthur)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	lastEval = api.Add(lastEval, api.Mul(sumOfG, rhoRandomness))
+
+	foldingRandomness, lastEval, err := runSumcheck(api, arthur, lastEval, foldingFactor, polynomialDegree)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	lastEval, polynomialSums := unblindLastEval(api, arthur, lastEval, rhoRandomness)
+
+	_, err = runZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return foldingRandomness, lastEval, nil
+}
+
+func getZKSumcheckInitialValue(
+	arthur gnark_nimue.Arthur,
+) (frontend.Variable, frontend.Variable, error) {
+	sumOfG := make([]frontend.Variable, 1)
+	rhoRandomness := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(sumOfG); err != nil {
+		return nil, nil, err
+	}
+	if err := arthur.FillChallengeScalars(rhoRandomness); err != nil {
+		return nil, nil, err
+	}
+	return sumOfG[0], rhoRandomness[0], nil
+}
+
+func unblindLastEval(
+	api frontend.API,
+	arthur gnark_nimue.Arthur,
+	lastEval frontend.Variable,
+	rhoRandomness frontend.Variable,
+) (frontend.Variable, []frontend.Variable) {
+	polynomialSums := make([]frontend.Variable, 2)
+	if err := arthur.FillNextScalars(polynomialSums); err != nil {
+		return 0, nil
+	}
+
+	lastEval = api.Sub(lastEval, api.Mul(polynomialSums[0], rhoRandomness))
+	return lastEval, polynomialSums
+}

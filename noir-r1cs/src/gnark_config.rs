@@ -1,8 +1,5 @@
 use {
-    crate::{
-        whir_r1cs::{IOPattern, WhirConfig},
-        FieldElement,
-    },
+    crate::whir_r1cs::{IOPattern, WhirConfig},
     ark_poly::EvaluationDomain,
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write as _},
@@ -12,24 +9,22 @@ use {
 #[derive(Debug, Serialize, Deserialize)]
 /// Configuration for Gnark
 pub struct GnarkConfig {
-    /// WHIR parameters for row
-    pub whir_config_row:         WHIRConfigGnark,
-    /// WHIR parameters for column
-    pub whir_config_col:         WHIRConfigGnark,
-    /// WHIR parameters for number of terms in the matrix A
-    pub whir_config_a_num_terms: WHIRConfigGnark,
+    /// WHIR parameters for witness
+    pub whir_config_witness:        WHIRConfigGnark,
+    /// WHIR parameters for hiding spartan
+    pub whir_config_hiding_spartan: WHIRConfigGnark,
     /// log of number of constraints in R1CS
-    pub log_num_constraints:     usize,
+    pub log_num_constraints:        usize,
     /// log of number of variables in R1CS
-    pub log_num_variables:       usize,
+    pub log_num_variables:          usize,
     /// log of number of non-zero terms matrix A
-    pub log_a_num_terms:         usize,
+    pub log_a_num_terms:            usize,
     /// nimue input output pattern
-    pub io_pattern:              String,
+    pub io_pattern:                 String,
     /// transcript in byte form
-    pub transcript:              Vec<u8>,
+    pub transcript:                 Vec<u8>,
     /// length of the transcript
-    pub transcript_len:          usize,
+    pub transcript_len:             usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,6 +52,8 @@ pub struct WHIRConfigGnark {
     pub final_folding_pow_bits: i32,
     /// domain generator string
     pub domain_generator:       String,
+    /// batch size
+    pub batch_size:             usize,
 }
 
 impl WHIRConfigGnark {
@@ -96,6 +93,7 @@ impl WHIRConfigGnark {
                 "{}",
                 whir_params.starting_domain.backing_domain.group_gen()
             ),
+            batch_size:             whir_params.batch_size,
         }
     }
 }
@@ -103,9 +101,8 @@ impl WHIRConfigGnark {
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    whir_params_row: &WhirConfig,
-    whir_params_col: &WhirConfig,
-    whir_params_a_num_terms: &WhirConfig,
+    whir_params_witness: &WhirConfig,
+    whir_params_hiding_spartan: &WhirConfig,
     transcript: &[u8],
     io: &IOPattern,
     m_0: usize,
@@ -113,24 +110,22 @@ pub fn gnark_parameters(
     a_num_terms: usize,
 ) -> GnarkConfig {
     GnarkConfig {
-        whir_config_row:         WHIRConfigGnark::new(whir_params_row),
-        whir_config_col:         WHIRConfigGnark::new(whir_params_col),
-        whir_config_a_num_terms: WHIRConfigGnark::new(whir_params_a_num_terms),
-        log_num_constraints:     m_0,
-        log_num_variables:       m,
-        log_a_num_terms:         a_num_terms,
-        io_pattern:              String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript:              transcript.to_vec(),
-        transcript_len:          transcript.to_vec().len(),
+        whir_config_witness:        WHIRConfigGnark::new(whir_params_witness),
+        whir_config_hiding_spartan: WHIRConfigGnark::new(whir_params_hiding_spartan),
+        log_num_constraints:        m_0,
+        log_num_variables:          m,
+        log_a_num_terms:            a_num_terms,
+        io_pattern:                 String::from_utf8(io.as_bytes().to_vec()).unwrap(),
+        transcript:                 transcript.to_vec(),
+        transcript_len:             transcript.to_vec().len(),
     }
 }
 
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    whir_params_row: &WhirConfig,
-    whir_params_col: &WhirConfig,
-    whir_params_a_num_terms: &WhirConfig,
+    whir_params_witness: &WhirConfig,
+    whir_params_hiding_spartan: &WhirConfig,
     transcript: &[u8],
     io: &IOPattern,
     m_0: usize,
@@ -139,16 +134,14 @@ pub fn write_gnark_parameters_to_file(
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
-        whir_params_row,
-        whir_params_col,
-        whir_params_a_num_terms,
+        whir_params_witness,
+        whir_params_hiding_spartan,
         transcript,
         io,
         m_0,
         m,
         a_num_terms,
     );
-    println!("round config {:?}", whir_params_col.round_parameters);
     let mut file_params = File::create(file_path).unwrap();
     file_params
         .write_all(serde_json::to_string(&gnark_config).unwrap().as_bytes())

@@ -49,14 +49,13 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &scheme.whir.whir_config_row,
-            &scheme.whir.whir_config_col,
-            &scheme.whir.whir_config_a_num_terms,
+            &scheme.whir_for_witness.whir_witness,
+            &scheme.whir_for_witness.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,
-            &scheme.whir.create_io_pattern(),
-            scheme.whir.m_0,
-            scheme.whir.m,
-            scheme.whir.a_num_terms,
+            &scheme.whir_for_witness.create_io_pattern(),
+            scheme.whir_for_witness.m_0,
+            scheme.whir_for_witness.m,
+            scheme.whir_for_witness.a_num_terms,
             &self.params_for_recursive_verifier,
         );
 

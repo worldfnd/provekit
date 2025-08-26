@@ -28,7 +28,7 @@ pub struct NoirProofScheme {
     pub r1cs:              R1CS,
     pub witness_builders:  Vec<WitnessBuilder>,
     pub witness_generator: NoirWitnessGenerator,
-    pub whir:              WhirR1CSScheme,
+    pub whir_for_witness:  WhirR1CSScheme,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,14 +78,14 @@ impl NoirProofScheme {
             NoirWitnessGenerator::new(&program, witness_map, r1cs.num_witnesses());
 
         // Configure Whir
-        let whir = WhirR1CSScheme::new_for_r1cs(&r1cs);
+        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
             program: program.bytecode,
             r1cs,
             witness_builders,
             witness_generator,
-            whir,
+            whir_for_witness,
         })
     }
 
@@ -153,7 +153,7 @@ impl NoirProofScheme {
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
-            .whir
+            .whir_for_witness
             .prove(&self.r1cs, witness)
             .context("While proving R1CS instance")?;
 
@@ -162,7 +162,7 @@ impl NoirProofScheme {
 
     #[instrument(skip_all)]
     pub fn verify(&self, proof: &NoirProof) -> Result<()> {
-        self.whir.verify(&proof.whir_r1cs_proof)?;
+        self.whir_for_witness.verify(&proof.whir_r1cs_proof)?;
         Ok(())
     }
 
@@ -264,7 +264,7 @@ mod tests {
         test_serde(&proof_schema.r1cs);
         test_serde(&proof_schema.witness_builders);
         test_serde(&proof_schema.witness_generator);
-        test_serde(&proof_schema.whir);
+        test_serde(&proof_schema.whir_for_witness);
     }
 
     #[test]

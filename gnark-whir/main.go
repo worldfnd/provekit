@@ -31,22 +31,21 @@ type MultiPath[Digest any] struct {
 	LeafIndexes            []uint64
 }
 
-type ProofElement struct {
-	A MultiPath[KeccakDigest]
-	B [][]Fp256
-}
-
 type ProofObject struct {
-	StatementValuesAtRandomPoint []Fp256
+	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
 }
 
 type Config struct {
-	WHIRConfigCol     WHIRConfig `json:"whir_config_col"`
-	LogNumConstraints int        `json:"log_num_constraints"`
-	LogNumVariables   int        `json:"log_num_variables"`
-	IOPattern         string     `json:"io_pattern"`
-	Transcript        []byte     `json:"transcript"`
-	TranscriptLen     int        `json:"transcript_len"`
+	WHIRConfigWitness            WHIRConfig `json:"whir_config_witness"`
+	WHIRConfigHidingSpartan      WHIRConfig `json:"whir_config_hiding_spartan"`
+	LogNumConstraints            int        `json:"log_num_constraints"`
+	LogNumVariables              int        `json:"log_num_variables"`
+	LogANumTerms                 int        `json:"log_a_num_terms"`
+	IOPattern                    string     `json:"io_pattern"`
+	Transcript                   []byte     `json:"transcript"`
+	TranscriptLen                int        `json:"transcript_len"`
+	WitnessStatementEvaluations  []string   `json:"witness_statement_evaluations"`
+	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
 }
 
 type WHIRConfig struct {
@@ -61,15 +60,32 @@ type WHIRConfig struct {
 	FinalPowBits        int    `json:"final_pow_bits"`
 	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
 	DomainGenerator     string `json:"domain_generator"`
+	BatchSize           int    `json:"batch_size"`
 }
 
 type Hints struct {
-	colHints Hint
+	witnessHints      ZKHint
+	spartanHidingHint ZKHint
 }
 
 type Hint struct {
 	merklePaths []MultiPath[KeccakDigest]
 	stirAnswers [][][]Fp256
+}
+
+type FirstRoundHint struct {
+	path                Hint
+	expectedStirAnswers [][]Fp256
+}
+
+type ZKHint struct {
+	firstRoundMerklePaths FirstRoundHint
+	roundHints            Hint
+}
+
+type ClaimedEvaluations struct {
+	FSums []Fp256
+	GSums []Fp256
 }
 
 func main() {
@@ -132,14 +148,15 @@ func main() {
 			if err != nil {
 				return fmt.Errorf("failed to parse IO pattern: %w", err)
 			}
+			fmt.Printf("io: %s\n", io.PPrint())
 
 			var pointer uint64
 			var truncated []byte
 
-			var merklePaths []MultiPath[KeccakDigest]
-			var stirAnswers [][][]Fp256
+			var merkle_paths []MultiPath[KeccakDigest]
+			var stir_answers [][][]Fp256
 			var deferred []Fp256
-			var claimedEvaluations []Fp256
+			var claimedEvaluations ClaimedEvaluations
 
 			for _, op := range io.Ops {
 				switch op.Kind {
@@ -163,7 +180,8 @@ func main() {
 							&path,
 							false, false,
 						)
-						merklePaths = append(merklePaths, path)
+						merkle_paths = append(merkle_paths, path)
+
 					case "stir_answers":
 						var stirAnswersTemporary [][]Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -171,7 +189,8 @@ func main() {
 							&stirAnswersTemporary,
 							false, false,
 						)
-						stirAnswers = append(stirAnswers, stirAnswersTemporary)
+						stir_answers = append(stir_answers, stirAnswersTemporary)
+
 					case "deferred_weight_evaluations":
 						var deferredTemporary []Fp256
 						_, err = go_ark_serialize.CanonicalDeserializeWithMode(
@@ -253,15 +272,14 @@ func main() {
 				vk = &restoredVk
 			}
 
-			spartanEnd := config.WHIRConfigCol.NRounds + 1
+			var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merkle_paths, &stir_answers)
+
+			var witnessData = consumeWhirData(config.WHIRConfigWitness, &merkle_paths, &stir_answers)
 
 			hints := Hints{
-				colHints: Hint{
-					merklePaths: merklePaths[:spartanEnd],
-					stirAnswers: stirAnswers[:spartanEnd],
-				},
+				witnessHints:      witnessData,
+				spartanHidingHint: hidingSpartanData,
 			}
-
 			verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
 			return nil
 		},
@@ -271,4 +289,48 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func consumeFront[T any](slice *[]T) T {
+	var zero T
+	if len(*slice) == 0 {
+		return zero
+	}
+	head := (*slice)[0]
+	*slice = (*slice)[1:]
+	return head
+}
+
+func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]MultiPath[KeccakDigest], stir_answers *[][][]Fp256) ZKHint {
+	var zkHint ZKHint
+
+	if len(*merkle_paths) > 0 && len(*stir_answers) > 0 {
+		firstRoundMerklePath := consumeFront(merkle_paths)
+		firstRoundStirAnswers := consumeFront(stir_answers)
+
+		zkHint.firstRoundMerklePaths = FirstRoundHint{
+			path: Hint{
+				merklePaths: []MultiPath[KeccakDigest]{firstRoundMerklePath},
+				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
+			},
+			expectedStirAnswers: firstRoundStirAnswers,
+		}
+	}
+
+	expectedRounds := whirConfig.NRounds
+
+	var remainingMerklePaths []MultiPath[KeccakDigest]
+	var remainingStirAnswers [][][]Fp256
+
+	for i := 0; i < expectedRounds && len(*merkle_paths) > 0 && len(*stir_answers) > 0; i++ {
+		remainingMerklePaths = append(remainingMerklePaths, consumeFront(merkle_paths))
+		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stir_answers))
+	}
+
+	zkHint.roundHints = Hint{
+		merklePaths: remainingMerklePaths,
+		stirAnswers: remainingStirAnswers,
+	}
+
+	return zkHint
 }
