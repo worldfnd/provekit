@@ -16,6 +16,8 @@ anyhow.workspace = true
 spongefish.workspace = true
 whir.workspace = true
 ark-std.workspace = true
+itertools.workspace = true
+ark-ff.workspace = true
 
 [lints]
 workspace = true

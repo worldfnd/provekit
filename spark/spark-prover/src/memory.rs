@@ -8,8 +8,8 @@ use {
 
 #[derive(Debug)]
 pub struct Memory {
-    eq_rx: Vec<FieldElement>,
-    eq_ry: Vec<FieldElement>,
+    pub eq_rx: Vec<FieldElement>,
+    pub eq_ry: Vec<FieldElement>,
 }
 
 #[derive(Debug)]

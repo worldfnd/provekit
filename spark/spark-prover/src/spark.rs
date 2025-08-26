@@ -3,24 +3,20 @@ use {
         memory::{EValuesForMatrix, Memory},
         utilities::matrix::SparkMatrix,
         whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs},
-    },
-    anyhow::Result,
-    noir_r1cs::{
+    }, anyhow::Result, itertools::izip, noir_r1cs::{
         new_whir_config_for_size,
         utils::{
             sumcheck::{eval_qubic_poly, sumcheck_fold_map_reduce},
             HALF,
         },
         FieldElement, SkyscraperSponge,
-    },
-    spongefish::{
+    }, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
-    },
-    whir::{
+    }, whir::{
         poly_utils::multilinear::MultilinearPoint,
         whir::{committer::CommitmentWriter, utils::HintSerialize},
-    },
+    }
 };
 
 pub fn prove_spark_for_single_matrix(
@@ -63,6 +59,22 @@ pub fn prove_spark_for_single_matrix(
         whir_configs.c.clone(),
         e_ry_witness,
     )?;
+
+    // Rowwise
+
+    let mut tau_and_gamma = [FieldElement::from(0); 2];
+    merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
+    let tau = tau_and_gamma[0];
+    let gamma = tau_and_gamma[1];
+
+    let init_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64).map(FieldElement::from).collect();
+    let init_value = memory.eq_rx.clone();
+    let init_timestamp = vec![FieldElement::from(0); memory.eq_rx.len()];
+
+    let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
+        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+        .collect();
+
     Ok(())
 }
 
