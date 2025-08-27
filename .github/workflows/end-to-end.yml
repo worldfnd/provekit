@@ -19,7 +19,7 @@ concurrency:
 jobs:
   end-to-end:
     name: End-to-end tests
-    runs-on: ubuntu-24.04-arm
+    runs-on: provekit-build
     steps:
       - uses: actions/checkout@v4
 
