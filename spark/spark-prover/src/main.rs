@@ -19,6 +19,7 @@ fn main() -> Result<()> {
         .context("Error: Failed to create the R1CS object")?;
     let spark_r1cs = get_spark_r1cs(&r1cs);
     let spark_whir_configs = create_whir_configs(&r1cs);
+    
     // Run for each request
     let request = deserialize_request("spark/spark-prover/request.json")
         .context("Error: Failed to deserialize the request object")?;

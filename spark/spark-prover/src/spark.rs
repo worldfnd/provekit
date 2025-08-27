@@ -1,8 +1,6 @@
 use {
     crate::{
-        memory::{EValuesForMatrix, Memory},
-        utilities::matrix::SparkMatrix,
-        whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs},
+        gpa::run_gpa, memory::{EValuesForMatrix, Memory}, utilities::matrix::SparkMatrix, whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs}
     }, anyhow::Result, itertools::izip, noir_r1cs::{
         new_whir_config_for_size,
         utils::{
@@ -74,6 +72,16 @@ pub fn prove_spark_for_single_matrix(
     let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
+
+    let final_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64).map(FieldElement::from).collect();
+    let final_value = memory.eq_rx.clone();
+    let final_timestamp = matrix.timestamps.final_row;
+
+    let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
+        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+        .collect();
+
+    run_gpa(merlin, &init_vec, &final_vec);
 
     Ok(())
 }
