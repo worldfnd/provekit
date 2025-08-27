@@ -1,0 +1,35 @@
+[package]
+name = "provekit-prover"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# ProveKit
+provekit-common.workspace = true
+
+# Noir lang
+acir.workspace = true
+noirc_abi.workspace = true
+bn254_blackbox_solver.workspace = true
+nargo.workspace = true
+
+# WHIR
+whir.workspace = true
+spongefish.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+tracing.workspace = true
+skyscraper.workspace = true
+rand.workspace = true
+rayon.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,35 @@
+[package]
+name = "r1cs-compiler"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+#Internal
+provekit-common.workspace = true
+
+# 3rd party
+serde.workspace = true
+serde_json.workspace = true
+postcard.workspace = true
+
+# WHIR
+ark-ff.workspace = true
+ark-std.workspace = true
+whir.workspace = true
+
+# Noir lang
+acir.workspace = true
+noirc_artifacts.workspace = true
+noirc_abi.workspace = true
+
+# Binary
+anyhow.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,48 @@
+[package]
+name = "provekit-common"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Noir lang
+acir.workspace = true
+noirc_abi.workspace = true
+noir_artifact_cli.workspace = true
+
+# 3rd party
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+postcard.workspace = true
+rayon.workspace = true
+ruint.workspace = true
+skyscraper.workspace = true
+zeroize.workspace = true
+zerocopy.workspace = true
+zstd.workspace = true
+
+# Ark
+rand08.workspace = true
+
+# WHIR
+whir.workspace = true
+spongefish.workspace = true
+spongefish-pow.workspace = true
+ark-bn254.workspace = true
+ark-crypto-primitives.workspace = true
+ark-ff.workspace = true
+ark-serialize.workspace = true
+ark-std.workspace = true
+
+# Binary
+anyhow.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

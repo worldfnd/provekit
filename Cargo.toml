@@ -1,14 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-  "cm31_ntt",
-  "noir-r1cs",
+  #"cm31_ntt",
+  #"noir-r1cs",
   "skyscraper/fp-rounding",
   "skyscraper/hla",
   "skyscraper/block-multiplier",
   "skyscraper/block-multiplier-codegen",
   "skyscraper/core",
-  "noir-tools",
+  #"noir-tools",
+  "provekit/common",
+  "provekit/r1cs-compiler", "tooling/cli", "provekit/prover", "provekit/verifier", "tooling/provekit-gnark",
+  #"provekit/verifier",
 ]
 
 [workspace.package]
@@ -65,9 +68,15 @@ block-multiplier = { path = "skyscraper/block-multiplier" }
 block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
-noir-r1cs = { path = "noir-r1cs" }
-noir-tools = { path = "noir-tools" }
+provekit-common = { path = "provekit/common" }
+r1cs-compiler = { path = "provekit/r1cs-compiler" }
+provekit-prover = { path = "provekit/prover" }
+provekit-verifier = { path = "provekit/verifier" }
+provekit-gnark = { path = "tooling/provekit-gnark" }
+#noir-r1cs = { path = "noir-r1cs" }
+#noir-tools = { path = "noir-tools" }
 skyscraper = { path = "skyscraper/core" }
+provekit-cli = { path = "tooling/cli" }
 
 # 3rd party
 serde = { version = "1.0", features = ["derive"] }
@@ -124,7 +133,9 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6
 nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
 noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
 
-whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"] }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", features = [
+  "tracing",
+], rev="3e7f8c299783fddf4354869bbcbc995a5018a9d4"}
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
