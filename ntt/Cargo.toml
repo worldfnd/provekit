@@ -13,5 +13,8 @@ ark-bn254.workspace = true
 rayon.workspace = true
 ark-ff.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true

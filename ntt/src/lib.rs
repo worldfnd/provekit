@@ -7,6 +7,7 @@ use {
     },
 };
 
+// Taken from utils in noir-r1cs crate
 /// Target single-thread workload size for `T`.
 /// Should ideally be a multiple of a cache line (64 bytes)
 /// and close to the L1 cache size (32 KB).
@@ -15,10 +16,11 @@ pub const fn workload_size<T: Sized>() -> usize {
     CACHE_SIZE / size_of::<T>()
 }
 
+// Add type for power of 2 vector?
+// Allows for
+
 // TODO(xrvdg) Deal with reversed_ordered_roots that are finer grained than
-// required for the current NTT . Could make a datatype around it that requires
-// it to match, and that will handle the stepping.
-// So jumps will still happen. Can we do a performance analysis of it.
+// required for the current NTT .
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
@@ -27,7 +29,7 @@ pub const fn workload_size<T: Sized>() -> usize {
 /// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
 ///   order.
 /// * `input` - The input slice to be transformed in place.
-pub fn ntt(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
+pub fn ntt_nr(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
 
     // TODO(xrvdg) check the length of the roots and input
@@ -35,6 +37,11 @@ pub fn ntt(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
     // creation?
 
     let n = input.len();
+
+    if n <= 1 {
+        return;
+    }
+    assert!(n.is_power_of_two());
 
     // Each unique twiddle factor within a stage is a group.
     let mut pairs_in_group = n / 2;
@@ -90,8 +97,11 @@ pub fn ntt(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
 
 // TODO(xrvdg) Add test and then change this implementation to be more rust-like
 // can't really change the order of the roots
+// Decimation in Time normal to reverse bit order which should be used once
+// cache sized is reached.
 fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) {
     let n = input.len();
+    debug_assert!(n.is_power_of_two());
 
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
@@ -158,9 +168,87 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
     roots
 }
 
+// Reorder the input in reverse bit order, allows to convert from normal order
+// to reverse order or vice versa
+fn reverse_order<T>(input: &mut [T]) {
+    let n = input.len();
+    for index in 0..n {
+        let rev = reverse_bits(index, n.trailing_zeros());
+        if index < rev {
+            input.swap(index, rev);
+        }
+    }
+}
+
+/// Note: not specifically optimized
+pub fn intt_rn(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
+    reverse_order(input);
+    intt_nr(reverse_ordered_roots, input);
+    reverse_order(input);
+}
+
+// Inverse NTT
+// TODO(xrvdg) How do the inverse roots of unity look like. For back conversion
+pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
+    match input.len() {
+        0 => return,
+        n => {
+            // TODO(xrvdg) the type of ntt requires this to be an actual reverse
+            // However preload
+
+            // Reverse the input such that the roots act as the inverse roots
+            input.reverse();
+            ntt_nr(reverse_ordered_roots, input);
+
+            let factor = Fr::ONE / Fr::from(n as u64);
+
+            for i in input.iter_mut() {
+                *i *= factor;
+            }
+
+            // Undo the reversal
+            input.reverse();
+        }
+    }
+}
+
 // proptest that takes a regular NTT written using horner multiplication and
 // compare it to the reverse ordered NTT. Or just another simpler FFT
 // implementation?
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use {
+        crate::{init_roots_reverse_ordered, intt_rn, ntt_nr},
+        ark_bn254::Fr,
+        proptest::prelude::*,
+    };
+    // Generate a list that is a power of 2
+    // Ensure that both above and below 1024 is triggered.
+    // Compare it to a reference implementation, ideally not too slow.
+    // Could also compare it to dit_cache with segment set to 0.
+    // Another option is to do a inverse and check if the results are the same.
+    // The crossovers make it more difficult to properly test it. On the other
+    // hand make sure that it's above and belower working_size
+
+    // Implement a strategy for power of two vector of Fr
+
+    // proptest! {
+    //     #[test]
+    //     fn round_trip(s in proptest::collection::vec(any::<u128>(), 1..1024))
+    // {         // Convert input to field elements
+    //         let mut s: Vec<Fr> = s.into_iter().map(Fr::from).collect();
+    //         let original = s.clone();
+    //         let n = s.len();
+    //         let roots = init_roots_reverse_ordered(n);
+
+    //         // Forward NTT
+    //         ntt_nr(&roots, &mut s);
+
+    //         // Inverse NTT
+    //         intt_rn(&roots, &mut s);
+
+    //         prop_assert_eq!(s, original);
+    //     }
+    // }
+}
