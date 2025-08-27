@@ -1,12 +1,12 @@
-package main
+package circuit
 
 import (
 	"fmt"
 	"log"
 	"os"
 
-	"reilabs/whir-verifier-circuit/typeConverters"
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -64,7 +64,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
 
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 func verifyCircuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
-) {
+){
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
@@ -164,8 +164,8 @@ func verifyCircuit(
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
 
-		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       New_whir_params(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: New_whir_params(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -216,8 +216,8 @@ func verifyCircuit(
 		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
 		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
 
-		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       New_whir_params(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: New_whir_params(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,

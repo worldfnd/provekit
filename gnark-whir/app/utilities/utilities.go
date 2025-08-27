@@ -3,12 +3,12 @@ package utilities
 import (
 	"fmt"
 	"math/big"
-	"reilabs/whir-verifier-circuit/typeConverters"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"github.com/consensys/gnark/std/math/uints"
-	gnark_nimue "github.com/reilabs/gnark-nimue"
+	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
@@ -81,7 +81,7 @@ func PrefixDecodePath[T any](prevPath []T, prefixLen uint64, suffix []T) []T {
 	}
 }
 
-func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnark_nimue.Arthur, difficulty int) ([]uints.U8, []uints.U8, error) {
+func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthur, difficulty int) ([]uints.U8, []uints.U8, error) {
 	challenge := make([]uints.U8, 32)
 	if err := arthur.FillChallengeBytes(challenge); err != nil {
 		return nil, nil, err
@@ -189,7 +189,7 @@ func ExpandFromUnivariate(api frontend.API, base frontend.Variable, len int) []f
 	return res
 }
 
-func IsSubset(api frontend.API, uapi *uints.BinaryField[uints.U64], arthur gnark_nimue.Arthur, indexes []frontend.Variable, merkleIndexes []uints.U64) error {
+func IsSubset(api frontend.API, uapi *uints.BinaryField[uints.U64], arthur gnarkNimue.Arthur, indexes []frontend.Variable, merkleIndexes []uints.U64) error {
 	dedupedLUT := logderivlookup.New(api)
 	inputArr := make([]frontend.Variable, len(merkleIndexes)+1)
 
