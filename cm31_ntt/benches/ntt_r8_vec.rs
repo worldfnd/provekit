@@ -1,12 +1,11 @@
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt_utils::get_root_of_unity;
-use cm31_ntt::ntt::*;
-use cm31_ntt::cm31::CF;
-use num_traits::Zero;
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::SeedableRng;
+use {
+    cm31_ntt::{cm31::CF, ntt::*, ntt_utils::get_root_of_unity},
+    criterion::{Criterion, criterion_group, criterion_main},
+    num_traits::Zero,
+    rand::Rng,
+    rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    std::hint::black_box,
+};
 
 fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("ntt_r8_vec");

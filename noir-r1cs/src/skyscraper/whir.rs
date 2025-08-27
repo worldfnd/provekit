@@ -1,10 +1,11 @@
 use {
-    crate::skyscraper::skyscraper_impl::{compress, SkyscraperSponge},
+    crate::{skyscraper::SkyscraperSponge, FieldElement},
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
         Error,
     },
+    ark_ff::{BigInt, PrimeField},
     rand08::Rng,
     serde::{Deserialize, Serialize},
     spongefish::{
@@ -14,100 +15,96 @@ use {
         DomainSeparator, ProofResult, ProverState, VerifierState,
     },
     std::borrow::Borrow,
-    whir::{
-        crypto::fields::Field256,
-        whir::{
-            domainsep::DigestDomainSeparator,
-            utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
-        },
-    },
 };
 
-/// Skyscraper collision-resistant hash
+fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+    let l64 = l.into_bigint().0;
+    let r64 = r.into_bigint().0;
+    let out = skyscraper::simple::compress(l64, r64);
+    FieldElement::new(BigInt(out))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperCRH;
 
 impl CRHScheme for SkyscraperCRH {
-    type Input = [Field256];
-    type Output = Field256;
+    type Input = [FieldElement];
+    type Output = FieldElement;
     type Parameters = ();
-
     fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
-
     fn evaluate<T: Borrow<Self::Input>>(
-        _parameters: &Self::Parameters,
+        _: &Self::Parameters,
         input: T,
     ) -> Result<Self::Output, Error> {
-        let elems = input.borrow();
-        elems
+        input
+            .borrow()
             .iter()
             .copied()
             .reduce(compress)
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
-/// Skyscraper collision-resistant hash for merkle inner hash
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperTwoToOne;
 
 impl TwoToOneCRHScheme for SkyscraperTwoToOne {
-    type Input = Field256;
-    type Output = Field256;
+    type Input = FieldElement;
+    type Output = FieldElement;
     type Parameters = ();
-
     fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
-
     fn evaluate<T: Borrow<Self::Input>>(
-        (): &Self::Parameters,
-        left_input: T,
-        right_input: T,
+        _: &Self::Parameters,
+        l: T,
+        r: T,
     ) -> Result<Self::Output, Error> {
-        Ok(compress(*left_input.borrow(), *right_input.borrow()))
+        Ok(compress(*l.borrow(), *r.borrow()))
     }
-
     fn compress<T: Borrow<Self::Output>>(
-        parameters: &Self::Parameters,
-        left_input: T,
-        right_input: T,
+        p: &Self::Parameters,
+        l: T,
+        r: T,
     ) -> Result<Self::Output, Error> {
-        <Self as TwoToOneCRHScheme>::evaluate(parameters, left_input, right_input)
+        <Self as TwoToOneCRHScheme>::evaluate(p, l, r)
     }
 }
 
-/// Skyscraper configuration for the Merkle hash
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkyscraperMerkleConfig;
 
 impl Config for SkyscraperMerkleConfig {
-    type Leaf = [Field256];
-    type LeafDigest = Field256;
-    type LeafInnerDigestConverter = IdentityDigestConverter<Field256>;
-    type InnerDigest = Field256;
+    type Leaf = [FieldElement];
+    type LeafDigest = FieldElement;
+    type LeafInnerDigestConverter = IdentityDigestConverter<FieldElement>;
+    type InnerDigest = FieldElement;
     type LeafHash = SkyscraperCRH;
     type TwoToOneHash = SkyscraperTwoToOne;
 }
 
-impl DigestDomainSeparator<SkyscraperMerkleConfig> for DomainSeparator<SkyscraperSponge, Field256> {
+impl whir::whir::domainsep::DigestDomainSeparator<SkyscraperMerkleConfig>
+    for DomainSeparator<SkyscraperSponge, FieldElement>
+{
     fn add_digest(self, label: &str) -> Self {
-        <Self as FieldDomainSeparator<Field256>>::add_scalars(self, 1, label)
+        <Self as FieldDomainSeparator<FieldElement>>::add_scalars(self, 1, label)
     }
 }
 
-impl DigestToUnitSerialize<SkyscraperMerkleConfig> for ProverState<SkyscraperSponge, Field256> {
-    fn add_digest(&mut self, digest: Field256) -> ProofResult<()> {
+impl whir::whir::utils::DigestToUnitSerialize<SkyscraperMerkleConfig>
+    for ProverState<SkyscraperSponge, FieldElement>
+{
+    fn add_digest(&mut self, digest: FieldElement) -> ProofResult<()> {
         self.add_scalars(&[digest])
     }
 }
 
-impl DigestToUnitDeserialize<SkyscraperMerkleConfig>
-    for VerifierState<'_, SkyscraperSponge, Field256>
+impl whir::whir::utils::DigestToUnitDeserialize<SkyscraperMerkleConfig>
+    for VerifierState<'_, SkyscraperSponge, FieldElement>
 {
-    fn read_digest(&mut self) -> ProofResult<Field256> {
+    fn read_digest(&mut self) -> ProofResult<FieldElement> {
         let [r] = self.next_scalars()?;
         Ok(r)
     }

@@ -1,14 +1,12 @@
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt_utils::get_root_of_unity;
-use cm31_ntt::ntt::*;
-use cm31_ntt::cm31::CF;
-use num_traits::Zero;
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::SeedableRng;
-
-use lazy_static::lazy_static;
+use {
+    cm31_ntt::{cm31::CF, ntt::*, ntt_utils::get_root_of_unity},
+    criterion::{Criterion, criterion_group, criterion_main},
+    lazy_static::lazy_static,
+    num_traits::Zero,
+    rand::Rng,
+    rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    std::hint::black_box,
+};
 
 lazy_static! {
     static ref PRECOMP: Vec<CF> = {
@@ -22,8 +20,8 @@ fn bench(c: &mut Criterion) {
 
     for log8_n in 7..9 {
         let n = 8usize.pow(log8_n);
-        //let wn = get_root_of_unity(n as usize);
-        //let precomp = precomp_vec_twiddles(n, wn);
+        // let wn = get_root_of_unity(n as usize);
+        // let precomp = precomp_vec_twiddles(n, wn);
         let mut rng = ChaCha8Rng::seed_from_u64(0);
 
         let mut f = vec![CF::zero(); n];

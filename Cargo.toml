@@ -1,12 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
+  "cm31_ntt",
   "noir-r1cs",
-  "fp-rounding",
-  "hla",
-  "block-multiplier",
-  "block-multiplier-codegen",
-  "skyscraper",
+  "skyscraper/fp-rounding",
+  "skyscraper/hla",
+  "skyscraper/block-multiplier",
+  "skyscraper/block-multiplier-codegen",
+  "skyscraper/core",
   "noir-tools",
 ]
 
@@ -60,13 +61,13 @@ opt-level = 3
 
 [workspace.dependencies]
 # Workspace members
-block-multiplier = { path = "block-multiplier" }
-block-multiplier-codegen = { path = "block-multiplier-codegen" }
-fp-rounding = { path = "fp-rounding" }
-hla = { path = "hla" }
+block-multiplier = { path = "skyscraper/block-multiplier" }
+block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
+fp-rounding = { path = "skyscraper/fp-rounding" }
+hla = { path = "skyscraper/hla" }
 noir-r1cs = { path = "noir-r1cs" }
 noir-tools = { path = "noir-tools" }
-skyscraper = { path = "skyscraper" }
+skyscraper = { path = "skyscraper/core" }
 
 # 3rd party
 serde = { version = "1.0", features = ["derive"] }

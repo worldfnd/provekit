@@ -1,15 +1,18 @@
 /// Complex M31 field arithmetic.
- 
-use serde::{Serialize, Deserialize};
-use crate::rm31::{RF, P};
-use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
-use core::fmt::Display;
-use std::convert::{ From, Into };
-use num_traits::Zero;
-use num_traits::identities::One;
-use num_traits::pow::Pow;
-use rand::distributions::{Distribution, Standard};
-use rand::Rng;
+use serde::{Deserialize, Serialize};
+use {
+    crate::rm31::{P, RF},
+    core::fmt::Display,
+    num_traits::{Zero, identities::One, pow::Pow},
+    rand::{
+        Rng,
+        distr::{Distribution, StandardUniform},
+    },
+    std::{
+        convert::{From, Into},
+        ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+    },
+};
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct CF {
@@ -18,27 +21,26 @@ pub struct CF {
 }
 
 // The 8th root of unity and its negation
-pub const W_8: CF = CF { 
-    a: RF { val: 0x00008000},
-    b: RF { val: 0x00008000 }
+pub const W_8: CF = CF {
+    a: RF { val: 0x00008000 },
+    b: RF { val: 0x00008000 },
 };
 
 pub const W_8_NEG_1: CF = CF {
-    a: RF { val: 0x7fff7fff},
-    b: RF { val: 0x7fff7fff }
+    a: RF { val: 0x7fff7fff },
+    b: RF { val: 0x7fff7fff },
 };
 
 // The 4th root of unity and its negation
 pub const W_4: CF = CF {
-    a: RF { val: 0x00000000},
-    b: RF { val: 0x00000001 }
+    a: RF { val: 0x00000000 },
+    b: RF { val: 0x00000001 },
 };
 
 pub const W_4_NEG_1: CF = CF {
-    a: RF { val: 0x7fffffff},
-    b: RF { val: 0x7ffffffe }
+    a: RF { val: 0x7fffffff },
+    b: RF { val: 0x7ffffffe },
 };
-
 
 /// Returns the 2nd to n-th roots of unity (inclusive).
 pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
@@ -46,7 +48,7 @@ pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
     let w2 = CF::root_of_unity_2();
     let mut w = w2;
     let mut res = vec![w2];
-    for _ in 2..n+1 {
+    for _ in 2..n + 1 {
         w = w.try_sqrt().unwrap();
         res.push(w);
     }
@@ -55,7 +57,10 @@ pub fn gen_roots_of_unity(n: usize) -> Vec<CF> {
 
 impl CF {
     pub fn new(real: u32, imag: u32) -> CF {
-        CF { a: RF::new(real), b: RF::new(imag) }
+        CF {
+            a: RF::new(real),
+            b: RF::new(imag),
+        }
     }
 
     pub const fn real(self) -> RF {
@@ -67,14 +72,14 @@ impl CF {
     }
 
     pub fn mul_by_f(self, f: RF) -> CF {
-        CF { 
+        CF {
             a: f * self.real(),
             b: f * self.imag(),
         }
     }
 
-    /// Multiplies by the 8th root of unity, which is (0x00008000, 0x00008000). This is efficient
-    /// as we can use bitshifts to multiply by 0x00008000.
+    /// Multiplies by the 8th root of unity, which is (0x00008000, 0x00008000).
+    /// This is efficient as we can use bitshifts to multiply by 0x00008000.
     pub fn mul_by_w8(self) -> CF {
         // The Karatsuba method. See mul().
         let a = self.a;
@@ -105,22 +110,28 @@ impl CF {
         debug_assert!((a2b2 * a2b2_inv).reduce() == RF::new(1));
 
         let neg_b = self.b.neg();
-        let a_neg_b = CF { a: self.a, b: neg_b };
+        let a_neg_b = CF {
+            a: self.a,
+            b: neg_b,
+        };
 
         let result = a_neg_b.mul_by_f(a2b2_inv);
         Some(result)
     }
 
     pub fn reduce(self) -> CF {
-        CF { a: self.a.reduce(), b: self.b.reduce() }
+        CF {
+            a: self.a.reduce(),
+            b: self.b.reduce(),
+        }
     }
 
     pub fn root_of_unity_2() -> CF {
         CF::new(0x7ffffffe, 0)
     }
 
-    /// Returns the 4th root of unity. Since there are 2 options for this value, select the one you
-    /// want using the input `i`.
+    /// Returns the 4th root of unity. Since there are 2 options for this value,
+    /// select the one you want using the input `i`.
     /// The 4th root of unity is (0, +-1)
     /// The options denoted by `i` are:
     /// 0. (0,  v)
@@ -133,8 +144,8 @@ impl CF {
         }
     }
 
-    /// Returns the 8th root of unity. Since there are 4 options for this value, select the one you
-    /// want using the input `i`.
+    /// Returns the 8th root of unity. Since there are 4 options for this value,
+    /// select the one you want using the input `i`.
     /// The 8th root of unity is (+-2^15, +-2^15)
     /// Let v = 2^15
     /// The options denoted by `i` are:
@@ -163,7 +174,10 @@ impl CF {
 
     #[inline]
     pub fn mul_j(self) -> Self {
-        CF { a: self.b.neg(), b: self.a }
+        CF {
+            a: self.b.neg(),
+            b: self.a,
+        }
     }
 
     /// Attempts to compute a square root of a complex element in CF.
@@ -180,7 +194,7 @@ impl CF {
         // Compute r = sqrt(a^2 + b^2) in RF.
         let norm = (a * a + b * b).reduce();
         let r = norm.try_sqrt()?;
-        
+
         // Candidate branch 1: try x = sqrt((a + r)/2).
         let candidate_x2 = ((a + r) * two_inv).reduce();
         if let Some(x) = candidate_x2.try_sqrt() {
@@ -194,7 +208,7 @@ impl CF {
                 }
             }
         }
-        
+
         // Candidate branch 2: try y = sqrt((r - a)/2).
         let candidate_y2 = ((r - a) * two_inv).reduce();
         if let Some(y) = candidate_y2.try_sqrt() {
@@ -232,8 +246,8 @@ impl One for CF {
 
 impl Into<CF> for u32 {
     #[inline]
-    /// Converts a u32 into a CF where the real part is the specified u32, and the imaginary part
-    /// is 0
+    /// Converts a u32 into a CF where the real part is the specified u32, and
+    /// the imaginary part is 0
     fn into(self) -> CF {
         CF::new(self, 0)
     }
@@ -242,7 +256,10 @@ impl Into<CF> for u32 {
 impl Into<CF> for (u32, u32) {
     #[inline]
     fn into(self) -> CF {
-        CF { a: RF::new(self.0), b: RF::new(self.1) }
+        CF {
+            a: RF::new(self.0),
+            b: RF::new(self.1),
+        }
     }
 }
 
@@ -329,7 +346,10 @@ impl Neg for CF {
 
     #[inline]
     fn neg(self) -> Self::Output {
-        CF { a: -self.a, b: -self.b }
+        CF {
+            a: -self.a,
+            b: -self.b,
+        }
     }
 }
 
@@ -367,7 +387,7 @@ impl Pow<usize> for CF {
     }
 }
 
-impl Distribution<CF> for Standard {
+impl Distribution<CF> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CF {
         CF {
             a: rng.r#gen(),
@@ -378,11 +398,12 @@ impl Distribution<CF> for Standard {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::rm31::P;
-    use rand_chacha::ChaCha8Rng;
-    use rand_chacha::rand_core::SeedableRng;
-    use num_traits::One;
+    use {
+        super::*,
+        crate::rm31::P,
+        num_traits::One,
+        rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    };
 
     #[test]
     fn test_new() {
@@ -401,7 +422,7 @@ mod tests {
     fn test_into() {
         let x: CF = 0u32.into();
         assert_eq!(x, CF::new(0, 0));
-        
+
         let x: CF = 1u32.into();
         assert_eq!(x, CF::new(1, 0));
 
@@ -427,10 +448,7 @@ mod tests {
 
     #[test]
     fn test_mul() {
-        assert_eq!(
-            CF::new(2, 2) * CF::new(4, 5),
-            CF::new(P - 2, 18)
-        );
+        assert_eq!(CF::new(2, 2) * CF::new(4, 5), CF::new(P - 2, 18));
     }
 
     #[test]

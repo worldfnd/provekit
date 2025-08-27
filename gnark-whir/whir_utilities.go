@@ -345,9 +345,9 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
 		leafSiblingHash := leafSiblingHashes[i]
 
-		claimedLeafHash := sc.Compress(leaves[i][0], leaves[i][1])
+		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
 		for x := range len(leaves[i]) - 2 {
-			claimedLeafHash = sc.Compress(claimedLeafHash, leaves[i][x+2])
+			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x+2])
 		}
 
 		dir := leafIndexBits[0]
@@ -355,7 +355,7 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 		xLeftChild := api.Select(dir, leafSiblingHash, claimedLeafHash)
 		xRightChild := api.Select(dir, claimedLeafHash, leafSiblingHash)
 
-		currentHash := sc.Compress(xLeftChild, xRightChild)
+		currentHash := sc.CompressV2(xLeftChild, xRightChild)
 
 		for level := 1; level < treeHeight; level++ {
 			indexBit := leafIndexBits[level]
@@ -366,7 +366,7 @@ func VerifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 			left := api.Select(dir, siblingHash, currentHash)
 			right := api.Select(dir, currentHash, siblingHash)
 
-			currentHash = sc.Compress(left, right)
+			currentHash = sc.CompressV2(left, right)
 		}
 		api.AssertIsEqual(currentHash, rootHash)
 	}

@@ -1,19 +1,18 @@
-use std::hint::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
-use cm31_ntt::ntt::*;
-use cm31_ntt::cm31::CF;
-use num_traits::Zero;
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand_chacha::rand_core::SeedableRng;
-use lazy_static::lazy_static;
+use {
+    cm31_ntt::{cm31::CF, ntt::*},
+    criterion::{Criterion, criterion_group, criterion_main},
+    lazy_static::lazy_static,
+    num_traits::Zero,
+    rand::Rng,
+    rand_chacha::{ChaCha8Rng, rand_core::SeedableRng},
+    std::hint::black_box,
+};
 
 lazy_static! {
     static ref PRECOMP_7: PrecomputedTwiddles = {
         let n = 8usize.pow(7);
         precompute_twiddles(n).unwrap()
     };
-
     static ref PRECOMP_8: PrecomputedTwiddles = {
         let n = 8usize.pow(8);
         precompute_twiddles(n).unwrap()

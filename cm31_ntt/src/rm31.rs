@@ -1,24 +1,31 @@
-use serde::{Serialize, Deserialize};
-use core::fmt::Display;
-use num_traits::{Zero, One, Pow};
-use std::ops::{Add, AddAssign, Sub, SubAssign, Neg, Mul, MulAssign};
-use std::convert::{From, Into};
-use rand::distributions::{Distribution, Standard};
-use rand::Rng;
+use {
+    core::fmt::Display,
+    num_traits::{One, Pow, Zero},
+    rand::{
+        Rng,
+        distr::{Distribution, StandardUniform},
+    },
+    serde::{Deserialize, Serialize},
+    std::{
+        convert::{From, Into},
+        ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+    },
+};
 
 pub const P: u32 = 0x7fffffff;
 pub const P_64: u64 = 0x7fffffff;
 pub const P3: u64 = 0x17ffffffd;
 pub const MASK: u64 = 0xffffffff;
 
-// The redundant form of the M31 field. It consists of 31 lower bits (x_l) and the rest are higher
-// bits (x_h).
-// 
+// The redundant form of the M31 field. It consists of 31 lower bits (x_l) and
+// the rest are higher bits (x_h).
+//
 // For non-redundant M31 representation:
 //    x is 2^31 * x_h + x_l, and the reduced value is x_h + x_l.
-// For redundant representation: 
-//    x is 2^32 * x_h + x_l, and the (at least partially) reduced value is 2 * x_h + x_l.
-// 
+// For redundant representation:
+//    x is 2^32 * x_h + x_l, and the (at least partially) reduced value is 2 *
+// x_h + x_l.
+//
 // See https://github.com/ingonyama-zk/papers/blob/main/Mersenne31_polynomial_arithmetic.pdf
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct RF {
@@ -39,7 +46,9 @@ impl RF {
 
     #[inline]
     pub fn reduce(self) -> RF {
-        RF { val: reduce(self.val) }
+        RF {
+            val: reduce(self.val),
+        }
     }
 
     #[inline]
@@ -73,7 +82,8 @@ impl RF {
         let p111111110000 = p11111111.reduce().exp_power_of_2(4);
         let p111111111111 = p111111110000 * p1111;
         let p1111111111111111 = p111111110000.reduce().exp_power_of_2(4) * p11111111;
-        let p1111111111111111111111111111 = p1111111111111111.reduce().exp_power_of_2(12) * p111111111111;
+        let p1111111111111111111111111111 =
+            p1111111111111111.reduce().exp_power_of_2(12) * p111111111111;
         let p1111111111111111111111111111101 =
             p1111111111111111111111111111.reduce().exp_power_of_2(3) * p101;
 
@@ -95,7 +105,7 @@ impl RF {
         // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = (exp % 31) as u8;
-        let left =   reduced >> exp;
+        let left = reduced >> exp;
         let right = (reduced << (31 - exp)) & P;
         let rotated = left | right;
         Self::new(rotated as u32)
@@ -166,9 +176,9 @@ impl Neg for RF {
 
     #[inline]
     fn neg(self) -> Self::Output {
-        let tmp   = P3 - self.val as u64;
+        let tmp = P3 - self.val as u64;
         let carry = (tmp >> 32) as u32;
-        let low   = tmp as u32;
+        let low = tmp as u32;
         let out = low.wrapping_add(carry << 1);
         RF { val: out }
     }
@@ -180,8 +190,8 @@ impl Mul for RF {
     #[inline]
     fn mul(self, rhs: Self) -> Self::Output {
         let prod = self.val as u64 * rhs.val as u64;
-        let hi  = prod >> 32;
-        let lo  = prod & 0xffffffff;
+        let hi = prod >> 32;
+        let lo = prod & 0xffffffff;
         let tmp = lo + hi * 2;
         let hi2 = tmp >> 32;
         let lo2 = tmp & 0xffffffff;
@@ -228,8 +238,10 @@ impl Add for RF {
     fn add(self, rhs: Self) -> Self::Output {
         let tmp = self.val as u64 + rhs.val as u64;
         let carry = (tmp >> 32) as u32;
-        let low   = tmp as u32;
-        RF { val: low.wrapping_add(carry << 1) }
+        let low = tmp as u32;
+        RF {
+            val: low.wrapping_add(carry << 1),
+        }
     }
 }
 
@@ -248,8 +260,10 @@ impl Sub for RF {
     fn sub(self, rhs: Self) -> Self::Output {
         let tmp: u64 = P3 + self.val as u64 - rhs.val as u64;
         let carry = (tmp >> 32) as u32;
-        let low   = tmp as u32;
-        RF { val: low.wrapping_add(carry << 1) }
+        let low = tmp as u32;
+        RF {
+            val: low.wrapping_add(carry << 1),
+        }
     }
 }
 
@@ -279,7 +293,7 @@ impl Pow<usize> for RF {
     }
 }
 
-impl Distribution<RF> for Standard {
+impl Distribution<RF> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RF {
         let threshold = u32::MAX - (u32::MAX % P);
         loop {
@@ -299,10 +313,7 @@ impl Display for RF {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use test_case::test_case;
-    use rand_chacha::ChaCha8Rng;
-    use rand::SeedableRng;
+    use {super::*, rand::SeedableRng, rand_chacha::ChaCha8Rng, test_case::test_case};
 
     const NUM_FUZZ_TESTS: usize = 1024;
 
@@ -345,15 +356,15 @@ mod tests {
     fn test_reduce_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let reduced = (a + b).reduce();
             let expected = RF::new((a.val + b.val) % P);
             assert_eq!(reduced.val, expected.val);
         }
     }
 
-        // Helper function to test binary operations against test cases
+    // Helper function to test binary operations against test cases
     fn test_binary_op<F, G>(op_name: &str, rf_op: F, expected_op: G)
     where
         F: Fn(RF, RF) -> RF,
@@ -363,7 +374,7 @@ mod tests {
         for (lhs, rhs) in TEST_CASES {
             let lhs_rf: RF = (*lhs).into();
             let rhs_rf: RF = (*rhs).into();
-            
+
             let expected = expected_op(lhs_rf.val, rhs_rf.val);
             let result = (rf_op(lhs_rf, rhs_rf)).val % P;
 
@@ -372,8 +383,9 @@ mod tests {
             }
         }
 
-        // Print all faling test cases. This is useful for debugging. I don't use test_case here
-        // as I want to reuse TEST_CASES, and I ran into issues with test_case name clashes.
+        // Print all faling test cases. This is useful for debugging. I don't use
+        // test_case here as I want to reuse TEST_CASES, and I ran into issues
+        // with test_case name clashes.
         if failing_test_cases.len() > 0 {
             println!("Failed {} test cases: {:?}", op_name, failing_test_cases);
         }
@@ -385,7 +397,7 @@ mod tests {
         test_binary_op(
             "add",
             |a, b| a + b,
-            |a, b| ((a as u64 + b as u64) % P_64) as u32
+            |a, b| ((a as u64 + b as u64) % P_64) as u32,
         );
     }
 
@@ -393,8 +405,8 @@ mod tests {
     fn test_add_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let sum = a + b;
             let expected = (a.val as u64 + b.val as u64) % P_64;
             assert_eq!(sum.val % P, expected as u32);
@@ -405,12 +417,7 @@ mod tests {
     fn test_add_assign() {
         let mut expected = 0;
         let mut sum = RF::new(0);
-        let vals = &[
-            RF::new(0),
-            RF::new(2),
-            RF::new(P - 1),
-            RF::new(1234),
-        ];
+        let vals = &[RF::new(0), RF::new(2), RF::new(P - 1), RF::new(1234)];
 
         for v in vals {
             expected += v.val;
@@ -426,20 +433,22 @@ mod tests {
         test_binary_op(
             "sub",
             |a, b| a - b,
-            |a, b| if a > b {
-                (a - b) % P
-            } else {
-                (P - (b - a)) % P
-            }
+            |a, b| {
+                if a > b {
+                    (a - b) % P
+                } else {
+                    (P - (b - a)) % P
+                }
+            },
         );
     }
-    
+
     #[test]
     fn test_sub_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let diff = a - b;
             let expected = if a.val > b.val {
                 (a.val - b.val) % P
@@ -454,12 +463,7 @@ mod tests {
     fn test_sub_assign() {
         let mut expected = 0;
         let mut sum = RF::new(0);
-        let vals = &[
-            RF::new(0),
-            RF::new(2),
-            RF::new(P - 1),
-            RF::new(1234),
-        ];
+        let vals = &[RF::new(0), RF::new(2), RF::new(P - 1), RF::new(1234)];
 
         for v in vals {
             expected = if expected > v.val {
@@ -489,18 +493,18 @@ mod tests {
         let expected = RF::new(0);
         assert_eq!(s, expected);
     }
-    
+
     #[test]
     fn test_neg_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
+            let a: RF = rng.random();
             let neg_a = a.neg();
-            
+
             // Test that a + (-a) = 0
             let sum = a + neg_a;
             assert_eq!(sum.reduce(), RF::zero());
-            
+
             // Test that -(-a) = a
             let neg_neg_a = neg_a.neg();
             assert_eq!(neg_neg_a.reduce(), a.reduce());
@@ -512,16 +516,16 @@ mod tests {
         test_binary_op(
             "mul",
             |a, b| a * b,
-            |a, b| ((a as u64 * b as u64) % P_64) as u32
+            |a, b| ((a as u64 * b as u64) % P_64) as u32,
         );
     }
-    
+
     #[test]
     fn test_mul_fuzz() {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let product = a * b;
             let expected = (a.val as u64 * b.val as u64) % P_64;
             assert_eq!(product.val % P, expected as u32);
@@ -579,7 +583,7 @@ mod tests {
     #[test_case(1, 2, 4)]
     #[test_case(2, 30, 1)]
     fn test_mul_2exp_u64(x: u32, y: u64, z: u32) {
-        assert_eq!(RF::new(x).mul_2exp_u64(y),  RF::new(z));
+        assert_eq!(RF::new(x).mul_2exp_u64(y), RF::new(z));
     }
 
     #[test_case(4096, 10, 4)]
@@ -596,7 +600,7 @@ mod tests {
         for _ in 0..1024 {
             y += x;
             let reduced = y.reduce();
-            
+
             e_y = (e_y + e_x) % P;
 
             assert_eq!(reduced.val, e_y);
@@ -638,8 +642,8 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let m = 0x8000;
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let x = a + b;
             let expected = x.val as u64 * m as u64 % P_64;
             let result = x.mul_by_2_15();
@@ -664,8 +668,8 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0);
         let m = 0x10000;
         for _ in 0..NUM_FUZZ_TESTS {
-            let a: RF = rng.r#gen();
-            let b: RF = rng.r#gen();
+            let a: RF = rng.random();
+            let b: RF = rng.random();
             let x = a + b;
             let expected = x.val as u64 * m as u64 % P_64;
             let result = x.mul_by_2_16();
