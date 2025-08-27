@@ -98,7 +98,6 @@ type Config struct {
 	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
 }
 
-
 type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint

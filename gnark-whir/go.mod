@@ -5,6 +5,7 @@ go 1.23.3
 require (
 	github.com/consensys/gnark v0.13.0
 	github.com/consensys/gnark-crypto v0.18.0
+	github.com/gofiber/fiber/v2 v2.52.9
 	github.com/reilabs/gnark-nimue v0.0.7-0.20250819071945-7382324c8642
 	github.com/reilabs/gnark-skyscraper v0.0.0-20250819020215-db52e4ee2949
 	github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3
@@ -17,7 +18,6 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/fxamacker/cbor/v2 v2.8.0 // indirect
-	github.com/gofiber/fiber/v2 v2.52.9 // indirect
 	github.com/google/pprof v0.0.0-20250629210550-e611ec304b22 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/ingonyama-zk/icicle-gnark/v3 v3.2.2 // indirect

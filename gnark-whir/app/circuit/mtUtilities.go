@@ -9,8 +9,6 @@ import (
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
-
-
 func initialSumcheck(
 	api frontend.API,
 	arthur gnarkNimue.Arthur,

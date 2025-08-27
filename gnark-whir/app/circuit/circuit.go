@@ -84,7 +84,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 func verifyCircuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
-){
+) {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 

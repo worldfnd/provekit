@@ -8,8 +8,6 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
-
-
 func newMerkle(
 	hint Hint,
 	isContainer bool,

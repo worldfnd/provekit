@@ -12,7 +12,6 @@ import (
 	"reilabs/whir-verifier-circuit/app/circuit"
 )
 
-
 func main() {
 	app := &cli.App{
 		Name:  "Verifier",
@@ -94,9 +93,9 @@ func main() {
 
 			var pk *groth16.ProvingKey = nil
 			var vk *groth16.VerifyingKey = nil
-			
+
 			if pkUrl != "" && vkUrl != "" {
-				pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl) 
+				pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
 				if err != nil {
 					return fmt.Errorf("failed to get PK/VK: %w", err)
 				}

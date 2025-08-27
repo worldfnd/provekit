@@ -157,6 +157,7 @@ func computeWPoly(
 	return value
 }
 
+//nolint:unused
 func fillInAndVerifyRootHash(
 	roundNum int,
 	api frontend.API,
