@@ -10,27 +10,31 @@ import (
 
 	"reilabs/whir-verifier-circuit/typeConverters"
 
-	gnark_nimue "github.com/reilabs/gnark-nimue"
-	go_ark_serialize "github.com/reilabs/go-ark-serialize"
-
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
 	"github.com/consensys/gnark/test"
+	gnark_nimue "github.com/reilabs/gnark-nimue"
+	go_ark_serialize "github.com/reilabs/go-ark-serialize"
 )
 
-// TestCompleteAgeCheckCircuit tests the actual WHIR circuit using CheckCircuit
 func TestCompleteAgeCheckCircuit(t *testing.T) {
 	assert := test.NewAssert(t)
 
-	// Load the actual witness data from the compiled circuit files, just like main.go does
-	configFilePath := "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier"
+	configFile, err := os.ReadFile("../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier")
 	r1csFilePath := "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json"
-
-	// Load config
-	configFile, err := os.ReadFile(configFilePath)
 	if err != nil {
-		t.Fatalf("failed to read config file: %v", err)
+		t.Fatalf("Failed to read config file: %v", err)
+	}
+
+	r1csFile, r1csErr := os.ReadFile(r1csFilePath)
+	if r1csErr != nil {
+		t.Fatalf("failed to read r1cs file: %v", r1csErr)
+	}
+
+	var internedR1CS R1CS
+	if err = json.Unmarshal(r1csFile, &internedR1CS); err != nil {
+		t.Fatalf("failed to unmarshal r1cs JSON: %v", err)
 	}
 
 	var config Config
@@ -38,7 +42,6 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to unmarshal config JSON: %v", err)
 	}
 
-	// Parse IO pattern
 	io := gnark_nimue.IOPattern{}
 	err = io.Parse([]byte(config.IOPattern))
 	if err != nil {
@@ -53,7 +56,6 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	var deferred []Fp256
 	var claimedEvaluations []Fp256
 
-	// Parse transcript to extract real data
 	for _, op := range io.Ops {
 		switch op.Kind {
 		case gnark_nimue.Hint:
@@ -131,18 +133,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 
 	config.Transcript = truncated
 
-	// Load R1CS
-	r1csFile, err := os.ReadFile(r1csFilePath)
-	if err != nil {
-		t.Fatalf("failed to read r1cs file: %v", err)
-	}
-
-	var r1cs R1CS
-	if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
-		t.Fatalf("failed to unmarshal r1cs JSON: %v", err)
-	}
-
-	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+	internerBytes, err := hex.DecodeString(internedR1CS.Interner.Values)
 	if err != nil {
 		t.Fatalf("failed to decode interner values: %v", err)
 	}
@@ -155,8 +146,8 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to deserialize interner: %v", err)
 	}
 
-	// Create hints
 	spartanEnd := config.WHIRConfigCol.NRounds + 1
+
 	hints := Hints{
 		colHints: Hint{
 			merklePaths: merklePaths[:spartanEnd],
@@ -164,73 +155,72 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		},
 	}
 
-	// Convert Fp256 to frontend.Variable for the circuit
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
-	linearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
+	transcriptT := make([]uints.U8, config.TranscriptLen)
+	contTranscript := make([]uints.U8, config.TranscriptLen)
 
+	for i := range config.Transcript {
+		transcriptT[i] = uints.NewU8(config.Transcript[i])
+	}
+
+	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
+
+	linearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
+	contLinearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
 	for i := range len(deferred) {
 		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
 		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
-	// Create matrices from R1CS data
-	matrixA := make([]MatrixCell, len(r1cs.A.Values))
-	for i := range len(r1cs.A.RowIndices) {
-		end := len(r1cs.A.Values) - 1
-		if i < len(r1cs.A.RowIndices)-1 {
-			end = int(r1cs.A.RowIndices[i+1] - 1)
+	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
+	for i := range len(internedR1CS.A.RowIndices) {
+		end := len(internedR1CS.A.Values) - 1
+		if i < len(internedR1CS.A.RowIndices)-1 {
+			end = int(internedR1CS.A.RowIndices[i+1] - 1)
 		}
-		for j := int(r1cs.A.RowIndices[i]); j <= end; j++ {
+		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
 			matrixA[j] = MatrixCell{
 				row:    i,
-				column: int(r1cs.A.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.A.Values[j]].Limbs),
+				column: int(internedR1CS.A.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
 			}
 		}
 	}
 
-	matrixB := make([]MatrixCell, len(r1cs.B.Values))
-	for i := range len(r1cs.B.RowIndices) {
-		end := len(r1cs.B.Values) - 1
-		if i < len(r1cs.B.RowIndices)-1 {
-			end = int(r1cs.B.RowIndices[i+1] - 1)
+	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
+	for i := range len(internedR1CS.B.RowIndices) {
+		end := len(internedR1CS.B.Values) - 1
+		if i < len(internedR1CS.B.RowIndices)-1 {
+			end = int(internedR1CS.B.RowIndices[i+1] - 1)
 		}
-		for j := int(r1cs.B.RowIndices[i]); j <= end; j++ {
+		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
 			matrixB[j] = MatrixCell{
 				row:    i,
-				column: int(r1cs.B.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.B.Values[j]].Limbs),
+				column: int(internedR1CS.B.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
 			}
 		}
 	}
 
-	matrixC := make([]MatrixCell, len(r1cs.C.Values))
-	for i := range len(r1cs.C.RowIndices) {
-		end := len(r1cs.C.Values) - 1
-		if i < len(r1cs.C.RowIndices)-1 {
-			end = int(r1cs.C.RowIndices[i+1] - 1)
+	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
+	for i := range len(internedR1CS.C.RowIndices) {
+		end := len(internedR1CS.C.Values) - 1
+		if i < len(internedR1CS.C.RowIndices)-1 {
+			end = int(internedR1CS.C.RowIndices[i+1] - 1)
 		}
-		for j := int(r1cs.C.RowIndices[i]); j <= end; j++ {
+		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
 			matrixC[j] = MatrixCell{
 				row:    i,
-				column: int(r1cs.C.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.C.Values[j]].Limbs),
+				column: int(internedR1CS.C.ColIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
 			}
 		}
 	}
 
-	// Convert transcript to uints.U8
-	transcriptT := make([]uints.U8, config.TranscriptLen)
-	for i := range config.Transcript {
-		transcriptT[i] = uints.NewU8(config.Transcript[i])
-	}
-
-	// Create the actual witness using real data from the compiled circuit
-	validWitness := &Circuit{
+	assignment := Circuit{
 		IO:                []byte(config.IOPattern),
 		Transcript:        transcriptT,
 		LogNumConstraints: config.LogNumConstraints,
-		LogNumVariables:   config.LogNumVariables,
 
 		LinearStatementEvaluations:    linearStatementEvaluations,
 		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
@@ -243,10 +233,27 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		WHIRParamsCol: new_whir_params(config.WHIRConfigCol),
 	}
 
-	// Test with CheckCircuit - this will run testEngineChecks + constraintSolverChecks
+	// witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	var circuit = Circuit{
+		IO:                []byte(config.IOPattern),
+		Transcript:        contTranscript,
+		LogNumConstraints: config.LogNumConstraints,
+		LogNumVariables:   config.LogNumVariables,
+
+		LinearStatementEvaluations:    contLinearStatementEvaluations,
+		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
+		SpartanMerkle:                 newMerkle(hints.colHints, true),
+
+		MatrixA: matrixA,
+		MatrixB: matrixB,
+		MatrixC: matrixC,
+
+		WHIRParamsCol: new_whir_params(config.WHIRConfigCol),
+	}
+
 	assert.CheckCircuit(
-		validWitness,
-		test.WithValidAssignment(validWitness),
-		test.WithCurves(ecc.BN254), // Use BN254 as the original circuit does
+		&circuit,
+		test.WithValidAssignment(&assignment),
+		test.WithCurves(ecc.BN254),
 	)
 }
