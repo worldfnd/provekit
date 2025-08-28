@@ -1,12 +1,13 @@
 #![cfg(test)]
 use {
-    crate::Vec2n,
     proptest::{num::sample_uniform_incl, prelude::*, sample::SizeRange, strategy::ValueTree},
+    std::fmt,
 };
 
 // Incorporate ordering in the type as well? For most things it doesn't matter
 // but for the NTT it could be nice.
-pub struct Vec2n<T>(Vec<T>);
+// TODO(xrvdg) make this an into
+pub struct Vec2n<T>(pub Vec<T>);
 
 impl<T: fmt::Debug> fmt::Debug for Vec2n<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,7 +84,7 @@ impl<T: ValueTree> ValueTree for Vec2nValueTree<T> {
             .iter()
             .map(|element| element.current())
             .collect();
-        Vec2n(vec)
+        Vec2n::new(vec).unwrap()
     }
 
     // Simplification could also go into the values themselves, but basically only
@@ -100,8 +101,8 @@ impl<T: ValueTree> ValueTree for Vec2nValueTree<T> {
     }
 
     fn complicate(&mut self) -> bool {
-        // We keep looking at smaller arrays. The right side probably doesn't make a
-        // difference
+        // Undo the last simplification and signal that there is nothing more to do.
+        self.len *= 2;
         false
     }
 }
@@ -114,14 +115,13 @@ mod tests {
     };
 
     fn failure_test(len: usize) {
-        match len {
-            0 | 1 => return,
+        let n = len / 2;
+        match n {
+            0 => return,
             // Maybe there shouldn't be a roots when the size is 1
             // and there should only be one if it's two.
-            len => {
-                assert!(len.is_power_of_two());
-
-                let n = len / 2;
+            n => {
+                assert!(n.is_power_of_two());
 
                 for index in 0..n {
                     let _rev = reverse_bits(index, n.trailing_zeros());
@@ -140,15 +140,17 @@ mod tests {
 
     #[test]
     fn min_size_test_concrete() {
-        let s = vec![105922996067648041916664138293903301621u128];
+        let s = vec![
+            105922996067648041916664138293903301621u128,
+            262602152062922063258535639029822315735u128,
+        ];
         failure_test(s.len());
     }
 
     proptest! {
         #[test]
-        fn min_size_direct(v in 0u32..4){
-            let s = 2_usize.pow(v);
-            failure_test(s);
+        fn min_size_direct(v in (0u32..63).prop_map(|k|2_usize.pow(k))){
+            failure_test(v);
         }
     }
 }
