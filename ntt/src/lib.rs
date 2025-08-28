@@ -7,6 +7,8 @@ use {
     },
 };
 
+mod proptest;
+
 // Taken from utils in noir-r1cs crate
 /// Target single-thread workload size for `T`.
 /// Should ideally be a multiple of a cache line (64 bytes)
@@ -156,25 +158,25 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
         0 => vec![],
         1 => vec![Fr::ONE],
         n => {
-    assert!(len.is_power_of_two());
-    let root = Fr::get_root_of_unity(len as u64).unwrap();
+            assert!(len.is_power_of_two());
+            let root = Fr::get_root_of_unity(len as u64).unwrap();
 
-    let mut roots = Vec::with_capacity(n);
-    let uninit = roots.spare_capacity_mut();
+            let mut roots = Vec::with_capacity(n);
+            let uninit = roots.spare_capacity_mut();
 
-    let mut omega_k = Fr::ONE;
+            let mut omega_k = Fr::ONE;
 
             for index in 0..n {
                 let rev = reverse_bits(index, n.trailing_zeros());
                 uninit[rev].write(omega_k);
-        omega_k *= root;
-    }
+                omega_k *= root;
+            }
 
-    unsafe {
-        roots.set_len(n);
-    }
+            unsafe {
+                roots.set_len(n);
+            }
 
-    roots
+            roots
         }
     }
 }
@@ -189,10 +191,10 @@ fn reverse_order<T>(input: &mut [T]) {
         n => {
             assert!(n.is_power_of_two());
 
-    for index in 0..n {
-        let rev = reverse_bits(index, n.trailing_zeros());
-        if index < rev {
-            input.swap(index, rev);
+            for index in 0..n {
+                let rev = reverse_bits(index, n.trailing_zeros());
+                if index < rev {
+                    input.swap(index, rev);
                 }
             }
         }
@@ -238,8 +240,9 @@ pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
 #[cfg(test)]
 mod tests {
     use {
-        crate::{init_roots_reverse_ordered, intt_rn, ntt_nr},
+        crate::{init_roots_reverse_ordered, intt_rn, ntt_nr, proptest::Vec2n, reverse_order},
         ark_bn254::Fr,
+        ark_ff::BigInt,
         proptest::prelude::*,
     };
     // Generate a list that is a power of 2
@@ -251,23 +254,55 @@ mod tests {
     // hand make sure that it's above and belower working_size
 
     // Implement a strategy for power of two vector of Fr
+    // Implement strategy
 
+    // TODO(xrvdg) isn't there a more advanced proptest in block multiplier?
+    prop_compose! {
+        fn fr()(val in proptest::array::uniform4(0u64..)) -> Fr{
+            Fr::new(BigInt(val))
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn round_trip_ntt(s in crate::proptest::vec2n(fr(), 0..3))
+        {         // Convert input to field elements
+            let mut s = s.0;
+            let original = s.clone();
+            let n = original.len();
+            let roots = init_roots_reverse_ordered(n);
+
+            // Forward NTT
+            ntt_nr(&roots, &mut s);
+
+            // Inverse NTT
+            intt_rn(&roots, &mut s);
+
+            prop_assert_eq!(s, original);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn round_trip_reverse_order(mut v in proptest::collection::vec(any::<u32>(), 1024)){
+            let original = v.clone();
+            reverse_order(&mut v);
+            reverse_order(&mut v);
+            prop_assert_eq!(original, v)
+        }
+    }
+
+    // Generate a value
+    // Go to the nearest power of two
+    // What is a proper way to generate the reverse bits
     // proptest! {
     //     #[test]
-    //     fn round_trip(s in proptest::collection::vec(any::<u128>(), 1..1024))
-    // {         // Convert input to field elements
-    //         let mut s: Vec<Fr> = s.into_iter().map(Fr::from).collect();
-    //         let original = s.clone();
-    //         let n = s.len();
-    //         let roots = init_roots_reverse_ordered(n);
+    //     fn round_trip_reverse_bits(){
 
-    //         // Forward NTT
-    //         ntt_nr(&roots, &mut s);
-
-    //         // Inverse NTT
-    //         intt_rn(&roots, &mut s);
-
-    //         prop_assert_eq!(s, original);
     //     }
     // }
+
+    // Separate test that it handles non-power of two gracefully?
+    // Once proper guard is installed it could use debug asserts? Or just keep
+    // using the power of two type
 }
