@@ -73,12 +73,9 @@ pub fn vec2n<T: Strategy>(element: T, size: impl Into<SizeRange>) -> Vec2nStrate
     Vec2nStrategy { element, size }
 }
 
-// The value tree seems to be the strategy. So maybe it's structered wrong?
-// Simple strategy to test for power of twos
 impl<T: ValueTree> ValueTree for Vec2nValueTree<T> {
     type Value = Vec2n<T::Value>;
 
-    // How does the vector value tree handle this?
     fn current(&self) -> Self::Value {
         let vec = self.vec.0[..self.len]
             .iter()
@@ -87,10 +84,7 @@ impl<T: ValueTree> ValueTree for Vec2nValueTree<T> {
         Vec2n::new(vec).unwrap()
     }
 
-    // Simplification could also go into the values themselves, but basically only
-    // zero is going to be helpful in finding errors. Smaller values still get
-    // multiplied. Still it's nice for input. Also it only takes 4 times as much
-    // steps. Which is probably doable.
+    // Simplifies only the structure and not the values.
     fn simplify(&mut self) -> bool {
         if self.len == 0 {
             return false;

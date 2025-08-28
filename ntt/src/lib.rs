@@ -184,7 +184,7 @@ fn reverse_order<T>(input: &mut [T]) {
     match input {
         [] | [_] => return,
         input => {
-    let n = input.len();
+            let n = input.len();
             assert!(n.is_power_of_two());
 
             for index in 0..n {
@@ -228,23 +228,12 @@ pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
 #[cfg(test)]
 mod tests {
     use {
-        crate::{init_roots_reverse_ordered, intt_rn, ntt_nr, proptest::Vec2n, reverse_order},
+        crate::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order},
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::prelude::*,
     };
-    // Generate a list that is a power of 2
-    // Ensure that both above and below 1024 is triggered.
-    // Compare it to a reference implementation, ideally not too slow.
-    // Could also compare it to dit_cache with segment set to 0.
-    // Another option is to do a inverse and check if the results are the same.
-    // The crossovers make it more difficult to properly test it. On the other
-    // hand make sure that it's above and belower working_size
 
-    // Implement a strategy for power of two vector of Fr
-    // Implement strategy
-
-    // TODO(xrvdg) isn't there a more advanced proptest in block multiplier?
     prop_compose! {
         fn fr()(val in proptest::array::uniform4(0u64..)) -> Fr{
             Fr::new(BigInt(val))
@@ -253,8 +242,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn round_trip_ntt(s in crate::proptest::vec2n(fr(), 0..3))
-        {         // Convert input to field elements
+        fn round_trip_ntt(s in crate::proptest::vec2n(fr(), 0..15))
+        {
             let mut s = s.0;
             let original = s.clone();
             let n = original.len();
@@ -266,13 +255,23 @@ mod tests {
             // Inverse NTT
             intt_rn(&roots, &mut s);
 
-            prop_assert_eq!(s, original);
+            prop_assert_eq!(original,s);
         }
+    }
+
+    #[test]
+    // The roundtrip test doesn't test size 0.
+    fn ntt_empty() {
+        let mut v = vec![];
+        let n = v.len();
+        let roots = init_roots_reverse_ordered(n);
+        ntt_nr(&roots, &mut v);
     }
 
     proptest! {
         #[test]
-        fn round_trip_reverse_order(mut v in proptest::collection::vec(any::<u32>(), 1024)){
+        fn round_trip_reverse_order(v in crate::proptest::vec2n(any::<u32>(), 0..10)){
+            let mut v = v.0;
             let original = v.clone();
             reverse_order(&mut v);
             reverse_order(&mut v);
@@ -280,17 +279,14 @@ mod tests {
         }
     }
 
-    // Generate a value
-    // Go to the nearest power of two
-    // What is a proper way to generate the reverse bits
-    // proptest! {
-    //     #[test]
-    //     fn round_trip_reverse_bits(){
+    proptest! {
+        #[test]
+        fn reverse_order_noop(v in crate::proptest::vec2n(any::<u32>(), 0..=1)) {
+            let original = v.0;
+            let mut v = original.clone();
+            reverse_order(&mut v);
+            assert_eq!(original, v)
+        }
 
-    //     }
-    // }
-
-    // Separate test that it handles non-power of two gracefully?
-    // Once proper guard is installed it could use debug asserts? Or just keep
-    // using the power of two type
+    }
 }
