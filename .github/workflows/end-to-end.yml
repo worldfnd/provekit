@@ -77,7 +77,12 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process
+<<<<<<< HEAD
           ./gnark-verifier --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
 
+=======
+          ./gnark-verifier --config "../noir-examples/poseidon-rounds/params_for_recursive_verifier" --r1cs "../noir-examples/poseidon-rounds/r1cs.json" --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
+          
+>>>>>>> a3a31bb (feat:add r1csurl param and remove constraint limit from container)
           # Stop monitoring
           kill $MONITOR_PID

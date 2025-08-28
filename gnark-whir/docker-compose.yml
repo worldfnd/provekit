@@ -9,14 +9,14 @@ services:
     container_name: gnark-whir-verifier
     ports:
       - "3000:3000"
-    deploy:
-      resources:
-        limits:
-          memory: 20G
-        reservations:
-          memory: 10G
-    memswap_limit: 20G
-    shm_size: 3g
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 20G
+    #     reservations:
+    #       memory: 10G
+    # memswap_limit: 20G
+    shm_size: 16g
     ulimits:
       nofile:
         soft: 65536

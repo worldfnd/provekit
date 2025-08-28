@@ -21,7 +21,7 @@ func main() {
 				Name:     "config",
 				Usage:    "Path to the config file",
 				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/params_for_recursive_verifier",
+				Value:    "",
 			},
 			&cli.StringFlag{
 				Name:     "ccs",
@@ -33,7 +33,13 @@ func main() {
 				Name:     "r1cs",
 				Usage:    "Path to the r1cs json file",
 				Required: false,
-				Value:    "../noir-examples/poseidon-rounds/r1cs.json",
+				Value:    "",
+			},
+			&cli.StringFlag{
+				Name:     "r1cs_url",
+				Usage:    "Optional publicly downloadable URL to the r1cs file",
+				Required: false,
+				Value:    "",
 			},
 			&cli.StringFlag{
 				Name:     "pk_url",
@@ -70,6 +76,7 @@ func main() {
 			vkPath := c.String("vk")
 			pkUrl := c.String("pk_url")
 			vkUrl := c.String("vk_url")
+			r1csUrl := c.String("r1cs_url")
 
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
@@ -81,9 +88,19 @@ func main() {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 			}
 
-			r1csFile, r1csErr := os.ReadFile(r1csFilePath)
-			if r1csErr != nil {
-				return fmt.Errorf("failed to read r1cs file: %w", r1csErr)
+			var r1csFile []byte = nil
+			if r1csFilePath != "" {
+				fmt.Println("r1csFilePath", r1csFilePath)
+				r1csFile, err = os.ReadFile(r1csFilePath)
+				if err != nil {
+					return fmt.Errorf("failed to read r1cs file: %w", err)
+				}		
+			} else {
+				fmt.Println("r1csUrl", r1csUrl)
+				r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
+				if err != nil {
+					return fmt.Errorf("failed to get R1CS from URL: %w", err)
+				}
 			}
 
 			var r1cs circuit.R1CS
@@ -104,6 +121,8 @@ func main() {
 				if err != nil {
 					return fmt.Errorf("failed to get PK/VK: %w", err)
 				}
+			} else {
+				return fmt.Errorf("either pk_url and vk_url or pk and vk's path must be provided")
 			}
 
 			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {

@@ -60,44 +60,9 @@ Send a `multipart/form-data` POST request with the following fields:
 
 - `config` (required): JSON configuration file containing verifier circuit parameters
 - `r1cs` (required): R1CS JSON file describing the constraint system of the inner circuit
+- `r1cs_url` (optional): Publicly exposed url for downloading r1cs file. Takes precedence over r1cs file if both provided.
 - `pk_url` (optional): Publicly exposed url for downloading proving key
 - `vk_url` (optional): Publicly exposed url for downloading verifying key
-
-**Response:**
-- **Success (200)**: `Verification successful`
-- **Error (400)**: Error message describing the failure
-
-## Endpoints for Internal Testing (Will be removed cache implementation)
-
-We store vk/pk keys for common circuits for testing for quicker verification.
-
-#### Basic2 Circuit Verification
-
-**POST** `/api/v1/verifybasic2`
-
-Pre-configured endpoint for verifying `noir-examples/basic-2` circuit proofs using stored keys.
-
-**Request:**
-Send a `multipart/form-data` POST request with the following fields:
-
-- `config` (required): JSON configuration file containing verifier circuit parameters
-- `r1cs` (required): R1CS JSON file describing the constraint system of the inner circuit
-
-**Response:**
-- **Success (200)**: `Verification successful`
-- **Error (400)**: Error message describing the failure
-
-#### Age Check Circuit Verification
-
-**POST** `/api/v1/verifyagecheck`
-
-Pre-configured endpoint for verifying Age Check circuit proofs using stored vk/pk.
-
-**Request:**
-Send a `multipart/form-data` POST request with the following fields:
-
-- `config` (required): JSON configuration file containing verifier circuit parameters
-- `r1cs` (required): R1CS JSON file describing the constraint system of the inner circuit
 
 **Response:**
 - **Success (200)**: `Verification successful`

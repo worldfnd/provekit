@@ -167,3 +167,13 @@ func GetPkAndVkFromUrl(pkUrl string, vkUrl string) (*groth16.ProvingKey, *groth1
 
 	return pk, vk, nil
 }
+
+func GetR1csFromUrl(r1csUrl string) ([]byte, error) {
+	log.Printf("Downloading R1CS from %s", r1csUrl)
+	r1csFile, err := downloadFromUrl(r1csUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download r1cs file from url: %w", err)
+	}
+	log.Printf("Successfully downloaded")
+	return r1csFile, nil
+}

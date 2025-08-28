@@ -43,16 +43,7 @@ func main() {
 	v1.Get("/ping", ping)
 
 	v1.Post("/verify", func(c *fiber.Ctx) error {
-		return verify(c, "", "", false)
-	})
-
-	// TODO: Remove Functions for internal testing - to remove
-	v1.Post("/verifybasic2", func(c *fiber.Ctx) error {
-		return verify(c, "keys/basic2_vk.bin", "keys/basic2_pk.bin", true)
-	})
-
-	v1.Post("/verifyagecheck", func(c *fiber.Ctx) error {
-		return verify(c, "keys/age_check_vk.bin", "keys/age_check_pk.bin", true)
+		return verify(c)
 	})
 
 	log.Fatal(app.Listen(":3000"))
@@ -62,13 +53,30 @@ func ping(c *fiber.Ctx) error {
 	return c.SendString("pong")
 }
 
-func verify(c *fiber.Ctx, vkPathOrUrl string, pkPathOrUrl string, isTesting bool) error {
+func verify(c *fiber.Ctx ) error {
 	outputCcsPath := "" // TODO: Handle
+	pkUrl := c.FormValue("pk_url")
+	vkUrl := c.FormValue("vk_url")
+	r1csUrl := c.FormValue("r1cs_url")
 
-	r1csFile, err := getFile(c, "r1cs")
-	if err != nil {
-		log.Printf("Failed to get R1CS file: %v", err)
-		return c.Status(400).SendString("Failed to get R1CS file")
+	var r1csFile []byte = nil
+	var err error
+
+	if r1csUrl != "" {
+		r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
+		if err != nil {
+			return fmt.Errorf("failed to get R1CS from URL: %w", err)
+		}
+	} else {
+		r1csFile, err = getFile(c, "r1cs")
+		if err != nil {
+			return fmt.Errorf("failed to get R1CS file: %w", err)
+		}
+	}
+
+	var r1cs circuit.R1CS
+	if err := json.Unmarshal(r1csFile, &r1cs); err != nil {
+		return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 	}
 
 	configFile, err := getFile(c, "config")
@@ -82,27 +90,13 @@ func verify(c *fiber.Ctx, vkPathOrUrl string, pkPathOrUrl string, isTesting bool
 		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 	}
 
-	var r1cs circuit.R1CS
-	if err := json.Unmarshal(r1csFile, &r1cs); err != nil {
-		return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
-	}
-
 	var pk *groth16.ProvingKey = nil
 	var vk *groth16.VerifyingKey = nil
 
-	if isTesting {
-		if vkPathOrUrl != "" && pkPathOrUrl != "" {
-			pk, vk, err = circuit.GetPkAndVkFromPath(pkPathOrUrl, vkPathOrUrl)
-		} else {
-			return c.Status(400).SendString("Internal error: Internal path for vk/pk is required for this endpoint")
-		}
+	if vkUrl != "" && pkUrl != "" {
+		pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
 	} else {
-		pkUrl := c.FormValue("pk_url")
-		vkUrl := c.FormValue("vk_url")
-
-		if vkUrl != "" && pkUrl != "" {
-			pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
-		}
+		return fmt.Errorf("both pk_url and vk_url are not provided")
 	}
 
 	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
