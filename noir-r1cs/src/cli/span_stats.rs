@@ -2,7 +2,7 @@
 //!
 //! NOTE: This module is only included in the bin, not in the lib.
 use {
-    crate::ALLOC,
+    crate::ALLOC_STATE,
     noir_r1cs::human,
     std::{
         cmp::max,
@@ -38,9 +38,9 @@ impl Data {
         let mut span = Self {
             depth,
             time: Instant::now(),
-            memory: ALLOC.current(),
-            allocations: ALLOC.count(),
-            peak_memory: ALLOC.current(),
+            memory: ALLOC_STATE.current(),
+            allocations: ALLOC_STATE.count(),
+            peak_memory: ALLOC_STATE.current(),
             children: false,
             kvs: Vec::new(),
         };
@@ -84,10 +84,10 @@ where
         if let Some(parent) = span.parent() {
             if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
                 data.children = true;
-                data.peak_memory = max(data.peak_memory, ALLOC.max());
+                data.peak_memory = max(data.peak_memory, ALLOC_STATE.max());
             }
         }
-        ALLOC.reset_max();
+        ALLOC_STATE.reset_max();
 
         // Add Data if it hasn't already
         if span.extensions().get::<Data>().is_none() {
@@ -185,8 +185,8 @@ where
         let data = ext.get::<Data>().expect("span does not have data");
 
         let duration = data.time.elapsed();
-        let peak_memory: usize = std::cmp::max(ALLOC.max(), data.peak_memory);
-        let allocations = ALLOC.count() - data.allocations;
+        let peak_memory: usize = std::cmp::max(ALLOC_STATE.max(), data.peak_memory);
+        let allocations = ALLOC_STATE.count() - data.allocations;
         let own = peak_memory - data.memory;
 
         // Update parent

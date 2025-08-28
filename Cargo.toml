@@ -112,6 +112,9 @@ quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 rand_chacha = "0.9.0"
 test-case = "3.3.1"
+tracing-tracy = "=0.11.4"
+tracy-client= "=0.18.0"
+tracy-client-sys= "=0.24.3"
 
 # Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
