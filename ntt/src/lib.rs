@@ -136,9 +136,6 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
-// TODO(xrvdg) this size could also be wrapped in a nul type that ensures it
-// power of two. That could come from a len instruction from
-// Encoding invariants into the types
 // TODO(xrvdg) Reuse the caching engine from WHIR to hide the generation
 /// Precomputes the NTT roots of unity and stores them in bit-reversed order.
 ///
@@ -184,11 +181,10 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
 fn reverse_order<T>(input: &mut [T]) {
+    match input {
+        [] | [_] => return,
+        input => {
     let n = input.len();
-    // TODO(xrvdg) can I do matching on the vector itself? Haskell-style
-    match n {
-        0 | 1 => return,
-        n => {
             assert!(n.is_power_of_two());
 
             for index in 0..n {
@@ -211,31 +207,23 @@ pub fn intt_rn(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
 // Inverse NTT
 // TODO(xrvdg) How do the inverse roots of unity look like. For back conversion
 pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
-    match input.len() {
-        0 => return,
-        n => {
-            // TODO(xrvdg) the type of ntt requires this to be an actual reverse
-            // However preload
-
-            // Reverse the input such that the roots act as the inverse roots
-            input.reverse();
+    match input {
+        [] => return,
+        input => {
+            // Reverse the input such that the roots act as inverse roots
+            input[1..].reverse();
             ntt_nr(reverse_ordered_roots, input);
+
+            let n = input.len();
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
             for i in input.iter_mut() {
                 *i *= factor;
             }
-
-            // Undo the reversal
-            input.reverse();
         }
     }
 }
-
-// proptest that takes a regular NTT written using horner multiplication and
-// compare it to the reverse ordered NTT. Or just another simpler FFT
-// implementation?
 
 #[cfg(test)]
 mod tests {
