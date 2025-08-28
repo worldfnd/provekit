@@ -50,7 +50,7 @@ fn main(
     compare_age(dg1, min_age_required, max_age_required, current_date);
 
     // Check that the ID is not expired.
-    check_expiry(dg1, current_date.to_be_bytes());
+    check_expiry(dg1, current_date);
 
     // Check that H(DG1) exists within the SOD.
     check_dg1_hash_within_sod(
