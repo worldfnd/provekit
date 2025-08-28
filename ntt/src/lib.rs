@@ -129,9 +129,14 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
 
 /// Bit reverses val given that for a given bit size
 fn reverse_bits(val: usize, bits: u32) -> usize {
+    // TODO(xrvdg) non-zero datatype?
+    // requires 2^bits where bits>0. Because with zero this value
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
+// TODO(xrvdg) this size could also be wrapped in a nul type that ensures it
+// power of two. That could come from a len instruction from
+// Encoding invariants into the types
 // TODO(xrvdg) Reuse the caching engine from WHIR to hide the generation
 /// Precomputes the NTT roots of unity and stores them in bit-reversed order.
 ///
@@ -146,18 +151,22 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// Panics if `len` is not a power of two or if a suitable root of unity does
 /// not exist.
 pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
+    let n = len / 2;
+    match n {
+        0 => vec![],
+        1 => vec![Fr::ONE],
+        n => {
     assert!(len.is_power_of_two());
     let root = Fr::get_root_of_unity(len as u64).unwrap();
-
-    let n = len / 2;
 
     let mut roots = Vec::with_capacity(n);
     let uninit = roots.spare_capacity_mut();
 
     let mut omega_k = Fr::ONE;
 
-    for index in (0..n).map(|val| reverse_bits(val, n.trailing_zeros())) {
-        uninit[index].write(omega_k);
+            for index in 0..n {
+                let rev = reverse_bits(index, n.trailing_zeros());
+                uninit[rev].write(omega_k);
         omega_k *= root;
     }
 
@@ -166,16 +175,26 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
     }
 
     roots
+        }
+    }
 }
 
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
 fn reverse_order<T>(input: &mut [T]) {
     let n = input.len();
+    // TODO(xrvdg) can I do matching on the vector itself? Haskell-style
+    match n {
+        0 | 1 => return,
+        n => {
+            assert!(n.is_power_of_two());
+
     for index in 0..n {
         let rev = reverse_bits(index, n.trailing_zeros());
         if index < rev {
             input.swap(index, rev);
+                }
+            }
         }
     }
 }
