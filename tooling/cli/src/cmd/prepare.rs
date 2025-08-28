@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::write, NoirProofScheme},
-    r1cs_compiler::NoirProofSchemeBuilder,
+    provekit_r1cs_compiler::NoirProofSchemeBuilder,
     std::path::PathBuf,
     tracing::instrument,
 };

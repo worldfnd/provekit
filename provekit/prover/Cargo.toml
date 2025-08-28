@@ -9,27 +9,27 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-# ProveKit
+# Workspace crates
 provekit-common.workspace = true
+skyscraper.workspace = true
 
-# Noir lang
+# Noir language
 acir.workspace = true
-noirc_abi.workspace = true
 bn254_blackbox_solver.workspace = true
 nargo.workspace = true
+noirc_abi.workspace = true
 
-# WHIR
-whir.workspace = true
-spongefish.workspace = true
+# Cryptography and proof systems
 ark-ff.workspace = true
 ark-std.workspace = true
+spongefish.workspace = true
+whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
-tracing.workspace = true
-skyscraper.workspace = true
 rand.workspace = true
 rayon.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true

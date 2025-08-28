@@ -9,18 +9,18 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-# Internal
+# Workspace crates
 provekit-common.workspace = true
 provekit-prover.workspace = true
+
+# Cryptography and proof systems
+ark-std.workspace = true
+spongefish.workspace = true
+whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
 tracing.workspace = true
-
-# WHIR
-whir.workspace = true
-ark-std.workspace = true
-spongefish.workspace = true
 
 [lints]
 workspace = true

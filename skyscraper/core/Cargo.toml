@@ -9,19 +9,27 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+# Workspace crates
 block-multiplier.workspace = true
 fp-rounding.workspace = true
-ark-ff.workspace = true
+
+# Cryptography and proof systems
 ark-bn254.workspace = true
-zerocopy.workspace = true
-seq-macro.workspace = true
+ark-ff.workspace = true
+
+# 3rd party
 proptest.workspace = true
 rayon.workspace = true
+seq-macro.workspace = true
+zerocopy.workspace = true
 
 [dev-dependencies]
-rand.workspace = true
 divan.workspace = true
 primitive-types.workspace = true
+rand.workspace = true
+
+[lints]
+workspace = true
 
 [[bench]]
 name = "bench"
