@@ -53,13 +53,13 @@ func ping(c *fiber.Ctx) error {
 	return c.SendString("pong")
 }
 
-func verify(c *fiber.Ctx ) error {
+func verify(c *fiber.Ctx) error {
 	outputCcsPath := "" // TODO: Handle
 	pkUrl := c.FormValue("pk_url")
 	vkUrl := c.FormValue("vk_url")
 	r1csUrl := c.FormValue("r1cs_url")
 
-	var r1csFile []byte = nil
+	var r1csFile []byte
 	var err error
 
 	if r1csUrl != "" {
@@ -90,8 +90,8 @@ func verify(c *fiber.Ctx ) error {
 		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 	}
 
-	var pk *groth16.ProvingKey = nil
-	var vk *groth16.VerifyingKey = nil
+	var pk *groth16.ProvingKey
+	var vk *groth16.VerifyingKey
 
 	if vkUrl != "" && pkUrl != "" {
 		pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)

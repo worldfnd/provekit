@@ -88,13 +88,13 @@ func main() {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 			}
 
-			var r1csFile []byte = nil
+			var r1csFile []byte
 			if r1csFilePath != "" {
 				fmt.Println("r1csFilePath", r1csFilePath)
 				r1csFile, err = os.ReadFile(r1csFilePath)
 				if err != nil {
 					return fmt.Errorf("failed to read r1cs file: %w", err)
-				}		
+				}
 			} else {
 				fmt.Println("r1csUrl", r1csUrl)
 				r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
@@ -108,8 +108,8 @@ func main() {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 			}
 
-			var pk *groth16.ProvingKey = nil
-			var vk *groth16.VerifyingKey = nil
+			var pk *groth16.ProvingKey
+			var vk *groth16.VerifyingKey
 
 			if pkUrl != "" && vkUrl != "" {
 				pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
