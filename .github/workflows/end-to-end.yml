@@ -19,7 +19,7 @@ concurrency:
 jobs:
   end-to-end:
     name: End-to-end tests
-    runs-on: [self-hosted, Linux, ARM64, provekir-build]
+    runs-on: [self-hosted, Linux, ARM64, provekit-build]
     steps:
       - uses: actions/checkout@v4
 
