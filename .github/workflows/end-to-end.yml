@@ -11,7 +11,7 @@ env:
 # When a new job is pushed on a PR, cancel the old one.
 concurrency:
   group: >
-    ${{ github.event_name == 'pull_request'
+    e2e-${{ github.event_name == 'pull_request'
         && format('pr-{0}', github.event.pull_request.number)
         || format('push-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   end-to-end:
     name: End-to-end tests
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, ARM64, provekir-build]
     steps:
       - uses: actions/checkout@v4
 
