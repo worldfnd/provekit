@@ -5,9 +5,9 @@ use {
         array,
         ops::BitAnd,
         simd::{
-            Simd, StdFloat,
             cmp::SimdPartialEq,
             num::{SimdFloat, SimdInt, SimdUint},
+            Simd, StdFloat,
         },
     },
 };

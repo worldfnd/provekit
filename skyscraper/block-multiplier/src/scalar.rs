@@ -140,7 +140,7 @@ mod tests {
         ark_ff::BigInt,
         primitive_types::U256,
         proptest::proptest,
-        rand::{Rng, SeedableRng, rngs},
+        rand::{rngs, Rng, SeedableRng},
     };
 
     #[test]

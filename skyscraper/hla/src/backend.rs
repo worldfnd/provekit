@@ -1,9 +1,9 @@
 use {
     crate::{
-        FreshVariable,
         ir::{FreshRegister, HardwareRegister, Instruction, TypedHardwareRegister, Variable},
         liveness::{Lifetime, Lifetimes},
         reification::{Index, RegisterType, ReifiedRegister},
+        FreshVariable,
     },
     std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
 };

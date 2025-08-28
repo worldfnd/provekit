@@ -1,9 +1,9 @@
 use {
     crate::{
-        FreshAllocator,
         frontend::FreshVariable,
         ir::{FreshRegister, Instruction},
         reification::ReifiedRegister,
+        FreshAllocator,
     },
     std::{
         collections::{HashSet, VecDeque},

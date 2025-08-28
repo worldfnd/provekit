@@ -32,7 +32,7 @@
 
 use {
     crate::{
-        frontend::{Assembler, D, FreshAllocator, PointerReg, Reg, SIMD, Simd, SizedIdx},
+        frontend::{Assembler, FreshAllocator, PointerReg, Reg, Simd, SizedIdx, D, SIMD},
         ir::{FreshRegister, Instruction, Modifier},
         reification::ReifyRegister,
     },

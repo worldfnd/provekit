@@ -1,9 +1,8 @@
 use {
     crate::{
-        AtomicInstructionBlock,
         backend::{
-            AllocatedVariable, RegisterBank, RegisterMapping, allocate_input_variable,
-            hardware_register_allocation, reserve_output_variable,
+            allocate_input_variable, hardware_register_allocation, reserve_output_variable,
+            AllocatedVariable, RegisterBank, RegisterMapping,
         },
         codegen::{
             generate_rust_global_asm, generate_rust_includable_asm, generate_rust_inline_asm,
@@ -11,9 +10,10 @@ use {
         frontend::{Assembler, FreshAllocator, FreshVariable},
         ir::{HardwareRegister, Instruction, Variable},
         liveness::liveness_analysis,
+        AtomicInstructionBlock,
     },
     std::{
-        collections::{HashMap, hash_map::Entry},
+        collections::{hash_map::Entry, HashMap},
         path::Path,
     },
 };

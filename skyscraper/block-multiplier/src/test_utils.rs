@@ -6,7 +6,7 @@ use {
     ark_ff::{BigInt, Field},
     proptest::{
         collection,
-        prelude::{Strategy, any},
+        prelude::{any, Strategy},
         proptest,
     },
 };
