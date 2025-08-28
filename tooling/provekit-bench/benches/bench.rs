@@ -3,13 +3,27 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    noir_r1cs::{read, NoirProof, NoirProofScheme},
+    provekit_common::{file::read, NoirProof, NoirProofScheme},
+    provekit_prover::NoirProofSchemeProver,
+    provekit_verifier::NoirProofSchemeVerifier,
     std::path::Path,
 };
 
 #[divan::bench]
 fn read_poseidon_1000(bencher: Bencher) {
     bencher.bench(|| read::<NoirProofScheme>("benches/poseidon-1000.nps".as_ref()));
+}
+
+#[divan::bench]
+fn simple_test(bencher: Bencher) {
+    bencher.bench(|| {
+        // Simple benchmark that just does some basic computation
+        let mut sum = 0;
+        for i in 0..1000 {
+            sum += i;
+        }
+        black_box(sum)
+    });
 }
 
 #[divan::bench]
@@ -20,7 +34,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
         .with_context(|| format!("Reading {}", path.display()))
         .expect("Reading proof scheme");
 
-    let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
 
     let witness_path = crate_dir.join("Prover.toml");
 
@@ -35,7 +49,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
 fn prove_poseidon_1000_with_io(bencher: Bencher) {
     let path: &Path = "benches/poseidon-1000.nps".as_ref();
 
-    let crate_dir: &Path = "../noir-examples/poseidon-rounds".as_ref();
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {

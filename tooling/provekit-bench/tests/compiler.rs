@@ -1,5 +1,14 @@
 use {
-    noir_r1cs::NoirProofScheme, noir_tools::compile_workspace, serde::Deserialize, std::path::Path,
+    anyhow::Result,
+    nargo::workspace::Workspace,
+    nargo_cli::cli::compile_cmd::compile_workspace_full,
+    nargo_toml::{resolve_workspace_from_toml, PackageSelection},
+    noirc_driver::CompileOptions,
+    provekit_common::NoirProofScheme,
+    provekit_prover::NoirProofSchemeProver,
+    provekit_r1cs_compiler::NoirProofSchemeBuilder,
+    serde::Deserialize,
+    std::path::Path,
     test_case::test_case,
 };
 

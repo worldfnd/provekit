@@ -76,6 +76,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use {
         crate::NoirProofSchemeBuilder,
