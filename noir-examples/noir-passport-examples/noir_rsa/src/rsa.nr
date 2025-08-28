@@ -252,13 +252,8 @@ fn compare_signature_sha256<let N: u32>(padded_sha256_hash: [u8; N], msg_hash: [
     // NOTE: Assume MAX_BYTES < 2^32 bit number. MAX_BYTES of 259 > 2^8 bits so need to cast it to u32
     for i in 0..32 {
         // Padded hash is reversed
-        print(padded_sha256_hash[31 - i]);
-        print(" ");
-        print(msg_hash[i]);
-        println("");
         assert(padded_sha256_hash[31 - i] == msg_hash[i]);
     }
-    println("-------");
 
     let hash_prefix: [u8; 19] =
         [32, 4, 0, 5, 1, 2, 4, 3, 101, 1, 72, 134, 96, 9, 6, 13, 48, 49, 48];
