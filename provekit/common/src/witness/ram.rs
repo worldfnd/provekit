@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Like [MemoryOperation], but with the indices of the additional witnesses
+/// Like MemoryOperation, but with the indices of the additional witnesses
 /// needed by Spice.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SpiceMemoryOperation {
