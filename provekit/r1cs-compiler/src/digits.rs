@@ -102,6 +102,10 @@ pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) ->
     // Grab the bits of the element that we need for each digit, and turn them back
     // into field elements.
     let mut start_bit = 0;
+
+    // log bases acts as slices into value bits. Take ownership of that.
+    // Once that works try to use the iterator directly from field_to_le_bits
+
     for digit_idx in 0..num_digits {
         let log_base = log_bases[digit_idx];
         let digit_bits = &value_bits[start_bit..start_bit + log_base];
@@ -118,6 +122,8 @@ pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) ->
 }
 
 /// Decomposes a field element into its bits, in little-endian order.
+/// Probably a lot of allocation because it goes to bits, but for little-endian
+/// and big endian is on byte level not on bit level
 pub(crate) fn field_to_le_bits(value: FieldElement) -> Vec<bool> {
     value.into_bigint().to_bits_le()
 }
@@ -138,9 +144,8 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
                 .enumerate()
                 .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << i))
         })
-        .rev()
         .collect();
-    FieldElement::from_be_bytes_mod_order(&be_byte_vec)
+    FieldElement::from_le_bytes_mod_order(&be_byte_vec)
 }
 
 #[cfg(test)]
@@ -157,6 +162,8 @@ fn test_decompose_into_digits() {
 
 #[cfg(test)]
 #[test]
+// Changing from FieldElement :: from_be to from_le didn't negate this test. So
+// this needs to be extended
 fn test_field_to_le_bits() {
     let value = FieldElement::from(5u32);
     let bits = field_to_le_bits(value);
