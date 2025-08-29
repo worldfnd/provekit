@@ -1,18 +1,21 @@
-package main
+package circuit
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
 
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
-	gnark_nimue "github.com/reilabs/gnark-nimue"
+	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
@@ -24,9 +27,9 @@ func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Vari
 	return ans
 }
 
-func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnark_nimue.Arthur, *uints.BinaryField[uints.U64], error) {
+func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Arthur, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	arthur, err := gnark_nimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:], true)
+	arthur, err := gnarkNimue.NewSkyscraperArthur(api, sc, circuit.IO, circuit.Transcript[:], true)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -76,9 +79,65 @@ func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.Ve
 	return pk, vk, nil
 }
 
+func keysFromUrl(pkUrl string, vkUrl string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
+
+	vkBytes, err := downloadFromUrl(vkUrl)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to download verifying key: %w", err)
+	}
+	log.Printf("Downloaded VK")
+
+	vk := groth16.NewVerifyingKey(ecc.BN254)
+	_, err = vk.UnsafeReadFrom(bytes.NewReader(vkBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to deserialize verifying key: %w", err)
+	}
+	log.Printf("Loaded VK")
+
+	pkBytes, err := downloadFromUrl(pkUrl)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to download proving key: %v", err)
+	}
+	log.Printf("Downloaded PK")
+
+	pk := groth16.NewProvingKey(ecc.BN254)
+	_, err = pk.UnsafeReadFrom(bytes.NewReader(pkBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to deserialize proving key: %w", err)
+	}
+	log.Printf("Loaded PK")
+
+	return pk, vk, nil
+}
+
+func downloadFromUrl(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download from %s: %w", url, err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error %d when downloading from %s", resp.StatusCode, url)
+	}
+
+	buffer := &bytes.Buffer{}
+
+	_, err = io.Copy(buffer, resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to copy to buffer: %w", err)
+	}
+
+	return buffer.Bytes(), nil
+}
+
 func runSumcheck(
 	api frontend.API,
-	arthur gnark_nimue.Arthur,
+	arthur gnarkNimue.Arthur,
 	lastEval frontend.Variable,
 	foldingFactor int,
 	polynomialDegree int,
@@ -110,7 +169,7 @@ func runZKSumcheck(
 	sc *skyscraper.Skyscraper,
 	uapi *uints.BinaryField[uints.U64],
 	circuit *Circuit,
-	arthur gnark_nimue.Arthur,
+	arthur gnarkNimue.Arthur,
 	lastEval frontend.Variable,
 	foldingFactor int,
 	polynomialDegree int,
@@ -136,7 +195,7 @@ func runZKSumcheck(
 
 	lastEval, polynomialSums := unblindLastEval(api, arthur, lastEval, rhoRandomness)
 
-	_, err = runZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -145,7 +204,7 @@ func runZKSumcheck(
 }
 
 func getZKSumcheckInitialValue(
-	arthur gnark_nimue.Arthur,
+	arthur gnarkNimue.Arthur,
 ) (frontend.Variable, frontend.Variable, error) {
 	sumOfG := make([]frontend.Variable, 1)
 	rhoRandomness := make([]frontend.Variable, 1)
@@ -160,7 +219,7 @@ func getZKSumcheckInitialValue(
 
 func unblindLastEval(
 	api frontend.API,
-	arthur gnark_nimue.Arthur,
+	arthur gnarkNimue.Arthur,
 	lastEval frontend.Variable,
 	rhoRandomness frontend.Variable,
 ) (frontend.Variable, []frontend.Variable) {
@@ -171,4 +230,48 @@ func unblindLastEval(
 
 	lastEval = api.Sub(lastEval, api.Mul(polynomialSums[0], rhoRandomness))
 	return lastEval, polynomialSums
+}
+
+func consumeFront[T any](slice *[]T) T {
+	var zero T
+	if len(*slice) == 0 {
+		return zero
+	}
+	head := (*slice)[0]
+	*slice = (*slice)[1:]
+	return head
+}
+
+func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]MultiPath[KeccakDigest], stir_answers *[][][]Fp256) ZKHint {
+	var zkHint ZKHint
+
+	if len(*merkle_paths) > 0 && len(*stir_answers) > 0 {
+		firstRoundMerklePath := consumeFront(merkle_paths)
+		firstRoundStirAnswers := consumeFront(stir_answers)
+
+		zkHint.firstRoundMerklePaths = FirstRoundHint{
+			path: Hint{
+				merklePaths: []MultiPath[KeccakDigest]{firstRoundMerklePath},
+				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
+			},
+			expectedStirAnswers: firstRoundStirAnswers,
+		}
+	}
+
+	expectedRounds := whirConfig.NRounds
+
+	var remainingMerklePaths []MultiPath[KeccakDigest]
+	var remainingStirAnswers [][][]Fp256
+
+	for i := 0; i < expectedRounds && len(*merkle_paths) > 0 && len(*stir_answers) > 0; i++ {
+		remainingMerklePaths = append(remainingMerklePaths, consumeFront(merkle_paths))
+		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stir_answers))
+	}
+
+	zkHint.roundHints = Hint{
+		merklePaths: remainingMerklePaths,
+		stirAnswers: remainingStirAnswers,
+	}
+
+	return zkHint
 }

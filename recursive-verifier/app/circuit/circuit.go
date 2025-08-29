@@ -1,12 +1,11 @@
-package main
+package circuit
 
 import (
-	"fmt"
 	"log"
 	"os"
 
-	"reilabs/whir-verifier-circuit/typeConverters"
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -64,7 +63,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	whirFoldingRandomness, err := runZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
 
 	if err != nil {
 		return err
@@ -164,8 +163,8 @@ func verifyCircuit(
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
 
-		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -216,8 +215,8 @@ func verifyCircuit(
 		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
 		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
 
-		WHIRParamsWitness:       new_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: new_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -229,7 +228,7 @@ func verifyCircuit(
 	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("Failed to verify proof: %v", err)
 	}
 }
 

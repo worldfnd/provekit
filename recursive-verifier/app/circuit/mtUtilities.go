@@ -1,24 +1,17 @@
-package main
+package circuit
 
 import (
-	"reilabs/whir-verifier-circuit/utilities"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
-	gnark_nimue "github.com/reilabs/gnark-nimue"
+	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
-type MerklePaths struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
-}
-
 func initialSumcheck(
 	api frontend.API,
-	arthur gnark_nimue.Arthur,
+	arthur gnarkNimue.Arthur,
 	batchingRandomness frontend.Variable,
 	initialOODQueries []frontend.Variable,
 	initialOODAnswers []frontend.Variable,
@@ -55,7 +48,7 @@ func initialSumcheck(
 	}, lastEval, initialSumcheckFoldingRandomness, nil
 }
 
-func parseBatchedCommitment(arthur gnark_nimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
+func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {
 		return nil, nil, nil, [][]frontend.Variable{}, err
@@ -82,7 +75,7 @@ func parseBatchedCommitment(arthur gnark_nimue.Arthur, whir_params WHIRParams) (
 	return rootHash[0], batchingRandomness[0], oodPoints, oodAnswers, nil
 }
 
-func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark_nimue.Arthur, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
+func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnarkNimue.Arthur, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
 	finalCoefficients := make([]frontend.Variable, 1<<whir_params.FinalSumcheckRounds)
 	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
 		return nil, nil, err
