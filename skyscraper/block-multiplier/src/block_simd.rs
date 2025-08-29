@@ -11,7 +11,7 @@ use {
     core::{
         arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
-        simd::{Simd, num::SimdFloat},
+        simd::{num::SimdFloat, Simd},
     },
     fp_rounding::{RoundingGuard, Zero},
     std::simd::StdFloat,

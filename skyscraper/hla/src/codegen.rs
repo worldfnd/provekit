@@ -218,7 +218,8 @@ fn format_operands(variables: &[AllocatedVariable], direction: &str) -> String {
                         )
                     })
                     .collect::<Vec<_>>()
-                    .join(", ") // Collect registers within a group with comma separators
+                    .join(", ") // Collect registers within a group with comma
+                                // separators
             } else {
                 format!(
                     "{direction}(\"{}\") {}",

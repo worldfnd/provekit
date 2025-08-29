@@ -9,7 +9,7 @@ use {
     std::{
         arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
-        simd::{Simd, StdFloat, num::SimdFloat},
+        simd::{num::SimdFloat, Simd, StdFloat},
     },
 };
 

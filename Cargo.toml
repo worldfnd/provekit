@@ -1,14 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-  "cm31_ntt",
-  "noir-r1cs",
   "skyscraper/fp-rounding",
   "skyscraper/hla",
   "skyscraper/block-multiplier",
   "skyscraper/block-multiplier-codegen",
   "skyscraper/core",
-  "noir-tools",
+  "provekit/common",
+  "provekit/r1cs-compiler",
+  "provekit/prover",
+  "provekit/verifier",
+  "tooling/cli",
+  "tooling/provekit-bench",
+  "tooling/provekit-gnark",
 ]
 
 [workspace.package]
@@ -25,6 +29,7 @@ authors = [
   "Benjamin Wilson",
   "Yogesh Swami",
   "Ryan Cao",
+  "Aditya Bisht",
   # TODO: More contributors
 ]
 license = "MIT"
@@ -60,86 +65,68 @@ opt-level = 2
 opt-level = 3
 
 [workspace.dependencies]
-# Workspace members
+# Workspace members - Skyscraper
 block-multiplier = { path = "skyscraper/block-multiplier" }
 block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
-noir-r1cs = { path = "noir-r1cs" }
-noir-tools = { path = "noir-tools" }
 skyscraper = { path = "skyscraper/core" }
 
+# Workspace members - ProveKit
+provekit-bench = { path = "tooling/provekit-bench" }
+provekit-cli = { path = "tooling/cli" }
+provekit-common = { path = "provekit/common" }
+provekit-gnark = { path = "tooling/provekit-gnark" }
+provekit-prover = { path = "provekit/prover" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
+provekit-verifier = { path = "provekit/verifier" }
+
 # 3rd party
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-toml = "0.8"
-base64 = "0.22.1"
-divan = { package = "codspeed-divan-compat", version = "3.0.1" }
-ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
-seq-macro = "0.3.6"
-primitive-types = "0.13.1"
-paste = "1.0.15"
-arrayvec = "0.7.6"
-blake3 = "1.8.2"
-gensym = "0.1.1"
-rsa = { version = "0.9.8", features = ["sha2"] }
-rand = "0.9.1"
-rand08 = { package = "rand", version = "0.8" }
-halo2curves = { version = "0.7.0", features = ["bn256-table"] }
-criterion = "0.5.1"
-linkme = "0.3.32"
-lazy_static = "1.5.0"
-num-traits = "0.2.19"
-num = "0.4.3"
-sha3 = { version = "0.10.8", features = ["asm"] }
-sha2 = { version = "0.10", features = ["compress"] }
-subtle = "2.6.1"
-static_assertions = "1.1"
-tracing = "0.1.41"
-bytemuck = "1.22.0"
-hex-literal = "1"
-hex = "0.4.3"
-itertools = "0.14.0"
-flate2 = "1.0"
-rayon = "1.10.0"
-bincode = "1.3"
-postcard = { version = "1.1.1", features = ["use-std"] }
-zstd = "0.13.3"
-bytes = "1.10.1"
-proptest = "1.6.0"
-zerocopy = "0.8.25"
-quickcheck = "1.0.3"
-quickcheck_macros = "1.0.0"
-rand_chacha = "0.9.0"
-test-case = "3.3.1"
-
-# Note: to simplify things, pick a version that has the same `ark_ff` version as `whir`.
-acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
-
-whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"] }
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-  "arkworks-algebra",
-] }
-ark-ff = { version = "0.5", features = ["asm", "std"] }
-ark-bn254 = { version = "0.5.0", default-features = false, features = [
-  "scalar_field",
-] }
-zeroize = "1.8.1"
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
-ark-poly = "0.5"
-ark-std = { version = "0.5", features = ["std"] }
-ark-serialize = "0.5"
-
-# Bin
 anyhow = "1.0.93"
 argh = "0.1.12"
+base64 = "0.22.1"
+bytes = "1.10.1"
+divan = { package = "codspeed-divan-compat", version = "3.0.1" }
+hex = "0.4.3"
+paste = "1.0.15"
+postcard = { version = "1.1.1", features = ["use-std"] }
+primitive-types = "0.13.1"
+proptest = "1.6.0"
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+rand = "0.9.1"
+rand08 = { package = "rand", version = "0.8" }
+rayon = "1.10.0"
+ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
+seq-macro = "0.3.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+test-case = "3.3.1"
+toml = "0.8.8"
+tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
+zerocopy = "0.8.25"
+zeroize = "1.8.1"
+zstd = "0.13.3"
+
+# Noir language dependencies
+acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.6" }
+
+# Cryptography and proof systems
+ark-bn254 = { version = "0.5.0", default-features = false, features = ["scalar_field"] }
+ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+ark-ff = { version = "0.5", features = ["asm", "std"] }
+ark-poly = "0.5"
+ark-serialize = "0.5"
+ark-std = { version = "0.5", features = ["std"] }
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = ["arkworks-algebra"] }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "3e7f8c299783fddf4354869bbcbc995a5018a9d4" }

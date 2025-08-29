@@ -4,7 +4,7 @@ use {
     core::{array, simd::u64x2},
     divan::Bencher,
     fp_rounding::with_rounding_mode,
-    rand::{Rng, rng},
+    rand::{rng, Rng},
 };
 
 // #[divan::bench_group]

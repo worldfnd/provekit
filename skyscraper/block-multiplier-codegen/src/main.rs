@@ -1,6 +1,6 @@
 use {
     block_multiplier_codegen::{scalar, simd},
-    hla::builder::{Interleaving, build_includable},
+    hla::builder::{build_includable, Interleaving},
 };
 
 fn main() {
