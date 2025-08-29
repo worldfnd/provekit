@@ -1,13 +1,9 @@
 #![cfg(test)]
 use {
+    crate::Vec2n,
     proptest::{num::sample_uniform_incl, prelude::*, sample::SizeRange, strategy::ValueTree},
     std::fmt,
 };
-
-// Incorporate ordering in the type as well? For most things it doesn't matter
-// but for the NTT it could be nice.
-// TODO(xrvdg) make this an into
-pub struct Vec2n<T>(pub Vec<T>);
 
 impl<T: fmt::Debug> fmt::Debug for Vec2n<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,7 +34,6 @@ pub struct Vec2nStrategy<T: Strategy> {
     size:    SizeRange,
 }
 
-// How to give a length to the strategy?
 impl<T: Strategy> Strategy for Vec2nStrategy<T> {
     type Tree = Vec2nValueTree<T::Tree>;
 
@@ -98,53 +93,5 @@ impl<T: ValueTree> ValueTree for Vec2nValueTree<T> {
         // Undo the last simplification and signal that there is nothing more to do.
         self.len *= 2;
         false
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use {
-        crate::{proptest::vec2n, reverse_bits},
-        proptest::prelude::*,
-    };
-
-    fn failure_test(len: usize) {
-        let n = len / 2;
-        match n {
-            0 => return,
-            // Maybe there shouldn't be a roots when the size is 1
-            // and there should only be one if it's two.
-            n => {
-                assert!(n.is_power_of_two());
-
-                for index in 0..n {
-                    let _rev = reverse_bits(index, n.trailing_zeros());
-                }
-            }
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn min_size_test(s in vec2n(0u128.., 0..10)){
-            let s = s.0;
-            failure_test(s.len());
-        }
-    }
-
-    #[test]
-    fn min_size_test_concrete() {
-        let s = vec![
-            105922996067648041916664138293903301621u128,
-            262602152062922063258535639029822315735u128,
-        ];
-        failure_test(s.len());
-    }
-
-    proptest! {
-        #[test]
-        fn min_size_direct(v in (0u32..63).prop_map(|k|2_usize.pow(k))){
-            failure_test(v);
-        }
     }
 }
