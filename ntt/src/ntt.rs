@@ -28,6 +28,7 @@ pub const fn workload_size<T: Sized>() -> usize {
 /// * `input` - The input slice to be transformed in place.
 pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
+    // Implementation is a DIT NR algorithm
 
     let input = &mut values.0;
 
@@ -89,35 +90,25 @@ pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
         });
 }
 
-// TODO(xrvdg) Add test and then change this implementation to be more rust-like
-// can't really change the order of the roots
-// Decimation in Time normal to reverse bit order which should be used once
-// cache sized is reached.
 fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) {
     let n = input.len();
     debug_assert!(n.is_power_of_two());
 
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
-    let mut distance = n / 2;
 
     while num_of_groups < n {
         let twiddle_base = segment * num_of_groups;
-        for k in 0..num_of_groups {
+        for (k, group) in input.chunks_exact_mut(2 * pairs_in_group).enumerate() {
             let twiddle = twiddle_base + k;
             let omega = reverse_ordered_roots[twiddle];
-            let j_group = (2 * k * pairs_in_group..).take(pairs_in_group); // or distance
-            for j in j_group {
-                // println!("k: {k} jtwiddle: {jtwiddle} even: {j} odd:{}", j + distance);
-                (input[j], input[j + distance]) = (
-                    input[j] + omega * input[j + distance],
-                    input[j] - omega * input[j + distance],
-                )
-            }
+            let (evens, odds) = group.split_at_mut(pairs_in_group);
+            evens.iter_mut().zip(odds).for_each(|(even, odd)| {
+                (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
+            });
         }
         pairs_in_group /= 2;
         num_of_groups *= 2;
-        distance /= 2;
     }
 }
 
