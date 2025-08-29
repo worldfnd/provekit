@@ -10,7 +10,9 @@ import (
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
-func New_whir_params(cfg WHIRConfig) WHIRParams {
+// NewWhirParams creates a new WHIRParams instance from the given configuration.
+// It processes the folding factors and calculates domain sizes based on the provided config.
+func NewWhirParams(cfg WHIRConfig) WHIRParams {
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
 	var foldingFactor []int
@@ -43,6 +45,9 @@ func New_whir_params(cfg WHIRConfig) WHIRParams {
 	}
 }
 
+// RunZKWhir executes the zero-knowledge WHIR protocol for proof verification.
+// It processes multiple rounds of sumcheck protocols and merkle tree verifications
+// to verify the given circuit proof against the provided parameters.
 func RunZKWhir(
 	api frontend.API,
 	arthur gnarkNimue.Arthur,
@@ -352,6 +357,8 @@ func runWhir(
 	return
 }
 
+// RunPoW executes a proof-of-work challenge if the difficulty is greater than zero.
+// This is used as part of the Fiat-Shamir transformation to prevent malicious prover behavior.
 func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthur, difficulty int) error {
 	if difficulty > 0 {
 		_, _, err := utilities.PoW(api, sc, arthur, difficulty)
@@ -362,6 +369,8 @@ func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthu
 	return nil
 }
 
+// GenerateStirChallengePoints generates the stir challenge points for the given parameters.
+// It calculates the folding factor power and generates the stir challenges for the given leaf indexes.
 func GenerateStirChallengePoints(
 	api frontend.API,
 	arthur gnarkNimue.Arthur,
@@ -392,6 +401,8 @@ func GenerateStirChallengePoints(
 	return finalRandomnessPoints, nil
 }
 
+// GenerateCombinationRandomness generates the combination randomness for the given parameters.
+// It generates a random scalar and expands it to the required length.
 func GenerateCombinationRandomness(api frontend.API, arthur gnarkNimue.Arthur, randomnessLength int) ([]frontend.Variable, error) {
 	combRandomnessGen := make([]frontend.Variable, 1)
 	if err := arthur.FillChallengeScalars(combRandomnessGen); err != nil {

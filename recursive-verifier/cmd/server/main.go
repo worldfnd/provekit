@@ -14,6 +14,8 @@ import (
 	"reilabs/whir-verifier-circuit/app/circuit"
 )
 
+// main initializes and starts the WHIR verifier HTTP server.
+// The server provides endpoints for proof verification with configurable timeouts and CORS settings.
 func main() {
 	fiberConfig := fiber.Config{
 		ReadTimeout:  10 * time.Minute,       // 10 min for file upload (params and r1cs.json)
@@ -53,8 +55,10 @@ func ping(c *fiber.Ctx) error {
 	return c.SendString("pong")
 }
 
+// verify handles POST requests to verify WHIR proofs.
+// It accepts R1CS data, configuration, and proving/verifying keys via form data or URLs.
 func verify(c *fiber.Ctx) error {
-	outputCcsPath := "" // TODO: Handle
+	outputCcsPath := c.FormValue("output_ccs_path") // Optional path for CCS output
 	pkUrl := c.FormValue("pk_url")
 	vkUrl := c.FormValue("vk_url")
 	r1csUrl := c.FormValue("r1cs_url")
@@ -95,21 +99,33 @@ func verify(c *fiber.Ctx) error {
 
 	if vkUrl != "" && pkUrl != "" {
 		pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
+		if err != nil {
+			log.Printf("Failed to get PK/VK from URL: %v", err)
+			return c.Status(400).JSON(fiber.Map{
+				"error":   "Failed to fetch keys",
+				"details": err.Error(),
+			})
+		}
 	} else {
-		return fmt.Errorf("both pk_url and vk_url are not provided")
+		return c.Status(400).JSON(fiber.Map{
+			"error":   "Missing required parameters",
+			"details": "Both pk_url and vk_url must be provided",
+		})
 	}
 
 	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
-		return fmt.Errorf("failed to verify circuit: %w", err)
-	}
-
-	if err != nil {
 		log.Printf("Verification failed: %v", err)
-		return c.Status(400).SendString("Verification failed")
+		return c.Status(400).JSON(fiber.Map{
+			"error":   "Verification failed",
+			"details": err.Error(),
+		})
 	}
 
 	log.Printf("Verification successful")
-	return c.SendString("Verification successful")
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Verification completed successfully",
+	})
 }
 
 func getFile(c *fiber.Ctx, name string) ([]byte, error) {

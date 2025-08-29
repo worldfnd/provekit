@@ -18,13 +18,12 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	if err != nil {
 		return fmt.Errorf("failed to parse IO pattern: %w", err)
 	}
-	fmt.Printf("io: %s\n", io.PPrint())
 
 	var pointer uint64
 	var truncated []byte
 
-	var merkle_paths []MultiPath[KeccakDigest]
-	var stir_answers [][][]Fp256
+	var merklePaths []MultiPath[KeccakDigest]
+	var stirAnswers [][][]Fp256
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
 
@@ -50,7 +49,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 					&path,
 					false, false,
 				)
-				merkle_paths = append(merkle_paths, path)
+				merklePaths = append(merklePaths, path)
 
 			case "stir_answers":
 				var stirAnswersTemporary [][]Fp256
@@ -59,7 +58,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 					&stirAnswersTemporary,
 					false, false,
 				)
-				stir_answers = append(stir_answers, stirAnswersTemporary)
+				stirAnswers = append(stirAnswers, stirAnswersTemporary)
 
 			case "deferred_weight_evaluations":
 				var deferredTemporary []Fp256
@@ -120,9 +119,9 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("failed to deserialize interner: %w", err)
 	}
 
-	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merkle_paths, &stir_answers)
+	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
 
-	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merkle_paths, &stir_answers)
+	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
 	hints := Hints{
 		witnessHints:      witnessData,
@@ -133,9 +132,8 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 }
 
 func GetPkAndVkFromPath(pkPath string, vkPath string) (*groth16.ProvingKey, *groth16.VerifyingKey, error) {
-
-	var pk *groth16.ProvingKey = nil
-	var vk *groth16.VerifyingKey = nil
+	var pk *groth16.ProvingKey
+	var vk *groth16.VerifyingKey
 	if pkPath != "" && vkPath != "" {
 		log.Printf("Loading PK/VK from %s, %s", pkPath, vkPath)
 		restoredPk, restoredVk, err := keysFromFiles(pkPath, vkPath)
@@ -151,8 +149,8 @@ func GetPkAndVkFromPath(pkPath string, vkPath string) (*groth16.ProvingKey, *gro
 }
 
 func GetPkAndVkFromUrl(pkUrl string, vkUrl string) (*groth16.ProvingKey, *groth16.VerifyingKey, error) {
-	var pk *groth16.ProvingKey = nil
-	var vk *groth16.VerifyingKey = nil
+	var pk *groth16.ProvingKey
+	var vk *groth16.VerifyingKey
 
 	if pkUrl != "" && vkUrl != "" {
 		log.Printf("Downloading PK/VK from %s, %s", pkUrl, vkUrl)

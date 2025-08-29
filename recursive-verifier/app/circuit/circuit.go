@@ -1,7 +1,6 @@
 package circuit
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -164,8 +163,8 @@ func verifyCircuit(
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
 
-		WHIRParamsWitness:       New_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: New_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -216,8 +215,8 @@ func verifyCircuit(
 		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
 		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
 
-		WHIRParamsWitness:       New_whir_params(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: New_whir_params(cfg.WHIRConfigHidingSpartan),
+		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
 
 		MatrixA: matrixA,
 		MatrixB: matrixB,
@@ -229,7 +228,7 @@ func verifyCircuit(
 	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("Failed to verify proof: %v", err)
 	}
 }
 

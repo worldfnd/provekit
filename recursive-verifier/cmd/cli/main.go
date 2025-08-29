@@ -90,13 +90,11 @@ func main() {
 
 			var r1csFile []byte
 			if r1csFilePath != "" {
-				fmt.Println("r1csFilePath", r1csFilePath)
 				r1csFile, err = os.ReadFile(r1csFilePath)
 				if err != nil {
 					return fmt.Errorf("failed to read r1cs file: %w", err)
 				}
 			} else {
-				fmt.Println("r1csUrl", r1csUrl)
 				r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
 				if err != nil {
 					return fmt.Errorf("failed to get R1CS from URL: %w", err)
