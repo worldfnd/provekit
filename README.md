@@ -46,7 +46,7 @@ cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.np
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh
-cd ../../gnark-whir
+cd ../../recursive-verifier
 go run .
 ```
 
@@ -73,5 +73,5 @@ This project depends on the following libraries, which are developed in lockstep
 - [🌪️ WHIR](https://github.com/WizardOfMenlo/whir)
 - [Spongefish](https://github.com/arkworks-rs/spongefish)
 - [gnark-skyscraper](https://github.com/reilabs/gnark-skyscraper)
-- [gnark-whir](./gnark-whir/README.md)
+- [recursive-verifier](./recursive-verifier/README.md)
 - [noir](https://github.com/noir-lang/noir)

@@ -25,7 +25,7 @@ func main() {
 		Prefork:      false,
 		// CaseSensitive: true,
 		// StrictRouting: true,
-		ServerHeader: "Gnark-Whir",
+		ServerHeader: "Recursive-Verifier",
 		AppName:      "Verifier Server",
 	}
 

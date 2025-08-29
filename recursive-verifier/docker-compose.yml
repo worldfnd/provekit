@@ -6,7 +6,7 @@ services:
       args:
         TARGETOS: linux
         TARGETARCH: arm64
-    container_name: gnark-whir-verifier
+    container_name: recursive-verifier
     ports:
       - "3000:3000"
     # deploy:
