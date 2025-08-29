@@ -1,4 +1,5 @@
 use {
+    crate::{Pow2, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -16,11 +17,7 @@ pub const fn workload_size<T: Sized>() -> usize {
     CACHE_SIZE / size_of::<T>()
 }
 
-// Add type for power of 2 vector?
-// Allows for
-
-// TODO(xrvdg) Deal with reversed_ordered_roots that are finer grained than
-// required for the current NTT .
+// TODO(xrvdg) Add support for deg(roots) > deg(input)
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
@@ -29,19 +26,16 @@ pub const fn workload_size<T: Sized>() -> usize {
 /// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
 ///   order.
 /// * `input` - The input slice to be transformed in place.
-pub fn ntt_nr(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
+pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
 
-    // TODO(xrvdg) check the length of the roots and input
-    // How to ensure that the right roots has been used. -> Typed argument for root
-    // creation?
+    let input = &mut values.0;
 
     let n = input.len();
 
     if n <= 1 {
         return;
     }
-    assert!(n.is_power_of_two());
 
     // Each unique twiddle factor within a stage is a group.
     let mut pairs_in_group = n / 2;
@@ -92,7 +86,7 @@ pub fn ntt_nr(reversed_ordered_roots: &[Fr], input: &mut [Fr]) {
         .enumerate()
         .for_each(|(k, group)| {
             dit_nr_cache(reversed_ordered_roots, k, group);
-        })
+        });
 }
 
 // TODO(xrvdg) Add test and then change this implementation to be more rust-like
@@ -128,13 +122,14 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
 }
 
 /// Bit reverses val given that for a given bit size
+///
+/// Safety: bits>0
 fn reverse_bits(val: usize, bits: u32) -> usize {
-    // TODO(xrvdg) non-zero datatype?
     // requires 2^bits where bits>0. Because with zero this value
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
-// TODO(xrvdg) Reuse the caching engine from WHIR to hide the generation
+// TODO(xrvdg) Caching engine from WHIR
 /// Precomputes the NTT roots of unity and stores them in bit-reversed order.
 ///
 /// # Arguments
@@ -147,13 +142,14 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// # Panics
 /// Panics if `len` is not a power of two or if a suitable root of unity does
 /// not exist.
-pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
+pub fn init_roots_reverse_ordered(len: Pow2) -> Vec<Fr> {
+    let len = len.0;
     let n = len / 2;
     match n {
         0 => vec![],
+        // 1 is a separate case due to the 1.trailing_zeros = 0, while reverse_bit requires >0
         1 => vec![Fr::ONE],
         n => {
-            assert!(len.is_power_of_two());
             let root = Fr::get_root_of_unity(len as u64).unwrap();
 
             let mut roots = Vec::with_capacity(n);
@@ -178,12 +174,11 @@ pub fn init_roots_reverse_ordered(len: usize) -> Vec<Fr> {
 
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
-fn reverse_order<T>(input: &mut [T]) {
-    match input {
-        [] | [_] => return,
+fn reverse_order<T>(values: &mut NTT<T>) {
+    match values.0.as_mut_slice() {
+        [] | [_] => (),
         input => {
             let n = input.len();
-            assert!(n.is_power_of_two());
 
             for index in 0..n {
                 let rev = reverse_bits(index, n.trailing_zeros());
@@ -196,27 +191,24 @@ fn reverse_order<T>(input: &mut [T]) {
 }
 
 /// Note: not specifically optimized
-pub fn intt_rn(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
+pub fn intt_rn(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
     reverse_order(input);
     intt_nr(reverse_ordered_roots, input);
     reverse_order(input);
 }
 
 // Inverse NTT
-// TODO(xrvdg) How do the inverse roots of unity look like. For back conversion
-pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
-    match input {
-        [] => return,
-        input => {
+pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
+    match input.0.len() {
+        0 => (),
+        n => {
             // Reverse the input such that the roots act as inverse roots
-            input[1..].reverse();
+            input.0[1..].reverse();
             ntt_nr(reverse_ordered_roots, input);
-
-            let n = input.len();
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
-            for i in input.iter_mut() {
+            for i in input.0.iter_mut() {
                 *i *= factor;
             }
         }
@@ -227,6 +219,7 @@ pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut [Fr]) {
 mod tests {
     use {
         super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order},
+        crate::NTT,
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::prelude::*,
@@ -240,12 +233,10 @@ mod tests {
 
     proptest! {
         #[test]
-        fn round_trip_ntt(s in crate::proptest::vec2n(fr(), 0..15))
+        fn round_trip_ntt(original in crate::proptest::ntt(fr(), 0..15))
         {
-            let mut s = s.0;
-            let original = s.clone();
-            let n = original.len();
-            let roots = init_roots_reverse_ordered(n);
+            let mut s = original.clone();
+            let roots = init_roots_reverse_ordered(original.len());
 
             // Forward NTT
             ntt_nr(&roots, &mut s);
@@ -260,17 +251,15 @@ mod tests {
     #[test]
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
-        let mut v = vec![];
-        let n = v.len();
-        let roots = init_roots_reverse_ordered(n);
+        let mut v = NTT::new(vec![]).unwrap();
+        let roots = init_roots_reverse_ordered(v.len());
         ntt_nr(&roots, &mut v);
     }
 
     proptest! {
         #[test]
-        fn round_trip_reverse_order(v in crate::proptest::vec2n(any::<u32>(), 0..10)){
-            let mut v = v.0;
-            let original = v.clone();
+        fn round_trip_reverse_order(original in crate::proptest::ntt(any::<u32>(), 0..10)){
+            let mut v = original.clone();
             reverse_order(&mut v);
             reverse_order(&mut v);
             prop_assert_eq!(original, v)
@@ -279,8 +268,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn reverse_order_noop(v in crate::proptest::vec2n(any::<u32>(), 0..=1)) {
-            let original = v.0;
+        fn reverse_order_noop(original in crate::proptest::ntt(any::<u32>(), 0..=1)) {
             let mut v = original.clone();
             reverse_order(&mut v);
             assert_eq!(original, v)
