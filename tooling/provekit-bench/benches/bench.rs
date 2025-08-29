@@ -15,18 +15,6 @@ fn read_poseidon_1000(bencher: Bencher) {
 }
 
 #[divan::bench]
-fn simple_test(bencher: Bencher) {
-    bencher.bench(|| {
-        // Simple benchmark that just does some basic computation
-        let mut sum = 0;
-        for i in 0..1000 {
-            sum += i;
-        }
-        black_box(sum)
-    });
-}
-
-#[divan::bench]
 fn prove_poseidon_1000(bencher: Bencher) {
     let path: &Path = "benches/poseidon-1000.nps".as_ref();
 

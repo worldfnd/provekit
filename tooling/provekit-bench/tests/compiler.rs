@@ -7,6 +7,7 @@ use {
     provekit_common::NoirProofScheme,
     provekit_prover::NoirProofSchemeProver,
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
+    provekit_verifier::NoirProofSchemeVerifier,
     serde::Deserialize,
     std::path::Path,
     test_case::test_case,
@@ -42,9 +43,11 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
         .read_witness(&witness_file_path)
         .expect("Reading witness data");
 
-    let _proof = proof_schema
+    let proof = proof_schema
         .prove(&input_map)
         .expect("While proving Noir program statement");
+
+    proof_schema.verify(&proof).expect("Verifying proof");
 }
 
 pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> {
@@ -68,17 +71,17 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     Ok(workspace)
 }
 
-#[test_case("../noir-examples/noir-r1cs-test-programs/acir_assert_zero")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/read-only-memory")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/range-check-u8")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/range-check-u16")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/read-write-memory")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/conditional-write")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/bin-opcode")]
-#[test_case("../noir-examples/noir-r1cs-test-programs/small-sha")]
-#[test_case("../noir-examples/noir-passport-examples/complete_age_check"; "complete_age_check")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/acir_assert_zero")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/read-only-memory")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-u8")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-u16")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/read-write-memory")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/conditional-write")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/bin-opcode")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
+#[test_case("../../noir-examples/noir-passport-examples/complete_age_check"; "complete_age_check")]
 fn case(path: &str) {
     test_compiler(path);
 }
