@@ -1,0 +1,3 @@
+[submodule "skyscraper-evm/lib/forge-std"]
+	path = skyscraper-evm/lib/forge-std
+	url = https://github.com/foundry-rs/forge-std
