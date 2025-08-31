@@ -49,17 +49,17 @@ fn main(
     // Verify the age of the ID holder
     compare_age(dg1, min_age_required, max_age_required, current_date);
 
-    // Check that the ID is not expired.
+    // // Check that the ID is not expired.
     check_expiry(dg1, current_date);
 
-    // Check that H(DG1) exists within the SOD.
+    // // Check that H(DG1) exists within the SOD.
     check_dg1_hash_within_sod(
         dg1,
         passport_validity_contents.passport_sod,
         dg1_hash_offset_in_sod,
     );
 
-    // Performs the remainder of the passport validity checks
+    // // Performs the remainder of the passport validity checks
     // (see function documentation for details).
     check_passport_validity(passport_validity_contents);
 }

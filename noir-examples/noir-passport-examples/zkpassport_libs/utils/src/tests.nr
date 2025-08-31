@@ -3,6 +3,116 @@ use crate::{
     unsafe_get_asn1_element_length,
 };
 
+use super::{
+    DG1_TO_MRZ_OFFSET, get_mrz_from_dg1, get_name_from_mrz, ID_CARD_MRZ_BIRTHDATE_INDEX,
+    ID_CARD_MRZ_BIRTHDATE_LENGTH, ID_CARD_MRZ_DOCUMENT_NUMBER_INDEX,
+    ID_CARD_MRZ_DOCUMENT_NUMBER_LENGTH, ID_CARD_MRZ_NAME_INDEX, ID_CARD_MRZ_NAME_LENGTH,
+    ID_CARD_MRZ_NATIONALITY_INDEX, PASSPORT_MRZ_BIRTHDATE_INDEX, PASSPORT_MRZ_BIRTHDATE_LENGTH,
+    PASSPORT_MRZ_COUNTRY_INDEX, PASSPORT_MRZ_DOCUMENT_NUMBER_INDEX,
+    PASSPORT_MRZ_DOCUMENT_NUMBER_LENGTH, PASSPORT_MRZ_NAME_INDEX, PASSPORT_MRZ_NAME_LENGTH,
+    PASSPORT_MRZ_NATIONALITY_INDEX,
+};
+use super::types::{
+    DG1Data, MRZData, MRZDOB, MRZDocumentNumber, MRZName, MRZNameIdCard, MRZNationality,
+};
+
+// Testing utilities
+
+/// DG1 Builder
+/// Usage:
+/// ```nr
+/// let dg1 = DG1Builder::new([0; 95])
+/// .with_document_number([68, 60, 60, etc...])
+/// .with_name([68, 60, 60])
+/// .with_dob([68, 60, 60])
+/// .build();
+pub struct DG1Builder {
+    dg1: DG1Data,
+}
+
+impl DG1Builder {
+    pub fn new(dg1: DG1Data) -> Self {
+        Self { dg1 }
+    }
+
+    pub fn build(mut self: Self) -> DG1Data {
+        self.dg1
+    }
+
+    pub fn build_mrz(mut self: Self) -> MRZData {
+        get_mrz_from_dg1(self.dg1)
+    }
+
+    pub fn is_id_card(mut self: Self) -> Self {
+        // Set the last two bytes to NON 0 to indicate an ID card
+        self.dg1[93] = 1;
+        self.dg1[94] = 1;
+        self
+    }
+
+    pub fn with_country_code(mut self: Self, country_code: MRZNationality) -> Self {
+        for i in 0..3 {
+            // + 5 as it goes through an mrz decoding
+            self.dg1[PASSPORT_MRZ_NATIONALITY_INDEX + i + DG1_TO_MRZ_OFFSET] = country_code[i];
+            self.dg1[PASSPORT_MRZ_COUNTRY_INDEX + i + DG1_TO_MRZ_OFFSET] = country_code[i];
+        }
+        self
+    }
+
+    pub fn with_country_code_id_card(mut self: Self, country_code: MRZNationality) -> Self {
+        for i in 0..3 {
+            self.dg1[ID_CARD_MRZ_NATIONALITY_INDEX + i + DG1_TO_MRZ_OFFSET] = country_code[i];
+        }
+        self
+    }
+
+    pub fn with_document_number(mut self: Self, document_number: MRZDocumentNumber) -> Self {
+        for i in 0..PASSPORT_MRZ_DOCUMENT_NUMBER_LENGTH {
+            self.dg1[PASSPORT_MRZ_DOCUMENT_NUMBER_INDEX + i + 5] = document_number[i];
+        }
+        self
+    }
+
+    pub fn with_document_number_id_card(
+        mut self: Self,
+        document_number: MRZDocumentNumber,
+    ) -> Self {
+        for i in 0..ID_CARD_MRZ_DOCUMENT_NUMBER_LENGTH {
+            self.dg1[ID_CARD_MRZ_DOCUMENT_NUMBER_INDEX + i + DG1_TO_MRZ_OFFSET] =
+                document_number[i];
+        }
+        self
+    }
+
+    pub fn with_name(mut self: Self, name: MRZName) -> Self {
+        for i in 0..PASSPORT_MRZ_NAME_LENGTH {
+            self.dg1[PASSPORT_MRZ_NAME_INDEX + i + DG1_TO_MRZ_OFFSET] = name[i];
+        }
+        self
+    }
+
+    pub fn with_name_id_card(mut self: Self, name: MRZNameIdCard) -> Self {
+        for i in 0..ID_CARD_MRZ_NAME_LENGTH {
+            self.dg1[ID_CARD_MRZ_NAME_INDEX + i + DG1_TO_MRZ_OFFSET] = name[i];
+        }
+        self
+    }
+
+    pub fn with_dob(mut self: Self, dob: MRZDOB) -> Self {
+        for i in 0..PASSPORT_MRZ_BIRTHDATE_LENGTH {
+            self.dg1[PASSPORT_MRZ_BIRTHDATE_INDEX + i + DG1_TO_MRZ_OFFSET] = dob[i];
+        }
+        self
+    }
+
+    pub fn with_dob_id_card(mut self: Self, dob: MRZDOB) -> Self {
+        for i in 0..ID_CARD_MRZ_BIRTHDATE_LENGTH {
+            self.dg1[ID_CARD_MRZ_BIRTHDATE_INDEX + i + DG1_TO_MRZ_OFFSET] = dob[i];
+        }
+        self
+    }
+}
+
 #[test]
 fn test_pack_be_bytes_into_u128() {
     let packed1 = pack_be_bytes_into_u128s::<512, _, 15>(TEST_BYTES);
@@ -281,4 +391,35 @@ fn test_verify_substring_in_string() {
     let needle = [0x04, 0x05, 0x06];
     let haystack = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a];
     verify_substring_in_string(needle, haystack);
+}
+
+#[test]
+fn test_get_name_passport() {
+    // name = 'Doe<<John<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<',
+    let name = [
+        68, 111, 101, 60, 60, 74, 111, 104, 110, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+    ];
+    let dg1 = DG1Builder::new([0; 95]).with_name(name).build();
+
+    let mrz_name = get_name_from_mrz(dg1);
+    assert_eq(mrz_name, name);
+}
+
+#[test]
+fn test_get_name_id_card() {
+    // name = 'Doe<<John<<<<<<<<<<<<<<<<<<<<<',
+    let name = [
+        68, 111, 101, 60, 60, 74, 111, 104, 110, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60, 60, 60, 60, 60, 60,
+    ];
+    // padded_name = 'Doe<<John<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<',
+    let padded_name = [
+        68, 111, 101, 60, 60, 74, 111, 104, 110, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+        60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+    ];
+
+    let dg1 = DG1Builder::new([0; 95]).is_id_card().with_name_id_card(name).build();
+    let mrz_name = get_name_from_mrz(dg1);
+    assert_eq(mrz_name, padded_name);
 }
