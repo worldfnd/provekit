@@ -132,11 +132,7 @@ pub(crate) fn field_to_le_bits(value: FieldElement) -> Vec<bool> {
 /// convert it to a field element. The input is padded to the next multiple of 8
 /// bits.
 pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
-    let next_multiple_of_8 = bits.len().div_ceil(8) * 8;
-    let padding_amt = next_multiple_of_8 - bits.len();
-    let mut padded_bits_le = vec![false; next_multiple_of_8];
-    padded_bits_le[..(next_multiple_of_8 - padding_amt)].copy_from_slice(bits);
-    let be_byte_vec: Vec<u8> = padded_bits_le
+    let le_byte_vec: Vec<u8> = bits
         .chunks(8)
         .map(|chunk_in_bits| {
             chunk_in_bits
@@ -145,7 +141,7 @@ pub(crate) fn le_bits_to_field(bits: &[bool]) -> FieldElement {
                 .fold(0u8, |acc, (i, bit)| acc | ((*bit as u8) << i))
         })
         .collect();
-    FieldElement::from_le_bytes_mod_order(&be_byte_vec)
+    FieldElement::from_le_bytes_mod_order(&le_byte_vec)
 }
 
 #[cfg(test)]
