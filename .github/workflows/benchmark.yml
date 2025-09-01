@@ -27,14 +27,11 @@ jobs:
       - name: Build the benchmark target(s)
         timeout-minutes: 30
         run: cargo codspeed build
-      - name: Upload benchmark binaries and input files
+      - name: Upload benchmark binaries
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-binaries
-          path: |
-            target/codspeed
-            noir-r1cs/benches/poseidon-1000.nps
-            noir-r1cs/benches/poseidon-1000.np
+          path: target/codspeed
 
   benchmark:
     name: Run benchmarks on Raspberry Pi 5
