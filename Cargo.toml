@@ -67,6 +67,7 @@ hla = { path = "hla" }
 noir-r1cs = { path = "noir-r1cs" }
 noir-tools = { path = "noir-tools" }
 skyscraper = { path = "skyscraper" }
+rsa-gen = { path = "noir-examples/noir-passport-examples/rsa-gen"}
 
 # 3rd party
 serde = { version = "1.0", features = ["derive"] }
