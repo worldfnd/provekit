@@ -52,9 +52,9 @@ jobs:
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
-          cargo run --release --bin noir-r1cs prepare ./target/complete_age_check.json -o ./noir-proof-scheme.nps
-          cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
-          cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+          cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -o ./noir-proof-scheme.nps
+          cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+          cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
       - name: Run Gnark verifier
         working-directory: recursive-verifier
         run: |
