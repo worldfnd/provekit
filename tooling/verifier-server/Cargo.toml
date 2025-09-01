@@ -22,7 +22,10 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+<<<<<<< HEAD
 tokio-util.workspace = true
+=======
+>>>>>>> 8764374 (feat: add verifier server)
 tower.workspace = true
 tower-http.workspace = true
 tracing.workspace = true

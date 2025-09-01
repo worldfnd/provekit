@@ -35,7 +35,11 @@ FROM rust:1.85-alpine AS rust-builder
 RUN apk add --no-cache \
     musl-dev \
     pkgconfig \
+<<<<<<< HEAD
     libressl-dev \
+=======
+    openssl-dev \
+>>>>>>> 8764374 (feat: add verifier server)
     git
 
 WORKDIR /rust-app
@@ -48,11 +52,14 @@ COPY provekit/ ./provekit/
 COPY skyscraper/ ./skyscraper/
 COPY tooling/ ./tooling/
 
+<<<<<<< HEAD
 # Set environment variables for LibreSSL static linking
 ENV OPENSSL_STATIC=1
 ENV OPENSSL_LIB_DIR=/usr/lib
 ENV OPENSSL_INCLUDE_DIR=/usr/include
 
+=======
+>>>>>>> 8764374 (feat: add verifier server)
 # Build the verifier server in release mode
 RUN cargo build --release --bin verifier-server
 
