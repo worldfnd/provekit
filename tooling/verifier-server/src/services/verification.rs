@@ -347,6 +347,10 @@ impl VerificationService {
 
 impl Default for VerificationService {
     fn default() -> Self {
+<<<<<<< HEAD
         Self::new("./verifier", 1200) // 20 minutes default timeout
+=======
+        Self::new("./verifier")
+>>>>>>> 245651b (feat: add verifier server)
     }
 }

@@ -14,7 +14,10 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
+<<<<<<< HEAD
   "ntt",
+=======
+>>>>>>> 245651b (feat: add verifier server)
 ]
 exclude = [
   "playground/passport-input-gen",
