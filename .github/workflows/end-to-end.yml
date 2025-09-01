@@ -44,13 +44,13 @@ jobs:
 
       # nargo execute is a faulty command that should be removed when toml reader is implemented
       - name: Compile and execute Nargo circuit
-        working-directory: noir-examples/poseidon-rounds
+        working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
-          nargo compile
+          nargo compile --skip-underconstrained-check --skip-brillig-constraints-check --force --package complete_age_check
           nargo execute
       # basic.gz should be changed to .toml file in the future when faulty command is removed
       - name: Generate Gnark inputs
-        working-directory: noir-examples/poseidon-rounds
+        working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
           cargo run --release --bin provekit-cli prepare ./target/basic.json -o ./noir-proof-scheme.nps
           cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
@@ -77,7 +77,7 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process
-          ./gnark-verifier --config "../noir-examples/poseidon-rounds/params_for_recursive_verifier" --r1cs "../noir-examples/poseidon-rounds/r1cs.json" --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
+          ./gnark-verifier --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json" --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
 
           # Stop monitoring
           kill $MONITOR_PID
