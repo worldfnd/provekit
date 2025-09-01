@@ -8,7 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"reilabs/whir-verifier-circuit/typeConverters"
+	"reilabs/whir-verifier-circuit/app/circuit"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
@@ -32,12 +33,12 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to read r1cs file: %v", r1csErr)
 	}
 
-	var internedR1CS R1CS
+	var internedR1CS circuit.R1CS
 	if err = json.Unmarshal(r1csFile, &internedR1CS); err != nil {
 		t.Fatalf("failed to unmarshal r1cs JSON: %v", err)
 	}
 
-	var config Config
+	var config circuit.Config
 	if err := json.Unmarshal(configFile, &config); err != nil {
 		t.Fatalf("failed to unmarshal config JSON: %v", err)
 	}
@@ -51,10 +52,10 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	var pointer uint64
 	var truncated []byte
 
-	var merklePaths []MultiPath[KeccakDigest]
-	var stirAnswers [][][]Fp256
-	var deferred []Fp256
-	var claimedEvaluations []Fp256
+	var merklePaths []circuit.MultiPath[circuit.KeccakDigest]
+	var stirAnswers [][][]circuit.Fp256
+	var deferred []circuit.Fp256
+	var claimedEvaluations []circuit.Fp256
 
 	for _, op := range io.Ops {
 		switch op.Kind {
@@ -72,7 +73,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 
 			switch string(op.Label) {
 			case "merkle_proof":
-				var path MultiPath[KeccakDigest]
+				var path circuit.MultiPath[circuit.KeccakDigest]
 				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path,
@@ -80,7 +81,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 				)
 				merklePaths = append(merklePaths, path)
 			case "stir_answers":
-				var stirAnswersTemporary [][]Fp256
+				var stirAnswersTemporary [][]circuit.Fp256
 				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&stirAnswersTemporary,
@@ -88,7 +89,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 				)
 				stirAnswers = append(stirAnswers, stirAnswersTemporary)
 			case "deferred_weight_evaluations":
-				var deferredTemporary []Fp256
+				var deferredTemporary []circuit.Fp256
 				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&deferredTemporary,
@@ -138,7 +139,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to decode interner values: %v", err)
 	}
 
-	var interner Interner
+	var interner circuit.Interner
 	_, err = go_ark_serialize.CanonicalDeserializeWithMode(
 		bytes.NewReader(internerBytes), &interner, false, false,
 	)
@@ -146,10 +147,10 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to deserialize interner: %v", err)
 	}
 
-	spartanEnd := config.WHIRConfigCol.NRounds + 1
+	spartanEnd := config.WHIRConfig.NRounds + 1
 
-	hints := Hints{
-		colHints: Hint{
+	hints := circuit.Hints{
+		colHints: circuit.Hint{
 			merklePaths: merklePaths[:spartanEnd],
 			stirAnswers: stirAnswers[:spartanEnd],
 		},
@@ -172,14 +173,14 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
 	}
 
-	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
+	matrixA := make([]circuit.MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
 		end := len(internedR1CS.A.Values) - 1
 		if i < len(internedR1CS.A.RowIndices)-1 {
 			end = int(internedR1CS.A.RowIndices[i+1] - 1)
 		}
 		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-			matrixA[j] = MatrixCell{
+			matrixA[j] = circuit.MatrixCell{
 				row:    i,
 				column: int(internedR1CS.A.ColIndices[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
@@ -187,14 +188,14 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 	}
 
-	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
+	matrixB := make([]circuit.MatrixCell, len(internedR1CS.B.Values))
 	for i := range len(internedR1CS.B.RowIndices) {
 		end := len(internedR1CS.B.Values) - 1
 		if i < len(internedR1CS.B.RowIndices)-1 {
 			end = int(internedR1CS.B.RowIndices[i+1] - 1)
 		}
 		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-			matrixB[j] = MatrixCell{
+			matrixB[j] = circuit.MatrixCell{
 				row:    i,
 				column: int(internedR1CS.B.ColIndices[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
@@ -202,14 +203,14 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 	}
 
-	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
+	matrixC := make([]circuit.MatrixCell, len(internedR1CS.C.Values))
 	for i := range len(internedR1CS.C.RowIndices) {
 		end := len(internedR1CS.C.Values) - 1
 		if i < len(internedR1CS.C.RowIndices)-1 {
 			end = int(internedR1CS.C.RowIndices[i+1] - 1)
 		}
 		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-			matrixC[j] = MatrixCell{
+			matrixC[j] = circuit.MatrixCell{
 				row:    i,
 				column: int(internedR1CS.C.ColIndices[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
@@ -217,7 +218,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 	}
 
-	assignment := Circuit{
+	assignment := circuit.Circuit{
 		IO:                []byte(config.IOPattern),
 		Transcript:        transcriptT,
 		LogNumConstraints: config.LogNumConstraints,
@@ -234,7 +235,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	}
 
 	// witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
-	var circuit = Circuit{
+	var circuit = circuit.Circuit{
 		IO:                []byte(config.IOPattern),
 		Transcript:        contTranscript,
 		LogNumConstraints: config.LogNumConstraints,
