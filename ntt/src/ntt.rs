@@ -119,9 +119,13 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
 
 /// Bit reverses val for a given bit size
 ///
-/// Requires: bits > 0
+/// Requires:
+/// - bits > 0
+/// - val < 2^bits
 fn reverse_bits(val: usize, bits: u32) -> usize {
-    // requires 2^bits where bits>0. Because with zero this value
+    debug_assert!(val < 2_usize.pow(bits));
+    debug_assert!(bits > 0);
+    // shift will overflow if bits = 0
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
@@ -129,7 +133,7 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// Precomputes the NTT roots of unity and stores them in bit-reversed order.
 ///
 /// # Arguments
-/// * `len` - The size of the NTT (must be a power of two).
+/// * `len` - The size of the NTT
 ///
 /// # Returns
 /// A vector of length `len / 2` containing the precomputed roots in
@@ -139,7 +143,7 @@ pub fn init_roots_reverse_ordered(len: Pow2OrZero) -> Vec<Fr> {
     let n = len / 2;
     match n {
         0 => vec![],
-        // 1 is a separate case due to the 1.trailing_zeros = 0, while reverse_bit requires >0
+        // 1 is a separate case due to `1.trailing_zeros = 0` which reverse_bit requires >0
         1 => vec![Fr::ONE],
         n => {
             let root = Fr::get_root_of_unity(len as u64).unwrap();
