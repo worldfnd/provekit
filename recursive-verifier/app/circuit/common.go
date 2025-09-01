@@ -124,8 +124,8 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
 	hints := Hints{
-		witnessHints:      witnessData,
-		spartanHidingHint: hidingSpartanData,
+		WitnessHints:      witnessData,
+		SpartanHidingHint: hidingSpartanData,
 	}
 	verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
 	return nil

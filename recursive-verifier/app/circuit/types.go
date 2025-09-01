@@ -99,23 +99,23 @@ type Config struct {
 }
 
 type Hints struct {
-	witnessHints      ZKHint
-	spartanHidingHint ZKHint
+	WitnessHints      ZKHint
+	SpartanHidingHint ZKHint
 }
 
 type Hint struct {
-	merklePaths []MultiPath[KeccakDigest]
-	stirAnswers [][][]Fp256
+	MerklePaths []MultiPath[KeccakDigest]
+	StirAnswers [][][]Fp256
 }
 
 type FirstRoundHint struct {
-	path                Hint
-	expectedStirAnswers [][]Fp256
+	Path                Hint
+	ExpectedStirAnswers [][]Fp256
 }
 
 type ZKHint struct {
-	firstRoundMerklePaths FirstRoundHint
-	roundHints            Hint
+	FirstRoundMerklePaths FirstRoundHint
+	RoundHints            Hint
 }
 
 type ClaimedEvaluations struct {

@@ -249,12 +249,12 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]MultiPath[KeccakDige
 		firstRoundMerklePath := consumeFront(merkle_paths)
 		firstRoundStirAnswers := consumeFront(stir_answers)
 
-		zkHint.firstRoundMerklePaths = FirstRoundHint{
-			path: Hint{
-				merklePaths: []MultiPath[KeccakDigest]{firstRoundMerklePath},
-				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
+		zkHint.FirstRoundMerklePaths = FirstRoundHint{
+			Path: Hint{
+				MerklePaths: []MultiPath[KeccakDigest]{firstRoundMerklePath},
+				StirAnswers: [][][]Fp256{firstRoundStirAnswers},
 			},
-			expectedStirAnswers: firstRoundStirAnswers,
+			ExpectedStirAnswers: firstRoundStirAnswers,
 		}
 	}
 
@@ -268,9 +268,9 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]MultiPath[KeccakDige
 		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stir_answers))
 	}
 
-	zkHint.roundHints = Hint{
-		merklePaths: remainingMerklePaths,
-		stirAnswers: remainingStirAnswers,
+	zkHint.RoundHints = Hint{
+		MerklePaths: remainingMerklePaths,
+		StirAnswers: remainingStirAnswers,
 	}
 
 	return zkHint

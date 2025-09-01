@@ -138,6 +138,9 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 
 	config.Transcript = truncated
 
+	config.WitnessStatementEvaluations = make([]string, 0)
+	config.BlindingStatementEvaluations = make([]string, 0)
+
 	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
 	if err != nil {
 		t.Fatalf("failed to decode interner values: %v", err)
@@ -155,8 +158,8 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
 	hints := Hints{
-		witnessHints:      witnessData,
-		spartanHidingHint: hidingSpartanData,
+		WitnessHints:      witnessData,
+		SpartanHidingHint: hidingSpartanData,
 	}
 
 	transcriptT := make([]uints.U8, config.TranscriptLen)
@@ -186,9 +189,9 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 		for j := int(r1cs.A.RowIndices[i]); j <= end; j++ {
 			matrixA[j] = MatrixCell{
-				row:    i,
-				column: int(r1cs.A.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.A.Values[j]].Limbs),
+				Row:    i,
+				Column: int(r1cs.A.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.A.Values[j]].Limbs),
 			}
 		}
 	}
@@ -201,9 +204,9 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 		for j := int(r1cs.B.RowIndices[i]); j <= end; j++ {
 			matrixB[j] = MatrixCell{
-				row:    i,
-				column: int(r1cs.B.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.B.Values[j]].Limbs),
+				Row:    i,
+				Column: int(r1cs.B.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.B.Values[j]].Limbs),
 			}
 		}
 	}
@@ -216,9 +219,9 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		}
 		for j := int(r1cs.C.RowIndices[i]); j <= end; j++ {
 			matrixC[j] = MatrixCell{
-				row:    i,
-				column: int(r1cs.C.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.C.Values[j]].Limbs),
+				Row:    i,
+				Column: int(r1cs.C.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[r1cs.C.Values[j]].Limbs),
 			}
 		}
 	}
@@ -233,10 +236,10 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		WitnessBlindingEvaluations:              gSums,
 		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
-		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
+		HidingSpartanFirstRound:                 newMerkle(hints.SpartanHidingHint.FirstRoundMerklePaths.Path, true),
+		HidingSpartanMerkle:                     newMerkle(hints.SpartanHidingHint.RoundHints, true),
+		WitnessMerkle:                           newMerkle(hints.WitnessHints.RoundHints, true),
+		WitnessFirstRound:                       newMerkle(hints.WitnessHints.FirstRoundMerklePaths.Path, true),
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
 		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,
@@ -283,10 +286,10 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		WitnessBlindingEvaluations:              gSums,
 		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, false),
-		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
+		HidingSpartanFirstRound:                 newMerkle(hints.SpartanHidingHint.FirstRoundMerklePaths.Path, false),
+		HidingSpartanMerkle:                     newMerkle(hints.SpartanHidingHint.RoundHints, false),
+		WitnessMerkle:                           newMerkle(hints.WitnessHints.RoundHints, false),
+		WitnessFirstRound:                       newMerkle(hints.WitnessHints.FirstRoundMerklePaths.Path, false),
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
 		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,
@@ -296,6 +299,78 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 
 	// witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	// publicWitness, _ := witness.Public()
+
+	fmt.Printf("=== CIRCUIT STRUCT DEBUG ===\n")
+	fmt.Printf("LogNumConstraints: %d\n", circuit.LogNumConstraints)
+	fmt.Printf("LogNumVariables: %d\n", circuit.LogNumVariables)
+	fmt.Printf("LogANumTerms: %d\n", circuit.LogANumTerms)
+	fmt.Printf("WitnessClaimedEvaluations len: %d\n", len(circuit.WitnessClaimedEvaluations))
+	fmt.Printf("WitnessBlindingEvaluations len: %d\n", len(circuit.WitnessBlindingEvaluations))
+	fmt.Printf("WitnessLinearStatementEvaluations len: %d\n", len(circuit.WitnessLinearStatementEvaluations))
+	fmt.Printf("HidingSpartanLinearStatementEvaluations len: %d\n", len(circuit.HidingSpartanLinearStatementEvaluations))
+	fmt.Printf("MatrixA len: %d\n", len(circuit.MatrixA))
+	fmt.Printf("MatrixB len: %d\n", len(circuit.MatrixB))
+	fmt.Printf("MatrixC len: %d\n", len(circuit.MatrixC))
+	fmt.Printf("Transcript len: %d\n", len(circuit.Transcript))
+	fmt.Printf("IO len: %d\n", len(circuit.IO))
+
+	// Log Merkle tree content:
+	fmt.Printf("HidingSpartanFirstRound - Leaves: %d, AuthPaths: %d\n",
+		len(circuit.HidingSpartanFirstRound.Leaves),
+		len(circuit.HidingSpartanFirstRound.AuthPaths))
+	fmt.Printf("HidingSpartanMerkle - Leaves: %d, AuthPaths: %d\n",
+		len(circuit.HidingSpartanMerkle.Leaves),
+		len(circuit.HidingSpartanMerkle.AuthPaths))
+	fmt.Printf("WitnessMerkle - Leaves: %d, AuthPaths: %d\n",
+		len(circuit.WitnessMerkle.Leaves),
+		len(circuit.WitnessMerkle.AuthPaths))
+	fmt.Printf("WitnessFirstRound - Leaves: %d, AuthPaths: %d\n",
+		len(circuit.WitnessFirstRound.Leaves),
+		len(circuit.WitnessFirstRound.AuthPaths))
+
+	// Log WHIRParams:
+	fmt.Printf("WHIRParamsWitness - NRounds: %d, BatchSize: %d\n",
+		circuit.WHIRParamsWitness.ParamNRounds,
+		circuit.WHIRParamsWitness.BatchSize)
+	fmt.Printf("WHIRParamsHidingSpartan - NRounds: %d, BatchSize: %d\n",
+		circuit.WHIRParamsHidingSpartan.ParamNRounds,
+		circuit.WHIRParamsHidingSpartan.BatchSize)
+
+	fmt.Printf("=== ASSIGNMENT STRUCT DEBUG ===\n")
+	fmt.Printf("LogNumConstraints: %d\n", assignment.LogNumConstraints)
+	fmt.Printf("LogNumVariables: %d\n", assignment.LogNumVariables)
+	fmt.Printf("LogANumTerms: %d\n", assignment.LogANumTerms)
+	fmt.Printf("WitnessClaimedEvaluations len: %d\n", len(assignment.WitnessClaimedEvaluations))
+	fmt.Printf("WitnessBlindingEvaluations len: %d\n", len(assignment.WitnessBlindingEvaluations))
+	fmt.Printf("WitnessLinearStatementEvaluations len: %d\n", len(assignment.WitnessLinearStatementEvaluations))
+	fmt.Printf("HidingSpartanLinearStatementEvaluations len: %d\n", len(assignment.HidingSpartanLinearStatementEvaluations))
+	fmt.Printf("MatrixA len: %d\n", len(assignment.MatrixA))
+	fmt.Printf("MatrixB len: %d\n", len(assignment.MatrixB))
+	fmt.Printf("MatrixC len: %d\n", len(assignment.MatrixC))
+	fmt.Printf("Transcript len: %d\n", len(assignment.Transcript))
+	fmt.Printf("IO len: %d\n", len(assignment.IO))
+
+	// Log Merkle tree content:
+	fmt.Printf("HidingSpartanFirstRound - Leaves: %d, AuthPaths: %d\n",
+		len(assignment.HidingSpartanFirstRound.Leaves),
+		len(assignment.HidingSpartanFirstRound.AuthPaths))
+	fmt.Printf("HidingSpartanMerkle - Leaves: %d, AuthPaths: %d\n",
+		len(assignment.HidingSpartanMerkle.Leaves),
+		len(assignment.HidingSpartanMerkle.AuthPaths))
+	fmt.Printf("WitnessMerkle - Leaves: %d, AuthPaths: %d\n",
+		len(assignment.WitnessMerkle.Leaves),
+		len(assignment.WitnessMerkle.AuthPaths))
+	fmt.Printf("WitnessFirstRound - Leaves: %d, AuthPaths: %d\n",
+		len(assignment.WitnessFirstRound.Leaves),
+		len(assignment.WitnessFirstRound.AuthPaths))
+
+	// Log WHIRParams:
+	fmt.Printf("WHIRParamsWitness - NRounds: %d, BatchSize: %d\n",
+		assignment.WHIRParamsWitness.ParamNRounds,
+		assignment.WHIRParamsWitness.BatchSize)
+	fmt.Printf("WHIRParamsHidingSpartan - NRounds: %d, BatchSize: %d\n",
+		assignment.WHIRParamsHidingSpartan.ParamNRounds,
+		assignment.WHIRParamsHidingSpartan.BatchSize)
 
 	assert.CheckCircuit(
 		&circuit,

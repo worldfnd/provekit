@@ -12,12 +12,12 @@ func newMerkle(
 	hint Hint,
 	isContainer bool,
 ) Merkle {
-	var totalAuthPath = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
+	var totalAuthPath = make([][][]frontend.Variable, len(hint.MerklePaths))
+	var totalLeaves = make([][][]frontend.Variable, len(hint.MerklePaths))
+	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.MerklePaths))
+	var totalLeafIndexes = make([][]uints.U64, len(hint.MerklePaths))
 
-	for i, merkle_path := range hint.merklePaths {
+	for i, merkle_path := range hint.MerklePaths {
 		var numOfLeavesProved = len(merkle_path.LeafIndexes)
 		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
 
@@ -27,7 +27,7 @@ func newMerkle(
 
 		for j := range numOfLeavesProved {
 			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
-			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
+			totalLeaves[i][j] = make([]frontend.Variable, len(hint.StirAnswers[i][j]))
 		}
 
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
@@ -52,8 +52,8 @@ func newMerkle(
 			for z := range numOfLeavesProved {
 				totalLeafSiblingHashes[i][z] = typeConverters.LittleEndianUint8ToBigInt(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
 				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-				for j := range hint.stirAnswers[i][z] {
-					input := hint.stirAnswers[i][z][j]
+				for j := range hint.StirAnswers[i][z] {
+					input := hint.StirAnswers[i][z][j]
 					totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
 				}
 			}

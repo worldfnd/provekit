@@ -33,9 +33,9 @@ type R1CS struct {
 }
 
 type MatrixCell struct {
-	row    int
-	column int
-	value  *big.Int
+	Row    int
+	Column int
+	Value  *big.Int
 }
 
 func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
@@ -47,13 +47,13 @@ func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []f
 	colEval := calculateEQOverBooleanHypercube(api, colRand)
 
 	for i := range len(circuit.MatrixA) {
-		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
+		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].Value, api.Mul(rowEval[circuit.MatrixA[i].Row], colEval[circuit.MatrixA[i].Column])))
 	}
 	for i := range circuit.MatrixB {
-		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
+		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].Value, api.Mul(rowEval[circuit.MatrixB[i].Row], colEval[circuit.MatrixB[i].Column])))
 	}
 	for i := range circuit.MatrixC {
-		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
+		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].Value, api.Mul(rowEval[circuit.MatrixC[i].Row], colEval[circuit.MatrixC[i].Column])))
 	}
 
 	return []frontend.Variable{ansA, ansB, ansC}

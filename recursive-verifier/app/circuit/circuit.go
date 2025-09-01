@@ -111,9 +111,9 @@ func verifyCircuit(
 		}
 		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
 			matrixA[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.A.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
+				Row:    i,
+				Column: int(internedR1CS.A.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
 			}
 		}
 	}
@@ -126,9 +126,9 @@ func verifyCircuit(
 		}
 		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
 			matrixB[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.B.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
+				Row:    i,
+				Column: int(internedR1CS.B.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
 			}
 		}
 	}
@@ -141,9 +141,9 @@ func verifyCircuit(
 		}
 		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
 			matrixC[j] = MatrixCell{
-				row:    i,
-				column: int(internedR1CS.C.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
+				Row:    i,
+				Column: int(internedR1CS.C.ColIndices[j]),
+				Value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
 			}
 		}
 	}
@@ -158,10 +158,10 @@ func verifyCircuit(
 		WitnessBlindingEvaluations:              gSums,
 		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
-		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
+		HidingSpartanFirstRound:                 newMerkle(hints.SpartanHidingHint.FirstRoundMerklePaths.Path, true),
+		HidingSpartanMerkle:                     newMerkle(hints.SpartanHidingHint.RoundHints, true),
+		WitnessMerkle:                           newMerkle(hints.WitnessHints.RoundHints, true),
+		WitnessFirstRound:                       newMerkle(hints.WitnessHints.FirstRoundMerklePaths.Path, true),
 
 		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
@@ -210,10 +210,10 @@ func verifyCircuit(
 		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
 
-		HidingSpartanFirstRound: newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
-		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
+		HidingSpartanFirstRound: newMerkle(hints.SpartanHidingHint.FirstRoundMerklePaths.Path, false),
+		HidingSpartanMerkle:     newMerkle(hints.SpartanHidingHint.RoundHints, false),
+		WitnessMerkle:           newMerkle(hints.WitnessHints.RoundHints, false),
+		WitnessFirstRound:       newMerkle(hints.WitnessHints.FirstRoundMerklePaths.Path, false),
 
 		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
 		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
