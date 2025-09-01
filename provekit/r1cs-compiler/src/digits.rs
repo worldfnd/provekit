@@ -1,6 +1,6 @@
 use {
     crate::noir_to_r1cs::NoirToR1CSCompiler,
-    ark_ff::{BigInteger, PrimeField},
+    ark_ff::{BigInt, BigInteger, BitIteratorLE, PrimeField},
     ark_std::{One, Zero},
     provekit_common::{
         witness::{DigitalDecompositionWitnesses, WitnessBuilder},
@@ -98,24 +98,24 @@ pub(crate) fn add_digital_decomposition(
 pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
     let num_digits = log_bases.len();
     let mut digits = vec![FieldElement::zero(); num_digits];
-    let value_bits = field_to_le_bits(value);
+    let mut value_bits = field_to_le_bits(value);
+    let ref mut ref_value_bits = value_bits;
     // Grab the bits of the element that we need for each digit, and turn them back
     // into field elements.
-    let mut start_bit = 0;
 
     // log bases acts as slices into value bits. Take ownership of that.
     // Once that works try to use the iterator directly from field_to_le_bits
 
     for digit_idx in 0..num_digits {
         let log_base = log_bases[digit_idx];
-        let digit_bits = &value_bits[start_bit..start_bit + log_base];
-        let digit_value = le_bits_to_field(digit_bits);
+        let digit_bits = ref_value_bits.take(log_base).collect::<Vec<bool>>();
+        let digit_value = le_bits_to_field(&digit_bits);
         digits[digit_idx] = digit_value;
-        start_bit += log_base;
     }
-    let remaining_bits = &value_bits[start_bit..];
+
+    let mut remaining_bits = value_bits;
     assert!(
-        remaining_bits.iter().all(|&bit| !bit),
+        remaining_bits.all(|bit| !bit),
         "Higher order bits are not zero"
     );
     digits
@@ -124,8 +124,8 @@ pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) ->
 /// Decomposes a field element into its bits, in little-endian order.
 /// Probably a lot of allocation because it goes to bits, but for little-endian
 /// and big endian is on byte level not on bit level
-pub(crate) fn field_to_le_bits(value: FieldElement) -> Vec<bool> {
-    value.into_bigint().to_bits_le()
+pub(crate) fn field_to_le_bits(value: FieldElement) -> BitIteratorLE<BigInt<4>> {
+    BitIteratorLE::new(value.into_bigint())
 }
 
 /// Given the binary representation of a field element in little-endian order,
@@ -162,7 +162,7 @@ fn test_decompose_into_digits() {
 // this needs to be extended
 fn test_field_to_le_bits() {
     let value = FieldElement::from(5u32);
-    let bits = field_to_le_bits(value);
+    let bits: Vec<bool> = field_to_le_bits(value).collect();
     assert_eq!(bits.len(), 256);
     assert!(bits[0]);
     assert!(!bits[1]);
