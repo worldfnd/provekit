@@ -14,7 +14,7 @@ permissions:
   checks: write
 
 env:
-  PROJECT_DIR: "gnark-whir"
+  PROJECT_DIR: "recursive-verifier"
 
 jobs:
   build-test-lint:

@@ -1,0 +1,39 @@
+[package]
+name = "block-multiplier"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+fp-rounding.workspace = true
+
+# 3rd party
+seq-macro.workspace = true
+
+[dev-dependencies]
+# Cryptography and proof systems
+ark-bn254.workspace = true
+ark-ff.workspace = true
+
+# 3rd party
+divan.workspace = true
+primitive-types.workspace = true
+proptest.workspace = true
+rand.workspace = true
+
+[build-dependencies]
+# Workspace crates
+block-multiplier-codegen.workspace = true
+hla.workspace = true
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "bench"
+harness = false

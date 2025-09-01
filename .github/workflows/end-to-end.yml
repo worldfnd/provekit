@@ -11,7 +11,7 @@ env:
 # When a new job is pushed on a PR, cancel the old one.
 concurrency:
   group: >
-    ${{ github.event_name == 'pull_request'
+    e2e-${{ github.event_name == 'pull_request'
         && format('pr-{0}', github.event.pull_request.number)
         || format('push-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   end-to-end:
     name: End-to-end tests
-    runs-on: ubuntu-24.04-arm
+    runs-on: [self-hosted, Linux, ARM64, provekit-build]
     steps:
       - uses: actions/checkout@v4
 
@@ -52,12 +52,32 @@ jobs:
       - name: Generate Gnark inputs
         working-directory: noir-examples/poseidon-rounds
         run: |
-          cargo run --release --bin noir-r1cs prepare ./target/basic.json -o ./noir-proof-scheme.nps
-          cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
-          cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+          cargo run --release --bin provekit-cli prepare ./target/basic.json -o ./noir-proof-scheme.nps
+          cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+          cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
       - name: Run Gnark verifier
-        working-directory: gnark-whir
+        working-directory: recursive-verifier
         run: |
-          go build -o gnark-verifier .
-          ./gnark-verifier
+          go build -o gnark-verifier cmd/cli/main.go
 
+          # Start monitoring in background
+          (
+            while true; do
+              echo "=== $(date) ==="
+              echo "Memory:"
+              free -h
+              echo "Disk:"
+              df -h
+              echo "Processes:"
+              ps aux --sort=-%mem | head -5
+              echo "=================="
+              sleep 10  # Check every 10 seconds
+            done
+          ) &
+          MONITOR_PID=$!
+
+          # Run the main process
+          ./gnark-verifier --config "../noir-examples/poseidon-rounds/params_for_recursive_verifier" --r1cs "../noir-examples/poseidon-rounds/r1cs.json" --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
+
+          # Stop monitoring
+          kill $MONITOR_PID

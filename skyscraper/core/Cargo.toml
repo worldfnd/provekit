@@ -1,0 +1,36 @@
+[package]
+name = "skyscraper"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+block-multiplier.workspace = true
+fp-rounding.workspace = true
+
+# Cryptography and proof systems
+ark-bn254.workspace = true
+ark-ff.workspace = true
+
+# 3rd party
+proptest.workspace = true
+rayon.workspace = true
+seq-macro.workspace = true
+zerocopy.workspace = true
+
+[dev-dependencies]
+divan.workspace = true
+primitive-types.workspace = true
+rand.workspace = true
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "bench"
+harness = false

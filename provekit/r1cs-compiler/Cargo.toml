@@ -1,0 +1,33 @@
+[package]
+name = "provekit-r1cs-compiler"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+provekit-common.workspace = true
+
+# Noir language
+acir.workspace = true
+noirc_abi.workspace = true
+noirc_artifacts.workspace = true
+
+# Cryptography and proof systems
+ark-ff.workspace = true
+ark-std.workspace = true
+whir.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+postcard.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
