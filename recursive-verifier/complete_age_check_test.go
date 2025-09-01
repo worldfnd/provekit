@@ -1,22 +1,21 @@
-package main
+package circuit
 
 import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
 	"reilabs/whir-verifier-circuit/app/circuit"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/math/uints"
 	"github.com/consensys/gnark/test"
-	gnark_nimue "github.com/reilabs/gnark-nimue"
-	go_ark_serialize "github.com/reilabs/go-ark-serialize"
+
+	gnarkNimue "github.com/reilabs/gnark-nimue"
+	arkSerialize "github.com/reilabs/go-ark-serialize"
 )
 
 func TestCompleteAgeCheckCircuit(t *testing.T) {
@@ -33,8 +32,8 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to read r1cs file: %v", r1csErr)
 	}
 
-	var internedR1CS circuit.R1CS
-	if err = json.Unmarshal(r1csFile, &internedR1CS); err != nil {
+	var r1cs circuit.R1CS
+	if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
 		t.Fatalf("failed to unmarshal r1cs JSON: %v", err)
 	}
 
@@ -43,10 +42,10 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		t.Fatalf("failed to unmarshal config JSON: %v", err)
 	}
 
-	io := gnark_nimue.IOPattern{}
-	err = io.Parse([]byte(config.IOPattern))
-	if err != nil {
-		t.Fatalf("failed to parse IO pattern: %v", err)
+	io := gnarkNimue.IOPattern{}
+	ioErr := io.Parse([]byte(config.IOPattern))
+	if ioErr != nil {
+		fmt.Errorf("failed to parse IO pattern: %w", err)
 	}
 
 	var pointer uint64
@@ -55,11 +54,11 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	var merklePaths []circuit.MultiPath[circuit.KeccakDigest]
 	var stirAnswers [][][]circuit.Fp256
 	var deferred []circuit.Fp256
-	var claimedEvaluations []circuit.Fp256
+	var claimedEvaluations circuit.ClaimedEvaluations
 
 	for _, op := range io.Ops {
 		switch op.Kind {
-		case gnark_nimue.Hint:
+		case gnarkNimue.Hint:
 			if pointer+4 > uint64(len(config.Transcript)) {
 				t.Fatalf("insufficient bytes for hint length")
 			}
@@ -74,49 +73,51 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 			switch string(op.Label) {
 			case "merkle_proof":
 				var path circuit.MultiPath[circuit.KeccakDigest]
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path,
 					false, false,
 				)
 				merklePaths = append(merklePaths, path)
+
 			case "stir_answers":
 				var stirAnswersTemporary [][]circuit.Fp256
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&stirAnswersTemporary,
 					false, false,
 				)
 				stirAnswers = append(stirAnswers, stirAnswersTemporary)
+
 			case "deferred_weight_evaluations":
 				var deferredTemporary []circuit.Fp256
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&deferredTemporary,
 					false, false,
 				)
 				if err != nil {
-					t.Fatalf("failed to deserialize deferred hint: %v", err)
+					t.Fatalf("failed to deserialize deferred hint: %w", err)
 				}
 				deferred = append(deferred, deferredTemporary...)
 			case "claimed_evaluations":
-				_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&claimedEvaluations,
 					false, false,
 				)
 				if err != nil {
-					t.Fatalf("failed to deserialize claimed_evaluations: %v", err)
+					t.Fatalf("failed to deserialize claimed_evaluations: %w", err)
 				}
 			}
 
 			if err != nil {
-				t.Fatalf("failed to deserialize merkle proof: %v", err)
+				t.Fatalf("failed to deserialize merkle proof: %w", err)
 			}
 
 			pointer = end
 
-		case gnark_nimue.Absorb:
+		case gnarkNimue.Absorb:
 			start := pointer
 			if string(op.Label) == "pow-nonce" {
 				pointer += op.Size
@@ -134,122 +135,25 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 
 	config.Transcript = truncated
 
-	internerBytes, err := hex.DecodeString(internedR1CS.Interner.Values)
+	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
 	if err != nil {
-		t.Fatalf("failed to decode interner values: %v", err)
+		t.Fatalf("failed to decode interner values: %w", err)
 	}
 
 	var interner circuit.Interner
-	_, err = go_ark_serialize.CanonicalDeserializeWithMode(
+	_, err = arkSerialize.CanonicalDeserializeWithMode(
 		bytes.NewReader(internerBytes), &interner, false, false,
 	)
 	if err != nil {
-		t.Fatalf("failed to deserialize interner: %v", err)
+		t.Fatalf("failed to deserialize interner: %w", err)
 	}
 
-	spartanEnd := config.WHIRConfig.NRounds + 1
+	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
+	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
-	hints := circuit.Hints{
-		colHints: circuit.Hint{
-			merklePaths: merklePaths[:spartanEnd],
-			stirAnswers: stirAnswers[:spartanEnd],
-		},
-	}
-
-	transcriptT := make([]uints.U8, config.TranscriptLen)
-	contTranscript := make([]uints.U8, config.TranscriptLen)
-
-	for i := range config.Transcript {
-		transcriptT[i] = uints.NewU8(config.Transcript[i])
-	}
-
-	linearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
-	contLinearStatementValuesAtPoints := make([]frontend.Variable, len(deferred))
-
-	linearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
-	contLinearStatementEvaluations := make([]frontend.Variable, len(claimedEvaluations))
-	for i := range len(deferred) {
-		linearStatementValuesAtPoints[i] = typeConverters.LimbsToBigIntMod(deferred[i].Limbs)
-		linearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations[i].Limbs)
-	}
-
-	matrixA := make([]circuit.MatrixCell, len(internedR1CS.A.Values))
-	for i := range len(internedR1CS.A.RowIndices) {
-		end := len(internedR1CS.A.Values) - 1
-		if i < len(internedR1CS.A.RowIndices)-1 {
-			end = int(internedR1CS.A.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-			matrixA[j] = circuit.MatrixCell{
-				row:    i,
-				column: int(internedR1CS.A.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
-			}
-		}
-	}
-
-	matrixB := make([]circuit.MatrixCell, len(internedR1CS.B.Values))
-	for i := range len(internedR1CS.B.RowIndices) {
-		end := len(internedR1CS.B.Values) - 1
-		if i < len(internedR1CS.B.RowIndices)-1 {
-			end = int(internedR1CS.B.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-			matrixB[j] = circuit.MatrixCell{
-				row:    i,
-				column: int(internedR1CS.B.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
-			}
-		}
-	}
-
-	matrixC := make([]circuit.MatrixCell, len(internedR1CS.C.Values))
-	for i := range len(internedR1CS.C.RowIndices) {
-		end := len(internedR1CS.C.Values) - 1
-		if i < len(internedR1CS.C.RowIndices)-1 {
-			end = int(internedR1CS.C.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-			matrixC[j] = circuit.MatrixCell{
-				row:    i,
-				column: int(internedR1CS.C.ColIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
-			}
-		}
-	}
-
-	assignment := circuit.Circuit{
-		IO:                []byte(config.IOPattern),
-		Transcript:        transcriptT,
-		LogNumConstraints: config.LogNumConstraints,
-
-		LinearStatementEvaluations:    linearStatementEvaluations,
-		LinearStatementValuesAtPoints: linearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, false),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
-
-		WHIRParamsCol: new_whir_params(config.WHIRConfigCol),
-	}
-
-	// witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
-	var circuit = circuit.Circuit{
-		IO:                []byte(config.IOPattern),
-		Transcript:        contTranscript,
-		LogNumConstraints: config.LogNumConstraints,
-		LogNumVariables:   config.LogNumVariables,
-
-		LinearStatementEvaluations:    contLinearStatementEvaluations,
-		LinearStatementValuesAtPoints: contLinearStatementValuesAtPoints,
-		SpartanMerkle:                 newMerkle(hints.colHints, true),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
-
-		WHIRParamsCol: new_whir_params(config.WHIRConfigCol),
+	hints := Hints{
+		witnessHints:      witnessData,
+		spartanHidingHint: hidingSpartanData,
 	}
 
 	assert.CheckCircuit(
