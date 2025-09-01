@@ -55,20 +55,7 @@ jobs:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
-<<<<<<< HEAD
-      - name: Install codspeed-post-bench script
-        run: |
-          sudo mkdir -p /usr/local/bin
-          sudo ln -s $(which cargo-codspeed) /usr/local/bin/codspeed-post-bench
-          sudo chmod +x /usr/local/bin/codspeed-post-bench
-      - name: Copy binaries and input files to target directories
-        run: |
-          mkdir -p target/codspeed
-          cp -r bench_bin/target/codspeed/* target/codspeed/
-          mkdir -p noir-r1cs/benches
-          cp bench_bin/noir-r1cs/benches/poseidon-1000.* noir-r1cs/benches/
-=======
-    
+
       - name: Create codespeed-post-bench symlink
         run: |
           # codspeed-post-bench is just a sym-link
@@ -81,7 +68,6 @@ jobs:
           mkdir -p target/codspeed
           cp -r bench_bin/* target/codspeed/
 
->>>>>>> main
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
 
@@ -91,7 +77,7 @@ jobs:
           which cargo-codspeed 
           echo "codspeed-post-bench location:"
           which codspeed-post-bench
-        
+
       - name: Run the benchmarks
         uses: CodSpeedHQ/action@v3
         with:
