@@ -44,6 +44,10 @@ pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
 
     // For small NTTs go directly to the NTT optimized for cache size
     if n > workload_size::<Fr>() {
+        // The two loops could be merged together, but in microbenchmarks this split
+        // performs 5% better than nesting par_iter_mut inside par_chunks_exact
+        // over the ranges 2ˆ20 to 2ˆ24.
+
         // Parallelizing over the groups is most effective but in the beginning there
         // aren't enough groups to occupy all threads.
         while num_of_groups < 32 {
@@ -112,7 +116,7 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
     }
 }
 
-/// Bit reverses val given that for a given bit size
+/// Bit reverses val for a given bit size
 ///
 /// Safety: bits>0
 fn reverse_bits(val: usize, bits: u32) -> usize {
@@ -129,10 +133,6 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// # Returns
 /// A vector of length `len / 2` containing the precomputed roots in
 /// bit-reversed order.
-///
-/// # Panics
-/// Panics if `len` is not a power of two or if a suitable root of unity does
-/// not exist.
 pub fn init_roots_reverse_ordered(len: Pow2) -> Vec<Fr> {
     let len = len.0;
     let n = len / 2;
