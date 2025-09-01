@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  verifier-server:
+    build:
+      context: ../../ # Build from project root to access all workspace members
+      dockerfile: tooling/verifier-server/Dockerfile
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    volumes:
+      # Mount artifacts directory for persistence (optional)
+      - ./artifacts:/app/artifacts
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:3000/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

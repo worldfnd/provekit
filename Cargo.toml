@@ -13,6 +13,7 @@ members = [
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
+  "tooling/verifier-server",
 ]
 
 [workspace.package]
@@ -80,12 +81,15 @@ provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
+provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
 anyhow = "1.0.93"
 argh = "0.1.12"
+axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
+chrono = "0.4.41"
 divan = { package = "codspeed-divan-compat", version = "3.0.1" }
 hex = "0.4.3"
 paste = "1.0.15"
@@ -97,12 +101,17 @@ quickcheck_macros = "1.0.0"
 rand = "0.9.1"
 rand08 = { package = "rand", version = "0.8" }
 rayon = "1.10.0"
+reqwest = "0.12.23"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10.9"
 test-case = "3.3.1"
 toml = "0.8.8"
+tokio = { version = "1.47.1", features = ["full"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["cors", "timeout", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
