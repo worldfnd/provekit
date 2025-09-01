@@ -1,0 +1,128 @@
+use {
+    anyhow::{anyhow, bail, ensure, Context, Result},
+    ark_ff::PrimeField,
+    noirc_abi::{
+        input_parser::{Format, InputValue},
+        Abi, AbiType,
+    },
+    noirc_artifacts::program::ProgramArtifact,
+    provekit_common::{utils::noir_to_native, witness::NoirWitnessGenerator, FieldElement},
+    std::num::NonZeroU32,
+    tracing::instrument,
+};
+
+pub trait NoirWitnessGeneratorBuilder {
+    fn new(
+        program: &ProgramArtifact,
+        witness_map: Vec<Option<NonZeroU32>>,
+        r1cs_witnesses: usize,
+    ) -> Self;
+
+    fn witness_map(&self) -> &[Option<NonZeroU32>];
+
+    fn abi(&self) -> &Abi;
+
+    fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>>;
+}
+
+impl NoirWitnessGeneratorBuilder for NoirWitnessGenerator {
+    fn new(
+        program: &ProgramArtifact,
+        mut witness_map: Vec<Option<NonZeroU32>>,
+        r1cs_witnesses: usize,
+    ) -> Self {
+        let abi = program.abi.clone();
+        assert!(witness_map
+            .iter()
+            .filter_map(|n| *n)
+            .all(|n| (n.get() as usize) < r1cs_witnesses));
+
+        // Take only the prefix of witness map relevant for Noir inputs
+        let num_inputs = abi.field_count() as usize;
+        witness_map.truncate(num_inputs);
+        Self { abi, witness_map }
+    }
+
+    fn witness_map(&self) -> &[Option<NonZeroU32>] {
+        &self.witness_map
+    }
+
+    fn abi(&self) -> &Abi {
+        &self.abi
+    }
+
+    /// Noir inputs are in order at the start of the witness vector
+    #[instrument(skip_all, fields(size = toml.len()))]
+    fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>> {
+        // Parse toml to name -> value map
+        let mut input = Format::Toml
+            .parse(toml, &self.abi)
+            .context("while parsing input toml")?;
+
+        // Prepare witness vector
+        let num_inputs = self.abi.field_count() as usize;
+        let mut inputs = Vec::with_capacity(num_inputs);
+
+        // Encode to vector of field elements base on Abi type info.
+        for param in &self.abi.parameters {
+            let value = input
+                .remove(&param.name)
+                .ok_or_else(|| anyhow!("Missing input {}", &param.name))?
+                .clone();
+            encode_input(&mut inputs, value, &param.typ)
+                .with_context(|| format!("while encoding input for {}", &param.name))?;
+        }
+        if let Some(name) = input.keys().next() {
+            bail!("Extra input {name}");
+        }
+
+        Ok(inputs)
+    }
+}
+
+/// Recursively encode Noir ABI input to a witness vector
+/// See [`noirc_abi::Abi::encode`] for the Noir ABI specification.
+fn encode_input(
+    input: &mut Vec<FieldElement>,
+    value: InputValue,
+    abi_type: &AbiType,
+) -> Result<()> {
+    match (value, abi_type) {
+        (InputValue::Field(elem), AbiType::Field) => input.push(noir_to_native(elem)),
+        (InputValue::Vec(vec_elements), AbiType::Array { typ, .. }) => {
+            for elem in vec_elements {
+                encode_input(input, elem, typ)?;
+            }
+        }
+        (InputValue::Vec(vec_elements), AbiType::Tuple { fields }) => {
+            for (value, typ) in vec_elements.into_iter().zip(fields) {
+                encode_input(input, value, typ)?;
+            }
+        }
+        (InputValue::String(string), AbiType::String { length }) => {
+            ensure!(
+                string.len() == *length as usize,
+                "String length {} does not match expected length {length}",
+                string.len()
+            );
+            let str_as_fields = string
+                .bytes()
+                .map(|byte| FieldElement::from_be_bytes_mod_order(&[byte]));
+            input.extend(str_as_fields);
+        }
+        (InputValue::Struct(mut object), AbiType::Struct { fields, .. }) => {
+            for (field, typ) in fields {
+                let value = object
+                    .remove(field)
+                    .ok_or_else(|| anyhow!("Missing input {field}"))?;
+                encode_input(input, value, typ)
+                    .with_context(|| format!("while encoding input struct field {field}"))?;
+            }
+            if let Some(name) = object.keys().next() {
+                bail!("Extra input {name}");
+            }
+        }
+        (value, typ) => bail!("Invalid input type, expected {typ:?}, got {value:?}"),
+    }
+    Ok(())
+}

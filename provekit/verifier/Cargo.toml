@@ -1,0 +1,26 @@
+[package]
+name = "provekit-verifier"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+provekit-common.workspace = true
+provekit-prover.workspace = true
+
+# Cryptography and proof systems
+ark-std.workspace = true
+spongefish.workspace = true
+whir.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

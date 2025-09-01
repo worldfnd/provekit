@@ -11,7 +11,7 @@ env:
 # When a new job is pushed on a PR, cancel the old one.
 concurrency:
   group: >
-    ${{ github.event_name == 'pull_request'
+    e2e-${{ github.event_name == 'pull_request'
         && format('pr-{0}', github.event.pull_request.number)
         || format('push-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   end-to-end:
     name: End-to-end tests
-    runs-on: ubuntu-24.04-arm
+    runs-on: [self-hosted, Linux, ARM64, provekit-build]
     steps:
       - uses: actions/checkout@v4
 
@@ -56,6 +56,6 @@ jobs:
           cargo run --release --bin noir-r1cs prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
           cargo run --release --bin noir-r1cs generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
       - name: Run Gnark verifier
-        working-directory: gnark-whir
+        working-directory: recursive-verifier
         run: |
           go test -v -short
