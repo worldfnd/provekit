@@ -48,7 +48,7 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	io := gnarkNimue.IOPattern{}
 	ioErr := io.Parse([]byte(config.IOPattern))
 	if ioErr != nil {
-		fmt.Errorf("failed to parse IO pattern: %v", err)
+		fmt.Errorf("failed to parse IO pattern: %v", ioErr)
 	}
 
 	var pointer uint64
@@ -237,13 +237,11 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
 		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
-
-		WHIRParamsWitness:       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(config.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	// ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -276,26 +274,24 @@ func TestCompleteAgeCheckCircuit(t *testing.T) {
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
 
 	assignment := Circuit{
-		IO:                []byte(config.IOPattern),
-		Transcript:        transcriptT,
-		LogNumConstraints: config.LogNumConstraints,
-
+		IO:                                      []byte(config.IOPattern),
+		Transcript:                              transcriptT,
+		LogNumConstraints:                       config.LogNumConstraints,
+		LogNumVariables:                         config.LogNumVariables,
+		LogANumTerms:                            config.LogANumTerms,
 		WitnessClaimedEvaluations:               fSums,
 		WitnessBlindingEvaluations:              gSums,
 		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-
-		HidingSpartanFirstRound: newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
-		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
-
-		WHIRParamsWitness:       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(config.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
+		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
+		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, false),
+		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
+		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	// witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
