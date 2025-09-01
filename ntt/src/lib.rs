@@ -3,11 +3,13 @@ pub use ntt::*;
 mod proptest;
 
 /// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
-/// not supported.
+/// not supported. Note: empty vectors (size 0) are also supported as a special
+/// case.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NTT<T>(Vec<T>);
 
-pub struct Pow2(usize);
+/// Length of an NTT
+pub struct Pow2OrZero(usize);
 
 impl<T> NTT<T> {
     pub fn new(vec: Vec<T>) -> Option<Self> {
@@ -18,7 +20,7 @@ impl<T> NTT<T> {
         }
     }
 
-    pub fn len(&self) -> Pow2 {
-        Pow2(self.0.len())
+    pub fn len(&self) -> Pow2OrZero {
+        Pow2OrZero(self.0.len())
     }
 }

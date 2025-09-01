@@ -42,7 +42,8 @@ impl<T: Strategy> Strategy for NTTStrategy<T> {
     }
 }
 
-/// Create a strategy to generate `NTT`s of length 2^size
+/// Create a strategy to generate `NTT`s of length 2^size where size is sampled
+/// from the given range
 
 pub fn ntt<T: Strategy>(element: T, size: impl Into<SizeRange>) -> NTTStrategy<T> {
     let size = size.into();

@@ -1,5 +1,5 @@
 use {
-    crate::{Pow2, NTT},
+    crate::{Pow2OrZero, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -25,7 +25,8 @@ pub const fn workload_size<T: Sized>() -> usize {
 /// # Arguments
 /// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
 ///   order.
-/// * `input` - The input slice to be transformed in place.
+/// * `values` - coefficients to be transformed in place with evaluation or vice
+///   versa.
 pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
@@ -118,7 +119,7 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) 
 
 /// Bit reverses val for a given bit size
 ///
-/// Safety: bits>0
+/// Requires: bits > 0
 fn reverse_bits(val: usize, bits: u32) -> usize {
     // requires 2^bits where bits>0. Because with zero this value
     val.reverse_bits() >> (usize::BITS - bits)
@@ -133,7 +134,7 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// # Returns
 /// A vector of length `len / 2` containing the precomputed roots in
 /// bit-reversed order.
-pub fn init_roots_reverse_ordered(len: Pow2) -> Vec<Fr> {
+pub fn init_roots_reverse_ordered(len: Pow2OrZero) -> Vec<Fr> {
     let len = len.0;
     let n = len / 2;
     match n {
