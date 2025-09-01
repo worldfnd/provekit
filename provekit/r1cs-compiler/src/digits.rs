@@ -102,15 +102,9 @@ pub(crate) fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) ->
     let ref mut ref_value_bits = value_bits;
     // Grab the bits of the element that we need for each digit, and turn them back
     // into field elements.
-
-    // log bases acts as slices into value bits. Take ownership of that.
-    // Once that works try to use the iterator directly from field_to_le_bits
-
-    for digit_idx in 0..num_digits {
-        let log_base = log_bases[digit_idx];
-        let digit_bits = ref_value_bits.take(log_base).collect::<Vec<bool>>();
-        let digit_value = le_bits_to_field(&digit_bits);
-        digits[digit_idx] = digit_value;
+    for (i, log_base) in log_bases.iter().enumerate() {
+        let digit_bits = ref_value_bits.take(*log_base).collect::<Vec<bool>>();
+        digits[i] = le_bits_to_field(&digit_bits);
     }
 
     let mut remaining_bits = value_bits;
