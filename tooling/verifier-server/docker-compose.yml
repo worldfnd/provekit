@@ -7,7 +7,7 @@ services:
       dockerfile: tooling/verifier-server/Dockerfile
       args:
         TARGETOS: linux
-        TARGETARCH: amd64
+        TARGETARCH: arm64
     ports:
       - "3000:3000"
     environment:
@@ -16,6 +16,7 @@ services:
     volumes:
       # Mount artifacts directory for persistence (optional)
       - ./artifacts:/app/artifacts
+    user: "1001:1001"  # Match the appuser UID/GID from Dockerfile
     restart: unless-stopped
     healthcheck:
       test:

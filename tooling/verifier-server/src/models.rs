@@ -130,12 +130,13 @@ impl VerifyRequest {
             return Err("r1cs_url cannot be empty".to_string());
         }
 
-        // pk_url and vk_url are optional - if not provided, gnark-verifier will generate them
+        // pk_url and vk_url are optional - if not provided, gnark-verifier will
+        // generate them
 
         // Validate URLs are properly formatted
         self.validate_url("nps_url", &self.nps_url)?;
         self.validate_url("r1cs_url", &self.r1cs_url)?;
-        
+
         if let Some(ref pk_url) = self.pk_url {
             self.validate_url("pk_url", pk_url)?;
         }

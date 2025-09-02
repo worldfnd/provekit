@@ -28,6 +28,7 @@ impl AppState {
         let artifact_service = Arc::new(ArtifactService::new(&config.artifacts.artifacts_dir));
         let verification_service = Arc::new(VerificationService::new(
             &config.verification.verifier_binary_path,
+            config.verification.verifier_timeout_seconds,
         ));
 
         Self {

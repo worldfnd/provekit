@@ -49,11 +49,9 @@ impl IntoResponse for AppError {
                 self.to_string(),
                 "VERIFICATION_FAILED",
             ),
-            AppError::DownloadFailed(_) => (
-                StatusCode::BAD_GATEWAY,
-                self.to_string(),
-                "DOWNLOAD_FAILED",
-            ),
+            AppError::DownloadFailed(_) => {
+                (StatusCode::BAD_GATEWAY, self.to_string(), "DOWNLOAD_FAILED")
+            }
             AppError::Internal(_) => {
                 error!("Internal server error: {}", self);
                 (

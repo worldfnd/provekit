@@ -62,8 +62,9 @@ pub async fn verify_handler(
                 "Verification failed"
             );
 
-            // For verification failures (proof is invalid), return HTTP 200 with failure status
-            // For actual errors (404s, network failures, etc.), propagate the error to return proper HTTP status codes
+            // For verification failures (proof is invalid), return HTTP 200 with failure
+            // status For actual errors (404s, network failures, etc.),
+            // propagate the error to return proper HTTP status codes
             match error {
                 AppError::VerificationFailed(msg) => {
                     let response = VerifyResponse::failure(
@@ -84,7 +85,8 @@ pub async fn verify_handler(
                     Ok(ResponseJson(response))
                 }
                 // For all other errors (InvalidInput, Internal, etc.), propagate them
-                // This will cause Axum to use the IntoResponse implementation and return proper HTTP status codes
+                // This will cause Axum to use the IntoResponse implementation and return proper
+                // HTTP status codes
                 _ => Err(error),
             }
         }

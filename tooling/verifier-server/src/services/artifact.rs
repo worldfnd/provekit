@@ -129,7 +129,10 @@ impl ArtifactService {
                     );
 
                     self.download_file(url, file_path).await.map_err(|e| {
-                        AppError::DownloadFailed(format!("Failed to download {}: {}", description, e))
+                        AppError::DownloadFailed(format!(
+                            "Failed to download {}: {}",
+                            description, e
+                        ))
                     })?;
 
                     info!(

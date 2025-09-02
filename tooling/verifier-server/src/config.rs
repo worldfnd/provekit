@@ -36,6 +36,8 @@ pub struct VerificationConfig {
     pub verifier_binary_path:          String,
     /// Default maximum verification time in seconds
     pub default_max_verification_time: u64,
+    /// Timeout for external verifier binary execution in seconds
+    pub verifier_timeout_seconds:      u64,
 }
 
 /// Artifact management configuration
@@ -108,6 +110,10 @@ impl VerificationConfig {
                 .ok()
                 .and_then(|t| t.parse().ok())
                 .unwrap_or(300), // 5 minutes
+            verifier_timeout_seconds:      env::var("VERIFIER_TIMEOUT_SECONDS")
+                .ok()
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(600), // 10 minutes
         }
     }
 }
@@ -117,6 +123,7 @@ impl Default for VerificationConfig {
         Self {
             verifier_binary_path:          "./verifier".to_string(),
             default_max_verification_time: 300, // 5 minutes
+            verifier_timeout_seconds:      600, // 10 minutes
         }
     }
 }

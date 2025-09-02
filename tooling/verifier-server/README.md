@@ -25,10 +25,9 @@ curl -X POST http://localhost:3000/verify \
   -d '{
     "npsUrl": "https://example.com/scheme.nps",
     "r1csUrl": "https://example.com/r1cs.json", 
-    "pkUrl": "https://example.com/proving_key.bin",
-    "vkUrl": "https://example.com/verification_key.bin",
+    "pkUrl": "https://example.com/proving_key.bin", (optional)
+    "vkUrl": "https://example.com/verification_key.bin", (optional)
     "np": { /* NoirProof JSON */ },
-    "verificationParams": { "maxVerificationTime": 300 }
   }'
 ```
 
