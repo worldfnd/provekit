@@ -4,7 +4,6 @@ use {
     ark_std::Zero,
     itertools::Itertools,
     serde::{Deserialize, Serialize},
-    std::iter::Take,
 };
 
 /// Allocates witnesses for the digital decomposition of the given witnesses
@@ -30,16 +29,18 @@ pub struct DigitalDecompositionWitnesses {
 /// Compute a mixed-base decomposition of a field element into its digits, using
 /// the given log bases. Decomposition is little-endian.
 /// Panics if the value provided can not be represented in the given bases.
+// TODO(xrvdg): stronger constraints on log_bases will allow us to remove the
+// remaining allocation
 pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
     let num_digits = log_bases.len();
-    let mut digits = vec![FieldElement::zero(); num_digits];
+    let mut digits = Vec::with_capacity(num_digits);
     let mut value_bits = field_to_le_bits(value);
     let ref mut ref_value_bits = value_bits;
     // Grab the bits of the element that we need for each digit, and turn them back
     // into field elements.
-    for (i, log_base) in log_bases.iter().enumerate() {
-        let digit_bits = ref_value_bits.take(*log_base);
-        digits[i] = le_bits_to_field(digit_bits);
+    for &log_base in log_bases {
+        let digit_bits = ref_value_bits.take(log_base);
+        digits.push(le_bits_to_field(digit_bits))
     }
 
     let mut remaining_bits = value_bits;
