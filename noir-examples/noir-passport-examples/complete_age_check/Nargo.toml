@@ -3,7 +3,6 @@ name = "complete_age_check"
 type = "bin"
 compiler_version = ">=1.0.0"
 
-
 [dependencies]
 compare_age = { path = "../zkpassport_libs/compare/age" }
 data_check_expiry = { path = "../zkpassport_libs/data-check/expiry" }

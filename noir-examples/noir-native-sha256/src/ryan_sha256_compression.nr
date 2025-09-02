@@ -53,7 +53,7 @@ fn vec_eltwise_xor_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 /// WARNING: CANNOT USE THIS IF ROTATION_AMT == 0
 fn rotate_left_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
     let rotation_amt = rotation_amt % 32;
-    // 01234567|89012345
+    // 01234567|
     // 012|34567 -> 34567|012
     // We can do this with bit-masking and/or shifting
     let left_side_already_moved = val >> (32 - rotation_amt as u32);
