@@ -1,13 +1,14 @@
 use {
     crate::{
-        digits::{
-            add_digital_decomposition, decompose_into_digits, DigitalDecompositionWitnessesBuilder,
-        },
+        digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_std::One,
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS, NUM_DIGITS},
+        witness::{
+            decompose_into_digits, ConstantOrR1CSWitness, SumTerm, WitnessBuilder,
+            BINOP_ATOMIC_BITS, NUM_DIGITS,
+        },
         FieldElement,
     },
     std::ops::Neg,
