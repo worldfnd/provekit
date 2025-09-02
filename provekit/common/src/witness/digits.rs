@@ -1,7 +1,6 @@
 use {
     crate::FieldElement,
     ark_ff::{BigInt, BitIteratorLE, PrimeField},
-    ark_std::Zero,
     itertools::Itertools,
     serde::{Deserialize, Serialize},
 };
@@ -29,7 +28,7 @@ pub struct DigitalDecompositionWitnesses {
 /// Compute a mixed-base decomposition of a field element into its digits, using
 /// the given log bases. Decomposition is little-endian.
 /// Panics if the value provided can not be represented in the given bases.
-// TODO(xrvdg): stronger constraints on log_bases will allow us to remove the
+// TODO: with stronger constraints on log_bases will allow us to remove the
 // remaining allocation
 pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
     let num_digits = log_bases.len();

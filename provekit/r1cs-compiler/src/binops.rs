@@ -56,13 +56,15 @@ pub(crate) fn add_binop(
         let lh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match lh {
             ConstantOrR1CSWitness::Witness(_) => {
                 let counter = witness_dd_counter;
-                let ref dd = dd_struct;
+                let r#struct = &dd_struct;
 
                 witness_dd_counter += 1;
 
                 Box::new(
                     (0..NUM_DIGITS)
-                        .map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
+                        .map(move |digit_place| {
+                            r#struct.get_digit_witness_index(digit_place, counter)
+                        })
                         .map(ConstantOrR1CSWitness::Witness),
                 )
             }
@@ -75,13 +77,15 @@ pub(crate) fn add_binop(
         let rh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match rh {
             ConstantOrR1CSWitness::Witness(_) => {
                 let counter = witness_dd_counter;
-                let ref dd = dd_struct;
+                let r#struct = &dd_struct;
 
                 witness_dd_counter += 1;
 
                 Box::new(
                     (0..NUM_DIGITS)
-                        .map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
+                        .map(move |digit_place| {
+                            r#struct.get_digit_witness_index(digit_place, counter)
+                        })
                         .map(ConstantOrR1CSWitness::Witness),
                 )
             }
