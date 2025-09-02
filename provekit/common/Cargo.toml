@@ -41,6 +41,7 @@ tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
+itertools = "0.14.0"
 
 [lints]
 workspace = true
