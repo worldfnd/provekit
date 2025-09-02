@@ -1,5 +1,5 @@
 use sha1::sha1;
-use sha256::{digest, sha224_var, sha256_var};
+use sha256::sha224_var;
 use sha512::{sha384, sha512};
 use utils::check_zero_padding;
 
@@ -12,6 +12,7 @@ pub fn sha1_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     check_zero_padding(data_to_sign, data_to_sign_len);
     // Calculate the hash of data_to_sign up to data_to_sign_len
     let data_to_sign_vec = BoundedVec::from_parts(data_to_sign, data_to_sign_len);
+
     sha1::sha1_var(data_to_sign_vec)
 }
 
@@ -38,9 +39,9 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
 
     // Hash the entire buffer to match the signature created on the fixed-size message
     // `data_to_sign_len` is still checked above to ensure trailing bytes are zero,
-    // but the hash is computed over the full array as in the noir version beta.6 implementation.
-    // TODO: change logic in the sha1,sha256,sha384
-    digest(data_to_sign)
+    let ret =
+        noir_native_sha256::ryan_sha256_noir::sha256_var(data_to_sign, data_to_sign.len() as u64);
+    ret
 }
 
 pub fn sha384_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(

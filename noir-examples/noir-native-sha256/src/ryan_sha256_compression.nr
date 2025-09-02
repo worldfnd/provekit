@@ -22,11 +22,21 @@ fn vec_eltwise_add_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 }
 
 fn vec_shift_left_u32(a: [u32; 4], shift_offset: u8) -> [u32; 4] {
-    [a[0] >> shift_offset, a[1] >> shift_offset, a[2] >> shift_offset, a[3] >> shift_offset]
+    [
+        a[0] >> shift_offset as u32,
+        a[1] >> shift_offset as u32,
+        a[2] >> shift_offset as u32,
+        a[3] >> shift_offset as u32,
+    ]
 }
 
 fn vec_shift_right_u32(a: [u32; 4], shift_offset: u8) -> [u32; 4] {
-    [a[0] << shift_offset, a[1] << shift_offset, a[2] << shift_offset, a[3] << shift_offset]
+    [
+        a[0] << shift_offset as u32,
+        a[1] << shift_offset as u32,
+        a[2] << shift_offset as u32,
+        a[3] << shift_offset as u32,
+    ]
 }
 
 fn vec_eltwise_or_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
@@ -43,11 +53,11 @@ fn vec_eltwise_xor_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 /// WARNING: CANNOT USE THIS IF ROTATION_AMT == 0
 fn rotate_left_via_shift_u32(val: u32, rotation_amt: u8) -> u32 {
     let rotation_amt = rotation_amt % 32;
-    // 01234567|
+    // 01234567|89012345
     // 012|34567 -> 34567|012
     // We can do this with bit-masking and/or shifting
-    let left_side_already_moved = val >> (32 - rotation_amt);
-    let right_side_already_moved = val << rotation_amt;
+    let left_side_already_moved = val >> (32 - rotation_amt as u32);
+    let right_side_already_moved = val << (rotation_amt as u32);
     left_side_already_moved | right_side_already_moved
 }
 
