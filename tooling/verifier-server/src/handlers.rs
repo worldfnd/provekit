@@ -9,20 +9,10 @@ use {
         response::Json as ResponseJson,
     },
     std::time::Instant,
-    tracing::{info, instrument, warn},
+    tracing::{info, warn},
 };
 
 /// Handle proof verification requests
-#[instrument(
-    skip(payload),
-    fields(
-        request_id = %payload.metadata.as_ref().and_then(|m| m.request_id.as_deref()).unwrap_or("unknown"),
-        nps_url = %payload.nps_url,
-        r1cs_url = %payload.r1cs_url,
-        pk_url = %payload.pk_url,
-        vk_url = %payload.vk_url
-    )
-)]
 pub async fn verify_handler(
     State(state): State<AppState>,
     Json(payload): Json<VerifyRequest>,
@@ -30,12 +20,25 @@ pub async fn verify_handler(
     let start_time = Instant::now();
     let request_id = payload.metadata.as_ref().and_then(|m| m.request_id.clone());
 
-    info!("Received verification request");
+    info!(
+        request_id = %request_id.as_deref().unwrap_or("unknown"),
+        nps_url = %payload.nps_url,
+        r1cs_url = %payload.r1cs_url,
+        pk_url = %payload.pk_url.as_deref().unwrap_or("not provided"),
+        vk_url = %payload.vk_url.as_deref().unwrap_or("not provided"),
+        "Received verification request"
+    );
 
     // Validate the request
     if let Err(validation_error) = payload.validate() {
         warn!("Request validation failed: {}", validation_error);
-        return Err(AppError::InvalidInput(validation_error));
+        let response = VerifyResponse::failure(
+            VerificationStatus::Error,
+            Some(validation_error),
+            start_time.elapsed().as_millis() as u64,
+            request_id,
+        );
+        return Ok(ResponseJson(response));
     }
 
     // Perform the actual verification
@@ -48,10 +51,8 @@ pub async fn verify_handler(
                 "Verification completed successfully"
             );
 
-            Ok(ResponseJson(VerifyResponse::success(
-                verification_time_ms,
-                request_id,
-            )))
+            let response = VerifyResponse::success(verification_time_ms, request_id);
+            Ok(ResponseJson(response))
         }
         Err(error) => {
             let total_time = start_time.elapsed().as_millis() as u64;
@@ -61,27 +62,36 @@ pub async fn verify_handler(
                 "Verification failed"
             );
 
-            let (status, error_message) = match error {
-                AppError::VerificationFailed(msg) => (VerificationStatus::Invalid, Some(msg)),
-                AppError::Timeout => (
-                    VerificationStatus::Timeout,
-                    Some("Verification timeout".to_string()),
-                ),
-                _ => (VerificationStatus::Error, Some(error.to_string())),
-            };
-
-            Ok(ResponseJson(VerifyResponse::failure(
-                status,
-                error_message,
-                total_time,
-                request_id,
-            )))
+            // For verification failures (proof is invalid), return HTTP 200 with failure status
+            // For actual errors (404s, network failures, etc.), propagate the error to return proper HTTP status codes
+            match error {
+                AppError::VerificationFailed(msg) => {
+                    let response = VerifyResponse::failure(
+                        VerificationStatus::Invalid,
+                        Some(msg),
+                        total_time,
+                        request_id,
+                    );
+                    Ok(ResponseJson(response))
+                }
+                AppError::Timeout => {
+                    let response = VerifyResponse::failure(
+                        VerificationStatus::Timeout,
+                        Some("Verification timeout".to_string()),
+                        total_time,
+                        request_id,
+                    );
+                    Ok(ResponseJson(response))
+                }
+                // For all other errors (InvalidInput, Internal, etc.), propagate them
+                // This will cause Axum to use the IntoResponse implementation and return proper HTTP status codes
+                _ => Err(error),
+            }
         }
     }
 }
 
 /// Perform the proof verification using services
-#[instrument(skip(state, request))]
 async fn verification(state: &AppState, request: &VerifyRequest) -> AppResult<u64> {
     // Decode and validate the NoirProof
     let proof = request
@@ -96,8 +106,8 @@ async fn verification(state: &AppState, request: &VerifyRequest) -> AppResult<u6
         .prepare_artifacts(
             &request.nps_url,
             &request.r1cs_url,
-            &request.pk_url,
-            &request.vk_url,
+            request.pk_url.as_deref(),
+            request.vk_url.as_deref(),
         )
         .await?;
 

@@ -12,7 +12,7 @@ use {
     provekit_common::{NoirProof, NoirProofScheme},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
-    tracing::{info, instrument, warn},
+    tracing::{info, warn},
 };
 
 /// Service for performing proof verification
@@ -31,7 +31,6 @@ impl VerificationService {
     }
 
     /// Perform complete proof verification
-    #[instrument(skip(self, proof, scheme))]
     pub async fn verify_proof(
         &self,
         request: &VerifyRequest,
@@ -45,7 +44,7 @@ impl VerificationService {
         self.prepare_gnark_parameters(proof, scheme, paths)?;
 
         // Execute external verifier
-        self.execute_verifier(paths).await?;
+        self.execute_verifier(paths, request).await?;
 
         let verification_time = verification_start.elapsed().as_millis() as u64;
 
@@ -61,7 +60,6 @@ impl VerificationService {
     }
 
     /// Prepare gnark parameters file for verification
-    #[instrument(skip(self, proof, scheme))]
     fn prepare_gnark_parameters(
         &self,
         proof: &NoirProof,
@@ -94,26 +92,36 @@ impl VerificationService {
     }
 
     /// Execute the external verifier binary
-    #[instrument(skip(self))]
-    async fn execute_verifier(&self, paths: &ArtifactPaths) -> AppResult<()> {
+    async fn execute_verifier(&self, paths: &ArtifactPaths, request: &VerifyRequest) -> AppResult<()> {
         info!(
             verifier_binary = %self.verifier_binary_path,
             config_path = %paths.gnark_params_file.display(),
             r1cs_path = %paths.r1cs_file.display(),
-            pk_path = %paths.pk_file.display(),
-            vk_path = %paths.vk_file.display(),
             "Executing external verifier binary"
         );
+        if paths.pk_file.exists() && request.pk_url.is_some() {
+        info!(
+                pk_path = %paths.pk_file.display(),
+                vk_path = %paths.vk_file.display(),
+            );
+        }
 
-        let output = tokio::process::Command::new(&self.verifier_binary_path)
+        let mut command = tokio::process::Command::new(&self.verifier_binary_path);
+        command
             .arg("--config")
             .arg(&paths.gnark_params_file)
             .arg("--r1cs")
-            .arg(&paths.r1cs_file)
-            .arg("--pk")
-            .arg(&paths.pk_file)
-            .arg("--vk")
-            .arg(&paths.vk_file)
+            .arg(&paths.r1cs_file);
+
+        // Only add pk/vk arguments if the URLs were provided in the request
+        if request.pk_url.is_some() {
+            command.arg("--pk").arg(&paths.pk_file);
+        }
+        if request.vk_url.is_some() {
+            command.arg("--vk").arg(&paths.vk_file);
+        }
+
+        let output = command
             .output()
             .await
             .map_err(|e| {

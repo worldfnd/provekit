@@ -32,8 +32,8 @@ impl ArtifactService {
         &self,
         nps_url: &str,
         r1cs_url: &str,
-        pk_url: &str,
-        vk_url: &str,
+        pk_url: Option<&str>,
+        vk_url: Option<&str>,
     ) -> AppResult<(NoirProofScheme, ArtifactPaths)> {
         let cache_dir = self.create_cache_directory(nps_url).await?;
         let paths = ArtifactPaths::new(&cache_dir);
@@ -80,17 +80,16 @@ impl ArtifactService {
         paths: &ArtifactPaths,
         nps_url: &str,
         r1cs_url: &str,
-        pk_url: &str,
-        vk_url: &str,
+        pk_url: Option<&str>,
+        vk_url: Option<&str>,
     ) -> AppResult<()> {
-        let downloads = [
+        // Always download required artifacts
+        let required_downloads = [
             (nps_url, &paths.nps_file, "Noir Proof Scheme"),
             (r1cs_url, &paths.r1cs_file, "R1CS"),
-            (pk_url, &paths.pk_file, "Proving Key"),
-            (vk_url, &paths.vk_file, "Verification Key"),
         ];
 
-        for (url, file_path, description) in downloads {
+        for (url, file_path, description) in required_downloads {
             if !file_path.exists() {
                 info!(
                     url = %url,
@@ -99,7 +98,7 @@ impl ArtifactService {
                 );
 
                 self.download_file(url, file_path).await.map_err(|e| {
-                    AppError::Internal(format!("Failed to download {}: {}", description, e))
+                    AppError::DownloadFailed(format!("Failed to download {}: {}", description, e))
                 })?;
 
                 info!(
@@ -110,6 +109,43 @@ impl ArtifactService {
                 info!(
                     file_path = %file_path.display(),
                     "{} already exists in cache", description
+                );
+            }
+        }
+
+        // Download optional artifacts if URLs are provided
+        let optional_downloads = [
+            (pk_url, &paths.pk_file, "Proving Key"),
+            (vk_url, &paths.vk_file, "Verification Key"),
+        ];
+
+        for (url_opt, file_path, description) in optional_downloads {
+            if let Some(url) = url_opt {
+                if !file_path.exists() {
+                    info!(
+                        url = %url,
+                        file_path = %file_path.display(),
+                        "Downloading {}", description
+                    );
+
+                    self.download_file(url, file_path).await.map_err(|e| {
+                        AppError::DownloadFailed(format!("Failed to download {}: {}", description, e))
+                    })?;
+
+                    info!(
+                        file_path = %file_path.display(),
+                        "Successfully downloaded {}", description
+                    );
+                } else {
+                    info!(
+                        file_path = %file_path.display(),
+                        "{} already exists in cache", description
+                    );
+                }
+            } else {
+                info!(
+                    file_path = %file_path.display(),
+                    "Skipping {} download - URL not provided", description
                 );
             }
         }

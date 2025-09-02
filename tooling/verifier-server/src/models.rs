@@ -18,10 +18,10 @@ pub struct VerifyRequest {
     pub r1cs_url:            String,
     /// URL to the proving key file
     #[serde(rename = "pkUrl")]
-    pub pk_url:              String,
+    pub pk_url:              Option<String>,
     /// URL to the verification key file
     #[serde(rename = "vkUrl")]
-    pub vk_url:              String,
+    pub vk_url:              Option<String>,
     /// Optional verification parameters
     #[serde(rename = "verificationParams")]
     pub verification_params: Option<VerificationParams>,
@@ -119,7 +119,7 @@ pub struct ResponseMetadata {
 impl VerifyRequest {
     /// Validate the request data
     pub fn validate(&self) -> Result<(), String> {
-        info!("Validating request: {:?}", self);
+        info!("Validating request");
 
         // Validate URLs
         if self.nps_url.is_empty() {
@@ -130,24 +130,17 @@ impl VerifyRequest {
             return Err("r1cs_url cannot be empty".to_string());
         }
 
-        if self.pk_url.is_empty() {
-            return Err("pk_url cannot be empty".to_string());
-        }
-
-        if self.vk_url.is_empty() {
-            return Err("vk_url cannot be empty".to_string());
-        }
+        // pk_url and vk_url are optional - if not provided, gnark-verifier will generate them
 
         // Validate URLs are properly formatted
-        for (field_name, url) in [
-            ("nps_url", &self.nps_url),
-            ("r1cs_url", &self.r1cs_url),
-            ("pk_url", &self.pk_url),
-            ("vk_url", &self.vk_url),
-        ] {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err(format!("{} must be a valid HTTP/HTTPS URL", field_name));
-            }
+        self.validate_url("nps_url", &self.nps_url)?;
+        self.validate_url("r1cs_url", &self.r1cs_url)?;
+        
+        if let Some(ref pk_url) = self.pk_url {
+            self.validate_url("pk_url", pk_url)?;
+        }
+        if let Some(ref vk_url) = self.vk_url {
+            self.validate_url("vk_url", vk_url)?;
         }
 
         // Validate np (JSON NoirProof) - basic check for null
@@ -172,6 +165,14 @@ impl VerifyRequest {
     /// Decode the NoirProof from the JSON np field
     pub fn decode_noir_proof(&self) -> anyhow::Result<NoirProof> {
         serde_json::from_value(self.np.clone()).map_err(Into::into)
+    }
+
+    /// Validate that a URL is properly formatted
+    fn validate_url(&self, field_name: &str, url: &str) -> Result<(), String> {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err(format!("{} must be a valid HTTP/HTTPS URL", field_name));
+        }
+        Ok(())
     }
 }
 

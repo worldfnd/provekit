@@ -16,6 +16,8 @@ pub enum AppError {
     InvalidInput(String),
     /// Verification failed
     VerificationFailed(String),
+    /// Download failed (404, network issues, etc.)
+    DownloadFailed(String),
     /// Internal server error
     Internal(String),
     /// Timeout occurred
@@ -27,6 +29,7 @@ impl fmt::Display for AppError {
         match self {
             AppError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
             AppError::VerificationFailed(msg) => write!(f, "Verification failed: {}", msg),
+            AppError::DownloadFailed(msg) => write!(f, "Download failed: {}", msg),
             AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
             AppError::Timeout => write!(f, "Request timeout"),
         }
@@ -45,6 +48,11 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 self.to_string(),
                 "VERIFICATION_FAILED",
+            ),
+            AppError::DownloadFailed(_) => (
+                StatusCode::BAD_GATEWAY,
+                self.to_string(),
+                "DOWNLOAD_FAILED",
             ),
             AppError::Internal(_) => {
                 error!("Internal server error: {}", self);
