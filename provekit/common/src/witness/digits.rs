@@ -4,6 +4,7 @@ use {
     ark_std::Zero,
     itertools::Itertools,
     serde::{Deserialize, Serialize},
+    std::iter::Take,
 };
 
 /// Allocates witnesses for the digital decomposition of the given witnesses
@@ -50,27 +51,34 @@ pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<Fi
 }
 
 /// Decomposes a field element into its bits, in little-endian order.
-/// Probably a lot of allocation because it goes to bits, but for little-endian
-/// and big endian is on byte level not on bit level
-pub fn field_to_le_bits(value: FieldElement) -> BitIteratorLE<BigInt<4>> {
+fn field_to_le_bits(value: FieldElement) -> BitIteratorLE<BigInt<4>> {
     BitIteratorLE::new(value.into_bigint())
 }
 
 /// Given the binary representation of a field element in little-endian order,
 /// convert it to a field element. The input is padded to the next multiple of 8
 /// bits.
-pub fn le_bits_to_field(bits: impl Iterator<Item = bool>) -> FieldElement {
-    let le_byte_vec: Vec<u8> = bits
-        .chunks(8)
+///
+/// # Note
+/// Only the first 32 bytes (256 bits) of the input will be used. Any additional
+/// bits will be ignored.
+fn le_bits_to_field<I>(bits: I) -> FieldElement
+where
+    I: Iterator<Item = bool>,
+{
+    const LEN: usize = size_of::<<FieldElement as PrimeField>::BigInt>();
+    let mut le_bytes = [0; LEN];
+    bits.chunks(8)
         .into_iter()
-        .map(|chunk_in_bits| {
-            chunk_in_bits
+        .take(LEN)
+        .zip(le_bytes.iter_mut())
+        .for_each(|(chunk_in_bits, le_byte)| {
+            *le_byte = chunk_in_bits
                 .into_iter()
                 .enumerate()
                 .fold(0u8, |acc, (i, bit)| acc | ((bit as u8) << i))
-        })
-        .collect();
-    FieldElement::from_le_bytes_mod_order(&le_byte_vec)
+        });
+    FieldElement::from_le_bytes_mod_order(&le_bytes)
 }
 
 #[cfg(test)]
@@ -104,6 +112,6 @@ fn test_field_to_le_bits() {
 #[test]
 fn test_le_bits_to_field() {
     let bits = vec![true, false, true, false, false];
-    let value = le_bits_to_field(bits.into_iter());
+    let value = le_bits_to_field(bits.into_iter().take(64));
     assert_eq!(value.into_bigint().0[0], 5);
 }
