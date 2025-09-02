@@ -127,7 +127,10 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 	}
-	verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+	err = verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+	if err != nil {
+		return fmt.Errorf("verification failed: %w", err)
+	}
 	return nil
 }
 

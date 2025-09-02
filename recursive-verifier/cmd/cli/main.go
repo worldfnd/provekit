@@ -120,7 +120,7 @@ func main() {
 					return fmt.Errorf("failed to get PK/VK: %w", err)
 				}
 			} else {
-				return fmt.Errorf("either pk_url and vk_url or pk and vk's path must be provided")
+				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
 			}
 
 			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {

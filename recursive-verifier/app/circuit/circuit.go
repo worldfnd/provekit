@@ -83,7 +83,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 func verifyCircuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
-) {
+) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
@@ -229,7 +229,9 @@ func verifyCircuit(
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)
+		return err
 	}
+	return nil
 }
 
 func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer bool) ([]frontend.Variable, []frontend.Variable) {

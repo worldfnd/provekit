@@ -60,6 +60,14 @@ jobs:
         run: |
           go build -o gnark-verifier cmd/cli/main.go
 
+          # Set up cleanup trap
+          cleanup() {
+            if [ ! -z "$MONITOR_PID" ]; then
+              kill $MONITOR_PID 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
           # Start monitoring in background
           (
             while true; do
@@ -78,6 +86,3 @@ jobs:
 
           # Run the main process
           ./gnark-verifier --config "../noir-examples/poseidon-rounds/params_for_recursive_verifier" --r1cs "../noir-examples/poseidon-rounds/r1cs.json" --pk_url ${{ vars.POSR_PK }} --vk_url ${{ vars.POSR_VK }}
-
-          # Stop monitoring
-          kill $MONITOR_PID
