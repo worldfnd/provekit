@@ -68,16 +68,12 @@ where
 {
     const LEN: usize = size_of::<<FieldElement as PrimeField>::BigInt>();
     let mut le_bytes = [0; LEN];
-    bits.chunks(8)
-        .into_iter()
-        .take(LEN)
-        .zip(le_bytes.iter_mut())
-        .for_each(|(chunk_in_bits, le_byte)| {
-            *le_byte = chunk_in_bits
-                .into_iter()
-                .enumerate()
-                .fold(0u8, |acc, (i, bit)| acc | ((bit as u8) << i))
-        });
+    for (i, chunk_in_bits) in bits.chunks(8).into_iter().take(LEN).enumerate() {
+        le_bytes[i] = chunk_in_bits
+            .into_iter()
+            .enumerate()
+            .fold(0u8, |acc, (i, bit)| acc | ((bit as u8) << i))
+    }
     FieldElement::from_le_bytes_mod_order(&le_bytes)
 }
 
