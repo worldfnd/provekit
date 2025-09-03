@@ -35,4 +35,4 @@ tracy-client-sys = { workspace = true, features = ["default", "manual-lifetime"]
 workspace = true
 
 [features]
-cli-profiled = []
+profiling = []

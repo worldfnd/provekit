@@ -71,10 +71,10 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 #### Custom built-in profile (Memory usage)
 
 The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
-runs. To run binary with profiling enabled run it with cargo `--features cli-profiled` param or compile with it.
+runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
 
 ```sh
-cargo run --release --bin provekit-cli --features cli-profiled prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin provekit-cli --features profiling prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
 ```
 
 #### Using tracy (CPU and Memory usage)
@@ -100,7 +100,7 @@ tracy
    localhost for incoming data.
 3.  Compile `noir-r1cs-profiled` binary.
 ```sh
-cargo build --release --bin provekit-cli --features cli-profiled
+cargo build --release --bin provekit-cli --features profiling
 ```
 4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
    command must be run against each binary that is being profiled by tracy. This will create directory next to the 
