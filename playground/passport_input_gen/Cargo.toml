@@ -3,8 +3,6 @@ name = "passport_input_gen"
 version = "0.1.0"
 edition = "2021"
 
-[workspace]
-
 [dependencies]
 rsa = { version = "0.9.8", features = ["sha2"] }
 sha2 = { version = "0.10", features = ["compress"] }

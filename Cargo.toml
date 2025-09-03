@@ -14,6 +14,9 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
 ]
+exclude = [
+  "playground/passport_input_gen",
+]
 
 [workspace.package]
 edition = "2021"
