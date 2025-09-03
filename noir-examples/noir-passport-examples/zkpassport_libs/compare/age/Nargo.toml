@@ -7,5 +7,5 @@ compiler_version = ">=1.0.0"
 [dependencies]
 date = { tag = "v0.5.4", git = "https://github.com/madztheo/noir-date.git" }
 utils = { path = "../../utils" }
-sha256 = { tag = "main", git = "https://github.com/noir-lang/sha256" }
+noir_native_sha256 = { path = "../../../noir_native_sha256" }
 poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }
