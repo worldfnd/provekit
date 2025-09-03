@@ -1,5 +1,5 @@
 pub mod generate_dummy_prover_toml;
-pub mod rsa_stuff;
+pub mod rsa;
 pub mod usa_passport_generator;
 pub mod zkpassport_constants;
 
@@ -18,7 +18,10 @@ fn main() {
     let testcases = generate_age_testcases();
     for (name, toml_content) in testcases {
         let filename = format!("{}_Prover.toml", name);
-        let complete_age_check_path = format!("../complete_age_check/{}", filename);
+        let complete_age_check_path = format!(
+            "../../noir-examples/noir-passport-examples/complete_age_check/{}",
+            filename
+        );
         std::fs::write(&complete_age_check_path, toml_content)
             .expect(&format!("Unable to write {}", complete_age_check_path));
         println!("Generated: {}", complete_age_check_path);

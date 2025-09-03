@@ -5,4 +5,4 @@ compiler_version = ">=1.0.0"
 authors = ["Ryan Cao"]
 
 [dependencies]
-sha256 = { tag = "main", git = "https://github.com/noir-lang/sha256" }
+sha256 = { tag = "v0.2.0", git = "https://github.com/noir-lang/sha256" }

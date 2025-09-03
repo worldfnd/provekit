@@ -1,6 +1,6 @@
 use dep::bignum::RuntimeBigNum;
+use noir_native_sha256::ryan_sha256_noir;
 use sha1::sha1;
-use sha256;
 use sha512::{sha384, sha512};
 
 global SHA1_HASH_LEN: u32 = 20;
@@ -108,7 +108,7 @@ fn mgf1_sha256<let SEED_LEN: u32, let MASK_LEN: u32>(seed: [u8; SEED_LEN]) -> [u
 
         // Hash the block
         // First SEED_LEN bytes are the seed, next 4 bytes are the counter
-        hashed = sha256::sha256_var(block, SEED_LEN as u64 + 4);
+        hashed = noir_native_sha256::ryan_sha256_noir::sha256_var(block, SEED_LEN as u64 + 4);
 
         // Copy hashed output to mask
         for j in 0..SHA256_HASH_LEN {
@@ -607,8 +607,13 @@ pub fn verify_sha256_pss<let NumLimbs: u32, let ModBits: u32>(
     // As the hash is 32 bytes and we also remove the 0xBC at the end, we have up to NumBytes - 33 bytes left for DB
     // For example, for 2048 bit RSA (i.e. 256 bytes), we have 256 - 33 = 223 bytes left for DB
     // and for 1024 bit RSA (i.e. 128 bytes), we have 128 - 33 = 95 bytes left for DB
-    let masked_db: [u8; (ModBits + 7) / 8 - 33] = get_array_slice(em, offset, db_mask_len + offset);
-    let h = get_array_slice(em, db_mask_len + offset, em.len() - 1);
+    let masked_db: [u8; (ModBits + 7) / 8 - 33] = get_array_slice::<(ModBits + 7) / 8, (ModBits + 7) / 8 - 33>(
+        em,
+        offset,
+        db_mask_len + offset,
+    );
+    let h: [u8; 32] =
+        get_array_slice::<(ModBits + 7) / 8, 32>(em, db_mask_len + offset, em.len() - 1);
 
     // Make sure the 8 * em_len - em_bits leftmost bits are 0
     // c.f. https://github.com/RustCrypto/RSA/blob/aeedb5adf5297892fcb9e11f7c0f6c0157005c58/src/algorithms/pss.rs#L205
@@ -617,7 +622,7 @@ pub fn verify_sha256_pss<let NumLimbs: u32, let ModBits: u32>(
     assert_eq(masked_db[0] as u32 / mask_value, 0);
 
     // Generate dbMask using MGF1
-    let db_mask: [u8; (ModBits + 7) / 8 - 33] = mgf1_sha256(h);
+    let db_mask: [u8; (ModBits + 7) / 8 - 33] = mgf1_sha256::<32, (ModBits + 7) / 8 - 33>(h);
 
     // Compute DB = maskedDB xor dbMask
     let mut db = [0 as u8; (ModBits + 7) / 8 - 33];
@@ -650,7 +655,7 @@ pub fn verify_sha256_pss<let NumLimbs: u32, let ModBits: u32>(
     }
 
     // Compute H'
-    let h_prime = sha256::sha256_var(m_prime, 72);
+    let h_prime = ryan_sha256_noir::sha256_var(m_prime, 72);
 
     // Compare H and H'
     h == h_prime
@@ -832,16 +837,15 @@ pub fn verify_sha512_pss<let NumLimbs: u32, let ModBits: u32>(
 
 mod tests {
 
-    use crate::types::{
-        Params1024, Params1025, Params2048, Params4096, RBN1024, RBN1025, RBN2048, RBN4096,
-    };
+    use crate::types::{Params1025, Params2048, Params4096, RBN1025, RBN2048, RBN4096};
     use super::{
-        mgf1_sha1, mgf1_sha256, mgf1_sha384, mgf1_sha512, verify_sha1_pkcs1v15, verify_sha1_pss,
-        verify_sha256_pkcs1v15, verify_sha256_pss, verify_sha384_pkcs1v15, verify_sha384_pss,
-        verify_sha512_pkcs1v15, verify_sha512_pss,
+        mgf1_sha256, verify_sha1_pkcs1v15, verify_sha1_pss, verify_sha256_pkcs1v15,
+        verify_sha256_pss, verify_sha384_pkcs1v15, verify_sha384_pss, verify_sha512_pkcs1v15,
+        verify_sha512_pss,
     };
     use bignum::params::BigNumParams;
     use bignum::RuntimeBigNum;
+    use noir_native_sha256::ryan_sha256_noir;
     use sha1::sha1;
     use sha512::{sha384, sha512};
 
@@ -1057,7 +1061,7 @@ mod tests {
     #[test]
     fn test_verify_sha256_pkcs1v15_2048_exponent_38129() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
 
         let params: Params2048 = BigNumParams::new(
             false,
@@ -1132,7 +1136,7 @@ mod tests {
     #[test]
     fn test_verify_sha256_pkcs1v15_2048_exponent_107903() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
 
         let params: Params2048 = BigNumParams::new(
             false,
@@ -1441,7 +1445,8 @@ mod tests {
 
     #[test]
     fn test_mgf1_sha256() {
-        let seed: [u8; 32] = sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+        let seed: [u8; 32] =
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
         let expected_mask: [u8; 32] = [
             106, 93, 232, 46, 236, 203, 51, 228, 103, 104, 145, 29, 197, 74, 26, 194, 135, 200, 40,
             232, 179, 172, 220, 135, 51, 185, 209, 35, 194, 131, 176, 190,
@@ -1453,7 +1458,7 @@ mod tests {
     #[test]
     fn test_verify_sha256_pss_2048() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
         let params: Params2048 = BigNumParams::new(
             false,
             [
@@ -1678,7 +1683,7 @@ mod tests {
     #[test]
     fn test_verify_sha256_pss_4096() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
         let params: Params4096 = BigNumParams::new(
             false,
             [
@@ -1803,7 +1808,7 @@ mod tests {
     #[test]
     fn test_verify_sha256_pss_2048_exponent_3() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
         let params: Params2048 = BigNumParams::new(
             false,
             [
@@ -1949,7 +1954,7 @@ fn test_verify_sha256_pss_1964() {
     #[test]
     fn test_verify_sha256_pss_1025() {
         let sha256_hash: [u8; 32] =
-            sha256::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
+            ryan_sha256_noir::sha256_var("Hello World! This is Noir-RSA".as_bytes(), 29);
         let params: Params1025 = BigNumParams::new(
             false,
             [

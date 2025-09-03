@@ -1,10 +1,8 @@
 use {
     rsa::{
-        pkcs1v15::{Signature, VerifyingKey},
         rand_core::OsRng,
-        signature::Verifier,
         traits::{PrivateKeyParts, PublicKeyParts},
-        BigUint, Pkcs1v15Sign, RsaPrivateKey, RsaPublicKey,
+        BigUint, Pkcs1v15Sign, RsaPrivateKey,
     },
     sha2::{Digest, Sha256},
 };
@@ -24,15 +22,7 @@ pub fn generate_random_rsa_params() {
     let mut rng = OsRng; // rand@0.8
     let bits = 2048;
     let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
-    dbg!(&private_key.e().to_bytes_be()); // public exponent
-    dbg!(&private_key.n().to_bytes_be());
-    let mu = compute_redc_param_for_noir(private_key.n());
-    dbg!(&mu.to_bytes_be()); // Barrett reduction REDC param (for Noir specifically)
-    dbg!("Primes start here");
-    private_key.primes().iter().for_each(|prime| {
-        dbg!(prime.to_bytes_be());
-    });
-    dbg!("Primes end here");
+    let _mu = compute_redc_param_for_noir(private_key.n());
 }
 
 /// Returns the signature bytes.
@@ -61,23 +51,29 @@ pub fn generate_rsa_signature_pkcs_from_priv_key(
     signature_bytes
 }
 
-pub fn test_rsa_verification(
-    rsa_pubkey_bytes: &[u8; 256],
-    signature_bytes: &[u8; 256],
-    message_bytes: &[u8],
-) {
-    let e = BigUint::from(65537_u32);
-    let n = BigUint::from_bytes_be(rsa_pubkey_bytes);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Recall: RSA signature basically means that we will compute
-    // s := (H(m))^e \mod n
-    // And then we will check whether s^d \mod n \equiv 1 \mod n
+    #[test]
+    fn test_rsa_signature_generation() {
+        let mut rng = OsRng;
+        let bits = 2048;
+        let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
 
-    let rsa_pubkey = RsaPublicKey::new(n, e).unwrap();
-    let verification_key = VerifyingKey::<Sha256>::new(rsa_pubkey);
-    let signature = Signature::try_from(&signature_bytes[..]).unwrap();
-    verification_key
-        .verify(message_bytes, &signature)
-        .expect("failed to verify");
-    dbg!("Verified!");
+        let p_bytes = private_key.primes()[0].to_bytes_be();
+        let q_bytes = private_key.primes()[1].to_bytes_be();
+
+        let mut p_padded = [0u8; 128];
+        let mut q_padded = [0u8; 128];
+        p_padded[128 - p_bytes.len()..].copy_from_slice(&p_bytes);
+        q_padded[128 - q_bytes.len()..].copy_from_slice(&q_bytes);
+
+        let message = b"test message";
+
+        let signature = generate_rsa_signature_pkcs_from_priv_key(&p_padded, &q_padded, message);
+
+        assert!(!signature.is_empty());
+        assert_eq!(signature.len(), 256);
+    }
 }

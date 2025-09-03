@@ -1,6 +1,6 @@
 use {
     crate::{
-        rsa_stuff::generate_rsa_signature_pkcs_from_priv_key,
+        rsa::generate_rsa_signature_pkcs_from_priv_key,
         zkpassport_constants::{
             CSC_PUBKEY, CSC_PUBKEY_MU, DSC_CERT, DSC_CERT_SIGNATURE_BYTES, DSC_MU_BYTES,
             DSC_P_BYTES, DSC_Q_BYTES, DSC_RSA_PUBKEY_BYTES, PASSPORT_SOD_SIZE, SOD_CERT_SIZE,

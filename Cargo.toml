@@ -71,7 +71,6 @@ block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
-passport_input_gen = { path = "noir-examples/noir-passport-examples/passport_input_gen"}
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
