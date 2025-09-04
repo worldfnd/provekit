@@ -1,13 +1,14 @@
 use {
     crate::{
-        digits::{
-            add_digital_decomposition, decompose_into_digits, DigitalDecompositionWitnessesBuilder,
-        },
+        digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_std::One,
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS, NUM_DIGITS},
+        witness::{
+            decompose_into_digits, ConstantOrR1CSWitness, SumTerm, WitnessBuilder,
+            BINOP_ATOMIC_BITS, NUM_DIGITS,
+        },
         FieldElement,
     },
     std::ops::Neg,
@@ -52,57 +53,58 @@ pub(crate) fn add_binop(
     // associating the digit witnesses with the original witnesses).
     let mut witness_dd_counter = 0;
     for (lh, rh, _output) in inputs_and_outputs {
-        let lh_atoms = match lh {
+        let lh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match lh {
             ConstantOrR1CSWitness::Witness(_) => {
-                let digit_witnesses = (0..NUM_DIGITS)
-                    .map(|digit_place| {
-                        dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
-                    })
-                    .collect::<Vec<_>>();
+                let counter = witness_dd_counter;
+                let r#struct = &dd_struct;
+
                 witness_dd_counter += 1;
-                digit_witnesses
-                    .iter()
-                    .map(|witness| ConstantOrR1CSWitness::Witness(*witness))
-                    .collect::<Vec<_>>()
+
+                Box::new(
+                    (0..NUM_DIGITS)
+                        .map(move |digit_place| {
+                            r#struct.get_digit_witness_index(digit_place, counter)
+                        })
+                        .map(ConstantOrR1CSWitness::Witness),
+                )
             }
-            ConstantOrR1CSWitness::Constant(value) => {
-                let digits = decompose_into_digits(value, &log_bases);
-                digits
-                    .iter()
-                    .map(|digit| ConstantOrR1CSWitness::Constant(*digit))
-                    .collect::<Vec<_>>()
-            }
+            ConstantOrR1CSWitness::Constant(value) => Box::new(
+                decompose_into_digits(value, &log_bases)
+                    .into_iter()
+                    .map(ConstantOrR1CSWitness::Constant),
+            ),
         };
-        let rh_atoms = match rh {
+        let rh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match rh {
             ConstantOrR1CSWitness::Witness(_) => {
-                let digit_witnesses = (0..NUM_DIGITS)
-                    .map(|digit_place| {
-                        dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
-                    })
-                    .collect::<Vec<_>>();
+                let counter = witness_dd_counter;
+                let r#struct = &dd_struct;
+
                 witness_dd_counter += 1;
-                digit_witnesses
-                    .iter()
-                    .map(|witness| ConstantOrR1CSWitness::Witness(*witness))
-                    .collect::<Vec<_>>()
+
+                Box::new(
+                    (0..NUM_DIGITS)
+                        .map(move |digit_place| {
+                            r#struct.get_digit_witness_index(digit_place, counter)
+                        })
+                        .map(ConstantOrR1CSWitness::Witness),
+                )
             }
-            ConstantOrR1CSWitness::Constant(value) => {
-                let digits = decompose_into_digits(value, &log_bases);
-                digits
-                    .iter()
-                    .map(|digit| ConstantOrR1CSWitness::Constant(*digit))
-                    .collect::<Vec<_>>()
-            }
+            ConstantOrR1CSWitness::Constant(value) => Box::new(
+                decompose_into_digits(value, &log_bases)
+                    .into_iter()
+                    .map(ConstantOrR1CSWitness::Constant),
+            ),
         };
-        let output_atoms = (0..NUM_DIGITS)
-            .map(|digit_place| dd_struct.get_digit_witness_index(digit_place, witness_dd_counter))
-            .collect::<Vec<_>>();
+        let output_atoms = {
+            let counter = witness_dd_counter;
+            let ref dd = dd_struct;
+            (0..NUM_DIGITS).map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
+        };
         witness_dd_counter += 1;
 
         lh_atoms
-            .into_iter()
-            .zip(rh_atoms.into_iter())
-            .zip(output_atoms.into_iter())
+            .zip(rh_atoms)
+            .zip(output_atoms)
             .for_each(|((lh, rh), output)| {
                 inputs_and_outputs_atomic.push((lh, rh, output));
             });
