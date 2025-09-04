@@ -1,6 +1,7 @@
 pub mod constants;
 pub mod crypto;
 pub mod generator;
+pub mod parser;
 pub mod prover_config;
 
 use crate::{

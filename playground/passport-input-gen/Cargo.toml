@@ -7,6 +7,13 @@ description = "Passport input generator"
 [dependencies]
 rsa = { version = "0.9.8", features = ["sha2"] }
 sha2 = { version = "0.10", features = ["compress"] }
+x509-parser = "0.16"
+base64 = "0.22"
+hex = "0.4"
+rasn = "0.15"
+rasn-pkix = "0.15"
+rasn-cms = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
 
 [[bin]]
 name = "passport-input-generator"
