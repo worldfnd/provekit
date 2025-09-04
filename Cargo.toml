@@ -15,7 +15,7 @@ members = [
   "tooling/provekit-gnark",
 ]
 exclude = [
-  "playground/passport_input_gen",
+  "playground/passport-input-gen",
 ]
 
 [workspace.package]

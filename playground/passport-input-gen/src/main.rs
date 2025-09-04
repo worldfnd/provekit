@@ -1,14 +1,14 @@
-pub mod generate_dummy_prover_toml;
-pub mod rsa;
-pub mod usa_passport_generator;
-pub mod zkpassport_constants;
+pub mod constants;
+pub mod crypto;
+pub mod generator;
+pub mod prover_config;
 
 use crate::{
-    generate_dummy_prover_toml::{
+    generator::{generate_age_testcases, generate_usa_passport_sample},
+    prover_config::{
         dg1_bytes_with_birthdate_expiry_date,
         generate_prover_toml_string_from_custom_dg1_date_and_required_age,
     },
-    usa_passport_generator::{generate_age_testcases, generate_usa_passport_sample},
 };
 
 fn main() {

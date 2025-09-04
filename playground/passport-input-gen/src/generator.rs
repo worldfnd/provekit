@@ -1,4 +1,4 @@
-use crate::generate_dummy_prover_toml::{
+use crate::prover_config::{
     dg1_bytes_with_birthdate_expiry_date,
     generate_prover_toml_string_from_custom_dg1_date_and_required_age,
 };
