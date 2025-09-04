@@ -135,8 +135,8 @@ impl VerificationService {
             "Starting verifier binary with timeout"
         );
         
-        // Spawn the process so we can kill it on timeout
         let mut child = command
+            .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()

@@ -27,6 +27,8 @@ pub struct ServerConfig {
     pub max_request_size: usize,
     /// Request timeout duration
     pub request_timeout:  Duration,
+    /// Maximum number of concurrent verifications
+    pub verification_semaphore_limit: u32,
 }
 
 /// Verification-specific configuration
@@ -86,6 +88,10 @@ impl ServerConfig {
                     .and_then(|t| t.parse().ok())
                     .unwrap_or(600), // 10 minutes
             ),
+            verification_semaphore_limit: env::var("VERIFIER_SEMAPHORE_LIMIT")
+                .ok()
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(1),
         }
     }
 }
@@ -97,6 +103,7 @@ impl Default for ServerConfig {
             port:             3000,
             max_request_size: 10 * 1024 * 1024,         // 10MB
             request_timeout:  Duration::from_secs(600), // 10 minutes
+            verification_semaphore_limit: 1,
         }
     }
 }

@@ -9,6 +9,7 @@ use {
         services::{ArtifactService, VerificationService},
     },
     std::sync::Arc,
+    tokio::sync::Semaphore,
 };
 
 /// Shared application state
@@ -20,6 +21,8 @@ pub struct AppState {
     pub artifact_service:     Arc<ArtifactService>,
     /// Verification service
     pub verification_service: Arc<VerificationService>,
+    /// Semaphore for limiting the number of concurrent verifications
+    pub verification_semaphore: Arc<Semaphore>,
 }
 
 impl AppState {
@@ -30,11 +33,13 @@ impl AppState {
             &config.verification.verifier_binary_path,
             config.verification.verifier_timeout_seconds,
         ));
+        let verification_semaphore = Arc::new(Semaphore::new(config.server.verification_semaphore_limit as usize));
 
         Self {
             config,
             artifact_service,
             verification_service,
+            verification_semaphore,
         }
     }
 }

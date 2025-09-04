@@ -8,6 +8,7 @@ use {
         extract::{Json, State},
         response::Json as ResponseJson,
     },
+    tokio::sync::OwnedSemaphorePermit,
     std::time::Instant,
     tracing::{info, warn},
 };
@@ -29,6 +30,23 @@ pub async fn verify_handler(
         "Received verification request"
     );
 
+    // Acquire the semaphore permit (waits until available).
+    // Using acquire_owned ensures the permit is released when dropped even if the handler is cancelled.
+    let permit: OwnedSemaphorePermit = state
+        .verification_semaphore
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| {
+            // semaphore closed/unusable (very unlikely), map to internal error
+            AppError::Internal("verification semaphore closed".into())
+        })?;
+
+    // From here on we hold the permit until we intentionally drop it (or handler is dropped).
+    // If the client disconnects and the handler is cancelled, the permit will be dropped automatically,
+    // allowing the next queued request to proceed.
+
+
     // Validate the request
     if let Err(validation_error) = payload.validate() {
         warn!("Request validation failed: {}", validation_error);
@@ -38,6 +56,7 @@ pub async fn verify_handler(
             start_time.elapsed().as_millis() as u64,
             request_id,
         );
+        drop(permit);
         return Ok(ResponseJson(response));
     }
 
@@ -51,6 +70,9 @@ pub async fn verify_handler(
                 "Verification completed successfully"
             );
 
+            // mark done; permit will be released when dropped at end of scope
+            drop(permit);
+
             let response = VerifyResponse::success(verification_time_ms, request_id);
             Ok(ResponseJson(response))
         }
@@ -61,6 +83,9 @@ pub async fn verify_handler(
                 total_time_ms = total_time,
                 "Verification failed"
             );
+
+            // release permit before returning
+            drop(permit);
 
             // For verification failures (proof is invalid), return HTTP 200 with failure
             // status For actual errors (404s, network failures, etc.),
