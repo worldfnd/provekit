@@ -377,7 +377,12 @@ fn lshift8(item: u32, shifts: u8) -> u32 {
             0
         } else {
             // Brillig wouldn't shift 0<<4 without overflow.
-            item << (8 * shifts)
+            let shift_amount = (8 * shifts) as u32;
+            if shift_amount >= 32 {
+                0
+            } else {
+                item << shift_amount
+            }
         }
     } else {
         // We can do a for loop up to INT_SIZE or an if-else.
@@ -401,7 +406,12 @@ fn lshift8(item: u32, shifts: u8) -> u32 {
 // otherwise divides by 256.
 fn rshift8(item: u32, shifts: u8) -> u32 {
     if is_unconstrained() {
-        item >> (8 * shifts)
+        let shift_amount = (8 * shifts) as u32;
+        if shift_amount >= 32 {
+            0
+        } else {
+            item >> shift_amount
+        }
     } else {
         // Division wouldn't work on `Field`.
         if shifts == 0 {

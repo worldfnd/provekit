@@ -1,5 +1,5 @@
 [package]
 name = "utils"
 type = "lib"
-authors = ["Theo Madzou"]
-compiler_version = ">=0.22.0"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"

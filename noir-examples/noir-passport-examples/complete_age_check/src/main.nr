@@ -38,7 +38,7 @@ fn main(
     // This is just the offset within the SOD string where the DG1 hash is supposed to live.
     // TODO(ryancao): Is this not supposed to be public???
     dg1_hash_offset_in_sod: u32,
-    current_date: pub str<8>,
+    current_date: pub u64,
     min_age_required: pub u8,
     // The maximum age required is public so verifiers can check
     // the age provided to the proof is correct
@@ -47,15 +47,10 @@ fn main(
     passport_validity_contents: PassportValidityContents,
 ) {
     // Verify the age of the ID holder
-    compare_age(
-        dg1,
-        min_age_required,
-        max_age_required,
-        current_date.as_bytes(),
-    );
+    compare_age(dg1, min_age_required, max_age_required, current_date);
 
     // Check that the ID is not expired.
-    check_expiry(dg1, current_date.as_bytes());
+    check_expiry(dg1, current_date);
 
     // Check that H(DG1) exists within the SOD.
     check_dg1_hash_within_sod(
