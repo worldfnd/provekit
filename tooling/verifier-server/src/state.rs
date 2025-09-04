@@ -16,11 +16,11 @@ use {
 #[derive(Debug, Clone)]
 pub struct AppState {
     /// Configuration
-    pub config:               Config,
+    pub config:                 Config,
     /// Artifact management service
-    pub artifact_service:     Arc<ArtifactService>,
+    pub artifact_service:       Arc<ArtifactService>,
     /// Verification service
-    pub verification_service: Arc<VerificationService>,
+    pub verification_service:   Arc<VerificationService>,
     /// Semaphore for limiting the number of concurrent verifications
     pub verification_semaphore: Arc<Semaphore>,
 }
@@ -33,7 +33,9 @@ impl AppState {
             &config.verification.verifier_binary_path,
             config.verification.verifier_timeout_seconds,
         ));
-        let verification_semaphore = Arc::new(Semaphore::new(config.server.verification_semaphore_limit as usize));
+        let verification_semaphore = Arc::new(Semaphore::new(
+            config.server.verification_semaphore_limit as usize,
+        ));
 
         Self {
             config,

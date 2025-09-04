@@ -8,8 +8,8 @@ use {
         extract::{Json, State},
         response::Json as ResponseJson,
     },
-    tokio::sync::OwnedSemaphorePermit,
     std::time::Instant,
+    tokio::sync::OwnedSemaphorePermit,
     tracing::{info, warn},
 };
 
@@ -31,21 +31,22 @@ pub async fn verify_handler(
     );
 
     // Acquire the semaphore permit (waits until available).
-    // Using acquire_owned ensures the permit is released when dropped even if the handler is cancelled.
+    // Using acquire_owned ensures the permit is released when dropped even if the
+    // handler is cancelled.
     let permit: OwnedSemaphorePermit = state
         .verification_semaphore
         .clone()
         .acquire_owned()
         .await
         .map_err(|_| {
-            // semaphore closed/unusable (very unlikely), map to internal error
-            AppError::Internal("verification semaphore closed".into())
-        })?;
+        // semaphore closed/unusable (very unlikely), map to internal error
+        AppError::Internal("verification semaphore closed".into())
+    })?;
 
-    // From here on we hold the permit until we intentionally drop it (or handler is dropped).
-    // If the client disconnects and the handler is cancelled, the permit will be dropped automatically,
-    // allowing the next queued request to proceed.
-
+    // From here on we hold the permit until we intentionally drop it (or handler is
+    // dropped). If the client disconnects and the handler is cancelled, the
+    // permit will be dropped automatically, allowing the next queued request to
+    // proceed.
 
     // Validate the request
     if let Err(validation_error) = payload.validate() {

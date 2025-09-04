@@ -20,13 +20,13 @@ pub struct Config {
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     /// Host to bind to
-    pub host:             String,
+    pub host: String,
     /// Port to bind to
-    pub port:             u16,
+    pub port: u16,
     /// Maximum request body size in bytes
     pub max_request_size: usize,
     /// Request timeout duration
-    pub request_timeout:  Duration,
+    pub request_timeout: Duration,
     /// Maximum number of concurrent verifications
     pub verification_semaphore_limit: u32,
 }
@@ -73,8 +73,8 @@ impl Default for Config {
 impl ServerConfig {
     fn from_env() -> Self {
         Self {
-            host:             env::var("VERIFIER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
-            port:             env::var("VERIFIER_PORT")
+            host: env::var("VERIFIER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
+            port: env::var("VERIFIER_PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000),
@@ -82,7 +82,7 @@ impl ServerConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(10 * 1024 * 1024), // 10MB
-            request_timeout:  Duration::from_secs(
+            request_timeout: Duration::from_secs(
                 env::var("VERIFIER_REQUEST_TIMEOUT")
                     .ok()
                     .and_then(|t| t.parse().ok())
@@ -99,10 +99,10 @@ impl ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            host:             "0.0.0.0".to_string(),
-            port:             3000,
-            max_request_size: 10 * 1024 * 1024,         // 10MB
-            request_timeout:  Duration::from_secs(600), // 10 minutes
+            host: "0.0.0.0".to_string(),
+            port: 3000,
+            max_request_size: 10 * 1024 * 1024,        // 10MB
+            request_timeout: Duration::from_secs(600), // 10 minutes
             verification_semaphore_limit: 1,
         }
     }

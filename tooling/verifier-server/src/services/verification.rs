@@ -19,7 +19,7 @@ use {
 #[derive(Debug, Clone)]
 pub struct VerificationService {
     /// Path to the external verifier binary
-    verifier_binary_path: String,
+    verifier_binary_path:     String,
     /// Timeout for verifier binary execution in seconds
     verifier_timeout_seconds: u64,
 }
@@ -134,7 +134,7 @@ impl VerificationService {
             timeout_seconds = timeout_duration.as_secs(),
             "Starting verifier binary with timeout"
         );
-        
+
         let mut child = command
             .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
@@ -150,36 +150,36 @@ impl VerificationService {
                     self.verifier_binary_path, e
                 ))
             })?;
-        
+
         // Get stdout and stderr handles for real-time logging
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
-        
+
         // Spawn tasks to stream output in real-time
         let stdout_handle = tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
-            
+
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.trim().is_empty() {
                     info!("[VERIFIER STDOUT] {}", line);
                 }
             }
         });
-        
+
         let stderr_handle = tokio::spawn(async move {
             use tokio::io::{AsyncBufReadExt, BufReader};
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
-            
+
             while let Ok(Some(line)) = lines.next_line().await {
                 if !line.trim().is_empty() {
                     warn!("[VERIFIER STDERR] {}", line);
                 }
             }
         });
-        
+
         // Wait for completion with timeout
         let output = match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
             Ok(result) => result.map_err(|e| {
@@ -193,29 +193,30 @@ impl VerificationService {
                 ))
             })?,
             Err(_) => {
-                warn!("Verifier binary timed out after {} seconds, killing process", timeout_duration.as_secs());
-                
+                warn!(
+                    "Verifier binary timed out after {} seconds, killing process",
+                    timeout_duration.as_secs()
+                );
+
                 // Cancel the logging tasks gracefully
                 stdout_handle.abort();
                 stderr_handle.abort();
-                
+
                 return Err(AppError::Timeout);
             }
         };
-        
+
         // Wait for logging tasks to complete (with timeout to prevent hanging)
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            async { 
-                let (stdout_result, stderr_result) = tokio::join!(stdout_handle, stderr_handle);
-                if let Err(e) = stdout_result {
-                    warn!("Stdout logging task failed: {}", e);
-                }
-                if let Err(e) = stderr_result {
-                    warn!("Stderr logging task failed: {}", e);
-                }
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let (stdout_result, stderr_result) = tokio::join!(stdout_handle, stderr_handle);
+            if let Err(e) = stdout_result {
+                warn!("Stdout logging task failed: {}", e);
             }
-        ).await;
+            if let Err(e) = stderr_result {
+                warn!("Stderr logging task failed: {}", e);
+            }
+        })
+        .await;
 
         self.process_verifier_output(output)
     }
