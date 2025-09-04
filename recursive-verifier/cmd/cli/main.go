@@ -78,6 +78,10 @@ func main() {
 			vkUrl := c.String("vk_url")
 			r1csUrl := c.String("r1cs_url")
 
+			if configFilePath == "" {
+				return fmt.Errorf("config file path must be provided")
+			}
+
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
 				return fmt.Errorf("failed to read config file: %w", err)
@@ -86,6 +90,10 @@ func main() {
 			var config circuit.Config
 			if err := json.Unmarshal(configFile, &config); err != nil {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
+			}
+
+			if r1csFilePath == "" && r1csUrl == "" {
+				return fmt.Errorf("must provide either --r1cs or --r1cs_url")
 			}
 
 			var r1csFile []byte
@@ -121,6 +129,10 @@ func main() {
 				}
 			} else {
 				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
+				pk, vk, err = circuit.GenerateUnsafeKeys()
+				if err != nil {
+					return fmt.Errorf("failed to generate unsafe keys: %w", err)
+				}
 			}
 
 			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
