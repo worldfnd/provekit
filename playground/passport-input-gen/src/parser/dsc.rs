@@ -38,6 +38,7 @@ pub struct DSC {
 }
 
 impl DSC {
+    /// Formats an X.509 Distinguished Name (DN) into a readable string.
     fn format_name(name: &X509Name<'_>, registry: &HashMap<&'static str, OidEntry>) -> String {
         let mut parts = Vec::new();
         for rdn in name.iter_rdn() {
@@ -56,12 +57,14 @@ impl DSC {
         parts.join(", ")
     }
 
+    /// Parses a DER-encoded X.509 certificate into a `DSC`.
     pub fn from_der(binary: &Binary) -> DSC {
         let der = strip_length_prefix(binary);
         let (_, cert) = parse_x509_certificate(&der.data).expect("X509 decode failed");
         Self::from_x509(cert)
     }
 
+    /// Converts a parsed `X509Certificate` into the internal `DSC` struct.
     pub fn from_x509(cert: X509Certificate<'_>) -> DSC {
         let registry = load_oids();
 
