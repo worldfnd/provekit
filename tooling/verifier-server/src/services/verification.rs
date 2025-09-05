@@ -120,12 +120,19 @@ impl VerificationService {
             .arg("--r1cs")
             .arg(&paths.r1cs_file);
 
-        // Only add pk/vk arguments if the URLs were provided in the request
-        if request.pk_url.is_some() {
+        // Only add --pk/--vk args if the files exist, else generate in binary.
+        if paths.pk_file.exists() {
             command.arg("--pk").arg(&paths.pk_file);
+            info!(
+                pk_path = %paths.pk_file.display(),
+            );
         }
-        if request.vk_url.is_some() {
+
+        if paths.vk_file.exists() {
             command.arg("--vk").arg(&paths.vk_file);
+            info!(
+                vk_path = %paths.vk_file.display(),
+            );
         }
 
         // Add timeout to prevent hanging
