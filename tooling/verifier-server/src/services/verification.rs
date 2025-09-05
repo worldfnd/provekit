@@ -110,12 +110,6 @@ impl VerificationService {
             r1cs_path = %paths.r1cs_file.display(),
             "Executing external verifier binary"
         );
-        if paths.pk_file.exists() && request.pk_url.is_some() {
-            info!(
-                pk_path = %paths.pk_file.display(),
-                vk_path = %paths.vk_file.display(),
-            );
-        }
 
         let mut command = tokio::process::Command::new(&self.verifier_binary_path);
         command
@@ -124,7 +118,7 @@ impl VerificationService {
             .arg("--r1cs")
             .arg(&paths.r1cs_file);
 
-        // Only add --pk/--vk args if the files exist, else generate in binary.
+        // Only add --pk/--vk args if the files exist
         if paths.pk_file.exists() {
             command.arg("--pk").arg(&paths.pk_file);
             info!(

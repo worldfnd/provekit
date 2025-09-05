@@ -83,7 +83,7 @@ impl ArtifactService {
         pk_url: Option<&str>,
         vk_url: Option<&str>,
     ) -> AppResult<()> {
-        // Always download required artifacts
+        // Download required artifacts if not present
         let required_downloads = [
             (nps_url, &paths.nps_file, "Noir Proof Scheme"),
             (r1cs_url, &paths.r1cs_file, "R1CS"),
