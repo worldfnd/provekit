@@ -12,6 +12,7 @@ use {
     provekit_common::{NoirProof, NoirProofScheme},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
+    tokio_util::sync::CancellationToken,
     tracing::{info, warn},
 };
 
@@ -40,6 +41,7 @@ impl VerificationService {
         proof: &NoirProof,
         scheme: &NoirProofScheme,
         paths: &ArtifactPaths,
+        cancellation_token: CancellationToken,
     ) -> AppResult<u64> {
         let verification_start = Instant::now();
 
@@ -47,7 +49,8 @@ impl VerificationService {
         self.prepare_gnark_parameters(proof, scheme, paths)?;
 
         // Execute external verifier
-        self.execute_verifier(paths, request).await?;
+        self.execute_verifier(paths, request, cancellation_token)
+            .await?;
 
         let verification_time = verification_start.elapsed().as_millis() as u64;
 
@@ -99,6 +102,7 @@ impl VerificationService {
         &self,
         paths: &ArtifactPaths,
         request: &VerifyRequest,
+        cancellation_token: CancellationToken,
     ) -> AppResult<()> {
         info!(
             verifier_binary = %self.verifier_binary_path,
@@ -139,11 +143,10 @@ impl VerificationService {
         let timeout_duration = std::time::Duration::from_secs(self.verifier_timeout_seconds);
         info!(
             timeout_seconds = timeout_duration.as_secs(),
-            "Starting verifier binary with timeout"
+            "Starting verifier binary with cancellation support"
         );
 
         let mut child = command
-            .kill_on_drop(true)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -158,62 +161,138 @@ impl VerificationService {
                 ))
             })?;
 
+        let child_id = child.id().unwrap_or(0);
+        info!(pid = child_id, "Spawned verifier process with PID");
+
         // Get stdout and stderr handles for real-time logging
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
 
-        // Spawn tasks to stream output in real-time
-        let stdout_handle = tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
+        // Spawn cancellation-aware logging tasks
+        let stdout_handle = tokio::spawn({
+            let token = cancellation_token.clone();
+            async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
 
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.trim().is_empty() {
-                    info!("[VERIFIER STDOUT] {}", line);
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        info!("Stdout logging task cancelled");
+                        return;
+                    }
+                    _ = async {
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            if !line.trim().is_empty() {
+                                info!("{}", line);
+                            }
+                        }
+                    } => {
+                        info!("Stdout logging task completed");
+                    }
                 }
             }
         });
 
-        let stderr_handle = tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
+        let stderr_handle = tokio::spawn({
+            let token = cancellation_token.clone();
+            async move {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
 
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.trim().is_empty() {
-                    warn!("[VERIFIER STDERR] {}", line);
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        warn!("Stderr logging task cancelled");
+                        return;
+                    }
+                    _ = async {
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            if !line.trim().is_empty() {
+                                warn!("{}", line);
+                            }
+                        }
+                    } => {
+                        info!("Stderr logging task completed");
+                    }
                 }
             }
         });
 
-        // Wait for completion with timeout
-        let output = match tokio::time::timeout(timeout_duration, child.wait_with_output()).await {
-            Ok(result) => result.map_err(|e| {
-                warn!(
-                    error = %e,
-                    "Failed to execute verifier binary"
+        // Wait for completion with cancellation and timeout support
+        let status = tokio::select! {
+            result = child.wait() => {
+                info!(
+                    pid = child_id,
+                    "Verifier process completed normally"
                 );
-                AppError::Internal(format!(
-                    "Failed to execute verifier binary '{}': {}",
-                    self.verifier_binary_path, e
-                ))
-            })?,
-            Err(_) => {
+                result.map_err(|e| {
+                    warn!(
+                        error = %e,
+                        pid = child_id,
+                        "Failed to execute verifier binary"
+                    );
+                    AppError::Internal(format!(
+                        "Failed to execute verifier binary '{}': {}",
+                        self.verifier_binary_path, e
+                    ))
+                })?
+            }
+            _ = cancellation_token.cancelled() => {
                 warn!(
-                    "Verifier binary timed out after {} seconds, killing process",
-                    timeout_duration.as_secs()
+                    pid = child_id,
+                    "Verification cancelled, killing process"
                 );
 
-                // Cancel the logging tasks gracefully
-                stdout_handle.abort();
-                stderr_handle.abort();
+                // Kill the process directly
+                if let Err(e) = child.kill().await {
+                    warn!(
+                        error = %e,
+                        pid = child_id,
+                        "Failed to kill verifier process"
+                    );
+                } else {
+                    info!(
+                        pid = child_id,
+                        "Successfully killed verifier process"
+                    );
+                }
+
+                return Err(AppError::Cancelled);
+            }
+            _ = tokio::time::sleep(timeout_duration) => {
+                warn!(
+                    pid = child_id,
+                    timeout_seconds = timeout_duration.as_secs(),
+                    "Verifier binary timed out, killing process"
+                );
+
+                // Kill the process directly
+                if let Err(e) = child.kill().await {
+                    warn!(
+                        error = %e,
+                        pid = child_id,
+                        "Failed to kill verifier process"
+                    );
+                } else {
+                    info!(
+                        pid = child_id,
+                        "Successfully killed verifier process"
+                    );
+                }
 
                 return Err(AppError::Timeout);
             }
         };
 
-        // Wait for logging tasks to complete (with timeout to prevent hanging)
+        // Create a mock output for processing
+        let output = std::process::Output {
+            status,
+            stdout: Vec::new(), // We already captured stdout via logging
+            stderr: Vec::new(), // We already captured stderr via logging
+        };
+
+        // Wait for logging tasks to complete gracefully
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), async {
             let (stdout_result, stderr_result) = tokio::join!(stdout_handle, stderr_handle);
             if let Err(e) = stdout_result {

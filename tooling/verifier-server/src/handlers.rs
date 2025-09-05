@@ -10,6 +10,7 @@ use {
     },
     std::time::Instant,
     tokio::sync::OwnedSemaphorePermit,
+    tokio_util::sync::CancellationToken,
     tracing::{info, warn},
 };
 
@@ -61,8 +62,39 @@ pub async fn verify_handler(
         return Ok(ResponseJson(response));
     }
 
+    // Create cancellation token for this request
+    let cancellation_token = CancellationToken::new();
+
+    // Drop guard to ensure the token is cancelled when the handler is cancelled
+    let _guard = cancellation_token.clone().drop_guard();
+
+    // Perform the actual verification with cancellation support
+    let verification_handle = {
+        let state = state.clone();
+        let payload = payload.clone();
+        let token = cancellation_token.clone();
+        tokio::spawn(async move { verification(&state, &payload, token).await })
+    };
+
+    // Wait for either verification completion or cancellation
+    let result = tokio::select! {
+        result = verification_handle => {
+            match result {
+                Ok(verification_result) => verification_result,
+                Err(join_error) => {
+                    warn!("Verification task was cancelled: {}", join_error);
+                    Err(AppError::Cancelled)
+                }
+            }
+        }
+        _ = cancellation_token.cancelled() => {
+            warn!("Request was cancelled, aborting verification");
+            Err(AppError::Cancelled)
+        }
+    };
+
     // Perform the actual verification
-    match verification(&state, &payload).await {
+    match result {
         Ok(verification_time_ms) => {
             let total_time = start_time.elapsed().as_millis() as u64;
             info!(
@@ -110,6 +142,15 @@ pub async fn verify_handler(
                     );
                     Ok(ResponseJson(response))
                 }
+                AppError::Cancelled => {
+                    let response = VerifyResponse::failure(
+                        VerificationStatus::Timeout,
+                        Some("Request cancelled".to_string()),
+                        total_time,
+                        request_id,
+                    );
+                    Ok(ResponseJson(response))
+                }
                 // For all other errors (InvalidInput, Internal, etc.), propagate them
                 // This will cause Axum to use the IntoResponse implementation and return proper
                 // HTTP status codes
@@ -120,7 +161,11 @@ pub async fn verify_handler(
 }
 
 /// Perform the proof verification using services
-async fn verification(state: &AppState, request: &VerifyRequest) -> AppResult<u64> {
+async fn verification(
+    state: &AppState,
+    request: &VerifyRequest,
+    cancellation_token: CancellationToken,
+) -> AppResult<u64> {
     // Decode and validate the NoirProof
     let proof = request
         .decode_noir_proof()
@@ -142,6 +187,6 @@ async fn verification(state: &AppState, request: &VerifyRequest) -> AppResult<u6
     // Perform verification
     state
         .verification_service
-        .verify_proof(request, &proof, &scheme, &paths)
+        .verify_proof(request, &proof, &scheme, &paths, cancellation_token)
         .await
 }

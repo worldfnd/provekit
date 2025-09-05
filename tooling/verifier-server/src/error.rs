@@ -22,6 +22,8 @@ pub enum AppError {
     Internal(String),
     /// Timeout occurred
     Timeout,
+    /// Request was cancelled
+    Cancelled,
 }
 
 impl fmt::Display for AppError {
@@ -32,6 +34,7 @@ impl fmt::Display for AppError {
             AppError::DownloadFailed(msg) => write!(f, "Download failed: {}", msg),
             AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
             AppError::Timeout => write!(f, "Request timeout"),
+            AppError::Cancelled => write!(f, "Request cancelled"),
         }
     }
 }
@@ -61,6 +64,7 @@ impl IntoResponse for AppError {
                 )
             }
             AppError::Timeout => (StatusCode::REQUEST_TIMEOUT, self.to_string(), "TIMEOUT"),
+            AppError::Cancelled => (StatusCode::REQUEST_TIMEOUT, self.to_string(), "CANCELLED"),
         };
 
         let body = Json(json!({
