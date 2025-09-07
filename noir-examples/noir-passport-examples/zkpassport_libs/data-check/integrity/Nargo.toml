@@ -7,3 +7,4 @@ compiler_version = ">=0.22.0"
 [dependencies]
 utils = { path = "../../utils" }
 noir_native_sha256 = { path = "../../../noir_native_sha256" }
+sha512 = { tag = "master", git = "https://github.com/noir-lang/sha512" }

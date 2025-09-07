@@ -51,8 +51,7 @@ pub(crate) fn add_range_checks(
                 if logbase_of_remainder_digit != 0 {
                     log_bases.push(logbase_of_remainder_digit as usize);
                 }
-                let dd_struct =
-                    add_digital_decomposition(r1cs, log_bases.clone(), values_to_lookup.clone());
+                let dd_struct = add_digital_decomposition(r1cs, log_bases, values_to_lookup);
 
                 // Add the witness indices for the digits to the atomic range checks
                 dd_struct

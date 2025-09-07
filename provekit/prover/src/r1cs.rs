@@ -21,6 +21,7 @@ pub trait R1CSSolver {
 }
 
 impl R1CSSolver for R1CS {
+    #[instrument(skip_all)]
     fn solve_witness_vec(
         &self,
         witness_builder_vec: &[WitnessBuilder],

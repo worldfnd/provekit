@@ -1,3 +1,4 @@
+use sha512::{sha384, sha512};
 use utils::is_id_card;
 
 /**
