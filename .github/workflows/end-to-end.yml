@@ -53,19 +53,6 @@ jobs:
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
-          echo "=== DEBUGGING WORKSPACE ==="
-          pwd
-          echo "Current working directory: $(pwd)"
-          echo "=== LISTING ROOT DIRECTORY ==="
-          ls -la
-          echo "=== CHECKING IF TARGET EXISTS ==="
-          if [ -d "./target" ]; then
-            echo "Target directory exists"
-            ls -al ./target
-          else
-            echo "Target directory does not exist"
-          fi
-          echo "=== END DEBUGGING ==="
           cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -o ./noir-proof-scheme.nps
           cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
           cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
