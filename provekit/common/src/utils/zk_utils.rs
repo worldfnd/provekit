@@ -1,4 +1,7 @@
-use {crate::FieldElement, ark_ff::UniformRand, whir::poly_utils::evals::EvaluationsList};
+use {
+    crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
+    whir::poly_utils::evals::EvaluationsList,
+};
 
 pub fn create_masked_polynomial(
     original: &EvaluationsList<FieldElement>,
@@ -11,12 +14,23 @@ pub fn create_masked_polynomial(
 }
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
-    let mut rng = ark_std::rand::thread_rng();
-    let mut elements = Vec::with_capacity(1 << num_vars);
-
-    for _ in 0..(1 << num_vars) {
-        elements.push(FieldElement::rand(&mut rng));
+    let num_elements = 1 << num_vars;
+    let mut elements = Vec::with_capacity(num_elements);
+    unsafe {
+        elements.set_len(num_elements);
     }
+
+    // TODO(px): find the optimal chunk size
+    const CHUNK_SIZE: usize = 32;
+
+    // Fill the pre-allocated vector in parallel using chunked approach
+    // Each thread gets its own RNG instance and processes a chunk of elements
+    elements.par_chunks_mut(CHUNK_SIZE).for_each(|chunk| {
+        let mut rng = ark_std::rand::thread_rng();
+        for element in chunk {
+            *element = FieldElement::rand(&mut rng);
+        }
+    });
 
     elements
 }
