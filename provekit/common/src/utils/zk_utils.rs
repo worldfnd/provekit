@@ -19,16 +19,17 @@ pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldEleme
     let num_elements = 1 << num_vars;
     let mut elements = vec![FieldElement::zero(); num_elements];
 
+    // TODO(px): find the optimal chunk size
+    const CHUNK_SIZE: usize = 32;
+
     // Fill the pre-allocated vector in parallel using chunked approach
     // Each thread gets its own RNG instance and processes a chunk of elements
-    elements
-        .par_chunks_mut(rayon::current_num_threads().max(1) * 4)
-        .for_each(|chunk| {
-            let mut rng = ark_std::rand::thread_rng();
-            for element in chunk {
-                *element = FieldElement::rand(&mut rng);
-            }
-        });
+    elements.par_chunks_mut(CHUNK_SIZE).for_each(|chunk| {
+        let mut rng = ark_std::rand::thread_rng();
+        for element in chunk {
+            *element = FieldElement::rand(&mut rng);
+        }
+    });
 
     elements
 }
