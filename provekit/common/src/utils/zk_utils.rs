@@ -1,7 +1,5 @@
 use {
-    crate::FieldElement,
-    ark_ff::{UniformRand, Zero},
-    rayon::prelude::*,
+    crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
     whir::poly_utils::evals::EvaluationsList,
 };
 
@@ -17,7 +15,10 @@ pub fn create_masked_polynomial(
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
     let num_elements = 1 << num_vars;
-    let mut elements = vec![FieldElement::zero(); num_elements];
+    let mut elements = Vec::with_capacity(num_elements);
+    unsafe {
+        elements.set_len(num_elements);
+    }
 
     // TODO(px): find the optimal chunk size
     const CHUNK_SIZE: usize = 32;
