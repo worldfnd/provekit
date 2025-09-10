@@ -1,4 +1,7 @@
-use {crate::FieldElement, ark_ff::UniformRand, whir::poly_utils::evals::EvaluationsList};
+use {
+    crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
+    whir::poly_utils::evals::EvaluationsList,
+};
 
 pub fn create_masked_polynomial(
     original: &EvaluationsList<FieldElement>,
@@ -11,12 +14,14 @@ pub fn create_masked_polynomial(
 }
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
-    let mut rng = ark_std::rand::thread_rng();
-    let mut elements = Vec::with_capacity(1 << num_vars);
+    let num_elements = 1 << num_vars;
 
-    for _ in 0..(1 << num_vars) {
-        elements.push(FieldElement::rand(&mut rng));
-    }
-
-    elements
+    // Generate random elements in parallel
+    (0..num_elements)
+        .into_par_iter()
+        .map(|_| {
+            let mut rng = ark_std::rand::thread_rng();
+            FieldElement::rand(&mut rng)
+        })
+        .collect()
 }
