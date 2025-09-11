@@ -196,6 +196,20 @@ func verifyCircuit(
 		}
 		pk = &unsafePk
 		vk = &unsafeVk
+
+		pkOut := os.Getenv("PK_SAVE_PATH")
+		vkOut := os.Getenv("VK_SAVE_PATH")
+		if pkOut == "" {
+			pkOut = "pk.bin"
+		}
+		if vkOut == "" {
+			vkOut = "vk.bin"
+		}
+		if err := saveKeysLocal(*pk, *vk, pkOut, vkOut); err != nil {
+			log.Printf("Failed to save PK/VK to %s, %s: %v", pkOut, vkOut, err)
+		} else {
+			log.Printf("Saved PK to %s and VK to %s", pkOut, vkOut)
+		}
 	}
 
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)

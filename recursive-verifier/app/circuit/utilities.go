@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
@@ -274,4 +275,53 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Keccak
 	}
 
 	return zkHint
+}
+
+func saveKeysLocal(pk groth16.ProvingKey, vk groth16.VerifyingKey, pkPath string, vkPath string) error {
+	if dir := filepath.Dir(pkPath); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create pk dir: %w", err)
+		}
+	}
+	if dir := filepath.Dir(vkPath); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create vk dir: %w", err)
+		}
+	}
+
+	pkf, err := os.OpenFile(pkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create pk file: %w", err)
+	}
+	defer func() {
+		if cerr := pkf.Close(); cerr != nil {
+			log.Printf("failed to close pk file: %v", cerr)
+		}
+	}()
+
+	if _, err := pk.WriteTo(pkf); err != nil {
+		return fmt.Errorf("write pk: %w", err)
+	}
+	if err := pkf.Sync(); err != nil {
+		return fmt.Errorf("sync pk file: %w", err)
+	}
+
+	vkf, err := os.OpenFile(vkPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("create vk file: %w", err)
+	}
+	defer func() {
+		if cerr := vkf.Close(); cerr != nil {
+			log.Printf("failed to close vk file: %v", cerr)
+		}
+	}()
+
+	if _, err := vk.WriteTo(vkf); err != nil {
+		return fmt.Errorf("write vk: %w", err)
+	}
+	if err := vkf.Sync(); err != nil {
+		return fmt.Errorf("sync vk file: %w", err)
+	}
+
+	return nil
 }
