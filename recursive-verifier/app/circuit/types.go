@@ -14,11 +14,14 @@ type Fp256 struct {
 	Limbs [4]uint64
 }
 
-type MultiPath[Digest any] struct {
-	LeafSiblingHashes      []Digest
-	AuthPathsPrefixLengths []uint64
-	AuthPathsSuffixes      [][]Digest
-	LeafIndexes            []uint64
+type Path[Digest any] struct {
+	LeafSiblingHash Digest
+	AuthPath        []Digest
+	LeafIndex       uint64
+}
+
+type FullMultiPath[Digest any] struct {
+	Proofs []Path[Digest]
 }
 
 // WHIR specific types
@@ -104,7 +107,7 @@ type Hints struct {
 }
 
 type Hint struct {
-	merklePaths []MultiPath[KeccakDigest]
+	merklePaths []FullMultiPath[KeccakDigest]
 	stirAnswers [][][]Fp256
 }
 

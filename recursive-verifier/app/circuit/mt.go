@@ -2,7 +2,6 @@ package circuit
 
 import (
 	"reilabs/whir-verifier-circuit/app/typeConverters"
-	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -18,8 +17,8 @@ func newMerkle(
 	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
 
 	for i, merkle_path := range hint.merklePaths {
-		var numOfLeavesProved = len(merkle_path.LeafIndexes)
-		var treeHeight = len(merkle_path.AuthPathsSuffixes[0])
+		var numOfLeavesProved = len(merkle_path.Proofs)
+		var treeHeight = len(merkle_path.Proofs[0].AuthPath)
 
 		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
@@ -33,28 +32,21 @@ func newMerkle(
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
 
 		if !isContainer {
-			var authPathsTemp = make([][]KeccakDigest, numOfLeavesProved)
-			var prevPath = merkle_path.AuthPathsSuffixes[0]
-			authPathsTemp[0] = utilities.Reverse(prevPath)
+			for j := range numOfLeavesProved {
+				proof := merkle_path.Proofs[j]
 
-			for j := range totalAuthPath[i][0] {
-				totalAuthPath[i][0][j] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[0][j].KeccakDigest[:])
-			}
-
-			for j := 1; j < numOfLeavesProved; j++ {
-				prevPath = utilities.PrefixDecodePath(prevPath, merkle_path.AuthPathsPrefixLengths[j], merkle_path.AuthPathsSuffixes[j])
-				authPathsTemp[j] = utilities.Reverse(prevPath)
-				for z := 0; z < treeHeight; z++ {
-					totalAuthPath[i][j][z] = typeConverters.LittleEndianUint8ToBigInt(authPathsTemp[j][z].KeccakDigest[:])
+				for z := range treeHeight {
+					totalAuthPath[i][j][z] = typeConverters.
+						LittleEndianUint8ToBigInt(proof.AuthPath[treeHeight-1-z].KeccakDigest[:])
 				}
-			}
 
-			for z := range numOfLeavesProved {
-				totalLeafSiblingHashes[i][z] = typeConverters.LittleEndianUint8ToBigInt(merkle_path.LeafSiblingHashes[z].KeccakDigest[:])
-				totalLeafIndexes[i][z] = uints.NewU64(merkle_path.LeafIndexes[z])
-				for j := range hint.stirAnswers[i][z] {
-					input := hint.stirAnswers[i][z][j]
-					totalLeaves[i][z][j] = typeConverters.LimbsToBigIntMod(input.Limbs)
+				totalLeafSiblingHashes[i][j] = typeConverters.
+					LittleEndianUint8ToBigInt(proof.LeafSiblingHash.KeccakDigest[:])
+				totalLeafIndexes[i][j] = uints.NewU64(proof.LeafIndex)
+
+				for k := range hint.stirAnswers[i][j] {
+					input := hint.stirAnswers[i][j][k]
+					totalLeaves[i][j][k] = typeConverters.LimbsToBigIntMod(input.Limbs)
 				}
 			}
 		}
