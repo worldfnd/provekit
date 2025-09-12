@@ -4,6 +4,8 @@
 
 # Noir and prover artifacts
 *.json
+# Allow JSON files in csca_registry
+!**/csca_registry/**/*.json
 *.gz
 *.bin
 *.nps
