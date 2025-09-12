@@ -1,7 +1,11 @@
 use {
     provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
-    whir::parameters::{
-        default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
+    whir::{
+        parameters::{
+            default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters,
+            SoundnessType,
+        },
+        whir::parameters::{DeduplicationStrategy, MerkleProofStrategy},
     },
 };
 
@@ -49,6 +53,11 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             starting_log_inv_rate: 1,
             batch_size,
         };
-        WhirConfig::new(mv_params, whir_params)
+        WhirConfig::new(
+            mv_params,
+            whir_params,
+            DeduplicationStrategy::Disabled,
+            MerkleProofStrategy::Uncompressed,
+        )
     }
 }
