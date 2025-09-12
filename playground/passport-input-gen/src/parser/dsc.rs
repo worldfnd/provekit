@@ -22,6 +22,7 @@ pub struct TbsCertificate {
     pub issuer_unique_id:        Option<Binary>,
     pub subject_unique_id:       Option<Binary>,
     pub extensions:              HashMap<String, (bool, Binary)>,
+    pub bytes:                   Binary,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +70,7 @@ impl DSC {
         let registry = load_oids();
 
         let tbs = cert.tbs_certificate;
+        let tbs_bytes = Binary::from_slice(tbs.as_ref());
         let version = tbs.version().0;
 
         let serial_number = Binary::from_slice(tbs.raw_serial());
@@ -142,6 +144,7 @@ impl DSC {
             issuer_unique_id,
             subject_unique_id,
             extensions,
+            bytes: tbs_bytes,
         };
 
         let sig_alg_oid = cert.signature_algorithm.algorithm.to_string();

@@ -48,6 +48,11 @@ impl Binary {
     pub fn equals(&self, other: &Binary) -> bool {
         self.data.eq(&other.data)
     }
+
+    pub fn from_hex(hex_str: &str) -> Result<Self, hex::FromHexError> {
+        let data = hex::decode(hex_str)?;
+        Ok(Binary::new(data))
+    }
 }
 
 impl PartialEq for Binary {
