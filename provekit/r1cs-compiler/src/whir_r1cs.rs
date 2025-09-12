@@ -52,6 +52,11 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             deduplication_strategy: DeduplicationStrategy::Disabled,
             merkle_proof_strategy: MerkleProofStrategy::Uncompressed,
         };
-        WhirConfig::new(mv_params, whir_params)
+        WhirConfig::new(
+            mv_params,
+            whir_params,
+            DeduplicationStrategy::Disabled,
+            MerkleProofStrategy::Uncompressed,
+        )
     }
 }
