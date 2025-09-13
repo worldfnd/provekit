@@ -1,7 +1,7 @@
 use {
     crate::parser::binary::Binary,
     serde::Deserialize,
-    std::{collections::HashMap, fs},
+    std::{cell::RefCell, collections::HashMap, fs},
 };
 
 #[derive(Debug)]
@@ -65,9 +65,20 @@ pub struct CscaKey {
     pub serial:     String,
 }
 
+thread_local! {
+    static CSCA_JSON_PATH: RefCell<Option<String>> = RefCell::new(None);
+}
+
+pub fn set_csca_json_path(path: Option<String>) {
+    CSCA_JSON_PATH.with(|p| *p.borrow_mut() = path);
+}
+
 pub fn load_csca_public_keys() -> Result<HashMap<String, Vec<CscaKey>>, Box<dyn std::error::Error>>
 {
-    let file_content = fs::read_to_string("csca_registry/csca_public_key.json")?;
+    let path = CSCA_JSON_PATH
+        .with(|p| p.borrow().clone())
+        .unwrap_or_else(|| "csca_registry/csca_public_key.json".to_string());
+    let file_content = fs::read_to_string(path)?;
     let csca_keys: HashMap<String, Vec<CscaKey>> = serde_json::from_str(&file_content)?;
     Ok(csca_keys)
 }
