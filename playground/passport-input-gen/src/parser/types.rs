@@ -7,7 +7,14 @@ use {
     },
     rasn_pkix::AlgorithmIdentifier,
     std::collections::HashMap,
+    thiserror::Error,
 };
+
+pub const MAX_SIGNED_ATTRIBUTES_SIZE: usize = 200;
+pub const MAX_DG1_SIZE: usize = 95;
+pub const SIG_BYTES: usize = 256;
+pub const MAX_ECONTENT_SIZE: usize = 200;
+pub const MAX_TBS_SIZE: usize = 1500;
 
 #[derive(Debug, Clone)]
 pub enum DigestAlgorithm {
@@ -163,4 +170,22 @@ pub struct LDSSecurityObject {
     pub hash_algorithm:         AlgorithmIdentifier,
     pub data_group_hash_values: SequenceOf<DataGroupHash>,
     pub lds_version_info:       Option<LDSVersionInfo>,
+}
+
+#[derive(Debug, Error)]
+pub enum PassportError {
+    #[error("DG1 hash mismatch in eContent")]
+    Dg1HashMismatch,
+    #[error("eContent hash mismatch in SignedAttributes")]
+    EcontentHashMismatch,
+    #[error("Invalid DSC public key")]
+    InvalidDscKey,
+    #[error("DSC signature verification failed")]
+    DscSignatureInvalid,
+    #[error("Failed to load CSCA keys")]
+    CscaKeysMissing,
+    #[error("No USA CSCA keys found")]
+    NoUsaCsca,
+    #[error("CSCA signature verification failed")]
+    CscaSignatureInvalid,
 }

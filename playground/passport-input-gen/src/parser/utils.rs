@@ -57,14 +57,12 @@ pub fn fit<const N: usize>(data: &[u8]) -> [u8; N] {
 pub struct CscaKey {
     pub filename:   String,
     pub public_key: String,
-    // pub modulus:    String,
-    // pub exponent:   u32,
     // pub subject:    String,
-    // #[serde(rename = "notBefore")]
-    // pub not_before: String,
-    // #[serde(rename = "notAfter")]
-    // pub not_after:  String,
-    // pub serial:     String,
+    #[serde(rename = "notBefore")]
+    pub not_before: String,
+    #[serde(rename = "notAfter")]
+    pub not_after:  String,
+    pub serial:     String,
 }
 
 pub fn load_csca_public_keys() -> Result<HashMap<String, Vec<CscaKey>>, Box<dyn std::error::Error>>
@@ -72,4 +70,26 @@ pub fn load_csca_public_keys() -> Result<HashMap<String, Vec<CscaKey>>, Box<dyn 
     let file_content = fs::read_to_string("csca_registry/csca_public_key.json")?;
     let csca_keys: HashMap<String, Vec<CscaKey>> = serde_json::from_str(&file_content)?;
     Ok(csca_keys)
+}
+
+pub fn to_fixed_array<const N: usize>(bytes: Vec<u8>, label: &str) -> [u8; N] {
+    bytes
+        .try_into()
+        .unwrap_or_else(|_| panic!("{label} not {N} bytes"))
+}
+
+pub fn to_u32(bytes: Vec<u8>) -> u32 {
+    if bytes.len() > 4 {
+        panic!("RSA exponent too large");
+    }
+    let mut buf = [0u8; 4];
+    buf[4 - bytes.len()..].copy_from_slice(&bytes);
+    u32::from_be_bytes(buf)
+}
+
+pub fn find_offset(haystack: &[u8], needle: &[u8], label: &str) -> usize {
+    haystack
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .unwrap_or_else(|| panic!("{label} not found"))
 }

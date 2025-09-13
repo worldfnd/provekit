@@ -4,13 +4,7 @@ pub mod generator;
 pub mod parser;
 pub mod prover_config;
 
-use crate::{
-    generator::{generate_age_testcases, generate_usa_passport_sample},
-    prover_config::{
-        dg1_bytes_with_birthdate_expiry_date,
-        generate_prover_toml_string_from_custom_dg1_date_and_required_age,
-    },
-};
+use crate::generator::generate_age_testcases;
 
 fn main() {
     println!("Generating age verification testcases...");

@@ -41,21 +41,23 @@ pub struct DSC {
 impl DSC {
     /// Formats an X.509 Distinguished Name (DN) into a readable string.
     fn format_name(name: &X509Name<'_>, registry: &HashMap<&'static str, OidEntry>) -> String {
-        let mut parts = Vec::new();
-        for rdn in name.iter_rdn() {
-            let mut rdn_parts = Vec::new();
-            for attr in rdn.iter() {
-                let oid_str = attr.attr_type().to_string();
-                let field_name = get_oid_name(&oid_str, registry);
-                let value = attr
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| hex::encode(attr.as_slice()));
-                rdn_parts.push(format!("{}={}", field_name, value));
-            }
-            parts.push(rdn_parts.join(", "));
-        }
-        parts.join(", ")
+        name.iter_rdn()
+            .map(|rdn| {
+                rdn.iter()
+                    .map(|attr| {
+                        let oid_str = attr.attr_type().to_string();
+                        let field_name = get_oid_name(&oid_str, registry);
+                        let value = attr
+                            .as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|_| hex::encode(attr.as_slice()));
+                        format!("{}={}", field_name, value)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// Parses a DER-encoded X.509 certificate into a `DSC`.
@@ -68,100 +70,63 @@ impl DSC {
     /// Converts a parsed `X509Certificate` into the internal `DSC` struct.
     pub fn from_x509(cert: X509Certificate<'_>) -> DSC {
         let registry = load_oids();
-
         let tbs = cert.tbs_certificate;
         let tbs_bytes = Binary::from_slice(tbs.as_ref());
-        let version = tbs.version().0;
 
-        let serial_number = Binary::from_slice(tbs.raw_serial());
-
-        let tbs_sig_oid = tbs.signature.algorithm.to_string();
-        let tbs_sig_name = SignatureAlgorithmName::from_oid(&tbs_sig_oid)
-            .expect("Unsupported signature algorithm");
-
-        let tbs_sig_params = tbs
-            .signature
-            .parameters
-            .as_ref()
-            .map(|p| Binary::from_slice(p.data));
-
-        let issuer = Self::format_name(&tbs.issuer, &registry);
-        let subject = Self::format_name(&tbs.subject, &registry);
-
-        let not_before = tbs.validity.not_before.to_string();
-        let not_after = tbs.validity.not_after.to_string();
-
-        let spki_alg_oid = tbs.subject_pki.algorithm.algorithm.to_string();
-        let spki_alg_name = SignatureAlgorithmName::from_oid(&spki_alg_oid)
-            .expect("Unsupported public key algorithm");
-
-        let spki_alg_params = tbs
-            .subject_pki
-            .algorithm
-            .parameters
-            .as_ref()
-            .map(|p| Binary::from_slice(p.data));
-
-        let subject_public_key = Binary::from_slice(&tbs.subject_pki.subject_public_key.data);
-
-        let subject_public_key_info = SubjectPublicKeyInfo {
-            signature_algorithm: SignatureAlgorithm {
-                name:       spki_alg_name,
-                parameters: spki_alg_params,
-            },
-            subject_public_key,
+        // Helper function to create SignatureAlgorithm from AlgorithmIdentifier
+        let create_signature_algorithm = |alg_id: &x509_parser::x509::AlgorithmIdentifier<'_>| {
+            let name = SignatureAlgorithmName::from_oid(&alg_id.algorithm.to_string())
+                .expect("Unsupported signature algorithm");
+            let parameters = alg_id
+                .parameters
+                .as_ref()
+                .map(|p| Binary::from_slice(p.data));
+            SignatureAlgorithm { name, parameters }
         };
 
-        let issuer_unique_id = tbs
-            .issuer_uid
-            .as_ref()
-            .map(|uid| Binary::from_slice(uid.0.as_ref()));
+        let tbs_signature_algorithm = create_signature_algorithm(&tbs.signature);
+        let cert_signature_algorithm = create_signature_algorithm(&cert.signature_algorithm);
+        let spki_algorithm = create_signature_algorithm(&tbs.subject_pki.algorithm);
 
-        let subject_unique_id = tbs
-            .subject_uid
-            .as_ref()
-            .map(|uid| Binary::from_slice(uid.0.as_ref()));
+        let subject_public_key_info = SubjectPublicKeyInfo {
+            signature_algorithm: spki_algorithm,
+            subject_public_key:  Binary::from_slice(&tbs.subject_pki.subject_public_key.data),
+        };
 
-        let mut extensions = HashMap::new();
-        for ext in tbs.extensions().iter() {
-            let oid_str = ext.oid.to_string();
-            let name = get_oid_name(&oid_str, &registry);
-            extensions.insert(name, (ext.critical, Binary::from_slice(ext.value)));
-        }
+        let extensions = tbs
+            .extensions()
+            .iter()
+            .map(|ext| {
+                let oid_str = ext.oid.to_string();
+                let name = get_oid_name(&oid_str, &registry);
+                (name, (ext.critical, Binary::from_slice(ext.value)))
+            })
+            .collect();
 
         let tbs_struct = TbsCertificate {
-            version,
-            serial_number,
-            signature_algorithm: SignatureAlgorithm {
-                name:       tbs_sig_name,
-                parameters: tbs_sig_params,
-            },
-            issuer,
-            validity_not_before: not_before,
-            validity_not_after: not_after,
-            subject,
+            version: tbs.version().0,
+            serial_number: Binary::from_slice(tbs.raw_serial()),
+            signature_algorithm: tbs_signature_algorithm,
+            issuer: Self::format_name(&tbs.issuer, &registry),
+            validity_not_before: tbs.validity.not_before.to_string(),
+            validity_not_after: tbs.validity.not_after.to_string(),
+            subject: Self::format_name(&tbs.subject, &registry),
             subject_public_key_info,
-            issuer_unique_id,
-            subject_unique_id,
+            issuer_unique_id: tbs
+                .issuer_uid
+                .as_ref()
+                .map(|uid| Binary::from_slice(uid.0.as_ref())),
+            subject_unique_id: tbs
+                .subject_uid
+                .as_ref()
+                .map(|uid| Binary::from_slice(uid.0.as_ref())),
             extensions,
             bytes: tbs_bytes,
         };
 
-        let sig_alg_oid = cert.signature_algorithm.algorithm.to_string();
-        let sig_alg_name = SignatureAlgorithmName::from_oid(&sig_alg_oid)
-            .expect("Unsupported signature algorithm");
-        let sig_alg_params = cert
-            .signature_algorithm
-            .parameters
-            .as_ref()
-            .map(|p| Binary::from_slice(p.data));
-
         DSC {
             tbs:                 tbs_struct,
-            signature_algorithm: SignatureAlgorithm {
-                name:       sig_alg_name,
-                parameters: sig_alg_params,
-            },
+            signature_algorithm: cert_signature_algorithm,
             signature:           Binary::from_slice(&cert.signature_value.data),
         }
     }

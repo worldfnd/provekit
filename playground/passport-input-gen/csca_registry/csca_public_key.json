@@ -2,27 +2,51 @@
   "USA": [
     {
       "filename": "cert-00267-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAw4VGHnr3jsI//bv4fKBmGYLcrdcABkQNmVr8xkmlS7xxkDEQCohnzKSk8v0T+L0yp3h+WctO1ZwsaJfU0HDdMogDmEv3SeoNImOuqiofzkDLdH6/IWA/JfEwBYDz+1cn7/rbHuFCwo/dkPNJkeE7OrLGd9g6tsj8YibMZrB8N7nIVgEa9QOEiqXmUUV4KNKKRZJLu/RaWzZGNq+JqlXgANKvSwKWVW+aINb84UfkBIdbPfIkEq6JMdok+YIQyHemEP6nxnHAVQwOYRkgHidw9YHXZZkHgh75efixMoAy3LQxvoknECrlpZgxqIpdup+AwsEW8hoJZbpd3Dxeb27AAF3Rl9LBGPi1thd1A4Qb/AjVDtIyQaU62cHo7fEGcW5kVg/BLGhKH+RJKOqEZoG8b80X0jv/Z2VNNtDU/8flcKG9DkD+d+kgjMQAyPCOjC2achDcK5Zc1Q8/tq0T25x6GoRjbxadqR6MKrAYaP8KOLCrL0MJsjvcfD3M+hdyJXJPN/7TeCyKbK+dBvVCk9BePi6lBKmp6lEHjyyydgNBBzZPrTNf5l60Oh9eWpaIoTHcmToS6zKVffFb/dWnkCTF1BBuy1VgJNeIspn8n1PhY5Q23qvV8q+Q1Ta1X3TFGkvAb1SXGiPQW4Hd2JrFJEBo8Ah8nn8rQKX999PLI+An1acCAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAw4VGHnr3jsI//bv4fKBmGYLcrdcABkQNmVr8xkmlS7xxkDEQCohnzKSk8v0T+L0yp3h+WctO1ZwsaJfU0HDdMogDmEv3SeoNImOuqiofzkDLdH6/IWA/JfEwBYDz+1cn7/rbHuFCwo/dkPNJkeE7OrLGd9g6tsj8YibMZrB8N7nIVgEa9QOEiqXmUUV4KNKKRZJLu/RaWzZGNq+JqlXgANKvSwKWVW+aINb84UfkBIdbPfIkEq6JMdok+YIQyHemEP6nxnHAVQwOYRkgHidw9YHXZZkHgh75efixMoAy3LQxvoknECrlpZgxqIpdup+AwsEW8hoJZbpd3Dxeb27AAF3Rl9LBGPi1thd1A4Qb/AjVDtIyQaU62cHo7fEGcW5kVg/BLGhKH+RJKOqEZoG8b80X0jv/Z2VNNtDU/8flcKG9DkD+d+kgjMQAyPCOjC2achDcK5Zc1Q8/tq0T25x6GoRjbxadqR6MKrAYaP8KOLCrL0MJsjvcfD3M+hdyJXJPN/7TeCyKbK+dBvVCk9BePi6lBKmp6lEHjyyydgNBBzZPrTNf5l60Oh9eWpaIoTHcmToS6zKVffFb/dWnkCTF1BBuy1VgJNeIspn8n1PhY5Q23qvV8q+Q1Ta1X3TFGkvAb1SXGiPQW4Hd2JrFJEBo8Ah8nn8rQKX999PLI+An1acCAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Dec 18 16:21:01 2014 GMT",
+      "notAfter": "Jul 18 16:51:01 2035 GMT",
+      "serial": "4E322929"
     },
     {
       "filename": "cert-00444-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA4yGdJKQ7D4DCDPGseAdOMC6Dgj8Xa91oXgHgPtgLW7y3kGm2Z4u9yXLciMebRCoq55wfO4ZcGv+mnMHpkv7fnFWSnG+8pP1BRUEKCYhXAbeWSww+CpMFEagzP7miPZg1TsE4QKFhGyRAfMdJFuG1aGQTtEdjgAWkat7YovTSA0pC7V/PwMlagZZwTsz8OOiO0w0eS9uIHGJKylg8gi9RSQZ/Hm2r4oOYvx3G3Iqa4OlNXO/KKD9mwd19+BFjuJ1cdqfzcYejhMPothyvlUgbWeaYek3ZfXuqz9XjYBF3rnacVKE9w4ydncRpUpOrSV/qSwxZA46QBuKAGxCS3kOUjgEmAj74/dLI8IaqHhYfSwchQdiT7FhQQ+YZENkRI5Gm4QDVLrT01plMK5ytX7mo4F83Hb1uE+WGgjTk9VDEKfZsERscCiArR7oUoRWZyuH81aMScMVzDVpFxvOg6Md7rWk5k8hRwL75nZtkFilsNnIVGMtuQP7DSG0xcKJ3EZT69YsRH0oEAa4sfa5fm4/X/WVfkNl51tI71PmYvnzcO6UVt42pgGiAJGoy5YmdhKKmXBgj0aVmzFRxd/+Jx2SgyccLeiIIA6y5bn6av/KuUB2wi9NLPbFz0OxvdKYqtfqNL+E6WmpeHHiiKGCrUes15d7fs/65QCvamV7fFBn8+lcCAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA4yGdJKQ7D4DCDPGseAdOMC6Dgj8Xa91oXgHgPtgLW7y3kGm2Z4u9yXLciMebRCoq55wfO4ZcGv+mnMHpkv7fnFWSnG+8pP1BRUEKCYhXAbeWSww+CpMFEagzP7miPZg1TsE4QKFhGyRAfMdJFuG1aGQTtEdjgAWkat7YovTSA0pC7V/PwMlagZZwTsz8OOiO0w0eS9uIHGJKylg8gi9RSQZ/Hm2r4oOYvx3G3Iqa4OlNXO/KKD9mwd19+BFjuJ1cdqfzcYejhMPothyvlUgbWeaYek3ZfXuqz9XjYBF3rnacVKE9w4ydncRpUpOrSV/qSwxZA46QBuKAGxCS3kOUjgEmAj74/dLI8IaqHhYfSwchQdiT7FhQQ+YZENkRI5Gm4QDVLrT01plMK5ytX7mo4F83Hb1uE+WGgjTk9VDEKfZsERscCiArR7oUoRWZyuH81aMScMVzDVpFxvOg6Md7rWk5k8hRwL75nZtkFilsNnIVGMtuQP7DSG0xcKJ3EZT69YsRH0oEAa4sfa5fm4/X/WVfkNl51tI71PmYvnzcO6UVt42pgGiAJGoy5YmdhKKmXBgj0aVmzFRxd/+Jx2SgyccLeiIIA6y5bn6av/KuUB2wi9NLPbFz0OxvdKYqtfqNL+E6WmpeHHiiGGCrUes15d7fs/65QCvamV7fFBn8+lcCAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Sep 30 16:38:20 2024 GMT",
+      "notAfter": "Mar 30 17:08:20 2045 GMT",
+      "serial": "5DCE72E1"
     },
     {
       "filename": "cert-00443-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAozIONhYqXeLWTi2rhDm+X2ZX1OMUr/j7DZgc6zXZ7VzsYVB+6ARiIbok77SxPtk9ZeUIqujjW59Jyb+EUiI6giIZOu9zY7BA+NQfhZeywzr1XKXhfROd5mmUiv3Nz5ukMBFwBoCaOHUchoqwml35lCk+X7K3NOS++HWbnxvRQFqOItsTcaMg2jp9BF+vmHr0nbucsi4zA3BzUKWsrbvcV05M4H/yoyru/5uq8JktSxbxCzK3iKXVyi6SwRkOiJekbztVKouELQlVhlhGacUOQ8ub+PTa4gRWKVHth68YmYW5k12/2B52CrzAndxCGewfN5KvDy5woQEDXHcJ+O9s53liYjZFNU5ceL+R48jUoXLVPuCmXFQKqo1N/t++lWR6icWy8tllHZGsr1GDVX0+EY+0gJUULR+SPzsAqt5IgCq0BlQ/iz4iLUS8fAoHs46AU3u/yHNRapBu3XOqKwCmQH2HNUufUZyD56cVaIBzE0ILWKwY7HaEcP28y0D/++OpqPz44c8YhwLcSdoIYJIOb3FzBVsq+1B23VeqTZ8IxpDkI4wumBLwJS+eJ136XBUegL1hQQv5BRrcN/XgJ9wyC43QN+d8LfBWUZQody7kKXC0KtratgHwwazCdxl8PR3p0aeXbveUBbJmyRQS27jDykncrYUrzkG8WRWhrW0tUR0CAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAozIONhYqXeLWTi2rhDm+X2ZX1OMUr/j7DZgc6zXZ7VzsYVB+6ARiIbok77SxPtk9ZeUIqujjW59Jyb+EUiI6giIZOu9zY7BA+NQfhZeywzr1XKXhfROd5mmUiv3Nz5ukMBFwBoCaOHUchoqwml35lCk+X7K3NOS++HWbnxvRQFqOItsTcaMg2jp9BF+vmHr0nbucsi4zA3BzUKWsrbvcV05M4H/yoyru/5uq8JktSxbxCzK3iKXVyi6SwRkOiJekbztVKouELQlVhlhGacUOQ8ub+PTa4gRWKVHth68YmYW5k12/2B52CrzAndxCGewfN5KvDy5woQEDXHcJ+O9s53liYjZFNU5ceL+R48jUoXLVPuCmXFQKqo1N/t++lWR6icWy8tllHZGsr1GDVX0+EY+0gJUULR+SPzsAqt5IgCq0BlQ/iz4iLUS8fAoHs46AU3u/yHNRapBu3XOqKwCmQH2HNUufUZyD56cVaIBzE0ILWKwY7HaEcP28y0D/++OpqPz44c8YhwLcSdoIYJIOb3FzBVsq+1B23VeqTZ8IxpDkI4wumBLwJS+eJ136XBUegL1hQQv5BRrcN/XgJ9wyC43QN+d8LfBWUZQody7kKXC0KtratgHwwazCdxl8PR3p0aeXbveUBbJmyRQS27jDykncrYUrzkG8WRWhrW0tUR0CAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Nov 14 16:37:12 2019 GMT",
+      "notAfter": "May 14 17:07:12 2040 GMT",
+      "serial": "4E32D006"
     },
     {
       "filename": "cert-00265-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAw9Pm+vLMuE/h005EKy6NVXhI+afR9iaURn6ENVOrAy+QBNvol4vNRCCqEcHwrc21e8KmRoFqoN7a1/YidoZKIsBG/8HkitFqPX76FudVcY1npqzRFMlv+3kf5YANrhbzCqVlo1UCGXOfRJwZUKgJQ9Wb++OMSMmzSJwgXQP9bxRURHRlGl833CCudrdHajKfEF0f/f5WNx4/s2/DbfBaW+FK9LAeXIqjFkS8xDGv1La785gohpIDAk6dbKMhVWWT7YwPm3T5ox2E59IIN65qJzmKeKKdhaZdr7ZzrxhYVxVjce6KFTlcrN1fqtAnAjeETEEEnfIgw4tlV827Pm1S9dEZnHzkxWmusRo1UNeQw7pdO/sAuy34uVRA9CBhdETxTvRMpBrnzM1G5mB7H7ltsS0T2Gp8QiRxaXR9CnpJAI3Bil6lJJ/fKJwVyzr7xR9c2ws4DIJ/uh0Jgy8wkeVOie0ava6KEI7PCz0N2GNz0Jd2sAXUBDsfs/nNKw7K2k5HLJ/5bJz90d8TwoE6j5xaB2ObOhCwBFyTb0CsLrWnaIu/ZyJr0P/NqWYaZXhv4oIeousUHEl4qpvn7K9hVNKT1c7qAKH3ZEbLEnxV5DYh5qsRwImt4M9B5LJsFojJ28TqOE1DB+4Dqg9mhQ+CaX1s1Urw7PqOqA8u/euk0YxD86kCAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAw9Pm+vLMuE/h005EKy6NVXhI+afR9iaURn6ENVOrAy+QBNvol4vNRCCqEcHwrc21e8KmRoFqoN7a1/YidoZKIsBG/8HkitFqPX76FudVcY1npqzRFMlv+3kf5YANrhbzCqVlo1UCGXOfRJwZUKgJQ9Wb++OMSMmzSJwgXQP9bxRURHRlGl833CCudrdHajKfEF0f/f5WNx4/s2/DbfBaW+FK9LAeXIqjFkS8xDGv1La785gohpIDAk6dbKMhVWWT7YwPm3T5ox2E59IIN65qJzmKeKKdhaZdr7ZzrxhYVxVjce6KFTlcrN1fqtAnAjeETEEEnfIgw4tlV827Pm1S9dEZnHzkxWmusRo1UNeQw7pdO/sAuy34uVRA9CBhdETxTvRMpBrnzM1G5mB7H7ltsS0T2Gp8QiRxaXR9CnpJAI3Bil6lJJ/fKJwVyzr7xR9c2ws4DIJ/uh0Jgy8wkeVOie0ava6KEI7PCz0N2GNz0Jd2sAXUBDsfs/nNKw7K2k5HLJ/5bJz90d8TwoE6j5xaB2ObOhCwBFyTb0CsLrWnaIu/ZyJr0P/NqWYaZXhv4oIeousUHEl4qpvn7K9hVNKT1c7qAKH3ZEbLEnxV5DYh5qsRwImt4M9B5LJsFojJ28TqOE1DB+4Dqg9mhQ+CaX1s1Urw7PqOqA8u/euk0YxD86kCAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Nov 19 20:57:05 2004 GMT",
+      "notAfter": "Jun 19 21:27:05 2025 GMT",
+      "serial": "419E6523"
     },
     {
       "filename": "cert-00266-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvbwV+zl/vBzLWAadrtTSpC9l/zOOzAQKbwhVXCGPKK0SfOjiqIJSVfboQ+Tvz67Fgxb8LDhUJzoUSxHjh7PvO8NYwGXMhQrw0JzAARjPqbGUST3qXO/DfEwAilFKx1NvmlrxZgAS64iIqUjl7IGwYApALE1Ok5jkEvYDTE16uCe5RQz0vuqaKcgirrhwIW6C4r2wx9G1xr7/piII7fo97D7h5y0206OwshClHAmQ0p4LSK+Nxexp6sWaDsb/E7jKjLcxkcKJLsayGF58edW4fnI92BuI3pAhPSJpMmCImdN8LvF32o0jnYmYPsRFlLsj2+UEAnH13bs1qS07vvRnx3CXmPYTGl6amlbmePaMDgV4qWM8e71ddVgj1jyZANgzx4fDT9B82A8+Iw13ZOpU/rBW9OZ3Rk2aSOmFC69Vq12cbYrfXobc3GXyQ/hb4yMi3tfNS2nqeesb2a5/GrxKhwOIiNrJcClnzTlqrdcjEHdZYCXT4kR6wpbGAQNruew/BWIuWrGugXPB8ah8f8ttLetGO55kMaPDbk+ZXY6DlDjDLznurF0bEzZiNcRmUQ8p2rpToRqmH/XntE0OgasGzBmcJX5oMNC+7zvELBJcc9YzMIgXX7R5VlI5/Gvnnn4x6lmiio5FWb3ksMc1MWYTN2bmk5tyyKxvQ6Z4rZdx+1UCAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvbwV+zl/vBzLWAadrtTSpC9l/zOOzAQKbwhVXCGPKK0SfOjiqIJSVfboQ+Tvz67Fgxb8LDhUJzoUSxHjh7PvO8NYwGXMhQrw0JzAARjPqbGUST3qXO/DfEwAilFKx1NvmlrxZgAS64iIqUjl7IGwYApALE1Ok5jkEvYDTE16uCe5RQz0vuqaKcgirrhwIW6C4r2wx9G1xr7/piII7fo97D7h5y0206OwshClHAmQ0p4LSK+Nxexp6sWaDsb/E7jKjLcxkcKJLsayGF58edW4fnI92BuI3pAhPSJpMmCImdN8LvF32o0jnYmYPsRFlLsj2+UEAnH13bs1qS07vvRnx3CXmPYTGl6amlbmePaMDgV4qWM8e71ddVgj1jyZANgzx4fDT9B82A8+Iw13ZOpU/rBW9OZ3Rk2aSOmFC69Vq12cbYrfXobc3GXyQ/hb4yMi3tfNS2nqeesb2a5/GrxKhwOIiNrJcClnzTlqrdcjEHdZYCXT4kR6wpbGAQNruew/BWIuWrGugXPB8ah8f8ttLetGO55kMaPDbk+ZXY6DlDjDLznurF0bEzZiNcRmUQ8p2rpToRqmH/XntE0OgasGzBmcJX5oMNC+7zvELBJcc9YzMIgXX7R5VlI5/Gvnnn4x6lmiio5FWb3ksMc1MWYTN2bmk5tyyKxvQ6Z4rZdx+1UCAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Jan  8 16:06:27 2010 GMT",
+      "notAfter": "Aug  8 16:36:27 2030 GMT",
+      "serial": "45DE28DD"
     },
     {
       "filename": "cert-00456-pubkey.pem",
-      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAozIONhYqXeLWTi2rhDm+X2ZX1OMUr/j7DZgc6zXZ7VzsYVB+6ARiIbok77SxPtk9ZeUIqujjW59Jyb+EUiI6giIZOu9zY7BA+NQfhZeywzr1XKXhfROd5mmUiv3Nz5ukMBFwBoCaOHUchoqwml35lCk+X7K3NOS++HWbnxvRQFqOItsTcaMg2jp9BF+vmHr0nbucsi4zA3BzUKWsrbvcV05M4H/yoyru/5uq8JktSxbxCzK3iKXVyi6SwRkOiJekbztVKouELQlVhlhGacUOQ8ub+PTa4gRWKVHth68YmYW5k12/2B52CrzAndxCGewfN5KvDy5woQEDXHcJ+O9s53liYjZFNU5ceL+R48jUoXLVPuCmXFQKqo1N/t++lWR6icWy8tllHZGsr1GDVX0+EY+0gJUULR+SPzsAqt5IgCq0BlQ/iz4iLUS8fAoHs46AU3u/yHNRapBu3XOqKwCmQH2HNUufUZyD56cVaIBzE0ILWKwY7HaEcP28y0D/++OpqPz44c8YhwLcSdoIYJIOb3FzBVsq+1B23VeqTZ8IxpDkI4wumBLwJS+eJ136XBUegL1hQQv5BRrcN/XgJ9wyC43QN+d8LfBWUZQody7kKXC0KtratgHwwazCdxl8PR3p0aeXbveUBbJmyRQS27jDykncrYUrzkG8WRWhrW0tUR0CAwEAAQ=="
+      "public_key": "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAozIONhYqXeLWTi2rhDm+X2ZX1OMUr/j7DZgc6zXZ7VzsYVB+6ARiIbok77SxPtk9ZeUIqujjW59Jyb+EUiI6giIZOu9zY7BA+NQfhZeywzr1XKXhfROd5mmUiv3Nz5ukMBFwBoCaOHUchoqwml35lCk+X7K3NOS++HWbnxvRQFqOItsTcaMg2jp9BF+vmHr0nbucsi4zA3BzUKWsrbvcV05M4H/yoyru/5uq8JktSxbxCzK3iKXVyi6SwRkOiJekbztVKouELQlVhlhGacUOQ8ub+PTa4gRWKVHth68YmYW5k12/2B52CrzAndxCGewfN5KvDy5woQEDXHcJ+O9s53liYjZFNU5ceL+R48jUoXLVPuCmXFQKqo1N/t++lWR6icWy8tllHZGsr1GDVX0+EY+0gJUULR+SPzsAqt5IgCq0BlQ/iz4iLUS8fAoHs46AU3u/yHNRapBu3XOqKwCmQH2HNUufUZyD56cVaIBzE0ILWKwY7HaEcP28y0D/++OpqPz44c8YhwLcSdoIYJIOb3FzBVsq+1B23VeqTZ8IxpDkI4wumBLwJS+eJ136XBUegL1hQQv5BRrcN/XgJ9wyC43QN+d8LfBWUZQody7kKXC0KtratgHwwazCdxl8PR3p0aeXbveUBbJmyRQS27jDykncrYUrzkG8WRWhrW0tUR0CAwEAAQ==",
+      "subject": "C=US, O=U.S. Government, OU=Department of State, OU=MRTD, OU=Certification Authorities, OU=U.S. Department of State MRTD CA",
+      "notBefore": "Nov 14 16:37:12 2019 GMT",
+      "notAfter": "May 14 17:07:12 2040 GMT",
+      "serial": "4E32D03F"
     }
   ]
 }

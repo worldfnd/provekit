@@ -30,9 +30,6 @@ pub struct SOD {
 
 impl SOD {
     /// Parses the `signedAttrs` field from a `SignerInfo`.
-    /// - Extracts attributes like `messageDigest`, `contentType`, and
-    ///   `signingTime`.
-    /// - Returns a structured `SignedAttrs` object.
     fn parse_signed_attrs(
         signer_info_raw: &rasn_cms::SignerInfo,
         registry: &HashMap<&'static str, OidEntry>,
@@ -41,14 +38,14 @@ impl SOD {
         let mut reconstructed_signed_attrs: Vec<Attribute> = vec![];
 
         for attr in signer_info_raw.signed_attrs.clone().unwrap_or_default() {
-            let oid: &rasn::types::ObjectIdentifier = &attr.r#type;
-            let values = &attr.values;
-            let oid_str = oid_to_string(oid);
-
+            let oid_str = oid_to_string(&attr.r#type);
             let name = get_oid_name(&oid_str, registry);
-            let val = values.first().expect("No value in Attribute").as_bytes();
+            let val = attr
+                .values
+                .first()
+                .expect("No value in Attribute")
+                .as_bytes();
             signed_attr_map.insert(name, Binary::from_slice(val));
-
             reconstructed_signed_attrs.push(attr);
         }
 
@@ -72,8 +69,7 @@ impl SOD {
 
         let content_type_oid: rasn::types::ObjectIdentifier =
             der::decode(&content_type_bytes.data).expect("Failed to decode contentType OID");
-
-        let oid_string: String = oid_to_string(&content_type_oid);
+        let oid_string = oid_to_string(&content_type_oid);
 
         SignedAttrs {
             bytes: Binary::from_slice(&reconstructed_block),
@@ -112,9 +108,6 @@ impl SOD {
 
     /// Parses the encapsulated LDS Security Object (`encapContentInfo`) from
     /// the SOD.
-    /// - Extracts the hash algorithm and data group hash values (DG1, DG2,
-    ///   etc.).
-    /// - Builds an `EncapContentInfo` with structured hashes and metadata.
     fn parse_encap_content_info(
         signed_data: &SignedData,
         registry: &HashMap<&'static str, OidEntry>,
@@ -164,8 +157,6 @@ impl SOD {
     }
 
     /// Parses a `SignerInfo` structure into a custom `SignerInfo` model.
-    /// - Handles signed attributes, digest algorithm, signature algorithm, and
-    ///   signature value.
     fn parse_signer_info(
         signer_info_raw: &rasn_cms::SignerInfo,
         registry: &HashMap<&'static str, OidEntry>,
@@ -216,8 +207,6 @@ impl SOD {
     }
 
     /// Parses the signer identifier (SID) from the `SignerInfo`.
-    /// - Supports both `IssuerAndSerialNumber` and `SubjectKeyIdentifier`.
-    /// - Builds a readable issuer DN string (CN, O, OU, etc.).
     fn parse_signer_identifier(sid: rasn_cms::SignerIdentifier) -> SignerIdentifier {
         match sid {
             rasn_cms::SignerIdentifier::IssuerAndSerialNumber(issuer_and_serial) => {
@@ -263,10 +252,6 @@ impl SOD {
 
     /// Entry point: parses a full SOD (Security Object Document) from raw DER
     /// bytes.
-    /// - Decodes CMS `ContentInfo` and `SignedData`.
-    /// - Extracts digest algorithms, certificate, `encapContentInfo`, and
-    ///   `SignerInfo`.
-    /// - Returns a structured `SOD` with all relevant fields populated.
     pub fn from_der(binary: &mut Binary) -> SOD {
         *binary = strip_length_prefix(binary);
         let hex_der = hex::decode(binary.to_hex().trim_start_matches("0x")).unwrap();
@@ -288,16 +273,20 @@ impl SOD {
             panic!("No signedAttrs found in SignerInfo");
         }
         let registry = load_oids();
-        let mut digest_algorithms: Vec<DigestAlgorithm> = vec![];
-        for alg in &signed_data.digest_algorithms {
-            let oid_str = oid_to_string(&alg.algorithm);
-            let name = get_hash_algo_name(&oid_str, &registry);
-            if let Some(digest_alg) = DigestAlgorithm::from_name(&name) {
-                digest_algorithms.push(digest_alg);
-            } else {
-                eprintln!("Unknown digest algorithm: {}", name);
-            }
-        }
+        let digest_algorithms: Vec<DigestAlgorithm> = signed_data
+            .digest_algorithms
+            .iter()
+            .filter_map(|alg| {
+                let oid_str = oid_to_string(&alg.algorithm);
+                let name = get_hash_algo_name(&oid_str, &registry);
+                if let Some(digest_alg) = DigestAlgorithm::from_name(&name) {
+                    Some(digest_alg)
+                } else {
+                    eprintln!("Unknown digest algorithm: {}", name);
+                    None
+                }
+            })
+            .collect();
         let certificate = Self::parse_certificate(&signed_data);
         let encap_content_info = Self::parse_encap_content_info(&signed_data, &registry);
         let signer_info = Self::parse_signer_info(&signer_info_raw, &registry);
