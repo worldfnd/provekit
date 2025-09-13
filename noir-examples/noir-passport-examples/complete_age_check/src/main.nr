@@ -35,9 +35,9 @@ use passport_validity_check::{
 
 fn main(
     dg1: [u8; 95],
+    dg1_padded_length: u64,
     // This is just the offset within the SOD string where the DG1 hash is supposed to live.
     // TODO(ryancao): Is this not supposed to be public???
-    dg1_hash_offset_in_sod: u32,
     current_date: pub u64,
     min_age_required: pub u8,
     // The maximum age required is public so verifiers can check
@@ -55,8 +55,10 @@ fn main(
     // Check that H(DG1) exists within the SOD.
     check_dg1_hash_within_sod(
         dg1,
-        passport_validity_contents.passport_sod,
-        dg1_hash_offset_in_sod,
+        dg1_padded_length,
+        passport_validity_contents.econtent,
+        passport_validity_contents.econtent_len,
+        passport_validity_contents.dg1_hash_offset,
     );
 
     // Performs the remainder of the passport validity checks
