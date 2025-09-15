@@ -1,4 +1,3 @@
-use age::u64_to_date_bytes;
 use date::Date;
 use utils::{
     get_array_slice, get_mrz_from_dg1, ID_CARD_MRZ_EXPIRY_DATE_INDEX, is_id_card,
@@ -6,8 +5,7 @@ use utils::{
 };
 
 pub fn check_expiry(dg1: [u8; 95], current_date_timestamp: u64) {
-    let current_date_bytes = u64_to_date_bytes(current_date_timestamp);
-    let current_date = Date::from_bytes_long_year(current_date_bytes);
+    let current_date = Date::from_timestamp(current_date_timestamp);
 
     let mrz = get_mrz_from_dg1(dg1);
 
