@@ -13,6 +13,7 @@ members = [
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
+  "spark-prover",
 ]
 exclude = [
   "playground/passport-input-gen",

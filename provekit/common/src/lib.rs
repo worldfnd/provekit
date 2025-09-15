@@ -10,9 +10,9 @@ pub mod witness;
 
 use crate::{
     interner::{InternedFieldElement, Interner},
-    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
 };
 pub use {
+    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     acir::FieldElement as NoirElement,
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     r1cs::R1CS,
