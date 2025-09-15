@@ -143,6 +143,7 @@ mod tests {
             PassportReader,
         },
         base64::{engine::general_purpose::STANDARD, Engine as _},
+        chrono::{Date, Utc},
         rsa::pkcs8::DecodePrivateKey,
     };
 
@@ -177,7 +178,10 @@ mod tests {
         };
         assert!(reader.validate().is_ok());
 
-        let inputs = reader.to_circuit_inputs(20250101, 18, 70, 0);
+        let current_date = Utc::now();
+        let current_timestamp = current_date.timestamp() as u64;
+
+        let inputs = reader.to_circuit_inputs(current_timestamp, 18, 70, 0);
         let _toml_output = inputs.to_toml_string();
 
         println!("{}", _toml_output);
