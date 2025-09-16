@@ -34,6 +34,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .commit_statement(&configs.a)
         .commit_statement(&configs.a)
         .commit_statement(&configs.row)
+        .commit_statement(&configs.a)
+        .commit_statement(&configs.a)
         .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
         .hint("sumcheck_last_folds")
         .add_whir_proof(&configs.a)
@@ -50,5 +52,21 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .hint("Row final counter claimed evaluation")
         .add_whir_proof(&configs.row);
 
+    for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
+
+    io = io
+        .hint("RS address claimed evaluation")
+        .add_whir_proof(&configs.a);
+
+    io = io
+        .hint("RS value claimed evaluation")
+        .add_whir_proof(&configs.a);
+
+    io = io
+        .hint("RS timestamp claimed evaluation")
+        .add_whir_proof(&configs.a);
     io
 }

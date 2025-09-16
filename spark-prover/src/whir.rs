@@ -1,8 +1,9 @@
 use {
     anyhow::{Context, Result},
     provekit_common::{
-        WhirR1CSScheme, utils::next_power_of_two, FieldElement, skyscraper::SkyscraperMerkleConfig,
-        skyscraper::SkyscraperPoW, skyscraper::SkyscraperSponge, WhirConfig, R1CS,
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        utils::next_power_of_two,
+        FieldElement, WhirConfig, WhirR1CSScheme, R1CS,
     },
     provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
     serde::{Deserialize, Serialize},

@@ -2,11 +2,12 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
+        skyscraper::SkyscraperSponge,
         utils::{
             next_power_of_two,
             sumcheck::{calculate_eq, eval_cubic_poly},
         },
-        FieldElement, IOPattern, skyscraper::SkyscraperSponge,
+        FieldElement, IOPattern,
     },
     spark_prover::utilities::{SPARKProof, SPARKRequest},
     spongefish::{
@@ -46,6 +47,8 @@ fn main() -> Result<()> {
     let e_rx_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
     let e_ry_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
     let final_row_commitment = commitment_reader_row.parse_commitment(&mut arthur).unwrap();
+    let row_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
+    let read_ts_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
     let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
         &mut arthur,
@@ -102,6 +105,9 @@ fn main() -> Result<()> {
         next_power_of_two(spark_proof.matrix_dimensions.num_rows) + 2,
     )?;
 
+    let claimed_init = gpa_result.claimed_values[0];
+    let claimed_final = gpa_result.claimed_values[1];
+
     let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
     let init_adr = calculate_adr(&evaluation_randomness.to_vec());
@@ -139,6 +145,73 @@ fn main() -> Result<()> {
         + final_opening * last_randomness[0];
 
     ensure!(evaluated_value == gpa_result.last_sumcheck_value);
+
+    // let mut rs_address: FieldElement = arthur.hint()?;
+    let gpa_result = gpa_sumcheck_verifier(
+        &mut arthur,
+        next_power_of_two(spark_proof.matrix_dimensions.a_nonzero_terms) + 2,
+    )?;
+
+    let claimed_rs = gpa_result.claimed_values[0];
+    let claimed_ws = gpa_result.claimed_values[1];
+
+    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
+
+    let rs_adr = arthur.hint()?;
+
+    let mut rs_adr_statement = Statement::<FieldElement>::new(next_power_of_two(
+        spark_proof.matrix_dimensions.a_nonzero_terms,
+    ));
+    rs_adr_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+        rs_adr,
+    );
+
+    let rs_adr_verifier = Verifier::new(&spark_proof.whir_params.a);
+    rs_adr_verifier
+        .verify(&mut arthur, &row_commitment, &rs_adr_statement)
+        .context("while verifying WHIR")?;
+
+    let rs_mem = arthur.hint()?;
+
+    let mut rs_val_statement = Statement::<FieldElement>::new(next_power_of_two(
+        spark_proof.matrix_dimensions.a_nonzero_terms,
+    ));
+    rs_val_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+        rs_mem,
+    );
+
+    let rs_val_verifier = Verifier::new(&spark_proof.whir_params.a);
+    rs_val_verifier
+        .verify(&mut arthur, &e_rx_commitment, &rs_val_statement)
+        .context("while verifying WHIR")?;
+
+    let rs_timestamp = arthur.hint()?;
+
+    let mut rs_timestamp_statement = Statement::<FieldElement>::new(next_power_of_two(
+        spark_proof.matrix_dimensions.a_nonzero_terms,
+    ));
+    rs_timestamp_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+        rs_timestamp,
+    );
+
+    let rs_timestamp_verifier = Verifier::new(&spark_proof.whir_params.a);
+    rs_timestamp_verifier
+        .verify(&mut arthur, &read_ts_commitment, &rs_timestamp_statement)
+        .context("while verifying WHIR")?;
+
+    let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
+    let ws_opening =
+        rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
+
+    let evaluated_value =
+        rs_opening * (FieldElement::one() - last_randomness[0]) + ws_opening * last_randomness[0];
+
+    ensure!(evaluated_value == gpa_result.last_sumcheck_value);
+
+    ensure!(claimed_init * claimed_ws == claimed_final * claimed_rs);
 
     Ok(())
 }

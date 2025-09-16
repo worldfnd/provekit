@@ -1,5 +1,6 @@
 use {
     provekit_common::{
+        skyscraper::SkyscraperSponge,
         utils::{
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
@@ -7,7 +8,7 @@ use {
             },
             HALF,
         },
-        FieldElement, skyscraper::SkyscraperSponge,
+        FieldElement,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},

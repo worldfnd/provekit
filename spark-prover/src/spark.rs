@@ -8,11 +8,12 @@ use {
     anyhow::Result,
     itertools::izip,
     provekit_common::{
+        skyscraper::SkyscraperSponge,
         utils::{
             sumcheck::{eval_cubic_poly, sumcheck_fold_map_reduce},
             HALF,
         },
-        FieldElement, skyscraper::SkyscraperSponge,
+        FieldElement,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -39,10 +40,17 @@ pub fn prove_spark_for_single_matrix(
     let e_rx_witness = commit_to_vector(&committer_a, merlin, e_values.e_rx.clone());
     let e_ry_witness = commit_to_vector(&committer_a, merlin, e_values.e_ry.clone());
 
-    let final_row_witness =
+    let final_row_ts_witness =
         commit_to_vector(&committer_row, merlin, matrix.timestamps.final_row.clone());
+    let row_witness = commit_to_vector(&committer_a, merlin, matrix.coo.row.clone());
+    let read_ts_witness =
+        commit_to_vector(&committer_a, merlin, matrix.timestamps.read_row.clone());
 
-    let mles = [matrix.coo.val.clone(), e_values.e_rx, e_values.e_ry];
+    let mles = [
+        matrix.coo.val.clone(),
+        e_values.e_rx.clone(),
+        e_values.e_ry.clone(),
+    ];
     let (sumcheck_final_folds, folding_randomness) =
         run_spark_sumcheck(merlin, mles, claimed_value)?;
 
@@ -51,7 +59,7 @@ pub fn prove_spark_for_single_matrix(
         MultilinearPoint(folding_randomness.clone()),
         sumcheck_final_folds[0],
         whir_configs.a.clone(),
-        val_witness,
+        val_witness.clone(),
     )?;
 
     produce_whir_proof(
@@ -59,7 +67,7 @@ pub fn prove_spark_for_single_matrix(
         MultilinearPoint(folding_randomness.clone()),
         sumcheck_final_folds[1],
         whir_configs.b.clone(),
-        e_rx_witness,
+        e_rx_witness.clone(),
     )?;
 
     produce_whir_proof(
@@ -100,7 +108,7 @@ pub fn prove_spark_for_single_matrix(
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
-    
+
     // TODO: Can I avoid evaluating here?
     let final_row_eval = EvaluationsList::new(matrix.timestamps.final_row.clone())
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
@@ -111,7 +119,67 @@ pub fn prove_spark_for_single_matrix(
         MultilinearPoint(evaluation_randomness.to_vec()),
         final_row_eval,
         whir_configs.row.clone(),
-        final_row_witness,
+        final_row_ts_witness,
+    )?;
+
+    let rs_address = matrix.coo.row.clone();
+    let rs_value = e_values.e_rx.clone();
+    let rs_timestamp = matrix.timestamps.read_row.clone();
+
+    let rs_vec: Vec<FieldElement> =
+        izip!(rs_address.clone(), rs_value.clone(), rs_timestamp.clone())
+            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+            .collect();
+
+    let ws_address = matrix.coo.row.clone();
+    let ws_value = e_values.e_rx.clone();
+    let ws_timestamp: Vec<FieldElement> = matrix
+        .timestamps
+        .read_row
+        .into_iter()
+        .map(|a| a + FieldElement::from(1))
+        .collect();
+
+    let ws_vec: Vec<FieldElement> =
+        izip!(ws_address.clone(), ws_value.clone(), ws_timestamp.clone())
+            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+            .collect();
+
+    let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
+
+    let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+
+    let rs_address_eval = EvaluationsList::new(rs_address)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_address_eval)?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        rs_address_eval,
+        whir_configs.a.clone(),
+        row_witness.clone(),
+    )?;
+
+    let rs_value_eval = EvaluationsList::new(rs_value)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_value_eval)?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        rs_value_eval,
+        whir_configs.a.clone(),
+        e_rx_witness.clone(),
+    )?;
+
+    let rs_timestamp_eval = EvaluationsList::new(rs_timestamp)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_timestamp_eval)?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        rs_timestamp_eval,
+        whir_configs.a.clone(),
+        read_ts_witness.clone(),
     )?;
 
     Ok(())
