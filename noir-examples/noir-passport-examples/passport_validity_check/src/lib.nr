@@ -5,32 +5,54 @@ use data_check_tbs_pubkey::verify_rsa_pubkey_in_tbs;
 use sig_check_rsa::verify_signature;
 use utils::check_zero_padding;
 
+// CONSTANTS
+global SIGNED_ATTRIBUTES_MAX_SIZE: u32 = 200;
+global DSC_CERT_MAX_SIZE: u32 = 1500;
+global DSC_SIGNATURE_SIZE: u32 = 256;
+global CSC_PUBKEY_SIZE: u32 = 512;
+
 /// Contains everything necessarily for checking the validity of a passport's
 /// contents against its own SOD, SOD certificate, and DSC certificate against
 /// an externally supplied CSC and an externally supplied DG{k} (e.g. DG1).
+/// Holds all data needed to check SOD -> DSC -> CSC validity.
 pub struct PassportValidityContents {
-
-    pub signed_attributes: [u8; 200],
+    /// Signed Attributes block from SOD.
+    pub signed_attributes: [u8; SIGNED_ATTRIBUTES_MAX_SIZE],
+    /// Length of Signed Attributes.
     pub signed_attributes_size: u64,
+    /// DSC signature over Signed Attributes.
+    pub dsc_signature: [u8; DSC_SIGNATURE_SIZE],
 
-    pub dsc_signature: [u8; 256],
+    /// DSC public exponent (usually 65537).
     pub dsc_rsa_exponent: u32,
+    /// DSC public key modulus (2048-bit).
+    pub dsc_pubkey: [u8; DSC_SIGNATURE_SIZE],
+    /// Barrett reduction param for DSC.
+    pub dsc_barrett_mu: [u8; DSC_SIGNATURE_SIZE + 1],
 
-    pub dsc_pubkey: [u8; 256],
-    pub dsc_barrett_mu: [u8; 257],
-
+    /// Offset of DSC pubkey inside DSC cert.
     pub dsc_pubkey_offset_in_dsc_cert: u32,
-    pub dsc_cert: [u8; 1500],
+    /// Raw DSC certificate bytes.
+    pub dsc_cert: [u8; DSC_CERT_MAX_SIZE],
+    /// Length of DSC certificate.
     pub dsc_cert_len: u32,
 
-    pub csc_pubkey: [u8; 512],
-    pub csc_barrett_mu: [u8; 513],
-    pub dsc_cert_signature: [u8; 512],
+    /// CSC public key modulus (4096-bit).
+    pub csc_pubkey: [u8; CSC_PUBKEY_SIZE],
+    /// Barrett reduction param for CSC.
+    pub csc_barrett_mu: [u8; CSC_PUBKEY_SIZE + 1],
+    /// CSC signature over DSC cert.
+    pub dsc_cert_signature: [u8; CSC_PUBKEY_SIZE],
+    /// CSC public exponent.
     pub csc_rsa_exponent: u32,
 
-    pub econtent: [u8; 200],
+    /// eContent from SOD (hashes of DGs).
+    pub econtent: [u8; SIGNED_ATTRIBUTES_MAX_SIZE],
+    /// Length of eContent.
     pub econtent_len: u32,
+    /// Offset of DG1 hash in eContent.
     pub dg1_hash_offset: u32,
+    /// Offset of eContent hash in Signed Attributes.
     pub econtent_hash_offset: u32,
 }
 
@@ -90,7 +112,7 @@ pub fn check_integrity_of_sod_within_sod_cert(
     econtent_len: u32,
     econtent_hash_offset: u32,
 ) {
-    // check zero padding for signed_attributes
+    // Check zero padding for signed_attributes
     check_zero_padding(signed_attributes, signed_attributes_size);
 
     // Clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff"
