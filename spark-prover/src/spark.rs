@@ -5,7 +5,7 @@ use {
         utilities::matrix::SparkMatrix,
         whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs},
     },
-    anyhow::Result,
+    anyhow::{ensure, Result},
     itertools::izip,
     provekit_common::{
         skyscraper::SkyscraperSponge,
@@ -21,7 +21,7 @@ use {
     },
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
-        whir::{committer::CommitmentWriter, utils::HintSerialize},
+        whir::{committer::CommitmentWriter, prover::Prover, statement::{Statement, Weights}, utils::HintSerialize},
     },
 };
 
@@ -35,16 +35,18 @@ pub fn prove_spark_for_single_matrix(
 ) -> Result<()> {
     let committer_a = CommitmentWriter::new(whir_configs.a.clone());
     let committer_row = CommitmentWriter::new(whir_configs.row.clone());
+    let a_spark_sumcheck_committer = CommitmentWriter::new(whir_configs.a_spark_sumcheck.clone());
 
-    let val_witness = commit_to_vector(&committer_a, merlin, matrix.coo.val.clone());
-    let e_rx_witness = commit_to_vector(&committer_a, merlin, e_values.e_rx.clone());
-    let e_ry_witness = commit_to_vector(&committer_a, merlin, e_values.e_ry.clone());
+    let val_coeff = EvaluationsList::new(matrix.coo.val.clone()).to_coeffs();
+    let e_rx_coeff = EvaluationsList::new(e_values.e_rx.clone()).to_coeffs();
+    let e_ry_coeff = EvaluationsList::new(e_values.e_ry.clone()).to_coeffs();
 
-    let final_row_ts_witness =
-        commit_to_vector(&committer_row, merlin, matrix.timestamps.final_row.clone());
+    // let spark_sumcheck_witness = a_spark_sumcheck_committer.commit_batch(merlin, &[val_coeff, e_rx_coeff, e_ry_coeff])?;
+    let spark_sumcheck_witness = a_spark_sumcheck_committer.commit_batch(merlin, &[val_coeff, e_rx_coeff]).expect("Failed to commit");
+
+    let final_row_ts_witness = commit_to_vector(&committer_row, merlin, matrix.timestamps.final_row.clone());
     let row_witness = commit_to_vector(&committer_a, merlin, matrix.coo.row.clone());
-    let read_ts_witness =
-        commit_to_vector(&committer_a, merlin, matrix.timestamps.read_row.clone());
+    let read_ts_witness = commit_to_vector(&committer_a, merlin, matrix.timestamps.read_row.clone());
 
     let mles = [
         matrix.coo.val.clone(),
@@ -54,133 +56,130 @@ pub fn prove_spark_for_single_matrix(
     let (sumcheck_final_folds, folding_randomness) =
         run_spark_sumcheck(merlin, mles, claimed_value)?;
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(folding_randomness.clone()),
-        sumcheck_final_folds[0],
-        whir_configs.a.clone(),
-        val_witness.clone(),
-    )?;
+    let mut spark_sumcheck_statement = Statement::<FieldElement>::new(folding_randomness.len());
+    // let claimed_batched_value = 
+    //     sumcheck_final_folds[0] + 
+    //     sumcheck_final_folds[1] * spark_sumcheck_witness.batching_randomness + 
+    //     sumcheck_final_folds[2] * spark_sumcheck_witness.batching_randomness * spark_sumcheck_witness.batching_randomness;
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(folding_randomness.clone()),
-        sumcheck_final_folds[1],
-        whir_configs.b.clone(),
-        e_rx_witness.clone(),
-    )?;
+    let claimed_batched_value = 
+        sumcheck_final_folds[0] + 
+        sumcheck_final_folds[1] * spark_sumcheck_witness.batching_randomness;
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(folding_randomness.clone()),
-        sumcheck_final_folds[2],
-        whir_configs.c.clone(),
-        e_ry_witness,
-    )?;
+    let actual_val = spark_sumcheck_witness.batched_poly().evaluate(&MultilinearPoint(folding_randomness.clone()));
+    ensure!(actual_val == claimed_batched_value);
+    println!("{:?}", actual_val);
+    println!("{:?}", claimed_batched_value);
 
-    // Rowwise
+    spark_sumcheck_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
+    
+    let prover = Prover(whir_configs.a_spark_sumcheck.clone());
+    prover.prove(merlin, spark_sumcheck_statement, spark_sumcheck_witness)?;
 
-    let mut tau_and_gamma = [FieldElement::from(0); 2];
-    merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
-    let tau = tau_and_gamma[0];
-    let gamma = tau_and_gamma[1];
+    // // Rowwise
 
-    let init_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
-        .map(FieldElement::from)
-        .collect();
-    let init_value = memory.eq_rx.clone();
-    let init_timestamp = vec![FieldElement::from(0); memory.eq_rx.len()];
+    // let mut tau_and_gamma = [FieldElement::from(0); 2];
+    // merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
+    // let tau = tau_and_gamma[0];
+    // let gamma = tau_and_gamma[1];
 
-    let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
-        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-        .collect();
+    // let init_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
+    //     .map(FieldElement::from)
+    //     .collect();
+    // let init_value = memory.eq_rx.clone();
+    // let init_timestamp = vec![FieldElement::from(0); memory.eq_rx.len()];
 
-    let final_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
-        .map(FieldElement::from)
-        .collect();
-    let final_value = memory.eq_rx.clone();
-    let final_timestamp = matrix.timestamps.final_row.clone();
+    // let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
+    //     .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+    //     .collect();
 
-    let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
-        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-        .collect();
+    // let final_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
+    //     .map(FieldElement::from)
+    //     .collect();
+    // let final_value = memory.eq_rx.clone();
+    // let final_timestamp = matrix.timestamps.final_row.clone();
 
-    let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
+    // let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
+    //     .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+    //     .collect();
 
-    let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+    // let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
-    // TODO: Can I avoid evaluating here?
-    let final_row_eval = EvaluationsList::new(matrix.timestamps.final_row.clone())
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    merlin.hint(&final_row_eval)?;
+    // let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        final_row_eval,
-        whir_configs.row.clone(),
-        final_row_ts_witness,
-    )?;
+    // // TODO: Can I avoid evaluating here?
+    // let final_row_eval = EvaluationsList::new(matrix.timestamps.final_row.clone())
+    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    // merlin.hint(&final_row_eval)?;
 
-    let rs_address = matrix.coo.row.clone();
-    let rs_value = e_values.e_rx.clone();
-    let rs_timestamp = matrix.timestamps.read_row.clone();
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(evaluation_randomness.to_vec()),
+    //     final_row_eval,
+    //     whir_configs.row.clone(),
+    //     final_row_ts_witness,
+    // )?;
 
-    let rs_vec: Vec<FieldElement> =
-        izip!(rs_address.clone(), rs_value.clone(), rs_timestamp.clone())
-            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-            .collect();
+    // let rs_address = matrix.coo.row.clone();
+    // let rs_value = e_values.e_rx.clone();
+    // let rs_timestamp = matrix.timestamps.read_row.clone();
 
-    let ws_address = matrix.coo.row.clone();
-    let ws_value = e_values.e_rx.clone();
-    let ws_timestamp: Vec<FieldElement> = matrix
-        .timestamps
-        .read_row
-        .into_iter()
-        .map(|a| a + FieldElement::from(1))
-        .collect();
+    // let rs_vec: Vec<FieldElement> =
+    //     izip!(rs_address.clone(), rs_value.clone(), rs_timestamp.clone())
+    //         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+    //         .collect();
 
-    let ws_vec: Vec<FieldElement> =
-        izip!(ws_address.clone(), ws_value.clone(), ws_timestamp.clone())
-            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-            .collect();
+    // let ws_address = matrix.coo.row.clone();
+    // let ws_value = e_values.e_rx.clone();
+    // let ws_timestamp: Vec<FieldElement> = matrix
+    //     .timestamps
+    //     .read_row
+    //     .into_iter()
+    //     .map(|a| a + FieldElement::from(1))
+    //     .collect();
 
-    let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
+    // let ws_vec: Vec<FieldElement> =
+    //     izip!(ws_address.clone(), ws_value.clone(), ws_timestamp.clone())
+    //         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+    //         .collect();
 
-    let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+    // let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
 
-    let rs_address_eval = EvaluationsList::new(rs_address)
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    merlin.hint(&rs_address_eval)?;
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        rs_address_eval,
-        whir_configs.a.clone(),
-        row_witness.clone(),
-    )?;
+    // let (combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    let rs_value_eval = EvaluationsList::new(rs_value)
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    merlin.hint(&rs_value_eval)?;
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        rs_value_eval,
-        whir_configs.a.clone(),
-        e_rx_witness.clone(),
-    )?;
+    // let rs_address_eval = EvaluationsList::new(rs_address)
+    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    // merlin.hint(&rs_address_eval)?;
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(evaluation_randomness.to_vec()),
+    //     rs_address_eval,
+    //     whir_configs.a.clone(),
+    //     row_witness.clone(),
+    // )?;
 
-    let rs_timestamp_eval = EvaluationsList::new(rs_timestamp)
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    merlin.hint(&rs_timestamp_eval)?;
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        rs_timestamp_eval,
-        whir_configs.a.clone(),
-        read_ts_witness.clone(),
-    )?;
+    // let rs_value_eval = EvaluationsList::new(rs_value)
+    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    // merlin.hint(&rs_value_eval)?;
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(evaluation_randomness.to_vec()),
+    //     rs_value_eval,
+    //     whir_configs.a.clone(),
+    //     e_rx_witness.clone(),
+    // )?;
+
+    // let rs_timestamp_eval = EvaluationsList::new(rs_timestamp)
+    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    // merlin.hint(&rs_timestamp_eval)?;
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(evaluation_randomness.to_vec()),
+    //     rs_timestamp_eval,
+    //     whir_configs.a.clone(),
+    //     read_ts_witness.clone(),
+    // )?;
 
     Ok(())
 }
