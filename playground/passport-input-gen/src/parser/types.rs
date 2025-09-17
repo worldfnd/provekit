@@ -127,14 +127,6 @@ impl SignatureAlgorithmName {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct DataGroupInfo {
-    pub group_number: u32,
-    pub name:         String,
-    pub hash:         Vec<u8>,
-    pub value:        Vec<u8>,
-}
-
 /// DataGroupNumber ::= INTEGER (1..16)
 pub type DataGroupNumber = Integer;
 
@@ -188,4 +180,38 @@ pub enum PassportError {
     NoUsaCsca,
     #[error("CSCA signature verification failed")]
     CscaSignatureInvalid,
+    #[error("DSC Public key invalid")]
+    DscPublicKeyInvalid,
+    #[error("CSCA Public key invalid")]
+    CscaPublicKeyInvalid,
+    #[error("Data too large for buffer: {0}")]
+    BufferOverflow(String),
+    #[error("RSA exponent too large")]
+    RsaExponentTooLarge,
+    #[error("Required data not found: {0}")]
+    DataNotFound(String),
+    #[error("Unsupported signature algorithm: {0}")]
+    UnsupportedSignatureAlgorithm(String),
+    #[error("CMS parsing failed: {0}")]
+    CmsParsingFailed(String),
+    #[error("X.509 certificate parsing failed: {0}")]
+    X509ParsingFailed(String),
+    #[error("ASN.1 decoding failed: {0}")]
+    Asn1DecodingFailed(String),
+    #[error("Base64 decoding failed: {0}")]
+    Base64DecodingFailed(String),
+    #[error("Missing required field: {0}")]
+    MissingRequiredField(String),
+    #[error("Invalid certificate type")]
+    InvalidCertificateType,
+    #[error("Missing DG1 hash in eContent")]
+    MissingDg1Hash,
+    #[error("Missing CSCA public key for mock data")]
+    MissingCscaMockKey,
+    #[error("Failed to load CSCA public keys")]
+    FailedToLoadCscaKeys,
+    #[error("Invalid date: {0}")]
+    InvalidDate(String),
+    #[error("Unsupported digest algorithm: {0}")]
+    UnsupportedDigestAlgorithm(String),
 }

@@ -20,3 +20,5 @@ toml = "0.8"
 noir-bignum-paramgen = "0.1.5"
 thiserror = "2.0.16"
 signature = "2.2"
+lazy_static = "1.5.0"
+

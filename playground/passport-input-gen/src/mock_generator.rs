@@ -33,7 +33,6 @@ pub fn dg1_bytes_with_birthdate_expiry_date(birthdate: &[u8; 6], expiry: &[u8; 6
 }
 
 /// Generate a synthetic SOD structure for the given DG1 and key pairs.
-#[allow(clippy::too_many_arguments)]
 pub fn generate_fake_sod(
     dg1: &[u8],
     dsc_priv: &RsaPrivateKey,
@@ -102,8 +101,16 @@ pub fn generate_fake_sod(
                 parameters: None,
             },
             issuer:                  "CSCA".to_string(),
-            validity_not_before:     "".to_string(),
-            validity_not_after:      "".to_string(),
+            validity_not_before:     chrono::Utc::now()
+                - chrono::Duration::from_std(std::time::Duration::from_secs(
+                    5 * 365 * 24 * 60 * 60,
+                ))
+                .expect("valid duration before 5 years"), // before 5 year date
+            validity_not_after:      chrono::Utc::now()
+                + chrono::Duration::from_std(std::time::Duration::from_secs(
+                    5 * 365 * 24 * 60 * 60,
+                ))
+                .expect("valid duration after 5 years"), // after 5 years
             subject:                 "DSC".to_string(),
             subject_public_key_info: SubjectPublicKeyInfo {
                 signature_algorithm: SignatureAlgorithm {
@@ -143,7 +150,7 @@ mod tests {
             PassportReader,
         },
         base64::{engine::general_purpose::STANDARD, Engine as _},
-        chrono::{Date, Utc},
+        chrono::Utc,
         rsa::pkcs8::DecodePrivateKey,
     };
 
@@ -181,7 +188,9 @@ mod tests {
         let current_date = Utc::now();
         let current_timestamp = current_date.timestamp() as u64;
 
-        let inputs = reader.to_circuit_inputs(current_timestamp, 18, 70, 0);
+        let inputs = reader
+            .to_circuit_inputs(current_timestamp, 18, 70, 0)
+            .expect("to circuit inputs");
         let _toml_output = inputs.to_toml_string();
 
         println!("{}", _toml_output);

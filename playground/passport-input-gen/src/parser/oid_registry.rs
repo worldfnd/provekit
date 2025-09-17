@@ -1,5 +1,8 @@
-use {crate::parser::utils::OidEntry, std::collections::HashMap};
+use {crate::parser::utils::OidEntry, lazy_static::lazy_static, std::collections::HashMap};
 
+lazy_static! {
+    pub static ref REGISTRY: HashMap<&'static str, OidEntry> = load_oids();
+}
 /// Returns a lookup table for the Object Identifiers that are relevant to the
 /// passport input generator.
 ///
@@ -20,7 +23,7 @@ use {crate::parser::utils::OidEntry, std::collections::HashMap};
 ///
 /// Keeping the list focused makes it clear which identifiers we rely on and
 /// avoids carrying around a huge hard-coded list that is difficult to audit.
-pub fn load_oids() -> HashMap<&'static str, OidEntry> {
+fn load_oids() -> HashMap<&'static str, OidEntry> {
     HashMap::from([
         // PKCS#9 signed attributes used in CMS / SOD structures
         ("1.2.840.113549.1.9.3", OidEntry {

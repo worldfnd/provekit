@@ -1,6 +1,6 @@
-pub mod binary;
-pub mod dsc;
+pub(crate) mod binary;
+pub(crate) mod dsc;
 mod oid_registry;
-pub mod sod;
-pub mod types;
-pub mod utils;
+pub(crate) mod sod;
+pub(crate) mod types;
+pub(crate) mod utils;

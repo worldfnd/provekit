@@ -37,8 +37,8 @@ impl Binary {
         String::from_utf8_lossy(&self.data).to_string()
     }
 
-    pub fn to_number_array(&self) -> Vec<u8> {
-        self.data.clone()
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.data
     }
 
     pub fn to_hex(&self) -> String {

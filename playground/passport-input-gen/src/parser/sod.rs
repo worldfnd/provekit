@@ -2,11 +2,11 @@ use {
     crate::parser::{
         binary::Binary,
         dsc::DSC,
-        oid_registry::load_oids,
+        oid_registry::REGISTRY,
         types::{
             DataGroupHashValues, DigestAlgorithm, EContent, EncapContentInfo,
-            IssuerAndSerialNumber, LDSSecurityObject, SignatureAlgorithm, SignatureAlgorithmName,
-            SignedAttrs, SignerIdentifier, SignerInfo,
+            IssuerAndSerialNumber, LDSSecurityObject, PassportError, SignatureAlgorithm,
+            SignatureAlgorithmName, SignedAttrs, SignerIdentifier, SignerInfo,
         },
         utils::{
             get_hash_algo_name, get_oid_name, oid_to_string, strip_length_prefix, version_from,
@@ -33,75 +33,99 @@ impl SOD {
     fn parse_signed_attrs(
         signer_info_raw: &rasn_cms::SignerInfo,
         registry: &HashMap<&'static str, OidEntry>,
-    ) -> SignedAttrs {
+    ) -> Result<SignedAttrs, PassportError> {
         let mut signed_attr_map: HashMap<String, Binary> = HashMap::new();
-        let mut reconstructed_signed_attrs: Vec<Attribute> = vec![];
+        let mut reconstructed_signed_attrs: Vec<Attribute> = Vec::new();
 
-        for attr in signer_info_raw.signed_attrs.clone().unwrap_or_default() {
+        let attrs =
+            signer_info_raw
+                .signed_attrs
+                .as_ref()
+                .ok_or(PassportError::MissingRequiredField(
+                    "signedAttrs".to_string(),
+                ))?;
+
+        for attr in attrs {
             let oid_str = oid_to_string(&attr.r#type);
             let name = get_oid_name(&oid_str, registry);
             let val = attr
                 .values
                 .first()
-                .expect("No value in Attribute")
+                .ok_or(PassportError::DataNotFound(format!(
+                    "No value in attribute with OID: {}",
+                    oid_str
+                )))?
                 .as_bytes();
             signed_attr_map.insert(name, Binary::from_slice(val));
-            reconstructed_signed_attrs.push(attr);
+            reconstructed_signed_attrs.push(attr.clone());
         }
 
         let signed_attrs_set = BTreeSet::from_iter(reconstructed_signed_attrs);
-        let reconstructed_block =
-            der::encode(&signed_attrs_set).expect("Failed to encode reconstructed signedAttrs");
+        let reconstructed_block = der::encode(&signed_attrs_set)
+            .map_err(|e| PassportError::Asn1DecodingFailed(e.to_string()))?;
 
         let message_digest = signed_attr_map
             .get("messageDigest")
-            .expect("No messageDigest found")
+            .ok_or(PassportError::MissingRequiredField(
+                "messageDigest".to_string(),
+            ))?
             .clone();
 
-        let signing_time = signed_attr_map.get("signingTime").map(|time_attr| {
-            der::decode::<rasn::types::UtcTime>(&time_attr.data)
-                .expect("Failed to decode signingTime")
-        });
+        let signing_time = signed_attr_map
+            .get("signingTime")
+            .map(|time_attr| {
+                der::decode::<rasn::types::UtcTime>(&time_attr.data)
+                    .map_err(|e| PassportError::Asn1DecodingFailed(e.to_string()))
+            })
+            .transpose()?;
 
-        let content_type_bytes = signed_attr_map
-            .get("contentType")
-            .expect("No ContentType found in the map");
+        let content_type_bytes =
+            signed_attr_map
+                .get("contentType")
+                .ok_or(PassportError::MissingRequiredField(
+                    "contentType".to_string(),
+                ))?;
 
-        let content_type_oid: rasn::types::ObjectIdentifier =
-            der::decode(&content_type_bytes.data).expect("Failed to decode contentType OID");
+        let content_type_oid: rasn::types::ObjectIdentifier = der::decode(&content_type_bytes.data)
+            .map_err(|e| PassportError::Asn1DecodingFailed(e.to_string()))?;
         let oid_string = oid_to_string(&content_type_oid);
 
-        SignedAttrs {
+        Ok(SignedAttrs {
             bytes: Binary::from_slice(&reconstructed_block),
             content_type: get_oid_name(&oid_string, registry),
             message_digest,
             signing_time,
-        }
+        })
     }
 
     /// Extracts and parses the DSC (Document Signer Certificate) from a
     /// `SignedData` structure.
-    fn parse_certificate(signed_data: &SignedData) -> DSC {
-        let certificates = signed_data
-            .certificates
-            .as_ref()
-            .expect("No certificates field in SOD");
+    fn parse_certificate(signed_data: &SignedData) -> Result<DSC, PassportError> {
+        let certificates =
+            signed_data
+                .certificates
+                .as_ref()
+                .ok_or(PassportError::MissingRequiredField(
+                    "certificates".to_string(),
+                ))?;
         if certificates.is_empty() {
-            panic!("No DSC certificate found in SOD");
-        }
-        if certificates.len() > 1 {
-            eprintln!("Warning: Found multiple DSC certificates");
+            return Err(PassportError::MissingRequiredField(
+                "DSC certificate".to_string(),
+            ));
         }
 
         let dsc = certificates
             .first()
-            .expect("Failed to extract X.509 Certificate");
+            .ok_or(PassportError::X509ParsingFailed(
+                "Failed to extract X.509 Certificate".to_string(),
+            ))?;
 
         let dsc_cert = match dsc {
             rasn_cms::CertificateChoices::Certificate(c) => c,
-            _ => panic!("Unsupported certificate type"),
+            _ => return Err(PassportError::InvalidCertificateType),
         };
-        let dsc_der = der::encode(&**dsc_cert).expect("Failed to encode DSC certificate");
+        let dsc_der = der::encode(&**dsc_cert)
+            .map_err(|e| PassportError::X509ParsingFailed(e.to_string()))?;
         let dsc_binary = Binary::from_slice(&dsc_der);
         DSC::from_der(&dsc_binary)
     }
@@ -111,25 +135,29 @@ impl SOD {
     fn parse_encap_content_info(
         signed_data: &SignedData,
         registry: &HashMap<&'static str, OidEntry>,
-    ) -> EncapContentInfo {
+    ) -> Result<EncapContentInfo, PassportError> {
         let econtent_bytes = signed_data
             .encap_content_info
             .content
             .as_ref()
-            .expect("No eContent found");
+            .ok_or(PassportError::MissingRequiredField("eContent".to_string()))?;
 
-        let econtent: LDSSecurityObject =
-            der::decode(econtent_bytes).expect("Failed to decode LDS Security Object");
+        let econtent: LDSSecurityObject = der::decode(econtent_bytes)
+            .map_err(|e| PassportError::Asn1DecodingFailed(e.to_string()))?;
 
         let content_type = &signed_data.encap_content_info.content_type;
         let econtent_oid = get_oid_name(&oid_to_string(content_type), registry);
-        let econtent_vec = signed_data.encap_content_info.content.clone().unwrap();
+        let econtent_vec = signed_data.encap_content_info.content.clone().ok_or(
+            PassportError::MissingRequiredField("eContent data".to_string()),
+        )?;
         let econtent_binary = Binary::from_slice(&econtent_vec);
         let hash_algorithm_oid = oid_to_string(&econtent.hash_algorithm.algorithm);
         let hash_algorithm_name = get_hash_algo_name(&hash_algorithm_oid, registry);
 
-        let hash_algorithm = DigestAlgorithm::from_name(&hash_algorithm_name)
-            .expect("Unsupported hash algorithm in eContent");
+        let hash_algorithm = DigestAlgorithm::from_name(&hash_algorithm_name).ok_or(
+            PassportError::UnsupportedDigestAlgorithm(hash_algorithm_name),
+        )?;
+
         let mut data_group_hash_values_map = DataGroupHashValues {
             values: HashMap::new(),
         };
@@ -145,7 +173,7 @@ impl SOD {
                 .insert(dg_number, hash_value);
         }
 
-        EncapContentInfo {
+        Ok(EncapContentInfo {
             e_content_type: econtent_oid,
             e_content:      EContent {
                 version: version_from(&econtent.version),
@@ -153,27 +181,27 @@ impl SOD {
                 data_group_hash_values: data_group_hash_values_map,
                 bytes: econtent_binary,
             },
-        }
+        })
     }
 
     /// Parses a `SignerInfo` structure into a custom `SignerInfo` model.
     fn parse_signer_info(
         signer_info_raw: &rasn_cms::SignerInfo,
         registry: &HashMap<&'static str, OidEntry>,
-    ) -> SignerInfo {
-        let signed_attrs = Self::parse_signed_attrs(signer_info_raw, registry);
+    ) -> Result<SignerInfo, PassportError> {
+        let signed_attrs = Self::parse_signed_attrs(signer_info_raw, registry)?;
         let signer_version = version_from(&signer_info_raw.version);
 
-        let signed_digest_algorithm_oid = DigestAlgorithm::from_name(&get_oid_name(
-            &oid_to_string(&signer_info_raw.digest_algorithm.algorithm),
-            registry,
-        ))
-        .expect("Unsupported digest algorithm");
+        let digest_oid_str = oid_to_string(&signer_info_raw.digest_algorithm.algorithm);
+        let digest_name = get_oid_name(&digest_oid_str, registry);
+        let signed_digest_algorithm_oid = DigestAlgorithm::from_name(&digest_name)
+            .ok_or(PassportError::UnsupportedDigestAlgorithm(digest_name))?;
 
-        let signature_algorithm_name =
-            oid_to_string(&signer_info_raw.signature_algorithm.algorithm);
-        let signature_algorithm = SignatureAlgorithmName::from_oid(&signature_algorithm_name)
-            .expect("Unsupported signature algorithm");
+        let signature_algorithm_oid = oid_to_string(&signer_info_raw.signature_algorithm.algorithm);
+        let signature_algorithm = SignatureAlgorithmName::from_oid(&signature_algorithm_oid)
+            .ok_or(PassportError::UnsupportedSignatureAlgorithm(
+                signature_algorithm_oid,
+            ))?;
 
         let signature_parameters = signer_info_raw
             .signature_algorithm
@@ -183,18 +211,19 @@ impl SOD {
 
         let signature = Binary::from_slice(&signer_info_raw.signature);
         let signer_identifier = Self::parse_signer_identifier(signer_info_raw.sid.clone());
-        SignerInfo {
+        let signing_time = signed_attrs.signing_time.and_then(|ut| {
+            let time_str = ut.to_string();
+            chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", time_str))
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        });
+        Ok(SignerInfo {
             version: signer_version,
             signed_attrs: SignedAttrs {
-                content_type:   signed_attrs.content_type,
+                content_type: signed_attrs.content_type,
                 message_digest: signed_attrs.message_digest,
-                signing_time:   signed_attrs.signing_time.map(|ut| {
-                    let time_str = ut.to_string();
-                    chrono::DateTime::parse_from_rfc3339(&format!("{}T00:00:00Z", time_str))
-                        .unwrap_or_else(|_| chrono::Utc::now().into())
-                        .with_timezone(&chrono::Utc)
-                }),
-                bytes:          signed_attrs.bytes,
+                signing_time,
+                bytes: signed_attrs.bytes,
             },
             digest_algorithm: signed_digest_algorithm_oid,
             signature_algorithm: SignatureAlgorithm {
@@ -203,7 +232,7 @@ impl SOD {
             },
             signature,
             sid: signer_identifier,
-        }
+        })
     }
 
     /// Parses the signer identifier (SID) from the `SignerInfo`.
@@ -252,55 +281,53 @@ impl SOD {
 
     /// Entry point: parses a full SOD (Security Object Document) from raw DER
     /// bytes.
-    pub fn from_der(binary: &mut Binary) -> SOD {
+    pub fn from_der(binary: &mut Binary) -> Result<SOD, PassportError> {
         *binary = strip_length_prefix(binary);
-        let hex_der = hex::decode(binary.to_hex().trim_start_matches("0x")).unwrap();
-        let content_info: ContentInfo = der::decode(&hex_der).expect("CMS decode failed");
-        let signed_data: SignedData =
-            der::decode(content_info.content.as_bytes()).expect("SignedData decode failed");
+        let content_info: ContentInfo = der::decode(&binary.data)
+            .map_err(|e| PassportError::CmsParsingFailed(e.to_string()))?;
+        let signed_data: SignedData = der::decode(content_info.content.as_bytes())
+            .map_err(|e| PassportError::CmsParsingFailed(e.to_string()))?;
+
         if signed_data.signer_infos.is_empty() {
-            panic!("No SignerInfos found");
+            return Err(PassportError::DataNotFound(
+                "No SignerInfos found".to_string(),
+            ));
         }
-        if signed_data.signer_infos.len() > 1 {
-            eprintln!("Warning: Found multiple SignerInfos");
-        }
+
         let signer_info_raw = signed_data
             .signer_infos
             .first()
-            .expect("No SignerInfo found")
+            .ok_or(PassportError::DataNotFound(
+                "No SignerInfo found".to_string(),
+            ))?
             .clone();
-        if signer_info_raw.signed_attrs.is_none() {
-            panic!("No signedAttrs found in SignerInfo");
-        }
-        let registry = load_oids();
+
         let digest_algorithms: Vec<DigestAlgorithm> = signed_data
             .digest_algorithms
             .iter()
             .filter_map(|alg| {
                 let oid_str = oid_to_string(&alg.algorithm);
-                let name = get_hash_algo_name(&oid_str, &registry);
-                if let Some(digest_alg) = DigestAlgorithm::from_name(&name) {
-                    Some(digest_alg)
-                } else {
-                    eprintln!("Unknown digest algorithm: {}", name);
-                    None
-                }
+                let name = get_hash_algo_name(&oid_str, &REGISTRY);
+                DigestAlgorithm::from_name(&name)
             })
             .collect();
-        let certificate = Self::parse_certificate(&signed_data);
-        let encap_content_info = Self::parse_encap_content_info(&signed_data, &registry);
-        let signer_info = Self::parse_signer_info(&signer_info_raw, &registry);
+
+        let certificate = Self::parse_certificate(&signed_data)?;
+        let encap_content_info = Self::parse_encap_content_info(&signed_data, &REGISTRY)?;
+        let signer_info = Self::parse_signer_info(&signer_info_raw, &REGISTRY)?;
         let sod_version = version_from(&signed_data.version);
-        SOD {
+
+        Ok(SOD {
             version: sod_version,
             digest_algorithms,
             encap_content_info,
             signer_info,
             certificate,
             bytes: binary.clone(),
-        }
+        })
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,7 +336,7 @@ mod tests {
 
     fn parse_sod() -> SOD {
         let mut sod_bytes = Binary::from_base64(FIXTURE_EF_SOD).unwrap();
-        SOD::from_der(&mut sod_bytes)
+        SOD::from_der(&mut sod_bytes).unwrap()
     }
 
     #[test]
@@ -360,8 +387,16 @@ mod tests {
         let sod = parse_sod();
         let cert = &sod.certificate;
         let tbs = &cert.tbs;
-        assert_eq!(tbs.validity_not_before, "Dec 16 21:43:18 2013 +00:00");
-        assert_eq!(tbs.validity_not_after, "Dec 11 21:43:18 2014 +00:00");
+
+        let expected_not_before = chrono::DateTime::parse_from_rfc3339("2013-12-16T21:43:18+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let expected_not_after = chrono::DateTime::parse_from_rfc3339("2014-12-11T21:43:18+00:00")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+
+        assert_eq!(tbs.validity_not_before, expected_not_before);
+        assert_eq!(tbs.validity_not_after, expected_not_after);
         assert_eq!(
             tbs.issuer,
             "countryName=DE, organizationName=HJP Consulting, organizationalUnitName=Country \

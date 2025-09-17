@@ -1,10 +1,10 @@
 use {
-    crate::parser::binary::Binary,
+    crate::parser::{binary::Binary, types::PassportError},
     serde::Deserialize,
-    std::{cell::RefCell, collections::HashMap, fs},
+    std::{collections::HashMap, fs},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OidEntry {
     pub d: &'static str,
     pub c: &'static str,
@@ -46,61 +46,65 @@ pub fn version_from(value: &rasn::types::Integer) -> u32 {
     value.to_u32_digits().1.first().copied().unwrap_or(0)
 }
 
-pub fn fit<const N: usize>(data: &[u8]) -> [u8; N] {
+pub fn fit<const N: usize>(data: &[u8]) -> Result<[u8; N], PassportError> {
+    if data.len() > N {
+        return Err(PassportError::BufferOverflow(format!(
+            "data size {} exceeds buffer size {}",
+            data.len(),
+            N
+        )));
+    }
     let mut buf = [0u8; N];
-    let len = data.len().min(N);
-    buf[..len].copy_from_slice(&data[..len]);
-    buf
+    buf[..data.len()].copy_from_slice(data);
+    Ok(buf)
 }
 
 #[derive(Deserialize)]
 pub struct CscaKey {
-    pub filename:   String,
-    pub public_key: String,
+    #[serde(rename = "filename")]
+    pub _filename:   String,
+    pub public_key:  String,
     // pub subject:    String,
     #[serde(rename = "notBefore")]
-    pub not_before: String,
+    pub _not_before: String,
     #[serde(rename = "notAfter")]
-    pub not_after:  String,
-    pub serial:     String,
+    pub _not_after:  String,
+    #[serde(rename = "serial")]
+    pub _serial:     String,
 }
 
-thread_local! {
-    static CSCA_JSON_PATH: RefCell<Option<String>> = RefCell::new(None);
-}
-
-pub fn set_csca_json_path(path: Option<String>) {
-    CSCA_JSON_PATH.with(|p| *p.borrow_mut() = path);
-}
+pub const ASN1_OCTET_STRING_TAG: u8 = 0x04;
+pub const ASN1_HEADER_LEN: usize = 2;
 
 pub fn load_csca_public_keys() -> Result<HashMap<String, Vec<CscaKey>>, Box<dyn std::error::Error>>
 {
-    let path = CSCA_JSON_PATH
-        .with(|p| p.borrow().clone())
-        .unwrap_or_else(|| "csca_registry/csca_public_key.json".to_string());
+    let path = "csca_registry/csca_public_key.json";
     let file_content = fs::read_to_string(path)?;
     let csca_keys: HashMap<String, Vec<CscaKey>> = serde_json::from_str(&file_content)?;
     Ok(csca_keys)
 }
 
-pub fn to_fixed_array<const N: usize>(bytes: Vec<u8>, label: &str) -> [u8; N] {
-    bytes
-        .try_into()
-        .unwrap_or_else(|_| panic!("{label} not {N} bytes"))
+pub fn to_fixed_array<const N: usize>(bytes: &[u8], label: &str) -> Result<[u8; N], PassportError> {
+    bytes.try_into().map_err(|_| {
+        PassportError::BufferOverflow(format!(
+            "{label} must be exactly {N} bytes, got {}",
+            bytes.len()
+        ))
+    })
 }
 
-pub fn to_u32(bytes: Vec<u8>) -> u32 {
+pub fn to_u32(bytes: Vec<u8>) -> Result<u32, PassportError> {
     if bytes.len() > 4 {
-        panic!("RSA exponent too large");
+        return Err(PassportError::RsaExponentTooLarge);
     }
     let mut buf = [0u8; 4];
     buf[4 - bytes.len()..].copy_from_slice(&bytes);
-    u32::from_be_bytes(buf)
+    Ok(u32::from_be_bytes(buf))
 }
 
-pub fn find_offset(haystack: &[u8], needle: &[u8], label: &str) -> usize {
+pub fn find_offset(haystack: &[u8], needle: &[u8], label: &str) -> Result<usize, PassportError> {
     haystack
         .windows(needle.len())
         .position(|w| w == needle)
-        .unwrap_or_else(|| panic!("{label} not found"))
+        .ok_or_else(|| PassportError::DataNotFound(label.to_string()))
 }
