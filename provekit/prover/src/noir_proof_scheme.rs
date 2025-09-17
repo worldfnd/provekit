@@ -91,6 +91,7 @@ impl NoirProofSchemeProver for NoirProofScheme {
         Ok(NoirProof { whir_r1cs_proof })
     }
 
+    #[instrument(skip_all)]
     fn create_witness_io_pattern(&self) -> IOPattern {
         let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
@@ -107,6 +108,7 @@ impl NoirProofSchemeProver for NoirProofScheme {
             .add_logup_challenges(num_challenges)
     }
 
+    #[instrument(skip_all)]
     fn seed_witness_merlin(
         &self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,

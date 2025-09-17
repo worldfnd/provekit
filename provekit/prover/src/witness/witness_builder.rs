@@ -1,3 +1,4 @@
+use tracing::instrument;
 use {
     crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     acir::native_types::WitnessMap,
@@ -25,6 +26,8 @@ pub trait WitnessBuilderSolver {
 }
 
 impl WitnessBuilderSolver for WitnessBuilder {
+    // #[instrument(skip(acir_witness_idx_to_value_map, witness, transcript))]
+    #[instrument(skip_all, fields(self = %self))]
     fn solve(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,

@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter, Pointer};
 use {
     crate::{
         utils::{serde_ark, serde_ark_option},
@@ -122,6 +123,28 @@ impl WitnessBuilder {
             }
             WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
             _ => 1,
+        }
+    }
+}
+
+impl Display for WitnessBuilder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WitnessBuilder::Constant(_) => write!(f, "WitnessBuilder::Constant"),
+            WitnessBuilder::Acir(_, _) => write!(f, "WitnessBuilder::Acir"),
+            WitnessBuilder::Sum(_, _) => write!(f, "WitnessBuilder::Sum"),
+            WitnessBuilder::Product(_, _, _) => write!(f, "WitnessBuilder::Product"),
+            WitnessBuilder::MultiplicitiesForRange(_, _, _) => write!(f, "WitnessBuilder::MultiplicitiesForRange"),
+            WitnessBuilder::Challenge(_) => write!(f, "WitnessBuilder::Challenge"),
+            WitnessBuilder::IndexedLogUpDenominator(_, _, _, _, _) => write!(f, "WitnessBuilder::IndexedLogUpDenominator"),
+            WitnessBuilder::Inverse(_, _) => write!(f, "WitnessBuilder::Inverse"),
+            WitnessBuilder::ProductLinearOperation(_, _, _) => write!(f, "WitnessBuilder::ProductLinearOperation"),
+            WitnessBuilder::LogUpDenominator(_, _, _) => write!(f, "WitnessBuilder::LogUpDenominator"),
+            WitnessBuilder::DigitalDecomposition(_) => write!(f, "WitnessBuilder::DigitalDecomposition"),
+            WitnessBuilder::SpiceMultisetFactor(_, _, _, _, _, _) => write!(f, "WitnessBuilder::SpiceMultisetFactor"),
+            WitnessBuilder::SpiceWitnesses(_) => write!(f, "WitnessBuilder::SpiceWitnesses"),
+            WitnessBuilder::BinOpLookupDenominator(_, _, _, _, _, _, _) => write!(f, "WitnessBuilder::BinOpLookupDenominator"),
+            WitnessBuilder::MultiplicitiesForBinOp(_, _) => write!(f, "WitnessBuilder::MultiplicitiesForBinOp"),
         }
     }
 }

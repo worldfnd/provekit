@@ -179,6 +179,7 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
         + eval_cubic_poly(&polynomial_coefficient, &FieldElement::one())
 }
 
+#[instrument(skip_all)]
 pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,

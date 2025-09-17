@@ -1,5 +1,7 @@
+use tracing::instrument;
 use {crate::FieldElement, ark_ff::UniformRand, whir::poly_utils::evals::EvaluationsList};
 
+#[instrument(skip_all)]
 pub fn create_masked_polynomial(
     original: &EvaluationsList<FieldElement>,
     mask: &[FieldElement],
@@ -10,6 +12,7 @@ pub fn create_masked_polynomial(
     EvaluationsList::new(combined)
 }
 
+#[instrument(skip_all)]
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
     let mut rng = ark_std::rand::thread_rng();
     let mut elements = Vec::with_capacity(1 << num_vars);
