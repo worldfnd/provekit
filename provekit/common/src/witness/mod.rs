@@ -11,7 +11,7 @@ use {
 };
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
-    digits::DigitalDecompositionWitnesses,
+    digits::{decompose_into_digits, DigitalDecompositionWitnesses},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     witness_builder::{
         ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,

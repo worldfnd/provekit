@@ -22,7 +22,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var pointer uint64
 	var truncated []byte
 
-	var merklePaths []MultiPath[KeccakDigest]
+	var merklePaths []FullMultiPath[KeccakDigest]
 	var stirAnswers [][][]Fp256
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
@@ -43,7 +43,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 
 			switch string(op.Label) {
 			case "merkle_proof":
-				var path MultiPath[KeccakDigest]
+				var path FullMultiPath[KeccakDigest]
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path,

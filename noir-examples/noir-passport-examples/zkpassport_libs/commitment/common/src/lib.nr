@@ -1,9 +1,8 @@
-//use std::hash::pedersen_hash;
-use std::hash::poseidon2::Poseidon2;
-use utils::PASSPORT_MRZ_COUNTRY_INDEX;
+use poseidon::poseidon2::Poseidon2;
+use utils::{pack_be_bytes_into_fields, PASSPORT_MRZ_COUNTRY_INDEX};
 
-pub global CSC_CERT_TYPE: Field = 1;
-pub global DSC_CERT_TYPE: Field = 2;
+pub global CSC_CERT_TYPE: u8 = 1;
+pub global DSC_CERT_TYPE: u8 = 2;
 
 pub fn calculate_scoped_nullifier(
     private_nullifier: Field,
@@ -13,25 +12,151 @@ pub fn calculate_scoped_nullifier(
     Poseidon2::hash([private_nullifier, service_scope, service_subscope], 3)
 }
 
-/// Wait what lol this literally just concatenates them and computes
-/// the Poseidon hash of that thing
-pub fn calculate_certificate_registry_leaf<let N: u32>(
-    registry_id: Field,
-    cert_type: Field,
-    country: str<3>,
-    csc_pubkey: [u8; N],
-) -> Field {
-    let country_bytes: [u8; 3] = country.as_bytes();
-    let mut result: [Field; N + 5] = [0; N + 5];
-    result[0] = registry_id as Field;
-    result[1] = cert_type as Field;
-    result[2] = country_bytes[0] as Field;
-    result[3] = country_bytes[1] as Field;
-    result[4] = country_bytes[2] as Field;
-    for i in 0..N {
-        result[i + 5] = csc_pubkey[i] as Field;
+/// Only used for testing purposes for now
+fn has_value_in_tags<let BIT_SIZE: u32, let TAGS_LEN: u32>(
+    tags: [Field; TAGS_LEN],
+    value: str<2>,
+) -> bool {
+    // Index for A
+    let START_ASCII_INDEX: u32 = 65;
+    let value_bytes = value.as_bytes();
+    let converted_value = (value_bytes[0] as u32 - START_ASCII_INDEX) * 26
+        + (value_bytes[1] as u32 - START_ASCII_INDEX);
+    let mut result = false;
+    let mut tags_bits: [[u1; BIT_SIZE]; TAGS_LEN] = [[0; BIT_SIZE]; TAGS_LEN];
+    for i in 0..TAGS_LEN {
+        tags[i].assert_max_bit_size::<BIT_SIZE>();
+        tags_bits[i] = tags[i].to_le_bits();
     }
-    Poseidon2::hash(result, N + 5)
+    for i in 0..TAGS_LEN {
+        for j in 0..BIT_SIZE {
+            let actual_index = (i * BIT_SIZE) + j;
+            let has_bit_in_tag = (tags_bits[i][j] != 0);
+            if (has_bit_in_tag) & (actual_index == converted_value) {
+                result = true;
+            }
+        }
+    }
+    result
+}
+
+pub fn calculate_certificate_registry_leaf<let N: u32>(
+    tags: [Field; 3],
+    cert_type: u8,
+    country: str<3>,
+    public_key: [u8; N],
+) -> Field {
+    // Pack certificate type and country code into a single field
+    let country_bytes: [u8; 3] = country.as_bytes();
+    let unpacked_bytes: [u8; 4] =
+        [cert_type as u8, country_bytes[0], country_bytes[1], country_bytes[2]];
+    // Prepare and hash Poseidon2 inputs
+    let mut poseidon_inputs: [Field; 4 + (N + 30) / 31] = [0; 4 + (N + 30) / 31];
+    poseidon_inputs[0] = tags[0];
+    poseidon_inputs[1] = tags[1];
+    poseidon_inputs[2] = tags[2];
+    poseidon_inputs[3] = utils::pack_be_bytes_into_fields::<4, 1, 31>(unpacked_bytes)[0];
+    let packed_pubkey = utils::pack_be_bytes_into_fields::<N, (N + 30) / 31, 31>(public_key);
+    for i in 0..packed_pubkey.len() {
+        poseidon_inputs[4 + i] = packed_pubkey[i] as Field;
+    }
+    Poseidon2::hash(poseidon_inputs, poseidon_inputs.len())
+}
+
+#[test]
+fn test_has_value_in_tags() {
+    let mut tags = [0x7, 0x0, 0x0];
+    // We assume the Field can hold 253 bits, which is the case for BN254
+    assert(has_value_in_tags::<253, _>(tags, "AA"));
+    assert(has_value_in_tags::<253, _>(tags, "AB"));
+    assert(has_value_in_tags::<253, _>(tags, "AC"));
+    assert(!has_value_in_tags::<253, _>(tags, "AD"));
+    assert(!has_value_in_tags::<253, _>(tags, "AE"));
+
+    tags = [0x1, 0x0, 0x0];
+    assert(has_value_in_tags::<253, _>(tags, "AA"));
+    assert(!has_value_in_tags::<253, _>(tags, "AB"));
+    assert(!has_value_in_tags::<253, _>(tags, "AC"));
+    assert(!has_value_in_tags::<253, _>(tags, "AD"));
+    assert(!has_value_in_tags::<253, _>(tags, "AE"));
+
+    tags = [0x0, 0x0, 0x0];
+    assert(!has_value_in_tags::<253, _>(tags, "AA"));
+    assert(!has_value_in_tags::<253, _>(tags, "AB"));
+    assert(!has_value_in_tags::<253, _>(tags, "AC"));
+    assert(!has_value_in_tags::<253, _>(tags, "AD"));
+    assert(!has_value_in_tags::<253, _>(tags, "AE"));
+
+    tags = [0x1fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x4, 0x0];
+    assert(has_value_in_tags::<253, _>(tags, "JR"));
+    assert(has_value_in_tags::<253, _>(tags, "JS"));
+    assert(!has_value_in_tags::<253, _>(tags, "JT"));
+    assert(!has_value_in_tags::<253, _>(tags, "JU"));
+    assert(has_value_in_tags::<253, _>(tags, "JV"));
+    assert(!has_value_in_tags::<253, _>(tags, "JW"));
+    assert(!has_value_in_tags::<253, _>(tags, "JX"));
+    assert(!has_value_in_tags::<253, _>(tags, "JY"));
+    assert(!has_value_in_tags::<253, _>(tags, "JZ"));
+
+    tags = [0x0, 0x0, 0x8000000];
+    assert(has_value_in_tags::<253, _>(tags, "UN"));
+}
+
+// This test should fail because a tag limb is too large (i.e. not fitting in 253 bits)
+#[test(should_fail)]
+fn test_has_value_in_tags_should_fail() {
+    let tags = [0x2fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, 0x0, 0x0];
+    assert(has_value_in_tags::<253, _>(tags, "AA"));
+}
+
+#[test]
+pub fn test_calculate_certificate_registry_leaf() {
+    let public_key: [u8; _] = [
+        0x9f, 0xc3, 0x56, 0xd3, 0x71, 0x79, 0xe5, 0x27, 0xf8, 0xb6, 0xf4, 0x0c, 0x93, 0x62, 0x8d,
+        0xf4, 0x20, 0xec, 0x32, 0xd7, 0x81, 0xad, 0xe2, 0x61, 0x1e, 0x67, 0xe3, 0xe5, 0x01, 0xf8,
+        0x46, 0x35, 0x86, 0x0f, 0x0c, 0x7e, 0x5e, 0x2b, 0x06, 0x99, 0x90, 0xcc, 0xc6, 0xe9, 0x25,
+        0x09, 0xf0, 0x95, 0x0a, 0x06, 0xca, 0x95, 0x5f, 0x69, 0x62, 0x5a, 0xc7, 0xda, 0x78, 0x80,
+        0x03, 0xd2, 0x9d, 0x72, 0x6f, 0xf9, 0xf0, 0x0a, 0x97, 0xff, 0xd5, 0x62, 0xd2, 0x4b, 0x3c,
+        0x9c, 0x49, 0x14, 0x63, 0x58, 0x3e, 0x09, 0xbd, 0xe8, 0x3f, 0x49, 0x59, 0x65, 0x1d, 0x10,
+        0x29, 0x5a, 0xd2, 0xc8, 0x3e, 0xc2, 0xd7, 0xdd, 0x5d, 0xf7, 0xf7, 0x80, 0x02, 0x35, 0xeb,
+        0x62, 0x09, 0x59, 0x50, 0xaf, 0x9c, 0xab, 0x67, 0xf5, 0xcd, 0x7a, 0x8a, 0x70, 0xf7, 0x25,
+        0x36, 0x19, 0x0e, 0xa6, 0x86, 0xfd, 0x7b, 0x6f, 0x50, 0x94, 0xb3, 0xce, 0xe4, 0xd9, 0x66,
+        0x7e, 0x4e, 0x99, 0x24, 0xa5, 0x54, 0x83, 0x9f, 0x9e, 0xc5, 0x0b, 0xd2, 0x18, 0x8d, 0xe4,
+        0x0c, 0x84, 0xba, 0x89, 0xee, 0x1c, 0x3b, 0x5f, 0x1c, 0x2c, 0xbd, 0x2b, 0x55, 0xd1, 0xbc,
+        0x27, 0x9d, 0x16, 0x42, 0xe1, 0xca, 0xf3, 0x97, 0x62, 0xfc, 0xff, 0xd4, 0xbd, 0x68, 0xd7,
+        0x31, 0x97, 0xce, 0x10, 0xf4, 0x54, 0x8a, 0xfe, 0xe8, 0xc0, 0xa6, 0x79, 0x4b, 0x3f, 0x67,
+        0x64, 0x26, 0x3c, 0xc8, 0x79, 0x45, 0x70, 0x20, 0xda, 0x8f, 0x06, 0x74, 0xd0, 0xbd, 0x8e,
+        0x79, 0x73, 0x1b, 0x8c, 0x37, 0xde, 0xfd, 0x62, 0xd2, 0xb3, 0x18, 0xcf, 0x44, 0xb7, 0x2f,
+        0x0c, 0xa3, 0x54, 0x0f, 0xb0, 0x9e, 0xe4, 0x12, 0x73, 0x8f, 0xe1, 0x20, 0x33, 0x7c, 0xf6,
+        0x04, 0xc2, 0x02, 0x36, 0x12, 0x1f, 0xb2, 0x2e, 0x91, 0xe5, 0xe9, 0xb1, 0xbb, 0x73, 0xd6,
+        0x82, 0xe2, 0x57, 0xad, 0xf9, 0xfa, 0x61, 0x5b, 0x26, 0xa2, 0x4b, 0x10, 0xd7, 0x17, 0x8a,
+        0x76, 0x51, 0xae, 0xf9, 0xec, 0x44, 0x8b, 0x9f, 0x07, 0xbe, 0xac, 0x7c, 0x58, 0x91, 0x6c,
+        0xc9, 0x20, 0x64, 0xcf, 0x4b, 0x3f, 0xed, 0xdd, 0x6b, 0x7f, 0xc1, 0x51, 0xaa, 0x19, 0x75,
+        0xde, 0xab, 0xf8, 0x1b, 0x6b, 0xf4, 0x39, 0xf0, 0xb5, 0x2e, 0xd1, 0xbd, 0x2f, 0x7b, 0x8e,
+        0x15, 0x1d, 0x19, 0xc2, 0x35, 0xa0, 0x68, 0xb3, 0x4c, 0xab, 0xad, 0xfd, 0xd1, 0x0d, 0xec,
+        0xd2, 0x2e, 0x17, 0x8b, 0x3c, 0xac, 0x93, 0xc6, 0x8e, 0x37, 0x65, 0x23, 0xb6, 0xba, 0x99,
+        0x79, 0x2a, 0x29, 0x24, 0x0a, 0x2c, 0xf4, 0x4e, 0x3e, 0x4c, 0x6b, 0x3e, 0x4a, 0x9d, 0xb5,
+        0x3e, 0xa8, 0x9e, 0x11, 0xe6, 0x2d, 0x10, 0x3b, 0x93, 0x37, 0x71, 0x72, 0x3b, 0xc8, 0x7a,
+        0x8e, 0x58, 0xec, 0xc8, 0x43, 0x9d, 0x4d, 0xc9, 0x9b, 0x01, 0x42, 0x06, 0xa4, 0x52, 0xb2,
+        0xd6, 0x4e, 0xe8, 0xaf, 0xc2, 0x84, 0x79, 0x99, 0x12, 0xbb, 0x6a, 0x8e, 0x0f, 0x9c, 0xc9,
+        0x36, 0x62, 0x8c, 0x7a, 0xf7, 0xb2, 0xb4, 0xf9, 0x80, 0x9c, 0x20, 0xb8, 0xc1, 0x10, 0x14,
+        0x61, 0x40, 0x8b, 0x6e, 0xac, 0x5e, 0x05, 0x19, 0xd6, 0xc6, 0xbd, 0x5b, 0xed, 0x93, 0x17,
+        0x61, 0xe3, 0x4c, 0x0d, 0xa2, 0xb9, 0x09, 0xe8, 0x7d, 0x30, 0x34, 0xc1, 0xea, 0x40, 0xa9,
+        0x50, 0x26, 0xfd, 0xdc, 0x7d, 0xdc, 0xb1, 0x55, 0xf5, 0x86, 0xec, 0x51, 0x4e, 0x04, 0xa5,
+        0x41, 0x3f, 0x7d, 0x52, 0xfc, 0x08, 0xf4, 0x06, 0x3b, 0xd6, 0x9c, 0xc6, 0x73, 0xad, 0x5d,
+        0x3e, 0xf5, 0xad, 0x47, 0x50, 0xa7, 0x54, 0x2a, 0xe3, 0x1b, 0x57, 0x6b, 0xae, 0xbd, 0x27,
+        0xc4, 0x34, 0x53, 0xda, 0xf7, 0x89, 0x53, 0x12, 0xbb, 0x95, 0xdf, 0xc3, 0xde, 0xd4, 0x1d,
+        0x06, 0xb5,
+    ];
+
+    // UN (i.e. ICAO) = index 533 (253 * 2 + 27), so bit index 27 is set on the 3rd limb
+    let tags = [0x0, 0x0, 0x8000000];
+    let cert_type = 1 as u8; // CSCA
+    let country = "AUS";
+
+    let leaf_hash = calculate_certificate_registry_leaf(tags, cert_type, country, public_key);
+    // Should match the result of getCertificateLeafHash()
+    assert(leaf_hash == 0x10370abe147332c5b039fb820a32964f7567998e9c54f93595bb95a1dc4ba62f);
 }
 
 pub fn get_country_from_dg1(dg1: [u8; 95]) -> str<3> {
@@ -41,7 +166,12 @@ pub fn get_country_from_dg1(dg1: [u8; 95]) -> str<3> {
     for i in 0..3 {
         country_bytes[i] = dg1[country_offset + i];
     }
-    country_bytes.as_str_unchecked()
+    let mut country = country_bytes.as_str_unchecked();
+    // A special case for Germany
+    if (country == "D<<") {
+        country = "DEU";
+    }
+    country
 }
 
 pub fn hash_salt_country_tbs<let TBS_MAX_SIZE: u32>(
@@ -50,15 +180,19 @@ pub fn hash_salt_country_tbs<let TBS_MAX_SIZE: u32>(
     tbs: [u8; TBS_MAX_SIZE],
 ) -> Field {
     let country_bytes: [u8; 3] = country.as_bytes();
-    let mut result: [Field; TBS_MAX_SIZE + 4] = [0; TBS_MAX_SIZE + 4];
-    result[0] = salt as Field;
-    result[1] = country_bytes[0] as Field;
-    result[2] = country_bytes[1] as Field;
-    result[3] = country_bytes[2] as Field;
-    for i in 0..TBS_MAX_SIZE {
-        result[4 + i] = tbs[i] as Field;
+    let mut result: [Field; 2 + ((TBS_MAX_SIZE + 30) / 31)] = [0; 2 + ((TBS_MAX_SIZE + 30) / 31)];
+    result[0] = salt;
+
+    let packed_country: Field = pack_be_bytes_into_fields::<3, 1, 31>(country_bytes)[0];
+    result[1] = packed_country;
+
+    let packed_tbs: [Field; (TBS_MAX_SIZE + 30) / 31] =
+        pack_be_bytes_into_fields::<TBS_MAX_SIZE, _, 31>(tbs);
+    for i in 0..((TBS_MAX_SIZE + 30) / 31) {
+        result[2 + i] = packed_tbs[i];
     }
-    Poseidon2::hash(result, TBS_MAX_SIZE + 4)
+
+    Poseidon2::hash(result, 2 + ((TBS_MAX_SIZE + 30) / 31))
 }
 
 pub fn hash_salt_dg1_private_nullifier<let N: u32>(
@@ -66,52 +200,89 @@ pub fn hash_salt_dg1_private_nullifier<let N: u32>(
     dg1: [u8; N],
     private_nullifier: Field,
 ) -> Field {
-    let mut result: [Field; N + 2] = [0; N + 2];
-    result[0] = salt as Field;
-    for i in 0..N {
-        result[1 + i] = dg1[i] as Field;
+    let mut result: [Field; 2 + ((N + 30) / 31)] = [0; 2 + ((N + 30) / 31)];
+    result[0] = salt;
+
+    let packed_dg1: [Field; (N + 30) / 31] = pack_be_bytes_into_fields::<N, _, 31>(dg1);
+    for i in 0..((N + 30) / 31) {
+        result[1 + i] = packed_dg1[i];
     }
-    result[1 + N] = private_nullifier;
-    Poseidon2::hash(result, N + 2)
+    result[1 + ((N + 30) / 31)] = private_nullifier;
+    Poseidon2::hash(result, 2 + ((N + 30) / 31))
 }
 
-pub fn calculate_private_nullifier<let DG1: u32, let SIG: u32>(
+pub fn calculate_private_nullifier<let DG1: u32, let ECONTENT: u32, let SIG: u32>(
     dg1: [u8; DG1],
+    e_content: [u8; ECONTENT],
     sod_sig: [u8; SIG],
 ) -> Field {
-    let mut result: [Field; DG1 + SIG] = [0; DG1 + SIG];
-    for i in 0..DG1 {
-        result[i] = dg1[i] as Field;
+    let mut result: [Field; (DG1 + 30) / 31 + (ECONTENT + 30) / 31 + (SIG + 30) / 31] =
+        [0; (DG1 + 30) / 31 + (ECONTENT + 30) / 31 + (SIG + 30) / 31];
+
+    let packed_dg1: [Field; (DG1 + 30) / 31] = pack_be_bytes_into_fields::<DG1, _, 31>(dg1);
+    for i in 0..((DG1 + 30) / 31) {
+        result[i] = packed_dg1[i];
     }
-    for i in 0..SIG {
-        result[DG1 + i] = sod_sig[i] as Field;
+
+    let packed_e_content: [Field; (ECONTENT + 30) / 31] =
+        pack_be_bytes_into_fields::<ECONTENT, _, 31>(e_content);
+    for i in 0..((ECONTENT + 30) / 31) {
+        result[(DG1 + 30) / 31 + i] = packed_e_content[i];
     }
-    Poseidon2::hash(result, DG1 + SIG)
+
+    let packed_sod_sig: [Field; (SIG + 30) / 31] = pack_be_bytes_into_fields::<SIG, _, 31>(sod_sig);
+    for i in 0..((SIG + 30) / 31) {
+        result[(DG1 + 30) / 31 + ((ECONTENT + 30) / 31) + i] = packed_sod_sig[i];
+    }
+
+    Poseidon2::hash(
+        result,
+        (DG1 + 30) / 31 + ((ECONTENT + 30) / 31) + (SIG + 30) / 31,
+    )
 }
 
-pub fn hash_salt_country_signed_attr_dg1_private_nullifier<let SA: u32>(
+pub fn hash_salt_country_signed_attr_dg1_e_content_private_nullifier<let SA: u32, let ECONTENT: u32, let DG1: u32>(
     salt: Field,
     country: str<3>,
     signed_attr: [u8; SA],
     signed_attr_size: Field,
-    dg1: [u8; 95],
+    dg1: [u8; DG1],
+    e_content: [u8; ECONTENT],
     private_nullifier: Field,
 ) -> Field {
     let country_bytes: [u8; 3] = country.as_bytes();
-    let mut result: [Field; SA + 101] = [0; SA + 101];
-    result[0] = salt as Field;
-    result[1] = country_bytes[0] as Field;
-    result[2] = country_bytes[1] as Field;
-    result[3] = country_bytes[2] as Field;
-    for i in 0..SA {
-        result[4 + i] = signed_attr[i] as Field;
+
+    let mut result: [Field; 4 + (SA + 30) / 31 + ((DG1 + 30) / 31) + ((ECONTENT + 30) / 31)] =
+        [0; 4 + (SA + 30) / 31 + ((DG1 + 30) / 31) + ((ECONTENT + 30) / 31)];
+    result[0] = salt;
+
+    let packed_country: Field = pack_be_bytes_into_fields::<3, 1, 31>(country_bytes)[0];
+    result[1] = packed_country;
+
+    let packed_signed_attr: [Field; (SA + 30) / 31] =
+        pack_be_bytes_into_fields::<SA, _, 31>(signed_attr);
+    for i in 0..((SA + 30) / 31) {
+        result[2 + i] = packed_signed_attr[i];
     }
-    result[4 + SA] = signed_attr_size;
-    for i in 0..95 {
-        result[4 + SA + 1 + i] = dg1[i] as Field;
+
+    result[2 + (SA + 30) / 31] = signed_attr_size;
+
+    let packed_dg1: [Field; (DG1 + 30) / 31] = pack_be_bytes_into_fields::<DG1, _, 31>(dg1);
+    for i in 0..((DG1 + 30) / 31) {
+        result[3 + (SA + 30) / 31 + i] = packed_dg1[i];
     }
-    result[4 + SA + 1 + 95] = private_nullifier;
-    Poseidon2::hash(result, SA + 101)
+
+    let packed_e_content: [Field; (ECONTENT + 30) / 31] =
+        pack_be_bytes_into_fields::<ECONTENT, _, 31>(e_content);
+    for i in 0..((ECONTENT + 30) / 31) {
+        result[3 + (SA + 30) / 31 + ((DG1 + 30) / 31) + i] = packed_e_content[i];
+    }
+    result[3 + (SA + 30) / 31 + ((DG1 + 30) / 31) + ((ECONTENT + 30) / 31)] = private_nullifier;
+
+    Poseidon2::hash(
+        result,
+        4 + (SA + 30) / 31 + ((DG1 + 30) / 31) + ((ECONTENT + 30) / 31),
+    )
 }
 
 // Returns the merkle root of the tree from the provided leaf, index and hash_path, using the Poseidon2 hash function
@@ -120,7 +291,7 @@ pub fn compute_merkle_root<let N: u32>(leaf: Field, index: Field, hash_path: [Fi
     let index_bits: [u1; N] = index.to_le_bits();
     let mut current = leaf;
     for i in 0..N {
-        let path_bit = index_bits[i] as bool;
+        let path_bit = index_bits[i] == 1;
         let (hash_left, hash_right) = if path_bit {
             (hash_path[i], current)
         } else {

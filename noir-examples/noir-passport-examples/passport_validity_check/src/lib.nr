@@ -53,7 +53,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
         passport_validity_contents.dsc_barrett_mu,
         passport_validity_contents.dsc_rsa_exponent,
         passport_validity_contents.sod_cert,
-        passport_validity_contents.sod_cert_size as u64,
+        passport_validity_contents.sod_cert_size,
     ));
 
     // --- DSC certificate signature check ---
@@ -73,7 +73,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
         passport_validity_contents.csc_barrett_mu,
         passport_validity_contents.csc_rsa_exponent,
         passport_validity_contents.dsc_cert, // This is `data_to_sign`, i.e. the message
-        passport_validity_contents.dsc_cert_len as u64,
+        passport_validity_contents.dsc_cert_len,
     ));
 }
 

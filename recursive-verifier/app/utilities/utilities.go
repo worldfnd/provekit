@@ -6,7 +6,6 @@ import (
 	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"github.com/consensys/gnark/std/math/uints"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
@@ -189,24 +188,18 @@ func ExpandFromUnivariate(api frontend.API, base frontend.Variable, len int) []f
 	return res
 }
 
-func IsSubset(api frontend.API, uapi *uints.BinaryField[uints.U64], arthur gnarkNimue.Arthur, indexes []frontend.Variable, merkleIndexes []uints.U64) error {
-	dedupedLUT := logderivlookup.New(api)
-	inputArr := make([]frontend.Variable, len(merkleIndexes)+1)
+func IsEqual(api frontend.API, uapi *uints.BinaryField[uints.U64], indexes []frontend.Variable, merkleIndexes []uints.U64) error {
+	api.AssertIsEqual(len(indexes), len(merkleIndexes))
 
-	for j, index := range merkleIndexes {
-		dedupedLUT.Insert(uapi.ToValue(index))
-		inputArr[1+j] = uapi.ToValue(index)
+	merkleVars := make([]frontend.Variable, len(merkleIndexes))
+	for i, index := range merkleIndexes {
+		merkleVars[i] = uapi.ToValue(index)
 	}
 
-	for _, x := range indexes {
-		inputArr[0] = x
-		res, newerr := api.Compiler().NewHint(IndexOf, 1, inputArr...)
-		if newerr != nil {
-			return newerr
-		}
-		searchRes := dedupedLUT.Lookup(res[0])
-		api.AssertIsEqual(x, searchRes[0])
+	for i := range indexes {
+		api.AssertIsEqual(indexes[i], merkleVars[i])
 	}
+
 	return nil
 }
 
