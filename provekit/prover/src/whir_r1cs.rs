@@ -15,11 +15,10 @@ use {
     }, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
-    }, std::sync::Arc, tracing::{info, instrument, warn}, whir::{
+    }, tracing::{info, instrument, warn}, whir::{
         poly_utils::{coeffs::CoefficientList, evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
-            domainsep::WhirDomainSeparator,
             prover::Prover,
             statement::{Statement, Weights},
             utils::HintSerialize,
