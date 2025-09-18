@@ -31,9 +31,27 @@ fn main() -> Result<()> {
     prove_spark_for_single_matrix(
         &mut merlin,
         spark_r1cs.a,
-        memory,
+        &memory,
         e_values.a,
         request.claimed_values.a,
+        &spark_whir_configs,
+    )?;
+
+    prove_spark_for_single_matrix(
+        &mut merlin,
+        spark_r1cs.b,
+        &memory,
+        e_values.b,
+        request.claimed_values.b,
+        &spark_whir_configs,
+    )?;
+
+    prove_spark_for_single_matrix(
+        &mut merlin,
+        spark_r1cs.c,
+        &memory,
+        e_values.c,
+        request.claimed_values.c,
         &spark_whir_configs,
     )?;
 

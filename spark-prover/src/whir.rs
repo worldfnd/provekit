@@ -41,7 +41,9 @@ pub struct SPARKWHIRConfigs {
     pub a:   WhirConfig,
     pub b:   WhirConfig,
     pub c:   WhirConfig,
-    pub a_spark_sumcheck:   WhirConfig,
+    pub a_3batched:   WhirConfig,
+    pub b_3batched:   WhirConfig,
+    pub c_3batched:   WhirConfig,
 }
 
 pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {
@@ -51,7 +53,9 @@ pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {
         a:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 1),
         b:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.b.num_entries()), 1),
         c:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.c.num_entries()), 1),
-        a_spark_sumcheck:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 3),
+        a_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 3),
+        b_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.b.num_entries()), 3),
+        c_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.c.num_entries()), 3),
     }
 }
 
