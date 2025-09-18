@@ -1,16 +1,12 @@
 use {
-    crate::{Pow2OrZero, NTT},
+    crate::{matrix::*, Pow2OrZero, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
-    std::{
-        marker::PhantomData,
-        mem::size_of,
-        ops::{Index, IndexMut},
-    },
+    std::mem::size_of,
 };
 
 // Taken from utils in noir-r1cs crate
@@ -22,116 +18,57 @@ pub const fn workload_size<T: Sized>() -> usize {
     CACHE_SIZE / size_of::<T>()
 }
 
-struct MatrixView<'a, T> {
-    data: &'a mut [T],
-    rows: usize,
-    cols: usize,
-}
-// Stride that stays through
+pub struct NTTEngine(Vec<Fr>);
 
-/// A view into a single column of a matrix stored in row-major order.
-///
-/// This allows efficient access to matrix columns without copying data.
-/// Elements are accessed with stride `step` starting from `offset`.
-///
-/// # Examples
-///
-/// ```ignore
-/// let mut data = vec![1, 2, 3, 4, 5, 6]; // Matrix: [[1, 2, 3], [4, 5, 6]]
-/// let matrix = MatrixView { data: &mut data, rows: 2, cols: 3 };
-/// let mut columns: Vec<_> = stride_matrix(matrix).collect();
-///
-/// // Access column 0: elements [1, 4]
-/// assert_eq!(columns[0][0], 1);
-/// assert_eq!(columns[0][1], 4);
-///
-/// // Modify elements
-/// columns[0][0] = 10;
-/// assert_eq!(columns[0][0], 10);
-/// ```
-struct ColumnView<'a, T> {
-    data:     *mut [T],
-    offset:   usize, // the actual column
-    step:     usize, // elements in a row
-    n:        usize, // number of rows in data / elements in a column
-    _phantom: PhantomData<&'a mut T>,
-}
+impl NTTEngine {
+    pub fn new(order: Pow2OrZero) -> Self {
+        let order = order.0;
 
-impl<'a, T> ColumnView<'a, T> {
-    /// Returns the number of elements in this column view.
-    pub fn len(&self) -> usize {
-        self.n
+        // This setup seems to ask for passing in vectors all the time
+        // TODO make
+        let init = init_roots_reverse_ordered(Pow2OrZero(64));
+        let mut engine = NTTEngine(init);
+        engine.extend_roots_table(Pow2OrZero(order));
+        engine
     }
 
-    /// Returns `true` if the column view contains no elements.
-    pub fn is_empty(&self) -> bool {
-        self.n == 0
-    }
+    fn extend_roots_table(&mut self, order: Pow2OrZero) {
+        let order = order.0;
+        let table = &mut self.0;
 
-    /// Returns a reference to the element at the given index, or `None` if out
-    /// of bounds.
-    pub fn get(&self, index: usize) -> Option<&T> {
-        if index < self.n {
+        // since we only work with power of two's the lcm is
+        // extend roots table
+        let old_len = table.len();
+        let new_len = order >> 1;
+
+        if new_len > old_len {
+            let unity = Fr::get_root_of_unity(order as u64).unwrap();
+            table.reserve(new_len - old_len);
             unsafe {
-                let slice = &*self.data;
-                Some(&slice[self.offset + index * self.step])
+                table.set_len(new_len);
             }
-        } else {
-            None
+
+            let m = MatrixView::new(table, new_len / old_len, old_len);
+
+            let columns = m.column_stride();
+
+            columns.for_each(|mut column| {
+                let mut root = unity * column[0];
+                let col_len = column.len();
+                debug_assert!(col_len.is_power_of_two());
+                for j in 1..col_len {
+                    let index = reverse_bits(j, col_len.trailing_zeros());
+                    column[index] = root;
+                    root *= unity;
+                }
+            });
         }
     }
 
-    /// Returns a mutable reference to the element at the given index, or `None`
-    /// if out of bounds.
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        if index < self.n {
-            unsafe {
-                let slice = &mut *self.data;
-                Some(&mut slice[self.offset + index * self.step])
-            }
-        } else {
-            None
-        }
+    pub fn ntt_nr(&mut self, values: &mut NTT<Fr>) {
+        self.extend_roots_table(values.len());
+        ntt_nr(&self.0, values);
     }
-}
-
-// Standard Rust pattern: Index/IndexMut reuse get/get_mut logic
-// This avoids code duplication and ensures consistency between the two access
-// patterns
-impl<'a, T> Index<usize> for ColumnView<'a, T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.get(index).unwrap_or_else(|| {
-            panic!(
-                "index out of bounds: the len is {} but the index is {}",
-                self.n, index
-            )
-        })
-    }
-}
-
-impl<'a, T> IndexMut<usize> for ColumnView<'a, T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let len = self.n; // Capture len before mutable borrow
-        self.get_mut(index).unwrap_or_else(|| {
-            panic!(
-                "index out of bounds: the len is {} but the index is {}",
-                len, index
-            )
-        })
-    }
-}
-
-fn stride_matrix<'a, T>(matrix: MatrixView<'a, T>) -> impl Iterator<Item = ColumnView<'a, T>> {
-    let cols = matrix.cols;
-    (0..cols).map(move |i| ColumnView {
-        data:     matrix.data as *mut [T],
-        offset:   i,
-        step:     matrix.cols,
-        n:        matrix.rows,
-        _phantom: PhantomData,
-    })
 }
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
@@ -257,15 +194,15 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// # Returns
 /// A vector of length `len / 2` containing the precomputed roots in
 /// bit-reversed order.
-pub fn init_roots_reverse_ordered(len: Pow2OrZero) -> Vec<Fr> {
-    let len = len.0;
-    let n = len / 2;
+pub fn init_roots_reverse_ordered(order: Pow2OrZero) -> Vec<Fr> {
+    let order = order.0;
+    let n = order / 2;
     match n {
         0 => vec![],
         // 1 is a separate case due to `1.trailing_zeros = 0` which reverse_bit requires >0
         1 => vec![Fr::ONE],
         n => {
-            let root = Fr::get_root_of_unity(len as u64).unwrap();
+            let root = Fr::get_root_of_unity(order as u64).unwrap();
 
             let mut roots = Vec::with_capacity(n);
             let uninit = roots.spare_capacity_mut();
@@ -332,12 +269,14 @@ pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
+    use proptest::prelude::*;
     use {
-        super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order},
-        crate::NTT,
+        super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order, MatrixView},
+        crate::{ntt::NTTEngine, NTT},
         ark_bn254::Fr,
         ark_ff::BigInt,
-        proptest::{collection, prelude::*},
+        proptest::collection,
         std::fmt,
     };
 
@@ -390,6 +329,71 @@ mod tests {
         let mut v = NTT::new(vec![]).unwrap();
         let roots = init_roots_reverse_ordered(v.len());
         ntt_nr(&roots, &mut v);
+    }
+
+    #[test]
+    fn column_view_indexing() {
+        // Test ColumnView indexing with a simple 2x3 matrix stored in row-major order
+        let mut data = vec![1, 2, 3, 4, 5, 6]; // [[1, 2, 3], [4, 5, 6]]
+
+        let matrix = MatrixView::new(data.as_mut_slice(), 2, 3);
+
+        let mut columns: Vec<_> = matrix.column_stride().collect();
+
+        // Test reading from column 0: elements [1, 4]
+        assert_eq!(columns[0][0], 1);
+        assert_eq!(columns[0][1], 4);
+        assert_eq!(columns[0].len(), 2);
+
+        // Test reading from column 1: elements [2, 5]
+        assert_eq!(columns[1][0], 2);
+        assert_eq!(columns[1][1], 5);
+
+        // Test reading from column 2: elements [3, 6]
+        assert_eq!(columns[2][0], 3);
+        assert_eq!(columns[2][1], 6);
+
+        // Test writing via IndexMut
+        columns[0][0] = 10;
+        columns[1][1] = 50;
+
+        // Verify the changes
+        assert_eq!(columns[0][0], 10);
+        assert_eq!(columns[1][1], 50);
+
+        // Test get methods
+        assert_eq!(columns[0].get(0), Some(&10));
+        assert_eq!(columns[0].get(5), None); // out of bounds
+
+        // Test mutable get
+        if let Some(val) = columns[2].get_mut(0) {
+            *val = 30;
+        }
+        assert_eq!(columns[2][0], 30);
+    }
+
+    #[test]
+    #[should_panic(expected = "index out of bounds: the len is 2 but the index is 5")]
+    fn column_view_index_out_of_bounds() {
+        let mut data = vec![1, 2, 3, 4];
+        let matrix = MatrixView::new(data.as_mut_slice(), 2, 2);
+
+        let columns: Vec<_> = matrix.column_stride().collect();
+        let _value = columns[0][5]; // This should panic
+    }
+
+    proptest! {
+    #[test]
+    // Start testing from order 16 (4) since we bootstrap from 16
+    // limit till 10 otherwise it takes too long
+        fn init_roots_extention(i in 4_u32..10) {
+            let order = 2_usize.pow(i);
+            let roots = init_roots_reverse_ordered(crate::Pow2OrZero(order));
+            let engine = NTTEngine::new(crate::Pow2OrZero(order));
+            assert_eq!(engine.0.len(), roots.len());
+            assert_eq!(engine.0, roots)
+        }
+
     }
 
     proptest! {
