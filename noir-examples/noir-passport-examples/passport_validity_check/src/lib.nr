@@ -73,7 +73,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
 
     // --- SOD certificate signature check ---
     // The second thing asserts verify_sign(message=signed_attributes, sign=sod_signature, pubkey=dsc_pubkey)
-    assert(verify_signature::<256, 0, 200, 32>(
+    assert(verify_signature::<DSC_SIGNATURE_SIZE, 0, SIGNED_ATTRIBUTES_MAX_SIZE, 32>(
         passport_validity_contents.dsc_pubkey,
         passport_validity_contents.dsc_signature,
         passport_validity_contents.dsc_barrett_mu,
@@ -93,7 +93,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
     // Check the signature over the DSC
     // Uses SHA-256 with a message size of 1500 and a prime of 2048 bits,
     // using PKCS rather than PSS.
-    assert(verify_signature::<512, 0, 1500, 32>(
+    assert(verify_signature::<CSC_PUBKEY_SIZE, 0, DSC_CERT_MAX_SIZE, 32>(
         passport_validity_contents.csc_pubkey, // This is the pubkey to verify against
         passport_validity_contents.dsc_cert_signature, // This is the actual signature
         passport_validity_contents.csc_barrett_mu,
@@ -134,7 +134,7 @@ pub fn check_dg1_hash_within_sod(
     econtent_len: u32,
     dg1_hash_offset: u32,
 ) {
-    // check zero padding for econtent
+    // Check zero padding for econtent
     check_zero_padding(econtent, econtent_len);
 
     let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, dg1_padded_length);
