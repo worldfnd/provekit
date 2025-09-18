@@ -1,16 +1,16 @@
 use {
     crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
-    whir::poly_utils::evals::EvaluationsList,
+    whir::poly_utils::coeffs::CoefficientList
 };
 
 pub fn create_masked_polynomial(
-    original: &EvaluationsList<FieldElement>,
+    original: &[FieldElement],
     mask: &[FieldElement],
-) -> EvaluationsList<FieldElement> {
-    let mut combined = Vec::with_capacity(original.num_evals() * 2);
-    combined.extend_from_slice(original.evals());
+) -> CoefficientList<FieldElement> {
+    let mut combined = Vec::with_capacity(original.len() * 2);
+    combined.extend_from_slice(original);
     combined.extend_from_slice(mask);
-    EvaluationsList::new(combined)
+    CoefficientList::new(combined)
 }
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
