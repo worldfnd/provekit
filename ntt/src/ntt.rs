@@ -22,46 +22,45 @@ pub struct NTTEngine(Vec<Fr>);
 
 impl NTTEngine {
     pub fn new(order: Pow2OrZero) -> Self {
-        let order = order.0;
-
-        // This setup seems to ask for passing in vectors all the time
-        // TODO make
-        let init = init_roots_reverse_ordered(Pow2OrZero(64));
+        let init = init_roots_reverse_ordered(Pow2OrZero::next_power_of_two(workload_size::<Fr>()));
         let mut engine = NTTEngine(init);
-        engine.extend_roots_table(Pow2OrZero(order));
+        engine.extend_roots_table(order);
         engine
     }
 
+    // Takes the existing roots table and extend it if needed. Old roots do not have
+    // to be recomputed but they are being copied.
     fn extend_roots_table(&mut self, order: Pow2OrZero) {
         let order = order.0;
         let table = &mut self.0;
 
-        // since we only work with power of two's the lcm is
-        // extend roots table
+        // When supporting non-power of two this should make place for LCM
         let old_len = table.len();
+        // TODO(xrvdg) this can fail if zero
         let new_len = order >> 1;
 
+        // reverse ordered roots
         if new_len > old_len {
+            let col_len = new_len / old_len;
             let unity = Fr::get_root_of_unity(order as u64).unwrap();
             table.reserve(new_len - old_len);
+            let (init, uninit) = table.split_at_spare_mut();
+
+            uninit
+                .par_chunks_mut(old_len)
+                .enumerate()
+                .for_each(|(i, row)| {
+                    let pow = reverse_bits(1 + i, col_len.trailing_zeros());
+                    let root = unity.pow([pow as u64]);
+                    row.par_iter_mut().enumerate().for_each(|(j, elem)| {
+                        let new = init[j] * root;
+                        elem.write(new);
+                    })
+                });
+
             unsafe {
                 table.set_len(new_len);
             }
-
-            let m = MatrixView::new(table, new_len / old_len, old_len);
-
-            let columns = m.column_stride();
-
-            columns.for_each(|mut column| {
-                let mut root = unity * column[0];
-                let col_len = column.len();
-                debug_assert!(col_len.is_power_of_two());
-                for j in 1..col_len {
-                    let index = reverse_bits(j, col_len.trailing_zeros());
-                    column[index] = root;
-                    root *= unity;
-                }
-            });
         }
     }
 
@@ -273,7 +272,7 @@ mod tests {
     use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order, MatrixView},
-        crate::{ntt::NTTEngine, NTT},
+        crate::{ntt::NTTEngine, Pow2OrZero, NTT},
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
@@ -386,10 +385,10 @@ mod tests {
     #[test]
     // Start testing from order 16 (4) since we bootstrap from 16
     // limit till 10 otherwise it takes too long
-        fn init_roots_extention(i in 4_u32..10) {
-            let order = 2_usize.pow(i);
-            let roots = init_roots_reverse_ordered(crate::Pow2OrZero(order));
-            let engine = NTTEngine::new(crate::Pow2OrZero(order));
+        fn init_roots_extention(i in 9_u32..15) {
+            let order = Pow2OrZero::new(2_usize.pow(i)).unwrap();
+            let roots = init_roots_reverse_ordered(order);
+            let engine = NTTEngine::new(order);
             assert_eq!(engine.0.len(), roots.len());
             assert_eq!(engine.0, roots)
         }
