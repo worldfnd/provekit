@@ -40,7 +40,8 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     // Hash the entire buffer to match the signature created on the fixed-size message
     // `data_to_sign_len` is still checked above to ensure trailing bytes are zero,
     let ret =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(data_to_sign, data_to_sign.len() as u64);
+        noir_native_sha256::ryan_sha256_noir::sha256_var(data_to_sign, data_to_sign_len as u64);
+
     ret
 }
 
