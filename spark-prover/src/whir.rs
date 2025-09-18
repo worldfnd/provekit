@@ -51,7 +51,7 @@ pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {
         a:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 1),
         b:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.b.num_entries()), 1),
         c:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.c.num_entries()), 1),
-        a_spark_sumcheck:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 2),
+        a_spark_sumcheck:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 3),
     }
 }
 

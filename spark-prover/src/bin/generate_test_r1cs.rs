@@ -8,7 +8,7 @@ fn main() {
     r1cs.grow_matrices(1024, 512);
     let interned_1 = r1cs.interner.intern(FieldElement::from(1));
 
-    for i in 0..64 {
+    for i in 0..256 {
         r1cs.a.set(i, i, interned_1);
         r1cs.b.set(i, i, interned_1);
         r1cs.c.set(i, i, interned_1);
