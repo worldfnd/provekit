@@ -36,8 +36,6 @@ pub struct ServerConfig {
 pub struct VerificationConfig {
     /// Path to the external verifier binary
     pub verifier_binary_path:          String,
-    /// Default maximum verification time in seconds
-    pub default_max_verification_time: u64,
     /// Timeout for external verifier binary execution in seconds
     pub verifier_timeout_seconds:      u64,
 }
@@ -113,14 +111,10 @@ impl VerificationConfig {
         Self {
             verifier_binary_path:          env::var("VERIFIER_BINARY_PATH")
                 .unwrap_or_else(|_| "./verifier".to_string()),
-            default_max_verification_time: env::var("VERIFIER_DEFAULT_MAX_TIME")
-                .ok()
-                .and_then(|t| t.parse().ok())
-                .unwrap_or(300), // 5 minutes
             verifier_timeout_seconds:      env::var("VERIFIER_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|t| t.parse().ok())
-                .unwrap_or(120), // 10 minutes
+                .unwrap_or(1200), // 20 minutes
         }
     }
 }
@@ -129,7 +123,6 @@ impl Default for VerificationConfig {
     fn default() -> Self {
         Self {
             verifier_binary_path:          "./verifier".to_string(),
-            default_max_verification_time: 300, // 5 minutes
             verifier_timeout_seconds:      1200, // 20 minutes
         }
     }
