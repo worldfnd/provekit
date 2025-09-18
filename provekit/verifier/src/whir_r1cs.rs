@@ -1,17 +1,12 @@
 use {
-    anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
-    provekit_common::{
+    anyhow::{ensure, Context, Result}, ark_std::{One, Zero}, provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
-    },
-    spongefish::{
+    }, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
         VerifierState,
-    },
-    tracing::instrument,
-    whir::{
+    }, tracing::instrument, whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
@@ -19,7 +14,7 @@ use {
             utils::HintDeserialize,
             verifier::Verifier,
         },
-    },
+    }
 };
 
 pub struct DataFromSumcheckVerifier {
@@ -34,9 +29,8 @@ pub trait WhirR1CSVerifier {
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
-    #[allow(unused)] // TODO: Fix implementation
+    #[allow(unused)]
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
-        // Set up transcript
         let io = self.create_io_pattern();
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
@@ -47,7 +41,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             &mut arthur,
             self.m_0,
             &self.whir_for_hiding_spartan,
-            // proof.whir_spartan_blinding_values,
         )
         .context("while verifying sumcheck")?;
 
