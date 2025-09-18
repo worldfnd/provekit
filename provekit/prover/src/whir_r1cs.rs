@@ -15,11 +15,10 @@ use {
     }, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
-    }, std::sync::Arc, tracing::{info, instrument, warn}, whir::{
+    }, tracing::{info, instrument, warn}, whir::{
         poly_utils::{coeffs::CoefficientList, evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
-            domainsep::WhirDomainSeparator,
             prover::Prover,
             statement::{Statement, Weights},
             utils::HintSerialize,
@@ -422,7 +421,7 @@ pub fn run_zk_whir_pcs_prover(
         warn!("More PoW bits required than specified.");
     }
 
-    let prover = Prover(params.clone());
+    let prover = Prover::new(params.clone());
     let (randomness, deferred) = prover
         .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
