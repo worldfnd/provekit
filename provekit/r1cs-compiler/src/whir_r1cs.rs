@@ -49,8 +49,8 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             _pow_parameters: Default::default(),
             starting_log_inv_rate: 1,
             batch_size,
-            deduplication_strategy: DeduplicationStrategy::Enabled,
-            merkle_proof_strategy: MerkleProofStrategy::Compressed,
+            deduplication_strategy: DeduplicationStrategy::Disabled,
+            merkle_proof_strategy: MerkleProofStrategy::Uncompressed,
         };
         WhirConfig::new(mv_params, whir_params)
     }
