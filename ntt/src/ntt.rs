@@ -1,5 +1,5 @@
 use {
-    crate::{matrix::*, Pow2OrZero, NTT},
+    crate::{Pow2OrZero, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -22,6 +22,7 @@ pub struct NTTEngine(Vec<Fr>);
 
 impl NTTEngine {
     pub fn new(order: Pow2OrZero) -> Self {
+        // TODO initialize vector beforehand
         let init = init_roots_reverse_ordered(Pow2OrZero::next_power_of_two(workload_size::<Fr>()));
         let mut engine = NTTEngine(init);
         engine.extend_roots_table(order);
@@ -36,25 +37,28 @@ impl NTTEngine {
 
         // When supporting non-power of two this should make place for LCM
         let old_len = table.len();
-        // TODO(xrvdg) this can fail if zero
-        let new_len = order >> 1;
+        let new_len = order / 2;
 
         // reverse ordered roots
         if new_len > old_len {
             let col_len = new_len / old_len;
+            // TODO(xrvdg) do I need to check for adicity?
             let unity = Fr::get_root_of_unity(order as u64).unwrap();
             table.reserve(new_len - old_len);
             let (init, uninit) = table.split_at_spare_mut();
+
+            // When viewing the roots as a matrix every row is a multiple of the first row
+            // row[j] = row[0] * unity^(reverse order j)
 
             uninit
                 .par_chunks_mut(old_len)
                 .enumerate()
                 .for_each(|(i, row)| {
+                    // start counting from one as 0 is init above
                     let pow = reverse_bits(1 + i, col_len.trailing_zeros());
                     let root = unity.pow([pow as u64]);
                     row.par_iter_mut().enumerate().for_each(|(j, elem)| {
-                        let new = init[j] * root;
-                        elem.write(new);
+                        elem.write(init[j] * root);
                     })
                 });
 
@@ -271,7 +275,7 @@ mod tests {
     #[cfg(test)]
     use proptest::prelude::*;
     use {
-        super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order, MatrixView},
+        super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order},
         crate::{ntt::NTTEngine, Pow2OrZero, NTT},
         ark_bn254::Fr,
         ark_ff::BigInt,
@@ -331,68 +335,12 @@ mod tests {
     }
 
     #[test]
-    fn column_view_indexing() {
-        // Test ColumnView indexing with a simple 2x3 matrix stored in row-major order
-        let mut data = vec![1, 2, 3, 4, 5, 6]; // [[1, 2, 3], [4, 5, 6]]
-
-        let matrix = MatrixView::new(data.as_mut_slice(), 2, 3);
-
-        let mut columns: Vec<_> = matrix.column_stride().collect();
-
-        // Test reading from column 0: elements [1, 4]
-        assert_eq!(columns[0][0], 1);
-        assert_eq!(columns[0][1], 4);
-        assert_eq!(columns[0].len(), 2);
-
-        // Test reading from column 1: elements [2, 5]
-        assert_eq!(columns[1][0], 2);
-        assert_eq!(columns[1][1], 5);
-
-        // Test reading from column 2: elements [3, 6]
-        assert_eq!(columns[2][0], 3);
-        assert_eq!(columns[2][1], 6);
-
-        // Test writing via IndexMut
-        columns[0][0] = 10;
-        columns[1][1] = 50;
-
-        // Verify the changes
-        assert_eq!(columns[0][0], 10);
-        assert_eq!(columns[1][1], 50);
-
-        // Test get methods
-        assert_eq!(columns[0].get(0), Some(&10));
-        assert_eq!(columns[0].get(5), None); // out of bounds
-
-        // Test mutable get
-        if let Some(val) = columns[2].get_mut(0) {
-            *val = 30;
-        }
-        assert_eq!(columns[2][0], 30);
-    }
-
-    #[test]
-    #[should_panic(expected = "index out of bounds: the len is 2 but the index is 5")]
-    fn column_view_index_out_of_bounds() {
-        let mut data = vec![1, 2, 3, 4];
-        let matrix = MatrixView::new(data.as_mut_slice(), 2, 2);
-
-        let columns: Vec<_> = matrix.column_stride().collect();
-        let _value = columns[0][5]; // This should panic
-    }
-
-    proptest! {
-    #[test]
-    // Start testing from order 16 (4) since we bootstrap from 16
-    // limit till 10 otherwise it takes too long
-        fn init_roots_extention(i in 9_u32..15) {
-            let order = Pow2OrZero::new(2_usize.pow(i)).unwrap();
-            let roots = init_roots_reverse_ordered(order);
-            let engine = NTTEngine::new(order);
-            assert_eq!(engine.0.len(), roots.len());
-            assert_eq!(engine.0, roots)
-        }
-
+    fn init_roots_extention() {
+        let order = Pow2OrZero::next_power_of_two(2_usize.pow(20));
+        let roots = init_roots_reverse_ordered(order);
+        let engine = NTTEngine::new(order);
+        assert_eq!(engine.0.len(), roots.len());
+        assert_eq!(engine.0, roots)
     }
 
     proptest! {

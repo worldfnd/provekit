@@ -14,7 +14,7 @@ fn main() {
 // mod ntt_engine_1_24 {
 use ntt::Pow2OrZero;
 
-const ORDER: usize = 1 << 24; // 2^24 = 16,777,216
+const ORDER: usize = 1 << 24;
 
 /// Benchmark NTTEngine creation with order 1<<24
 #[divan::bench]

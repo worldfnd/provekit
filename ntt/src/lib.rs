@@ -1,7 +1,6 @@
 #![feature(vec_split_at_spare)]
 pub mod ntt;
 pub use ntt::*;
-mod matrix;
 
 /// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
 /// not supported. Note: empty vectors (size 0) are also supported as a special
