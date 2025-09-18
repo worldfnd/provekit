@@ -63,13 +63,13 @@ cargo run --bin verifier-server
 - `VERIFIER_HOST` - Server host (default: `0.0.0.0`)
 - `VERIFIER_PORT` - Server port (default: `3000`)
 - `VERIFIER_MAX_REQUEST_SIZE` - Maximum request body size in bytes (default: `10485760` = 10MB)
-- `VERIFIER_REQUEST_TIMEOUT` - Request timeout in seconds (default: `600` = 10 minutes)
+- `VERIFIER_REQUEST_TIMEOUT` - Request timeout in seconds (default: `1200` = 20 minutes)
 - `VERIFIER_SEMAPHORE_LIMIT` - Max concurrent verifications (default: `1`)
 
 ### Verification Configuration
 - `VERIFIER_BINARY_PATH` - Go verifier binary path (default: `./verifier`)
 - `VERIFIER_DEFAULT_MAX_TIME` - Default max verification time in seconds (default: `300` = 5 minutes)
-- `VERIFIER_TIMEOUT_SECONDS` - Verifier binary timeout in seconds (default: `600` = 10 minutes)
+- `VERIFIER_TIMEOUT_SECONDS` - Verifier binary timeout in seconds (default: `1200` = 20 minutes)
 
 ### Artifact Configuration
 - `VERIFIER_ARTIFACTS_DIR` - Artifact cache directory (default: `./artifacts`)

@@ -86,7 +86,7 @@ impl ServerConfig {
                 env::var("VERIFIER_REQUEST_TIMEOUT")
                     .ok()
                     .and_then(|t| t.parse().ok())
-                    .unwrap_or(600), // 10 minutes
+                    .unwrap_or(1200), // 20 minutes
             ),
             verification_semaphore_limit: env::var("VERIFIER_SEMAPHORE_LIMIT")
                 .ok()
@@ -102,7 +102,7 @@ impl Default for ServerConfig {
             host: "0.0.0.0".to_string(),
             port: 3000,
             max_request_size: 10 * 1024 * 1024,        // 10MB
-            request_timeout: Duration::from_secs(600), // 10 minutes
+            request_timeout: Duration::from_secs(1200), // 20 minutes
             verification_semaphore_limit: 1,
         }
     }
@@ -120,7 +120,7 @@ impl VerificationConfig {
             verifier_timeout_seconds:      env::var("VERIFIER_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|t| t.parse().ok())
-                .unwrap_or(600), // 10 minutes
+                .unwrap_or(120), // 10 minutes
         }
     }
 }
@@ -130,7 +130,7 @@ impl Default for VerificationConfig {
         Self {
             verifier_binary_path:          "./verifier".to_string(),
             default_max_verification_time: 300, // 5 minutes
-            verifier_timeout_seconds:      600, // 10 minutes
+            verifier_timeout_seconds:      1200, // 20 minutes
         }
     }
 }
