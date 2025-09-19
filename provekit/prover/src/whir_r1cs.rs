@@ -59,10 +59,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let mut merlin = io.to_prover_state();
         let z = pad_to_power_of_two(witness);
-        // let witness_polynomial_evals = EvaluationsList::new(z);
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
             batch_commit_to_polynomial(self.m, &self.whir_witness, &z, &mut merlin);
+
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
         let witness_slice = &z[..r1cs.num_witnesses()];
