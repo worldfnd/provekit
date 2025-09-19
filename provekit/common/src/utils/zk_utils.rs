@@ -1,6 +1,6 @@
 use {
     crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
-    whir::poly_utils::coeffs::CoefficientList
+    whir::poly_utils::coeffs::CoefficientList,
 };
 
 pub fn create_masked_polynomial(

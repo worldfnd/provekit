@@ -1,12 +1,17 @@
 use {
-    anyhow::{ensure, Context, Result}, ark_std::{One, Zero}, provekit_common::{
+    anyhow::{ensure, Context, Result},
+    ark_std::{One, Zero},
+    provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
-    }, spongefish::{
+    },
+    spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
         VerifierState,
-    }, tracing::instrument, whir::{
+    },
+    tracing::instrument,
+    whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
@@ -14,7 +19,7 @@ use {
             utils::HintDeserialize,
             verifier::Verifier,
         },
-    }
+    },
 };
 
 pub struct DataFromSumcheckVerifier {
@@ -37,12 +42,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let commitment_reader = CommitmentReader::new(&self.whir_witness);
         let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
-        let data_from_sumcheck_verifier = run_sumcheck_verifier(
-            &mut arthur,
-            self.m_0,
-            &self.whir_for_hiding_spartan,
-        )
-        .context("while verifying sumcheck")?;
+        let data_from_sumcheck_verifier =
+            run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
+                .context("while verifying sumcheck")?;
 
         let whir_query_answer_sum_vectors: (Vec<FieldElement>, Vec<FieldElement>) =
             arthur.hint().unwrap();
