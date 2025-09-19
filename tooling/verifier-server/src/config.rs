@@ -35,9 +35,9 @@ pub struct ServerConfig {
 #[derive(Debug, Clone)]
 pub struct VerificationConfig {
     /// Path to the external verifier binary
-    pub verifier_binary_path:          String,
+    pub verifier_binary_path:     String,
     /// Timeout for external verifier binary execution in seconds
-    pub verifier_timeout_seconds:      u64,
+    pub verifier_timeout_seconds: u64,
 }
 
 /// Artifact management configuration
@@ -99,7 +99,7 @@ impl Default for ServerConfig {
         Self {
             host: "0.0.0.0".to_string(),
             port: 3000,
-            max_request_size: 10 * 1024 * 1024,        // 10MB
+            max_request_size: 10 * 1024 * 1024,         // 10MB
             request_timeout: Duration::from_secs(1200), // 20 minutes
             verification_semaphore_limit: 1,
         }
@@ -109,9 +109,9 @@ impl Default for ServerConfig {
 impl VerificationConfig {
     fn from_env() -> Self {
         Self {
-            verifier_binary_path:          env::var("VERIFIER_BINARY_PATH")
+            verifier_binary_path:     env::var("VERIFIER_BINARY_PATH")
                 .unwrap_or_else(|_| "./verifier".to_string()),
-            verifier_timeout_seconds:      env::var("VERIFIER_TIMEOUT_SECONDS")
+            verifier_timeout_seconds: env::var("VERIFIER_TIMEOUT_SECONDS")
                 .ok()
                 .and_then(|t| t.parse().ok())
                 .unwrap_or(1200), // 20 minutes
@@ -122,8 +122,8 @@ impl VerificationConfig {
 impl Default for VerificationConfig {
     fn default() -> Self {
         Self {
-            verifier_binary_path:          "./verifier".to_string(),
-            verifier_timeout_seconds:      1200, // 20 minutes
+            verifier_binary_path:     "./verifier".to_string(),
+            verifier_timeout_seconds: 1200, // 20 minutes
         }
     }
 }
