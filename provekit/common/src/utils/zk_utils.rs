@@ -16,21 +16,24 @@ pub fn create_masked_polynomial(
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
     let num_elements = 1 << num_vars;
     let mut elements = Vec::with_capacity(num_elements);
-    unsafe {
-        elements.set_len(num_elements);
-    }
 
     // TODO(px): find the optimal chunk size
     const CHUNK_SIZE: usize = 32;
 
-    // Fill the pre-allocated vector in parallel using chunked approach
-    // Each thread gets its own RNG instance and processes a chunk of elements
-    elements.par_chunks_mut(CHUNK_SIZE).for_each(|chunk| {
+    // Get access to the uninitialized memory
+    let spare = elements.spare_capacity_mut();
+
+    // Fill the uninitialized memory in parallel using chunked approach
+    spare.par_chunks_mut(CHUNK_SIZE).for_each(|chunk| {
         let mut rng = ark_std::rand::thread_rng();
         for element in chunk {
-            *element = FieldElement::rand(&mut rng);
+            element.write(FieldElement::rand(&mut rng));
         }
     });
+
+    unsafe {
+        elements.set_len(num_elements);
+    }
 
     elements
 }

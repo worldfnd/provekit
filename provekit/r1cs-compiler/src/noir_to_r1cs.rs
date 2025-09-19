@@ -342,10 +342,10 @@ impl NoirToR1CSCompiler {
                                 self.fetch_r1cs_witness_index(witness)
                             }
                         };
-                        println!(
-                            "RANGE CHECK of witness {} to {} bits",
-                            input_witness, num_bits
-                        );
+                        // println!(
+                        //     "RANGE CHECK of witness {} to {} bits",
+                        //     input_witness, num_bits
+                        // );
                         // Add the entry into the range blocks.
                         range_checks
                             .entry(num_bits)
