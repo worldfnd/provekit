@@ -136,3 +136,4 @@ ark-std = { version = "0.5", features = ["std"] }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = ["arkworks-algebra"] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
 whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "2b5be1606e261bf00be9d5bf91c8546fb933f3be" }
+

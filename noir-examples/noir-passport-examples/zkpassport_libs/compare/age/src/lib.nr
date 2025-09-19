@@ -41,8 +41,7 @@ pub fn compare_age(dg1: [u8; 95], min_age: u8, max_age: u8, timestamp: u64) {
 
     let birthdate: Date = get_birthdate(dg1, timestamp);
 
-    let current_date_bytes = u64_to_date_bytes(timestamp);
-    let current_date = Date::from_bytes_long_year(current_date_bytes);
+    let current_date = Date::from_timestamp(timestamp);
 
     assert((min_age != 0) | (max_age != 0), "Either min or max age must be non-zero");
 
@@ -127,17 +126,4 @@ pub fn calculate_param_commitment_sha2(
     params[10] = max_age_required;
     let hash = noir_native_sha256::ryan_sha256_noir::sha256_var(params, 11);
     utils::pack_be_bytes_into_field::<32, 31>(hash)
-}
-
-/// timestamp to digits
-pub fn u64_to_date_bytes(mut n: u64) -> [u8; 8] {
-    let mut out: [u8; 8] = [0; 8];
-    // Loop from 7 down to 0
-    for idx in 0..8 {
-        let i = 7 - idx;
-        let digit: u64 = n % 10;
-        out[i] = (digit as u8) + 48;
-        n = n / 10;
-    }
-    out
 }
