@@ -1,7 +1,8 @@
 use {
     provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     whir::parameters::{
-        default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy, MultivariateParameters, ProtocolParameters, SoundnessType
+        default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
+        MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
 
