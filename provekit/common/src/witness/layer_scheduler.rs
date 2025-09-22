@@ -301,9 +301,9 @@ impl<'a> LayerScheduler<'a> {
 
     /// Checks if a builder can be processed in the current PRE segment.
     fn can_process_builder(&self, builder_idx: usize) -> bool {
-                // Check if this builder reads any pending inverse outputs
+        // Check if this builder reads any pending inverse outputs
         let reads_pending_inverse = Self::reads_of(&self.witness_builders[builder_idx])
-                    .iter()
+            .iter()
             .any(|witness| self.pending_inverse_outputs.contains(witness));
 
         !reads_pending_inverse
