@@ -1,7 +1,7 @@
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
-        witness::{NoirWitnessGenerator, WitnessBuilder},
+        witness::{LayeredWitnessBuilders, NoirWitnessGenerator},
         NoirElement, R1CS,
     },
     acir::circuit::Program,
@@ -15,11 +15,11 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:           Program<NoirElement>,
-    pub r1cs:              R1CS,
-    pub witness_builders:  Vec<WitnessBuilder>,
-    pub witness_generator: NoirWitnessGenerator,
-    pub whir_for_witness:  WhirR1CSScheme,
+    pub program:                  Program<NoirElement>,
+    pub r1cs:                     R1CS,
+    pub layered_witness_builders: LayeredWitnessBuilders,
+    pub witness_generator:        NoirWitnessGenerator,
+    pub whir_for_witness:         WhirR1CSScheme,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

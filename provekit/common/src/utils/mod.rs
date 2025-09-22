@@ -10,7 +10,7 @@ pub mod zk_utils;
 pub use self::print_abi::PrintAbi;
 use {
     crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, PrimeField},
+    ark_ff::{BigInt, Field, PrimeField},
     ruint::{aliases::U256, uint},
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
@@ -122,4 +122,42 @@ pub fn human(value: f64) -> impl Display {
         }
     }
     Human(value)
+}
+
+/// Computes multiplicative inverses using Montgomery's batch inversion trick.
+///
+/// Reduces N field inversions to 1 inversion + 3N multiplications.
+/// See: https://encrypt.a41.io/primitives/abstract-algebra/group/batch-inverse
+pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
+    let batch_size = values.len();
+    if batch_size == 0 {
+        return Vec::new();
+    }
+
+    if batch_size == 1 {
+        return vec![values[0].inverse().expect("Cannot invert zero")];
+    }
+
+    // Forward pass: compute prefix products
+    let mut prefix = Vec::with_capacity(batch_size);
+    let mut acc = FieldElement::from(1u32);
+    for &v in values {
+        acc = acc * v;
+        prefix.push(acc);
+    }
+
+    // Invert the total product (single expensive operation)
+    let mut inv_acc = prefix[batch_size - 1]
+        .inverse()
+        .expect("Batch inversion: zero product");
+
+    // Backward pass: compute individual inverses
+    let mut inverses = vec![FieldElement::from(0u32); batch_size];
+    for i in (1..batch_size).rev() {
+        inverses[i] = inv_acc * prefix[i - 1];
+        inv_acc = inv_acc * values[i];
+    }
+    inverses[0] = inv_acc;
+
+    inverses
 }

@@ -6,7 +6,9 @@ use {
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
-        utils::PrintAbi, witness::NoirWitnessGenerator, NoirProofScheme, WhirR1CSScheme,
+        utils::PrintAbi,
+        witness::{NoirWitnessGenerator, WitnessBuilder},
+        NoirProofScheme, WhirR1CSScheme,
     },
     std::{fs::File, path::Path},
     tracing::{info, instrument},
@@ -58,6 +60,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             r1cs.b.num_entries(),
             r1cs.c.num_entries()
         );
+        let layered_witness_builders = WitnessBuilder::prepare_layers(&witness_builders);
 
         // Configure witness generator
         let witness_generator =
@@ -69,7 +72,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         Ok(Self {
             program: program.bytecode,
             r1cs,
-            witness_builders,
+            layered_witness_builders,
             witness_generator,
             whir_for_witness,
         })
@@ -111,7 +114,7 @@ mod tests {
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
 
         test_serde(&proof_schema.r1cs);
-        test_serde(&proof_schema.witness_builders);
+        test_serde(&proof_schema.layered_witness_builders);
         test_serde(&proof_schema.witness_generator);
         test_serde(&proof_schema.whir_for_witness);
     }

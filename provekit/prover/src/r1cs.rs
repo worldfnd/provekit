@@ -3,7 +3,10 @@ use {
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     provekit_common::{
-        skyscraper::SkyscraperSponge, witness::WitnessBuilder, FieldElement, NoirElement, R1CS,
+        skyscraper::SkyscraperSponge,
+        utils::batch_inverse_montgomery,
+        witness::{LayeredWitnessBuilders, WitnessBuilder},
+        FieldElement, NoirElement, R1CS,
     },
     spongefish::ProverState,
     tracing::instrument,
@@ -12,8 +15,8 @@ use {
 pub trait R1CSSolver {
     fn solve_witness_vec(
         &self,
-        witness_builder_vec: &[WitnessBuilder],
-        acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
+        plan: &LayeredWitnessBuilders,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) -> Vec<Option<FieldElement>>;
 
@@ -21,17 +24,78 @@ pub trait R1CSSolver {
 }
 
 impl R1CSSolver for R1CS {
+    /// Solves the R1CS witness vector using layered execution with batch
+    /// inversion.
+    ///
+    /// Executes witness builders in segments: each segment consists of a PRE
+    /// phase (non-inverse operations) followed by a batch inversion phase.
+    /// This approach minimizes expensive field inversions by batching them
+    /// using Montgomery's trick.
+    ///
+    /// # Algorithm
+    ///
+    /// For each segment:
+    /// 1. Execute all PRE builders (non-inverse operations) serially
+    /// 2. Collect denominators from pending inverse operations
+    /// 3. Perform batch inversion using Montgomery's algorithm
+    /// 4. Write inverse results to witness vector
+    ///
+    /// # Panics
+    ///
+    /// Panics if a denominator witness is not set when needed for inversion.
+    /// This indicates a bug in the layer scheduling algorithm.
     #[instrument(skip_all)]
     fn solve_witness_vec(
         &self,
-        witness_builder_vec: &[WitnessBuilder],
-        acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
+        plan: &LayeredWitnessBuilders,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
-        witness_builder_vec.iter().for_each(|witness_builder| {
-            witness_builder.solve(acir_witness_idx_to_value_map, &mut witness, transcript);
-        });
+
+        for segment_index in 0..plan.layers_len() {
+            // Execute PRE segment (non-inverse builders)
+            let (start, end) = plan.layer_range(segment_index);
+            let pre_builders = &plan.pre_builders[start..end];
+            for builder in pre_builders {
+                builder.solve(acir_map, &mut witness, transcript);
+            }
+
+            // Execute inverse batch using Montgomery batch inversion
+            let inverse_batch = &plan.inverse_batches[segment_index];
+            if !inverse_batch.is_empty() {
+                let batch_size = inverse_batch.len();
+                let mut output_witnesses = Vec::with_capacity(batch_size);
+                let mut denominators = Vec::with_capacity(batch_size);
+
+                for inverse_builder in inverse_batch {
+                    let WitnessBuilder::Inverse(output_witness, denominator_witness) =
+                        inverse_builder
+                    else {
+                        panic!(
+                            "Invalid builder in inverse batch: expected Inverse, got {:?}",
+                            inverse_builder
+                        );
+                    };
+
+                    output_witnesses.push(*output_witness);
+
+                    let denominator = witness[*denominator_witness].unwrap_or_else(|| {
+                        panic!(
+                            "Denominator witness {} not set before inverse operation",
+                            denominator_witness
+                        )
+                    });
+                    denominators.push(denominator);
+                }
+
+                // Perform batch inversion and write results
+                let inverses = batch_inverse_montgomery(&denominators);
+                for (output_witness, inverse_value) in output_witnesses.into_iter().zip(inverses) {
+                    witness[output_witness] = Some(inverse_value);
+                }
+            }
+        }
 
         witness
     }
