@@ -126,26 +126,24 @@ func RunZKWhir(
 		}
 
 		if r == 0 {
+			err = utilities.IsEqual(api, uapi, mainRoundData.StirChallengesPoints[r], firstRound.LeafIndexes[0])
+			if err != nil {
+				return
+			}
 			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
 			if err != nil {
 				return
 			}
-
-			err = utilities.IsSubset(api, uapi, arthur, mainRoundData.StirChallengesPoints[r], firstRound.LeafIndexes[0])
-			if err != nil {
-				return
-			}
-
 			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(firstRound.LeafIndexes[r]))
 			for index := range firstRound.LeafIndexes[r] {
 				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, firstRound.LeafIndexes[r][index])
 			}
 		} else {
-			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
+			err = utilities.IsEqual(api, uapi, mainRoundData.StirChallengesPoints[r], circuit.LeafIndexes[r-1])
 			if err != nil {
 				return
 			}
-			err = utilities.IsSubset(api, uapi, arthur, mainRoundData.StirChallengesPoints[r], circuit.LeafIndexes[r-1])
+			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
 			if err != nil {
 				return
 			}
@@ -387,7 +385,7 @@ func GenerateStirChallengePoints(
 		return nil, err
 	}
 
-	err = utilities.IsSubset(api, uapi, arthur, finalIndexes, leafIndexes)
+	err = utilities.IsEqual(api, uapi, finalIndexes, leafIndexes)
 	if err != nil {
 		return nil, err
 	}
