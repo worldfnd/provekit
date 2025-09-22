@@ -1,8 +1,13 @@
 use {
-    super::WitnessBuilder, crate::witness::{ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessCoefficient, BINOP_ATOMIC_BITS}, std::{
+    super::WitnessBuilder,
+    crate::witness::{
+        ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessCoefficient,
+        BINOP_ATOMIC_BITS,
+    },
+    std::{
         collections::{BTreeMap, BTreeSet, VecDeque},
         mem,
-    }
+    },
 };
 
 /// Layered plan for serial batched-inversion solving.
