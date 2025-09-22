@@ -18,14 +18,14 @@ use {
 };
 
 pub trait NoirProofSchemeProver {
-    fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirElement>>;
+    fn generate_witness(&mut self, input_map: &InputMap) -> Result<WitnessMap<NoirElement>>;
 
-    fn prove(&self, input_map: &InputMap) -> Result<NoirProof>;
+    fn prove(&mut self, input_map: &InputMap) -> Result<NoirProof>;
 
     fn create_witness_io_pattern(&self) -> IOPattern;
 
     fn seed_witness_merlin(
-        &self,
+        &mut self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         witness: &WitnessMap<NoirElement>,
     ) -> Result<()>;
@@ -33,7 +33,7 @@ pub trait NoirProofSchemeProver {
 
 impl NoirProofSchemeProver for NoirProofScheme {
     #[instrument(skip_all)]
-    fn generate_witness(&self, input_map: &InputMap) -> Result<WitnessMap<NoirElement>> {
+    fn generate_witness(&mut self, input_map: &InputMap) -> Result<WitnessMap<NoirElement>> {
         let solver = Bn254BlackBoxSolver::default();
         let mut output_buffer = Vec::new();
         let mut foreign_call_executor = DefaultForeignCallBuilder {
@@ -45,10 +45,15 @@ impl NoirProofSchemeProver for NoirProofScheme {
         }
         .build();
 
-        let initial_witness = self.witness_generator.abi().encode(input_map, None)?;
+        let initial_witness = self
+            .witness_generator
+            .take()
+            .unwrap()
+            .abi()
+            .encode(input_map, None)?;
 
         let mut witness_stack = nargo::ops::execute_program(
-            &self.program,
+            &self.program.as_ref().unwrap(),
             initial_witness,
             &solver,
             &mut foreign_call_executor,
@@ -61,7 +66,7 @@ impl NoirProofSchemeProver for NoirProofScheme {
     }
 
     #[instrument(skip_all)]
-    fn prove(&self, input_map: &InputMap) -> Result<NoirProof> {
+    fn prove(&mut self, input_map: &InputMap) -> Result<NoirProof> {
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Solve R1CS instance
@@ -69,8 +74,8 @@ impl NoirProofSchemeProver for NoirProofScheme {
         let mut witness_merlin = witness_io.to_prover_state();
         self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
 
-        let partial_witness = self.r1cs.solve_witness_vec(
-            &self.layered_witness_builders,
+        let partial_witness = self.r1cs.as_ref().unwrap().solve_witness_vec(
+            &self.layered_witness_builders.take().unwrap(),
             &acir_witness_idx_to_value_map,
             &mut witness_merlin,
         );
@@ -79,23 +84,27 @@ impl NoirProofSchemeProver for NoirProofScheme {
         // Verify witness (redudant with solve)
         #[cfg(test)]
         self.r1cs
+            .as_ref()
+            .unwrap()
             .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(&self.r1cs, witness)
+            .prove(self.r1cs.take().unwrap(), witness)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {
-        let circuit = &self.program.functions[0];
+        let circuit = &self.program.as_ref().unwrap().functions[0];
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
             .layered_witness_builders
+            .as_ref()
+            .unwrap()
             .builders
             .iter()
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
@@ -109,18 +118,18 @@ impl NoirProofSchemeProver for NoirProofScheme {
     }
 
     fn seed_witness_merlin(
-        &self,
+        &mut self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         witness: &WitnessMap<NoirElement>,
     ) -> Result<()> {
         // Absorb circuit shape
         let _ = merlin.add_scalars(&[
-            FieldElement::from(self.r1cs.num_constraints() as u64),
-            FieldElement::from(self.r1cs.num_witnesses() as u64),
+            FieldElement::from(self.r1cs.as_ref().unwrap().num_constraints() as u64),
+            FieldElement::from(self.r1cs.as_ref().unwrap().num_witnesses() as u64),
         ]);
 
         // Absorb public inputs (values) in canonical order
-        let circuit = &self.program.functions[0];
+        let circuit = &self.program.take().unwrap().functions[0];
         let public_idxs = circuit.public_inputs().indices();
         if !public_idxs.is_empty() {
             let pub_vals: Vec<FieldElement> = public_idxs

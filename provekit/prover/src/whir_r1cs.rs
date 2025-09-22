@@ -35,12 +35,12 @@ use {
 };
 
 pub trait WhirR1CSProver {
-    fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
+    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
-    fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
+    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -58,6 +58,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let io: IOPattern = self.create_io_pattern();
 
         let mut merlin = io.to_prover_state();
+        drop(io);
         let z = pad_to_power_of_two(witness);
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
@@ -67,7 +68,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         // witness
         let witness_slice = &z[..r1cs.num_witnesses()];
         let (mut merlin, alpha) = run_zk_sumcheck_prover(
-            r1cs,
+            &r1cs,
             witness_slice,
             merlin,
             self.m_0,
@@ -85,8 +86,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             alphas,
         );
 
-        let _ = merlin
-            .hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums.to_vec(), g_sums.to_vec()));
+        let _ = merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums));
 
         // Compute WHIR weighted batch opening proof
         let (merlin, ..) =
@@ -384,14 +384,14 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     alphas: [Vec<FieldElement>; N],
 ) -> (
     Statement<FieldElement>,
-    [FieldElement; N],
-    [FieldElement; N],
+    Vec<FieldElement>,
+    Vec<FieldElement>,
 ) {
     let mut statement = Statement::<FieldElement>::new(num_vars);
-    let mut f_sums = [FieldElement::zero(); N];
-    let mut g_sums = [FieldElement::zero(); N];
+    let mut f_sums = Vec::with_capacity(N);
+    let mut g_sums = Vec::with_capacity(N);
 
-    for (idx, alpha) in alphas.into_iter().enumerate() {
+    for alpha in alphas.into_iter() {
         let mut expanded_alphas = pad_to_power_of_two(alpha);
         expanded_alphas.resize(expanded_alphas.len() * 2, FieldElement::zero());
 
@@ -401,8 +401,8 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
 
         statement.add_constraint(weight, f + witness.batching_randomness * g);
 
-        f_sums[idx] = f;
-        g_sums[idx] = g;
+        f_sums.push(f);
+        g_sums.push(g);
     }
 
     (statement, f_sums, g_sums)

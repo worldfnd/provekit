@@ -38,7 +38,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
     let witness_file_path = test_case_path.join("Prover.toml");
 
-    let proof_schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+    let mut proof_schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
     let input_map = proof_schema
         .read_witness(&witness_file_path)
         .expect("Reading witness data");

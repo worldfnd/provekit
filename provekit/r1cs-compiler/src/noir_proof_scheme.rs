@@ -28,7 +28,8 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
         let file = File::open(path).context("while opening Noir program")?;
-        let program = serde_json::from_reader(file).context("while reading Noir program")?;
+        let program: ProgramArtifact =
+            serde_json::from_reader(file).context("while reading Noir program")?;
 
         Self::from_program(program)
     }
@@ -70,10 +71,10 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&r1cs);
 
         Ok(Self {
-            program: program.bytecode,
-            r1cs,
-            layered_witness_builders,
-            witness_generator,
+            program: Some(program.bytecode),
+            r1cs: Some(r1cs),
+            layered_witness_builders: Some(layered_witness_builders),
+            witness_generator: Some(witness_generator),
             whir_for_witness,
         })
     }

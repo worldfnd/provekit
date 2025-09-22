@@ -47,7 +47,7 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let scheme: NoirProofScheme =
+        let mut scheme: NoirProofScheme =
             read(&self.scheme_path).context("while reading Noir proof scheme")?;
         let (constraints, witnesses) = scheme.size();
         info!(constraints, witnesses, "Read Noir proof scheme");

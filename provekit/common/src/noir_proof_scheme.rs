@@ -15,10 +15,10 @@ use {
 /// A scheme for proving a Noir program.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:                  Program<NoirElement>,
-    pub r1cs:                     R1CS,
-    pub layered_witness_builders: LayeredWitnessBuilders,
-    pub witness_generator:        NoirWitnessGenerator,
+    pub program:                  Option<Program<NoirElement>>,
+    pub r1cs:                     Option<R1CS>,
+    pub layered_witness_builders: Option<LayeredWitnessBuilders>,
+    pub witness_generator:        Option<NoirWitnessGenerator>,
     pub whir_for_witness:         WhirR1CSScheme,
 }
 
@@ -29,13 +29,18 @@ pub struct NoirProof {
 
 impl NoirProofScheme {
     #[must_use]
-    pub const fn size(&self) -> (usize, usize) {
-        (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    pub fn size(&self) -> (usize, usize) {
+        (
+            self.r1cs.as_ref().unwrap().num_constraints(),
+            self.r1cs.as_ref().unwrap().num_witnesses(),
+        )
     }
 
     pub fn read_witness(&self, prover_toml: impl AsRef<Path>) -> Result<InputMap> {
-        let (input_map, _expected_return) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        let (input_map, _expected_return) = read_inputs_from_file(
+            prover_toml.as_ref(),
+            self.witness_generator.as_ref().unwrap().abi(),
+        )?;
 
         Ok(input_map)
     }

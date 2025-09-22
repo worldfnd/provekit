@@ -43,7 +43,7 @@ pub unsafe extern "C" fn pk_prove_to_file(
         let out_path = c_str_to_str(out_path)?;
 
         // Read the scheme file (.nps or .json)
-        let scheme: NoirProofScheme =
+        let mut scheme: NoirProofScheme =
             read(Path::new(scheme_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Read the witness/input file (.toml)
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn pk_prove_to_json(
         let input_path = c_str_to_str(input_path)?;
 
         // Read the scheme file (.nps or .json)
-        let scheme: NoirProofScheme =
+        let mut scheme: NoirProofScheme =
             read(Path::new(scheme_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Read the witness/input file (.toml)
@@ -155,6 +155,23 @@ pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
     if !buf.ptr.is_null() && buf.len > 0 {
         drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.len));
     }
+}
+
+/// Get the last error message as a C string.
+///
+/// This function returns a static error message that doesn't need to be freed.
+/// For more detailed error information, check the return codes of other
+/// functions.
+///
+/// # Returns
+///
+/// Returns a null-terminated C string containing the last error message,
+/// or a null pointer if no error occurred.
+#[no_mangle]
+pub extern "C" fn pk_last_error() -> *const c_char {
+    // For now, return a generic message. In the future, this could be enhanced
+    // to store thread-local error messages.
+    b"Check function return codes for error details\0".as_ptr() as *const c_char
 }
 
 /// Initialize the ProveKit library.
