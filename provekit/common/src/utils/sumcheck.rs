@@ -180,7 +180,7 @@ pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldEle
 #[instrument(skip_all)]
 pub fn calculate_witness_bounds(
     r1cs: &R1CS,
-    witness: Vec<FieldElement>,
+    witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * &witness, || r1cs.b() * &witness);
     // Derive C from R1CS relation (faster than matrix multiplication)

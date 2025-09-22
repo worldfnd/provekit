@@ -224,7 +224,7 @@ fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 
 #[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
-    z: Vec<FieldElement>,
+    z: &[FieldElement],
     mut merlin: ProverState<SkyscraperSponge, FieldElement>,
     m_0: usize,
     whir_for_blinding_of_spartan_config: &WhirConfig,
