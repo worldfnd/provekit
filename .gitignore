@@ -12,6 +12,7 @@
 *.np
 params_for_recursive_verifier
 params
+artifacts/
 
 # Don't ignore benchmarking artifacts
 !tooling/provekit-bench/benches/*

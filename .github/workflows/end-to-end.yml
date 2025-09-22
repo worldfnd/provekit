@@ -43,13 +43,11 @@ jobs:
         with:
           go-version: 1.24
 
-      # nargo execute is a faulty command that should be removed when toml reader is implemented
       - name: Compile and execute Nargo circuit
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
           nargo compile --skip-brillig-constraints-check --force
-          nargo execute
-      # basic.gz should be changed to .toml file in the future when faulty command is removed
+
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
