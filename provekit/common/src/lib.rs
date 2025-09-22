@@ -7,6 +7,7 @@ mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
 pub mod witness;
+pub mod spark;
 
 use crate::interner::{InternedFieldElement, Interner};
 pub use {

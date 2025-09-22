@@ -12,6 +12,7 @@ repository.workspace = true
 # Workspace crates
 provekit-common.workspace = true
 skyscraper.workspace = true
+serde_json.workspace = true
 
 # Noir language
 acir.workspace = true

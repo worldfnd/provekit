@@ -1,6 +1,5 @@
 use {
-    provekit_common::FieldElement,
-    spark_prover::utilities::{ClaimedValues, Point, SPARKRequest},
+    provekit_common::{spark::{ClaimedValues, Point, SPARKRequest}, FieldElement},
     std::{fs::File, io::Write},
 };
 

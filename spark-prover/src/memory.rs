@@ -1,8 +1,6 @@
 use {
-    crate::utilities::Point,
     provekit_common::{
-        utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
-        HydratedSparseMatrix, R1CS,
+        spark::Point, utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement, HydratedSparseMatrix, R1CS
     },
 };
 

@@ -1,10 +1,6 @@
 use {
-    anyhow::{ensure, Result},
-    ark_ff::UniformRand,
-    ark_std::{One, Zero},
-    provekit_common::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
-        utils::{
+    anyhow::{ensure, Result}, ark_ff::UniformRand, ark_std::{One, Zero}, provekit_common::{
+        file::write, skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge}, spark::{self, ClaimedValues, Point, SPARKRequest}, utils::{
             pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq,
@@ -13,15 +9,11 @@ use {
             },
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
-        },
-        FieldElement, IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
-    },
-    spongefish::{
+        }, FieldElement, IOPattern, SparseMatrix, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS
+    }, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
-    },
-    tracing::{info, instrument, warn},
-    whir::{
+    }, std::{fs::File, io::Write}, tracing::{info, instrument, warn}, whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -30,7 +22,7 @@ use {
             statement::{Statement, Weights},
             utils::HintSerialize,
         },
-    },
+    }
 };
 
 pub trait WhirR1CSProver {
@@ -91,10 +83,25 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums.to_vec(), g_sums.to_vec()));
 
         // Compute WHIR weighted batch opening proof
-        let (merlin, ..) =
+        let (merlin, whir_randomness, deferred_evaluations) =
             run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
 
         let transcript = merlin.narg_string().to_vec();
+
+        let spark_request: SPARKRequest = SPARKRequest { 
+            point_to_evaluate: Point {
+                row: alpha,
+                col: whir_randomness.0,
+            },
+            claimed_values: ClaimedValues {
+                a: deferred_evaluations[0],
+                b: deferred_evaluations[1],
+                c: deferred_evaluations[2],
+            } 
+        };
+
+        let mut spark_request_file = File::create("spark_request.json")?; // Creates or truncates the spark_request_file
+        spark_request_file.write_all(serde_json::to_string(&spark_request).unwrap().as_bytes())?; // Writes bytes to the file
 
         Ok(WhirR1CSProof { transcript })
     }

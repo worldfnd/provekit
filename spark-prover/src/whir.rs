@@ -68,7 +68,7 @@ pub fn produce_whir_proof(
 ) -> Result<()> {
     let mut statement = Statement::<FieldElement>::new(evaluation_point.num_variables());
     statement.add_constraint(Weights::evaluation(evaluation_point), evaluated_value);
-    let prover = Prover(config);
+    let prover = Prover::new(config);
 
     prover
         .prove(merlin, statement, witness)

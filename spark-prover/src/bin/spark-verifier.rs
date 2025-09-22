@@ -2,14 +2,12 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::SkyscraperSponge,
-        utils::{
+        skyscraper::SkyscraperSponge, spark::SPARKRequest, utils::{
             next_power_of_two,
             sumcheck::{calculate_eq, eval_cubic_poly},
-        },
-        FieldElement, IOPattern, WhirConfig,
+        }, FieldElement, IOPattern, WhirConfig
     },
-    spark_prover::utilities::{SPARKProof, SPARKRequest},
+    spark_prover::utilities::SPARKProof,
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
         VerifierState,

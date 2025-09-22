@@ -79,7 +79,7 @@ pub fn prove_spark_for_single_matrix(
     sumcheck_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
     
-    let sumcheck_prover = Prover(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
     sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
 
     // Rowwise
@@ -180,7 +180,7 @@ pub fn prove_spark_for_single_matrix(
     rowwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
     
-    let sumcheck_prover = Prover(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
     sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
 
      // Colwise
@@ -281,7 +281,7 @@ pub fn prove_spark_for_single_matrix(
     colwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
     
-    let sumcheck_prover = Prover(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
     sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
 
     Ok(())
