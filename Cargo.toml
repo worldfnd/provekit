@@ -12,6 +12,7 @@ members = [
   "provekit/verifier",
   "tooling/cli",
   "tooling/provekit-bench",
+  "tooling/provekit-ffi",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
   "ntt",
@@ -55,7 +56,6 @@ missing_docs_in_private_items = { level = "allow", priority = 1 }
 missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
-debug = true      # Generate symbol info for profiling
 opt-level = 3
 codegen-units = 1
 lto = "fat"
@@ -81,6 +81,7 @@ ntt = { path = "ntt" }
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
+provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
