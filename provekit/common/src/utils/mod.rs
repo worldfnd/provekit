@@ -127,7 +127,7 @@ pub fn human(value: f64) -> impl Display {
 /// Computes multiplicative inverses using Montgomery's batch inversion trick.
 ///
 /// Reduces N field inversions to 1 inversion + 3N multiplications.
-/// See: https://encrypt.a41.io/primitives/abstract-algebra/group/batch-inverse
+/// See: <https://encrypt.a41.io/primitives/abstract-algebra/group/batch-inverse>
 pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     let batch_size = values.len();
     if batch_size == 0 {
