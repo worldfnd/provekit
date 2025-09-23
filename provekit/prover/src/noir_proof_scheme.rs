@@ -96,7 +96,7 @@ impl NoirProofSchemeProver for NoirProofScheme {
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
             .layered_witness_builders
-            .pre_builders
+            .builders
             .iter()
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
             .count();

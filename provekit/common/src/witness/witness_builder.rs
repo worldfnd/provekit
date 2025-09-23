@@ -135,9 +135,9 @@ impl WitnessBuilder {
     pub fn prepare_layers(witness_builders: &[WitnessBuilder]) -> LayeredWitnessBuilders {
         if witness_builders.is_empty() {
             return LayeredWitnessBuilders {
-                pre_builders:       Vec::new(),
-                pre_segment_starts: Vec::new(),
-                inverse_batches:    Vec::new(),
+                builders:       Vec::new(),
+                pre_starts:     Vec::new(),
+                inverse_starts: Vec::new(),
             };
         }
 

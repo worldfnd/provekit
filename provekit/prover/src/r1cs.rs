@@ -53,16 +53,15 @@ impl R1CSSolver for R1CS {
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
 
-        for segment_index in 0..plan.layers_len() {
+        for layer_idx in 0..plan.layers_len() {
             // Execute PRE segment (non-inverse builders)
-            let (start, end) = plan.layer_range(segment_index);
-            let pre_builders = &plan.pre_builders[start..end];
+            let pre_builders = plan.pre_builders(layer_idx);
             for builder in pre_builders {
                 builder.solve(acir_map, &mut witness, transcript);
             }
 
             // Execute inverse batch using Montgomery batch inversion
-            let inverse_batch = &plan.inverse_batches[segment_index];
+            let inverse_batch = plan.inverse_builders(layer_idx);
             if !inverse_batch.is_empty() {
                 let batch_size = inverse_batch.len();
                 let mut output_witnesses = Vec::with_capacity(batch_size);
