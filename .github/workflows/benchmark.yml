@@ -40,9 +40,6 @@ jobs:
         with:
           name: benchmark-binaries
           path: target/codspeed
-
-      - name: Build all Rust targets
-        run: cargo build --all-targets --all-features --verbose
       
       - name: Compile and execute Nargo circuit
         working-directory: noir-examples/poseidon-rounds
