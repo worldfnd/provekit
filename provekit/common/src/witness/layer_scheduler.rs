@@ -17,7 +17,7 @@ use {
 ///   segment-by-segment.
 /// - For segment i, the PRE slice is `pre_builders[pre_segment_starts[i] ..
 ///   pre_segment_starts[i+1] or end]`.
-/// - Immediately after PRE[i], batch-invert all denominators listed in
+/// - Immediately after PRE[\i], batch-invert all denominators listed in
 ///   `inverse_batches[i]`.
 /// - Each `inverse_batches[i]` contains only `WitnessBuilder::Inverse(out,
 ///   denom)` elements.
@@ -213,8 +213,8 @@ impl<'a> LayerScheduler<'a> {
 
     /// Builds a dependency graph from witness builders.
     ///
-    /// Returns (adjacency_list, in_degrees) where adjacency_list[i] contains
-    /// all builders that depend on builder i, and in_degrees[i] is the number
+    /// Returns (adjacency_list, in_degrees) where adjacency_list[\i] contains
+    /// all builders that depend on builder i, and in_degrees[\i] is the number
     /// of dependencies for builder i.
     fn build_dependency_graph(
         witness_builders: &[WitnessBuilder],
