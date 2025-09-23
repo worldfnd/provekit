@@ -238,9 +238,9 @@ pub fn verify_spark_single_matrix(
 
     let init_adr = calculate_adr(&evaluation_randomness.to_vec());
     let init_mem = calculate_eq(
-        &request.point_to_evaluate.col,
+        &request.point_to_evaluate.col[1..],
         &evaluation_randomness.to_vec(),
-    );
+    ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
     let init_cntr = FieldElement::from(0);
 
     let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
@@ -261,9 +261,9 @@ pub fn verify_spark_single_matrix(
 
     let final_adr = calculate_adr(&evaluation_randomness.to_vec());
     let final_mem = calculate_eq(
-        &request.point_to_evaluate.col,
+        &request.point_to_evaluate.col[1..],
         &evaluation_randomness.to_vec(),
-    );
+    ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
 
     let final_opening = final_adr * gamma * gamma + final_mem * gamma + final_cntr - tau;
 

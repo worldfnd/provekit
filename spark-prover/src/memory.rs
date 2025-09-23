@@ -1,6 +1,6 @@
 use {
     provekit_common::{
-        spark::Point, utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement, HydratedSparseMatrix, R1CS
+        spark::Point, utils::{next_power_of_two, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq}, FieldElement, HydratedSparseMatrix, R1CS
     },
 };
 
@@ -26,7 +26,7 @@ pub struct EValues {
 pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
     Memory {
         eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(&point_to_evaluate.row),
-        eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(&point_to_evaluate.col),
+        eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(&point_to_evaluate.col[1..]).iter().map(|x| *x * (FieldElement::from(1) - point_to_evaluate.col[0])).collect(),
     }
 }
 
@@ -49,5 +49,13 @@ pub fn calculate_e_values_for_matrix(
         e_rx.push(memory.eq_rx[r]);
         e_ry.push(memory.eq_ry[c]);
     }
+
+    let to_pad = (1<<next_power_of_two(matrix.iter().count())) - matrix.iter().count();
+
+    for _ in 0..to_pad {
+        e_rx.push(memory.eq_rx[0]);
+        e_ry.push(memory.eq_ry[0]);
+    }
+    
     EValuesForMatrix { e_rx, e_ry }
 }

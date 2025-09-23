@@ -13,7 +13,7 @@ use {
             sumcheck::{eval_cubic_poly, sumcheck_fold_map_reduce},
             HALF,
         },
-        FieldElement,
+        FieldElement, WhirConfig,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -32,24 +32,25 @@ pub fn prove_spark_for_single_matrix(
     e_values: EValuesForMatrix,
     claimed_value: FieldElement,
     whir_configs: &SPARKWHIRConfigs,
+    batched_config: &WhirConfig,
 ) -> Result<()> {
     let row_committer = CommitmentWriter::new(whir_configs.row.clone());
     let col_committer = CommitmentWriter::new(whir_configs.col.clone());
-    let a_3batched_committer = CommitmentWriter::new(whir_configs.a_3batched.clone());
+    let batched_committer = CommitmentWriter::new(batched_config.clone());
 
-    let sumcheck_witness = a_3batched_committer.commit_batch(merlin, &[
+    let sumcheck_witness = batched_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.val.clone()).to_coeffs(),
         EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
         EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
     ])?;
 
-    let rowwise_witness = a_3batched_committer.commit_batch(merlin, &[
+    let rowwise_witness = batched_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
         EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
         EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
     ])?;
 
-    let colwise_witness = a_3batched_committer.commit_batch(merlin, &[
+    let colwise_witness = batched_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
         EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
         EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
@@ -79,7 +80,7 @@ pub fn prove_spark_for_single_matrix(
     sumcheck_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
     
-    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(batched_config.clone());
     sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
 
     // Rowwise
@@ -110,7 +111,8 @@ pub fn prove_spark_for_single_matrix(
     let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
-
+    
+    println!("Rowwise init final gpa");
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -152,6 +154,7 @@ pub fn prove_spark_for_single_matrix(
             .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
             .collect();
 
+    println!("Rowwise init final gpa");
     let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -180,7 +183,7 @@ pub fn prove_spark_for_single_matrix(
     rowwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
     
-    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(batched_config.clone());
     sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
 
      // Colwise
@@ -198,6 +201,11 @@ pub fn prove_spark_for_single_matrix(
     let init_value = memory.eq_ry.clone();
     let init_timestamp = vec![FieldElement::from(0); memory.eq_ry.len()];
 
+    println!("{:?}", memory.eq_ry.len());
+    println!("{:?}", init_address.len());
+    println!("{:?}", init_value.len());
+    println!("{:?}", init_timestamp.len());
+
     let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
@@ -212,6 +220,8 @@ pub fn prove_spark_for_single_matrix(
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
 
+    println!("Init vec{:?}", init_vec.len());
+    println!("Final vec{:?}", final_vec.len());
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -281,7 +291,7 @@ pub fn prove_spark_for_single_matrix(
     colwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
     
-    let sumcheck_prover = Prover::new(whir_configs.a_3batched.clone());
+    let sumcheck_prover = Prover::new(batched_config.clone());
     sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
 
     Ok(())

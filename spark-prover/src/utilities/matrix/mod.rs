@@ -1,4 +1,5 @@
-use provekit_common::{FieldElement, HydratedSparseMatrix, SparseMatrix, R1CS};
+use ark_ff::Field;
+use provekit_common::{utils::next_power_of_two, FieldElement, HydratedSparseMatrix, SparseMatrix, R1CS};
 
 #[derive(Debug)]
 pub struct SparkR1CS {
@@ -51,6 +52,13 @@ pub fn get_coordinate_rep_of_a_matrix(matrix: &HydratedSparseMatrix) -> COOMatri
         val.push(value.clone());
     }
 
+    let to_pad = (1<<next_power_of_two(matrix.iter().count())) - matrix.iter().count();
+    for _ in 0..to_pad {
+        row.push(FieldElement::from(0 as u64));
+        col.push(FieldElement::from(0 as u64));
+        val.push(FieldElement::from(0 as u64));
+    }
+
     COOMatrix { row, col, val }
 }
 
@@ -65,6 +73,15 @@ pub fn calculate_timestamps(matrix: &HydratedSparseMatrix) -> TimeStamps {
         read_row_counters[r] += 1;
         read_col.push(FieldElement::from(read_col_counters[c] as u64));
         read_col_counters[c] += 1;
+    }
+
+    let to_pad = (1<<next_power_of_two(matrix.iter().count())) - matrix.iter().count();
+
+    for _ in 0..to_pad {
+        read_row.push(FieldElement::from(read_row_counters[0] as u64));
+        read_row_counters[0] += 1;
+        read_col.push(FieldElement::from(read_col_counters[0] as u64));
+        read_col_counters[0] += 1;
     }
 
     let final_row = read_row_counters

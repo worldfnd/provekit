@@ -10,7 +10,7 @@ use {
         },
         whir::create_whir_configs,
     },
-    std::{fs::File, io::Write},
+    std::{fs::File, io::Write, mem},
 };
 
 fn main() -> Result<()> {
@@ -23,6 +23,7 @@ fn main() -> Result<()> {
     // Run for each request
     let request = deserialize_request("spark-prover/request.json")
         .context("Error: Failed to deserialize the request object")?;
+
     let memory = calculate_memory(request.point_to_evaluate);
     let e_values = calculate_e_values_for_r1cs(&memory, &r1cs);
     let io_pattern = create_io_pattern(&r1cs, &spark_whir_configs);
@@ -35,6 +36,7 @@ fn main() -> Result<()> {
         e_values.a,
         request.claimed_values.a,
         &spark_whir_configs,
+        &spark_whir_configs.a_3batched,
     )?;
 
     prove_spark_for_single_matrix(
@@ -44,6 +46,7 @@ fn main() -> Result<()> {
         e_values.b,
         request.claimed_values.b,
         &spark_whir_configs,
+        &spark_whir_configs.b_3batched,
     )?;
 
     prove_spark_for_single_matrix(
@@ -53,6 +56,7 @@ fn main() -> Result<()> {
         e_values.c,
         request.claimed_values.c,
         &spark_whir_configs,
+        &spark_whir_configs.c_3batched,
     )?;
 
     let spark_proof = SPARKProof {

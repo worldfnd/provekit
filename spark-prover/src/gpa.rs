@@ -2,11 +2,10 @@ use {
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::{
-            sumcheck::{
+            next_power_of_two, sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
                 sumcheck_fold_map_reduce,
-            },
-            HALF,
+            }, HALF
         },
         FieldElement,
     },
@@ -55,6 +54,8 @@ pub fn run_gpa(
 fn calculate_binary_multiplication_tree(
     array_to_prove: Vec<FieldElement>,
 ) -> Vec<Vec<FieldElement>> {
+    println!("{:?}", array_to_prove.len());
+    assert!(array_to_prove.len() == 1 << next_power_of_two(array_to_prove.len()));
     let mut layers = vec![];
     let mut current_layer = array_to_prove;
 
