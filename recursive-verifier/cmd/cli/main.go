@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+
 	"log"
 	"os"
 
@@ -67,6 +68,23 @@ func main() {
 				Required: false,
 				Value:    "",
 			},
+			&cli.StringFlag{
+				Name:     "spark_proof",
+				Usage:    "Path to the spark SPARK proof file",
+				Required: false,
+				Value:    "",
+			},
+			&cli.StringFlag{
+				Name:     "evaluation",
+				Usage:    "Option to directly evaluate the matrix extension or use SPARK",
+				Required: true,
+				Action: func(c *cli.Context, v string) error {
+					if v != "direct" && v != "spark" {
+						return fmt.Errorf("invalid value for --evaluation: %s (expected 'direct' or 'spark')", v)
+					}
+					return nil
+				},
+			},
 		},
 		Action: func(c *cli.Context) error {
 			configFilePath := c.String("config")
@@ -77,6 +95,7 @@ func main() {
 			pkUrl := c.String("pk_url")
 			vkUrl := c.String("vk_url")
 			r1csUrl := c.String("r1cs_url")
+			// sparkPath := c.String("spark_proof")
 
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
@@ -101,6 +120,7 @@ func main() {
 				}
 			}
 
+			// Parse only if we use direct evaluation
 			var r1cs circuit.R1CS
 			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)

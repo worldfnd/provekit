@@ -112,7 +112,6 @@ pub fn prove_spark_for_single_matrix(
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
     
-    println!("Rowwise init final gpa");
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -154,7 +153,6 @@ pub fn prove_spark_for_single_matrix(
             .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
             .collect();
 
-    println!("Rowwise init final gpa");
     let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -201,11 +199,6 @@ pub fn prove_spark_for_single_matrix(
     let init_value = memory.eq_ry.clone();
     let init_timestamp = vec![FieldElement::from(0); memory.eq_ry.len()];
 
-    println!("{:?}", memory.eq_ry.len());
-    println!("{:?}", init_address.len());
-    println!("{:?}", init_value.len());
-    println!("{:?}", init_timestamp.len());
-
     let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
@@ -220,8 +213,6 @@ pub fn prove_spark_for_single_matrix(
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
 
-    println!("Init vec{:?}", init_vec.len());
-    println!("Final vec{:?}", final_vec.len());
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);

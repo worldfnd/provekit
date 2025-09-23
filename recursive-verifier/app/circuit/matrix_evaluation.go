@@ -1,7 +1,6 @@
 package circuit
 
 import (
-	"fmt"
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
