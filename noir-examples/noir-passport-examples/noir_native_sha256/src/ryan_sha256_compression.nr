@@ -1,25 +1,37 @@
 /// Note: This is the naive implementation of SHA-256's block compression
 /// function, i.e. (state: [u32; 8], block: [u32; 16]) -> updated_state: [u32; 8].
+///
+/// This file has been optimized internally to use a standard loop-based approach
+/// for the SHA-256 algorithm, while preserving the original function signatures.
 
-use super::{ryan_sha256_constants::{MSG_BLOCK, STATE}, ryan_sha256_constants::K32X4};
+use super::ryan_sha256_constants::{K32, MSG_BLOCK, STATE};
 use std::static_assert;
 
 // ------------------- ALL THE SHA STUFF -------------------
 
-/// TODO: This is extremely inefficient!!!
-fn add_u32_with_wraparound(a: u32, b: u32) -> u32 {
-    (((a as u64) + (b as u64)) % (1 << 32)) as u32
+global SCHEDULE_SIZE: u32 = 64;
+global BLOCK_WORDS: u32 = 16;
+
+// Casting the 64-bit sum back to u32 automatically keeps the low 32 bits,
+// which is equivalent to (a + b) mod 2^32.
+fn add_u32(a: u32, b: u32) -> u32 {
+    let sum = (a as u64) + (b as u64);
+    sum as u32
+}
+
+fn add4_u32(a: u32, b: u32, c: u32, d: u32) -> u32 {
+    let sum = (a as u64) + (b as u64) + (c as u64) + (d as u64);
+    sum as u32
+}
+
+fn add5_u32(a: u32, b: u32, c: u32, d: u32, e: u32) -> u32 {
+    let sum = (a as u64) + (b as u64) + (c as u64) + (d as u64) + (e as u64);
+    sum as u32
 }
 
 // ------ Vec element-wise operations ------
-/// Just computes an element-wise sum over two fixed-length slices.
 fn vec_eltwise_add_u32(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
-    [
-        add_u32_with_wraparound(a[0], b[0]),
-        add_u32_with_wraparound(a[1], b[1]),
-        add_u32_with_wraparound(a[2], b[2]),
-        add_u32_with_wraparound(a[3], b[3]),
-    ]
+    [add_u32(a[0], b[0]), add_u32(a[1], b[1]), add_u32(a[2], b[2]), add_u32(a[3], b[3])]
 }
 
 fn vec_shift_left_u32(a: [u32; 4], shift_offset: u8) -> [u32; 4] {
@@ -90,16 +102,20 @@ fn big_sigma1(a: u32) -> u32 {
         ^ rotate_right_via_shift_u32(a, 25)
 }
 
+fn small_sigma0(x: u32) -> u32 {
+    rotate_right_via_shift_u32(x, 7) ^ rotate_right_via_shift_u32(x, 18) ^ (x >> 3)
+}
+
+fn small_sigma1(x: u32) -> u32 {
+    rotate_right_via_shift_u32(x, 17) ^ rotate_right_via_shift_u32(x, 19) ^ (x >> 10)
+}
+
 fn bool3ary_202(a: u32, b: u32, c: u32) -> u32 {
     c ^ (a & (b ^ c))
 }
 
 fn bool3ary_232(a: u32, b: u32, c: u32) -> u32 {
     (a & b) ^ (a & c) ^ (b & c)
-}
-
-fn sha256swap(v0: [u32; 4]) -> [u32; 4] {
-    [v0[2], v0[3], v0[0], v0[1]]
 }
 
 fn sha256load(v2: [u32; 4], v3: [u32; 4]) -> [u32; 4] {
@@ -115,7 +131,7 @@ fn sigma0x4(x: [u32; 4]) -> [u32; 4] {
 }
 
 fn sigma1(a: u32) -> u32 {
-    rotate_right_via_shift_u32(a, 17) ^ rotate_right_via_shift_u32(a, 19) ^ a >> 10
+    rotate_right_via_shift_u32(a, 17) ^ rotate_right_via_shift_u32(a, 19) ^ (a >> 10)
 }
 
 fn sha256msg1(v0: [u32; 4], v1: [u32; 4]) -> [u32; 4] {
@@ -133,10 +149,10 @@ fn sha256msg2(v4: [u32; 4], v3: [u32; 4]) -> [u32; 4] {
     let w15 = v3[0];
     let w14 = v3[1];
 
-    let w16 = add_u32_with_wraparound(x0, sigma1(w14));
-    let w17 = add_u32_with_wraparound(x1, sigma1(w15));
-    let w18 = add_u32_with_wraparound(x2, sigma1(w16));
-    let w19 = add_u32_with_wraparound(x3, sigma1(w17));
+    let w16 = add_u32(x0, sigma1(w14));
+    let w17 = add_u32(x1, sigma1(w15));
+    let w18 = add_u32(x2, sigma1(w16));
+    let w19 = add_u32(x3, sigma1(w17));
 
     [w19, w18, w17, w16]
 }
@@ -152,147 +168,90 @@ fn schedule(v0: [u32; 4], v1: [u32; 4], v2: [u32; 4], v3: [u32; 4]) -> [u32; 4] 
     sha256msg2(t3, v3)
 }
 
-// ---------- Round functions ---------
-
-/// Note: This returns `(updated_w4, updated_abef, updated_cdgh)` as a tuple.
-fn schedule_rounds4(
-    abef: [u32; 4],
-    cdgh: [u32; 4],
-    w0: [u32; 4],
-    w1: [u32; 4],
-    w2: [u32; 4],
-    w3: [u32; 4],
-    _w4: [u32; 4],
-    round_idx: u32,
-) -> ([u32; 4], [u32; 4], [u32; 4]) {
-    let updated_w4 = schedule(w0, w1, w2, w3);
-
-    let (updated_abef, updated_cdgh) = rounds4(abef, cdgh, updated_w4, round_idx);
-    (updated_w4, updated_abef, updated_cdgh)
-}
-
-fn sha256_digest_round_x2(cdgh: [u32; 4], abef: [u32; 4], wk: [u32; 4]) -> [u32; 4] {
-    // Choose, MD5F, SHA1C
-
-    // --- Doing manual unpacking here ---
-    // let [_, _, wk1, wk0] = wk;
-    // let [a0, b0, e0, f0] = abef;
-    // let [c0, d0, g0, h0] = cdgh;
-    let wk1 = wk[2];
-    let wk0 = wk[3];
-
-    let a0 = abef[0];
-    let b0 = abef[1];
-    let e0 = abef[2];
-    let f0 = abef[3];
-
-    let c0 = cdgh[0];
-    let d0 = cdgh[1];
-    let g0 = cdgh[2];
-    let h0 = cdgh[3];
-
-    // a round
-    // --- Take the `e` state and compute a "permutation" thingy on itself ---
-    // --- Then add the boolean functions against `e, f, g` ---
-    // --- Then add the block's 0th element ---
-    // --- Then add the `h` state ---
-    let x0 = add_u32_with_wraparound(
-        big_sigma1(e0),
-        add_u32_with_wraparound(bool3ary_202(e0, f0, g0), add_u32_with_wraparound(wk0, h0)),
-    );
-
-    // --- Take the `a` state and compute a "permutation" ---
-    // --- Then add the boolean functions against `a, b, c` ---
-    // --- Rotate everything right one for (a, b, c, d) and (e, f, g, h) ---
-    // --- Then set the first output to be the new `a` and the second output to be the new `d` ---
-    let y0 = add_u32_with_wraparound(big_sigma0(a0), bool3ary_232(a0, b0, c0));
-
-    let (a1, b1, c1, d1, e1, f1, g1, h1) =
-        (add_u32_with_wraparound(x0, y0), a0, b0, c0, add_u32_with_wraparound(x0, d0), e0, f0, g0);
-
-    // a round
-    let x1 = add_u32_with_wraparound(
-        big_sigma1(e1),
-        add_u32_with_wraparound(bool3ary_202(e1, f1, g1), add_u32_with_wraparound(wk1, h1)),
-    );
-    let y1 = add_u32_with_wraparound(big_sigma0(a1), bool3ary_232(a1, b1, c1));
-    let (a2, b2, _, _, e2, f2, _, _) =
-        (add_u32_with_wraparound(x1, y1), a1, b1, c1, add_u32_with_wraparound(x1, d1), e1, f1, g1);
-
-    // --- Recall that the return value is either `abef` or `cdgh` ---
-    [a2, b2, e2, f2]
-}
-
-/// Slight modification to the Rust macro -- we instead directly return `abef, cdgh` as a tuple
-fn rounds4(abef: [u32; 4], cdgh: [u32; 4], rest: [u32; 4], round_idx: u32) -> ([u32; 4], [u32; 4]) {
-    // --- First thing is to add a bunch of constants to `w0` ---
-    // Note that `add` is just element-wise addition
-    let t1 = vec_eltwise_add_u32(rest, K32X4[round_idx]);
-
-    // --- We update the cdgh part of the state (this is roughly two rounds) ---
-    let updated_cdgh = sha256_digest_round_x2(cdgh, abef, t1);
-
-    // --- [0, 1, 2, 3] --> [2, 3, 0, 1] ---
-    let t2 = sha256swap(t1);
-    // --- We update the abef part of the state (again, roughly two rounds) ---
-    let updated_abef = sha256_digest_round_x2(abef, updated_cdgh, t2);
-    (updated_abef, updated_cdgh)
-}
-
-/// This should be identical in functionality to `std::hash::sha256_compression`
-/// In particular, we return the updated state
+/// This is the main block compression function. Its internal logic has been optimized
+/// to match the standard SHA-256 algorithm implementation.
 pub fn ryan_sha256_digest_block_u32(state: STATE, block: MSG_BLOCK) -> [u32; 8] {
-    // --- [a, b, e, f, c, d, g, h] ---
-    let mut abef = [state[0], state[1], state[4], state[5]];
-    let mut cdgh = [state[2], state[3], state[6], state[7]];
+    // 1. Message Schedule Generation
+    let mut schedule: [u32; SCHEDULE_SIZE] = [0; SCHEDULE_SIZE];
+    for i in 0..BLOCK_WORDS {
+        schedule[i] = block[i];
+    }
+    for t in BLOCK_WORDS..SCHEDULE_SIZE {
+        let s0 = small_sigma0(schedule[t - 15]);
+        let s1 = small_sigma1(schedule[t - 2]);
+        schedule[t] = add4_u32(schedule[t - 16], s0, schedule[t - 7], s1);
+    }
 
-    // Rounds 0..64
-    let mut w0 = [block[3], block[2], block[1], block[0]];
-    let mut w1 = [block[7], block[6], block[5], block[4]];
-    let mut w2 = [block[11], block[10], block[9], block[8]];
-    let mut w3 = [block[15], block[14], block[13], block[12]];
-    let mut w4: [u32; 4] = [0, 0, 0, 0];
+    // 2. Initialize working variables
+    let mut a = state[0];
+    let mut b = state[1];
+    let mut c = state[2];
+    let mut d = state[3];
+    let mut e = state[4];
+    let mut f = state[5];
+    let mut g = state[6];
+    let mut h = state[7];
 
-    let (abef, cdgh) = rounds4(abef, cdgh, w0, 0);
-    let (abef, cdgh) = rounds4(abef, cdgh, w1, 1);
-    let (abef, cdgh) = rounds4(abef, cdgh, w2, 2);
-    let (abef, cdgh) = rounds4(abef, cdgh, w3, 3);
+    // 3. Main Compression Loop (64 rounds)
+    for t in 0..SCHEDULE_SIZE {
+        let w = schedule[t];
+        let k = K32[t];
 
-    let (w4, abef, cdgh) = schedule_rounds4(abef, cdgh, w0, w1, w2, w3, w4, 4);
-    let (w0, abef, cdgh) = schedule_rounds4(abef, cdgh, w1, w2, w3, w4, w0, 5);
-    let (w1, abef, cdgh) = schedule_rounds4(abef, cdgh, w2, w3, w4, w0, w1, 6);
-    let (w2, abef, cdgh) = schedule_rounds4(abef, cdgh, w3, w4, w0, w1, w2, 7);
-    let (w3, abef, cdgh) = schedule_rounds4(abef, cdgh, w4, w0, w1, w2, w3, 8);
-    let (w4, abef, cdgh) = schedule_rounds4(abef, cdgh, w0, w1, w2, w3, w4, 9);
-    let (w0, abef, cdgh) = schedule_rounds4(abef, cdgh, w1, w2, w3, w4, w0, 10);
-    let (w1, abef, cdgh) = schedule_rounds4(abef, cdgh, w2, w3, w4, w0, w1, 11);
-    let (w2, abef, cdgh) = schedule_rounds4(abef, cdgh, w3, w4, w0, w1, w2, 12);
-    let (w3, abef, cdgh) = schedule_rounds4(abef, cdgh, w4, w0, w1, w2, w3, 13);
-    let (w4, abef, cdgh) = schedule_rounds4(abef, cdgh, w0, w1, w2, w3, w4, 14);
-    let (_w0, abef, cdgh) = schedule_rounds4(abef, cdgh, w1, w2, w3, w4, w0, 15);
+        let sigma1_e = big_sigma1(e);
+        let ch_efg = bool3ary_202(e, f, g);
+        let temp1 = add5_u32(h, sigma1_e, ch_efg, k, w);
 
-    // --- Again, manual unpacking ---
-    // let [a, b, e, f] = abef;
-    // let [c, d, g, h] = cdgh;
-    let a = abef[0];
-    let b = abef[1];
-    let e = abef[2];
-    let f = abef[3];
+        let sigma0_a = big_sigma0(a);
+        let maj_abc = bool3ary_232(a, b, c);
+        let temp2 = add_u32(sigma0_a, maj_abc);
 
-    let c = cdgh[0];
-    let d = cdgh[1];
-    let g = cdgh[2];
-    let h = cdgh[3];
+        h = g;
+        g = f;
+        f = e;
+        e = add_u32(d, temp1);
+        d = c;
+        c = b;
+        b = a;
+        a = add_u32(temp1, temp2);
+    }
 
-    // --- Return updated state ---
+    // 4. Add the compressed block to the initial state
     [
-        add_u32_with_wraparound(state[0], a),
-        add_u32_with_wraparound(state[1], b),
-        add_u32_with_wraparound(state[2], c),
-        add_u32_with_wraparound(state[3], d),
-        add_u32_with_wraparound(state[4], e),
-        add_u32_with_wraparound(state[5], f),
-        add_u32_with_wraparound(state[6], g),
-        add_u32_with_wraparound(state[7], h),
+        add_u32(state[0], a),
+        add_u32(state[1], b),
+        add_u32(state[2], c),
+        add_u32(state[3], d),
+        add_u32(state[4], e),
+        add_u32(state[5], f),
+        add_u32(state[6], g),
+        add_u32(state[7], h),
     ]
+}
+
+mod test {
+    #[test]
+    fn test_no_overflow() {
+        let res = super::add_u32(1, 2);
+        assert(res == 3);
+    }
+
+    #[test]
+    fn test_overflow_exact() {
+        let max = 0xFFFFFFFF;
+        let res = super::add_u32(max, 1);
+        assert(res == 0);
+    }
+
+    #[test]
+    fn test_overflow_carry() {
+        let max = 0xFFFFFFFF;
+        let res = super::add_u32(max, 2);
+        assert(res == 1);
+    }
+
+    #[test]
+    fn test_large_sum() {
+        let res = super::add_u32(4000000000, 4000000000);
+        assert(res == 3705032704);
+    }
 }
