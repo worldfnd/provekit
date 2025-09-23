@@ -3,6 +3,7 @@ use {
         binops::{add_binop, BinOp},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         range_check::add_range_checks,
+        sha256_compression::add_sha256_compression,
     },
     acir::{
         circuit::{
@@ -242,6 +243,8 @@ impl NoirToR1CSCompiler {
         let mut and_ops = vec![];
         let mut xor_ops = vec![];
 
+        let mut sha256_compression_ops = vec![];
+
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
@@ -371,6 +374,30 @@ impl NoirToR1CSCompiler {
                             self.fetch_r1cs_witness_index(*output),
                         ));
                     }
+                    BlackBoxFuncCall::Sha256Compression {
+                        inputs,
+                        hash_values,
+                        outputs,
+                    } => {
+                        let input_witnesses: Vec<ConstantOrR1CSWitness> = inputs
+                            .iter()
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .collect();
+                        let hash_witnesses: Vec<ConstantOrR1CSWitness> = hash_values
+                            .iter()
+                            .map(|hv| self.fetch_constant_or_r1cs_witness(hv.input()))
+                            .collect();
+                        let output_witnesses: Vec<usize> = outputs
+                            .iter()
+                            .map(|&output| self.fetch_r1cs_witness_index(output))
+                            .collect();
+
+                        sha256_compression_ops.push((
+                            input_witnesses,
+                            hash_witnesses,
+                            output_witnesses,
+                        ));
+                    }
 
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
@@ -401,6 +428,9 @@ impl NoirToR1CSCompiler {
         // For the AND and XOR operations, add the appropriate constraints.
         add_binop(self, BinOp::And, and_ops);
         add_binop(self, BinOp::Xor, xor_ops);
+
+        // For the SHA256 compression operations, add the appropriate constraints.
+        add_sha256_compression(self, sha256_compression_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);
