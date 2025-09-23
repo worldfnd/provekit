@@ -35,6 +35,10 @@ pub struct Args {
         default = "String::from(\"./params_for_recursive_verifier\")"
     )]
     params_for_recursive_verifier: String,
+
+    /// path to the r1cs file
+    #[argh(option, long = "r1cs", default = "String::from(\"./r1cs.json\")")]
+    r1cs_path: String,
 }
 
 impl Command for Args {
@@ -61,7 +65,7 @@ impl Command for Args {
         );
 
         let json = serde_json::to_string_pretty(&scheme.r1cs).unwrap(); // Or `to_string` for compact
-        let mut file = File::create("r1cs.json")?;
+        let mut file = File::create(&self.r1cs_path)?;
         file.write_all(json.as_bytes())?;
 
         Ok(())

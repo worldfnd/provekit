@@ -11,18 +11,19 @@ use {
 
 #[divan::bench]
 fn read_poseidon_1000(bencher: Bencher) {
-    bencher.bench(|| read::<NoirProofScheme>("benches/poseidon-1000.nps".as_ref()));
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_scheme_path = crate_dir.join("noir-proof-scheme.nps");
+    bencher.bench(|| read::<NoirProofScheme>(&proof_scheme_path));
 }
 
 #[divan::bench]
 fn prove_poseidon_1000(bencher: Bencher) {
-    let path: &Path = "benches/poseidon-1000.nps".as_ref();
-
-    let scheme: NoirProofScheme = read(path)
-        .with_context(|| format!("Reading {}", path.display()))
-        .expect("Reading proof scheme");
-
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_scheme_path = crate_dir.join("noir-proof-scheme.nps");
+
+    let scheme: NoirProofScheme = read(&proof_scheme_path)
+        .with_context(|| format!("Reading {}", proof_scheme_path.display()))
+        .expect("Reading proof scheme");
 
     let witness_path = crate_dir.join("Prover.toml");
 
@@ -35,17 +36,17 @@ fn prove_poseidon_1000(bencher: Bencher) {
 
 #[divan::bench]
 fn prove_poseidon_1000_with_io(bencher: Bencher) {
-    let path: &Path = "benches/poseidon-1000.nps".as_ref();
-
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+
+    let proof_scheme_path = crate_dir.join("noir-proof-scheme.nps");
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {
-        let scheme: NoirProofScheme = read(path)
+        let scheme: NoirProofScheme = read(&proof_scheme_path)
             .with_context(|| {
                 format!(
                     "Failed to read scheme from path: {} (working dir: {:?})",
-                    path.display(),
+                    proof_scheme_path.display(),
                     std::env::current_dir().unwrap()
                 )
             })
@@ -67,8 +68,11 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 
 #[divan::bench]
 fn verify_poseidon_1000(bencher: Bencher) {
-    let scheme: NoirProofScheme = read("benches/poseidon-1000.nps".as_ref()).unwrap();
-    let proof: NoirProof = read("benches/poseidon-1000.np".as_ref()).unwrap();
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_scheme_path = crate_dir.join("noir-proof-scheme.nps");
+    let scheme: NoirProofScheme = read(&proof_scheme_path).unwrap();
+    let proof_path = crate_dir.join("noir-proof.np");
+    let proof: NoirProof = read(&proof_path).unwrap();
     bencher.bench(|| black_box(&scheme).verify(black_box(&proof)));
 }
 
