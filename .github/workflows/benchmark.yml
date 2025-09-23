@@ -10,14 +10,7 @@ on:
 env:
   DIVAN_MAX_TIME: 30
   CODSPEED_RUNNER_MODE: walltime
-
-concurrency:
-  group: >
-    benchmark-${{ github.event_name == 'pull_request'
-        && format('pr-{0}', github.event.pull_request.number)
-        || format('push-{0}', github.ref) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+  
 jobs:
   build:
     name: Build benchmark binaries and poseidon_1000 artifacts
