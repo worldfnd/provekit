@@ -42,7 +42,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             initial_statement: true,
             security_level: 128,
             pow_bits: default_max_pow(num_variables, 1),
-            folding_factor: FoldingFactor::Constant(4),
+            folding_factor: FoldingFactor::Constant(1),
             leaf_hash_params: (),
             two_to_one_params: (),
             soundness_type: SoundnessType::ConjectureList,
