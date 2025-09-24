@@ -305,6 +305,70 @@ pub(crate) fn add_cap_sigma1(
     result_witness
 }
 
+/// SHA256 choice function: Ch(x,y,z) = (x & y) ⊕ (~x & z)
+/// Used in main compression rounds
+pub(crate) fn add_ch(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    x_witness: usize,
+    y_witness: usize,
+    z_witness: usize,
+) -> usize {
+    // First, compute x & y
+    let xy_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    and_ops.push((
+        ConstantOrR1CSWitness::Witness(x_witness),
+        ConstantOrR1CSWitness::Witness(y_witness),
+        xy_witness,
+    ));
+
+    // Next, compute ~x & z
+    // ~x = (2^32 - 1) - x (bitwise NOT in u32)
+    let not_x_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    // Constraint: not_x = 0xFFFFFFFF - x
+    let max_u32 = FieldElement::from((1u64 << 32) - 1);
+    r1cs_compiler.r1cs.add_constraint(
+        &[
+            (FieldElement::ONE, x_witness),
+            (FieldElement::ONE, not_x_witness),
+        ],
+        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+        &[(max_u32, r1cs_compiler.witness_one())],
+    );
+
+    // Compute (~x & z)
+    let not_x_z_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    and_ops.push((
+        ConstantOrR1CSWitness::Witness(not_x_witness),
+        ConstantOrR1CSWitness::Witness(z_witness),
+        not_x_z_witness,
+    ));
+
+    // Finally, compute (x & y) ⊕ (~x & z)
+    let result_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    xor_ops.push((
+        ConstantOrR1CSWitness::Witness(xy_witness),
+        ConstantOrR1CSWitness::Witness(not_x_z_witness),
+        result_witness,
+    ));
+
+    // Range checks
+    range_checks.entry(32).or_default().push(not_x_witness);
+    range_checks.entry(32).or_default().push(result_witness);
+
+    result_witness
+}
+
 pub(crate) fn add_sha256_compression(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
