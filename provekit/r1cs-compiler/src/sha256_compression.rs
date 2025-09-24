@@ -8,6 +8,18 @@ use {
     std::collections::BTreeMap,
 };
 
+/// SHA256 round constants K[0..63]
+const SHA256_K: [u32; 64] = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
 /// Add two u32 values modulo 2^32, returning the witness index of the result
 /// The solver will compute: result = (a + b) % 2^32, carry = (a + b) / 2^32
 pub(crate) fn add_u32_addition(
@@ -594,6 +606,92 @@ pub(crate) fn add_sha256_compression(
         Vec<usize>,
     )>,
 ) {
-    // TODO: Implement full SHA256 compression using the primitive functions
-    // above
+    for (inputs, hash_values, outputs) in inputs_and_outputs {
+        // Ensure we have exactly 16 input words and 8 hash values and 8 outputs
+        assert_eq!(
+            inputs.len(),
+            16,
+            "SHA256 requires exactly 16 input u32 words"
+        );
+        assert_eq!(
+            hash_values.len(),
+            8,
+            "SHA256 requires exactly 8 initial hash values"
+        );
+        assert_eq!(
+            outputs.len(),
+            8,
+            "SHA256 produces exactly 8 output u32 words"
+        );
+
+        // Convert inputs to witness indices (assuming they're all witnesses for now)
+        let input_witnesses: [usize; 16] = inputs
+            .iter()
+            .map(|input| match input {
+                ConstantOrR1CSWitness::Witness(idx) => *idx,
+                ConstantOrR1CSWitness::Constant(_) => {
+                    panic!("Input constants not yet supported")
+                }
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        // Convert initial hash values to witness indices
+        let initial_hash_witnesses: [usize; 8] = hash_values
+            .iter()
+            .map(|hash_val| match hash_val {
+                ConstantOrR1CSWitness::Witness(idx) => *idx,
+                ConstantOrR1CSWitness::Constant(_) => {
+                    panic!("Hash value constants not yet supported")
+                }
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        // Step 1: Message schedule expansion (16 words -> 64 words)
+        let w =
+            add_message_schedule_expansion(r1cs_compiler, xor_ops, range_checks, &input_witnesses);
+
+        // Step 2: Initialize working variables with initial hash values
+        let mut working_vars = initial_hash_witnesses;
+
+        // Step 3: Main compression loop - 64 rounds
+        for i in 0..64 {
+            let k_constant = FieldElement::from(SHA256_K[i] as u64);
+            working_vars = add_sha256_round(
+                r1cs_compiler,
+                and_ops,
+                xor_ops,
+                range_checks,
+                working_vars,
+                k_constant,
+                w[i],
+            );
+        }
+
+        // Step 4: Add initial hash values to final working variables (modulo 2^32)
+        let final_hash: [usize; 8] = (0..8)
+            .map(|i| {
+                add_u32_addition(
+                    r1cs_compiler,
+                    range_checks,
+                    ConstantOrR1CSWitness::Witness(initial_hash_witnesses[i]),
+                    ConstantOrR1CSWitness::Witness(working_vars[i]),
+                )
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        // Step 5: Constrain outputs to equal computed hash
+        for i in 0..8 {
+            r1cs_compiler.r1cs.add_constraint(
+                &[(FieldElement::ONE, final_hash[i])],
+                &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+                &[(FieldElement::ONE, outputs[i])],
+            );
+        }
+    }
 }
