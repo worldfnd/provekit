@@ -13,8 +13,8 @@ use {
 pub(crate) fn add_u32_addition(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    a_witness: usize,
-    b_witness: usize,
+    a: ConstantOrR1CSWitness,
+    b: ConstantOrR1CSWitness,
 ) -> usize {
     // Reserve witnesses for carry and result (solver will compute these)
     let carry_witness = r1cs_compiler.num_witnesses();
@@ -26,10 +26,7 @@ pub(crate) fn add_u32_addition(
     // Add constraint: a + b = result + carry * 2^32
     let two_pow_32 = FieldElement::from(1u64 << 32);
     r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::ONE, a_witness),
-            (FieldElement::ONE, b_witness),
-        ],
+        &[a.to_tuple(), b.to_tuple()],
         &[(FieldElement::ONE, r1cs_compiler.witness_one())],
         &[
             (FieldElement::ONE, result_witness),
@@ -445,56 +442,145 @@ pub(crate) fn add_message_schedule_expansion(
     input_words: &[usize; 16],
 ) -> [usize; 64] {
     let mut w: [usize; 64] = [0usize; 64];
-    
+
     // First 16 words are the input
     for i in 0..16 {
         w[i] = input_words[i];
     }
-    
+
     // Expand to 64 words
     for i in 16..64 {
         // Compute σ₁(W[i-2])
-        let sigma1_w_i_minus_2 = add_sigma1(
-            r1cs_compiler, 
-            xor_ops, 
-            range_checks, 
-            w[i - 2]
-        );
-        
+        let sigma1_w_i_minus_2 = add_sigma1(r1cs_compiler, xor_ops, range_checks, w[i - 2]);
+
         // Compute σ₀(W[i-15])
-        let sigma0_w_i_minus_15 = add_sigma0(
-            r1cs_compiler, 
-            xor_ops, 
-            range_checks, 
-            w[i - 15]
-        );
-        
+        let sigma0_w_i_minus_15 = add_sigma0(r1cs_compiler, xor_ops, range_checks, w[i - 15]);
+
         // First addition: σ₁(W[i-2]) + W[i-7]
         let temp1 = add_u32_addition(
             r1cs_compiler,
             range_checks,
-            sigma1_w_i_minus_2,
-            w[i - 7],
+            ConstantOrR1CSWitness::Witness(sigma1_w_i_minus_2),
+            ConstantOrR1CSWitness::Witness(w[i - 7]),
         );
-        
+
         // Second addition: temp1 + σ₀(W[i-15])
         let temp2 = add_u32_addition(
             r1cs_compiler,
             range_checks,
-            temp1,
-            sigma0_w_i_minus_15,
+            ConstantOrR1CSWitness::Witness(temp1),
+            ConstantOrR1CSWitness::Witness(sigma0_w_i_minus_15),
         );
-        
+
         // Final addition: temp2 + W[i-16]
         w[i] = add_u32_addition(
             r1cs_compiler,
             range_checks,
-            temp2,
-            w[i - 16],
+            ConstantOrR1CSWitness::Witness(temp2),
+            ConstantOrR1CSWitness::Witness(w[i - 16]),
         );
     }
-    
+
     w
+}
+
+/// SHA256 single compression round
+/// Updates working variables: a, b, c, d, e, f, g, h
+/// T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+/// T2 = Σ₀(a) + Maj(a,b,c)
+/// Returns new (a, b, c, d, e, f, g, h) where a = T1+T2, e = d+T1, others
+/// rotate
+pub(crate) fn add_sha256_round(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    working_vars: [usize; 8], // [a, b, c, d, e, f, g, h]
+    k_constant: FieldElement, // Round constant K[i]
+    w_word: usize,            // Message schedule word W[i]
+) -> [usize; 8] {
+    let [a, b, c, d, e, f, g, h] = working_vars;
+
+    // Compute T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+
+    // Step 1: Σ₁(e)
+    let sigma1_e = add_cap_sigma1(r1cs_compiler, xor_ops, range_checks, e);
+
+    // Step 2: Ch(e,f,g)
+    let ch_efg = add_ch(r1cs_compiler, and_ops, xor_ops, range_checks, e, f, g);
+
+    // Step 3: h + Σ₁(e)
+    let temp1 = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(h),
+        ConstantOrR1CSWitness::Witness(sigma1_e),
+    );
+
+    // Step 4: temp1 + Ch(e,f,g)
+    let temp2 = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(temp1),
+        ConstantOrR1CSWitness::Witness(ch_efg),
+    );
+
+    // Step 5: temp2 + K[i]
+    let temp3 = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(temp2),
+        ConstantOrR1CSWitness::Constant(k_constant),
+    );
+
+    // Step 6: T1 = temp3 + W[i]
+    let t1 = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(temp3),
+        ConstantOrR1CSWitness::Witness(w_word),
+    );
+
+    // Compute T2 = Σ₀(a) + Maj(a,b,c)
+
+    // Step 1: Σ₀(a)
+    let sigma0_a = add_cap_sigma0(r1cs_compiler, xor_ops, range_checks, a);
+
+    // Step 2: Maj(a,b,c)
+    let maj_abc = add_maj(r1cs_compiler, and_ops, xor_ops, range_checks, a, b, c);
+
+    // Step 3: T2 = Σ₀(a) + Maj(a,b,c)
+    let t2 = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(sigma0_a),
+        ConstantOrR1CSWitness::Witness(maj_abc),
+    );
+
+    // Update working variables
+    // new_h = g
+    // new_g = f
+    // new_f = e
+    // new_e = d + T1
+    // new_d = c
+    // new_c = b
+    // new_b = a
+    // new_a = T1 + T2
+
+    let new_e = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(d),
+        ConstantOrR1CSWitness::Witness(t1),
+    );
+    let new_a = add_u32_addition(
+        r1cs_compiler,
+        range_checks,
+        ConstantOrR1CSWitness::Witness(t1),
+        ConstantOrR1CSWitness::Witness(t2),
+    );
+
+    [new_a, a, b, c, new_e, e, f, g]
 }
 
 pub(crate) fn add_sha256_compression(
