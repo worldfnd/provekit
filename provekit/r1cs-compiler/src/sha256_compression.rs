@@ -436,6 +436,67 @@ pub(crate) fn add_maj(
     result_witness
 }
 
+/// SHA256 message schedule expansion: expand 16 u32 words to 64 u32 words
+/// W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16] for i = 16..64
+pub(crate) fn add_message_schedule_expansion(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    input_words: &[usize; 16],
+) -> [usize; 64] {
+    let mut w: [usize; 64] = [0usize; 64];
+    
+    // First 16 words are the input
+    for i in 0..16 {
+        w[i] = input_words[i];
+    }
+    
+    // Expand to 64 words
+    for i in 16..64 {
+        // Compute σ₁(W[i-2])
+        let sigma1_w_i_minus_2 = add_sigma1(
+            r1cs_compiler, 
+            xor_ops, 
+            range_checks, 
+            w[i - 2]
+        );
+        
+        // Compute σ₀(W[i-15])
+        let sigma0_w_i_minus_15 = add_sigma0(
+            r1cs_compiler, 
+            xor_ops, 
+            range_checks, 
+            w[i - 15]
+        );
+        
+        // First addition: σ₁(W[i-2]) + W[i-7]
+        let temp1 = add_u32_addition(
+            r1cs_compiler,
+            range_checks,
+            sigma1_w_i_minus_2,
+            w[i - 7],
+        );
+        
+        // Second addition: temp1 + σ₀(W[i-15])
+        let temp2 = add_u32_addition(
+            r1cs_compiler,
+            range_checks,
+            temp1,
+            sigma0_w_i_minus_15,
+        );
+        
+        // Final addition: temp2 + W[i-16]
+        w[i] = add_u32_addition(
+            r1cs_compiler,
+            range_checks,
+            temp2,
+            w[i - 16],
+        );
+    }
+    
+    w
+}
+
 pub(crate) fn add_sha256_compression(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
