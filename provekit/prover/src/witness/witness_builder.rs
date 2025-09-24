@@ -1,7 +1,7 @@
 use {
     crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     acir::native_types::WitnessMap,
-    ark_ff::{Field, PrimeField},
+    ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
     provekit_common::{
         skyscraper::SkyscraperSponge,
@@ -186,6 +186,28 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 for (i, count) in multiplicities.iter().enumerate() {
                     witness[witness_idx + i] = Some(FieldElement::from(*count));
                 }
+            }
+            WitnessBuilder::U32Addition(result_witness_idx, carry_witness_idx, a, b) => {
+                let a_val = match a {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
+                };
+                let b_val = match b {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
+                };
+                assert!(a_val.into_bigint().num_bits() == 32);
+                assert!(b_val.into_bigint().num_bits() == 32);
+                let sum = a_val + b_val;
+                let (result, carry) = {
+                    let sum_big = sum.into_bigint();
+                    let two_pow_32 = 1u64 << 32;
+                    let q = sum_big.0[0] / two_pow_32;
+                    let r = sum_big.0[0] % two_pow_32;
+                    (FieldElement::from(q), FieldElement::from(r))
+                };
+                witness[*result_witness_idx] = Some(result);
+                witness[*carry_witness_idx] = Some(carry);
             }
         }
     }
