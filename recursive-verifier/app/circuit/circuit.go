@@ -14,6 +14,8 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/math/uints"
+	gnarkNimue "github.com/reilabs/gnark-nimue"
+	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
 type Circuit struct {
@@ -36,59 +38,107 @@ type Circuit struct {
 	MatrixB []MatrixCell
 	MatrixC []MatrixCell
 	// Public Input
-	IO         []byte
+
+	IO              []byte
+	UseSpark        bool
+	SPARKTranscript []uints.U8 `gnark:",public"`
+
+	SPARKIO    []byte
 	Transcript []uints.U8 `gnark:",public"`
+	WHIRA3     WHIRParams
+	WHIRRow    WHIRParams
+	WHIRCol    WHIRParams
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
-	sc, arthur, uapi, err := initializeComponents(api, circuit)
-	if err != nil {
-		return err
-	}
+	// sc, arthur, uapi, err := initializeComponents(api, circuit)
+	// if err != nil {
+	// 	return err
+	// }
 
-	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+	// rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 
-	if err != nil {
-		return err
-	}
+	// if err != nil {
+	// 	return err
+	// }
 
-	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err = arthur.FillChallengeScalars(tRand)
-	if err != nil {
-		return err
-	}
+	// tRand := make([]frontend.Variable, circuit.LogNumConstraints)
+	// err = arthur.FillChallengeScalars(tRand)
+	// if err != nil {
+	// 	return err
+	// }
 
-	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
-	if err != nil {
-		return err
-	}
+	// spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
+	// if err != nil {
+	// 	return err
+	// }
 
-	whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
 
-	if err != nil {
-		return err
-	}
+	// if err != nil {
+	// 	return err
+	// }
 
-	x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
-	api.AssertIsEqual(spartanSumcheckLastValue, x)
+	// x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
+	// api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+	if circuit.UseSpark {
+		sc := skyscraper.NewSkyscraper(api, 2)
+		arthur, err := gnarkNimue.NewSkyscraperArthur(api, sc, circuit.SPARKIO, circuit.SPARKTranscript[:], true)
+		if err != nil {
+			return err
+		}
+		uapi, err := uints.New[uints.U64](api)
+		if err != nil {
+			return err
+		}
 
-	for i := 0; i < 3; i++ {
-		api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		sumcheckRootHash, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		rowwiseRootHash, rowwiseBatchingRandomness, rowwiseInitialOODQueries, rowwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
+		colwiseRootHash, colwiseBatchingRandomness, colwiseInitialOODQueries, colwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
+
+		_ = sumcheckRootHash
+		_ = sumcheckBatchingRandomness
+		_ = sumcheckInitialOODAnswers
+		_ = sumcheckInitialOODQueries
+
+		_ = rowwiseRootHash
+		_ = rowwiseBatchingRandomness
+		_ = rowwiseInitialOODAnswers
+		_ = rowwiseInitialOODQueries
+
+		_ = colwiseRootHash
+		_ = colwiseBatchingRandomness
+		_ = colwiseInitialOODAnswers
+		_ = colwiseInitialOODQueries
+
+		_ = uapi
+	} else {
+		// matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+
+		// for i := range 3 {
+		// 	api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		// }
 	}
 
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
+	deferred []Fp256, cfg Config, sparkConfig SparkConfig, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, evaluation string,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
 
 	for i := range cfg.Transcript {
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
+	}
+
+	sparkTranscriptT := make([]uints.U8, len(sparkConfig.Transcript))
+	sparkContTranscript := make([]uints.U8, len(sparkConfig.Transcript))
+
+	for i := range sparkConfig.Transcript {
+		sparkTranscriptT[i] = uints.NewU8(sparkConfig.Transcript[i])
 	}
 
 	witnessLinearStatementEvaluations := make([]frontend.Variable, 3)
@@ -148,6 +198,12 @@ func verifyCircuit(
 		}
 	}
 
+	useSpark := evaluation == "spark"
+
+	// Dev
+	contTranscript = []uints.U8{}
+	transcriptT = []uints.U8{}
+	//
 	var circuit = Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
@@ -169,6 +225,14 @@ func verifyCircuit(
 		MatrixA: matrixA,
 		MatrixB: matrixB,
 		MatrixC: matrixC,
+
+		SPARKIO:         []byte(sparkConfig.IOPattern),
+		SPARKTranscript: sparkContTranscript,
+		WHIRA3:          NewWhirParams(sparkConfig.WHIRA3),
+		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
+		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
+
+		UseSpark: useSpark,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -221,6 +285,14 @@ func verifyCircuit(
 		MatrixA: matrixA,
 		MatrixB: matrixB,
 		MatrixC: matrixC,
+
+		SPARKIO:         []byte(sparkConfig.IOPattern),
+		SPARKTranscript: sparkTranscriptT,
+		WHIRA3:          NewWhirParams(sparkConfig.WHIRA3),
+		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
+		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
+
+		UseSpark: useSpark,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

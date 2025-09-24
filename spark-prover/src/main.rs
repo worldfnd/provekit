@@ -1,12 +1,12 @@
 use {
     anyhow::{Context, Result},
-    provekit_common::utils::next_power_of_two,
+    provekit_common::{file::write, utils::next_power_of_two, gnark::WHIRConfigGnark},
     spark_prover::{
         memory::{calculate_e_values_for_r1cs, calculate_memory},
         spark::prove_spark_for_single_matrix,
         utilities::{
             calculate_matrix_dimensions, create_io_pattern, deserialize_r1cs, deserialize_request,
-            get_spark_r1cs, SPARKProof,
+            get_spark_r1cs, SPARKProof, SPARKProofGnark,
         },
         whir::create_whir_configs,
     },
@@ -68,9 +68,25 @@ fn main() -> Result<()> {
 
     let mut spark_proof_file = File::create("spark-prover/spark_proof.json")
         .context("Error: Failed to create the spark proof file")?;
+
     spark_proof_file
         .write_all(serde_json::to_string(&spark_proof).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
+
+    let spark_proof_gnark = SPARKProofGnark {
+        transcript: spark_proof.transcript,
+        io_pattern: spark_proof.io_pattern,
+        whir_row: WHIRConfigGnark::new(&spark_proof.whir_params.row),
+        whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
+        whir_a3: WHIRConfigGnark::new(&spark_proof.whir_params.a_3batched),
+    };
+
+    let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
+        .context("Error: Failed to create the spark proof file")?;
+
+    gnark_spark_proof_file
+        .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
+        .expect("Writing spark gnark parameters to a file failed");
 
     Ok(())
 }

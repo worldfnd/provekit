@@ -8,6 +8,7 @@ pub mod utils;
 mod whir_r1cs;
 pub mod witness;
 pub mod spark;
+pub mod gnark;
 
 use crate::interner::{InternedFieldElement, Interner};
 pub use {

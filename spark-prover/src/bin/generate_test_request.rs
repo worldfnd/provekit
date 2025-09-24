@@ -7,7 +7,7 @@ fn main() {
     let spark_request = SPARKRequest {
         point_to_evaluate: Point {
             row: vec![FieldElement::from(0); 10],
-            col: vec![FieldElement::from(0); 9],
+            col: vec![FieldElement::from(0); 10],
         },
         claimed_values:    ClaimedValues {
             a: FieldElement::from(1),

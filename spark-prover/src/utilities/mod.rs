@@ -4,7 +4,7 @@ use {
     crate::whir::SPARKWHIRConfigs,
     anyhow::{Context, Result},
     provekit_common::{
-        spark::SPARKRequest, utils::{next_power_of_two, serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq}, FieldElement, HydratedSparseMatrix, WhirConfig, R1CS
+        gnark::WHIRConfigGnark, spark::SPARKRequest, utils::{next_power_of_two, serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq}, FieldElement, HydratedSparseMatrix, WhirConfig, R1CS
     },
     serde::{Deserialize, Serialize},
     std::fs,
@@ -53,4 +53,13 @@ pub fn calculate_matrix_dimensions(r1cs: &R1CS) -> MatrixDimensions {
         b_nonzero_terms: r1cs.b.num_entries(),
         c_nonzero_terms: r1cs.c.num_entries(),
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SPARKProofGnark {
+    pub transcript: Vec<u8>,
+    pub io_pattern: String,
+    pub whir_row: WHIRConfigGnark,
+    pub whir_col: WHIRConfigGnark,
+    pub whir_a3: WHIRConfigGnark,
 }
