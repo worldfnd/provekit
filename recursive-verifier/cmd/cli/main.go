@@ -69,7 +69,7 @@ func main() {
 				Value:    "",
 			},
 			&cli.StringFlag{
-				Name:     "spark_proof",
+				Name:     "spark_config",
 				Usage:    "Path to the spark SPARK proof file",
 				Required: false,
 				Value:    "",
@@ -95,7 +95,8 @@ func main() {
 			pkUrl := c.String("pk_url")
 			vkUrl := c.String("vk_url")
 			r1csUrl := c.String("r1cs_url")
-			// sparkPath := c.String("spark_proof")
+			sparkConfigFilePath := c.String("spark_config")
+			evaluation := c.String("evaluation")
 
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
@@ -105,6 +106,17 @@ func main() {
 			var config circuit.Config
 			if err := json.Unmarshal(configFile, &config); err != nil {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
+			}
+
+			// TODO: Only parse SPARK file if evaluation flag is set to spark
+			sparkConfigFile, err := os.ReadFile(sparkConfigFilePath)
+			if err != nil {
+				return fmt.Errorf("failed to read spark config file: %w", err)
+			}
+
+			var sparkConfig circuit.SparkConfig
+			if err := json.Unmarshal(sparkConfigFile, &sparkConfig); err != nil {
+				return fmt.Errorf("failed to unmarshal spark config JSON: %w", err)
 			}
 
 			var r1csFile []byte
@@ -143,7 +155,7 @@ func main() {
 				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
 			}
 
-			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
+			if err = circuit.PrepareAndVerifyCircuit(config, sparkConfig, r1cs, pk, vk, outputCcsPath, evaluation); err != nil {
 				return fmt.Errorf("failed to prepare and verify circuit: %w", err)
 			}
 
