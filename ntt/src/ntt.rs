@@ -17,8 +17,6 @@ pub const fn workload_size<T: Sized>() -> usize {
     CACHE_SIZE / size_of::<T>()
 }
 
-// TODO(xrvdg) Add support for deg(roots) > deg(input)
-
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
 ///
@@ -43,9 +41,13 @@ pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
-    // For small NTTs go directly to the NTT optimized for cache size
+    // For large NTTs we start with linear scans through memory and once all the
+    // elements of the sub NTTs reach the size of workload_size we know that they
+    // are contiguous in cache memory and we switch over to a different strategy.
+    // If at the start the NTT already fits in cache memory we go directly to the
+    // cache strategy strategy.
     if n > workload_size::<Fr>() {
-        // The two loops could be merged together, but in microbenchmarks this split
+        // These two loops could be merged together, but in microbenchmarks this split
         // performs 5% better than nesting par_iter_mut inside par_chunks_exact
         // over the ranges 2ˆ20 to 2ˆ24.
 
