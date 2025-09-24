@@ -227,6 +227,45 @@ pub(crate) fn add_sigma1(
     result_witness
 }
 
+/// SHA256 capital sigma0 function: Σ₀(x) = ROTR(x,2) ⊕ ROTR(x,13) ⊕ ROTR(x,22)
+/// Used in main compression rounds
+pub(crate) fn add_cap_sigma0(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    x_witness: usize,
+) -> usize {
+    // Compute the three components
+    let rotr2 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 2);
+    let rotr13 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 13);
+    let rotr22 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 22);
+
+    // First XOR: rotr2 ⊕ rotr13
+    let temp_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    xor_ops.push((
+        ConstantOrR1CSWitness::Witness(rotr2),
+        ConstantOrR1CSWitness::Witness(rotr13),
+        temp_witness,
+    ));
+
+    // Second XOR: (rotr2 ⊕ rotr13) ⊕ rotr22
+    let result_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.r1cs.add_witnesses(1);
+
+    xor_ops.push((
+        ConstantOrR1CSWitness::Witness(temp_witness),
+        ConstantOrR1CSWitness::Witness(rotr22),
+        result_witness,
+    ));
+
+    // Range check the result
+    range_checks.entry(32).or_default().push(result_witness);
+
+    result_witness
+}
+
 pub(crate) fn add_sha256_compression(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
