@@ -218,18 +218,39 @@ mod tests {
         crate::NTT,
         ark_bn254::Fr,
         ark_ff::BigInt,
-        proptest::prelude::*,
+        proptest::{collection, prelude::*},
+        std::fmt,
     };
 
-    prop_compose! {
-        fn fr()(val in proptest::array::uniform4(0u64..)) -> Fr{
-            Fr::new(BigInt(val))
-        }
+    fn fr() -> impl Strategy<Value = Fr> + Clone {
+        proptest::array::uniform4(0u64..).prop_map(|val| Fr::new(BigInt(val)))
+    }
+
+    /// Generates a strategy for creating `NTT<T>` instances of length 2^k,
+    /// where `k` is sampled from the provided `sizes` strategy.
+    ///
+    /// # Arguments
+    /// * `sizes` - A strategy yielding the exponent `k` such that the NTT
+    ///   length is 2^k.
+    /// * `elem` - A strategy for generating elements of type `T` to fill the
+    ///   NTT.
+    ///
+    /// # Returns
+    /// A strategy that produces valid `NTT<T>` instances of the specified
+    /// length.
+    fn ntt<T: fmt::Debug>(
+        sizes: impl Strategy<Value = usize>,
+        elem: impl Strategy<Value = T> + Clone,
+    ) -> impl Strategy<Value = NTT<T>> {
+        sizes
+            .prop_map(|k| 1 << k)
+            .prop_flat_map(move |len| collection::vec(elem.clone(), len..=len))
+            .prop_map(|v| NTT::new(v).unwrap())
     }
 
     proptest! {
         #[test]
-        fn round_trip_ntt(original in crate::proptest::ntt(fr(), 0..15))
+        fn round_trip_ntt(original in ntt(0_usize..15, fr()))
         {
             let mut s = original.clone();
             let roots = init_roots_reverse_ordered(original.len());
@@ -254,7 +275,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn round_trip_reverse_order(original in crate::proptest::ntt(any::<u32>(), 0..10)){
+        fn round_trip_reverse_order(original in ntt(0_usize..10, any::<u32>())){
             let mut v = original.clone();
             reverse_order(&mut v);
             reverse_order(&mut v);
@@ -264,7 +285,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn reverse_order_noop(original in crate::proptest::ntt(any::<u32>(), 0..=1)) {
+        fn reverse_order_noop(original in ntt(0_usize..=1, any::<u32>())) {
             let mut v = original.clone();
             reverse_order(&mut v);
             assert_eq!(original, v)
