@@ -9,9 +9,6 @@ fn main() {
     divan::main();
 }
 
-/// Benchmark group for NTTEngine with order 1<<24
-// #[divan::bench_group(sample_count = 5)]
-// mod ntt_engine_1_24 {
 use ntt::Pow2OrZero;
 
 const ORDER: usize = 1 << 24;
@@ -21,4 +18,3 @@ const ORDER: usize = 1 << 24;
 fn create_engine() {
     let _engine = divan::black_box(NTTEngine::with_order(Pow2OrZero::new(ORDER).unwrap()));
 }
-// }
