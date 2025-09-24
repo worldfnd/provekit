@@ -45,6 +45,7 @@ jobs:
         working-directory: noir-examples/poseidon-rounds
         run: |
           nargo compile --skip-brillig-constraints-check --force
+          nargo execute
 
       - name: Create posiedon rounds 1000 files
         run: |
@@ -105,13 +106,6 @@ jobs:
 
       - name: Make benchmark binaries executable
         run: chmod -R +x target/codspeed
-
-      # - name: Verify codspeed installation
-      #   run: |
-      #     echo "cargo-codspeed location:"
-      #     which cargo-codspeed 
-      #     echo "codspeed-post-bench location:"
-      #     which codspeed-post-bench
 
       - name: Copy poseidon-rounds files to correct directory
         run: |
