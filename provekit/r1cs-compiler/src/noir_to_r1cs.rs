@@ -1,6 +1,6 @@
 use {
     crate::{
-        binops::{add_binop, BinOp},
+        binops::{add_binop_constraints, BinOp},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -435,8 +435,8 @@ impl NoirToR1CSCompiler {
         );
 
         // For the AND and XOR operations, add the appropriate constraints.
-        add_binop(self, BinOp::And, and_ops);
-        add_binop(self, BinOp::Xor, xor_ops);
+        add_binop_constraints(self, BinOp::And, and_ops);
+        add_binop_constraints(self, BinOp::Xor, xor_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);

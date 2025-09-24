@@ -115,6 +115,14 @@ pub enum WitnessBuilder {
     /// + b) / 2^32 Arguments: (result_witness_index, carry_witness_index,
     /// a, b)
     U32Addition(usize, usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// AND operation: computes result = a & b
+    /// Arguments: (result_witness_index, a, b)
+    /// Note: only for 32-bit operands
+    And(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// XOR operation: computes result = a ⊕ b
+    /// Arguments: (result_witness_index, a, b)
+    /// Note: only for 32-bit operands
+    Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
 }
 
 impl WitnessBuilder {
@@ -128,6 +136,7 @@ impl WitnessBuilder {
                 spice_witnesses_struct.num_witnesses
             }
             WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
+            WitnessBuilder::U32Addition(..) => 2,
             _ => 1,
         }
     }

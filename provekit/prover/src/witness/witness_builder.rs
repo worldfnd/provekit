@@ -196,18 +196,74 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     ConstantOrR1CSWitness::Constant(c) => *c,
                     ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
                 };
-                assert!(a_val.into_bigint().num_bits() == 32);
-                assert!(b_val.into_bigint().num_bits() == 32);
+                assert!(
+                    a_val.into_bigint().num_bits() <= 32,
+                    "a_val must be less than or equal to 32 bits, got {}",
+                    a_val.into_bigint().num_bits()
+                );
+                assert!(
+                    b_val.into_bigint().num_bits() <= 32,
+                    "b_val must be less than or equal to 32 bits, got {}",
+                    b_val.into_bigint().num_bits()
+                );
                 let sum = a_val + b_val;
-                let (result, carry) = {
-                    let sum_big = sum.into_bigint();
-                    let two_pow_32 = 1u64 << 32;
-                    let q = sum_big.0[0] / two_pow_32;
-                    let r = sum_big.0[0] % two_pow_32;
-                    (FieldElement::from(q), FieldElement::from(r))
+                let sum_big = sum.into_bigint();
+                let two_pow_32 = 1u64 << 32;
+                let remainder = sum_big.0[0] % two_pow_32; // result
+                let quotient = sum_big.0[0] / two_pow_32; // carry
+                assert!(
+                    quotient == 0 || quotient == 1,
+                    "quotient must be 0 or 1, got {}",
+                    quotient
+                );
+                witness[*result_witness_idx] = Some(FieldElement::from(remainder));
+                witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
+            }
+            WitnessBuilder::And(result_witness_idx, lh, rh) => {
+                let lh_val = match lh {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
                 };
-                witness[*result_witness_idx] = Some(result);
-                witness[*carry_witness_idx] = Some(carry);
+                let rh_val = match rh {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                assert!(
+                    lh_val.into_bigint().num_bits() <= 32,
+                    "lh_val must be less than or equal to 32 bits, got {}",
+                    lh_val.into_bigint().num_bits()
+                );
+                assert!(
+                    rh_val.into_bigint().num_bits() <= 32,
+                    "rh_val must be less than or equal to 32 bits, got {}",
+                    rh_val.into_bigint().num_bits()
+                );
+                witness[*result_witness_idx] = Some(FieldElement::new(
+                    lh_val.into_bigint() & rh_val.into_bigint(),
+                ));
+            }
+            WitnessBuilder::Xor(result_witness_idx, lh, rh) => {
+                let lh_val = match lh {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let rh_val = match rh {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                assert!(
+                    lh_val.into_bigint().num_bits() <= 32,
+                    "lh_val must be less than or equal to 32 bits, got {}",
+                    lh_val.into_bigint().num_bits()
+                );
+                assert!(
+                    rh_val.into_bigint().num_bits() <= 32,
+                    "rh_val must be less than or equal to 32 bits, got {}",
+                    rh_val.into_bigint().num_bits()
+                );
+                witness[*result_witness_idx] = Some(FieldElement::new(
+                    lh_val.into_bigint() ^ rh_val.into_bigint(),
+                ));
             }
         }
     }

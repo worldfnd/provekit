@@ -20,11 +20,39 @@ pub enum BinOp {
     Xor,
 }
 
+/// Allocate a witness for a binary operation result, add the appropriate
+/// WitnessBuilder for value computation, and collect the operation for later
+/// constraint generation. Returns the witness index of the result.
+pub(crate) fn add_binop(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    op: BinOp,
+    collected_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    lhs: ConstantOrR1CSWitness,
+    rhs: ConstantOrR1CSWitness,
+) -> usize {
+    let result_witness = match op {
+        BinOp::And => r1cs_compiler.add_witness_builder(WitnessBuilder::And(
+            r1cs_compiler.num_witnesses(),
+            lhs.clone(),
+            rhs.clone(),
+        )),
+        BinOp::Xor => r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
+            r1cs_compiler.num_witnesses(),
+            lhs.clone(),
+            rhs.clone(),
+        )),
+    };
+
+    collected_ops.push((lhs, rhs, result_witness));
+
+    result_witness
+}
+
 /// Add the witnesses and constraints for a [BinOp] (i.e. AND, XOR). Uses a
 /// digital decomposition of the operands and output into [NUM_DIGITS] digits of
 /// [BINOP_ATOMIC_BITS] bits each, followed by a lookup table of size 2x
 /// [BINOP_ATOMIC_BITS].
-pub(crate) fn add_binop(
+pub(crate) fn add_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     op: BinOp,
     inputs_and_outputs: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,

@@ -1,5 +1,6 @@
 use {
     crate::{
+        binops::{add_binop, BinOp},
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
@@ -39,12 +40,14 @@ pub(crate) fn add_u32_addition(
     r1cs_compiler.r1cs.add_witnesses(1);
 
     // Add witness builder with explicit computation logic
-    r1cs_compiler.add_witness_builder(WitnessBuilder::U32Addition(
-        result_witness,
-        carry_witness,
-        a.clone(),
-        b.clone(),
-    ));
+    r1cs_compiler
+        .witness_builders
+        .push(WitnessBuilder::U32Addition(
+            result_witness,
+            carry_witness,
+            a.clone(),
+            b.clone(),
+        ));
 
     // Add constraint: a + b = result + carry * 2^32
     let two_pow_32 = FieldElement::from(1u64 << 32);
@@ -191,24 +194,22 @@ pub(crate) fn add_sigma0(
     let shr3 = add_right_shift(r1cs_compiler, range_checks, x_witness, 3);
 
     // First XOR: rotr7 ⊕ rotr18
-    let temp_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let temp_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(rotr7),
         ConstantOrR1CSWitness::Witness(rotr18),
-        temp_witness,
-    ));
+    );
 
     // Second XOR: (rotr7 ⊕ rotr18) ⊕ shr3
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(temp_witness),
         ConstantOrR1CSWitness::Witness(shr3),
-        result_witness,
-    ));
+    );
 
     // Range check the result
     range_checks.entry(32).or_default().push(result_witness);
@@ -230,24 +231,22 @@ pub(crate) fn add_sigma1(
     let shr10 = add_right_shift(r1cs_compiler, range_checks, x_witness, 10);
 
     // First XOR: rotr17 ⊕ rotr19
-    let temp_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let temp_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(rotr17),
         ConstantOrR1CSWitness::Witness(rotr19),
-        temp_witness,
-    ));
+    );
 
     // Second XOR: (rotr17 ⊕ rotr19) ⊕ shr10
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(temp_witness),
         ConstantOrR1CSWitness::Witness(shr10),
-        result_witness,
-    ));
+    );
 
     // Range check the result
     range_checks.entry(32).or_default().push(result_witness);
@@ -269,24 +268,22 @@ pub(crate) fn add_cap_sigma0(
     let rotr22 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 22);
 
     // First XOR: rotr2 ⊕ rotr13
-    let temp_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let temp_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(rotr2),
         ConstantOrR1CSWitness::Witness(rotr13),
-        temp_witness,
-    ));
+    );
 
     // Second XOR: (rotr2 ⊕ rotr13) ⊕ rotr22
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(temp_witness),
         ConstantOrR1CSWitness::Witness(rotr22),
-        result_witness,
-    ));
+    );
 
     // Range check the result
     range_checks.entry(32).or_default().push(result_witness);
@@ -308,24 +305,22 @@ pub(crate) fn add_cap_sigma1(
     let rotr25 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 25);
 
     // First XOR: rotr6 ⊕ rotr11
-    let temp_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let temp_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(rotr6),
         ConstantOrR1CSWitness::Witness(rotr11),
-        temp_witness,
-    ));
+    );
 
     // Second XOR: (rotr6 ⊕ rotr11) ⊕ rotr25
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(temp_witness),
         ConstantOrR1CSWitness::Witness(rotr25),
-        result_witness,
-    ));
+    );
 
     // Range check the result
     range_checks.entry(32).or_default().push(result_witness);
@@ -345,14 +340,13 @@ pub(crate) fn add_ch(
     z_witness: usize,
 ) -> usize {
     // First, compute x & y
-    let xy_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    and_ops.push((
+    let xy_witness = add_binop(
+        r1cs_compiler,
+        BinOp::And,
+        and_ops,
         ConstantOrR1CSWitness::Witness(x_witness),
         ConstantOrR1CSWitness::Witness(y_witness),
-        xy_witness,
-    ));
+    );
 
     // Next, compute ~x & z
     // ~x = (2^32 - 1) - x (bitwise NOT in u32)
@@ -375,24 +369,22 @@ pub(crate) fn add_ch(
     );
 
     // Compute (~x & z)
-    let not_x_z_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    and_ops.push((
+    let not_x_z_witness = add_binop(
+        r1cs_compiler,
+        BinOp::And,
+        and_ops,
         ConstantOrR1CSWitness::Witness(not_x_witness),
         ConstantOrR1CSWitness::Witness(z_witness),
-        not_x_z_witness,
-    ));
+    );
 
     // Finally, compute (x & y) ⊕ (~x & z)
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(xy_witness),
         ConstantOrR1CSWitness::Witness(not_x_z_witness),
-        result_witness,
-    ));
+    );
 
     // Range checks
     range_checks.entry(32).or_default().push(not_x_witness);
@@ -413,54 +405,49 @@ pub(crate) fn add_maj(
     z_witness: usize,
 ) -> usize {
     // Compute x & y
-    let xy_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    and_ops.push((
+    let xy_witness = add_binop(
+        r1cs_compiler,
+        BinOp::And,
+        and_ops,
         ConstantOrR1CSWitness::Witness(x_witness),
         ConstantOrR1CSWitness::Witness(y_witness),
-        xy_witness,
-    ));
+    );
 
     // Compute x & z
-    let xz_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    and_ops.push((
+    let xz_witness = add_binop(
+        r1cs_compiler,
+        BinOp::And,
+        and_ops,
         ConstantOrR1CSWitness::Witness(x_witness),
         ConstantOrR1CSWitness::Witness(z_witness),
-        xz_witness,
-    ));
+    );
 
     // Compute y & z
-    let yz_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    and_ops.push((
+    let yz_witness = add_binop(
+        r1cs_compiler,
+        BinOp::And,
+        and_ops,
         ConstantOrR1CSWitness::Witness(y_witness),
         ConstantOrR1CSWitness::Witness(z_witness),
-        yz_witness,
-    ));
+    );
 
     // First XOR: (x & y) ⊕ (x & z)
-    let temp_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let temp_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(xy_witness),
         ConstantOrR1CSWitness::Witness(xz_witness),
-        temp_witness,
-    ));
+    );
 
     // Second XOR: ((x & y) ⊕ (x & z)) ⊕ (y & z)
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    xor_ops.push((
+    let result_witness = add_binop(
+        r1cs_compiler,
+        BinOp::Xor,
+        xor_ops,
         ConstantOrR1CSWitness::Witness(temp_witness),
         ConstantOrR1CSWitness::Witness(yz_witness),
-        result_witness,
-    ));
+    );
 
     // Range check the result
     range_checks.entry(32).or_default().push(result_witness);
