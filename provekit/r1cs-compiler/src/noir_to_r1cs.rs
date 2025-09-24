@@ -425,12 +425,18 @@ impl NoirToR1CSCompiler {
             }
         });
 
+        // For the SHA256 compression operations, add the appropriate constraints.
+        add_sha256_compression(
+            self,
+            &mut and_ops,
+            &mut xor_ops,
+            &mut range_checks,
+            sha256_compression_ops,
+        );
+
         // For the AND and XOR operations, add the appropriate constraints.
         add_binop(self, BinOp::And, and_ops);
         add_binop(self, BinOp::Xor, xor_ops);
-
-        // For the SHA256 compression operations, add the appropriate constraints.
-        add_sha256_compression(self, sha256_compression_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);
