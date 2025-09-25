@@ -1,5 +1,5 @@
 use {
-    crate::{Pow2OrZero, NTT},
+    crate::{NTTContainer, Pow2OrZero, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -91,16 +91,20 @@ impl NTTEngine {
     // TODO(xrvdg) interleaving does support non-power of factors, but it needs to
     // be that the individual NTTs are power of two.
     // TODO for interleaving pow2orzero doesn't make sense. It needs to be nonzero
-    pub fn interleaved_ntt_nr(&mut self, values: &mut NTT<Fr>, interleaving: Pow2OrZero) {
+    pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
+        &mut self,
+        values: &mut NTT<Fr, C>,
+        interleaving: Pow2OrZero,
+    ) {
         self.extend_roots_table(Pow2OrZero(values.len().0 / interleaving.0));
         interleaved_ntt_nr(&self.0, values, interleaving.0);
     }
 
-    pub fn ntt_nr(&mut self, values: &mut NTT<Fr>) {
+    pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
         self.interleaved_ntt_nr(values, Pow2OrZero::next_power_of_two(1));
     }
 
-    pub fn intt_rn(&mut self, values: &mut NTT<Fr>) {
+    pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
         self.extend_roots_table(values.len());
         intt_rn(&self.0, values);
     }
@@ -112,7 +116,7 @@ impl Default for NTTEngine {
     }
 }
 
-pub fn ntt_nr(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
+pub fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
     interleaved_ntt_nr(reverse_ordered_roots, values, 1);
 }
 
@@ -126,15 +130,15 @@ pub fn ntt_nr(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
 ///   versa.
 /// TODO: does interleaving work with non-power of two? -> it does but it
 /// requires the folded vectors to be of the right length
-pub fn interleaved_ntt_nr(
+pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     reversed_ordered_roots: &[Fr],
-    values: &mut NTT<Fr>,
+    values: &mut NTT<Fr, C>,
     interleaving: usize,
 ) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
-    let input = &mut values.0;
+    let input = &mut values.as_mut();
 
     let n = input.len();
 
@@ -296,8 +300,8 @@ fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec
 
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
-fn reverse_order<T>(values: &mut NTT<T>) {
-    match values.0.as_mut_slice() {
+fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
+    match values.as_mut() {
         [] | [_] => (),
         input => {
             let n = input.len();
@@ -313,24 +317,24 @@ fn reverse_order<T>(values: &mut NTT<T>) {
 }
 
 /// Note: not specifically optimized
-pub fn intt_rn(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
+pub fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
     reverse_order(input);
     intt_nr(reverse_ordered_roots, input);
     reverse_order(input);
 }
 
 // Inverse NTT
-pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
-    match input.0.len() {
+pub fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
+    match input.as_ref().len() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
-            input.0[1..].reverse();
+            input.as_mut()[1..].reverse();
             ntt_nr(reverse_ordered_roots, input);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
-            for i in input.0.iter_mut() {
+            for i in input.as_mut().iter_mut() {
                 *i *= factor;
             }
         }
@@ -345,7 +349,7 @@ mod tests {
         super::{init_roots_reverse_ordered, reverse_order},
         crate::{ntt::NTTEngine, Pow2OrZero, NTT},
         ark_bn254::Fr,
-        ark_ff::{AdditiveGroup, BigInt},
+        ark_ff::BigInt,
         proptest::collection,
         std::fmt,
     };
@@ -369,7 +373,7 @@ mod tests {
     fn ntt<T: fmt::Debug>(
         sizes: impl Strategy<Value = usize>,
         elem: impl Strategy<Value = T> + Clone,
-    ) -> impl Strategy<Value = NTT<T>> {
+    ) -> impl Strategy<Value = NTT<T, Vec<T>>> {
         sizes
             .prop_map(|k| 1 << k)
             .prop_flat_map(move |len| collection::vec(elem.clone(), len..=len))
@@ -379,7 +383,7 @@ mod tests {
     // Newtype wrapper to prevent proptest from writing big NTT to stdout
     // If the contents does have to be viewed replace with regular NTT
     // TODO(xrvdg) make this take a parameter and rename
-    struct HiddenNTT<T>(NTT<T>);
+    struct HiddenNTT<T>(NTT<T, Vec<T>>);
 
     impl<T> fmt::Debug for HiddenNTT<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -459,31 +463,18 @@ mod tests {
         fn test_interleaving((rows, columns, ntt) in interleaving_strategy(20)) {
             let mut ntt = ntt.0;
             let s = ntt.clone();
-            let transposed = transpose(s, rows, columns);
+            let mut transposed = transpose(s, rows, columns);
             let mut engine = NTTEngine::new();
-            // This requires an into clone and then will make it harder to transpose back
-            let mut ntts = Vec::with_capacity(columns);
-            // Vec should be able to go underlying array and give that instead
-            // solve for to_owned
-            for chunk in transposed.chunks_exact(rows){
-                let mut fold = NTT(chunk.to_owned());
+
+            for chunk in transposed.chunks_exact_mut(rows){
+                let mut fold = NTT::new(chunk).unwrap();
                 engine.ntt_nr(&mut fold);
-                ntts.push(fold);
             }
-            let mut collect = vec![Fr::ZERO; transposed.len()];
 
-        // All the memory would still be near eachother but lost parts
-        for (ntt, chunk) in ntts.iter().zip(collect.chunks_mut(rows)) {
-            let slice = ntt.as_ref();
-            chunk.copy_from_slice(slice);
-        }
-
-        let double_transposed = NTT::new(transpose(collect, columns, rows)).unwrap();
+        let double_transposed = NTT::new(transpose(transposed, columns, rows)).unwrap();
 
         engine.interleaved_ntt_nr(&mut ntt, Pow2OrZero(columns));
         prop_assert!(double_transposed == ntt, "rows: {}, columns: {}", rows, columns);
-
-
 
         }
     }

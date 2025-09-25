@@ -1,12 +1,19 @@
 #![feature(vec_split_at_spare)]
 pub mod ntt;
 pub use ntt::*;
+use std::marker::PhantomData;
+
+pub trait NTTContainer<T>: AsRef<[T]> + AsMut<[T]> {}
+impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
 
 /// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
 /// not supported. Note: empty vectors (size 0) are also supported as a special
 /// case.
 #[derive(Debug, Clone, PartialEq)]
-pub struct NTT<T>(Vec<T>);
+pub struct NTT<T, C: NTTContainer<T>> {
+    container: C,
+    _phantom:  PhantomData<T>,
+}
 
 /// Length of an NTT
 #[derive(Clone, Copy)]
@@ -25,27 +32,30 @@ impl Pow2OrZero {
     }
 }
 
-impl<T> AsRef<[T]> for NTT<T> {
+impl<T, C: NTTContainer<T>> AsRef<[T]> for NTT<T, C> {
     fn as_ref(&self) -> &[T] {
-        &self.0
+        self.container.as_ref()
     }
 }
 
-impl<T> AsMut<[T]> for NTT<T> {
+impl<T, C: NTTContainer<T>> AsMut<[T]> for NTT<T, C> {
     fn as_mut(&mut self) -> &mut [T] {
-        &mut self.0
+        self.container.as_mut()
     }
 }
 
-impl<T> NTT<T> {
-    pub fn new(vec: Vec<T>) -> Option<Self> {
-        match Pow2OrZero::new(vec.len()) {
-            Some(_) => Some(Self(vec)),
+impl<T, C: NTTContainer<T>> NTT<T, C> {
+    pub fn new(vec: C) -> Option<Self> {
+        match Pow2OrZero::new(vec.as_ref().len()) {
+            Some(_) => Some(Self {
+                container: vec,
+                _phantom:  PhantomData,
+            }),
             _ => None,
         }
     }
 
     pub fn len(&self) -> Pow2OrZero {
-        Pow2OrZero(self.0.len())
+        Pow2OrZero(self.container.as_ref().len())
     }
 }
