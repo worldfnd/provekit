@@ -434,12 +434,24 @@ mod tests {
         }
     }
 
+    /// Note: because this generator is build monadicly it doesn't easily find
+    /// the smallest case. it helps to manually reduce max_k to get a
+    /// smaller test case
+    fn interleaving_strategy(max_k: usize) -> impl Strategy<Value = (usize, usize, HiddenNTT<Fr>)> {
+        (0_usize..=max_k).prop_flat_map(|len| {
+            (0..=len).prop_flat_map(move |column| {
+                (
+                    Just(2_usize.pow((len - column) as u32)),
+                    Just(2_usize.pow(column as u32)),
+                    hidden_ntt(len..=len, fr()),
+                )
+            })
+        })
+    }
+
     proptest! {
         #[test]
-        fn test_interleaving((rows, columns, ntt) in (0_usize..=1, 0_usize..=10).prop_flat_map(|(rows, columns)| {
-            let len = rows + columns;
-            (Just(2_usize.pow(rows as u32)), Just(2_usize.pow(columns as u32)), hidden_ntt(len..=len, fr()))
-        })){
+        fn test_interleaving((rows, columns, ntt) in interleaving_strategy(20)) {
             let mut ntt = ntt.0;
             let s = ntt.clone();
             let transposed = transpose(s, rows, columns);
