@@ -138,7 +138,13 @@ pub fn interleaved_ntt_nr(
 
     let n = input.len();
 
-    if n <= 1 {
+    // TODO(xrvdg) change this into a size parameter? This calculation has already
+    // been done in the calling function can then also make it a requirement to
+    // be a size.
+    let single_n = n / interleaving;
+
+    // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
+    if single_n <= 1 {
         return;
     }
 
@@ -151,47 +157,45 @@ pub fn interleaved_ntt_nr(
     // are contiguous in cache memory and we switch over to a different strategy.
     // If at the start the NTT already fits in cache memory we go directly to the
     // cache strategy strategy.
-    if n > workload_size::<Fr>() {
-        // These two loops could be merged together, but in microbenchmarks this split
-        // performs 5% better than nesting par_iter_mut inside par_chunks_exact
-        // over the ranges 2ˆ20 to 2ˆ24.
 
-        // Parallelizing over the groups is most effective but in the beginning there
-        // aren't enough groups to occupy all threads.
-        while num_of_groups < 32 {
-            input
-                .chunks_exact_mut(2 * pairs_in_group)
-                .enumerate()
-                .for_each(|(k, group)| {
-                    let omega = reversed_ordered_roots[k];
-                    let (evens, odds) = group.split_at_mut(pairs_in_group);
+    // These following two loops could be merged together, but in microbenchmarks
+    // this split performs 5% better than nesting par_iter_mut inside
+    // par_chunks_exact over the ranges 2ˆ20 to 2ˆ24.
 
-                    evens.par_iter_mut().zip(odds).for_each(|(even, odd)| {
-                        (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                    });
+    // Furthermore these loops
+
+    // Parallelizing over the groups is most effective but in the beginning there
+    // aren't enough groups to occupy all threads.
+    while num_of_groups < 32.min(single_n) && 2 * pairs_in_group > workload_size::<Fr>() {
+        input
+            .chunks_exact_mut(2 * pairs_in_group)
+            .enumerate()
+            .for_each(|(k, group)| {
+                let omega = reversed_ordered_roots[k];
+                let (evens, odds) = group.split_at_mut(pairs_in_group);
+
+                evens.par_iter_mut().zip(odds).for_each(|(even, odd)| {
+                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
                 });
-            pairs_in_group /= 2;
-            num_of_groups *= 2;
-        }
+            });
+        pairs_in_group /= 2;
+        num_of_groups *= 2;
+    }
 
-        // Once the active set (2*pairs_in_group) reaches workload size switch to
-        // cache-optimized NTT invariant: num_of_groups * pairs_of_groups = n
-        // -> num_of_group / (workload_size / 2)
-        while num_of_groups < n / (workload_size::<Fr>() / 2) {
-            input
-                .par_chunks_exact_mut(2 * pairs_in_group)
-                .enumerate()
-                .for_each(|(k, group)| {
-                    let omega = reversed_ordered_roots[k];
-                    let (evens, odds) = group.split_at_mut(pairs_in_group);
+    while num_of_groups < single_n && 2 * pairs_in_group > workload_size::<Fr>() {
+        input
+            .par_chunks_exact_mut(2 * pairs_in_group)
+            .enumerate()
+            .for_each(|(k, group)| {
+                let omega = reversed_ordered_roots[k];
+                let (evens, odds) = group.split_at_mut(pairs_in_group);
 
-                    evens.iter_mut().zip(odds).for_each(|(even, odd)| {
-                        (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                    });
+                evens.iter_mut().zip(odds).for_each(|(even, odd)| {
+                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
                 });
-            pairs_in_group /= 2;
-            num_of_groups *= 2;
-        }
+            });
+        pairs_in_group /= 2;
+        num_of_groups *= 2;
     }
 
     input
@@ -407,6 +411,7 @@ mod tests {
         }
     }
 
+    // Replace by parallel alternative to speed up
     fn transpose<T: Copy, U: AsRef<[T]>>(matrix: U, rows: usize, columns: usize) -> Vec<T> {
         let matrix = matrix.as_ref();
         assert_eq!(matrix.len(), rows * columns);
