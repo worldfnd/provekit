@@ -5,6 +5,7 @@ use std::hash::sha256_compression;
 pub mod ryan_sha256_noir;
 pub(crate) mod ryan_sha256_compression;
 pub(crate) mod ryan_sha256_constants;
+mod tests;
 
 fn is_id_card(dg1: [u8; 95]) -> bool {
     // For passport, the last two bytes are 0

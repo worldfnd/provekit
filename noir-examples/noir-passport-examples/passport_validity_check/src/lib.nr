@@ -7,7 +7,7 @@ use utils::check_zero_padding;
 
 // CONSTANTS
 global SIGNED_ATTRIBUTES_MAX_SIZE: u32 = 200;
-global DSC_CERT_MAX_SIZE: u32 = 1500;
+global DSC_CERT_MAX_SIZE: u32 = 1300;
 global DSC_SIGNATURE_SIZE: u32 = 256;
 global CSC_PUBKEY_SIZE: u32 = 512;
 
