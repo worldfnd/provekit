@@ -88,9 +88,16 @@ impl NTTEngine {
         }
     }
 
+    // TODO(xrvdg) interleaving does support non-power of factors, but it needs to
+    // be that the individual NTTs are power of two.
+    // TODO for interleaving pow2orzero doesn't make sense. It needs to be nonzero
+    pub fn interleaved_ntt_nr(&mut self, values: &mut NTT<Fr>, interleaving: Pow2OrZero) {
+        self.extend_roots_table(Pow2OrZero(values.len().0 / interleaving.0));
+        interleaved_ntt_nr(&self.0, values, interleaving.0);
+    }
+
     pub fn ntt_nr(&mut self, values: &mut NTT<Fr>) {
-        self.extend_roots_table(values.len());
-        ntt_nr(&self.0, values);
+        self.interleaved_ntt_nr(values, Pow2OrZero::next_power_of_two(1));
     }
 
     pub fn intt_rn(&mut self, values: &mut NTT<Fr>) {
@@ -117,6 +124,8 @@ pub fn ntt_nr(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
+/// TODO: does interleaving work with non-power of two? -> it does but it
+/// requires the folded vectors to be of the right length
 pub fn interleaved_ntt_nr(
     reversed_ordered_roots: &[Fr],
     values: &mut NTT<Fr>,
@@ -332,7 +341,7 @@ mod tests {
         super::{init_roots_reverse_ordered, reverse_order},
         crate::{ntt::NTTEngine, Pow2OrZero, NTT},
         ark_bn254::Fr,
-        ark_ff::BigInt,
+        ark_ff::{AdditiveGroup, BigInt},
         proptest::collection,
         std::fmt,
     };
@@ -380,7 +389,8 @@ mod tests {
         }
     }
 
-    fn transpose<T: Copy>(matrix: &[T], rows: usize, columns: usize) -> Vec<T> {
+    fn transpose<T: Copy, U: AsRef<[T]>>(matrix: U, rows: usize, columns: usize) -> Vec<T> {
+        let matrix = matrix.as_ref();
         assert_eq!(matrix.len(), rows * columns);
         let mut v = Vec::with_capacity(matrix.len());
         for j in 0..columns {
@@ -388,7 +398,6 @@ mod tests {
                 v.push(matrix[i * columns + j]);
             }
         }
-
         v
     }
 
@@ -409,10 +418,34 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_interleaving((rows, columns, ntt) in (0_usize..5, 0_usize..5).prop_flat_map(|(rows, columns)| {
+        fn test_interleaving((rows, columns, mut ntt) in (0_usize..5, 0_usize..5).prop_flat_map(|(rows, columns)| {
             let len = rows + columns;
             (Just(2_usize.pow(rows as u32)), Just(2_usize.pow(columns as u32)), ntt(len..=len, fr()))
         })){
+            let s = ntt.clone();
+            let transposed = transpose(s, rows, columns);
+            let mut engine = NTTEngine::new();
+            // This requires an into clone and then will make it harder to transpose back
+            let mut ntts = Vec::with_capacity(columns);
+            // Vec should be able to go into
+            for chunk in transposed.chunks_exact(rows){
+                let mut fold = NTT(chunk.to_owned());
+                engine.ntt_nr(&mut fold);
+                ntts.push(fold);
+            }
+            let mut collect = vec![Fr::ZERO; transposed.len()];
+
+        for (ntt, chunk) in ntts.iter().zip(collect.chunks_mut(rows)) {
+            let slice = ntt.as_ref();
+            chunk.copy_from_slice(slice);
+        }
+
+        let double_transposed = NTT::new(transpose(collect, columns, rows)).unwrap();
+
+        engine.interleaved_ntt_nr(&mut ntt, Pow2OrZero(columns));
+        assert_eq!(double_transposed, ntt)
+
+
 
         }
     }

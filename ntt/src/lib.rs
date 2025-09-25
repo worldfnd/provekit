@@ -25,6 +25,18 @@ impl Pow2OrZero {
     }
 }
 
+impl<T> AsRef<[T]> for NTT<T> {
+    fn as_ref(&self) -> &[T] {
+        &self.0
+    }
+}
+
+impl<T> AsMut<[T]> for NTT<T> {
+    fn as_mut(&mut self) -> &mut [T] {
+        &mut self.0
+    }
+}
+
 impl<T> NTT<T> {
     pub fn new(vec: Vec<T>) -> Option<Self> {
         match Pow2OrZero::new(vec.len()) {
