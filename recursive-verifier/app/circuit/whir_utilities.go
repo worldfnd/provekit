@@ -131,8 +131,14 @@ func computeWPoly(
 	mainRoundData MainRoundData,
 	totalFoldingRandomness []frontend.Variable,
 	linearStatementValuesAtPoints []frontend.Variable,
+	evaluationPoints [][]frontend.Variable,
 ) frontend.Variable {
 	numberVars := circuit.MVParamsNumberOfVariables
+
+	eqValues := []frontend.Variable{}
+	for _, evaluationPoint := range evaluationPoints {
+		eqValues = append(eqValues, calculateEQ(api, totalFoldingRandomness, evaluationPoint))
+	}
 
 	value := frontend.Variable(0)
 	for j := range initialData.InitialOODQueries {
@@ -142,6 +148,11 @@ func computeWPoly(
 	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}
+
+	for j, eqValue := range eqValues {
+		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+len(linearStatementValuesAtPoints)+j], eqValue))
+	}
+
 	for r := range mainRoundData.OODPoints {
 		numberVars -= circuit.FoldingFactorArray[r]
 		newTmpArr := append(mainRoundData.OODPoints[r], mainRoundData.StirChallengesPoints[r]...)

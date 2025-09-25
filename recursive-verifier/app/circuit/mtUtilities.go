@@ -17,15 +17,18 @@ func initialSumcheck(
 	initialOODAnswers []frontend.Variable,
 	whirParams WHIRParams,
 	linearStatementEvaluations [][]frontend.Variable,
+	evaluationStatementClaimedValues [][]frontend.Variable,
 ) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
+	lengthOfLinearStatementEvaluations := len(linearStatementEvaluations[0])
+	lengthOfEvaluationStatement := len(evaluationStatementClaimedValues[0])
 
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+len(linearStatementEvaluations[0]))
+	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+lengthOfLinearStatementEvaluations+lengthOfEvaluationStatement)
 	if err != nil {
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	combinedLinearStatementEvaluations := make([]frontend.Variable, len(linearStatementEvaluations[0])) //[0, 1, 2]
-	for evaluationIndex := range len(linearStatementEvaluations[0]) {
+	combinedLinearStatementEvaluations := make([]frontend.Variable, lengthOfLinearStatementEvaluations) //[0, 1, 2]
+	for evaluationIndex := range lengthOfLinearStatementEvaluations {
 		sum := frontend.Variable(0)
 		multiplier := frontend.Variable(1)
 		for j := range len(linearStatementEvaluations) {
@@ -34,7 +37,20 @@ func initialSumcheck(
 		}
 		combinedLinearStatementEvaluations[evaluationIndex] = sum
 	}
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
+
+	combinedEvaluationStatementEvaluations := make([]frontend.Variable, lengthOfEvaluationStatement) //[0, 1, 2]
+	for evaluationIndex := range lengthOfEvaluationStatement {
+		sum := frontend.Variable(0)
+		multiplier := frontend.Variable(1)
+		for j := range len(evaluationStatementClaimedValues) {
+			sum = api.Add(sum, api.Mul(evaluationStatementClaimedValues[j][evaluationIndex], multiplier))
+			multiplier = api.Mul(multiplier, batchingRandomness)
+		}
+		combinedEvaluationStatementEvaluations[evaluationIndex] = sum
+	}
+
+	OODAnswersAndStatmentEvaluations := append(append(initialOODAnswers, combinedLinearStatementEvaluations...), combinedEvaluationStatementEvaluations...)
+
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
 	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)

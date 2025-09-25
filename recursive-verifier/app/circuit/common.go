@@ -106,6 +106,88 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 
 	config.Transcript = truncated
 
+	// Spark start
+	spark_io := gnarkNimue.IOPattern{}
+	err = spark_io.Parse([]byte(sparkConfig.IOPattern))
+	if err != nil {
+		return fmt.Errorf("failed to parse IO pattern: %w", err)
+	}
+
+	var spark_pointer uint64
+	var spark_truncated_transcript []byte
+
+	var sparkMerklePaths []FullMultiPath[KeccakDigest]
+	var sparkStirAnswers [][][]Fp256
+	var sparkClaimedEvaluations []Fp256
+
+	for _, op := range spark_io.Ops {
+		switch op.Kind {
+		case gnarkNimue.Hint:
+			if spark_pointer+4 > uint64(len(sparkConfig.Transcript)) {
+				return fmt.Errorf("insufficient bytes for hint length")
+			}
+			hintLen := binary.LittleEndian.Uint32(sparkConfig.Transcript[spark_pointer : spark_pointer+4])
+			start := spark_pointer + 4
+			end := start + uint64(hintLen)
+
+			if end > uint64(len(sparkConfig.Transcript)) {
+				return fmt.Errorf("insufficient bytes for merkle proof")
+			}
+
+			switch string(op.Label) {
+			case "merkle_proof":
+				var path FullMultiPath[KeccakDigest]
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&path,
+					false, false,
+				)
+				sparkMerklePaths = append(sparkMerklePaths, path)
+
+			case "stir_answers":
+				var stirAnswersTemporary [][]Fp256
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&stirAnswersTemporary,
+					false, false,
+				)
+				sparkStirAnswers = append(sparkStirAnswers, stirAnswersTemporary)
+			case "sumcheck_last_folds":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&sparkClaimedEvaluations,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize spark_last_folds: %w", err)
+				}
+			}
+
+			if err != nil {
+				return fmt.Errorf("failed to deserialize merkle proof: %w", err)
+			}
+
+			spark_pointer = end
+
+		case gnarkNimue.Absorb:
+			start := spark_pointer
+			if string(op.Label) == "pow-nonce" {
+				spark_pointer += op.Size
+			} else {
+				spark_pointer += op.Size * 32
+			}
+
+			if spark_pointer > uint64(len(sparkConfig.Transcript)) {
+				return fmt.Errorf("absorb exceeds transcript length")
+			}
+
+			spark_truncated_transcript = append(spark_truncated_transcript, sparkConfig.Transcript[start:spark_pointer]...)
+		}
+	}
+
+	sparkConfig.Transcript = spark_truncated_transcript
+	// Spark end
+
 	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
 	if err != nil {
 		return fmt.Errorf("failed to decode interner values: %w", err)
@@ -123,14 +205,19 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
-	var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &merklePaths, &stirAnswers)
+	// Read from spark
+	var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
 
 	hints := Hints{
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 		sparkSumcheckData: sparkSumcheckData,
 	}
-	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation)
+
+	fmt.Print(len(hints.sparkSumcheckData.firstRoundMerklePaths.path.merklePaths))
+	fmt.Print(len(hints.sparkSumcheckData.roundHints.merklePaths))
+	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation, sparkClaimedEvaluations)
+
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}

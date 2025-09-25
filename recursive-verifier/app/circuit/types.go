@@ -139,10 +139,11 @@ type ClaimedEvaluations struct {
 // }
 
 type SparkConfig struct {
-	IOPattern    string     `json:"io_pattern"`
-	Transcript   []byte     `json:"transcript"`
-	WHIRA3       WHIRConfig `json:"whir_a3"`
-	WHIRRow      WHIRConfig `json:"whir_row"`
-	WHIRCol      WHIRConfig `json:"whir_col"`
-	LogANumTerms int        `json:"log_a_num_terms"`
+	IOPattern    string            `json:"io_pattern"`
+	Transcript   []byte            `json:"transcript"`
+	WHIRA3       WHIRConfig        `json:"whir_a3"`
+	WHIRRow      WHIRConfig        `json:"whir_row"`
+	WHIRCol      WHIRConfig        `json:"whir_col"`
+	LogANumTerms int               `json:"log_a_num_terms"`
+	AClaimed     frontend.Variable `json:"claimed_value_for_a"`
 }

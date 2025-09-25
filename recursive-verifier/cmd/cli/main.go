@@ -119,6 +119,8 @@ func main() {
 				return fmt.Errorf("failed to unmarshal spark config JSON: %w", err)
 			}
 
+			fmt.Print(sparkConfig.AClaimed)
+
 			var r1csFile []byte
 			if r1csFilePath != "" {
 				r1csFile, err = os.ReadFile(r1csFilePath)

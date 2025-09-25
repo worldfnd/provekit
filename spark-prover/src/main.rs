@@ -73,6 +73,8 @@ fn main() -> Result<()> {
         .write_all(serde_json::to_string(&spark_proof).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
 
+    println!("Claimed value for A {:?}", request.claimed_values.a); //Reilabs Debug: 
+
     let spark_proof_gnark = SPARKProofGnark {
         transcript: spark_proof.transcript,
         io_pattern: spark_proof.io_pattern,
@@ -80,6 +82,7 @@ fn main() -> Result<()> {
         whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
         whir_a3: WHIRConfigGnark::new(&spark_proof.whir_params.a_3batched),
         log_a_num_terms: next_power_of_two(r1cs.a.num_entries()),
+        claimed_value_for_a: request.claimed_values.a,
     };
 
     let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
