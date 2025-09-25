@@ -372,6 +372,24 @@ mod tests {
             .prop_map(|v| NTT::new(v).unwrap())
     }
 
+    // Newtype wrapper to prevent proptest from writing big NTT to stdout
+    // If the contents does have to be viewed replace with regular NTT
+    // TODO(xrvdg) make this take a parameter and rename
+    struct HiddenNTT<T>(NTT<T>);
+
+    impl<T> fmt::Debug for HiddenNTT<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "HiddenNTT(len={})", self.0.len().0)
+        }
+    }
+
+    fn hidden_ntt<T: fmt::Debug>(
+        sizes: impl Strategy<Value = usize>,
+        elem: impl Strategy<Value = T> + Clone,
+    ) -> impl Strategy<Value = HiddenNTT<T>> {
+        ntt(sizes, elem).prop_map(HiddenNTT)
+    }
+
     proptest! {
         #[test]
         fn round_trip_ntt(original in ntt(0_usize..15, fr()))
@@ -418,16 +436,18 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_interleaving((rows, columns, mut ntt) in (0_usize..5, 0_usize..5).prop_flat_map(|(rows, columns)| {
+        fn test_interleaving((rows, columns, ntt) in (0_usize..=1, 0_usize..=10).prop_flat_map(|(rows, columns)| {
             let len = rows + columns;
-            (Just(2_usize.pow(rows as u32)), Just(2_usize.pow(columns as u32)), ntt(len..=len, fr()))
+            (Just(2_usize.pow(rows as u32)), Just(2_usize.pow(columns as u32)), hidden_ntt(len..=len, fr()))
         })){
+            let mut ntt = ntt.0;
             let s = ntt.clone();
             let transposed = transpose(s, rows, columns);
             let mut engine = NTTEngine::new();
             // This requires an into clone and then will make it harder to transpose back
             let mut ntts = Vec::with_capacity(columns);
-            // Vec should be able to go into
+            // Vec should be able to go underlying array and give that instead
+            // solve for to_owned
             for chunk in transposed.chunks_exact(rows){
                 let mut fold = NTT(chunk.to_owned());
                 engine.ntt_nr(&mut fold);
@@ -435,6 +455,7 @@ mod tests {
             }
             let mut collect = vec![Fr::ZERO; transposed.len()];
 
+        // All the memory would still be near eachother but lost parts
         for (ntt, chunk) in ntts.iter().zip(collect.chunks_mut(rows)) {
             let slice = ntt.as_ref();
             chunk.copy_from_slice(slice);
@@ -443,7 +464,7 @@ mod tests {
         let double_transposed = NTT::new(transpose(collect, columns, rows)).unwrap();
 
         engine.interleaved_ntt_nr(&mut ntt, Pow2OrZero(columns));
-        assert_eq!(double_transposed, ntt)
+        prop_assert!(double_transposed == ntt, "rows: {}, columns: {}", rows, columns);
 
 
 
