@@ -1,8 +1,10 @@
 package circuit
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
@@ -82,7 +84,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, saveKeys bool,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -196,6 +198,49 @@ func verifyCircuit(
 		}
 		pk = &unsafePk
 		vk = &unsafeVk
+
+		if saveKeys {
+			// Generate timestamp for filenames
+			timestamp := time.Now().Format("02Jan_15-04-05")
+
+			// Save proving key to file
+			pkFilename := fmt.Sprintf("generated_pk_%s.bin", timestamp)
+			pkFile, err := os.Create(pkFilename)
+			if err != nil {
+				log.Printf("Failed to create PK file: %v", err)
+			} else {
+				defer func() {
+					if err := pkFile.Close(); err != nil {
+						log.Printf("Failed to close PK file: %v", err)
+					}
+				}()
+				_, err = (*pk).WriteTo(pkFile) // Dereference with (*pk)
+				if err != nil {
+					log.Printf("Failed to write PK to file: %v", err)
+				} else {
+					log.Printf("Proving key saved to %s", pkFilename)
+				}
+			}
+
+			// Save verifying key to file
+			vkFilename := fmt.Sprintf("generated_vk_%s.bin", timestamp)
+			vkFile, err := os.Create(vkFilename)
+			if err != nil {
+				log.Printf("Failed to create VK file: %v", err)
+			} else {
+				defer func() {
+					if err := vkFile.Close(); err != nil {
+						log.Printf("Failed to close VK file: %v", err)
+					}
+				}()
+				_, err = (*vk).WriteTo(vkFile) // Dereference with (*vk)
+				if err != nil {
+					log.Printf("Failed to write VK to file: %v", err)
+				} else {
+					log.Printf("Verifying key saved to %s", vkFilename)
+				}
+			}
+		}
 	}
 
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)

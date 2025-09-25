@@ -113,7 +113,7 @@ func verify(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
+	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath, false); err != nil {
 		log.Printf("Verification failed: %v", err)
 		return c.Status(400).JSON(fiber.Map{
 			"error":   "Verification failed",

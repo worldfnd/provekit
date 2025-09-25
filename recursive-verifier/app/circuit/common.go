@@ -12,7 +12,7 @@ import (
 	arkSerialize "github.com/reilabs/go-ark-serialize"
 )
 
-func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string) error {
+func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, saveKeys bool) error {
 	io := gnarkNimue.IOPattern{}
 	err := io.Parse([]byte(config.IOPattern))
 	if err != nil {
@@ -127,7 +127,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 	}
-	err = verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+	err = verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, saveKeys)
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}

@@ -67,6 +67,12 @@ func main() {
 				Required: false,
 				Value:    "",
 			},
+			&cli.BoolFlag{
+				Name:     "saveKeys",
+				Usage:    "Optional flag to save keys to files",
+				Required: false,
+				Value:    false,
+			},
 		},
 		Action: func(c *cli.Context) error {
 			configFilePath := c.String("config")
@@ -77,7 +83,7 @@ func main() {
 			pkUrl := c.String("pk_url")
 			vkUrl := c.String("vk_url")
 			r1csUrl := c.String("r1cs_url")
-
+			saveKeys := c.Bool("saveKeys")
 			configFile, err := os.ReadFile(configFilePath)
 			if err != nil {
 				return fmt.Errorf("failed to read config file: %w", err)
@@ -123,7 +129,7 @@ func main() {
 				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
 			}
 
-			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
+			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath, saveKeys); err != nil {
 				return fmt.Errorf("failed to prepare and verify circuit: %w", err)
 			}
 
