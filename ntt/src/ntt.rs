@@ -105,6 +105,10 @@ impl Default for NTTEngine {
     }
 }
 
+pub fn ntt_nr(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
+    interleaved_ntt_nr(reverse_ordered_roots, values, 1);
+}
+
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
 ///
@@ -113,7 +117,11 @@ impl Default for NTTEngine {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
+pub fn interleaved_ntt_nr(
+    reversed_ordered_roots: &[Fr],
+    values: &mut NTT<Fr>,
+    interleaving: usize,
+) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
@@ -181,18 +189,25 @@ pub fn ntt_nr(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr>) {
         .par_chunks_exact_mut(2 * pairs_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group);
+            dit_nr_cache(reversed_ordered_roots, k, group, interleaving);
         });
 }
 
-fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr]) {
+fn dit_nr_cache(
+    reverse_ordered_roots: &[Fr],
+    segment: usize,
+    input: &mut [Fr],
+    interleaving: usize,
+) {
     let n = input.len();
     debug_assert!(n.is_power_of_two());
 
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
-    while num_of_groups < n {
+    let single_n = n / interleaving;
+
+    while num_of_groups < single_n {
         let twiddle_base = segment * num_of_groups;
         for (k, group) in input.chunks_exact_mut(2 * pairs_in_group).enumerate() {
             let twiddle = twiddle_base + k;
@@ -362,6 +377,43 @@ mod tests {
             engine.intt_rn(&mut s);
 
             prop_assert_eq!(original,s);
+        }
+    }
+
+    fn transpose<T: Copy>(matrix: &[T], rows: usize, columns: usize) -> Vec<T> {
+        assert_eq!(matrix.len(), rows * columns);
+        let mut v = Vec::with_capacity(matrix.len());
+        for j in 0..columns {
+            for i in 0..rows {
+                v.push(matrix[i * columns + j]);
+            }
+        }
+
+        v
+    }
+
+    proptest! {
+        #[test]
+        fn test_transpose((rows, columns, mat) in (0_usize..10, 0_usize..10)
+            .prop_flat_map(|(rows, columns)| {
+                // If either rows or columns is zero, the matrix is empty
+                let len = rows * columns;
+                (Just(rows), Just(columns), collection::vec(any::<u32>(), len..=len))
+            })
+        ) {
+            let transposed = transpose(&mat, rows, columns);
+            let double_transposed = transpose(&transposed, columns, rows);
+            assert_eq!(mat, double_transposed);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_interleaving((rows, columns, ntt) in (0_usize..5, 0_usize..5).prop_flat_map(|(rows, columns)| {
+            let len = rows + columns;
+            (Just(2_usize.pow(rows as u32)), Just(2_usize.pow(columns as u32)), ntt(len..=len, fr()))
+        })){
+
         }
     }
 
