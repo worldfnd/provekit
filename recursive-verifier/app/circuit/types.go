@@ -104,6 +104,7 @@ type Config struct {
 type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
+	sparkSumcheckData ZKHint
 }
 
 type Hint struct {
@@ -138,9 +139,10 @@ type ClaimedEvaluations struct {
 // }
 
 type SparkConfig struct {
-	IOPattern  string     `json:"io_pattern"`
-	Transcript []byte     `json:"transcript"`
-	WHIRA3     WHIRConfig `json:"whir_a3"`
-	WHIRRow    WHIRConfig `json:"whir_row"`
-	WHIRCol    WHIRConfig `json:"whir_col"`
+	IOPattern    string     `json:"io_pattern"`
+	Transcript   []byte     `json:"transcript"`
+	WHIRA3       WHIRConfig `json:"whir_a3"`
+	WHIRRow      WHIRConfig `json:"whir_row"`
+	WHIRCol      WHIRConfig `json:"whir_col"`
+	LogANumTerms int        `json:"log_a_num_terms"`
 }

@@ -123,9 +123,12 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
+	var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &merklePaths, &stirAnswers)
+
 	hints := Hints{
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
+		sparkSumcheckData: sparkSumcheckData,
 	}
 	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation)
 	if err != nil {

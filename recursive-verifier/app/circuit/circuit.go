@@ -32,7 +32,8 @@ type Circuit struct {
 	WitnessMerkle                           Merkle
 	WitnessFirstRound                       Merkle
 	WHIRParamsWitness                       WHIRParams
-	WHIRParamsHidingSpartan                 WHIRParams
+	// Is this not used?
+	WHIRParamsHidingSpartan WHIRParams
 
 	MatrixA []MatrixCell
 	MatrixB []MatrixCell
@@ -43,11 +44,13 @@ type Circuit struct {
 	UseSpark        bool
 	SPARKTranscript []uints.U8 `gnark:",public"`
 
-	SPARKIO    []byte
-	Transcript []uints.U8 `gnark:",public"`
-	WHIRA3     WHIRParams
-	WHIRRow    WHIRParams
-	WHIRCol    WHIRParams
+	SPARKIO                 []byte
+	Transcript              []uints.U8 `gnark:",public"`
+	WHIRA3                  WHIRParams
+	WHIRRow                 WHIRParams
+	WHIRCol                 WHIRParams
+	SparkSumcheckFirstRound Merkle
+	SparkSumcheckMerkle     Merkle
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
@@ -68,7 +71,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// 	return err
 	// }
 
-	// spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
 	// if err != nil {
 	// 	return err
 	// }
@@ -94,8 +96,45 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 
 		sumcheckRootHash, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
-		rowwiseRootHash, rowwiseBatchingRandomness, rowwiseInitialOODQueries, rowwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
-		colwiseRootHash, colwiseBatchingRandomness, colwiseInitialOODQueries, colwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
+		if err != nil {
+			return err
+		}
+		rowwiseRootHash, rowwiseBatchingRandomness, rowwiseInitialOODQueries, rowwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		if err != nil {
+			return err
+		}
+		colwiseRootHash, colwiseBatchingRandomness, colwiseInitialOODQueries, colwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		if err != nil {
+			return err
+		}
+
+		rowFinaltsRootHash, rowFinaltsBatchingRandomness, rowFinaltsInitialOODQueries, rowFinaltsInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
+		if err != nil {
+			return err
+		}
+		colFinaltsRootHash, colFinaltsBatchingRandomness, colFinaltsInitialOODQueries, colFinaltsInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
+		if err != nil {
+			return err
+		}
+
+		api.Println(circuit.WitnessLinearStatementEvaluations[0])
+		api.Println(circuit.WitnessLinearStatementEvaluations[1])
+		api.Println(circuit.WitnessLinearStatementEvaluations[2])
+		sparkSumcheckFoldingRandomness, sparkSumcheckLastEval, err := runSumcheck(api, arthur, circuit.WitnessLinearStatementEvaluations[0], circuit.LogANumTerms, 4)
+		if err != nil {
+			return err
+		}
+
+		_ = sparkSumcheckFoldingRandomness
+		_ = sparkSumcheckLastEval
+
+		// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash)
+		// if err != nil {
+		// 	return err
+		// }
+		// _ = whirFoldingRandomness
+
+		// circuit.WitnessLinearStatementEvaluations[i]
 
 		_ = sumcheckRootHash
 		_ = sumcheckBatchingRandomness
@@ -111,6 +150,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		_ = colwiseBatchingRandomness
 		_ = colwiseInitialOODAnswers
 		_ = colwiseInitialOODQueries
+
+		_ = rowFinaltsRootHash
+		_ = rowFinaltsBatchingRandomness
+		_ = rowFinaltsInitialOODAnswers
+		_ = rowFinaltsInitialOODQueries
+
+		_ = colFinaltsRootHash
+		_ = colFinaltsBatchingRandomness
+		_ = colFinaltsInitialOODAnswers
+		_ = colFinaltsInitialOODQueries
 
 		_ = uapi
 	} else {
@@ -208,8 +257,6 @@ func verifyCircuit(
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
 		LogNumConstraints:                       cfg.LogNumConstraints,
-		LogNumVariables:                         cfg.LogNumVariables,
-		LogANumTerms:                            cfg.LogANumTerms,
 		WitnessClaimedEvaluations:               fSums,
 		WitnessBlindingEvaluations:              gSums,
 		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
@@ -226,11 +273,14 @@ func verifyCircuit(
 		MatrixB: matrixB,
 		MatrixC: matrixC,
 
-		SPARKIO:         []byte(sparkConfig.IOPattern),
-		SPARKTranscript: sparkContTranscript,
-		WHIRA3:          NewWhirParams(sparkConfig.WHIRA3),
-		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
-		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
+		SPARKIO:                 []byte(sparkConfig.IOPattern),
+		SPARKTranscript:         sparkContTranscript,
+		WHIRA3:                  NewWhirParams(sparkConfig.WHIRA3),
+		WHIRRow:                 NewWhirParams(sparkConfig.WHIRRow),
+		WHIRCol:                 NewWhirParams(sparkConfig.WHIRCol),
+		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, true),
+		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, true),
+		LogANumTerms:            sparkConfig.LogANumTerms,
 
 		UseSpark: useSpark,
 	}
@@ -286,11 +336,14 @@ func verifyCircuit(
 		MatrixB: matrixB,
 		MatrixC: matrixC,
 
-		SPARKIO:         []byte(sparkConfig.IOPattern),
-		SPARKTranscript: sparkTranscriptT,
-		WHIRA3:          NewWhirParams(sparkConfig.WHIRA3),
-		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
-		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
+		SPARKIO:                 []byte(sparkConfig.IOPattern),
+		SPARKTranscript:         sparkTranscriptT,
+		WHIRA3:                  NewWhirParams(sparkConfig.WHIRA3),
+		WHIRRow:                 NewWhirParams(sparkConfig.WHIRRow),
+		WHIRCol:                 NewWhirParams(sparkConfig.WHIRCol),
+		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, false),
+		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, false),
+		LogANumTerms:            sparkConfig.LogANumTerms,
 
 		UseSpark: useSpark,
 	}

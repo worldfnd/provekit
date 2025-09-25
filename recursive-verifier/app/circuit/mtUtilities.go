@@ -68,9 +68,11 @@ func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (f
 		oodAnswers[i] = oodAnswer
 	}
 
-	batchingRandomness := make([]frontend.Variable, 1)
-	if err := arthur.FillChallengeScalars(batchingRandomness); err != nil {
-		return nil, 0, nil, nil, err
+	batchingRandomness := []frontend.Variable{0}
+	if whir_params.BatchSize > 1 {
+		if err := arthur.FillChallengeScalars(batchingRandomness); err != nil {
+			return nil, 0, nil, nil, err
+		}
 	}
 	return rootHash[0], batchingRandomness[0], oodPoints, oodAnswers, nil
 }

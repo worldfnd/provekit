@@ -79,6 +79,7 @@ fn main() -> Result<()> {
         whir_row: WHIRConfigGnark::new(&spark_proof.whir_params.row),
         whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
         whir_a3: WHIRConfigGnark::new(&spark_proof.whir_params.a_3batched),
+        log_a_num_terms: next_power_of_two(r1cs.a.num_entries()),
     };
 
     let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
@@ -87,6 +88,10 @@ fn main() -> Result<()> {
     gnark_spark_proof_file
         .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
         .expect("Writing spark gnark parameters to a file failed");
+
+    // println!("{:?}", request.claimed_values.a);
+    // println!("{:?}", request.claimed_values.b);
+    // println!("{:?}", request.claimed_values.c);
 
     Ok(())
 }
