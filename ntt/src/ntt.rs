@@ -38,7 +38,7 @@ impl NTTEngine {
     pub fn with_order(order: Pow2OrZero) -> Self {
         let init = init_roots_reverse_ordered(
             Pow2OrZero::next_power_of_two(workload_size::<Fr>()),
-            Some(order.0 / 2),
+            Some(*order / 2),
         );
         let mut engine = NTTEngine(init);
         engine.extend_roots_table(order);
@@ -54,24 +54,23 @@ impl NTTEngine {
     /// The new roots are computed in parallel based on the old roots thus
     /// ensure a large enough initial root table for proper parallelization.
     fn extend_roots_table(&mut self, order: Pow2OrZero) {
-        let order = order.0;
         let table = &mut self.0;
 
-        let old_len = table.len();
-        let new_len = order / 2;
+        let old_order = table.len();
+        let new_order = *order / 2;
 
-        if new_len > old_len {
-            let col_len = new_len / old_len;
-            let unity = Fr::get_root_of_unity(order as u64).unwrap();
+        if new_order > old_order {
+            let col_len = new_order / old_order;
+            let unity = Fr::get_root_of_unity(*order as u64).unwrap();
             // Remark: change this to reserve exact if tighter control on memory is needed
-            table.reserve(new_len - old_len);
+            table.reserve(new_order - old_order);
             let (init, uninit) = table.split_at_spare_mut();
 
             // When viewing the roots as a matrix every row is a multiple of the first row
             // row[j] = row[0] * unity^(reverse order j)
 
             uninit
-                .par_chunks_mut(old_len)
+                .par_chunks_mut(old_order)
                 .enumerate()
                 .for_each(|(i, row)| {
                     // start counting from one as 0 is init above
@@ -83,7 +82,7 @@ impl NTTEngine {
                 });
 
             unsafe {
-                table.set_len(new_len);
+                table.set_len(new_order);
             }
         }
     }
@@ -96,7 +95,7 @@ impl NTTEngine {
         values: &mut NTT<Fr, C>,
         interleaving: Pow2OrZero,
     ) {
-        self.extend_roots_table(Pow2OrZero(values.len().0 / interleaving.0));
+        self.extend_roots_table(Pow2OrZero(values.order().0 / interleaving.0));
         interleaved_ntt_nr(&self.0, values, interleaving.0);
     }
 
@@ -105,7 +104,7 @@ impl NTTEngine {
     }
 
     pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.extend_roots_table(values.len());
+        self.extend_roots_table(values.order());
         intt_rn(&self.0, values);
     }
 }
@@ -138,13 +137,8 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
-    let input = &mut values.as_mut();
+    let n = *values.order();
 
-    let n = input.len();
-
-    // TODO(xrvdg) change this into a size parameter? This calculation has already
-    // been done in the calling function can then also make it a requirement to
-    // be a size.
     let single_n = n / interleaving;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
@@ -171,7 +165,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
     while num_of_groups < 32.min(single_n) && 2 * pairs_in_group > workload_size::<Fr>() {
-        input
+        values
             .chunks_exact_mut(2 * pairs_in_group)
             .enumerate()
             .for_each(|(k, group)| {
@@ -187,7 +181,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     }
 
     while num_of_groups < single_n && 2 * pairs_in_group > workload_size::<Fr>() {
-        input
+        values
             .par_chunks_exact_mut(2 * pairs_in_group)
             .enumerate()
             .for_each(|(k, group)| {
@@ -202,7 +196,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         num_of_groups *= 2;
     }
 
-    input
+    values
         .par_chunks_exact_mut(2 * pairs_in_group)
         .enumerate()
         .for_each(|(k, group)| {
@@ -265,10 +259,7 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// * `capacity` - Optional capacity hint for the vector. If `None`, defaults to
 ///   `n`. If provided, will use `max(capacity, n)` to ensure sufficient space.
 fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec<Fr> {
-    let order = order.0;
-    let n = order / 2;
-
-    match n {
+    match *order / 2 {
         0 => vec![],
         // 1 is a separate case due to `1.trailing_zeros = 0` which reverse_bit requires >0
         1 => vec![Fr::ONE],
@@ -276,7 +267,7 @@ fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec
             // Use provided capacity or default to n, ensuring it's at least n
             let actual_capacity = capacity.map_or(n, |cap| cap.max(n));
 
-            let root = Fr::get_root_of_unity(order as u64).unwrap();
+            let root = Fr::get_root_of_unity(*order as u64).unwrap();
 
             let mut roots = Vec::with_capacity(actual_capacity);
             let uninit = roots.spare_capacity_mut();
@@ -301,15 +292,13 @@ fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
 fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
-    match values.as_mut() {
-        [] | [_] => (),
-        input => {
-            let n = input.len();
-
+    match *values.order() {
+        0 | 1 => (),
+        n => {
             for index in 0..n {
                 let rev = reverse_bits(index, n.trailing_zeros());
                 if index < rev {
-                    input.swap(index, rev);
+                    values.swap(index, rev);
                 }
             }
         }
@@ -324,17 +313,17 @@ pub fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NT
 }
 
 // Inverse NTT
-pub fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
-    match input.as_ref().len() {
+pub fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+    match *values.order() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
-            input.as_mut()[1..].reverse();
-            ntt_nr(reverse_ordered_roots, input);
+            values[1..].reverse();
+            ntt_nr(reverse_ordered_roots, values);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
-            for i in input.as_mut().iter_mut() {
+            for i in values.iter_mut() {
                 *i *= factor;
             }
         }
@@ -387,7 +376,7 @@ mod tests {
 
     impl<T> fmt::Debug for HiddenNTT<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "HiddenNTT(len={})", self.0.len().0)
+            write!(f, "HiddenNTT(len={})", self.0.order().0)
         }
     }
 
@@ -415,9 +404,8 @@ mod tests {
         }
     }
 
-    // Replace by parallel alternative to speed up
-    fn transpose<T: Copy, U: AsRef<[T]>>(matrix: U, rows: usize, columns: usize) -> Vec<T> {
-        let matrix = matrix.as_ref();
+    // TODO Replace by parallel alternative to speed up tests
+    fn transpose<T: Copy>(matrix: &[T], rows: usize, columns: usize) -> Vec<T> {
         assert_eq!(matrix.len(), rows * columns);
         let mut v = Vec::with_capacity(matrix.len());
         for j in 0..columns {
@@ -446,8 +434,10 @@ mod tests {
     /// Note: because this generator is build monadicly it doesn't easily find
     /// the smallest case. it helps to manually reduce max_k to get a
     /// smaller test case
-    fn interleaving_strategy(max_k: usize) -> impl Strategy<Value = (usize, usize, HiddenNTT<Fr>)> {
-        (0_usize..=max_k).prop_flat_map(|len| {
+    fn interleaving_strategy(
+        k: impl Strategy<Value = usize>,
+    ) -> impl Strategy<Value = (usize, usize, HiddenNTT<Fr>)> {
+        k.prop_flat_map(|len| {
             (0..=len).prop_flat_map(move |column| {
                 (
                     Just(2_usize.pow((len - column) as u32)),
@@ -460,10 +450,9 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_interleaving((rows, columns, ntt) in interleaving_strategy(20)) {
+        fn test_interleaving((rows, columns, ntt) in interleaving_strategy(0_usize..20)) {
             let mut ntt = ntt.0;
-            let s = ntt.clone();
-            let mut transposed = transpose(s, rows, columns);
+            let mut transposed = transpose(&ntt, rows, columns);
             let mut engine = NTTEngine::new();
 
             for chunk in transposed.chunks_exact_mut(rows){
@@ -471,7 +460,7 @@ mod tests {
                 engine.ntt_nr(&mut fold);
             }
 
-        let double_transposed = NTT::new(transpose(transposed, columns, rows)).unwrap();
+        let double_transposed = NTT::new(transpose(&transposed, columns, rows)).unwrap();
 
         engine.interleaved_ntt_nr(&mut ntt, Pow2OrZero(columns));
         prop_assert!(double_transposed == ntt, "rows: {}, columns: {}", rows, columns);
