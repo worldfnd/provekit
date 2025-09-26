@@ -1,12 +1,12 @@
 use {
-    crate::{NTTContainer, Pow2OrZero, NTT},
+    crate::{NTTContainer, Pow2, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
-    std::mem::size_of,
+    std::{mem::size_of, num::NonZeroUsize},
 };
 
 // Taken from utils in noir-r1cs crate
@@ -26,8 +26,10 @@ impl NTTEngine {
     ///
     /// Note: new will initialize half a L1 cache size worth of twiddle factors
     pub fn new() -> Self {
-        let init =
-            init_roots_reverse_ordered(Pow2OrZero::next_power_of_two(workload_size::<Fr>()), None);
+        let init = init_roots_reverse_ordered(
+            Pow2::new(workload_size::<Fr>().next_power_of_two()).unwrap(),
+            None,
+        );
         NTTEngine(init)
     }
 
@@ -35,9 +37,9 @@ impl NTTEngine {
     ///
     /// Note: with_order will initialise at least half a L1 cache size worth of
     /// twiddle factors.
-    pub fn with_order(order: Pow2OrZero) -> Self {
+    pub fn with_order(order: Pow2<usize>) -> Self {
         let init = init_roots_reverse_ordered(
-            Pow2OrZero::next_power_of_two(workload_size::<Fr>()),
+            Pow2::new(workload_size::<Fr>().next_power_of_two()).unwrap(),
             Some(*order / 2),
         );
         let mut engine = NTTEngine(init);
@@ -53,7 +55,7 @@ impl NTTEngine {
     ///
     /// The new roots are computed in parallel based on the old roots thus
     /// ensure a large enough initial root table for proper parallelization.
-    fn extend_roots_table(&mut self, order: Pow2OrZero) {
+    fn extend_roots_table(&mut self, order: Pow2<usize>) {
         let table = &mut self.0;
 
         // The size of the twiddle factor table is half that of the order due to
@@ -89,20 +91,18 @@ impl NTTEngine {
         }
     }
 
-    // TODO(xrvdg) interleaving does support non-power of factors, but it needs to
-    // be that the individual NTTs are power of two.
-    // TODO for interleaving pow2orzero doesn't make sense. It needs to be nonzero
+    // TODO(xrvdg) An interleaved NTT can take a
     pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         &mut self,
         values: &mut NTT<Fr, C>,
-        interleaving: Pow2OrZero,
+        num_of_polys: Pow2<NonZeroUsize>,
     ) {
-        self.extend_roots_table(Pow2OrZero(values.order().0 / interleaving.0));
-        interleaved_ntt_nr(&self.0, values, interleaving.0);
+        self.extend_roots_table(Pow2::new(*values.order() / *num_of_polys).unwrap());
+        interleaved_ntt_nr(&self.0, values, (*num_of_polys).into());
     }
 
     pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.interleaved_ntt_nr(values, Pow2OrZero::next_power_of_two(1));
+        self.interleaved_ntt_nr(values, NonZeroUsize::new(1).and_then(Pow2::new).unwrap());
     }
 
     pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
@@ -117,7 +117,7 @@ impl Default for NTTEngine {
     }
 }
 
-pub fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
     interleaved_ntt_nr(reverse_ordered_roots, values, 1);
 }
 
@@ -131,10 +131,10 @@ pub fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NT
 ///   versa.
 /// TODO: does interleaving work with non-power of two? -> it does but it
 /// requires the folded vectors to be of the right length
-pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
+fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     reversed_ordered_roots: &[Fr],
     values: &mut NTT<Fr, C>,
-    interleaving: usize,
+    num_of_polys: usize,
 ) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
@@ -142,7 +142,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     let n = values.len();
 
     // The order of the interleaved NTTs themselves
-    let order = n / interleaving;
+    let order = n / num_of_polys;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if order <= 1 {
@@ -203,7 +203,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         .par_chunks_exact_mut(2 * pairs_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, interleaving);
+            dit_nr_cache(reversed_ordered_roots, k, group, num_of_polys);
         });
 }
 
@@ -261,7 +261,7 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// * `order` - The order of the NTT (must be a power of 2 or zero)
 /// * `capacity` - Optional capacity hint for the vector. If `None`, defaults to
 ///   `n`. If provided, will use `max(capacity, n)` to ensure sufficient space.
-fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec<Fr> {
+fn init_roots_reverse_ordered(order: Pow2<usize>, capacity: Option<usize>) -> Vec<Fr> {
     match *order / 2 {
         0 => vec![],
         // 1 is a separate case due to `1.trailing_zeros = 0` which reverse_bit requires >0
@@ -309,14 +309,14 @@ fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
 }
 
 /// Note: not specifically optimized
-pub fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
+fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
     reverse_order(input);
     intt_nr(reverse_ordered_roots, input);
     reverse_order(input);
 }
 
 // Inverse NTT
-pub fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
     match *values.order() {
         0 => (),
         n => {
@@ -339,11 +339,11 @@ mod tests {
     use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, reverse_order},
-        crate::{ntt::NTTEngine, Pow2OrZero, NTT},
+        crate::{ntt::NTTEngine, Pow2, NTT},
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
-        std::fmt,
+        std::{fmt, num::NonZeroUsize},
     };
 
     fn fr() -> impl Strategy<Value = Fr> + Clone {
@@ -465,7 +465,7 @@ mod tests {
 
         let double_transposed = NTT::new(transpose(&transposed, columns, rows)).unwrap();
 
-        engine.interleaved_ntt_nr(&mut ntt, Pow2OrZero(columns));
+        engine.interleaved_ntt_nr(&mut ntt, NonZeroUsize::new(columns).and_then(Pow2::new).unwrap());
         prop_assert!(double_transposed == ntt, "rows: {}, columns: {}", rows, columns);
 
         }
@@ -482,7 +482,7 @@ mod tests {
     // Compare direct generation of the roots vs. extending from a base set of roots
     #[test]
     fn roots_direct_vs_extended() {
-        let order = Pow2OrZero::next_power_of_two(2_usize.pow(20));
+        let order = Pow2::new(2_usize.pow(20)).unwrap();
         let roots = init_roots_reverse_ordered(order, None);
         let engine = NTTEngine::with_order(order);
         assert_eq!(engine.0.len(), roots.len());

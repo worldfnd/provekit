@@ -3,6 +3,7 @@ pub mod ntt;
 pub use ntt::*;
 use std::{
     marker::PhantomData,
+    num::NonZero,
     ops::{Deref, DerefMut},
 };
 
@@ -20,7 +21,7 @@ pub struct NTT<T, C: NTTContainer<T>> {
 
 impl<T, C: NTTContainer<T>> NTT<T, C> {
     pub fn new(vec: C) -> Option<Self> {
-        match Pow2OrZero::new(vec.as_ref().len()) {
+        match Pow2::<usize>::new(vec.as_ref().len()) {
             Some(_) => Some(Self {
                 container: vec,
                 _phantom:  PhantomData,
@@ -29,8 +30,8 @@ impl<T, C: NTTContainer<T>> NTT<T, C> {
         }
     }
 
-    pub fn order(&self) -> Pow2OrZero {
-        Pow2OrZero(self.container.as_ref().len())
+    pub fn order(&self) -> Pow2<usize> {
+        Pow2(self.container.as_ref().len())
     }
 }
 
@@ -50,26 +51,42 @@ impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
 
 /// Length of an NTT
 #[derive(Clone, Copy)]
-pub struct Pow2OrZero(usize);
+pub struct Pow2<T = usize>(T);
 
-impl Pow2OrZero {
-    pub fn new(size: usize) -> Option<Pow2OrZero> {
-        match size {
-            size if size == 0 || size.is_power_of_two() => Some(Pow2OrZero(size)),
-            _ => None,
+impl<T: IsPowerOfTwo> Pow2<T> {
+    pub fn new(value: T) -> Option<Self> {
+        match value.is_power_of_two() {
+            true => Some(Self(value)),
+            false => None,
         }
     }
 
-    pub fn next_power_of_two(size: usize) -> Pow2OrZero {
-        Self(size.next_power_of_two())
-    }
+    // next power of two
+    // pow
 }
 
 // Only Deref is implement as DerefMut allows for breaking the proof.
-impl Deref for Pow2OrZero {
-    type Target = usize;
+impl<T> Deref for Pow2<T> {
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+// There is no built-in trait nor num-trait that captures this
+pub trait IsPowerOfTwo {
+    fn is_power_of_two(&self) -> bool;
+}
+
+impl IsPowerOfTwo for usize {
+    fn is_power_of_two(&self) -> bool {
+        usize::is_power_of_two(*self)
+    }
+}
+
+impl IsPowerOfTwo for NonZero<usize> {
+    fn is_power_of_two(&self) -> bool {
+        self.get().is_power_of_two()
     }
 }
