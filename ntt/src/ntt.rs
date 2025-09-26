@@ -56,21 +56,23 @@ impl NTTEngine {
     fn extend_roots_table(&mut self, order: Pow2OrZero) {
         let table = &mut self.0;
 
-        let old_order = table.len();
-        let new_order = *order / 2;
+        // The size of the twiddle factor table is half that of the order due to
+        // symmetry under multiplication by -1.
+        let old_half_order = table.len();
+        let new_half_order = *order / 2;
 
-        if new_order > old_order {
-            let col_len = new_order / old_order;
+        if new_half_order > old_half_order {
+            let col_len = new_half_order / old_half_order;
             let unity = Fr::get_root_of_unity(*order as u64).unwrap();
             // Remark: change this to reserve exact if tighter control on memory is needed
-            table.reserve(new_order - old_order);
+            table.reserve(new_half_order - old_half_order);
             let (init, uninit) = table.split_at_spare_mut();
 
             // When viewing the roots as a matrix every row is a multiple of the first row
             // row[j] = row[0] * unity^(reverse order j)
 
             uninit
-                .par_chunks_mut(old_order)
+                .par_chunks_mut(old_half_order)
                 .enumerate()
                 .for_each(|(i, row)| {
                     // start counting from one as 0 is init above
@@ -82,7 +84,7 @@ impl NTTEngine {
                 });
 
             unsafe {
-                table.set_len(new_order);
+                table.set_len(new_half_order);
             }
         }
     }
@@ -137,12 +139,13 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
-    let n = *values.order();
+    let n = values.len();
 
-    let single_n = n / interleaving;
+    // The order of the interleaved NTTs themselves
+    let order = n / interleaving;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
-    if single_n <= 1 {
+    if order <= 1 {
         return;
     }
 
@@ -164,7 +167,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while num_of_groups < 32.min(single_n) && 2 * pairs_in_group > workload_size::<Fr>() {
+    while num_of_groups < 32.min(order) && 2 * pairs_in_group > workload_size::<Fr>() {
         values
             .chunks_exact_mut(2 * pairs_in_group)
             .enumerate()
@@ -180,7 +183,7 @@ pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         num_of_groups *= 2;
     }
 
-    while num_of_groups < single_n && 2 * pairs_in_group > workload_size::<Fr>() {
+    while num_of_groups < order && 2 * pairs_in_group > workload_size::<Fr>() {
         values
             .par_chunks_exact_mut(2 * pairs_in_group)
             .enumerate()
