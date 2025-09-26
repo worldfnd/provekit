@@ -91,14 +91,15 @@ impl NTTEngine {
         }
     }
 
-    // TODO(xrvdg) An interleaved NTT can take a
+    // TODO(xrvdg) The NTT can work with any number of interleaving but requires the
+    // individual polynomials to be a power of two.
     pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         &mut self,
         values: &mut NTT<Fr, C>,
         num_of_polys: Pow2<NonZeroUsize>,
     ) {
         self.extend_roots_table(Pow2::new(*values.order() / *num_of_polys).unwrap());
-        interleaved_ntt_nr(&self.0, values, (*num_of_polys).into());
+        interleaved_ntt_nr(&self.0, values, num_of_polys);
     }
 
     pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
@@ -118,7 +119,11 @@ impl Default for NTTEngine {
 }
 
 fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
-    interleaved_ntt_nr(reverse_ordered_roots, values, 1);
+    interleaved_ntt_nr(
+        reverse_ordered_roots,
+        values,
+        NonZeroUsize::new(1).and_then(Pow2::new).unwrap(),
+    );
 }
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
@@ -129,12 +134,10 @@ fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-/// TODO: does interleaving work with non-power of two? -> it does but it
-/// requires the folded vectors to be of the right length
 fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     reversed_ordered_roots: &[Fr],
     values: &mut NTT<Fr, C>,
-    num_of_polys: usize,
+    num_of_polys: Pow2<NonZeroUsize>,
 ) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
@@ -142,7 +145,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     let n = values.len();
 
     // The order of the interleaved NTTs themselves
-    let order = n / num_of_polys;
+    let order = n / *num_of_polys;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if order <= 1 {
@@ -162,8 +165,6 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
     // These following two loops could be merged together, but in microbenchmarks
     // this split performs 5% better than nesting par_iter_mut inside
     // par_chunks_exact over the ranges 2ˆ20 to 2ˆ24.
-
-    // Furthermore these loops
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
@@ -211,7 +212,7 @@ fn dit_nr_cache(
     reverse_ordered_roots: &[Fr],
     segment: usize,
     input: &mut [Fr],
-    interleaving: usize,
+    num_of_polys: Pow2<NonZeroUsize>,
 ) {
     let n = input.len();
     debug_assert!(n.is_power_of_two());
@@ -219,7 +220,7 @@ fn dit_nr_cache(
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
-    let single_n = n / interleaving;
+    let single_n = n / *num_of_polys;
 
     while num_of_groups < single_n {
         let twiddle_base = segment * num_of_groups;
@@ -343,7 +344,10 @@ mod tests {
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
-        std::{fmt, num::NonZeroUsize},
+        std::{
+            fmt,
+            num::{NonZero, NonZeroUsize},
+        },
     };
 
     fn fr() -> impl Strategy<Value = Fr> + Clone {
@@ -372,9 +376,11 @@ mod tests {
             .prop_map(|v| NTT::new(v).unwrap())
     }
 
-    // Newtype wrapper to prevent proptest from writing big NTT to stdout
-    // If the contents does have to be viewed replace with regular NTT
-    // TODO(xrvdg) make this take a parameter and rename
+    /// Newtype wrapper to prevent proptest from writing the contents of an NTT
+    /// to stdout. This is useful for when a test fails with a large NTTs.
+    ///
+    /// If the contents does have to be viewed replace [`hidden_ntt`] with
+    /// [`ntt`] as the test strategy
     struct HiddenNTT<T>(NTT<T, Vec<T>>);
 
     impl<T> fmt::Debug for HiddenNTT<T> {
@@ -439,12 +445,26 @@ mod tests {
     /// smaller test case
     fn interleaving_strategy(
         k: impl Strategy<Value = usize>,
-    ) -> impl Strategy<Value = (usize, usize, HiddenNTT<Fr>)> {
+    ) -> impl Strategy<
+        Value = (
+            // rows
+            Pow2<NonZero<usize>>,
+            // columns
+            Pow2<NonZero<usize>>,
+            HiddenNTT<Fr>,
+        ),
+    > {
+        fn constr(exp: usize) -> Pow2<NonZero<usize>> {
+            NonZeroUsize::new(2_usize.pow(exp as u32))
+                .and_then(Pow2::new)
+                .unwrap()
+        }
+
         k.prop_flat_map(|len| {
             (0..=len).prop_flat_map(move |column| {
                 (
-                    Just(2_usize.pow((len - column) as u32)),
-                    Just(2_usize.pow(column as u32)),
+                    Just(constr((len - column))),
+                    Just(constr(column)),
                     hidden_ntt(len..=len, fr()),
                 )
             })
@@ -453,20 +473,20 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_interleaving((rows, columns, ntt) in interleaving_strategy(0_usize..20)) {
+        fn test_interleaved((rows, columns, ntt) in interleaving_strategy(0_usize..20)) {
             let mut ntt = ntt.0;
-            let mut transposed = transpose(&ntt, rows, columns);
+            let mut transposed = transpose(&ntt, rows.get(), columns.get());
             let mut engine = NTTEngine::new();
 
-            for chunk in transposed.chunks_exact_mut(rows){
+            for chunk in transposed.chunks_exact_mut(rows.get()){
                 let mut fold = NTT::new(chunk).unwrap();
                 engine.ntt_nr(&mut fold);
             }
 
-        let double_transposed = NTT::new(transpose(&transposed, columns, rows)).unwrap();
+        let double_transposed = NTT::new(transpose(&transposed, columns.get(), rows.get())).unwrap();
 
-        engine.interleaved_ntt_nr(&mut ntt, NonZeroUsize::new(columns).and_then(Pow2::new).unwrap());
-        prop_assert!(double_transposed == ntt, "rows: {}, columns: {}", rows, columns);
+        engine.interleaved_ntt_nr(&mut ntt, columns);
+        prop_assert!(double_transposed == ntt);
 
         }
     }

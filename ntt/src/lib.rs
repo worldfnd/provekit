@@ -50,7 +50,7 @@ impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
 }
 
 /// Length of an NTT
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Pow2<T = usize>(T);
 
 impl<T: IsPowerOfTwo> Pow2<T> {
@@ -60,9 +60,6 @@ impl<T: IsPowerOfTwo> Pow2<T> {
             false => None,
         }
     }
-
-    // next power of two
-    // pow
 }
 
 // Only Deref is implement as DerefMut allows for breaking the proof.
