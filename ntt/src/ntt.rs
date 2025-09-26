@@ -91,6 +91,24 @@ impl NTTEngine {
         }
     }
 
+    /// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
+    /// normal-to-reverse order.
+    ///
+    /// # Use Case
+    /// Use this function when you have multiple polynomials
+    /// stored in an interleaved fashion within a single vector, such as
+    /// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
+    /// `c`, and `d`. By operating on interleaved data, you can perform the
+    /// NTT on all polynomials in-place without needing to first transpose
+    /// the data.
+    ///
+    /// For a single polynomial use [`ntt_nr`].
+    ///
+    /// # Arguments
+    /// * `values` - A mutable reference to an NTT container holding the
+    ///   coefficients to be transformed.
+    /// * `num_of_polys` - The number of interleaved polynomials in `values`.
+
     // TODO(xrvdg) The NTT can work with any number of interleaving but requires the
     // individual polynomials to be a power of two.
     pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
