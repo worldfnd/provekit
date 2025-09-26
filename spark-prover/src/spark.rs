@@ -77,43 +77,42 @@ pub fn prove_spark_for_single_matrix(
         sumcheck_final_folds[1] * sumcheck_witness.batching_randomness +
         sumcheck_final_folds[2] * sumcheck_witness.batching_randomness * sumcheck_witness.batching_randomness;
 
-    println!("{:?}", claimed_batched_value);
-    sumcheck_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
+    // sumcheck_statement.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
-    sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
+    // let sumcheck_prover = Prover::new(batched_config.clone());
+    // sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
 
-    // // Rowwise
+    // Rowwise
 
-    // // Rowwise Init Final GPA
+    // Rowwise Init Final GPA
 
-    // let mut tau_and_gamma = [FieldElement::from(0); 2];
-    // merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
-    // let tau = tau_and_gamma[0];
-    // let gamma = tau_and_gamma[1];
+    let mut tau_and_gamma = [FieldElement::from(0); 2];
+    merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
+    let tau = tau_and_gamma[0];
+    let gamma = tau_and_gamma[1];
 
-    // let init_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
-    //     .map(FieldElement::from)
-    //     .collect();
-    // let init_value = memory.eq_rx.clone();
-    // let init_timestamp = vec![FieldElement::from(0); memory.eq_rx.len()];
+    let init_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
+        .map(FieldElement::from)
+        .collect();
+    let init_value = memory.eq_rx.clone();
+    let init_timestamp = vec![FieldElement::from(0); memory.eq_rx.len()];
 
-    // let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
-    //     .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-    //     .collect();
+    let init_vec: Vec<FieldElement> = izip!(init_address, init_value, init_timestamp)
+        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+        .collect();
 
-    // let final_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
-    //     .map(FieldElement::from)
-    //     .collect();
-    // let final_value = memory.eq_rx.clone();
-    // let final_timestamp = matrix.timestamps.final_row.clone();
+    let final_address: Vec<FieldElement> = (0..memory.eq_rx.len() as u64)
+        .map(FieldElement::from)
+        .collect();
+    let final_value = memory.eq_rx.clone();
+    let final_timestamp = matrix.timestamps.final_row.clone();
 
-    // let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
-    //     .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-    //     .collect();
+    let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
+        .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+        .collect();
     
-    // let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
+    let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     // let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 

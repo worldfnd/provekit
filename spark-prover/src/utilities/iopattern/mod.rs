@@ -40,17 +40,17 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .commit_statement(&configs.row)
         .commit_statement(&configs.col)
         .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
-        .hint("sumcheck_last_folds")
-        .add_whir_proof(&configs.a_3batched);
+        .hint("sumcheck_last_folds");
+        // .add_whir_proof(&configs.a_3batched);
     
     // Rowwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.a.num_rows) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.a.num_rows) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
     // io = io
     //     .hint("Row final counter claimed evaluation")

@@ -119,15 +119,15 @@ pub fn verify_spark_single_matrix(
         num_nonzero_terms,
     ));
 
-    a_spark_sumcheck_statement_verifier.add_constraint(
-        Weights::evaluation(MultilinearPoint(randomness.clone())),
-        final_folds[0] + 
-            final_folds[1] * a_sumcheck_commitment.batching_randomness +
-            final_folds[2] * a_sumcheck_commitment.batching_randomness * a_sumcheck_commitment.batching_randomness,
-    );
+    // a_spark_sumcheck_statement_verifier.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(randomness.clone())),
+    //     final_folds[0] + 
+    //         final_folds[1] * a_sumcheck_commitment.batching_randomness +
+    //         final_folds[2] * a_sumcheck_commitment.batching_randomness * a_sumcheck_commitment.batching_randomness,
+    // );
 
-    let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
-    a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
+    // let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
+    // a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
 
     // Matrix A - Rowwise 
 
@@ -136,10 +136,10 @@ pub fn verify_spark_single_matrix(
     let tau = tau_and_gamma[0];
     let gamma = tau_and_gamma[1];
 
-    // let gpa_result = gpa_sumcheck_verifier(
-    //     arthur,
-    //     next_power_of_two(num_rows) + 2,
-    // )?;
+    let gpa_result = gpa_sumcheck_verifier(
+        arthur,
+        next_power_of_two(num_rows) + 2,
+    )?;
 
     // let claimed_init = gpa_result.claimed_values[0];
     // let claimed_final = gpa_result.claimed_values[1];
@@ -359,7 +359,6 @@ pub fn gpa_sumcheck_verifier(
         .fill_challenge_scalars(&mut r)
         .expect("Failed to fill next scalars");
     let mut a_last_sumcheck_value = eval_linear_poly(&claimed_values, &r[0]);
-
     rand.push(r[0]);
     prev_rand = rand;
     rand = Vec::<FieldElement>::new();
@@ -380,6 +379,7 @@ pub fn gpa_sumcheck_verifier(
             rand.push(alpha[0]);
             a_last_sumcheck_value = eval_cubic_poly(&h, &alpha[0]);
         }
+        println!("{:?}", a_last_sumcheck_value);
         arthur
             .fill_next_scalars(&mut l)
             .expect("Failed to fill next scalars");
@@ -389,6 +389,7 @@ pub fn gpa_sumcheck_verifier(
         let claimed_last_sch = calculate_eq(&prev_rand, &rand)
             * eval_linear_poly(&l, &FieldElement::from(0))
             * eval_linear_poly(&l, &FieldElement::from(1));
+        println!("{:?}", claimed_last_sch);
         assert_eq!(claimed_last_sch, a_last_sumcheck_value);
         rand.push(r[0]);
         prev_rand = rand;

@@ -145,13 +145,13 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		_ = sparkSumcheckFoldingRandomness
 		_ = sparkSumcheckLastEval
 
-		whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}, {}, {}}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash,
-			[][]frontend.Variable{{circuit.SparkSumcheckLast[0]}, {circuit.SparkSumcheckLast[1]}, {circuit.SparkSumcheckLast[2]}},
-			[][]frontend.Variable{sparkSumcheckFoldingRandomness},
-		)
-		if err != nil {
-			return err
-		}
+		// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}, {}, {}}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash,
+		// 	[][]frontend.Variable{{circuit.SparkSumcheckLast[0]}, {circuit.SparkSumcheckLast[1]}, {circuit.SparkSumcheckLast[2]}},
+		// 	[][]frontend.Variable{sparkSumcheckFoldingRandomness},
+		// )
+		// if err != nil {
+		// 	return err
+		// }
 
 		tauGammaTemp := make([]frontend.Variable, 2)
 		if err := arthur.FillChallengeScalars(tauGammaTemp); err != nil {
@@ -160,10 +160,17 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		tau := tauGammaTemp[0]
 		gamma := tauGammaTemp[1]
 
+		gpaResult, err := gpaSumcheckVerifier(api, arthur, 8+2)
+		if err != nil {
+			return err
+		}
+
+		_ = gpaResult
+
 		_ = tau
 		_ = gamma
 
-		_ = whirFoldingRandomness
+		// _ = whirFoldingRandomness
 
 		_ = sumcheckRootHash
 		_ = sumcheckBatchingRandomness
@@ -406,4 +413,76 @@ func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer 
 	}
 
 	return fSums, gSums
+}
+
+func gpaSumcheckVerifier(
+	api frontend.API,
+	arthur gnarkNimue.Arthur,
+	layerCount int,
+) (GPASumcheckResult, error) {
+	l := make([]frontend.Variable, 2)
+	r := make([]frontend.Variable, 1)
+
+	// gpaClaimedProduct := make([]frontend.Variable, 1)
+	// err := arthur.FillNextScalars(gpaClaimedProduct)
+	// if err != nil {
+	// 	return GPASumcheckResult{}, err
+	// }
+	// lastEval := gpaClaimedProduct[0]
+	gpaClaimedValues := make([]frontend.Variable, 2)
+	err := arthur.FillNextScalars(gpaClaimedValues)
+	if err != nil {
+		return GPASumcheckResult{}, err
+	}
+	err = arthur.FillChallengeScalars(r)
+	if err != nil {
+		return GPASumcheckResult{}, err
+	}
+	lastEval := utilities.UnivarPoly(api, gpaClaimedValues, r)[0]
+	prevRand := r
+	var rand []frontend.Variable
+
+	for i := 1; i < (layerCount - 1); i++ {
+		rand, lastEval, err = runSumcheck(
+			api,
+			arthur,
+			lastEval,
+			i,
+			4,
+		)
+		api.Println(lastEval)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+
+		err = arthur.FillNextScalars(l)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+		err = arthur.FillChallengeScalars(r)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+		claimedLastSch := api.Mul(
+			calculateEQ(api, prevRand, rand),
+			utilities.UnivarPoly(api, l, []frontend.Variable{0})[0],
+			utilities.UnivarPoly(api, l, []frontend.Variable{1})[0],
+		)
+		api.Println(claimedLastSch)
+		api.AssertIsEqual(claimedLastSch, lastEval)
+		prevRand = append(rand, r[0])
+		lastEval = utilities.UnivarPoly(api, l, []frontend.Variable{r[0]})[0]
+	}
+
+	return GPASumcheckResult{
+		claimedProducts:   gpaClaimedValues,
+		lastSumcheckValue: lastEval,
+		randomness:        prevRand,
+	}, nil
+}
+
+type GPASumcheckResult struct {
+	claimedProducts   []frontend.Variable
+	lastSumcheckValue frontend.Variable
+	randomness        []frontend.Variable
 }
