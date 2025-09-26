@@ -19,14 +19,11 @@ func initialSumcheck(
 	linearStatementEvaluations [][]frontend.Variable,
 	evaluationStatementClaimedValues [][]frontend.Variable,
 ) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
-	// ) error {
 	lengthOfLinearStatementEvaluations := len(linearStatementEvaluations[0])
 	lengthOfEvaluationStatement := len(evaluationStatementClaimedValues[0])
 
 	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+lengthOfLinearStatementEvaluations+lengthOfEvaluationStatement)
-	// initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+lengthOfLinearStatementEvaluations)
 	if err != nil {
-		// return nil
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
@@ -55,18 +52,12 @@ func initialSumcheck(
 		combinedEvaluationStatementEvaluations[evaluationIndex] = sum
 	}
 
-	api.Println(combinedEvaluationStatementEvaluations)
-
 	OODAnswersAndStatmentEvaluations := append(append(initialOODAnswers, combinedLinearStatementEvaluations...), combinedEvaluationStatementEvaluations...)
-	// OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
 
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
-	// _ = lastEval
-
 	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if err != nil {
-		// return nil
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
@@ -79,22 +70,22 @@ func initialSumcheck(
 
 }
 
-func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
+func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (Commitment, error) {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {
-		return nil, nil, nil, [][]frontend.Variable{}, err
+		return Commitment{}, err
 	}
 	oodPoints := make([]frontend.Variable, 1)
 	oodAnswers := make([][]frontend.Variable, whir_params.BatchSize)
 
 	if err := arthur.FillChallengeScalars(oodPoints); err != nil {
-		return nil, nil, nil, nil, err
+		return Commitment{}, err
 	}
 	for i := range whir_params.BatchSize {
 		oodAnswer := make([]frontend.Variable, 1)
 
 		if err := arthur.FillNextScalars(oodAnswer); err != nil {
-			return nil, nil, nil, nil, err
+			return Commitment{}, err
 		}
 		oodAnswers[i] = oodAnswer
 	}
@@ -102,10 +93,16 @@ func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (f
 	batchingRandomness := []frontend.Variable{0}
 	if whir_params.BatchSize > 1 {
 		if err := arthur.FillChallengeScalars(batchingRandomness); err != nil {
-			return nil, 0, nil, nil, err
+			return Commitment{}, err
 		}
 	}
-	return rootHash[0], batchingRandomness[0], oodPoints, oodAnswers, nil
+	return Commitment{
+		rootHash:           rootHash[0],
+		batchingRandomness: batchingRandomness[0],
+		initialOODQueries:  oodPoints,
+		initialOODAnswers:  oodAnswers,
+	}, nil
+
 }
 
 func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnarkNimue.Arthur, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {

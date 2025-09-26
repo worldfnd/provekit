@@ -58,19 +58,22 @@ func RunZKWhir(
 	whirParams WHIRParams,
 	linearStatementEvaluations [][]frontend.Variable,
 	linearStatementValuesAtPoints []frontend.Variable,
-	batchingRandomness frontend.Variable,
-	initialOODQueries []frontend.Variable,
-	initialOODAnswers [][]frontend.Variable,
-	rootHashes frontend.Variable,
+
+	commitment Commitment,
+
+	// batchingRandomness frontend.Variable,
+	// initialOODQueries []frontend.Variable,
+	// initialOODAnswers [][]frontend.Variable,
+	// rootHashes frontend.Variable,
 
 	evaluationStatementClaimedValues [][]frontend.Variable,
 	evaluationPoints [][]frontend.Variable,
 
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 
-	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
+	initialOODs := oodAnswers(api, commitment.initialOODAnswers, commitment.batchingRandomness)
 
-	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations, evaluationStatementClaimedValues)
+	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, commitment.batchingRandomness, commitment.initialOODQueries, initialOODs, whirParams, linearStatementEvaluations, evaluationStatementClaimedValues)
 	if err != nil {
 		return
 	}
@@ -78,7 +81,7 @@ func RunZKWhir(
 	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)
 
 	foldSize := 1 << whirParams.FoldingFactorArray[0]
-	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, batchingRandomness)
+	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, commitment.batchingRandomness)
 	roundAnswers[0] = collapsed
 
 	for i := range len(circuit.Leaves) {
@@ -122,7 +125,7 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
+			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], commitment.rootHash)
 			if err != nil {
 				return
 			}

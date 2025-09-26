@@ -52,20 +52,22 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         io = io.add_line();
     }
 
-    // io = io
-    //     .hint("Row final counter claimed evaluation")
+    io = io
+        .hint("row_final_counter_claimed_evaluation");
     //     .add_whir_proof(&configs.row);
 
-    // for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    // Can I send all hints once in struct?
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.a_3batched);
+    for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
+
+    io = io
+        .hint("row_rs_address_claimed_evaluation")
+        .hint("row_rs_value_claimed_evaluation")
+        .hint("row_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.a_3batched);
 
     // // Colwise
 

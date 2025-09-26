@@ -119,6 +119,10 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var sparkMerklePaths []FullMultiPath[KeccakDigest]
 	var sparkStirAnswers [][][]Fp256
 	var sparkClaimedEvaluations []Fp256
+	var rowFinalCounter []Fp256
+	var rowRSAddressEvaluation []Fp256
+	var rowRSValueEvaluation []Fp256
+	var rowRSTimestampEvaluation []Fp256
 
 	for _, op := range spark_io.Ops {
 		switch op.Kind {
@@ -161,6 +165,50 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 				if err != nil {
 					return fmt.Errorf("failed to deserialize spark_last_folds: %w", err)
 				}
+			case "row_final_counter_claimed_evaluation":
+				var temp Fp256
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&temp,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_final_counter_claimed_evaluation : %w", err)
+				}
+				rowFinalCounter = append(rowFinalCounter, temp)
+			case "row_rs_address_claimed_evaluation":
+				var temp Fp256
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&temp,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
+				rowRSAddressEvaluation = append(rowRSAddressEvaluation, temp)
+			case "row_rs_value_claimed_evaluation":
+				var temp Fp256
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&temp,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_value_claimed_evaluation : %w", err)
+				}
+				rowRSValueEvaluation = append(rowRSValueEvaluation, temp)
+			case "row_rs_timestamp_claimed_evaluation":
+				var temp Fp256
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&temp,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_timestamp_claimed_evaluation : %w", err)
+				}
+				rowRSTimestampEvaluation = append(rowRSTimestampEvaluation, temp)
 			}
 
 			if err != nil {
@@ -206,12 +254,27 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
 	// Read from spark
-	var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+
+	sparkSumcheckData := ZKHint{}
+	rowFinal := ZKHint{}
+	// var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	// fmt.Println("Aa", len(sparkMerklePaths))
+	// var rowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
+	// fmt.Println("Aa1", len(sparkMerklePaths))
+
+	// fmt.Print("Len", len(rowFinal.firstRoundMerklePaths.path.merklePaths))
+	var rowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
 
 	hints := Hints{
-		witnessHints:      witnessData,
-		spartanHidingHint: hidingSpartanData,
-		sparkSumcheckData: sparkSumcheckData,
+		witnessHints:             witnessData,
+		spartanHidingHint:        hidingSpartanData,
+		sparkSumcheckData:        sparkSumcheckData,
+		rowFinalMerkle:           rowFinal,
+		rowFinalCounter:          rowFinalCounter,
+		rowRSAddressEvaluation:   rowRSAddressEvaluation,
+		rowRSValueEvaluation:     rowRSValueEvaluation,
+		rowRSTimestampEvaluation: rowRSTimestampEvaluation,
+		rowwiseSparkMerkle:       rowwiseSparkMerkle,
 	}
 
 	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation, sparkClaimedEvaluations)

@@ -176,7 +176,7 @@ func runZKSumcheck(
 	whirParams WHIRParams,
 ) ([]frontend.Variable, frontend.Variable, error) {
 
-	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, whirParams)
+	commitment, err := parseBatchedCommitment(arthur, whirParams)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,7 +195,7 @@ func runZKSumcheck(
 
 	lastEval, polynomialSums := unblindLastEval(api, arthur, lastEval, rhoRandomness)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash,
+	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, commitment,
 		[][]frontend.Variable{{}, {}},
 		[][]frontend.Variable{},
 	)

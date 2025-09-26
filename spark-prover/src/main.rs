@@ -86,6 +86,8 @@ fn main() -> Result<()> {
     let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
         .context("Error: Failed to create the spark proof file")?;
 
+    println!("IO{:?}", spark_proof_gnark.io_pattern); //Reilabs Debug: 
+
     gnark_spark_proof_file
         .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
         .expect("Writing spark gnark parameters to a file failed");

@@ -83,6 +83,11 @@ type Merkle struct {
 	AuthPaths         [][][]frontend.Variable
 }
 
+type CombinedMerkle struct {
+	firstRound Merkle
+	mainRounds Merkle
+}
+
 // Other types
 type ProofObject struct {
 	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
@@ -102,9 +107,15 @@ type Config struct {
 }
 
 type Hints struct {
-	witnessHints      ZKHint
-	spartanHidingHint ZKHint
-	sparkSumcheckData ZKHint
+	witnessHints             ZKHint
+	spartanHidingHint        ZKHint
+	sparkSumcheckData        ZKHint
+	rowFinalMerkle           ZKHint
+	rowFinalCounter          []Fp256
+	rowRSAddressEvaluation   []Fp256
+	rowRSValueEvaluation     []Fp256
+	rowRSTimestampEvaluation []Fp256
+	rowwiseSparkMerkle       ZKHint
 }
 
 type Hint struct {
@@ -139,11 +150,24 @@ type ClaimedEvaluations struct {
 // }
 
 type SparkConfig struct {
-	IOPattern    string            `json:"io_pattern"`
-	Transcript   []byte            `json:"transcript"`
-	WHIRA3       WHIRConfig        `json:"whir_a3"`
-	WHIRRow      WHIRConfig        `json:"whir_row"`
-	WHIRCol      WHIRConfig        `json:"whir_col"`
-	LogANumTerms int               `json:"log_a_num_terms"`
-	AClaimed     frontend.Variable `json:"claimed_value_for_a"`
+	IOPattern    string     `json:"io_pattern"`
+	Transcript   []byte     `json:"transcript"`
+	WHIRA3       WHIRConfig `json:"whir_a3"`
+	WHIRRow      WHIRConfig `json:"whir_row"`
+	WHIRCol      WHIRConfig `json:"whir_col"`
+	LogANumTerms int        `json:"log_a_num_terms"`
+}
+
+type Commitment struct {
+	rootHash           frontend.Variable
+	batchingRandomness frontend.Variable
+	initialOODQueries  []frontend.Variable
+	initialOODAnswers  [][]frontend.Variable
+}
+
+type SPARKMatrixData struct {
+	RowFinalCounter          frontend.Variable
+	RowRSAddressEvaluation   frontend.Variable
+	RowRSValueEvaluation     frontend.Variable
+	RowRSTimestampEvaluation frontend.Variable
 }

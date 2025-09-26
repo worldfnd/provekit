@@ -44,15 +44,22 @@ type Circuit struct {
 	UseSpark        bool
 	SPARKTranscript []uints.U8 `gnark:",public"`
 
-	SPARKIO                 []byte
-	Transcript              []uints.U8 `gnark:",public"`
-	WHIRA3                  WHIRParams
-	WHIRRow                 WHIRParams
-	WHIRCol                 WHIRParams
-	SparkSumcheckFirstRound Merkle
-	SparkSumcheckMerkle     Merkle
-	AClaimed                frontend.Variable
-	SparkSumcheckLast       []frontend.Variable
+	SPARKIO    []byte
+	Transcript []uints.U8 `gnark:",public"`
+	WHIRA3     WHIRParams
+	WHIRRow    WHIRParams
+	WHIRCol    WHIRParams
+
+	SparkSumcheckLast []frontend.Variable
+
+	SparkA SPARKMatrixData
+
+	SparkSumcheckFirstRound  Merkle
+	SparkSumcheckMerkle      Merkle
+	RowFinalMerkleFirstRound Merkle
+	RowFinalMerkle           Merkle
+	RowwiseMerkleFirstRound  Merkle
+	RowwiseMerkle            Merkle
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
@@ -113,25 +120,24 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return err
 		}
 
-		// TODO: create a commitment struct
-		sumcheckRootHash, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		sumcheckCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
 		if err != nil {
 			return err
 		}
-		rowwiseRootHash, rowwiseBatchingRandomness, rowwiseInitialOODQueries, rowwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		rowwiseCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
 		if err != nil {
 			return err
 		}
-		colwiseRootHash, colwiseBatchingRandomness, colwiseInitialOODQueries, colwiseInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
+		colwiseCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRA3)
 		if err != nil {
 			return err
 		}
 
-		rowFinaltsRootHash, rowFinaltsBatchingRandomness, rowFinaltsInitialOODQueries, rowFinaltsInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
+		rowFinalCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
 		if err != nil {
 			return err
 		}
-		colFinaltsRootHash, colFinaltsBatchingRandomness, colFinaltsInitialOODQueries, colFinaltsInitialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
+		colFinalCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
 		if err != nil {
 			return err
 		}
@@ -153,6 +159,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		// 	return err
 		// }
 
+		// Rowwise
+
 		tauGammaTemp := make([]frontend.Variable, 2)
 		if err := arthur.FillChallengeScalars(tauGammaTemp); err != nil {
 			return err
@@ -160,42 +168,98 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		tau := tauGammaTemp[0]
 		gamma := tauGammaTemp[1]
 
+		// Change this debug statement
 		gpaResult, err := gpaSumcheckVerifier(api, arthur, 8+2)
 		if err != nil {
 			return err
 		}
 
-		_ = gpaResult
+		claimedInit := gpaResult.claimedProducts[0]
+		claimedFinal := gpaResult.claimedProducts[1]
 
-		_ = tau
-		_ = gamma
+		last_randomness := gpaResult.randomness[0]
+		evaluation_randomness := gpaResult.randomness[1:]
 
+		addr := CalculateAdr(api, evaluation_randomness)
+		mem := calculateEQ(api, []frontend.Variable{0, 0, 0, 0, 0, 0, 0, 0}, evaluation_randomness)
+		init_cntr := 0
+
+		init_opening := api.Sub(api.Add(api.Mul(addr, gamma, gamma), api.Mul(mem, gamma), init_cntr), tau)
+
+		// _, err = RunZKWhir(api, arthur, uapi, sc, circuit.RowFinalMerkle, circuit.RowFinalMerkleFirstRound, circuit.WHIRRow, [][]frontend.Variable{{}}, []frontend.Variable{}, rowFinaltsBatchingRandomness, rowFinaltsInitialOODQueries, rowFinaltsInitialOODAnswers, rowFinaltsRootHash,
+		// 	[][]frontend.Variable{{circuit.SparkA.RowFinalCounter}},
+		// 	[][]frontend.Variable{evaluation_randomness},
+		// )
+
+		final_opening := api.Sub(api.Add(api.Mul(addr, gamma, gamma), api.Mul(mem, gamma), circuit.SparkA.RowFinalCounter), tau)
+
+		evaluated_value := api.Add(api.Mul(init_opening, api.Sub(1, last_randomness)), api.Mul(final_opening, last_randomness))
+
+		api.AssertIsEqual(gpaResult.lastSumcheckValue, evaluated_value)
+
+		// Change this after debug
+		gpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, 8+2)
+		if err != nil {
+			return err
+		}
+
+		claimedRS := gpaResultRSWS.claimedProducts[0]
+		claimedWS := gpaResultRSWS.claimedProducts[1]
+
+		rsws_last_randomness := gpaResultRSWS.randomness[0]
+		rsws_evaluation_randomness := gpaResultRSWS.randomness[1:]
+
+		rs_opening := api.Sub(api.Add(api.Mul(circuit.SparkA.RowRSAddressEvaluation, gamma, gamma), api.Mul(circuit.SparkA.RowRSValueEvaluation, gamma), circuit.SparkA.RowRSTimestampEvaluation), tau)
+		ws_opening := api.Sub(api.Add(api.Mul(circuit.SparkA.RowRSAddressEvaluation, gamma, gamma), api.Mul(circuit.SparkA.RowRSValueEvaluation, gamma), circuit.SparkA.RowRSTimestampEvaluation, 1), tau)
+
+		rsws_evaluated_value := api.Add(api.Mul(rs_opening, api.Sub(1, rsws_last_randomness)), api.Mul(ws_opening, rsws_last_randomness))
+
+		api.AssertIsEqual(gpaResultRSWS.lastSumcheckValue, rsws_evaluated_value)
+
+		_, err = RunZKWhir(api, arthur, uapi, sc, circuit.RowwiseMerkle, circuit.RowwiseMerkleFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
+			[][]frontend.Variable{{circuit.SparkA.RowRSAddressEvaluation}, {circuit.SparkA.RowRSValueEvaluation}, {circuit.SparkA.RowRSTimestampEvaluation}},
+			[][]frontend.Variable{rsws_evaluation_randomness},
+		)
+
+		api.AssertIsEqual(api.Mul(claimedInit, claimedWS), api.Mul(claimedRS, claimedFinal))
+
+		_ = rsws_evaluation_randomness
+
+		_ = gpaResultRSWS
+		_ = claimedInit
+		_ = claimedFinal
+
+		_ = sumcheckCommitment
+		_ = colwiseCommitment
+		_ = rowwiseCommitment
+		_ = rowFinalCommitment
+		_ = colFinalCommitment
 		// _ = whirFoldingRandomness
 
-		_ = sumcheckRootHash
-		_ = sumcheckBatchingRandomness
-		_ = sumcheckInitialOODAnswers
-		_ = sumcheckInitialOODQueries
+		// _ = sumcheckRootHash
+		// _ = sumcheckBatchingRandomness
+		// _ = sumcheckInitialOODAnswers
+		// _ = sumcheckInitialOODQueries
 
-		_ = rowwiseRootHash
-		_ = rowwiseBatchingRandomness
-		_ = rowwiseInitialOODAnswers
-		_ = rowwiseInitialOODQueries
+		// _ = rowwiseRootHash
+		// _ = rowwiseBatchingRandomness
+		// _ = rowwiseInitialOODAnswers
+		// _ = rowwiseInitialOODQueries
 
-		_ = colwiseRootHash
-		_ = colwiseBatchingRandomness
-		_ = colwiseInitialOODAnswers
-		_ = colwiseInitialOODQueries
+		// _ = colwiseRootHash
+		// _ = colwiseBatchingRandomness
+		// _ = colwiseInitialOODAnswers
+		// _ = colwiseInitialOODQueries
 
-		_ = rowFinaltsRootHash
-		_ = rowFinaltsBatchingRandomness
-		_ = rowFinaltsInitialOODAnswers
-		_ = rowFinaltsInitialOODQueries
+		// _ = rowFinaltsRootHash
+		// _ = rowFinaltsBatchingRandomness
+		// _ = rowFinaltsInitialOODAnswers
+		// _ = rowFinaltsInitialOODQueries
 
-		_ = colFinaltsRootHash
-		_ = colFinaltsBatchingRandomness
-		_ = colFinaltsInitialOODAnswers
-		_ = colFinaltsInitialOODQueries
+		// _ = colFinaltsRootHash
+		// _ = colFinaltsBatchingRandomness
+		// _ = colFinaltsInitialOODAnswers
+		// _ = colFinaltsInitialOODQueries
 
 		_ = uapi
 	} else {
@@ -241,6 +305,11 @@ func verifyCircuit(
 	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(sparkSumcheck[0].Limbs)
 	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(sparkSumcheck[1].Limbs)
 	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(sparkSumcheck[2].Limbs)
+
+	rowFinalCounter := typeConverters.LimbsToBigIntMod(hints.rowFinalCounter[0].Limbs)
+	rowRSAddressEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSAddressEvaluation[0].Limbs)
+	rowRSValueEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSValueEvaluation[0].Limbs)
+	rowRSTimestampEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSTimestampEvaluation[0].Limbs)
 
 	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 
@@ -319,8 +388,20 @@ func verifyCircuit(
 		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, true),
 		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, true),
 		LogANumTerms:            sparkConfig.LogANumTerms,
-		AClaimed:                sparkConfig.AClaimed,
 		SparkSumcheckLast:       contSparkSumcheckLast,
+
+		RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, true),
+		RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, true),
+
+		RowwiseMerkleFirstRound: newMerkle(hints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
+		RowwiseMerkle:           newMerkle(hints.rowwiseSparkMerkle.roundHints, true),
+
+		SparkA: SPARKMatrixData{
+			RowFinalCounter:          rowFinalCounter,
+			RowRSAddressEvaluation:   rowRSAddressEvaluation,
+			RowRSValueEvaluation:     rowRSValueEvaluation,
+			RowRSTimestampEvaluation: rowRSTimestampEvaluation,
+		},
 
 		UseSpark: useSpark,
 	}
@@ -384,8 +465,20 @@ func verifyCircuit(
 		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, false),
 		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, false),
 		LogANumTerms:            sparkConfig.LogANumTerms,
-		AClaimed:                sparkConfig.AClaimed,
 		SparkSumcheckLast:       sparkSumcheckLast,
+
+		RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, false),
+		RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, false),
+
+		RowwiseMerkleFirstRound: newMerkle(hints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
+		RowwiseMerkle:           newMerkle(hints.rowwiseSparkMerkle.roundHints, false),
+
+		SparkA: SPARKMatrixData{
+			RowFinalCounter:          rowFinalCounter,
+			RowRSAddressEvaluation:   rowRSAddressEvaluation,
+			RowRSValueEvaluation:     rowRSValueEvaluation,
+			RowRSTimestampEvaluation: rowRSTimestampEvaluation,
+		},
 
 		UseSpark: useSpark,
 	}
@@ -423,12 +516,6 @@ func gpaSumcheckVerifier(
 	l := make([]frontend.Variable, 2)
 	r := make([]frontend.Variable, 1)
 
-	// gpaClaimedProduct := make([]frontend.Variable, 1)
-	// err := arthur.FillNextScalars(gpaClaimedProduct)
-	// if err != nil {
-	// 	return GPASumcheckResult{}, err
-	// }
-	// lastEval := gpaClaimedProduct[0]
 	gpaClaimedValues := make([]frontend.Variable, 2)
 	err := arthur.FillNextScalars(gpaClaimedValues)
 	if err != nil {
@@ -439,7 +526,7 @@ func gpaSumcheckVerifier(
 		return GPASumcheckResult{}, err
 	}
 	lastEval := utilities.UnivarPoly(api, gpaClaimedValues, r)[0]
-	prevRand := r
+	prevRand := []frontend.Variable{r[0]}
 	var rand []frontend.Variable
 
 	for i := 1; i < (layerCount - 1); i++ {
@@ -450,7 +537,6 @@ func gpaSumcheckVerifier(
 			i,
 			4,
 		)
-		api.Println(lastEval)
 		if err != nil {
 			return GPASumcheckResult{}, err
 		}
@@ -468,7 +554,6 @@ func gpaSumcheckVerifier(
 			utilities.UnivarPoly(api, l, []frontend.Variable{0})[0],
 			utilities.UnivarPoly(api, l, []frontend.Variable{1})[0],
 		)
-		api.Println(claimedLastSch)
 		api.AssertIsEqual(claimedLastSch, lastEval)
 		prevRand = append(rand, r[0])
 		lastEval = utilities.UnivarPoly(api, l, []frontend.Variable{r[0]})[0]
@@ -485,4 +570,17 @@ type GPASumcheckResult struct {
 	claimedProducts   []frontend.Variable
 	lastSumcheckValue frontend.Variable
 	randomness        []frontend.Variable
+}
+
+func CalculateAdr(api frontend.API, coefficients []frontend.Variable) frontend.Variable {
+	ans := frontend.Variable(0)
+	for _, coefficient := range coefficients {
+		ans = api.Add(api.Mul(ans, 2), coefficient)
+	}
+
+	return ans
+}
+
+func sparkSingleMatrix() {
+
 }

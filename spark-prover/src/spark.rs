@@ -114,11 +114,11 @@ pub fn prove_spark_for_single_matrix(
     
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
-    // let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    // let final_row_eval = EvaluationsList::new(matrix.timestamps.final_row.clone())
-    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    // merlin.hint(&final_row_eval)?;
+    let final_row_eval = EvaluationsList::new(matrix.timestamps.final_row.clone())
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&final_row_eval)?;
 
     // produce_whir_proof(
     //     merlin,
@@ -130,59 +130,59 @@ pub fn prove_spark_for_single_matrix(
 
     // // Rowwise RS WS GPA
 
-    // let rs_address = matrix.coo.row.clone();
-    // let rs_value = e_values.e_rx.clone();
-    // let rs_timestamp = matrix.timestamps.read_row.clone();
+    let rs_address = matrix.coo.row.clone();
+    let rs_value = e_values.e_rx.clone();
+    let rs_timestamp = matrix.timestamps.read_row.clone();
 
-    // let rs_vec: Vec<FieldElement> =
-    //     izip!(rs_address.clone(), rs_value.clone(), rs_timestamp.clone())
-    //         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-    //         .collect();
+    let rs_vec: Vec<FieldElement> =
+        izip!(rs_address.clone(), rs_value.clone(), rs_timestamp.clone())
+            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+            .collect();
 
-    // let ws_address = matrix.coo.row.clone();
-    // let ws_value = e_values.e_rx.clone();
-    // let ws_timestamp: Vec<FieldElement> = matrix
-    //     .timestamps
-    //     .read_row
-    //     .into_iter()
-    //     .map(|a| a + FieldElement::from(1))
-    //     .collect();
+    let ws_address = matrix.coo.row.clone();
+    let ws_value = e_values.e_rx.clone();
+    let ws_timestamp: Vec<FieldElement> = matrix
+        .timestamps
+        .read_row
+        .into_iter()
+        .map(|a| a + FieldElement::from(1))
+        .collect();
 
-    // let ws_vec: Vec<FieldElement> =
-    //     izip!(ws_address.clone(), ws_value.clone(), ws_timestamp.clone())
-    //         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
-    //         .collect();
+    let ws_vec: Vec<FieldElement> =
+        izip!(ws_address.clone(), ws_value.clone(), ws_timestamp.clone())
+            .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
+            .collect();
 
-    // let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
+    let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
 
-    // let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    // let rs_address_eval = EvaluationsList::new(rs_address)
-    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    // merlin.hint(&rs_address_eval)?;
+    let rs_address_eval = EvaluationsList::new(rs_address)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_address_eval)?;
     
-    // let rs_value_eval = EvaluationsList::new(rs_value)
-    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    // merlin.hint(&rs_value_eval)?;
+    let rs_value_eval = EvaluationsList::new(rs_value)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_value_eval)?;
 
-    // let rs_timestamp_eval = EvaluationsList::new(rs_timestamp)
-    //     .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
-    // merlin.hint(&rs_timestamp_eval)?;
+    let rs_timestamp_eval = EvaluationsList::new(rs_timestamp)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
+    merlin.hint(&rs_timestamp_eval)?;
 
-    // let mut rowwise_statement = Statement::<FieldElement>::new(evaluation_randomness.len());
+    let mut rowwise_statement = Statement::<FieldElement>::new(evaluation_randomness.len());
 
-    // let claimed_rowwise_eval = 
-    //     rs_address_eval + 
-    //     rs_value_eval * rowwise_witness.batching_randomness + 
-    //     rs_timestamp_eval * rowwise_witness.batching_randomness * rowwise_witness.batching_randomness;
+    let claimed_rowwise_eval = 
+        rs_address_eval + 
+        rs_value_eval * rowwise_witness.batching_randomness + 
+        rs_timestamp_eval * rowwise_witness.batching_randomness * rowwise_witness.batching_randomness;
 
     // assert!(claimed_rowwise_eval == rowwise_witness.batched_poly().evaluate(&MultilinearPoint(evaluation_randomness.to_vec())));
 
-    // rowwise_statement.add_constraint(
-    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
+    rowwise_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
     
-    // let sumcheck_prover = Prover::new(batched_config.clone());
-    // sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
+    let sumcheck_prover = Prover::new(batched_config.clone());
+    sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
 
     //  // Colwise
 
