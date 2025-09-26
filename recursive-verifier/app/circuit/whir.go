@@ -69,22 +69,10 @@ func RunZKWhir(
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 
 	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
-	// batchSizeLen := whirParams.BatchSize
 
 	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations, evaluationStatementClaimedValues)
 	if err != nil {
 		return
-	}
-
-	copyOfFirstLeaves := make([][][]frontend.Variable, len(firstRound.Leaves))
-	for i := range len(firstRound.Leaves) {
-		copyOfFirstLeaves[i] = make([][]frontend.Variable, len(firstRound.Leaves[i]))
-		for j := range len(firstRound.Leaves[i]) {
-			copyOfFirstLeaves[i][j] = make([]frontend.Variable, len(firstRound.Leaves[i][j]))
-			for k := range len(firstRound.Leaves[i][j]) {
-				copyOfFirstLeaves[i][j][k] = firstRound.Leaves[i][j][k]
-			}
-		}
 	}
 
 	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)

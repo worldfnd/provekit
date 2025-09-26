@@ -39,25 +39,25 @@ fn main() -> Result<()> {
         &spark_whir_configs.a_3batched,
     )?;
 
-    prove_spark_for_single_matrix(
-        &mut merlin,
-        spark_r1cs.b,
-        &memory,
-        e_values.b,
-        request.claimed_values.b,
-        &spark_whir_configs,
-        &spark_whir_configs.b_3batched,
-    )?;
+    // prove_spark_for_single_matrix(
+    //     &mut merlin,
+    //     spark_r1cs.b,
+    //     &memory,
+    //     e_values.b,
+    //     request.claimed_values.b,
+    //     &spark_whir_configs,
+    //     &spark_whir_configs.b_3batched,
+    // )?;
 
-    prove_spark_for_single_matrix(
-        &mut merlin,
-        spark_r1cs.c,
-        &memory,
-        e_values.c,
-        request.claimed_values.c,
-        &spark_whir_configs,
-        &spark_whir_configs.c_3batched,
-    )?;
+    // prove_spark_for_single_matrix(
+    //     &mut merlin,
+    //     spark_r1cs.c,
+    //     &memory,
+    //     e_values.c,
+    //     request.claimed_values.c,
+    //     &spark_whir_configs,
+    //     &spark_whir_configs.c_3batched,
+    // )?;
 
     let spark_proof = SPARKProof {
         transcript:        merlin.narg_string().to_vec(),
@@ -72,8 +72,6 @@ fn main() -> Result<()> {
     spark_proof_file
         .write_all(serde_json::to_string(&spark_proof).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
-
-    println!("Claimed value for A {:?}", request.claimed_values.a); //Reilabs Debug: 
 
     let spark_proof_gnark = SPARKProofGnark {
         transcript: spark_proof.transcript,
@@ -91,10 +89,6 @@ fn main() -> Result<()> {
     gnark_spark_proof_file
         .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
         .expect("Writing spark gnark parameters to a file failed");
-
-    // println!("{:?}", request.claimed_values.a);
-    // println!("{:?}", request.claimed_values.b);
-    // println!("{:?}", request.claimed_values.c);
 
     Ok(())
 }

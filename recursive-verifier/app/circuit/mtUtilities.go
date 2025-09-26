@@ -19,15 +19,21 @@ func initialSumcheck(
 	linearStatementEvaluations [][]frontend.Variable,
 	evaluationStatementClaimedValues [][]frontend.Variable,
 ) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
+	// ) error {
 	lengthOfLinearStatementEvaluations := len(linearStatementEvaluations[0])
 	lengthOfEvaluationStatement := len(evaluationStatementClaimedValues[0])
 
 	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+lengthOfLinearStatementEvaluations+lengthOfEvaluationStatement)
+	// initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+lengthOfLinearStatementEvaluations)
 	if err != nil {
+		// return nil
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	combinedLinearStatementEvaluations := make([]frontend.Variable, lengthOfLinearStatementEvaluations) //[0, 1, 2]
+	_ = initialCombinationRandomness
+	_ = lengthOfEvaluationStatement
+
+	combinedLinearStatementEvaluations := make([]frontend.Variable, lengthOfLinearStatementEvaluations)
 	for evaluationIndex := range lengthOfLinearStatementEvaluations {
 		sum := frontend.Variable(0)
 		multiplier := frontend.Variable(1)
@@ -38,7 +44,7 @@ func initialSumcheck(
 		combinedLinearStatementEvaluations[evaluationIndex] = sum
 	}
 
-	combinedEvaluationStatementEvaluations := make([]frontend.Variable, lengthOfEvaluationStatement) //[0, 1, 2]
+	combinedEvaluationStatementEvaluations := make([]frontend.Variable, lengthOfEvaluationStatement)
 	for evaluationIndex := range lengthOfEvaluationStatement {
 		sum := frontend.Variable(0)
 		multiplier := frontend.Variable(1)
@@ -49,19 +55,28 @@ func initialSumcheck(
 		combinedEvaluationStatementEvaluations[evaluationIndex] = sum
 	}
 
+	api.Println(combinedEvaluationStatementEvaluations)
+
 	OODAnswersAndStatmentEvaluations := append(append(initialOODAnswers, combinedLinearStatementEvaluations...), combinedEvaluationStatementEvaluations...)
+	// OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
 
 	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
 
+	// _ = lastEval
+
 	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if err != nil {
+		// return nil
 		return InitialSumcheckData{}, nil, nil, err
 	}
+
+	_ = initialSumcheckFoldingRandomness
 
 	return InitialSumcheckData{
 		InitialOODQueries:            initialOODQueries,
 		InitialCombinationRandomness: initialCombinationRandomness,
 	}, lastEval, initialSumcheckFoldingRandomness, nil
+
 }
 
 func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {

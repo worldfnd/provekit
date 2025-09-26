@@ -1,7 +1,6 @@
 package circuit
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -74,6 +73,14 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// 	return err
 	// }
 
+	// spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// _ = spartanSumcheckRand
+	// _ = spartanSumcheckLastValue
+
 	// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash,
 	// 	[][]frontend.Variable{{}, {}},
 	// 	[][]frontend.Variable{},
@@ -138,22 +145,25 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		_ = sparkSumcheckFoldingRandomness
 		_ = sparkSumcheckLastEval
 
-		whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}, {}}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash,
-			[][]frontend.Variable{{circuit.SparkSumcheckLast[0]}, {circuit.SparkSumcheckLast[1]}},
+		whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}, {}, {}}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash,
+			[][]frontend.Variable{{circuit.SparkSumcheckLast[0]}, {circuit.SparkSumcheckLast[1]}, {circuit.SparkSumcheckLast[2]}},
 			[][]frontend.Variable{sparkSumcheckFoldingRandomness},
 		)
-
-		// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.SparkSumcheckMerkle, circuit.SparkSumcheckFirstRound, circuit.WHIRA3, [][]frontend.Variable{{}, {}}, []frontend.Variable{}, sumcheckBatchingRandomness, sumcheckInitialOODQueries, sumcheckInitialOODAnswers, sumcheckRootHash,
-		// 	[][]frontend.Variable{{1}, {1}},
-		// 	[][]frontend.Variable{sparkSumcheckFoldingRandomness},
-		// )
-
 		if err != nil {
 			return err
 		}
-		_ = whirFoldingRandomness
 
-		// circuit.WitnessLinearStatementEvaluations[i]
+		tauGammaTemp := make([]frontend.Variable, 2)
+		if err := arthur.FillChallengeScalars(tauGammaTemp); err != nil {
+			return err
+		}
+		tau := tauGammaTemp[0]
+		gamma := tauGammaTemp[1]
+
+		_ = tau
+		_ = gamma
+
+		_ = whirFoldingRandomness
 
 		_ = sumcheckRootHash
 		_ = sumcheckBatchingRandomness
@@ -221,19 +231,9 @@ func verifyCircuit(
 
 	contSparkSumcheckLast := make([]frontend.Variable, 3)
 	sparkSumcheckLast := make([]frontend.Variable, 3)
-	fmt.Println("Eh")
-	fmt.Println(len(sparkSumcheck))
-	// fmt.Print("Spark sumcheck", sparkSumcheck)
 	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(sparkSumcheck[0].Limbs)
 	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(sparkSumcheck[1].Limbs)
 	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(sparkSumcheck[2].Limbs)
-
-	// a := typeConverters.LimbsToBigIntMod(sparkSumcheck[0].Limbs)
-	// fmt.Print(a)
-	// b := typeConverters.LimbsToBigIntMod(sparkSumcheck[1].Limbs)
-	// fmt.Print(b)
-	// c := typeConverters.LimbsToBigIntMod(sparkSumcheck[2].Limbs)
-	// fmt.Print(c)
 
 	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 

@@ -214,8 +214,6 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 		sparkSumcheckData: sparkSumcheckData,
 	}
 
-	fmt.Print(len(hints.sparkSumcheckData.firstRoundMerklePaths.path.merklePaths))
-	fmt.Print(len(hints.sparkSumcheckData.roundHints.merklePaths))
 	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation, sparkClaimedEvaluations)
 
 	if err != nil {

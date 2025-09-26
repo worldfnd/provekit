@@ -50,29 +50,29 @@ fn main() -> Result<()> {
         &request.claimed_values.a,
     )?;
 
-    verify_spark_single_matrix(
-        &spark_proof.whir_params.row, 
-        &spark_proof.whir_params.col, 
-        &spark_proof.whir_params.b_3batched, 
-        spark_proof.matrix_dimensions.num_rows,
-        spark_proof.matrix_dimensions.num_cols,
-        spark_proof.matrix_dimensions.b_nonzero_terms,
-        &mut arthur, 
-        &request,
-        &request.claimed_values.b,
-    )?;
+    // verify_spark_single_matrix(
+    //     &spark_proof.whir_params.row, 
+    //     &spark_proof.whir_params.col, 
+    //     &spark_proof.whir_params.b_3batched, 
+    //     spark_proof.matrix_dimensions.num_rows,
+    //     spark_proof.matrix_dimensions.num_cols,
+    //     spark_proof.matrix_dimensions.b_nonzero_terms,
+    //     &mut arthur, 
+    //     &request,
+    //     &request.claimed_values.b,
+    // )?;
 
-    verify_spark_single_matrix(
-        &spark_proof.whir_params.row, 
-        &spark_proof.whir_params.col, 
-        &spark_proof.whir_params.c_3batched, 
-        spark_proof.matrix_dimensions.num_rows,
-        spark_proof.matrix_dimensions.num_cols,
-        spark_proof.matrix_dimensions.c_nonzero_terms,
-        &mut arthur, 
-        &request,
-        &request.claimed_values.c,
-    )?;    
+    // verify_spark_single_matrix(
+    //     &spark_proof.whir_params.row, 
+    //     &spark_proof.whir_params.col, 
+    //     &spark_proof.whir_params.c_3batched, 
+    //     spark_proof.matrix_dimensions.num_rows,
+    //     spark_proof.matrix_dimensions.num_cols,
+    //     spark_proof.matrix_dimensions.c_nonzero_terms,
+    //     &mut arthur, 
+    //     &request,
+    //     &request.claimed_values.c,
+    // )?;    
 
     Ok(())
 }
@@ -136,178 +136,178 @@ pub fn verify_spark_single_matrix(
     let tau = tau_and_gamma[0];
     let gamma = tau_and_gamma[1];
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_rows) + 2,
-    )?;
+    // let gpa_result = gpa_sumcheck_verifier(
+    //     arthur,
+    //     next_power_of_two(num_rows) + 2,
+    // )?;
 
-    let claimed_init = gpa_result.claimed_values[0];
-    let claimed_final = gpa_result.claimed_values[1];
+    // let claimed_init = gpa_result.claimed_values[0];
+    // let claimed_final = gpa_result.claimed_values[1];
 
-    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
+    // let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
-    let init_adr = calculate_adr(&evaluation_randomness.to_vec());
-    let init_mem = calculate_eq(
-        &request.point_to_evaluate.row,
-        &evaluation_randomness.to_vec(),
-    );
-    let init_cntr = FieldElement::from(0);
+    // let init_adr = calculate_adr(&evaluation_randomness.to_vec());
+    // let init_mem = calculate_eq(
+    //     &request.point_to_evaluate.row,
+    //     &evaluation_randomness.to_vec(),
+    // );
+    // let init_cntr = FieldElement::from(0);
 
-    let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
+    // let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
 
-    let final_cntr: FieldElement = arthur.hint()?;
+    // let final_cntr: FieldElement = arthur.hint()?;
 
-    let mut final_cntr_statement =
-        Statement::<FieldElement>::new(next_power_of_two(num_rows));
-    final_cntr_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        final_cntr,
-    );
+    // let mut final_cntr_statement =
+    //     Statement::<FieldElement>::new(next_power_of_two(num_rows));
+    // final_cntr_statement.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+    //     final_cntr,
+    // );
 
-    let final_cntr_verifier = Verifier::new(row_config);
-    final_cntr_verifier
-        .verify(arthur, &a_row_finalts_commitment, &final_cntr_statement)
-        .context("while verifying WHIR")?;
+    // let final_cntr_verifier = Verifier::new(row_config);
+    // final_cntr_verifier
+    //     .verify(arthur, &a_row_finalts_commitment, &final_cntr_statement)
+    //     .context("while verifying WHIR")?;
 
-    let final_adr = calculate_adr(&evaluation_randomness.to_vec());
-    let final_mem = calculate_eq(
-        &request.point_to_evaluate.row,
-        &evaluation_randomness.to_vec(),
-    );
+    // let final_adr = calculate_adr(&evaluation_randomness.to_vec());
+    // let final_mem = calculate_eq(
+    //     &request.point_to_evaluate.row,
+    //     &evaluation_randomness.to_vec(),
+    // );
 
-    let final_opening = final_adr * gamma * gamma + final_mem * gamma + final_cntr - tau;
+    // let final_opening = final_adr * gamma * gamma + final_mem * gamma + final_cntr - tau;
 
-    let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
-        + final_opening * last_randomness[0];
+    // let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
+    //     + final_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    // ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_nonzero_terms) + 2,
-    )?;
+    // let gpa_result = gpa_sumcheck_verifier(
+    //     arthur,
+    //     next_power_of_two(num_nonzero_terms) + 2,
+    // )?;
 
-    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
+    // let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
-    let claimed_rs = gpa_result.claimed_values[0];
-    let claimed_ws = gpa_result.claimed_values[1];
+    // let claimed_rs = gpa_result.claimed_values[0];
+    // let claimed_ws = gpa_result.claimed_values[1];
 
-    let rs_adr: FieldElement = arthur.hint()?;
-    let rs_mem: FieldElement = arthur.hint()?;
-    let rs_timestamp: FieldElement = arthur.hint()?;
+    // let rs_adr: FieldElement = arthur.hint()?;
+    // let rs_mem: FieldElement = arthur.hint()?;
+    // let rs_timestamp: FieldElement = arthur.hint()?;
 
-    let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
-    let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
+    // let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
+    // let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
     
-    let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
-        + ws_opening * last_randomness[0];
+    // let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
+    //     + ws_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    // ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let mut a_spark_rowwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
-        num_nonzero_terms,
-    ));
+    // let mut a_spark_rowwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
+    //     num_nonzero_terms,
+    // ));
 
-    a_spark_rowwise_statement_verifier.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        rs_adr + 
-            rs_mem * a_rowwise_commitment.batching_randomness +
-            rs_timestamp * a_rowwise_commitment.batching_randomness * a_rowwise_commitment.batching_randomness,
-    );
+    // a_spark_rowwise_statement_verifier.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+    //     rs_adr + 
+    //         rs_mem * a_rowwise_commitment.batching_randomness +
+    //         rs_timestamp * a_rowwise_commitment.batching_randomness * a_rowwise_commitment.batching_randomness,
+    // );
 
-    a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
+    // a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
 
-    ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
+    // ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
-     // Matrix A - Colwise
+    //  // Matrix A - Colwise
 
-    let mut tau_and_gamma = [FieldElement::from(0); 2];
-    arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
-    let tau = tau_and_gamma[0];
-    let gamma = tau_and_gamma[1];
+    // let mut tau_and_gamma = [FieldElement::from(0); 2];
+    // arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
+    // let tau = tau_and_gamma[0];
+    // let gamma = tau_and_gamma[1];
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_cols) + 2,
-    )?;
+    // let gpa_result = gpa_sumcheck_verifier(
+    //     arthur,
+    //     next_power_of_two(num_cols) + 2,
+    // )?;
 
-    let claimed_init = gpa_result.claimed_values[0];
-    let claimed_final = gpa_result.claimed_values[1];
+    // let claimed_init = gpa_result.claimed_values[0];
+    // let claimed_final = gpa_result.claimed_values[1];
 
-    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
+    // let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
-    let init_adr = calculate_adr(&evaluation_randomness.to_vec());
-    let init_mem = calculate_eq(
-        &request.point_to_evaluate.col[1..],
-        &evaluation_randomness.to_vec(),
-    ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
-    let init_cntr = FieldElement::from(0);
+    // let init_adr = calculate_adr(&evaluation_randomness.to_vec());
+    // let init_mem = calculate_eq(
+    //     &request.point_to_evaluate.col[1..],
+    //     &evaluation_randomness.to_vec(),
+    // ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
+    // let init_cntr = FieldElement::from(0);
 
-    let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
+    // let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
 
-    let final_cntr: FieldElement = arthur.hint()?;
+    // let final_cntr: FieldElement = arthur.hint()?;
 
-    let mut final_cntr_statement =
-        Statement::<FieldElement>::new(next_power_of_two(num_cols));
-    final_cntr_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        final_cntr,
-    );
+    // let mut final_cntr_statement =
+    //     Statement::<FieldElement>::new(next_power_of_two(num_cols));
+    // final_cntr_statement.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+    //     final_cntr,
+    // );
 
-    let final_cntr_verifier = Verifier::new(col_config);
-    final_cntr_verifier
-        .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
-        .context("while verifying WHIR")?;
+    // let final_cntr_verifier = Verifier::new(col_config);
+    // final_cntr_verifier
+    //     .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
+    //     .context("while verifying WHIR")?;
 
-    let final_adr = calculate_adr(&evaluation_randomness.to_vec());
-    let final_mem = calculate_eq(
-        &request.point_to_evaluate.col[1..],
-        &evaluation_randomness.to_vec(),
-    ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
+    // let final_adr = calculate_adr(&evaluation_randomness.to_vec());
+    // let final_mem = calculate_eq(
+    //     &request.point_to_evaluate.col[1..],
+    //     &evaluation_randomness.to_vec(),
+    // ) * (FieldElement::from(1) - request.point_to_evaluate.col[0]);
 
-    let final_opening = final_adr * gamma * gamma + final_mem * gamma + final_cntr - tau;
+    // let final_opening = final_adr * gamma * gamma + final_mem * gamma + final_cntr - tau;
 
-    let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
-        + final_opening * last_randomness[0];
+    // let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
+    //     + final_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    // ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_nonzero_terms) + 2,
-    )?;
+    // let gpa_result = gpa_sumcheck_verifier(
+    //     arthur,
+    //     next_power_of_two(num_nonzero_terms) + 2,
+    // )?;
 
-    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
+    // let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
-    let claimed_rs = gpa_result.claimed_values[0];
-    let claimed_ws = gpa_result.claimed_values[1];
+    // let claimed_rs = gpa_result.claimed_values[0];
+    // let claimed_ws = gpa_result.claimed_values[1];
 
-    let rs_adr: FieldElement = arthur.hint()?;
-    let rs_mem: FieldElement = arthur.hint()?;
-    let rs_timestamp: FieldElement = arthur.hint()?;
+    // let rs_adr: FieldElement = arthur.hint()?;
+    // let rs_mem: FieldElement = arthur.hint()?;
+    // let rs_timestamp: FieldElement = arthur.hint()?;
 
-    let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
-    let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
+    // let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
+    // let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
     
-    let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
-        + ws_opening * last_randomness[0];
+    // let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
+    //     + ws_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    // ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let mut a_spark_colwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
-        num_nonzero_terms,
-    ));
+    // let mut a_spark_colwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
+    //     num_nonzero_terms,
+    // ));
 
-    a_spark_colwise_statement_verifier.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        rs_adr + 
-            rs_mem * a_colwise_commitment.batching_randomness +
-            rs_timestamp * a_colwise_commitment.batching_randomness * a_colwise_commitment.batching_randomness,
-    );
+    // a_spark_colwise_statement_verifier.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+    //     rs_adr + 
+    //         rs_mem * a_colwise_commitment.batching_randomness +
+    //         rs_timestamp * a_colwise_commitment.batching_randomness * a_colwise_commitment.batching_randomness,
+    // );
 
-    a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
+    // a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
 
-    ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
+    // ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
     Ok(())
 }

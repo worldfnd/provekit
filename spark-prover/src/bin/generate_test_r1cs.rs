@@ -5,10 +5,10 @@ use {
 
 fn main() {
     let mut r1cs = R1CS::new();
-    r1cs.grow_matrices(512, 512);
+    r1cs.grow_matrices(256, 256);
     let interned_1 = r1cs.interner.intern(FieldElement::from(1));
 
-    for i in 0..512 {
+    for i in 0..256 {
         r1cs.a.set(i, i, interned_1);
         r1cs.b.set(i, i, interned_1);
         r1cs.c.set(i, i, interned_1);
