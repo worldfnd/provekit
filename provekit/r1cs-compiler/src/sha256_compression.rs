@@ -660,6 +660,14 @@ pub(crate) fn add_sha256_compression(
             .try_into()
             .unwrap();
 
+        // Range check the input and hash values
+        for &input_idx in &input_witnesses {
+            range_checks.entry(32).or_default().push(input_idx);
+        }
+        for &hash_idx in &initial_hash_witnesses {
+            range_checks.entry(32).or_default().push(hash_idx);
+        }
+
         // Step 1: Message schedule expansion (16 words -> 64 words)
         let w =
             add_message_schedule_expansion(r1cs_compiler, xor_ops, range_checks, &input_witnesses);
