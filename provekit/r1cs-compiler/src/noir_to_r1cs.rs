@@ -391,7 +391,6 @@ impl NoirToR1CSCompiler {
                             .iter()
                             .map(|&output| self.fetch_r1cs_witness_index(output))
                             .collect();
-
                         sha256_compression_ops.push((
                             input_witnesses,
                             hash_witnesses,

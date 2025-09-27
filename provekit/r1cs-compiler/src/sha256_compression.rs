@@ -114,9 +114,9 @@ pub(crate) fn add_right_rotate(
         &[(FieldElement::ONE, shifted_low_witness)],
     );
 
-    // The result is: high_bits XOR shifted_low_bits
-    // Since high_bits occupies the lower (32-n) bits and shifted_low occupies the
-    // upper n bits, they don't overlap, so XOR is equivalent to addition
+    // The result is: high_bits + shifted_low_bits
+    // Since high_bits occupies lower (32-n) bits and shifted_low occupies
+    // upper n bits with no overlap, XOR equals addition in this case.
     let result_witness = r1cs_compiler.num_witnesses();
     r1cs_compiler.r1cs.add_witnesses(1);
     r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_witness, vec![
@@ -350,6 +350,10 @@ pub(crate) fn add_ch(
 
     // Next, compute ~x & z
     // ~x = (2^32 - 1) - x (bitwise NOT in u32)
+    //
+    // NOTE: Using arithmetic NOT for efficiency. NOT is used ~64 times vs
+    // ~600+ AND/XOR operations. Consider BinOp::Not with lookup table if
+    // NOT usage increases significantly.
     let max_u32 = FieldElement::from((1u64 << 32) - 1);
     let not_x_witness = r1cs_compiler.num_witnesses();
     r1cs_compiler.r1cs.add_witnesses(1);
@@ -660,7 +664,9 @@ pub(crate) fn add_sha256_compression(
             .try_into()
             .unwrap();
 
-        // Range check the input and hash values
+        // Range check inputs and initial hash values to ensure they're valid 32-bit
+        // values. This prevents field underflow in NOT operations and ensures
+        // correct SHA256 semantics.
         for &input_idx in &input_witnesses {
             range_checks.entry(32).or_default().push(input_idx);
         }
@@ -690,6 +696,7 @@ pub(crate) fn add_sha256_compression(
         }
 
         // Step 4: Add initial hash values to final working variables (modulo 2^32)
+        // This implements the final step of SHA256: H' = H + working_vars
         let final_hash: [usize; 8] = (0..8)
             .map(|i| {
                 add_u32_addition(
