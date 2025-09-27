@@ -460,7 +460,7 @@ pub(crate) fn add_maj(
 }
 
 /// SHA256 message schedule expansion: expand 16 u32 words to 64 u32 words
-/// W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16] for i = 16..64
+/// W\[i\] = σ₁(W\[i-2\]) + W\[i-7\] + σ₀(W\[i-15\]) + W\[i-16\] for i = 16..64
 pub(crate) fn add_message_schedule_expansion(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
@@ -512,7 +512,7 @@ pub(crate) fn add_message_schedule_expansion(
 
 /// SHA256 single compression round
 /// Updates working variables: a, b, c, d, e, f, g, h
-/// T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+/// T1 = h + Σ₁(e) + Ch(e,f,g) + K\[i\] + W\[i\]
 /// T2 = Σ₀(a) + Maj(a,b,c)
 /// Returns new (a, b, c, d, e, f, g, h) where a = T1+T2, e = d+T1, others
 /// rotate
