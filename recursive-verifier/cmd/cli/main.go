@@ -10,6 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"reilabs/whir-verifier-circuit/app/circuit"
+	"reilabs/whir-verifier-circuit/app/common"
 )
 
 func main() {
@@ -73,18 +74,19 @@ func main() {
 				Required: false,
 				Value:    false,
 			},
+			&cli.BoolFlag{
+				Name:     "icicle_acceleration",
+				Usage:    "Optional flag to enable icicle acceleration",
+				Required: false,
+				Value:    false,
+			},
 		},
 		Action: func(c *cli.Context) error {
-			configFilePath := c.String("config")
-			r1csFilePath := c.String("r1cs")
-			outputCcsPath := c.String("ccs")
-			pkPath := c.String("pk")
-			vkPath := c.String("vk")
-			pkUrl := c.String("pk_url")
-			vkUrl := c.String("vk_url")
-			r1csUrl := c.String("r1cs_url")
-			saveKeys := c.Bool("saveKeys")
-			configFile, err := os.ReadFile(configFilePath)
+			// Create BuildOps from CLI context
+			buildOps := common.NewBuildOpsFromContext(c)
+
+			// Read config file
+			configFile, err := os.ReadFile(buildOps.ConfigFilePath)
 			if err != nil {
 				return fmt.Errorf("failed to read config file: %w", err)
 			}
@@ -95,16 +97,18 @@ func main() {
 			}
 
 			var r1csFile []byte
-			if r1csFilePath != "" {
-				r1csFile, err = os.ReadFile(r1csFilePath)
+			if buildOps.HasR1csFile() {
+				r1csFile, err = os.ReadFile(buildOps.R1csFilePath)
 				if err != nil {
 					return fmt.Errorf("failed to read r1cs file: %w", err)
 				}
-			} else {
-				r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
+			} else if buildOps.HasR1csUrl() {
+				r1csFile, err = circuit.GetR1csFromUrl(buildOps.R1csUrl)
 				if err != nil {
 					return fmt.Errorf("failed to get R1CS from URL: %w", err)
 				}
+			} else {
+				return fmt.Errorf("either r1cs file path or r1cs_url must be provided")
 			}
 
 			var r1cs circuit.R1CS
@@ -115,13 +119,13 @@ func main() {
 			var pk *groth16.ProvingKey
 			var vk *groth16.VerifyingKey
 
-			if pkUrl != "" && vkUrl != "" {
-				pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
+			if buildOps.HasPkAndVkFromUrl() {
+				pk, vk, err = circuit.GetPkAndVkFromUrl(buildOps.PkUrl, buildOps.VkUrl)
 				if err != nil {
 					return fmt.Errorf("failed to get PK/VK: %w", err)
 				}
-			} else if pkPath != "" && vkPath != "" {
-				pk, vk, err = circuit.GetPkAndVkFromPath(pkPath, vkPath)
+			} else if buildOps.HasPkAndVkFromPath() {
+				pk, vk, err = circuit.GetPkAndVkFromPath(buildOps.PkPath, buildOps.VkPath)
 				if err != nil {
 					return fmt.Errorf("failed to get PK/VK: %w", err)
 				}
@@ -129,7 +133,7 @@ func main() {
 				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
 			}
 
-			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath, saveKeys); err != nil {
+			if err = circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, *buildOps); err != nil {
 				return fmt.Errorf("failed to prepare and verify circuit: %w", err)
 			}
 

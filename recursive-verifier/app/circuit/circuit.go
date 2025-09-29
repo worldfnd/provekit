@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"reilabs/whir-verifier-circuit/app/common"
 	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
 
@@ -84,7 +85,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, saveKeys bool,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, buildOps common.BuildOps,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -177,17 +178,17 @@ func verifyCircuit(
 	if err != nil {
 		log.Fatalf("Failed to compile circuit: %v", err)
 	}
-	if outputCcsPath != "" {
-		ccsFile, err := os.Create(outputCcsPath)
+	if buildOps.OutputCcsPath != "" {
+		ccsFile, err := os.Create(buildOps.OutputCcsPath)
 		if err != nil {
-			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+			log.Printf("Cannot create ccs file %s: %v", buildOps.OutputCcsPath, err)
 		} else {
 			_, err = ccs.WriteTo(ccsFile)
 			if err != nil {
-				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+				log.Printf("Cannot write ccs file %s: %v", buildOps.OutputCcsPath, err)
 			}
 		}
-		log.Printf("ccs written to %s", outputCcsPath)
+		log.Printf("ccs written to %s", buildOps.OutputCcsPath)
 	}
 
 	if pk == nil || vk == nil {
@@ -199,7 +200,7 @@ func verifyCircuit(
 		pk = &unsafePk
 		vk = &unsafeVk
 
-		if saveKeys {
+		if buildOps.SaveKeys {
 			// Generate timestamp for filenames
 			timestamp := time.Now().Format("02Jan_15-04-05")
 
@@ -270,7 +271,15 @@ func verifyCircuit(
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+
+	opts := []backend.ProverOption{
+		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)),
+	}
+	if buildOps.IcicleAcceleration {
+		opts = append(opts, backend.WithIcicleAcceleration())
+	}
+
+	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)
