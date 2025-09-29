@@ -14,11 +14,9 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-input-gen",
   "tooling/verifier-server",
   "ntt",
-]
-exclude = [
-  "playground/passport-input-gen",
 ]
 
 [workspace.package]
@@ -85,6 +83,7 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
+provekit-input-gen = { path = "tooling/provekit-input-gen" }
 provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }

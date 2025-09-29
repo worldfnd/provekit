@@ -14,6 +14,7 @@ crate-type = ["staticlib"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-input-gen.workspace = true
 provekit-prover.workspace = true
 
 # Noir language

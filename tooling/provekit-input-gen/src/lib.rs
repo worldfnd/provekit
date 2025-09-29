@@ -1,6 +1,6 @@
 pub mod mock_generator;
 pub mod mock_keys;
-mod parser;
+pub mod parser;
 
 use {
     crate::parser::{
@@ -27,12 +27,12 @@ use {
 
 /// Parsed passport data
 pub struct PassportReader {
-    dg1:         Binary,
-    sod:         SOD,
+    pub dg1:         Binary,
+    pub sod:         SOD,
     /// Indicates whether this reader contains mock data or real passport data
-    mockdata:    bool,
+    pub mockdata:    bool,
     /// Optional CSCA public key when using mock data
-    csca_pubkey: Option<RsaPublicKey>,
+    pub csca_pubkey: Option<RsaPublicKey>,
 }
 
 /// Circuit inputs for Noir

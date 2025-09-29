@@ -1,8 +1,13 @@
 [package]
-name = "passport-input-gen"
+name = "provekit-input-gen"
 version = "0.1.0"
-edition = "2021"
-description = "Passport input generator"
+description = "ProveKit input generator"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 [dependencies]
 rsa = { version = "0.9.8", features = ["sha2"] }
@@ -22,3 +27,8 @@ thiserror = "2.0.16"
 signature = "2.2"
 lazy_static = "1.5.0"
 
+[lints]
+workspace = true
+
+[features]
+default = []

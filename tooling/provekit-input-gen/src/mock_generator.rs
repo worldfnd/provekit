@@ -1,3 +1,6 @@
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use rsa::pkcs8::DecodePrivateKey;
 use {
     crate::parser::{
         binary::Binary,
@@ -17,6 +20,7 @@ use {
     sha2::{Digest, Sha256},
     std::collections::HashMap,
 };
+use crate::mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64};
 
 /// Build a fake DG1 (MRZ) with given birthdate and expiry dates.
 /// Birthdate and expiry are encoded as YYMMDD and inserted into the MRZ
@@ -141,32 +145,27 @@ pub fn generate_fake_sod(
     }
 }
 
+pub fn load_csca_mock_private_key() -> RsaPrivateKey {
+    let der = STANDARD
+        .decode(MOCK_CSCA_PRIV_KEY_B64)
+        .expect("decode CSCA private key");
+    RsaPrivateKey::from_pkcs8_der(&der).expect("CSCA key")
+}
+
+pub fn load_dsc_mock_private_key() -> RsaPrivateKey {
+    let der = STANDARD
+        .decode(MOCK_DSC_PRIV_KEY_B64)
+        .expect("decode DSC private key");
+    RsaPrivateKey::from_pkcs8_der(&der).expect("DSC key")
+}
+
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        crate::{
-            mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
-            PassportReader,
-        },
-        base64::{engine::general_purpose::STANDARD, Engine as _},
+        crate::PassportReader,
         chrono::Utc,
-        rsa::pkcs8::DecodePrivateKey,
     };
-
-    fn load_csca_mock_private_key() -> RsaPrivateKey {
-        let der = STANDARD
-            .decode(MOCK_CSCA_PRIV_KEY_B64)
-            .expect("decode CSCA private key");
-        RsaPrivateKey::from_pkcs8_der(&der).expect("CSCA key")
-    }
-
-    fn load_dsc_mock_private_key() -> RsaPrivateKey {
-        let der = STANDARD
-            .decode(MOCK_DSC_PRIV_KEY_B64)
-            .expect("decode DSC private key");
-        RsaPrivateKey::from_pkcs8_der(&der).expect("DSC key")
-    }
 
     #[test]
     fn test_generate_and_validate_sod() {

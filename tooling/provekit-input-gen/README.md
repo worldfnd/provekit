@@ -1,4 +1,4 @@
-# Passport Input Generator
+# ProveKit Input Generator
 
 A Rust crate for parsing passport data and generating circuit inputs for Noir Circuits.
 

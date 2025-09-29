@@ -1,5 +1,9 @@
 //! Main FFI functions for ProveKit.
 
+use std::fs::File;
+use std::io::Write;
+use std::time::{SystemTime, UNIX_EPOCH};
+use anyhow::Context;
 use {
     crate::{
         types::{PKBuf, PKError},
@@ -13,6 +17,10 @@ use {
         path::Path,
     },
 };
+use provekit_input_gen::mock_generator::{dg1_bytes_with_birthdate_expiry_date, generate_fake_sod, load_csca_mock_private_key, load_dsc_mock_private_key};
+use provekit_input_gen::parser::binary::Binary;
+use provekit_input_gen::parser::sod::SOD;
+use provekit_input_gen::PassportReader;
 
 /// Prove a Noir program and write the proof to a file.
 ///
@@ -134,6 +142,175 @@ pub unsafe extern "C" fn pk_prove_to_json(
             *out_buf = PKBuf::from_vec(json_bytes);
             PKError::Success.into()
         }
+        Err(error) => error.into(),
+    }
+}
+
+/// Converts data from eMRTD document to input file for Noir proof.
+///
+/// # Arguments
+///
+/// * `dg1` - Input buffer to get DG1 data from eMRTD
+/// * `sod` - Input buffer to get SOD data from eMRTD
+/// * `min_age_required` - Minimum age required
+/// * `max_age_required` - Maximum age required
+/// * `out_path` - Path where to write the input file (.toml)
+///
+/// # Returns
+///
+/// Returns `PKError::Success` on success, or an appropriate error code on
+/// failure.
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// - `dg1` is a valid buffer
+/// - `sod` is a valid buffer
+/// - `out_path` is valid null-terminated C strings
+#[no_mangle]
+pub unsafe extern "C" fn pk_emrtd_to_input_file(
+    dg1: *mut PKBuf,
+    sod: *mut PKBuf,
+    min_age_required: u8,
+    max_age_required: u8,
+    out_path: *const c_char,
+) -> c_int {
+    // Validate inputs
+    if dg1.is_null() {
+        return PKError::InvalidInput.into();
+    }
+
+    if sod.is_null() {
+        return PKError::InvalidInput.into();
+    }
+
+    let result = (|| -> Result<(), PKError> {
+        let out_path = c_str_to_str(out_path)?;
+
+        let dg1 = Binary::new((*dg1).to_vec());
+        let sod = SOD::from_der(&mut Binary::new((*sod).to_vec()))
+            .map_err(|_| PKError::EMRTDReadError)?;
+
+        let reader = PassportReader {
+            dg1,
+            sod,
+            mockdata: false,
+            csca_pubkey: None,
+        };
+        reader.validate().map_err(|_| PKError::EMRTDReadError)?;
+
+        let inputs = reader.to_circuit_inputs(
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|v| v.as_secs()).unwrap_or(0),
+            min_age_required, max_age_required, 0
+        );
+
+        let mut file = File::create(Path::new(out_path))
+            .context("while creating output file")
+            .map_err(|_| PKError::FileWriteError)?;
+        file.write_all(inputs.unwrap().to_toml_string().as_bytes())
+            .context("while writing inputs")
+            .map_err(|_| PKError::FileWriteError)?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => PKError::Success.into(),
+        Err(error) => error.into(),
+    }
+}
+
+/// Mocks data from eMRTD document to input file for Noir proof.
+///
+/// # Arguments
+///
+/// * `birth_date` - Birth date in format YYMMDD
+/// * `expiry_date` - Expiry date in format YYMMDD
+/// * `min_age_required` - Minimum age required
+/// * `max_age_required` - Maximum age required
+/// * `out_path` - Path where to write the input file (.toml)
+///
+/// # Returns
+///
+/// Returns `PKError::Success` on success, or an appropriate error code on
+/// failure.
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// - `birth_date` is valid null-terminated C strings of length 6
+/// - `expiry_date` is valid null-terminated C strings of length 6
+/// - `out_path` is valid null-terminated C strings
+#[no_mangle]
+pub unsafe extern "C" fn pk_mock_emrtd_to_input_file(
+    birth_date: *const c_char,
+    expiry_date: *const c_char,
+    min_age_required: u8,
+    max_age_required: u8,
+    out_path: *const c_char,
+) -> c_int {
+    let result = (|| -> Result<(), PKError> {
+        let out_path = c_str_to_str(out_path)?;
+
+        let birth_date = c_str_to_str(birth_date)?;
+        if birth_date.len() != 6 {
+            return Err(PKError::InvalidInput);
+        }
+        let birth_date = [
+            birth_date.as_bytes()[0],
+            birth_date.as_bytes()[1],
+            birth_date.as_bytes()[2],
+            birth_date.as_bytes()[3],
+            birth_date.as_bytes()[4],
+            birth_date.as_bytes()[5],
+        ];
+
+        let expiry_date = c_str_to_str(expiry_date)?;
+        if expiry_date.len() != 6 {
+            return Err(PKError::InvalidInput);
+        }
+        let expiry_date = [
+            expiry_date.as_bytes()[0],
+            expiry_date.as_bytes()[1],
+            expiry_date.as_bytes()[2],
+            expiry_date.as_bytes()[3],
+            expiry_date.as_bytes()[4],
+            expiry_date.as_bytes()[5],
+        ];
+
+        let csca_priv = load_csca_mock_private_key();
+        let csca_pub = csca_priv.to_public_key();
+        let dsc_priv = load_dsc_mock_private_key();
+        let dsc_pub = dsc_priv.to_public_key();
+
+        let dg1 = dg1_bytes_with_birthdate_expiry_date(&birth_date, &expiry_date);
+        let sod = generate_fake_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
+
+        let reader = PassportReader {
+            dg1: Binary::new(dg1),
+            sod,
+            mockdata: true,
+            csca_pubkey: Some(csca_pub),
+        };
+        reader.validate().map_err(|_| PKError::EMRTDReadError)?;
+
+        let inputs = reader.to_circuit_inputs(
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|v| v.as_secs()).unwrap_or(0),
+            min_age_required, max_age_required, 0
+        );
+
+        let mut file = File::create(Path::new(out_path))
+            .context("while creating output file")
+            .map_err(|_| PKError::FileWriteError)?;
+        file.write_all(inputs.unwrap().to_toml_string().as_bytes())
+            .context("while writing inputs")
+            .map_err(|_| PKError::FileWriteError)?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => PKError::Success.into(),
         Err(error) => error.into(),
     }
 }

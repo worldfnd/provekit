@@ -28,6 +28,11 @@ impl PKBuf {
         std::mem::forget(v); // Transfer ownership to caller
         Self { ptr, len }
     }
+
+    /// Create a Vec<u8> from a buffer, transferring ownership
+    pub fn to_vec(&self) -> Vec<u8> {
+        unsafe { Vec::from_raw_parts(self.ptr, self.len, self.len) }
+    }
 }
 
 /// Error codes returned by FFI functions
@@ -50,6 +55,8 @@ pub enum PKError {
     Utf8Error          = 6,
     /// File write error
     FileWriteError     = 7,
+    /// Failed to read eMRTD data
+    EMRTDReadError     = 8,
 }
 
 impl From<PKError> for c_int {

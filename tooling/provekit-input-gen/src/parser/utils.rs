@@ -1,7 +1,7 @@
 use {
     crate::parser::{binary::Binary, types::PassportError},
     serde::Deserialize,
-    std::{collections::HashMap, fs},
+    std::collections::HashMap,
 };
 
 #[derive(Debug, Clone)]
@@ -78,8 +78,7 @@ pub const ASN1_HEADER_LEN: usize = 2;
 
 pub fn load_csca_public_keys() -> Result<HashMap<String, Vec<CscaKey>>, Box<dyn std::error::Error>>
 {
-    let path = "csca_registry/csca_public_key.json";
-    let file_content = fs::read_to_string(path)?;
+    let file_content = include_str!("../../csca_registry/csca_public_key.json");
     let csca_keys: HashMap<String, Vec<CscaKey>> = serde_json::from_str(&file_content)?;
     Ok(csca_keys)
 }

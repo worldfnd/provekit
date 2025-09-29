@@ -58,6 +58,8 @@ extern "C"
         PK_UTF8_ERROR = 6,
         /// File write error
         PK_FILE_WRITE_ERROR = 7,
+        /// Failed to read eMRTD data
+        EMRTD_READ_ERROR = 8,
     } PKError;
 
     /// Initialize the ProveKit library.
@@ -84,6 +86,26 @@ extern "C"
     /// @param out_buf Output buffer to store the JSON string (must be freed with pk_free_buf)
     /// @return PK_SUCCESS on success, or an appropriate error code on failure
     int pk_prove_to_json(const char *scheme_path, const char *input_path, PKBuf *out_buf);
+
+    /// Converts data from eMRTD document to input file for Noir proof.
+    ///
+    /// @param dg1 Input buffer to get DG1 data from eMRTD
+    /// @param sod Input buffer to get SOD data from eMRTD
+    /// @param min_age_required Minimum age required
+    /// @param max_age_required Maximum age required
+    /// @param out_path Path where to write the input file (.toml)
+    /// @return PK_SUCCESS on success, or an appropriate error code on failure
+    int pk_emrtd_to_input_file(PKBuf *dg1, PKBuf *sod, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
+
+    /// Mocks data from eMRTD document to input file for Noir proof.
+    ///
+    /// @param birth_date Birth date in format YYMMDD
+    /// @param expiry_date Expiry date in format YYMMDD
+    /// @param min_age_required Minimum age required
+    /// @param max_age_required Maximum age required
+    /// @param out_path Path where to write the input file (.toml)
+    /// @return PK_SUCCESS on success, or an appropriate error code on failure
+    int pk_mock_emrtd_to_input_file(const char *birth_date, const char* expiry_date, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
 
     /// Free a buffer allocated by ProveKit FFI functions.
     ///
