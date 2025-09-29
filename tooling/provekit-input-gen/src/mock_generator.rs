@@ -1,26 +1,28 @@
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use rsa::pkcs8::DecodePrivateKey;
 use {
-    crate::parser::{
-        binary::Binary,
-        dsc::{SubjectPublicKeyInfo, TbsCertificate, DSC},
-        sod::SOD,
-        types::{
-            DataGroupHashValues, DigestAlgorithm, EContent, EncapContentInfo, SignatureAlgorithm,
-            SignatureAlgorithmName, SignedAttrs, SignerIdentifier, SignerInfo, MAX_DG1_SIZE,
+    crate::{
+        mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
+        parser::{
+            binary::Binary,
+            dsc::{SubjectPublicKeyInfo, TbsCertificate, DSC},
+            sod::SOD,
+            types::{
+                DataGroupHashValues, DigestAlgorithm, EContent, EncapContentInfo,
+                SignatureAlgorithm, SignatureAlgorithmName, SignedAttrs, SignerIdentifier,
+                SignerInfo, MAX_DG1_SIZE,
+            },
         },
     },
+    base64::{engine::general_purpose::STANDARD, Engine},
     rsa::{
         pkcs1::EncodeRsaPublicKey,
         pkcs1v15::SigningKey,
+        pkcs8::DecodePrivateKey,
         signature::{SignatureEncoding, Signer},
         RsaPrivateKey, RsaPublicKey,
     },
     sha2::{Digest, Sha256},
     std::collections::HashMap,
 };
-use crate::mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64};
 
 /// Build a fake DG1 (MRZ) with given birthdate and expiry dates.
 /// Birthdate and expiry are encoded as YYMMDD and inserted into the MRZ
@@ -161,11 +163,7 @@ pub fn load_dsc_mock_private_key() -> RsaPrivateKey {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        crate::PassportReader,
-        chrono::Utc,
-    };
+    use {super::*, crate::PassportReader, chrono::Utc};
 
     #[test]
     fn test_generate_and_validate_sod() {

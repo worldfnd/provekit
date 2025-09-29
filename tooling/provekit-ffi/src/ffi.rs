@@ -1,26 +1,29 @@
 //! Main FFI functions for ProveKit.
 
-use std::fs::File;
-use std::io::Write;
-use std::time::{SystemTime, UNIX_EPOCH};
-use anyhow::Context;
 use {
     crate::{
         types::{PKBuf, PKError},
         utils::c_str_to_str,
     },
-    anyhow::Result,
+    anyhow::{Context, Result},
     provekit_common::{file::read, NoirProofScheme},
+    provekit_input_gen::{
+        mock_generator::{
+            dg1_bytes_with_birthdate_expiry_date, generate_fake_sod, load_csca_mock_private_key,
+            load_dsc_mock_private_key,
+        },
+        parser::{binary::Binary, sod::SOD},
+        PassportReader,
+    },
     provekit_prover::NoirProofSchemeProver,
     std::{
+        fs::File,
+        io::Write,
         os::raw::{c_char, c_int},
         path::Path,
+        time::{SystemTime, UNIX_EPOCH},
     },
 };
-use provekit_input_gen::mock_generator::{dg1_bytes_with_birthdate_expiry_date, generate_fake_sod, load_csca_mock_private_key, load_dsc_mock_private_key};
-use provekit_input_gen::parser::binary::Binary;
-use provekit_input_gen::parser::sod::SOD;
-use provekit_input_gen::PassportReader;
 
 /// Prove a Noir program and write the proof to a file.
 ///
@@ -200,8 +203,13 @@ pub unsafe extern "C" fn pk_emrtd_to_input_file(
         reader.validate().map_err(|_| PKError::EMRTDReadError)?;
 
         let inputs = reader.to_circuit_inputs(
-            SystemTime::now().duration_since(UNIX_EPOCH).map(|v| v.as_secs()).unwrap_or(0),
-            min_age_required, max_age_required, 0
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|v| v.as_secs())
+                .unwrap_or(0),
+            min_age_required,
+            max_age_required,
+            0,
         );
 
         let mut file = File::create(Path::new(out_path))
@@ -295,8 +303,13 @@ pub unsafe extern "C" fn pk_mock_emrtd_to_input_file(
         reader.validate().map_err(|_| PKError::EMRTDReadError)?;
 
         let inputs = reader.to_circuit_inputs(
-            SystemTime::now().duration_since(UNIX_EPOCH).map(|v| v.as_secs()).unwrap_or(0),
-            min_age_required, max_age_required, 0
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|v| v.as_secs())
+                .unwrap_or(0),
+            min_age_required,
+            max_age_required,
+            0,
         );
 
         let mut file = File::create(Path::new(out_path))
