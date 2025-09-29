@@ -107,15 +107,23 @@ type Config struct {
 }
 
 type Hints struct {
-	witnessHints             ZKHint
-	spartanHidingHint        ZKHint
-	sparkSumcheckData        ZKHint
+	witnessHints      ZKHint
+	spartanHidingHint ZKHint
+	sparkSumcheckData ZKHint
+
 	rowFinalMerkle           ZKHint
 	rowFinalCounter          []Fp256
 	rowRSAddressEvaluation   []Fp256
 	rowRSValueEvaluation     []Fp256
 	rowRSTimestampEvaluation []Fp256
 	rowwiseSparkMerkle       ZKHint
+
+	colFinalCounter          []Fp256
+	colFinalMerkle           ZKHint
+	colRSAddressEvaluation   []Fp256
+	colRSValueEvaluation     []Fp256
+	colRSTimestampEvaluation []Fp256
+	colwiseSparkMerkle       ZKHint
 }
 
 type Hint struct {
@@ -166,8 +174,31 @@ type Commitment struct {
 }
 
 type SPARKMatrixData struct {
+	WHIRA3       WHIRParams
+	LogANumTerms int
+
 	RowFinalCounter          frontend.Variable
 	RowRSAddressEvaluation   frontend.Variable
 	RowRSValueEvaluation     frontend.Variable
 	RowRSTimestampEvaluation frontend.Variable
+
+	ColFinalCounter          frontend.Variable
+	ColRSAddressEvaluation   frontend.Variable
+	ColRSValueEvaluation     frontend.Variable
+	ColRSTimestampEvaluation frontend.Variable
+
+	SparkSumcheckFirstRound Merkle
+	SparkSumcheckMerkle     Merkle
+
+	RowFinalMerkleFirstRound Merkle
+	RowFinalMerkle           Merkle
+
+	RowwiseMerkleFirstRound Merkle
+	RowwiseMerkle           Merkle
+
+	ColFinalMerkleFirstRound Merkle
+	ColFinalMerkle           Merkle
+
+	ColwiseMerkleFirstRound Merkle
+	ColwiseMerkle           Merkle
 }

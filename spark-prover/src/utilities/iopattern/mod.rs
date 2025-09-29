@@ -71,27 +71,27 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
 
     // // Colwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.a.num_cols) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.a.num_cols) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("Col final counter claimed evaluation")
-    //     .add_whir_proof(&configs.col);
+    io = io
+        .hint("col_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.col);
 
-    // for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.a_3batched);
+    io = io
+        .hint("col_rs_address_claimed_evaluation")
+        .hint("col_rs_value_claimed_evaluation")
+        .hint("col_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.a_3batched);
 
     // // Matrix B
 
