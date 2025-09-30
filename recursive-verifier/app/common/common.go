@@ -21,7 +21,7 @@ type BuildOps struct {
 
 	// Output options
 	OutputCcsPath string
-	SaveKeys      bool
+	SaveKeys      string
 
 	// Icicle acceleration options
 	IcicleAcceleration bool
@@ -38,7 +38,7 @@ func NewBuildOpsFromContext(c *cli.Context) *BuildOps {
 		PkUrl:              c.String("pk_url"),
 		VkUrl:              c.String("vk_url"),
 		OutputCcsPath:      c.String("ccs"),
-		SaveKeys:           c.Bool("saveKeys"),
+		SaveKeys:           c.String("saveKeys"),
 		IcicleAcceleration: c.Bool("icicle_acceleration"),
 	}
 }
@@ -61,4 +61,8 @@ func (b *BuildOps) HasPkAndVkFromPath() bool {
 
 func (b *BuildOps) HasConfigFile() bool {
 	return b.ConfigFilePath != ""
+}
+
+func (b *BuildOps) ShouldSaveKeys() bool {
+	return b.SaveKeys != ""
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"reilabs/whir-verifier-circuit/app/common"
@@ -200,12 +201,17 @@ func verifyCircuit(
 		pk = &unsafePk
 		vk = &unsafeVk
 
-		if buildOps.SaveKeys {
+		if buildOps.ShouldSaveKeys() {
+			// Create the save keys directory if it doesn't exist
+			if err := os.MkdirAll(buildOps.SaveKeys, 0755); err != nil {
+				log.Printf("Failed to create save keys directory %s: %v", buildOps.SaveKeys, err)
+			}
+
 			// Generate timestamp for filenames
 			timestamp := time.Now().Format("02Jan_15-04-05")
 
 			// Save proving key to file
-			pkFilename := fmt.Sprintf("generated_pk_%s.bin", timestamp)
+			pkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("pk_%s.bin", timestamp))
 			pkFile, err := os.Create(pkFilename)
 			if err != nil {
 				log.Printf("Failed to create PK file: %v", err)
@@ -224,7 +230,7 @@ func verifyCircuit(
 			}
 
 			// Save verifying key to file
-			vkFilename := fmt.Sprintf("generated_vk_%s.bin", timestamp)
+			vkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("vk_%s.bin", timestamp))
 			vkFile, err := os.Create(vkFilename)
 			if err != nil {
 				log.Printf("Failed to create VK file: %v", err)

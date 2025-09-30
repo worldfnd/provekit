@@ -68,11 +68,11 @@ func main() {
 				Required: false,
 				Value:    "",
 			},
-			&cli.BoolFlag{
+			&cli.StringFlag{
 				Name:     "saveKeys",
-				Usage:    "Optional flag to save keys to files",
+				Usage:    "Optional path to save keys to files",
 				Required: false,
-				Value:    false,
+				Value:    "",
 			},
 			&cli.BoolFlag{
 				Name:     "icicle_acceleration",
