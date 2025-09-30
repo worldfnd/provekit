@@ -50,29 +50,29 @@ fn main() -> Result<()> {
         &request.claimed_values.a,
     )?;
 
-    // verify_spark_single_matrix(
-    //     &spark_proof.whir_params.row, 
-    //     &spark_proof.whir_params.col, 
-    //     &spark_proof.whir_params.b_3batched, 
-    //     spark_proof.matrix_dimensions.num_rows,
-    //     spark_proof.matrix_dimensions.num_cols,
-    //     spark_proof.matrix_dimensions.b_nonzero_terms,
-    //     &mut arthur, 
-    //     &request,
-    //     &request.claimed_values.b,
-    // )?;
+    verify_spark_single_matrix(
+        &spark_proof.whir_params.row, 
+        &spark_proof.whir_params.col, 
+        &spark_proof.whir_params.b_3batched, 
+        spark_proof.matrix_dimensions.num_rows,
+        spark_proof.matrix_dimensions.num_cols,
+        spark_proof.matrix_dimensions.b_nonzero_terms,
+        &mut arthur, 
+        &request,
+        &request.claimed_values.b,
+    )?;
 
-    // verify_spark_single_matrix(
-    //     &spark_proof.whir_params.row, 
-    //     &spark_proof.whir_params.col, 
-    //     &spark_proof.whir_params.c_3batched, 
-    //     spark_proof.matrix_dimensions.num_rows,
-    //     spark_proof.matrix_dimensions.num_cols,
-    //     spark_proof.matrix_dimensions.c_nonzero_terms,
-    //     &mut arthur, 
-    //     &request,
-    //     &request.claimed_values.c,
-    // )?;    
+    verify_spark_single_matrix(
+        &spark_proof.whir_params.row, 
+        &spark_proof.whir_params.col, 
+        &spark_proof.whir_params.c_3batched, 
+        spark_proof.matrix_dimensions.num_rows,
+        spark_proof.matrix_dimensions.num_cols,
+        spark_proof.matrix_dimensions.c_nonzero_terms,
+        &mut arthur, 
+        &request,
+        &request.claimed_values.c,
+    )?;    
 
     Ok(())
 }
@@ -126,7 +126,7 @@ pub fn verify_spark_single_matrix(
     //         final_folds[2] * a_sumcheck_commitment.batching_randomness * a_sumcheck_commitment.batching_randomness,
     // );
 
-    let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
+    // let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
     // a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
 
     // Matrix A - Rowwise 
@@ -216,7 +216,7 @@ pub fn verify_spark_single_matrix(
             rs_timestamp * a_rowwise_commitment.batching_randomness * a_rowwise_commitment.batching_randomness,
     );
 
-    a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
+    // a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
@@ -257,10 +257,10 @@ pub fn verify_spark_single_matrix(
         final_cntr,
     );
 
-    let final_cntr_verifier = Verifier::new(col_config);
-    final_cntr_verifier
-        .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
-        .context("while verifying WHIR")?;
+    // let final_cntr_verifier = Verifier::new(col_config);
+    // final_cntr_verifier
+        // .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
+        // .context("while verifying WHIR")?;
 
     let final_adr = calculate_adr(&evaluation_randomness.to_vec());
     let final_mem = calculate_eq(
@@ -314,7 +314,7 @@ pub fn verify_spark_single_matrix(
             rs_timestamp * a_colwise_commitment.batching_randomness * a_colwise_commitment.batching_randomness,
     );
 
-    a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
+    // a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 

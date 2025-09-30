@@ -118,7 +118,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 
 	var sparkMerklePaths []FullMultiPath[KeccakDigest]
 	var sparkStirAnswers [][][]Fp256
-	var sparkClaimedEvaluations []Fp256
+	var sparkClaimedEvaluations [][]Fp256
 
 	var rowFinalCounter []Fp256
 	var rowRSAddressEvaluation []Fp256
@@ -163,14 +163,16 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 				)
 				sparkStirAnswers = append(sparkStirAnswers, stirAnswersTemporary)
 			case "sumcheck_last_folds":
+				var temp []Fp256
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(sparkConfig.Transcript[start:end]),
-					&sparkClaimedEvaluations,
+					&temp,
 					false, false,
 				)
 				if err != nil {
 					return fmt.Errorf("failed to deserialize spark_last_folds: %w", err)
 				}
+				sparkClaimedEvaluations = append(sparkClaimedEvaluations, temp)
 			case "row_final_counter_claimed_evaluation":
 				var temp Fp256
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
@@ -284,7 +286,6 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	}
 
 	sparkConfig.Transcript = spark_truncated_transcript
-	// Spark end
 
 	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
 	if err != nil {
@@ -300,49 +301,92 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	}
 
 	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
-
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
-	// Read from spark
+	var asparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	var arowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
+	var arowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	var acolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
+	var acolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
 
-	sparkSumcheckData := ZKHint{}
-	rowFinal := ZKHint{}
+	var bsparkSumcheckData = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
+	var browFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
+	var browwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
+	var bcolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
+	var bcolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
 
-	// colwiseSparkMerkle := ZKHint{}
-	// colFinal := ZKHint{}
-
-	// var sparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
-	// fmt.Println("Aa", len(sparkMerklePaths))
-	// var rowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
-	// fmt.Println("Aa1", len(sparkMerklePaths))
-
-	var rowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
-	var colFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
-	var colwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	var csparkSumcheckData = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
+	var crowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
+	var crowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
+	var ccolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
+	var ccolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
 
 	hints := Hints{
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
-		sparkSumcheckData: sparkSumcheckData,
 
-		rowFinalCounter: rowFinalCounter,
-		rowFinalMerkle:  rowFinal,
+		AHints: SparkMatrixHints{
+			sparkSumcheckData:  asparkSumcheckData,
+			rowFinalMerkle:     arowFinal,
+			rowwiseSparkMerkle: arowwiseSparkMerkle,
+			colFinalMerkle:     acolFinal,
+			colwiseSparkMerkle: acolwiseSparkMerkle,
 
-		rowRSAddressEvaluation:   rowRSAddressEvaluation,
-		rowRSValueEvaluation:     rowRSValueEvaluation,
-		rowRSTimestampEvaluation: rowRSTimestampEvaluation,
-		rowwiseSparkMerkle:       rowwiseSparkMerkle,
+			sparkClaimedEvaluations: sparkClaimedEvaluations[0],
 
-		colFinalCounter: colFinalCounter,
-		colFinalMerkle:  colFinal,
+			rowFinalCounter:          rowFinalCounter[0],
+			rowRSAddressEvaluation:   rowRSAddressEvaluation[0],
+			rowRSValueEvaluation:     rowRSValueEvaluation[0],
+			rowRSTimestampEvaluation: rowRSTimestampEvaluation[0],
 
-		colRSAddressEvaluation:   colRSAddressEvaluation,
-		colRSValueEvaluation:     colRSValueEvaluation,
-		colRSTimestampEvaluation: colRSTimestampEvaluation,
-		colwiseSparkMerkle:       colwiseSparkMerkle,
+			colFinalCounter:          colFinalCounter[0],
+			colRSAddressEvaluation:   colRSAddressEvaluation[0],
+			colRSValueEvaluation:     colRSValueEvaluation[0],
+			colRSTimestampEvaluation: colRSTimestampEvaluation[0],
+		},
+
+		BHints: SparkMatrixHints{
+			sparkSumcheckData:  bsparkSumcheckData,
+			rowFinalMerkle:     browFinal,
+			rowwiseSparkMerkle: browwiseSparkMerkle,
+			colFinalMerkle:     bcolFinal,
+			colwiseSparkMerkle: bcolwiseSparkMerkle,
+
+			sparkClaimedEvaluations: sparkClaimedEvaluations[1],
+
+			rowFinalCounter:          rowFinalCounter[1],
+			rowRSAddressEvaluation:   rowRSAddressEvaluation[1],
+			rowRSValueEvaluation:     rowRSValueEvaluation[1],
+			rowRSTimestampEvaluation: rowRSTimestampEvaluation[1],
+
+			colFinalCounter:          colFinalCounter[1],
+			colRSAddressEvaluation:   colRSAddressEvaluation[1],
+			colRSValueEvaluation:     colRSValueEvaluation[1],
+			colRSTimestampEvaluation: colRSTimestampEvaluation[1],
+		},
+
+		CHints: SparkMatrixHints{
+			sparkSumcheckData:  csparkSumcheckData,
+			rowFinalMerkle:     crowFinal,
+			rowwiseSparkMerkle: crowwiseSparkMerkle,
+			colFinalMerkle:     ccolFinal,
+			colwiseSparkMerkle: ccolwiseSparkMerkle,
+
+			sparkClaimedEvaluations: sparkClaimedEvaluations[2],
+
+			rowFinalCounter:          rowFinalCounter[2],
+			rowRSAddressEvaluation:   rowRSAddressEvaluation[2],
+			rowRSValueEvaluation:     rowRSValueEvaluation[2],
+			rowRSTimestampEvaluation: rowRSTimestampEvaluation[2],
+
+			colFinalCounter:          colFinalCounter[2],
+			colRSAddressEvaluation:   colRSAddressEvaluation[2],
+			colRSValueEvaluation:     colRSValueEvaluation[2],
+			colRSTimestampEvaluation: colRSTimestampEvaluation[2],
+		},
 	}
 
-	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation, sparkClaimedEvaluations)
+	err = verifyCircuit(deferred, config, sparkConfig, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner, evaluation)
 
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)

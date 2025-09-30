@@ -109,21 +109,10 @@ type Config struct {
 type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
-	sparkSumcheckData ZKHint
 
-	rowFinalMerkle           ZKHint
-	rowFinalCounter          []Fp256
-	rowRSAddressEvaluation   []Fp256
-	rowRSValueEvaluation     []Fp256
-	rowRSTimestampEvaluation []Fp256
-	rowwiseSparkMerkle       ZKHint
-
-	colFinalCounter          []Fp256
-	colFinalMerkle           ZKHint
-	colRSAddressEvaluation   []Fp256
-	colRSValueEvaluation     []Fp256
-	colRSTimestampEvaluation []Fp256
-	colwiseSparkMerkle       ZKHint
+	AHints SparkMatrixHints
+	BHints SparkMatrixHints
+	CHints SparkMatrixHints
 }
 
 type Hint struct {
@@ -161,9 +150,13 @@ type SparkConfig struct {
 	IOPattern    string     `json:"io_pattern"`
 	Transcript   []byte     `json:"transcript"`
 	WHIRA3       WHIRConfig `json:"whir_a3"`
+	WHIRB3       WHIRConfig `json:"whir_b3"`
+	WHIRC3       WHIRConfig `json:"whir_c3"`
 	WHIRRow      WHIRConfig `json:"whir_row"`
 	WHIRCol      WHIRConfig `json:"whir_col"`
 	LogANumTerms int        `json:"log_a_num_terms"`
+	LogBNumTerms int        `json:"log_b_num_terms"`
+	LogCNumTerms int        `json:"log_c_num_terms"`
 }
 
 type Commitment struct {
@@ -176,6 +169,8 @@ type Commitment struct {
 type SPARKMatrixData struct {
 	WHIRA3       WHIRParams
 	LogANumTerms int
+
+	SparkSumcheckLast []frontend.Variable
 
 	RowFinalCounter          frontend.Variable
 	RowRSAddressEvaluation   frontend.Variable
@@ -201,4 +196,24 @@ type SPARKMatrixData struct {
 
 	ColwiseMerkleFirstRound Merkle
 	ColwiseMerkle           Merkle
+}
+
+type SparkMatrixHints struct {
+	sparkSumcheckData  ZKHint
+	rowFinalMerkle     ZKHint
+	rowwiseSparkMerkle ZKHint
+	colFinalMerkle     ZKHint
+	colwiseSparkMerkle ZKHint
+
+	sparkClaimedEvaluations []Fp256
+
+	rowFinalCounter          Fp256
+	rowRSAddressEvaluation   Fp256
+	rowRSValueEvaluation     Fp256
+	rowRSTimestampEvaluation Fp256
+
+	colFinalCounter          Fp256
+	colRSAddressEvaluation   Fp256
+	colRSValueEvaluation     Fp256
+	colRSTimestampEvaluation Fp256
 }

@@ -39,25 +39,25 @@ fn main() -> Result<()> {
         &spark_whir_configs.a_3batched,
     )?;
 
-    // prove_spark_for_single_matrix(
-    //     &mut merlin,
-    //     spark_r1cs.b,
-    //     &memory,
-    //     e_values.b,
-    //     request.claimed_values.b,
-    //     &spark_whir_configs,
-    //     &spark_whir_configs.b_3batched,
-    // )?;
+    prove_spark_for_single_matrix(
+        &mut merlin,
+        spark_r1cs.b,
+        &memory,
+        e_values.b,
+        request.claimed_values.b,
+        &spark_whir_configs,
+        &spark_whir_configs.b_3batched,
+    )?;
 
-    // prove_spark_for_single_matrix(
-    //     &mut merlin,
-    //     spark_r1cs.c,
-    //     &memory,
-    //     e_values.c,
-    //     request.claimed_values.c,
-    //     &spark_whir_configs,
-    //     &spark_whir_configs.c_3batched,
-    // )?;
+    prove_spark_for_single_matrix(
+        &mut merlin,
+        spark_r1cs.c,
+        &memory,
+        e_values.c,
+        request.claimed_values.c,
+        &spark_whir_configs,
+        &spark_whir_configs.c_3batched,
+    )?;
 
     let spark_proof = SPARKProof {
         transcript:        merlin.narg_string().to_vec(),
@@ -79,7 +79,11 @@ fn main() -> Result<()> {
         whir_row: WHIRConfigGnark::new(&spark_proof.whir_params.row),
         whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
         whir_a3: WHIRConfigGnark::new(&spark_proof.whir_params.a_3batched),
+        whir_b3: WHIRConfigGnark::new(&spark_proof.whir_params.b_3batched),
+        whir_c3: WHIRConfigGnark::new(&spark_proof.whir_params.c_3batched),
         log_a_num_terms: next_power_of_two(r1cs.a.num_entries()),
+        log_b_num_terms: next_power_of_two(r1cs.b.num_entries()),
+        log_c_num_terms: next_power_of_two(r1cs.c.num_entries()),
         claimed_value_for_a: request.claimed_values.a,
     };
 

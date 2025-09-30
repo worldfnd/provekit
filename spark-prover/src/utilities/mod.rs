@@ -62,7 +62,11 @@ pub struct SPARKProofGnark {
     pub whir_row: WHIRConfigGnark,
     pub whir_col: WHIRConfigGnark,
     pub whir_a3: WHIRConfigGnark,
+    pub whir_b3: WHIRConfigGnark,
+    pub whir_c3: WHIRConfigGnark,
     pub log_a_num_terms: usize,
+    pub log_b_num_terms: usize,
+    pub log_c_num_terms: usize,
     // Remove once spark testing is completed
     #[serde(with="serde_ark")]
     pub claimed_value_for_a: FieldElement,

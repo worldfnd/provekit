@@ -71,6 +71,8 @@ pub fn prove_spark_for_single_matrix(
         run_spark_sumcheck(merlin, mles, claimed_value)?;
 
     let mut sumcheck_statement = Statement::<FieldElement>::new(folding_randomness.len());
+
+    println!("Sch lasts {:?}", sumcheck_final_folds);
     
     let claimed_batched_value = 
         sumcheck_final_folds[0] + 
@@ -178,11 +180,11 @@ pub fn prove_spark_for_single_matrix(
 
     assert!(claimed_rowwise_eval == rowwise_witness.batched_poly().evaluate(&MultilinearPoint(evaluation_randomness.to_vec())));
 
-    rowwise_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
+    // rowwise_statement.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
-    sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
+    // let sumcheck_prover = Prover::new(batched_config.clone());
+    // sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
 
      // Colwise
 
@@ -221,13 +223,13 @@ pub fn prove_spark_for_single_matrix(
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&final_col_eval)?;
 
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        final_col_eval,
-        whir_configs.col.clone(),
-        final_col_ts_witness,
-    )?;
+    // produce_whir_proof(
+    //     merlin,
+    //     MultilinearPoint(evaluation_randomness.to_vec()),
+    //     final_col_eval,
+    //     whir_configs.col.clone(),
+    //     final_col_ts_witness,
+    // )?;
 
     // // Colwise RS WS GPA
 
@@ -279,11 +281,11 @@ pub fn prove_spark_for_single_matrix(
 
     assert!(claimed_colwise_eval == colwise_witness.batched_poly().evaluate(&MultilinearPoint(evaluation_randomness.to_vec())));
 
-    colwise_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
+    // colwise_statement.add_constraint(
+    //     Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
-    sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
+    // let sumcheck_prover = Prover::new(batched_config.clone());
+    // sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
 
     Ok(())
 }

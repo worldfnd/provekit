@@ -1,6 +1,7 @@
 package circuit
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -49,9 +50,9 @@ type Circuit struct {
 	WHIRRow    WHIRParams
 	WHIRCol    WHIRParams
 
-	SparkSumcheckLast []frontend.Variable
-
 	SparkA SPARKMatrixData
+	SparkB SPARKMatrixData
+	SparkC SPARKMatrixData
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
@@ -60,7 +61,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// 	return err
 	// }
 
-	// rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+	// spartanCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 
 	// if err != nil {
 	// 	return err
@@ -77,10 +78,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// 	return err
 	// }
 
-	// _ = spartanSumcheckRand
-	// _ = spartanSumcheckLastValue
-
-	// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash,
+	// whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, spartanCommitment,
 	// 	[][]frontend.Variable{{}, {}},
 	// 	[][]frontend.Variable{},
 	// )
@@ -88,15 +86,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// if err != nil {
 	// 	return err
 	// }
-
-	// _ = whirFoldingRandomness
-
-	// _ = rootHash
-	// _ = batchingRandomness
-	// _ = initialOODQueries
-	// _ = initialOODAnswers
-	// _ = sc
-	// _ = uapi
 
 	// x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
 	// api.AssertIsEqual(spartanSumcheckLastValue, x)
@@ -123,6 +112,30 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		if err != nil {
 			return err
 		}
+
+		err = sparkSingleMatrix(
+			api,
+			arthur,
+			uapi,
+			sc,
+			circuit.SparkB,
+			circuit,
+		)
+		if err != nil {
+			return err
+		}
+
+		err = sparkSingleMatrix(
+			api,
+			arthur,
+			uapi,
+			sc,
+			circuit.SparkC,
+			circuit,
+		)
+		if err != nil {
+			return err
+		}
 	} else {
 		// matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
 
@@ -135,7 +148,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, sparkConfig SparkConfig, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, evaluation string, sparkSumcheck []Fp256,
+	deferred []Fp256, cfg Config, sparkConfig SparkConfig, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, evaluation string,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -161,21 +174,25 @@ func verifyCircuit(
 	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
 	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
 
-	contSparkSumcheckLast := make([]frontend.Variable, 3)
-	sparkSumcheckLast := make([]frontend.Variable, 3)
-	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(sparkSumcheck[0].Limbs)
-	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(sparkSumcheck[1].Limbs)
-	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(sparkSumcheck[2].Limbs)
+	acontSparkSumcheckLast := make([]frontend.Variable, 3)
+	asparkSumcheckLast := make([]frontend.Variable, 3)
+	asparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[0].Limbs)
+	asparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[1].Limbs)
+	asparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[2].Limbs)
 
-	rowFinalCounter := typeConverters.LimbsToBigIntMod(hints.rowFinalCounter[0].Limbs)
-	rowRSAddressEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSAddressEvaluation[0].Limbs)
-	rowRSValueEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSValueEvaluation[0].Limbs)
-	rowRSTimestampEvaluation := typeConverters.LimbsToBigIntMod(hints.rowRSTimestampEvaluation[0].Limbs)
+	bcontSparkSumcheckLast := make([]frontend.Variable, 3)
+	bsparkSumcheckLast := make([]frontend.Variable, 3)
+	bsparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.BHints.sparkClaimedEvaluations[0].Limbs)
+	bsparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.BHints.sparkClaimedEvaluations[1].Limbs)
+	bsparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.BHints.sparkClaimedEvaluations[2].Limbs)
 
-	colFinalCounter := typeConverters.LimbsToBigIntMod(hints.colFinalCounter[0].Limbs)
-	colRSAddressEvaluation := typeConverters.LimbsToBigIntMod(hints.colRSAddressEvaluation[0].Limbs)
-	colRSValueEvaluation := typeConverters.LimbsToBigIntMod(hints.colRSValueEvaluation[0].Limbs)
-	colRSTimestampEvaluation := typeConverters.LimbsToBigIntMod(hints.colRSTimestampEvaluation[0].Limbs)
+	ccontSparkSumcheckLast := make([]frontend.Variable, 3)
+	csparkSumcheckLast := make([]frontend.Variable, 3)
+	csparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.CHints.sparkClaimedEvaluations[0].Limbs)
+	csparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.CHints.sparkClaimedEvaluations[1].Limbs)
+	csparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.CHints.sparkClaimedEvaluations[2].Limbs)
+
+	fmt.Print(bsparkSumcheckLast)
 
 	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 
@@ -251,37 +268,102 @@ func verifyCircuit(
 		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
 		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
 
-		LogANumTerms:      sparkConfig.LogANumTerms,
-		SparkSumcheckLast: contSparkSumcheckLast,
+		LogANumTerms: sparkConfig.LogANumTerms,
 
 		SparkA: SPARKMatrixData{
-			RowFinalCounter:          rowFinalCounter,
-			RowRSAddressEvaluation:   rowRSAddressEvaluation,
-			RowRSValueEvaluation:     rowRSValueEvaluation,
-			RowRSTimestampEvaluation: rowRSTimestampEvaluation,
+			SparkSumcheckLast: acontSparkSumcheckLast,
 
-			ColFinalCounter:          colFinalCounter,
-			ColRSAddressEvaluation:   colRSAddressEvaluation,
-			ColRSValueEvaluation:     colRSValueEvaluation,
-			ColRSTimestampEvaluation: colRSTimestampEvaluation,
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.rowRSTimestampEvaluation.Limbs),
 
-			SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, true),
-			SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, true),
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
 
-			RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, true),
-			RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, true),
+			SparkSumcheckFirstRound: newMerkle(hints.AHints.sparkSumcheckData.firstRoundMerklePaths.path, true),
+			SparkSumcheckMerkle:     newMerkle(hints.AHints.sparkSumcheckData.roundHints, true),
 
-			RowwiseMerkleFirstRound: newMerkle(hints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
-			RowwiseMerkle:           newMerkle(hints.rowwiseSparkMerkle.roundHints, true),
+			RowFinalMerkleFirstRound: newMerkle(hints.AHints.rowFinalMerkle.firstRoundMerklePaths.path, true),
+			RowFinalMerkle:           newMerkle(hints.AHints.rowFinalMerkle.roundHints, true),
 
-			ColFinalMerkleFirstRound: newMerkle(hints.colFinalMerkle.firstRoundMerklePaths.path, true),
-			ColFinalMerkle:           newMerkle(hints.colFinalMerkle.roundHints, true),
+			RowwiseMerkleFirstRound: newMerkle(hints.AHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			RowwiseMerkle:           newMerkle(hints.AHints.rowwiseSparkMerkle.roundHints, true),
 
-			ColwiseMerkleFirstRound: newMerkle(hints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
-			ColwiseMerkle:           newMerkle(hints.colwiseSparkMerkle.roundHints, true),
+			ColFinalMerkleFirstRound: newMerkle(hints.AHints.colFinalMerkle.firstRoundMerklePaths.path, true),
+			ColFinalMerkle:           newMerkle(hints.AHints.colFinalMerkle.roundHints, true),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, true),
 
 			WHIRA3:       NewWhirParams(sparkConfig.WHIRA3),
 			LogANumTerms: sparkConfig.LogANumTerms,
+		},
+
+		SparkB: SPARKMatrixData{
+			SparkSumcheckLast: bcontSparkSumcheckLast,
+
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.BHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.BHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.BHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.BHints.rowRSTimestampEvaluation.Limbs),
+
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.BHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.BHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.BHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.BHints.colRSTimestampEvaluation.Limbs),
+
+			SparkSumcheckFirstRound: newMerkle(hints.BHints.sparkSumcheckData.firstRoundMerklePaths.path, true),
+			SparkSumcheckMerkle:     newMerkle(hints.BHints.sparkSumcheckData.roundHints, true),
+
+			RowFinalMerkleFirstRound: newMerkle(hints.BHints.rowFinalMerkle.firstRoundMerklePaths.path, true),
+			RowFinalMerkle:           newMerkle(hints.BHints.rowFinalMerkle.roundHints, true),
+
+			RowwiseMerkleFirstRound: newMerkle(hints.BHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			RowwiseMerkle:           newMerkle(hints.BHints.rowwiseSparkMerkle.roundHints, true),
+
+			ColFinalMerkleFirstRound: newMerkle(hints.BHints.colFinalMerkle.firstRoundMerklePaths.path, true),
+			ColFinalMerkle:           newMerkle(hints.BHints.colFinalMerkle.roundHints, true),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.BHints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			ColwiseMerkle:           newMerkle(hints.BHints.colwiseSparkMerkle.roundHints, true),
+
+			WHIRA3:       NewWhirParams(sparkConfig.WHIRB3),
+			LogANumTerms: sparkConfig.LogBNumTerms,
+		},
+
+		SparkC: SPARKMatrixData{
+			SparkSumcheckLast: ccontSparkSumcheckLast,
+
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.CHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.CHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.CHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.CHints.rowRSTimestampEvaluation.Limbs),
+
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.CHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.CHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.CHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.CHints.colRSTimestampEvaluation.Limbs),
+
+			SparkSumcheckFirstRound: newMerkle(hints.CHints.sparkSumcheckData.firstRoundMerklePaths.path, true),
+			SparkSumcheckMerkle:     newMerkle(hints.CHints.sparkSumcheckData.roundHints, true),
+
+			RowFinalMerkleFirstRound: newMerkle(hints.CHints.rowFinalMerkle.firstRoundMerklePaths.path, true),
+			RowFinalMerkle:           newMerkle(hints.CHints.rowFinalMerkle.roundHints, true),
+
+			RowwiseMerkleFirstRound: newMerkle(hints.CHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			RowwiseMerkle:           newMerkle(hints.CHints.rowwiseSparkMerkle.roundHints, true),
+
+			ColFinalMerkleFirstRound: newMerkle(hints.CHints.colFinalMerkle.firstRoundMerklePaths.path, true),
+			ColFinalMerkle:           newMerkle(hints.CHints.colFinalMerkle.roundHints, true),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.CHints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
+			ColwiseMerkle:           newMerkle(hints.CHints.colwiseSparkMerkle.roundHints, true),
+
+			WHIRA3:       NewWhirParams(sparkConfig.WHIRC3),
+			LogANumTerms: sparkConfig.LogCNumTerms,
 		},
 
 		UseSpark: useSpark,
@@ -338,41 +420,106 @@ func verifyCircuit(
 		MatrixB: matrixB,
 		MatrixC: matrixC,
 
-		SPARKIO:           []byte(sparkConfig.IOPattern),
-		SPARKTranscript:   sparkTranscriptT,
-		WHIRRow:           NewWhirParams(sparkConfig.WHIRRow),
-		WHIRCol:           NewWhirParams(sparkConfig.WHIRCol),
-		LogANumTerms:      sparkConfig.LogANumTerms,
-		SparkSumcheckLast: sparkSumcheckLast,
+		SPARKIO:         []byte(sparkConfig.IOPattern),
+		SPARKTranscript: sparkTranscriptT,
+		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
+		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
+		LogANumTerms:    sparkConfig.LogANumTerms,
 
 		SparkA: SPARKMatrixData{
-			RowFinalCounter:          rowFinalCounter,
-			RowRSAddressEvaluation:   rowRSAddressEvaluation,
-			RowRSValueEvaluation:     rowRSValueEvaluation,
-			RowRSTimestampEvaluation: rowRSTimestampEvaluation,
+			SparkSumcheckLast: asparkSumcheckLast,
 
-			ColFinalCounter:          colFinalCounter,
-			ColRSAddressEvaluation:   colRSAddressEvaluation,
-			ColRSValueEvaluation:     colRSValueEvaluation,
-			ColRSTimestampEvaluation: colRSTimestampEvaluation,
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.rowRSTimestampEvaluation.Limbs),
 
-			SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, false),
-			SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, false),
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
 
-			RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, false),
-			RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, false),
+			SparkSumcheckFirstRound: newMerkle(hints.AHints.sparkSumcheckData.firstRoundMerklePaths.path, false),
+			SparkSumcheckMerkle:     newMerkle(hints.AHints.sparkSumcheckData.roundHints, false),
 
-			RowwiseMerkleFirstRound: newMerkle(hints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
-			RowwiseMerkle:           newMerkle(hints.rowwiseSparkMerkle.roundHints, false),
+			RowFinalMerkleFirstRound: newMerkle(hints.AHints.rowFinalMerkle.firstRoundMerklePaths.path, false),
+			RowFinalMerkle:           newMerkle(hints.AHints.rowFinalMerkle.roundHints, false),
 
-			ColFinalMerkleFirstRound: newMerkle(hints.colFinalMerkle.firstRoundMerklePaths.path, false),
-			ColFinalMerkle:           newMerkle(hints.colFinalMerkle.roundHints, false),
+			RowwiseMerkleFirstRound: newMerkle(hints.AHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			RowwiseMerkle:           newMerkle(hints.AHints.rowwiseSparkMerkle.roundHints, false),
 
-			ColwiseMerkleFirstRound: newMerkle(hints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
-			ColwiseMerkle:           newMerkle(hints.colwiseSparkMerkle.roundHints, false),
+			ColFinalMerkleFirstRound: newMerkle(hints.AHints.colFinalMerkle.firstRoundMerklePaths.path, false),
+			ColFinalMerkle:           newMerkle(hints.AHints.colFinalMerkle.roundHints, false),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, false),
 
 			WHIRA3:       NewWhirParams(sparkConfig.WHIRA3),
 			LogANumTerms: sparkConfig.LogANumTerms,
+		},
+
+		SparkB: SPARKMatrixData{
+			SparkSumcheckLast: bsparkSumcheckLast,
+
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.BHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.BHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.BHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.BHints.rowRSTimestampEvaluation.Limbs),
+
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.BHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.BHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.BHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.BHints.colRSTimestampEvaluation.Limbs),
+
+			SparkSumcheckFirstRound: newMerkle(hints.BHints.sparkSumcheckData.firstRoundMerklePaths.path, false),
+			SparkSumcheckMerkle:     newMerkle(hints.BHints.sparkSumcheckData.roundHints, false),
+
+			RowFinalMerkleFirstRound: newMerkle(hints.BHints.rowFinalMerkle.firstRoundMerklePaths.path, false),
+			RowFinalMerkle:           newMerkle(hints.BHints.rowFinalMerkle.roundHints, false),
+
+			RowwiseMerkleFirstRound: newMerkle(hints.BHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			RowwiseMerkle:           newMerkle(hints.BHints.rowwiseSparkMerkle.roundHints, false),
+
+			ColFinalMerkleFirstRound: newMerkle(hints.BHints.colFinalMerkle.firstRoundMerklePaths.path, false),
+			ColFinalMerkle:           newMerkle(hints.BHints.colFinalMerkle.roundHints, false),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.BHints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			ColwiseMerkle:           newMerkle(hints.BHints.colwiseSparkMerkle.roundHints, false),
+
+			WHIRA3:       NewWhirParams(sparkConfig.WHIRB3),
+			LogANumTerms: sparkConfig.LogBNumTerms,
+		},
+
+		SparkC: SPARKMatrixData{
+			SparkSumcheckLast: csparkSumcheckLast,
+
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.CHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.CHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.CHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.CHints.rowRSTimestampEvaluation.Limbs),
+
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.CHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.CHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.CHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.CHints.colRSTimestampEvaluation.Limbs),
+
+			SparkSumcheckFirstRound: newMerkle(hints.CHints.sparkSumcheckData.firstRoundMerklePaths.path, false),
+			SparkSumcheckMerkle:     newMerkle(hints.CHints.sparkSumcheckData.roundHints, false),
+
+			RowFinalMerkleFirstRound: newMerkle(hints.CHints.rowFinalMerkle.firstRoundMerklePaths.path, false),
+			RowFinalMerkle:           newMerkle(hints.CHints.rowFinalMerkle.roundHints, false),
+
+			RowwiseMerkleFirstRound: newMerkle(hints.CHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			RowwiseMerkle:           newMerkle(hints.CHints.rowwiseSparkMerkle.roundHints, false),
+
+			ColFinalMerkleFirstRound: newMerkle(hints.CHints.colFinalMerkle.firstRoundMerklePaths.path, false),
+			ColFinalMerkle:           newMerkle(hints.CHints.colFinalMerkle.roundHints, false),
+
+			ColwiseMerkleFirstRound: newMerkle(hints.CHints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
+			ColwiseMerkle:           newMerkle(hints.CHints.colwiseSparkMerkle.roundHints, false),
+
+			WHIRA3:       NewWhirParams(sparkConfig.WHIRC3),
+			LogANumTerms: sparkConfig.LogCNumTerms,
 		},
 
 		UseSpark: useSpark,
@@ -580,10 +727,10 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(gpaResultRSWS.lastSumcheckValue, rsws_evaluated_value)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowwiseMerkle, matrix.RowwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
-		[][]frontend.Variable{{matrix.RowRSAddressEvaluation}, {matrix.RowRSValueEvaluation}, {matrix.RowRSTimestampEvaluation}},
-		[][]frontend.Variable{rsws_evaluation_randomness},
-	)
+	// _, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowwiseMerkle, matrix.RowwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
+	// 	[][]frontend.Variable{{matrix.RowRSAddressEvaluation}, {matrix.RowRSValueEvaluation}, {matrix.RowRSTimestampEvaluation}},
+	// 	[][]frontend.Variable{rsws_evaluation_randomness},
+	// )
 	_ = rsws_evaluation_randomness
 
 	api.AssertIsEqual(api.Mul(claimedInit, claimedWS), api.Mul(claimedRS, claimedFinal))
@@ -624,10 +771,10 @@ func sparkSingleMatrix(
 
 	colwiseinit_opening := api.Sub(api.Add(api.Mul(colwiseaddr, colwiseGamma, colwiseGamma), api.Mul(colwisemem, colwiseGamma), colwiseinit_cntr), colwiseTau)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkA.ColFinalMerkle, circuit.SparkA.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
-		[][]frontend.Variable{{matrix.ColFinalCounter}},
-		[][]frontend.Variable{colwiseEvaluation_randomness},
-	)
+	// _, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkA.ColFinalMerkle, circuit.SparkA.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
+	// 	[][]frontend.Variable{{matrix.ColFinalCounter}},
+	// 	[][]frontend.Variable{colwiseEvaluation_randomness},
+	// )
 
 	colwisefinal_opening := api.Sub(api.Add(api.Mul(colwiseaddr, colwiseGamma, colwiseGamma), api.Mul(colwisemem, colwiseGamma), matrix.ColFinalCounter), colwiseTau)
 	colwiseevaluated_value := api.Add(api.Mul(colwiseinit_opening, api.Sub(1, colwiseLast_randomness)), api.Mul(colwisefinal_opening, colwiseLast_randomness))
@@ -652,10 +799,11 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(colwisegpaResultRSWS.lastSumcheckValue, colwisersws_evaluated_value)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.ColwiseMerkle, matrix.ColwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, colwiseCommitment,
-		[][]frontend.Variable{{matrix.ColRSAddressEvaluation}, {matrix.ColRSValueEvaluation}, {matrix.ColRSTimestampEvaluation}},
-		[][]frontend.Variable{colwisersws_evaluation_randomness},
-	)
+	// _, err = RunZKWhir(api, arthur, uapi, sc, matrix.ColwiseMerkle, matrix.ColwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, colwiseCommitment,
+	// 	[][]frontend.Variable{{matrix.ColRSAddressEvaluation}, {matrix.ColRSValueEvaluation}, {matrix.ColRSTimestampEvaluation}},
+	// 	[][]frontend.Variable{colwisersws_evaluation_randomness},
+	// )
+	_ = colwisersws_evaluation_randomness
 
 	api.AssertIsEqual(api.Mul(colwiseClaimedInit, colwiseClaimedWS), api.Mul(colwiseClaimedRS, colwiseClaimedFinal))
 

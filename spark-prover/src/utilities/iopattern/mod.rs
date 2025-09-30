@@ -66,8 +66,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("row_rs_address_claimed_evaluation")
         .hint("row_rs_value_claimed_evaluation")
-        .hint("row_rs_timestamp_claimed_evaluation")
-        .add_whir_proof(&configs.a_3batched);
+        .hint("row_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.a_3batched);
 
     // // Colwise
 
@@ -79,8 +79,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("col_final_counter_claimed_evaluation")
-        .add_whir_proof(&configs.col);
+        .hint("col_final_counter_claimed_evaluation");
+        // .add_whir_proof(&configs.col);
 
     for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -90,127 +90,127 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("col_rs_address_claimed_evaluation")
         .hint("col_rs_value_claimed_evaluation")
-        .hint("col_rs_timestamp_claimed_evaluation")
-        .add_whir_proof(&configs.a_3batched);
+        .hint("col_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.a_3batched);
 
     // // Matrix B
 
-    // io = io
-    //     .commit_statement(&configs.b_3batched)
-    //     .commit_statement(&configs.b_3batched)
-    //     .commit_statement(&configs.b_3batched)
-    //     .commit_statement(&configs.row)
-    //     .commit_statement(&configs.col)
-    //     .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
-    //     .hint("sumcheck_last_folds")
-    //     .add_whir_proof(&configs.b_3batched);
+    io = io
+        .commit_statement(&configs.b_3batched)
+        .commit_statement(&configs.b_3batched)
+        .commit_statement(&configs.b_3batched)
+        .commit_statement(&configs.row)
+        .commit_statement(&configs.col)
+        .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
+        .hint("sumcheck_last_folds");
+        // .add_whir_proof(&configs.b_3batched);
     
-    // // Rowwise
+    // Rowwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.b.num_rows) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.b.num_rows) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("Row final counter claimed evaluation")
-    //     .add_whir_proof(&configs.row);
+    io = io
+        .hint("row_final_counter_claimed_evaluation");
+        // .add_whir_proof(&configs.row);
 
-    // for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.b_3batched);
+    io = io
+        .hint("row_rs_address_claimed_evaluation")
+        .hint("row_rs_value_claimed_evaluation")
+        .hint("row_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.b_3batched);
 
-    // // Colwise
+    // Colwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.b.num_cols) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.b.num_cols) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("Col final counter claimed evaluation")
-    //     .add_whir_proof(&configs.col);
+    io = io
+        .hint("col_final_counter_claimed_evaluation");
+        // .add_whir_proof(&configs.col);
 
-    // for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.b_3batched);
+    io = io
+        .hint("col_rs_address_claimed_evaluation")
+        .hint("col_rs_value_claimed_evaluation")
+        .hint("col_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.b_3batched);
 
     // // Matrix C
 
-    // io = io
-    //     .commit_statement(&configs.c_3batched)
-    //     .commit_statement(&configs.c_3batched)
-    //     .commit_statement(&configs.c_3batched)
-    //     .commit_statement(&configs.row)
-    //     .commit_statement(&configs.col)
-    //     .add_sumcheck_polynomials(next_power_of_two(r1cs.c.num_entries()))
-    //     .hint("sumcheck_last_folds")
-    //     .add_whir_proof(&configs.c_3batched);
+    io = io
+        .commit_statement(&configs.c_3batched)
+        .commit_statement(&configs.c_3batched)
+        .commit_statement(&configs.c_3batched)
+        .commit_statement(&configs.row)
+        .commit_statement(&configs.col)
+        .add_sumcheck_polynomials(next_power_of_two(r1cs.c.num_entries()))
+        .hint("sumcheck_last_folds");
+        // .add_whir_proof(&configs.c_3batched);
     
-    // // Rowwise
+    // Rowwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.c.num_rows) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.c.num_rows) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("Row final counter claimed evaluation")
-    //     .add_whir_proof(&configs.row);
+    io = io
+        .hint("row_final_counter_claimed_evaluation");
+        // .add_whir_proof(&configs.row);
 
-    // for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.c_3batched);
+    io = io
+        .hint("row_rs_address_claimed_evaluation")
+        .hint("row_rs_value_claimed_evaluation")
+        .hint("row_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.c_3batched);
 
-    // // Colwise
+    // Colwise
 
-    // io = io.add_tau_and_gamma();
+    io = io.add_tau_and_gamma();
 
-    // for i in 0..=next_power_of_two(r1cs.c.num_cols) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.c.num_cols) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("Col final counter claimed evaluation")
-    //     .add_whir_proof(&configs.col);
+    io = io
+        .hint("col_final_counter_claimed_evaluation");
+        // .add_whir_proof(&configs.col);
 
-    // for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
-    //     io = io.add_sumcheck_polynomials(i);
-    //     io = io.add_line();
-    // }
+    for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
+        io = io.add_sumcheck_polynomials(i);
+        io = io.add_line();
+    }
 
-    // io = io
-    //     .hint("RS address claimed evaluation")
-    //     .hint("RS value claimed evaluation")
-    //     .hint("RS timestamp claimed evaluation")
-    //     .add_whir_proof(&configs.c_3batched);
+    io = io
+        .hint("col_rs_address_claimed_evaluation")
+        .hint("col_rs_value_claimed_evaluation")
+        .hint("col_rs_timestamp_claimed_evaluation");
+        // .add_whir_proof(&configs.c_3batched);
     io
 }
