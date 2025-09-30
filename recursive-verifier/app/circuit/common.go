@@ -130,6 +130,12 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var colRSValueEvaluation []Fp256
 	var colRSTimestampEvaluation []Fp256
 
+	var claimedA Fp256
+	var claimedB Fp256
+	var claimedC Fp256
+	var pointRow []Fp256
+	var pointCol []Fp256
+
 	for _, op := range spark_io.Ops {
 		switch op.Kind {
 		case gnarkNimue.Hint:
@@ -261,6 +267,51 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 					return fmt.Errorf("failed to deserialize col_rs_timestamp_claimed_evaluation : %w", err)
 				}
 				colRSTimestampEvaluation = append(colRSTimestampEvaluation, temp)
+			case "claimed_a":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&claimedA,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
+			case "claimed_b":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&claimedB,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
+			case "claimed_c":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&claimedC,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
+			case "point_row":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&pointRow,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
+			case "point_col":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(sparkConfig.Transcript[start:end]),
+					&pointCol,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize row_rs_address_claimed_evaluation : %w", err)
+				}
 			}
 
 			if err != nil {
@@ -322,10 +373,14 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var ccolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
 
 	hints := Hints{
+		pointRow: pointRow,
+		pointCol: pointCol,
+
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 
 		AHints: SparkMatrixHints{
+			claimed:            claimedA,
 			sparkSumcheckData:  asparkSumcheckData,
 			rowFinalMerkle:     arowFinal,
 			rowwiseSparkMerkle: arowwiseSparkMerkle,
@@ -346,6 +401,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 		},
 
 		BHints: SparkMatrixHints{
+			claimed:            claimedB,
 			sparkSumcheckData:  bsparkSumcheckData,
 			rowFinalMerkle:     browFinal,
 			rowwiseSparkMerkle: browwiseSparkMerkle,
@@ -366,6 +422,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 		},
 
 		CHints: SparkMatrixHints{
+			claimed:            claimedC,
 			sparkSumcheckData:  csparkSumcheckData,
 			rowFinalMerkle:     crowFinal,
 			rowwiseSparkMerkle: crowwiseSparkMerkle,

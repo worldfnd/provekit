@@ -38,6 +38,12 @@ fn main() -> Result<()> {
     let io = IOPattern::from_string(spark_proof.io_pattern.clone());
     let mut arthur = io.to_verifier_state(&spark_proof.transcript);
 
+    let claimed_a: FieldElement = arthur.hint()?;
+    let claimed_b: FieldElement = arthur.hint()?;
+    let claimed_c: FieldElement = arthur.hint()?;
+    let point_row: Vec<FieldElement> = arthur.hint()?;
+    let point_col: Vec<FieldElement> = arthur.hint()?;
+
     verify_spark_single_matrix(
         &spark_proof.whir_params.row, 
         &spark_proof.whir_params.col, 
@@ -119,15 +125,15 @@ pub fn verify_spark_single_matrix(
         num_nonzero_terms,
     ));
 
-    // a_spark_sumcheck_statement_verifier.add_constraint(
-    //     Weights::evaluation(MultilinearPoint(randomness.clone())),
-    //     final_folds[0] + 
-    //         final_folds[1] * a_sumcheck_commitment.batching_randomness +
-    //         final_folds[2] * a_sumcheck_commitment.batching_randomness * a_sumcheck_commitment.batching_randomness,
-    // );
+    a_spark_sumcheck_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
+        final_folds[0] + 
+            final_folds[1] * a_sumcheck_commitment.batching_randomness +
+            final_folds[2] * a_sumcheck_commitment.batching_randomness * a_sumcheck_commitment.batching_randomness,
+    );
 
-    // let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
-    // a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
+    let a_spark_sumcheck_verifier = Verifier::new(num_nonzero_term_batched3_config);
+    a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
 
     // Matrix A - Rowwise 
 
@@ -156,8 +162,6 @@ pub fn verify_spark_single_matrix(
     let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
     let final_cntr: FieldElement = arthur.hint()?;
 
-    println!("Final cntr {:?}", final_cntr); //Reilabs Debug: 
-
     let mut final_cntr_statement =
         Statement::<FieldElement>::new(next_power_of_two(num_rows));
     final_cntr_statement.add_constraint(
@@ -165,10 +169,10 @@ pub fn verify_spark_single_matrix(
         final_cntr,
     );
 
-    // let final_cntr_verifier = Verifier::new(row_config);
-    // final_cntr_verifier
-    //     .verify(arthur, &a_row_finalts_commitment, &final_cntr_statement)
-    //     .context("while verifying WHIR")?;
+    let final_cntr_verifier = Verifier::new(row_config);
+    final_cntr_verifier
+        .verify(arthur, &a_row_finalts_commitment, &final_cntr_statement)
+        .context("while verifying WHIR")?;
 
     let final_adr = calculate_adr(&evaluation_randomness.to_vec());
     let final_mem = calculate_eq(
@@ -216,7 +220,7 @@ pub fn verify_spark_single_matrix(
             rs_timestamp * a_rowwise_commitment.batching_randomness * a_rowwise_commitment.batching_randomness,
     );
 
-    // a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
+    a_spark_sumcheck_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
@@ -257,10 +261,10 @@ pub fn verify_spark_single_matrix(
         final_cntr,
     );
 
-    // let final_cntr_verifier = Verifier::new(col_config);
-    // final_cntr_verifier
-        // .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
-        // .context("while verifying WHIR")?;
+    let final_cntr_verifier = Verifier::new(col_config);
+    final_cntr_verifier
+        .verify(arthur, &a_col_finalts_commitment, &final_cntr_statement)
+        .context("while verifying WHIR")?;
 
     let final_adr = calculate_adr(&evaluation_randomness.to_vec());
     let final_mem = calculate_eq(
@@ -297,10 +301,6 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
         + ws_opening * last_randomness[0];
 
-    println!("{:?}", rs_opening); //Reilabs Debug: 
-    println!("{:?}", rs_adr); //Reilabs Debug: 
-    println!("{:?}", evaluated_value); //Reilabs Debug: 
-    println!("{:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     let mut a_spark_colwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
@@ -314,7 +314,7 @@ pub fn verify_spark_single_matrix(
             rs_timestamp * a_colwise_commitment.batching_randomness * a_colwise_commitment.batching_randomness,
     );
 
-    // a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
+    a_spark_sumcheck_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 

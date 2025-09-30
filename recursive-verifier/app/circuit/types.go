@@ -107,6 +107,9 @@ type Config struct {
 }
 
 type Hints struct {
+	pointRow []Fp256
+	pointCol []Fp256
+
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
 
@@ -167,6 +170,8 @@ type Commitment struct {
 }
 
 type SPARKMatrixData struct {
+	Claimed frontend.Variable
+
 	WHIRA3       WHIRParams
 	LogANumTerms int
 
@@ -199,6 +204,8 @@ type SPARKMatrixData struct {
 }
 
 type SparkMatrixHints struct {
+	claimed Fp256
+
 	sparkSumcheckData  ZKHint
 	rowFinalMerkle     ZKHint
 	rowwiseSparkMerkle ZKHint

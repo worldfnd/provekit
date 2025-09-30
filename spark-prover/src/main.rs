@@ -1,6 +1,6 @@
 use {
     anyhow::{Context, Result},
-    provekit_common::{file::write, utils::next_power_of_two, gnark::WHIRConfigGnark},
+    provekit_common::{file::write, gnark::WHIRConfigGnark, utils::next_power_of_two},
     spark_prover::{
         memory::{calculate_e_values_for_r1cs, calculate_memory},
         spark::prove_spark_for_single_matrix,
@@ -10,7 +10,7 @@ use {
         },
         whir::create_whir_configs,
     },
-    std::{fs::File, io::Write, mem},
+    std::{fs::File, io::Write, mem}, whir::whir::utils::HintSerialize,
 };
 
 fn main() -> Result<()> {
@@ -24,10 +24,18 @@ fn main() -> Result<()> {
     let request = deserialize_request("spark-prover/request.json")
         .context("Error: Failed to deserialize the request object")?;
 
-    let memory = calculate_memory(request.point_to_evaluate);
+    let memory = calculate_memory(request.point_to_evaluate.clone());
     let e_values = calculate_e_values_for_r1cs(&memory, &r1cs);
     let io_pattern = create_io_pattern(&r1cs, &spark_whir_configs);
     let mut merlin = io_pattern.to_prover_state();
+
+    merlin.hint(&request.claimed_values.a)?;
+    merlin.hint(&request.claimed_values.b)?;
+    merlin.hint(&request.claimed_values.c)?;
+
+    merlin.hint(&request.point_to_evaluate.row)?;
+    merlin.hint(&request.point_to_evaluate.col)?;
+
 
     prove_spark_for_single_matrix(
         &mut merlin,
@@ -84,13 +92,10 @@ fn main() -> Result<()> {
         log_a_num_terms: next_power_of_two(r1cs.a.num_entries()),
         log_b_num_terms: next_power_of_two(r1cs.b.num_entries()),
         log_c_num_terms: next_power_of_two(r1cs.c.num_entries()),
-        claimed_value_for_a: request.claimed_values.a,
     };
 
     let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
         .context("Error: Failed to create the spark proof file")?;
-
-    println!("IO{:?}", spark_proof_gnark.io_pattern); //Reilabs Debug: 
 
     gnark_spark_proof_file
         .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())

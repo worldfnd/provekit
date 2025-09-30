@@ -32,6 +32,13 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     let mut io = IOPattern::new("💥");
 
     // Matrix A
+    io = io
+        .hint("claimed_a")
+        .hint("claimed_b")
+        .hint("claimed_c")
+        .hint("point_row")
+        .hint("point_col");
+
 
     io = io
         .commit_statement(&configs.a_3batched)
@@ -40,8 +47,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .commit_statement(&configs.row)
         .commit_statement(&configs.col)
         .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
-        .hint("sumcheck_last_folds");
-        // .add_whir_proof(&configs.a_3batched);
+        .hint("sumcheck_last_folds")
+        .add_whir_proof(&configs.a_3batched);
     
     // Rowwise
 
@@ -53,8 +60,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("row_final_counter_claimed_evaluation");
-    //     .add_whir_proof(&configs.row);
+        .hint("row_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.row);
 
     // Can I send all hints once in struct?
 
@@ -66,10 +73,10 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("row_rs_address_claimed_evaluation")
         .hint("row_rs_value_claimed_evaluation")
-        .hint("row_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.a_3batched);
+        .hint("row_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.a_3batched);
 
-    // // Colwise
+    // Colwise
 
     io = io.add_tau_and_gamma();
 
@@ -79,8 +86,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("col_final_counter_claimed_evaluation");
-        // .add_whir_proof(&configs.col);
+        .hint("col_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.col);
 
     for i in 0..=next_power_of_two(r1cs.a.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -90,10 +97,10 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("col_rs_address_claimed_evaluation")
         .hint("col_rs_value_claimed_evaluation")
-        .hint("col_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.a_3batched);
+        .hint("col_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.a_3batched);
 
-    // // Matrix B
+    // Matrix B
 
     io = io
         .commit_statement(&configs.b_3batched)
@@ -102,8 +109,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .commit_statement(&configs.row)
         .commit_statement(&configs.col)
         .add_sumcheck_polynomials(next_power_of_two(r1cs.a.num_entries()))
-        .hint("sumcheck_last_folds");
-        // .add_whir_proof(&configs.b_3batched);
+        .hint("sumcheck_last_folds")
+        .add_whir_proof(&configs.b_3batched);
     
     // Rowwise
 
@@ -115,8 +122,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("row_final_counter_claimed_evaluation");
-        // .add_whir_proof(&configs.row);
+        .hint("row_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.row);
 
     for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -126,8 +133,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("row_rs_address_claimed_evaluation")
         .hint("row_rs_value_claimed_evaluation")
-        .hint("row_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.b_3batched);
+        .hint("row_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.b_3batched);
 
     // Colwise
 
@@ -139,8 +146,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("col_final_counter_claimed_evaluation");
-        // .add_whir_proof(&configs.col);
+        .hint("col_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.col);
 
     for i in 0..=next_power_of_two(r1cs.b.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -150,10 +157,10 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("col_rs_address_claimed_evaluation")
         .hint("col_rs_value_claimed_evaluation")
-        .hint("col_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.b_3batched);
+        .hint("col_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.b_3batched);
 
-    // // Matrix C
+    // Matrix C
 
     io = io
         .commit_statement(&configs.c_3batched)
@@ -162,8 +169,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
         .commit_statement(&configs.row)
         .commit_statement(&configs.col)
         .add_sumcheck_polynomials(next_power_of_two(r1cs.c.num_entries()))
-        .hint("sumcheck_last_folds");
-        // .add_whir_proof(&configs.c_3batched);
+        .hint("sumcheck_last_folds")
+        .add_whir_proof(&configs.c_3batched);
     
     // Rowwise
 
@@ -175,8 +182,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("row_final_counter_claimed_evaluation");
-        // .add_whir_proof(&configs.row);
+        .hint("row_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.row);
 
     for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -186,8 +193,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("row_rs_address_claimed_evaluation")
         .hint("row_rs_value_claimed_evaluation")
-        .hint("row_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.c_3batched);
+        .hint("row_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.c_3batched);
 
     // Colwise
 
@@ -199,8 +206,8 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     }
 
     io = io
-        .hint("col_final_counter_claimed_evaluation");
-        // .add_whir_proof(&configs.col);
+        .hint("col_final_counter_claimed_evaluation")
+        .add_whir_proof(&configs.col);
 
     for i in 0..=next_power_of_two(r1cs.c.num_entries()) {
         io = io.add_sumcheck_polynomials(i);
@@ -210,7 +217,7 @@ pub fn create_io_pattern(r1cs: &R1CS, configs: &SPARKWHIRConfigs) -> IOPattern {
     io = io
         .hint("col_rs_address_claimed_evaluation")
         .hint("col_rs_value_claimed_evaluation")
-        .hint("col_rs_timestamp_claimed_evaluation");
-        // .add_whir_proof(&configs.c_3batched);
+        .hint("col_rs_timestamp_claimed_evaluation")
+        .add_whir_proof(&configs.c_3batched);
     io
 }

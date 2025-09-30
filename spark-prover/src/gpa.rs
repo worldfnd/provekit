@@ -54,7 +54,6 @@ pub fn run_gpa(
 fn calculate_binary_multiplication_tree(
     array_to_prove: Vec<FieldElement>,
 ) -> Vec<Vec<FieldElement>> {
-    println!("{:?}", array_to_prove.len());
     assert!(array_to_prove.len() == 1 << next_power_of_two(array_to_prove.len()));
     let mut layers = vec![];
     let mut current_layer = array_to_prove;
