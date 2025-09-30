@@ -307,6 +307,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 
 	sparkSumcheckData := ZKHint{}
 	rowFinal := ZKHint{}
+
 	// colwiseSparkMerkle := ZKHint{}
 	// colFinal := ZKHint{}
 

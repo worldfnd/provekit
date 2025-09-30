@@ -46,18 +46,12 @@ type Circuit struct {
 
 	SPARKIO    []byte
 	Transcript []uints.U8 `gnark:",public"`
-	WHIRA3     WHIRParams
 	WHIRRow    WHIRParams
 	WHIRCol    WHIRParams
 
 	SparkSumcheckLast []frontend.Variable
 
 	SparkA SPARKMatrixData
-
-	SparkSumcheckFirstRound  Merkle
-	SparkSumcheckMerkle      Merkle
-	RowFinalMerkleFirstRound Merkle
-	RowFinalMerkle           Merkle
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
@@ -254,18 +248,11 @@ func verifyCircuit(
 
 		SPARKIO:         []byte(sparkConfig.IOPattern),
 		SPARKTranscript: sparkContTranscript,
-		WHIRA3:          NewWhirParams(sparkConfig.WHIRA3),
 		WHIRRow:         NewWhirParams(sparkConfig.WHIRRow),
 		WHIRCol:         NewWhirParams(sparkConfig.WHIRCol),
 
 		LogANumTerms:      sparkConfig.LogANumTerms,
 		SparkSumcheckLast: contSparkSumcheckLast,
-
-		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, true),
-		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, true),
-
-		RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, true),
-		RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, true),
 
 		SparkA: SPARKMatrixData{
 			RowFinalCounter:          rowFinalCounter,
@@ -353,17 +340,10 @@ func verifyCircuit(
 
 		SPARKIO:           []byte(sparkConfig.IOPattern),
 		SPARKTranscript:   sparkTranscriptT,
-		WHIRA3:            NewWhirParams(sparkConfig.WHIRA3),
 		WHIRRow:           NewWhirParams(sparkConfig.WHIRRow),
 		WHIRCol:           NewWhirParams(sparkConfig.WHIRCol),
 		LogANumTerms:      sparkConfig.LogANumTerms,
 		SparkSumcheckLast: sparkSumcheckLast,
-
-		SparkSumcheckFirstRound: newMerkle(hints.sparkSumcheckData.firstRoundMerklePaths.path, false),
-		SparkSumcheckMerkle:     newMerkle(hints.sparkSumcheckData.roundHints, false),
-
-		RowFinalMerkleFirstRound: newMerkle(hints.rowFinalMerkle.firstRoundMerklePaths.path, false),
-		RowFinalMerkle:           newMerkle(hints.rowFinalMerkle.roundHints, false),
 
 		SparkA: SPARKMatrixData{
 			RowFinalCounter:          rowFinalCounter,
