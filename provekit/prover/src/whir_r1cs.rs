@@ -179,6 +179,14 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
         + eval_cubic_poly(&polynomial_coefficient, &FieldElement::one())
 }
 
+use provekit_common::skyscraper::whir::SkyscraperHasher;
+use whir::merkle_tree::Hasher;
+
+
+pub fn construct_skyscraper() -> Box<dyn Hasher> {
+    Box::new(SkyscraperHasher::new())
+}
+
 pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
@@ -200,9 +208,9 @@ pub fn batch_commit_to_polynomial(
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
         .commit_batch(merlin, &[
-            masked_polynomial_coeff.clone(),
-            random_polynomial_coeff.clone(),
-        ])
+            &masked_polynomial_coeff,
+            &random_polynomial_coeff,
+        ], construct_skyscraper)
         .expect("WHIR prover failed to commit");
 
     (witness_new, masked_polynomial, random_polynomial_eval)
