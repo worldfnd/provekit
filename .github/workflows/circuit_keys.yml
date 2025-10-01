@@ -2,9 +2,6 @@ name: Generate Age Check Circuit Keys
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ash/savekeys # for testing right now
 
 env:
   BUCKET_NAME: "provekit"

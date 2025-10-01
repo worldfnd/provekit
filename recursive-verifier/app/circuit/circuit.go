@@ -280,9 +280,7 @@ func verifyCircuit(
 
 	opts := []backend.ProverOption{
 		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)),
-	}
-	if buildOps.IcicleAcceleration {
-		opts = append(opts, backend.WithIcicleAcceleration())
+		backend.WithIcicleAcceleration(),
 	}
 
 	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)

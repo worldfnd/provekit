@@ -22,24 +22,20 @@ type BuildOps struct {
 	// Output options
 	OutputCcsPath string
 	SaveKeys      string
-
-	// Icicle acceleration options
-	IcicleAcceleration bool
 }
 
 // NewBuildOpsFromContext creates a BuildOps struct from CLI context
 func NewBuildOpsFromContext(c *cli.Context) *BuildOps {
 	return &BuildOps{
-		ConfigFilePath:     c.String("config"),
-		R1csFilePath:       c.String("r1cs"),
-		R1csUrl:            c.String("r1cs_url"),
-		PkPath:             c.String("pk"),
-		VkPath:             c.String("vk"),
-		PkUrl:              c.String("pk_url"),
-		VkUrl:              c.String("vk_url"),
-		OutputCcsPath:      c.String("ccs"),
-		SaveKeys:           c.String("saveKeys"),
-		IcicleAcceleration: c.Bool("icicle_acceleration"),
+		ConfigFilePath: c.String("config"),
+		R1csFilePath:   c.String("r1cs"),
+		R1csUrl:        c.String("r1cs_url"),
+		PkPath:         c.String("pk"),
+		VkPath:         c.String("vk"),
+		PkUrl:          c.String("pk_url"),
+		VkUrl:          c.String("vk_url"),
+		OutputCcsPath:  c.String("ccs"),
+		SaveKeys:       c.String("saveKeys"),
 	}
 }
 

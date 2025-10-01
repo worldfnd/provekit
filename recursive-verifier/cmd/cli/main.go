@@ -74,12 +74,6 @@ func main() {
 				Required: false,
 				Value:    "",
 			},
-			&cli.BoolFlag{
-				Name:     "icicle_acceleration",
-				Usage:    "Optional flag to enable icicle acceleration",
-				Required: false,
-				Value:    false,
-			},
 		},
 		Action: func(c *cli.Context) error {
 			// Create BuildOps from CLI context
