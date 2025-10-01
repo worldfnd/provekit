@@ -134,11 +134,7 @@ impl WitnessBuilder {
     /// expensive field inversions via Montgomery's batch inversion trick.
     pub fn prepare_layers(witness_builders: &[WitnessBuilder]) -> LayeredWitnessBuilders {
         if witness_builders.is_empty() {
-            return LayeredWitnessBuilders {
-                builders:       Vec::new(),
-                pre_starts:     Vec::new(),
-                inverse_starts: Vec::new(),
-            };
+            return LayeredWitnessBuilders { layers: Vec::new() };
         }
 
         let scheduler = LayerScheduler::new(witness_builders);
