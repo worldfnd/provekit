@@ -10,8 +10,8 @@ use {
 
 pub trait SPARKDomainSeparator {
     fn add_tau_and_gamma(self) -> Self;
-
     fn add_line(self) -> Self;
+    fn add_claimed_evaluations(self) -> Self;
 }
 
 impl<IOPattern> SPARKDomainSeparator for IOPattern
@@ -25,6 +25,11 @@ where
     fn add_line(self) -> Self {
         self.add_scalars(2, "gpa line")
             .challenge_scalars(1, "gpa line random")
+    }
+
+    fn add_claimed_evaluations(self) -> Self {
+        self.add_scalars(3, "claimed evaluations")
+            .challenge_scalars(1, "matrix combination randomness")
     }
 }
 

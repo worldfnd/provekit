@@ -3,7 +3,7 @@ use {
         gpa::run_gpa,
         memory::{EValuesForMatrix, Memory},
         utilities::matrix::SparkMatrix,
-        whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigs},
+        whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigsNew},
     },
     anyhow::{ensure, Result},
     itertools::izip,
@@ -31,12 +31,11 @@ pub fn prove_spark_for_single_matrix(
     memory: &Memory,
     e_values: EValuesForMatrix,
     claimed_value: FieldElement,
-    whir_configs: &SPARKWHIRConfigs,
-    batched_config: &WhirConfig,
+    whir_configs: &SPARKWHIRConfigsNew,
 ) -> Result<()> {
     let row_committer = CommitmentWriter::new(whir_configs.row.clone());
     let col_committer = CommitmentWriter::new(whir_configs.col.clone());
-    let batched_committer = CommitmentWriter::new(batched_config.clone());
+    let batched_committer = CommitmentWriter::new(whir_configs.num_terms_3batched.clone());
 
     let sumcheck_witness = batched_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.val.clone()).to_coeffs(),
@@ -80,7 +79,7 @@ pub fn prove_spark_for_single_matrix(
     sumcheck_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
+    let sumcheck_prover = Prover::new(whir_configs.num_terms_3batched.clone());
     sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
 
     // Rowwise
@@ -181,7 +180,7 @@ pub fn prove_spark_for_single_matrix(
     rowwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
+    let sumcheck_prover = Prover::new(whir_configs.num_terms_3batched.clone());
     sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
 
      // Colwise
@@ -282,7 +281,7 @@ pub fn prove_spark_for_single_matrix(
     colwise_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
     
-    let sumcheck_prover = Prover::new(batched_config.clone());
+    let sumcheck_prover = Prover::new(whir_configs.num_terms_3batched.clone());
     sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
 
     Ok(())

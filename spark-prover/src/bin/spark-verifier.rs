@@ -38,47 +38,31 @@ fn main() -> Result<()> {
     let io = IOPattern::from_string(spark_proof.io_pattern.clone());
     let mut arthur = io.to_verifier_state(&spark_proof.transcript);
 
-    let claimed_a: FieldElement = arthur.hint()?;
-    let claimed_b: FieldElement = arthur.hint()?;
-    let claimed_c: FieldElement = arthur.hint()?;
     let point_row: Vec<FieldElement> = arthur.hint()?;
     let point_col: Vec<FieldElement> = arthur.hint()?;
+    
+    let mut claimed_values = [FieldElement::from(0); 3];
+    arthur.fill_next_scalars(&mut claimed_values)?;
+
+    let mut matrix_batching_randomness = [FieldElement::from(0); 1];
+    arthur.fill_challenge_scalars(&mut matrix_batching_randomness)?;
+    let matrix_batching_randomness = matrix_batching_randomness[0];
+    let claimed_value = 
+        claimed_values[0] * matrix_batching_randomness * matrix_batching_randomness
+      + claimed_values[1] * matrix_batching_randomness
+      + claimed_values[2];
 
     verify_spark_single_matrix(
         &spark_proof.whir_params.row, 
         &spark_proof.whir_params.col, 
-        &spark_proof.whir_params.a_3batched, 
+        &spark_proof.whir_params.num_terms_3batched, 
         spark_proof.matrix_dimensions.num_rows,
         spark_proof.matrix_dimensions.num_cols,
-        spark_proof.matrix_dimensions.a_nonzero_terms,
+        spark_proof.matrix_dimensions.nonzero_terms,
         &mut arthur, 
         &request,
-        &request.claimed_values.a,
+        &claimed_value,
     )?;
-
-    verify_spark_single_matrix(
-        &spark_proof.whir_params.row, 
-        &spark_proof.whir_params.col, 
-        &spark_proof.whir_params.b_3batched, 
-        spark_proof.matrix_dimensions.num_rows,
-        spark_proof.matrix_dimensions.num_cols,
-        spark_proof.matrix_dimensions.b_nonzero_terms,
-        &mut arthur, 
-        &request,
-        &request.claimed_values.b,
-    )?;
-
-    verify_spark_single_matrix(
-        &spark_proof.whir_params.row, 
-        &spark_proof.whir_params.col, 
-        &spark_proof.whir_params.c_3batched, 
-        spark_proof.matrix_dimensions.num_rows,
-        spark_proof.matrix_dimensions.num_cols,
-        spark_proof.matrix_dimensions.c_nonzero_terms,
-        &mut arthur, 
-        &request,
-        &request.claimed_values.c,
-    )?;    
 
     Ok(())
 }

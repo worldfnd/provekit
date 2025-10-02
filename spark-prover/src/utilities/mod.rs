@@ -1,7 +1,7 @@
-mod iopattern;
+pub mod iopattern;
 pub mod matrix;
 use {
-    crate::whir::SPARKWHIRConfigs,
+    crate::whir::{SPARKWHIRConfigs, SPARKWHIRConfigsNew},
     anyhow::{Context, Result},
     provekit_common::{
         gnark::WHIRConfigGnark, spark::SPARKRequest, utils::{next_power_of_two, serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq}, FieldElement, HydratedSparseMatrix, WhirConfig, R1CS
@@ -32,8 +32,8 @@ pub fn deserialize_request(path_str: &str) -> Result<SPARKRequest> {
 pub struct SPARKProof {
     pub transcript:        Vec<u8>,
     pub io_pattern:        String,
-    pub whir_params:       SPARKWHIRConfigs,
-    pub matrix_dimensions: MatrixDimensions,
+    pub whir_params:       SPARKWHIRConfigsNew,
+    pub matrix_dimensions: MatrixDimensionsNew,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -43,6 +43,14 @@ pub struct MatrixDimensions {
     pub a_nonzero_terms: usize,
     pub b_nonzero_terms: usize,
     pub c_nonzero_terms: usize,
+}
+
+
+#[derive(Serialize, Deserialize)]
+pub struct MatrixDimensionsNew {
+    pub num_rows:        usize,
+    pub num_cols:        usize,
+    pub nonzero_terms:   usize,
 }
 
 pub fn calculate_matrix_dimensions(r1cs: &R1CS) -> MatrixDimensions {

@@ -46,6 +46,13 @@ pub struct SPARKWHIRConfigs {
     pub c_3batched:   WhirConfig,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SPARKWHIRConfigsNew {
+    pub row: WhirConfig,
+    pub col: WhirConfig,
+    pub num_terms_3batched:   WhirConfig,
+}
+
 pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {
     SPARKWHIRConfigs {
         row: WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_rows), 1),
