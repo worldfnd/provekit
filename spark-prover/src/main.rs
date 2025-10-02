@@ -1,9 +1,9 @@
 use {
-    anyhow::{Context, Result}, ark_ff::AdditiveGroup, provekit_common::{file::write, gnark::WHIRConfigGnark, utils::{next_power_of_two, sumcheck::SumcheckIOPattern}, FieldElement, IOPattern, WhirR1CSScheme}, provekit_r1cs_compiler::WhirR1CSSchemeBuilder, spark_prover::{
+    anyhow::{Context, Result}, ark_ff::AdditiveGroup, ark_std::rand::seq::index, provekit_common::{file::write, gnark::WHIRConfigGnark, utils::{next_power_of_two, sumcheck::SumcheckIOPattern}, FieldElement, IOPattern, WhirR1CSScheme}, provekit_r1cs_compiler::WhirR1CSSchemeBuilder, spark_prover::{
         memory::{calculate_e_values_for_r1cs, calculate_memory, EValuesForMatrix, Memory},
         spark::{prove_spark_for_single_matrix, run_spark_sumcheck},
         utilities::{
-            calculate_matrix_dimensions, create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs, iopattern::SPARKDomainSeparator, matrix::{COOMatrix, SparkMatrix, TimeStamps}, MatrixDimensions, MatrixDimensionsNew, SPARKProof, SPARKProofGnark
+            calculate_matrix_dimensions, create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs, iopattern::SPARKDomainSeparator, matrix::{COOMatrix, COOMatrixNew, SparkMatrix, SparkMatrixNew, TimeStamps}, MatrixDimensions, MatrixDimensionsNew, SPARKProof, SPARKProofGnark
         },
         whir::{create_whir_configs, SPARKWHIRConfigsNew},
     }, spongefish::codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitSerialize, UnitToField}, std::{collections::BTreeMap, fs::File, io::Write, mem}, whir::{poly_utils::evals::EvaluationsList, whir::{committer::CommitmentWriter, domainsep::WhirDomainSeparator, statement::Statement, utils::HintSerialize}}
@@ -41,7 +41,46 @@ fn main() -> Result<()> {
     row.extend(std::iter::repeat(FieldElement::ZERO).take(to_fill));
     col.extend(std::iter::repeat(FieldElement::ZERO).take(to_fill));
 
+    // generate val vectors
+    let mut val_a = vec![FieldElement::ZERO; padded_num_entries];
+    let mut val_b = vec![FieldElement::ZERO; padded_num_entries];
+    let mut val_c = vec![FieldElement::ZERO; padded_num_entries];
+
+    let a_binding = r1cs.a();
+    let b_binding = r1cs.b();
+    let c_binding = r1cs.c();
+
+    let mut a_iter = a_binding.iter();
+    let mut b_iter = b_binding.iter();
+    let mut c_iter = c_binding.iter();
     
+    let mut a_cur = a_iter.next();
+    let mut b_cur = b_iter.next();
+    let mut c_cur = c_iter.next();
+
+    for (index, coordinate) in combined_matrix_map.keys().enumerate() {
+        if let Some((coord, value)) = a_cur {
+            if coord == *coordinate {
+                val_a[index] = value;
+                a_cur = a_iter.next();
+            }
+        }
+
+        if let Some((coord, value)) = b_cur {
+            if coord == *coordinate {
+                val_b[index] = value;
+                b_cur = b_iter.next();
+            }
+        }
+
+        if let Some((coord, value)) = c_cur {
+            if coord == *coordinate {
+                val_c[index] = value;
+                c_cur = c_iter.next();
+            }
+        }
+    }
+
     // generate padded timestamps
     
     let mut read_row_counters = vec![0; r1cs.num_constraints()];
@@ -94,6 +133,7 @@ fn main() -> Result<()> {
     let row_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.num_constraints()), 1);
     let col_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.num_witnesses()), 1);
     let num_terms_3batched_config =   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 3);
+    let num_terms_5batched_config =   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 5);
 
     // Create io_pattern
     let mut io = IOPattern::new("💥");
@@ -106,14 +146,14 @@ fn main() -> Result<()> {
 
 
     io = io
-        .commit_statement(&num_terms_3batched_config)
+        .commit_statement(&num_terms_5batched_config)
         .commit_statement(&num_terms_3batched_config)
         .commit_statement(&num_terms_3batched_config)
         .commit_statement(&row_config)
         .commit_statement(&col_config)
         .add_sumcheck_polynomials(next_power_of_two(padded_num_entries))
         .hint("sumcheck_last_folds")
-        .add_whir_proof(&num_terms_3batched_config);
+        .add_whir_proof(&num_terms_5batched_config);
     
     // Rowwise
 
@@ -173,7 +213,7 @@ fn main() -> Result<()> {
     merlin.hint(&request.point_to_evaluate.row)?;
     merlin.hint(&request.point_to_evaluate.col)?;
 
-    // Calculate the RLC of the matrices
+    // Calculate the RLC of the matrices (can be also calculated from rlc of val_a, val_b, val_c)
     merlin.add_scalars(&[request.claimed_values.a, request.claimed_values.b, request.claimed_values.c])?;
     let mut matrix_batching_randomness = [FieldElement::ZERO; 1];
     merlin.fill_challenge_scalars(&mut matrix_batching_randomness)?;
@@ -181,7 +221,7 @@ fn main() -> Result<()> {
     let matrix_batching_randomness_sq = matrix_batching_randomness * matrix_batching_randomness;
 
     for (coordinate, value) in r1cs.a().iter() {
-        combined_matrix_map.entry(coordinate).and_modify(|cur| *cur += value * matrix_batching_randomness_sq);  
+        combined_matrix_map.entry(coordinate).and_modify(|cur| *cur += value);  
     }
 
     for (coordinate, value) in r1cs.b().iter() {
@@ -189,7 +229,7 @@ fn main() -> Result<()> {
     }
 
     for (coordinate, value) in r1cs.c().iter() {
-        combined_matrix_map.entry(coordinate).and_modify(|cur| *cur += value );  
+        combined_matrix_map.entry(coordinate).and_modify(|cur| *cur += value  * matrix_batching_randomness_sq);  
     }
 
     let mut val = Vec::with_capacity(padded_num_entries);
@@ -198,15 +238,21 @@ fn main() -> Result<()> {
     }
     val.extend(std::iter::repeat(FieldElement::ZERO).take(to_fill));
 
-    let claimed_value = request.claimed_values.a * matrix_batching_randomness_sq
-        + request.claimed_values.b * matrix_batching_randomness
-        + request.claimed_values.c;
+    let claimed_value = 
+        request.claimed_values.a + 
+        request.claimed_values.b * matrix_batching_randomness + 
+        request.claimed_values.c * matrix_batching_randomness_sq;
 
-    let spark_matrix = SparkMatrix {
-        coo: COOMatrix{
+    // Bundle values
+
+    let spark_matrix = SparkMatrixNew {
+        coo: COOMatrixNew{
             row,
             col,
             val,
+            val_a,
+            val_b,
+            val_c,
         },
         timestamps: TimeStamps {
             read_row,
@@ -215,7 +261,6 @@ fn main() -> Result<()> {
             final_col,
         }
     };
-
 
     let e_values = EValuesForMatrix {
         e_rx,
@@ -226,6 +271,7 @@ fn main() -> Result<()> {
         row: row_config,
         col: col_config,
         num_terms_3batched: num_terms_3batched_config,
+        num_terms_5batched: num_terms_5batched_config,
     };
     
     prove_spark_for_single_matrix(

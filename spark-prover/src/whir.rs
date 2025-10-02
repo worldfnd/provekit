@@ -51,6 +51,7 @@ pub struct SPARKWHIRConfigsNew {
     pub row: WhirConfig,
     pub col: WhirConfig,
     pub num_terms_3batched:   WhirConfig,
+    pub num_terms_5batched:   WhirConfig,
 }
 
 pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {

@@ -13,10 +13,24 @@ pub struct SparkMatrix {
     pub timestamps: TimeStamps,
 }
 #[derive(Debug)]
+pub struct SparkMatrixNew {
+    pub coo:        COOMatrixNew,
+    pub timestamps: TimeStamps,
+}
+#[derive(Debug)]
 pub struct COOMatrix {
     pub row: Vec<FieldElement>,
     pub col: Vec<FieldElement>,
     pub val: Vec<FieldElement>,
+}
+#[derive(Debug)]
+pub struct COOMatrixNew {
+    pub row: Vec<FieldElement>,
+    pub col: Vec<FieldElement>,
+    pub val: Vec<FieldElement>,
+    pub val_a: Vec<FieldElement>,
+    pub val_b: Vec<FieldElement>,
+    pub val_c: Vec<FieldElement>,
 }
 #[derive(Debug)]
 pub struct TimeStamps {
