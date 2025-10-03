@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	"reilabs/whir-verifier-circuit/app/circuit"
+	"reilabs/whir-verifier-circuit/app/common"
 )
 
 // main initializes and starts the WHIR verifier HTTP server.
@@ -58,16 +59,18 @@ func ping(c *fiber.Ctx) error {
 // verify handles POST requests to verify WHIR proofs.
 // It accepts R1CS data, configuration, and proving/verifying keys via form data or URLs.
 func verify(c *fiber.Ctx) error {
-	outputCcsPath := c.FormValue("output_ccs_path") // Optional path for CCS output
-	pkUrl := c.FormValue("pk_url")
-	vkUrl := c.FormValue("vk_url")
-	r1csUrl := c.FormValue("r1cs_url")
+	buildOps := common.BuildOps{
+		OutputCcsPath: c.FormValue("output_ccs_path"),
+		PkUrl:         c.FormValue("pk_url"),
+		VkUrl:         c.FormValue("vk_url"),
+		R1csUrl:       c.FormValue("r1cs_url"),
+	}
 
 	var r1csFile []byte
 	var err error
 
-	if r1csUrl != "" {
-		r1csFile, err = circuit.GetR1csFromUrl(r1csUrl)
+	if buildOps.HasR1csUrl() {
+		r1csFile, err = circuit.GetR1csFromUrl(buildOps.R1csUrl)
 		if err != nil {
 			return fmt.Errorf("failed to get R1CS from URL: %w", err)
 		}
@@ -97,8 +100,8 @@ func verify(c *fiber.Ctx) error {
 	var pk *groth16.ProvingKey
 	var vk *groth16.VerifyingKey
 
-	if vkUrl != "" && pkUrl != "" {
-		pk, vk, err = circuit.GetPkAndVkFromUrl(pkUrl, vkUrl)
+	if buildOps.HasPkAndVkFromUrl() {
+		pk, vk, err = circuit.GetPkAndVkFromUrl(buildOps.PkUrl, buildOps.VkUrl)
 		if err != nil {
 			log.Printf("Failed to get PK/VK from URL: %v", err)
 			return c.Status(400).JSON(fiber.Map{
@@ -113,7 +116,7 @@ func verify(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, outputCcsPath); err != nil {
+	if err := circuit.PrepareAndVerifyCircuit(config, r1cs, pk, vk, buildOps); err != nil {
 		log.Printf("Verification failed: %v", err)
 		return c.Status(400).JSON(fiber.Map{
 			"error":   "Verification failed",

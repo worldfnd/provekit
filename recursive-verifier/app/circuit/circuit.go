@@ -1,9 +1,13 @@
 package circuit
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"time"
 
+	"reilabs/whir-verifier-circuit/app/common"
 	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
 
@@ -82,7 +86,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
+	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, buildOps common.BuildOps,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -175,17 +179,17 @@ func verifyCircuit(
 	if err != nil {
 		log.Fatalf("Failed to compile circuit: %v", err)
 	}
-	if outputCcsPath != "" {
-		ccsFile, err := os.Create(outputCcsPath)
+	if buildOps.OutputCcsPath != "" {
+		ccsFile, err := os.Create(buildOps.OutputCcsPath)
 		if err != nil {
-			log.Printf("Cannot create ccs file %s: %v", outputCcsPath, err)
+			log.Printf("Cannot create ccs file %s: %v", buildOps.OutputCcsPath, err)
 		} else {
 			_, err = ccs.WriteTo(ccsFile)
 			if err != nil {
-				log.Printf("Cannot write ccs file %s: %v", outputCcsPath, err)
+				log.Printf("Cannot write ccs file %s: %v", buildOps.OutputCcsPath, err)
 			}
 		}
-		log.Printf("ccs written to %s", outputCcsPath)
+		log.Printf("ccs written to %s", buildOps.OutputCcsPath)
 	}
 
 	if pk == nil || vk == nil {
@@ -196,6 +200,54 @@ func verifyCircuit(
 		}
 		pk = &unsafePk
 		vk = &unsafeVk
+
+		if buildOps.ShouldSaveKeys() {
+			// Create the save keys directory if it doesn't exist
+			if err := os.MkdirAll(buildOps.SaveKeys, 0755); err != nil {
+				log.Printf("Failed to create save keys directory %s: %v", buildOps.SaveKeys, err)
+			}
+
+			// Generate timestamp for filenames
+			timestamp := time.Now().Format("02Jan_15-04-05")
+
+			// Save proving key to file
+			pkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("pk_%s.bin", timestamp))
+			pkFile, err := os.Create(pkFilename)
+			if err != nil {
+				log.Printf("Failed to create PK file: %v", err)
+			} else {
+				defer func() {
+					if err := pkFile.Close(); err != nil {
+						log.Printf("Failed to close PK file: %v", err)
+					}
+				}()
+				_, err = (*pk).WriteTo(pkFile) // Dereference with (*pk)
+				if err != nil {
+					log.Printf("Failed to write PK to file: %v", err)
+				} else {
+					log.Printf("Proving key saved to %s", pkFilename)
+				}
+			}
+
+			// Save verifying key to file
+			vkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("vk_%s.bin", timestamp))
+			vkFile, err := os.Create(vkFilename)
+			if err != nil {
+				log.Printf("Failed to create VK file: %v", err)
+			} else {
+				defer func() {
+					if err := vkFile.Close(); err != nil {
+						log.Printf("Failed to close VK file: %v", err)
+					}
+				}()
+				_, err = (*vk).WriteTo(vkFile) // Dereference with (*vk)
+				if err != nil {
+					log.Printf("Failed to write VK to file: %v", err)
+				} else {
+					log.Printf("Verifying key saved to %s", vkFilename)
+				}
+			}
+		}
 	}
 
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
@@ -225,7 +277,13 @@ func verifyCircuit(
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, _ := witness.Public()
-	proof, _ := groth16.Prove(ccs, *pk, witness, backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)))
+
+	opts := []backend.ProverOption{
+		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)),
+		backend.WithIcicleAcceleration(),
+	}
+
+	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)
