@@ -1,13 +1,9 @@
 use {
-    anyhow::{Context, Result},
-    ark_ff::AdditiveGroup,
-    provekit_common::{
+    anyhow::{Context, Result}, argh::FromArgs, ark_ff::AdditiveGroup, provekit_common::{
         gnark::WHIRConfigGnark,
         utils::{next_power_of_two, sumcheck::SumcheckIOPattern},
         FieldElement, IOPattern, WhirR1CSScheme,
-    },
-    provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
-    spark_prover::utilities::{
+    }, provekit_r1cs_compiler::WhirR1CSSchemeBuilder, spark_prover::utilities::{
         deserialize_r1cs, deserialize_request,
         iopattern::SPARKDomainSeparator,
         matrix::{COOMatrix, SparkMatrix, TimeStamps},
@@ -15,14 +11,24 @@ use {
         spark::prove_spark_for_single_matrix,
         whir::SPARKWHIRConfigsNew,
         MatrixDimensionsNew, SPARKProof, SPARKProofGnarkNew,
-    },
-    spongefish::codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
-    std::{collections::BTreeMap, fs::File, io::Write},
-    whir::whir::{domainsep::WhirDomainSeparator, utils::HintSerialize},
+    }, spongefish::codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField}, std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf}, whir::whir::{domainsep::WhirDomainSeparator, utils::HintSerialize}
 };
 
+#[derive(FromArgs)]
+#[argh(description = "Spark Prover CLI")]
+struct Args {
+    /// r1cs
+    #[argh(option)]
+    r1cs: PathBuf,
+
+    /// request
+    #[argh(option)]
+    request: PathBuf,
+}
 fn main() -> Result<()> {
-    let r1cs = deserialize_r1cs("spark-prover/r1cs.json")
+    let args: Args = argh::from_env();
+
+    let r1cs = deserialize_r1cs(&args.r1cs)
         .context("Error: Failed to create the R1CS object")?;
 
     // get combined matrix non-zero value coordinates
@@ -133,7 +139,7 @@ fn main() -> Result<()> {
         .collect::<Vec<_>>();
 
     // Run for each request
-    let request = deserialize_request("spark-prover/request.json")
+    let request = deserialize_request(&args.request)
         .context("Error: Failed to deserialize the request object")?;
 
     let memory = calculate_memory(request.point_to_evaluate.clone());
