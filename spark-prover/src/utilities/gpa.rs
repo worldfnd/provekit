@@ -2,10 +2,12 @@ use {
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::{
-            next_power_of_two, sumcheck::{
+            next_power_of_two,
+            sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
                 sumcheck_fold_map_reduce,
-            }, HALF
+            },
+            HALF,
         },
         FieldElement,
     },

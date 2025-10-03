@@ -1,14 +1,14 @@
 pub mod file;
+pub mod gnark;
 mod interner;
 mod noir_proof_scheme;
 mod r1cs;
 pub mod skyscraper;
+pub mod spark;
 mod sparse_matrix;
 pub mod utils;
 mod whir_r1cs;
 pub mod witness;
-pub mod spark;
-pub mod gnark;
 
 use crate::interner::{InternedFieldElement, Interner};
 pub use {

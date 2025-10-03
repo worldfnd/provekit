@@ -1,6 +1,8 @@
-use serde::{Deserialize, Serialize};
-use crate::WhirConfig;
-use ark_poly::EvaluationDomain;
+use {
+    crate::WhirConfig,
+    ark_poly::EvaluationDomain,
+    serde::{Deserialize, Serialize},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 

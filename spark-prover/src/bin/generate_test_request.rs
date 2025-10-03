@@ -1,19 +1,19 @@
 use {
-    provekit_common::{spark::{ClaimedValues, Point, SPARKRequest}, FieldElement},
+    provekit_common::{
+        spark::{ClaimedValues, Point, SPARKRequest},
+        FieldElement,
+    },
     std::{fs::File, io::Write},
 };
 
 fn main() {
     let mut row = vec![FieldElement::from(0); 8];
-    let mut col = vec![FieldElement::from(0); 9];
+    let col = vec![FieldElement::from(0); 9];
 
     row[7] = FieldElement::from(1);
-    
+
     let spark_request = SPARKRequest {
-        point_to_evaluate: Point {
-            row,
-            col,
-        },
+        point_to_evaluate: Point { row, col },
         claimed_values:    ClaimedValues {
             a: FieldElement::from(1),
             b: FieldElement::from(0),

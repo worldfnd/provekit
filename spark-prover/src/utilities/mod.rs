@@ -1,22 +1,27 @@
+pub mod gpa;
 pub mod iopattern;
 pub mod matrix;
+pub mod memory;
+pub mod spark;
+pub mod whir;
+
 use {
-    crate::whir::{SPARKWHIRConfigs, SPARKWHIRConfigsNew},
+    crate::utilities::whir::SPARKWHIRConfigsNew,
     anyhow::{Context, Result},
     provekit_common::{
-        gnark::WHIRConfigGnark, spark::SPARKRequest, utils::{next_power_of_two, serde_ark, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq}, FieldElement, HydratedSparseMatrix, WhirConfig, R1CS
+        gnark::WHIRConfigGnark, spark::SPARKRequest, utils::next_power_of_two, R1CS,
     },
     serde::{Deserialize, Serialize},
     std::fs,
 };
-pub use {iopattern::create_io_pattern, matrix::get_spark_r1cs};
 
 pub fn deserialize_r1cs(path_str: &str) -> Result<R1CS> {
     let json_str =
         fs::read_to_string(path_str).context("Error: Failed to open the r1cs.json file")?;
-    let mut r1cs: R1CS = serde_json::from_str(&json_str).context("Error: Failed to deserialize JSON to R1CS")?;
+    let mut r1cs: R1CS =
+        serde_json::from_str(&json_str).context("Error: Failed to deserialize JSON to R1CS")?;
     r1cs.grow_matrices(
-        1<<next_power_of_two(r1cs.num_constraints()), 
+        1 << next_power_of_two(r1cs.num_constraints()),
         1 << next_power_of_two(r1cs.num_witnesses()),
     );
     Ok(r1cs)
@@ -45,12 +50,11 @@ pub struct MatrixDimensions {
     pub c_nonzero_terms: usize,
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct MatrixDimensionsNew {
-    pub num_rows:        usize,
-    pub num_cols:        usize,
-    pub nonzero_terms:   usize,
+    pub num_rows:      usize,
+    pub num_cols:      usize,
+    pub nonzero_terms: usize,
 }
 
 pub fn calculate_matrix_dimensions(r1cs: &R1CS) -> MatrixDimensions {
@@ -65,13 +69,13 @@ pub fn calculate_matrix_dimensions(r1cs: &R1CS) -> MatrixDimensions {
 
 #[derive(Serialize, Deserialize)]
 pub struct SPARKProofGnark {
-    pub transcript: Vec<u8>,
-    pub io_pattern: String,
-    pub whir_row: WHIRConfigGnark,
-    pub whir_col: WHIRConfigGnark,
-    pub whir_a3: WHIRConfigGnark,
-    pub whir_b3: WHIRConfigGnark,
-    pub whir_c3: WHIRConfigGnark,
+    pub transcript:      Vec<u8>,
+    pub io_pattern:      String,
+    pub whir_row:        WHIRConfigGnark,
+    pub whir_col:        WHIRConfigGnark,
+    pub whir_a3:         WHIRConfigGnark,
+    pub whir_b3:         WHIRConfigGnark,
+    pub whir_c3:         WHIRConfigGnark,
     pub log_a_num_terms: usize,
     pub log_b_num_terms: usize,
     pub log_c_num_terms: usize,
@@ -79,10 +83,10 @@ pub struct SPARKProofGnark {
 
 #[derive(Serialize, Deserialize)]
 pub struct SPARKProofGnarkNew {
-    pub transcript: Vec<u8>,
-    pub io_pattern: String,
-    pub whir_row: WHIRConfigGnark,
-    pub whir_col: WHIRConfigGnark,
+    pub transcript:    Vec<u8>,
+    pub io_pattern:    String,
+    pub whir_row:      WHIRConfigGnark,
+    pub whir_col:      WHIRConfigGnark,
     pub whir_3batched: WHIRConfigGnark,
     pub whir_5batched: WHIRConfigGnark,
     pub log_num_terms: usize,

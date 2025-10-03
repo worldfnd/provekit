@@ -1,11 +1,11 @@
 use {
-    crate::{
+    crate::utilities::{
         gpa::run_gpa,
+        matrix::SparkMatrix,
         memory::{EValuesForMatrix, Memory},
-        utilities::matrix::{SparkMatrix, SparkMatrixNew},
         whir::{commit_to_vector, produce_whir_proof, SPARKWHIRConfigsNew},
     },
-    anyhow::{ensure, Result},
+    anyhow::Result,
     itertools::izip,
     provekit_common::{
         skyscraper::SkyscraperSponge,
@@ -13,21 +13,21 @@ use {
             sumcheck::{eval_cubic_poly, sumcheck_fold_map_reduce},
             HALF,
         },
-        FieldElement, WhirConfig,
+        FieldElement,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
     },
     whir::{
-        poly_utils::{evals::EvaluationsList, fold, multilinear::MultilinearPoint},
-        whir::{committer::CommitmentWriter, prover::Prover, statement::{Statement, Weights}, utils::HintSerialize},
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
+        whir::{committer::CommitmentWriter, utils::HintSerialize},
     },
 };
 
 pub fn prove_spark_for_single_matrix(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    matrix: SparkMatrixNew,
+    matrix: SparkMatrix,
     memory: &Memory,
     e_values: EValuesForMatrix,
     claimed_value: FieldElement,
@@ -58,9 +58,11 @@ pub fn prove_spark_for_single_matrix(
         EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
     ])?;
 
-    let final_row_ts_witness = commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
-    let final_col_ts_witness = commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
-    
+    let final_row_ts_witness =
+        commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
+    let final_col_ts_witness =
+        commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
+
     // Sumcheck
 
     let mles = [
@@ -79,9 +81,16 @@ pub fn prove_spark_for_single_matrix(
     let val_c_eval = EvaluationsList::new(matrix.coo.val_c.clone())
         .evaluate(&MultilinearPoint(folding_randomness.to_vec().clone()));
 
-    merlin.hint::<Vec<FieldElement>>(&[val_a_eval, val_b_eval, val_c_eval, sumcheck_final_folds[1], sumcheck_final_folds[2]].to_vec())?;
-    
-    let mut sumcheck_statement = Statement::<FieldElement>::new(folding_randomness.len());
+    merlin.hint::<Vec<FieldElement>>(
+        &[
+            val_a_eval,
+            val_b_eval,
+            val_c_eval,
+            sumcheck_final_folds[1],
+            sumcheck_final_folds[2],
+        ]
+        .to_vec(),
+    )?;
 
     let mut batching_randomness = Vec::with_capacity(5);
     let mut cur = FieldElement::from(1);
@@ -90,24 +99,19 @@ pub fn prove_spark_for_single_matrix(
         cur *= sumcheck_witness.batching_randomness;
     }
 
-    
+    let claimed_batched_value = val_a_eval * batching_randomness[0]
+        + val_b_eval * batching_randomness[1]
+        + val_c_eval * batching_randomness[2]
+        + sumcheck_final_folds[1] * batching_randomness[3]
+        + sumcheck_final_folds[2] * batching_randomness[4];
 
-    let claimed_batched_value = 
-        val_a_eval * batching_randomness[0] +
-        val_b_eval * batching_randomness[1] +
-        val_c_eval * batching_randomness[2] +
-        sumcheck_final_folds[1] * batching_randomness[3] +
-        sumcheck_final_folds[2] * batching_randomness[4];
-
-    println!("{:?}", batching_randomness); //Reilabs Debug: 
-    println!("{:?}", claimed_batched_value); //Reilabs Debug: 
-    println!("{:?}", sumcheck_witness.batched_poly().evaluate(&MultilinearPoint(folding_randomness.to_vec().clone()))); //Reilabs Debug: 
-
-    sumcheck_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(folding_randomness.clone())), claimed_batched_value);
-    
-    let sumcheck_prover = Prover::new(whir_configs.num_terms_5batched.clone());
-    sumcheck_prover.prove(merlin, sumcheck_statement, sumcheck_witness)?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.to_vec()),
+        claimed_batched_value,
+        whir_configs.num_terms_5batched.clone(),
+        sumcheck_witness,
+    )?;
 
     // Rowwise
 
@@ -137,7 +141,7 @@ pub fn prove_spark_for_single_matrix(
     let final_vec: Vec<FieldElement> = izip!(final_address, final_value, final_timestamp)
         .map(|(a, v, t)| a * gamma * gamma + v * gamma + t - tau)
         .collect();
-    
+
     let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -186,7 +190,7 @@ pub fn prove_spark_for_single_matrix(
     let rs_address_eval = EvaluationsList::new(rs_address)
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_address_eval)?;
-    
+
     let rs_value_eval = EvaluationsList::new(rs_value)
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_value_eval)?;
@@ -195,22 +199,28 @@ pub fn prove_spark_for_single_matrix(
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_timestamp_eval)?;
 
-    let mut rowwise_statement = Statement::<FieldElement>::new(evaluation_randomness.len());
+    let claimed_rowwise_eval = rs_address_eval
+        + rs_value_eval * rowwise_witness.batching_randomness
+        + rs_timestamp_eval
+            * rowwise_witness.batching_randomness
+            * rowwise_witness.batching_randomness;
 
-    let claimed_rowwise_eval = 
-        rs_address_eval + 
-        rs_value_eval * rowwise_witness.batching_randomness + 
-        rs_timestamp_eval * rowwise_witness.batching_randomness * rowwise_witness.batching_randomness;
+    assert!(
+        claimed_rowwise_eval
+            == rowwise_witness
+                .batched_poly()
+                .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()))
+    );
 
-    assert!(claimed_rowwise_eval == rowwise_witness.batched_poly().evaluate(&MultilinearPoint(evaluation_randomness.to_vec())));
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        claimed_rowwise_eval,
+        whir_configs.num_terms_3batched.clone(),
+        rowwise_witness,
+    )?;
 
-    rowwise_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_rowwise_eval);
-    
-    let sumcheck_prover = Prover::new(whir_configs.num_terms_3batched.clone());
-    sumcheck_prover.prove(merlin, rowwise_statement, rowwise_witness)?;
-
-     // Colwise
+    // Colwise
 
     // Colwise Init Final GPA
 
@@ -287,7 +297,7 @@ pub fn prove_spark_for_single_matrix(
     let rs_address_eval = EvaluationsList::new(rs_address)
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_address_eval)?;
-    
+
     let rs_value_eval = EvaluationsList::new(rs_value)
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_value_eval)?;
@@ -296,20 +306,26 @@ pub fn prove_spark_for_single_matrix(
         .evaluate(&MultilinearPoint(evaluation_randomness.to_vec().clone()));
     merlin.hint(&rs_timestamp_eval)?;
 
-    let mut colwise_statement = Statement::<FieldElement>::new(evaluation_randomness.len());
+    let claimed_colwise_eval = rs_address_eval
+        + rs_value_eval * colwise_witness.batching_randomness
+        + rs_timestamp_eval
+            * colwise_witness.batching_randomness
+            * colwise_witness.batching_randomness;
 
-    let claimed_colwise_eval = 
-        rs_address_eval + 
-        rs_value_eval * colwise_witness.batching_randomness + 
-        rs_timestamp_eval * colwise_witness.batching_randomness * colwise_witness.batching_randomness;
+    assert!(
+        claimed_colwise_eval
+            == colwise_witness
+                .batched_poly()
+                .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()))
+    );
 
-    assert!(claimed_colwise_eval == colwise_witness.batched_poly().evaluate(&MultilinearPoint(evaluation_randomness.to_vec())));
-
-    colwise_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())), claimed_colwise_eval);
-    
-    let sumcheck_prover = Prover::new(whir_configs.num_terms_3batched.clone());
-    sumcheck_prover.prove(merlin, colwise_statement, colwise_witness)?;
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        claimed_colwise_eval,
+        whir_configs.num_terms_3batched.clone(),
+        colwise_witness,
+    )?;
 
     Ok(())
 }

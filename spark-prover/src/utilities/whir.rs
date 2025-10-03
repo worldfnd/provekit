@@ -2,10 +2,8 @@ use {
     anyhow::{Context, Result},
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        utils::next_power_of_two,
-        FieldElement, WhirConfig, WhirR1CSScheme, R1CS,
+        FieldElement, WhirConfig,
     },
-    provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
     serde::{Deserialize, Serialize},
     spongefish::ProverState,
     whir::{
@@ -36,35 +34,22 @@ pub fn commit_to_vector(
 
 #[derive(Serialize, Deserialize)]
 pub struct SPARKWHIRConfigs {
-    pub row: WhirConfig,
-    pub col: WhirConfig,
-    pub a:   WhirConfig,
-    pub b:   WhirConfig,
-    pub c:   WhirConfig,
-    pub a_3batched:   WhirConfig,
-    pub b_3batched:   WhirConfig,
-    pub c_3batched:   WhirConfig,
+    pub row:        WhirConfig,
+    pub col:        WhirConfig,
+    pub a:          WhirConfig,
+    pub b:          WhirConfig,
+    pub c:          WhirConfig,
+    pub a_3batched: WhirConfig,
+    pub b_3batched: WhirConfig,
+    pub c_3batched: WhirConfig,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct SPARKWHIRConfigsNew {
-    pub row: WhirConfig,
-    pub col: WhirConfig,
-    pub num_terms_3batched:   WhirConfig,
-    pub num_terms_5batched:   WhirConfig,
-}
-
-pub fn create_whir_configs(r1cs: &R1CS) -> SPARKWHIRConfigs {
-    SPARKWHIRConfigs {
-        row: WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_rows), 1),
-        col: WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_cols), 1),
-        a:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 1),
-        b:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.b.num_entries()), 1),
-        c:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.c.num_entries()), 1),
-        a_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.a.num_entries()), 3),
-        b_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.b.num_entries()), 3),
-        c_3batched:   WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(r1cs.c.num_entries()), 3),
-    }
+    pub row:                WhirConfig,
+    pub col:                WhirConfig,
+    pub num_terms_3batched: WhirConfig,
+    pub num_terms_5batched: WhirConfig,
 }
 
 pub fn produce_whir_proof(

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use crate::FieldElement;
-use crate::utils::serde_ark;
-
+use {
+    crate::{utils::serde_ark, FieldElement},
+    serde::{Deserialize, Serialize},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Point {

@@ -1,13 +1,26 @@
 use {
-    anyhow::{ensure, Context, Result}, argh::FromArgs, ark_std::{One, Zero}, provekit_common::{
-        skyscraper::SkyscraperSponge, spark::SPARKRequest, utils::{
+    anyhow::{ensure, Context, Result},
+    argh::FromArgs,
+    ark_std::{One, Zero},
+    provekit_common::{
+        skyscraper::SkyscraperSponge,
+        spark::SPARKRequest,
+        utils::{
             next_power_of_two,
             sumcheck::{calculate_eq, eval_cubic_poly},
-        }, FieldElement, IOPattern, WhirConfig
-    }, spark_prover::{utilities::SPARKProof, whir::SPARKWHIRConfigsNew}, spongefish::{
+        },
+        FieldElement, IOPattern,
+    },
+    spark_prover::utilities::{whir::SPARKWHIRConfigsNew, SPARKProof},
+    spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
         VerifierState,
-    }, std::{fs::{self, File}, path::PathBuf}, whir::{
+    },
+    std::{
+        fs::{self},
+        path::PathBuf,
+    },
+    whir::{
         poly_utils::multilinear::MultilinearPoint,
         whir::{
             committer::CommitmentReader,
@@ -15,11 +28,11 @@ use {
             utils::HintDeserialize,
             verifier::Verifier,
         },
-    }
+    },
 };
 
 #[derive(FromArgs)]
-#[argh(description="Spark Verifier CLI")]
+#[argh(description = "Spark Verifier CLI")]
 struct Args {
     /// request
     #[argh(option)]
@@ -30,37 +43,35 @@ struct Args {
     proof: PathBuf,
 }
 
-
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
-    
-    let spark_proof_json_str = fs::read_to_string(args.proof)
-        .context("Error: Failed to open the proof file")?;
+
+    let spark_proof_json_str =
+        fs::read_to_string(args.proof).context("Error: Failed to open the proof file")?;
     let spark_proof: SPARKProof = serde_json::from_str(&spark_proof_json_str)
         .context("Error: Failed to deserialize proof")?;
 
-    let request_json_str = fs::read_to_string(args.request)
-        .context("Error: Failed to open the request file")?;
-    let request: SPARKRequest = serde_json::from_str(&request_json_str)
-        .context("Error: Failed to deserialize request")?;
+    let request_json_str =
+        fs::read_to_string(args.request).context("Error: Failed to open the request file")?;
+    let request: SPARKRequest =
+        serde_json::from_str(&request_json_str).context("Error: Failed to deserialize request")?;
 
     let io = IOPattern::from_string(spark_proof.io_pattern.clone());
     let mut arthur = io.to_verifier_state(&spark_proof.transcript);
 
-    let point_row: Vec<FieldElement> = arthur.hint()?;
-    let point_col: Vec<FieldElement> = arthur.hint()?;
-    
+    let _point_row: Vec<FieldElement> = arthur.hint()?;
+    let _point_col: Vec<FieldElement> = arthur.hint()?;
+
     let mut claimed_values = [FieldElement::from(0); 3];
     arthur.fill_next_scalars(&mut claimed_values)?;
 
     let mut matrix_batching_randomness = [FieldElement::from(0); 1];
     arthur.fill_challenge_scalars(&mut matrix_batching_randomness)?;
     let matrix_batching_randomness = matrix_batching_randomness[0];
-    
-    let claimed_value = 
-        claimed_values[0]
-      + claimed_values[1] * matrix_batching_randomness
-      + claimed_values[2] * matrix_batching_randomness * matrix_batching_randomness;
+
+    let claimed_value = claimed_values[0]
+        + claimed_values[1] * matrix_batching_randomness
+        + claimed_values[2] * matrix_batching_randomness * matrix_batching_randomness;
 
     verify_spark_single_matrix(
         &matrix_batching_randomness,
@@ -68,7 +79,7 @@ fn main() -> Result<()> {
         spark_proof.matrix_dimensions.num_rows,
         spark_proof.matrix_dimensions.num_cols,
         spark_proof.matrix_dimensions.nonzero_terms,
-        &mut arthur, 
+        &mut arthur,
         &request,
         &claimed_value,
     )?;
@@ -86,10 +97,9 @@ pub fn verify_spark_single_matrix(
     request: &SPARKRequest,
     claimed_value: &FieldElement,
 ) -> Result<()> {
-    println!("{:?}", claimed_value); //Reilabs Debug: 
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);
     let commitment_reader_col = CommitmentReader::new(&whir_params.col);
-    
+
     // Matrix A
 
     let a_3batched_commitment_reader = CommitmentReader::new(&whir_params.num_terms_3batched);
@@ -98,32 +108,25 @@ pub fn verify_spark_single_matrix(
     let a_sumcheck_commitment = a_5batched_commitment_reader.parse_commitment(arthur)?;
     let a_rowwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
     let a_colwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
-    
+
     let a_row_finalts_commitment = commitment_reader_row.parse_commitment(arthur).unwrap();
     let a_col_finalts_commitment = commitment_reader_col.parse_commitment(arthur).unwrap();
 
-    // Matrix A - Sumcheck 
+    // Matrix A - Sumcheck
 
-    let (randomness, a_last_sumcheck_value) = run_sumcheck_verifier_spark(
-        arthur,
-        next_power_of_two(num_nonzero_terms),
-        *claimed_value,
-    )
-    .context("While verifying SPARK sumcheck")?;
-
-    println!("{:?}", a_last_sumcheck_value); //Reilabs Debug: 
+    let (randomness, a_last_sumcheck_value) =
+        run_sumcheck_verifier_spark(arthur, next_power_of_two(num_nonzero_terms), *claimed_value)
+            .context("While verifying SPARK sumcheck")?;
 
     let final_folds: Vec<FieldElement> = arthur.hint()?;
 
-    let claimed_val = 
-        final_folds[0] +
-        final_folds[1] * matrix_batching_randomness + 
-        final_folds[2] * matrix_batching_randomness * matrix_batching_randomness;
+    let claimed_val = final_folds[0]
+        + final_folds[1] * matrix_batching_randomness
+        + final_folds[2] * matrix_batching_randomness * matrix_batching_randomness;
     assert!(a_last_sumcheck_value == claimed_val * final_folds[3] * final_folds[4]);
 
-    let mut a_spark_sumcheck_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
-        num_nonzero_terms,
-    ));
+    let mut a_spark_sumcheck_statement_verifier =
+        Statement::<FieldElement>::new(next_power_of_two(num_nonzero_terms));
 
     let mut batching_randomness = Vec::with_capacity(5);
     let mut cur = FieldElement::from(1);
@@ -134,27 +137,28 @@ pub fn verify_spark_single_matrix(
 
     a_spark_sumcheck_statement_verifier.add_constraint(
         Weights::evaluation(MultilinearPoint(randomness.clone())),
-        final_folds[0] * batching_randomness[0] +
-            final_folds[1] * batching_randomness[1] +
-            final_folds[2] * batching_randomness[2] +
-            final_folds[3] * batching_randomness[3] +
-            final_folds[4] * batching_randomness[4]
+        final_folds[0] * batching_randomness[0]
+            + final_folds[1] * batching_randomness[1]
+            + final_folds[2] * batching_randomness[2]
+            + final_folds[3] * batching_randomness[3]
+            + final_folds[4] * batching_randomness[4],
     );
 
     let a_spark_sumcheck_verifier = Verifier::new(&whir_params.num_terms_5batched);
-    a_spark_sumcheck_verifier.verify(arthur, &a_sumcheck_commitment, &a_spark_sumcheck_statement_verifier)?;
+    a_spark_sumcheck_verifier.verify(
+        arthur,
+        &a_sumcheck_commitment,
+        &a_spark_sumcheck_statement_verifier,
+    )?;
 
-    // Matrix A - Rowwise 
+    // Matrix A - Rowwise
 
     let mut tau_and_gamma = [FieldElement::from(0); 2];
     arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
     let tau = tau_and_gamma[0];
     let gamma = tau_and_gamma[1];
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_rows) + 2,
-    )?;
+    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_rows) + 2)?;
 
     let claimed_init = gpa_result.claimed_values[0];
     let claimed_final = gpa_result.claimed_values[1];
@@ -171,8 +175,7 @@ pub fn verify_spark_single_matrix(
     let init_opening = init_adr * gamma * gamma + init_mem * gamma + init_cntr - tau;
     let final_cntr: FieldElement = arthur.hint()?;
 
-    let mut final_cntr_statement =
-        Statement::<FieldElement>::new(next_power_of_two(num_rows));
+    let mut final_cntr_statement = Statement::<FieldElement>::new(next_power_of_two(num_rows));
     final_cntr_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
         final_cntr,
@@ -194,14 +197,9 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
-    println!("Rowwise init {:?}", evaluated_value); //Reilabs Debug: 
-    println!("Rowwise init {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_nonzero_terms) + 2,
-    )?;
+    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_nonzero_terms) + 2)?;
 
     let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
@@ -213,28 +211,32 @@ pub fn verify_spark_single_matrix(
     let rs_timestamp: FieldElement = arthur.hint()?;
 
     let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
-    let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
-    
-    let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
-        + ws_opening * last_randomness[0];
+    let ws_opening =
+        rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
 
-        println!("Rowwise rs {:?}", evaluated_value); //Reilabs Debug: 
-        println!("Rowwise rs {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
+    let evaluated_value =
+        rs_opening * (FieldElement::one() - last_randomness[0]) + ws_opening * last_randomness[0];
+
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let mut a_spark_rowwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
-        num_nonzero_terms,
-    ));
+    let mut a_spark_rowwise_statement_verifier =
+        Statement::<FieldElement>::new(next_power_of_two(num_nonzero_terms));
 
     a_spark_rowwise_statement_verifier.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        rs_adr + 
-            rs_mem * a_rowwise_commitment.batching_randomness +
-            rs_timestamp * a_rowwise_commitment.batching_randomness * a_rowwise_commitment.batching_randomness,
+        rs_adr
+            + rs_mem * a_rowwise_commitment.batching_randomness
+            + rs_timestamp
+                * a_rowwise_commitment.batching_randomness
+                * a_rowwise_commitment.batching_randomness,
     );
 
     let a_rowwise_verifier = Verifier::new(&whir_params.num_terms_3batched);
-    a_rowwise_verifier.verify(arthur, &a_rowwise_commitment, &a_spark_rowwise_statement_verifier)?;
+    a_rowwise_verifier.verify(
+        arthur,
+        &a_rowwise_commitment,
+        &a_spark_rowwise_statement_verifier,
+    )?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
@@ -247,10 +249,7 @@ pub fn verify_spark_single_matrix(
 
     // Colwise Init Final GPA
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_cols) + 2,
-    )?;
+    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_cols) + 2)?;
 
     let claimed_init = gpa_result.claimed_values[0];
     let claimed_final = gpa_result.claimed_values[1];
@@ -268,8 +267,7 @@ pub fn verify_spark_single_matrix(
 
     let final_cntr: FieldElement = arthur.hint()?;
 
-    let mut final_cntr_statement =
-        Statement::<FieldElement>::new(next_power_of_two(num_cols));
+    let mut final_cntr_statement = Statement::<FieldElement>::new(next_power_of_two(num_cols));
     final_cntr_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
         final_cntr,
@@ -291,16 +289,11 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
-        println!("Colwise init {:?}", evaluated_value); //Reilabs Debug: 
-        println!("Colwise init {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     // Colwise RS WS GPA
 
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        next_power_of_two(num_nonzero_terms) + 2,
-    )?;
+    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_nonzero_terms) + 2)?;
 
     let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
 
@@ -312,28 +305,32 @@ pub fn verify_spark_single_matrix(
     let rs_timestamp: FieldElement = arthur.hint()?;
 
     let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
-    let ws_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
-    
-    let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
-        + ws_opening * last_randomness[0];
+    let ws_opening =
+        rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
 
-        println!("Colwise rs {:?}", evaluated_value); //Reilabs Debug: 
-        println!(" {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
+    let evaluated_value =
+        rs_opening * (FieldElement::one() - last_randomness[0]) + ws_opening * last_randomness[0];
+
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    let mut a_spark_colwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
-        num_nonzero_terms,
-    ));
+    let mut a_spark_colwise_statement_verifier =
+        Statement::<FieldElement>::new(next_power_of_two(num_nonzero_terms));
 
     a_spark_colwise_statement_verifier.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
-        rs_adr + 
-            rs_mem * a_colwise_commitment.batching_randomness +
-            rs_timestamp * a_colwise_commitment.batching_randomness * a_colwise_commitment.batching_randomness,
+        rs_adr
+            + rs_mem * a_colwise_commitment.batching_randomness
+            + rs_timestamp
+                * a_colwise_commitment.batching_randomness
+                * a_colwise_commitment.batching_randomness,
     );
 
     let a_colwise_verifier = Verifier::new(&whir_params.num_terms_3batched);
-    a_colwise_verifier.verify(arthur, &a_colwise_commitment, &a_spark_colwise_statement_verifier)?;
+    a_colwise_verifier.verify(
+        arthur,
+        &a_colwise_commitment,
+        &a_spark_colwise_statement_verifier,
+    )?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
@@ -372,7 +369,7 @@ pub fn gpa_sumcheck_verifier(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     height_of_binary_tree: usize,
 ) -> Result<GPASumcheckResult> {
-    let mut prev_rand = Vec::<FieldElement>::new();
+    let mut prev_rand;
     let mut rand = Vec::<FieldElement>::new();
     let mut claimed_values = [FieldElement::from(0); 2];
     let mut l = [FieldElement::from(0); 2];
@@ -431,9 +428,9 @@ pub fn gpa_sumcheck_verifier(
 }
 
 pub struct GPASumcheckResult {
-    pub claimed_values:      Vec<FieldElement>,
+    pub claimed_values:        Vec<FieldElement>,
     pub a_last_sumcheck_value: FieldElement,
-    pub randomness:          Vec<FieldElement>,
+    pub randomness:            Vec<FieldElement>,
 }
 
 pub fn eval_linear_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElement {
