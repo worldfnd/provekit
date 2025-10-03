@@ -89,13 +89,15 @@ extern "C"
 
     /// Converts data from eMRTD document to input file for Noir proof.
     ///
-    /// @param dg1 Input buffer to get DG1 data from eMRTD
-    /// @param sod Input buffer to get SOD data from eMRTD
+    /// @param dg1_data Input buffer containing DG1 data from eMRTD
+    /// @param dg1_len Length of DG1 data in bytes
+    /// @param sod_data Input buffer containing SOD data from eMRTD
+    /// @param sod_len Length of SOD data in bytes
     /// @param min_age_required Minimum age required
     /// @param max_age_required Maximum age required
     /// @param out_path Path where to write the input file (.toml)
     /// @return PK_SUCCESS on success, or an appropriate error code on failure
-    int pk_emrtd_to_input_file(PKBuf *dg1, PKBuf *sod, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
+    int pk_emrtd_to_input_file(const uint8_t *dg1_data, size_t dg1_len, const uint8_t *sod_data, size_t sod_len, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
 
     /// Mocks data from eMRTD document to input file for Noir proof.
     ///
@@ -105,7 +107,7 @@ extern "C"
     /// @param max_age_required Maximum age required
     /// @param out_path Path where to write the input file (.toml)
     /// @return PK_SUCCESS on success, or an appropriate error code on failure
-    int pk_mock_emrtd_to_input_file(const char *birth_date, const char* expiry_date, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
+    int pk_mock_emrtd_to_input_file(const char *birth_date, const char *expiry_date, uint8_t min_age_required, uint8_t max_age_required, const char *out_path);
 
     /// Free a buffer allocated by ProveKit FFI functions.
     ///

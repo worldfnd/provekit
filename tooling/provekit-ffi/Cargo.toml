@@ -27,6 +27,7 @@ serde.workspace = true
 serde_json.workspace = true
 postcard.workspace = true
 tracing.workspace = true
+base64.workspace = true
 
 [lints]
 workspace = true

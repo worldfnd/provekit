@@ -172,26 +172,27 @@ pub unsafe extern "C" fn pk_prove_to_json(
 /// - `out_path` is valid null-terminated C strings
 #[no_mangle]
 pub unsafe extern "C" fn pk_emrtd_to_input_file(
-    dg1: *mut PKBuf,
-    sod: *mut PKBuf,
+    dg1_data: *const u8,
+    dg1_len: usize,
+    sod_data: *const u8,
+    sod_len: usize,
     min_age_required: u8,
     max_age_required: u8,
     out_path: *const c_char,
 ) -> c_int {
     // Validate inputs
-    if dg1.is_null() {
-        return PKError::InvalidInput.into();
-    }
-
-    if sod.is_null() {
+    if dg1_data.is_null() || sod_data.is_null() {
         return PKError::InvalidInput.into();
     }
 
     let result = (|| -> Result<(), PKError> {
         let out_path = c_str_to_str(out_path)?;
 
-        let dg1 = Binary::new((*dg1).to_vec());
-        let sod = SOD::from_der(&mut Binary::new((*sod).to_vec()))
+        let dg1_bytes = std::slice::from_raw_parts(dg1_data, dg1_len);
+        let sod_bytes = std::slice::from_raw_parts(sod_data, sod_len);
+
+        let dg1 = Binary::new(dg1_bytes.to_vec());
+        let sod = SOD::from_der(&mut Binary::new(sod_bytes.to_vec()))
             .map_err(|_| PKError::EMRTDReadError)?;
 
         let reader = PassportReader {
