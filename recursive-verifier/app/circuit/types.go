@@ -83,11 +83,6 @@ type Merkle struct {
 	AuthPaths         [][][]frontend.Variable
 }
 
-type CombinedMerkle struct {
-	firstRound Merkle
-	mainRounds Merkle
-}
-
 // Other types
 type ProofObject struct {
 	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
@@ -169,9 +164,9 @@ type Commitment struct {
 type SPARKMatrixData struct {
 	Claimed frontend.Variable
 
-	WHIRA3       WHIRParams
-	WHIRA5       WHIRParams
-	LogANumTerms int
+	WHIR3       WHIRParams
+	WHIR5       WHIRParams
+	LogNumTerms int
 
 	SparkSumcheckLast []frontend.Variable
 

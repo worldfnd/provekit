@@ -7,12 +7,6 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
-func newCombinedMerkle(hint ZKHint, isContainer bool) CombinedMerkle {
-	return CombinedMerkle{
-		firstRound: newMerkle(hint.firstRoundMerklePaths.path, isContainer),
-		mainRounds: newMerkle(hint.roundHints, isContainer),
-	}
-}
 func newMerkle(
 	hint Hint,
 	isContainer bool,

@@ -19,7 +19,6 @@ import (
 )
 
 type Circuit struct {
-	// Inputs
 	WitnessLinearStatementEvaluations       []frontend.Variable
 	HidingSpartanLinearStatementEvaluations []frontend.Variable
 	LogNumConstraints                       int
@@ -32,13 +31,11 @@ type Circuit struct {
 	WitnessMerkle                           Merkle
 	WitnessFirstRound                       Merkle
 	WHIRParamsWitness                       WHIRParams
-	// Is this not used?
-	WHIRParamsHidingSpartan WHIRParams
+	WHIRParamsHidingSpartan                 WHIRParams
 
 	MatrixA []MatrixCell
 	MatrixB []MatrixCell
 	MatrixC []MatrixCell
-	// Public Input
 
 	IO              []byte
 	UseSpark        bool
@@ -46,13 +43,14 @@ type Circuit struct {
 
 	SPARKIO    []byte
 	Transcript []uints.U8
-	WHIRRow    WHIRParams
-	WHIRCol    WHIRParams
+
+	WHIRRow WHIRParams
+	WHIRCol WHIRParams
 
 	PointRow []frontend.Variable
 	PointCol []frontend.Variable
 
-	SparkA SPARKMatrixData
+	SparkRLC SPARKMatrixData
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
@@ -106,7 +104,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			arthur,
 			uapi,
 			sc,
-			circuit.SparkA,
+			circuit.SparkRLC,
 			circuit,
 		)
 		if err != nil {
@@ -150,13 +148,13 @@ func verifyCircuit(
 	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
 	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
 
-	acontSparkSumcheckLast := make([]frontend.Variable, 5)
-	asparkSumcheckLast := make([]frontend.Variable, 5)
-	asparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[0].Limbs)
-	asparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[1].Limbs)
-	asparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[2].Limbs)
-	asparkSumcheckLast[3] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[3].Limbs)
-	asparkSumcheckLast[4] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[4].Limbs)
+	contSparkSumcheckLast := make([]frontend.Variable, 5)
+	sparkSumcheckLast := make([]frontend.Variable, 5)
+	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[0].Limbs)
+	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[1].Limbs)
+	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[2].Limbs)
+	sparkSumcheckLast[3] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[3].Limbs)
+	sparkSumcheckLast[4] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[4].Limbs)
 
 	contPointRow := make([]frontend.Variable, len(hints.pointRow))
 	pointRow := make([]frontend.Variable, len(hints.pointRow))
@@ -218,7 +216,7 @@ func verifyCircuit(
 	}
 
 	useSpark := evaluation == "spark"
-	//
+
 	var circuit = Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
@@ -249,10 +247,10 @@ func verifyCircuit(
 		PointRow: contPointRow,
 		PointCol: contPointCol,
 
-		SparkA: SPARKMatrixData{
+		SparkRLC: SPARKMatrixData{
 			Claimed: typeConverters.LimbsToBigIntMod(hints.AHints.claimed.Limbs),
 
-			SparkSumcheckLast: acontSparkSumcheckLast,
+			SparkSumcheckLast: contSparkSumcheckLast,
 
 			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
 			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
@@ -279,9 +277,10 @@ func verifyCircuit(
 			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
 			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, true),
 
-			WHIRA3:       NewWhirParams(sparkConfig.WHIR3),
-			WHIRA5:       NewWhirParams(sparkConfig.WHIR5),
-			LogANumTerms: sparkConfig.LogNumTerms,
+			WHIR3: NewWhirParams(sparkConfig.WHIR3),
+			WHIR5: NewWhirParams(sparkConfig.WHIR5),
+
+			LogNumTerms: sparkConfig.LogNumTerms,
 		},
 
 		UseSpark: useSpark,
@@ -347,10 +346,10 @@ func verifyCircuit(
 		PointRow: pointRow,
 		PointCol: pointCol,
 
-		SparkA: SPARKMatrixData{
+		SparkRLC: SPARKMatrixData{
 			Claimed: typeConverters.LimbsToBigIntMod(hints.AHints.claimed.Limbs),
 
-			SparkSumcheckLast: asparkSumcheckLast,
+			SparkSumcheckLast: sparkSumcheckLast,
 
 			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
 			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
@@ -377,9 +376,10 @@ func verifyCircuit(
 			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
 			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, false),
 
-			WHIRA3:       NewWhirParams(sparkConfig.WHIR3),
-			WHIRA5:       NewWhirParams(sparkConfig.WHIR5),
-			LogANumTerms: sparkConfig.LogNumTerms,
+			WHIR3: NewWhirParams(sparkConfig.WHIR3),
+			WHIR5: NewWhirParams(sparkConfig.WHIR5),
+
+			LogNumTerms: sparkConfig.LogNumTerms,
 		},
 
 		UseSpark: useSpark,
@@ -491,7 +491,6 @@ func sparkSingleMatrix(
 	matrix SPARKMatrixData,
 	circuit *Circuit,
 ) error {
-
 	claimedEvaluations := make([]frontend.Variable, 3)
 	if err := arthur.FillNextScalars(claimedEvaluations); err != nil {
 		return err
@@ -508,15 +507,15 @@ func sparkSingleMatrix(
 		api.Mul(claimedEvaluations[2], matrixCombinationRandomness[0], matrixCombinationRandomness[0]),
 	)
 
-	sumcheckCommitment, err := parseBatchedCommitment(arthur, matrix.WHIRA5)
+	sumcheckCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR5)
 	if err != nil {
 		return err
 	}
-	rowwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIRA3)
+	rowwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR3)
 	if err != nil {
 		return err
 	}
-	colwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIRA3)
+	colwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR3)
 	if err != nil {
 		return err
 	}
@@ -530,16 +529,10 @@ func sparkSingleMatrix(
 		return err
 	}
 
-	// After debug: Change 1 to actual claimed value
-	sparkSumcheckFoldingRandomness, sparkSumcheckLastEval, err := runSumcheck(api, arthur, claimedValue, matrix.LogANumTerms, 4)
+	sparkSumcheckFoldingRandomness, sparkSumcheckLastEval, err := runSumcheck(api, arthur, claimedValue, matrix.LogNumTerms, 4)
 	if err != nil {
 		return err
 	}
-
-	api.Println(sparkSumcheckLastEval)
-
-	_ = sparkSumcheckFoldingRandomness
-	_ = sparkSumcheckLastEval
 
 	claimedVal := api.Add(
 		matrix.SparkSumcheckLast[0],
@@ -549,7 +542,7 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(sparkSumcheckLastEval, api.Mul(claimedVal, matrix.SparkSumcheckLast[3], matrix.SparkSumcheckLast[4]))
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.SparkSumcheckMerkle, matrix.SparkSumcheckFirstRound, matrix.WHIRA5, [][]frontend.Variable{{}, {}, {}, {}, {}}, []frontend.Variable{}, sumcheckCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.SparkSumcheckMerkle, matrix.SparkSumcheckFirstRound, matrix.WHIR5, [][]frontend.Variable{{}, {}, {}, {}, {}}, []frontend.Variable{}, sumcheckCommitment,
 		[][]frontend.Variable{{matrix.SparkSumcheckLast[0]}, {matrix.SparkSumcheckLast[1]}, {matrix.SparkSumcheckLast[2]}, {matrix.SparkSumcheckLast[3]}, {matrix.SparkSumcheckLast[4]}},
 		[][]frontend.Variable{sparkSumcheckFoldingRandomness},
 	)
@@ -566,7 +559,6 @@ func sparkSingleMatrix(
 	tau := tauGammaTemp[0]
 	gamma := tauGammaTemp[1]
 
-	// Change this debug statement
 	gpaResult, err := gpaSumcheckVerifier(api, arthur, len(circuit.PointRow)+2)
 	if err != nil {
 		return err
@@ -598,8 +590,7 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(gpaResult.lastSumcheckValue, evaluated_value)
 
-	// Change this after debug
-	gpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogANumTerms+2)
+	gpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogNumTerms+2)
 	if err != nil {
 		return err
 	}
@@ -617,7 +608,7 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(gpaResultRSWS.lastSumcheckValue, rsws_evaluated_value)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowwiseMerkle, matrix.RowwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowwiseMerkle, matrix.RowwiseMerkleFirstRound, matrix.WHIR3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
 		[][]frontend.Variable{{matrix.RowRSAddressEvaluation}, {matrix.RowRSValueEvaluation}, {matrix.RowRSTimestampEvaluation}},
 		[][]frontend.Variable{rsws_evaluation_randomness},
 	)
@@ -636,7 +627,6 @@ func sparkSingleMatrix(
 	colwiseTau := colwiseTauGammaTemp[0]
 	colwiseGamma := colwiseTauGammaTemp[1]
 
-	// Change this debug statement
 	colwiseInitFinalGpaResult, err := gpaSumcheckVerifier(api, arthur, len(circuit.PointCol)-1+2)
 	if err != nil {
 		return err
@@ -655,7 +645,7 @@ func sparkSingleMatrix(
 
 	colwiseinit_opening := api.Sub(api.Add(api.Mul(colwiseaddr, colwiseGamma, colwiseGamma), api.Mul(colwisemem, colwiseGamma), colwiseinit_cntr), colwiseTau)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkA.ColFinalMerkle, circuit.SparkA.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkRLC.ColFinalMerkle, circuit.SparkRLC.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
 		[][]frontend.Variable{{matrix.ColFinalCounter}},
 		[][]frontend.Variable{colwiseEvaluation_randomness},
 	)
@@ -668,7 +658,8 @@ func sparkSingleMatrix(
 	api.AssertIsEqual(colwiseInitFinalGpaResult.lastSumcheckValue, colwiseevaluated_value)
 
 	// Colwise RS WS
-	colwisegpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogANumTerms+2)
+
+	colwisegpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogNumTerms+2)
 	if err != nil {
 		return err
 	}
@@ -686,7 +677,7 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(colwisegpaResultRSWS.lastSumcheckValue, colwisersws_evaluated_value)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.ColwiseMerkle, matrix.ColwiseMerkleFirstRound, matrix.WHIRA3, [][]frontend.Variable{{}}, []frontend.Variable{}, colwiseCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.ColwiseMerkle, matrix.ColwiseMerkleFirstRound, matrix.WHIR3, [][]frontend.Variable{{}}, []frontend.Variable{}, colwiseCommitment,
 		[][]frontend.Variable{{matrix.ColRSAddressEvaluation}, {matrix.ColRSValueEvaluation}, {matrix.ColRSTimestampEvaluation}},
 		[][]frontend.Variable{colwisersws_evaluation_randomness},
 	)
@@ -695,12 +686,6 @@ func sparkSingleMatrix(
 	}
 
 	api.AssertIsEqual(api.Mul(colwiseClaimedInit, colwiseClaimedWS), api.Mul(colwiseClaimedRS, colwiseClaimedFinal))
-
-	_ = sumcheckCommitment
-	_ = rowwiseCommitment
-	_ = colwiseCommitment
-	_ = rowFinalCommitment
-	_ = colFinalCommitment
 
 	return nil
 }
