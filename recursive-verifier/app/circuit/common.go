@@ -354,23 +354,11 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
-	var asparkSumcheckData = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	var asparkSumcheckData = consumeWhirData(sparkConfig.WHIR5, &sparkMerklePaths, &sparkStirAnswers)
 	var arowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
-	var arowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
+	var arowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
 	var acolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
-	var acolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRA3, &sparkMerklePaths, &sparkStirAnswers)
-
-	var bsparkSumcheckData = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
-	var browFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
-	var browwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
-	var bcolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
-	var bcolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
-
-	var csparkSumcheckData = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
-	var crowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
-	var crowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
-	var ccolFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
-	var ccolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIRB3, &sparkMerklePaths, &sparkStirAnswers)
+	var acolwiseSparkMerkle = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
 
 	hints := Hints{
 		pointRow: pointRow,
@@ -398,48 +386,6 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 			colRSAddressEvaluation:   colRSAddressEvaluation[0],
 			colRSValueEvaluation:     colRSValueEvaluation[0],
 			colRSTimestampEvaluation: colRSTimestampEvaluation[0],
-		},
-
-		BHints: SparkMatrixHints{
-			claimed:            claimedB,
-			sparkSumcheckData:  bsparkSumcheckData,
-			rowFinalMerkle:     browFinal,
-			rowwiseSparkMerkle: browwiseSparkMerkle,
-			colFinalMerkle:     bcolFinal,
-			colwiseSparkMerkle: bcolwiseSparkMerkle,
-
-			sparkClaimedEvaluations: sparkClaimedEvaluations[1],
-
-			rowFinalCounter:          rowFinalCounter[1],
-			rowRSAddressEvaluation:   rowRSAddressEvaluation[1],
-			rowRSValueEvaluation:     rowRSValueEvaluation[1],
-			rowRSTimestampEvaluation: rowRSTimestampEvaluation[1],
-
-			colFinalCounter:          colFinalCounter[1],
-			colRSAddressEvaluation:   colRSAddressEvaluation[1],
-			colRSValueEvaluation:     colRSValueEvaluation[1],
-			colRSTimestampEvaluation: colRSTimestampEvaluation[1],
-		},
-
-		CHints: SparkMatrixHints{
-			claimed:            claimedC,
-			sparkSumcheckData:  csparkSumcheckData,
-			rowFinalMerkle:     crowFinal,
-			rowwiseSparkMerkle: crowwiseSparkMerkle,
-			colFinalMerkle:     ccolFinal,
-			colwiseSparkMerkle: ccolwiseSparkMerkle,
-
-			sparkClaimedEvaluations: sparkClaimedEvaluations[2],
-
-			rowFinalCounter:          rowFinalCounter[2],
-			rowRSAddressEvaluation:   rowRSAddressEvaluation[2],
-			rowRSValueEvaluation:     rowRSValueEvaluation[2],
-			rowRSTimestampEvaluation: rowRSTimestampEvaluation[2],
-
-			colFinalCounter:          colFinalCounter[2],
-			colRSAddressEvaluation:   colRSAddressEvaluation[2],
-			colRSValueEvaluation:     colRSValueEvaluation[2],
-			colRSTimestampEvaluation: colRSTimestampEvaluation[2],
 		},
 	}
 

@@ -1,19 +1,13 @@
 use {
-    anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
-    provekit_common::{
+    anyhow::{ensure, Context, Result}, argh::FromArgs, ark_std::{One, Zero}, provekit_common::{
         skyscraper::SkyscraperSponge, spark::SPARKRequest, utils::{
             next_power_of_two,
             sumcheck::{calculate_eq, eval_cubic_poly},
         }, FieldElement, IOPattern, WhirConfig
-    },
-    spark_prover::{utilities::SPARKProof, whir::SPARKWHIRConfigsNew},
-    spongefish::{
+    }, spark_prover::{utilities::SPARKProof, whir::SPARKWHIRConfigsNew}, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
         VerifierState,
-    },
-    std::fs::{self, File},
-    whir::{
+    }, std::{fs::{self, File}, path::PathBuf}, whir::{
         poly_utils::multilinear::MultilinearPoint,
         whir::{
             committer::CommitmentReader,
@@ -21,19 +15,34 @@ use {
             utils::HintDeserialize,
             verifier::Verifier,
         },
-    },
+    }
 };
 
-fn main() -> Result<()> {
-    let spark_proof_json_str = fs::read_to_string("spark-prover/spark_proof.json")
-        .context("Error: Failed to open the r1cs.json file")?;
-    let spark_proof: SPARKProof = serde_json::from_str(&spark_proof_json_str)
-        .context("Error: Failed to deserialize JSON to R1CS")?;
+#[derive(FromArgs)]
+#[argh(description="Spark Verifier CLI")]
+struct Args {
+    /// request
+    #[argh(option)]
+    request: PathBuf,
 
-    let request_json_str = fs::read_to_string("spark-prover/request.json")
-        .context("Error: Failed to open the r1cs.json file")?;
+    /// proof
+    #[argh(option)]
+    proof: PathBuf,
+}
+
+
+fn main() -> Result<()> {
+    let args: Args = argh::from_env();
+    
+    let spark_proof_json_str = fs::read_to_string(args.proof)
+        .context("Error: Failed to open the proof file")?;
+    let spark_proof: SPARKProof = serde_json::from_str(&spark_proof_json_str)
+        .context("Error: Failed to deserialize proof")?;
+
+    let request_json_str = fs::read_to_string(args.request)
+        .context("Error: Failed to open the request file")?;
     let request: SPARKRequest = serde_json::from_str(&request_json_str)
-        .context("Error: Failed to deserialize JSON to R1CS")?;
+        .context("Error: Failed to deserialize request")?;
 
     let io = IOPattern::from_string(spark_proof.io_pattern.clone());
     let mut arthur = io.to_verifier_state(&spark_proof.transcript);
@@ -77,6 +86,7 @@ pub fn verify_spark_single_matrix(
     request: &SPARKRequest,
     claimed_value: &FieldElement,
 ) -> Result<()> {
+    println!("{:?}", claimed_value); //Reilabs Debug: 
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);
     let commitment_reader_col = CommitmentReader::new(&whir_params.col);
     
@@ -100,6 +110,8 @@ pub fn verify_spark_single_matrix(
         *claimed_value,
     )
     .context("While verifying SPARK sumcheck")?;
+
+    println!("{:?}", a_last_sumcheck_value); //Reilabs Debug: 
 
     let final_folds: Vec<FieldElement> = arthur.hint()?;
 
@@ -182,6 +194,8 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
+    println!("Rowwise init {:?}", evaluated_value); //Reilabs Debug: 
+    println!("Rowwise init {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     let gpa_result = gpa_sumcheck_verifier(
@@ -204,6 +218,8 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
         + ws_opening * last_randomness[0];
 
+        println!("Rowwise rs {:?}", evaluated_value); //Reilabs Debug: 
+        println!("Rowwise rs {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     let mut a_spark_rowwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(
@@ -275,6 +291,8 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
+        println!("Colwise init {:?}", evaluated_value); //Reilabs Debug: 
+        println!("Colwise init {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     // Colwise RS WS GPA
@@ -299,6 +317,8 @@ pub fn verify_spark_single_matrix(
     let evaluated_value = rs_opening * (FieldElement::one() - last_randomness[0])
         + ws_opening * last_randomness[0];
 
+        println!("Colwise rs {:?}", evaluated_value); //Reilabs Debug: 
+        println!(" {:?}", gpa_result.a_last_sumcheck_value); //Reilabs Debug: 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     let mut a_spark_colwise_statement_verifier = Statement::<FieldElement>::new(next_power_of_two(

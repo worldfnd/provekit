@@ -4,15 +4,20 @@ use {
 };
 
 fn main() {
+    let mut row = vec![FieldElement::from(0); 8];
+    let mut col = vec![FieldElement::from(0); 9];
+
+    row[7] = FieldElement::from(1);
+    
     let spark_request = SPARKRequest {
         point_to_evaluate: Point {
-            row: vec![FieldElement::from(0); 8],
-            col: vec![FieldElement::from(0); 9],
+            row,
+            col,
         },
         claimed_values:    ClaimedValues {
             a: FieldElement::from(1),
-            b: FieldElement::from(1),
-            c: FieldElement::from(1),
+            b: FieldElement::from(0),
+            c: FieldElement::from(0),
         },
     };
 

@@ -150,16 +150,13 @@ type ClaimedEvaluations struct {
 // }
 
 type SparkConfig struct {
-	IOPattern    string     `json:"io_pattern"`
-	Transcript   []byte     `json:"transcript"`
-	WHIRA3       WHIRConfig `json:"whir_a3"`
-	WHIRB3       WHIRConfig `json:"whir_b3"`
-	WHIRC3       WHIRConfig `json:"whir_c3"`
-	WHIRRow      WHIRConfig `json:"whir_row"`
-	WHIRCol      WHIRConfig `json:"whir_col"`
-	LogANumTerms int        `json:"log_a_num_terms"`
-	LogBNumTerms int        `json:"log_b_num_terms"`
-	LogCNumTerms int        `json:"log_c_num_terms"`
+	IOPattern   string     `json:"io_pattern"`
+	Transcript  []byte     `json:"transcript"`
+	WHIR3       WHIRConfig `json:"whir_3batched"`
+	WHIR5       WHIRConfig `json:"whir_5batched"`
+	WHIRRow     WHIRConfig `json:"whir_row"`
+	WHIRCol     WHIRConfig `json:"whir_col"`
+	LogNumTerms int        `json:"log_num_terms"`
 }
 
 type Commitment struct {
@@ -173,6 +170,7 @@ type SPARKMatrixData struct {
 	Claimed frontend.Variable
 
 	WHIRA3       WHIRParams
+	WHIRA5       WHIRParams
 	LogANumTerms int
 
 	SparkSumcheckLast []frontend.Variable

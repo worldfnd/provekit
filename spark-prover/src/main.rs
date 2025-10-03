@@ -3,10 +3,11 @@ use {
         memory::{calculate_e_values_for_r1cs, calculate_memory, EValuesForMatrix, Memory},
         spark::{prove_spark_for_single_matrix, run_spark_sumcheck},
         utilities::{
-            calculate_matrix_dimensions, create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs, iopattern::SPARKDomainSeparator, matrix::{COOMatrix, COOMatrixNew, SparkMatrix, SparkMatrixNew, TimeStamps}, MatrixDimensions, MatrixDimensionsNew, SPARKProof, SPARKProofGnark
+            calculate_matrix_dimensions, create_io_pattern, deserialize_r1cs, deserialize_request, get_spark_r1cs, iopattern::SPARKDomainSeparator, matrix::{COOMatrix, COOMatrixNew, SparkMatrix, SparkMatrixNew, TimeStamps}, MatrixDimensions, MatrixDimensionsNew, SPARKProof, SPARKProofGnark, SPARKProofGnarkNew
         },
         whir::{create_whir_configs, SPARKWHIRConfigsNew},
     }, spongefish::codecs::arkworks_algebra::{FieldDomainSeparator, FieldToUnitSerialize, UnitToField}, std::{collections::BTreeMap, fs::File, io::Write, mem}, whir::{poly_utils::evals::EvaluationsList, whir::{committer::CommitmentWriter, domainsep::WhirDomainSeparator, statement::Statement, utils::HintSerialize}}
+    argh::FromArgs,
 };
 
 fn main() -> Result<()> {
@@ -301,25 +302,22 @@ fn main() -> Result<()> {
         .write_all(serde_json::to_string(&spark_proof).unwrap().as_bytes())
         .expect("Writing gnark parameters to a file failed");
 
-    // let spark_proof_gnark = SPARKProofGnark {
-    //     transcript: spark_proof.transcript,
-    //     io_pattern: spark_proof.io_pattern,
-    //     whir_row: WHIRConfigGnark::new(&spark_proof.whir_params.row),
-    //     whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
-    //     whir_a3: WHIRConfigGnark::new(&spark_proof.whir_params.a_3batched),
-    //     whir_b3: WHIRConfigGnark::new(&spark_proof.whir_params.b_3batched),
-    //     whir_c3: WHIRConfigGnark::new(&spark_proof.whir_params.c_3batched),
-    //     log_a_num_terms: next_power_of_two(padded_num_entries),
-    //     log_b_num_terms: next_power_of_two(r1cs.b.num_entries()),
-    //     log_c_num_terms: next_power_of_two(r1cs.c.num_entries()),
-    // };
+    let spark_proof_gnark = SPARKProofGnarkNew {
+        transcript: spark_proof.transcript,
+        io_pattern: spark_proof.io_pattern,
+        whir_row: WHIRConfigGnark::new(&spark_proof.whir_params.row),
+        whir_col: WHIRConfigGnark::new(&spark_proof.whir_params.col),
+        whir_3batched: WHIRConfigGnark::new(&spark_proof.whir_params.num_terms_3batched),
+        whir_5batched: WHIRConfigGnark::new(&spark_proof.whir_params.num_terms_5batched),
+        log_num_terms: next_power_of_two(padded_num_entries),
+    };
 
-    // let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
-    //     .context("Error: Failed to create the spark proof file")?;
+    let mut gnark_spark_proof_file = File::create("spark-prover/gnark_spark_proof.json")
+        .context("Error: Failed to create the spark proof file")?;
 
-    // gnark_spark_proof_file
-    //     .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
-    //     .expect("Writing spark gnark parameters to a file failed");
+    gnark_spark_proof_file
+        .write_all(serde_json::to_string(&spark_proof_gnark).unwrap().as_bytes())
+        .expect("Writing spark gnark parameters to a file failed");
 
     Ok(())
 }

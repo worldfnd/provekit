@@ -9,6 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+argh = "0.1.12"
 provekit-common.workspace = true
 provekit-r1cs-compiler.workspace = true
 serde_json.workspace = true
@@ -19,7 +20,6 @@ whir.workspace = true
 ark-std.workspace = true
 ark-ff.workspace = true
 itertools = "0.14.0"
-
 
 [lints]
 workspace = true

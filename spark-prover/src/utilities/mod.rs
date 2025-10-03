@@ -76,3 +76,14 @@ pub struct SPARKProofGnark {
     pub log_b_num_terms: usize,
     pub log_c_num_terms: usize,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct SPARKProofGnarkNew {
+    pub transcript: Vec<u8>,
+    pub io_pattern: String,
+    pub whir_row: WHIRConfigGnark,
+    pub whir_col: WHIRConfigGnark,
+    pub whir_3batched: WHIRConfigGnark,
+    pub whir_5batched: WHIRConfigGnark,
+    pub log_num_terms: usize,
+}
