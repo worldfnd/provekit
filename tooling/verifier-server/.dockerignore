@@ -1,0 +1,44 @@
+# Docker ignore file for verifier server
+
+# Since we build from project root, ignore common files that shouldn't be in the build context
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (these will be built inside the container)
+target/
+artifacts/
+
+# Logs
+*.log
+
+# Test files
+test_*
+tests/
+
+# Documentation
+docs/
+
+# Examples that aren't needed for the server
+noir-examples/
+playground/
+
+# Scripts that aren't needed in the container
+scripts/
+
+# Temporary files
+tmp/
+temp/

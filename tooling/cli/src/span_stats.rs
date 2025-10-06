@@ -130,6 +130,14 @@ where
             let _ = write!(&mut buffer, " {key}={val}");
         }
 
+        // Start-of-span memory stats
+        let _ = write!(
+            &mut buffer,
+            " {DIM}start:{UNDIM} {}B{DIM} current, {UNDIM}{:#}{DIM} allocations{UNDIM}",
+            human(ALLOC_STATE.current() as f64),
+            human(ALLOC_STATE.count() as f64)
+        );
+
         eprintln!("{buffer}");
     }
 
@@ -213,13 +221,15 @@ where
         }
 
         // Print stats
+        let current_now = ALLOC_STATE.current();
         let _ = write!(
             &mut buffer,
             "{}s{DIM} duration, {UNDIM}{}B{DIM} peak memory, {UNDIM}{}B{DIM} local, \
-             {UNDIM}{:#}{DIM} allocations{UNDIM}",
+             {UNDIM}{}B{DIM} current, {UNDIM}{:#}{DIM} allocations{UNDIM}",
             human(duration.as_secs_f64()),
             human(peak_memory as f64),
             human(own as f64),
+            human(current_now as f64),
             human(allocations as f64)
         );
 
