@@ -2,7 +2,10 @@ use {
     crate::{
         utils::{serde_ark, serde_ark_option},
         witness::{
-            binops::BINOP_ATOMIC_BITS, digits::DigitalDecompositionWitnesses, ram::SpiceWitnesses,
+            binops::BINOP_ATOMIC_BITS,
+            digits::DigitalDecompositionWitnesses,
+            layer_scheduler::{LayerScheduler, LayeredWitnessBuilders},
+            ram::SpiceWitnesses,
             ConstantOrR1CSWitness,
         },
         FieldElement,
@@ -123,5 +126,18 @@ impl WitnessBuilder {
             WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
             _ => 1,
         }
+    }
+
+    /// Constructs a layered execution plan optimized for batch inversion.
+    ///
+    /// Uses frontier-based scheduling to group operations and minimize
+    /// expensive field inversions via Montgomery's batch inversion trick.
+    pub fn prepare_layers(witness_builders: &[WitnessBuilder]) -> LayeredWitnessBuilders {
+        if witness_builders.is_empty() {
+            return LayeredWitnessBuilders { layers: Vec::new() };
+        }
+
+        let scheduler = LayerScheduler::new(witness_builders);
+        scheduler.build_layers()
     }
 }

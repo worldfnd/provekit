@@ -61,9 +61,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 witness[*witness_idx] = Some(a * b);
             }
-            WitnessBuilder::Inverse(witness_idx, operand_idx) => {
-                let operand: FieldElement = witness[*operand_idx].unwrap();
-                witness[*witness_idx] = Some(operand.inverse().unwrap());
+            WitnessBuilder::Inverse(..) => {
+                unreachable!("Inverse should not be called")
             }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,

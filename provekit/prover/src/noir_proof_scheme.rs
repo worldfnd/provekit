@@ -70,7 +70,7 @@ impl NoirProofSchemeProver for NoirProofScheme {
         self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
 
         let partial_witness = self.r1cs.solve_witness_vec(
-            &self.witness_builders,
+            &self.layered_witness_builders,
             &acir_witness_idx_to_value_map,
             &mut witness_merlin,
         );
@@ -95,8 +95,10 @@ impl NoirProofSchemeProver for NoirProofScheme {
         let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
-            .witness_builders
+            .layered_witness_builders
+            .layers
             .iter()
+            .flat_map(|layer| &layer.witness_builders)
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
             .count();
 
