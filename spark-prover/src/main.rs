@@ -1,9 +1,14 @@
 use {
-    anyhow::{Context, Result}, argh::FromArgs, ark_ff::AdditiveGroup, provekit_common::{
+    anyhow::{Context, Result},
+    argh::FromArgs,
+    ark_ff::AdditiveGroup,
+    provekit_common::{
         gnark::WHIRConfigGnark,
         utils::{next_power_of_two, sumcheck::SumcheckIOPattern},
         FieldElement, IOPattern, WhirR1CSScheme,
-    }, provekit_r1cs_compiler::WhirR1CSSchemeBuilder, spark_prover::utilities::{
+    },
+    provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
+    spark_prover::utilities::{
         deserialize_r1cs, deserialize_request,
         iopattern::SPARKDomainSeparator,
         matrix::{COOMatrix, SparkMatrix, TimeStamps},
@@ -11,7 +16,10 @@ use {
         spark::prove_spark_for_single_matrix,
         whir::SPARKWHIRConfigsNew,
         MatrixDimensionsNew, SPARKProof, SPARKProofGnarkNew,
-    }, spongefish::codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField}, std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf}, whir::whir::{domainsep::WhirDomainSeparator, utils::HintSerialize}
+    },
+    spongefish::codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
+    std::{collections::BTreeMap, fs::File, io::Write, path::PathBuf},
+    whir::whir::{domainsep::WhirDomainSeparator, utils::HintSerialize},
 };
 
 #[derive(FromArgs)]
@@ -28,8 +36,7 @@ struct Args {
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
 
-    let r1cs = deserialize_r1cs(&args.r1cs)
-        .context("Error: Failed to create the R1CS object")?;
+    let r1cs = deserialize_r1cs(&args.r1cs).context("Error: Failed to create the R1CS object")?;
 
     // get combined matrix non-zero value coordinates
 
@@ -240,8 +247,8 @@ fn main() -> Result<()> {
     merlin.hint(&request.point_to_evaluate.row)?;
     merlin.hint(&request.point_to_evaluate.col)?;
 
-    // Calculate the RLC of the matrices 
-    // Note: can be also calculated from rlc of val_a, val_b, val_c 
+    // Calculate the RLC of the matrices
+    // Note: can be also calculated from rlc of val_a, val_b, val_c
     merlin.add_scalars(&[
         request.claimed_values.a,
         request.claimed_values.b,
@@ -280,7 +287,7 @@ fn main() -> Result<()> {
         + request.claimed_values.b * matrix_batching_randomness
         + request.claimed_values.c * matrix_batching_randomness_sq;
 
-    // 
+    //
 
     let spark_matrix = SparkMatrix {
         coo:        COOMatrix {

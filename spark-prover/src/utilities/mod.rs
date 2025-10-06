@@ -16,8 +16,7 @@ use {
 };
 
 pub fn deserialize_r1cs(path: &PathBuf) -> Result<R1CS> {
-    let json_str =
-        fs::read_to_string(path).context("Error: Failed to open the r1cs.json file")?;
+    let json_str = fs::read_to_string(path).context("Error: Failed to open the r1cs.json file")?;
     let mut r1cs: R1CS =
         serde_json::from_str(&json_str).context("Error: Failed to deserialize JSON to R1CS")?;
     r1cs.grow_matrices(
