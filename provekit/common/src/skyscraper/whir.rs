@@ -137,7 +137,7 @@ impl Hasher for SkyscraperHasher {
         // skyscraper::reference::compress_many(input, out_bytes);
         // skyscraper::v1::compress_many(input, out_bytes);
         // skyscraper::block3::compress_many(input, out_bytes);
-        skyscraper::block4::compress_many(input, out_bytes);
-        // skyscraper::simple::compress_many(input, out_bytes);
+        // skyscraper::block4::compress_many(input, out_bytes);
+        skyscraper::simple::compress_many(input, out_bytes);
     }
 }

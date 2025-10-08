@@ -2,7 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::SkyscraperSponge,
+        skyscraper::{SkyscraperHasher, SkyscraperSponge},
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },
@@ -12,13 +12,12 @@ use {
     },
     tracing::instrument,
     whir::{
-        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
-        whir::{
+        merkle_tree::Hasher, poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
             statement::{Statement, Weights},
             utils::HintDeserialize,
             verifier::Verifier,
-        },
+        }
     },
 };
 
@@ -32,6 +31,10 @@ pub trait WhirR1CSVerifier {
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()>;
 }
 
+pub fn construct_skyscraper() -> Box<dyn Hasher> {
+    Box::new(SkyscraperHasher::new())
+}
+
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
     #[allow(unused)] // TODO: Fix implementation
@@ -43,6 +46,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let commitment_reader = CommitmentReader::new(&self.whir_witness);
         let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
+        println!("parsed_commitment.root : {:?}", parsed_commitment.root);
         let data_from_sumcheck_verifier = run_sumcheck_verifier(
             &mut arthur,
             self.m_0,
@@ -119,6 +123,8 @@ pub fn run_sumcheck_verifier(
     let commitment_reader = CommitmentReader::new(whir_for_spartan_blinding_config);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
+    println!("parsed_commitment.root : {:?}", parsed_commitment.root);
+
     let mut sum_g_buf = [FieldElement::zero()];
     arthur.fill_next_scalars(&mut sum_g_buf)?;
 
@@ -180,8 +186,9 @@ pub fn run_whir_pcs_verifier(
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let verifier = Verifier::new(params);
 
+    println!("parsed_commitmen.root : {:?}", parsed_commitment.root);
     let (folding_randomness, deferred) = verifier
-        .verify(arthur, parsed_commitment, statement_verifier)
+        .verify(arthur, parsed_commitment, statement_verifier, construct_skyscraper)
         .context("while verifying WHIR")?;
 
     Ok((folding_randomness, deferred))

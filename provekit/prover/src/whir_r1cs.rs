@@ -438,7 +438,7 @@ pub fn run_zk_whir_pcs_prover(
 
     let prover = Prover::new(params.clone());
     let (randomness, deferred) = prover
-        .prove(&mut merlin, statement, witness)
+        .prove(&mut merlin, statement, witness, construct_skyscraper)
         .expect("WHIR prover failed to generate a proof");
 
     (merlin, randomness, deferred)

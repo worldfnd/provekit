@@ -1,11 +1,14 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
-    whir::parameters::{
-        default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
+    provekit_common::{skyscraper::SkyscraperHasher, utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    whir::{merkle_tree::{Hasher, Hashers}, parameters::{
+        default_max_pow, DeduplicationStrategy, FoldingFactor,
         MultivariateParameters, ProtocolParameters, SoundnessType,
-    },
+    }},
 };
 
+pub fn construct_skyscraper() -> Box<dyn Hasher> {
+    Box::new(SkyscraperHasher::new())
+}
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(r1cs: &R1CS) -> Self;
 
@@ -50,7 +53,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             starting_log_inv_rate: 1,
             batch_size,
             deduplication_strategy: DeduplicationStrategy::Disabled,
-            merkle_proof_strategy: MerkleProofStrategy::Uncompressed,
+            merkle_runtime_config: Hashers::Skyscraper2,
         };
         WhirConfig::new(mv_params, whir_params)
     }
