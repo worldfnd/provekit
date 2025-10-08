@@ -1,0 +1,6 @@
+[package]
+name = "babyjubjub"
+type = "lib"
+authors = [""]
+
+[dependencies]
