@@ -10,10 +10,11 @@ members = [
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
+  "provekit/spark",
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
-  "spark-prover",
+  "tooling/spark-cli",
   "tooling/verifier-server",
   "ntt",
 ]

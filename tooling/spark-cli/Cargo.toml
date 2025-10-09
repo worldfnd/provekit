@@ -1,0 +1,20 @@
+[package]
+name = "spark-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+provekit-common.workspace = true
+provekit-spark = { path = "../../provekit/spark" }
+anyhow.workspace = true
+argh = "0.1.12"
+serde_json.workspace = true
+
+[lints]
+workspace = true
+

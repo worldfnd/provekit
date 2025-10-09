@@ -1,0 +1,33 @@
+[package]
+name = "provekit-spark"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+provekit-common.workspace = true
+provekit-r1cs-compiler.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+spongefish.workspace = true
+whir.workspace = true
+itertools = "0.14.0"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "generate_test_r1cs"
+path = "src/bin/generate_test_r1cs.rs"
+
+[[bin]]
+name = "generate_test_request"
+path = "src/bin/generate_test_request.rs"
+
