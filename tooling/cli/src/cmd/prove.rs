@@ -1,5 +1,5 @@
 #[cfg(test)]
-use provekit_verifier::NoirProofSchemeVerifier;
+use provekit_verifier::Verify;
 use {
     super::Command,
     anyhow::{Context, Result},

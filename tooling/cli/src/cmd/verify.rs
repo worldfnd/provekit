@@ -2,10 +2,10 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProofScheme},
-    provekit_verifier::NoirProofSchemeVerifier,
+    provekit_common::{file::read, Verifier},
+    provekit_verifier::Verify,
     std::path::PathBuf,
-    tracing::{info, instrument},
+    tracing::instrument,
 };
 
 /// Prove a prepared Noir program
@@ -25,16 +25,14 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let scheme: NoirProofScheme =
-            read(&self.scheme_path).context("while reading Noir proof scheme")?;
-        let (constraints, witnesses) = scheme.size();
-        info!(constraints, witnesses, "Read Noir proof scheme");
+        let mut verifier: Verifier =
+            read(&self.scheme_path).context("while reading Provekit Verifier")?;
 
         // Read the proof
         let proof = read(&self.proof_path).context("while reading proof")?;
 
         // Verify the proof
-        scheme
+        verifier
             .verify(&proof)
             .context("While verifying Noir proof")?;
 
