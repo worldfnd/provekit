@@ -15,8 +15,8 @@ use {
 pub trait R1CSSolver {
     fn solve_witness_vec(
         &self,
-        plan: &LayeredWitnessBuilders,
-        acir_map: &WitnessMap<NoirElement>,
+        plan: LayeredWitnessBuilders,
+        acir_map: WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) -> Vec<Option<FieldElement>>;
 
@@ -47,8 +47,8 @@ impl R1CSSolver for R1CS {
     #[instrument(skip_all)]
     fn solve_witness_vec(
         &self,
-        plan: &LayeredWitnessBuilders,
-        acir_map: &WitnessMap<NoirElement>,
+        plan: LayeredWitnessBuilders,
+        acir_map: WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) -> Vec<Option<FieldElement>> {
         let mut witness = vec![None; self.num_witnesses()];
@@ -58,7 +58,7 @@ impl R1CSSolver for R1CS {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(acir_map, &mut witness, transcript);
+                        builder.solve(&acir_map, &mut witness, transcript);
                     }
                 }
                 LayerType::Inverse => {

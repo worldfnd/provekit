@@ -6,9 +6,9 @@ use {
     argh::FromArgs,
     provekit_common::{
         file::{read, write},
-        NoirProofScheme,
+        Prover,
     },
-    provekit_prover::NoirProofSchemeProver,
+    provekit_prover::Prove,
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -47,24 +47,24 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let scheme: NoirProofScheme =
-            read(&self.scheme_path).context("while reading Noir proof scheme")?;
-        let (constraints, witnesses) = scheme.size();
+        let mut prover: Prover =
+            read(&self.scheme_path).context("while reading Provekit Prover")?;
+        let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        // Read the input toml
-        let input_map = scheme.read_witness(&self.input_path)?;
+        // // Read the input toml
+        // let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
-        let proof = scheme
-            .prove(&input_map)
+        let proof = prover
+            .prove(&self.input_path)
             .context("While proving Noir program statement")?;
 
-        // Verify the proof (not in release build)
-        #[cfg(test)]
-        scheme
-            .verify(&proof)
-            .context("While verifying Noir proof")?;
+        // // Verify the proof (not in release build)
+        // #[cfg(test)]
+        // scheme
+        //     .verify(&proof)
+        //     .context("While verifying Noir proof")?;
 
         // Store the proof to file
         write(&proof, &self.proof_path).context("while writing proof")?;

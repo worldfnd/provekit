@@ -5,11 +5,7 @@ use {
         NoirElement, R1CS,
     },
     acir::circuit::Program,
-    anyhow::Result,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
     serde::{Deserialize, Serialize},
-    std::path::Path,
 };
 
 /// A scheme for proving a Noir program.
@@ -31,12 +27,5 @@ impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
-    }
-
-    pub fn read_witness(&self, prover_toml: impl AsRef<Path>) -> Result<InputMap> {
-        let (input_map, _expected_return) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
-
-        Ok(input_map)
     }
 }
