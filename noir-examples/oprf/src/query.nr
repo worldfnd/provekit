@@ -31,7 +31,10 @@ fn check_credential_signature(
     expires_at: Field,
     hashes: [Field; 2],
     current_time_stamp: Field,
-) -> bool {
+) {
+    // Check expiration first
+    assert((current_time_stamp as u64) < (expires_at as u64), "Credential expired");
+
     // Calculate message hash
     let hash_inputs = [
         CREDENTIAL_DS,
@@ -46,13 +49,8 @@ fn check_credential_signature(
     let hash_state = perm::x5_8(hash_inputs);
     let message = hash_state[1];
 
-    // Verify EdDSA signature
-    let sig_valid = verify_eddsa_poseidon2(pk[0], pk[1], s, r, message);
-
-    // Check credential hasn't expired
-    assert((current_time_stamp as u64) < (expires_at as u64), "Credential expired");
-
-    sig_valid
+    // Verify EdDSA signature and assert directly
+    assert(verify_eddsa_poseidon2(pk[0], pk[1], s, r, message), "Credential signature invalid");
 }
 
 fn compute_merkle_root_poseidon2<let N: u32>(
@@ -70,9 +68,11 @@ fn compute_merkle_root_poseidon2<let N: u32>(
             let sibling = hashpath[i];
             let is_right = idx & 1;
 
-            // Compute left and right using conditional selection
-            let left = if is_right == 0 { current } else { sibling };
-            let right = if is_right == 0 { sibling } else { current };
+            // Use branchless selection
+            let is_right_field = is_right as Field;
+            let diff = current - sibling;
+            let left = sibling + (diff * (1 - is_right_field));
+            let right = sibling + (diff * is_right_field);
 
             let hash_state = perm::x5_2([left, right]);
             current = hash_state[0] + left;
@@ -84,10 +84,7 @@ fn compute_merkle_root_poseidon2<let N: u32>(
     current
 }
 
-pub fn oprf_query(inputs: OprfQueryInputs, query: Field) -> PublicKey {
-    let (_validated_beta, beta_bits) =
-        BabyJubJubPoint::validate_scalar_field_with_bits(inputs.beta);
-
+pub fn oprf_query(inputs: OprfQueryInputs, query: Field, beta_bits: [u1; 251]) -> PublicKey {
     // 1. Verify sk/pk by verifying a signature to a known message
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
     let is_valid = verify_eddsa_poseidon2(
@@ -109,8 +106,8 @@ pub fn oprf_query(inputs: OprfQueryInputs, query: Field) -> PublicKey {
     );
     assert(computed_root == inputs.merkle_proof.root, "Merkle proof verification failed");
 
-    // Verify credential signature (do this before expensive curve operations)
-    let cred_valid = check_credential_signature(
+    // Verify credential signature
+    check_credential_signature(
         inputs.cred_s,
         inputs.cred_r,
         [inputs.cred_pk.x, inputs.cred_pk.y],
@@ -121,19 +118,20 @@ pub fn oprf_query(inputs: OprfQueryInputs, query: Field) -> PublicKey {
         [inputs.cred_hashes.claims_hash, inputs.cred_hashes.associated_data_hash],
         inputs.current_time_stamp,
     );
-    assert(cred_valid, "Credential signature invalid");
 
-    // Encode query to curve point and perform scalar multiplication: q = beta * P
-    let (x, y) = encode_to_curve_baby_jubjub(query);
-    let p = BabyJubJubPoint::new(x, y);
+    // Encode query to curve point and perform scalar multiplication
+    let (px, py) = encode_to_curve_baby_jubjub(query);
+    let p = BabyJubJubPoint::new(px, py);
     let q = p.scalar_mul_bits(beta_bits);
 
     PublicKey { x: q.x, y: q.y }
 }
 
-pub fn verify_unblinding(oprf_response: PublicKey, oprf_response_blinded: PublicKey, beta: Field) {
-    let (_validated_beta, beta_bits) = BabyJubJubPoint::validate_scalar_field_with_bits(beta);
-
+pub fn verify_unblinding(
+    oprf_response: PublicKey,
+    oprf_response_blinded: PublicKey,
+    beta_bits: [u1; 251],
+) {
     // Check that oprf_response is on the curve and perform unblinding
     let response_point = BabyJubJubPoint::new(oprf_response.x, oprf_response.y);
     assert(response_point.is_on_curve(), "OPRF response must be on curve");

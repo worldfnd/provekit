@@ -13,8 +13,12 @@ pub fn main(inputs: OprfNullifierInputs) -> pub OprfNullifierOutputs {
     // Derive the query using Poseidon4
     let query = generate_query(inputs.query_inputs);
 
+    // Validate beta once and reuse the bits
+    let (_validated_beta, beta_bits) =
+        commitment::validate_and_get_beta_bits(inputs.query_inputs.beta);
+
     // 1-3. Show that the original query was computed correctly
-    let oprf_query_key = oprf_query(inputs.query_inputs, query);
+    let oprf_query_key = oprf_query(inputs.query_inputs, query, beta_bits);
 
     // 4. Check the dlog equality proof
     verify_dlog_equality(
@@ -30,7 +34,7 @@ pub fn main(inputs: OprfNullifierInputs) -> pub OprfNullifierOutputs {
     verify_unblinding(
         inputs.oprf_response,
         inputs.oprf_response_blinded,
-        inputs.query_inputs.beta,
+        beta_bits,
     );
 
     // Constrain public inputs to prevent optimizer from removing them

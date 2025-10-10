@@ -11,15 +11,15 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
     let b_point = BabyJubJubPoint::new(b.x, b.y);
     let c_point = BabyJubJubPoint::new(c.x, c.y);
 
-    // Batch validation - check all curve memberships
-    assert(a_point.is_on_curve(), "Point a must be on curve");
-    assert(b_point.is_on_curve(), "Point b must be on curve");
-    assert(c_point.is_on_curve(), "Point c must be on curve");
-
-    // Check that points are not identity (combined assertion message)
+    // Check that points are not identity
     assert(
-        a_point.is_not_identity() & b_point.is_not_identity() & c_point.is_not_identity(),
-        "Points cannot be identity",
+        a_point.is_on_curve()
+            & b_point.is_on_curve()
+            & c_point.is_on_curve()
+            & a_point.is_not_identity()
+            & b_point.is_not_identity()
+            & c_point.is_not_identity(),
+        "All points must be on curve and not identity",
     );
 
     // Compute r1 = G*s - a*e and r2 = b*s - c*e
