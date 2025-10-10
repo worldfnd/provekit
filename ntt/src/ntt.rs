@@ -6,6 +6,7 @@ use {
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
+    std::mem::size_of,
 };
 
 // Taken from utils in noir-r1cs crate
@@ -15,6 +16,93 @@ use {
 pub const fn workload_size<T: Sized>() -> usize {
     const CACHE_SIZE: usize = 1 << 15;
     CACHE_SIZE / size_of::<T>()
+}
+
+/// NTTEngine allows for reusing twiddle factors between computations
+pub struct NTTEngine(Vec<Fr>);
+
+impl NTTEngine {
+    /// Initialize an NTT Engine
+    ///
+    /// Note: new will initialize half a L1 cache size worth of twiddle factors
+    pub fn new() -> Self {
+        let init =
+            init_roots_reverse_ordered(Pow2OrZero::next_power_of_two(workload_size::<Fr>()), None);
+        NTTEngine(init)
+    }
+
+    /// Initialize an NTT Engine of the given order
+    ///
+    /// Note: with_order will initialise at least half a L1 cache size worth of
+    /// twiddle factors.
+    pub fn with_order(order: Pow2OrZero) -> Self {
+        let init = init_roots_reverse_ordered(
+            Pow2OrZero::next_power_of_two(workload_size::<Fr>()),
+            Some(order.0 / 2),
+        );
+        let mut engine = NTTEngine(init);
+        engine.extend_roots_table(order);
+        engine
+    }
+
+    /// extend_roots_table extends the current roots table if it's smaller than
+    /// the required order.
+    ///
+    /// When there is not enough space available in the underlying vector the
+    /// old roots will be copied over and they do not have to be recomputed.
+    ///
+    /// The new roots are computed in parallel based on the old roots thus
+    /// ensure a large enough initial root table for proper parallelization.
+    fn extend_roots_table(&mut self, order: Pow2OrZero) {
+        let order = order.0;
+        let table = &mut self.0;
+
+        let old_len = table.len();
+        let new_len = order / 2;
+
+        if new_len > old_len {
+            let col_len = new_len / old_len;
+            let unity = Fr::get_root_of_unity(order as u64).unwrap();
+            // Remark: change this to reserve exact if tighter control on memory is needed
+            table.reserve(new_len - old_len);
+            let (init, uninit) = table.split_at_spare_mut();
+
+            // When viewing the roots as a matrix every row is a multiple of the first row
+            // row[j] = row[0] * unity^(reverse order j)
+
+            uninit
+                .par_chunks_mut(old_len)
+                .enumerate()
+                .for_each(|(i, row)| {
+                    // start counting from one as 0 is init above
+                    let pow = reverse_bits(1 + i, col_len.trailing_zeros());
+                    let root = unity.pow([pow as u64]);
+                    row.par_iter_mut().enumerate().for_each(|(j, elem)| {
+                        elem.write(init[j] * root);
+                    })
+                });
+
+            unsafe {
+                table.set_len(new_len);
+            }
+        }
+    }
+
+    pub fn ntt_nr(&mut self, values: &mut NTT<Fr>) {
+        self.extend_roots_table(values.len());
+        ntt_nr(&self.0, values);
+    }
+
+    pub fn intt_rn(&mut self, values: &mut NTT<Fr>) {
+        self.extend_roots_table(values.len());
+        intt_rn(&self.0, values);
+    }
+}
+
+impl Default for NTTEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
@@ -131,7 +219,6 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
     val.reverse_bits() >> (usize::BITS - bits)
 }
 
-// TODO(xrvdg) Caching engine from WHIR
 /// Precomputes the NTT roots of unity and stores them in bit-reversed order.
 ///
 /// # Arguments
@@ -140,17 +227,26 @@ fn reverse_bits(val: usize, bits: u32) -> usize {
 /// # Returns
 /// A vector of length `len / 2` containing the precomputed roots in
 /// bit-reversed order.
-pub fn init_roots_reverse_ordered(len: Pow2OrZero) -> Vec<Fr> {
-    let len = len.0;
-    let n = len / 2;
+///
+/// # Parameters
+/// * `order` - The order of the NTT (must be a power of 2 or zero)
+/// * `capacity` - Optional capacity hint for the vector. If `None`, defaults to
+///   `n`. If provided, will use `max(capacity, n)` to ensure sufficient space.
+fn init_roots_reverse_ordered(order: Pow2OrZero, capacity: Option<usize>) -> Vec<Fr> {
+    let order = order.0;
+    let n = order / 2;
+
     match n {
         0 => vec![],
         // 1 is a separate case due to `1.trailing_zeros = 0` which reverse_bit requires >0
         1 => vec![Fr::ONE],
         n => {
-            let root = Fr::get_root_of_unity(len as u64).unwrap();
+            // Use provided capacity or default to n, ensuring it's at least n
+            let actual_capacity = capacity.map_or(n, |cap| cap.max(n));
 
-            let mut roots = Vec::with_capacity(n);
+            let root = Fr::get_root_of_unity(order as u64).unwrap();
+
+            let mut roots = Vec::with_capacity(actual_capacity);
             let uninit = roots.spare_capacity_mut();
 
             let mut omega_k = Fr::ONE;
@@ -215,12 +311,14 @@ pub fn intt_nr(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr>) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(test)]
+    use proptest::prelude::*;
     use {
-        super::{init_roots_reverse_ordered, intt_rn, ntt_nr, reverse_order},
-        crate::NTT,
+        super::{init_roots_reverse_ordered, reverse_order},
+        crate::{ntt::NTTEngine, Pow2OrZero, NTT},
         ark_bn254::Fr,
         ark_ff::BigInt,
-        proptest::{collection, prelude::*},
+        proptest::collection,
         std::fmt,
     };
 
@@ -255,13 +353,13 @@ mod tests {
         fn round_trip_ntt(original in ntt(0_usize..15, fr()))
         {
             let mut s = original.clone();
-            let roots = init_roots_reverse_ordered(original.len());
 
+            let mut engine = NTTEngine::new();
             // Forward NTT
-            ntt_nr(&roots, &mut s);
+            engine.ntt_nr(&mut s);
 
             // Inverse NTT
-            intt_rn(&roots, &mut s);
+            engine.intt_rn(&mut s);
 
             prop_assert_eq!(original,s);
         }
@@ -271,8 +369,18 @@ mod tests {
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
         let mut v = NTT::new(vec![]).unwrap();
-        let roots = init_roots_reverse_ordered(v.len());
-        ntt_nr(&roots, &mut v);
+        let mut engine = NTTEngine::new();
+        engine.ntt_nr(&mut v);
+    }
+
+    // Compare direct generation of the roots vs. extending from a base set of roots
+    #[test]
+    fn roots_direct_vs_extended() {
+        let order = Pow2OrZero::next_power_of_two(2_usize.pow(20));
+        let roots = init_roots_reverse_ordered(order, None);
+        let engine = NTTEngine::with_order(order);
+        assert_eq!(engine.0.len(), roots.len());
+        assert_eq!(engine.0, roots)
     }
 
     proptest! {
