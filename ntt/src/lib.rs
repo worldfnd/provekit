@@ -49,13 +49,17 @@ impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
     }
 }
 
-/// Length of an NTT
+/// Represents the valid length of an NTT (Number Theoretic Transform).
+///
+/// The allowed values depend on the type parameter:
+/// - `Pow2<usize>`: length is 0 or a power of two (`{0} ∪ {2ⁿ : n ≥ 0}`).
+/// - `Pow2<NonZero<usize>>`: length is a nonzero power of two (`{2ⁿ : n ≥ 0}`).
 #[derive(Clone, Copy, Debug)]
 pub struct Pow2<T = usize>(T);
 
-impl<T: IsPowerOfTwo> Pow2<T> {
+impl<T: InPowerOfTwoSet> Pow2<T> {
     pub fn new(value: T) -> Option<Self> {
-        match value.is_power_of_two() {
+        match value.in_set() {
             true => Some(Self(value)),
             false => None,
         }
@@ -71,19 +75,18 @@ impl<T> Deref for Pow2<T> {
     }
 }
 
-// There is no built-in trait nor num-trait that captures this
-pub trait IsPowerOfTwo {
-    fn is_power_of_two(&self) -> bool;
+pub trait InPowerOfTwoSet {
+    fn in_set(&self) -> bool;
 }
 
-impl IsPowerOfTwo for usize {
-    fn is_power_of_two(&self) -> bool {
-        usize::is_power_of_two(*self)
+impl InPowerOfTwoSet for usize {
+    fn in_set(&self) -> bool {
+        usize::is_power_of_two(*self) || *self == 0
     }
 }
 
-impl IsPowerOfTwo for NonZero<usize> {
-    fn is_power_of_two(&self) -> bool {
+impl InPowerOfTwoSet for NonZero<usize> {
+    fn in_set(&self) -> bool {
         self.get().is_power_of_two()
     }
 }

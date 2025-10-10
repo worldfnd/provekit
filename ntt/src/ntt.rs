@@ -481,7 +481,7 @@ mod tests {
         k.prop_flat_map(|len| {
             (0..=len).prop_flat_map(move |column| {
                 (
-                    Just(constr((len - column))),
+                    Just(constr(len - column)),
                     Just(constr(column)),
                     hidden_ntt(len..=len, fr()),
                 )
