@@ -1,7 +1,8 @@
-pub use crate::types::{Memory, Point, SPARKRequest};
-use ::{
+pub use crate::types::Memory;
+use {
     anyhow::{Context, Result},
     provekit_common::{
+        spark::{Point, SparkStatement},
         utils::{next_power_of_two, sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq},
         FieldElement, R1CS,
     },
@@ -21,7 +22,7 @@ pub fn deserialize_r1cs(path: impl AsRef<Path>) -> Result<R1CS> {
 }
 
 /// Deserializes SPARK request from JSON.
-pub fn deserialize_request(path: impl AsRef<Path>) -> Result<SPARKRequest> {
+pub fn deserialize_request(path: impl AsRef<Path>) -> Result<SparkStatement> {
     let json_str = fs::read_to_string(path).context("Failed to read request file")?;
     serde_json::from_str(&json_str).context("Failed to deserialize request")
 }

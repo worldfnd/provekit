@@ -1,4 +1,4 @@
-use ::{
+use {
     provekit_common::{FieldElement, R1CS},
     std::{fs::File, io::Write},
 };

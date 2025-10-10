@@ -7,6 +7,7 @@ use {
     ark_std::One,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
+        spark::SparkStatement,
         utils::sumcheck::calculate_eq,
         FieldElement, WhirConfig,
     },
@@ -315,7 +316,7 @@ pub fn verify_rowwise(
     num_rows: usize,
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
-    request: &crate::types::SPARKRequest,
+    request: &SparkStatement,
     _matrix_batching_randomness: &FieldElement,
 ) -> Result<()> {
     verify_axis(
@@ -333,7 +334,7 @@ pub fn verify_colwise(
     num_cols: usize,
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
-    request: &crate::types::SPARKRequest,
+    request: &SparkStatement,
     _matrix_batching_randomness: &FieldElement,
 ) -> Result<()> {
     verify_axis(
@@ -348,10 +349,6 @@ pub fn verify_colwise(
         },
     )
 }
-
-// ============================================================================
-// Helper
-// ============================================================================
 
 /// Helper to generate and verify a WHIR proof at a specific evaluation point.
 ///

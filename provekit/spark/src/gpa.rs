@@ -1,4 +1,4 @@
-use ::{
+use {
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::{

@@ -1,6 +1,6 @@
-use ::{
+use {
     provekit_common::{
-        spark::{ClaimedValues, Point, SPARKRequest},
+        spark::{ClaimedValues, Point, SparkStatement},
         FieldElement,
     },
     std::{fs::File, io::Write},
@@ -12,7 +12,7 @@ fn main() {
 
     row[7] = FieldElement::from(1);
 
-    let spark_request = SPARKRequest {
+    let spark_request = SparkStatement {
         point_to_evaluate: Point { row, col },
         claimed_values:    ClaimedValues {
             a: FieldElement::from(1),

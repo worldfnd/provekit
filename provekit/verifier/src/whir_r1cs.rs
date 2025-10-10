@@ -46,8 +46,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let data_from_sumcheck_verifier = run_sumcheck_verifier(
             &mut arthur,
             self.m_0,
-            &self.whir_for_hiding_spartan,
-            // proof.whir_spartan_blinding_values,
+            &self.whir_for_hiding_spartan, // proof.whir_spartan_blinding_values,
         )
         .context("while verifying sumcheck")?;
 

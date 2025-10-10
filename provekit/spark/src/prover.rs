@@ -3,13 +3,14 @@ use {
         memory::{prove_colwise, prove_rowwise},
         preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
-        types::{EValuesForMatrix, MatrixDimensions, SPARKProof, SPARKRequest, SPARKWHIRConfigs},
+        types::{EValuesForMatrix, MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
         utils::{calculate_memory, SPARKDomainSeparator},
     },
     anyhow::Result,
     ark_ff::AdditiveGroup,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
+        spark::SparkStatement,
         utils::{next_power_of_two, sumcheck::SumcheckIOPattern},
         FieldElement, IOPattern, WhirR1CSScheme, R1CS,
     },
@@ -24,7 +25,7 @@ use {
 /// SPARK proving interface for R1CS constraint systems.
 pub trait SPARKProver {
     /// Generates a SPARK proof from R1CS and evaluation request.
-    fn prove(&self, r1cs: &R1CS, request: &SPARKRequest) -> Result<SPARKProof>;
+    fn prove(&self, r1cs: &R1CS, request: &SparkStatement) -> Result<SPARKProof>;
 }
 
 /// SPARK scheme with pre-configured WHIR parameters and IO pattern.
@@ -131,7 +132,7 @@ impl SPARKScheme {
 }
 
 impl SPARKProver for SPARKScheme {
-    fn prove(&self, r1cs: &R1CS, request: &SPARKRequest) -> Result<SPARKProof> {
+    fn prove(&self, r1cs: &R1CS, request: &SparkStatement) -> Result<SPARKProof> {
         let processed = MatrixPreprocessor::from_r1cs(r1cs)?;
         let memory = calculate_memory(request.point_to_evaluate.clone());
         let e_values = processed.compute_e_values(&memory);

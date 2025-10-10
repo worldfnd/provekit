@@ -1,4 +1,4 @@
-use ::{
+use {
     provekit_common::{FieldElement, WhirConfig},
     serde::{Deserialize, Serialize},
 };
@@ -28,8 +28,6 @@ pub struct SPARKWHIRConfigs {
     pub num_terms_3batched: WhirConfig,
     pub num_terms_5batched: WhirConfig,
 }
-
-pub use provekit_common::spark::{ClaimedValues, Point, SPARKRequest};
 
 /// SPARK matrix in COO format with memory access timestamps.
 #[derive(Debug, Clone)]

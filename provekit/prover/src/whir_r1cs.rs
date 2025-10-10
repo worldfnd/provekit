@@ -5,7 +5,7 @@ use {
     provekit_common::{
         file::write,
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
-        spark::{self, ClaimedValues, Point, SPARKRequest},
+        spark::{ClaimedValues, Point, SparkStatement},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -37,12 +37,20 @@ use {
 };
 
 pub trait WhirR1CSProver {
-    fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
+    fn prove(
+        &self,
+        r1cs: &R1CS,
+        witness: Vec<FieldElement>,
+    ) -> Result<(WhirR1CSProof, SparkStatement)>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
-    fn prove(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
+    fn prove(
+        &self,
+        r1cs: &R1CS,
+        witness: Vec<FieldElement>,
+    ) -> Result<(WhirR1CSProof, SparkStatement)> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -97,9 +105,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let (merlin, whir_randomness, deferred_evaluations) =
             run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
 
-        let transcript = merlin.narg_string().to_vec();
-
-        let spark_request: SPARKRequest = SPARKRequest {
+        let spark_statement: SparkStatement = SparkStatement {
             point_to_evaluate: Point {
                 row: alpha,
                 col: whir_randomness.0,
@@ -111,10 +117,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
             },
         };
 
-        let mut spark_request_file = File::create("spark_request.json")?; // Creates or truncates the spark_request_file
-        spark_request_file.write_all(serde_json::to_string(&spark_request).unwrap().as_bytes())?; // Writes bytes to the file
+        let transcript = merlin.narg_string().to_vec();
 
-        Ok(WhirR1CSProof { transcript })
+        Ok((WhirR1CSProof { transcript }, spark_statement))
     }
 }
 
@@ -148,7 +153,7 @@ pub fn compute_blinding_coefficients_for_round(
 
     let two = FieldElement::one() + FieldElement::one();
     let mut prefix_multiplier = FieldElement::one();
-    for _ in 0..(n - 1 - compute_for) {
+    for _ in 0..n - 1 - compute_for {
         prefix_multiplier = prefix_multiplier + prefix_multiplier;
     }
     let suffix_multiplier: ark_ff::Fp<

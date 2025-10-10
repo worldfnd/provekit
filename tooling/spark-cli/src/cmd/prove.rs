@@ -1,9 +1,8 @@
-use ::{
+use {
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_spark::{
-        deserialize_r1cs, deserialize_request, SPARKProofGnark, SPARKProver, SPARKProverScheme,
-    },
+    provekit_common::{file::read, NoirProof},
+    provekit_spark::{deserialize_r1cs, SPARKProofGnark, SPARKProver, SPARKProverScheme},
     std::{fs::File, io::Write, path::PathBuf},
 };
 
@@ -15,9 +14,9 @@ pub struct ProveArgs {
     #[argh(option)]
     r1cs: PathBuf,
 
-    /// path to request file
+    /// path to NoirProof file (.np or .json) containing the SPARK statement
     #[argh(option)]
-    request: PathBuf,
+    noir_proof: PathBuf,
 
     /// output path for proof (default: spark_proof.json)
     #[argh(option, short = 'o', default = "PathBuf::from(\"spark_proof.json\")")]
@@ -32,15 +31,19 @@ pub fn execute(args: ProveArgs) -> Result<()> {
     println!("Loading R1CS from {:?}...", args.r1cs);
     let r1cs = deserialize_r1cs(&args.r1cs).context("Failed to load R1CS")?;
 
-    println!("Loading request from {:?}...", args.request);
-    let request = deserialize_request(&args.request).context("Failed to load request")?;
+    println!("Loading NoirProof from {:?}...", args.noir_proof);
+    let noir_proof: NoirProof = read(&args.noir_proof).context("Failed to read NoirProof file")?;
+
+    // Extract SPARK statement from the proof
+    let spark_statement = noir_proof.spark_statement;
+    println!("✓ Extracted SPARK statement from NoirProof");
 
     println!("Creating SPARK scheme...");
     let scheme = SPARKProverScheme::new_for_r1cs(&r1cs);
 
-    println!("Generating proof...");
+    println!("Generating SPARK proof...");
     let proof = scheme
-        .prove(&r1cs, &request)
+        .prove(&r1cs, &spark_statement)
         .context("Failed to generate proof")?;
 
     // Write proof
@@ -60,6 +63,6 @@ pub fn execute(args: ProveArgs) -> Result<()> {
         .write_all(serde_json::to_string(&gnark_proof)?.as_bytes())
         .context("Failed to write gnark proof")?;
 
-    println!("✓ Proof generated successfully");
+    println!("✓ SPARK proof generated successfully");
     Ok(())
 }

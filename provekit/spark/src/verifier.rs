@@ -2,11 +2,12 @@ use {
     crate::{
         memory::{verify_colwise, verify_rowwise},
         sumcheck::run_sumcheck_verifier_spark,
-        types::{MatrixDimensions, SPARKProof, SPARKRequest, SPARKWHIRConfigs},
+        types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
     provekit_common::{
-        skyscraper::SkyscraperSponge, utils::next_power_of_two, FieldElement, IOPattern,
+        skyscraper::SkyscraperSponge, spark::SparkStatement, utils::next_power_of_two,
+        FieldElement, IOPattern,
     },
     spongefish::codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
     whir::{
@@ -23,7 +24,7 @@ use {
 /// SPARK verification interface.
 pub trait SPARKVerifier {
     /// Verifies a SPARK proof against the given request.
-    fn verify(&self, proof: &SPARKProof, request: &SPARKRequest) -> Result<()>;
+    fn verify(&self, proof: &SPARKProof, request: &SparkStatement) -> Result<()>;
 }
 
 /// SPARK verification scheme with configuration extracted from proof.
@@ -45,7 +46,7 @@ impl SPARKScheme {
 }
 
 impl SPARKVerifier for SPARKScheme {
-    fn verify(&self, proof: &SPARKProof, request: &SPARKRequest) -> Result<()> {
+    fn verify(&self, proof: &SPARKProof, request: &SparkStatement) -> Result<()> {
         let io = IOPattern::from_string(proof.io_pattern.clone());
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
@@ -80,7 +81,7 @@ fn verify_spark_single_matrix(
     whir_params: &SPARKWHIRConfigs,
     matrix_dimensions: MatrixDimensions,
     arthur: &mut spongefish::VerifierState<SkyscraperSponge, FieldElement>,
-    request: &SPARKRequest,
+    request: &SparkStatement,
     claimed_value: &FieldElement,
 ) -> Result<()> {
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);

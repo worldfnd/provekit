@@ -1,5 +1,6 @@
 use {
     crate::{
+        spark::SparkStatement,
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, WitnessBuilder},
         NoirElement, R1CS,
@@ -25,6 +26,7 @@ pub struct NoirProofScheme {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
     pub whir_r1cs_proof: WhirR1CSProof,
+    pub spark_statement: SparkStatement,
 }
 
 impl NoirProofScheme {

@@ -1,4 +1,4 @@
-use ::{
+use {
     anyhow::{ensure, Result},
     ark_std::{One, Zero},
     provekit_common::{

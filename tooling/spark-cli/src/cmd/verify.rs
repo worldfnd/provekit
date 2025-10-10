@@ -1,4 +1,4 @@
-use ::{
+use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_spark::{deserialize_request, SPARKProof, SPARKVerifier, SPARKVerifierScheme},
@@ -13,9 +13,9 @@ pub struct VerifyArgs {
     #[argh(option)]
     proof: PathBuf,
 
-    /// path to request file
+    /// path to statement file
     #[argh(option)]
-    request: PathBuf,
+    statement: PathBuf,
 }
 
 pub fn execute(args: VerifyArgs) -> Result<()> {
@@ -24,15 +24,15 @@ pub fn execute(args: VerifyArgs) -> Result<()> {
     let proof: SPARKProof =
         serde_json::from_str(&proof_str).context("Failed to deserialize proof")?;
 
-    println!("Loading request from {:?}...", args.request);
-    let request = deserialize_request(&args.request).context("Failed to load request")?;
+    println!("Loading statement from {:?}...", args.statement);
+    let statement = deserialize_request(&args.statement).context("Failed to load statement")?;
 
     println!("Creating verification scheme...");
     let scheme = SPARKVerifierScheme::from_proof(&proof);
 
     println!("Verifying proof...");
     scheme
-        .verify(&proof, &request)
+        .verify(&proof, &statement)
         .context("Verification failed")?;
 
     println!("✓ Proof verified successfully");

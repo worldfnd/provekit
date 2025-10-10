@@ -88,6 +88,7 @@ provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-spark = { path = "provekit/spark" }
 
 # 3rd party
 anyhow = "1.0.93"

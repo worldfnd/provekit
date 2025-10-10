@@ -9,10 +9,7 @@ pub mod verifier;
 
 pub use {
     prover::{SPARKProver, SPARKScheme as SPARKProverScheme},
-    types::{
-        ClaimedValues, MatrixDimensions, Point, SPARKProof, SPARKProofGnark, SPARKRequest,
-        SPARKWHIRConfigs,
-    },
+    types::{MatrixDimensions, SPARKProof, SPARKProofGnark, SPARKWHIRConfigs},
     utils::{calculate_memory, deserialize_r1cs, deserialize_request},
     verifier::{SPARKScheme as SPARKVerifierScheme, SPARKVerifier},
 };

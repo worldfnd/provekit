@@ -10,9 +10,9 @@ repository.workspace = true
 
 [dependencies]
 provekit-common.workspace = true
-provekit-spark = { path = "../../provekit/spark" }
+provekit-spark.workspace = true
 anyhow.workspace = true
-argh = "0.1.12"
+argh.workspace = true
 serde_json.workspace = true
 
 [lints]

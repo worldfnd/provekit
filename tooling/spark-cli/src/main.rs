@@ -1,6 +1,6 @@
 mod cmd;
 
-use ::{anyhow::Result, argh::FromArgs};
+use {anyhow::Result, argh::FromArgs};
 
 #[derive(FromArgs)]
 #[argh(description = "SPARK Prover CLI")]

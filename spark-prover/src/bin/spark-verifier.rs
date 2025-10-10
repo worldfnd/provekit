@@ -4,7 +4,7 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         skyscraper::SkyscraperSponge,
-        spark::SPARKRequest,
+        spark::SparkStatement,
         utils::{
             next_power_of_two,
             sumcheck::{calculate_eq, eval_cubic_poly},
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 
     let request_json_str =
         fs::read_to_string(args.request).context("Error: Failed to open the request file")?;
-    let request: SPARKRequest =
+    let request: SparkStatement =
         serde_json::from_str(&request_json_str).context("Error: Failed to deserialize request")?;
 
     let io = IOPattern::from_string(spark_proof.io_pattern.clone());
@@ -94,7 +94,7 @@ pub fn verify_spark_single_matrix(
     num_cols: usize,
     num_nonzero_terms: usize,
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
-    request: &SPARKRequest,
+    request: &SparkStatement,
     claimed_value: &FieldElement,
 ) -> Result<()> {
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);
@@ -388,7 +388,7 @@ pub fn gpa_sumcheck_verifier(
     prev_rand = rand;
     rand = Vec::<FieldElement>::new();
 
-    for i in 1..(height_of_binary_tree - 1) {
+    for i in 1..height_of_binary_tree - 1 {
         for _ in 0..i {
             arthur
                 .fill_next_scalars(&mut h)

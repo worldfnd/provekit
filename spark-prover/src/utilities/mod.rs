@@ -9,7 +9,7 @@ use {
     crate::utilities::whir::SPARKWHIRConfigsNew,
     anyhow::{Context, Result},
     provekit_common::{
-        gnark::WHIRConfigGnark, spark::SPARKRequest, utils::next_power_of_two, R1CS,
+        gnark::WHIRConfigGnark, spark::SparkStatement, utils::next_power_of_two, R1CS,
     },
     serde::{Deserialize, Serialize},
     std::{fs, path::PathBuf},
@@ -26,7 +26,7 @@ pub fn deserialize_r1cs(path: &PathBuf) -> Result<R1CS> {
     Ok(r1cs)
 }
 
-pub fn deserialize_request(path: &PathBuf) -> Result<SPARKRequest> {
+pub fn deserialize_request(path: &PathBuf) -> Result<SparkStatement> {
     let json_str =
         fs::read_to_string(path).context("Error: Failed to open the request.json file")?;
     serde_json::from_str(&json_str).context("Error: Failed to deserialize JSON to R1CS")
