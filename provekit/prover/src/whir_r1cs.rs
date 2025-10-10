@@ -58,14 +58,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let io: IOPattern = self.create_io_pattern();
 
         let mut merlin = io.to_prover_state();
-        let z = pad_to_power_of_two(witness.clone());
+        drop(io);
+        let z = pad_to_power_of_two(witness);
         let witness_polynomial_evals = EvaluationsList::new(z.clone());
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
             batch_commit_to_polynomial(
                 self.m,
                 &self.whir_witness,
-                &witness_polynomial_evals,
+                witness_polynomial_evals,
                 &mut merlin,
             );
 
@@ -195,7 +196,7 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
 pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
-    witness: &EvaluationsList<FieldElement>,
+    witness: EvaluationsList<FieldElement>,
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
 ) -> (
     Witness<FieldElement, SkyscraperMerkleConfig>,
@@ -203,19 +204,25 @@ pub fn batch_commit_to_polynomial(
     EvaluationsList<FieldElement>,
 ) {
     let mask = generate_random_multilinear_polynomial(witness.num_variables());
-    let masked_polynomial = create_masked_polynomial(witness, &mask);
+    let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
+    drop(mask);
 
-    let masked_polynomial_coeff = masked_polynomial.to_coeffs();
-
-    let random_polynomial_eval = EvaluationsList::new(generate_random_multilinear_polynomial(m));
-    let random_polynomial_coeff = random_polynomial_eval.to_coeffs();
+    let random_polynomial_coeff =
+        EvaluationsList::new(generate_random_multilinear_polynomial(m)).to_coeffs();
 
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
-        .commit_batch(merlin, &[masked_polynomial_coeff, random_polynomial_coeff])
+        .commit_batch(merlin, &[
+            &masked_polynomial_coeff,
+            &random_polynomial_coeff,
+        ])
         .expect("WHIR prover failed to commit");
 
-    (witness_new, masked_polynomial, random_polynomial_eval)
+    (
+        witness_new,
+        masked_polynomial_coeff.into(),
+        random_polynomial_coeff.into(),
+    )
 }
 
 fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 4]> {
@@ -269,7 +276,7 @@ pub fn run_zk_sumcheck_prover(
         batch_commit_to_polynomial(
             blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
-            &blinding_polynomial_for_commiting,
+            blinding_polynomial_for_commiting,
             &mut merlin,
         );
 

@@ -1,5 +1,3 @@
-#[cfg(test)]
-use provekit_verifier::Verify;
 use {
     super::Command,
     anyhow::{Context, Result},
@@ -12,6 +10,8 @@ use {
     std::path::PathBuf,
     tracing::{info, instrument},
 };
+#[cfg(test)]
+use {provekit_common::Verifier, provekit_verifier::Verify};
 
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Eq, Debug)]
@@ -60,11 +60,15 @@ impl Command for Args {
             .prove(&self.input_path)
             .context("While proving Noir program statement")?;
 
-        // // Verify the proof (not in release build)
-        // #[cfg(test)]
-        // scheme
-        //     .verify(&proof)
-        //     .context("While verifying Noir proof")?;
+        // Verify the proof (not in release build)
+        #[cfg(test)]
+        {
+            let mut verifier: Verifier =
+                read(&self.scheme_path).context("while reading Provekit Verifier")?;
+            verifier
+                .verify(&proof)
+                .context("While verifying Noir proof")?;
+        }
 
         // Store the proof to file
         write(&proof, &self.proof_path).context("while writing proof")?;
