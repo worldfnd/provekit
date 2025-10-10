@@ -2,7 +2,7 @@ use super::{
     constants::{DS_C, DS_N, DS_Q},
     types::{OprfNullifierOutputs, OprfQueryInputs, PublicKey},
 };
-use poseidon::poseidon2::Poseidon2;
+use poseidon2::bn254::perm;
 
 pub fn generate_commitment(
     query: Field,
@@ -16,16 +16,18 @@ pub fn generate_commitment(
 }
 
 fn generate_nullifier(query: Field, oprf_response: PublicKey) -> Field {
-    Poseidon2::hash([DS_N, query, oprf_response.x, oprf_response.y], 4)
+    let state = perm::x5_4([DS_N, query, oprf_response.x, oprf_response.y]);
+    state[1]
 }
 
 fn generate_id_commitment(mt_index: Field, commitment_r: Field) -> Field {
-    Poseidon2::hash([DS_C, mt_index, commitment_r], 3)
+    let state = perm::x5_3([DS_C, mt_index, commitment_r]);
+    state[1]
 }
 
 pub fn generate_query(query: OprfQueryInputs) -> Field {
-    Poseidon2::hash(
+    let state = perm::x5_4(
         [DS_Q, query.merkle_proof.mt_index, query.rp_id, query.action],
-        4,
-    )
+    );
+    state[1]
 }

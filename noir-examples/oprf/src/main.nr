@@ -3,10 +3,12 @@ pub mod types;
 mod dlog;
 mod commitment;
 mod query;
+pub mod orpfQuery;
+pub mod hash_to_curve;
 
 use commitment::{generate_commitment, generate_query};
 use dlog::verify_dlog_equality;
-use query::{oprf_query, unblind_oprf_response};
+use query::{oprf_query, verify_unblinding};
 use types::{OprfNullifierInputs, OprfNullifierOutputs};
 
 pub fn main(inputs: OprfNullifierInputs) -> pub OprfNullifierOutputs {
@@ -25,16 +27,23 @@ pub fn main(inputs: OprfNullifierInputs) -> pub OprfNullifierOutputs {
         inputs.oprf_response_blinded,
     );
 
-    // 5. Unblind the OPRF response
-    let unblinded_response = unblind_oprf_response(
+    // 5. Verify that the user unblinded correctly
+    // This checks that: oprf_response * beta === oprf_response_blinded
+    verify_unblinding(
+        inputs.oprf_response,
         inputs.oprf_response_blinded,
         inputs.query_inputs.beta,
-        query,
     );
 
+    // Constrain public inputs to prevent optimizer from removing them
+    // This is similar to Semaphore's approach but more efficient
+    let _ = inputs.signal_hash * inputs.signal_hash;
+    let _ = inputs.query_inputs.nonce * inputs.query_inputs.nonce;
+
+    // Generate commitment and nullifier using the unblinded oprf_response
     generate_commitment(
         query,
-        unblinded_response,
+        inputs.oprf_response,
         inputs.query_inputs.merkle_proof.mt_index,
         inputs.id_commitment_r,
     )

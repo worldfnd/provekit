@@ -3,6 +3,9 @@
 // Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
 // where a = 168700, d = 168696
 
+use std::field::bn254;
+mod test_std;
+
 // BabyJubJub curve constants
 global BABYJUBJUB_A: Field = 168700;
 global BABYJUBJUB_D: Field = 168696;
@@ -11,19 +14,14 @@ global BABYJUBJUB_D: Field = 168696;
 global BABYJUBJUB_IDENTITY_X: Field = 0;
 global BABYJUBJUB_IDENTITY_Y: Field = 1;
 
-// Generator point (hardcoded from circom template)
 global BABYJUBJUB_GENERATOR_X: Field =
     5299619240641551281634865583518297030282874472190772894086521144482721001553;
 global BABYJUBJUB_GENERATOR_Y: Field =
     16950150798460657717958625567821834550301663161624707787222815936182638968203;
 
 // Scalar field order (Fr) - prime order of BabyJubJub's scalar field
-global BABYJUBJUB_SCALAR_FIELD_ORDER: Field =
+global BABYJUBJUB_Fr: Field =
     2736030358979909402780800718157159386076813972158567259200215660948447373041;
-
-// Field validation constants
-global MAX_FIELD_BITS: u32 = 253; // BN254 field size
-global FIELD_ORDER_MINUS_ONE: Field = BABYJUBJUB_SCALAR_FIELD_ORDER - 1;
 
 /// Represents a point on the BabyJubJub curve
 pub struct BabyJubJubPoint {
@@ -85,10 +83,6 @@ impl BabyJubJubPoint {
 
     /// Point addition on BabyJubJub curve
     pub fn add(self, other: BabyJubJubPoint) -> Self {
-        // Check that both points are on the curve
-        assert(self.is_on_curve());
-        assert(other.is_on_curve());
-
         let beta = self.x * other.y;
         let gamma = self.y * other.x;
         let delta = (-BABYJUBJUB_A * self.x + self.y) * (other.x + other.y);
@@ -114,162 +108,123 @@ impl BabyJubJubPoint {
         self.add(other.negate())
     }
 
-    /// Point doubling (optimized version)
+    /// Point doubling
     pub fn double(self) -> Self {
-        // Check that the point is on the curve
-        assert(self.is_on_curve());
-
-        let xx = self.x * self.x;
-        let yy = self.y * self.y;
-        let xy = self.x * self.y;
-
-        let numerator_x = 2 * xy;
-        let numerator_y = yy - BABYJUBJUB_A * xx;
-        let denominator = 1 + BABYJUBJUB_D * xx * yy;
-
-        let x = numerator_x / denominator;
-        let y = numerator_y / denominator;
-
-        BabyJubJubPoint { x, y }
+        self.add(self)
     }
 
-    // TODO
-    /// Scalar multiplication: multiplies this point by a scalar
     pub fn scalar_mul(self, scalar: Field) -> Self {
-        // For now, implement a simple repeated addition for small scalars
-        // This is not efficient for large scalars but works for testing
+        // Early termination for zero scalar
+        if scalar == 0 {
+            BabyJubJubPoint::identity()
+        } else {
+            // Decompose scalar into 251 bits (BabyJubJub scalar field size)
+            let bits: [u1; 251] = scalar.to_le_bits();
+            self.scalar_mul_bits(bits)
+        }
+    }
+
+    /// Base field scalar multiplication
+    pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
+        // Early termination for zero scalar
+        if scalar_fq == 0 {
+            BabyJubJubPoint::identity()
+        } else {
+            // Decompose to 254 bits
+            let bits: [u1; 254] = scalar_fq.to_le_bits();
+
+            self.scalar_mul_bits(bits)
+        }
+    }
+
+    /// Scalar multiplication with bit array (little-endian)
+    ///
+    /// This is equivalent to ec library's bit_mul but with explicit bit input.
+    /// Useful when you already have the scalar decomposed to bits.
+    ///
+    /// # Arguments
+    /// * `bits` - Scalar in bit representation (little-endian)
+    ///
+    pub fn scalar_mul_bits<let N: u32>(self, bits: [u1; N]) -> Self {
+        assert(self.is_on_curve(), "Point must be on curve");
+
         let mut result = BabyJubJubPoint::identity();
 
-        // Convert scalar to u32 for comparison (assuming small scalars)
-        let scalar_int = scalar as u32;
+        for i in 0..N {
+            result = result.double();
 
-        if scalar_int == 0 {
-            result = BabyJubJubPoint::identity();
-        } else if scalar_int == 1 {
-            result = self;
-        } else if scalar_int == 2 {
-            result = self.double();
-        } else {
-            // TODO
-            result = self.double();
+            if bits[N - 1 - i] == 1 {
+                result = result.add(self);
+            }
         }
 
         result
     }
 
+    pub fn scalar_mul_checked(self, scalar: Field) -> Self {
+        self.scalar_mul(scalar)
+    }
+
     /// Fixed-base scalar multiplication: multiplies the generator by a scalar
     pub fn generator_scalar_mul(scalar: Field) -> Self {
-        BabyJubJubPoint::generator().scalar_mul(scalar)
+        if scalar == 0 {
+            BabyJubJubPoint::identity()
+        } else {
+            let bits: [u1; 251] = scalar.to_le_bits();
+            BabyJubJubPoint::generator().scalar_mul_bits(bits)
+        }
     }
 
-    /// Production-grade field decomposition into bits
-    /// Decomposes a field element into its bit representation
-    /// This is equivalent to circom's Num2Bits template
-    pub fn decompose_to_bits(field_element: Field, num_bits: u32) -> [bool; 253] {
-        let mut bits: [bool; 253] = [false; 253];
+    /// Validates that a field element is in the BabyJubJub scalar field Fr
+    pub fn validate_babyjubjub_field(field_element: Field) {
+        bn254::assert_lt(field_element, BABYJUBJUB_Fr);
+    }
 
-        // For production, we need to handle the full field range
-        // This is a simplified version - in practice you'd use proper field arithmetic
-        let mut value = field_element as u32;
+    /// Checks if a field element is in the BabyJubJub scalar field without asserting
+    /// Returns true if field_element < BABYJUBJUB_Fr, false otherwise
+    pub fn is_valid_scalar_field(field_element: Field) -> bool {
+        // Decompose both values to bits and compare
+        let field_bits: [u1; 254] = field_element.to_le_bits();
+        let fr_bits: [u1; 254] = BABYJUBJUB_Fr.to_le_bits();
 
-        // Extract bits up to the specified number
-        let max_bits = if num_bits > 253 { 253 } else { num_bits };
+        // Compare from MSB to LSB
+        let mut is_less = false;
+        let mut is_equal = true;
 
-        for i in 0..max_bits {
-            // Extract the i-th bit using bit manipulation
-            bits[i] = (value & 1) == 1;
-            value = value >> 1;
+        for i in 0..254 {
+            let idx = 253 - i; // Start from MSB
+            let field_bit = field_bits[idx];
+            let fr_bit = fr_bits[idx];
+
+            if is_equal {
+                if (field_bit == 0) & (fr_bit == 1) {
+                    is_less = true;
+                    is_equal = false;
+                } else if (field_bit == 1) & (fr_bit == 0) {
+                    is_less = false;
+                    is_equal = false;
+                }
+            }
         }
 
-        bits
+        is_less
     }
-}
 
-// test the lib]
-#[test]
-fn test_point_add() {
-    let point_1 = BabyJubJubPoint::new(0, 1);
-    let point_2 = BabyJubJubPoint::new(0, 1);
-    let result = point_1.add(point_2);
+    /// Returns both the validated field element and its bit representation
+    pub fn validate_scalar_field_with_bits(field_element: Field) -> (Field, [u1; 251]) {
+        // Step 1: Validate that field_element < BABYJUBJUB_Fr
+        bn254::assert_lt(field_element, BABYJUBJUB_Fr);
 
-    assert_eq(result.x, 0);
-    assert_eq(result.y, 1);
-}
+        // Step 2: Decompose to 251 bits
+        let bits: [u1; 251] = field_element.to_le_bits();
 
-#[test]
-fn test_add_same_point() {
-    let point = BabyJubJubPoint::new(
-        17777552123799933955779906779655732241715742912184938656739573121738514868268,
-        2626589144620713026669568689430873010625803728049924121243784502389097019475,
-    );
-    let result = point.add(point);
-    assert_eq(
-        result.x,
-        6890855772600357754907169075114257697580319025794532037257385534741338397365,
-    );
-    assert_eq(
-        result.y,
-        4338620300185947561074059802482547481416142213883829469920100239455078257889,
-    );
-}
+        (field_element, bits)
+    }
 
-#[test]
-fn test_add_diff_point() {
-    let point1 = BabyJubJubPoint::new(
-        17777552123799933955779906779655732241715742912184938656739573121738514868268,
-        2626589144620713026669568689430873010625803728049924121243784502389097019475,
-    );
-
-    let point2 = BabyJubJubPoint::new(
-        16540640123574156134436876038791482806971768689494387082833631921987005038935,
-        20819045374670962167435360035096875258406992893633759881276124905556507972311,
-    );
-    let result = point1.add(point2);
-    assert_eq(
-        result.x,
-        7916061937171219682591368294088513039687205273691143098332585753343424131937,
-    );
-    assert_eq(
-        result.y,
-        14035240266687799601661095864649209771790948434046947201833777492504781204499,
-    );
-}
-
-// (0,1) is a valid point
-#[test]
-fn test_valid_point() {
-    let point = BabyJubJubPoint::new(0, 1);
-    assert(point.is_on_curve());
-}
-
-// (1,0) is an invalid point
-#[test]
-fn test_invalid_point() {
-    let point = BabyJubJubPoint::new(1, 0);
-    assert(!point.is_on_curve());
-}
-
-#[test]
-fn test_scalar_multiplication_one() {
-    let point = BabyJubJubPoint::generator();
-    let result = point.scalar_mul(1);
-    assert_eq(result.x, point.x);
-    assert_eq(result.y, point.y);
-}
-
-#[test]
-fn test_scalar_multiplication_two() {
-    let point = BabyJubJubPoint::generator();
-    let result = point.scalar_mul(2);
-    let expected = point.double();
-    assert_eq(result.x, expected.x);
-    assert_eq(result.y, expected.y);
-}
-
-#[test]
-fn test_generator_scalar_multiplication() {
-    let result = BabyJubJubPoint::generator_scalar_mul(2);
-    let expected = BabyJubJubPoint::generator().double();
-    assert_eq(result.x, expected.x);
-    assert_eq(result.y, expected.y);
+    pub fn babyjubjub_in_correct_subgroup(self) -> bool {
+        // Check if multiplying the point by the subgroup order gives the identity
+        // This verifies the point is in the prime-order subgroup
+        let result = self.scalar_mul(BABYJUBJUB_Fr);
+        result.is_identity()
+    }
 }
