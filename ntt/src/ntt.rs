@@ -102,7 +102,7 @@ impl NTTEngine {
     /// NTT on all polynomials in-place without needing to first transpose
     /// the data.
     ///
-    /// For a single polynomial use [`ntt_nr`].
+    /// For a single polynomial use [`NTTEngine::ntt_nr`].
     ///
     /// # Arguments
     /// * `values` - A mutable reference to an NTT container holding the
