@@ -1,7 +1,8 @@
+#[cfg(test)]
+use anyhow::{ensure, Result};
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
-    anyhow::{ensure, Result},
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
@@ -20,6 +21,7 @@ pub trait R1CSSolver {
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
     ) -> Vec<Option<FieldElement>>;
 
+    #[cfg(test)]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
 }
 
@@ -104,6 +106,7 @@ impl R1CSSolver for R1CS {
 
     // Tests R1CS Witness satisfaction given the constraints provided by the
     // R1CS Matrices.
+    #[cfg(test)]
     #[instrument(skip_all, fields(size = witness.len()))]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()> {
         ensure!(

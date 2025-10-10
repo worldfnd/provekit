@@ -19,7 +19,12 @@ use {provekit_common::Verifier, provekit_verifier::Verify};
 pub struct Args {
     /// path to the prepared proof scheme
     #[argh(positional)]
-    scheme_path: PathBuf,
+    prover_path: PathBuf,
+
+    #[cfg(test)]
+    /// path to the verifier
+    #[argh(positional)]
+    verifier_path: PathBuf,
 
     /// path to the input values
     #[argh(positional)]
@@ -33,14 +38,6 @@ pub struct Args {
         default = "PathBuf::from(\"./proof.np\")"
     )]
     proof_path: PathBuf,
-
-    /// path to store Gnark proof file
-    #[argh(
-        option,
-        long = "gnark-out",
-        default = "PathBuf::from(\"./gnark_proof.bin\")"
-    )]
-    gnark_out: PathBuf,
 }
 
 impl Command for Args {
@@ -48,7 +45,7 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         // Read the scheme
         let mut prover: Prover =
-            read(&self.scheme_path).context("while reading Provekit Prover")?;
+            read(&self.prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
@@ -64,7 +61,7 @@ impl Command for Args {
         #[cfg(test)]
         {
             let mut verifier: Verifier =
-                read(&self.scheme_path).context("while reading Provekit Verifier")?;
+                read(&self.verifier_path).context("while reading Provekit Verifier")?;
             verifier
                 .verify(&proof)
                 .context("While verifying Noir proof")?;

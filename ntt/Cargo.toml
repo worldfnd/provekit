@@ -10,8 +10,8 @@ repository.workspace = true
 
 [dependencies]
 ark-bn254.workspace = true
-rayon.workspace = true
 ark-ff.workspace = true
+rayon.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

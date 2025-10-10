@@ -1,7 +1,7 @@
 use {
     crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     acir::native_types::WitnessMap,
-    ark_ff::{BigInteger, Field, PrimeField},
+    ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
         skyscraper::SkyscraperSponge,

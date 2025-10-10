@@ -14,7 +14,7 @@ use {
 pub struct Args {
     /// path to the compiled Noir program
     #[argh(positional)]
-    scheme_path: PathBuf,
+    verifier_path: PathBuf,
 
     /// path to the proof file
     #[argh(positional)]
@@ -26,7 +26,7 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         // Read the scheme
         let mut verifier: Verifier =
-            read(&self.scheme_path).context("while reading Provekit Verifier")?;
+            read(&self.verifier_path).context("while reading Provekit Verifier")?;
 
         // Read the proof
         let proof = read(&self.proof_path).context("while reading proof")?;

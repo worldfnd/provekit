@@ -1,7 +1,7 @@
 use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
-    ark_std::{log2, One, Zero},
+    ark_std::{One, Zero},
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         utils::{
@@ -9,7 +9,7 @@ use {
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq,
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
-                sumcheck_fold_map_reduce, SumcheckIOPattern,
+                sumcheck_fold_map_reduce,
             },
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
@@ -22,9 +22,7 @@ use {
     },
     tracing::{info, instrument, warn},
     whir::{
-        poly_utils::{
-            coeffs::CoefficientList, evals::EvaluationsList, multilinear::MultilinearPoint,
-        },
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
             prover::Prover,
