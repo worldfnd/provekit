@@ -1,5 +1,6 @@
-
-mod core; 
+use poseidon::poseidon2::Poseidon2;
+mod core;
+mod poseidon2_constants;
 
 
 mod bb {
@@ -28,7 +29,7 @@ mod mine {
 
 
 mod ext {
-    use dep::poseidon2;
+    
 
     pub fn hash_1(xs: [Field; 1]) -> Field {
         poseidon2::bn254::hash_1(xs)
@@ -37,7 +38,11 @@ mod ext {
         poseidon2::bn254::hash_2(xs)
     }
 }
+fn main() {
 
+   // Can be empty
+
+}
 
 fn iterate_hash(mut h: Field, rounds: u32) -> Field {
     for _ in 0..rounds {
