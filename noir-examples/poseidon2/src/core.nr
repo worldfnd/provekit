@@ -1,3 +1,5 @@
+use crate::poseidon2_constants;
+
 // S-box: x^5
 fn sbox_e(x: Field) -> Field {
     let x2 = x * x;

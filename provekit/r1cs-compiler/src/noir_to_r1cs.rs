@@ -4,6 +4,7 @@ use {
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
+        poseidon2_permutation::add_poseidon2_permutation
     },
     acir::{
         circuit::{
@@ -244,6 +245,8 @@ impl NoirToR1CSCompiler {
         let mut xor_ops = vec![];
 
         let mut sha256_compression_ops = vec![];
+        let mut poseidon2_ops = vec![];
+
 
         for opcode in &circuit.opcodes {
             match opcode {
@@ -374,6 +377,35 @@ impl NoirToR1CSCompiler {
                             self.fetch_r1cs_witness_index(*output),
                         ));
                     }
+                        BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs, len } => {
+        // Sanity: lengths must match `len`
+        println!("[r1cs] Poseidon2Permutation called: t={}, in_len={}, out_len={}",
+         inputs.len(), inputs.len(), outputs.len());
+
+        assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
+        assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
+        let t = *len;
+
+        // Only these widths are allowed for Poseidon2
+        assert!(
+            matches!(t, 2 | 3 | 4 | 8 | 12 | 16),
+            "Poseidon2: unsupported width {t}"
+        );
+
+        // Convert ACIR inputs to (Constant | Witness)
+        let in_wits: Vec<ConstantOrR1CSWitness> = inputs
+            .iter()
+            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+            .collect();
+
+        // Outputs are always witnesses: map to R1CS indices
+        let out_wits: Vec<usize> = outputs
+            .iter()
+            .map(|&w| self.fetch_r1cs_witness_index(w))
+            .collect();
+
+        poseidon2_ops.push((t, in_wits, out_wits));
+    }
                     BlackBoxFuncCall::Sha256Compression {
                         inputs,
                         hash_values,
@@ -436,6 +468,8 @@ impl NoirToR1CSCompiler {
         // For the AND and XOR operations, add the appropriate constraints.
         add_binop_constraints(self, BinOp::And, and_ops);
         add_binop_constraints(self, BinOp::Xor, xor_ops);
+        add_poseidon2_permutation(self, poseidon2_ops);
+
 
         // Perform all range checks
         add_range_checks(self, range_checks);
