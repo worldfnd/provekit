@@ -24,7 +24,7 @@ pub use {
 /// The index of the constant 1 witness in the R1CS instance
 pub const WITNESS_ONE_IDX: usize = 0;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ConstantOrR1CSWitness {
     Constant(#[serde(with = "serde_ark")] FieldElement),
     Witness(usize),
