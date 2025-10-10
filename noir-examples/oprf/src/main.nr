@@ -3,8 +3,6 @@ pub mod types;
 mod dlog;
 mod commitment;
 mod query;
-pub mod orpfQuery;
-pub mod hash_to_curve;
 
 use commitment::{generate_commitment, generate_query};
 use dlog::verify_dlog_equality;

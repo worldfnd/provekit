@@ -5,6 +5,7 @@
 
 use std::field::bn254;
 mod test_std;
+pub mod hash_to_curve;
 
 // BabyJubJub curve constants
 global BABYJUBJUB_A: Field = 168700;

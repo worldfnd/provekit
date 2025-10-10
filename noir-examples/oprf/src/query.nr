@@ -1,10 +1,88 @@
 use super::{
-    hash_to_curve::hash_to_curve::encode_to_curve_baby_jubjub,
-    orpfQuery::{check_credential_signature, compute_merkle_root_poseidon2, merkle_leaf},
+    constants::{CREDENTIAL_DS, MERKLE_LEAF_DS, NUM_KEYS},
     types::{OprfQueryInputs, PublicKey},
 };
-use babyjubjub::BabyJubJubPoint;
+use babyjubjub::{BabyJubJubPoint, hash_to_curve::encode_to_curve_baby_jubjub};
 use eddsa_poseidon2::verify_eddsa_poseidon2;
+use poseidon2::bn254::perm;
+
+// Utility functions for OPRF query verification
+
+fn merkle_leaf(pk: [PublicKey; NUM_KEYS]) -> Field {
+    let mut inputs: [Field; 16] = [0; 16];
+    inputs[0] = MERKLE_LEAF_DS;
+
+    for i in 0..NUM_KEYS {
+        inputs[i * 2 + 1] = pk[i].x;
+        inputs[i * 2 + 2] = pk[i].y;
+    }
+
+    let hash_state = perm::x5_16(inputs);
+    hash_state[1]
+}
+
+fn check_credential_signature(
+    s: Field,
+    r: [Field; 2],
+    pk: [Field; 2],
+    credential_type_id: Field,
+    user_id: Field,
+    genesis_issued_at: Field,
+    expires_at: Field,
+    hashes: [Field; 2],
+    current_time_stamp: Field,
+) -> bool {
+    // Calculate message hash
+    let hash_inputs = [
+        CREDENTIAL_DS,
+        credential_type_id,
+        user_id,
+        genesis_issued_at,
+        expires_at,
+        hashes[0],
+        hashes[1],
+        0,
+    ];
+    let hash_state = perm::x5_8(hash_inputs);
+    let message = hash_state[1];
+
+    // Verify EdDSA signature
+    let sig_valid = verify_eddsa_poseidon2(pk[0], pk[1], s, r, message);
+
+    // Check credential hasn't expired
+    assert((current_time_stamp as u64) < (expires_at as u64), "Credential expired");
+
+    sig_valid
+}
+
+fn compute_merkle_root_poseidon2<let N: u32>(
+    leaf: Field,
+    depth: Field,
+    index: Field,
+    hashpath: [Field; N],
+) -> Field {
+    let mut current = leaf;
+    let mut idx = index as u32;
+    let depth_u32 = depth as u32;
+
+    for i in 0..N {
+        if i < depth_u32 {
+            let sibling = hashpath[i];
+            let is_right = idx & 1;
+
+            // Compute left and right using conditional selection
+            let left = if is_right == 0 { current } else { sibling };
+            let right = if is_right == 0 { sibling } else { current };
+
+            let hash_state = perm::x5_2([left, right]);
+            current = hash_state[0] + left;
+
+            idx >>= 1;
+        }
+    }
+
+    current
+}
 
 pub fn oprf_query(inputs: OprfQueryInputs, query: Field) -> PublicKey {
     let (_validated_beta, beta_bits) =
@@ -54,7 +132,6 @@ pub fn oprf_query(inputs: OprfQueryInputs, query: Field) -> PublicKey {
 }
 
 pub fn verify_unblinding(oprf_response: PublicKey, oprf_response_blinded: PublicKey, beta: Field) {
-    // NOIR OPTIMIZATION: Validate and get bits to avoid redundant decomposition
     let (_validated_beta, beta_bits) = BabyJubJubPoint::validate_scalar_field_with_bits(beta);
 
     // Check that oprf_response is on the curve and perform unblinding

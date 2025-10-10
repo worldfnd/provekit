@@ -61,11 +61,6 @@ pub struct OprfNullifierInputs {
     pub id_commitment_r: Field,
 }
 
-pub struct OprfQueryOutputs {
-    // Public
-    pub q: PublicKey,
-}
-
 pub struct OprfNullifierOutputs {
     // Public
     pub id_commitment: Field,

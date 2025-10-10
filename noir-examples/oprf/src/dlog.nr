@@ -1,10 +1,10 @@
 use super::{constants::DS_DLOG, types::PublicKey};
-use babyjubjub::BabyJubJubPoint::{self, validate_babyjubjub_field};
+use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
 pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: PublicKey) {
     // Validate that s is in the scalar field Fr (do this first as it's cheaper)
-    validate_babyjubjub_field(s);
+    BabyJubJubPoint::validate_babyjubjub_field(s);
 
     // Create points and validate them
     let a_point = BabyJubJubPoint::new(a.x, a.y);
