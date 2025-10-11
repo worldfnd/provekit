@@ -3,7 +3,7 @@ use {
     anyhow::Result,
     ark_ff::AdditiveGroup,
     provekit_common::{utils::next_power_of_two, FieldElement, R1CS},
-    std::collections::BTreeMap,
+    std::{collections::BTreeMap, iter::repeat},
 };
 
 /// Preprocesses R1CS matrices into SPARK's memory-checkable COO format.
@@ -158,35 +158,35 @@ impl MatrixPreprocessor {
 
     /// Combines A + α·B + α²·C into single SPARK matrix using batching
     /// randomness.
-    pub fn to_spark_matrix(
-        &self,
+    pub fn into_spark_matrix(
+        mut self,
         r1cs: &R1CS,
         matrix_batching_randomness: FieldElement,
     ) -> SparkMatrix {
         let matrix_batching_randomness_sq = matrix_batching_randomness * matrix_batching_randomness;
 
-        let mut combined_matrix_map = self.combined_matrix_map.clone();
-
         for (coordinate, value) in r1cs.a().iter() {
-            combined_matrix_map.entry(coordinate).and_modify(|cur| {
-                *cur += value;
-            });
+            self.combined_matrix_map
+                .entry(coordinate)
+                .and_modify(|cur| *cur += value);
         }
-
         for (coordinate, value) in r1cs.b().iter() {
-            combined_matrix_map.entry(coordinate).and_modify(|cur| {
-                *cur += value * matrix_batching_randomness;
-            });
+            self.combined_matrix_map
+                .entry(coordinate)
+                .and_modify(|cur| {
+                    *cur += value * matrix_batching_randomness;
+                });
         }
-
         for (coordinate, value) in r1cs.c().iter() {
-            combined_matrix_map.entry(coordinate).and_modify(|cur| {
-                *cur += value * matrix_batching_randomness_sq;
-            });
+            self.combined_matrix_map
+                .entry(coordinate)
+                .and_modify(|cur| {
+                    *cur += value * matrix_batching_randomness_sq;
+                });
         }
 
         let mut val = Vec::with_capacity(self.padded_num_entries);
-        for value in combined_matrix_map.values() {
+        for value in self.combined_matrix_map.values() {
             val.push(*value);
         }
         let to_fill = self.padded_num_entries - self.original_num_entries;
@@ -194,18 +194,18 @@ impl MatrixPreprocessor {
 
         SparkMatrix {
             coo:        COOMatrix {
-                row: self.row.clone(),
-                col: self.col.clone(),
+                row: self.row,
+                col: self.col,
                 val,
-                val_a: self.val_a.clone(),
-                val_b: self.val_b.clone(),
-                val_c: self.val_c.clone(),
+                val_a: self.val_a,
+                val_b: self.val_b,
+                val_c: self.val_c,
             },
             timestamps: TimeStamps {
-                read_row:  self.read_row.clone(),
-                read_col:  self.read_col.clone(),
-                final_row: self.final_row.clone(),
-                final_col: self.final_col.clone(),
+                read_row:  self.read_row,
+                read_col:  self.read_col,
+                final_row: self.final_row,
+                final_col: self.final_col,
             },
         }
     }
@@ -223,8 +223,8 @@ impl MatrixPreprocessor {
         }
 
         let to_fill = self.padded_num_entries - self.original_num_entries;
-        e_rx.extend(std::iter::repeat(memory.eq_rx[0]).take(to_fill));
-        e_ry.extend(std::iter::repeat(memory.eq_ry[0]).take(to_fill));
+        e_rx.extend(repeat(memory.eq_rx[0]).take(to_fill));
+        e_ry.extend(repeat(memory.eq_ry[0]).take(to_fill));
 
         EValuesForMatrix { e_rx, e_ry }
     }

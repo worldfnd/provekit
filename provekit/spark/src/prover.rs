@@ -3,7 +3,9 @@ use {
         memory::{prove_colwise, prove_rowwise},
         preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
-        types::{EValuesForMatrix, MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
+        types::{
+            EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs, SparkMatrix,
+        },
         utils::{calculate_memory, SPARKDomainSeparator},
     },
     anyhow::Result,
@@ -15,10 +17,20 @@ use {
         FieldElement, IOPattern, WhirR1CSScheme, R1CS,
     },
     provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
-    spongefish::codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
+    spongefish::{
+        codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
+        ProverState,
+    },
+    std::collections::BTreeSet,
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
-        whir::{committer::CommitmentWriter, domainsep::WhirDomainSeparator, utils::HintSerialize},
+        whir::{
+            committer::{CommitmentWriter, Witness},
+            domainsep::WhirDomainSeparator,
+            prover::Prover,
+            statement::{Statement, Weights},
+            utils::HintSerialize,
+        },
     },
 };
 
@@ -41,7 +53,7 @@ impl SPARKScheme {
         let num_rows = r1cs.num_constraints();
         let num_cols = r1cs.num_witnesses();
 
-        let mut coordinates = std::collections::BTreeSet::new();
+        let mut coordinates = BTreeSet::new();
         for ((row, col), _) in r1cs.a().iter() {
             coordinates.insert((row, col));
         }
@@ -152,7 +164,7 @@ impl SPARKProver for SPARKScheme {
         let matrix_batching_randomness = matrix_batching_randomness[0];
         let matrix_batching_randomness_sq = matrix_batching_randomness * matrix_batching_randomness;
 
-        let spark_matrix = processed.to_spark_matrix(r1cs, matrix_batching_randomness);
+        let spark_matrix = processed.into_spark_matrix(r1cs, matrix_batching_randomness);
 
         let claimed_value = request.claimed_values.a
             + request.claimed_values.b * matrix_batching_randomness
@@ -178,9 +190,9 @@ impl SPARKProver for SPARKScheme {
 
 /// Core SPARK protocol: sumcheck + row/col memory checking.
 fn prove_spark_for_single_matrix(
-    merlin: &mut spongefish::ProverState<SkyscraperSponge, FieldElement>,
-    matrix: crate::types::SparkMatrix,
-    memory: &crate::types::Memory,
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    matrix: SparkMatrix,
+    memory: &Memory,
     e_values: EValuesForMatrix,
     claimed_value: FieldElement,
     whir_configs: &SPARKWHIRConfigs,
@@ -297,7 +309,7 @@ fn commit_to_vector(
     >,
     merlin: &mut spongefish::ProverState<SkyscraperSponge, FieldElement>,
     vector: Vec<FieldElement>,
-) -> whir::whir::committer::Witness<FieldElement, SkyscraperMerkleConfig> {
+) -> Witness<FieldElement, SkyscraperMerkleConfig> {
     assert!(
         vector.len().is_power_of_two(),
         "Vector length must be power of two"
@@ -315,13 +327,8 @@ fn produce_whir_proof(
     evaluation_point: MultilinearPoint<FieldElement>,
     evaluated_value: FieldElement,
     config: provekit_common::WhirConfig,
-    witness: whir::whir::committer::Witness<FieldElement, SkyscraperMerkleConfig>,
+    witness: Witness<FieldElement, SkyscraperMerkleConfig>,
 ) -> Result<()> {
-    use whir::whir::{
-        prover::Prover,
-        statement::{Statement, Weights},
-    };
-
     let mut statement = Statement::<FieldElement>::new(evaluation_point.num_variables());
     statement.add_constraint(Weights::evaluation(evaluation_point), evaluated_value);
     let prover = Prover::new(config);

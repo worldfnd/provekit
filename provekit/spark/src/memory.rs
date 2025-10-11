@@ -4,18 +4,21 @@ use {
         types::{Memory, SPARKWHIRConfigs, SparkMatrix},
     },
     anyhow::{ensure, Result},
+    ark_ff::{Fp, MontBackend},
     ark_std::One,
+    itertools::izip,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         spark::SparkStatement,
-        utils::sumcheck::calculate_eq,
+        utils::{next_power_of_two, sumcheck::calculate_eq},
         FieldElement, WhirConfig,
     },
     spongefish::{codecs::arkworks_algebra::UnitToField, ProverState, VerifierState},
     whir::{
+        crypto::fields::BN254Config,
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
-            committer::{CommitmentReader, Witness},
+            committer::{reader::ParsedCommitment, Witness},
             prover::Prover,
             statement::{Statement, Weights},
             utils::{HintDeserialize, HintSerialize},
@@ -61,20 +64,16 @@ fn prove_axis(
 
     // Construct opening vectors for init/final GPA using Fiat-Shamir challenges.
     // Each opening encodes (address, value, timestamp) as: a*γ² + v*γ + t - τ
-    let init_vec: Vec<_> = (0..config.eq_memory.len())
-        .map(|i| {
-            let a = FieldElement::from(i as u64);
-            let v = config.eq_memory[i];
-            // Initial timestamp is always 0 (pre-access state)
+    let init_vec: Vec<_> = izip!(0.., config.eq_memory.iter(), config.final_timestamp.iter())
+        .map(|(i, &v, _)| {
+            let a = FieldElement::from(i);
             a * gamma * gamma + v * gamma - tau
         })
         .collect();
 
-    let final_vec: Vec<_> = (0..config.eq_memory.len())
-        .map(|i| {
-            let a = FieldElement::from(i as u64);
-            let v = config.eq_memory[i];
-            let t = config.final_timestamp[i];
+    let final_vec: Vec<_> = izip!(0.., config.eq_memory.iter(), config.final_timestamp.iter())
+        .map(|(i, &v, &t)| {
+            let a = FieldElement::from(i);
             a * gamma * gamma + v * gamma + t - tau
         })
         .collect();
@@ -95,23 +94,21 @@ fn prove_axis(
     )?;
 
     // RS WS GPA
-    let rs_vec: Vec<_> = (0..config.address.len())
-        .map(|i| {
-            let a = config.address[i];
-            let v = e_values[i];
-            let t = config.read_timestamp[i];
-            a * gamma * gamma + v * gamma + t - tau
-        })
-        .collect();
+    let rs_vec: Vec<_> = izip!(
+        config.address.iter(),
+        e_values.iter(),
+        config.read_timestamp.iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
+    .collect();
 
-    let ws_vec: Vec<_> = (0..config.address.len())
-        .map(|i| {
-            let a = config.address[i];
-            let v = e_values[i];
-            let t = config.read_timestamp[i] + FieldElement::from(1);
-            a * gamma * gamma + v * gamma + t - tau
-        })
-        .collect();
+    let ws_vec: Vec<_> = izip!(
+        config.address.iter(),
+        e_values.iter(),
+        config.read_timestamp.iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
+    .collect();
 
     let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
@@ -216,16 +213,18 @@ fn verify_axis(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     num_axis_items: usize,
     num_nonzero_terms: usize,
-    whir_params: &SPARKWHIRConfigs,
     whir_config: &WhirConfig,
+    num_terms_3batched_config: &WhirConfig,
+    axis_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
+    finalts_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
     init_mem_fn: impl Fn(&[FieldElement]) -> FieldElement,
 ) -> Result<()> {
-    let commitment_reader = CommitmentReader::new(whir_config);
-    let a_3batched_reader = CommitmentReader::new(&whir_params.num_terms_3batched);
-
-    let a_axis_commitment = a_3batched_reader.parse_commitment(arthur)?;
-    let a_finalts_commitment = commitment_reader.parse_commitment(arthur)?;
-
     let mut tau_and_gamma = [FieldElement::from(0); 2];
     arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
     let tau = tau_and_gamma[0];
@@ -255,7 +254,7 @@ fn verify_axis(
     );
 
     let final_cntr_verifier = Verifier::new(whir_config);
-    final_cntr_verifier.verify(arthur, &a_finalts_commitment, &final_cntr_statement)?;
+    final_cntr_verifier.verify(arthur, &finalts_commitment, &final_cntr_statement)?;
 
     let final_adr = calculate_adr(&evaluation_randomness.to_vec());
     let final_mem = init_mem_fn(&evaluation_randomness.to_vec());
@@ -267,10 +266,7 @@ fn verify_axis(
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     // RS WS GPA
-    let gpa_result = gpa_sumcheck_verifier(
-        arthur,
-        provekit_common::utils::next_power_of_two(num_nonzero_terms) + 2,
-    )?;
+    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_nonzero_terms) + 2)?;
 
     let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
     let claimed_rs = gpa_result.claimed_values[0];
@@ -293,14 +289,14 @@ fn verify_axis(
         num_nonzero_terms,
     ));
 
-    let br = a_axis_commitment.batching_randomness;
+    let br = axis_commitment.batching_randomness;
     statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
         rs_adr + rs_mem * br + rs_timestamp * br * br,
     );
 
-    let verifier = Verifier::new(&whir_params.num_terms_3batched);
-    verifier.verify(arthur, &a_axis_commitment, &statement)?;
+    let verifier = Verifier::new(num_terms_3batched_config);
+    verifier.verify(arthur, &axis_commitment, &statement)?;
 
     ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
 
@@ -317,14 +313,23 @@ pub fn verify_rowwise(
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
-    _matrix_batching_randomness: &FieldElement,
+    rowwise_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
+    row_finalts_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
 ) -> Result<()> {
     verify_axis(
         arthur,
         num_rows,
         num_nonzero_terms,
-        whir_params,
         &whir_params.row,
+        &whir_params.num_terms_3batched,
+        rowwise_commitment,
+        row_finalts_commitment,
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
     )
 }
@@ -335,14 +340,23 @@ pub fn verify_colwise(
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
-    _matrix_batching_randomness: &FieldElement,
+    colwise_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
+    col_finalts_commitment: ParsedCommitment<
+        Fp<MontBackend<BN254Config, 4>, 4>,
+        Fp<MontBackend<BN254Config, 4>, 4>,
+    >,
 ) -> Result<()> {
     verify_axis(
         arthur,
         num_cols,
         num_nonzero_terms,
-        whir_params,
         &whir_params.col,
+        &whir_params.num_terms_3batched,
+        colwise_commitment,
+        col_finalts_commitment,
         |eval_rand| {
             calculate_eq(&request.point_to_evaluate.col[1..], eval_rand)
                 * (FieldElement::from(1) - request.point_to_evaluate.col[0])

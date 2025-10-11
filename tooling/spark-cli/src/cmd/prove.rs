@@ -1,8 +1,8 @@
 use {
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof},
-    provekit_spark::{deserialize_r1cs, SPARKProofGnark, SPARKProver, SPARKProverScheme},
+    provekit_common::{file::read, utils::next_power_of_two, NoirProof, NoirProofScheme},
+    provekit_spark::{SPARKProofGnark, SPARKProver, SPARKProverScheme},
     std::{fs::File, io::Write, path::PathBuf},
 };
 
@@ -10,9 +10,9 @@ use {
 #[argh(subcommand, name = "prove")]
 #[argh(description = "Generate a SPARK proof")]
 pub struct ProveArgs {
-    /// path to R1CS file
+    /// path to NPS file
     #[argh(option)]
-    r1cs: PathBuf,
+    noir_proof_scheme: PathBuf,
 
     /// path to NoirProof file (.np or .json) containing the SPARK statement
     #[argh(option)]
@@ -28,8 +28,15 @@ pub struct ProveArgs {
 }
 
 pub fn execute(args: ProveArgs) -> Result<()> {
-    println!("Loading R1CS from {:?}...", args.r1cs);
-    let r1cs = deserialize_r1cs(&args.r1cs).context("Failed to load R1CS")?;
+    println!("Loading R1CS from {:?}...", args.noir_proof_scheme);
+    let scheme: NoirProofScheme =
+        read(&args.noir_proof_scheme).context("while reading Noir proof scheme")?;
+    let mut r1cs = scheme.r1cs.clone();
+    r1cs.grow_matrices(
+        1 << next_power_of_two(r1cs.num_constraints()),
+        1 << next_power_of_two(r1cs.num_witnesses()),
+    );
+    drop(scheme);
 
     println!("Loading NoirProof from {:?}...", args.noir_proof);
     let noir_proof: NoirProof = read(&args.noir_proof).context("Failed to read NoirProof file")?;

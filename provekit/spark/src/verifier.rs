@@ -91,11 +91,11 @@ fn verify_spark_single_matrix(
     let a_5batched_commitment_reader = CommitmentReader::new(&whir_params.num_terms_5batched);
 
     let a_sumcheck_commitment = a_5batched_commitment_reader.parse_commitment(arthur)?;
-    let _a_rowwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
-    let _a_colwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
+    let a_rowwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
+    let a_colwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
 
-    let _a_row_finalts_commitment = commitment_reader_row.parse_commitment(arthur)?;
-    let _a_col_finalts_commitment = commitment_reader_col.parse_commitment(arthur)?;
+    let a_row_finalts_commitment = commitment_reader_row.parse_commitment(arthur)?;
+    let a_col_finalts_commitment = commitment_reader_col.parse_commitment(arthur)?;
 
     let (randomness, a_last_sumcheck_value) = run_sumcheck_verifier_spark(
         arthur,
@@ -144,7 +144,8 @@ fn verify_spark_single_matrix(
         matrix_dimensions.nonzero_terms,
         whir_params,
         request,
-        matrix_batching_randomness,
+        a_rowwise_commitment,
+        a_row_finalts_commitment,
     )?;
 
     verify_colwise(
@@ -153,7 +154,8 @@ fn verify_spark_single_matrix(
         matrix_dimensions.nonzero_terms,
         whir_params,
         request,
-        matrix_batching_randomness,
+        a_colwise_commitment,
+        a_col_finalts_commitment,
     )?;
 
     Ok(())
