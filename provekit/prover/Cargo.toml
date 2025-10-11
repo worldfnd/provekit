@@ -17,6 +17,7 @@ skyscraper.workspace = true
 acir.workspace = true
 bn254_blackbox_solver.workspace = true
 nargo.workspace = true
+noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems

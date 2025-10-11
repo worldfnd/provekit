@@ -31,6 +31,7 @@ whir.workspace = true
 anyhow.workspace = true
 bytes.workspace = true
 hex.workspace = true
+itertools.workspace = true
 postcard.workspace = true
 rand08.workspace = true
 rayon.workspace = true
@@ -41,7 +42,6 @@ tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
-itertools = "0.14.0"
 
 [lints]
 workspace = true

@@ -96,6 +96,7 @@ bytes = "1.10.1"
 chrono = "0.4.41"
 divan = { package = "codspeed-divan-compat", version = "3.0.1" }
 hex = "0.4.3"
+itertools = "0.14.0"
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
 primitive-types = "0.13.1"
@@ -150,4 +151,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "48fc0909d6a0d803d61c35b0c18499ad704da211" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "3d627d31cec7d73a470a31a913229dd3128ee0cf" }

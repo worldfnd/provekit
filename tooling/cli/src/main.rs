@@ -5,11 +5,7 @@ mod measuring_alloc;
 #[cfg(feature = "profiling")]
 mod span_stats;
 
-use {
-    self::cmd::Command,
-    anyhow::Result,
-    std::{clone::Clone, convert::Into},
-};
+use {self::cmd::Command, anyhow::Result};
 #[cfg(feature = "profiling")]
 use {
     crate::measuring_alloc::{MeasuringAllocator, MeasuringAllocatorState},
