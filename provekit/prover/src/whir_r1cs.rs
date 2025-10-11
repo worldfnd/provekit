@@ -92,16 +92,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let _ = merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums));
 
-        // f(x1) = c1
-        // f(x2) = c2
-        // f(x1+r*x2) = placeholder1 -> Verifier
-        // Prover: I have a witness vector, and I committed to it
-        // R1CS is public
-        // Via sumcheck, I'm proving that the committed witness vector satisfies the
-        // R1CS There are few witness that I'm ready to make public, and I can
-        // prove that they belong to the same committed vector which satisfies
-        // the R1CS
-
         // Compute WHIR weighted batch opening proof
         let (merlin, ..) =
             run_zk_whir_pcs_prover(commitment_to_witness, statement, &self.whir_witness, merlin);
