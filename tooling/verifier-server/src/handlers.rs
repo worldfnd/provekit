@@ -24,7 +24,7 @@ pub async fn verify_handler(
 
     info!(
         request_id = %request_id.as_deref().unwrap_or("unknown"),
-        nps_url = %payload.nps_url,
+        pkv_url = %payload.pkv_url,
         r1cs_url = %payload.r1cs_url,
         pk_url = %payload.pk_url.as_deref().unwrap_or("not provided"),
         vk_url = %payload.vk_url.as_deref().unwrap_or("not provided"),
@@ -174,10 +174,10 @@ async fn verification(
     info!("Successfully decoded NoirProof from request");
 
     // Download and prepare artifacts
-    let (scheme, paths) = state
+    let (verifier, paths) = state
         .artifact_service
         .prepare_artifacts(
-            &request.nps_url,
+            &request.pkv_url,
             &request.r1cs_url,
             request.pk_url.as_deref(),
             request.vk_url.as_deref(),
@@ -187,6 +187,6 @@ async fn verification(
     // Perform verification
     state
         .verification_service
-        .verify_proof(request, &proof, &scheme, &paths, cancellation_token)
+        .verify_proof(request, &proof, &verifier, &paths, cancellation_token)
         .await
 }

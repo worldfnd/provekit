@@ -1,11 +1,11 @@
 //! Artifact management service
 //!
 //! Handles downloading and caching of verification artifacts including
-//! NPS files, R1CS files, proving keys, and verification keys.
+//! PKV files, R1CS files, proving keys, and verification keys.
 
 use {
     crate::error::{AppError, AppResult},
-    provekit_common::NoirProofScheme,
+    provekit_common::Verifier,
     sha2::{Digest, Sha256},
     std::path::{Path, PathBuf},
     tracing::{info, instrument},
@@ -30,12 +30,12 @@ impl ArtifactService {
     #[instrument(skip(self))]
     pub async fn prepare_artifacts(
         &self,
-        nps_url: &str,
+        pkv_url: &str,
         r1cs_url: &str,
         pk_url: Option<&str>,
         vk_url: Option<&str>,
-    ) -> AppResult<(NoirProofScheme, ArtifactPaths)> {
-        let cache_dir = self.create_cache_directory(nps_url).await?;
+    ) -> AppResult<(Verifier, ArtifactPaths)> {
+        let cache_dir = self.create_cache_directory(pkv_url).await?;
         let paths = ArtifactPaths::new(&cache_dir);
 
         info!(
@@ -44,19 +44,19 @@ impl ArtifactService {
         );
 
         // Download all required artifacts
-        self.download_artifacts_if_missing(&paths, nps_url, r1cs_url, pk_url, vk_url)
+        self.download_artifacts_if_missing(&paths, pkv_url, r1cs_url, pk_url, vk_url)
             .await?;
 
-        // Load and return the NoirProofScheme
-        let scheme = self.load_noir_proof_scheme(&paths.nps_file).await?;
+        // Load and return the Verifier
+        let verifier = self.load_verifier(&paths.pkv_file).await?;
 
-        Ok((scheme, paths))
+        Ok((verifier, paths))
     }
 
-    /// Create a cache directory based on the NPS URL hash
-    async fn create_cache_directory(&self, nps_url: &str) -> AppResult<PathBuf> {
+    /// Create a cache directory based on the PKV URL hash
+    async fn create_cache_directory(&self, pkv_url: &str) -> AppResult<PathBuf> {
         let mut hasher = Sha256::new();
-        hasher.update(nps_url.as_bytes());
+        hasher.update(pkv_url.as_bytes());
         let url_hash = format!("{:x}", hasher.finalize());
 
         let cache_dir = self.artifacts_dir.join(&url_hash);
@@ -78,14 +78,14 @@ impl ArtifactService {
     async fn download_artifacts_if_missing(
         &self,
         paths: &ArtifactPaths,
-        nps_url: &str,
+        pkv_url: &str,
         r1cs_url: &str,
         pk_url: Option<&str>,
         vk_url: Option<&str>,
     ) -> AppResult<()> {
         // Download required artifacts if not present
         let required_downloads = [
-            (nps_url, &paths.nps_file, "Noir Proof Scheme"),
+            (pkv_url, &paths.pkv_file, "ProveKit Verifier"),
             (r1cs_url, &paths.r1cs_file, "R1CS"),
         ];
 
@@ -179,18 +179,18 @@ impl ArtifactService {
         Ok(())
     }
 
-    /// Load a NoirProofScheme from the NPS file
-    async fn load_noir_proof_scheme(&self, nps_file: &Path) -> AppResult<NoirProofScheme> {
+    /// Load a Verifier from the PKV file
+    async fn load_verifier(&self, pkv_file: &Path) -> AppResult<Verifier> {
         info!(
-            nps_file = %nps_file.display(),
-            "Loading NoirProofScheme"
+            pkv_file = %pkv_file.display(),
+            "Loading Verifier"
         );
 
-        let scheme = provekit_common::file::read(nps_file)
-            .map_err(|e| AppError::Internal(format!("Failed to load NoirProofScheme: {}", e)))?;
+        let verifier = provekit_common::file::read(pkv_file)
+            .map_err(|e| AppError::Internal(format!("Failed to load Verifier: {}", e)))?;
 
-        info!("Successfully loaded NoirProofScheme");
-        Ok(scheme)
+        info!("Successfully loaded Verifier");
+        Ok(verifier)
     }
 }
 
@@ -203,7 +203,7 @@ impl Default for ArtifactService {
 /// Paths to all required artifact files
 #[derive(Debug, Clone)]
 pub struct ArtifactPaths {
-    pub nps_file:          PathBuf,
+    pub pkv_file:          PathBuf,
     pub r1cs_file:         PathBuf,
     pub pk_file:           PathBuf,
     pub vk_file:           PathBuf,
@@ -214,7 +214,7 @@ impl ArtifactPaths {
     /// Create artifact paths for a given cache directory
     pub fn new(cache_dir: &Path) -> Self {
         Self {
-            nps_file:          cache_dir.join("scheme.nps"),
+            pkv_file:          cache_dir.join("verifier.pkv"),
             r1cs_file:         cache_dir.join("r1cs.json"),
             pk_file:           cache_dir.join("proving_key.bin"),
             vk_file:           cache_dir.join("verification_key.bin"),
