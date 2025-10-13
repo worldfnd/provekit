@@ -21,28 +21,28 @@ cd noir-examples/poseidon-rounds
 nargo compile
 ```
 
-Generate the Noir Proof Scheme:
+Prepare the Noir program (generates prover and verifier files):
 
 ```sh
-cargo run --release --bin provekit-cli prepare ./target/basic.json -o ./noir-proof-scheme.nps
+cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
 
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
 Verify the Noir Proof:
 
 ```sh
-cargo run --release --bin provekit-cli verify ./noir-proof-scheme.nps ./noir-proof.np
+cargo run --release --bin provekit-cli verify ./verifier.pkv ./proof.np
 ```
 
 Generate inputs for Gnark circuit:
 
 ```sh
-cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+cargo run --release --bin provekit-cli generate-gnark-inputs ./prover.pkp ./proof.np
 ```
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
@@ -62,8 +62,8 @@ Benchmark against Barretenberg:
 
 ```sh
 cd noir-examples/poseidon-rounds
-cargo run --release --bin provekit-cli prepare ./target/basic.json -o ./scheme.nps
-hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/provekit-cli prove ./scheme.nps ./Prover.toml'
+cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
+hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml'
 ```
 
 ### Profiling
@@ -74,7 +74,7 @@ The `provekit-cli` application has written custom memory profiler that prints ba
 runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
 
 ```sh
-cargo run --release --bin provekit-cli --features profiling prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin provekit-cli --features profiling prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
 #### Using tracy (CPU and Memory usage)
@@ -112,7 +112,7 @@ cargo build --release --bin provekit-cli --features profiling
 ```
 5. Now start the application to profile:
 ```sh
-../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 6. Go back to tracy tool. You should see that it receives data. App is interactive.
 
@@ -123,7 +123,7 @@ open a webpage with interactive app to view results. This does not require to ru
 with profiling enabled.
 
 ```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
 #### Using instruments (Memory usage) - OSX only
@@ -132,7 +132,7 @@ Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) wit
 results using built-in Instruments app. Results are interactive.
 
 ```sh
-cargo instruments --template Allocations --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
 Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
@@ -140,7 +140,7 @@ open a webpage with interactive app to view results. This does not require to ru
 with profiling enabled.
 
 ```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
 ## Benchmarking
