@@ -2,9 +2,9 @@ use {
     crate::{
         binops::{add_binop_constraints, BinOp},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
+        poseidon2_permutation::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
-        poseidon2_permutation::add_poseidon2_permutation
     },
     acir::{
         circuit::{
@@ -247,7 +247,6 @@ impl NoirToR1CSCompiler {
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
 
-
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
@@ -377,34 +376,34 @@ impl NoirToR1CSCompiler {
                             self.fetch_r1cs_witness_index(*output),
                         ));
                     }
-                        BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs, len } => {
-        // Sanity: lengths must match `len`
-        println!("[r1cs] Poseidon2Permutation called: t={}, in_len={}, out_len={}",
-         inputs.len(), inputs.len(), outputs.len());
+                    BlackBoxFuncCall::Poseidon2Permutation {
+                        inputs,
+                        outputs,
+                        len,
+                    } => {
+                        assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
+                        assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
+                        let t = *len;
 
-        assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
-        assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
-        let t = *len;
+                        // Only these widths are allowed for Poseidon2
+                        assert!(
+                            matches!(t, 2 | 3 | 4 | 8 | 12 | 16),
+                            "Poseidon2: unsupported width {t}"
+                        );
 
-        // Only these widths are allowed for Poseidon2
-        assert!(
-            matches!(t, 2 | 3 | 4 | 8 | 12 | 16),
-            "Poseidon2: unsupported width {t}"
-        );
+                        // Convert ACIR inputs to (Constant | Witness)
+                        let in_wits: Vec<ConstantOrR1CSWitness> = inputs
+                            .iter()
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .collect();
 
-        // Convert ACIR inputs to (Constant | Witness)
-        let in_wits: Vec<ConstantOrR1CSWitness> = inputs
-            .iter()
-            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
-            .collect();
+                        // Outputs are always witnesses: map to R1CS indices
+                        let out_wits: Vec<usize> = outputs
+                            .iter()
+                            .map(|&w| self.fetch_r1cs_witness_index(w))
+                            .collect();
 
-        // Outputs are always witnesses: map to R1CS indices
-        let out_wits: Vec<usize> = outputs
-            .iter()
-            .map(|&w| self.fetch_r1cs_witness_index(w))
-            .collect();
-
-        poseidon2_ops.push((t, in_wits, out_wits));
+                        poseidon2_ops.push((t, in_wits, out_wits));
     }
                     BlackBoxFuncCall::Sha256Compression {
                         inputs,
@@ -428,7 +427,7 @@ impl NoirToR1CSCompiler {
                             hash_witnesses,
                             output_witnesses,
                         ));
-                    }
+                                    }
 
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
@@ -469,7 +468,6 @@ impl NoirToR1CSCompiler {
         add_binop_constraints(self, BinOp::And, and_ops);
         add_binop_constraints(self, BinOp::Xor, xor_ops);
         add_poseidon2_permutation(self, poseidon2_ops);
-
 
         // Perform all range checks
         add_range_checks(self, range_checks);

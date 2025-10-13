@@ -1,6 +1,5 @@
- use provekit_common::FieldElement as F;
- use ark_ff::PrimeField;
 
+use {ark_ff::PrimeField, provekit_common::FieldElement as F};
 
 #[inline]
 fn fe(hex: &str) -> F {
@@ -10,7 +9,7 @@ fn fe(hex: &str) -> F {
 fn fe_hex(s: &str) -> F {
     let s = s.strip_prefix("0x").unwrap_or(s);
     let mut bytes = hex_to_bytes(s); // trivial hex -> Vec<u8>
-    // left-pad to field length
+                                     // left-pad to field length
     let L = ((F::MODULUS_BIT_SIZE as usize) + 7) / 8;
     assert!(bytes.len() <= L, "constant too large for field");
     if bytes.len() < L {
@@ -22,18 +21,33 @@ fn fe_hex(s: &str) -> F {
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity((s.len()+1)/2);
+    let mut out = Vec::with_capacity((s.len() + 1) / 2);
     let mut n: u8 = 0;
     for (i, ch) in s.bytes().enumerate() {
-        let v = match ch { b'0'..=b'9'=>ch-b'0', b'a'..=b'f'=>ch-b'a'+10, b'A'..=b'F'=>ch-b'A'+10, _=>panic!("bad hex") };
-        if i % 2 == 0 { n = v << 4; } else { out.push(n | v); }
+        let v = match ch {
+            b'0'..=b'9' => ch - b'0',
+            b'a'..=b'f' => ch - b'a' + 10,
+            b'A'..=b'F' => ch - b'A' + 10,
+            _ => panic!("bad hex"),
+        };
+        if i % 2 == 0 {
+            n = v << 4;
+        } else {
+            out.push(n | v);
+        }
     }
-    if s.len() % 2 == 1 { out.push(n); }
+    if s.len() % 2 == 1 {
+        out.push(n);
+    }
     out
 }
 
 pub fn amount_partial_rounds(t: u32) -> u32 {
-    if t <= 4 { 56 } else { 57 }
+    if t <= 4 {
+        56
+    } else {
+        57
+    }
 }
 
 pub fn load_diag(t: u32) -> Vec<F> {
@@ -755,7 +769,7 @@ pub fn load_rc_partial(t: u32) -> Vec<F> {
             fe("0x02fcca2934e046bc623adead873579865d03781ae090ad4a8579d2e7a6800355"),
             fe("0x0ef915f0ac120b876abccceb344a1d36bad3f3c5ab91a8ddcbec2e060d8befac"),
         ],
-    8 => vec![
+        8 => vec![
             fe("0x0da23df12d0bf47bb92f15ee189386c20f552d0bc66ae492b92d69556b2fe75a"),
             fe("0x155be88bc5ddf8e0c6c741286cdd5ddd559279a455b9bbb61d5a0b004e545d5e"),
             fe("0x0553fbb5b32db860e0bb12cef3aab4e0dbbdb1ea8704d335a18fa8b4df112c36"),
