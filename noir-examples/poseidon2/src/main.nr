@@ -1,98 +1,52 @@
-use poseidon::poseidon2::Poseidon2;
-mod core;
-mod poseidon2_constants;
+use dep::poseidon2;
 
-
-mod bb {
-    pub fn hash_1(xs: [Field; 1]) -> Field {
-        std::hash::poseidon2::hash_1(xs)
-    }
-    pub fn hash_2(xs: [Field; 2]) -> Field {
-        std::hash::poseidon2::hash_2(xs)
-    }
-}
-mod mine {
-    use super::core;
-
-    pub fn hash_1(xs: [Field; 1]) -> Field {
-        let state: [Field; 3] = [xs[0], 0, 0];
-        let out = core::poseidon2_permute::<3>(state);
-        out[0]
-    }
-
-    pub fn hash_2(xs: [Field; 2]) -> Field {
-        let state: [Field; 3] = [xs[0], xs[1], 0];
-        let out = core::poseidon2_permute::<3>(state);
-        out[0]
-    }
-}
-
+mod bb_poseidon2;
 
 mod ext {
-    
 
-    pub fn hash_1(xs: [Field; 1]) -> Field {
-        poseidon2::bn254::hash_1(xs)
-    }
     pub fn hash_2(xs: [Field; 2]) -> Field {
         poseidon2::bn254::hash_2(xs)
     }
-}
-fn main() {
-
-   // Can be empty
-
-}
-
-fn iterate_hash(mut h: Field, rounds: u32) -> Field {
-    for _ in 0..rounds {
-        h = bb::hash_1([h]);
+    pub fn hash_4(xs: [Field; 4]) -> Field {
+        poseidon2::bn254::hash_4(xs)
     }
-    h
+    pub fn hash_8(xs: [Field; 8]) -> Field {
+        poseidon2::bn254::hash_8(xs)
+    }
+    pub fn hash_12(xs: [Field; 12]) -> Field {
+        poseidon2::bn254::hash_12(xs)
+    }
+    pub fn hash_16(xs: [Field; 16]) -> Field {
+        poseidon2::bn254::hash_16(xs)
+    }
+}
+// Return the permuted state publicly
+fn main(st: pub [Field; 4]) -> pub [Field; 4] {
+    std::hash::poseidon2_permutation(st, 4)
 }
 
 // ----------------------- Tests -----------------------
 #[test]
-fn test_poseidon2_blackbox_vs_noir_vs_ext() {
-    let cases: [[Field; 2]; 5] = [
-        [1, 2],
-        [3, 4],
-        [5, 6],
-        [123456789, 987654321],
-        [0xdeadbeef, 0xcafebabe],
+fn test_poseidon2_blackbox_vs_ext() {
+    let cases: [[Field; 4]; 5] = [
+        [1, 2, 1, 2],
+        [3, 4, 3, 4],
+        [5, 6, 5, 6],
+        [123456789, 987654321, 123456789, 987654321],
+        [0xdeadbeef, 0xcafebabe, 0xdeadbeef, 0xcafebabe],
     ];
 
     for i in 0..5 {
         let plains = cases[i];
 
-        // one-shot hash_2
-        let bb   = bb::hash_2(plains);
-        let mine = mine::hash_2(plains);
-        let ext  = ext::hash_2(plains);
+        let ext = ext::hash_4(plains);
+        let bb = bb_poseidon2::bb::bb_perm4(plains)[0];
 
-        println("bb   = ");  println(bb);
-        println("mine = ");  println(mine);
-        println("ext  = ");  println(ext);
+        println("bb = ");
+        println(bb);
+        println("ext  = ");
+        println(ext);
 
-        assert(bb == mine);
-        assert(bb == ext);
-
-        // stress: iterate hash_1 many times
-        let rounds = 100u32;
-        let bb_iter = iterate_hash(bb, rounds);
-
-        let mut mine_iter = mine;
-        let mut ext_iter  = ext;
-        for _ in 0..rounds {
-            mine_iter = mine::hash_1([mine_iter]);
-            ext_iter  = ext::hash_1([ext_iter]);
-        }
-
-        println("bb_iter   = "); println(bb_iter);
-        println("mine_iter = "); println(mine_iter);
-        println("ext_iter  = "); println(ext_iter);
-
-        assert(bb_iter == mine_iter);
-        assert(bb_iter == ext_iter);
+        assert(ext == bb);
     }
 }
