@@ -1,5 +1,3 @@
-use dep::poseidon2;
-
 mod bb_poseidon2;
 
 mod ext {
