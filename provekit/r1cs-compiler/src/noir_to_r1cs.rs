@@ -397,7 +397,6 @@ impl NoirToR1CSCompiler {
                             .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
                             .collect();
 
-                        // Outputs are always witnesses: map to R1CS indices
                         let out_wits: Vec<usize> = outputs
                             .iter()
                             .map(|&w| self.fetch_r1cs_witness_index(w))
