@@ -15,6 +15,16 @@ pub trait Command {
 pub struct Args {
     #[argh(subcommand)]
     subcommand: Commands,
+
+    /// enable Tracy profiling
+    #[cfg(feature = "tracy")]
+    #[argh(switch)]
+    pub tracy: bool,
+
+    /// enable tracy allocation tracking with provided stack depth
+    #[cfg(feature = "tracy")]
+    #[argh(option)]
+    pub tracy_allocations: Option<usize>,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]
