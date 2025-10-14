@@ -79,10 +79,19 @@ impl ProfilingAllocator {
             let depth = self.tracy_depth.load(Ordering::SeqCst);
             if depth == 0 {
                 // If depth is 0, we don't capture any stack information
-                tracy_sys::___tracy_emit_memory_alloc(ptr.cast(), size, 1);
+                unsafe {
+                    tracy_sys::___tracy_emit_memory_alloc(ptr.cast(), size, 1);
+                }
             } else {
                 // Capture stack information up to `depth` frames
-                tracy_sys::___tracy_emit_memory_alloc_callstack(ptr.cast(), size, depth as i32, 1);
+                unsafe {
+                    tracy_sys::___tracy_emit_memory_alloc_callstack(
+                        ptr.cast(),
+                        size,
+                        depth as i32,
+                        1,
+                    );
+                }
             }
         }
     }
@@ -95,10 +104,14 @@ impl ProfilingAllocator {
             let depth = self.tracy_depth.load(Ordering::SeqCst);
             if depth == 0 {
                 // If depth is 0, we don't capture any stack information
-                tracy_sys::___tracy_emit_memory_free(ptr.cast(), 1);
+                unsafe {
+                    tracy_sys::___tracy_emit_memory_free(ptr.cast(), 1);
+                }
             } else {
                 // Capture stack information up to `depth` frames
-                tracy_sys::___tracy_emit_memory_free_callstack(ptr.cast(), depth as i32, 1);
+                unsafe {
+                    tracy_sys::___tracy_emit_memory_free_callstack(ptr.cast(), depth as i32, 1);
+                }
             }
         }
     }

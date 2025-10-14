@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     // after this point. This function must be called to properly shut down the
     // Tracy profiler before program exit.
     //
-    // @recmo: This is not safe. Both the allocator and tracing_tracy may still
+    // @recmo: This is not safe. tracing_tracy may still
     // be doing work in other threads. We should properly join all threads and
     // ensure all work is complete before calling this function.
     #[cfg(feature = "tracy")]
