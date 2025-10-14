@@ -1,4 +1,3 @@
-
 use {ark_ff::PrimeField, provekit_common::FieldElement as F};
 
 #[inline]

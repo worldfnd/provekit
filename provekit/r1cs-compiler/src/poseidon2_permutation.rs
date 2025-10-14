@@ -38,7 +38,7 @@ fn add_mul(cs: &mut NoirToR1CSCompiler, x: usize, y: usize) -> usize {
     z
 }
 
-// y = sum_i (coeff_i * w_i). coeffs.len() == ws.len()
+// y = sum_i (coeff_i * w_i) (linear combination)
 fn add_linear_combo(cs: &mut NoirToR1CSCompiler, coeffs: &[FieldElement], ws: &[usize]) -> usize {
     assert_eq!(coeffs.len(), ws.len());
     let y = cs.num_witnesses();
@@ -51,7 +51,7 @@ fn add_linear_combo(cs: &mut NoirToR1CSCompiler, coeffs: &[FieldElement], ws: &[
             .map(|(&w, c)| SumTerm(Some(*c), w))
             .collect(),
     ));
-
+    // Constraint: sum_i (coeff_i * w_i) * 1 = y
     cs.r1cs.add_constraint(
         &ws.iter()
             .zip(coeffs.iter())
@@ -63,35 +63,37 @@ fn add_linear_combo(cs: &mut NoirToR1CSCompiler, coeffs: &[FieldElement], ws: &[
     y
 }
 
-// y = x^5 = (((x^2)^2) * x). Returns y
+// S-box: y = x^5
 fn add_pow5(cs: &mut NoirToR1CSCompiler, x: usize) -> usize {
     let x2 = add_mul(cs, x, x);
     let x4 = add_mul(cs, x2, x2);
-    let x5 = add_mul(cs, x4, x);
-    x5
+    add_mul(cs, x4, x)
 }
 // External MDS for t=2
 fn external_mds2(cs: &mut NoirToR1CSCompiler, s: &[usize]) -> Vec<usize> {
-    // sum = s0 + s1
     let sum = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[0], s[1]]);
-    // out0 = s0 + sum ; out1 = s1 + sum
-    let out0 = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[0], sum]);
-    let out1 = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[1], sum]);
-    vec![out0, out1]
+
+    vec![
+        add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[0], sum]),
+        add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[1], sum]),
+    ]
 }
 
+// External MDS for t=3
 fn external_mds3(cs: &mut NoirToR1CSCompiler, s: &[usize]) -> Vec<usize> {
     let sum = add_linear_combo(
         cs,
         &[FieldElement::ONE, FieldElement::ONE, FieldElement::ONE],
         &[s[0], s[1], s[2]],
     );
-    let o0 = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[0], sum]);
-    let o1 = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[1], sum]);
-    let o2 = add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[2], sum]);
-    vec![o0, o1, o2]
+    vec![
+        add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[0], sum]),
+        add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[1], sum]),
+        add_linear_combo(cs, &[FieldElement::ONE, FieldElement::ONE], &[s[2], sum]),
+    ]
 }
 
+// External MDS for t=4
 fn external_mds4(cs: &mut NoirToR1CSCompiler, s: &[usize]) -> Vec<usize> {
     let double = |c: FieldElement| c + c;
     let four = |c: FieldElement| double(double(c));
@@ -112,35 +114,37 @@ fn external_mds4(cs: &mut NoirToR1CSCompiler, s: &[usize]) -> Vec<usize> {
     let t4 = add_linear_combo(cs, &[f1, f1], &[quad_t1, t3]);
     let t5 = add_linear_combo(cs, &[f1, f1], &[quad_t0, t2]);
 
-    let o0 = add_linear_combo(cs, &[f1, f1], &[t3, t5]);
-    let o1 = t5;
-    let o2 = add_linear_combo(cs, &[f1, f1], &[t2, t4]);
-    let o3 = t4;
-    vec![o0, o1, o2, o3]
+    vec![
+        add_linear_combo(cs, &[f1, f1], &[t3, t5]),
+        t5,
+        add_linear_combo(cs, &[f1, f1], &[t2, t4]),
+        t4,
+    ]
 }
 
-// add per-column accumulators with linear combos.
+// External MDS for any supported width
 fn external_mds_t(cs: &mut NoirToR1CSCompiler, s: &[usize]) -> Vec<usize> {
     match s.len() {
         2 => external_mds2(cs, s),
         3 => external_mds3(cs, s),
         4 => external_mds4(cs, s),
         t if [8, 12, 16].contains(&t) => {
-            // apply external_mds4 on each chunk
+            // Process 4-wide blocks
             let blocks = t / 4;
             let mut block_out: Vec<[usize; 4]> = Vec::with_capacity(blocks);
+            // Apply MDS4 to each block
             for i in 0..blocks {
                 let o = external_mds4(cs, &s[4 * i..4 * i + 4]);
                 block_out.push([o[0], o[1], o[2], o[3]]);
             }
-            // column sums across blocks
+            // Sum columns across blocks
             let mut col_acc = vec![0usize; 4];
             for j in 0..4 {
                 let coeffs = vec![FieldElement::ONE; blocks];
                 let ws = (0..blocks).map(|i| block_out[i][j]).collect::<Vec<_>>();
                 col_acc[j] = add_linear_combo(cs, &coeffs, &ws);
             }
-            // out[i*4+j] = block_out[i][j] + col_acc[j]
+            // Add column sums to each block output
             let mut out = vec![0usize; t];
             for i in 0..blocks {
                 for j in 0..4 {
@@ -199,9 +203,10 @@ fn internal_mds_t(
     }
 }
 
+// Main Poseidon2 permutation
 pub(crate) fn add_poseidon2_permutation(
     cs: &mut NoirToR1CSCompiler,
-    ops: Vec<(u32, Vec<ConstantOrR1CSWitness>, Vec<usize>)>, // (t, inputs, outputs)
+    ops: Vec<(u32, Vec<ConstantOrR1CSWitness>, Vec<usize>)>,
 ) {
     for (t, inputs, outputs) in ops {
         let t_usize = t as usize;
@@ -211,12 +216,12 @@ pub(crate) fn add_poseidon2_permutation(
 
         // Load constants
         let pr = poseidon2_constants::amount_partial_rounds(t);
-        let rc_full1 = poseidon2_constants::load_rc_full1(t); // -> Vec<[FieldElement; t]>
-        let rc_part = poseidon2_constants::load_rc_partial(t); // -> Vec<FieldElement>, len pr
-        let rc_full2 = poseidon2_constants::load_rc_full2(t); // -> Vec<[FieldElement; t]>
-        let load_diag_fn = |tt: u32| poseidon2_constants::load_diag(tt); // -> Vec<FieldElement; t>
+        let rc_full1 = poseidon2_constants::load_rc_full1(t);
+        let rc_part = poseidon2_constants::load_rc_partial(t);
+        let rc_full2 = poseidon2_constants::load_rc_full2(t);
+        let load_diag_fn = |tt: u32| poseidon2_constants::load_diag(tt);
 
-        // Materialize initial state witnesses from inputs (allow constants)
+        // Convert inputs to witnesses
         let mut state: Vec<usize> = inputs
             .iter()
             .map(|ino| {
@@ -232,9 +237,9 @@ pub(crate) fn add_poseidon2_permutation(
                         )]));
                         // constrain y = c
                         cs.r1cs.add_constraint(
+                            &[(FieldElement::ONE, y)],
                             &[(FieldElement::ONE, cs.witness_one())],
-                            &[(FieldElement::ONE, cs.witness_one())],
-                            &[(FieldElement::ONE, y), (*c, cs.witness_one())],
+                            &[(*c, cs.witness_one())],
                         );
                         y
                     }
@@ -242,10 +247,10 @@ pub(crate) fn add_poseidon2_permutation(
             })
             .collect();
 
-        // state = ExternalMDS(state)
+        // Initial linear layer
         state = external_mds_t(cs, &state);
 
-        // --- full rounds (4) ---
+        // First 4 full rounds
         for r in 0..4 {
             // add round constants + sbox(x^5) on all lanes
             let mut after_sbox = Vec::with_capacity(t_usize);
@@ -254,24 +259,22 @@ pub(crate) fn add_poseidon2_permutation(
                 let sboxed = add_pow5(cs, with_rc);
                 after_sbox.push(sboxed);
             }
-            // external MDS
             state = external_mds_t(cs, &after_sbox);
         }
 
-        // --- partial rounds (pr) ---
+        // Partial rounds (only first element goes through S-box)
         for r in 0..pr as usize {
             // first lane: add rc + sbox; other lanes pass through
             let mut tmp = state.clone();
             let x_plus_rc = add_add_const(cs, state[0], rc_part[r]);
 
-            // apply the x^5 S-box to that
             let x_pow5 = add_pow5(cs, x_plus_rc);
 
-            tmp[0] = x_pow5; // internal MDS
+            tmp[0] = x_pow5;
             state = internal_mds_t(cs, t, &tmp, &|tt| load_diag_fn(tt));
         }
 
-        // --- full rounds (4) ---
+        // Second 4 full rounds
         for r in 0..4 {
             let mut after_sbox = Vec::with_capacity(t_usize);
             for i in 0..t_usize {
@@ -282,8 +285,14 @@ pub(crate) fn add_poseidon2_permutation(
             state = external_mds_t(cs, &after_sbox);
         }
 
-        // Constrain outputs == state
+        // Constrain outputs to final state
         for i in 0..t_usize {
+            // Builder: outputs[i] = state[i]
+            cs.add_witness_builder(WitnessBuilder::Sum(outputs[i], vec![SumTerm(
+                None, state[i],
+            )]));
+
+            // Constraint: state[i] * 1 = outputs[i]
             cs.r1cs.add_constraint(
                 &[(FieldElement::ONE, state[i])],
                 &[(FieldElement::ONE, cs.witness_one())],

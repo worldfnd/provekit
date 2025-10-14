@@ -404,7 +404,7 @@ impl NoirToR1CSCompiler {
                             .collect();
 
                         poseidon2_ops.push((t, in_wits, out_wits));
-    }
+                    }
                     BlackBoxFuncCall::Sha256Compression {
                         inputs,
                         hash_values,
@@ -427,7 +427,7 @@ impl NoirToR1CSCompiler {
                             hash_witnesses,
                             output_witnesses,
                         ));
-                                    }
+                    }
 
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
