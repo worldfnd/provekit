@@ -5,13 +5,11 @@
 use super::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
-// Baby JubJub curve parameters
-comptime global K: Field = 1;
-comptime global Z: Field = 5; // Non-square element for Elligator2
-comptime global C1: Field = 168698; // J/K
-comptime global C2: Field = 1; // 1/(K*K)
+comptime global Z: Field = 5;
+global C1: u32 = 28;
+global C3: Field = 40770029410420498293352137776570907027550720424234931066070132305055;
+global C5: Field = 19103219067921713944291392827692070036145651957329286315305642004821462161904;
 
-// Hash to field using Poseidon2
 pub fn hash_to_field(input: Field) -> Field {
     let hash_input = [0, input, 0];
     let hash_result = perm::x5_3(hash_input);
@@ -23,7 +21,6 @@ fn is_zero(x: Field) -> bool {
     x == 0
 }
 
-// Returns 1/x if x != 0, else 0
 fn inverse_or_zero(x: Field) -> Field {
     if x == 0 {
         0
@@ -32,135 +29,82 @@ fn inverse_or_zero(x: Field) -> Field {
     }
 }
 
-// Check if a field element is a quadratic residue or zero
-// For BN254: compute sqrt and verify it squares back
-pub fn is_quadratic_residue_or_zero(x: Field) -> bool {
+fn pow(x: Field, y: Field) -> Field {
+    let mut r = 1 as Field;
+    let b: [u1; 254] = y.to_le_bits();
+
+    for i in 0..254 {
+        r *= r;
+        r *= (b[254 - 1 - i] as Field) * x + (1 - b[254 - 1 - i] as Field);
+    }
+
+    r
+}
+
+unconstrained fn legendre(x: Field) -> Field {
     if x == 0 {
-        true
+        0
     } else {
-        // Safety: sqrt computation is unconstrained but we verify sqrt_x^2 == x
-        let sqrt_x = unsafe { bbf_sqrt_unchecked(x) };
-        sqrt_x * sqrt_x == x
+        pow(x, (0 - 1) / 2)
     }
 }
 
-// Helper function for exponentiation using square-and-multiply (optimized)
-unconstrained fn field_pow(base: Field, exp_bits: [u1; 252]) -> Field {
-    if base == 0 {
-        0
-    } else {
-        let mut result: Field = 1;
-        let mut b = base;
+unconstrained fn sqrt(x: Field) -> Field {
+    let mut z = pow(x, C3);
+    let mut t = z * z * x;
+    z *= x;
+    let mut b = t;
+    let mut c = C5;
 
-        for i in 0..252 {
-            if exp_bits[i] == 1 {
-                result *= b;
-            }
+    for i in 0..(C1 - 1) {
+        for _j in 1..(C1 - i - 1) {
             b *= b;
         }
 
-        result
+        z *= if b == 1 { 1 } else { c };
+
+        c *= c;
+
+        t *= if b == 1 { 1 } else { c };
+
+        b = t;
     }
+
+    z
 }
 
-// Square root for BN254 using Tonelli-Shanks algorithm
-// BN254 has p = 1 (mod 4), so we cannot use the simple formula x^((p+1)/4)
-// Instead we use Tonelli-Shanks with precomputed parameters
-// We only constrain the result via y^2 = x check in the caller
-unconstrained fn bbf_sqrt_unchecked(n: Field) -> Field {
-    if n == 0 {
-        0
-    } else {
-        // Tonelli-Shanks parameters for BN254 scalar field
-        let mut m = 28;
-        let mut c: Field =
-            19103219067921713944291392827692070036145651957329286315305642004821462161904;
+// Check if a field element is a quadratic residue or zero
+pub fn is_quadratic_residue_or_zero(x: Field) -> bool {
+    // SAFETY:
+    // Constraint strategy, from (<https://eprint.iacr.org/2021/984.pdf>, page 4):
+    // Let l = Legendre(a) in { -1, 0, 1 }.
+    // Introduce a witness b intended to be a square root:
+    // Enforce: l(l-1)(b^2 - n*a) + (l+1)(b^2 - a) == 0
+    // For l =  1: (l(l-1)) = 0 and (l+1) = 2 => b^2 = a
+    // For l = -1: (l(l-1)) = 2 and (l+1) = 0 => b^2 = n*a
+    // For l =  0: (l(l-1)) = 0 and (l+1) = 1 => b^2 = a (which forces a to be 0 or a quadratic residue)
+    let l = unsafe { legendre(x) };
+    assert(l * (l - 1) * (l + 1) == 0, "l must be in {-1,0,1}"); // l in {-1,0,1}
 
-        // t = n^t_exp where t_exp = 81540058820840996586704275553141814055101440848469862132140264610111
-        let t_exp_bits: [u1; 252] = [
-            1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1,
-            1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1,
-            0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0,
-            0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0,
-            1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0,
-            0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0,
-            0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1,
-            0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
-        let mut t = field_pow(n, t_exp_bits);
+    // n is the smallest non-quadratic residue in BN254
+    let n = 5;
+    let na = n * x;
+    let sqrt_in = if (l == -1) { na } else { x };
+    // SAFETY: We constrain b to be the square root of either na or a, depending on the value of l.
+    let b = unsafe { sqrt(sqrt_in) };
 
-        // r = n^r_exp where r_exp = (t_exp + 1) / 2 = 40770029410420498293352137776570907027550720424234931066070132305056
-        let r_exp_bits: [u1; 252] = [
-            0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1,
-            0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0,
-            1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0,
-            1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1,
-            0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0,
-            1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0,
-            0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0,
-            0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        ];
-        let mut r = field_pow(n, r_exp_bits);
+    let s_na = l * (l - 1); // 0 when l in {0,1}, 2 when l = -1
+    let s_a = l + 1; // 0 when l = -1, 1 when l = 0, 2 when l = 1
 
-        // Tonelli-Shanks main loop (optimized for early termination)
-        // Maximum iterations is m (28 for BN254)
-        for _iter in 0..28 {
-            if t == 1 {
-                // Early termination - we found the square root
-            } else if r != 0 {
-                // Find the least i such that t^(2^i) == 1
-                let mut sq = t * t;
-                let mut i: u32 = 1;
-
-                // Find i (max 27 iterations since we start at i=1)
-                for _j in 0..27 {
-                    if sq != 1 {
-                        i += 1;
-                        sq *= sq;
-                    }
-                }
-
-                // Compute b = c^(2^(m-i-1))
-                let mut b = c;
-                let exp_count = m - i - 1;
-                for _k in 0..27 {
-                    if _k < exp_count {
-                        b *= b;
-                    }
-                }
-
-                m = i;
-                c = b * b;
-                t *= c;
-                r *= b;
-            }
-        }
-
-        r
-    }
-}
-
-// Sign function: returns LSB
-unconstrained fn sgn0_unconstrained(x: Field) -> (bool, Field) {
-    let bits: [u1; 254] = x.to_le_bits();
-    let lsb = bits[0] == 1;
-    // Compute x_half = (x - lsb) / 2
-    let lsb_val = if lsb { 1 } else { 0 };
-    let x_half = (x - lsb_val) / 2;
-    (lsb, x_half)
+    let b2 = b * b;
+    let c_na = b2 - na;
+    let c_a = b2 - x;
+    assert(s_na * c_na + s_a * c_a == 0, "b must be a square root of na or a");
+    l != -1
 }
 
 fn sgn0(x: Field) -> bool {
-    // Safety: LSB and half computed unconstrained but verified by reconstruction
-    let (lsb, x_half) = unsafe { sgn0_unconstrained(x) };
-
-    // Verify: 2 * x_half + lsb should equal x
-    let lsb_value = if lsb { 1 } else { 0 };
-    assert(2 * x_half + lsb_value == x, "LSB verification failed");
-
-    lsb
+    x.sgn0() == 1
 }
 
 // Map to Montgomery curve using Elligator2
@@ -168,6 +112,10 @@ fn sgn0(x: Field) -> bool {
 // Montgomery curve: K * t^2 = s^3 + J * s^2 + s
 // For BabyJubJub: K=1, J=168698, so curve is: t^2 = s^3 + 168698*s^2 + s
 pub fn map_to_curve_elligator2(input: Field) -> (Field, Field) {
+    let k = 1;
+    let c1 = 168698;
+    let c2 = 1;
+
     let u = input;
 
     let tv1_0 = Z * u * u;
@@ -177,12 +125,12 @@ pub fn map_to_curve_elligator2(input: Field) -> (Field, Field) {
 
     let tv1_plus_1 = tv1 + 1;
     let x1_inv = inverse_or_zero(tv1_plus_1);
-    let x1 = -C1 * x1_inv;
+    let x1 = -c1 * x1_inv;
 
-    let gx1_0 = (x1 + C1) * x1;
-    let gx1 = (gx1_0 + C2) * x1;
+    let gx1_0 = (x1 + c1) * x1;
+    let gx1 = (gx1_0 + c2) * x1;
 
-    let x2 = -x1 - C1;
+    let x2 = -x1 - c1;
     let gx2 = tv1 * gx1;
 
     // Step 6-7: If is_square(gx1), use x1 and sqrt(gx1), else use x2 and sqrt(gx2)
@@ -193,7 +141,8 @@ pub fn map_to_curve_elligator2(input: Field) -> (Field, Field) {
 
     // Compute y = sqrt(gx)
     // Safety: sqrt is unconstrained but verified by y^2 = gx constraint below
-    let mut y = unsafe { bbf_sqrt_unchecked(gx) };
+    let mut y = unsafe { sqrt(gx) };
+    assert(y * y == gx, "y must be a square root of gx");
 
     // Adjust sign of y according to spec:
     // If gx1 is square: sgn0(y) == 1
@@ -209,10 +158,9 @@ pub fn map_to_curve_elligator2(input: Field) -> (Field, Field) {
         y = -y;
     }
 
-    // Step 8-9: s = x * K, t = y * K
-    // Since K = 1 for BabyJubJub:
-    let s = x * K;
-    let t = y * K;
+    // Step 8-9: s = x * K, k = y * k
+    let s = x * k;
+    let t = y * k;
 
     // Step 10: return (s, t)
     (s, t)

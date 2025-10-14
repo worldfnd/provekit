@@ -1,17 +1,14 @@
 use super::{constants::DS_DLOG, types::PublicKey};
-use babyjubjub::BabyJubJubPoint;
+use babyjubjub::{BabyJubJubPoint, escalar_mul_fix::generator_mul_fix};
 use poseidon2::bn254::perm;
 
 pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: PublicKey) {
-    // Validate that s is in the scalar field Fr (do this first as it's cheaper)
     BabyJubJubPoint::validate_babyjubjub_field(s);
 
-    // Create points and validate them
     let a_point = BabyJubJubPoint::new(a.x, a.y);
     let b_point = BabyJubJubPoint::new(b.x, b.y);
     let c_point = BabyJubJubPoint::new(c.x, c.y);
 
-    // Check that points are not identity
     assert(
         a_point.is_on_curve()
             & b_point.is_on_curve()
@@ -24,7 +21,7 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
 
     // Compute r1 = G*s - a*e and r2 = b*s - c*e
     let generator = BabyJubJubPoint::generator();
-    let gs = generator.scalar_mul(s);
+    let gs = generator_mul_fix(s);
     let ae = a_point.scalar_mul_base_field(e);
     let r1 = gs.subtract(ae);
 

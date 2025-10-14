@@ -4,8 +4,13 @@
 // where a = 168700, d = 168696
 
 use std::field::bn254;
-mod test_std;
+mod tests;
 pub mod hash_to_curve;
+pub mod montogomery;
+pub mod window_table;
+pub mod check_sub_group;
+pub mod escalar_mul_fix;
+pub mod escalar_mul_any;
 
 // BabyJubJub curve constants
 global BABYJUBJUB_A: Field = 168700;
@@ -69,17 +74,28 @@ impl BabyJubJubPoint {
     /// Checks if the point is in the correct subgroup
     /// For BabyJubJub, we need to check if the point is in the subgroup of order q
     pub fn is_in_correct_subgroup(self) -> bool {
-        // For BabyJubJub, we need to multiply by the cofactor (8) and check if result is identity
+        // For BabyJubJub, we need to multiply by the cofactor (7) and check if result is identity
         let multiplied = self.multiply_by_cofactor();
         multiplied.is_identity()
     }
 
-    /// Multiplies the point by the cofactor (8 for BabyJubJub)
+    /// Multiplies the point by the cofactor (7 for BabyJubJub over BN254)
     pub fn multiply_by_cofactor(self) -> Self {
-        // Multiply by 8 by doubling 3 times
-        let doubled = self.double();
-        let quadrupled = doubled.double();
-        quadrupled.double()
+        self.double().double().double()
+    }
+
+    unconstrained fn add_unconstrained(self, other: BabyJubJubPoint) -> (Field, Field) {
+        let beta = self.x * other.y;
+        let gamma = self.y * other.x;
+        let delta = (-BABYJUBJUB_A * self.x + self.y) * (other.x + other.y);
+        let tau = beta * gamma;
+
+        let denominator1 = 1 + BABYJUBJUB_D * tau;
+        let denominator2 = 1 - BABYJUBJUB_D * tau;
+
+        let x = (beta + gamma) / denominator1;
+        let y = (delta + BABYJUBJUB_A * beta - gamma) / denominator2;
+        (x, y)
     }
 
     /// Point addition on BabyJubJub curve
@@ -89,12 +105,13 @@ impl BabyJubJubPoint {
         let delta = (-BABYJUBJUB_A * self.x + self.y) * (other.x + other.y);
         let tau = beta * gamma;
 
-        // Avoid division by zero
-        let denominator1 = 1 + BABYJUBJUB_D * tau;
-        let denominator2 = 1 - BABYJUBJUB_D * tau;
+        let den_x = 1 + BABYJUBJUB_D * tau;
+        let den_y = 1 - BABYJUBJUB_D * tau;
 
-        let x = (beta + gamma) / denominator1;
-        let y = (delta + BABYJUBJUB_A * beta - gamma) / denominator2;
+        // Safety: cast to unconstrained field
+        let (x, y) = unsafe { Self::add_unconstrained(self, other) };
+        assert(y * den_y == delta + BABYJUBJUB_A * beta - gamma);
+        assert(x * den_x == beta + gamma);
 
         BabyJubJubPoint { x, y }
     }
@@ -220,12 +237,5 @@ impl BabyJubJubPoint {
         let bits: [u1; 251] = field_element.to_le_bits();
 
         (field_element, bits)
-    }
-
-    pub fn babyjubjub_in_correct_subgroup(self) -> bool {
-        // Check if multiplying the point by the subgroup order gives the identity
-        // This verifies the point is in the prime-order subgroup
-        let result = self.scalar_mul(BABYJUBJUB_Fr);
-        result.is_identity()
     }
 }

@@ -91,13 +91,11 @@ fn test_double_preserves_curve() {
 
     // Now test with generator
     let generator = BabyJubJubPoint::generator();
-    std::println(generator.x);
-    std::println(generator.y);
+
     assert(generator.is_on_curve(), "Generator must be on curve");
 
     let doubled_gen = generator.double();
-    std::println(doubled_gen.x);
-    std::println(doubled_gen.y);
+
     assert(doubled_gen.is_on_curve(), "Doubled generator must be on curve");
 }
 
