@@ -7,9 +7,7 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{
-                BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum as ConstantOrACIRWitness,
-            },
+            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput},
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
@@ -18,7 +16,7 @@ use {
     ark_std::One,
     provekit_common::{
         utils::noir_to_native,
-        witness::{ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder},
+        witness::{ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder, BINOP_BITS},
         FieldElement, NoirElement, R1CS,
     },
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
@@ -131,14 +129,12 @@ impl NoirToR1CSCompiler {
     // R1CS witness (and builder) if required.
     fn fetch_constant_or_r1cs_witness(
         &mut self,
-        constant_or_witness: ConstantOrACIRWitness<NoirElement>,
+        constant_or_witness: &FunctionInput<NoirElement>,
     ) -> ConstantOrR1CSWitness {
         match constant_or_witness {
-            ConstantOrACIRWitness::Constant(c) => {
-                ConstantOrR1CSWitness::Constant(noir_to_native(c))
-            }
-            ConstantOrACIRWitness::Witness(w) => {
-                let r1cs_witness = self.fetch_r1cs_witness_index(w);
+            FunctionInput::Constant(c) => ConstantOrR1CSWitness::Constant(noir_to_native(*c)),
+            FunctionInput::Witness(w) => {
+                let r1cs_witness = self.fetch_r1cs_witness_index(*w);
                 ConstantOrR1CSWitness::Witness(r1cs_witness)
             }
         }
@@ -276,15 +272,7 @@ impl NoirToR1CSCompiler {
                     memory_blocks.insert(block_id, block);
                 }
 
-                Opcode::MemoryOp {
-                    block_id,
-                    op,
-                    predicate,
-                } => {
-                    // Panic if the predicate is set (according to Noir developers, predicate is
-                    // always None and will soon be removed).
-                    assert!(predicate.is_none());
-
+                Opcode::MemoryOp { block_id, op } => {
                     let block_id = block_id.0 as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
@@ -329,20 +317,16 @@ impl NoirToR1CSCompiler {
                 }
 
                 Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
-                    BlackBoxFuncCall::RANGE {
-                        input: function_input,
-                    } => {
-                        let input = function_input.input();
-                        let num_bits = function_input.num_bits();
+                    BlackBoxFuncCall::RANGE { input, num_bits } => {
                         let input_witness = match input {
-                            ConstantOrACIRWitness::Constant(_) => {
+                            FunctionInput::Constant(_) => {
                                 panic!(
                                     "We should never be range-checking a constant value, as this \
                                      should already be done by the noir-ACIR compiler"
                                 );
                             }
-                            ConstantOrACIRWitness::Witness(witness) => {
-                                self.fetch_r1cs_witness_index(witness)
+                            FunctionInput::Witness(witness) => {
+                                self.fetch_r1cs_witness_index(*witness)
                             }
                         };
                         // println!(
@@ -351,7 +335,7 @@ impl NoirToR1CSCompiler {
                         // );
                         // Add the entry into the range blocks.
                         range_checks
-                            .entry(num_bits)
+                            .entry(*num_bits)
                             .or_default()
                             .push(input_witness);
                     }
@@ -360,17 +344,29 @@ impl NoirToR1CSCompiler {
                     // The inputs and outputs will have already been solved for by the ACIR solver.
                     // Collect the R1CS witnesses indices so that we can later constrain them
                     // appropriately.
-                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
+                    BlackBoxFuncCall::AND {
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
+                    } => {
+                        assert_eq!(*num_bits as usize, BINOP_BITS);
                         and_ops.push((
-                            self.fetch_constant_or_r1cs_witness(lhs.input()),
-                            self.fetch_constant_or_r1cs_witness(rhs.input()),
+                            self.fetch_constant_or_r1cs_witness(lhs),
+                            self.fetch_constant_or_r1cs_witness(rhs),
                             self.fetch_r1cs_witness_index(*output),
                         ));
                     }
-                    BlackBoxFuncCall::XOR { lhs, rhs, output } => {
+                    BlackBoxFuncCall::XOR {
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
+                    } => {
+                        assert_eq!(*num_bits as usize, BINOP_BITS);
                         xor_ops.push((
-                            self.fetch_constant_or_r1cs_witness(lhs.input()),
-                            self.fetch_constant_or_r1cs_witness(rhs.input()),
+                            self.fetch_constant_or_r1cs_witness(lhs),
+                            self.fetch_constant_or_r1cs_witness(rhs),
                             self.fetch_r1cs_witness_index(*output),
                         ));
                     }
@@ -381,11 +377,11 @@ impl NoirToR1CSCompiler {
                     } => {
                         let input_witnesses: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
-                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input))
                             .collect();
                         let hash_witnesses: Vec<ConstantOrR1CSWitness> = hash_values
                             .iter()
-                            .map(|hv| self.fetch_constant_or_r1cs_witness(hv.input()))
+                            .map(|hv| self.fetch_constant_or_r1cs_witness(hv))
                             .collect();
                         let output_witnesses: Vec<usize> = outputs
                             .iter()

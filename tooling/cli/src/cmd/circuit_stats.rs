@@ -5,7 +5,7 @@ use {
     super::Command,
     acir::{
         circuit::{
-            opcodes::{BlackBoxFuncCall, ConstantOrWitnessEnum},
+            opcodes::{BlackBoxFuncCall, FunctionInput},
             Opcode, Program,
         },
         native_types::Expression,
@@ -175,6 +175,7 @@ fn main(arg: &Args) {
                         lhs,
                         rhs,
                         output: _,
+                        num_bits,
                     } => {
                         blackbox_func_call_variants
                             .entry("AND")
@@ -183,35 +184,23 @@ fn main(arg: &Args) {
                             });
                         // --- Keep track of the various bit counts we are dealing with ---
                         if let Entry::Occupied(mut x) =
-                            and_opcode_bit_counts.entry((lhs.num_bits(), rhs.num_bits()))
+                            and_opcode_bit_counts.entry((*num_bits, *num_bits))
                         {
                             x.get_mut().add_assign(1);
                         } else {
-                            and_opcode_bit_counts.insert((lhs.num_bits(), rhs.num_bits()), 1);
+                            and_opcode_bit_counts.insert((*num_bits, *num_bits), 1);
                         }
-                        match (lhs.input(), rhs.input()) {
-                            (
-                                ConstantOrWitnessEnum::Constant(_),
-                                ConstantOrWitnessEnum::Constant(_),
-                            ) => {
+                        match (lhs, rhs) {
+                            (FunctionInput::Constant(_), FunctionInput::Constant(_)) => {
                                 homogeneous_constant_and_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Constant(_),
-                                ConstantOrWitnessEnum::Witness(_),
-                            ) => {
+                            (FunctionInput::Constant(_), FunctionInput::Witness(_)) => {
                                 heterogeneous_and_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Witness(_),
-                                ConstantOrWitnessEnum::Constant(_),
-                            ) => {
+                            (FunctionInput::Witness(_), FunctionInput::Constant(_)) => {
                                 heterogeneous_and_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Witness(_),
-                                ConstantOrWitnessEnum::Witness(_),
-                            ) => {
+                            (FunctionInput::Witness(_), FunctionInput::Witness(_)) => {
                                 homogeneous_witness_and_inputs_count += 1;
                             }
                         }
@@ -220,6 +209,7 @@ fn main(arg: &Args) {
                         lhs,
                         rhs,
                         output: _,
+                        num_bits,
                     } => {
                         blackbox_func_call_variants
                             .entry("XOR")
@@ -228,60 +218,46 @@ fn main(arg: &Args) {
                             });
                         // --- Keep track of the various bit counts we are dealing with ---
                         if let Entry::Occupied(mut x) =
-                            xor_opcode_bit_counts.entry((lhs.num_bits(), rhs.num_bits()))
+                            xor_opcode_bit_counts.entry((*num_bits, *num_bits))
                         {
                             x.get_mut().add_assign(1);
                         } else {
-                            xor_opcode_bit_counts.insert((lhs.num_bits(), rhs.num_bits()), 1);
+                            xor_opcode_bit_counts.insert((*num_bits, *num_bits), 1);
                         }
-                        if let ConstantOrWitnessEnum::Constant(_) = lhs.input() {
+                        if let FunctionInput::Constant(_) = lhs {
                             xor_with_non_witness_value = true;
                         }
-                        if let ConstantOrWitnessEnum::Constant(_) = rhs.input() {
+                        if let FunctionInput::Constant(_) = rhs {
                             xor_with_non_witness_value = true;
                         }
-                        match (lhs.input(), rhs.input()) {
-                            (
-                                ConstantOrWitnessEnum::Constant(_),
-                                ConstantOrWitnessEnum::Constant(_),
-                            ) => {
+                        match (lhs, rhs) {
+                            (FunctionInput::Constant(_), FunctionInput::Constant(_)) => {
                                 homogeneous_constant_xor_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Constant(_),
-                                ConstantOrWitnessEnum::Witness(_),
-                            ) => {
+                            (FunctionInput::Constant(_), FunctionInput::Witness(_)) => {
                                 heterogeneous_xor_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Witness(_),
-                                ConstantOrWitnessEnum::Constant(_),
-                            ) => {
+                            (FunctionInput::Witness(_), FunctionInput::Constant(_)) => {
                                 heterogeneous_xor_inputs_count += 1;
                             }
-                            (
-                                ConstantOrWitnessEnum::Witness(_),
-                                ConstantOrWitnessEnum::Witness(_),
-                            ) => {
+                            (FunctionInput::Witness(_), FunctionInput::Witness(_)) => {
                                 homogeneous_witness_xor_inputs_count += 1;
                             }
                         }
                     }
-                    BlackBoxFuncCall::RANGE { input } => {
+                    BlackBoxFuncCall::RANGE { input, num_bits } => {
                         // --- We keep track of the total number of RANGE calls ---
-                        dbg!(&input.input());
+                        dbg!(&input);
                         blackbox_func_call_variants
                             .entry("RANGE")
                             .and_modify(|count| {
                                 count.add_assign(1);
                             });
                         // --- We also keep track of the RANGE calls, broken down by num bits ---
-                        if let Entry::Occupied(mut x) =
-                            range_check_bit_counts.entry(input.num_bits())
-                        {
+                        if let Entry::Occupied(mut x) = range_check_bit_counts.entry(*num_bits) {
                             x.get_mut().add_assign(1);
                         } else {
-                            range_check_bit_counts.insert(input.num_bits(), 1);
+                            range_check_bit_counts.insert(*num_bits, 1);
                         }
                     }
 
@@ -311,6 +287,7 @@ fn main(arg: &Args) {
                         signature: _,
                         hashed_message: _,
                         output: _,
+                        predicate: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("EcdsaSecp256k1")
@@ -324,6 +301,7 @@ fn main(arg: &Args) {
                         signature: _,
                         hashed_message: _,
                         output: _,
+                        predicate: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("EcdsaSecp256r1")
@@ -335,6 +313,7 @@ fn main(arg: &Args) {
                         points: _,
                         scalars: _,
                         outputs: _,
+                        predicate: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("MultiScalarMul")
@@ -346,6 +325,7 @@ fn main(arg: &Args) {
                         input1: _,
                         input2: _,
                         outputs: _,
+                        predicate: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("EmbeddedCurveAdd")
@@ -369,6 +349,7 @@ fn main(arg: &Args) {
                         public_inputs: _,
                         key_hash: _,
                         proof_type: _,
+                        predicate: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("RecursiveAggregation")
@@ -376,75 +357,9 @@ fn main(arg: &Args) {
                                 count.add_assign(1);
                             });
                     }
-                    BlackBoxFuncCall::BigIntAdd {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntAdd")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
-                    BlackBoxFuncCall::BigIntSub {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntSub")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
-                    BlackBoxFuncCall::BigIntMul {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntMul")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
-                    BlackBoxFuncCall::BigIntDiv {
-                        lhs: _,
-                        rhs: _,
-                        output: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntDiv")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
-                    BlackBoxFuncCall::BigIntFromLeBytes {
-                        inputs: _,
-                        modulus: _,
-                        output: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntFromLeBytes")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
-                    BlackBoxFuncCall::BigIntToLeBytes {
-                        input: _,
-                        outputs: _,
-                    } => {
-                        blackbox_func_call_variants
-                            .entry("BigIntToLeBytes")
-                            .and_modify(|count| {
-                                count.add_assign(1);
-                            });
-                    }
                     BlackBoxFuncCall::Poseidon2Permutation {
                         inputs: _,
                         outputs: _,
-                        len: _,
                     } => {
                         blackbox_func_call_variants
                             .entry("Poseidon2Permutation")
@@ -465,11 +380,7 @@ fn main(arg: &Args) {
                     }
                 }
             }
-            Opcode::MemoryOp {
-                block_id,
-                op,
-                predicate: _,
-            } => {
+            Opcode::MemoryOp { block_id, op } => {
                 // --- For MemoryOp there are only two variants: read and write ---
                 // --- Additionally, each MemoryOp tells you how to read/write a *single* index
                 // --- --- Therefore we will simply count the total number of
