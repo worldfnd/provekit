@@ -1,5 +1,3 @@
-use super::constants::{MAX_DEPTH, NUM_KEYS};
-
 pub struct PublicKey {
     pub x: Field,
     pub y: Field,
@@ -10,14 +8,14 @@ pub struct CredentialHashes {
     pub associated_data_hash: Field,
 }
 
-pub struct MerkleProof {
+pub struct MerkleProof<let MAX_DEPTH: u32> {
     pub root: Field,
     pub depth: Field,
     pub mt_index: Field,
     pub siblings: [Field; MAX_DEPTH],
 }
 
-pub struct OprfQueryInputs {
+pub struct OprfQueryInputs<let MAX_DEPTH: u32, let NUM_KEYS: u32> {
     // Signature verification of the OPRF nonce
     pub user_pk: [PublicKey; NUM_KEYS],
     pub pk_index: Field,
@@ -34,7 +32,7 @@ pub struct OprfQueryInputs {
     pub cred_r: [Field; 2], // Added missing credential signature point
     pub current_time_stamp: Field, // Public
 
-    pub merkle_proof: MerkleProof,
+    pub merkle_proof: MerkleProof<MAX_DEPTH>,
 
     // OPRF query
     pub beta: Field,
@@ -43,9 +41,9 @@ pub struct OprfQueryInputs {
     pub nonce: Field, // Public
 }
 
-pub struct OprfNullifierInputs {
+pub struct OprfNullifierInputs<let MAX_DEPTH: u32, let NUM_KEYS: u32> {
     // All OPRF query inputs
-    pub query_inputs: OprfQueryInputs,
+    pub query_inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
 
     // Discrete logarithm equality proof
     pub dlog_e: Field,

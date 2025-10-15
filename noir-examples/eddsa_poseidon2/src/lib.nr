@@ -1,10 +1,7 @@
 // EdDSA Poseidon2 Verifier for Noir
 // Complete implementation of EdDSA signature verification using Poseidon2 hash
 
-use babyjubjub::{
-    BabyJubJubPoint, check_sub_group::babyjubjub_check_sub_group,
-    escalar_mul_fix::generator_mul_fix,
-};
+use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 mod tests;
 
@@ -39,7 +36,7 @@ pub fn verify_eddsa_poseidon2(
     // Step 2 - Validate public key A
     let a_point = BabyJubJubPoint::new(pub_key_x, pub_key_y);
     assert(a_point.is_on_curve(), "Public key must be on curve");
-    assert(babyjubjub_check_sub_group(a_point), "Public key must be in subgroup");
+    assert(a_point.check_sub_group(), "Public key must be in subgroup");
     assert(a_point.is_not_identity(), "Public key cannot be identity");
 
     // Step 3 - Validate R is on the curve
@@ -68,7 +65,7 @@ pub fn verify_eddsa_poseidon2(
     let right = r_point.add(right2);
 
     // Step 6 - Compute left side: S*G
-    let left = generator_mul_fix(signature_s);
+    let left = BabyJubJubPoint::generator_scalar_mul(signature_s);
 
     // Step 7 - Compute v = S*G - R - h*A = S*G - (R + h*A)
     let v = left.subtract(right);

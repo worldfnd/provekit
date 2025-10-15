@@ -1,5 +1,5 @@
 // Constants
-pub global MAX_DEPTH: u32 = 30;
+pub global MAX_DEPTH: u32 = 10;
 pub global NUM_KEYS: u32 = 7;
 
 pub global DS_N: Field = 1773399373884719043551596035141478; // b"World ID Proof"

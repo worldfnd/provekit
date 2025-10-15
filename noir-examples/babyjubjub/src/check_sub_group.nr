@@ -1,6 +1,6 @@
 use super::{BabyJubJubPoint, montogomery::MontgomeryPoint};
 
-pub fn bit_element_mul_fix_scalar(
+fn bit_element_mul_fix_scalar(
     bit: u1,
     dbl_in: MontgomeryPoint,
     add_in: MontgomeryPoint,
@@ -18,7 +18,7 @@ pub fn bit_element_mul_fix_scalar(
     (dbl_out, add_out)
 }
 
-pub fn segment_mul_fix_scalar<let N: u32>(
+fn segment_mul_fix_scalar<let N: u32>(
     bits: [u1; N],
     base: BabyJubJubPoint,
 ) -> (BabyJubJubPoint, MontgomeryPoint) {
@@ -49,7 +49,7 @@ pub fn segment_mul_fix_scalar<let N: u32>(
     (result, dbl_out_montgomery)
 }
 
-fn esc_mul_fix_scalar(bits: [u1; 251], base: BabyJubJubPoint) -> BabyJubJubPoint {
+pub fn esc_mul_fix_scalar(bits: [u1; 251], base: BabyJubJubPoint) -> BabyJubJubPoint {
     let mut bits1: [u1; 148] = [0; 148];
     for i in 0..148 {
         bits1[i] = bits[i];
@@ -82,27 +82,10 @@ fn esc_mul_fix_scalar(bits: [u1; 251], base: BabyJubJubPoint) -> BabyJubJubPoint
     BabyJubJubPoint { x: out_x, y: out_y }
 }
 
-pub fn babyjubjub_check_sub_group(point: BabyJubJubPoint) -> bool {
-    let characteristic: [u1; 251] = [
-        1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0,
-        0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1,
-        1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,
-        1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1,
-        0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0,
-        0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1,
-        1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0,
-        0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0,
-        0, 1, 1,
-    ];
-
-    let res = esc_mul_fix_scalar(characteristic, point);
-    res.is_identity()
-}
-
 #[test]
 fn test_babyjubjub_in_correct_subgroup() {
     let p0 = 4597297048474520994314398800947075450541957920804155712178316083765998639288;
     let p1 = 5569132826648062501012191259106565336315721760204071234863390487921354852142;
 
-    assert(babyjubjub_check_sub_group(BabyJubJubPoint::new(p0, p1)));
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
 }

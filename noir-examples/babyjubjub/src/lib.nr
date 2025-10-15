@@ -3,14 +3,16 @@
 // Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
 // where a = 168700, d = 168696
 
+use check_sub_group::esc_mul_fix_scalar;
+use escalar_mul_fix::generator_mul_fix;
 use std::field::bn254;
+
 mod tests;
 pub mod hash_to_curve;
 pub mod montogomery;
 pub mod window_table;
 pub mod check_sub_group;
 pub mod escalar_mul_fix;
-pub mod escalar_mul_any;
 
 // BabyJubJub curve constants
 global BABYJUBJUB_A: Field = 168700;
@@ -69,14 +71,6 @@ impl BabyJubJubPoint {
     /// Checks if the point is not the identity element
     pub fn is_not_identity(self) -> bool {
         !self.is_identity()
-    }
-
-    /// Checks if the point is in the correct subgroup
-    /// For BabyJubJub, we need to check if the point is in the subgroup of order q
-    pub fn is_in_correct_subgroup(self) -> bool {
-        // For BabyJubJub, we need to multiply by the cofactor (7) and check if result is identity
-        let multiplied = self.multiply_by_cofactor();
-        multiplied.is_identity()
     }
 
     /// Multiplies the point by the cofactor (7 for BabyJubJub over BN254)
@@ -142,19 +136,6 @@ impl BabyJubJubPoint {
         }
     }
 
-    /// Base field scalar multiplication
-    pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
-        // Early termination for zero scalar
-        if scalar_fq == 0 {
-            BabyJubJubPoint::identity()
-        } else {
-            // Decompose to 254 bits
-            let bits: [u1; 254] = scalar_fq.to_le_bits();
-
-            self.scalar_mul_bits(bits)
-        }
-    }
-
     /// Scalar multiplication with bit array (little-endian)
     ///
     /// This is equivalent to ec library's bit_mul but with explicit bit input.
@@ -178,18 +159,16 @@ impl BabyJubJubPoint {
 
         result
     }
-
-    pub fn scalar_mul_checked(self, scalar: Field) -> Self {
-        self.scalar_mul(scalar)
-    }
-
-    /// Fixed-base scalar multiplication: multiplies the generator by a scalar
-    pub fn generator_scalar_mul(scalar: Field) -> Self {
-        if scalar == 0 {
+    /// Base field scalar multiplication
+    pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
+        // Early termination for zero scalar
+        if scalar_fq == 0 {
             BabyJubJubPoint::identity()
         } else {
-            let bits: [u1; 251] = scalar.to_le_bits();
-            BabyJubJubPoint::generator().scalar_mul_bits(bits)
+            // Decompose to 254 bits
+            let bits: [u1; 254] = scalar_fq.to_le_bits();
+
+            self.scalar_mul_bits(bits)
         }
     }
 
@@ -198,44 +177,30 @@ impl BabyJubJubPoint {
         bn254::assert_lt(field_element, BABYJUBJUB_Fr);
     }
 
-    /// Checks if a field element is in the BabyJubJub scalar field without asserting
-    /// Returns true if field_element < BABYJUBJUB_Fr, false otherwise
-    pub fn is_valid_scalar_field(field_element: Field) -> bool {
-        // Decompose both values to bits and compare
-        let field_bits: [u1; 254] = field_element.to_le_bits();
-        let fr_bits: [u1; 254] = BABYJUBJUB_Fr.to_le_bits();
-
-        // Compare from MSB to LSB
-        let mut is_less = false;
-        let mut is_equal = true;
-
-        for i in 0..254 {
-            let idx = 253 - i; // Start from MSB
-            let field_bit = field_bits[idx];
-            let fr_bit = fr_bits[idx];
-
-            if is_equal {
-                if (field_bit == 0) & (fr_bit == 1) {
-                    is_less = true;
-                    is_equal = false;
-                } else if (field_bit == 1) & (fr_bit == 0) {
-                    is_less = false;
-                    is_equal = false;
-                }
-            }
-        }
-
-        is_less
+    pub fn validate_scalar_field_with_bits(field_element: Field) -> [u1; 251] {
+        BabyJubJubPoint::validate_babyjubjub_field(field_element);
+        let bits: [u1; 251] = field_element.to_le_bits();
+        bits
     }
 
-    /// Returns both the validated field element and its bit representation
-    pub fn validate_scalar_field_with_bits(field_element: Field) -> (Field, [u1; 251]) {
-        // Step 1: Validate that field_element < BABYJUBJUB_Fr
-        bn254::assert_lt(field_element, BABYJUBJUB_Fr);
+    pub fn check_sub_group(self) -> bool {
+        let characteristic: [u1; 251] = [
+            1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,
+            1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1,
+            1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0,
+            0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
+            1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0,
+            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0,
+            0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+            0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1,
+            1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
+        ];
 
-        // Step 2: Decompose to 251 bits
-        let bits: [u1; 251] = field_element.to_le_bits();
+        let res = esc_mul_fix_scalar(characteristic, self);
+        res.is_identity()
+    }
 
-        (field_element, bits)
+    pub fn generator_scalar_mul(scalar: Field) -> Self {
+        generator_mul_fix(scalar)
     }
 }

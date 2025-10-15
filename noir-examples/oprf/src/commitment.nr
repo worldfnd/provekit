@@ -2,7 +2,6 @@ use super::{
     constants::{DS_C, DS_N, DS_Q},
     types::{OprfNullifierOutputs, OprfQueryInputs, PublicKey},
 };
-use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
 pub fn generate_commitment(
@@ -26,13 +25,11 @@ fn generate_id_commitment(mt_index: Field, commitment_r: Field) -> Field {
     state[1]
 }
 
-pub fn generate_query(query: OprfQueryInputs) -> Field {
+pub fn generate_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
+    query: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
+) -> Field {
     let state = perm::x5_4(
         [DS_Q, query.merkle_proof.mt_index, query.rp_id, query.action],
     );
     state[1]
-}
-
-pub fn validate_and_get_beta_bits(beta: Field) -> (Field, [u1; 251]) {
-    BabyJubJubPoint::validate_scalar_field_with_bits(beta)
 }

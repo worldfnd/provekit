@@ -142,21 +142,3 @@ fn test_identity_operations() {
     assert_eq(p_add_id.x, point.x);
     assert_eq(p_add_id.y, point.y);
 }
-
-#[test]
-fn test_babyjubjub_large_scalar() {
-    let point = BabyJubJubPoint::new(
-        15861662102942198476185518224532077347254150735350796263259682790715259346390,
-        17622332940847650587004774926435083207962382856110852169511204932927794212320,
-    );
-
-    let e = 11492769268207265628561501057351602107011197918712374331772632123505784512375;
-    let result = point.scalar_mul_base_field(e);
-
-    let expected_x = 3523602879199010149495623080297900308179859578249410293934816830581400276355;
-    let expected_y = 17393853688260930176969934211213897678775780885864751648676555439935658367631;
-
-    assert(result.is_on_curve(), "Result must be on curve");
-    assert(result.x.eq(expected_x));
-    assert(result.y.eq(expected_y));
-}

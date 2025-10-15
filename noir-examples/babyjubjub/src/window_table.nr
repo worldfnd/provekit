@@ -70,29 +70,6 @@ pub fn generate_window_table(base: MontgomeryPoint) -> [MontgomeryPoint; 8] {
 }
 
 pub fn select_from_window(bits: [u1; 3], table: [MontgomeryPoint; 8]) -> MontgomeryPoint {
-    // Compute window value: bit2*4 + bit1*2 + bit0
-    let window_value = (bits[2] as Field) * 4 + (bits[1] as Field) * 2 + (bits[0] as Field);
-
-    if window_value == 0 {
-        table[0] // 1B (compensation: 0 -> 1B)
-    } else if window_value == 1 {
-        table[1] // 2B (compensation: 1 -> 2B)
-    } else if window_value == 2 {
-        table[2] // 3B (compensation: 2 -> 3B)
-    } else if window_value == 3 {
-        table[3] // 4B (compensation: 3 -> 4B)
-    } else if window_value == 4 {
-        table[4] // 5B (compensation: 4 -> 5B)
-    } else if window_value == 5 {
-        table[5] // 6B (compensation: 5 -> 6B)
-    } else if window_value == 6 {
-        table[6] // 7B (compensation: 6 -> 7B)
-    } else {
-        table[7] // 8B (compensation: 7 -> 8B)
-    }
-}
-
-pub fn select_from_window_optimized(bits: [u1; 3], table: [MontgomeryPoint; 8]) -> MontgomeryPoint {
     // bit2 controls selection between [0,1,2,3] and [4,5,6,7]
     if bits[2] == 0 {
         // bits[2] = 0: select from [0,1,2,3] -> table[0,1,2,3]
@@ -189,22 +166,4 @@ fn test_generator_window_table_values() {
 
     assert(table[7].u == g8_mont.u);
     assert(table[7].v == g8_mont.v);
-}
-
-#[test]
-fn test_optimized_window_selection() {
-    let g = crate::BabyJubJubPoint::generator();
-    let table = generate_window_table(g.to_montgomery());
-
-    let test_cases: [[u1; 3]; 8] =
-        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
-
-    for i in 0..8 {
-        let bits = test_cases[i];
-        let original_result = select_from_window(bits, table);
-        let optimized_result = select_from_window_optimized(bits, table);
-
-        assert(original_result.u == optimized_result.u);
-        assert(original_result.v == optimized_result.v);
-    }
 }

@@ -208,7 +208,7 @@ pub fn clear_cofactor_baby_jubjub(x: Field, y: Field) -> (Field, Field) {
 }
 
 // Main encode to curve function
-pub fn encode_to_curve_baby_jubjub(input: Field) -> (Field, Field) {
+pub fn encode(input: Field) -> (Field, Field) {
     // u = HashToField(input)
     let u = hash_to_field(input);
 
@@ -222,9 +222,9 @@ pub fn encode_to_curve_baby_jubjub(input: Field) -> (Field, Field) {
 }
 
 #[test]
-fn test_encode_to_curve_baby_jubjub() {
+fn test_encode_to_curve() {
     let input = 0x03e4070110668921a99c37627dedddb5ab65fae33c19e24d9ee19d7065fdeca8;
-    let (x, y) = encode_to_curve_baby_jubjub(input);
+    let (x, y) = encode(input);
     assert(x == 10175058421265066103271621309400893795433239363389874688251488422849525264799);
     assert(y == 3628966387438731209966022732278382991713986757399185528286224796904478655258);
 }

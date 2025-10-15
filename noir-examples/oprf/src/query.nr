@@ -1,25 +1,11 @@
 use super::{
-    constants::{CREDENTIAL_DS, MERKLE_LEAF_DS, NUM_KEYS},
+    constants::CREDENTIAL_DS,
+    merkle_proof::{compute_merkle_root_poseidon2, merkle_leaf},
     types::{OprfQueryInputs, PublicKey},
 };
-use babyjubjub::{BabyJubJubPoint, hash_to_curve::encode_to_curve_baby_jubjub};
+use babyjubjub::{BabyJubJubPoint, hash_to_curve::encode};
 use eddsa_poseidon2::verify_eddsa_poseidon2;
 use poseidon2::bn254::perm;
-
-// Utility functions for OPRF query verification
-
-fn merkle_leaf(pk: [PublicKey; NUM_KEYS]) -> Field {
-    let mut inputs: [Field; 16] = [0; 16];
-    inputs[0] = MERKLE_LEAF_DS;
-
-    for i in 0..NUM_KEYS {
-        inputs[i * 2 + 1] = pk[i].x;
-        inputs[i * 2 + 2] = pk[i].y;
-    }
-
-    let hash_state = perm::x5_16(inputs);
-    hash_state[1]
-}
 
 fn check_credential_signature(
     s: Field,
@@ -53,38 +39,11 @@ fn check_credential_signature(
     assert(verify_eddsa_poseidon2(pk[0], pk[1], s, r, message), "Credential signature invalid");
 }
 
-fn compute_merkle_root_poseidon2<let N: u32>(
-    leaf: Field,
-    depth: Field,
-    index: Field,
-    hashpath: [Field; N],
-) -> Field {
-    let mut current = leaf;
-    let mut idx = index as u32;
-    let depth_u32 = depth as u32;
-
-    for i in 0..N {
-        if i < depth_u32 {
-            let sibling = hashpath[i];
-            let is_right = idx & 1;
-
-            // Use branchless selection
-            let is_right_field = is_right as Field;
-            let diff = current - sibling;
-            let left = sibling + (diff * (1 - is_right_field));
-            let right = sibling + (diff * is_right_field);
-
-            let hash_state = perm::x5_2([left, right]);
-            current = hash_state[0] + left;
-
-            idx >>= 1;
-        }
-    }
-
-    current
-}
-
-pub fn oprf_query(inputs: OprfQueryInputs, query: Field, beta_bits: [u1; 251]) -> PublicKey {
+pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
+    inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
+    query: Field,
+    beta_bits: [u1; 251],
+) -> PublicKey {
     // 1. Verify sk/pk by verifying a signature to a known message
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
     let is_valid = verify_eddsa_poseidon2(
@@ -120,7 +79,7 @@ pub fn oprf_query(inputs: OprfQueryInputs, query: Field, beta_bits: [u1; 251]) -
     );
 
     // Encode query to curve point and perform scalar multiplication
-    let (px, py) = encode_to_curve_baby_jubjub(query);
+    let (px, py) = encode(query);
     let p = BabyJubJubPoint::new(px, py);
     let q = p.scalar_mul_bits(beta_bits);
 
