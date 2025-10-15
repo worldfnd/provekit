@@ -70,41 +70,29 @@ pub fn generate_window_table(base: MontgomeryPoint) -> [MontgomeryPoint; 8] {
 }
 
 pub fn select_from_window(bits: [u1; 3], table: [MontgomeryPoint; 8]) -> MontgomeryPoint {
-    // bit2 controls selection between [0,1,2,3] and [4,5,6,7]
-    if bits[2] == 0 {
-        // bits[2] = 0: select from [0,1,2,3] -> table[0,1,2,3]
-        if bits[1] == 0 {
-            // bits[1,0] = 0x: select from [0,1] -> table[0,1]
-            if bits[0] == 0 {
-                table[0] // bits = 000 -> window_value = 0 -> table[0] = 1B
-            } else {
-                table[1] // bits = 001 -> window_value = 1 -> table[1] = 2B
-            }
-        } else {
-            // bits[1,0] = 1x: select from [2,3] -> table[2,3]
-            if bits[0] == 0 {
-                table[2] // bits = 010 -> window_value = 2 -> table[2] = 3B
-            } else {
-                table[3] // bits = 011 -> window_value = 3 -> table[3] = 4B
-            }
-        }
-    } else {
-        // bits[2] = 1: select from [4,5,6,7] -> table[4,5,6,7]
-        if bits[1] == 0 {
-            // bits[1,0] = 0x: select from [4,5] -> table[4,5]
-            if bits[0] == 0 {
-                table[4] // bits = 100 -> window_value = 4 -> table[4] = 5B
-            } else {
-                table[5] // bits = 101 -> window_value = 5 -> table[5] = 6B
-            }
-        } else {
-            // bits[1,0] = 1x: select from [6,7] -> table[6,7]
-            if bits[0] == 0 {
-                table[6] // bits = 110 -> window_value = 6 -> table[6] = 7B
-            } else {
-                table[7] // bits = 111 -> window_value = 7 -> table[7] = 8B
-            }
-        }
+    let b0 = bits[0] as Field;
+    let b1 = bits[1] as Field;
+    let b2 = bits[2] as Field;
+
+    let lower_half = mux_point(b2, table[4], table[0]);
+    let upper_half = mux_point(b2, table[5], table[1]);
+    let mid_lower = mux_point(b2, table[6], table[2]);
+    let mid_upper = mux_point(b2, table[7], table[3]);
+
+    let first_pair = mux_point(b1, mid_lower, lower_half);
+    let second_pair = mux_point(b1, mid_upper, upper_half);
+
+    mux_point(b0, second_pair, first_pair) // b0=0->first_pair, b0=1->second_pair
+}
+
+fn mux_point(
+    selector: Field,
+    point_a: MontgomeryPoint,
+    point_b: MontgomeryPoint,
+) -> MontgomeryPoint {
+    MontgomeryPoint {
+        u: selector * point_a.u + (1 - selector) * point_b.u,
+        v: selector * point_a.v + (1 - selector) * point_b.v,
     }
 }
 
