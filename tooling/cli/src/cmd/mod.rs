@@ -21,10 +21,16 @@ pub struct Args {
     #[argh(switch)]
     pub tracy: bool,
 
-    /// enable tracy allocation tracking with provided stack depth
+    /// enable Tracy allocation tracking with provided stack depth, or 0 to
+    /// trace allocations without stack traces.
     #[cfg(feature = "tracy")]
     #[argh(option)]
     pub tracy_allocations: Option<usize>,
+
+    /// keep the process alive after completion to allow tracy to collect data
+    #[cfg(feature = "tracy")]
+    #[argh(switch)]
+    pub tracy_keepalive: bool,
 }
 
 #[derive(FromArgs, PartialEq, Debug)]

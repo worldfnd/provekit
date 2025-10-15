@@ -66,11 +66,6 @@ impl ProfilingAllocator {
         self.tracy_depth.store(depth, Ordering::SeqCst);
     }
 
-    #[cfg(feature = "tracy")]
-    pub fn disable_tracy(&self) {
-        self.tracy_enabled.store(false, Ordering::SeqCst);
-    }
-
     #[allow(unused_variables)] // Conditional compilation may not use all variables
     fn tracy_alloc(&self, size: usize, ptr: *mut u8) {
         // If Tracy profiling is enabled, report this allocation to Tracy.
@@ -152,6 +147,7 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, old_layout: Layout, new_size: usize) -> *mut u8 {
+        self.tracy_dealloc(ptr);
         let ptr = SystemAlloc.realloc(ptr, old_layout, new_size);
         let old_size = old_layout.size();
         if new_size > old_size {
