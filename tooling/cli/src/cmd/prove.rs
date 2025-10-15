@@ -6,7 +6,6 @@ use {
         file::{read, write},
         Prover,
     },
-    provekit_prover::Prove,
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -44,8 +43,7 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let mut prover: Prover =
-            read(&self.prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
@@ -53,8 +51,7 @@ impl Command for Args {
         // let input_map = scheme.read_witness(&self.input_path)?;
 
         // Generate the proof
-        let proof = prover
-            .prove(&self.input_path)
+        let proof = provekit_prover::prove(prover, &self.input_path)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)
