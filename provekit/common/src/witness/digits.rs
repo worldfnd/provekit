@@ -34,7 +34,7 @@ pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<Fi
     let num_digits = log_bases.len();
     let mut digits = Vec::with_capacity(num_digits);
     let mut value_bits = field_to_le_bits(value);
-    let ref mut ref_value_bits = value_bits;
+    let ref_value_bits = &mut value_bits;
     // Grab the bits of the element that we need for each digit, and turn them back
     // into field elements.
     for &log_base in log_bases {

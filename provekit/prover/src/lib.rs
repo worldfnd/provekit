@@ -26,7 +26,7 @@ mod witness;
 pub trait Prove {
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
-    fn prove(&mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
     fn create_witness_io_pattern(&self) -> IOPattern;
 
@@ -51,15 +51,10 @@ impl Prove for Prover {
         }
         .build();
 
-        let initial_witness = self
-            .witness_generator
-            .take()
-            .unwrap()
-            .abi()
-            .encode(&input_map, None)?;
+        let initial_witness = self.witness_generator.abi().encode(&input_map, None)?;
 
         let mut witness_stack = nargo::ops::execute_program(
-            &self.program.as_ref().unwrap(),
+            &self.program,
             initial_witness,
             &solver,
             &mut foreign_call_executor,
@@ -72,11 +67,9 @@ impl Prove for Prover {
     }
 
     #[instrument(skip_all)]
-    fn prove(&mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        let (input_map, _expected_return) = read_inputs_from_file(
-            prover_toml.as_ref(),
-            self.witness_generator.as_ref().unwrap().abi(),
-        )?;
+    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let (input_map, _expected_return) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
@@ -85,8 +78,8 @@ impl Prove for Prover {
         let mut witness_merlin = witness_io.to_prover_state();
         self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
 
-        let partial_witness = self.r1cs.as_ref().unwrap().solve_witness_vec(
-            self.layered_witness_builders.take().unwrap(),
+        let partial_witness = self.r1cs.solve_witness_vec(
+            self.layered_witness_builders,
             acir_witness_idx_to_value_map,
             &mut witness_merlin,
         );
@@ -95,29 +88,23 @@ impl Prove for Prover {
         // Verify witness (redudant with solve)
         #[cfg(test)]
         self.r1cs
-            .as_ref()
-            .unwrap()
             .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .take()
-            .unwrap()
-            .prove(self.r1cs.take().unwrap(), witness)
+            .prove(self.r1cs, witness)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {
-        let circuit = &self.program.as_ref().unwrap().functions[0];
+        let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
             .layered_witness_builders
-            .as_ref()
-            .unwrap()
             .layers
             .iter()
             .flat_map(|layer| &layer.witness_builders)
@@ -138,12 +125,12 @@ impl Prove for Prover {
     ) -> Result<()> {
         // Absorb circuit shape
         let _ = merlin.add_scalars(&[
-            FieldElement::from(self.r1cs.as_ref().unwrap().num_constraints() as u64),
-            FieldElement::from(self.r1cs.as_ref().unwrap().num_witnesses() as u64),
+            FieldElement::from(self.r1cs.num_constraints() as u64),
+            FieldElement::from(self.r1cs.num_witnesses() as u64),
         ]);
 
         // Absorb public inputs (values) in canonical order
-        let circuit = &self.program.take().unwrap().functions[0];
+        let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         if !public_idxs.is_empty() {
             let pub_vals: Vec<FieldElement> = public_idxs

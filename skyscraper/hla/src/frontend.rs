@@ -161,7 +161,7 @@ pub struct PointerReg<'a, T> {
 }
 
 impl<T, const N: usize> Reg<*mut [T; N]> {
-    pub fn get(&self, index: usize) -> PointerReg<*mut T> {
+    pub fn get(&self, index: usize) -> PointerReg<'_, *mut T> {
         assert!(index < N, "out-of-bounds access");
 
         PointerReg {
@@ -173,7 +173,7 @@ impl<T, const N: usize> Reg<*mut [T; N]> {
 }
 
 impl<T, const N: usize> Reg<*const [T; N]> {
-    pub fn get(&self, index: usize) -> PointerReg<*const T> {
+    pub fn get(&self, index: usize) -> PointerReg<'_, *const T> {
         assert!(index < N, "out-of-bounds access");
 
         PointerReg {

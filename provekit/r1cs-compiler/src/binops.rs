@@ -33,13 +33,13 @@ pub(crate) fn add_binop(
     let result_witness = match op {
         BinOp::And => r1cs_compiler.add_witness_builder(WitnessBuilder::And(
             r1cs_compiler.num_witnesses(),
-            lhs.clone(),
-            rhs.clone(),
+            lhs,
+            rhs,
         )),
         BinOp::Xor => r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
             r1cs_compiler.num_witnesses(),
-            lhs.clone(),
-            rhs.clone(),
+            lhs,
+            rhs,
         )),
     };
 
@@ -129,7 +129,7 @@ pub(crate) fn add_binop_constraints(
         };
         let output_atoms = {
             let counter = witness_dd_counter;
-            let ref dd = dd_struct;
+            let dd = &dd_struct;
             (0..NUM_DIGITS).map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
         };
         witness_dd_counter += 1;
@@ -146,7 +146,7 @@ pub(crate) fn add_binop_constraints(
         r1cs_compiler.num_witnesses(),
         inputs_and_outputs_atomic
             .iter()
-            .map(|(lh_operand, rh_operand, _output)| (lh_operand.clone(), rh_operand.clone()))
+            .map(|(lh_operand, rh_operand, _output)| (*lh_operand, *rh_operand))
             .collect(),
     );
     let multiplicities_first_witness = r1cs_compiler.add_witness_builder(multiplicities_wb);
@@ -235,9 +235,9 @@ fn add_lookup_summand(
         sz_challenge,
         rs_challenge,
         rs_challenge_sqrd,
-        lh_operand.clone(),
-        rh_operand.clone(),
-        output.clone(),
+        lh_operand,
+        rh_operand,
+        output,
     );
     let denominator = r1cs_compiler.add_witness_builder(wb);
     // Add an intermediate witness if the output is a witness (otherwise can just

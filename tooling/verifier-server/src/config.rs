@@ -7,6 +7,7 @@ use std::{env, path::PathBuf, time::Duration};
 
 /// Server configuration
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct Config {
     /// Server configuration
     pub server:       ServerConfig,
@@ -58,15 +59,6 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server:       ServerConfig::default(),
-            verification: VerificationConfig::default(),
-            artifacts:    ArtifactConfig::default(),
-        }
-    }
-}
 
 impl ServerConfig {
     fn from_env() -> Self {

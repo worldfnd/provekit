@@ -26,16 +26,16 @@ pub struct WhirR1CSScheme {
 impl WhirR1CSScheme {
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        let io = IOPattern::new("🌪️")
+        
+
+        IOPattern::new("🌪️")
             .commit_statement(&self.whir_witness)
             .add_rand(self.m_0)
             .commit_statement(&self.whir_for_hiding_spartan)
             .add_zk_sumcheck_polynomials(self.m_0)
             .add_whir_proof(&self.whir_for_hiding_spartan)
             .hint("claimed_evaluations")
-            .add_whir_proof(&self.whir_witness);
-
-        io
+            .add_whir_proof(&self.whir_witness)
     }
 }
 

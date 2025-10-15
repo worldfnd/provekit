@@ -44,8 +44,7 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let mut prover: Prover =
-            read(&self.prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 

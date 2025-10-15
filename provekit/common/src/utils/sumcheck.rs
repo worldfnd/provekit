@@ -182,7 +182,7 @@ pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
-    let (a, b) = rayon::join(|| r1cs.a() * &witness, || r1cs.b() * &witness);
+    let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
     // Derive C from R1CS relation (faster than matrix multiplication)
     let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
     (
