@@ -5,7 +5,6 @@ use {
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
     provekit_common::{NoirProofScheme, Prover, Verifier},
-    provekit_prover::Prove,
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     provekit_verifier::Verify,
     serde::Deserialize,
@@ -39,11 +38,10 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let witness_file_path = test_case_path.join("Prover.toml");
 
     let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
-    let mut prover = Prover::from_noir_proof_scheme(schema.clone());
+    let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
-    let proof = prover
-        .prove(&witness_file_path)
+    let proof = provekit_prover::prove(prover, &witness_file_path)
         .expect("While proving Noir program statement");
 
     verifier.verify(&proof).expect("Verifying proof");
