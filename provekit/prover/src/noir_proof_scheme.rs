@@ -83,12 +83,15 @@ impl NoirProofSchemeProver for NoirProofScheme {
             .context("While verifying R1CS instance")?;
 
         // Prove R1CS instance
-        let whir_r1cs_proof = self
+        let (whir_r1cs_proof, spark_statement) = self
             .whir_for_witness
             .prove(&self.r1cs, witness)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { whir_r1cs_proof })
+        Ok(NoirProof {
+            whir_r1cs_proof,
+            spark_statement,
+        })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {

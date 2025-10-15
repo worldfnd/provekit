@@ -1,9 +1,12 @@
 use {
     crate::{utils::serde_ark, FieldElement},
+    ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     serde::{Deserialize, Serialize},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, CanonicalSerialize, Serialize, CanonicalDeserialize, Deserialize,
+)]
 pub struct Point {
     #[serde(with = "serde_ark")]
     pub row: Vec<FieldElement>,
@@ -11,7 +14,9 @@ pub struct Point {
     pub col: Vec<FieldElement>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, CanonicalSerialize, Serialize, CanonicalDeserialize, Deserialize,
+)]
 pub struct ClaimedValues {
     #[serde(with = "serde_ark")]
     pub a: FieldElement,
@@ -21,8 +26,10 @@ pub struct ClaimedValues {
     pub c: FieldElement,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SPARKRequest {
+#[derive(
+    Debug, Clone, PartialEq, Eq, CanonicalSerialize, Serialize, CanonicalDeserialize, Deserialize,
+)]
+pub struct SparkStatement {
     pub point_to_evaluate: Point,
     pub claimed_values:    ClaimedValues,
 }
