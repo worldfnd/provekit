@@ -42,6 +42,7 @@ pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
 pub trait SPARKDomainSeparator {
     fn add_tau_and_gamma(self) -> Self;
     fn add_line(self) -> Self;
+    fn add_gpa4_claimed_values(self) -> Self;
     fn add_claimed_evaluations(self) -> Self;
 }
 
@@ -56,6 +57,11 @@ where
     fn add_line(self) -> Self {
         self.add_scalars(2, "gpa line")
             .challenge_scalars(1, "gpa line random")
+    }
+
+    fn add_gpa4_claimed_values (self) -> Self {
+        self.add_scalars(4, "gpa claimed values")
+            .challenge_scalars(2, "gpa randomness")
     }
 
     fn add_claimed_evaluations(self) -> Self {

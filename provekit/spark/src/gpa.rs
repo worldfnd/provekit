@@ -15,7 +15,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         ProverState, VerifierState,
     },
-    whir::poly_utils::evals::EvaluationsList,
+    whir::poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
 };
 
 /// Runs the Grand Product Argument (GPA) protocol to prove product equality.
@@ -49,26 +49,52 @@ pub fn run_gpa(
     concatenated.extend_from_slice(right);
     let layers = calculate_binary_multiplication_tree(concatenated);
 
-    let mut sumcheck_claim;
-    let mut line_randomness;
-    let mut line_evaluations;
-    let mut accumulated_randomness = Vec::<FieldElement>::new();
-
-    (line_randomness, sumcheck_claim) = add_line_to_transcript(merlin, layers[1].clone());
+    let (accumulated_randomness, mut sumcheck_claim) = add_line_to_transcript(merlin, layers[1].clone());
+    let mut accumulated_randomness = accumulated_randomness.to_vec();
 
     for i in 2..layers.len() {
-        (line_evaluations, accumulated_randomness) = run_gpa_sumcheck(
+        (sumcheck_claim, accumulated_randomness) = run_gpa_sumcheck(
             merlin,
-            &line_randomness,
             layers[i].clone(),
             sumcheck_claim,
             accumulated_randomness,
         );
-        (line_randomness, sumcheck_claim) =
-            add_line_to_transcript(merlin, line_evaluations.to_vec());
     }
 
-    accumulated_randomness.push(line_randomness[0]);
+    accumulated_randomness
+}
+
+
+pub fn run_gpa4(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    leaves: Vec<FieldElement>,
+) -> Vec<FieldElement> {
+    let layers = calculate_binary_multiplication_tree(leaves);
+
+    let evaluation_form = EvaluationsList::new(layers[2].clone());
+    let coefficient_form = evaluation_form.to_coeffs();
+    let coeffs: &[FieldElement] = coefficient_form.coeffs();
+
+    merlin
+        .add_scalars(coeffs)
+        .expect("Failed to add line polynomial to transcript");
+
+    let mut accumulated_randomness = [FieldElement::from(0); 2].to_vec();
+    merlin
+        .fill_challenge_scalars(&mut accumulated_randomness)
+        .expect("Failed to sample accumulated_randomness");
+
+    let mut sumcheck_claim = coefficient_form.evaluate(&MultilinearPoint(accumulated_randomness.to_vec()));
+
+    for i in 3..layers.len() {
+        (sumcheck_claim, accumulated_randomness) = run_gpa_sumcheck(
+            merlin,
+            layers[i].clone(),
+            sumcheck_claim,
+            accumulated_randomness,
+        );
+    }
+
     accumulated_randomness
 }
 
@@ -153,13 +179,11 @@ fn add_line_to_transcript(
 /// Tuple of `(final_evaluations, accumulated_randomness)` for next round
 fn run_gpa_sumcheck(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    r: &[FieldElement; 1],
     layer: Vec<FieldElement>,
     mut sumcheck_claim: FieldElement,
-    mut accumulated_randomness: Vec<FieldElement>,
-) -> ([FieldElement; 2], Vec<FieldElement>) {
+    accumulated_randomness: Vec<FieldElement>,
+) -> (FieldElement, Vec<FieldElement>) {
     let (mut even_layer, mut odd_layer) = split_even_odd(layer);
-    accumulated_randomness.push(r[0]);
 
     let mut eq_evaluations =
         calculate_evaluations_over_boolean_hypercube_for_eq(&accumulated_randomness);
@@ -221,7 +245,21 @@ fn run_gpa_sumcheck(
     let final_v0 = even_layer[0] + (even_layer[1] - even_layer[0]) * challenge[0];
     let final_v1 = odd_layer[0] + (odd_layer[1] - odd_layer[0]) * challenge[0];
 
-    ([final_v0, final_v1], round_randomness)
+    let evaluations = EvaluationsList::new([final_v0, final_v1].to_vec());
+    let coeffs = evaluations.to_coeffs();
+    let line_poly: &[FieldElement] = coeffs.coeffs();
+
+    merlin
+        .add_scalars(line_poly)
+        .expect("Failed to add line polynomial to transcript");
+    let mut challenge = [FieldElement::from(0); 1];
+    merlin
+        .fill_challenge_scalars(&mut challenge)
+        .expect("Failed to sample challenge");
+    let next_claim = line_poly[0] + line_poly[1] * challenge[0];
+    round_randomness.push(challenge[0]);
+
+    (next_claim, round_randomness)
 }
 
 /// Reconstructs cubic polynomial coefficients from special point evaluations.
@@ -307,6 +345,71 @@ pub fn gpa_sumcheck_verifier(
     current_randomness = Vec::new();
 
     for layer_idx in 1..height_of_binary_tree - 1 {
+        for _ in 0..layer_idx {
+            arthur.fill_next_scalars(&mut cubic_coeffs)?;
+            arthur.fill_challenge_scalars(&mut sumcheck_challenge)?;
+
+            // Verify sumcheck binding
+            assert_eq!(
+                eval_cubic_poly(&cubic_coeffs, &FieldElement::from(0))
+                    + eval_cubic_poly(&cubic_coeffs, &FieldElement::from(1)),
+                sumcheck_value,
+                "Sumcheck verification failed at layer {layer_idx}"
+            );
+
+            current_randomness.push(sumcheck_challenge[0]);
+            sumcheck_value = eval_cubic_poly(&cubic_coeffs, &sumcheck_challenge[0]);
+        }
+
+        arthur.fill_next_scalars(&mut line_coeffs)?;
+        arthur.fill_challenge_scalars(&mut line_challenge)?;
+
+        // Verify line polynomial evaluation
+        let expected_line_value = calculate_eq(&prev_randomness, &current_randomness)
+            * eval_line(&line_coeffs, &FieldElement::from(0))
+            * eval_line(&line_coeffs, &FieldElement::from(1));
+        assert_eq!(
+            expected_line_value, sumcheck_value,
+            "Line evaluation mismatch"
+        );
+
+        current_randomness.push(line_challenge[0]);
+        prev_randomness = current_randomness;
+        current_randomness = Vec::new();
+        sumcheck_value = eval_line(&line_coeffs, &line_challenge[0]);
+    }
+
+    Ok(GPASumcheckResult {
+        claimed_values:        claimed_values.to_vec(),
+        a_last_sumcheck_value: sumcheck_value,
+        randomness:            prev_randomness,
+    })
+}
+
+pub fn gpa_sumcheck_verifier4(
+    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    height_of_binary_tree: usize,
+) -> anyhow::Result<GPASumcheckResult> {
+    let mut claimed_values = [FieldElement::from(0); 4];
+    let mut prev_randomness = [FieldElement::from(0); 2];
+    let mut current_randomness = Vec::<FieldElement>::new();
+    let mut line_coeffs = [FieldElement::from(0); 2];
+    let mut line_challenge = [FieldElement::from(0); 1];
+    let mut cubic_coeffs = [FieldElement::from(0); 4];
+    let mut sumcheck_challenge = [FieldElement::from(0); 1];
+
+    arthur.fill_next_scalars(&mut claimed_values)?;
+    arthur.fill_challenge_scalars(&mut prev_randomness)?;
+    let mut prev_randomness = prev_randomness.to_vec();
+
+    // let mut sumcheck_value = eval_line(&claimed_values, &line_challenge[0]);
+    let mut sumcheck_value = 
+          claimed_values[0]
+        + claimed_values[1] * prev_randomness[1]
+        + claimed_values[2] * prev_randomness[0] 
+        + claimed_values[3] * prev_randomness[0] * prev_randomness[1];
+
+    for layer_idx in 2..height_of_binary_tree - 1 {
         for _ in 0..layer_idx {
             arthur.fill_next_scalars(&mut cubic_coeffs)?;
             arthur.fill_challenge_scalars(&mut sumcheck_challenge)?;

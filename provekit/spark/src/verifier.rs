@@ -1,8 +1,6 @@
 use {
     crate::{
-        memory::{verify_colwise, verify_rowwise},
-        sumcheck::run_sumcheck_verifier_spark,
-        types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
+        gpa::gpa_sumcheck_verifier4, memory::{verify_colwise, verify_rowwise}, sumcheck::run_sumcheck_verifier_spark, types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs}
     },
     anyhow::{ensure, Context, Result},
     provekit_common::{
@@ -138,25 +136,36 @@ fn verify_spark_single_matrix(
         &a_spark_sumcheck_statement_verifier,
     )?;
 
-    verify_rowwise(
+    let mut tau_and_gamma = [FieldElement::from(0); 2];
+    arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
+    let tau = tau_and_gamma[0];
+    let gamma = tau_and_gamma[1];
+
+    let gpa_result = gpa_sumcheck_verifier4(
         arthur,
-        matrix_dimensions.num_rows,
-        matrix_dimensions.nonzero_terms,
-        whir_params,
-        request,
-        a_rowwise_commitment,
-        a_row_finalts_commitment,
+        provekit_common::utils::next_power_of_two(matrix_dimensions.nonzero_terms) + 3,
     )?;
 
-    verify_colwise(
-        arthur,
-        matrix_dimensions.num_cols,
-        matrix_dimensions.nonzero_terms,
-        whir_params,
-        request,
-        a_colwise_commitment,
-        a_col_finalts_commitment,
-    )?;
+
+    // verify_rowwise(
+    //     arthur,
+    //     matrix_dimensions.num_rows,
+    //     matrix_dimensions.nonzero_terms,
+    //     whir_params,
+    //     request,
+    //     a_rowwise_commitment,
+    //     a_row_finalts_commitment,
+    // )?;
+
+    // verify_colwise(
+    //     arthur,
+    //     matrix_dimensions.num_cols,
+    //     matrix_dimensions.nonzero_terms,
+    //     whir_params,
+    //     request,
+    //     a_colwise_commitment,
+    //     a_col_finalts_commitment,
+    // )?;
 
     Ok(())
 }

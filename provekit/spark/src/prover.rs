@@ -1,5 +1,6 @@
 use {
     crate::{
+        gpa::{self, run_gpa4},
         memory::{prove_colwise, prove_rowwise},
         preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
@@ -7,22 +8,15 @@ use {
             EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs, SparkMatrix,
         },
         utils::{calculate_memory, SPARKDomainSeparator},
-    },
-    anyhow::Result,
-    ark_ff::AdditiveGroup,
-    provekit_common::{
+    }, anyhow::Result, ark_ff::AdditiveGroup, itertools::izip, provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         spark::SparkStatement,
         utils::{next_power_of_two, sumcheck::SumcheckIOPattern},
         FieldElement, IOPattern, WhirR1CSScheme, R1CS,
-    },
-    provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
-    spongefish::{
+    }, provekit_r1cs_compiler::WhirR1CSSchemeBuilder, spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
-    },
-    std::collections::BTreeSet,
-    whir::{
+    }, std::collections::BTreeSet, whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -31,7 +25,7 @@ use {
             statement::{Statement, Weights},
             utils::HintSerialize,
         },
-    },
+    }
 };
 
 /// SPARK proving interface for R1CS constraint systems.
@@ -98,38 +92,45 @@ impl SPARKScheme {
             .add_whir_proof(&num_terms_5batched_config);
 
         io = io.add_tau_and_gamma();
-        for i in 0..=next_power_of_two(num_rows) {
-            io = io.add_sumcheck_polynomials(i).add_line();
-        }
-        io = io
-            .hint("row_final_counter_claimed_evaluation")
-            .add_whir_proof(&row_config);
 
-        for i in 0..=next_power_of_two(padded_num_entries) {
+        io = io.add_gpa4_claimed_values();
+        for i in 2..=(next_power_of_two(padded_num_entries)+1) {
             io = io.add_sumcheck_polynomials(i).add_line();
         }
-        io = io
-            .hint("row_rs_address_claimed_evaluation")
-            .hint("row_rs_value_claimed_evaluation")
-            .hint("row_rs_timestamp_claimed_evaluation")
-            .add_whir_proof(&num_terms_3batched_config);
 
-        io = io.add_tau_and_gamma();
-        for i in 0..=next_power_of_two(num_cols) {
-            io = io.add_sumcheck_polynomials(i).add_line();
-        }
-        io = io
-            .hint("col_final_counter_claimed_evaluation")
-            .add_whir_proof(&col_config);
+        // io = io.add_tau_and_gamma();
+        // for i in 0..=next_power_of_two(num_rows) {
+        //     io = io.add_sumcheck_polynomials(i).add_line();
+        // }
+        // io = io
+        //     .hint("row_final_counter_claimed_evaluation")
+        //     .add_whir_proof(&row_config);
 
-        for i in 0..=next_power_of_two(padded_num_entries) {
-            io = io.add_sumcheck_polynomials(i).add_line();
-        }
-        io = io
-            .hint("col_rs_address_claimed_evaluation")
-            .hint("col_rs_value_claimed_evaluation")
-            .hint("col_rs_timestamp_claimed_evaluation")
-            .add_whir_proof(&num_terms_3batched_config);
+        // for i in 0..=next_power_of_two(padded_num_entries) {
+        //     io = io.add_sumcheck_polynomials(i).add_line();
+        // }
+        // io = io
+        //     .hint("row_rs_address_claimed_evaluation")
+        //     .hint("row_rs_value_claimed_evaluation")
+        //     .hint("row_rs_timestamp_claimed_evaluation")
+        //     .add_whir_proof(&num_terms_3batched_config);
+
+        // io = io.add_tau_and_gamma();
+        // for i in 0..=next_power_of_two(num_cols) {
+        //     io = io.add_sumcheck_polynomials(i).add_line();
+        // }
+        // io = io
+        //     .hint("col_final_counter_claimed_evaluation")
+        //     .add_whir_proof(&col_config);
+
+        // for i in 0..=next_power_of_two(padded_num_entries) {
+        //     io = io.add_sumcheck_polynomials(i).add_line();
+        // }
+        // io = io
+        //     .hint("col_rs_address_claimed_evaluation")
+        //     .hint("col_rs_value_claimed_evaluation")
+        //     .hint("col_rs_timestamp_claimed_evaluation")
+        //     .add_whir_proof(&num_terms_3batched_config);
 
         Self {
             whir_configs,
@@ -277,25 +278,66 @@ fn prove_spark_for_single_matrix(
         sumcheck_witness,
     )?;
 
-    prove_rowwise(
-        merlin,
-        &matrix,
-        memory,
-        &e_values.e_rx,
-        whir_configs,
-        final_row_ts_witness,
-        rowwise_witness,
-    )?;
+    let mut tau_and_gamma = [FieldElement::from(0); 2];
+    merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
+    let tau = tau_and_gamma[0];
+    let gamma = tau_and_gamma[1];
 
-    prove_colwise(
-        merlin,
-        &matrix,
-        memory,
-        &e_values.e_ry,
-        whir_configs,
-        final_col_ts_witness,
-        colwise_witness,
-    )?;
+    let row_rs_vec: Vec<_> = izip!(
+        (&matrix.coo.row).iter(),
+        (&e_values.e_rx).iter(),
+        (&matrix.timestamps.read_row).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
+    .collect();
+
+    let row_ws_vec: Vec<_> = izip!(
+        (&matrix.coo.row).iter(),
+        (&e_values.e_rx).iter(),
+        (&matrix.timestamps.read_row).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
+    .collect();
+
+    let col_rs_vec: Vec<_> = izip!(
+        (&matrix.coo.col).iter(),
+        (&e_values.e_ry).iter(),
+        (&matrix.timestamps.read_col).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
+    .collect();
+
+    let col_ws_vec: Vec<_> = izip!(
+        (&matrix.coo.col).iter(),
+        (&e_values.e_ry).iter(),
+        (&matrix.timestamps.read_col).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
+    .collect();
+
+    let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
+    let gpa_leaves_flat = gpa_leaves.iter().flatten().cloned().collect::<Vec<_>>();
+    let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat);
+
+    // prove_rowwise(
+    //     merlin,
+    //     &matrix,
+    //     memory,
+    //     &e_values.e_rx,
+    //     whir_configs,
+    //     final_row_ts_witness,
+    //     rowwise_witness,
+    // )?;
+
+    // prove_colwise(
+    //     merlin,
+    //     &matrix,
+    //     memory,
+    //     &e_values.e_ry,
+    //     whir_configs,
+    //     final_col_ts_witness,
+    //     colwise_witness,
+    // )?;
 
     Ok(())
 }
