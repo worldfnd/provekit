@@ -146,6 +146,55 @@ fn verify_spark_single_matrix(
         provekit_common::utils::next_power_of_two(matrix_dimensions.nonzero_terms) + 3,
     )?;
 
+    let (combination_randomness, evaluation_randomness) = gpa_result.randomness.split_at(2);
+    let claimed_row_rs = gpa_result.claimed_values[0];
+    let claimed_row_ws = gpa_result.claimed_values[1];
+    let claimed_col_rs = gpa_result.claimed_values[2];
+    let claimed_col_ws = gpa_result.claimed_values[3];
+
+    let row_adr: FieldElement = arthur.hint()?;
+    let row_mem: FieldElement = arthur.hint()?;
+    let row_timestamp: FieldElement = arthur.hint()?;
+
+    let mut rowwise_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
+        matrix_dimensions.nonzero_terms,
+    ));
+    let row_br = a_rowwise_commitment.batching_randomness;
+    rowwise_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
+        row_adr + row_mem * row_br + row_timestamp * row_br * row_br,
+    );
+    let verifier = Verifier::new(&whir_params.num_terms_3batched);
+    verifier.verify(arthur, &a_rowwise_commitment, &rowwise_statement)?;
+
+
+    let col_adr: FieldElement = arthur.hint()?;
+    let col_mem: FieldElement = arthur.hint()?;
+    let col_timestamp: FieldElement = arthur.hint()?;
+
+    let mut colwise_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
+        matrix_dimensions.nonzero_terms,
+    ));
+    let col_br = a_colwise_commitment.batching_randomness;
+    colwise_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
+        col_adr + col_mem * col_br + col_timestamp * col_br * col_br,
+    );
+    let verifier = Verifier::new(&whir_params.num_terms_3batched);
+    verifier.verify(arthur, &a_colwise_commitment, &colwise_statement)?;
+
+    let row_rs_opening = row_adr * gamma * gamma + row_mem * gamma + row_timestamp - tau;
+    let row_ws_opening = row_adr * gamma * gamma + row_mem * gamma + row_timestamp + FieldElement::from(1) - tau;
+    let col_rs_opening = col_adr * gamma * gamma + col_mem * gamma + col_timestamp - tau;
+    let col_ws_opening = col_adr * gamma * gamma + col_mem * gamma + col_timestamp + FieldElement::from(1) - tau;
+    
+    let evaluated_value =
+        row_rs_opening * (FieldElement::from(1) - combination_randomness[0]) * (FieldElement::from(1) - combination_randomness[1]) +
+        row_ws_opening * (FieldElement::from(1) - combination_randomness[0]) * combination_randomness[1] +
+        col_rs_opening * combination_randomness[0] * (FieldElement::from(1) - combination_randomness[1]) +
+        col_ws_opening * combination_randomness[0] * combination_randomness[1]; 
+
+    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
     // verify_rowwise(
     //     arthur,

@@ -72,7 +72,6 @@ impl SPARKScheme {
         let whir_configs = SPARKWHIRConfigs {
             row:                row_config.clone(),
             col:                col_config.clone(),
-            num_terms_2batched: num_terms_2batched_config.clone(),
             num_terms_3batched: num_terms_3batched_config.clone(),
             num_terms_5batched: num_terms_5batched_config.clone(),
         };
@@ -101,11 +100,18 @@ impl SPARKScheme {
             io = io.add_sumcheck_polynomials(i).add_line();
         }
         
-        // io = io.hint("row_rs_value_claimed_evaluation")
-        //        .hint("col_rs_value_claimed_evaluation");
+        io = io
+            .hint("row_rs_address_claimed_evaluation")
+            .hint("row_rs_value_claimed_evaluation")
+            .hint("row_rs_timestamp_claimed_evaluation")
+            .add_whir_proof(&num_terms_3batched_config);
 
-        // io = io.add_whir_proof(&num_terms_2batched_config);
-        // io = io.add_tau_and_gamma();
+        io = io
+            .hint("col_rs_address_claimed_evaluation")
+            .hint("col_rs_value_claimed_evaluation")
+            .hint("col_rs_timestamp_claimed_evaluation")
+            .add_whir_proof(&num_terms_3batched_config);
+
         // for i in 0..=next_power_of_two(num_rows) {
         //     io = io.add_sumcheck_polynomials(i).add_line();
         // }
@@ -116,11 +122,6 @@ impl SPARKScheme {
         // for i in 0..=next_power_of_two(padded_num_entries) {
         //     io = io.add_sumcheck_polynomials(i).add_line();
         // }
-        // io = io
-        //     .hint("row_rs_address_claimed_evaluation")
-        //     .hint("row_rs_value_claimed_evaluation")
-        //     .hint("row_rs_timestamp_claimed_evaluation")
-        //     .add_whir_proof(&num_terms_3batched_config);
 
         // io = io.add_tau_and_gamma();
         // for i in 0..=next_power_of_two(num_cols) {
@@ -133,11 +134,7 @@ impl SPARKScheme {
         // for i in 0..=next_power_of_two(padded_num_entries) {
         //     io = io.add_sumcheck_polynomials(i).add_line();
         // }
-        // io = io
-        //     .hint("col_rs_address_claimed_evaluation")
-        //     .hint("col_rs_value_claimed_evaluation")
-        //     .hint("col_rs_timestamp_claimed_evaluation")
-        //     .add_whir_proof(&num_terms_3batched_config);
+        
 
         Self {
             whir_configs,
@@ -382,26 +379,6 @@ fn prove_spark_for_single_matrix(
         colwise_witness,
     )?;
 
-    // let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
-    // merlin.hint(&row_value_eval)?;
-    // let col_value_eval = EvaluationsList::new(e_values.e_ry).evaluate(&eval_point);
-    // merlin.hint(&col_value_eval)?;
-
-    // let br = evalues_witness.batching_randomness;
-    // let claimed_eval = row_value_eval + col_value_eval * br;
-
-    // assert_eq!(
-    //     claimed_eval,
-    //     evalues_witness.batched_poly().evaluate(&eval_point)
-    // );
-
-    // produce_whir_proof(
-    //     merlin,
-    //     eval_point,
-    //     claimed_eval,
-    //     whir_configs.num_terms_2batched.clone(),
-    //     evalues_witness,
-    // )?;
     // prove_rowwise(
     //     merlin,
     //     &matrix,
