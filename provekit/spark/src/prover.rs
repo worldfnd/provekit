@@ -62,6 +62,8 @@ impl SPARKScheme {
 
         let row_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(num_rows), 1);
         let col_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(num_cols), 1);
+        let num_terms_2batched_config =
+        WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
         let num_terms_3batched_config =
             WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 3);
         let num_terms_5batched_config =
@@ -70,6 +72,7 @@ impl SPARKScheme {
         let whir_configs = SPARKWHIRConfigs {
             row:                row_config.clone(),
             col:                col_config.clone(),
+            num_terms_2batched: num_terms_2batched_config.clone(),
             num_terms_3batched: num_terms_3batched_config.clone(),
             num_terms_5batched: num_terms_5batched_config.clone(),
         };
@@ -97,7 +100,11 @@ impl SPARKScheme {
         for i in 2..=(next_power_of_two(padded_num_entries)+1) {
             io = io.add_sumcheck_polynomials(i).add_line();
         }
+        
+        // io = io.hint("row_rs_value_claimed_evaluation")
+        //        .hint("col_rs_value_claimed_evaluation");
 
+        // io = io.add_whir_proof(&num_terms_2batched_config);
         // io = io.add_tau_and_gamma();
         // for i in 0..=next_power_of_two(num_rows) {
         //     io = io.add_sumcheck_polynomials(i).add_line();
@@ -278,6 +285,9 @@ fn prove_spark_for_single_matrix(
         sumcheck_witness,
     )?;
 
+    
+    // RS WS combined
+
     let mut tau_and_gamma = [FieldElement::from(0); 2];
     merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
     let tau = tau_and_gamma[0];
@@ -319,6 +329,79 @@ fn prove_spark_for_single_matrix(
     let gpa_leaves_flat = gpa_leaves.iter().flatten().cloned().collect::<Vec<_>>();
     let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat);
 
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
+    let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
+
+    let row_address_eval = EvaluationsList::new(matrix.coo.row).evaluate(&eval_point);
+    merlin.hint(&row_address_eval)?;
+
+    let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
+    merlin.hint(&row_value_eval)?;
+
+    let row_timestamp_eval = EvaluationsList::new(matrix.timestamps.read_row.to_vec()).evaluate(&eval_point);
+    merlin.hint(&row_timestamp_eval)?;
+
+    let row_br = rowwise_witness.batching_randomness;
+    let claimed_eval = row_address_eval + row_value_eval * row_br + row_timestamp_eval * row_br * row_br;
+
+    assert_eq!(
+        claimed_eval,
+        rowwise_witness.batched_poly().evaluate(&eval_point)
+    );
+
+    produce_whir_proof(
+        merlin,
+        eval_point.clone(),
+        claimed_eval,
+        whir_configs.num_terms_3batched.clone(),
+        rowwise_witness,
+    )?;
+
+    let col_address_eval = EvaluationsList::new(matrix.coo.col).evaluate(&eval_point);
+    merlin.hint(&col_address_eval)?;
+
+    let col_value_eval = EvaluationsList::new(e_values.e_ry).evaluate(&eval_point);
+    merlin.hint(&col_value_eval)?;
+
+    let col_timestamp_eval = EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
+    merlin.hint(&col_timestamp_eval)?;
+
+    let col_br = colwise_witness.batching_randomness;
+    let claimed_eval = col_address_eval + col_value_eval * col_br + col_timestamp_eval * col_br * col_br;
+
+    assert_eq!(
+        claimed_eval,
+        colwise_witness.batched_poly().evaluate(&eval_point)
+    );
+
+    produce_whir_proof(
+        merlin,
+        eval_point,
+        claimed_eval,
+        whir_configs.num_terms_3batched.clone(),
+        colwise_witness,
+    )?;
+
+    // let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
+    // merlin.hint(&row_value_eval)?;
+    // let col_value_eval = EvaluationsList::new(e_values.e_ry).evaluate(&eval_point);
+    // merlin.hint(&col_value_eval)?;
+
+    // let br = evalues_witness.batching_randomness;
+    // let claimed_eval = row_value_eval + col_value_eval * br;
+
+    // assert_eq!(
+    //     claimed_eval,
+    //     evalues_witness.batched_poly().evaluate(&eval_point)
+    // );
+
+    // produce_whir_proof(
+    //     merlin,
+    //     eval_point,
+    //     claimed_eval,
+    //     whir_configs.num_terms_2batched.clone(),
+    //     evalues_witness,
+    // )?;
     // prove_rowwise(
     //     merlin,
     //     &matrix,
