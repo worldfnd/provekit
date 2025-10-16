@@ -1,55 +1,61 @@
 #![allow(missing_docs)]
 mod cmd;
-#[cfg(feature = "profiling")]
-mod measuring_alloc;
-#[cfg(feature = "profiling")]
+#[cfg(feature = "profiling-allocator")]
+mod profiling_alloc;
 mod span_stats;
 
-use {self::cmd::Command, anyhow::Result};
-#[cfg(feature = "profiling")]
+#[cfg(feature = "profiling-allocator")]
+use crate::profiling_alloc::ProfilingAllocator;
+#[cfg(feature = "tracy")]
+use tracing::{info, warn};
 use {
-    crate::measuring_alloc::{MeasuringAllocator, MeasuringAllocatorState},
+    self::cmd::Command,
+    anyhow::Result,
     span_stats::SpanStats,
     tracing::subscriber,
-    tracing_subscriber::Layer,
     tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
 };
 
-#[cfg(feature = "profiling")]
-static ALLOC_STATE: MeasuringAllocatorState = MeasuringAllocatorState::new();
-
-#[cfg(feature = "profiling")]
+#[cfg(feature = "profiling-allocator")]
 #[global_allocator]
-static ALLOC_TRACY: tracy_client::ProfiledAllocator<MeasuringAllocator> =
-    tracy_client::ProfiledAllocator::new(MeasuringAllocator::new(&ALLOC_STATE), 100);
+static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
-#[cfg(not(feature = "profiling"))]
 fn main() -> Result<()> {
-    // Run CLI command
     let args = argh::from_env::<cmd::Args>();
-    args.run()
-}
+    let subscriber = Registry::default().with(SpanStats);
 
-#[cfg(feature = "profiling")]
-fn main() -> Result<()> {
-    let subscriber = Registry::default()
-        .with(tracing_tracy::TracyLayer::default())
-        .with(SpanStats);
+    #[cfg(feature = "tracy")]
+    let subscriber = {
+        if args.tracy {
+            if let Some(depth) = args.tracy_allocations {
+                info!("Tracy profiling enabled with allocation tracking (depth {depth}).");
+                ALLOCATOR.enable_tracy(depth);
+            } else {
+                info!("Tracy profiling enabled (without allocation tracking).");
+            }
+        } else {
+            if args.tracy_allocations.is_some() {
+                warn!("--tracy-allocations specified without --tracy, ignoring.");
+            }
+            if args.tracy_keepalive {
+                warn!("--tracy-keepalive specified without --tracy, ignoring.");
+            }
+        }
+        subscriber.with(args.tracy.then(tracing_tracy::TracyLayer::default))
+    };
 
     subscriber::set_global_default(subscriber)?;
 
-    let _client = tracy_client::Client::start();
-
     // Run CLI command
-    let args = argh::from_env::<cmd::Args>();
     let res = args.run();
 
-    // SAFETY: It is safe to call `___tracy_shutdown_profiler()` here because all
-    // profiling work is complete, and no further Tracy API calls will be made
-    // after this point. This function must be called to properly shut down the
-    // Tracy profiler before program exit.
-    unsafe {
-        tracy_client_sys::___tracy_shutdown_profiler();
+    #[cfg(feature = "tracy")]
+    if args.tracy_keepalive {
+        use std::io::{stderr, stdin, stdout, Write};
+        eprintln!("Tracy keepalive enabled, press Enter to exit.");
+        stdout().flush()?;
+        stderr().flush()?;
+        stdin().read_line(&mut String::new())?;
     }
 
     res
