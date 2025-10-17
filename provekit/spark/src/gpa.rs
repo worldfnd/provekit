@@ -15,7 +15,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         ProverState, VerifierState,
     },
-    whir::poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
+    whir::poly_utils::{coeffs::CoefficientList, evals::EvaluationsList, multilinear::MultilinearPoint},
 };
 
 /// Runs the Grand Product Argument (GPA) protocol to prove product equality.
@@ -381,6 +381,11 @@ pub fn gpa_sumcheck_verifier(
         sumcheck_value = eval_line(&line_coeffs, &line_challenge[0]);
     }
 
+    let claimed_values = [
+        claimed_values[0],
+        claimed_values[0] + claimed_values[1],
+    ].to_vec();
+    
     Ok(GPASumcheckResult {
         claimed_values:        claimed_values.to_vec(),
         a_last_sumcheck_value: sumcheck_value,
@@ -445,6 +450,13 @@ pub fn gpa_sumcheck_verifier4(
         current_randomness = Vec::new();
         sumcheck_value = eval_line(&line_coeffs, &line_challenge[0]);
     }
+
+    let claimed_values = [
+        claimed_values[0],
+        claimed_values[0] + claimed_values[1],
+        claimed_values[0] + claimed_values[2],
+        claimed_values[0] + claimed_values[1] + claimed_values[2] + claimed_values[3],
+    ].to_vec();
 
     Ok(GPASumcheckResult {
         claimed_values:        claimed_values.to_vec(),
