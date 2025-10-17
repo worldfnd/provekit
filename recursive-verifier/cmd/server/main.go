@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +12,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
-	"reilabs/whir-verifier-circuit/app/circuit"
-	"reilabs/whir-verifier-circuit/app/common"
+	"reilabs/whir-verifier-circuit/pkg/verifier/circuit"
+	"reilabs/whir-verifier-circuit/pkg/verifier/types"
 )
 
 // main initializes and starts the WHIR verifier HTTP server.
@@ -59,18 +60,19 @@ func ping(c *fiber.Ctx) error {
 // verify handles POST requests to verify WHIR proofs.
 // It accepts R1CS data, configuration, and proving/verifying keys via form data or URLs.
 func verify(c *fiber.Ctx) error {
-	buildOps := common.BuildOps{
+	ctx := context.Background()
+	buildOps := circuit.BuildOptions{
 		OutputCcsPath: c.FormValue("output_ccs_path"),
-		PkUrl:         c.FormValue("pk_url"),
-		VkUrl:         c.FormValue("vk_url"),
-		R1csUrl:       c.FormValue("r1cs_url"),
+		PkURL:         c.FormValue("pk_url"),
+		VkURL:         c.FormValue("vk_url"),
+		R1CSURL:       c.FormValue("r1cs_url"),
 	}
 
 	var r1csFile []byte
 	var err error
 
-	if buildOps.HasR1csUrl() {
-		r1csFile, err = circuit.GetR1csFromUrl(buildOps.R1csUrl)
+	if buildOps.HasR1CSURL() {
+		r1csFile, err = circuit.LoadR1CSFromURL(ctx, buildOps.R1CSURL)
 		if err != nil {
 			return fmt.Errorf("failed to get R1CS from URL: %w", err)
 		}
@@ -81,7 +83,7 @@ func verify(c *fiber.Ctx) error {
 		}
 	}
 
-	var r1cs circuit.R1CS
+	var r1cs types.R1CS
 	if err := json.Unmarshal(r1csFile, &r1cs); err != nil {
 		return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 	}
@@ -92,16 +94,27 @@ func verify(c *fiber.Ctx) error {
 		return c.Status(400).SendString("Failed to get config file")
 	}
 
-	var config circuit.Config
+	var config types.Config
 	if err := json.Unmarshal(configFile, &config); err != nil {
 		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
+	}
+
+	sparkConfigFile, err := getFile(c, "spark_config")
+	if err != nil {
+		log.Printf("Failed to get spark_config file: %v", err)
+		return c.Status(400).SendString("Failed to get spark_config file")
+	}
+
+	var sparkConfig types.SparkConfig
+	if err := json.Unmarshal(sparkConfigFile, &sparkConfig); err != nil {
+		return fmt.Errorf("failed to unmarshal spark config JSON: %w", err)
 	}
 
 	var pk *groth16.ProvingKey
 	var vk *groth16.VerifyingKey
 
-	if buildOps.HasPkAndVkFromUrl() {
-		pk, vk, err = circuit.GetPkAndVkFromUrl(buildOps.PkUrl, buildOps.VkUrl)
+	if buildOps.HasPkAndVkFromURL() {
+		pk, vk, err = circuit.LoadKeys(ctx, buildOps.PkURL, buildOps.VkURL)
 		if err != nil {
 			log.Printf("Failed to get PK/VK from URL: %v", err)
 			return c.Status(400).JSON(fiber.Map{

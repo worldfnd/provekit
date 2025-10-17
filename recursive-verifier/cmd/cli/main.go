@@ -1,17 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-
 	"log"
 	"os"
 
 	"github.com/consensys/gnark/backend/groth16"
 	"github.com/urfave/cli/v2"
 
-	"reilabs/whir-verifier-circuit/app/circuit"
-	"reilabs/whir-verifier-circuit/app/common"
+	"reilabs/whir-verifier-circuit/pkg/verifier/circuit"
+	"reilabs/whir-verifier-circuit/pkg/verifier/types"
 )
 
 func main() {
@@ -94,8 +94,20 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			// Create BuildOps from CLI context
-			buildOps := common.NewBuildOpsFromContext(c)
+			ctx := context.Background()
+			buildOps := circuit.BuildOptions{
+				ConfigFilePath:      c.String("config"),
+				SparkConfigFilePath: c.String("spark_config"),
+				Evaluation:          c.String("evaluation"),
+				R1CSFilePath:        c.String("r1cs"),
+				R1CSURL:             c.String("r1cs_url"),
+				PkPath:              c.String("pk"),
+				VkPath:              c.String("vk"),
+				PkURL:               c.String("pk_url"),
+				VkURL:               c.String("vk_url"),
+				OutputCcsPath:       c.String("ccs"),
+				SaveKeys:            c.String("saveKeys"),
+			}
 
 			// Read config file
 			configFile, err := os.ReadFile(buildOps.ConfigFilePath)
@@ -103,7 +115,7 @@ func main() {
 				return fmt.Errorf("failed to read config file: %w", err)
 			}
 
-			var config circuit.Config
+			var config types.Config
 			if err := json.Unmarshal(configFile, &config); err != nil {
 				return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 			}
@@ -114,19 +126,19 @@ func main() {
 				return fmt.Errorf("failed to read spark config file: %w", err)
 			}
 
-			var sparkConfig circuit.SparkConfig
+			var sparkConfig types.SparkConfig
 			if err := json.Unmarshal(sparkConfigFile, &sparkConfig); err != nil {
 				return fmt.Errorf("failed to unmarshal spark config JSON: %w", err)
 			}
 
 			var r1csFile []byte
-			if buildOps.HasR1csFile() {
-				r1csFile, err = os.ReadFile(buildOps.R1csFilePath)
+			if buildOps.HasR1CSFile() {
+				r1csFile, err = os.ReadFile(buildOps.R1CSFilePath)
 				if err != nil {
 					return fmt.Errorf("failed to read r1cs file: %w", err)
 				}
-			} else if buildOps.HasR1csUrl() {
-				r1csFile, err = circuit.GetR1csFromUrl(buildOps.R1csUrl)
+			} else if buildOps.HasR1CSURL() {
+				r1csFile, err = circuit.LoadR1CSFromURL(ctx, buildOps.R1CSURL)
 				if err != nil {
 					return fmt.Errorf("failed to get R1CS from URL: %w", err)
 				}
@@ -135,7 +147,7 @@ func main() {
 			}
 
 			// Parse only if we use direct evaluation
-			var r1cs circuit.R1CS
+			var r1cs types.R1CS
 			if err = json.Unmarshal(r1csFile, &r1cs); err != nil {
 				return fmt.Errorf("failed to unmarshal r1cs JSON: %w", err)
 			}
@@ -143,21 +155,22 @@ func main() {
 			var pk *groth16.ProvingKey
 			var vk *groth16.VerifyingKey
 
-			if buildOps.HasPkAndVkFromUrl() {
-				pk, vk, err = circuit.GetPkAndVkFromUrl(buildOps.PkUrl, buildOps.VkUrl)
+			switch {
+			case buildOps.HasPkAndVkFromURL():
+				pk, vk, err = circuit.LoadKeys(ctx, buildOps.PkURL, buildOps.VkURL)
 				if err != nil {
-					return fmt.Errorf("failed to get PK/VK: %w", err)
+					return fmt.Errorf("failed to load PK/VK: %w", err)
 				}
-			} else if buildOps.HasPkAndVkFromPath() {
-				pk, vk, err = circuit.GetPkAndVkFromPath(buildOps.PkPath, buildOps.VkPath)
+			case buildOps.HasPkAndVkFromPath():
+				pk, vk, err = circuit.LoadKeys(ctx, buildOps.PkPath, buildOps.VkPath)
 				if err != nil {
-					return fmt.Errorf("failed to get PK/VK: %w", err)
+					return fmt.Errorf("failed to load PK/VK: %w", err)
 				}
-			} else {
+			default:
 				log.Printf("No valid PK/VK url or file combo provided, generating new keys unsafely")
 			}
 
-			if err = circuit.PrepareAndVerifyCircuit(config, sparkConfig, r1cs, pk, vk, *buildOps); err != nil {
+			if err = circuit.PrepareAndVerifyCircuit(config, sparkConfig, r1cs, pk, vk, buildOps); err != nil {
 				return fmt.Errorf("failed to prepare and verify circuit: %w", err)
 			}
 
