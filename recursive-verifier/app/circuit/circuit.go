@@ -266,23 +266,27 @@ func verifyCircuit(
 			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
 			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
 
-			SparkSumcheckFirstRound: newMerkle(hints.AHints.sparkSumcheckData.firstRoundMerklePaths.path, true),
-			SparkSumcheckMerkle:     newMerkle(hints.AHints.sparkSumcheckData.roundHints, true),
+			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.AHints.evaluesSumcheck.firstRoundMerklePaths.path, true),
+			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.AHints.evaluesSumcheck.roundHints, true),
 
-			RowFinalMerkleFirstRound: newMerkle(hints.AHints.rowFinalMerkle.firstRoundMerklePaths.path, true),
-			RowFinalMerkle:           newMerkle(hints.AHints.rowFinalMerkle.roundHints, true),
+			ValsMerkleFirstRound:      newMerkle(hints.AHints.vals.firstRoundMerklePaths.path, true),
+			ValsMerkleRemainingRounds: newMerkle(hints.AHints.vals.roundHints, true),
 
-			RowwiseMerkleFirstRound: newMerkle(hints.AHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, true),
-			RowwiseMerkle:           newMerkle(hints.AHints.rowwiseSparkMerkle.roundHints, true),
+			RSWSMerkleFirstRound:      newMerkle(hints.AHints.rsws.firstRoundMerklePaths.path, true),
+			RSWSMerkleRemainingRounds: newMerkle(hints.AHints.rsws.roundHints, true),
 
-			ColFinalMerkleFirstRound: newMerkle(hints.AHints.colFinalMerkle.firstRoundMerklePaths.path, true),
-			ColFinalMerkle:           newMerkle(hints.AHints.colFinalMerkle.roundHints, true),
+			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.AHints.evaluesRSWS.firstRoundMerklePaths.path, true),
+			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.AHints.evaluesRSWS.roundHints, true),
 
-			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, true),
-			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, true),
+			RowFinalMerkleFirstRound:      newMerkle(hints.AHints.rowFinal.firstRoundMerklePaths.path, true),
+			RowFinalMerkleRemainingRounds: newMerkle(hints.AHints.rowFinal.roundHints, true),
 
+			ColFinalMerkleFirstRound:      newMerkle(hints.AHints.colFinal.firstRoundMerklePaths.path, true),
+			ColFinalMerkleRemainingRounds: newMerkle(hints.AHints.colFinal.roundHints, true),
+
+			WHIR2: NewWhirParams(sparkConfig.WHIR2),
 			WHIR3: NewWhirParams(sparkConfig.WHIR3),
-			WHIR5: NewWhirParams(sparkConfig.WHIR5),
+			WHIR4: NewWhirParams(sparkConfig.WHIR4),
 
 			LogNumTerms: sparkConfig.LogNumTerms,
 		},
@@ -413,23 +417,27 @@ func verifyCircuit(
 			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
 			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
 
-			SparkSumcheckFirstRound: newMerkle(hints.AHints.sparkSumcheckData.firstRoundMerklePaths.path, false),
-			SparkSumcheckMerkle:     newMerkle(hints.AHints.sparkSumcheckData.roundHints, false),
+			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.AHints.evaluesSumcheck.firstRoundMerklePaths.path, false),
+			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.AHints.evaluesSumcheck.roundHints, false),
 
-			RowFinalMerkleFirstRound: newMerkle(hints.AHints.rowFinalMerkle.firstRoundMerklePaths.path, false),
-			RowFinalMerkle:           newMerkle(hints.AHints.rowFinalMerkle.roundHints, false),
+			ValsMerkleFirstRound:      newMerkle(hints.AHints.vals.firstRoundMerklePaths.path, false),
+			ValsMerkleRemainingRounds: newMerkle(hints.AHints.vals.roundHints, false),
 
-			RowwiseMerkleFirstRound: newMerkle(hints.AHints.rowwiseSparkMerkle.firstRoundMerklePaths.path, false),
-			RowwiseMerkle:           newMerkle(hints.AHints.rowwiseSparkMerkle.roundHints, false),
+			RSWSMerkleFirstRound:      newMerkle(hints.AHints.rsws.firstRoundMerklePaths.path, false),
+			RSWSMerkleRemainingRounds: newMerkle(hints.AHints.rsws.roundHints, false),
 
-			ColFinalMerkleFirstRound: newMerkle(hints.AHints.colFinalMerkle.firstRoundMerklePaths.path, false),
-			ColFinalMerkle:           newMerkle(hints.AHints.colFinalMerkle.roundHints, false),
+			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.AHints.evaluesRSWS.firstRoundMerklePaths.path, false),
+			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.AHints.evaluesRSWS.roundHints, false),
 
-			ColwiseMerkleFirstRound: newMerkle(hints.AHints.colwiseSparkMerkle.firstRoundMerklePaths.path, false),
-			ColwiseMerkle:           newMerkle(hints.AHints.colwiseSparkMerkle.roundHints, false),
+			RowFinalMerkleFirstRound:      newMerkle(hints.AHints.rowFinal.firstRoundMerklePaths.path, false),
+			RowFinalMerkleRemainingRounds: newMerkle(hints.AHints.rowFinal.roundHints, false),
 
+			ColFinalMerkleFirstRound:      newMerkle(hints.AHints.colFinal.firstRoundMerklePaths.path, false),
+			ColFinalMerkleRemainingRounds: newMerkle(hints.AHints.colFinal.roundHints, false),
+
+			WHIR2: NewWhirParams(sparkConfig.WHIR2),
 			WHIR3: NewWhirParams(sparkConfig.WHIR3),
-			WHIR5: NewWhirParams(sparkConfig.WHIR5),
+			WHIR4: NewWhirParams(sparkConfig.WHIR4),
 
 			LogNumTerms: sparkConfig.LogNumTerms,
 		},
@@ -565,24 +573,23 @@ func sparkSingleMatrix(
 		api.Mul(claimedEvaluations[2], matrixCombinationRandomness[0], matrixCombinationRandomness[0]),
 	)
 
-	sumcheckCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR5)
+	valsCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR3)
 	if err != nil {
 		return err
 	}
-	rowwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR3)
+	rsWSCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR4)
 	if err != nil {
 		return err
 	}
-	colwiseCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR3)
-	if err != nil {
-		return err
-	}
-
 	rowFinalCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRRow)
 	if err != nil {
 		return err
 	}
 	colFinalCommitment, err := parseBatchedCommitment(arthur, circuit.WHIRCol)
+	if err != nil {
+		return err
+	}
+	evaluesCommitment, err := parseBatchedCommitment(arthur, matrix.WHIR2)
 	if err != nil {
 		return err
 	}
@@ -600,16 +607,23 @@ func sparkSingleMatrix(
 
 	api.AssertIsEqual(sparkSumcheckLastEval, api.Mul(claimedVal, matrix.SparkSumcheckLast[3], matrix.SparkSumcheckLast[4]))
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.SparkSumcheckMerkle, matrix.SparkSumcheckFirstRound, matrix.WHIR5, [][]frontend.Variable{{}, {}, {}, {}, {}}, []frontend.Variable{}, sumcheckCommitment,
-		[][]frontend.Variable{{matrix.SparkSumcheckLast[0]}, {matrix.SparkSumcheckLast[1]}, {matrix.SparkSumcheckLast[2]}, {matrix.SparkSumcheckLast[3]}, {matrix.SparkSumcheckLast[4]}},
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.EvaluesSumcheckMerkleRemainingRounds, matrix.EvaluesSumcheckMerkleFirstRound, matrix.WHIR2, [][]frontend.Variable{{}, {}}, []frontend.Variable{}, evaluesCommitment,
+		[][]frontend.Variable{{matrix.SparkSumcheckLast[3]}, {matrix.SparkSumcheckLast[4]}},
 		[][]frontend.Variable{sparkSumcheckFoldingRandomness},
 	)
 	if err != nil {
 		return err
 	}
 
-	// Rowwise
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.ValsMerkleRemainingRounds, matrix.ValsMerkleFirstRound, matrix.WHIR3, [][]frontend.Variable{{}, {}, {}}, []frontend.Variable{}, valsCommitment,
+		[][]frontend.Variable{{matrix.SparkSumcheckLast[0]}, {matrix.SparkSumcheckLast[1]}, {matrix.SparkSumcheckLast[2]}},
+		[][]frontend.Variable{sparkSumcheckFoldingRandomness},
+	)
+	if err != nil {
+		return err
+	}
 
+	// RS WS
 	tauGammaTemp := make([]frontend.Variable, 2)
 	if err := arthur.FillChallengeScalars(tauGammaTemp); err != nil {
 		return err
@@ -617,16 +631,77 @@ func sparkSingleMatrix(
 	tau := tauGammaTemp[0]
 	gamma := tauGammaTemp[1]
 
-	gpaResult, err := gpaSumcheckVerifier(api, arthur, len(circuit.PointRow)+2)
+	gpaResultRSWS, err := gpaSumcheckVerifier4(api, arthur, matrix.LogNumTerms+3)
 	if err != nil {
 		return err
 	}
 
-	claimedInit := gpaResult.claimedProducts[0]
-	claimedFinal := gpaResult.claimedProducts[1]
+	rsws_combination_randomness := gpaResultRSWS.randomness[0:2]
+	rsws_evaluation_randomness := gpaResultRSWS.randomness[2:]
 
-	last_randomness := gpaResult.randomness[0]
-	evaluation_randomness := gpaResult.randomness[1:]
+	claimedRowRS := gpaResultRSWS.claimedProducts[0]
+	claimedRowWS := gpaResultRSWS.claimedProducts[1]
+	claimedColRS := gpaResultRSWS.claimedProducts[2]
+	claimedColWS := gpaResultRSWS.claimedProducts[3]
+
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RSWSMerkleRemainingRounds, matrix.RSWSMerkleFirstRound, matrix.WHIR4, [][]frontend.Variable{{}}, []frontend.Variable{}, rsWSCommitment,
+		[][]frontend.Variable{{matrix.RowRSAddressEvaluation}, {matrix.RowRSTimestampEvaluation}, {matrix.ColRSAddressEvaluation}, {matrix.ColRSTimestampEvaluation}},
+		[][]frontend.Variable{rsws_evaluation_randomness},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.EvaluesRSWSMerkleRemainingRounds, matrix.EvaluesRSWSMerkleFirstRound, matrix.WHIR2, [][]frontend.Variable{{}}, []frontend.Variable{}, evaluesCommitment,
+		[][]frontend.Variable{{matrix.RowRSValueEvaluation}, {matrix.ColRSValueEvaluation}},
+		[][]frontend.Variable{rsws_evaluation_randomness},
+	)
+	if err != nil {
+		return err
+	}
+
+	row_rs_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation), tau)
+	row_ws_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation, 1), tau)
+	col_rs_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, gamma, gamma), api.Mul(matrix.ColRSValueEvaluation, gamma), matrix.ColRSTimestampEvaluation), tau)
+	col_ws_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, gamma, gamma), api.Mul(matrix.ColRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation, 1), tau)
+
+	evaluated_value := api.Add(
+		api.Mul(
+			row_rs_opening,
+			api.Sub(1, rsws_combination_randomness[0]),
+			api.Sub(1, rsws_combination_randomness[1]),
+		),
+		api.Mul(
+			row_ws_opening,
+			api.Sub(1, rsws_combination_randomness[0]),
+			rsws_combination_randomness[1],
+		),
+		api.Mul(
+			col_rs_opening,
+			rsws_combination_randomness[0],
+			api.Sub(1, rsws_combination_randomness[1]),
+		),
+		api.Mul(
+			col_ws_opening,
+			rsws_combination_randomness[0],
+			rsws_combination_randomness[1],
+		),
+	)
+
+	api.AssertIsEqual(evaluated_value, gpaResultRSWS.lastSumcheckValue)
+
+	// Rowwise
+
+	rowwiseGpaResult, err := gpaSumcheckVerifier(api, arthur, len(circuit.PointRow)+2)
+	if err != nil {
+		return err
+	}
+
+	rowwiseClaimedInit := rowwiseGpaResult.claimedProducts[0]
+	rowwiseClaimedFinal := rowwiseGpaResult.claimedProducts[1]
+
+	last_randomness := rowwiseGpaResult.randomness[0]
+	evaluation_randomness := rowwiseGpaResult.randomness[1:]
 
 	addr := CalculateAdr(api, evaluation_randomness)
 	mem := calculateEQ(api, circuit.PointRow, evaluation_randomness)
@@ -634,7 +709,7 @@ func sparkSingleMatrix(
 
 	init_opening := api.Sub(api.Add(api.Mul(addr, gamma, gamma), api.Mul(mem, gamma), init_cntr), tau)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowFinalMerkle, matrix.RowFinalMerkleFirstRound, circuit.WHIRRow, [][]frontend.Variable{{}}, []frontend.Variable{}, rowFinalCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowFinalMerkleRemainingRounds, matrix.RowFinalMerkleFirstRound, circuit.WHIRRow, [][]frontend.Variable{{}}, []frontend.Variable{}, rowFinalCommitment,
 		[][]frontend.Variable{{matrix.RowFinalCounter}},
 		[][]frontend.Variable{evaluation_randomness},
 	)
@@ -644,46 +719,11 @@ func sparkSingleMatrix(
 
 	final_opening := api.Sub(api.Add(api.Mul(addr, gamma, gamma), api.Mul(mem, gamma), matrix.RowFinalCounter), tau)
 
-	evaluated_value := api.Add(api.Mul(init_opening, api.Sub(1, last_randomness)), api.Mul(final_opening, last_randomness))
+	rowwise_evaluated_value := api.Add(api.Mul(init_opening, api.Sub(1, last_randomness)), api.Mul(final_opening, last_randomness))
 
-	api.AssertIsEqual(gpaResult.lastSumcheckValue, evaluated_value)
-
-	gpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogNumTerms+2)
-	if err != nil {
-		return err
-	}
-
-	claimedRS := gpaResultRSWS.claimedProducts[0]
-	claimedWS := gpaResultRSWS.claimedProducts[1]
-
-	rsws_last_randomness := gpaResultRSWS.randomness[0]
-	rsws_evaluation_randomness := gpaResultRSWS.randomness[1:]
-
-	rs_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation), tau)
-	ws_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation, 1), tau)
-
-	rsws_evaluated_value := api.Add(api.Mul(rs_opening, api.Sub(1, rsws_last_randomness)), api.Mul(ws_opening, rsws_last_randomness))
-
-	api.AssertIsEqual(gpaResultRSWS.lastSumcheckValue, rsws_evaluated_value)
-
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.RowwiseMerkle, matrix.RowwiseMerkleFirstRound, matrix.WHIR3, [][]frontend.Variable{{}}, []frontend.Variable{}, rowwiseCommitment,
-		[][]frontend.Variable{{matrix.RowRSAddressEvaluation}, {matrix.RowRSValueEvaluation}, {matrix.RowRSTimestampEvaluation}},
-		[][]frontend.Variable{rsws_evaluation_randomness},
-	)
-	if err != nil {
-		return err
-	}
-
-	api.AssertIsEqual(api.Mul(claimedInit, claimedWS), api.Mul(claimedRS, claimedFinal))
+	api.AssertIsEqual(rowwiseGpaResult.lastSumcheckValue, rowwise_evaluated_value)
 
 	// Colwise
-
-	colwiseTauGammaTemp := make([]frontend.Variable, 2)
-	if err := arthur.FillChallengeScalars(colwiseTauGammaTemp); err != nil {
-		return err
-	}
-	colwiseTau := colwiseTauGammaTemp[0]
-	colwiseGamma := colwiseTauGammaTemp[1]
 
 	colwiseInitFinalGpaResult, err := gpaSumcheckVerifier(api, arthur, len(circuit.PointCol)-1+2)
 	if err != nil {
@@ -701,9 +741,9 @@ func sparkSingleMatrix(
 	colwisemem := api.Mul(calculateEQ(api, circuit.PointCol[1:], colwiseEvaluation_randomness), api.Sub(1, circuit.PointCol[0]))
 	colwiseinit_cntr := 0
 
-	colwiseinit_opening := api.Sub(api.Add(api.Mul(colwiseaddr, colwiseGamma, colwiseGamma), api.Mul(colwisemem, colwiseGamma), colwiseinit_cntr), colwiseTau)
+	colwiseinit_opening := api.Sub(api.Add(api.Mul(colwiseaddr, gamma, gamma), api.Mul(colwisemem, gamma), colwiseinit_cntr), tau)
 
-	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkRLC.ColFinalMerkle, circuit.SparkRLC.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
+	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.SparkRLC.ColFinalMerkleRemainingRounds, circuit.SparkRLC.ColFinalMerkleFirstRound, circuit.WHIRCol, [][]frontend.Variable{{}}, []frontend.Variable{}, colFinalCommitment,
 		[][]frontend.Variable{{matrix.ColFinalCounter}},
 		[][]frontend.Variable{colwiseEvaluation_randomness},
 	)
@@ -711,39 +751,71 @@ func sparkSingleMatrix(
 		return err
 	}
 
-	colwisefinal_opening := api.Sub(api.Add(api.Mul(colwiseaddr, colwiseGamma, colwiseGamma), api.Mul(colwisemem, colwiseGamma), matrix.ColFinalCounter), colwiseTau)
+	colwisefinal_opening := api.Sub(api.Add(api.Mul(colwiseaddr, gamma, gamma), api.Mul(colwisemem, gamma), matrix.ColFinalCounter), tau)
 	colwiseevaluated_value := api.Add(api.Mul(colwiseinit_opening, api.Sub(1, colwiseLast_randomness)), api.Mul(colwisefinal_opening, colwiseLast_randomness))
 	api.AssertIsEqual(colwiseInitFinalGpaResult.lastSumcheckValue, colwiseevaluated_value)
 
-	// Colwise RS WS
-
-	colwisegpaResultRSWS, err := gpaSumcheckVerifier(api, arthur, matrix.LogNumTerms+2)
-	if err != nil {
-		return err
-	}
-
-	colwiseClaimedRS := colwisegpaResultRSWS.claimedProducts[0]
-	colwiseClaimedWS := colwisegpaResultRSWS.claimedProducts[1]
-
-	colwisersws_last_randomness := colwisegpaResultRSWS.randomness[0]
-	colwisersws_evaluation_randomness := colwisegpaResultRSWS.randomness[1:]
-
-	colwisers_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, colwiseGamma, colwiseGamma), api.Mul(matrix.ColRSValueEvaluation, colwiseGamma), matrix.ColRSTimestampEvaluation), colwiseTau)
-	colwisews_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, colwiseGamma, colwiseGamma), api.Mul(matrix.ColRSValueEvaluation, colwiseGamma), matrix.ColRSTimestampEvaluation, 1), colwiseTau)
-
-	colwisersws_evaluated_value := api.Add(api.Mul(colwisers_opening, api.Sub(1, colwisersws_last_randomness)), api.Mul(colwisews_opening, colwisersws_last_randomness))
-
-	api.AssertIsEqual(colwisegpaResultRSWS.lastSumcheckValue, colwisersws_evaluated_value)
-
-	_, err = RunZKWhir(api, arthur, uapi, sc, matrix.ColwiseMerkle, matrix.ColwiseMerkleFirstRound, matrix.WHIR3, [][]frontend.Variable{{}}, []frontend.Variable{}, colwiseCommitment,
-		[][]frontend.Variable{{matrix.ColRSAddressEvaluation}, {matrix.ColRSValueEvaluation}, {matrix.ColRSTimestampEvaluation}},
-		[][]frontend.Variable{colwisersws_evaluation_randomness},
-	)
-	if err != nil {
-		return err
-	}
-
-	api.AssertIsEqual(api.Mul(colwiseClaimedInit, colwiseClaimedWS), api.Mul(colwiseClaimedRS, colwiseClaimedFinal))
+	api.AssertIsEqual(api.Mul(rowwiseClaimedInit, claimedRowWS), api.Mul(claimedRowRS, rowwiseClaimedFinal))
+	api.AssertIsEqual(api.Mul(colwiseClaimedInit, claimedColWS), api.Mul(claimedColRS, colwiseClaimedFinal))
 
 	return nil
+}
+
+func gpaSumcheckVerifier4(
+	api frontend.API,
+	arthur gnarkNimue.Arthur,
+	layerCount int,
+) (GPASumcheckResult, error) {
+	l := make([]frontend.Variable, 2)
+	r := make([]frontend.Variable, 1)
+	gpaClaimedValues := make([]frontend.Variable, 4)
+	prevRand := make([]frontend.Variable, 2)
+
+	err := arthur.FillNextScalars(gpaClaimedValues)
+	if err != nil {
+		return GPASumcheckResult{}, err
+	}
+	err = arthur.FillChallengeScalars(prevRand)
+	if err != nil {
+		return GPASumcheckResult{}, err
+	}
+	lastEval := utilities.MultivarPoly(gpaClaimedValues, prevRand, api)
+
+	var rand []frontend.Variable
+
+	for i := 2; i < (layerCount - 1); i++ {
+		rand, lastEval, err = runSumcheck(
+			api,
+			arthur,
+			lastEval,
+			i,
+			4,
+		)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+
+		err = arthur.FillNextScalars(l)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+		err = arthur.FillChallengeScalars(r)
+		if err != nil {
+			return GPASumcheckResult{}, err
+		}
+		claimedLastSch := api.Mul(
+			calculateEQ(api, prevRand, rand),
+			utilities.UnivarPoly(api, l, []frontend.Variable{0})[0],
+			utilities.UnivarPoly(api, l, []frontend.Variable{1})[0],
+		)
+		api.AssertIsEqual(claimedLastSch, lastEval)
+		prevRand = append(rand, r[0])
+		lastEval = utilities.UnivarPoly(api, l, []frontend.Variable{r[0]})[0]
+	}
+
+	return GPASumcheckResult{
+		claimedProducts:   gpaClaimedValues,
+		lastSumcheckValue: lastEval,
+		randomness:        prevRand,
+	}, nil
 }

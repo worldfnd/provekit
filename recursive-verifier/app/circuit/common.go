@@ -356,11 +356,14 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
-	var sparkSumcheckData = consumeWhirData(sparkConfig.WHIR5, &sparkMerklePaths, &sparkStirAnswers)
+	var evaluesSumcheck = consumeWhirData(sparkConfig.WHIR2, &sparkMerklePaths, &sparkStirAnswers)
+	var vals = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
+	var rsws = consumeWhirData(sparkConfig.WHIR4, &sparkMerklePaths, &sparkStirAnswers)
+	var evaluesRSWS = consumeWhirData(sparkConfig.WHIR2, &sparkMerklePaths, &sparkStirAnswers)
 	var rowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
-	var rowwiseSparkMerkle = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
 	var colFinal = consumeWhirData(sparkConfig.WHIRCol, &sparkMerklePaths, &sparkStirAnswers)
-	var colwiseSparkMerkle = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
+
+	// fmt.Print(len(evalues.firstRoundMerklePaths.path.stirAnswers[0][0]))
 
 	hints := Hints{
 		pointRow: pointRow,
@@ -370,12 +373,14 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 		spartanHidingHint: hidingSpartanData,
 
 		AHints: SparkMatrixHints{
-			claimed:            claimedA,
-			sparkSumcheckData:  sparkSumcheckData,
-			rowFinalMerkle:     rowFinal,
-			rowwiseSparkMerkle: rowwiseSparkMerkle,
-			colFinalMerkle:     colFinal,
-			colwiseSparkMerkle: colwiseSparkMerkle,
+			claimed: claimedA,
+
+			evaluesSumcheck: evaluesSumcheck,
+			vals:            vals,
+			rsws:            rsws,
+			evaluesRSWS:     evaluesRSWS,
+			rowFinal:        rowFinal,
+			colFinal:        colFinal,
 
 			sparkClaimedEvaluations: sparkClaimedEvaluations[0],
 

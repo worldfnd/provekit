@@ -48,7 +48,6 @@ pub fn run_gpa2(
     let mut concatenated = left.to_vec();
     concatenated.extend_from_slice(right);
     let layers = calculate_binary_multiplication_tree(concatenated);
-    println!("{:?}", layers[1]);
 
     let (accumulated_randomness, mut sumcheck_claim) = add_line_to_transcript(merlin, layers[1].clone());
     let mut accumulated_randomness = accumulated_randomness.to_vec();
@@ -72,7 +71,6 @@ pub fn run_gpa4(
 ) -> Vec<FieldElement> {
     let layers = calculate_binary_multiplication_tree(leaves);
 
-    println!("{:?}", layers[2]);
     let evaluation_form = EvaluationsList::new(layers[2].clone());
     let coefficient_form = evaluation_form.to_coeffs();
     let coeffs: &[FieldElement] = coefficient_form.coeffs();

@@ -84,16 +84,16 @@ fn verify_spark_single_matrix(
 ) -> Result<()> {
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);
     let commitment_reader_col = CommitmentReader::new(&whir_params.col);
+    let commitment_reader_batched2 = CommitmentReader::new(&whir_params.num_terms_2batched);
+    let commitment_reader_batched3 = CommitmentReader::new(&whir_params.num_terms_3batched);
+    let commitment_reader_batched4 = CommitmentReader::new(&whir_params.num_terms_4batched);
 
-    let a_3batched_commitment_reader = CommitmentReader::new(&whir_params.num_terms_3batched);
-    let a_5batched_commitment_reader = CommitmentReader::new(&whir_params.num_terms_5batched);
-
-    let a_sumcheck_commitment = a_5batched_commitment_reader.parse_commitment(arthur)?;
-    let a_rowwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
-    let a_colwise_commitment = a_3batched_commitment_reader.parse_commitment(arthur)?;
-
+    let val_commitment = commitment_reader_batched3.parse_commitment(arthur)?;
+    let rsws_commitment = commitment_reader_batched4.parse_commitment(arthur)?;
     let a_row_finalts_commitment = commitment_reader_row.parse_commitment(arthur)?;
     let a_col_finalts_commitment = commitment_reader_col.parse_commitment(arthur)?;
+    
+    let evalues_commitment = commitment_reader_batched2.parse_commitment(arthur)?;
 
     let (randomness, a_last_sumcheck_value) = run_sumcheck_verifier_spark(
         arthur,
@@ -102,38 +102,45 @@ fn verify_spark_single_matrix(
     )
     .context("While verifying SPARK sumcheck")?;
 
-    let final_folds: Vec<FieldElement> = arthur.hint()?;
+    let sumcheck_hints: Vec<FieldElement> = arthur.hint()?;
 
-    let claimed_val = final_folds[0]
-        + final_folds[1] * matrix_batching_randomness
-        + final_folds[2] * matrix_batching_randomness * matrix_batching_randomness;
-    ensure!(a_last_sumcheck_value == claimed_val * final_folds[3] * final_folds[4]);
+    let claimed_val = 
+          sumcheck_hints[0]
+        + sumcheck_hints[1] * matrix_batching_randomness
+        + sumcheck_hints[2] * matrix_batching_randomness * matrix_batching_randomness;
+    ensure!(a_last_sumcheck_value == claimed_val * sumcheck_hints[3] * sumcheck_hints[4]);
 
-    let mut a_spark_sumcheck_statement_verifier =
+    let mut sumcheck_evalues_statement =
         Statement::<FieldElement>::new(next_power_of_two(matrix_dimensions.nonzero_terms));
 
-    // Batching randomness powers: [1, β, β², β³, β⁴]
-    let mut batching_randomness = Vec::with_capacity(5);
-    let mut cur = FieldElement::from(1);
-    for _ in 0..5 {
-        batching_randomness.push(cur);
-        cur *= a_sumcheck_commitment.batching_randomness;
-    }
-
-    a_spark_sumcheck_statement_verifier.add_constraint(
+    sumcheck_evalues_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(randomness.clone())),
-        final_folds[0] * batching_randomness[0]
-            + final_folds[1] * batching_randomness[1]
-            + final_folds[2] * batching_randomness[2]
-            + final_folds[3] * batching_randomness[3]
-            + final_folds[4] * batching_randomness[4],
+        sumcheck_hints[3] + 
+            sumcheck_hints[4] * evalues_commitment.batching_randomness
     );
 
-    let a_spark_sumcheck_verifier = Verifier::new(&whir_params.num_terms_5batched);
-    a_spark_sumcheck_verifier.verify(
+    let sumcheck_evalues_verifier = Verifier::new(&whir_params.num_terms_2batched);
+    sumcheck_evalues_verifier.verify(
         arthur,
-        &a_sumcheck_commitment,
-        &a_spark_sumcheck_statement_verifier,
+        &evalues_commitment,
+        &sumcheck_evalues_statement,
+    )?;
+
+    let mut spark_sumcheck_val_statement_verifier =
+        Statement::<FieldElement>::new(next_power_of_two(matrix_dimensions.nonzero_terms));
+
+    spark_sumcheck_val_statement_verifier.add_constraint(
+        Weights::evaluation(MultilinearPoint(randomness.clone())),
+        sumcheck_hints[0] + 
+            sumcheck_hints[1] * val_commitment.batching_randomness + 
+            sumcheck_hints[2] * val_commitment.batching_randomness * val_commitment.batching_randomness
+    );
+
+    let spark_sumcheck_val_verifier = Verifier::new(&whir_params.num_terms_3batched);
+    spark_sumcheck_val_verifier.verify(
+        arthur,
+        &val_commitment,
+        &spark_sumcheck_val_statement_verifier,
     )?;
 
     let mut tau_and_gamma = [FieldElement::from(0); 2];
@@ -152,38 +159,38 @@ fn verify_spark_single_matrix(
     let claimed_row_ws = gpa_result.claimed_values[1];
     let claimed_col_rs = gpa_result.claimed_values[2];
     let claimed_col_ws = gpa_result.claimed_values[3];
-    println!("Claimed values {:?}", gpa_result.claimed_values);
 
     let row_adr: FieldElement = arthur.hint()?;
-    let row_mem: FieldElement = arthur.hint()?;
     let row_timestamp: FieldElement = arthur.hint()?;
-
-    let mut rowwise_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
-        matrix_dimensions.nonzero_terms,
-    ));
-    let row_br = a_rowwise_commitment.batching_randomness;
-    rowwise_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
-        row_adr + row_mem * row_br + row_timestamp * row_br * row_br,
-    );
-    let verifier = Verifier::new(&whir_params.num_terms_3batched);
-    verifier.verify(arthur, &a_rowwise_commitment, &rowwise_statement)?;
-
-
     let col_adr: FieldElement = arthur.hint()?;
-    let col_mem: FieldElement = arthur.hint()?;
     let col_timestamp: FieldElement = arthur.hint()?;
 
-    let mut colwise_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
+    let mut rsws_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
         matrix_dimensions.nonzero_terms,
     ));
-    let col_br = a_colwise_commitment.batching_randomness;
-    colwise_statement.add_constraint(
+    rsws_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
-        col_adr + col_mem * col_br + col_timestamp * col_br * col_br,
+        row_adr + 
+            row_timestamp * rsws_commitment.batching_randomness +
+            col_adr * rsws_commitment.batching_randomness * rsws_commitment.batching_randomness +
+            col_timestamp * rsws_commitment.batching_randomness * rsws_commitment.batching_randomness * rsws_commitment.batching_randomness
     );
-    let verifier = Verifier::new(&whir_params.num_terms_3batched);
-    verifier.verify(arthur, &a_colwise_commitment, &colwise_statement)?;
+    let rsws_verifier = Verifier::new(&whir_params.num_terms_4batched);
+    rsws_verifier.verify(arthur, &rsws_commitment, &rsws_statement)?;
+
+    let row_mem: FieldElement = arthur.hint()?;
+    let col_mem: FieldElement = arthur.hint()?;
+
+    let mut evalues_statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
+        matrix_dimensions.nonzero_terms,
+    ));
+    evalues_statement.add_constraint(
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
+        row_mem + 
+            col_mem * evalues_commitment.batching_randomness
+    );
+    let evalues_verifier = Verifier::new(&whir_params.num_terms_2batched);
+    evalues_verifier.verify(arthur, &evalues_commitment, &evalues_statement)?;
 
     let row_rs_opening = row_adr * gamma * gamma + row_mem * gamma + row_timestamp - tau;
     let row_ws_opening = row_adr * gamma * gamma + row_mem * gamma + row_timestamp + FieldElement::from(1) - tau;
@@ -204,7 +211,6 @@ fn verify_spark_single_matrix(
         matrix_dimensions.nonzero_terms,
         whir_params,
         request,
-        a_rowwise_commitment,
         a_row_finalts_commitment,
         &tau,
         &gamma,
@@ -218,7 +224,6 @@ fn verify_spark_single_matrix(
         matrix_dimensions.nonzero_terms,
         whir_params,
         request,
-        a_colwise_commitment,
         a_col_finalts_commitment,
         &tau,
         &gamma,

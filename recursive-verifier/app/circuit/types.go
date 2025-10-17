@@ -145,12 +145,13 @@ type ClaimedEvaluations struct {
 // }
 
 type SparkConfig struct {
-	IOPattern   string     `json:"io_pattern"`
 	Transcript  []byte     `json:"transcript"`
-	WHIR3       WHIRConfig `json:"whir_3batched"`
-	WHIR5       WHIRConfig `json:"whir_5batched"`
+	IOPattern   string     `json:"io_pattern"`
 	WHIRRow     WHIRConfig `json:"whir_row"`
 	WHIRCol     WHIRConfig `json:"whir_col"`
+	WHIR2       WHIRConfig `json:"whir_2batched"`
+	WHIR3       WHIRConfig `json:"whir_3batched"`
+	WHIR4       WHIRConfig `json:"whir_4batched"`
 	LogNumTerms int        `json:"log_num_terms"`
 }
 
@@ -164,8 +165,9 @@ type Commitment struct {
 type SPARKMatrixData struct {
 	Claimed frontend.Variable
 
+	WHIR2       WHIRParams
 	WHIR3       WHIRParams
-	WHIR5       WHIRParams
+	WHIR4       WHIRParams
 	LogNumTerms int
 
 	SparkSumcheckLast []frontend.Variable
@@ -180,30 +182,34 @@ type SPARKMatrixData struct {
 	ColRSValueEvaluation     frontend.Variable
 	ColRSTimestampEvaluation frontend.Variable
 
-	SparkSumcheckFirstRound Merkle
-	SparkSumcheckMerkle     Merkle
+	EvaluesSumcheckMerkleFirstRound      Merkle
+	EvaluesSumcheckMerkleRemainingRounds Merkle
 
-	RowFinalMerkleFirstRound Merkle
-	RowFinalMerkle           Merkle
+	ValsMerkleFirstRound      Merkle
+	ValsMerkleRemainingRounds Merkle
 
-	RowwiseMerkleFirstRound Merkle
-	RowwiseMerkle           Merkle
+	RSWSMerkleFirstRound      Merkle
+	RSWSMerkleRemainingRounds Merkle
 
-	ColFinalMerkleFirstRound Merkle
-	ColFinalMerkle           Merkle
+	EvaluesRSWSMerkleFirstRound      Merkle
+	EvaluesRSWSMerkleRemainingRounds Merkle
 
-	ColwiseMerkleFirstRound Merkle
-	ColwiseMerkle           Merkle
+	RowFinalMerkleFirstRound      Merkle
+	RowFinalMerkleRemainingRounds Merkle
+
+	ColFinalMerkleFirstRound      Merkle
+	ColFinalMerkleRemainingRounds Merkle
 }
 
 type SparkMatrixHints struct {
 	claimed Fp256
 
-	sparkSumcheckData  ZKHint
-	rowFinalMerkle     ZKHint
-	rowwiseSparkMerkle ZKHint
-	colFinalMerkle     ZKHint
-	colwiseSparkMerkle ZKHint
+	evaluesSumcheck ZKHint
+	vals            ZKHint
+	rsws            ZKHint
+	evaluesRSWS     ZKHint
+	rowFinal        ZKHint
+	colFinal        ZKHint
 
 	sparkClaimedEvaluations []Fp256
 

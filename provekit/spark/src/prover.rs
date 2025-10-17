@@ -66,14 +66,15 @@ impl SPARKScheme {
         WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
         let num_terms_3batched_config =
             WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 3);
-        let num_terms_5batched_config =
-            WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 5);
+        let num_terms_4batched_config =
+            WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
 
         let whir_configs = SPARKWHIRConfigs {
             row:                row_config.clone(),
             col:                col_config.clone(),
+            num_terms_2batched: num_terms_2batched_config.clone(),
             num_terms_3batched: num_terms_3batched_config.clone(),
-            num_terms_5batched: num_terms_5batched_config.clone(),
+            num_terms_4batched: num_terms_4batched_config.clone(),
         };
 
         let mut io = IOPattern::new("💥");
@@ -84,14 +85,15 @@ impl SPARKScheme {
             .add_claimed_evaluations();
 
         io = io
-            .commit_statement(&num_terms_5batched_config)
             .commit_statement(&num_terms_3batched_config)
-            .commit_statement(&num_terms_3batched_config)
+            .commit_statement(&num_terms_4batched_config)
             .commit_statement(&row_config)
             .commit_statement(&col_config)
+            .commit_statement(&num_terms_2batched_config)
             .add_sumcheck_polynomials(next_power_of_two(padded_num_entries))
             .hint("sumcheck_last_folds")
-            .add_whir_proof(&num_terms_5batched_config);
+            .add_whir_proof(&num_terms_2batched_config)
+            .add_whir_proof(&num_terms_3batched_config);
 
         io = io.add_tau_and_gamma();
 
@@ -102,15 +104,15 @@ impl SPARKScheme {
         
         io = io
             .hint("row_rs_address_claimed_evaluation")
-            .hint("row_rs_value_claimed_evaluation")
             .hint("row_rs_timestamp_claimed_evaluation")
-            .add_whir_proof(&num_terms_3batched_config);
-
-        io = io
             .hint("col_rs_address_claimed_evaluation")
-            .hint("col_rs_value_claimed_evaluation")
             .hint("col_rs_timestamp_claimed_evaluation")
-            .add_whir_proof(&num_terms_3batched_config);
+            .add_whir_proof(&num_terms_4batched_config);
+        
+        io = io
+            .hint("row_rs_value_claimed_evaluation")
+            .hint("col_rs_value_claimed_evaluation")
+            .add_whir_proof(&num_terms_2batched_config);
 
         for i in 0..=next_power_of_two(num_rows) {
             io = io.add_sumcheck_polynomials(i).add_line();
@@ -119,14 +121,12 @@ impl SPARKScheme {
             .hint("row_final_counter_claimed_evaluation")
             .add_whir_proof(&row_config);
 
-
         for i in 0..=next_power_of_two(num_cols) {
             io = io.add_sumcheck_polynomials(i).add_line();
         }
         io = io
             .hint("col_final_counter_claimed_evaluation")
             .add_whir_proof(&col_config);
-        
 
         Self {
             whir_configs,
@@ -196,27 +196,22 @@ fn prove_spark_for_single_matrix(
 ) -> Result<()> {
     let row_committer = CommitmentWriter::new(whir_configs.row.clone());
     let col_committer = CommitmentWriter::new(whir_configs.col.clone());
+    let batched2_committer = CommitmentWriter::new(whir_configs.num_terms_2batched.clone());
     let batched3_committer = CommitmentWriter::new(whir_configs.num_terms_3batched.clone());
-    let batched5_committer = CommitmentWriter::new(whir_configs.num_terms_5batched.clone());
+    let batched4_committer = CommitmentWriter::new(whir_configs.num_terms_4batched.clone());
 
-    // Commit to 5 polynomials: val_a, val_b, val_c, eᵣ, eᵧ
-    let sumcheck_witness = batched5_committer.commit_batch(merlin, &[
+    // Should be committed before request:
+
+    let vals_witness = batched3_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
         EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
         EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
     ])?;
 
-    let rowwise_witness = batched3_committer.commit_batch(merlin, &[
+    let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
         EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
-    ])?;
-
-    let colwise_witness = batched3_committer.commit_batch(merlin, &[
         EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
         EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
     ])?;
 
@@ -224,6 +219,15 @@ fn prove_spark_for_single_matrix(
         commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
     let final_col_ts_witness =
         commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
+    
+    // Commited for each request:
+
+    let evalues_witness = batched2_committer.commit_batch(merlin, &[
+        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+    ])?;
+
+    // Spark Sumcheck
 
     let mles = [
         matrix.coo.val.clone(),
@@ -252,28 +256,30 @@ fn prove_spark_for_single_matrix(
         .to_vec(),
     )?;
 
-    // Batching randomness powers: [1, β, β², β³, β⁴]
-    let mut batching_randomness = Vec::with_capacity(5);
-    let mut cur = FieldElement::from(1);
-    for _ in 0..5 {
-        batching_randomness.push(cur);
-        cur *= sumcheck_witness.batching_randomness;
-    }
-
-    let claimed_batched_value = val_a_eval * batching_randomness[0]
-        + val_b_eval * batching_randomness[1]
-        + val_c_eval * batching_randomness[2]
-        + sumcheck_final_folds[1] * batching_randomness[3]
-        + sumcheck_final_folds[2] * batching_randomness[4];
+    let batched_e_claimed = 
+        sumcheck_final_folds[1] +
+        sumcheck_final_folds[2] * evalues_witness.batching_randomness;
 
     produce_whir_proof(
         merlin,
         MultilinearPoint(folding_randomness.to_vec()),
-        claimed_batched_value,
-        whir_configs.num_terms_5batched.clone(),
-        sumcheck_witness,
+        batched_e_claimed,
+        whir_configs.num_terms_2batched.clone(),
+        evalues_witness.clone(),
     )?;
 
+    let batched_val_claimed = 
+        val_a_eval + 
+        val_b_eval * vals_witness.batching_randomness + 
+        val_c_eval * vals_witness.batching_randomness * vals_witness.batching_randomness;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.to_vec()),
+        batched_val_claimed,
+        whir_configs.num_terms_3batched.clone(),
+        vals_witness,
+    )?;
     
     // RS WS combined
 
@@ -289,6 +295,9 @@ fn prove_spark_for_single_matrix(
     )
     .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
     .collect();
+
+
+    // Potential optimization: ws is rs vector where each element is incremented by 1. So we don't need to build this vector again.
 
     let row_ws_vec: Vec<_> = izip!(
         (&matrix.coo.row).iter(),
@@ -322,54 +331,53 @@ fn prove_spark_for_single_matrix(
     let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
 
     let row_address_eval = EvaluationsList::new(matrix.coo.row).evaluate(&eval_point);
-    merlin.hint(&row_address_eval)?;
-
-    let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
-    merlin.hint(&row_value_eval)?;
-
     let row_timestamp_eval = EvaluationsList::new(matrix.timestamps.read_row.to_vec()).evaluate(&eval_point);
+    let col_address_eval = EvaluationsList::new(matrix.coo.col).evaluate(&eval_point);
+    let col_timestamp_eval = EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
+    
+    merlin.hint(&row_address_eval)?;
     merlin.hint(&row_timestamp_eval)?;
+    merlin.hint(&col_address_eval)?;
+    merlin.hint(&col_timestamp_eval)?;
 
-    let row_br = rowwise_witness.batching_randomness;
-    let claimed_eval = row_address_eval + row_value_eval * row_br + row_timestamp_eval * row_br * row_br;
+    let rs_ws_claimed_eval = 
+        row_address_eval + 
+        row_timestamp_eval * rs_ws_witness.batching_randomness +
+        col_address_eval  * rs_ws_witness.batching_randomness * rs_ws_witness.batching_randomness +
+        col_timestamp_eval * rs_ws_witness.batching_randomness * rs_ws_witness.batching_randomness * rs_ws_witness.batching_randomness;
 
     assert_eq!(
-        claimed_eval,
-        rowwise_witness.batched_poly().evaluate(&eval_point)
+        rs_ws_claimed_eval,
+        rs_ws_witness.batched_poly().evaluate(&eval_point)
     );
 
     produce_whir_proof(
         merlin,
         eval_point.clone(),
-        claimed_eval,
-        whir_configs.num_terms_3batched.clone(),
-        rowwise_witness,
+        rs_ws_claimed_eval,
+        whir_configs.num_terms_4batched.clone(),
+        rs_ws_witness,
     )?;
 
-    let col_address_eval = EvaluationsList::new(matrix.coo.col).evaluate(&eval_point);
-    merlin.hint(&col_address_eval)?;
+    let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
+    merlin.hint(&row_value_eval)?;
 
     let col_value_eval = EvaluationsList::new(e_values.e_ry).evaluate(&eval_point);
     merlin.hint(&col_value_eval)?;
 
-    let col_timestamp_eval = EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
-    merlin.hint(&col_timestamp_eval)?;
-
-    let col_br = colwise_witness.batching_randomness;
-    let claimed_eval = col_address_eval + col_value_eval * col_br + col_timestamp_eval * col_br * col_br;
-
-    assert_eq!(
-        claimed_eval,
-        colwise_witness.batched_poly().evaluate(&eval_point)
-    );
+    let claimed_e_eval = 
+        row_value_eval +
+        col_value_eval * evalues_witness.batching_randomness;
 
     produce_whir_proof(
         merlin,
         eval_point,
-        claimed_eval,
-        whir_configs.num_terms_3batched.clone(),
-        colwise_witness,
+        claimed_e_eval,
+        whir_configs.num_terms_2batched.clone(),
+        evalues_witness,
     )?;
+
+    // Potential optimization: Init and Final can be done together in one GPA
 
     // Row Init Final GPA
 

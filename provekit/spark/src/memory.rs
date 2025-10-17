@@ -172,10 +172,6 @@ fn verify_axis(
     num_nonzero_terms: usize,
     whir_config: &WhirConfig,
     num_terms_3batched_config: &WhirConfig,
-    axis_commitment: ParsedCommitment<
-        Fp<MontBackend<BN254Config, 4>, 4>,
-        Fp<MontBackend<BN254Config, 4>, 4>,
-    >,
     finalts_commitment: ParsedCommitment<
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
@@ -221,7 +217,6 @@ fn verify_axis(
 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    println!("{:?} {:?} {:?} {:?}", claimed_init, claimed_ws, claimed_final, claimed_rs);
     ensure!(claimed_init * claimed_ws == claimed_final * claimed_rs);
 
     Ok(())
@@ -237,10 +232,6 @@ pub fn verify_rowwise(
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
-    rowwise_commitment: ParsedCommitment<
-        Fp<MontBackend<BN254Config, 4>, 4>,
-        Fp<MontBackend<BN254Config, 4>, 4>,
-    >,
     row_finalts_commitment: ParsedCommitment<
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
@@ -256,7 +247,6 @@ pub fn verify_rowwise(
         num_nonzero_terms,
         &whir_params.row,
         &whir_params.num_terms_3batched,
-        rowwise_commitment,
         row_finalts_commitment,
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
         tau,
@@ -272,10 +262,6 @@ pub fn verify_colwise(
     num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
-    colwise_commitment: ParsedCommitment<
-        Fp<MontBackend<BN254Config, 4>, 4>,
-        Fp<MontBackend<BN254Config, 4>, 4>,
-    >,
     col_finalts_commitment: ParsedCommitment<
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
@@ -291,7 +277,6 @@ pub fn verify_colwise(
         num_nonzero_terms,
         &whir_params.col,
         &whir_params.num_terms_3batched,
-        colwise_commitment,
         col_finalts_commitment,
         |eval_rand| {
             calculate_eq(&request.point_to_evaluate.col[1..], eval_rand)

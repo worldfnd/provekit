@@ -25,8 +25,9 @@ pub struct MatrixDimensions {
 pub struct SPARKWHIRConfigs {
     pub row:                WhirConfig,
     pub col:                WhirConfig,
+    pub num_terms_2batched: WhirConfig,
     pub num_terms_3batched: WhirConfig,
-    pub num_terms_5batched: WhirConfig,
+    pub num_terms_4batched: WhirConfig,
 }
 
 /// SPARK matrix in COO format with memory access timestamps.
@@ -79,8 +80,9 @@ pub struct SPARKProofGnark {
     pub io_pattern:    String,
     pub whir_row:      WHIRConfigGnark,
     pub whir_col:      WHIRConfigGnark,
+    pub whir_2batched: WHIRConfigGnark,
     pub whir_3batched: WHIRConfigGnark,
-    pub whir_5batched: WHIRConfigGnark,
+    pub whir_4batched: WHIRConfigGnark,
     pub log_num_terms: usize,
 }
 
@@ -92,8 +94,9 @@ impl SPARKProofGnark {
             io_pattern: proof.io_pattern.clone(),
             whir_row: WHIRConfigGnark::new(&proof.whir_params.row),
             whir_col: WHIRConfigGnark::new(&proof.whir_params.col),
+            whir_2batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_2batched),
             whir_3batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_3batched),
-            whir_5batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_5batched),
+            whir_4batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_4batched),
             log_num_terms,
         }
     }
