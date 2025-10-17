@@ -1,6 +1,6 @@
 use {
     crate::{
-        gpa::{self, run_gpa4},
+        gpa::{self, run_gpa2, run_gpa4},
         memory::{prove_colwise, prove_rowwise},
         preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
@@ -112,28 +112,20 @@ impl SPARKScheme {
             .hint("col_rs_timestamp_claimed_evaluation")
             .add_whir_proof(&num_terms_3batched_config);
 
-        // for i in 0..=next_power_of_two(num_rows) {
-        //     io = io.add_sumcheck_polynomials(i).add_line();
-        // }
-        // io = io
-        //     .hint("row_final_counter_claimed_evaluation")
-        //     .add_whir_proof(&row_config);
+        for i in 0..=next_power_of_two(num_rows) {
+            io = io.add_sumcheck_polynomials(i).add_line();
+        }
+        io = io
+            .hint("row_final_counter_claimed_evaluation")
+            .add_whir_proof(&row_config);
 
-        // for i in 0..=next_power_of_two(padded_num_entries) {
-        //     io = io.add_sumcheck_polynomials(i).add_line();
-        // }
 
-        // io = io.add_tau_and_gamma();
-        // for i in 0..=next_power_of_two(num_cols) {
-        //     io = io.add_sumcheck_polynomials(i).add_line();
-        // }
-        // io = io
-        //     .hint("col_final_counter_claimed_evaluation")
-        //     .add_whir_proof(&col_config);
-
-        // for i in 0..=next_power_of_two(padded_num_entries) {
-        //     io = io.add_sumcheck_polynomials(i).add_line();
-        // }
+        for i in 0..=next_power_of_two(num_cols) {
+            io = io.add_sumcheck_polynomials(i).add_line();
+        }
+        io = io
+            .hint("col_final_counter_claimed_evaluation")
+            .add_whir_proof(&col_config);
         
 
         Self {
@@ -379,6 +371,69 @@ fn prove_spark_for_single_matrix(
         colwise_witness,
     )?;
 
+    // Row Init Final GPA
+
+    let init_vec: Vec<_> = izip!(0.., memory.eq_rx.iter())
+        .map(|(i, &v)| {
+            let a = FieldElement::from(i);
+            a * gamma * gamma + v * gamma - tau
+        })
+        .collect();
+
+    let final_vec: Vec<_> = izip!(0.., memory.eq_rx.iter(), matrix.timestamps.final_row.iter())
+        .map(|(i, &v, &t)| {
+            let a = FieldElement::from(i);
+            a * gamma * gamma + v * gamma + t - tau
+        })
+        .collect();
+
+    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec);
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+
+    let final_ts_eval = EvaluationsList::new(matrix.timestamps.final_row)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()));
+    merlin.hint(&final_ts_eval)?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        final_ts_eval,
+        whir_configs.row.clone(),
+        final_row_ts_witness,
+    )?;
+
+    // Col Init Final GPA
+
+    let init_vec: Vec<_> = izip!(0.., memory.eq_ry.iter())
+        .map(|(i, &v)| {
+            let a = FieldElement::from(i);
+            a * gamma * gamma + v * gamma - tau
+        })
+        .collect();
+
+    let final_vec: Vec<_> = izip!(0.., memory.eq_ry.iter(), matrix.timestamps.final_col.iter())
+        .map(|(i, &v, &t)| {
+            let a = FieldElement::from(i);
+            a * gamma * gamma + v * gamma + t - tau
+        })
+        .collect();
+
+    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec);
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
+
+    let final_ts_eval = EvaluationsList::new(matrix.timestamps.final_col)
+        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()));
+    merlin.hint(&final_ts_eval)?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(evaluation_randomness.to_vec()),
+        final_ts_eval,
+        whir_configs.col.clone(),
+        final_col_ts_witness,
+    )?;
+
+
     // prove_rowwise(
     //     merlin,
     //     &matrix,
@@ -387,6 +442,8 @@ fn prove_spark_for_single_matrix(
     //     whir_configs,
     //     final_row_ts_witness,
     //     rowwise_witness,
+    //     &gamma,
+    //     &tau,
     // )?;
 
     // prove_colwise(

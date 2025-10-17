@@ -1,6 +1,6 @@
 use {
     crate::{
-        gpa::{calculate_adr, gpa_sumcheck_verifier, run_gpa},
+        gpa::{calculate_adr, gpa_sumcheck_verifier, run_gpa2},
         types::{Memory, SPARKWHIRConfigs, SparkMatrix},
     },
     anyhow::{ensure, Result},
@@ -9,7 +9,7 @@ use {
     itertools::izip,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
-        spark::SparkStatement,
+        spark::{ClaimedValues, SparkStatement},
         utils::{next_power_of_two, sumcheck::calculate_eq},
         FieldElement, WhirConfig,
     },
@@ -56,12 +56,9 @@ fn prove_axis(
     whir_configs: &SPARKWHIRConfigs,
     final_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     axis_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    gamma: &FieldElement,
+    tau: &FieldElement,
 ) -> Result<()> {
-    let mut tau_and_gamma = [FieldElement::from(0); 2];
-    merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
-    let tau = tau_and_gamma[0];
-    let gamma = tau_and_gamma[1];
-
     // Construct opening vectors for init/final GPA using Fiat-Shamir challenges.
     // Each opening encodes (address, value, timestamp) as: a*γ² + v*γ + t - τ
     let init_vec: Vec<_> = izip!(0.., config.eq_memory.iter(), config.final_timestamp.iter())
@@ -78,7 +75,7 @@ fn prove_axis(
         })
         .collect();
 
-    let gpa_randomness = run_gpa(merlin, &init_vec, &final_vec);
+    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec);
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
     let final_ts_eval = EvaluationsList::new(config.final_timestamp.to_vec())
@@ -92,55 +89,7 @@ fn prove_axis(
         config.whir_config.clone(),
         final_ts_witness,
     )?;
-
-    // RS WS GPA
-    let rs_vec: Vec<_> = izip!(
-        config.address.iter(),
-        e_values.iter(),
-        config.read_timestamp.iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
-    .collect();
-
-    let ws_vec: Vec<_> = izip!(
-        config.address.iter(),
-        e_values.iter(),
-        config.read_timestamp.iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
-    .collect();
-
-    let gpa_randomness = run_gpa(merlin, &rs_vec, &ws_vec);
-    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
-
-    let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
-
-    let rs_address_eval = EvaluationsList::new(config.address.to_vec()).evaluate(&eval_point);
-    merlin.hint(&rs_address_eval)?;
-
-    let rs_value_eval = EvaluationsList::new(e_values.to_vec()).evaluate(&eval_point);
-    merlin.hint(&rs_value_eval)?;
-
-    let rs_timestamp_eval =
-        EvaluationsList::new(config.read_timestamp.to_vec()).evaluate(&eval_point);
-    merlin.hint(&rs_timestamp_eval)?;
-
-    let br = axis_witness.batching_randomness;
-    let claimed_eval = rs_address_eval + rs_value_eval * br + rs_timestamp_eval * br * br;
-
-    assert_eq!(
-        claimed_eval,
-        axis_witness.batched_poly().evaluate(&eval_point)
-    );
-
-    produce_whir_proof(
-        merlin,
-        eval_point,
-        claimed_eval,
-        whir_configs.num_terms_3batched.clone(),
-        axis_witness,
-    )?;
-
+    
     Ok(())
 }
 
@@ -162,6 +111,8 @@ pub fn prove_rowwise(
     whir_configs: &SPARKWHIRConfigs,
     final_row_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     rowwise_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    gamma: &FieldElement,
+    tau: &FieldElement,
 ) -> Result<()> {
     prove_axis(
         merlin,
@@ -176,6 +127,8 @@ pub fn prove_rowwise(
         whir_configs,
         final_row_ts_witness,
         rowwise_witness,
+        gamma,
+        tau,
     )
 }
 
@@ -187,6 +140,8 @@ pub fn prove_colwise(
     whir_configs: &SPARKWHIRConfigs,
     final_col_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     colwise_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    gamma: &FieldElement,
+    tau: &FieldElement,
 ) -> Result<()> {
     prove_axis(
         merlin,
@@ -201,6 +156,8 @@ pub fn prove_colwise(
         whir_configs,
         final_col_ts_witness,
         colwise_witness,
+        gamma,
+        tau
     )
 }
 
@@ -224,12 +181,11 @@ fn verify_axis(
         Fp<MontBackend<BN254Config, 4>, 4>,
     >,
     init_mem_fn: impl Fn(&[FieldElement]) -> FieldElement,
+    tau: &FieldElement,
+    gamma: &FieldElement,
+    claimed_rs: &FieldElement,
+    claimed_ws: &FieldElement,
 ) -> Result<()> {
-    let mut tau_and_gamma = [FieldElement::from(0); 2];
-    arthur.fill_challenge_scalars(&mut tau_and_gamma)?;
-    let tau = tau_and_gamma[0];
-    let gamma = tau_and_gamma[1];
-
     // Init Final GPA
     let gpa_result = gpa_sumcheck_verifier(
         arthur,
@@ -265,40 +221,8 @@ fn verify_axis(
 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    // RS WS GPA
-    let gpa_result = gpa_sumcheck_verifier(arthur, next_power_of_two(num_nonzero_terms) + 2)?;
-
-    let (last_randomness, evaluation_randomness) = gpa_result.randomness.split_at(1);
-    let claimed_rs = gpa_result.claimed_values[0];
-    let claimed_ws = gpa_result.claimed_values[1];
-
-    let rs_adr: FieldElement = arthur.hint()?;
-    let rs_mem: FieldElement = arthur.hint()?;
-    let rs_timestamp: FieldElement = arthur.hint()?;
-
-    let rs_opening = rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp - tau;
-    let ws_opening =
-        rs_adr * gamma * gamma + rs_mem * gamma + rs_timestamp + FieldElement::from(1) - tau;
-
-    let evaluated_value =
-        rs_opening * (FieldElement::one() - last_randomness[0]) + ws_opening * last_randomness[0];
-
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
-
-    let mut statement = Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(
-        num_nonzero_terms,
-    ));
-
-    let br = axis_commitment.batching_randomness;
-    statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
-        rs_adr + rs_mem * br + rs_timestamp * br * br,
-    );
-
-    let verifier = Verifier::new(num_terms_3batched_config);
-    verifier.verify(arthur, &axis_commitment, &statement)?;
-
-    ensure!(claimed_init * claimed_ws == claimed_rs * claimed_final);
+    println!("{:?} {:?} {:?} {:?}", claimed_init, claimed_ws, claimed_final, claimed_rs);
+    ensure!(claimed_init * claimed_ws == claimed_final * claimed_rs);
 
     Ok(())
 }
@@ -321,6 +245,10 @@ pub fn verify_rowwise(
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
     >,
+    tau: &FieldElement,
+    gamma: &FieldElement,
+    claimed_rs: &FieldElement,
+    claimed_ws: &FieldElement,
 ) -> Result<()> {
     verify_axis(
         arthur,
@@ -331,6 +259,10 @@ pub fn verify_rowwise(
         rowwise_commitment,
         row_finalts_commitment,
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
+        tau,
+        gamma,
+        claimed_rs,
+        claimed_ws,
     )
 }
 
@@ -348,6 +280,10 @@ pub fn verify_colwise(
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
     >,
+    tau: &FieldElement,
+    gamma: &FieldElement,
+    claimed_rs: &FieldElement,
+    claimed_ws: &FieldElement,
 ) -> Result<()> {
     verify_axis(
         arthur,
@@ -361,6 +297,10 @@ pub fn verify_colwise(
             calculate_eq(&request.point_to_evaluate.col[1..], eval_rand)
                 * (FieldElement::from(1) - request.point_to_evaluate.col[0])
         },
+        tau,
+        gamma,
+        claimed_rs,
+        claimed_ws,
     )
 }
 

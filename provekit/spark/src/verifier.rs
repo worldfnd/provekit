@@ -147,10 +147,12 @@ fn verify_spark_single_matrix(
     )?;
 
     let (combination_randomness, evaluation_randomness) = gpa_result.randomness.split_at(2);
+    
     let claimed_row_rs = gpa_result.claimed_values[0];
     let claimed_row_ws = gpa_result.claimed_values[1];
     let claimed_col_rs = gpa_result.claimed_values[2];
     let claimed_col_ws = gpa_result.claimed_values[3];
+    println!("Claimed values {:?}", gpa_result.claimed_values);
 
     let row_adr: FieldElement = arthur.hint()?;
     let row_mem: FieldElement = arthur.hint()?;
@@ -196,25 +198,33 @@ fn verify_spark_single_matrix(
 
     ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
 
-    // verify_rowwise(
-    //     arthur,
-    //     matrix_dimensions.num_rows,
-    //     matrix_dimensions.nonzero_terms,
-    //     whir_params,
-    //     request,
-    //     a_rowwise_commitment,
-    //     a_row_finalts_commitment,
-    // )?;
+    verify_rowwise(
+        arthur,
+        matrix_dimensions.num_rows,
+        matrix_dimensions.nonzero_terms,
+        whir_params,
+        request,
+        a_rowwise_commitment,
+        a_row_finalts_commitment,
+        &tau,
+        &gamma,
+        &claimed_row_rs,
+        &claimed_row_ws,
+    )?;
 
-    // verify_colwise(
-    //     arthur,
-    //     matrix_dimensions.num_cols,
-    //     matrix_dimensions.nonzero_terms,
-    //     whir_params,
-    //     request,
-    //     a_colwise_commitment,
-    //     a_col_finalts_commitment,
-    // )?;
+    verify_colwise(
+        arthur,
+        matrix_dimensions.num_cols,
+        matrix_dimensions.nonzero_terms,
+        whir_params,
+        request,
+        a_colwise_commitment,
+        a_col_finalts_commitment,
+        &tau,
+        &gamma,
+        &claimed_col_rs,
+        &claimed_col_ws,
+    )?;
 
     Ok(())
 }
