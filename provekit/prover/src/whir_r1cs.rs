@@ -22,6 +22,7 @@ use {
     },
     tracing::{info, instrument, warn},
     whir::{
+        ntt::RSDefault,
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -31,6 +32,8 @@ use {
         },
     },
 };
+
+type RS = RSDefault;
 
 pub trait WhirR1CSProver {
     fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
@@ -135,10 +138,7 @@ pub fn compute_blinding_coefficients_for_round(
     for _ in 0..(n - 1 - compute_for) {
         prefix_multiplier = prefix_multiplier + prefix_multiplier;
     }
-    let suffix_multiplier: ark_ff::Fp<
-        ark_ff::MontBackend<whir::crypto::fields::BN254Config, 4>,
-        4,
-    > = prefix_multiplier / two;
+    let suffix_multiplier = prefix_multiplier / two;
 
     let constant_term_from_other_items =
         prefix_multiplier * prefix_sum + suffix_multiplier * suffix_sum;
@@ -200,7 +200,7 @@ pub fn batch_commit_to_polynomial(
 
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
-        .commit_batch(merlin, &[
+        .commit_batch::<_, RS>(merlin, &[
             &masked_polynomial_coeff,
             &random_polynomial_coeff,
         ])
@@ -435,7 +435,7 @@ pub fn run_zk_whir_pcs_prover(
 
     let prover = Prover::new(params.clone());
     let (randomness, deferred) = prover
-        .prove(&mut merlin, statement, witness)
+        .prove::<_, RS>(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
     (merlin, randomness, deferred)
