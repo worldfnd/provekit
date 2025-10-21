@@ -13,6 +13,12 @@ impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
 /// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
 /// not supported. Note: empty vectors (size 0) are also supported as a special
 /// case.
+///
+/// NTTContainer can be a single polynomial or multiple polynomials that are
+/// interleaved. interleaved polynomials; `[a0, b0, c0, d0, a1, b1, c1, d1,
+/// ...]` for four polynomials `a`, `b`, `c`, and `d`. By operating on
+/// interleaved data, you can perform the NTT on all polynomials in-place
+/// without needing to first transpose the data
 #[derive(Debug, Clone, PartialEq)]
 pub struct NTT<T, C: NTTContainer<T>> {
     container: C,
@@ -22,8 +28,14 @@ pub struct NTT<T, C: NTTContainer<T>> {
 
 impl<T, C: NTTContainer<T>> NTT<T, C> {
     pub fn new(vec: C, number_of_polynomials: usize) -> Option<Self> {
-        // This needs a better division. 7/3 will give 2 for example
-        match Pow2::<usize>::new(vec.as_ref().len() / number_of_polynomials) {
+        let n = vec.as_ref().len();
+        // All polynomials of the same size
+        if number_of_polynomials == 0 || n % number_of_polynomials != 0 {
+            return None;
+        }
+
+        // The order of the individual polynomials needs to be a power of two
+        match Pow2::new(n / number_of_polynomials) {
             Some(order) => Some(Self {
                 container: vec,
                 order,
@@ -33,9 +45,12 @@ impl<T, C: NTTContainer<T>> NTT<T, C> {
         }
     }
 
-    // TODO maybe a read only field is nicer?
     pub fn order(&self) -> Pow2<usize> {
         self.order
+    }
+
+    pub fn into_inner(self) -> C {
+        self.container
     }
 }
 
