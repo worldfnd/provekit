@@ -16,22 +16,26 @@ impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
 #[derive(Debug, Clone, PartialEq)]
 pub struct NTT<T, C: NTTContainer<T>> {
     container: C,
+    order:     Pow2<usize>,
     _phantom:  PhantomData<T>,
 }
 
 impl<T, C: NTTContainer<T>> NTT<T, C> {
-    pub fn new(vec: C) -> Option<Self> {
-        match Pow2::<usize>::new(vec.as_ref().len()) {
-            Some(_) => Some(Self {
+    pub fn new(vec: C, number_of_polynomials: usize) -> Option<Self> {
+        // This needs a better division. 7/3 will give 2 for example
+        match Pow2::<usize>::new(vec.as_ref().len() / number_of_polynomials) {
+            Some(order) => Some(Self {
                 container: vec,
-                _phantom:  PhantomData,
+                order,
+                _phantom: PhantomData,
             }),
             _ => None,
         }
     }
 
+    // TODO maybe a read only field is nicer?
     pub fn order(&self) -> Pow2<usize> {
-        Pow2(self.container.as_ref().len())
+        self.order
     }
 }
 
@@ -54,7 +58,7 @@ impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
 /// The allowed values depend on the type parameter:
 /// - `Pow2<usize>`: length is 0 or a power of two (`{0} ∪ {2ⁿ : n ≥ 0}`).
 /// - `Pow2<NonZero<usize>>`: length is a nonzero power of two (`{2ⁿ : n ≥ 0}`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pow2<T = usize>(T);
 
 impl<T: InPowerOfTwoSet> Pow2<T> {

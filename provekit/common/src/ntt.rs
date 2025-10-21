@@ -26,15 +26,10 @@ fn interleaved_rs_encode(
     let mut result = vec![Fr::ZERO; expanded_size];
     result[..interleaved_coeffs.len()].copy_from_slice(interleaved_coeffs);
 
-    let mut ntt = ntt::NTT::new(&mut result)
+    let mut ntt = ntt::NTT::new(&mut result, fold_factor_exp)
         .expect("interleaved_coeffs.len() * expension needs to be a power of two.");
     let mut engine = ntt::NTTEngine::new();
-    engine.interleaved_ntt_nr(
-        &mut ntt,
-        NonZero::new(fold_factor_exp)
-            .and_then(ntt::Pow2::new)
-            .unwrap(),
-    );
+    engine.interleaved_ntt_nr(&mut ntt);
 
     result
 }
