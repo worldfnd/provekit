@@ -204,23 +204,23 @@ fn prove_spark_for_single_matrix(
 
     // Commit to 5 polynomials: val_a, val_b, val_c, eᵣ, eᵧ
     let sumcheck_witness = batched5_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
     ])?;
 
     let rowwise_witness = batched3_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
     ])?;
 
     let colwise_witness = batched3_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
     ])?;
 
     let final_row_ts_witness =
@@ -317,7 +317,7 @@ fn commit_to_vector(
     let evals = EvaluationsList::new(vector);
     let coeffs = evals.to_coeffs();
     committer
-        .commit(merlin, coeffs)
+        .commit(merlin, &coeffs)
         .expect("WHIR commitment failed")
 }
 

@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::write, NoirProofScheme},
+    provekit_common::{file::write, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     std::path::PathBuf,
     tracing::instrument,
@@ -19,11 +19,20 @@ pub struct Args {
     /// output path for the prepared proof scheme
     #[argh(
         option,
-        long = "out",
-        short = 'o',
-        default = "PathBuf::from(\"noir_proof_scheme.bin\")"
+        long = "pkp",
+        short = 'p',
+        default = "PathBuf::from(\"noir_proof_scheme.pkp\")"
     )]
-    output_path: PathBuf,
+    pkp_path: PathBuf,
+
+    /// output path for the verifier
+    #[argh(
+        option,
+        long = "pkv",
+        short = 'v',
+        default = "PathBuf::from(\"noir_proof_scheme.pkv\")"
+    )]
+    pkv_path: PathBuf,
 }
 
 impl Command for Args {
@@ -31,7 +40,13 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         let scheme = NoirProofScheme::from_file(&self.program_path)
             .context("while compiling Noir program")?;
-        write(&scheme, &self.output_path).context("while writing Noir proof scheme")?;
+        write(
+            &Prover::from_noir_proof_scheme(scheme.clone()),
+            &self.pkp_path,
+        )
+        .context("while writing Noir proof scheme")?;
+        write(&Verifier::from_noir_proof_scheme(scheme), &self.pkv_path)
+            .context("while writing Noir proof scheme")?;
         Ok(())
     }
 }

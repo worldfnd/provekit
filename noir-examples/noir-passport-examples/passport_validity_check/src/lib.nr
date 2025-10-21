@@ -2,6 +2,7 @@
 use data_check_tbs_pubkey::verify_rsa_pubkey_in_tbs;
 
 // --- Needed to check the CSCA signature over the DSC pubkey ---
+use sha256::sha256_var;
 use sig_check_rsa::verify_signature;
 use utils::check_zero_padding;
 
@@ -118,7 +119,7 @@ pub fn check_integrity_of_sod_within_sod_cert(
     // Clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff"
     // That "stuff" is the thing which is actually signed
     let econtent_hash =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(econtent, econtent_len as u64);
+        sha256_var(econtent, econtent_len as u64);
 
     for i in 0..32 {
         assert(econtent_hash[i] == signed_attributes[econtent_hash_offset + i]);
@@ -137,7 +138,7 @@ pub fn check_dg1_hash_within_sod(
     // Check zero padding for econtent
     check_zero_padding(econtent, econtent_len);
 
-    let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, dg1_padded_length);
+    let dg1_hash = sha256_var(dg1, dg1_padded_length);
 
     // The DG1 hash is located at the start of the SOD
     // (offset is always 0 for DG1)

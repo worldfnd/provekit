@@ -1,8 +1,9 @@
 //! Using `tracing` spans to print performance statistics for the program.
 //!
 //! NOTE: This module is only included in the bin, not in the lib.
+#[cfg(feature = "profiling-allocator")]
+use crate::ALLOCATOR;
 use {
-    crate::ALLOC_STATE,
     provekit_common::utils::human,
     std::{
         cmp::max,
@@ -22,15 +23,21 @@ const UNDIM: &str = "\x1b[22m";
 
 // Span extension data
 pub struct Data {
-    depth:       usize,
-    time:        Instant,
-    memory:      usize,
+    depth: usize,
+    time:  Instant,
+
+    #[cfg(feature = "profiling-allocator")]
+    memory: usize,
+
+    #[cfg(feature = "profiling-allocator")]
     allocations: usize,
 
     /// `peak_memory` will be updated as it is not monotonic
+    #[cfg(feature = "profiling-allocator")]
     peak_memory: usize,
-    children:    bool,
-    kvs:         Vec<(&'static str, String)>,
+
+    children: bool,
+    kvs:      Vec<(&'static str, String)>,
 }
 
 impl Data {
@@ -38,9 +45,14 @@ impl Data {
         let mut span = Self {
             depth,
             time: Instant::now(),
-            memory: ALLOC_STATE.current(),
-            allocations: ALLOC_STATE.count(),
-            peak_memory: ALLOC_STATE.current(),
+
+            #[cfg(feature = "profiling-allocator")]
+            memory: ALLOCATOR.current(),
+            #[cfg(feature = "profiling-allocator")]
+            allocations: ALLOCATOR.count(),
+            #[cfg(feature = "profiling-allocator")]
+            peak_memory: ALLOCATOR.current(),
+
             children: false,
             kvs: Vec::new(),
         };
@@ -84,10 +96,15 @@ where
         if let Some(parent) = span.parent() {
             if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
                 data.children = true;
-                data.peak_memory = max(data.peak_memory, ALLOC_STATE.max());
+
+                #[cfg(feature = "profiling-allocator")]
+                {
+                    data.peak_memory = max(data.peak_memory, ALLOCATOR.max());
+                }
             }
         }
-        ALLOC_STATE.reset_max();
+        #[cfg(feature = "profiling-allocator")]
+        ALLOCATOR.reset_max();
 
         // Add Data if it hasn't already
         if span.extensions().get::<Data>().is_none() {
@@ -131,11 +148,12 @@ where
         }
 
         // Start-of-span memory stats
+        #[cfg(feature = "profiling-allocator")]
         let _ = write!(
             &mut buffer,
             " {DIM}start:{UNDIM} {}B{DIM} current, {UNDIM}{:#}{DIM} allocations{UNDIM}",
-            human(ALLOC_STATE.current() as f64),
-            human(ALLOC_STATE.count() as f64)
+            human(ALLOCATOR.current() as f64),
+            human(ALLOCATOR.count() as f64)
         );
 
         eprintln!("{buffer}");
@@ -191,18 +209,7 @@ where
         let span = ctx.span(&id).expect("invalid span in on_close");
         let ext = span.extensions();
         let data = ext.get::<Data>().expect("span does not have data");
-
         let duration = data.time.elapsed();
-        let peak_memory: usize = std::cmp::max(ALLOC_STATE.max(), data.peak_memory);
-        let allocations = ALLOC_STATE.count() - data.allocations;
-        let own = peak_memory - data.memory;
-
-        // Update parent
-        if let Some(parent) = span.parent() {
-            if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
-                data.peak_memory = max(data.peak_memory, peak_memory);
-            }
-        }
 
         let mut buffer = String::with_capacity(100);
 
@@ -221,17 +228,35 @@ where
         }
 
         // Print stats
-        let current_now = ALLOC_STATE.current();
         let _ = write!(
             &mut buffer,
-            "{}s{DIM} duration, {UNDIM}{}B{DIM} peak memory, {UNDIM}{}B{DIM} local, \
-             {UNDIM}{}B{DIM} current, {UNDIM}{:#}{DIM} allocations{UNDIM}",
+            "{}s{DIM} duration",
             human(duration.as_secs_f64()),
-            human(peak_memory as f64),
-            human(own as f64),
-            human(current_now as f64),
-            human(allocations as f64)
         );
+        #[cfg(feature = "profiling-allocator")]
+        {
+            let peak_memory: usize = std::cmp::max(ALLOCATOR.max(), data.peak_memory);
+            let allocations = ALLOCATOR.count() - data.allocations;
+            let own = peak_memory - data.memory;
+
+            // Update parent
+            if let Some(parent) = span.parent() {
+                if let Some(data) = parent.extensions_mut().get_mut::<Data>() {
+                    data.peak_memory = max(data.peak_memory, peak_memory);
+                }
+            }
+
+            let current_now = ALLOCATOR.current();
+            let _ = write!(
+                &mut buffer,
+                ", {UNDIM}{}B{DIM} peak memory, {UNDIM}{}B{DIM} local, {UNDIM}{}B{DIM} current, \
+                 {UNDIM}{:#}{DIM} allocations{UNDIM}",
+                human(peak_memory as f64),
+                human(own as f64),
+                human(current_now as f64),
+                human(allocations as f64)
+            );
+        }
 
         eprintln!("{buffer}");
     }

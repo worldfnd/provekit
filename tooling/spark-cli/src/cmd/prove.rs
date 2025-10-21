@@ -1,7 +1,7 @@
 use {
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, utils::next_power_of_two, NoirProof, NoirProofScheme},
+    provekit_common::{file::read, utils::next_power_of_two, NoirProof, Prover},
     provekit_spark::{SPARKProofGnark, SPARKProver, SPARKProverScheme},
     std::{fs::File, io::Write, path::PathBuf},
 };
@@ -29,9 +29,12 @@ pub struct ProveArgs {
 
 pub fn execute(args: ProveArgs) -> Result<()> {
     println!("Loading R1CS from {:?}...", args.noir_proof_scheme);
-    let scheme: NoirProofScheme =
+    let scheme: Prover =
         read(&args.noir_proof_scheme).context("while reading Noir proof scheme")?;
-    let mut r1cs = scheme.r1cs.clone();
+    let mut r1cs = scheme
+        .r1cs
+        .clone()
+        .context("No R1CS in Noir proof scheme")?;
     r1cs.grow_matrices(
         1 << next_power_of_two(r1cs.num_constraints()),
         1 << next_power_of_two(r1cs.num_witnesses()),

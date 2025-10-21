@@ -162,7 +162,7 @@ fn run_gpa_sumcheck(
     accumulated_randomness.push(r[0]);
 
     let mut eq_evaluations =
-        calculate_evaluations_over_boolean_hypercube_for_eq(&accumulated_randomness);
+        calculate_evaluations_over_boolean_hypercube_for_eq(accumulated_randomness);
     let mut challenge = [FieldElement::from(0)];
     let mut round_randomness = Vec::<FieldElement>::new();
     let mut fold = None;
@@ -210,7 +210,7 @@ fn run_gpa_sumcheck(
             .expect("Failed to sample challenge");
 
         fold = Some(challenge[0]);
-        sumcheck_claim = eval_cubic_poly(&poly_coeffs, &challenge[0]);
+        sumcheck_claim = eval_cubic_poly(poly_coeffs, challenge[0]);
         round_randomness.push(challenge[0]);
 
         if eq_evaluations.len() <= 2 {
@@ -313,14 +313,14 @@ pub fn gpa_sumcheck_verifier(
 
             // Verify sumcheck binding
             assert_eq!(
-                eval_cubic_poly(&cubic_coeffs, &FieldElement::from(0))
-                    + eval_cubic_poly(&cubic_coeffs, &FieldElement::from(1)),
+                eval_cubic_poly(cubic_coeffs, FieldElement::from(0))
+                    + eval_cubic_poly(cubic_coeffs, FieldElement::from(1)),
                 sumcheck_value,
                 "Sumcheck verification failed at layer {layer_idx}"
             );
 
             current_randomness.push(sumcheck_challenge[0]);
-            sumcheck_value = eval_cubic_poly(&cubic_coeffs, &sumcheck_challenge[0]);
+            sumcheck_value = eval_cubic_poly(cubic_coeffs, sumcheck_challenge[0]);
         }
 
         arthur.fill_next_scalars(&mut line_coeffs)?;

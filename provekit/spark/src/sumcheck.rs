@@ -78,7 +78,7 @@ pub fn run_spark_sumcheck(
         merlin.add_scalars(&hhat_i_coeffs[..])?;
         merlin.fill_challenge_scalars(&mut sumcheck_randomness)?;
         fold = Some(sumcheck_randomness[0]);
-        claimed_value = eval_cubic_poly(&hhat_i_coeffs, &sumcheck_randomness[0]);
+        claimed_value = eval_cubic_poly(hhat_i_coeffs, sumcheck_randomness[0]);
         sumcheck_randomness_accumulator.push(sumcheck_randomness[0]);
         if m0.len() <= 2 {
             break;
@@ -119,13 +119,13 @@ pub fn run_sumcheck_verifier_spark(
         arthur.fill_challenge_scalars(&mut alpha_i)?;
         alpha[i] = alpha_i[0];
 
-        let hhat_i_at_zero = eval_cubic_poly(&hhat_i, &FieldElement::zero());
-        let hhat_i_at_one = eval_cubic_poly(&hhat_i, &FieldElement::one());
+        let hhat_i_at_zero = eval_cubic_poly(hhat_i, FieldElement::zero());
+        let hhat_i_at_one = eval_cubic_poly(hhat_i, FieldElement::one());
         ensure!(
             saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
             "Sumcheck equality check failed"
         );
-        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(&hhat_i, &alpha_i[0]);
+        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i[0]);
     }
 
     Ok((alpha, saved_val_for_sumcheck_equality_assertion))
