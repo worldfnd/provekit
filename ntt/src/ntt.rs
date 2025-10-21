@@ -92,33 +92,14 @@ impl NTTEngine {
     }
 
     /// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
-    /// normal-to-reverse order.
-    ///
-    /// # Use Case
-    /// Use this function when you have multiple polynomials
-    /// stored in an interleaved fashion within a single vector, such as
-    /// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
-    /// `c`, and `d`. By operating on interleaved data, you can perform the
-    /// NTT on all polynomials in-place without needing to first transpose
-    /// the data.
-    ///
-    /// For a single polynomial use [`NTTEngine::ntt_nr`].
+    /// normal-to-reverse bit order.
     ///
     /// # Arguments
     /// * `values` - A mutable reference to an NTT container holding the
     ///   coefficients to be transformed.
-    /// * `num_of_polys` - The number of interleaved polynomials in `values`.
-
-    // TODO(xrvdg) The NTT can work with any number of interleaving but requires the
-    // individual polynomials to be a power of two.
-    pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
+    pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
         self.extend_roots_table(values.order());
         interleaved_ntt_nr(&self.0, values);
-    }
-
-    // TODO(xrvdg) remove this one
-    pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.interleaved_ntt_nr(values);
     }
 
     pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
@@ -139,6 +120,15 @@ fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
+///
+/// # Use Case
+///
+/// Use this function when you have multiple polynomials
+/// stored in an interleaved fashion within a single vector, such as
+/// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
+/// `c`, and `d`. By operating on interleaved data, you can perform the
+/// NTT on all polynomials in-place without needing to first transpose
+/// the data
 ///
 /// # Arguments
 /// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
@@ -495,10 +485,10 @@ mod tests {
                 engine.ntt_nr(&mut fold);
             }
 
-        let double_transposed = NTT::new(transpose(&transposed, columns.get(), rows.get()),columns.get()).unwrap();
+        let double_transposed = transpose(&transposed, columns.get(), rows.get());
 
-        engine.interleaved_ntt_nr(&mut ntt);
-        prop_assert!(double_transposed == ntt);
+        engine.ntt_nr(&mut ntt);
+        prop_assert!(double_transposed == ntt.into_inner());
 
         }
     }
