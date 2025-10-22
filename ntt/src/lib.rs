@@ -35,14 +35,11 @@ impl<T, C: NTTContainer<T>> NTT<T, C> {
         }
 
         // The order of the individual polynomials needs to be a power of two
-        match Pow2::new(n / number_of_polynomials) {
-            Some(order) => Some(Self {
-                container: vec,
-                order,
-                _phantom: PhantomData,
-            }),
-            _ => None,
-        }
+        Pow2::new(n / number_of_polynomials).map(|order| Self {
+            container: vec,
+            order,
+            _phantom: PhantomData,
+        })
     }
 
     pub fn order(&self) -> Pow2<usize> {
