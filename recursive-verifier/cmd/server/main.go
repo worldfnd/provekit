@@ -97,6 +97,18 @@ func verify(c *fiber.Ctx) error {
 		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
 	}
 
+	// TODO: Swap spark_config_name_placeholder with actual form field name
+	sparkConfigFile, err := getFile(c, "spark_config_name_placeholder")
+	if err != nil {
+		log.Printf("Failed to get config file: %v", err)
+		return c.Status(400).SendString("Failed to get spark config file")
+	}
+
+	var sparkConfig circuit.SparkConfig
+	if err := json.Unmarshal(sparkConfigFile, &sparkConfig); err != nil {
+		return fmt.Errorf("failed to unmarshal config JSON: %w", err)
+	}
+
 	var pk *groth16.ProvingKey
 	var vk *groth16.VerifyingKey
 
