@@ -58,7 +58,9 @@ pub(crate) fn add_binop_constraints(
     inputs_and_outputs: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
 ) {
     let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-
+    if inputs_and_outputs.is_empty() {
+        return;
+    }
     // Collect all witnesses that require digital decomposition (constants are
     // decomposed separately).
     let mut witnesses_to_decompose = vec![];
