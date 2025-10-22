@@ -6,7 +6,10 @@ use {
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
-    std::mem::size_of,
+    std::{
+        mem::size_of,
+        sync::{LazyLock, RwLock},
+    },
 };
 
 // Taken from utils in noir-r1cs crate
@@ -66,8 +69,7 @@ impl NTTEngine {
         if new_half_order > old_half_order {
             let col_len = new_half_order / old_half_order;
             let unity = Fr::get_root_of_unity(*order as u64).unwrap();
-            // Remark: change this to reserve exact if tighter control on memory is needed
-            table.reserve(new_half_order - old_half_order);
+            table.reserve_exact(new_half_order - old_half_order);
             let (init, uninit) = table.split_at_spare_mut();
 
             // When viewing the roots as a matrix every row is a multiple of the first row
@@ -91,31 +93,41 @@ impl NTTEngine {
         }
     }
 
-    /// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
-    /// normal-to-reverse bit order.
-    ///
-    /// # Arguments
-    /// * `values` - A mutable reference to an NTT container holding the
-    ///   coefficients to be transformed.
-    pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.extend_roots_table(values.order());
-        interleaved_ntt_nr(&self.0, values);
+    // Returns the maximum order that it supports without extention
+    fn order(&self) -> Pow2<usize> {
+        Pow2(self.0.len() * 2)
     }
+}
 
-    pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.extend_roots_table(values.order());
-        intt_rn(&self.0, values);
-    }
+static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEngine::new()));
+
+/// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
+/// normal-to-reverse bit order.
+///
+/// # Arguments
+/// * `values` - A mutable reference to an NTT container holding the
+///   coefficients to be transformed.
+pub fn ntt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
+    let roots = ENGINE.read().unwrap();
+    let new_root = if roots.order() >= values.order() {
+        roots
+    } else {
+        // Drop read lock
+        drop(roots);
+        let mut roots = ENGINE.write().unwrap();
+        roots.extend_roots_table(values.order());
+        // Drop write lock
+        drop(roots);
+        ENGINE.read().unwrap()
+    };
+
+    interleaved_ntt_nr(&new_root.0, values)
 }
 
 impl Default for NTTEngine {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
-    interleaved_ntt_nr(reverse_ordered_roots, values);
 }
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
@@ -309,20 +321,20 @@ fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
 }
 
 /// Note: not specifically optimized
-fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
+pub fn intt_rn<C: NTTContainer<Fr>>(input: &mut NTT<Fr, C>) {
     reverse_order(input);
-    intt_nr(reverse_ordered_roots, input);
+    intt_nr(input);
     reverse_order(input);
 }
 
 // Inverse NTT
-fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+fn intt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
     match *values.order() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
             values[1..].reverse();
-            ntt_nr(reverse_ordered_roots, values);
+            ntt_nr(values);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
@@ -339,7 +351,10 @@ mod tests {
     use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, reverse_order},
-        crate::{ntt::NTTEngine, Pow2, NTT},
+        crate::{
+            ntt::{intt_rn, NTTEngine},
+            ntt_nr, Pow2, NTT,
+        },
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
@@ -404,12 +419,11 @@ mod tests {
         {
             let mut s = original.clone();
 
-            let mut engine = NTTEngine::new();
             // Forward NTT
-            engine.ntt_nr(&mut s.0);
+            ntt_nr(&mut s.0);
 
             // Inverse NTT
-            engine.intt_rn(&mut s.0);
+            intt_rn(&mut s.0);
 
             prop_assert_eq!(original,s);
         }
@@ -478,16 +492,15 @@ mod tests {
         fn test_interleaved((rows, columns, ntt) in interleaving_strategy(0_usize..20)) {
             let mut ntt = ntt.0;
             let mut transposed = transpose(&ntt, rows.get(), columns.get());
-            let mut engine = NTTEngine::new();
 
             for chunk in transposed.chunks_exact_mut(rows.get()){
                 let mut fold = NTT::new(chunk,1).unwrap();
-                engine.ntt_nr(&mut fold);
+                ntt_nr(&mut fold);
             }
 
         let double_transposed = transpose(&transposed, columns.get(), rows.get());
 
-        engine.ntt_nr(&mut ntt);
+        ntt_nr(&mut ntt);
         prop_assert!(double_transposed == ntt.into_inner());
 
         }
@@ -497,8 +510,7 @@ mod tests {
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
         let mut v = NTT::new(vec![], 1).unwrap();
-        let mut engine = NTTEngine::new();
-        engine.ntt_nr(&mut v);
+        ntt_nr(&mut v);
     }
 
     // Compare direct generation of the roots vs. extending from a base set of roots
