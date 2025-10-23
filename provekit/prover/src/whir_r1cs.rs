@@ -57,15 +57,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let mut merlin = io.to_prover_state();
         drop(io);
-     let nv_w = self.whir_witness.mv_parameters.num_variables;
+        let nv_w = self.whir_witness.mv_parameters.num_variables;
 
-       let target_len = 1usize << nv_w;
-let mut z = pad_to_power_of_two(witness);
-if z.len() < target_len {
-    z.resize(target_len, FieldElement::zero());
-}
+        let target_len = 1usize << (nv_w - 1);
+        let mut z = pad_to_power_of_two(witness);
+        if z.len() < target_len {
+            z.resize(target_len, FieldElement::zero());
+        }
 
-let witness_polynomial_evals = EvaluationsList::new(z.clone()); 
+        let witness_polynomial_evals = EvaluationsList::new(z.clone());
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
             batch_commit_to_polynomial(
@@ -198,31 +198,23 @@ pub fn batch_commit_to_polynomial(
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
 ) {
-        let nv_conf = whir_config.mv_parameters.num_variables;
+    let nv_conf = whir_config.mv_parameters.num_variables;
     // let target_len = 1usize << nv_conf;
     // let mask = generate_random_multilinear_polynomial(nv_conf);
-println!(
-    "batch_commit_to_polynomial: m={}, nv_conf={}, witness_coeffs={}, witness_evals={}",
-    m,
-    nv_conf,
-    witness.num_variables(),
-    witness.num_evals(),
-);
-let mask = generate_random_multilinear_polynomial(witness.num_variables());
+    println!(
+        "batch_commit_to_polynomial: m={}, nv_conf={}, witness_coeffs={}, witness_evals={}",
+        m,
+        nv_conf,
+        witness.num_variables(),
+        witness.num_evals(),
+    );
+    let mask = generate_random_multilinear_polynomial(witness.num_variables());
 
     let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
     drop(mask);
 
     let random_polynomial_coeff =
         EvaluationsList::new(generate_random_multilinear_polynomial(m)).to_coeffs();
-//  EvaluationsList::new(generate_random_multilinear_polynomial(m)).to_coeffs();
-println!(
-    "masked: nv={}, coeffs={}; random: nv={}, coeffs={}",
-    masked_polynomial_coeff.num_variables(),
-    masked_polynomial_coeff.num_coeffs(),
-    random_polynomial_coeff.num_variables(),
-    random_polynomial_coeff.num_coeffs(),
-);
 
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
@@ -263,7 +255,6 @@ fn pad_min2_pow2(v: &mut Vec<FieldElement>) {
     }
 }
 
-
 #[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
@@ -281,32 +272,34 @@ pub fn run_zk_sumcheck_prover(
         .fill_challenge_scalars(&mut r)
         .expect("Failed to extract challenge scalars from Merlin");
 
-    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
     let ((mut a, mut b, mut c), mut eq) = rayon::join(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
-// let ((mut a, mut b, mut c), mut eq) = rayon::join(...);
-
-
 
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
 
-  let nv_b = whir_for_blinding_of_spartan_config.mv_parameters.num_variables;
-let target_b = 1usize << nv_b;
+    let nv_b = whir_for_blinding_of_spartan_config
+        .mv_parameters
+        .num_variables;
+    let target_b = 1usize << (nv_b - 1);
 
-// Flatten and pad to exactly 1 << nv_b
-let mut flat = blinding_polynomial.iter().flatten().cloned().collect::<Vec<_>>();
-if flat.len() < target_b {
-    flat.resize(target_b, FieldElement::zero());
-}
-let blinding_polynomial_for_commiting = EvaluationsList::new(flat);
+    // Flatten and pad to exactly 1 << nv_b
+    let mut flat = blinding_polynomial
+        .iter()
+        .flatten()
+        .cloned()
+        .collect::<Vec<_>>();
+    if flat.len() < target_b {
+        flat.resize(target_b, FieldElement::zero());
+    }
+    let blinding_polynomial_for_commiting = EvaluationsList::new(flat);
     let blinding_polynomial_variables = blinding_polynomial_for_commiting.num_variables();
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
         batch_commit_to_polynomial(
-           nv_b,
+            blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
             blinding_polynomial_for_commiting,
             &mut merlin,
@@ -327,12 +320,10 @@ let blinding_polynomial_for_commiting = EvaluationsList::new(flat);
     let mut fold = None;
 
     for idx in 0..m_0 {
-        // let ((mut a, mut b, mut c), mut eq) = rayon::join(...);
-pad_min2_pow2(&mut a);
-pad_min2_pow2(&mut b);
-pad_min2_pow2(&mut c);
-pad_min2_pow2(&mut eq);
-
+        pad_min2_pow2(&mut a);
+        pad_min2_pow2(&mut b);
+        pad_min2_pow2(&mut c);
+        pad_min2_pow2(&mut eq);
 
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
@@ -435,54 +426,8 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
     result
 }
 
-// fn create_combined_statement_over_two_polynomials<const N: usize>(
-//     num_vars: usize,
-//     witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
-//     f_polynomial: EvaluationsList<FieldElement>,
-//     g_polynomial: EvaluationsList<FieldElement>,
-//     alphas: [Vec<FieldElement>; N],
-// ) -> (
-//     Statement<FieldElement>,
-//     Vec<FieldElement>,
-//     Vec<FieldElement>,
-// ) {
-//     let mut statement = Statement::<FieldElement>::new(num_vars);
-//     let mut f_sums = Vec::with_capacity(N);
-//     let mut g_sums = Vec::with_capacity(N);
-
-//     for alpha in alphas.into_iter() {
-//         let mut expanded_alphas = pad_to_power_of_two(alpha);
-//         expanded_alphas.resize(expanded_alphas.len() * 2, FieldElement::zero());
-
-//         let weight = Weights::linear(EvaluationsList::new(expanded_alphas));
-//         let f = weight.weighted_sum(&f_polynomial);
-//         let g = weight.weighted_sum(&g_polynomial);
-
-//         statement.add_constraint(weight, f + witness.batching_randomness * g);
-
-//         f_sums.push(f);
-//         g_sums.push(g);
-//     }
-
-//     (statement, f_sums, g_sums)
-// }
-fn eq_evals(alpha: &[FieldElement], num_vars: usize) -> Vec<FieldElement> {
-    let one = FieldElement::one();
-    let mut evals = vec![one];
-    for i in 0..num_vars {
-        let ai = if i < alpha.len() { alpha[i] } else { FieldElement::zero() };
-        let mut next = vec![FieldElement::zero(); evals.len() * 2];
-        for (idx, v) in evals.iter().enumerate() {
-            next[2*idx]     = *v * (one - ai); // x_i = 0
-            next[2*idx + 1] = *v * ai;         // x_i = 1
-        }
-        evals = next;
-    }
-    evals
-}
-
 fn create_combined_statement_over_two_polynomials<const N: usize>(
-    num_vars: usize,
+    cfg_nv: usize,
     witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
     f_polynomial: EvaluationsList<FieldElement>,
     g_polynomial: EvaluationsList<FieldElement>,
@@ -492,21 +437,33 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     Vec<FieldElement>,
     Vec<FieldElement>,
 ) {
-    // everything must agree on the domain
-    assert_eq!(f_polynomial.num_variables(), num_vars);
-    assert_eq!(g_polynomial.num_variables(), num_vars);
+    assert_eq!(f_polynomial.num_variables(), cfg_nv);
+    assert_eq!(g_polynomial.num_variables(), cfg_nv);
 
-    let mut statement = Statement::<FieldElement>::new(num_vars);
+    let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
+    let base_len = 1usize << base_nv;
+    let final_len = 1usize << cfg_nv;
+
+    let mut statement = Statement::<FieldElement>::new(cfg_nv);
     let mut f_sums = Vec::with_capacity(N);
     let mut g_sums = Vec::with_capacity(N);
 
-    for alpha in alphas.into_iter() {
-        let w_evals = eq_evals(&alpha, num_vars);
-        debug_assert_eq!(w_evals.len(), 1usize << num_vars);
+    for mut w in alphas.into_iter() {
+        // ensure w has length 2^{base_nv}
+        if w.len() < base_len {
+            w.resize(base_len, FieldElement::zero());
+        } else {
+            debug_assert_eq!(w.len(), base_len);
+        }
 
-        let weight = Weights::linear(EvaluationsList::new(w_evals));
-        let f = weight.weighted_sum(&f_polynomial);
-        let g = weight.weighted_sum(&g_polynomial);
+        // lift to 2^{cfg_nv} by zeroing the mask half: [w || 0]
+        let mut w_full = Vec::with_capacity(final_len);
+        w_full.extend_from_slice(&w);
+        w_full.resize(final_len, FieldElement::zero());
+
+        let weight = Weights::linear(EvaluationsList::new(w_full));
+        let f = weight.weighted_sum(&f_polynomial); // sums over original half
+        let g = weight.weighted_sum(&g_polynomial); // same weights for g
 
         statement.add_constraint(weight, f + witness.batching_randomness * g);
         f_sums.push(f);
