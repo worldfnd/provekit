@@ -54,7 +54,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         };
 
         let mv_params = MultivariateParameters::new(nv);
-        println!("mv_params: {:?}", mv_params);
         let whir_params = ProtocolParameters {
             initial_statement: true,
             security_level: 128,

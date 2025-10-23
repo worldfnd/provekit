@@ -198,10 +198,7 @@ pub fn batch_commit_to_polynomial(
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
 ) {
-    let nv_conf = whir_config.mv_parameters.num_variables;
-
     let mask = generate_random_multilinear_polynomial(witness.num_variables());
-
     let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
     drop(mask);
 
