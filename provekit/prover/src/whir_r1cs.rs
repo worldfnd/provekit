@@ -260,7 +260,7 @@ pub fn run_zk_sumcheck_prover(
     merlin
         .fill_challenge_scalars(&mut r)
         .expect("Failed to extract challenge scalars from Merlin");
-
+    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
     let ((mut a, mut b, mut c), mut eq) = rayon::join(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
@@ -426,9 +426,6 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     Vec<FieldElement>,
     Vec<FieldElement>,
 ) {
-    assert_eq!(f_polynomial.num_variables(), cfg_nv);
-    assert_eq!(g_polynomial.num_variables(), cfg_nv);
-
     let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
     let base_len = 1usize << base_nv;
     let final_len = 1usize << cfg_nv;
