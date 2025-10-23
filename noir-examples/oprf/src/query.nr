@@ -14,9 +14,9 @@ fn check_credential_signature(
     credential_type_id: Field,
     user_id: Field,
     genesis_issued_at: Field,
-    expires_at: Field,
+    expires_at: u64,
     hashes: [Field; 2],
-    current_time_stamp: Field,
+    current_time_stamp: u64,
 ) {
     // Check expiration first
     assert((current_time_stamp as u64) < (expires_at as u64), "Credential expired");
@@ -27,7 +27,7 @@ fn check_credential_signature(
         credential_type_id,
         user_id,
         genesis_issued_at,
-        expires_at,
+        expires_at as Field,
         hashes[0],
         hashes[1],
         0,
@@ -40,12 +40,17 @@ fn check_credential_signature(
 }
 
 pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
-    inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
     query: Field,
+    depth: Field,
+    root: Field,
+    cred_pk: PublicKey,
+    current_time_stamp: u64,
+    inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
     beta_bits: [u1; 251],
 ) -> PublicKey {
     // 1. Verify sk/pk by verifying a signature to a known message
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
+
     let is_valid = verify_eddsa_poseidon2(
         chosen_pk.x,
         chosen_pk.y,
@@ -59,23 +64,23 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     let merkle_leaf = merkle_leaf(inputs.user_pk);
     let computed_root = compute_merkle_root_poseidon2(
         merkle_leaf,
-        inputs.merkle_proof.depth,
+        depth,
         inputs.merkle_proof.mt_index,
         inputs.merkle_proof.siblings,
     );
-    assert(computed_root == inputs.merkle_proof.root, "Merkle proof verification failed");
+    assert(computed_root == root, "Merkle proof verification failed");
 
     // Verify credential signature
     check_credential_signature(
         inputs.cred_s,
         inputs.cred_r,
-        [inputs.cred_pk.x, inputs.cred_pk.y],
+        [cred_pk.x, cred_pk.y],
         inputs.cred_type_id,
         inputs.merkle_proof.mt_index,
         inputs.cred_genesis_issued_at,
         inputs.cred_expires_at,
         [inputs.cred_hashes.claims_hash, inputs.cred_hashes.associated_data_hash],
-        inputs.current_time_stamp,
+        current_time_stamp,
     );
 
     // Encode query to curve point and perform scalar multiplication

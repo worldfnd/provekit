@@ -1,4 +1,4 @@
-use super::{BabyJubJubPoint, montogomery::MontgomeryPoint};
+use super::{BabyJubJubPoint, montgomery::MontgomeryPoint};
 
 fn bit_element_mul_fix_scalar(
     bit: u1,

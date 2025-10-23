@@ -22,11 +22,8 @@ fn is_zero(x: Field) -> bool {
 }
 
 fn inverse_or_zero(x: Field) -> Field {
-    if x == 0 {
-        0
-    } else {
-        1 / x
-    }
+    let is_zero = (x == 0) as Field;
+    (1 / x) * (1 - is_zero)
 }
 
 fn pow(x: Field, y: Field) -> Field {

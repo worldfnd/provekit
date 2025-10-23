@@ -27,9 +27,9 @@ fn generate_id_commitment(mt_index: Field, commitment_r: Field) -> Field {
 
 pub fn generate_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     query: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
+    rp_id: Field,
+    action: Field,
 ) -> Field {
-    let state = perm::x5_4(
-        [DS_Q, query.merkle_proof.mt_index, query.rp_id, query.action],
-    );
+    let state = perm::x5_4([DS_Q, query.merkle_proof.mt_index, rp_id, action]);
     state[1]
 }

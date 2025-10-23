@@ -3,7 +3,7 @@
 // Reference: https://github.com/iden3/circomlib/blob/master/circuits/escalarmulfix.circom
 
 use super::BabyJubJubPoint;
-use super::montogomery::MontgomeryPoint;
+use super::montgomery::MontgomeryPoint;
 use super::window_table::{generate_window_table, generator_window_table, select_from_window};
 fn segment_mul_fix_generator<let N: u32>(bits: [u1; N]) -> (BabyJubJubPoint, MontgomeryPoint) {
     let generator_table = generator_window_table();

@@ -9,10 +9,10 @@ use std::field::bn254;
 
 mod tests;
 pub mod hash_to_curve;
-pub mod montogomery;
-pub mod window_table;
-pub mod check_sub_group;
-pub mod escalar_mul_fix;
+pub(crate) mod montgomery;
+pub(crate) mod window_table;
+pub(crate) mod check_sub_group;
+pub(crate) mod escalar_mul_fix;
 
 // BabyJubJub curve constants
 global BABYJUBJUB_A: Field = 168700;

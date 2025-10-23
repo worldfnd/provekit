@@ -1,4 +1,4 @@
-use super::montogomery::MontgomeryPoint;
+use super::montgomery::MontgomeryPoint;
 
 /// Returns [1G, 2G, 3G, 4G, 5G, 6G, 7G, 8G] in Montgomery form
 pub fn generator_window_table() -> [MontgomeryPoint; 8] {
