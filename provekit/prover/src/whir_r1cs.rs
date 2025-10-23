@@ -265,7 +265,10 @@ pub fn run_zk_sumcheck_prover(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
-
+    pad_min2_pow2(&mut a);
+    pad_min2_pow2(&mut b);
+    pad_min2_pow2(&mut c);
+    pad_min2_pow2(&mut eq);
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
@@ -309,11 +312,6 @@ pub fn run_zk_sumcheck_prover(
     let mut fold = None;
 
     for idx in 0..m_0 {
-        pad_min2_pow2(&mut a);
-        pad_min2_pow2(&mut b);
-        pad_min2_pow2(&mut c);
-        pad_min2_pow2(&mut eq);
-
         // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
         // polynomial sent by the prover.
         let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
