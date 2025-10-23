@@ -199,15 +199,7 @@ pub fn batch_commit_to_polynomial(
     EvaluationsList<FieldElement>,
 ) {
     let nv_conf = whir_config.mv_parameters.num_variables;
-    // let target_len = 1usize << nv_conf;
-    // let mask = generate_random_multilinear_polynomial(nv_conf);
-    println!(
-        "batch_commit_to_polynomial: m={}, nv_conf={}, witness_coeffs={}, witness_evals={}",
-        m,
-        nv_conf,
-        witness.num_variables(),
-        witness.num_evals(),
-    );
+
     let mask = generate_random_multilinear_polynomial(witness.num_variables());
 
     let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
@@ -393,7 +385,7 @@ pub fn run_zk_sumcheck_prover(
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
         create_combined_statement_over_two_polynomials::<1>(
-            nv_b,
+            blinding_polynomial_variables + 1,
             &commitment_to_blinding_polynomial,
             blindings_mask_polynomial,
             blindings_blind_polynomial,
