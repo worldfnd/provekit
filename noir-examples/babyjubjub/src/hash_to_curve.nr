@@ -10,7 +10,7 @@ global C1: u32 = 28;
 global C3: Field = 40770029410420498293352137776570907027550720424234931066070132305055;
 global C5: Field = 19103219067921713944291392827692070036145651957329286315305642004821462161904;
 
-pub fn hash_to_field(input: Field) -> Field {
+fn hash_to_field(input: Field) -> Field {
     let hash_input = [0, input, 0];
     let hash_result = perm::x5_3(hash_input);
 
@@ -71,7 +71,7 @@ unconstrained fn sqrt(x: Field) -> Field {
 }
 
 // Check if a field element is a quadratic residue or zero
-pub fn is_quadratic_residue_or_zero(x: Field) -> bool {
+fn is_quadratic_residue_or_zero(x: Field) -> bool {
     // SAFETY:
     // Constraint strategy, from (<https://eprint.iacr.org/2021/984.pdf>, page 4):
     // Let l = Legendre(a) in { -1, 0, 1 }.
@@ -163,7 +163,7 @@ pub fn map_to_curve_elligator2(input: Field) -> (Field, Field) {
     (s, t)
 }
 
-pub fn rational_map_mont_to_twisted_edwards(s: Field, t: Field) -> (Field, Field) {
+fn rational_map_mont_to_twisted_edwards(s: Field, t: Field) -> (Field, Field) {
     // tv1 = s + 1
     let tv1 = s + 1;
 
@@ -192,12 +192,12 @@ pub fn rational_map_mont_to_twisted_edwards(s: Field, t: Field) -> (Field, Field
 }
 
 // Map to Twisted Edwards curve
-pub fn map_to_curve_twisted_edwards(input: Field) -> (Field, Field) {
+fn map_to_curve_twisted_edwards(input: Field) -> (Field, Field) {
     let (mont_s, mont_t) = map_to_curve_elligator2(input);
     rational_map_mont_to_twisted_edwards(mont_s, mont_t)
 }
 
-pub fn clear_cofactor_baby_jubjub(x: Field, y: Field) -> (Field, Field) {
+fn clear_cofactor_baby_jubjub(x: Field, y: Field) -> (Field, Field) {
     let point = BabyJubJubPoint::new(x, y);
     let result = point.multiply_by_cofactor();
 
