@@ -152,4 +152,3 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
 ] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
 whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "3d627d31cec7d73a470a31a913229dd3128ee0cf" }
-
