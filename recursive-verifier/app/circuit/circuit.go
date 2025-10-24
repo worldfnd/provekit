@@ -275,16 +275,23 @@ func verifyCircuit(
 		MatrixC: matrixC,
 	}
 
+	log.Printf("Creating witness...")
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	log.Printf("Witness created")
 	publicWitness, _ := witness.Public()
+	log.Printf("Public witness created")
 
 	opts := []backend.ProverOption{
 		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)),
 		backend.WithIcicleAcceleration(),
 	}
 
+	log.Printf("Proving circuit...")
 	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)
+	log.Printf("Proof generated")
+	log.Printf("Verifying proof...")
 	err = groth16.Verify(proof, *vk, publicWitness)
+	log.Printf("Proof verified")
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)
 		return err
