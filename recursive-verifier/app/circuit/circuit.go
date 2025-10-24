@@ -175,10 +175,13 @@ func verifyCircuit(
 		MatrixC: matrixC,
 	}
 
+	log.Printf("Compiling circuit...")
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
 	if err != nil {
 		log.Fatalf("Failed to compile circuit: %v", err)
 	}
+	log.Printf("Circuit compiled")
+
 	if buildOps.OutputCcsPath != "" {
 		ccsFile, err := os.Create(buildOps.OutputCcsPath)
 		if err != nil {
@@ -250,6 +253,7 @@ func verifyCircuit(
 		}
 	}
 
+	log.Printf("Creating assignment...")
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
 
 	assignment := Circuit{
@@ -274,6 +278,7 @@ func verifyCircuit(
 		MatrixB: matrixB,
 		MatrixC: matrixC,
 	}
+	log.Printf("Assignment created")
 
 	log.Printf("Creating witness...")
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
