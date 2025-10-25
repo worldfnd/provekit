@@ -4,13 +4,17 @@ use {
         witness::{
             binops::BINOP_ATOMIC_BITS,
             digits::DigitalDecompositionWitnesses,
-            layer_scheduler::{LayerScheduler, LayeredWitnessBuilders},
+            layer_scheduler::{
+                LayerScheduler, LayeredWitnessBuilders, SplitWitnessBuilders, WitnessIndexRemapper,
+                WitnessSplitter,
+            },
             ram::SpiceWitnesses,
             ConstantOrR1CSWitness,
         },
-        FieldElement,
+        FieldElement, R1CS,
     },
     serde::{Deserialize, Serialize},
+    std::num::NonZeroU32,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -152,5 +156,94 @@ impl WitnessBuilder {
 
         let scheduler = LayerScheduler::new(witness_builders);
         scheduler.build_layers()
+    }
+
+    /// Splits witness builders into w1/w2, remaps indices, and schedules both
+    /// groups.
+    ///
+    /// This enables sound challenge generation:
+    /// 1. Split builders: w1 = transitive deps of lookups, w2 = challenges +
+    ///    dependents
+    /// 2. Remap witness indices: w1 → [0, k), w2 → [k, n)
+    /// 3. Remap R1CS matrices and ACIR witness map
+    /// 4. Schedule both groups with batch inversions
+    ///
+    /// Returns (SplitWitnessBuilders, remapped R1CS, remapped witness
+    /// map)
+    pub fn split_and_prepare_layers(
+        witness_builders: &[WitnessBuilder],
+        r1cs: R1CS,
+        witness_map: Vec<Option<NonZeroU32>>,
+    ) -> (SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>) {
+        if witness_builders.is_empty() {
+            return (
+                SplitWitnessBuilders {
+                    w1_layers: LayeredWitnessBuilders { layers: Vec::new() },
+                    w2_layers: LayeredWitnessBuilders { layers: Vec::new() },
+                    w1_size:   0,
+                },
+                r1cs,
+                witness_map,
+            );
+        }
+
+        // Step 1: Analyze dependencies and split into w1/w2
+        let splitter = WitnessSplitter::new(witness_builders);
+        let (w1_indices, w2_indices) = splitter.split_builders();
+
+        // Step 2: Extract w1 and w2 builders in order
+        let w1_builders: Vec<WitnessBuilder> = w1_indices
+            .iter()
+            .map(|&idx| witness_builders[idx].clone())
+            .collect();
+
+        let w2_builders: Vec<WitnessBuilder> = w2_indices
+            .iter()
+            .map(|&idx| witness_builders[idx].clone())
+            .collect();
+
+        // Step 3: Create witness index remapper
+        let remapper = WitnessIndexRemapper::new(&w1_builders, &w2_builders);
+        let w1_size = remapper.w1_size;
+
+        // Step 4: Remap all builders
+        let remapped_w1_builders: Vec<WitnessBuilder> = w1_builders
+            .iter()
+            .map(|b| remapper.remap_builder(b))
+            .collect();
+
+        let remapped_w2_builders: Vec<WitnessBuilder> = w2_builders
+            .iter()
+            .map(|b| remapper.remap_builder(b))
+            .collect();
+
+        // Step 5: Remap R1CS and witness map
+        let remapped_r1cs = remapper.remap_r1cs(r1cs);
+        let remapped_witness_map = remapper.remap_acir_witness_map(witness_map);
+
+        // Step 6: Schedule both groups independently with batch inversions
+        let w1_layers = if remapped_w1_builders.is_empty() {
+            LayeredWitnessBuilders { layers: Vec::new() }
+        } else {
+            let scheduler = LayerScheduler::new(&remapped_w1_builders);
+            scheduler.build_layers()
+        };
+
+        let w2_layers = if remapped_w2_builders.is_empty() {
+            LayeredWitnessBuilders { layers: Vec::new() }
+        } else {
+            let scheduler = LayerScheduler::new(&remapped_w2_builders);
+            scheduler.build_layers()
+        };
+
+        (
+            SplitWitnessBuilders {
+                w1_layers,
+                w2_layers,
+                w1_size,
+            },
+            remapped_r1cs,
+            remapped_witness_map,
+        )
     }
 }

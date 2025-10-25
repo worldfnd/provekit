@@ -2,7 +2,7 @@ use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
-        witness::{LayeredWitnessBuilders, NoirWitnessGenerator},
+        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         NoirElement, R1CS,
     },
     acir::circuit::Program,

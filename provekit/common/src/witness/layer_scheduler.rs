@@ -1,13 +1,19 @@
 use {
     super::WitnessBuilder,
-    crate::witness::{
-        ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessCoefficient,
-        BINOP_ATOMIC_BITS,
+    crate::{
+        interner::Interner,
+        sparse_matrix::SparseMatrix,
+        witness::{
+            ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessCoefficient,
+            BINOP_ATOMIC_BITS,
+        },
+        R1CS,
     },
     serde::{Deserialize, Serialize},
     std::{
         collections::{HashMap, HashSet, VecDeque},
         mem,
+        num::NonZeroU32,
     },
 };
 
@@ -52,6 +58,23 @@ impl LayeredWitnessBuilders {
     pub fn layers_len(&self) -> usize {
         self.layers.len()
     }
+}
+
+/// Split witness builders for sound challenge generation.
+///
+/// Contains w1 (pre-challenge commitment) and w2 (post-challenge) witness
+/// builders, each with their own layered execution plans.
+/// Reference: https://hackmd.io/@shreyas-londhe/HkgVaTXCxx
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SplitWitnessBuilders {
+    /// Witness builders that must be computed before challenge extraction.
+    /// These are committed to w1 before challenges are generated.
+    pub w1_layers: LayeredWitnessBuilders,
+    /// Witness builders computed after challenge extraction.
+    /// These include challenges themselves and anything depending on them.
+    pub w2_layers: LayeredWitnessBuilders,
+    /// Number of witnesses in w1 (used for indexing split).
+    pub w1_size:   usize,
 }
 
 /// Pre-computed dependency graph for witness builder scheduling.
@@ -243,6 +266,406 @@ impl DependencyInfo {
                 vec![*result_idx, *carry_idx]
             }
         }
+    }
+}
+
+/// Analyzes witness builder dependencies and splits them into w1/w2 groups.
+///
+/// Uses backward reachability from challenge consumers (lookup builders) to
+/// identify which builders must be committed before challenge extraction (w1),
+/// minimizing overhead.
+pub struct WitnessSplitter<'a> {
+    witness_builders: &'a [WitnessBuilder],
+    deps:             DependencyInfo,
+}
+
+impl<'a> WitnessSplitter<'a> {
+    pub fn new(witness_builders: &'a [WitnessBuilder]) -> Self {
+        let deps = DependencyInfo::new(witness_builders);
+        Self {
+            witness_builders,
+            deps,
+        }
+    }
+
+    /// Identifies which builders should be in w1 (pre-challenge) vs w2
+    /// (post-challenge).
+    ///
+    /// Returns (w1_builder_indices, w2_builder_indices)
+    pub fn split_builders(&self) -> (Vec<usize>, Vec<usize>) {
+        let builder_count = self.witness_builders.len();
+
+        // Step 1: Find all Challenge builders
+        let challenge_builders: HashSet<usize> = self
+            .witness_builders
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, builder)| {
+                matches!(builder, WitnessBuilder::Challenge(_)).then_some(idx)
+            })
+            .collect();
+
+        // If no challenges, everything goes in w1
+        if challenge_builders.is_empty() {
+            return ((0..builder_count).collect(), Vec::new());
+        }
+
+        // Step 2: Build witness-to-producer mapping
+        let mut witness_producer: HashMap<usize, usize> = HashMap::new();
+        for (builder_idx, builder) in self.witness_builders.iter().enumerate() {
+            for witness_idx in DependencyInfo::extract_writes(builder) {
+                witness_producer.insert(witness_idx, builder_idx);
+            }
+        }
+
+        // Step 3: Find all builders that READ challenge witnesses (lookup builders)
+        let mut lookup_builders = HashSet::new();
+        for &challenge_builder_idx in &challenge_builders {
+            let challenge_witnesses =
+                DependencyInfo::extract_writes(&self.witness_builders[challenge_builder_idx]);
+
+            for challenge_witness in challenge_witnesses {
+                for (consumer_idx, reads) in self.deps.reads.iter().enumerate() {
+                    if reads.contains(&challenge_witness) {
+                        lookup_builders.insert(consumer_idx);
+                    }
+                }
+            }
+        }
+
+        // Step 4: Backward DFS from lookup builders to find transitive dependencies
+        let mut w1_set = HashSet::new();
+        let mut visited = vec![false; builder_count];
+        let mut stack = VecDeque::new();
+
+        // Initialize with lookup builders
+        for &lookup_idx in &lookup_builders {
+            stack.push_back(lookup_idx);
+        }
+
+        // Backward DFS
+        while let Some(current_idx) = stack.pop_front() {
+            if visited[current_idx] {
+                continue;
+            }
+            visited[current_idx] = true;
+
+            // Don't include challenges or lookups in w1 - they go to w2
+            if !challenge_builders.contains(&current_idx) && !lookup_builders.contains(&current_idx)
+            {
+                w1_set.insert(current_idx);
+            }
+
+            // Traverse backward through dependencies
+            for &witness_idx in &self.deps.reads[current_idx] {
+                if let Some(&producer_idx) = witness_producer.get(&witness_idx) {
+                    if !visited[producer_idx] {
+                        stack.push_back(producer_idx);
+                    }
+                }
+            }
+        }
+
+        // Step 5: Partition into w1 and w2, preserving original order
+        let mut w1_indices = Vec::new();
+        let mut w2_indices = Vec::new();
+
+        for idx in 0..builder_count {
+            if w1_set.contains(&idx) {
+                w1_indices.push(idx);
+            } else {
+                w2_indices.push(idx);
+            }
+        }
+
+        (w1_indices, w2_indices)
+    }
+}
+
+/// Remaps witness indices to create disjoint w1 and w2 ranges.
+///
+/// After remapping:
+/// - w1 witnesses occupy indices [0, k)
+/// - w2 witnesses occupy indices [k, n)
+///
+/// This ensures w1 can be committed independently before challenge extraction.
+pub struct WitnessIndexRemapper {
+    /// Maps old witness index to new witness index
+    pub old_to_new: HashMap<usize, usize>,
+    /// Number of witnesses in w1 (boundary between w1 and w2)
+    pub w1_size:    usize,
+}
+
+impl WitnessIndexRemapper {
+    /// Creates a remapping from w1 and w2 builder lists.
+    ///
+    /// Assigns w1 builder outputs to [0, k) and w2 builder outputs to [k, n).
+    pub fn new(w1_builders: &[WitnessBuilder], w2_builders: &[WitnessBuilder]) -> Self {
+        let mut old_to_new = HashMap::new();
+        let mut next_w1_idx = 0;
+        let mut next_w2_idx = 0;
+
+        // Map w1 builder outputs to [0, k)
+        for builder in w1_builders {
+            let writes = DependencyInfo::extract_writes(builder);
+            for old_idx in writes {
+                old_to_new.insert(old_idx, next_w1_idx);
+                next_w1_idx += 1;
+            }
+        }
+
+        let w1_size = next_w1_idx;
+
+        // Map w2 builder outputs to [k, n)
+        for builder in w2_builders {
+            let writes = DependencyInfo::extract_writes(builder);
+            for old_idx in writes {
+                old_to_new.insert(old_idx, w1_size + next_w2_idx);
+                next_w2_idx += 1;
+            }
+        }
+
+        Self {
+            old_to_new,
+            w1_size,
+        }
+    }
+
+    /// Remaps a single witness index.
+    pub fn remap(&self, old_idx: usize) -> usize {
+        *self
+            .old_to_new
+            .get(&old_idx)
+            .unwrap_or_else(|| panic!("Witness index {} not in remapping", old_idx))
+    }
+
+    /// Helper to remap ConstantOrR1CSWitness variants
+    pub fn remap_const_or_witness(&self, val: &ConstantOrR1CSWitness) -> ConstantOrR1CSWitness {
+        match val {
+            ConstantOrR1CSWitness::Constant(c) => ConstantOrR1CSWitness::Constant(*c),
+            ConstantOrR1CSWitness::Witness(w) => ConstantOrR1CSWitness::Witness(self.remap(*w)),
+        }
+    }
+
+    /// Remaps a witness builder, updating all witness indices it references.
+    pub fn remap_builder(&self, builder: &WitnessBuilder) -> WitnessBuilder {
+        match builder {
+            WitnessBuilder::Constant(ConstantTerm(idx, val)) => {
+                WitnessBuilder::Constant(ConstantTerm(self.remap(*idx), *val))
+            }
+            WitnessBuilder::Acir(idx, acir_idx) => {
+                WitnessBuilder::Acir(self.remap(*idx), *acir_idx)
+            }
+            WitnessBuilder::Sum(idx, terms) => {
+                let new_terms = terms
+                    .iter()
+                    .map(|SumTerm(coeff, operand_idx)| SumTerm(*coeff, self.remap(*operand_idx)))
+                    .collect();
+                WitnessBuilder::Sum(self.remap(*idx), new_terms)
+            }
+            WitnessBuilder::Product(idx, a, b) => {
+                WitnessBuilder::Product(self.remap(*idx), self.remap(*a), self.remap(*b))
+            }
+            WitnessBuilder::MultiplicitiesForRange(start, range, values) => {
+                let new_values = values.iter().map(|&v| self.remap(v)).collect();
+                WitnessBuilder::MultiplicitiesForRange(self.remap(*start), *range, new_values)
+            }
+            WitnessBuilder::Challenge(idx) => WitnessBuilder::Challenge(self.remap(*idx)),
+            WitnessBuilder::IndexedLogUpDenominator(
+                idx,
+                sz,
+                WitnessCoefficient(coeff, index),
+                rs,
+                value,
+            ) => WitnessBuilder::IndexedLogUpDenominator(
+                self.remap(*idx),
+                self.remap(*sz),
+                WitnessCoefficient(*coeff, self.remap(*index)),
+                self.remap(*rs),
+                self.remap(*value),
+            ),
+            WitnessBuilder::Inverse(idx, operand) => {
+                WitnessBuilder::Inverse(self.remap(*idx), self.remap(*operand))
+            }
+            WitnessBuilder::ProductLinearOperation(
+                idx,
+                ProductLinearTerm(x, a, b),
+                ProductLinearTerm(y, c, d),
+            ) => WitnessBuilder::ProductLinearOperation(
+                self.remap(*idx),
+                ProductLinearTerm(self.remap(*x), *a, *b),
+                ProductLinearTerm(self.remap(*y), *c, *d),
+            ),
+            WitnessBuilder::LogUpDenominator(idx, sz, WitnessCoefficient(coeff, value)) => {
+                WitnessBuilder::LogUpDenominator(
+                    self.remap(*idx),
+                    self.remap(*sz),
+                    WitnessCoefficient(*coeff, self.remap(*value)),
+                )
+            }
+            WitnessBuilder::DigitalDecomposition(dd) => {
+                let new_witnesses_to_decompose = dd
+                    .witnesses_to_decompose
+                    .iter()
+                    .map(|&w| self.remap(w))
+                    .collect();
+                WitnessBuilder::DigitalDecomposition(
+                    crate::witness::DigitalDecompositionWitnesses {
+                        log_bases:                  dd.log_bases.clone(),
+                        num_witnesses_to_decompose: dd.num_witnesses_to_decompose,
+                        witnesses_to_decompose:     new_witnesses_to_decompose,
+                        first_witness_idx:          self.remap(dd.first_witness_idx),
+                        num_witnesses:              dd.num_witnesses,
+                    },
+                )
+            }
+            WitnessBuilder::SpiceMultisetFactor(
+                idx,
+                sz,
+                rs,
+                WitnessCoefficient(addr_c, addr_w),
+                value,
+                WitnessCoefficient(timer_c, timer_w),
+            ) => WitnessBuilder::SpiceMultisetFactor(
+                self.remap(*idx),
+                self.remap(*sz),
+                self.remap(*rs),
+                WitnessCoefficient(*addr_c, self.remap(*addr_w)),
+                self.remap(*value),
+                WitnessCoefficient(*timer_c, self.remap(*timer_w)),
+            ),
+            WitnessBuilder::SpiceWitnesses(sw) => {
+                let new_memory_operations = sw
+                    .memory_operations
+                    .iter()
+                    .map(|op| match op {
+                        crate::witness::SpiceMemoryOperation::Load(addr, value, rt) => {
+                            crate::witness::SpiceMemoryOperation::Load(
+                                self.remap(*addr),
+                                self.remap(*value),
+                                self.remap(*rt),
+                            )
+                        }
+                        crate::witness::SpiceMemoryOperation::Store(addr, old_val, new_val, rt) => {
+                            crate::witness::SpiceMemoryOperation::Store(
+                                self.remap(*addr),
+                                self.remap(*old_val),
+                                self.remap(*new_val),
+                                self.remap(*rt),
+                            )
+                        }
+                    })
+                    .collect();
+                WitnessBuilder::SpiceWitnesses(crate::witness::SpiceWitnesses {
+                    memory_length:        sw.memory_length,
+                    initial_values_start: self.remap(sw.initial_values_start),
+                    memory_operations:    new_memory_operations,
+                    rv_final_start:       self.remap(sw.rv_final_start),
+                    rt_final_start:       self.remap(sw.rt_final_start),
+                    first_witness_idx:    self.remap(sw.first_witness_idx),
+                    num_witnesses:        sw.num_witnesses,
+                })
+            }
+            WitnessBuilder::BinOpLookupDenominator(idx, sz, rs, rs2, lhs, rhs, output) => {
+                WitnessBuilder::BinOpLookupDenominator(
+                    self.remap(*idx),
+                    self.remap(*sz),
+                    self.remap(*rs),
+                    self.remap(*rs2),
+                    self.remap_const_or_witness(lhs),
+                    self.remap_const_or_witness(rhs),
+                    self.remap_const_or_witness(output),
+                )
+            }
+            WitnessBuilder::MultiplicitiesForBinOp(start, pairs) => {
+                let new_pairs = pairs
+                    .iter()
+                    .map(|(lhs, rhs)| {
+                        (
+                            self.remap_const_or_witness(lhs),
+                            self.remap_const_or_witness(rhs),
+                        )
+                    })
+                    .collect();
+                WitnessBuilder::MultiplicitiesForBinOp(self.remap(*start), new_pairs)
+            }
+            WitnessBuilder::U32Addition(result_idx, carry_idx, a, b) => {
+                WitnessBuilder::U32Addition(
+                    self.remap(*result_idx),
+                    self.remap(*carry_idx),
+                    self.remap_const_or_witness(a),
+                    self.remap_const_or_witness(b),
+                )
+            }
+            WitnessBuilder::And(idx, lh, rh) => WitnessBuilder::And(
+                self.remap(*idx),
+                self.remap_const_or_witness(lh),
+                self.remap_const_or_witness(rh),
+            ),
+            WitnessBuilder::Xor(idx, lh, rh) => WitnessBuilder::Xor(
+                self.remap(*idx),
+                self.remap_const_or_witness(lh),
+                self.remap_const_or_witness(rh),
+            ),
+        }
+    }
+
+    /// Remaps witness indices in R1CS constraint matrices.
+    ///
+    /// Creates a new R1CS with remapped column indices (witness indices).
+    /// Row indices (constraints) remain unchanged.
+    pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
+        let mut new_r1cs = R1CS::new();
+        new_r1cs.num_public_inputs = r1cs.num_public_inputs;
+        new_r1cs.interner = r1cs.interner.clone();
+
+        // Remap each matrix (A, B, C)
+        let new_a = self.remap_sparse_matrix(r1cs.a, &r1cs.interner, &mut new_r1cs.interner);
+        let new_b = self.remap_sparse_matrix(r1cs.b, &r1cs.interner, &mut new_r1cs.interner);
+        let new_c = self.remap_sparse_matrix(r1cs.c, &r1cs.interner, &mut new_r1cs.interner);
+
+        // Build new R1CS with remapped matrices
+        new_r1cs.a = new_a;
+        new_r1cs.b = new_b;
+        new_r1cs.c = new_c;
+
+        new_r1cs
+    }
+
+    /// Helper to remap a single sparse matrix
+    pub fn remap_sparse_matrix(
+        &self,
+        matrix: SparseMatrix,
+        read_interner: &Interner,
+        write_interner: &mut Interner,
+    ) -> SparseMatrix {
+        // Create new matrix with same dimensions
+        let mut new_matrix = SparseMatrix::new(matrix.num_rows, matrix.num_cols);
+
+        // Iterate through all entries and remap column indices
+        let hydrated = matrix.hydrate(read_interner);
+        for ((row, old_col), value) in hydrated.iter() {
+            let new_col = self.remap(old_col);
+            new_matrix.set(row, new_col, write_interner.intern(value));
+        }
+
+        new_matrix
+    }
+
+    /// Remaps ACIR witness map.
+    ///
+    /// The map goes from ACIR witness index -> R1CS witness index.
+    /// We need to update the R1CS indices to their new remapped values.
+    pub fn remap_acir_witness_map(&self, map: Vec<Option<NonZeroU32>>) -> Vec<Option<NonZeroU32>> {
+        map.into_iter()
+            .map(|opt_idx| {
+                opt_idx.map(|idx| {
+                    let old_r1cs_idx = idx.get() as usize;
+                    let new_r1cs_idx = self.remap(old_r1cs_idx);
+                    NonZeroU32::new(new_r1cs_idx as u32).expect("Remapped index should be non-zero")
+                })
+            })
+            .collect()
     }
 }
 

@@ -60,21 +60,37 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             r1cs.b.num_entries(),
             r1cs.c.num_entries()
         );
-        let layered_witness_builders = WitnessBuilder::prepare_layers(&witness_builders);
 
-        // Configure witness generator
-        let witness_generator =
-            NoirWitnessGenerator::new(&program, witness_map, r1cs.num_witnesses());
+        // Split witness builders and remap indices for sound challenge generation
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map) =
+            WitnessBuilder::split_and_prepare_layers(&witness_builders, r1cs, witness_map);
 
-        // Configure Whir
-        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&r1cs);
+        info!(
+            "Witness split: w1 size = {}, w2 size = {}",
+            split_witness_builders.w1_size,
+            remapped_r1cs.num_witnesses() - split_witness_builders.w1_size
+        );
+
+        // Configure witness generator with remapped witness map
+        let witness_generator = NoirWitnessGenerator::new(
+            &program,
+            remapped_witness_map,
+            remapped_r1cs.num_witnesses(),
+        );
+
+        // Configure Whir for full witness
+        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&remapped_r1cs);
+
+        // Configure Whir for w1 commitment
+        let whir_for_w1 = WhirR1CSScheme::new_for_w1_commitment(split_witness_builders.w1_size);
 
         Ok(Self {
             program: program.bytecode,
-            r1cs,
-            layered_witness_builders,
+            r1cs: remapped_r1cs,
+            split_witness_builders,
             witness_generator,
             whir_for_witness,
+            whir_for_w1,
         })
     }
 }
@@ -114,9 +130,10 @@ mod tests {
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
 
         test_serde(&proof_schema.r1cs);
-        test_serde(&proof_schema.layered_witness_builders);
+        test_serde(&proof_schema.split_witness_builders);
         test_serde(&proof_schema.witness_generator);
         test_serde(&proof_schema.whir_for_witness);
+        test_serde(&proof_schema.whir_for_w1);
     }
 
     #[test]
