@@ -10,7 +10,7 @@ on:
 env:
   DIVAN_MAX_TIME: 30
   CODSPEED_RUNNER_MODE: walltime
-  
+
 jobs:
   build:
     name: Build benchmark binaries and poseidon_1000 artifacts
@@ -40,7 +40,7 @@ jobs:
         with:
           name: benchmark-binaries
           path: target/codspeed
-      
+
       - name: Compile and execute Nargo circuit
         working-directory: noir-examples/poseidon-rounds
         run: |
@@ -49,14 +49,15 @@ jobs:
 
       - name: Create posiedon rounds 1000 files
         run: |
-          cargo run --release --bin provekit-cli prepare ./noir-examples/poseidon-rounds/target/basic.json -o ./noir-examples/poseidon-rounds/noir-proof-scheme.nps
-          cargo run --release --bin provekit-cli prove ./noir-examples/poseidon-rounds/noir-proof-scheme.nps ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-examples/poseidon-rounds/noir-proof.np
-          cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-examples/poseidon-rounds/noir-proof-scheme.nps ./noir-examples/poseidon-rounds/noir-proof.np --params ./noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ./noir-examples/poseidon-rounds/r1cs.json
+          cargo run --release --bin provekit-cli prepare ./noir-examples/poseidon-rounds/target/basic.json -p ./noir-examples/poseidon-rounds/noir-provekit-prover.pkp -v ./noir-examples/poseidon-rounds/noir-provekit-verifier.pkv
+          cargo run --release --bin provekit-cli prove ./noir-examples/poseidon-rounds/noir-provekit-prover.pkp ./noir-examples/poseidon-rounds/Prover.toml -o ./noir-examples/poseidon-rounds/noir-proof.np
+          cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-examples/poseidon-rounds/noir-provekit-prover.pkp ./noir-examples/poseidon-rounds/noir-proof.np --params ./noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ./noir-examples/poseidon-rounds/r1cs.json
 
       - name: Prepare poseidon artifacts directory
         run: |
           mkdir -p ./poseidon-artifacts
-          cp ./noir-examples/poseidon-rounds/noir-proof-scheme.nps ./poseidon-artifacts/
+          cp ./noir-examples/poseidon-rounds/noir-provekit-prover.pkp ./poseidon-artifacts/
+          cp ./noir-examples/poseidon-rounds/noir-provekit-verifier.pkv ./poseidon-artifacts/
           cp ./noir-examples/poseidon-rounds/noir-proof.np ./poseidon-artifacts/
           cp ./noir-examples/poseidon-rounds/r1cs.json ./poseidon-artifacts/
 
@@ -91,7 +92,7 @@ jobs:
           channel: nightly-2025-04-05
           cache: false # We don't actually use any build files, no need to restore cache
           bins: cargo-codspeed
-    
+
       - name: Create codespeed-post-bench symlink
         run: |
           # codspeed-post-bench is just a sym-link
@@ -109,7 +110,8 @@ jobs:
 
       - name: Copy poseidon-rounds files to correct directory
         run: |
-          cp ./poseidon-artifacts/noir-proof-scheme.nps noir-examples/poseidon-rounds/
+          cp ./poseidon-artifacts/noir-provekit-prover.pkp noir-examples/poseidon-rounds/
+          cp ./poseidon-artifacts/noir-provekit-verifier.pkv noir-examples/poseidon-rounds/
           cp ./poseidon-artifacts/noir-proof.np noir-examples/poseidon-rounds/
           cp ./poseidon-artifacts/r1cs.json noir-examples/poseidon-rounds/
           ls -la noir-examples/poseidon-rounds/

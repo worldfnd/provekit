@@ -1,5 +1,5 @@
 use sha1::sha1;
-use sha256::sha224_var;
+use sha256::{sha224_var, sha256_var};
 use sha512::{sha384, sha512};
 use utils::check_zero_padding;
 
@@ -40,7 +40,7 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     // Hash the entire buffer to match the signature created on the fixed-size message
     // `data_to_sign_len` is still checked above to ensure trailing bytes are zero,
     let ret =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(data_to_sign, data_to_sign_len as u64);
+        sha256_var(data_to_sign, data_to_sign_len as u64);
 
     ret
 }

@@ -203,16 +203,16 @@ fn prove_spark_for_single_matrix(
     // Should be committed before request:
 
     let vals_witness = batched3_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
     ])?;
 
     let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
     ])?;
 
     let final_row_ts_witness =
@@ -223,8 +223,8 @@ fn prove_spark_for_single_matrix(
     // Commited for each request:
 
     let evalues_witness = batched2_committer.commit_batch(merlin, &[
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
     ])?;
 
     // Spark Sumcheck
@@ -484,7 +484,7 @@ fn commit_to_vector(
     let evals = EvaluationsList::new(vector);
     let coeffs = evals.to_coeffs();
     committer
-        .commit(merlin, coeffs)
+        .commit(merlin, &coeffs)
         .expect("WHIR commitment failed")
 }
 

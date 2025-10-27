@@ -9,6 +9,8 @@
 *.gz
 *.bin
 *.nps
+*.pkp
+*.pkv
 *.np
 params_for_recursive_verifier
 params
