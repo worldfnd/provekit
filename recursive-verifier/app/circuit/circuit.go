@@ -527,6 +527,11 @@ func gpaSumcheckVerifier(
 		lastEval = utilities.UnivarPoly(api, l, []frontend.Variable{r[0]})[0]
 	}
 
+	gpaClaimedValues = []frontend.Variable{
+		gpaClaimedValues[0],
+		api.Add(gpaClaimedValues[0], gpaClaimedValues[1]),
+	}
+
 	return GPASumcheckResult{
 		claimedProducts:   gpaClaimedValues,
 		lastSumcheckValue: lastEval,
@@ -599,6 +604,8 @@ func sparkSingleMatrix(
 		return err
 	}
 
+	// Verify spark sumcheck last value
+
 	claimedVal := api.Add(
 		matrix.SparkSumcheckLast[0],
 		api.Mul(matrix.SparkSumcheckLast[1], matrixCombinationRandomness[0]),
@@ -663,7 +670,7 @@ func sparkSingleMatrix(
 	row_rs_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation), tau)
 	row_ws_opening := api.Sub(api.Add(api.Mul(matrix.RowRSAddressEvaluation, gamma, gamma), api.Mul(matrix.RowRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation, 1), tau)
 	col_rs_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, gamma, gamma), api.Mul(matrix.ColRSValueEvaluation, gamma), matrix.ColRSTimestampEvaluation), tau)
-	col_ws_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, gamma, gamma), api.Mul(matrix.ColRSValueEvaluation, gamma), matrix.RowRSTimestampEvaluation, 1), tau)
+	col_ws_opening := api.Sub(api.Add(api.Mul(matrix.ColRSAddressEvaluation, gamma, gamma), api.Mul(matrix.ColRSValueEvaluation, gamma), matrix.ColRSTimestampEvaluation, 1), tau)
 
 	evaluated_value := api.Add(
 		api.Mul(
@@ -779,7 +786,12 @@ func gpaSumcheckVerifier4(
 	if err != nil {
 		return GPASumcheckResult{}, err
 	}
-	lastEval := utilities.MultivarPoly(gpaClaimedValues, prevRand, api)
+	lastEval := api.Add(
+		gpaClaimedValues[0],
+		api.Mul(gpaClaimedValues[1], prevRand[1]),
+		api.Mul(gpaClaimedValues[2], prevRand[0]),
+		api.Mul(gpaClaimedValues[3], prevRand[0], prevRand[1]),
+	)
 
 	var rand []frontend.Variable
 
@@ -811,6 +823,13 @@ func gpaSumcheckVerifier4(
 		api.AssertIsEqual(claimedLastSch, lastEval)
 		prevRand = append(rand, r[0])
 		lastEval = utilities.UnivarPoly(api, l, []frontend.Variable{r[0]})[0]
+	}
+
+	gpaClaimedValues = []frontend.Variable{
+		gpaClaimedValues[0],
+		api.Add(gpaClaimedValues[0], gpaClaimedValues[1]),
+		api.Add(gpaClaimedValues[0], gpaClaimedValues[2]),
+		api.Add(gpaClaimedValues[0], gpaClaimedValues[1], gpaClaimedValues[2], gpaClaimedValues[3]),
 	}
 
 	return GPASumcheckResult{

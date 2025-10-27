@@ -1,7 +1,6 @@
 package circuit
 
 import (
-	"fmt"
 	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
@@ -135,7 +134,6 @@ func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize i
 			pow := frontend.Variable(1)
 			for b := 0; b < batchSize; b++ {
 				idx := b*foldSize + j
-				fmt.Print(b, foldSize, j)
 				sum = api.Add(sum, api.Mul(pow, leaves[i][idx]))
 				pow = api.Mul(pow, B)
 			}
