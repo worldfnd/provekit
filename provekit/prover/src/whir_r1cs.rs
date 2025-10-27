@@ -3,6 +3,7 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
+        ntt::RSFr,
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         utils::{
             pad_to_power_of_two,
@@ -22,7 +23,7 @@ use {
     },
     tracing::{info, instrument, warn},
     whir::{
-        ntt::RSDefault,
+        // ntt::RSDefault
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -33,7 +34,7 @@ use {
     },
 };
 
-type RS = RSDefault;
+type RS = RSFr;
 
 pub trait WhirR1CSProver {
     fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
