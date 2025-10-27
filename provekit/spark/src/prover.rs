@@ -1,6 +1,6 @@
 use {
     crate::{
-        gpa::{self, run_gpa2, run_gpa4},
+        gpa::run_gpa4,
         memory::{prove_colwise, prove_rowwise},
         preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
@@ -203,16 +203,16 @@ fn prove_spark_for_single_matrix(
     // Should be committed before request:
 
     let vals_witness = batched3_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
     ])?;
 
     let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
-        EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
     ])?;
 
     let final_row_ts_witness =
@@ -223,8 +223,8 @@ fn prove_spark_for_single_matrix(
     // Commited for each request:
 
     let evalues_witness = batched2_committer.commit_batch(merlin, &[
-        EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
     ])?;
 
     // Spark Sumcheck
@@ -377,92 +377,27 @@ fn prove_spark_for_single_matrix(
         evalues_witness,
     )?;
 
-    // Potential optimization: Init and Final can be done together in one GPA
+    // Potential optimization: Init and Final can be done together in one GPA if we make their lengths equal.
 
-    // Row Init Final GPA
-
-    let init_vec: Vec<_> = izip!(0.., memory.eq_rx.iter())
-        .map(|(i, &v)| {
-            let a = FieldElement::from(i);
-            a * gamma * gamma + v * gamma - tau
-        })
-        .collect();
-
-    let final_vec: Vec<_> = izip!(0.., memory.eq_rx.iter(), matrix.timestamps.final_row.iter())
-        .map(|(i, &v, &t)| {
-            let a = FieldElement::from(i);
-            a * gamma * gamma + v * gamma + t - tau
-        })
-        .collect();
-
-    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec);
-    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
-
-    let final_ts_eval = EvaluationsList::new(matrix.timestamps.final_row)
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()));
-    merlin.hint(&final_ts_eval)?;
-
-    produce_whir_proof(
+    prove_rowwise(
         merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        final_ts_eval,
-        whir_configs.row.clone(),
+        &matrix.timestamps.final_row,
+        memory,
+        whir_configs,
         final_row_ts_witness,
+        &gamma,
+        &tau,
     )?;
 
-    // Col Init Final GPA
-
-    let init_vec: Vec<_> = izip!(0.., memory.eq_ry.iter())
-        .map(|(i, &v)| {
-            let a = FieldElement::from(i);
-            a * gamma * gamma + v * gamma - tau
-        })
-        .collect();
-
-    let final_vec: Vec<_> = izip!(0.., memory.eq_ry.iter(), matrix.timestamps.final_col.iter())
-        .map(|(i, &v, &t)| {
-            let a = FieldElement::from(i);
-            a * gamma * gamma + v * gamma + t - tau
-        })
-        .collect();
-
-    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec);
-    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
-
-    let final_ts_eval = EvaluationsList::new(matrix.timestamps.final_col)
-        .evaluate(&MultilinearPoint(evaluation_randomness.to_vec()));
-    merlin.hint(&final_ts_eval)?;
-
-    produce_whir_proof(
+    prove_colwise(
         merlin,
-        MultilinearPoint(evaluation_randomness.to_vec()),
-        final_ts_eval,
-        whir_configs.col.clone(),
+        &matrix.timestamps.final_col,
+        memory,
+        whir_configs,
         final_col_ts_witness,
+        &gamma,
+        &tau,
     )?;
-
-
-    // prove_rowwise(
-    //     merlin,
-    //     &matrix,
-    //     memory,
-    //     &e_values.e_rx,
-    //     whir_configs,
-    //     final_row_ts_witness,
-    //     rowwise_witness,
-    //     &gamma,
-    //     &tau,
-    // )?;
-
-    // prove_colwise(
-    //     merlin,
-    //     &matrix,
-    //     memory,
-    //     &e_values.e_ry,
-    //     whir_configs,
-    //     final_col_ts_witness,
-    //     colwise_witness,
-    // )?;
 
     Ok(())
 }
@@ -484,7 +419,7 @@ fn commit_to_vector(
     let evals = EvaluationsList::new(vector);
     let coeffs = evals.to_coeffs();
     committer
-        .commit(merlin, coeffs)
+        .commit(merlin, &coeffs)
         .expect("WHIR commitment failed")
 }
 

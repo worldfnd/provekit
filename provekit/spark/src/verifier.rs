@@ -208,7 +208,6 @@ fn verify_spark_single_matrix(
     verify_rowwise(
         arthur,
         matrix_dimensions.num_rows,
-        matrix_dimensions.nonzero_terms,
         whir_params,
         request,
         a_row_finalts_commitment,
@@ -221,7 +220,6 @@ fn verify_spark_single_matrix(
     verify_colwise(
         arthur,
         matrix_dimensions.num_cols,
-        matrix_dimensions.nonzero_terms,
         whir_params,
         request,
         a_col_finalts_commitment,

@@ -10,7 +10,7 @@ use {
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{NoirProof, NoirProofScheme},
+    crate::{NoirProof, NoirProofScheme, Prover, Verifier},
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
@@ -27,6 +27,18 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
 impl FileFormat for NoirProofScheme {
     const FORMAT: [u8; 8] = *b"NrProScm";
     const EXTENSION: &'static str = "nps";
+    const VERSION: (u16, u16) = (0, 0);
+}
+
+impl FileFormat for Prover {
+    const FORMAT: [u8; 8] = *b"PrvKitPr";
+    const EXTENSION: &'static str = "pkp";
+    const VERSION: (u16, u16) = (0, 0);
+}
+
+impl FileFormat for Verifier {
+    const FORMAT: [u8; 8] = *b"PrvKitVr";
+    const EXTENSION: &'static str = "pkv";
     const VERSION: (u16, u16) = (0, 0);
 }
 

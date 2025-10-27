@@ -144,10 +144,10 @@ where
 /// List of evaluations for eq(r, x) over the boolean hypercube
 #[instrument(skip_all)]
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
-    r: &[FieldElement],
+    r: Vec<FieldElement>,
 ) -> Vec<FieldElement> {
     let mut result = vec![FieldElement::zero(); 1 << r.len()];
-    eval_eq(r, &mut result, FieldElement::one());
+    eval_eq(&r, &mut result, FieldElement::one());
     result
 }
 
@@ -171,8 +171,8 @@ fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement
 }
 
 /// Evaluates a cubic polynomial on a value
-pub fn eval_cubic_poly(poly: &[FieldElement], point: &FieldElement) -> FieldElement {
-    poly[0] + *point * (poly[1] + *point * (poly[2] + *point * poly[3]))
+pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldElement {
+    poly[0] + point * (poly[1] + point * (poly[2] + point * poly[3]))
 }
 
 /// Given a path to JSON file with sparce matrices and a witness, calculates
@@ -182,7 +182,7 @@ pub fn calculate_witness_bounds(
     r1cs: &R1CS,
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
-    let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
+    let (a, b) = rayon::join(|| r1cs.a() * &witness, || r1cs.b() * &witness);
     // Derive C from R1CS relation (faster than matrix multiplication)
     let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
     (
@@ -205,8 +205,8 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
 /// sparseness.
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices(
-    alpha: &[FieldElement],
-    r1cs: &R1CS,
+    alpha: Vec<FieldElement>,
+    r1cs: R1CS,
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
     let eq_alpha = &eq_alpha[..r1cs.num_constraints()];

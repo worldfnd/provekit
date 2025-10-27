@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::{calculate_adr, gpa_sumcheck_verifier, run_gpa2},
-        types::{Memory, SPARKWHIRConfigs, SparkMatrix},
+        types::{Memory, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Result},
     ark_ff::{Fp, MontBackend},
@@ -9,11 +9,11 @@ use {
     itertools::izip,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
-        spark::{ClaimedValues, SparkStatement},
-        utils::{next_power_of_two, sumcheck::calculate_eq},
+        spark::SparkStatement,
+        utils::sumcheck::calculate_eq,
         FieldElement, WhirConfig,
     },
-    spongefish::{codecs::arkworks_algebra::UnitToField, ProverState, VerifierState},
+    spongefish::{ProverState, VerifierState},
     whir::{
         crypto::fields::BN254Config,
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
@@ -34,8 +34,6 @@ use {
 struct AxisConfig<'a> {
     eq_memory:       &'a [FieldElement],
     final_timestamp: &'a [FieldElement],
-    read_timestamp:  &'a [FieldElement],
-    address:         &'a [FieldElement],
     whir_config:     &'a WhirConfig,
 }
 
@@ -52,10 +50,7 @@ struct AxisConfig<'a> {
 fn prove_axis(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     config: AxisConfig<'_>,
-    e_values: &[FieldElement],
-    whir_configs: &SPARKWHIRConfigs,
     final_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-    axis_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     gamma: &FieldElement,
     tau: &FieldElement,
 ) -> Result<()> {
@@ -105,12 +100,10 @@ fn prove_axis(
 /// * `rowwise_witness` - Batched commitment witness for row data
 pub fn prove_rowwise(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    matrix: &SparkMatrix,
+    final_row: &Vec<FieldElement>,
     memory: &Memory,
-    e_rx: &[FieldElement],
     whir_configs: &SPARKWHIRConfigs,
     final_row_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-    rowwise_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     gamma: &FieldElement,
     tau: &FieldElement,
 ) -> Result<()> {
@@ -118,15 +111,10 @@ pub fn prove_rowwise(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_rx,
-            final_timestamp: &matrix.timestamps.final_row,
-            read_timestamp:  &matrix.timestamps.read_row,
-            address:         &matrix.coo.row,
+            final_timestamp: final_row,
             whir_config:     &whir_configs.row,
         },
-        e_rx,
-        whir_configs,
         final_row_ts_witness,
-        rowwise_witness,
         gamma,
         tau,
     )
@@ -134,12 +122,10 @@ pub fn prove_rowwise(
 
 pub fn prove_colwise(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    matrix: &SparkMatrix,
+    final_col: &Vec<FieldElement>,
     memory: &Memory,
-    e_ry: &[FieldElement],
     whir_configs: &SPARKWHIRConfigs,
     final_col_ts_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-    colwise_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     gamma: &FieldElement,
     tau: &FieldElement,
 ) -> Result<()> {
@@ -147,15 +133,10 @@ pub fn prove_colwise(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_ry,
-            final_timestamp: &matrix.timestamps.final_col,
-            read_timestamp:  &matrix.timestamps.read_col,
-            address:         &matrix.coo.col,
+            final_timestamp: final_col,
             whir_config:     &whir_configs.col,
         },
-        e_ry,
-        whir_configs,
         final_col_ts_witness,
-        colwise_witness,
         gamma,
         tau
     )
@@ -169,9 +150,7 @@ pub fn prove_colwise(
 fn verify_axis(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     num_axis_items: usize,
-    num_nonzero_terms: usize,
     whir_config: &WhirConfig,
-    num_terms_3batched_config: &WhirConfig,
     finalts_commitment: ParsedCommitment<
         Fp<MontBackend<BN254Config, 4>, 4>,
         Fp<MontBackend<BN254Config, 4>, 4>,
@@ -229,7 +208,6 @@ fn verify_axis(
 pub fn verify_rowwise(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     num_rows: usize,
-    num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
     row_finalts_commitment: ParsedCommitment<
@@ -244,9 +222,7 @@ pub fn verify_rowwise(
     verify_axis(
         arthur,
         num_rows,
-        num_nonzero_terms,
         &whir_params.row,
-        &whir_params.num_terms_3batched,
         row_finalts_commitment,
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
         tau,
@@ -259,7 +235,6 @@ pub fn verify_rowwise(
 pub fn verify_colwise(
     arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
     num_cols: usize,
-    num_nonzero_terms: usize,
     whir_params: &SPARKWHIRConfigs,
     request: &SparkStatement,
     col_finalts_commitment: ParsedCommitment<
@@ -274,9 +249,7 @@ pub fn verify_colwise(
     verify_axis(
         arthur,
         num_cols,
-        num_nonzero_terms,
         &whir_params.col,
-        &whir_params.num_terms_3batched,
         col_finalts_commitment,
         |eval_rand| {
             calculate_eq(&request.point_to_evaluate.col[1..], eval_rand)

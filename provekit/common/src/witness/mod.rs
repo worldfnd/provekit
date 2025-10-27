@@ -1,5 +1,6 @@
 mod binops;
 mod digits;
+mod layer_scheduler;
 mod ram;
 mod witness_builder;
 mod witness_generator;
@@ -12,6 +13,7 @@ use {
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
+    layer_scheduler::{Layer, LayerType, LayeredWitnessBuilders},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     witness_builder::{
         ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
@@ -22,7 +24,7 @@ pub use {
 /// The index of the constant 1 witness in the R1CS instance
 pub const WITNESS_ONE_IDX: usize = 0;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ConstantOrR1CSWitness {
     Constant(#[serde(with = "serde_ark")] FieldElement),
     Witness(usize),
