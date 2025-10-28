@@ -1,0 +1,10 @@
+[package]
+name = "oprf"
+type = "bin"
+authors = [""]
+
+[dependencies]
+poseidon2 = { tag="v0.5.0-beta.0" , git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2" }
+babyjubjub = {path = "../babyjubjub"}
+eddsa_poseidon2 = {path ="../eddsa_poseidon2"}
+binary_merkle_root = { git = "https://github.com/privacy-scaling-explorations/zk-kit.noir", tag = "binary-merkle-root-v0.0.1", directory = "packages/binary-merkle-root" }

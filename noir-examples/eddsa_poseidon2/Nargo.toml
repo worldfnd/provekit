@@ -1,0 +1,8 @@
+[package]
+name = "eddsa_poseidon2"
+type = "lib"
+authors = [""]
+
+[dependencies]
+poseidon2 = { tag="v0.5.0-beta.0" , git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2" }
+babyjubjub = {path = "../babyjubjub"}
