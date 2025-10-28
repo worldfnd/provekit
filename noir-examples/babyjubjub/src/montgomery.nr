@@ -58,10 +58,9 @@ impl MontgomeryPoint {
     unconstrained fn add_lambda_unconstrained(self, q: MontgomeryPoint) -> Field {
         (q.v - self.v) / (q.u - self.u)
     }
-    pub fn add(self, q: MontgomeryPoint) -> MontgomeryPoint {
-        assert(self.u != q.u, "Cannot add point to itself, use double()");
-        assert(self.v != q.v, "Cannot add point to itself, use double()");
 
+    // precondition: if the points are the same, use double() because it throws divide by zero error with add
+    pub fn add(self, q: MontgomeryPoint) -> MontgomeryPoint {
         // Safety: cast to unconstrained field
         let lambda = unsafe { Self::add_lambda_unconstrained(self, q) };
         assert(lambda * (q.u - self.u) == q.v - self.v, "Montgomery add slope constraint failed");
