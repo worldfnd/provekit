@@ -47,18 +47,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
         let nv = num_variables.max(MIN_DOMAIN_LOG2);
-        let folding = if nv < 2 {
-            FoldingFactor::Constant(1)
-        } else {
-            FoldingFactor::Constant(4)
-        };
 
         let mv_params = MultivariateParameters::new(nv);
         let whir_params = ProtocolParameters {
             initial_statement: true,
             security_level: 128,
             pow_bits: default_max_pow(nv, 1),
-            folding_factor: folding,
+            folding_factor: FoldingFactor::Constant(4),
             leaf_hash_params: (),
             two_to_one_params: (),
             soundness_type: SoundnessType::ConjectureList,
