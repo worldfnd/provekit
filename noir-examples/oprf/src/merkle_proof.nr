@@ -23,6 +23,7 @@ pub fn compute_merkle_root_poseidon2<let N: u32>(
     let mut current = leaf;
     let mut idx = index as u32;
     let depth_u32 = depth as u32;
+    assert(idx < (1 << depth_u32), "Index out of range for given depth");
 
     for i in 0..N {
         if i < depth_u32 {

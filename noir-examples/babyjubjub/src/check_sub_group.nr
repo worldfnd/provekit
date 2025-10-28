@@ -5,7 +5,7 @@ fn bit_element_mul_fix_scalar(
     dbl_in: MontgomeryPoint,
     add_in: MontgomeryPoint,
 ) -> (MontgomeryPoint, MontgomeryPoint) {
-    assert((bit == 0) | (bit == 1));
+    assert((bit == 0) | (bit == 1), "Bit must be 0 or 1 in fixed-scalar step");
 
     let dbl_out = dbl_in.double();
 

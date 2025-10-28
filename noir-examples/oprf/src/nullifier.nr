@@ -53,8 +53,10 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         beta_bits,
     );
 
-    // Todo: check these are needed
+    // Dummy square to prevent tampering signal_hash.
+    // Same as done in Semaphore
     let _ = signal_hash * signal_hash;
+    // Same for the nonce
     let _ = nonce * nonce;
 
     // Generate commitment and nullifier using the unblinded oprf_response

@@ -19,7 +19,7 @@ fn check_credential_signature(
     current_time_stamp: u64,
 ) {
     // Check expiration first
-    assert((current_time_stamp as u64) < (expires_at as u64), "Credential expired");
+    assert(current_time_stamp < expires_at, "Credential expired");
 
     // Calculate message hash
     let hash_inputs = [

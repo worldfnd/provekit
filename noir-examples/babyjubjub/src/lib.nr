@@ -92,7 +92,8 @@ impl BabyJubJubPoint {
         (x, y)
     }
 
-    /// Point addition on BabyJubJub curve
+    /// Point addition on BabyJubJub (twisted Edwards).
+    /// Precondition: both points must lie on the BabyJubJub curve.
     pub fn add(self, other: BabyJubJubPoint) -> Self {
         let beta = self.x * other.y;
         let gamma = self.y * other.x;
@@ -104,8 +105,11 @@ impl BabyJubJubPoint {
 
         // Safety: cast to unconstrained field
         let (x, y) = unsafe { Self::add_unconstrained(self, other) };
-        assert(y * den_y == delta + BABYJUBJUB_A * beta - gamma);
-        assert(x * den_x == beta + gamma);
+        assert(
+            y * den_y == delta + BABYJUBJUB_A * beta - gamma,
+            "Edwards add y-coordinate constraint failed",
+        );
+        assert(x * den_x == beta + gamma, "Edwards add x-coordinate constraint failed");
 
         BabyJubJubPoint { x, y }
     }
@@ -121,6 +125,7 @@ impl BabyJubJubPoint {
     }
 
     /// Point doubling
+    /// Precondition: the point must lie on the BabyJubJub curve.
     pub fn double(self) -> Self {
         self.add(self)
     }
@@ -144,6 +149,9 @@ impl BabyJubJubPoint {
     /// # Arguments
     /// * `bits` - Scalar in bit representation (little-endian)
     ///
+    /// For Variable-base: use double-and-add (~N doubles, ~N/2 adds).
+    /// Window-w needs a per-point table (2^w) and a select each window
+    /// so windowing is reserved for fixed-base (generator) where the table is precomputed.
     pub fn scalar_mul_bits<let N: u32>(self, bits: [u1; N]) -> Self {
         assert(self.is_on_curve(), "Point must be on curve");
 
@@ -174,7 +182,7 @@ impl BabyJubJubPoint {
 
     /// Validates that a field element is in the BabyJubJub scalar field Fr
     pub fn validate_babyjubjub_field(field_element: Field) {
-        bn254::assert_lt(field_element, BABYJUBJUB_Fr);
+        bn254::assert_lt(field_element, BABYJUBJUB_Fr );
     }
 
     pub fn validate_scalar_field_with_bits(field_element: Field) -> [u1; 251] {

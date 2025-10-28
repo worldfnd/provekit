@@ -104,16 +104,16 @@ fn test_window_selection() {
     let bits: [u1; 3] = [1, 0, 1];
     let selected = select_from_window(bits, table);
 
-    assert(selected.u == table[5].u); // 6B is at index 5
-    assert(selected.v == table[5].v);
+    assert(selected.u == table[5].u, "Window selection u mismatch for bits [1,0,1] -> 6B"); // 6B is at index 5
+    assert(selected.v == table[5].v, "Window selection v mismatch for bits [1,0,1] -> 6B");
 
     // Test window = 0 (bits = [0, 0, 0])
     // Window value 0 should return table[0] = 1B (compensation: 0 -> 1B)
     let zero_bits: [u1; 3] = [0, 0, 0];
     let selected_zero = select_from_window(zero_bits, table);
 
-    assert(selected_zero.u == table[0].u); // 1B is at index 0
-    assert(selected_zero.v == table[0].v);
+    assert(selected_zero.u == table[0].u, "Window selection u mismatch for bits [0,0,0] -> 1B"); // 1B is at index 0
+    assert(selected_zero.v == table[0].v, "Window selection v mismatch for bits [0,0,0] -> 1B");
 }
 
 #[test]
@@ -127,8 +127,14 @@ fn test_generator_window_table() {
 
     // Compare all entries
     for i in 0..8 {
-        assert(precomputed_table[i].u == dynamic_table[i].u);
-        assert(precomputed_table[i].v == dynamic_table[i].v);
+        assert(
+            precomputed_table[i].u == dynamic_table[i].u,
+            "Precomputed vs dynamic table u mismatch at index",
+        );
+        assert(
+            precomputed_table[i].v == dynamic_table[i].v,
+            "Precomputed vs dynamic table v mismatch at index",
+        );
     }
 }
 
@@ -146,12 +152,12 @@ fn test_generator_window_table_values() {
     let g8_mont = g8.to_montgomery();
 
     // Verify 2G, 4G, 8G
-    assert(table[1].u == g2_mont.u);
-    assert(table[1].v == g2_mont.v);
+    assert(table[1].u == g2_mont.u, "2G u mismatch in generator table");
+    assert(table[1].v == g2_mont.v, "2G v mismatch in generator table");
 
-    assert(table[3].u == g4_mont.u);
-    assert(table[3].v == g4_mont.v);
+    assert(table[3].u == g4_mont.u, "4G u mismatch in generator table");
+    assert(table[3].v == g4_mont.v, "4G v mismatch in generator table");
 
-    assert(table[7].u == g8_mont.u);
-    assert(table[7].v == g8_mont.v);
+    assert(table[7].u == g8_mont.u, "8G u mismatch in generator table");
+    assert(table[7].v == g8_mont.v, "8G v mismatch in generator table");
 }
