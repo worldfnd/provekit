@@ -54,6 +54,8 @@ jobs:
           cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -p ./noir-provekit-prover.pkp -v ./noir-provekit-verifier.pkv
           cargo run --release --bin provekit-cli prove ./noir-provekit-prover.pkp ./Prover.toml -o ./noir-proof.np
           cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-provekit-prover.pkp ./noir-proof.np
+          cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./noir-provekit-prover.pkp --noir-proof ./noir-proof.np 
+          cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./noir-proof.np 
           
       - name: Run Gnark verifier
         working-directory: recursive-verifier
@@ -85,7 +87,7 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process
-          ./gnark-verifier --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json" --pk_url ${{ vars.AGE_CHECK_PK }} --vk_url ${{ vars.AGE_CHECK_VK }}
+          ./gnark-verifier --evaluation spark --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --spark_config "../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json"  --pk_url ${{ vars.AGE_CHECK_PK }} --vk_url ${{ vars.AGE_CHECK_VK }}
 
           # Stop monitoring
           kill $MONITOR_PID
