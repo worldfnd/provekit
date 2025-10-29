@@ -4,6 +4,7 @@ use {
     provekit_common::{file::read, utils::next_power_of_two, NoirProof, Prover},
     provekit_spark::{SPARKProofGnark, SPARKProver, SPARKProverScheme},
     std::{fs::File, io::Write, path::PathBuf},
+    tracing::instrument,
 };
 
 #[derive(FromArgs)]
@@ -27,6 +28,7 @@ pub struct ProveArgs {
     gnark_output: PathBuf,
 }
 
+#[instrument(skip_all)]
 pub fn execute(args: ProveArgs) -> Result<()> {
     println!("Loading R1CS from {:?}...", args.noir_proof_scheme);
     let scheme: Prover =

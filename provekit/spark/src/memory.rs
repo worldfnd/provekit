@@ -25,6 +25,7 @@ use {
             verifier::Verifier,
         },
     },
+    tracing::instrument,
 };
 
 /// Configuration bundle for row/column axis-specific data.
@@ -98,6 +99,7 @@ fn prove_axis(
 /// * `whir_configs` - WHIR polynomial commitment configurations
 /// * `final_row_ts_witness` - Commitment witness for final row timestamps
 /// * `rowwise_witness` - Batched commitment witness for row data
+#[instrument(skip_all)]
 pub fn prove_rowwise(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     final_row: &Vec<FieldElement>,
@@ -120,6 +122,7 @@ pub fn prove_rowwise(
     )
 }
 
+#[instrument(skip_all)]
 pub fn prove_colwise(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     final_col: &Vec<FieldElement>,

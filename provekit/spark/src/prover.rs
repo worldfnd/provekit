@@ -34,6 +34,7 @@ use {
             utils::HintSerialize,
         },
     },
+    tracing::instrument,
 };
 
 /// SPARK proving interface for R1CS constraint systems.
@@ -149,6 +150,7 @@ impl SPARKScheme {
 }
 
 impl SPARKProver for SPARKScheme {
+    #[instrument(skip_all)]
     fn prove(&self, r1cs: &R1CS, request: &SparkStatement) -> Result<SPARKProof> {
         let processed = MatrixPreprocessor::from_r1cs(r1cs)?;
         let memory = calculate_memory(request.point_to_evaluate.clone());
@@ -194,6 +196,7 @@ impl SPARKProver for SPARKScheme {
 }
 
 /// Core SPARK protocol: sumcheck + row/col memory checking.
+#[instrument(skip_all)]
 fn prove_spark_for_single_matrix(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     matrix: SparkMatrix,
@@ -433,6 +436,7 @@ fn commit_to_vector(
 }
 
 /// Generates WHIR opening proof for polynomial evaluation.
+#[instrument(skip_all)]
 fn produce_whir_proof(
     merlin: &mut spongefish::ProverState<SkyscraperSponge, FieldElement>,
     evaluation_point: MultilinearPoint<FieldElement>,

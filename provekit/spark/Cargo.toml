@@ -19,6 +19,7 @@ serde_json.workspace = true
 spongefish.workspace = true
 whir.workspace = true
 itertools = "0.14.0"
+tracing.workspace = true
 
 [lints]
 workspace = true

@@ -16,6 +16,7 @@ use {
         ProverState, VerifierState,
     },
     whir::poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
+    tracing::instrument,
 };
 
 /// Runs the Grand Product Argument (GPA) protocol to prove product equality.
@@ -40,6 +41,7 @@ use {
 /// # Panics
 ///
 /// Panics if input vectors are not power-of-2 length
+#[instrument(skip_all)]
 pub fn run_gpa2(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     left: &[FieldElement],
@@ -65,6 +67,7 @@ pub fn run_gpa2(
     accumulated_randomness
 }
 
+#[instrument(skip_all)]
 pub fn run_gpa4(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     leaves: Vec<FieldElement>,
