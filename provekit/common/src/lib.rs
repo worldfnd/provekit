@@ -18,8 +18,8 @@ pub use {
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
-    verifier::Verifier,
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
+    verifier::Verifier,
     whir::crypto::fields::Field256 as FieldElement,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
 };

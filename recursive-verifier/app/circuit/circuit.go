@@ -154,11 +154,11 @@ func verifyCircuit(
 
 	contSparkSumcheckLast := make([]frontend.Variable, 5)
 	sparkSumcheckLast := make([]frontend.Variable, 5)
-	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[0].Limbs)
-	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[1].Limbs)
-	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[2].Limbs)
-	sparkSumcheckLast[3] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[3].Limbs)
-	sparkSumcheckLast[4] = typeConverters.LimbsToBigIntMod(hints.AHints.sparkClaimedEvaluations[4].Limbs)
+	sparkSumcheckLast[0] = typeConverters.LimbsToBigIntMod(hints.SparkHints.sparkClaimedEvaluations[0].Limbs)
+	sparkSumcheckLast[1] = typeConverters.LimbsToBigIntMod(hints.SparkHints.sparkClaimedEvaluations[1].Limbs)
+	sparkSumcheckLast[2] = typeConverters.LimbsToBigIntMod(hints.SparkHints.sparkClaimedEvaluations[2].Limbs)
+	sparkSumcheckLast[3] = typeConverters.LimbsToBigIntMod(hints.SparkHints.sparkClaimedEvaluations[3].Limbs)
+	sparkSumcheckLast[4] = typeConverters.LimbsToBigIntMod(hints.SparkHints.sparkClaimedEvaluations[4].Limbs)
 
 	contPointRow := make([]frontend.Variable, len(hints.pointRow))
 	pointRow := make([]frontend.Variable, len(hints.pointRow))
@@ -252,37 +252,37 @@ func verifyCircuit(
 		PointCol: contPointCol,
 
 		SparkRLC: SPARKMatrixData{
-			Claimed: typeConverters.LimbsToBigIntMod(hints.AHints.claimed.Limbs),
+			Claimed: typeConverters.LimbsToBigIntMod(hints.SparkHints.claimed.Limbs),
 
 			SparkSumcheckLast: contSparkSumcheckLast,
 
-			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
-			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
-			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.rowRSValueEvaluation.Limbs),
-			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.rowRSTimestampEvaluation.Limbs),
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.SparkHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSTimestampEvaluation.Limbs),
 
-			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.colFinalCounter.Limbs),
-			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.colRSAddressEvaluation.Limbs),
-			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
-			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.SparkHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSTimestampEvaluation.Limbs),
 
-			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.AHints.evaluesSumcheck.firstRoundMerklePaths.path, true),
-			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.AHints.evaluesSumcheck.roundHints, true),
+			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.SparkHints.evaluesSumcheck.firstRoundMerklePaths.path, true),
+			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.SparkHints.evaluesSumcheck.roundHints, true),
 
-			ValsMerkleFirstRound:      newMerkle(hints.AHints.vals.firstRoundMerklePaths.path, true),
-			ValsMerkleRemainingRounds: newMerkle(hints.AHints.vals.roundHints, true),
+			ValsMerkleFirstRound:      newMerkle(hints.SparkHints.vals.firstRoundMerklePaths.path, true),
+			ValsMerkleRemainingRounds: newMerkle(hints.SparkHints.vals.roundHints, true),
 
-			RSWSMerkleFirstRound:      newMerkle(hints.AHints.rsws.firstRoundMerklePaths.path, true),
-			RSWSMerkleRemainingRounds: newMerkle(hints.AHints.rsws.roundHints, true),
+			RSWSMerkleFirstRound:      newMerkle(hints.SparkHints.rsws.firstRoundMerklePaths.path, true),
+			RSWSMerkleRemainingRounds: newMerkle(hints.SparkHints.rsws.roundHints, true),
 
-			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.AHints.evaluesRSWS.firstRoundMerklePaths.path, true),
-			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.AHints.evaluesRSWS.roundHints, true),
+			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.SparkHints.evaluesRSWS.firstRoundMerklePaths.path, true),
+			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.SparkHints.evaluesRSWS.roundHints, true),
 
-			RowFinalMerkleFirstRound:      newMerkle(hints.AHints.rowFinal.firstRoundMerklePaths.path, true),
-			RowFinalMerkleRemainingRounds: newMerkle(hints.AHints.rowFinal.roundHints, true),
+			RowFinalMerkleFirstRound:      newMerkle(hints.SparkHints.rowFinal.firstRoundMerklePaths.path, true),
+			RowFinalMerkleRemainingRounds: newMerkle(hints.SparkHints.rowFinal.roundHints, true),
 
-			ColFinalMerkleFirstRound:      newMerkle(hints.AHints.colFinal.firstRoundMerklePaths.path, true),
-			ColFinalMerkleRemainingRounds: newMerkle(hints.AHints.colFinal.roundHints, true),
+			ColFinalMerkleFirstRound:      newMerkle(hints.SparkHints.colFinal.firstRoundMerklePaths.path, true),
+			ColFinalMerkleRemainingRounds: newMerkle(hints.SparkHints.colFinal.roundHints, true),
 
 			WHIR2: NewWhirParams(sparkConfig.WHIR2),
 			WHIR3: NewWhirParams(sparkConfig.WHIR3),
@@ -403,37 +403,37 @@ func verifyCircuit(
 		PointCol: pointCol,
 
 		SparkRLC: SPARKMatrixData{
-			Claimed: typeConverters.LimbsToBigIntMod(hints.AHints.claimed.Limbs),
+			Claimed: typeConverters.LimbsToBigIntMod(hints.SparkHints.claimed.Limbs),
 
 			SparkSumcheckLast: sparkSumcheckLast,
 
-			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.rowFinalCounter.Limbs),
-			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.rowRSAddressEvaluation.Limbs),
-			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.rowRSValueEvaluation.Limbs),
-			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.rowRSTimestampEvaluation.Limbs),
+			RowFinalCounter:          typeConverters.LimbsToBigIntMod(hints.SparkHints.rowFinalCounter.Limbs),
+			RowRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSAddressEvaluation.Limbs),
+			RowRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSValueEvaluation.Limbs),
+			RowRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.SparkHints.rowRSTimestampEvaluation.Limbs),
 
-			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.AHints.colFinalCounter.Limbs),
-			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.AHints.colRSAddressEvaluation.Limbs),
-			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.AHints.colRSValueEvaluation.Limbs),
-			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.AHints.colRSTimestampEvaluation.Limbs),
+			ColFinalCounter:          typeConverters.LimbsToBigIntMod(hints.SparkHints.colFinalCounter.Limbs),
+			ColRSAddressEvaluation:   typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSAddressEvaluation.Limbs),
+			ColRSValueEvaluation:     typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSValueEvaluation.Limbs),
+			ColRSTimestampEvaluation: typeConverters.LimbsToBigIntMod(hints.SparkHints.colRSTimestampEvaluation.Limbs),
 
-			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.AHints.evaluesSumcheck.firstRoundMerklePaths.path, false),
-			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.AHints.evaluesSumcheck.roundHints, false),
+			EvaluesSumcheckMerkleFirstRound:      newMerkle(hints.SparkHints.evaluesSumcheck.firstRoundMerklePaths.path, false),
+			EvaluesSumcheckMerkleRemainingRounds: newMerkle(hints.SparkHints.evaluesSumcheck.roundHints, false),
 
-			ValsMerkleFirstRound:      newMerkle(hints.AHints.vals.firstRoundMerklePaths.path, false),
-			ValsMerkleRemainingRounds: newMerkle(hints.AHints.vals.roundHints, false),
+			ValsMerkleFirstRound:      newMerkle(hints.SparkHints.vals.firstRoundMerklePaths.path, false),
+			ValsMerkleRemainingRounds: newMerkle(hints.SparkHints.vals.roundHints, false),
 
-			RSWSMerkleFirstRound:      newMerkle(hints.AHints.rsws.firstRoundMerklePaths.path, false),
-			RSWSMerkleRemainingRounds: newMerkle(hints.AHints.rsws.roundHints, false),
+			RSWSMerkleFirstRound:      newMerkle(hints.SparkHints.rsws.firstRoundMerklePaths.path, false),
+			RSWSMerkleRemainingRounds: newMerkle(hints.SparkHints.rsws.roundHints, false),
 
-			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.AHints.evaluesRSWS.firstRoundMerklePaths.path, false),
-			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.AHints.evaluesRSWS.roundHints, false),
+			EvaluesRSWSMerkleFirstRound:      newMerkle(hints.SparkHints.evaluesRSWS.firstRoundMerklePaths.path, false),
+			EvaluesRSWSMerkleRemainingRounds: newMerkle(hints.SparkHints.evaluesRSWS.roundHints, false),
 
-			RowFinalMerkleFirstRound:      newMerkle(hints.AHints.rowFinal.firstRoundMerklePaths.path, false),
-			RowFinalMerkleRemainingRounds: newMerkle(hints.AHints.rowFinal.roundHints, false),
+			RowFinalMerkleFirstRound:      newMerkle(hints.SparkHints.rowFinal.firstRoundMerklePaths.path, false),
+			RowFinalMerkleRemainingRounds: newMerkle(hints.SparkHints.rowFinal.roundHints, false),
 
-			ColFinalMerkleFirstRound:      newMerkle(hints.AHints.colFinal.firstRoundMerklePaths.path, false),
-			ColFinalMerkleRemainingRounds: newMerkle(hints.AHints.colFinal.roundHints, false),
+			ColFinalMerkleFirstRound:      newMerkle(hints.SparkHints.colFinal.firstRoundMerklePaths.path, false),
+			ColFinalMerkleRemainingRounds: newMerkle(hints.SparkHints.colFinal.roundHints, false),
 
 			WHIR2: NewWhirParams(sparkConfig.WHIR2),
 			WHIR3: NewWhirParams(sparkConfig.WHIR3),

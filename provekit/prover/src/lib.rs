@@ -108,7 +108,10 @@ impl Prove for Prover {
             .prove(self.r1cs.take().unwrap(), witness)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { whir_r1cs_proof, spark_statement })
+        Ok(NoirProof {
+            whir_r1cs_proof,
+            spark_statement,
+        })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {

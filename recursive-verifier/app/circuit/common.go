@@ -372,7 +372,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 
-		AHints: SparkMatrixHints{
+		SparkHints: SparkMatrixHints{
 			claimed: claimedA,
 
 			evaluesSumcheck: evaluesSumcheck,

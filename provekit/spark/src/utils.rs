@@ -31,10 +31,12 @@ pub fn deserialize_request(path: impl AsRef<Path>) -> Result<SparkStatement> {
 pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
     Memory {
         eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(point_to_evaluate.row),
-        eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(point_to_evaluate.col[1..].to_vec())
-            .iter()
-            .map(|x| *x * (FieldElement::from(1) - point_to_evaluate.col[0]))
-            .collect(),
+        eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(
+            point_to_evaluate.col[1..].to_vec(),
+        )
+        .iter()
+        .map(|x| *x * (FieldElement::from(1) - point_to_evaluate.col[0]))
+        .collect(),
     }
 }
 
@@ -59,7 +61,7 @@ where
             .challenge_scalars(1, "gpa line random")
     }
 
-    fn add_gpa4_claimed_values (self) -> Self {
+    fn add_gpa4_claimed_values(self) -> Self {
         self.add_scalars(4, "gpa claimed values")
             .challenge_scalars(2, "gpa randomness")
     }

@@ -108,9 +108,7 @@ type Hints struct {
 	witnessHints      ZKHint
 	spartanHidingHint ZKHint
 
-	AHints SparkMatrixHints
-	BHints SparkMatrixHints
-	CHints SparkMatrixHints
+	SparkHints SparkMatrixHints
 }
 
 type Hint struct {
@@ -132,17 +130,6 @@ type ClaimedEvaluations struct {
 	FSums []Fp256
 	GSums []Fp256
 }
-
-// type SPARKWhirParams struct {
-// 	RowWitness       WHIRConfig `json:"row"`
-// 	ColWitness       WHIRConfig `json:"col"`
-// 	AWitness         WHIRConfig `json:"a"`
-// 	BWitness         WHIRConfig `json:"b"`
-// 	CWitness         WHIRConfig `json:"c"`
-// 	A3BatchedWitness WHIRConfig `json:"a_3batched"`
-// 	B3BatchedWitness WHIRConfig `json:"b_3batched"`
-// 	C3BatchedWitness WHIRConfig `json:"c_3batched"`
-// }
 
 type SparkConfig struct {
 	Transcript  []byte     `json:"transcript"`

@@ -49,7 +49,8 @@ pub fn run_gpa2(
     concatenated.extend_from_slice(right);
     let layers = calculate_binary_multiplication_tree(concatenated);
 
-    let (accumulated_randomness, mut sumcheck_claim) = add_line_to_transcript(merlin, layers[1].clone());
+    let (accumulated_randomness, mut sumcheck_claim) =
+        add_line_to_transcript(merlin, layers[1].clone());
     let mut accumulated_randomness = accumulated_randomness.to_vec();
 
     for i in 2..layers.len() {
@@ -63,7 +64,6 @@ pub fn run_gpa2(
 
     accumulated_randomness
 }
-
 
 pub fn run_gpa4(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
@@ -84,7 +84,8 @@ pub fn run_gpa4(
         .fill_challenge_scalars(&mut accumulated_randomness)
         .expect("Failed to sample accumulated_randomness");
 
-    let mut sumcheck_claim = coefficient_form.evaluate(&MultilinearPoint(accumulated_randomness.to_vec()));
+    let mut sumcheck_claim =
+        coefficient_form.evaluate(&MultilinearPoint(accumulated_randomness.to_vec()));
 
     for i in 3..layers.len() {
         (sumcheck_claim, accumulated_randomness) = run_gpa_sumcheck(
@@ -379,11 +380,8 @@ pub fn gpa_sumcheck_verifier(
         sumcheck_value = eval_line(&line_coeffs, &line_challenge[0]);
     }
 
-    let claimed_values = [
-        claimed_values[0],
-        claimed_values[0] + claimed_values[1],
-    ].to_vec();
-    
+    let claimed_values = [claimed_values[0], claimed_values[0] + claimed_values[1]].to_vec();
+
     Ok(GPASumcheckResult {
         claimed_values:        claimed_values.to_vec(),
         a_last_sumcheck_value: sumcheck_value,
@@ -408,10 +406,9 @@ pub fn gpa_sumcheck_verifier4(
     let mut prev_randomness = prev_randomness.to_vec();
 
     // let mut sumcheck_value = eval_line(&claimed_values, &line_challenge[0]);
-    let mut sumcheck_value = 
-          claimed_values[0]
+    let mut sumcheck_value = claimed_values[0]
         + claimed_values[1] * prev_randomness[1]
-        + claimed_values[2] * prev_randomness[0] 
+        + claimed_values[2] * prev_randomness[0]
         + claimed_values[3] * prev_randomness[0] * prev_randomness[1];
 
     for layer_idx in 2..height_of_binary_tree - 1 {
@@ -454,7 +451,8 @@ pub fn gpa_sumcheck_verifier4(
         claimed_values[0] + claimed_values[1],
         claimed_values[0] + claimed_values[2],
         claimed_values[0] + claimed_values[1] + claimed_values[2] + claimed_values[3],
-    ].to_vec();
+    ]
+    .to_vec();
 
     Ok(GPASumcheckResult {
         claimed_values:        claimed_values.to_vec(),

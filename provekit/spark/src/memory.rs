@@ -84,7 +84,7 @@ fn prove_axis(
         config.whir_config.clone(),
         final_ts_witness,
     )?;
-    
+
     Ok(())
 }
 
@@ -138,7 +138,7 @@ pub fn prove_colwise(
         },
         final_col_ts_witness,
         gamma,
-        tau
+        tau,
     )
 }
 
