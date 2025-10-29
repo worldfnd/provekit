@@ -12,44 +12,44 @@ noirup --version v1.0.0-beta.11
 
 ## Demo instructions
 
-> _NOTE:_ The example below is being run for single example `poseidon-rounds`. You can use different example to run same commands.
+> _NOTE:_ The example below is being run for single example `complete_age_check`. You can use different example to run same commands.
 
 Compile the Noir circuit:
 
 ```sh
-cd noir-examples/poseidon-rounds
+cd noir-examples/noir-passport-examples/complete_age_check
 nargo compile
 ```
 
-Generate the Noir Proof Scheme:
+Generate the Noir Proof Schemes:
 
 ```sh
-cargo run --release --bin provekit-cli prepare ./target/basic.json -o ./noir-proof-scheme.nps
+cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -p ./noir-provekit-prover.pkp -v ./noir-provekit-verifier.pkv
 ```
 
 Generate the Noir Proof using the input Toml:
 
 ```sh
-cargo run --release --bin provekit-cli prove ./noir-proof-scheme.nps ./Prover.toml -o ./noir-proof.np
+cargo run --release --bin provekit-cli prove ./noir-provekit-prover.pkp ./Prover.toml -o ./noir-proof.np
 ```
 
 Verify the Noir Proof:
 
 ```sh
-cargo run --release --bin provekit-cli verify ./noir-proof-scheme.nps ./noir-proof.np
+cargo run --release --bin provekit-cli verify ./noir-provekit-verifier.pkv ./noir-proof.np
 ```
 
 Generate inputs for Gnark circuit:
 
 ```sh
-cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-proof-scheme.nps ./noir-proof.np
+cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-provekit-prover.pkp ./noir-proof.np
 ```
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh
-cd ../../recursive-verifier
-go run .
+cd ../../../recursive-verifier/cmd/cli
+go run . --evaluation spark --config ../../../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier --spark_config ../../../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json --r1cs ../../../noir-examples/noir-passport-examples/complete_age_check/r1cs.json
 ```
 
 ### Benchmarking

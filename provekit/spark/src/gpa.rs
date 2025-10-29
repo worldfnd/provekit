@@ -313,7 +313,7 @@ pub struct GPASumcheckResult {
 
 /// Verifies a Grand Product Argument proof from the transcript.
 ///
-/// This is the verifier's counterpart to [`run_gpa`], checking that the
+/// This is the verifier's counterpart to [`run_gpa2`], checking that the
 /// prover's sumcheck proofs are valid without recomputing the multiplication
 /// tree.
 ///
