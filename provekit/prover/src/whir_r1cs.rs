@@ -54,12 +54,16 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         // Set up transcript
         let io: IOPattern = self.create_io_pattern();
-
         let mut merlin = io.to_prover_state();
         drop(io);
+
+        // log2(domain) for WHIR witness evaluations.
         let whir_num_vars = self.whir_witness.mv_parameters.num_variables;
 
+        // Expected evaluation length = 2^(log2(domain) - 1).
         let target_len = 1usize << (whir_num_vars - 1);
+
+        // Pad witness to power-of-two, then extend to target_len with zeros.
         let mut z = pad_to_power_of_two(witness);
         if z.len() < target_len {
             z.resize(target_len, FieldElement::zero());
@@ -235,6 +239,7 @@ fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 
     }
     g_univariates
 }
+
 /// Pads `v` with zeros so that `len >= 2` and `len` is a power of two.
 #[inline]
 pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
@@ -272,6 +277,7 @@ pub fn run_zk_sumcheck_prover(
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
 
+    // Ensure each vector has length ≥2 and is a power of two.
     pad_to_pow2_len_min2(&mut a);
     pad_to_pow2_len_min2(&mut b);
     pad_to_pow2_len_min2(&mut c);
@@ -281,6 +287,7 @@ pub fn run_zk_sumcheck_prover(
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
 
+    // Spartan blinding: m = log2(domain), target_len = 2^(m-1).
     let blinding_num_vars = whir_for_blinding_of_spartan_config
         .mv_parameters
         .num_variables;
@@ -296,13 +303,14 @@ pub fn run_zk_sumcheck_prover(
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());
     }
-    let blinding_polynomial_for_commiting = EvaluationsList::new(flat);
-    let blinding_polynomial_variables = blinding_polynomial_for_commiting.num_variables();
+
+    let blinding_polynomial_for_committing = EvaluationsList::new(flat);
+    let blinding_polynomial_variables = blinding_polynomial_for_committing.num_variables();
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
         batch_commit_to_polynomial(
             blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
-            blinding_polynomial_for_commiting,
+            blinding_polynomial_for_committing,
             &mut merlin,
         );
 
@@ -433,6 +441,7 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     Vec<FieldElement>,
     Vec<FieldElement>,
 ) {
+    // base_nv = cfg_nv - 1; lengths: 2^(cfg_nv-1) and 2^cfg_nv.
     let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
     let base_len = 1usize << base_nv;
     let final_len = 1usize << cfg_nv;
@@ -455,8 +464,8 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
         w_full.resize(final_len, FieldElement::zero());
 
         let weight = Weights::linear(EvaluationsList::new(w_full));
-        let f = weight.weighted_sum(&f_polynomial); // sums over original half
-        let g = weight.weighted_sum(&g_polynomial); // same weights for g
+        let f = weight.weighted_sum(&f_polynomial);
+        let g = weight.weighted_sum(&g_polynomial);
 
         statement.add_constraint(weight, f + witness.batching_randomness * g);
         f_sums.push(f);
