@@ -16,6 +16,7 @@ argh.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-tracy = { workspace = true, optional = true, features = ["default", "sampling","manual-lifetime"] }
 
 [lints]
 workspace = true
@@ -23,4 +24,6 @@ workspace = true
 [features]
 default = ["profiling-allocator"]
 profiling-allocator = []
+tracy = ["dep:tracing-tracy"]
+
 
