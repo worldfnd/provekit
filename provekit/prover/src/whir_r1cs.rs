@@ -57,9 +57,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let mut merlin = io.to_prover_state();
         drop(io);
-        let nv_w = self.whir_witness.mv_parameters.num_variables;
+        let whir_num_vars = self.whir_witness.mv_parameters.num_variables;
 
-        let target_len = 1usize << (nv_w - 1);
+        let target_len = 1usize << (whir_num_vars - 1);
         let mut z = pad_to_power_of_two(witness);
         if z.len() < target_len {
             z.resize(target_len, FieldElement::zero());
@@ -265,25 +265,34 @@ pub fn run_zk_sumcheck_prover(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
+
     pad_min2_pow2(&mut a);
     pad_min2_pow2(&mut b);
     pad_min2_pow2(&mut c);
     pad_min2_pow2(&mut eq);
+
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
 
-    let nv_b = whir_for_blinding_of_spartan_config
+    let blinding_num_vars = whir_for_blinding_of_spartan_config
         .mv_parameters
         .num_variables;
-    let target_b = 1usize << (nv_b - 1);
+    let target_b = 1usize << (blinding_num_vars - 1);
 
-    // Flatten and pad to exactly 1 << nv_b
-    let mut flat = blinding_polynomial
-        .iter()
+    // Flatten and pad to exactly 1 << blinding_num_vars - 1
+    // let mut flat = blinding_polynomial
+    //     .iter()
+    //     .flatten()
+    //     .cloned()
+    //     .collect::<Vec<_>>();
+
+    let mut flat: Vec<FieldElement> = blinding_polynomial
+        .iter() // borrow, don't move
         .flatten()
-        .cloned()
-        .collect::<Vec<_>>();
+        .copied() // use `.cloned()` if FieldElement: !Copy
+        .take(target_b)
+        .collect();
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());
     }
@@ -437,7 +446,7 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
         if w.len() < base_len {
             w.resize(base_len, FieldElement::zero());
         } else {
-            debug_assert_eq!(w.len(), base_len);
+            assert_eq!(w.len(), base_len);
         }
 
         // lift to 2^{cfg_nv} by zeroing the mask half: [w || 0]

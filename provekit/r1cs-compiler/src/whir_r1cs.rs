@@ -6,14 +6,18 @@ use {
     },
 };
 
+// Minimum log2 of the WHIR evaluation domain (lower bound for m).
+const MIN_WHIR_NUM_VARIABLES: usize = 12;
+
+// Minimum number of variables in the sumcheck’s multilinear polynomial (lower
+// bound for m_0).
+const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(r1cs: &R1CS) -> Self;
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
 }
 
-const MIN_DOMAIN_LOG2: usize = 12;
-const MIN_SUMCHECK_LOG2: usize = 1;
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     fn new_for_r1cs(r1cs: &R1CS) -> Self {
         // m_raw is equal to ceiling(log(number of variables in constraint system)). It
@@ -24,20 +28,16 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         // number of variables in the multilinear polynomial we are running our sumcheck
         // on.
         let m0_raw = next_power_of_two(r1cs.num_constraints());
-        let cfg_nv = m_raw + 1;
 
-        let mut m = cfg_nv.max(MIN_DOMAIN_LOG2);
-        let m_0 = m0_raw.max(MIN_SUMCHECK_LOG2);
-        if m == MIN_DOMAIN_LOG2 {
-            m += 1;
-        }
+        let m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Whir parameters
         Self {
-            m,
+            m: m + 1,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
-            whir_witness: Self::new_whir_config_for_size(m, 2),
+            whir_witness: Self::new_whir_config_for_size(m + 1, 2),
             whir_for_hiding_spartan: Self::new_whir_config_for_size(
                 next_power_of_two(4 * m_0) + 1,
                 2,
@@ -46,7 +46,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     }
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
-        let nv = num_variables.max(MIN_DOMAIN_LOG2);
+        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
         let mv_params = MultivariateParameters::new(nv);
         let whir_params = ProtocolParameters {

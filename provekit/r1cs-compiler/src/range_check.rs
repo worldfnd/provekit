@@ -29,6 +29,7 @@ pub(crate) fn add_range_checks(
     if range_checks.is_empty() {
         return;
     }
+
     // Do a pass through everything that needs to be range checked,
     // decomposing each value into digits that are at most
     // [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP] and creating a map
