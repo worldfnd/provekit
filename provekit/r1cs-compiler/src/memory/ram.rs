@@ -92,7 +92,6 @@ pub fn add_ram_checking(
     // required range checks later.
     let mut all_mem_op_index_and_rt = vec![];
 
-    println!("INIT");
     // For each of the writes in the inititialization, add a factor to the write
     // hash
     block
@@ -110,7 +109,6 @@ pub fn add_ram_checking(
                 *mem_value,
                 (FieldElement::zero(), r1cs_compiler.witness_one()),
             );
-            println!("WS factor [{}]: ({}, [{}], 0)", factor, addr, mem_value);
             ws_hash = r1cs_compiler.add_product(ws_hash, factor);
         });
 
@@ -129,7 +127,6 @@ pub fn add_ram_checking(
         .for_each(|(mem_op_index, op)| {
             match op {
                 SpiceMemoryOperation::Load(addr_witness, value_witness, rt_witness) => {
-                    println!("LOAD (mem op {})", mem_op_index);
                     // GET
                     all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
                     let factor = add_mem_op_multiset_factor(
@@ -140,10 +137,6 @@ pub fn add_ram_checking(
                         (FieldElement::one(), *addr_witness),
                         *value_witness,
                         (FieldElement::one(), *rt_witness),
-                    );
-                    println!(
-                        "RS factor [{}]: ([{}], [{}], [{}])",
-                        factor, addr_witness, value_witness, rt_witness
                     );
                     rs_hash = r1cs_compiler.add_product(rs_hash, factor);
 
@@ -160,13 +153,6 @@ pub fn add_ram_checking(
                             r1cs_compiler.witness_one(),
                         ),
                     );
-                    println!(
-                        "WS factor [{}]: ([{}], [{}], {})",
-                        factor,
-                        addr_witness,
-                        value_witness,
-                        mem_op_index + 1
-                    );
                     ws_hash = r1cs_compiler.add_product(ws_hash, factor);
                 }
                 SpiceMemoryOperation::Store(
@@ -175,7 +161,6 @@ pub fn add_ram_checking(
                     new_value_witness,
                     rt_witness,
                 ) => {
-                    println!("STORE (mem op {})", mem_op_index);
                     // GET
                     all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
                     let factor = add_mem_op_multiset_factor(
@@ -186,10 +171,6 @@ pub fn add_ram_checking(
                         (FieldElement::one(), *addr_witness),
                         *old_value_witness,
                         (FieldElement::one(), *rt_witness),
-                    );
-                    println!(
-                        "RS factor [{}]: ([{}], [{}], [{}])",
-                        factor, addr_witness, old_value_witness, rt_witness
                     );
                     rs_hash = r1cs_compiler.add_product(rs_hash, factor);
 
@@ -206,19 +187,11 @@ pub fn add_ram_checking(
                             r1cs_compiler.witness_one(),
                         ),
                     );
-                    println!(
-                        "WS factor [{}]: ([{}], [{}], {})",
-                        factor,
-                        addr_witness,
-                        new_value_witness,
-                        mem_op_index + 1
-                    );
                     ws_hash = r1cs_compiler.add_product(ws_hash, factor);
                 }
             }
         });
 
-    println!("AUDIT");
     // audit(): for each of the cells of the memory block, add a factor to the read
     // hash We don't need to keep incrementing the mem op index, since only GET
     // operations remain. TODO: see what global timestamp is used in the AUDIT
@@ -236,10 +209,6 @@ pub fn add_ram_checking(
             (FieldElement::from(addr as u64), r1cs_compiler.witness_one()),
             value_witness,
             (FieldElement::one(), rt_witness),
-        );
-        println!(
-            "RS factor [{}]: ({}, [{}], [{}])",
-            factor, addr, value_witness, rt_witness
         );
         rs_hash = r1cs_compiler.add_product(rs_hash, factor);
     });

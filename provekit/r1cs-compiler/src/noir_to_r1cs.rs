@@ -25,6 +25,17 @@ use {
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };
 
+/// Breakdown of R1CS costs by operation type.
+#[derive(Debug, Clone, Default)]
+pub struct R1CSBreakdown {
+    pub and_constraints:   usize,
+    pub and_witnesses:     usize,
+    pub xor_constraints:   usize,
+    pub xor_witnesses:     usize,
+    pub range_constraints: usize,
+    pub range_witnesses:   usize,
+}
+
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
 pub(crate) struct NoirToR1CSCompiler {
@@ -40,14 +51,20 @@ pub(crate) struct NoirToR1CSCompiler {
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
 
-/// Compile a Noir circuit to a R1CS relation, returning the R1CS and a map from
-/// Noir witness indices to R1CS witness indices.
+/// Compile a Noir circuit to a R1CS relation, returning the R1CS, witness map,
+/// witness builders, and a breakdown of batched operation costs.
 pub fn noir_to_r1cs(
     circuit: &Circuit<NoirElement>,
-) -> Result<(R1CS, Vec<Option<NonZeroU32>>, Vec<WitnessBuilder>)> {
+) -> Result<(
+    R1CS,
+    Vec<Option<NonZeroU32>>,
+    Vec<WitnessBuilder>,
+    R1CSBreakdown,
+)> {
     let mut compiler = NoirToR1CSCompiler::new();
-    compiler.add_circuit(circuit)?;
-    Ok(compiler.finalize())
+    let breakdown = compiler.add_circuit(circuit)?;
+    let (r1cs, map, builders) = compiler.finalize();
+    Ok((r1cs, map, builders, breakdown))
 }
 
 impl NoirToR1CSCompiler {
@@ -230,7 +247,7 @@ impl NoirToR1CSCompiler {
         self.r1cs.add_constraint(&a, &b, &linear);
     }
 
-    pub fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<()> {
+    pub fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<R1CSBreakdown> {
         // Read-only memory blocks (used for building the memory lookup constraints at
         // the end)
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
@@ -246,6 +263,8 @@ impl NoirToR1CSCompiler {
 
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
+
+        let mut breakdown = R1CSBreakdown::default();
 
         for opcode in &circuit.opcodes {
             match opcode {
@@ -463,15 +482,30 @@ impl NoirToR1CSCompiler {
             sha256_compression_ops,
         );
 
-        // For the AND and XOR operations, add the appropriate constraints.
+        // Track AND operation costs
+        let constraints_before = self.r1cs.num_constraints();
+        let witnesses_before = self.num_witnesses();
         add_binop_constraints(self, BinOp::And, and_ops);
+        breakdown.and_constraints = self.r1cs.num_constraints() - constraints_before;
+        breakdown.and_witnesses = self.num_witnesses() - witnesses_before;
+
+        // Track XOR operation costs
+        let constraints_before = self.r1cs.num_constraints();
+        let witnesses_before = self.num_witnesses();
         add_binop_constraints(self, BinOp::Xor, xor_ops);
+        breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before;
+        breakdown.xor_witnesses = self.num_witnesses() - witnesses_before;
+
         // For the Poseidon2 permutation operation.
         add_poseidon2_permutation(self, poseidon2_ops);
 
-        // Perform all range checks
+        // Track range check costs
+        let constraints_before = self.r1cs.num_constraints();
+        let witnesses_before = self.num_witnesses();
         add_range_checks(self, range_checks);
+        breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before;
+        breakdown.range_witnesses = self.num_witnesses() - witnesses_before;
 
-        Ok(())
+        Ok(breakdown)
     }
 }
