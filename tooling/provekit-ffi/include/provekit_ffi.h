@@ -28,6 +28,8 @@ extern "C"
         PK_INVALID_INPUT = 1,
         /// Failed to read scheme file
         PK_SCHEME_READ_ERROR = 2,
+        /// Failed to read witness/input file
+        PK_WITNESS_READ_ERROR = 3,
         /// Failed to generate proof
         PK_PROOF_ERROR = 4,
         /// Failed to serialize output
@@ -47,7 +49,7 @@ extern "C"
 
     /// Prove a Noir program and write the proof to a file.
     ///
-    /// @param prover_path Path to the prepared proof scheme (.nps file)
+    /// @param prover_path Path to the prepared proof scheme (.pkp file)
     /// @param input_path Path to the witness/input values (.toml file)
     /// @param out_path Path where to write the proof file (.np or .json)
     /// @return PK_SUCCESS on success, or an appropriate error code on failure
@@ -57,7 +59,7 @@ extern "C"
     ///
     /// This function is only available when the library is built with JSON support.
     ///
-    /// @param prover_path Path to the prepared proof scheme (.nps file)
+    /// @param prover_path Path to the prepared proof scheme (.pkp file)
     /// @param input_path Path to the witness/input values (.toml file)
     /// @param out_buf Output buffer to store the JSON string (must be freed with pk_free_buf)
     /// @return PK_SUCCESS on success, or an appropriate error code on failure
@@ -67,13 +69,6 @@ extern "C"
     ///
     /// @param buf The buffer to free
     void pk_free_buf(PKBuf buf);
-
-    /// Get the last error message as a C string.
-    ///
-    /// @return A null-terminated C string containing the last error message,
-    ///         or NULL if no error occurred. The returned string is static and
-    ///         does not need to be freed.
-    const char *pk_last_error(void);
 
 #ifdef __cplusplus
 }

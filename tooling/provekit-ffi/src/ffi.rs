@@ -18,7 +18,7 @@ use {
 ///
 /// # Arguments
 ///
-/// * `prover_path` - Path to the prepared proof scheme (.nps file)
+/// * `prover_path` - Path to the prepared proof scheme (.pkp file)
 /// * `input_path` - Path to the witness/input values (.toml file)
 /// * `out_path` - Path where to write the proof file (.np or .json)
 ///
@@ -42,9 +42,8 @@ pub unsafe extern "C" fn pk_prove_to_file(
         let input_path = c_str_to_str(input_path)?;
         let out_path = c_str_to_str(out_path)?;
 
-        // Read the scheme file (.nps or .json)
-        let mut prover: Prover =
-            read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+        // Read the scheme file (.pkp or .json)
+        let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Generate the proof
         let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;
@@ -68,7 +67,7 @@ pub unsafe extern "C" fn pk_prove_to_file(
 ///
 /// # Arguments
 ///
-/// * `scheme_path` - Path to the prepared proof scheme (.nps file)
+/// * `scheme_path` - Path to the prepared proof scheme (.pkp file)
 /// * `input_path` - Path to the witness/input values (.toml file)
 /// * `out_buf` - Output buffer to store the JSON string
 ///
@@ -107,8 +106,7 @@ pub unsafe extern "C" fn pk_prove_to_json(
         let input_path = c_str_to_str(input_path)?;
 
         // Read the scheme file (.pkp or .json)
-        let mut prover: Prover =
-            read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+        let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Generate the proof
         let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;

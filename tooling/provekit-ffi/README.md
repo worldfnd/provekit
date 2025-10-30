@@ -83,7 +83,7 @@ int main() {
     
     // Option 1: Prove and write to file
     int result = pk_prove_to_file(
-        "/path/to/scheme.nps",
+        "/path/to/scheme.pkp",
         "/path/to/input.toml",
         "/path/to/output.np"
     );
@@ -95,7 +95,7 @@ int main() {
     // Option 2: Prove and get JSON in memory
     PKBuf proof_buf;
     result = pk_prove_to_json(
-        "/path/to/scheme.nps",
+        "/path/to/scheme.pkp",
         "/path/to/input.toml", 
         &proof_buf
     );
@@ -125,7 +125,7 @@ guard pk_init() == PK_SUCCESS else {
 
 // Option 1: Prove and write to file
 let fileResult = pk_prove_to_file(
-    schemePath,
+    proverPath,
     inputPath,
     outputPath
 )
@@ -137,7 +137,7 @@ guard fileResult == PK_SUCCESS else {
 // Option 2: Prove and get JSON in memory
 var proofBuf = PKBuf(ptr: nil, len: 0)
 let jsonResult = pk_prove_to_json(
-    schemePath,
+    proverPath,
     inputPath,
     &proofBuf
 )
@@ -172,7 +172,7 @@ if (pk_init() != PK_SUCCESS) {
 
 // Option 1: Prove and write to file
 val fileResult = pk_prove_to_file(
-    schemePath,
+    proverPath,
     inputPath,
     outputPath
 )
@@ -184,7 +184,7 @@ if (fileResult != PK_SUCCESS) {
 // Option 2: Prove and get JSON in memory
 val proofBuf = PKBuf()
 val jsonResult = pk_prove_to_json(
-    schemePath,
+    proverPath,
     inputPath,
     proofBuf
 )
@@ -210,7 +210,7 @@ import ctypes
 from ctypes import Structure, c_char_p, c_int, c_size_t, POINTER
 
 # Load the library
-lib = ctypes.CDLL('./libprovekit_ffi.so')  # or .dylib on macOS
+lib = ctypes.CDLL('./libprovekit_ffi.so')  # or .dylib on macOS, .dll on Windows
 
 # Define structures
 class PKBuf(Structure):
@@ -230,7 +230,7 @@ if lib.pk_init() != 0:  # PK_SUCCESS = 0
 
 # Option 1: Prove and write to file
 file_result = lib.pk_prove_to_file(
-    scheme_path.encode('utf-8'),
+    prover_path.encode('utf-8'),
     input_path.encode('utf-8'),
     output_path.encode('utf-8')
 )
@@ -241,7 +241,7 @@ if file_result != 0:
 # Option 2: Prove and get JSON in memory
 proof_buf = PKBuf()
 json_result = lib.pk_prove_to_json(
-    scheme_path.encode('utf-8'),
+    prover_path.encode('utf-8'),
     input_path.encode('utf-8'),
     ctypes.byref(proof_buf)
 )
@@ -266,7 +266,6 @@ lib.pk_free_buf(proof_buf)
 - `pk_prove_to_file()` - Generate proof and write to file
 - `pk_prove_to_json()` - Generate proof and return as JSON string in memory buffer
 - `pk_free_buf()` - Free buffers returned by ProveKit functions
-- `pk_last_error()` - Get last error message (currently returns static message)
 
 ### Error Codes
 
@@ -282,7 +281,7 @@ lib.pk_free_buf(proof_buf)
 ## File Formats
 
 ### Input Files
-- **Scheme files**: `.nps` (binary) or `.json` (JSON format)
+- **Prover files**: `.pkp` (binary) or `.json` (JSON format) - prepared proof scheme
 - **Witness files**: `.toml` (TOML format with input values)
 
 ### Output Files
