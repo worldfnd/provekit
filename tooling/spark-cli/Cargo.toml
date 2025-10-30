@@ -20,3 +20,7 @@ tracing-subscriber.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["profiling-allocator"]
+profiling-allocator = []
+
