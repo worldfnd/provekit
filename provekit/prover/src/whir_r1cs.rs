@@ -235,12 +235,18 @@ fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 
     }
     g_univariates
 }
-fn pad_min2_pow2(v: &mut Vec<FieldElement>) {
-    if v.len() < 2 {
-        v.resize(2, FieldElement::zero());
-    }
-    if !v.len().is_power_of_two() {
-        v.resize(v.len().next_power_of_two(), FieldElement::zero());
+/// Pads `v` with zeros so that `len >= 2` and `len` is a power of two.
+#[inline]
+pub fn pad_min2_pow2(v: &mut Vec<FieldElement>) {
+    let min = v.len().max(2);
+
+    let target = match min.checked_next_power_of_two() {
+        Some(p2) => p2,
+        None => min, // fallback: can't grow to power-of-two, keep `min`
+    };
+
+    if v.len() < target {
+        v.resize(target, FieldElement::zero());
     }
 }
 
