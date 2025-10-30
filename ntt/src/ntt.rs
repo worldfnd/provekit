@@ -362,6 +362,7 @@ mod tests {
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
+        rayon::iter::{IntoParallelIterator, ParallelIterator},
         std::{
             fmt,
             num::{NonZero, NonZeroUsize},
@@ -431,21 +432,44 @@ mod tests {
         }
     }
 
-    // TODO Replace by parallel alternative to speed up tests
-    fn transpose<T: Copy>(matrix: &[T], rows: usize, columns: usize) -> Vec<T> {
-        assert_eq!(matrix.len(), rows * columns);
-        let mut v = Vec::with_capacity(matrix.len());
-        for j in 0..columns {
-            for i in 0..rows {
-                v.push(matrix[i * columns + j]);
-            }
-        }
-        v
+    fn transpose<T: Copy + Send + Sync>(matrix: &[T], rows: usize, columns: usize) -> Vec<T> {
+        let len = rows * columns;
+        assert_eq!(matrix.len(), len);
+
+        const TILE_SIZE: usize = 64;
+        let mut result = vec![matrix[0]; len];
+        let base_ptr = result.as_mut_ptr() as usize;
+
+        let row_tiles = rows.div_ceil(TILE_SIZE);
+        let col_tiles = columns.div_ceil(TILE_SIZE);
+
+        (0..row_tiles * col_tiles)
+            .into_par_iter()
+            .for_each(|tile_idx| {
+                let tile_i = tile_idx / col_tiles;
+                let tile_j = tile_idx % col_tiles;
+
+                let i_start = tile_i * TILE_SIZE;
+                let i_end = (i_start + TILE_SIZE).min(rows);
+                let j_start = tile_j * TILE_SIZE;
+                let j_end = (j_start + TILE_SIZE).min(columns);
+
+                let result_ptr = base_ptr as *mut T;
+                unsafe {
+                    for i in i_start..i_end {
+                        for j in j_start..j_end {
+                            *result_ptr.add(j * rows + i) = matrix[i * columns + j];
+                        }
+                    }
+                }
+            });
+
+        result
     }
 
     proptest! {
         #[test]
-        fn test_transpose((rows, columns, mat) in (0_usize..10, 0_usize..10)
+        fn test_transpose((rows, columns, mat) in (256_usize..364, 256_usize..364)
             .prop_flat_map(|(rows, columns)| {
                 // If either rows or columns is zero, the matrix is empty
                 let len = rows * columns;
