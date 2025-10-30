@@ -237,7 +237,7 @@ fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 
 }
 /// Pads `v` with zeros so that `len >= 2` and `len` is a power of two.
 #[inline]
-pub fn pad_to_pow2_at_least_2(v: &mut Vec<FieldElement>) {
+pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
     let min = v.len().max(2);
 
     let target = match min.checked_next_power_of_two() {
@@ -272,10 +272,10 @@ pub fn run_zk_sumcheck_prover(
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
 
-    pad_to_pow2_at_least_2(&mut a);
-    pad_to_pow2_at_least_2(&mut b);
-    pad_to_pow2_at_least_2(&mut c);
-    pad_to_pow2_at_least_2(&mut eq);
+    pad_to_pow2_len_min2(&mut a);
+    pad_to_pow2_len_min2(&mut b);
+    pad_to_pow2_len_min2(&mut c);
+    pad_to_pow2_len_min2(&mut eq);
 
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
@@ -286,19 +286,13 @@ pub fn run_zk_sumcheck_prover(
         .num_variables;
     let target_b = 1usize << (blinding_num_vars - 1);
 
-    // Flatten and pad to exactly 1 << blinding_num_vars - 1
-    // let mut flat = blinding_polynomial
-    //     .iter()
-    //     .flatten()
-    //     .cloned()
-    //     .collect::<Vec<_>>();
-
-    let mut flat: Vec<FieldElement> = blinding_polynomial
-        .iter() // borrow, don't move
+    //  Flatten and pad to exactly 1 << blinding_num_vars - 1
+    let mut flat = blinding_polynomial
+        .iter()
         .flatten()
-        .copied() // use `.cloned()` if FieldElement: !Copy
-        .take(target_b)
-        .collect();
+        .cloned()
+        .collect::<Vec<_>>();
+
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());
     }

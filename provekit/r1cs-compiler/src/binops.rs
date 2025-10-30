@@ -62,6 +62,7 @@ pub(crate) fn add_binop_constraints(
     if inputs_and_outputs.is_empty() {
         return;
     }
+    
     // Collect all witnesses that require digital decomposition (constants are
     // decomposed separately).
     let mut witnesses_to_decompose = vec![];
