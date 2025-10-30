@@ -1,5 +1,15 @@
+#![allow(missing_docs)]
 mod cmd;
+#[cfg(feature = "profiling-allocator")]
+mod profiling_alloc;
 mod span_stats;
+
+#[cfg(feature = "profiling-allocator")]
+use crate::profiling_alloc::ProfilingAllocator;
+
+#[cfg(feature = "profiling-allocator")]
+#[global_allocator]
+static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
 use {
     anyhow::Result,
