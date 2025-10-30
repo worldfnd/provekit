@@ -15,8 +15,8 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         ProverState, VerifierState,
     },
-    whir::poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
     tracing::instrument,
+    whir::poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
 };
 
 /// Runs the Grand Product Argument (GPA) protocol to prove product equality.

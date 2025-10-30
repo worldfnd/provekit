@@ -24,6 +24,7 @@ use {
         ProverState,
     },
     std::collections::BTreeSet,
+    tracing::instrument,
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
@@ -34,7 +35,6 @@ use {
             utils::HintSerialize,
         },
     },
-    tracing::instrument,
 };
 
 /// SPARK proving interface for R1CS constraint systems.

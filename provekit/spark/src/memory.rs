@@ -14,6 +14,7 @@ use {
         FieldElement, WhirConfig,
     },
     spongefish::{ProverState, VerifierState},
+    tracing::instrument,
     whir::{
         crypto::fields::BN254Config,
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
@@ -25,7 +26,6 @@ use {
             verifier::Verifier,
         },
     },
-    tracing::instrument,
 };
 
 /// Configuration bundle for row/column axis-specific data.

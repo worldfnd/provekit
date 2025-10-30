@@ -1,10 +1,13 @@
 mod cmd;
 mod span_stats;
 
-use {anyhow::Result, argh::FromArgs};
-use tracing::{instrument, subscriber};
-use tracing_subscriber::{self, layer::SubscriberExt as _, Registry};
-use span_stats::SpanStats;
+use {
+    anyhow::Result,
+    argh::FromArgs,
+    span_stats::SpanStats,
+    tracing::{instrument, subscriber},
+    tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
+};
 
 #[derive(FromArgs)]
 #[argh(description = "SPARK Prover CLI")]
