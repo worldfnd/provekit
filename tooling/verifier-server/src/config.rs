@@ -6,8 +6,7 @@
 use std::{env, path::PathBuf, time::Duration};
 
 /// Server configuration
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Config {
     /// Server configuration
     pub server:       ServerConfig,
@@ -58,7 +57,6 @@ impl Config {
         }
     }
 }
-
 
 impl ServerConfig {
     fn from_env() -> Self {

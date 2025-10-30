@@ -26,8 +26,6 @@ pub struct WhirR1CSScheme {
 impl WhirR1CSScheme {
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        
-
         IOPattern::new("🌪️")
             .commit_statement(&self.whir_witness)
             .add_rand(self.m_0)
