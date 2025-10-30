@@ -85,7 +85,7 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process
-          ./gnark-verifier --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json" --pk_url ${{ vars.AGE_CHECK_PK_RANGE }} --vk_url ${{ vars.AGE_CHECK_VK_RANGE }} --proof "../noir-examples/noir-passport-examples/complete_age_check/gnark_proof.json"
+          ./gnark-verifier --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json" --pk_url ${{ vars.AGE_CHECK_PK_RANGE }} --vk_url ${{ vars.AGE_CHECK_VK_RANGE }}
 
           # Stop monitoring
           kill $MONITOR_PID
