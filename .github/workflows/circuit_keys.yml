@@ -69,7 +69,7 @@ jobs:
             - name: Run Gnark verifier
               working-directory: recursive-verifier
               run: |
-                go run cmd/cli/main.go --config "../${{ env.CIRCUIT_DIR }}/params_for_recursive_verifier" --r1cs "../${{ env.CIRCUIT_DIR }}/r1cs.json" --saveKeys "./keys" --spark_config "../${{ env.CIRCUIT_DIR }}/gnark_spark_proof.json"
+                go run cmd/cli/main.go --evaluation spark --config "../${{ env.CIRCUIT_DIR }}/params_for_recursive_verifier" --r1cs "../${{ env.CIRCUIT_DIR }}/r1cs.json" --saveKeys "./keys" --spark_config "../${{ env.CIRCUIT_DIR }}/gnark_spark_proof.json"
 
             - name: List keys
               working-directory: recursive-verifier
