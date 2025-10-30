@@ -15,40 +15,14 @@ SPARK (Sparse Polynomial Argument of Knowledge) prover and verifier implementati
 
 ## Usage
 
-### As a Library
-
-```rust
-use provekit_spark::{
-    SPARKProver, SPARKProverScheme, SPARKVerifier, SPARKVerifierScheme,
-    deserialize_r1cs, deserialize_request,
-};
-
-// Proving
-let r1cs = deserialize_r1cs("path/to/r1cs.json")?;
-let request = deserialize_request("path/to/request.json")?;
-let scheme = SPARKProverScheme::new_for_r1cs(&r1cs);
-let proof = scheme.prove(&r1cs, &request)?;
-
-// Verifying
-let scheme = SPARKVerifierScheme::from_proof(&proof);
-scheme.verify(&proof, &request)?;
-```
-
-### As a CLI
-
 Use the `spark-cli` tool in `tooling/spark-cli`:
 
 ```bash
 # Prove
-cargo run -p spark-cli -- prove \
-  --r1cs path/to/r1cs.json \
-  --request path/to/request.json \
-  --output proof.json
+cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./noir-provekit-prover.pkp --noir-proof ./noir-proof.np 
 
 # Verify
-cargo run -p spark-cli -- verify \
-  --proof proof.json \
-  --request request.json
+cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./noir-proof.np 
 ```
 
 ### Test Utilities

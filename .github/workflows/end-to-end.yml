@@ -87,7 +87,7 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process
-          ./gnark-verifier --evaluation spark --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --spark_config "../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json"  --pk_url ${{ vars.AGE_CHECK_PK }} --vk_url ${{ vars.AGE_CHECK_VK }}
+          ./gnark-verifier --evaluation spark --config "../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier" --spark_config "../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json" --r1cs "../noir-examples/noir-passport-examples/complete_age_check/r1cs.json"  --pk_url ${{ vars.AGE_CHECK_SPARK_PK }} --vk_url ${{ vars.AGE_CHECK_SPARK_VK }}
 
           # Stop monitoring
           kill $MONITOR_PID

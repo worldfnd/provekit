@@ -14,43 +14,62 @@ noirup --version v1.0.0-beta.11
 
 > _NOTE:_ The example below is being run for single example `complete_age_check`. You can use different example to run same commands.
 
-Compile the Noir circuit:
+1. Compile the Noir circuit:
 
 ```sh
 cd noir-examples/noir-passport-examples/complete_age_check
 nargo compile
 ```
 
-Generate the Noir Proof Schemes:
+2. Generate the Noir Proof Schemes:
 
 ```sh
 cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -p ./noir-provekit-prover.pkp -v ./noir-provekit-verifier.pkv
 ```
 
-Generate the Noir Proof using the input Toml:
+3. Generate the Noir Proof using the input Toml:
 
 ```sh
 cargo run --release --bin provekit-cli prove ./noir-provekit-prover.pkp ./Prover.toml -o ./noir-proof.np
 ```
 
-Verify the Noir Proof:
+(Optional) Verify the Noir Proof:
 
 ```sh
 cargo run --release --bin provekit-cli verify ./noir-provekit-verifier.pkv ./noir-proof.np
 ```
 
-Generate inputs for Gnark circuit:
+4. Generate inputs for Gnark circuit:
 
 ```sh
 cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-provekit-prover.pkp ./noir-proof.np
 ```
 
-Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
+5. Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`). We provide two methods to prove deferred evaluations.
+   
+   5.1. Spark: Spark prover generates proof of MLE evaluation
 
-```sh
-cd ../../../recursive-verifier/cmd/cli
-go run . --evaluation spark --config ../../../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier --spark_config ../../../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json --r1cs ../../../noir-examples/noir-passport-examples/complete_age_check/r1cs.json
-```
+      5.1.1 Generate the Spark Proof:
+      ```sh
+      cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./noir-provekit-prover.pkp --noir-proof ./noir-proof.np 
+      ```
+
+      (Optional) Verify the Spark Proof:
+      ```sh
+      cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./noir-proof.np 
+      ```
+
+      5.1.2 Recursively verify 
+      ```sh
+      cd ../../../recursive-verifier/cmd/cli
+      go run . --evaluation spark --config ../../../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier --spark_config ../../../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json --r1cs ../../../noir-examples/noir-passport-examples/complete_age_check/r1cs.json
+      ```
+
+   5.2. Direct evaluation: verifier directly evaluates MLEs of R1CS matrices
+   ```sh
+   cd ../../../recursive-verifier/cmd/cli
+   go run . --evaluation direct --config ../../../noir-examples/noir-passport-examples/complete_age_check/params_for_recursive_verifier --spark_config ../../../noir-examples/noir-passport-examples/complete_age_check/gnark_spark_proof.json --r1cs ../../../noir-examples/noir-passport-examples/complete_age_check/r1cs.json
+   ```
 
 ### Benchmarking
 
@@ -160,9 +179,11 @@ ProveKit follows a modular architecture with clear separation of concerns:
 - **`provekit/r1cs-compiler/`** - R1CS compilation logic and Noir integration  
 - **`provekit/prover/`** - Proving functionality with witness generation
 - **`provekit/verifier/`** - Verification functionality
+- **`provekit/spark/`** - Spark logic
 
 ### Tooling
 - **`tooling/cli/`** - Command-line interface (`provekit-cli`)
+- **`tooling/spark-cli/`** - Command-line interface for Spark(`spark-cli`)
 - **`tooling/provekit-bench/`** - Benchmarking infrastructure
 - **`tooling/provekit-gnark/`** - Gnark integration utilities
 
@@ -172,7 +193,7 @@ ProveKit follows a modular architecture with clear separation of concerns:
 
 ### Examples & Tests
 - **`noir-examples/`** - Example circuits and test programs
-- **`gnark-whir/`** - Go-based recursive verification using Gnark
+- **`recursive-verifier/`** - Go-based recursive verification using Gnark
 
 ## Dependencies
 
