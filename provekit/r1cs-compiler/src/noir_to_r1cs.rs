@@ -466,6 +466,7 @@ impl NoirToR1CSCompiler {
         // For the AND and XOR operations, add the appropriate constraints.
         add_binop_constraints(self, BinOp::And, and_ops);
         add_binop_constraints(self, BinOp::Xor, xor_ops);
+        // For the Poseidon2 permutation operation.
         add_poseidon2_permutation(self, poseidon2_ops);
 
         // Perform all range checks
