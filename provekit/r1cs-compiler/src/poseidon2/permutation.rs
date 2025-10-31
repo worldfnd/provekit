@@ -1,4 +1,4 @@
-/// Implementation inspired by the Circom Poseidon2 templates: "https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom"
+/// Implementation inspired by the Circom Poseidon2 templates: [https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom](https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom)
 use {
     super::constants::{
         amount_partial_rounds, load_diag, load_rc_full1, load_rc_full2, load_rc_partial,
@@ -157,7 +157,7 @@ fn materialize_const(cs: &mut NoirToR1CSCompiler, k: FieldElement) -> usize {
     y
 }
 
-/// External MDS (t=2): linear realization using out[i] = s[i] + sum_i s[i];
+/// External MDS (t=2): linear realization using `out[i] = s[i] + sum_i s[i]`
 fn external_mds2(cs: &mut NoirToR1CSCompiler, s: &[ConstantOrR1CSWitness]) -> Vec<usize> {
     debug_assert_eq!(s.len(), 2);
     let one = FieldElement::ONE;
@@ -180,7 +180,7 @@ fn external_mds2(cs: &mut NoirToR1CSCompiler, s: &[ConstantOrR1CSWitness]) -> Ve
     vec![out0, out1]
 }
 
-/// External MDS (t=3): linear realization using out[i] = s[i] + sum_i s[i];
+/// External MDS (t=3): linear realization using `out[i] = s[i] + sum_i s[i]`
 fn external_mds3(cs: &mut NoirToR1CSCompiler, s: &[ConstantOrR1CSWitness]) -> Vec<usize> {
     let one = FieldElement::ONE;
     let sum = add_linear_combo(cs, &[one, one, one], s); // y = s0 + s1 + s2

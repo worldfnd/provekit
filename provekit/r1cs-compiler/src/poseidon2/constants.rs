@@ -1,7 +1,7 @@
-/// Parameters are consistent with the official Poseidon2 parameter generation
-/// script: "https://github.com/HorizenLabs/poseidon2/blob/main/poseidon2_rust_params.sage"
-/// Inspired by the Taceo Labs implementation:
-/// "https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom"
+/// Parameters are consistent with the official Poseidon2 parameter generation script found at:
+/// [https://github.com/HorizenLabs/poseidon2/blob/main/poseidon2_rust_params.sage](https://github.com/HorizenLabs/poseidon2/blob/main/poseidon2_rust_params.sage)
+// Inspired by the Taceo Labs implementation:
+/// [https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom](https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom)
 use {ark_ff::PrimeField, provekit_common::FieldElement as F};
 
 /// Parses a big-endian hex string into a field element `F`.
@@ -960,7 +960,7 @@ pub fn load_rc_partial(t: u32) -> Vec<F> {
 }
 
 // Reference: Taceo Labs Poseidon2 constants.
-// Source file: https://github.com/TaceoLabs/nullifier-oracle-service/blob/main/circom/poseidon2/poseidon2_constants.circom
+// Source file: [https://github.com/TaceoLabs/nullifier-oracle-service/blob/main/circom/poseidon2/poseidon2_constants.circom](https://github.com/TaceoLabs/nullifier-oracle-service/blob/main/circom/poseidon2/poseidon2_constants.circom)
 #[cfg(test)]
 mod tests_constants_t4 {
     use super::*;
