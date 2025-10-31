@@ -1,7 +1,6 @@
 use {
     super::WitnessBuilder,
     crate::{
-        interner::Interner,
         sparse_matrix::SparseMatrix,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessCoefficient,
@@ -79,18 +78,21 @@ pub struct SplitWitnessBuilders {
 
 /// Pre-computed dependency graph for witness builder scheduling.
 ///
-/// Caches three key pieces of information to avoid repeated traversals:
+/// Caches four key pieces of information to avoid repeated traversals:
 /// - Which witness indices each builder reads (inputs)
 /// - Which builders depend on each builder's outputs (graph edges)
 /// - How many dependencies each builder has (in-degree for topological sort)
+/// - For each witness: the builder that produces it.
 #[derive(Debug)]
 struct DependencyInfo {
     /// For each builder: the witness indices it reads.
-    reads:          Vec<Vec<usize>>,
+    reads:            Vec<Vec<usize>>,
     /// For each builder: the builders that depend on its outputs.
-    adjacency_list: Vec<Vec<usize>>,
+    adjacency_list:   Vec<Vec<usize>>,
     /// For each builder: the number of unprocessed dependencies (in-degree).
-    in_degrees:     Vec<usize>,
+    in_degrees:       Vec<usize>,
+    /// For each witness: the builder that produces it.
+    witness_producer: HashMap<usize, usize>,
 }
 
 impl DependencyInfo {
@@ -133,6 +135,7 @@ impl DependencyInfo {
             reads,
             adjacency_list,
             in_degrees,
+            witness_producer,
         }
     }
 
@@ -305,58 +308,41 @@ impl<'a> WitnessSplitter<'a> {
             })
             .collect();
 
-        // If no challenges, everything goes in w1
         if challenge_builders.is_empty() {
             return ((0..builder_count).collect(), Vec::new());
         }
 
-        // Step 2: Build witness-to-producer mapping
-        let mut witness_producer: HashMap<usize, usize> = HashMap::new();
-        for (builder_idx, builder) in self.witness_builders.iter().enumerate() {
-            for witness_idx in DependencyInfo::extract_writes(builder) {
-                witness_producer.insert(witness_idx, builder_idx);
-            }
-        }
+        // Step 2: Reuse pre-computed witness-to-producer mapping
+        let witness_producer = &self.deps.witness_producer;
 
-        // Step 3: Find all builders that READ challenge witnesses (lookup builders)
+        // Step 3: Find lookup builders
         let mut lookup_builders = HashSet::new();
-        for &challenge_builder_idx in &challenge_builders {
-            let challenge_witnesses =
-                DependencyInfo::extract_writes(&self.witness_builders[challenge_builder_idx]);
-
-            for challenge_witness in challenge_witnesses {
-                for (consumer_idx, reads) in self.deps.reads.iter().enumerate() {
-                    if reads.contains(&challenge_witness) {
-                        lookup_builders.insert(consumer_idx);
-                    }
-                }
+        for &challenge_idx in &challenge_builders {
+            for &consumer_idx in &self.deps.adjacency_list[challenge_idx] {
+                lookup_builders.insert(consumer_idx);
             }
         }
 
-        // Step 4: Backward DFS from lookup builders to find transitive dependencies
+        // Step 4: Backward DFS from lookup builders
         let mut w1_set = HashSet::new();
         let mut visited = vec![false; builder_count];
         let mut stack = VecDeque::new();
 
-        // Initialize with lookup builders
         for &lookup_idx in &lookup_builders {
             stack.push_back(lookup_idx);
         }
 
-        // Backward DFS
         while let Some(current_idx) = stack.pop_front() {
             if visited[current_idx] {
                 continue;
             }
             visited[current_idx] = true;
 
-            // Don't include challenges or lookups in w1 - they go to w2
             if !challenge_builders.contains(&current_idx) && !lookup_builders.contains(&current_idx)
             {
                 w1_set.insert(current_idx);
             }
 
-            // Traverse backward through dependencies
             for &witness_idx in &self.deps.reads[current_idx] {
                 if let Some(&producer_idx) = witness_producer.get(&witness_idx) {
                     if !visited[producer_idx] {
@@ -366,7 +352,7 @@ impl<'a> WitnessSplitter<'a> {
             }
         }
 
-        // Step 5: Partition into w1 and w2, preserving original order
+        // Step 5: Partition
         let mut w1_indices = Vec::new();
         let mut w2_indices = Vec::new();
 
@@ -617,14 +603,19 @@ impl WitnessIndexRemapper {
     pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
         let mut new_r1cs = R1CS::new();
         new_r1cs.num_public_inputs = r1cs.num_public_inputs;
-        new_r1cs.interner = r1cs.interner.clone();
+        new_r1cs.interner = r1cs.interner;
 
-        // Remap each matrix (A, B, C)
-        let new_a = self.remap_sparse_matrix(r1cs.a, &r1cs.interner, &mut new_r1cs.interner);
-        let new_b = self.remap_sparse_matrix(r1cs.b, &r1cs.interner, &mut new_r1cs.interner);
-        let new_c = self.remap_sparse_matrix(r1cs.c, &r1cs.interner, &mut new_r1cs.interner);
+        // Remap A, B, C in parallel - they're independent
+        let (new_a, (new_b, new_c)) = rayon::join(
+            || self.remap_sparse_matrix(r1cs.a),
+            || {
+                rayon::join(
+                    || self.remap_sparse_matrix(r1cs.b),
+                    || self.remap_sparse_matrix(r1cs.c),
+                )
+            },
+        );
 
-        // Build new R1CS with remapped matrices
         new_r1cs.a = new_a;
         new_r1cs.b = new_b;
         new_r1cs.c = new_c;
@@ -633,23 +624,9 @@ impl WitnessIndexRemapper {
     }
 
     /// Helper to remap a single sparse matrix
-    pub fn remap_sparse_matrix(
-        &self,
-        matrix: SparseMatrix,
-        read_interner: &Interner,
-        write_interner: &mut Interner,
-    ) -> SparseMatrix {
-        // Create new matrix with same dimensions
-        let mut new_matrix = SparseMatrix::new(matrix.num_rows, matrix.num_cols);
-
-        // Iterate through all entries and remap column indices
-        let hydrated = matrix.hydrate(read_interner);
-        for ((row, old_col), value) in hydrated.iter() {
-            let new_col = self.remap(old_col);
-            new_matrix.set(row, new_col, write_interner.intern(value));
-        }
-
-        new_matrix
+    fn remap_sparse_matrix(&self, mut matrix: SparseMatrix) -> SparseMatrix {
+        matrix.remap_columns(|old_col| self.remap(old_col));
+        matrix
     }
 
     /// Remaps ACIR witness map.

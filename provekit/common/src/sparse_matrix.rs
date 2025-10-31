@@ -1,6 +1,7 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
+    rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
     serde::{Deserialize, Serialize},
     std::{
         fmt::Debug,
@@ -120,6 +121,42 @@ impl SparseMatrix {
             .get(row + 1)
             .map_or(self.values.len(), |&v| v as usize);
         start..end
+    }
+
+    /// Remap column indices using provided mapping function - in-place and
+    /// parallel
+    pub fn remap_columns<F>(&mut self, remap_fn: F)
+    where
+        F: Fn(usize) -> usize + Send + Sync,
+    {
+        // Step 1: Remap all column indices in parallel
+        self.col_indices.par_iter_mut().for_each(|col| {
+            *col = remap_fn(*col as usize) as u32;
+        });
+
+        // Step 2: Re-sort each row sequentially (fast enough, avoids unsafe)
+        for row in 0..self.num_rows {
+            let start = self.new_row_indices[row] as usize;
+            let end = self
+                .new_row_indices
+                .get(row + 1)
+                .map_or(self.col_indices.len(), |&v| v as usize);
+
+            let row_cols = &mut self.col_indices[start..end];
+            let row_vals = &mut self.values[start..end];
+
+            let mut pairs: Vec<_> = row_cols
+                .iter()
+                .zip(row_vals.iter())
+                .map(|(&c, &v)| (c, v))
+                .collect();
+            pairs.sort_unstable_by_key(|(c, _)| *c);
+
+            for (i, (c, v)) in pairs.into_iter().enumerate() {
+                row_cols[i] = c;
+                row_vals[i] = v;
+            }
+        }
     }
 }
 

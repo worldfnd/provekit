@@ -16,7 +16,6 @@ pub struct NoirProofScheme {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
-    pub whir_for_w1:            WhirR1CSScheme,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
