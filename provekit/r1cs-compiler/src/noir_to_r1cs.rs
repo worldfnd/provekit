@@ -34,6 +34,11 @@ pub struct R1CSBreakdown {
     pub xor_witnesses:     usize,
     pub range_constraints: usize,
     pub range_witnesses:   usize,
+
+    // SHA256-specific contributions (subset of above)
+    pub sha256_and_ops:   usize,
+    pub sha256_xor_ops:   usize,
+    pub sha256_range_ops: usize,
 }
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
@@ -473,6 +478,11 @@ impl NoirToR1CSCompiler {
             }
         });
 
+        // Track SHA256's contribution to batched operations
+        let and_ops_before = and_ops.len();
+        let xor_ops_before = xor_ops.len();
+        let range_ops_before: usize = range_checks.values().map(|v| v.len()).sum();
+
         // For the SHA256 compression operations, add the appropriate constraints.
         add_sha256_compression(
             self,
@@ -481,6 +491,11 @@ impl NoirToR1CSCompiler {
             &mut range_checks,
             sha256_compression_ops,
         );
+
+        breakdown.sha256_and_ops = and_ops.len() - and_ops_before;
+        breakdown.sha256_xor_ops = xor_ops.len() - xor_ops_before;
+        breakdown.sha256_range_ops =
+            range_checks.values().map(|v| v.len()).sum::<usize>() - range_ops_before;
 
         // Track AND operation costs
         let constraints_before = self.r1cs.num_constraints();

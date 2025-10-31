@@ -342,6 +342,10 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     let and_count = *stats.blackbox_func_counts.get("AND").unwrap_or(&0);
     let xor_count = *stats.blackbox_func_counts.get("XOR").unwrap_or(&0);
     let range_count = *stats.blackbox_func_counts.get("RANGE").unwrap_or(&0);
+    let sha256_count = *stats
+        .blackbox_func_counts
+        .get("Sha256Compression")
+        .unwrap_or(&0);
 
     if and_count == 0 && xor_count == 0 && range_count == 0 {
         return;
@@ -355,24 +359,40 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     println!("\n┌─ Batched Operations (Exact Breakdown)");
 
     if and_count > 0 || breakdown.and_constraints > 0 || breakdown.and_witnesses > 0 {
+        let explicit_and = and_count;
         println!(
-            "│  AND ({} ops):        {:>8} constraints {:>8} witnesses",
-            and_count, breakdown.and_constraints, breakdown.and_witnesses
+            "│  AND ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
+            explicit_and,
+            breakdown.sha256_and_ops,
+            breakdown.and_constraints,
+            breakdown.and_witnesses
         );
     }
 
     if xor_count > 0 || breakdown.xor_constraints > 0 || breakdown.xor_witnesses > 0 {
+        let explicit_xor = xor_count;
         println!(
-            "│  XOR ({} ops):        {:>8} constraints {:>8} witnesses",
-            xor_count, breakdown.xor_constraints, breakdown.xor_witnesses
+            "│  XOR ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
+            explicit_xor,
+            breakdown.sha256_xor_ops,
+            breakdown.xor_constraints,
+            breakdown.xor_witnesses
         );
     }
 
     if range_count > 0 || breakdown.range_constraints > 0 || breakdown.range_witnesses > 0 {
+        let non_sha256_range = range_count.saturating_sub(breakdown.sha256_range_ops);
         println!(
-            "│  RANGE ({} ops):      {:>8} constraints {:>8} witnesses",
-            range_count, breakdown.range_constraints, breakdown.range_witnesses
+            "│  RANGE ({} non-SHA256, {} from SHA256): {:>8} constraints {:>8} witnesses",
+            non_sha256_range,
+            breakdown.sha256_range_ops,
+            breakdown.range_constraints,
+            breakdown.range_witnesses
         );
+        if sha256_count > 0 && breakdown.sha256_range_ops > 0 {
+            let per_sha256 = breakdown.sha256_range_ops / sha256_count;
+            println!("│         (~{} range checks per SHA256 call)", per_sha256);
+        }
     }
 
     println!("│");
