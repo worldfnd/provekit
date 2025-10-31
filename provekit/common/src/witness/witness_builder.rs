@@ -4,11 +4,11 @@ use {
         witness::{
             binops::BINOP_ATOMIC_BITS,
             digits::DigitalDecompositionWitnesses,
-            layer_scheduler::{
+            ram::SpiceWitnesses,
+            scheduling::{
                 LayerScheduler, LayeredWitnessBuilders, SplitWitnessBuilders, WitnessIndexRemapper,
                 WitnessSplitter,
             },
-            ram::SpiceWitnesses,
             ConstantOrR1CSWitness,
         },
         FieldElement, R1CS,

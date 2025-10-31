@@ -1,7 +1,7 @@
 mod binops;
 mod digits;
-mod layer_scheduler;
 mod ram;
+mod scheduling;
 mod witness_builder;
 mod witness_generator;
 
@@ -13,8 +13,8 @@ use {
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
-    layer_scheduler::{Layer, LayerType, LayeredWitnessBuilders, SplitWitnessBuilders},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
+    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitWitnessBuilders},
     witness_builder::{
         ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
     },

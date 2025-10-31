@@ -11,8 +11,10 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge, utils::noir_to_native, witness::WitnessBuilder, FieldElement,
-        IOPattern, NoirElement, NoirProof, Prover,
+        skyscraper::SkyscraperSponge,
+        utils::noir_to_native,
+        witness::{LayeredWitnessBuilders, WitnessBuilder},
+        FieldElement, IOPattern, NoirElement, NoirProof, Prover,
     },
     spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
     std::path::Path,
@@ -77,6 +79,11 @@ impl Prove for Prover {
         let witness_io = self.create_witness_io_pattern();
         let mut witness_merlin = witness_io.to_prover_state();
         self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+
+        let split_witness_builders = self.split_witness_builders.take().unwrap();
+        let mut all_layers = split_witness_builders.w1_layers.layers;
+        all_layers.extend(split_witness_builders.w2_layers.layers);
+        let layered_witness_builders = LayeredWitnessBuilders { layers: all_layers };
 
         let partial_witness = self.r1cs.solve_witness_vec(
             self.layered_witness_builders,
