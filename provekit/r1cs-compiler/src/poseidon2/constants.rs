@@ -1,24 +1,34 @@
+/// Parameters are consistent with the official Poseidon2 parameter generation
+/// script: "https://github.com/HorizenLabs/poseidon2/blob/main/poseidon2_rust_params.sage"
+/// Inspired by the Taceo Labs implementation:
+/// "https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom"
 use {ark_ff::PrimeField, provekit_common::FieldElement as F};
 
+/// Parses a big-endian hex string into a field element `F`.
 #[inline]
 fn fe(hex: &str) -> F {
     fe_hex(hex)
 }
 
+/// Converts a hex string (optional "0x" prefix) to `F` using big-endian
 fn fe_hex(s: &str) -> F {
     let s = s.strip_prefix("0x").unwrap_or(s);
-    let mut bytes = hex_to_bytes(s); // trivial hex -> Vec<u8>
-                                     // left-pad to field length
-    let L = ((F::MODULUS_BIT_SIZE as usize) + 7) / 8;
-    assert!(bytes.len() <= L, "constant too large for field");
-    if bytes.len() < L {
-        let mut pad = vec![0u8; L - bytes.len()];
+    let mut bytes = hex_to_bytes(s);
+
+    let field_byte_len = ((F::MODULUS_BIT_SIZE as usize) + 7) / 8;
+    assert!(
+        bytes.len() <= field_byte_len,
+        "constant too large for field"
+    );
+    if bytes.len() < field_byte_len {
+        let mut pad = vec![0u8; field_byte_len - bytes.len()];
         pad.extend_from_slice(&bytes);
         bytes = pad;
     }
     F::from_be_bytes_mod_order(&bytes)
 }
 
+/// Converts a hex string to bytes (big-endian nibbles).
 fn hex_to_bytes(s: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity((s.len() + 1) / 2);
     let mut n: u8 = 0;
@@ -946,5 +956,67 @@ pub fn load_rc_partial(t: u32) -> Vec<F> {
             fe("0x083b47892d403e287bbf80d319866f50adc5a5b50f81f1708986078e64065b26"),
         ],
         _ => panic!("t must be 2|3|4|8|12|16"),
+    }
+}
+
+// Reference: Taceo Labs Poseidon2 constants.
+// Source file: https://github.com/TaceoLabs/nullifier-oracle-service/blob/main/circom/poseidon2/poseidon2_constants.circom
+#[cfg(test)]
+mod tests_constants_t4 {
+    use super::*;
+
+    /// Verifies a small sample of the embedded round constants for t=4 against
+    /// the pinned reference.
+    #[test]
+    fn t4_round_constants_sample_match_reference() {
+        let rc1 = super::load_rc_full1(4);
+        let rc2 = super::load_rc_full2(4);
+        let rcp = super::load_rc_partial(4);
+
+        assert_eq!(
+            rc1[0][0],
+            fe("0x19b849f69450b06848da1d39bd5e4a4302bb86744edc26238b0878e269ed23e5")
+        );
+        assert_eq!(
+            rc1[1][3],
+            fe("0x13da07dc64d428369873e97160234641f8beb56fdd05e5f3563fa39d9c22df4e")
+        );
+        assert_eq!(
+            rc2[3][2],
+            fe("0x1daf345a58006b736499c583cb76c316d6f78ed6a6dffc82111e11a63fe412df")
+        );
+        assert_eq!(
+            rcp[0],
+            fe("0x0c6f8f958be0e93053d7fd4fc54512855535ed1539f051dcb43a26fd926361cf")
+        );
+        assert_eq!(
+            rcp[rcp.len() - 1],
+            fe("0x0ef915f0ac120b876abccceb344a1d36bad3f3c5ab91a8ddcbec2e060d8befac")
+        );
+    }
+
+    /// Checks the diagonal entries used by the internal (partial-round) MDS for
+    /// t=4.
+    #[test]
+    fn t4_internal_mds_diag_matches_reference() {
+        let d = super::load_diag(4);
+        assert_eq!(d.len(), 4);
+
+        assert_eq!(
+            d[0],
+            fe("0x10dc6e9c006ea38b04b1e03b4bd9490c0d03f98929ca1d7fb56821fd19d3b6e7")
+        );
+        assert_eq!(
+            d[1],
+            fe("0x0c28145b6a44df3e0149b3d0a30b3bb599df9756d4dd9b84a86b38cfb45a740b")
+        );
+        assert_eq!(
+            d[2],
+            fe("0x00544b8338791518b2c7645a50392798b21f75bb60e3596170067d00141cac15")
+        );
+        assert_eq!(
+            d[3],
+            fe("0x222c01175718386f2e2e82eb122789e352e105a3b8fa852613bc534433ee428b")
+        );
     }
 }

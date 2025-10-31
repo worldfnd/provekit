@@ -2,7 +2,7 @@ use {
     crate::{
         binops::{add_binop_constraints, BinOp},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
-        poseidon2_permutation::add_poseidon2_permutation,
+        poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
     },
