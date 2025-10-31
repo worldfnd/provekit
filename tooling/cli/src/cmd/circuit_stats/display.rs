@@ -7,7 +7,6 @@ use {
         memory::{describe_block_type, MemoryAggregation},
         stats_collector::{
             CircuitStats, POSEIDON2_PERMUTATION_CONSTRAINTS, POSEIDON2_PERMUTATION_WITNESSES,
-            SHA256_COMPRESSION_CONSTRAINTS, SHA256_COMPRESSION_WITNESSES,
         },
     },
     acir::{circuit::Circuit, FieldElement},
@@ -233,7 +232,7 @@ pub(super) fn print_r1cs_breakdown(
     }
 
     // Collect component costs
-    let components = collect_r1cs_components(stats, circuit, &memory_summary);
+    let components = collect_r1cs_components(stats, circuit, &memory_summary, breakdown);
 
     // Print each component
     for component in &components {
@@ -257,6 +256,7 @@ fn collect_r1cs_components(
     stats: &CircuitStats,
     circuit: &Circuit<FieldElement>,
     memory_summary: &MemoryAggregation,
+    breakdown: &R1CSBreakdown,
 ) -> Vec<String> {
     let mut components = Vec::new();
 
@@ -279,14 +279,14 @@ fn collect_r1cs_components(
         ));
     }
 
-    // SHA256
+    // SHA256 - use exact numbers from breakdown, not estimates
     if let Some(&count) = stats.blackbox_func_counts.get("Sha256Compression") {
         if count > 0 {
-            let constraints = SHA256_COMPRESSION_CONSTRAINTS * count;
-            let witnesses = SHA256_COMPRESSION_WITNESSES * count;
+            let sha256_direct = breakdown.sha256_direct_constraints;
+            let sha256_direct_witnesses = breakdown.sha256_direct_witnesses;
             components.push(format!(
-                "SHA256 Compression ({} calls):       {:>8} constraints {:>8} witnesses",
-                count, constraints, witnesses
+                "SHA256 Direct ({} calls):            {:>8} constraints {:>8} witnesses",
+                count, sha256_direct, sha256_direct_witnesses
             ));
         }
     }
@@ -402,6 +402,43 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     );
     println!("│  (includes digital decomposition, lookup tables, challenges, inverses)");
     println!("└{}", SUBSECTION);
+
+    // SHA256 Total Summary (if applicable)
+    if sha256_count > 0 {
+        let sha256_direct = breakdown.sha256_direct_constraints;
+        // In this circuit, all batched operations are from SHA256
+        let sha256_batched =
+            breakdown.and_constraints + breakdown.xor_constraints + breakdown.range_constraints;
+
+        let sha256_total_constraints = sha256_direct + sha256_batched;
+        let per_sha256 = sha256_total_constraints / sha256_count;
+
+        println!("\n┌─ SHA256 Total Cost Summary");
+        println!("│  Direct operations:   {:>8} constraints", sha256_direct);
+        println!(
+            "│  Batched (AND):       {:>8} constraints",
+            breakdown.and_constraints
+        );
+        println!(
+            "│  Batched (XOR):       {:>8} constraints",
+            breakdown.xor_constraints
+        );
+        println!(
+            "│  Batched (RANGE):     {:>8} constraints",
+            breakdown.range_constraints
+        );
+        println!("│  ─────────────────────────────────────");
+        println!(
+            "│  Total SHA256:        {:>8} constraints ({} calls)",
+            sha256_total_constraints, sha256_count
+        );
+        println!("│  Per compression:     {:>8} constraints/call", per_sha256);
+        println!(
+            "│  vs Circom (~30,328): {:>8.1}x overhead",
+            per_sha256 as f64 / 30328.0
+        );
+        println!("└{}", SUBSECTION);
+    }
 }
 
 /// Prints final R1CS totals and matrix information.
