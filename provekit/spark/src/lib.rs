@@ -1,6 +1,5 @@
 pub mod gpa;
 pub mod memory;
-pub mod preprocessing;
 pub mod prover;
 pub mod sumcheck;
 pub mod types;

@@ -25,8 +25,8 @@ pub struct MatrixDimensions {
 pub struct SPARKWHIRConfigs {
     pub row:                WhirConfig,
     pub col:                WhirConfig,
+    pub num_terms_1batched: WhirConfig,
     pub num_terms_2batched: WhirConfig,
-    pub num_terms_3batched: WhirConfig,
     pub num_terms_4batched: WhirConfig,
 }
 
@@ -40,12 +40,9 @@ pub struct SparkMatrix {
 /// Coordinate (COO) sparse matrix format storing row/col indices and values.
 #[derive(Debug, Clone)]
 pub struct COOMatrix {
-    pub row:   Vec<FieldElement>,
-    pub col:   Vec<FieldElement>,
-    pub val:   Vec<FieldElement>,
-    pub val_a: Vec<FieldElement>,
-    pub val_b: Vec<FieldElement>,
-    pub val_c: Vec<FieldElement>,
+    pub row: Vec<FieldElement>,
+    pub col: Vec<FieldElement>,
+    pub val: Vec<FieldElement>,
 }
 
 /// Memory access timestamps for GPA protocol.
@@ -80,8 +77,8 @@ pub struct SPARKProofGnark {
     pub io_pattern:    String,
     pub whir_row:      WHIRConfigGnark,
     pub whir_col:      WHIRConfigGnark,
+    pub whir_1batched: WHIRConfigGnark,
     pub whir_2batched: WHIRConfigGnark,
-    pub whir_3batched: WHIRConfigGnark,
     pub whir_4batched: WHIRConfigGnark,
     pub log_num_terms: usize,
 }
@@ -94,8 +91,8 @@ impl SPARKProofGnark {
             io_pattern: proof.io_pattern.clone(),
             whir_row: WHIRConfigGnark::new(&proof.whir_params.row),
             whir_col: WHIRConfigGnark::new(&proof.whir_params.col),
+            whir_1batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_1batched),
             whir_2batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_2batched),
-            whir_3batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_3batched),
             whir_4batched: WHIRConfigGnark::new(&proof.whir_params.num_terms_4batched),
             log_num_terms,
         }

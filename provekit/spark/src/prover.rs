@@ -2,15 +2,15 @@ use {
     crate::{
         gpa::run_gpa4,
         memory::{prove_colwise, prove_rowwise},
-        preprocessing::MatrixPreprocessor,
         sumcheck::run_spark_sumcheck,
         types::{
-            EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs, SparkMatrix,
+            COOMatrix, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
+            SparkMatrix, TimeStamps,
         },
         utils::{calculate_memory, SPARKDomainSeparator},
     },
     anyhow::Result,
-    ark_ff::AdditiveGroup,
+    ark_ff::{AdditiveGroup, Field},
     itertools::izip,
     provekit_common::{
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
@@ -23,7 +23,6 @@ use {
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
     },
-    std::collections::BTreeSet,
     tracing::instrument,
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
@@ -53,36 +52,27 @@ pub struct SPARKScheme {
 impl SPARKScheme {
     /// Configures SPARK scheme for given R1CS dimensions.
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        let num_rows = r1cs.num_constraints();
-        let num_cols = r1cs.num_witnesses();
+        let num_rows = 2 * r1cs.num_constraints();
+        let num_cols = 2 * r1cs.num_witnesses();
+        let nonzero_terms =
+            r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
 
-        let mut coordinates = BTreeSet::new();
-        for ((row, col), _) in r1cs.a().iter() {
-            coordinates.insert((row, col));
-        }
-        for ((row, col), _) in r1cs.b().iter() {
-            coordinates.insert((row, col));
-        }
-        for ((row, col), _) in r1cs.c().iter() {
-            coordinates.insert((row, col));
-        }
-        let nonzero_terms = coordinates.len();
         let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
 
         let row_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(num_rows), 1);
         let col_config = WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(num_cols), 1);
+        let num_terms_1batched_config =
+            WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 1);
         let num_terms_2batched_config =
             WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
-        let num_terms_3batched_config =
-            WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 3);
         let num_terms_4batched_config =
             WhirR1CSScheme::new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
 
         let whir_configs = SPARKWHIRConfigs {
             row:                row_config.clone(),
             col:                col_config.clone(),
+            num_terms_1batched: num_terms_1batched_config.clone(),
             num_terms_2batched: num_terms_2batched_config.clone(),
-            num_terms_3batched: num_terms_3batched_config.clone(),
             num_terms_4batched: num_terms_4batched_config.clone(),
         };
 
@@ -94,7 +84,7 @@ impl SPARKScheme {
             .add_claimed_evaluations();
 
         io = io
-            .commit_statement(&num_terms_3batched_config)
+            .commit_statement(&num_terms_1batched_config)
             .commit_statement(&num_terms_4batched_config)
             .commit_statement(&row_config)
             .commit_statement(&col_config)
@@ -102,7 +92,7 @@ impl SPARKScheme {
             .add_sumcheck_polynomials(next_power_of_two(padded_num_entries))
             .hint("sumcheck_last_folds")
             .add_whir_proof(&num_terms_2batched_config)
-            .add_whir_proof(&num_terms_3batched_config);
+            .add_whir_proof(&num_terms_1batched_config);
 
         io = io.add_tau_and_gamma();
 
@@ -152,9 +142,64 @@ impl SPARKScheme {
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
     fn prove(&self, r1cs: &R1CS, request: &SparkStatement) -> Result<SPARKProof> {
-        let processed = MatrixPreprocessor::from_r1cs(r1cs)?;
-        let memory = calculate_memory(request.point_to_evaluate.clone());
-        let e_values = processed.compute_e_values(&memory);
+        let original_num_entries =
+            r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
+        let padded_num_entries = 1 << next_power_of_two(original_num_entries);
+        let to_fill = padded_num_entries - original_num_entries;
+
+        let row_cnt = r1cs.num_constraints();
+        let col_cnt = r1cs.num_witnesses();
+
+        let (mut row, mut col, mut val) = (
+            Vec::with_capacity(padded_num_entries),
+            Vec::with_capacity(padded_num_entries),
+            Vec::with_capacity(padded_num_entries),
+        );
+
+        for ((r, c), v) in r1cs.a().iter() {
+            row.push(r);
+            col.push(c);
+            val.push(v);
+        }
+        for ((r, c), v) in r1cs.b().iter() {
+            row.push(r);
+            col.push(c + col_cnt);
+            val.push(v);
+        }
+        for ((r, c), v) in r1cs.c().iter() {
+            row.push(r + row_cnt);
+            col.push(c + col_cnt);
+            val.push(v);
+        }
+        for _ in 0..to_fill {
+            row.push(0);
+            col.push(0);
+            val.push(FieldElement::from(0));
+        }
+
+        // Memory timestamps track access order for GPA protocol
+
+        let mut read_row_counters = vec![0; 2 * r1cs.num_constraints()];
+        let mut read_col_counters = vec![0; 2 * r1cs.num_witnesses()];
+        let mut read_row = Vec::with_capacity(padded_num_entries);
+        let mut read_col = Vec::with_capacity(padded_num_entries);
+
+        for i in 0..padded_num_entries {
+            read_row.push(FieldElement::from(read_row_counters[row[i]] as u64));
+            read_row_counters[row[i]] += 1;
+            read_col.push(FieldElement::from(read_col_counters[col[i]] as u64));
+            read_col_counters[col[i]] += 1;
+        }
+
+        let final_row = read_row_counters
+            .iter()
+            .map(|&x| FieldElement::from(x as u64))
+            .collect::<Vec<_>>();
+
+        let final_col = read_col_counters
+            .iter()
+            .map(|&x| FieldElement::from(x as u64))
+            .collect::<Vec<_>>();
 
         let mut merlin = self.io_pattern.to_prover_state();
 
@@ -168,14 +213,44 @@ impl SPARKProver for SPARKScheme {
         ])?;
         let mut matrix_batching_randomness = [FieldElement::ZERO; 1];
         merlin.fill_challenge_scalars(&mut matrix_batching_randomness)?;
-        let matrix_batching_randomness = matrix_batching_randomness[0];
-        let matrix_batching_randomness_sq = matrix_batching_randomness * matrix_batching_randomness;
 
-        let spark_matrix = processed.into_spark_matrix(r1cs, matrix_batching_randomness);
+        let memory = calculate_memory(
+            matrix_batching_randomness[0] / (FieldElement::ONE + matrix_batching_randomness[0]),
+            request.point_to_evaluate.clone(),
+        );
+        let mut claimed_value = request.claimed_values.a
+            + request.claimed_values.b * matrix_batching_randomness[0]
+            + request.claimed_values.c
+                * matrix_batching_randomness[0]
+                * matrix_batching_randomness[0];
+        claimed_value = (claimed_value / (FieldElement::ONE + matrix_batching_randomness[0]))
+            / (FieldElement::ONE + matrix_batching_randomness[0]);
 
-        let claimed_value = request.claimed_values.a
-            + request.claimed_values.b * matrix_batching_randomness
-            + request.claimed_values.c * matrix_batching_randomness_sq;
+        let mut e_rx = Vec::with_capacity(padded_num_entries);
+        let mut e_ry = Vec::with_capacity(padded_num_entries);
+
+        for i in 0..padded_num_entries {
+            e_rx.push(memory.eq_rx[row[i]]);
+            e_ry.push(memory.eq_ry[col[i]]);
+        }
+
+        let e_values = EValuesForMatrix { e_rx, e_ry };
+
+        // let spark_matrix = processed.into_spark_matrix(r1cs,
+        // matrix_batching_randomness);
+        let spark_matrix = SparkMatrix {
+            coo:        COOMatrix {
+                row: row.iter().map(|r| FieldElement::from(*r as u64)).collect(),
+                col: col.iter().map(|c| FieldElement::from(*c as u64)).collect(),
+                val,
+            },
+            timestamps: TimeStamps {
+                read_row,
+                read_col,
+                final_row,
+                final_col,
+            },
+        };
 
         prove_spark_for_single_matrix(
             &mut merlin,
@@ -207,17 +282,15 @@ fn prove_spark_for_single_matrix(
 ) -> Result<()> {
     let row_committer = CommitmentWriter::new(whir_configs.row.clone());
     let col_committer = CommitmentWriter::new(whir_configs.col.clone());
+    let batched1_committer = CommitmentWriter::new(whir_configs.num_terms_1batched.clone());
     let batched2_committer = CommitmentWriter::new(whir_configs.num_terms_2batched.clone());
-    let batched3_committer = CommitmentWriter::new(whir_configs.num_terms_3batched.clone());
     let batched4_committer = CommitmentWriter::new(whir_configs.num_terms_4batched.clone());
 
     // Should be committed before request:
-
-    let vals_witness = batched3_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(matrix.coo.val_a.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.coo.val_b.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.coo.val_c.clone()).to_coeffs(),
-    ])?;
+    let vals_witness = batched1_committer
+        .commit_batch(merlin, &[
+            &EvaluationsList::new(matrix.coo.val.clone()).to_coeffs()
+        ])?;
 
     let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
         &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
@@ -249,18 +322,9 @@ fn prove_spark_for_single_matrix(
     let (sumcheck_final_folds, folding_randomness) =
         run_spark_sumcheck(merlin, mles, claimed_value)?;
 
-    let val_a_eval = EvaluationsList::new(matrix.coo.val_a.clone())
-        .evaluate(&MultilinearPoint(folding_randomness.to_vec().clone()));
-    let val_b_eval = EvaluationsList::new(matrix.coo.val_b.clone())
-        .evaluate(&MultilinearPoint(folding_randomness.to_vec().clone()));
-    let val_c_eval = EvaluationsList::new(matrix.coo.val_c.clone())
-        .evaluate(&MultilinearPoint(folding_randomness.to_vec().clone()));
-
     merlin.hint::<Vec<FieldElement>>(
         &[
-            val_a_eval,
-            val_b_eval,
-            val_c_eval,
+            sumcheck_final_folds[0],
             sumcheck_final_folds[1],
             sumcheck_final_folds[2],
         ]
@@ -278,15 +342,11 @@ fn prove_spark_for_single_matrix(
         evalues_witness.clone(),
     )?;
 
-    let batched_val_claimed = val_a_eval
-        + val_b_eval * vals_witness.batching_randomness
-        + val_c_eval * vals_witness.batching_randomness * vals_witness.batching_randomness;
-
     produce_whir_proof(
         merlin,
         MultilinearPoint(folding_randomness.to_vec()),
-        batched_val_claimed,
-        whir_configs.num_terms_3batched.clone(),
+        sumcheck_final_folds[0],
+        whir_configs.num_terms_1batched.clone(),
         vals_witness,
     )?;
 

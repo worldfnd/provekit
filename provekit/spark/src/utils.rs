@@ -28,11 +28,15 @@ pub fn deserialize_request(path: impl AsRef<Path>) -> Result<SparkStatement> {
 }
 
 /// Computes equality check evaluations for row and column points.
-pub fn calculate_memory(point_to_evaluate: Point) -> Memory {
+pub fn calculate_memory(b: FieldElement, point_to_evaluate: Point) -> Memory {
     Memory {
-        eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(point_to_evaluate.row),
+        eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(
+            std::iter::once(b).chain(point_to_evaluate.row).collect(),
+        ),
         eq_ry: calculate_evaluations_over_boolean_hypercube_for_eq(
-            point_to_evaluate.col[1..].to_vec(),
+            std::iter::once(b)
+                .chain(point_to_evaluate.col[1..].to_vec())
+                .collect(),
         )
         .iter()
         .map(|x| *x * (FieldElement::from(1) - point_to_evaluate.col[0]))

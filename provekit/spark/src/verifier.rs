@@ -6,6 +6,7 @@ use {
         types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
+    ark_ff::Field,
     provekit_common::{
         skyscraper::SkyscraperSponge, spark::SparkStatement, utils::next_power_of_two,
         FieldElement, IOPattern,
@@ -61,9 +62,12 @@ impl SPARKVerifier for SPARKScheme {
         arthur.fill_challenge_scalars(&mut matrix_batching_randomness)?;
         let matrix_batching_randomness = matrix_batching_randomness[0];
 
-        let claimed_value = claimed_values[0]
+        let mut claimed_value = claimed_values[0]
             + claimed_values[1] * matrix_batching_randomness
             + claimed_values[2] * matrix_batching_randomness * matrix_batching_randomness;
+
+        claimed_value = (claimed_value / (FieldElement::ONE + matrix_batching_randomness))
+            / (FieldElement::ONE + matrix_batching_randomness);
 
         verify_spark_single_matrix(
             &matrix_batching_randomness,
@@ -87,11 +91,11 @@ fn verify_spark_single_matrix(
 ) -> Result<()> {
     let commitment_reader_row = CommitmentReader::new(&whir_params.row);
     let commitment_reader_col = CommitmentReader::new(&whir_params.col);
+    let commitment_reader_batched1 = CommitmentReader::new(&whir_params.num_terms_1batched);
     let commitment_reader_batched2 = CommitmentReader::new(&whir_params.num_terms_2batched);
-    let commitment_reader_batched3 = CommitmentReader::new(&whir_params.num_terms_3batched);
     let commitment_reader_batched4 = CommitmentReader::new(&whir_params.num_terms_4batched);
 
-    let val_commitment = commitment_reader_batched3.parse_commitment(arthur)?;
+    let val_commitment = commitment_reader_batched1.parse_commitment(arthur)?;
     let rsws_commitment = commitment_reader_batched4.parse_commitment(arthur)?;
     let a_row_finalts_commitment = commitment_reader_row.parse_commitment(arthur)?;
     let a_col_finalts_commitment = commitment_reader_col.parse_commitment(arthur)?;
@@ -107,17 +111,14 @@ fn verify_spark_single_matrix(
 
     let sumcheck_hints: Vec<FieldElement> = arthur.hint()?;
 
-    let claimed_val = sumcheck_hints[0]
-        + sumcheck_hints[1] * matrix_batching_randomness
-        + sumcheck_hints[2] * matrix_batching_randomness * matrix_batching_randomness;
-    ensure!(a_last_sumcheck_value == claimed_val * sumcheck_hints[3] * sumcheck_hints[4]);
+    ensure!(a_last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
 
     let mut sumcheck_evalues_statement =
         Statement::<FieldElement>::new(next_power_of_two(matrix_dimensions.nonzero_terms));
 
     sumcheck_evalues_statement.add_constraint(
         Weights::evaluation(MultilinearPoint(randomness.clone())),
-        sumcheck_hints[3] + sumcheck_hints[4] * evalues_commitment.batching_randomness,
+        sumcheck_hints[1] + sumcheck_hints[2] * evalues_commitment.batching_randomness,
     );
 
     let sumcheck_evalues_verifier = Verifier::new(&whir_params.num_terms_2batched);
@@ -128,14 +129,10 @@ fn verify_spark_single_matrix(
 
     spark_sumcheck_val_statement_verifier.add_constraint(
         Weights::evaluation(MultilinearPoint(randomness.clone())),
-        sumcheck_hints[0]
-            + sumcheck_hints[1] * val_commitment.batching_randomness
-            + sumcheck_hints[2]
-                * val_commitment.batching_randomness
-                * val_commitment.batching_randomness,
+        sumcheck_hints[0],
     );
 
-    let spark_sumcheck_val_verifier = Verifier::new(&whir_params.num_terms_3batched);
+    let spark_sumcheck_val_verifier = Verifier::new(&whir_params.num_terms_1batched);
     spark_sumcheck_val_verifier.verify(
         arthur,
         &val_commitment,
@@ -223,6 +220,7 @@ fn verify_spark_single_matrix(
         &gamma,
         &claimed_row_rs,
         &claimed_row_ws,
+        matrix_batching_randomness,
     )?;
 
     verify_colwise(
@@ -235,6 +233,7 @@ fn verify_spark_single_matrix(
         &gamma,
         &claimed_col_rs,
         &claimed_col_ws,
+        matrix_batching_randomness,
     )?;
 
     Ok(())

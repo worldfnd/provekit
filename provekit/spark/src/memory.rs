@@ -4,7 +4,7 @@ use {
         types::{Memory, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Result},
-    ark_ff::{Fp, MontBackend},
+    ark_ff::{Field, Fp, MontBackend},
     ark_std::One,
     itertools::izip,
     provekit_common::{
@@ -221,13 +221,18 @@ pub fn verify_rowwise(
     gamma: &FieldElement,
     claimed_rs: &FieldElement,
     claimed_ws: &FieldElement,
+    matrix_batching_randomness: &FieldElement,
 ) -> Result<()> {
+    let b1 = *matrix_batching_randomness / (FieldElement::ONE + *matrix_batching_randomness);
+    let row_evaluation_point: Vec<FieldElement> = std::iter::once(b1)
+        .chain(request.point_to_evaluate.row.clone())
+        .collect();
     verify_axis(
         arthur,
         num_rows,
         &whir_params.row,
         row_finalts_commitment,
-        |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
+        |eval_rand| calculate_eq(&row_evaluation_point, eval_rand),
         tau,
         gamma,
         claimed_rs,
@@ -248,14 +253,19 @@ pub fn verify_colwise(
     gamma: &FieldElement,
     claimed_rs: &FieldElement,
     claimed_ws: &FieldElement,
+    matrix_batching_randomness: &FieldElement,
 ) -> Result<()> {
+    let b1 = *matrix_batching_randomness / (FieldElement::ONE + *matrix_batching_randomness);
+    let col_evaluation_point: Vec<FieldElement> = std::iter::once(b1)
+        .chain(request.point_to_evaluate.col[1..].to_vec())
+        .collect();
     verify_axis(
         arthur,
         num_cols,
         &whir_params.col,
         col_finalts_commitment,
         |eval_rand| {
-            calculate_eq(&request.point_to_evaluate.col[1..], eval_rand)
+            calculate_eq(&col_evaluation_point, eval_rand)
                 * (FieldElement::from(1) - request.point_to_evaluate.col[0])
         },
         tau,
