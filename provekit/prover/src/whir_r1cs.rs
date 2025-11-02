@@ -136,7 +136,7 @@ pub fn compute_blinding_coefficients_for_round(
 
     // s = Σ_{i>r}(g_i(0) + g_i(1))
     let mut suffix_sum = FieldElement::zero();
-    for g_coeffs in g_univariates.into_iter().skip(compute_for + 1) {
+    for g_coeffs in g_univariates.iter().skip(compute_for + 1) {
         suffix_sum += eval_cubic_poly(*g_coeffs, FieldElement::zero())
             + eval_cubic_poly(*g_coeffs, FieldElement::one());
     }

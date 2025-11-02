@@ -45,8 +45,8 @@ pub(crate) fn add_u32_addition(
         .push(WitnessBuilder::U32Addition(
             result_witness,
             carry_witness,
-            a.clone(),
-            b.clone(),
+            a,
+            b,
         ));
 
     // Add constraint: a + b = result + carry * 2^32
@@ -470,9 +470,7 @@ pub(crate) fn add_message_schedule_expansion(
     let mut w: [usize; 64] = [0usize; 64];
 
     // First 16 words are the input
-    for i in 0..16 {
-        w[i] = input_words[i];
-    }
+    w[..16].copy_from_slice(input_words);
 
     // Expand to 64 words
     for i in 16..64 {

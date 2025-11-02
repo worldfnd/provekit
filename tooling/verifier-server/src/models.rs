@@ -8,9 +8,9 @@ use {
 /// Request payload for proof verification
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VerifyRequest {
-    /// URL to the Noir Proof Scheme file (.nps)
-    #[serde(rename = "npsUrl")]
-    pub nps_url:             String,
+    /// URL to the ProveKit Verifier file (.pkv)
+    #[serde(rename = "pkvUrl")]
+    pub pkv_url:             String,
     /// JSON encoded NoirProof (.np file content)
     pub np:                  serde_json::Value,
     /// URL to the R1CS file
@@ -122,8 +122,8 @@ impl VerifyRequest {
         info!("Validating request");
 
         // Validate URLs
-        if self.nps_url.is_empty() {
-            return Err("nps_url cannot be empty".to_string());
+        if self.pkv_url.is_empty() {
+            return Err("pkv_url cannot be empty".to_string());
         }
 
         if self.r1cs_url.is_empty() {
@@ -134,7 +134,7 @@ impl VerifyRequest {
         // generate them
 
         // Validate URLs are properly formatted
-        self.validate_url("nps_url", &self.nps_url)?;
+        self.validate_url("pkv_url", &self.pkv_url)?;
         self.validate_url("r1cs_url", &self.r1cs_url)?;
 
         if let Some(ref pk_url) = self.pk_url {

@@ -23,7 +23,7 @@ curl http://localhost:3000/health
 curl -X POST http://localhost:3000/verify \
   -H "Content-Type: application/json" \
   -d '{
-    "npsUrl": "https://example.com/scheme.nps",
+    "pkvUrl": "https://example.com/verifier.pkv",
     "r1csUrl": "https://example.com/r1cs.json", 
     "pkUrl": "https://example.com/proving_key.bin", (optional)
     "vkUrl": "https://example.com/verification_key.bin", (optional)
