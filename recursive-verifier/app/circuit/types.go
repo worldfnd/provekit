@@ -136,8 +136,8 @@ type SparkConfig struct {
 	IOPattern   string     `json:"io_pattern"`
 	WHIRRow     WHIRConfig `json:"whir_row"`
 	WHIRCol     WHIRConfig `json:"whir_col"`
+	WHIR1       WHIRConfig `json:"whir_1batched"`
 	WHIR2       WHIRConfig `json:"whir_2batched"`
-	WHIR3       WHIRConfig `json:"whir_3batched"`
 	WHIR4       WHIRConfig `json:"whir_4batched"`
 	LogNumTerms int        `json:"log_num_terms"`
 }
@@ -152,8 +152,8 @@ type Commitment struct {
 type SPARKMatrixData struct {
 	Claimed frontend.Variable
 
+	WHIR1       WHIRParams
 	WHIR2       WHIRParams
-	WHIR3       WHIRParams
 	WHIR4       WHIRParams
 	LogNumTerms int
 

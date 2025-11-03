@@ -4,21 +4,26 @@ use {
         memory::{prove_colwise, prove_rowwise},
         sumcheck::run_spark_sumcheck,
         types::{
-            COOMatrix, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs, SparkMatrix, TimeStamps
+            COOMatrix, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
+            SparkMatrix, TimeStamps,
         },
-        utils::{SPARKDomainSeparator, calculate_memory},
+        utils::{calculate_memory, SPARKDomainSeparator},
     },
     anyhow::Result,
     ark_ff::{AdditiveGroup, Field},
     itertools::izip,
     provekit_common::{
-        FieldElement, IOPattern, R1CS, WhirR1CSScheme, skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge}, spark::SparkStatement, utils::{next_power_of_two, sumcheck::SumcheckIOPattern}
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
+        spark::SparkStatement,
+        utils::{next_power_of_two, sumcheck::SumcheckIOPattern},
+        FieldElement, IOPattern, WhirConfig, WhirR1CSScheme, R1CS,
     },
     provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
     spongefish::{
-        ProverState, codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField}
+        codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
+        ProverState,
     },
-    tracing::{instrument},
+    tracing::instrument,
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
@@ -49,10 +54,8 @@ impl SPARKScheme {
     pub fn new_for_r1cs(r1cs: &R1CS) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
-        let nonzero_terms = 
-            r1cs.a().iter().count() + 
-            r1cs.b().iter().count() + 
-            r1cs.c().iter().count();
+        let nonzero_terms =
+            r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
 
         let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
 
@@ -139,18 +142,19 @@ impl SPARKScheme {
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
     fn prove(&self, r1cs: &R1CS, request: &SparkStatement) -> Result<SPARKProof> {
-        let original_num_entries = 
-            r1cs.a().iter().count() + 
-            r1cs.b().iter().count() + 
-            r1cs.c().iter().count();
+        let original_num_entries =
+            r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
         let padded_num_entries = 1 << next_power_of_two(original_num_entries);
         let to_fill = padded_num_entries - original_num_entries;
-        
+
         let row_cnt = r1cs.num_constraints();
         let col_cnt = r1cs.num_witnesses();
-        
+
         let (mut row, mut col, mut val) = (
-            Vec::with_capacity(padded_num_entries), Vec::with_capacity(padded_num_entries), Vec::with_capacity(padded_num_entries));
+            Vec::with_capacity(padded_num_entries),
+            Vec::with_capacity(padded_num_entries),
+            Vec::with_capacity(padded_num_entries),
+        );
 
         for ((r, c), v) in r1cs.a().iter() {
             row.push(r);
@@ -197,9 +201,8 @@ impl SPARKProver for SPARKScheme {
             .map(|&x| FieldElement::from(x as u64))
             .collect::<Vec<_>>();
 
-
         let mut merlin = self.io_pattern.to_prover_state();
-        
+
         merlin.hint(&request.point_to_evaluate.row)?;
         merlin.hint(&request.point_to_evaluate.col)?;
 
@@ -211,36 +214,42 @@ impl SPARKProver for SPARKScheme {
         let mut matrix_batching_randomness = [FieldElement::ZERO; 1];
         merlin.fill_challenge_scalars(&mut matrix_batching_randomness)?;
 
-        let memory = calculate_memory(matrix_batching_randomness[0] / (FieldElement::ONE + matrix_batching_randomness[0]), request.point_to_evaluate.clone());
-        let mut claimed_value = 
-            request.claimed_values.a + 
-            request.claimed_values.b * matrix_batching_randomness[0] + 
-            request.claimed_values.c * matrix_batching_randomness[0] * matrix_batching_randomness[0];
-        claimed_value = (claimed_value / (FieldElement::ONE + matrix_batching_randomness[0])) / (FieldElement::ONE + matrix_batching_randomness[0]);
+        let memory = calculate_memory(
+            matrix_batching_randomness[0] / (FieldElement::ONE + matrix_batching_randomness[0]),
+            request.point_to_evaluate.clone(),
+        );
+        let mut claimed_value = request.claimed_values.a
+            + request.claimed_values.b * matrix_batching_randomness[0]
+            + request.claimed_values.c
+                * matrix_batching_randomness[0]
+                * matrix_batching_randomness[0];
+        claimed_value = (claimed_value / (FieldElement::ONE + matrix_batching_randomness[0]))
+            / (FieldElement::ONE + matrix_batching_randomness[0]);
 
         let mut e_rx = Vec::with_capacity(padded_num_entries);
         let mut e_ry = Vec::with_capacity(padded_num_entries);
-            
+
         for i in 0..padded_num_entries {
             e_rx.push(memory.eq_rx[row[i]]);
             e_ry.push(memory.eq_ry[col[i]]);
         }
 
-        let e_values = EValuesForMatrix { e_rx, e_ry};
+        let e_values = EValuesForMatrix { e_rx, e_ry };
 
-        // let spark_matrix = processed.into_spark_matrix(r1cs, matrix_batching_randomness);
+        // let spark_matrix = processed.into_spark_matrix(r1cs,
+        // matrix_batching_randomness);
         let spark_matrix = SparkMatrix {
-            coo: COOMatrix {
+            coo:        COOMatrix {
                 row: row.iter().map(|r| FieldElement::from(*r as u64)).collect(),
                 col: col.iter().map(|c| FieldElement::from(*c as u64)).collect(),
-                val, 
-            }, 
+                val,
+            },
             timestamps: TimeStamps {
                 read_row,
                 read_col,
                 final_row,
                 final_col,
-            }
+            },
         };
 
         prove_spark_for_single_matrix(
@@ -271,171 +280,35 @@ fn prove_spark_for_single_matrix(
     claimed_value: FieldElement,
     whir_configs: &SPARKWHIRConfigs,
 ) -> Result<()> {
-    let row_committer = CommitmentWriter::new(whir_configs.row.clone());
-    let col_committer = CommitmentWriter::new(whir_configs.col.clone());
-    let batched1_committer = CommitmentWriter::new(whir_configs.num_terms_1batched.clone());
-    let batched2_committer = CommitmentWriter::new(whir_configs.num_terms_2batched.clone());
-    let batched4_committer = CommitmentWriter::new(whir_configs.num_terms_4batched.clone());
+    let (vals_witness, rs_ws_witness, final_row_ts_witness, final_col_ts_witness, evalues_witness) =
+        generate_witnesses(merlin, whir_configs, &matrix, &e_values)?;
 
-    // Should be committed before request:
-    let vals_witness = batched1_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(matrix.coo.val.clone()).to_coeffs(),
-    ])?;
-
-    let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
-    ])?;
-
-    let final_row_ts_witness =
-        commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
-    let final_col_ts_witness =
-        commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
-
-    // Commited for each request:
-
-    let evalues_witness = batched2_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
-    ])?;
-
-    // Spark Sumcheck
-
-    let mles = [
-        matrix.coo.val.clone(),
-        e_values.e_rx.clone(),
-        e_values.e_ry.clone(),
-    ];
-
-    let (sumcheck_final_folds, folding_randomness) =
-        run_spark_sumcheck(merlin, mles, claimed_value)?;
-
-    merlin.hint::<Vec<FieldElement>>(
-        &[
-            sumcheck_final_folds[0],
-            sumcheck_final_folds[1],
-            sumcheck_final_folds[2],
-        ]
-        .to_vec(),
-    )?;
-
-    let batched_e_claimed =
-        sumcheck_final_folds[1] + sumcheck_final_folds[2] * evalues_witness.batching_randomness;
-
-    produce_whir_proof(
+    spark_sumcheck(
         merlin,
-        MultilinearPoint(folding_randomness.to_vec()),
-        batched_e_claimed,
-        whir_configs.num_terms_2batched.clone(),
-        evalues_witness.clone(),
+        &matrix.coo.val,
+        &e_values.e_rx,
+        &e_values.e_ry,
+        &claimed_value,
+        &evalues_witness,
+        &vals_witness,
+        &whir_configs.num_terms_1batched,
+        &whir_configs.num_terms_2batched,
     )?;
-
-    produce_whir_proof(
-        merlin,
-        MultilinearPoint(folding_randomness.to_vec()),
-        sumcheck_final_folds[0],
-        whir_configs.num_terms_1batched.clone(),
-        vals_witness,
-    )?;
-
-    // RS WS combined
 
     let mut tau_and_gamma = [FieldElement::from(0); 2];
     merlin.fill_challenge_scalars(&mut tau_and_gamma)?;
     let tau = tau_and_gamma[0];
     let gamma = tau_and_gamma[1];
-
-    let row_rs_vec: Vec<_> = izip!(
-        (&matrix.coo.row).iter(),
-        (&e_values.e_rx).iter(),
-        (&matrix.timestamps.read_row).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
-    .collect();
-
-    // Potential optimization: ws is rs vector where each element is incremented by
-    // 1. So we don't need to build this vector again.
-
-    let row_ws_vec: Vec<_> = izip!(
-        (&matrix.coo.row).iter(),
-        (&e_values.e_rx).iter(),
-        (&matrix.timestamps.read_row).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
-    .collect();
-
-    let col_rs_vec: Vec<_> = izip!(
-        (&matrix.coo.col).iter(),
-        (&e_values.e_ry).iter(),
-        (&matrix.timestamps.read_col).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
-    .collect();
-
-    let col_ws_vec: Vec<_> = izip!(
-        (&matrix.coo.col).iter(),
-        (&e_values.e_ry).iter(),
-        (&matrix.timestamps.read_col).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
-    .collect();
-
-    let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
-    let gpa_leaves_flat = gpa_leaves.iter().flatten().cloned().collect::<Vec<_>>();
-    let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat);
-
-    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
-    let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
-
-    let row_address_eval = EvaluationsList::new(matrix.coo.row).evaluate(&eval_point);
-    let row_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_row.to_vec()).evaluate(&eval_point);
-    let col_address_eval = EvaluationsList::new(matrix.coo.col).evaluate(&eval_point);
-    let col_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
-
-    merlin.hint(&row_address_eval)?;
-    merlin.hint(&row_timestamp_eval)?;
-    merlin.hint(&col_address_eval)?;
-    merlin.hint(&col_timestamp_eval)?;
-
-    let rs_ws_claimed_eval = row_address_eval
-        + row_timestamp_eval * rs_ws_witness.batching_randomness
-        + col_address_eval * rs_ws_witness.batching_randomness * rs_ws_witness.batching_randomness
-        + col_timestamp_eval
-            * rs_ws_witness.batching_randomness
-            * rs_ws_witness.batching_randomness
-            * rs_ws_witness.batching_randomness;
-
-    assert_eq!(
-        rs_ws_claimed_eval,
-        rs_ws_witness.batched_poly().evaluate(&eval_point)
-    );
-
-    produce_whir_proof(
+    // RS WS combined (extracted to helper)
+    run_rs_ws_gpa_and_proofs(
         merlin,
-        eval_point.clone(),
-        rs_ws_claimed_eval,
-        whir_configs.num_terms_4batched.clone(),
+        &matrix,
+        &e_values,
         rs_ws_witness,
-    )?;
-
-    let row_value_eval = EvaluationsList::new(e_values.e_rx).evaluate(&eval_point);
-    merlin.hint(&row_value_eval)?;
-
-    let col_value_eval = EvaluationsList::new(e_values.e_ry).evaluate(&eval_point);
-    merlin.hint(&col_value_eval)?;
-
-    let claimed_e_eval = row_value_eval + col_value_eval * evalues_witness.batching_randomness;
-
-    produce_whir_proof(
-        merlin,
-        eval_point,
-        claimed_e_eval,
-        whir_configs.num_terms_2batched.clone(),
         evalues_witness,
+        whir_configs,
+        &gamma,
+        &tau,
     )?;
 
     // Potential optimization: Init and Final can be done together in one GPA if we
@@ -501,4 +374,212 @@ fn produce_whir_proof(
     prover.prove(merlin, statement, witness)?;
 
     Ok(())
+}
+
+#[instrument(skip_all)]
+fn spark_sumcheck(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    val: &Vec<FieldElement>,
+    e_rx: &Vec<FieldElement>,
+    e_ry: &Vec<FieldElement>,
+    claimed_value: &FieldElement,
+    evalues_witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
+    vals_witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
+    num_terms_1batched: &WhirConfig,
+    num_terms_2batched: &WhirConfig,
+) -> Result<()> {
+    let mles = [val.clone(), e_rx.clone(), e_ry.clone()];
+    let (sumcheck_final_folds, folding_randomness) =
+        run_spark_sumcheck(merlin, mles, *claimed_value)?;
+
+    merlin.hint::<Vec<FieldElement>>(
+        &[
+            sumcheck_final_folds[0],
+            sumcheck_final_folds[1],
+            sumcheck_final_folds[2],
+        ]
+        .to_vec(),
+    )?;
+
+    let batched_e_claimed =
+        sumcheck_final_folds[1] + sumcheck_final_folds[2] * evalues_witness.batching_randomness;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.to_vec()),
+        batched_e_claimed,
+        num_terms_2batched.clone(),
+        evalues_witness.clone(),
+    )?;
+
+    produce_whir_proof(
+        merlin,
+        MultilinearPoint(folding_randomness.to_vec()),
+        sumcheck_final_folds[0],
+        num_terms_1batched.clone(),
+        vals_witness.clone(),
+    )?;
+
+    Ok(())
+}
+
+/// Helper that runs the RS/WS GPA, produces the batched WHIR openings for
+/// rs/ws and the e-values, and advances the transcript accordingly.
+#[instrument(skip_all)]
+fn run_rs_ws_gpa_and_proofs(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    matrix: &SparkMatrix,
+    e_values: &EValuesForMatrix,
+    rs_ws_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    evalues_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    whir_configs: &SPARKWHIRConfigs,
+    gamma: &FieldElement,
+    tau: &FieldElement,
+) -> Result<()> {
+    // RS WS combined
+
+    let row_rs_vec: Vec<_> = izip!(
+        (&matrix.coo.row).iter(),
+        (&e_values.e_rx).iter(),
+        (&matrix.timestamps.read_row).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
+    .collect();
+
+    // Potential optimization: ws is rs vector where each element is incremented by
+    // 1. So we don't need to build this vector again.
+    let row_ws_vec: Vec<_> = izip!(
+        (&matrix.coo.row).iter(),
+        (&e_values.e_rx).iter(),
+        (&matrix.timestamps.read_row).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
+    .collect();
+
+    let col_rs_vec: Vec<_> = izip!(
+        (&matrix.coo.col).iter(),
+        (&e_values.e_ry).iter(),
+        (&matrix.timestamps.read_col).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
+    .collect();
+
+    let col_ws_vec: Vec<_> = izip!(
+        (&matrix.coo.col).iter(),
+        (&e_values.e_ry).iter(),
+        (&matrix.timestamps.read_col).iter()
+    )
+    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
+    .collect();
+
+    let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
+    let gpa_leaves_flat = gpa_leaves.iter().flatten().cloned().collect::<Vec<_>>();
+    let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat);
+
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
+    let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
+
+    let row_address_eval = EvaluationsList::new(matrix.coo.row.clone()).evaluate(&eval_point);
+    let row_timestamp_eval =
+        EvaluationsList::new(matrix.timestamps.read_row.to_vec()).evaluate(&eval_point);
+    let col_address_eval = EvaluationsList::new(matrix.coo.col.clone()).evaluate(&eval_point);
+    let col_timestamp_eval =
+        EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
+
+    merlin.hint(&row_address_eval)?;
+    merlin.hint(&row_timestamp_eval)?;
+    merlin.hint(&col_address_eval)?;
+    merlin.hint(&col_timestamp_eval)?;
+
+    let rs_ws_claimed_eval = row_address_eval
+        + row_timestamp_eval * rs_ws_witness.batching_randomness
+        + col_address_eval * rs_ws_witness.batching_randomness * rs_ws_witness.batching_randomness
+        + col_timestamp_eval
+            * rs_ws_witness.batching_randomness
+            * rs_ws_witness.batching_randomness
+            * rs_ws_witness.batching_randomness;
+
+    assert_eq!(
+        rs_ws_claimed_eval,
+        rs_ws_witness.batched_poly().evaluate(&eval_point)
+    );
+
+    produce_whir_proof(
+        merlin,
+        eval_point.clone(),
+        rs_ws_claimed_eval,
+        whir_configs.num_terms_4batched.clone(),
+        rs_ws_witness,
+    )?;
+
+    let row_value_eval = EvaluationsList::new(e_values.e_rx.clone()).evaluate(&eval_point);
+    merlin.hint(&row_value_eval)?;
+
+    let col_value_eval = EvaluationsList::new(e_values.e_ry.clone()).evaluate(&eval_point);
+    merlin.hint(&col_value_eval)?;
+
+    let claimed_e_eval = row_value_eval + col_value_eval * evalues_witness.batching_randomness;
+
+    produce_whir_proof(
+        merlin,
+        eval_point,
+        claimed_e_eval,
+        whir_configs.num_terms_2batched.clone(),
+        evalues_witness,
+    )?;
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn generate_witnesses(
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    whir_configs: &SPARKWHIRConfigs,
+    matrix: &SparkMatrix,
+    e_values: &EValuesForMatrix,
+) -> Result<(
+    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, SkyscraperMerkleConfig>,
+)> {
+    let row_committer = CommitmentWriter::new(whir_configs.row.clone());
+    let col_committer = CommitmentWriter::new(whir_configs.col.clone());
+    let batched1_committer = CommitmentWriter::new(whir_configs.num_terms_1batched.clone());
+    let batched2_committer = CommitmentWriter::new(whir_configs.num_terms_2batched.clone());
+    let batched4_committer = CommitmentWriter::new(whir_configs.num_terms_4batched.clone());
+
+    // Should be committed before request:
+    let vals_witness = batched1_committer
+        .commit_batch(merlin, &[
+            &EvaluationsList::new(matrix.coo.val.clone()).to_coeffs()
+        ])?;
+
+    let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
+        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
+        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
+    ])?;
+
+    let final_row_ts_witness =
+        commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
+    let final_col_ts_witness =
+        commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
+
+    // Commited for each request:
+
+    let evalues_witness = batched2_committer.commit_batch(merlin, &[
+        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+    ])?;
+
+    Ok((
+        vals_witness,
+        rs_ws_witness,
+        final_row_ts_witness,
+        final_col_ts_witness,
+        evalues_witness,
+    ))
 }

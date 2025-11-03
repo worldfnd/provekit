@@ -357,7 +357,7 @@ func PrepareAndVerifyCircuit(config Config, sparkConfig SparkConfig, r1cs R1CS, 
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
 
 	var evaluesSumcheck = consumeWhirData(sparkConfig.WHIR2, &sparkMerklePaths, &sparkStirAnswers)
-	var vals = consumeWhirData(sparkConfig.WHIR3, &sparkMerklePaths, &sparkStirAnswers)
+	var vals = consumeWhirData(sparkConfig.WHIR1, &sparkMerklePaths, &sparkStirAnswers)
 	var rsws = consumeWhirData(sparkConfig.WHIR4, &sparkMerklePaths, &sparkStirAnswers)
 	var evaluesRSWS = consumeWhirData(sparkConfig.WHIR2, &sparkMerklePaths, &sparkStirAnswers)
 	var rowFinal = consumeWhirData(sparkConfig.WHIRRow, &sparkMerklePaths, &sparkStirAnswers)
