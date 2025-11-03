@@ -40,8 +40,8 @@ pub(crate) fn add_u32_addition(
     r1cs_compiler.add_witness_builder(WitnessBuilder::U32Addition(
         result_witness,
         carry_witness,
-        a.clone(),
-        b.clone(),
+        a,
+        b,
     ));
 
     // Add constraint: a + b = result + carry * 2^32
