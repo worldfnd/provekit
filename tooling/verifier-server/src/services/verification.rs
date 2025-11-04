@@ -9,7 +9,7 @@ use {
         models::VerifyRequest,
         services::artifact::ArtifactPaths,
     },
-    provekit_common::{NoirProof, NoirProofScheme},
+    provekit_common::{NoirProof, Verifier},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
     tokio_util::sync::CancellationToken,
@@ -39,14 +39,14 @@ impl VerificationService {
         &self,
         request: &VerifyRequest,
         proof: &NoirProof,
-        scheme: &NoirProofScheme,
+        verifier: &Verifier,
         paths: &ArtifactPaths,
         cancellation_token: CancellationToken,
     ) -> AppResult<u64> {
         let verification_start = Instant::now();
 
         // Prepare gnark parameters
-        self.prepare_gnark_parameters(proof, scheme, paths)?;
+        self.prepare_gnark_parameters(proof, verifier, paths)?;
 
         // Execute external verifier
         self.execute_verifier(paths, request, cancellation_token)
@@ -69,7 +69,7 @@ impl VerificationService {
     fn prepare_gnark_parameters(
         &self,
         proof: &NoirProof,
-        scheme: &NoirProofScheme,
+        verifier: &Verifier,
         paths: &ArtifactPaths,
     ) -> AppResult<()> {
         info!(
@@ -82,14 +82,19 @@ impl VerificationService {
             .to_str()
             .ok_or_else(|| AppError::Internal("Invalid gnark params path".to_string()))?;
 
+        let whir_scheme = verifier
+            .whir_for_witness
+            .as_ref()
+            .ok_or_else(|| AppError::Internal("WHIR scheme not found in verifier".to_string()))?;
+
         write_gnark_parameters_to_file(
-            &scheme.whir_for_witness.whir_witness,
-            &scheme.whir_for_witness.whir_for_hiding_spartan,
+            &whir_scheme.whir_witness,
+            &whir_scheme.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,
-            &scheme.whir_for_witness.create_io_pattern(),
-            scheme.whir_for_witness.m_0,
-            scheme.whir_for_witness.m,
-            scheme.whir_for_witness.a_num_terms,
+            &whir_scheme.create_io_pattern(),
+            whir_scheme.m_0,
+            whir_scheme.m,
+            whir_scheme.a_num_terms,
             gnark_params_path,
         );
 
@@ -101,7 +106,7 @@ impl VerificationService {
     async fn execute_verifier(
         &self,
         paths: &ArtifactPaths,
-        request: &VerifyRequest,
+        _request: &VerifyRequest,
         cancellation_token: CancellationToken,
     ) -> AppResult<()> {
         info!(

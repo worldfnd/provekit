@@ -53,25 +53,17 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &prover.whir_for_witness.as_ref().unwrap().whir_witness,
-            &prover
-                .whir_for_witness
-                .as_ref()
-                .unwrap()
-                .whir_for_hiding_spartan,
+            &prover.whir_for_witness.whir_witness,
+            &prover.whir_for_witness.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,
-            &prover
-                .whir_for_witness
-                .as_ref()
-                .unwrap()
-                .create_io_pattern(),
-            prover.whir_for_witness.as_ref().unwrap().m_0,
-            prover.whir_for_witness.as_ref().unwrap().m,
-            prover.whir_for_witness.as_ref().unwrap().a_num_terms,
+            &prover.whir_for_witness.create_io_pattern(),
+            prover.whir_for_witness.m_0,
+            prover.whir_for_witness.m,
+            prover.whir_for_witness.a_num_terms,
             &self.params_for_recursive_verifier,
         );
 
-        let json = serde_json::to_string_pretty(&prover.r1cs.as_ref().unwrap()).unwrap(); // Or `to_string` for compact
+        let json = serde_json::to_string_pretty(&prover.r1cs).unwrap(); // Or `to_string` for compact
         let mut file = File::create(&self.r1cs_path)?;
         file.write_all(json.as_bytes())?;
 

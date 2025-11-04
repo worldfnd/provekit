@@ -21,13 +21,17 @@ fn prove_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
 
-    let mut prover: Prover = read(&proof_prover_path)
+    let prover: Prover = read(&proof_prover_path)
         .with_context(|| format!("Reading {}", proof_prover_path.display()))
         .expect("Reading prover");
 
     let witness_path = crate_dir.join("Prover.toml");
 
-    bencher.bench_local(|| black_box(&mut prover).prove(black_box(&witness_path)));
+    bencher.bench_local(|| {
+        let prover = black_box(prover.clone());
+        let witness_path = black_box(&witness_path);
+        prover.prove(witness_path)
+    });
 }
 
 #[divan::bench]
@@ -47,7 +51,7 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
                 )
             })
             .expect("Reading prover failed");
-        let mut prover = black_box(prover);
+        let prover = black_box(prover);
         prover.prove(black_box(&witness_path))
     });
 }

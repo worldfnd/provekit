@@ -39,7 +39,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let witness_file_path = test_case_path.join("Prover.toml");
 
     let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
-    let mut prover = Prover::from_noir_proof_scheme(schema.clone());
+    let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
     let proof = prover

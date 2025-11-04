@@ -142,7 +142,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     let mut prefix = Vec::with_capacity(batch_size);
     let mut acc = FieldElement::from(1u32);
     for &v in values {
-        acc = acc * v;
+        acc *= v;
         prefix.push(acc);
     }
 
@@ -155,7 +155,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     let mut inverses = vec![FieldElement::from(0u32); batch_size];
     for i in (1..batch_size).rev() {
         inverses[i] = inv_acc * prefix[i - 1];
-        inv_acc = inv_acc * values[i];
+        inv_acc *= values[i];
     }
     inverses[0] = inv_acc;
 

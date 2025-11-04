@@ -18,10 +18,13 @@ pub trait NoirWitnessGeneratorBuilder {
         r1cs_witnesses: usize,
     ) -> Self;
 
+    #[allow(dead_code)]
     fn witness_map(&self) -> &[Option<NonZeroU32>];
 
+    #[allow(dead_code)]
     fn abi(&self) -> &Abi;
 
+    #[allow(dead_code)]
     fn input_from_toml(&self, toml: &str) -> Result<Vec<FieldElement>>;
 }
 
@@ -82,6 +85,7 @@ impl NoirWitnessGeneratorBuilder for NoirWitnessGenerator {
 
 /// Recursively encode Noir ABI input to a witness vector
 /// See [`noirc_abi::Abi::encode`] for the Noir ABI specification.
+#[allow(dead_code)]
 fn encode_input(
     input: &mut Vec<FieldElement>,
     value: InputValue,
