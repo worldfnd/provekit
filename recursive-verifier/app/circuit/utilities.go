@@ -22,7 +22,7 @@ import (
 func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Variable) frontend.Variable {
 	ans := frontend.Variable(1)
 	for i, alpha := range alphas {
-		ans = api.Mul(ans, api.Add(api.Mul(alpha, r[i]), api.Mul(api.Sub(frontend.Variable(1), alpha), api.Sub(frontend.Variable(1), r[i]))))
+		ans = api.Mul(ans, api.Add(api.Mul(alpha, r[i]), api.Mul(api.Sub(1, alpha), api.Sub(1, r[i]))))
 	}
 	return ans
 }
