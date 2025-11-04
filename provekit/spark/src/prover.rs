@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::run_gpa4,
-        memory::{prove_colwise, prove_rowwise},
+        memory::{produce_whir_proof, prove_colwise, prove_rowwise},
         sumcheck::run_spark_sumcheck,
         types::{
             COOMatrix, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
@@ -19,6 +19,7 @@ use {
         FieldElement, IOPattern, WhirConfig, WhirR1CSScheme, R1CS,
     },
     provekit_r1cs_compiler::WhirR1CSSchemeBuilder,
+    rayon::{join, prelude::*},
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
@@ -35,7 +36,6 @@ use {
         },
     },
 };
-use rayon::{join, prelude::*};
 
 /// SPARK proving interface for R1CS constraint systems.
 pub trait SPARKProver {
@@ -359,24 +359,6 @@ fn commit_to_vector(
         .context("WHIR commitment failed")
 }
 
-/// Generates WHIR opening proof for polynomial evaluation.
-#[instrument(skip_all)]
-fn produce_whir_proof(
-    merlin: &mut spongefish::ProverState<SkyscraperSponge, FieldElement>,
-    evaluation_point: MultilinearPoint<FieldElement>,
-    evaluated_value: FieldElement,
-    config: provekit_common::WhirConfig,
-    witness: Witness<FieldElement, SkyscraperMerkleConfig>,
-) -> Result<()> {
-    let mut statement = Statement::<FieldElement>::new(evaluation_point.num_variables());
-    statement.add_constraint(Weights::evaluation(evaluation_point), evaluated_value);
-    let prover = Prover::new(config);
-
-    prover.prove(merlin, statement, witness)?;
-
-    Ok(())
-}
-
 #[instrument(skip_all)]
 fn spark_sumcheck(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
@@ -575,18 +557,12 @@ fn generate_witnesses(
         ])
         .context("Commit batch for rs_ws_witness failed")?;
 
-    let final_row_ts_witness = commit_to_vector(
-        &row_committer,
-        merlin,
-        matrix.timestamps.final_row.clone(),
-    )
-    .context("Commit to final_row timestamps failed")?;
-    let final_col_ts_witness = commit_to_vector(
-        &col_committer,
-        merlin,
-        matrix.timestamps.final_col.clone(),
-    )
-    .context("Commit to final_col timestamps failed")?;
+    let final_row_ts_witness =
+        commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone())
+            .context("Commit to final_row timestamps failed")?;
+    let final_col_ts_witness =
+        commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone())
+            .context("Commit to final_col timestamps failed")?;
 
     // Commited for each request:
     let evalues_witness = batched2_committer

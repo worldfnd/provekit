@@ -280,7 +280,8 @@ pub fn verify_colwise(
 /// # Note
 /// This is called multiple times during SPARK proving for different polynomial
 /// commitments.
-fn produce_whir_proof(
+#[instrument(skip_all)]
+pub fn produce_whir_proof(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     evaluation_point: MultilinearPoint<FieldElement>,
     evaluated_value: FieldElement,

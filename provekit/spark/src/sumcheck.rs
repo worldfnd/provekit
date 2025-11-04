@@ -13,6 +13,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField},
         ProverState, VerifierState,
     },
+    tracing::instrument,
 };
 
 /// Runs sumcheck protocol for SPARK matrix evaluation.
@@ -23,6 +24,7 @@ use {
 /// # Returns
 ///
 /// Tuple of `(final_folded_values, accumulated_randomness)`
+#[instrument(skip_all)]
 pub fn run_spark_sumcheck(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     mles: [&[FieldElement]; 3],
@@ -65,7 +67,7 @@ pub fn run_spark_sumcheck(
             - hhat_i_coeffs[3]
             - hhat_i_coeffs[2];
 
-        assert_eq!(
+        debug_assert_eq!(
             claimed_value,
             hhat_i_coeffs[0]
                 + hhat_i_coeffs[0]
