@@ -25,16 +25,16 @@ use {
 /// Tuple of `(final_folded_values, accumulated_randomness)`
 pub fn run_spark_sumcheck(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    mles: [Vec<FieldElement>; 3],
+    mles: [&[FieldElement]; 3],
     mut claimed_value: FieldElement,
 ) -> Result<([FieldElement; 3], Vec<FieldElement>)> {
     let mut sumcheck_randomness = [FieldElement::from(0)];
     let mut sumcheck_randomness_accumulator = Vec::<FieldElement>::new();
     let mut fold = None;
 
-    let mut m0 = mles[0].clone();
-    let mut m1 = mles[1].clone();
-    let mut m2 = mles[2].clone();
+    let mut m0 = mles[0].to_vec();
+    let mut m1 = mles[1].to_vec();
+    let mut m2 = mles[2].to_vec();
 
     loop {
         // Evaluate cubic at special points: 0, -1, ∞
