@@ -152,6 +152,7 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
 }
 
 /// Evaluates the equality polynomial recursively.
+#[inline(always)]
 fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement) {
     debug_assert_eq!(out.len(), 1 << eval.len());
     let size = out.len();

@@ -9,7 +9,7 @@ use {
         },
         utils::{calculate_memory, SPARKDomainSeparator},
     },
-    anyhow::Result,
+    anyhow::{Context, Result},
     ark_ff::{AdditiveGroup, Field},
     itertools::izip,
     provekit_common::{
@@ -346,7 +346,7 @@ fn commit_to_vector(
     >,
     merlin: &mut spongefish::ProverState<SkyscraperSponge, FieldElement>,
     vector: Vec<FieldElement>,
-) -> Witness<FieldElement, SkyscraperMerkleConfig> {
+) -> Result<Witness<FieldElement, SkyscraperMerkleConfig>> {
     assert!(
         vector.len().is_power_of_two(),
         "Vector length must be power of two"
@@ -355,7 +355,7 @@ fn commit_to_vector(
     let coeffs = evals.to_coeffs();
     committer
         .commit(merlin, &coeffs)
-        .expect("WHIR commitment failed")
+        .context("WHIR commitment failed")
 }
 
 /// Generates WHIR opening proof for polynomial evaluation.
@@ -379,16 +379,16 @@ fn produce_whir_proof(
 #[instrument(skip_all)]
 fn spark_sumcheck(
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-    val: &Vec<FieldElement>,
-    e_rx: &Vec<FieldElement>,
-    e_ry: &Vec<FieldElement>,
+    val: &[FieldElement],
+    e_rx: &[FieldElement],
+    e_ry: &[FieldElement],
     claimed_value: &FieldElement,
     evalues_witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
     vals_witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
     num_terms_1batched: &WhirConfig,
     num_terms_2batched: &WhirConfig,
 ) -> Result<()> {
-    let mles = [val.clone(), e_rx.clone(), e_ry.clone()];
+    let mles: [&[FieldElement]; 3] = [val, e_rx, e_ry];
     let (sumcheck_final_folds, folding_randomness) =
         run_spark_sumcheck(merlin, mles, *claimed_value)?;
 
@@ -438,42 +438,31 @@ fn run_rs_ws_gpa_and_proofs(
 ) -> Result<()> {
     // RS WS combined
 
-    let row_rs_vec: Vec<_> = izip!(
-        (&matrix.coo.row).iter(),
-        (&e_values.e_rx).iter(),
-        (&matrix.timestamps.read_row).iter()
+    let (row_rs_vec, row_ws_vec): (Vec<_>, Vec<_>) = izip!(
+        &matrix.coo.row,
+        &e_values.e_rx,
+        &matrix.timestamps.read_row
     )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
-    .collect();
+    .map(|(&a, &v, &t)| {
+        let base = a * gamma * gamma + v * gamma + t - tau;
+        (base, base + FieldElement::from(1))
+    })
+    .unzip();
 
-    // Potential optimization: ws is rs vector where each element is incremented by
-    // 1. So we don't need to build this vector again.
-    let row_ws_vec: Vec<_> = izip!(
-        (&matrix.coo.row).iter(),
-        (&e_values.e_rx).iter(),
-        (&matrix.timestamps.read_row).iter()
+    let (col_rs_vec, col_ws_vec): (Vec<_>, Vec<_>) = izip!(
+        &matrix.coo.col,
+        &e_values.e_ry,
+        &matrix.timestamps.read_col
     )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
-    .collect();
-
-    let col_rs_vec: Vec<_> = izip!(
-        (&matrix.coo.col).iter(),
-        (&e_values.e_ry).iter(),
-        (&matrix.timestamps.read_col).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + t - tau)
-    .collect();
-
-    let col_ws_vec: Vec<_> = izip!(
-        (&matrix.coo.col).iter(),
-        (&e_values.e_ry).iter(),
-        (&matrix.timestamps.read_col).iter()
-    )
-    .map(|(&a, &v, &t)| a * gamma * gamma + v * gamma + (t + FieldElement::from(1)) - tau)
-    .collect();
-
+    .map(|(&a, &v, &t)| {
+        let base = a * gamma * gamma + v * gamma + t - tau;
+        (base, base + FieldElement::from(1))
+    })
+    .unzip();
+    
+    let mut gpa_leaves_flat = Vec::with_capacity(4 * row_rs_vec.len());
     let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
-    let gpa_leaves_flat = gpa_leaves.iter().flatten().cloned().collect::<Vec<_>>();
+    gpa_leaves_flat.extend(gpa_leaves.into_iter().flatten());
     let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat);
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
@@ -481,10 +470,10 @@ fn run_rs_ws_gpa_and_proofs(
 
     let row_address_eval = EvaluationsList::new(matrix.coo.row.clone()).evaluate(&eval_point);
     let row_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_row.to_vec()).evaluate(&eval_point);
+        EvaluationsList::new(matrix.timestamps.read_row.clone()).evaluate(&eval_point);
     let col_address_eval = EvaluationsList::new(matrix.coo.col.clone()).evaluate(&eval_point);
     let col_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_col.to_vec()).evaluate(&eval_point);
+        EvaluationsList::new(matrix.timestamps.read_col.clone()).evaluate(&eval_point);
 
     merlin.hint(&row_address_eval)?;
     merlin.hint(&row_timestamp_eval)?;
@@ -498,11 +487,6 @@ fn run_rs_ws_gpa_and_proofs(
             * rs_ws_witness.batching_randomness
             * rs_ws_witness.batching_randomness
             * rs_ws_witness.batching_randomness;
-
-    assert_eq!(
-        rs_ws_claimed_eval,
-        rs_ws_witness.batched_poly().evaluate(&eval_point)
-    );
 
     produce_whir_proof(
         merlin,
@@ -554,26 +538,38 @@ fn generate_witnesses(
     let vals_witness = batched1_committer
         .commit_batch(merlin, &[
             &EvaluationsList::new(matrix.coo.val.clone()).to_coeffs()
-        ])?;
+        ])
+        .context("Commit batch for vals_witness failed")?;
 
-    let rs_ws_witness = batched4_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
-        &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
-    ])?;
+    let rs_ws_witness = batched4_committer
+        .commit_batch(merlin, &[
+            &EvaluationsList::new(matrix.coo.row.clone()).to_coeffs(),
+            &EvaluationsList::new(matrix.timestamps.read_row.clone()).to_coeffs(),
+            &EvaluationsList::new(matrix.coo.col.clone()).to_coeffs(),
+            &EvaluationsList::new(matrix.timestamps.read_col.clone()).to_coeffs(),
+        ])
+        .context("Commit batch for rs_ws_witness failed")?;
 
-    let final_row_ts_witness =
-        commit_to_vector(&row_committer, merlin, matrix.timestamps.final_row.clone());
-    let final_col_ts_witness =
-        commit_to_vector(&col_committer, merlin, matrix.timestamps.final_col.clone());
+    let final_row_ts_witness = commit_to_vector(
+        &row_committer,
+        merlin,
+        matrix.timestamps.final_row.clone(),
+    )
+    .context("Commit to final_row timestamps failed")?;
+    let final_col_ts_witness = commit_to_vector(
+        &col_committer,
+        merlin,
+        matrix.timestamps.final_col.clone(),
+    )
+    .context("Commit to final_col timestamps failed")?;
 
     // Commited for each request:
-
-    let evalues_witness = batched2_committer.commit_batch(merlin, &[
-        &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
-        &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
-    ])?;
+    let evalues_witness = batched2_committer
+        .commit_batch(merlin, &[
+            &EvaluationsList::new(e_values.e_rx.clone()).to_coeffs(),
+            &EvaluationsList::new(e_values.e_ry.clone()).to_coeffs(),
+        ])
+        .context("Commit batch for evalues_witness failed")?;
 
     Ok((
         vals_witness,

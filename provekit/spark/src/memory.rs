@@ -183,7 +183,7 @@ fn verify_axis(
     let mut final_cntr_statement =
         Statement::<FieldElement>::new(provekit_common::utils::next_power_of_two(num_axis_items));
     final_cntr_statement.add_constraint(
-        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec().clone())),
+        Weights::evaluation(MultilinearPoint(evaluation_randomness.to_vec())),
         final_cntr,
     );
 
