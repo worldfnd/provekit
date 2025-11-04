@@ -35,6 +35,7 @@ use {
         },
     },
 };
+use rayon::{join, prelude::*};
 
 /// SPARK proving interface for R1CS constraint systems.
 pub trait SPARKProver {
@@ -437,29 +438,42 @@ fn run_rs_ws_gpa_and_proofs(
     tau: &FieldElement,
 ) -> Result<()> {
     // RS WS combined
+    let gamma_sq = *gamma * *gamma;
+    let one = FieldElement::from(1u64);
 
-    let (row_rs_vec, row_ws_vec): (Vec<_>, Vec<_>) = izip!(
-        &matrix.coo.row,
-        &e_values.e_rx,
-        &matrix.timestamps.read_row
-    )
-    .map(|(&a, &v, &t)| {
-        let base = a * gamma * gamma + v * gamma + t - tau;
-        (base, base + FieldElement::from(1))
-    })
-    .unzip();
+    // Build row/col RS/WS vectors in parallel
+    let n = matrix.coo.row.len();
+    let m = matrix.coo.col.len();
 
-    let (col_rs_vec, col_ws_vec): (Vec<_>, Vec<_>) = izip!(
-        &matrix.coo.col,
-        &e_values.e_ry,
-        &matrix.timestamps.read_col
-    )
-    .map(|(&a, &v, &t)| {
-        let base = a * gamma * gamma + v * gamma + t - tau;
-        (base, base + FieldElement::from(1))
-    })
-    .unzip();
-    
+    let (row_pairs, col_pairs) = join(
+        || {
+            (0..n)
+                .into_par_iter()
+                .map(|i| {
+                    let a = matrix.coo.row[i];
+                    let v = e_values.e_rx[i];
+                    let t = matrix.timestamps.read_row[i];
+                    let base = a * gamma_sq + v * *gamma + t - *tau;
+                    (base, base + one)
+                })
+                .collect::<Vec<(FieldElement, FieldElement)>>()
+        },
+        || {
+            (0..m)
+                .into_par_iter()
+                .map(|i| {
+                    let a = matrix.coo.col[i];
+                    let v = e_values.e_ry[i];
+                    let t = matrix.timestamps.read_col[i];
+                    let base = a * gamma_sq + v * *gamma + t - *tau;
+                    (base, base + one)
+                })
+                .collect::<Vec<(FieldElement, FieldElement)>>()
+        },
+    );
+    let (row_rs_vec, row_ws_vec): (Vec<_>, Vec<_>) = row_pairs.into_iter().unzip();
+    let (col_rs_vec, col_ws_vec): (Vec<_>, Vec<_>) = col_pairs.into_iter().unzip();
+
     let mut gpa_leaves_flat = Vec::with_capacity(4 * row_rs_vec.len());
     let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
     gpa_leaves_flat.extend(gpa_leaves.into_iter().flatten());
@@ -468,12 +482,21 @@ fn run_rs_ws_gpa_and_proofs(
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
     let eval_point = MultilinearPoint(evaluation_randomness.to_vec());
 
-    let row_address_eval = EvaluationsList::new(matrix.coo.row.clone()).evaluate(&eval_point);
-    let row_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_row.clone()).evaluate(&eval_point);
-    let col_address_eval = EvaluationsList::new(matrix.coo.col.clone()).evaluate(&eval_point);
-    let col_timestamp_eval =
-        EvaluationsList::new(matrix.timestamps.read_col.clone()).evaluate(&eval_point);
+    // Evaluate addresses/timestamps in parallel
+    let ((row_address_eval, row_timestamp_eval), (col_address_eval, col_timestamp_eval)) = join(
+        || {
+            join(
+                || EvaluationsList::new(matrix.coo.row.clone()).evaluate(&eval_point),
+                || EvaluationsList::new(matrix.timestamps.read_row.clone()).evaluate(&eval_point),
+            )
+        },
+        || {
+            join(
+                || EvaluationsList::new(matrix.coo.col.clone()).evaluate(&eval_point),
+                || EvaluationsList::new(matrix.timestamps.read_col.clone()).evaluate(&eval_point),
+            )
+        },
+    );
 
     merlin.hint(&row_address_eval)?;
     merlin.hint(&row_timestamp_eval)?;
@@ -496,10 +519,12 @@ fn run_rs_ws_gpa_and_proofs(
         rs_ws_witness,
     )?;
 
-    let row_value_eval = EvaluationsList::new(e_values.e_rx.clone()).evaluate(&eval_point);
+    // Evaluate e-values in parallel
+    let (row_value_eval, col_value_eval) = join(
+        || EvaluationsList::new(e_values.e_rx.clone()).evaluate(&eval_point),
+        || EvaluationsList::new(e_values.e_ry.clone()).evaluate(&eval_point),
+    );
     merlin.hint(&row_value_eval)?;
-
-    let col_value_eval = EvaluationsList::new(e_values.e_ry.clone()).evaluate(&eval_point);
     merlin.hint(&col_value_eval)?;
 
     let claimed_e_eval = row_value_eval + col_value_eval * evalues_witness.batching_randomness;

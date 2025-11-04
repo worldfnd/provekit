@@ -20,6 +20,7 @@ spongefish.workspace = true
 whir.workspace = true
 itertools = "0.14.0"
 tracing.workspace = true
+rayon.workspace = true
 
 [lints]
 workspace = true
