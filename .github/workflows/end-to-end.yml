@@ -51,11 +51,11 @@ jobs:
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport-examples/complete_age_check
         run: |
-          cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json -p ./noir-provekit-prover.pkp -v ./noir-provekit-verifier.pkv
-          cargo run --release --bin provekit-cli prove ./noir-provekit-prover.pkp ./Prover.toml -o ./noir-proof.np
-          cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-provekit-prover.pkp ./noir-proof.np
-          cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./noir-provekit-prover.pkp --noir-proof ./noir-proof.np 
-          cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./noir-proof.np 
+          cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json --pkp ./prover.pkp --pkv ./verifier.pkv
+          cargo run --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+          cargo run --release --bin provekit-cli generate-gnark-inputs ./prover.pkp ./proof.np
+          cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./prover.pkp --noir-proof ./proof.np 
+          cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./proof.np 
           
       - name: Run Gnark verifier
         working-directory: recursive-verifier

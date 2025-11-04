@@ -24,7 +24,7 @@ nargo compile
 Prepare the Noir program (generates prover and verifier files):
 
 ```sh
-cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
+cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
 
 3. Generate the Noir Proof using the input Toml:
@@ -51,12 +51,12 @@ cargo run --release --bin provekit-cli generate-gnark-inputs ./prover.pkp ./proo
 
       5.1.1 Generate the Spark Proof:
       ```sh
-      cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./noir-provekit-prover.pkp --noir-proof ./noir-proof.np 
+      cargo run --release --bin spark-cli -- prove --noir-proof-scheme ./prover.pkp --noir-proof ./proof.np 
       ```
 
       (Optional) Verify the Spark Proof:
       ```sh
-      cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./noir-proof.np 
+      cargo run --release --bin spark-cli -- verify --spark-proof spark_proof.json --noir-proof ./proof.np 
       ```
 
       5.1.2 Recursively verify 
