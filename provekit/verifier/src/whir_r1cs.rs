@@ -46,7 +46,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let commitment_reader = CommitmentReader::new(&self.whir_witness);
         let parsed_commitment = commitment_reader.parse_commitment(&mut arthur).unwrap();
 
-        println!("parsed_commitment.root : {:?}", parsed_commitment.root);
         let data_from_sumcheck_verifier = run_sumcheck_verifier(
             &mut arthur,
             self.m_0,
@@ -123,8 +122,6 @@ pub fn run_sumcheck_verifier(
     let commitment_reader = CommitmentReader::new(whir_for_spartan_blinding_config);
     let parsed_commitment = commitment_reader.parse_commitment(arthur).unwrap();
 
-    println!("parsed_commitment.root : {:?}", parsed_commitment.root);
-
     let mut sum_g_buf = [FieldElement::zero()];
     arthur.fill_next_scalars(&mut sum_g_buf)?;
 
@@ -186,7 +183,6 @@ pub fn run_whir_pcs_verifier(
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let verifier = Verifier::new(params);
 
-    println!("parsed_commitmen.root : {:?}", parsed_commitment.root);
     let (folding_randomness, deferred) = verifier
         .verify(arthur, parsed_commitment, statement_verifier, construct_skyscraper)
         .context("while verifying WHIR")?;

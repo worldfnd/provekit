@@ -46,7 +46,7 @@ func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []f
 	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
 	colEval := calculateEQOverBooleanHypercube(api, colRand)
 
-	for i := range len(circuit.MatrixA) {
+	for i := range circuit.MatrixA {
 		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
 	}
 	for i := range circuit.MatrixB {

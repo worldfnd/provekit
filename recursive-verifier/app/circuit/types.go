@@ -6,8 +6,8 @@ import (
 )
 
 // Common types
-type KeccakDigest struct {
-	KeccakDigest [32]uint8
+type Digest struct {
+	Digest [32]uint8
 }
 
 type Fp256 struct {
@@ -15,6 +15,7 @@ type Fp256 struct {
 }
 
 type Path[Digest any] struct {
+	LeafHash        Digest
 	LeafSiblingHash Digest
 	AuthPath        []Digest
 	LeafIndex       uint64
@@ -22,6 +23,12 @@ type Path[Digest any] struct {
 
 type FullMultiPath[Digest any] struct {
 	Proofs []Path[Digest]
+}
+
+type MultiIndexMerkleTreeProof[Digest any] struct {
+	Depth   uint64
+	Indices []uint64
+	Proof   []Digest
 }
 
 // WHIR specific types
@@ -96,7 +103,6 @@ type Config struct {
 	LogANumTerms                 int        `json:"log_a_num_terms"`
 	IOPattern                    string     `json:"io_pattern"`
 	Transcript                   []byte     `json:"transcript"`
-	TranscriptLen                int        `json:"transcript_len"`
 	WitnessStatementEvaluations  []string   `json:"witness_statement_evaluations"`
 	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
 }
@@ -107,7 +113,7 @@ type Hints struct {
 }
 
 type Hint struct {
-	merklePaths []FullMultiPath[KeccakDigest]
+	merklePaths []FullMultiPath[Digest]
 	stirAnswers [][][]Fp256
 }
 

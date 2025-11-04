@@ -37,11 +37,11 @@ func newMerkle(
 
 				for z := range treeHeight {
 					totalAuthPath[i][j][z] = typeConverters.
-						LittleEndianUint8ToBigInt(proof.AuthPath[treeHeight-1-z].KeccakDigest[:])
+						LittleEndianUint8ToBigInt(proof.AuthPath[z].Digest[:])
 				}
 
 				totalLeafSiblingHashes[i][j] = typeConverters.
-					LittleEndianUint8ToBigInt(proof.LeafSiblingHash.KeccakDigest[:])
+					LittleEndianUint8ToBigInt(proof.LeafSiblingHash.Digest[:])
 				totalLeafIndexes[i][j] = uints.NewU64(proof.LeafIndex)
 
 				for k := range hint.stirAnswers[i][j] {

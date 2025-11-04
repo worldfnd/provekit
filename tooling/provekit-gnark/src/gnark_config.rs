@@ -23,8 +23,6 @@ pub struct GnarkConfig {
     pub io_pattern:                 String,
     /// transcript in byte form
     pub transcript:                 Vec<u8>,
-    /// length of the transcript
-    pub transcript_len:             usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,7 +115,6 @@ pub fn gnark_parameters(
         log_a_num_terms:            a_num_terms,
         io_pattern:                 String::from_utf8(io.as_bytes().to_vec()).unwrap(),
         transcript:                 transcript.to_vec(),
-        transcript_len:             transcript.to_vec().len(),
     }
 }
 

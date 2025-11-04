@@ -65,34 +65,14 @@ func RunZKWhir(
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 
 	initialOODs := oodAnswers(api, initialOODAnswers, batchingRandomness)
-	// batchSizeLen := whirParams.BatchSize
 
 	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations)
 	if err != nil {
 		return
 	}
 
-	copyOfFirstLeaves := make([][][]frontend.Variable, len(firstRound.Leaves))
-	for i := range len(firstRound.Leaves) {
-		copyOfFirstLeaves[i] = make([][]frontend.Variable, len(firstRound.Leaves[i]))
-		for j := range len(firstRound.Leaves[i]) {
-			copyOfFirstLeaves[i][j] = make([]frontend.Variable, len(firstRound.Leaves[i][j]))
-			for k := range len(firstRound.Leaves[i][j]) {
-				copyOfFirstLeaves[i][j][k] = firstRound.Leaves[i][j][k]
-			}
-		}
-	}
-
-	roundAnswers := make([][][]frontend.Variable, len(circuit.Leaves)+1)
-
 	foldSize := 1 << whirParams.FoldingFactorArray[0]
 	collapsed := rlcBatchedLeaves(api, firstRound.Leaves[0], foldSize, whirParams.BatchSize, batchingRandomness)
-	roundAnswers[0] = collapsed
-
-	for i := range len(circuit.Leaves) {
-		roundAnswers[i+1] = circuit.Leaves[i]
-	}
-
 	computedFold := computeFold(collapsed, initialSumcheckFoldingRandomness, api)
 
 	mainRoundData := generateEmptyMainRoundData(whirParams)
@@ -143,7 +123,7 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
+			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], circuit.Leaves[r-1], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
 			if err != nil {
 				return
 			}
@@ -215,144 +195,6 @@ func RunZKWhir(
 	)
 
 	return totalFoldingRandomness, nil
-}
-
-//nolint:unused
-func runWhir(
-	api frontend.API,
-	arthur gnarkNimue.Arthur,
-	uapi *uints.BinaryField[uints.U64],
-	sc *skyscraper.Skyscraper,
-	circuit Merkle,
-	whirParams WHIRParams,
-	linearStatementEvaluations []frontend.Variable,
-	linearStatementValuesAtPoints []frontend.Variable,
-) (totalFoldingRandomness []frontend.Variable, err error) {
-	if err = fillInAndVerifyRootHash(0, api, uapi, sc, circuit, arthur); err != nil {
-		return
-	}
-
-	initialOODQueries, initialOODAnswers, tempErr := fillInOODPointsAndAnswers(whirParams.CommittmentOODSamples, arthur)
-	if tempErr != nil {
-		err = tempErr
-		return
-	}
-
-	initialCombinationRandomness, tempErr := GenerateCombinationRandomness(api, arthur, whirParams.CommittmentOODSamples+len(linearStatementEvaluations))
-	if tempErr != nil {
-		err = tempErr
-		return
-	}
-
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
-
-	initialSumcheckFoldingRandomness, lastEval, tempErr := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
-	if tempErr != nil {
-		err = tempErr
-		return
-	}
-
-	initialData := InitialSumcheckData{
-		InitialOODQueries:            initialOODQueries,
-		InitialCombinationRandomness: initialCombinationRandomness,
-	}
-
-	computedFold := computeFold(circuit.Leaves[0], initialSumcheckFoldingRandomness, api)
-
-	mainRoundData := generateEmptyMainRoundData(whirParams)
-
-	expDomainGenerator := utilities.Exponent(api, uapi, whirParams.StartingDomainBackingDomainGenerator, uints.NewU64(uint64(1<<whirParams.FoldingFactorArray[0])))
-	domainSize := whirParams.DomainSize
-
-	totalFoldingRandomness = initialSumcheckFoldingRandomness
-
-	for r := range whirParams.ParamNRounds {
-		if err = fillInAndVerifyRootHash(r+1, api, uapi, sc, circuit, arthur); err != nil {
-			return
-		}
-
-		var roundOODAnswers []frontend.Variable
-		mainRoundData.OODPoints[r], roundOODAnswers, err = fillInOODPointsAndAnswers(whirParams.RoundParametersOODSamples[r], arthur)
-		if err != nil {
-			return
-		}
-
-		if err = RunPoW(api, sc, arthur, whirParams.PowBits[r]); err != nil {
-			return
-		}
-
-		mainRoundData.StirChallengesPoints[r], err = GenerateStirChallengePoints(api, arthur, whirParams.RoundParametersNumOfQueries[r], circuit.LeafIndexes[r], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[r])
-		if err != nil {
-			return
-		}
-
-		mainRoundData.CombinationRandomness[r], err = GenerateCombinationRandomness(api, arthur, len(circuit.LeafIndexes[r])+whirParams.RoundParametersOODSamples[r])
-		if err != nil {
-			return
-		}
-
-		lastEval = api.Add(lastEval, calculateShiftValue(roundOODAnswers, mainRoundData.CombinationRandomness[r], computedFold, api))
-
-		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, lastEval, err = runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[r], 3)
-		if err != nil {
-			return
-		}
-
-		computedFold = computeFold(circuit.Leaves[r+1], roundFoldingRandomness, api)
-		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
-
-		domainSize /= 2
-		expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
-	}
-
-	finalCoefficients := make([]frontend.Variable, 1<<whirParams.FinalSumcheckRounds)
-	if err = arthur.FillNextScalars(finalCoefficients); err != nil {
-		return
-	}
-
-	if err = RunPoW(api, sc, arthur, whirParams.FinalPowBits); err != nil {
-		return
-	}
-
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, whirParams.FinalQueries, circuit.LeafIndexes[whirParams.ParamNRounds], domainSize, uapi, expDomainGenerator, whirParams.FoldingFactorArray[whirParams.ParamNRounds])
-	if err != nil {
-		return
-	}
-
-	finalEvaluations := utilities.UnivarPoly(api, finalCoefficients, finalRandomnessPoints)
-
-	for foldIndex := range computedFold {
-		api.AssertIsEqual(computedFold[foldIndex], finalEvaluations[foldIndex])
-	}
-
-	finalSumcheckRandomness, lastEval, tempErr := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FinalSumcheckRounds, 3)
-	if tempErr != nil {
-		err = tempErr
-		return
-	}
-
-	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
-
-	totalFoldingRandomness = utilities.Reverse(totalFoldingRandomness)
-
-	evaluationOfVPoly := computeWPoly(
-		api,
-		whirParams,
-		initialData,
-		mainRoundData,
-		totalFoldingRandomness,
-		linearStatementValuesAtPoints,
-	)
-
-	api.AssertIsEqual(
-		lastEval,
-		api.Mul(evaluationOfVPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
-	)
-
-	err = nil
-	return
 }
 
 // RunPoW executes a proof-of-work challenge if the difficulty is greater than zero.

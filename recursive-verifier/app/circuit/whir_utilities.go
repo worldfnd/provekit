@@ -16,19 +16,16 @@ func verifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 		treeHeight := len(authPaths[i]) + 1
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
 		leafSiblingHash := leafSiblingHashes[i]
-
 		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
 		for x := range len(leaves[i]) - 2 {
 			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x+2])
 		}
-
 		dir := leafIndexBits[0]
 
 		xLeftChild := api.Select(dir, leafSiblingHash, claimedLeafHash)
 		xRightChild := api.Select(dir, claimedLeafHash, leafSiblingHash)
 
 		currentHash := sc.CompressV2(xLeftChild, xRightChild)
-
 		for level := 1; level < treeHeight; level++ {
 			indexBit := leafIndexBits[level]
 
@@ -155,26 +152,6 @@ func computeWPoly(
 	}
 
 	return value
-}
-
-//nolint:unused
-func fillInAndVerifyRootHash(
-	roundNum int,
-	api frontend.API,
-	uapi *uints.BinaryField[uints.U64],
-	sc *skyscraper.Skyscraper,
-	circuit Merkle,
-	arthur gnarkNimue.Arthur,
-) error {
-	rootHash := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(rootHash); err != nil {
-		return err
-	}
-	err := verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[roundNum], circuit.Leaves[roundNum], circuit.LeafSiblingHashes[roundNum], circuit.AuthPaths[roundNum], rootHash[0])
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func computeFold(leaves [][]frontend.Variable, foldingRandomness []frontend.Variable, api frontend.API) []frontend.Variable {

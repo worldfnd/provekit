@@ -6,11 +6,126 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
 
 	"github.com/consensys/gnark/backend/groth16"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	arkSerialize "github.com/reilabs/go-ark-serialize"
 )
+
+type IndexPair struct {
+	depth uint64
+	index uint64
+}
+
+func convertMultiIndexMTProofsToFullMultiPath(
+	merklePaths []MultiIndexMerkleTreeProof[Digest],
+	stirAnswers [][][]Fp256,
+	fullMerklePaths *[]FullMultiPath[Digest],
+) {
+	for mIndex, mp := range merklePaths {
+		depth := mp.Depth
+		proofIter := 0
+
+		currentMPAnswers := stirAnswers[mIndex]
+		if len(currentMPAnswers) != len(mp.Indices) {
+			panic(fmt.Sprintf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(mp.Indices)))
+		}
+
+		leafHashes := make(map[uint64]Digest)
+		for i := range mp.Indices {
+			leafHashes[mp.Indices[i]] = HashLeafData(currentMPAnswers[i])
+		}
+
+		uniqueIndices := make(map[uint64]bool)
+		for _, idx := range mp.Indices {
+			uniqueIndices[idx] = true
+		}
+
+		indices := make([]uint64, 0, len(uniqueIndices))
+		for idx := range uniqueIndices {
+			indices = append(indices, idx)
+		}
+		sort.Slice(indices, func(i, j int) bool {
+			return indices[i] < indices[j]
+		})
+
+		treeElements := make(map[IndexPair]Digest, len(indices))
+
+		for d := depth; d > 0; d-- {
+			nextIndices := make([]uint64, 0, len(indices))
+
+			i := 0
+			for i < len(indices) {
+				idx := indices[i]
+				var node Digest
+				if d == depth {
+					node = leafHashes[idx]
+				} else {
+					node = treeElements[IndexPair{depth: d, index: idx}]
+				}
+
+				if idx%2 == 0 {
+					treeElements[IndexPair{depth: d, index: idx}] = node
+					if i+1 < len(indices) && indices[i+1] == idx+1 {
+						var otherNode Digest
+						if d == depth {
+							otherNode = leafHashes[idx+1]
+						} else {
+							otherNode = treeElements[IndexPair{depth: d, index: idx + 1}]
+						}
+						parentHash := HashTwoDigests(node, otherNode)
+						treeElements[IndexPair{depth: d, index: idx + 1}] = otherNode
+						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = parentHash
+						nextIndices = append(nextIndices, idx/2)
+						i += 2
+					} else {
+						// missing right sibling → from proof
+						if proofIter >= len(mp.Proof) {
+							panic("insufficient siblings")
+						}
+						sib := mp.Proof[proofIter]
+						treeElements[IndexPair{depth: d, index: idx + 1}] = sib
+						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(node, sib)
+						proofIter++
+						nextIndices = append(nextIndices, idx/2)
+						i++
+					}
+				} else {
+					// right child
+					if proofIter >= len(mp.Proof) {
+						panic("insufficient siblings")
+					}
+					sib := mp.Proof[proofIter]
+					treeElements[IndexPair{depth: d, index: idx - 1}] = sib
+					treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(sib, node)
+
+					proofIter++
+					nextIndices = append(nextIndices, idx/2)
+					i++
+				}
+			}
+			indices = nextIndices
+		}
+
+		var paths []Path[Digest]
+		for _, origIdx := range mp.Indices {
+			leafSibling, authPath, err := ExtractAuthPath(treeElements, origIdx, depth)
+			if err != nil {
+				panic(fmt.Sprintf("failed to extract auth path for index %d: %v", origIdx, err))
+			}
+
+			paths = append(paths, Path[Digest]{
+				LeafHash:        leafHashes[origIdx],
+				LeafIndex:       origIdx,
+				LeafSiblingHash: leafSibling,
+				AuthPath:        authPath,
+			})
+		}
+
+		*fullMerklePaths = append(*fullMerklePaths, FullMultiPath[Digest]{Proofs: paths})
+	}
+}
 
 func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string) error {
 	io := gnarkNimue.IOPattern{}
@@ -22,7 +137,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var pointer uint64
 	var truncated []byte
 
-	var merklePaths []FullMultiPath[KeccakDigest]
+	var merklePaths []MultiIndexMerkleTreeProof[Digest]
 	var stirAnswers [][][]Fp256
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
@@ -43,7 +158,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 
 			switch string(op.Label) {
 			case "merkle_proof":
-				var path FullMultiPath[KeccakDigest]
+				var path MultiIndexMerkleTreeProof[Digest]
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path,
@@ -119,14 +234,17 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("failed to deserialize interner: %w", err)
 	}
 
-	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
+	var fullMerklePaths []FullMultiPath[Digest]
+	convertMultiIndexMTProofsToFullMultiPath(merklePaths, stirAnswers, &fullMerklePaths)
+	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &fullMerklePaths, &stirAnswers)
 
-	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+	var witnessData = consumeWhirData(config.WHIRConfigWitness, &fullMerklePaths, &stirAnswers)
 
 	hints := Hints{
 		witnessHints:      witnessData,
 		spartanHidingHint: hidingSpartanData,
 	}
+
 	err = verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
@@ -177,4 +295,101 @@ func GetR1csFromUrl(r1csUrl string) ([]byte, error) {
 	}
 	log.Printf("Successfully downloaded")
 	return r1csFile, nil
+}
+
+func ExtractAuthPath(
+	treeElements map[IndexPair]Digest,
+	leafIndex uint64,
+	depth uint64,
+) (leafSiblingHash Digest, authPath []Digest, err error) {
+	leafSiblingIdx := leafIndex ^ 1
+	leafSibling, ok := treeElements[IndexPair{depth: depth, index: leafSiblingIdx}]
+	if !ok {
+		return Digest{}, nil, fmt.Errorf("missing leaf sibling at depth=%d, index=%d", depth, leafSiblingIdx)
+	}
+
+	authPath = make([]Digest, 0, depth-1)
+	currentIdx := leafIndex
+
+	for d := depth - 1; d >= 1; d-- {
+		parentIdx := currentIdx / 2
+		siblingIdx := parentIdx ^ 1
+
+		sibling, ok := treeElements[IndexPair{depth: d, index: siblingIdx}]
+		if !ok {
+			return Digest{}, nil, fmt.Errorf("missing sibling at depth=%d, index=%d (parent=%d)", d, siblingIdx, parentIdx)
+		}
+
+		authPath = append(authPath, sibling)
+		currentIdx = parentIdx
+	}
+
+	return leafSibling, authPath, nil
+}
+
+func VerifyAuthPath(
+	leafHash Digest,
+	leafSiblingHash Digest,
+	authPath []Digest,
+	leafIndex uint64,
+	depth uint64,
+	expectedRoot Digest,
+) error {
+	var currentHash Digest
+	if leafIndex%2 == 0 {
+		currentHash = HashTwoDigests(leafHash, leafSiblingHash)
+	} else {
+		currentHash = HashTwoDigests(leafSiblingHash, leafHash)
+	}
+
+	currentIdx := leafIndex
+	for level := 0; level < len(authPath); level++ {
+		parentIdx := currentIdx / 2
+		sibling := authPath[level]
+		if parentIdx%2 == 0 {
+			currentHash = HashTwoDigests(currentHash, sibling)
+		} else {
+			currentHash = HashTwoDigests(sibling, currentHash)
+		}
+		currentIdx = parentIdx
+	}
+
+	if currentHash != expectedRoot {
+		return fmt.Errorf("root mismatch: got %x, expected %x", currentHash, expectedRoot)
+	}
+
+	return nil
+}
+
+func TestExtractAndVerifyAuthPaths(
+	treeElements map[IndexPair]Digest,
+	leafHashes map[uint64]Digest,
+	indices []uint64,
+	depth uint64,
+) error {
+	root, ok := treeElements[IndexPair{depth: 0, index: 0}]
+	if !ok {
+		return fmt.Errorf("root not found in treeElements")
+	}
+
+	for _, idx := range indices {
+		leafSibling, authPath, err := ExtractAuthPath(treeElements, idx, depth)
+		if err != nil {
+			return fmt.Errorf("failed to extract auth path for index %d: %w", idx, err)
+		}
+
+		leafHash, ok := leafHashes[idx]
+		if !ok {
+			return fmt.Errorf("leaf hash not found for index %d", idx)
+		}
+
+		err = VerifyAuthPath(leafHash, leafSibling, authPath, idx, depth, root)
+		if err != nil {
+			return fmt.Errorf("failed to verify auth path for index %d: %w", idx, err)
+		}
+
+		fmt.Printf("✓ Index %d: verified successfully (auth path length: %d)\n", idx, len(authPath))
+	}
+
+	return nil
 }

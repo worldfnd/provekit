@@ -64,7 +64,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
-
 	if err != nil {
 		return err
 	}
@@ -84,8 +83,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 func verifyCircuit(
 	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner,
 ) error {
-	transcriptT := make([]uints.U8, cfg.TranscriptLen)
-	contTranscript := make([]uints.U8, cfg.TranscriptLen)
+	transcriptT := make([]uints.U8, len(cfg.Transcript))
+	contTranscript := make([]uints.U8, len(cfg.Transcript))
 
 	for i := range cfg.Transcript {
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
