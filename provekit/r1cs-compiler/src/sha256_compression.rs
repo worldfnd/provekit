@@ -34,20 +34,15 @@ pub(crate) fn add_u32_addition(
 ) -> usize {
     // Reserve witnesses for carry and result (solver will compute these)
     let carry_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
-
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
+    let result_witness = carry_witness + 1;
 
     // Add witness builder with explicit computation logic
-    r1cs_compiler
-        .witness_builders
-        .push(WitnessBuilder::U32Addition(
-            result_witness,
-            carry_witness,
-            a,
-            b,
-        ));
+    r1cs_compiler.add_witness_builder(WitnessBuilder::U32Addition(
+        result_witness,
+        carry_witness,
+        a,
+        b,
+    ));
 
     // Add constraint: a + b = result + carry * 2^32
     let two_pow_32 = FieldElement::from(1u64 << 32);
@@ -101,7 +96,6 @@ pub(crate) fn add_right_rotate(
 
     // Create witness for low_bits << (32-n)
     let shifted_low_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
     r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(shifted_low_witness, vec![SumTerm(
         Some(shift_multiplier),
         low_bits_witness,
@@ -118,7 +112,6 @@ pub(crate) fn add_right_rotate(
     // Since high_bits occupies lower (32-n) bits and shifted_low occupies
     // upper n bits with no overlap, XOR equals addition in this case.
     let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
     r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_witness, vec![
         SumTerm(None, high_bits_witness),
         SumTerm(None, shifted_low_witness),
@@ -356,7 +349,6 @@ pub(crate) fn add_ch(
     // NOT usage increases significantly.
     let max_u32 = FieldElement::from((1u64 << 32) - 1);
     let not_x_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.r1cs.add_witnesses(1);
     r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(not_x_witness, vec![
         SumTerm(Some(max_u32), r1cs_compiler.witness_one()),
         SumTerm(Some(-FieldElement::ONE), x_witness),
