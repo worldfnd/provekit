@@ -22,7 +22,8 @@ type Path[Digest any] struct {
 }
 
 type FullMultiPath[Digest any] struct {
-	Proofs []Path[Digest]
+	Proofs       []Path[Digest]
+	CapContainer []Digest
 }
 
 type MultiIndexMerkleTreeProof[Digest any] struct {
@@ -88,6 +89,7 @@ type Merkle struct {
 	LeafIndexes       [][]uints.U64
 	LeafSiblingHashes [][]frontend.Variable
 	AuthPaths         [][][]frontend.Variable
+	CapContainer      [][]frontend.Variable
 }
 
 // Other types

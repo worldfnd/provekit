@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"math/bits"
 	"sort"
 
 	"github.com/consensys/gnark/backend/groth16"
@@ -52,9 +53,19 @@ func convertMultiIndexMTProofsToFullMultiPath(
 
 		treeElements := make(map[IndexPair]Digest, len(indices))
 
+		cappedDepth := 0
+		cappedDepth = bits.Len(uint(len(mp.Indices))) - 1
+
+		if cappedDepth >= int(mp.Depth) {
+			cappedDepth = int(mp.Depth) - 1
+		}
+		capContainer := make([]Digest, 2<<cappedDepth)
+		for i := range capContainer {
+			capContainer[i] = Digest{Digest: [32]uint8{}}
+		}
 		for d := depth; d > 0; d-- {
 			nextIndices := make([]uint64, 0, len(indices))
-
+			capIndices := make([]uint64, 0, 1<<depth)
 			i := 0
 			for i < len(indices) {
 				idx := indices[i]
@@ -74,6 +85,8 @@ func convertMultiIndexMTProofsToFullMultiPath(
 						} else {
 							otherNode = treeElements[IndexPair{depth: d, index: idx + 1}]
 						}
+						capIndices = append(capIndices, idx)
+						capIndices = append(capIndices, idx+1)
 						parentHash := HashTwoDigests(node, otherNode)
 						treeElements[IndexPair{depth: d, index: idx + 1}] = otherNode
 						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = parentHash
@@ -85,6 +98,8 @@ func convertMultiIndexMTProofsToFullMultiPath(
 							panic("insufficient siblings")
 						}
 						sib := mp.Proof[proofIter]
+						capIndices = append(capIndices, idx)
+						capIndices = append(capIndices, idx+1)
 						treeElements[IndexPair{depth: d, index: idx + 1}] = sib
 						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(node, sib)
 						proofIter++
@@ -97,6 +112,8 @@ func convertMultiIndexMTProofsToFullMultiPath(
 						panic("insufficient siblings")
 					}
 					sib := mp.Proof[proofIter]
+					capIndices = append(capIndices, idx-1)
+					capIndices = append(capIndices, idx)
 					treeElements[IndexPair{depth: d, index: idx - 1}] = sib
 					treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(sib, node)
 
@@ -105,8 +122,16 @@ func convertMultiIndexMTProofsToFullMultiPath(
 					i++
 				}
 			}
+			if d <= (uint64(cappedDepth)) {
+				for j := range capIndices {
+					offset := 1 << d
+					capContainer[int(offset)+int(capIndices[j])] = treeElements[IndexPair{depth: d, index: uint64(capIndices[j])}]
+				}
+			}
 			indices = nextIndices
 		}
+
+		capContainer[1] = treeElements[IndexPair{depth: 0, index: 0}]
 
 		var paths []Path[Digest]
 		for _, origIdx := range mp.Indices {
@@ -115,15 +140,17 @@ func convertMultiIndexMTProofsToFullMultiPath(
 				panic(fmt.Sprintf("failed to extract auth path for index %d: %v", origIdx, err))
 			}
 
+			// fmt.Println("authPath length", len(authPath))
+			// fmt.Println("cappedDepth", cappedDepth)
 			paths = append(paths, Path[Digest]{
 				LeafHash:        leafHashes[origIdx],
 				LeafIndex:       origIdx,
 				LeafSiblingHash: leafSibling,
-				AuthPath:        authPath,
+				AuthPath:        authPath, //[:len(authPath)-cappedDepth],
 			})
 		}
 
-		*fullMerklePaths = append(*fullMerklePaths, FullMultiPath[Digest]{Proofs: paths})
+		*fullMerklePaths = append(*fullMerklePaths, FullMultiPath[Digest]{Proofs: paths, CapContainer: capContainer})
 	}
 }
 
@@ -164,6 +191,8 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 					&path,
 					false, false,
 				)
+				fmt.Println("path depth", path.Depth)
+				fmt.Println("path indices", len(path.Indices))
 				merklePaths = append(merklePaths, path)
 
 			case "stir_answers":

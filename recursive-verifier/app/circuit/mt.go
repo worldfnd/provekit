@@ -15,6 +15,7 @@ func newMerkle(
 	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
 	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.merklePaths))
 	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
+	var totalCapContainer = make([][]frontend.Variable, len(hint.merklePaths))
 
 	for i, merkle_path := range hint.merklePaths {
 		var numOfLeavesProved = len(merkle_path.Proofs)
@@ -23,6 +24,7 @@ func newMerkle(
 		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeafSiblingHashes[i] = make([]frontend.Variable, numOfLeavesProved)
+		totalCapContainer[i] = make([]frontend.Variable, len(merkle_path.CapContainer))
 
 		for j := range numOfLeavesProved {
 			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
@@ -30,8 +32,10 @@ func newMerkle(
 		}
 
 		totalLeafIndexes[i] = make([]uints.U64, numOfLeavesProved)
-
 		if !isContainer {
+			for k := range merkle_path.CapContainer {
+				totalCapContainer[i][k] = typeConverters.LittleEndianUint8ToBigInt(merkle_path.CapContainer[k].Digest[:])
+			}
 			for j := range numOfLeavesProved {
 				proof := merkle_path.Proofs[j]
 
@@ -57,6 +61,7 @@ func newMerkle(
 		LeafIndexes:       totalLeafIndexes,
 		LeafSiblingHashes: totalLeafSiblingHashes,
 		AuthPaths:         totalAuthPath,
+		CapContainer:      totalCapContainer,
 	}
 }
 

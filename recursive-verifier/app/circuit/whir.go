@@ -110,7 +110,7 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
+			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], firstRound.CapContainer[0], rootHashes)
 			if err != nil {
 				return
 			}
@@ -123,7 +123,7 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], circuit.Leaves[r-1], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
+			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], circuit.Leaves[r-1], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], circuit.CapContainer[r-1], rootHashList[r-1])
 			if err != nil {
 				return
 			}
