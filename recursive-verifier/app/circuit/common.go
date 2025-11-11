@@ -53,10 +53,10 @@ func convertMultiIndexMTProofsToFullMultiPath(
 
 		treeElements := make(map[IndexPair]Digest, len(indices))
 
-		cappedDepth := 0
-		cappedDepth = bits.Len(uint(len(mp.Indices))) - 1
+		cappedDepth := bits.Len(uint(len(mp.Indices))) - 1
 
 		if cappedDepth >= int(mp.Depth) {
+			// We need to have at least one level, in order to produce the hash and consume the siblings
 			cappedDepth = int(mp.Depth) - 1
 		}
 		capContainer := make([]Digest, 2<<cappedDepth)
@@ -140,13 +140,11 @@ func convertMultiIndexMTProofsToFullMultiPath(
 				panic(fmt.Sprintf("failed to extract auth path for index %d: %v", origIdx, err))
 			}
 
-			// fmt.Println("authPath length", len(authPath))
-			// fmt.Println("cappedDepth", cappedDepth)
 			paths = append(paths, Path[Digest]{
 				LeafHash:        leafHashes[origIdx],
 				LeafIndex:       origIdx,
 				LeafSiblingHash: leafSibling,
-				AuthPath:        authPath, //[:len(authPath)-cappedDepth],
+				AuthPath:        authPath[:len(authPath)-cappedDepth],
 			})
 		}
 
@@ -191,8 +189,6 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 					&path,
 					false, false,
 				)
-				fmt.Println("path depth", path.Depth)
-				fmt.Println("path indices", len(path.Indices))
 				merklePaths = append(merklePaths, path)
 
 			case "stir_answers":

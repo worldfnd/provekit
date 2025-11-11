@@ -2,7 +2,6 @@ package circuit
 
 import (
 	"log"
-	"math/bits"
 	"os"
 
 	"reilabs/whir-verifier-circuit/app/typeConverters"
@@ -14,9 +13,7 @@ import (
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
-	"github.com/consensys/gnark/std/lookup/logderivlookup"
 	"github.com/consensys/gnark/std/math/uints"
-	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
 type Circuit struct {
@@ -41,79 +38,6 @@ type Circuit struct {
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
-}
-
-func log2(n int) int {
-	if n <= 0 {
-		return 0
-	}
-	return bits.Len(uint(n)) - 1
-}
-
-func verifyCapContainer(api frontend.API, sc *skyscraper.Skyscraper, uapi *uints.BinaryField[uints.U64], capContainer []frontend.Variable, leaves [][]frontend.Variable, leafIndexes []uints.U64, leafSiblingHashes []frontend.Variable, authPaths [][]frontend.Variable) error {
-	// api.Println(capContainer)
-	// api.Println(len(capContainer))
-	if len(capContainer) > 0 {
-		for i := ((len(capContainer) / 2) - 1); i > 0; i-- {
-			supposedHash := sc.CompressV2(capContainer[2*i], capContainer[2*i+1])
-			actualHash := api.Select(api.IsZero(capContainer[2*i]), capContainer[i], supposedHash)
-			api.AssertIsEqual(actualHash, capContainer[i])
-		}
-	}
-
-	capDepth := log2(len(capContainer) / 2)
-	// api.Println(capDepth)
-	dedupedLUT := logderivlookup.New(api)
-
-	for i := (len(capContainer) / 2); i < len(capContainer); i++ {
-		// api.Println(capContainer[i])
-		dedupedLUT.Insert(capContainer[i])
-	}
-
-	// api.AssertIsEqual(x, searchRes[0])
-
-	numOfLeavesProved := len(leaves)
-	// api.Println(numOfLeavesProved)
-
-	for i := range numOfLeavesProved {
-		treeHeight := len(authPaths[i]) + 1
-		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
-
-		// api.Println(uapi.ToValue(leafIndexes[i]))
-		// api.Println(1 << treeHeight)
-		// api.Println(leafIndexBits[treeHeight-capDepth:])
-		rootIndex := api.FromBinary(leafIndexBits[treeHeight-capDepth:]...)
-		// api.Println(rootIndex)
-		searchRes := dedupedLUT.Lookup(rootIndex)
-		rootHash := searchRes[0]
-		// api.Println(rootHash)
-
-		leafSiblingHash := leafSiblingHashes[i]
-		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
-		for x := range len(leaves[i]) - 2 {
-			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x+2])
-		}
-		dir := leafIndexBits[0]
-
-		xLeftChild := api.Select(dir, leafSiblingHash, claimedLeafHash)
-		xRightChild := api.Select(dir, claimedLeafHash, leafSiblingHash)
-
-		currentHash := sc.CompressV2(xLeftChild, xRightChild)
-		for level := 1; level < treeHeight-capDepth; level++ {
-			indexBit := leafIndexBits[level]
-
-			siblingHash := authPaths[i][level-1]
-
-			dir := api.And(indexBit, 1)
-			left := api.Select(dir, siblingHash, currentHash)
-			right := api.Select(dir, currentHash, siblingHash)
-
-			currentHash = sc.CompressV2(left, right)
-		}
-		// api.Println(currentHash)
-		api.AssertIsEqual(currentHash, rootHash)
-	}
-	return nil
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {

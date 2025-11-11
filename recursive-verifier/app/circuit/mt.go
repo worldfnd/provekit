@@ -21,13 +21,17 @@ func newMerkle(
 		var numOfLeavesProved = len(merkle_path.Proofs)
 		var treeHeight = len(merkle_path.Proofs[0].AuthPath)
 
-		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
+		if treeHeight > 0 {
+			totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
+		}
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeafSiblingHashes[i] = make([]frontend.Variable, numOfLeavesProved)
 		totalCapContainer[i] = make([]frontend.Variable, len(merkle_path.CapContainer))
 
 		for j := range numOfLeavesProved {
-			totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
+			if treeHeight > 0 {
+				totalAuthPath[i][j] = make([]frontend.Variable, treeHeight)
+			}
 			totalLeaves[i][j] = make([]frontend.Variable, len(hint.stirAnswers[i][j]))
 		}
 

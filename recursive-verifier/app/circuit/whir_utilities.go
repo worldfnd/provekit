@@ -19,33 +19,28 @@ func verifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 			api.AssertIsEqual(actualHash, capContainer[i])
 		}
 	}
+	api.AssertIsEqual(rootHash, capContainer[1])
 
 	capDepth := bits.Len(uint(len(capContainer)/2)) - 1
-	// api.Println(capDepth)
-	dedupedLUT := logderivlookup.New(api)
+	cappedNodesLUT := logderivlookup.New(api)
 
 	for i := (len(capContainer) / 2); i < len(capContainer); i++ {
-		// api.Println(capContainer[i])
-		dedupedLUT.Insert(capContainer[i])
+		cappedNodesLUT.Insert(capContainer[i])
 	}
 
-	// api.AssertIsEqual(x, searchRes[0])
-
 	numOfLeavesProved := len(leaves)
-	// api.Println(numOfLeavesProved)
+
+	trimmedTreeHeight := 0
+	if len(authPaths) > 0 {
+		trimmedTreeHeight = len(authPaths[0])
+	}
 
 	for i := range numOfLeavesProved {
-		treeHeight := len(authPaths[i]) + 1 + capDepth
+		treeHeight := trimmedTreeHeight + 1 + capDepth
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)
-
-		// api.Println(uapi.ToValue(leafIndexes[i]))
-		// api.Println(1 << treeHeight)
-		// api.Println(leafIndexBits[treeHeight-capDepth:])
 		rootIndex := api.FromBinary(leafIndexBits[treeHeight-capDepth:]...)
-		// api.Println(rootIndex)
-		searchRes := dedupedLUT.Lookup(rootIndex)
-		rootHash := searchRes[0]
-		// api.Println(rootHash)
+		searchRes := cappedNodesLUT.Lookup(rootIndex)
+		cappedNodeHash := searchRes[0]
 
 		leafSiblingHash := leafSiblingHashes[i]
 		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
@@ -69,8 +64,7 @@ func verifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 
 			currentHash = sc.CompressV2(left, right)
 		}
-		// api.Println(currentHash)
-		api.AssertIsEqual(currentHash, rootHash)
+		api.AssertIsEqual(currentHash, cappedNodeHash)
 	}
 	return nil
 }
