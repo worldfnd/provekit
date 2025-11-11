@@ -22,7 +22,6 @@ use {
     },
     tracing::{info, instrument, warn},
     whir::{
-        ntt::RSDefault,
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -32,8 +31,6 @@ use {
         },
     },
 };
-
-type RS = RSDefault;
 
 pub trait WhirR1CSProver {
     fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
@@ -211,7 +208,7 @@ pub fn batch_commit_to_polynomial(
 
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
-        .commit_batch::<_, RS>(merlin, &[
+        .commit_batch(merlin, &[
             &masked_polynomial_coeff,
             &random_polynomial_coeff,
         ])
@@ -494,7 +491,7 @@ pub fn run_zk_whir_pcs_prover(
 
     let prover = Prover::new(params.clone());
     let (randomness, deferred) = prover
-        .prove::<_, RS>(&mut merlin, statement, witness)
+        .prove(&mut merlin, statement, witness)
         .expect("WHIR prover failed to generate a proof");
 
     (merlin, randomness, deferred)

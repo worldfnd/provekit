@@ -3,14 +3,7 @@ use {ark_bn254::Fr, ark_ff::AdditiveGroup, ntt::ntt_nr, whir::ntt::ReedSolomon};
 pub struct RSFr;
 impl ReedSolomon<Fr> for RSFr {
     fn interleaved_encode(
-        interleaved_coeffs: &[Fr],
-        expansion: usize,
-        fold_factor: usize,
-    ) -> Vec<Fr> {
-        interleaved_rs_encode(interleaved_coeffs, expansion, fold_factor)
-    }
-
-    fn interleaved_basefield_encode(
+        &self,
         interleaved_coeffs: &[Fr],
         expansion: usize,
         fold_factor: usize,
