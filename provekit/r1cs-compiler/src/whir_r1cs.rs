@@ -1,12 +1,9 @@
 use {
-    provekit_common::{utils::next_power_of_two, FieldElement, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{ntt::RSFr, utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     std::sync::Arc,
-    whir::{
-        ntt::RSDefault,
-        parameters::{
-            default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
-            MultivariateParameters, ProtocolParameters, SoundnessType,
-        },
+    whir::parameters::{
+        default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
+        MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
 
@@ -67,7 +64,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             deduplication_strategy: DeduplicationStrategy::Disabled,
             merkle_proof_strategy: MerkleProofStrategy::Uncompressed,
         };
-        let reed_solomon = Arc::new(RSDefault);
+        let reed_solomon = Arc::new(RSFr);
         let basefield_reed_solomon = reed_solomon.clone();
         WhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
     }

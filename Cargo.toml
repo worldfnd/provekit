@@ -143,7 +143,8 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.1
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
   "scalar_field",
 ] }
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+# ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+ark-crypto-primitives = { git = "https://github.com/veljkovranic/crypto-primitives", features = ["merkle_tree"], rev = "fa0623c7fb69ce8b39a5397a5c6de1ec84151295" }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
@@ -152,4 +153,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
-whir = { git = "https://github.com/xrvdg/whir", branch="xr/rs-send-sync", features = ["tracing"] }
+whir = { git = "https://github.com/xrvdg/whir", branch="xr/integration-custom-arkworks", features = ["tracing"] }

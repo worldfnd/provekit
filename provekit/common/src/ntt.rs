@@ -10,6 +10,10 @@ impl ReedSolomon<Fr> for RSFr {
     ) -> Vec<Fr> {
         interleaved_rs_encode(interleaved_coeffs, expansion, fold_factor)
     }
+
+    fn is_bit_reversed(&self) -> bool {
+        true
+    }
 }
 
 fn interleaved_rs_encode(
