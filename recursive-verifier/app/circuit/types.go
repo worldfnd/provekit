@@ -76,14 +76,6 @@ type InitialSumcheckData struct {
 	InitialCombinationRandomness []frontend.Variable
 }
 
-// Merkle specific types
-type MerklePaths struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
-}
-
 type Merkle struct {
 	Leaves            [][][]frontend.Variable
 	LeafIndexes       [][]uints.U64
