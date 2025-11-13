@@ -34,4 +34,4 @@ workspace = true
 
 [[bench]]
 name = "bench"
-harness = true
+harness = false
