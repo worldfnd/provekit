@@ -1,5 +1,5 @@
 mod pow;
 mod sponge;
-pub mod whir;
+mod whir;
 
-pub use self::{pow::SkyscraperPoW, sponge::SkyscraperSponge, whir::SkyscraperMerkleConfig, whir::SkyscraperHasher};
+pub use self::{pow::SkyscraperPoW, sponge::SkyscraperSponge, whir::SkyscraperMerkleConfig};

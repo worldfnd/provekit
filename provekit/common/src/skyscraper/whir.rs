@@ -14,8 +14,7 @@ use {
         },
         DomainSeparator, ProofResult, ProverState, VerifierState,
     },
-    core::mem::size_of,
-    std::borrow::Borrow, whir::merkle_tree::{Hasher, Hash},
+    std::borrow::Borrow,
 };
 
 
@@ -109,35 +108,5 @@ impl whir::whir::utils::DigestToUnitDeserialize<SkyscraperMerkleConfig>
     fn read_digest(&mut self) -> ProofResult<FieldElement> {
         let [r] = self.next_scalars()?;
         Ok(r)
-    }
-}
-
-pub struct SkyscraperHasher;
-
-impl SkyscraperHasher {
-    pub fn new() -> Self {
-        // Skyscraper outputs 32 bytes (one field element)
-        assert_eq!(size_of::<Hash>(), 32);
-        Self
-    }
-}
-
-impl Hasher for SkyscraperHasher {
-    fn hash_many(&self, size: usize, input: &[u8], output: &mut [Hash]) {
-        assert_eq!(input.len() % size, 0, "Input length not a multiple of message size.");
-        assert_eq!(input.len() / 2, output.len() * 32, "Output length mismatch.");
-
-        // Reinterpret `&mut [Hash]` as a flat `&mut [u8]`
-        let out_bytes_len = output.len() * size_of::<Hash>();
-        let out_bytes = unsafe {
-            core::slice::from_raw_parts_mut(output.as_mut_ptr().cast::<u8>(), out_bytes_len)
-        };
-
-        // Choose the implementation you want:
-        // skyscraper::reference::compress_many(input, out_bytes);
-        // skyscraper::v1::compress_many(input, out_bytes);
-        // skyscraper::block3::compress_many(input, out_bytes);
-        // skyscraper::block4::compress_many(input, out_bytes);
-        skyscraper::simple::compress_many(input, out_bytes);
     }
 }

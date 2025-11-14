@@ -2,7 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::{SkyscraperHasher, SkyscraperSponge},
+        skyscraper::SkyscraperSponge,
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },
@@ -12,7 +12,7 @@ use {
     },
     tracing::instrument,
     whir::{
-        merkle_tree::Hasher, poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
             statement::{Statement, Weights},
             utils::HintDeserialize,
@@ -29,10 +29,6 @@ pub struct DataFromSumcheckVerifier {
 
 pub trait WhirR1CSVerifier {
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()>;
-}
-
-pub fn construct_skyscraper() -> Box<dyn Hasher> {
-    Box::new(SkyscraperHasher::new())
 }
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
@@ -184,7 +180,7 @@ pub fn run_whir_pcs_verifier(
     let verifier = Verifier::new(params);
 
     let (folding_randomness, deferred) = verifier
-        .verify(arthur, parsed_commitment, statement_verifier, construct_skyscraper)
+        .verify(arthur, parsed_commitment, statement_verifier)
         .context("while verifying WHIR")?;
 
     Ok((folding_randomness, deferred))
