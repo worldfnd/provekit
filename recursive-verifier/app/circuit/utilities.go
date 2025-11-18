@@ -242,7 +242,7 @@ func consumeFront[T any](slice *[]T) T {
 	return head
 }
 
-func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Digest], stir_answers *[][][]Fp256) ZKHint {
+func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPathWithCapping[Digest], stir_answers *[][][]Fp256) ZKHint {
 	var zkHint ZKHint
 
 	if len(*merkle_paths) > 0 && len(*stir_answers) > 0 {
@@ -251,7 +251,7 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Digest
 
 		zkHint.firstRoundMerklePaths = FirstRoundHint{
 			path: Hint{
-				merklePaths: []FullMultiPath[Digest]{firstRoundMerklePath},
+				merklePaths: []FullMultiPathWithCapping[Digest]{firstRoundMerklePath},
 				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
 			},
 			expectedStirAnswers: firstRoundStirAnswers,
@@ -260,7 +260,7 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Digest
 
 	expectedRounds := whirConfig.NRounds
 
-	var remainingMerklePaths []FullMultiPath[Digest]
+	var remainingMerklePaths []FullMultiPathWithCapping[Digest]
 	var remainingStirAnswers [][][]Fp256
 
 	for i := 0; i < expectedRounds && len(*merkle_paths) > 0 && len(*stir_answers) > 0; i++ {

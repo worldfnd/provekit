@@ -22,8 +22,8 @@ type IndexPair struct {
 func convertMultiIndexMTProofsToFullMultiPath(
 	merklePaths []MultiIndexMerkleTreeProof[Digest],
 	stirAnswers [][][]Fp256,
-	fullMerklePaths *[]FullMultiPath[Digest],
-) {
+) []FullMultiPathWithCapping[Digest] {
+	fullMerklePaths := make([]FullMultiPathWithCapping[Digest], 0, len(merklePaths))
 	for mIndex, mp := range merklePaths {
 		depth := mp.Depth
 		proofIter := 0
@@ -141,14 +141,122 @@ func convertMultiIndexMTProofsToFullMultiPath(
 			}
 
 			paths = append(paths, Path[Digest]{
-				LeafHash:        leafHashes[origIdx],
 				LeafIndex:       origIdx,
 				LeafSiblingHash: leafSibling,
 				AuthPath:        authPath[:len(authPath)-cappedDepth],
 			})
 		}
 
-		*fullMerklePaths = append(*fullMerklePaths, FullMultiPath[Digest]{Proofs: paths, CapContainer: capContainer})
+		fullMerklePaths = append(fullMerklePaths, FullMultiPathWithCapping[Digest]{Proofs: paths, CapContainer: capContainer})
+	}
+	return fullMerklePaths
+}
+
+func convertFullMultiPathToFullMultiPathWithCapping(
+	paths []FullMultiPath[Digest],
+	stirAnswers [][][]Fp256,
+) ([]FullMultiPathWithCapping[Digest], error) {
+	fullMerklePaths := make([]FullMultiPathWithCapping[Digest], 0, len(paths))
+	for mIndex, path := range paths {
+		currentMPAnswers := stirAnswers[mIndex]
+
+		if len(currentMPAnswers) != len(path.Proofs) {
+			panic(fmt.Sprintf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(path.Proofs)))
+		}
+		depth := len(path.Proofs[0].AuthPath) + 1
+
+		cappedDepth := 0
+		if len(path.Proofs) > 1 {
+			cappedDepth = bits.Len(uint(len(path.Proofs))) - 1
+		}
+		if cappedDepth >= depth {
+			cappedDepth = depth - 1
+		}
+		if cappedDepth < 0 {
+			cappedDepth = 0
+		}
+		tree := make(map[IndexPair]Digest, 2<<depth)
+		for pIndex, proof := range path.Proofs {
+			populateTreeFromPath(tree, depth, proof, HashLeafData(currentMPAnswers[pIndex]))
+		}
+
+		capContainer := make([]Digest, 2<<cappedDepth)
+		for d := 0; d <= cappedDepth; d++ {
+			offset := 1 << d
+			width := 1 << d
+			for idx := 0; idx < width; idx++ {
+				if node, ok := tree[IndexPair{depth: uint64(d), index: uint64(idx)}]; ok {
+					capContainer[offset+idx] = node
+				}
+			}
+		}
+
+		capContainer[1] = tree[IndexPair{depth: 0, index: 0}]
+
+		trimmed := make([]Path[Digest], len(path.Proofs))
+		for i, proof := range path.Proofs {
+			authPath := make([]Digest, len(proof.AuthPath))
+			for i := 0; i < len(proof.AuthPath); i = i + 1 {
+				authPath[i] = proof.AuthPath[len(proof.AuthPath)-1-i]
+			}
+			err := VerifyAuthPath(HashLeafData(currentMPAnswers[i]), proof.LeafSiblingHash, authPath, proof.LeafIndex, uint64(depth), capContainer[1])
+			if err != nil {
+				return nil, fmt.Errorf("failed to verify auth path for index %d: %w", proof.LeafIndex, err)
+			}
+
+			trimLen := len(proof.AuthPath) - cappedDepth
+			if trimLen < 0 {
+				trimLen = 0
+			}
+
+			trimmed[i] = Path[Digest]{
+				LeafSiblingHash: proof.LeafSiblingHash,
+				LeafIndex:       proof.LeafIndex,
+				AuthPath:        authPath[:trimLen],
+			}
+		}
+		fullMerklePaths = append(fullMerklePaths, FullMultiPathWithCapping[Digest]{Proofs: trimmed, CapContainer: capContainer})
+
+	}
+
+	return fullMerklePaths, nil
+}
+
+// populateTreeFromPath records every node along the proof so the cap container
+// can later be filled.
+func populateTreeFromPath(tree map[IndexPair]Digest, depth int, proof Path[Digest], leafHash Digest) {
+	currentIdx := proof.LeafIndex
+	currentDepth := depth
+
+	tree[IndexPair{depth: uint64(currentDepth), index: currentIdx}] = leafHash
+	siblingIdx := currentIdx ^ 1
+	tree[IndexPair{depth: uint64(currentDepth), index: siblingIdx}] = proof.LeafSiblingHash
+	var currentHash Digest
+	if currentIdx%2 == 0 {
+		currentHash = HashTwoDigests(leafHash, proof.LeafSiblingHash)
+	} else {
+		currentHash = HashTwoDigests(proof.LeafSiblingHash, leafHash)
+	}
+
+	currentIdx /= 2
+	currentDepth--
+	tree[IndexPair{depth: uint64(currentDepth), index: currentIdx}] = currentHash
+
+	for idx := len(proof.AuthPath) - 1; idx >= 0; idx-- {
+		sibling := proof.AuthPath[idx]
+		siblingIdx := currentIdx ^ 1
+		tree[IndexPair{depth: uint64(currentDepth), index: siblingIdx}] = sibling
+
+		if currentIdx%2 == 0 {
+			currentHash = HashTwoDigests(currentHash, sibling)
+		} else {
+			currentHash = HashTwoDigests(sibling, currentHash)
+		}
+
+		currentIdx /= 2
+		currentDepth--
+
+		tree[IndexPair{depth: uint64(currentDepth), index: currentIdx}] = currentHash
 	}
 }
 
@@ -162,7 +270,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var pointer uint64
 	var truncated []byte
 
-	var merklePaths []MultiIndexMerkleTreeProof[Digest]
+	var merklePaths []FullMultiPath[Digest]
 	var stirAnswers [][][]Fp256
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
@@ -183,7 +291,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 
 			switch string(op.Label) {
 			case "merkle_proof":
-				var path MultiIndexMerkleTreeProof[Digest]
+				var path FullMultiPath[Digest]
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path,
@@ -259,10 +367,10 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("failed to deserialize interner: %w", err)
 	}
 
-	var fullMerklePaths []FullMultiPath[Digest]
-	convertMultiIndexMTProofsToFullMultiPath(merklePaths, stirAnswers, &fullMerklePaths)
-	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &fullMerklePaths, &stirAnswers)
+	// convertMultiIndexMTProofsToFullMultiPath(merklePaths, stirAnswers, &fullMerklePaths)
+	fullMerklePaths, err := convertFullMultiPathToFullMultiPathWithCapping(merklePaths, stirAnswers)
 
+	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &fullMerklePaths, &stirAnswers)
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &fullMerklePaths, &stirAnswers)
 
 	hints := Hints{
@@ -378,7 +486,6 @@ func VerifyAuthPath(
 		}
 		currentIdx = parentIdx
 	}
-
 	if currentHash != expectedRoot {
 		return fmt.Errorf("root mismatch: got %x, expected %x", currentHash, expectedRoot)
 	}

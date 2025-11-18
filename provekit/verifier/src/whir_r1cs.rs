@@ -12,12 +12,13 @@ use {
     },
     tracing::instrument,
     whir::{
-        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint}, whir::{
+        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
+        whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
             statement::{Statement, Weights},
             utils::HintDeserialize,
             verifier::Verifier,
-        }
+        },
     },
 };
 

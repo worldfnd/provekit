@@ -34,7 +34,6 @@ func verifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 	if len(authPaths) > 0 {
 		trimmedTreeHeight = len(authPaths[0])
 	}
-
 	for i := range numOfLeavesProved {
 		treeHeight := trimmedTreeHeight + 1 + capDepth
 		leafIndexBits := api.ToBinary(uapi.ToValue(leafIndexes[i]), treeHeight)

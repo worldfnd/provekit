@@ -15,13 +15,16 @@ type Fp256 struct {
 }
 
 type Path[Digest any] struct {
-	LeafHash        Digest
 	LeafSiblingHash Digest
 	AuthPath        []Digest
 	LeafIndex       uint64
 }
 
 type FullMultiPath[Digest any] struct {
+	Proofs []Path[Digest]
+}
+
+type FullMultiPathWithCapping[Digest any] struct {
 	Proofs       []Path[Digest]
 	CapContainer []Digest
 }
@@ -107,7 +110,7 @@ type Hints struct {
 }
 
 type Hint struct {
-	merklePaths []FullMultiPath[Digest]
+	merklePaths []FullMultiPathWithCapping[Digest]
 	stirAnswers [][][]Fp256
 }
 
