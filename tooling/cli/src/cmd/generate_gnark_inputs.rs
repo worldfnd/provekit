@@ -2,7 +2,7 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, NoirProofScheme},
+    provekit_common::{file::read, NoirProof, Prover},
     provekit_gnark::write_gnark_parameters_to_file,
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
@@ -14,7 +14,7 @@ use {
 pub struct Args {
     /// path to the compiled Noir program
     #[argh(positional)]
-    scheme_path: PathBuf,
+    prover_path: PathBuf,
 
     /// path to the proof file
     #[argh(positional)]
@@ -35,33 +35,36 @@ pub struct Args {
         default = "String::from(\"./params_for_recursive_verifier\")"
     )]
     params_for_recursive_verifier: String,
+
+    /// path to the r1cs file
+    #[argh(option, long = "r1cs", default = "String::from(\"./r1cs.json\")")]
+    r1cs_path: String,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let scheme: NoirProofScheme =
-            read(&self.scheme_path).context("while reading Noir proof scheme")?;
-        let (constraints, witnesses) = scheme.size();
+        // Read the prover
+        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
+        let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Read the proof
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         write_gnark_parameters_to_file(
-            &scheme.whir_for_witness.whir_witness,
-            &scheme.whir_for_witness.whir_for_hiding_spartan,
+            &prover.whir_for_witness.whir_witness,
+            &prover.whir_for_witness.whir_for_hiding_spartan,
             &proof.whir_r1cs_proof.transcript,
-            &scheme.whir_for_witness.create_io_pattern(),
-            scheme.whir_for_witness.m_0,
-            scheme.whir_for_witness.m,
-            scheme.whir_for_witness.a_num_terms,
+            &prover.whir_for_witness.create_io_pattern(),
+            prover.whir_for_witness.m_0,
+            prover.whir_for_witness.m,
+            prover.whir_for_witness.a_num_terms,
             &self.params_for_recursive_verifier,
         );
 
-        let json = serde_json::to_string_pretty(&scheme.r1cs).unwrap(); // Or `to_string` for compact
-        let mut file = File::create("r1cs.json")?;
+        let json = serde_json::to_string_pretty(&prover.r1cs).unwrap(); // Or `to_string` for compact
+        let mut file = File::create(&self.r1cs_path)?;
         file.write_all(json.as_bytes())?;
 
         Ok(())

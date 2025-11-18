@@ -12,6 +12,8 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	arkSerialize "github.com/reilabs/go-ark-serialize"
+
+	"reilabs/whir-verifier-circuit/app/common"
 )
 
 type IndexPair struct {
@@ -256,7 +258,7 @@ func populateTreeFromPath(tree map[IndexPair]Digest, depth int, proof Path[Diges
 	}
 }
 
-func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, outputCcsPath string) error {
+func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, buildOps common.BuildOps) error {
 	io := gnarkNimue.IOPattern{}
 	err := io.Parse([]byte(config.IOPattern))
 	if err != nil {
@@ -374,7 +376,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		spartanHidingHint: hidingSpartanData,
 	}
 
-	err = verifyCircuit(deferred, config, hints, pk, vk, outputCcsPath, claimedEvaluations, r1cs, interner)
+	err = verifyCircuit(deferred, config, hints, pk, vk, claimedEvaluations, r1cs, interner, buildOps)
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}

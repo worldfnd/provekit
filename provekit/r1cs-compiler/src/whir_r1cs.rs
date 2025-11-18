@@ -1,10 +1,16 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::next_power_of_two, FieldElement, WhirConfig, WhirR1CSScheme, R1CS},
     whir::parameters::{
         default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
         MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
+
+// Minimum log2 of the WHIR evaluation domain (lower bound for m).
+const MIN_WHIR_NUM_VARIABLES: usize = 12;
+// Minimum number of variables in the sumcheck’s multilinear polynomial (lower
+// bound for m_0).
+const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(r1cs: &R1CS) -> Self;
@@ -14,14 +20,17 @@ pub trait WhirR1CSSchemeBuilder {
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        // m is equal to ceiling(log(number of variables in constraint system)). It is
-        // equal to the log of the width of the matrices.
-        let m = next_power_of_two(r1cs.num_witnesses());
+        // m_raw is equal to ceiling(log(number of variables in constraint system)). It
+        // is equal to the log of the width of the matrices.
+        let m_raw = next_power_of_two(r1cs.num_witnesses());
 
-        // m_0 is equal to ceiling(log(number_of_constraints)). It is equal to the
+        // m0_raw is equal to ceiling(log(number_of_constraints)). It is equal to the
         // number of variables in the multilinear polynomial we are running our sumcheck
         // on.
-        let m_0 = next_power_of_two(r1cs.num_constraints());
+        let m0_raw = next_power_of_two(r1cs.num_constraints());
+
+        let m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Whir parameters
         Self {
@@ -37,11 +46,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     }
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
-        let mv_params = MultivariateParameters::new(num_variables);
+        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
+
+        let mv_params = MultivariateParameters::new(nv);
         let whir_params = ProtocolParameters {
             initial_statement: true,
             security_level: 128,
-            pow_bits: default_max_pow(num_variables, 1),
+            pow_bits: default_max_pow(nv, 1),
             folding_factor: FoldingFactor::Constant(4),
             leaf_hash_params: (),
             two_to_one_params: (),

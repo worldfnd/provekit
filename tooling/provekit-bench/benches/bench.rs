@@ -3,73 +3,67 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    provekit_common::{file::read, NoirProof, NoirProofScheme},
-    provekit_prover::NoirProofSchemeProver,
-    provekit_verifier::NoirProofSchemeVerifier,
+    provekit_common::{file::read, NoirProof, Prover, Verifier},
+    provekit_prover::Prove,
+    provekit_verifier::Verify,
     std::path::Path,
 };
 
 #[divan::bench]
 fn read_poseidon_1000(bencher: Bencher) {
-    bencher.bench(|| read::<NoirProofScheme>("benches/poseidon-1000.nps".as_ref()));
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
+    bencher.bench(|| read::<Prover>(&proof_prover_path));
 }
 
 #[divan::bench]
 fn prove_poseidon_1000(bencher: Bencher) {
-    let path: &Path = "benches/poseidon-1000.nps".as_ref();
-
-    let scheme: NoirProofScheme = read(path)
-        .with_context(|| format!("Reading {}", path.display()))
-        .expect("Reading proof scheme");
-
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
+
+    let prover: Prover = read(&proof_prover_path)
+        .with_context(|| format!("Reading {}", proof_prover_path.display()))
+        .expect("Reading prover");
 
     let witness_path = crate_dir.join("Prover.toml");
 
-    let input_map = scheme
-        .read_witness(&witness_path)
-        .expect("Failed reading witness");
-
-    bencher.bench(|| black_box(&scheme).prove(black_box(&input_map)));
+    bencher.bench_local(|| {
+        let prover = black_box(prover.clone());
+        let witness_path = black_box(&witness_path);
+        prover.prove(witness_path)
+    });
 }
 
 #[divan::bench]
 fn prove_poseidon_1000_with_io(bencher: Bencher) {
-    let path: &Path = "benches/poseidon-1000.nps".as_ref();
-
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+
+    let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {
-        let scheme: NoirProofScheme = read(path)
+        let prover: Prover = read(&proof_prover_path)
             .with_context(|| {
                 format!(
                     "Failed to read scheme from path: {} (working dir: {:?})",
-                    path.display(),
+                    proof_prover_path.display(),
                     std::env::current_dir().unwrap()
                 )
             })
-            .expect("Reading proof scheme failed");
-        let scheme = black_box(&scheme);
-        let input_map = scheme
-            .read_witness(&witness_path)
-            .with_context(|| {
-                format!(
-                    "Failed to read witness from path: {} (working dir: {:?})",
-                    witness_path.display(),
-                    std::env::current_dir().unwrap()
-                )
-            })
-            .expect("Reading witness failed");
-        scheme.prove(black_box(&input_map))
+            .expect("Reading prover failed");
+        let prover = black_box(prover);
+        prover.prove(black_box(&witness_path))
     });
 }
 
 #[divan::bench]
 fn verify_poseidon_1000(bencher: Bencher) {
-    let scheme: NoirProofScheme = read("benches/poseidon-1000.nps".as_ref()).unwrap();
-    let proof: NoirProof = read("benches/poseidon-1000.np".as_ref()).unwrap();
-    bencher.bench(|| black_box(&scheme).verify(black_box(&proof)));
+    let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
+    let proof_verifier_path = crate_dir.join("noir-provekit-verifier.pkv");
+    let mut verifier: Verifier = read(&proof_verifier_path).unwrap();
+    let proof_path = crate_dir.join("noir-proof.np");
+    let proof: NoirProof = read(&proof_path).unwrap();
+    bencher.bench_local(|| black_box(&mut verifier).verify(black_box(&proof)));
 }
 
 fn main() {

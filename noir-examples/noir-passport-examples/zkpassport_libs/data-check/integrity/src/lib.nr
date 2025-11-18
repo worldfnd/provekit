@@ -1,5 +1,6 @@
 use sha512::{sha384, sha512};
 use utils::is_id_card;
+use sha256::sha256_var;
 
 /**
 * Computes the hash of the MRZ (Data Group 1) and checks it is the same as the one
@@ -33,7 +34,7 @@ pub fn check_integrity_of_data_sha256(
 
     // We only need to recompute the hash of the MRZ (or more accurately that of Data Group 1)
     // within the circuit as this is the only data group we use to build the proof (age, country, etc.)
-    let dg1_hash = noir_native_sha256::ryan_sha256_noir::sha256_var(dg1, dg1.len() as u64); // This gives the wrong result but succeeds in R1CS constraints
+    let dg1_hash = sha256_var(dg1, dg1.len() as u64); // This gives the wrong result but succeeds in R1CS constraints
 
     for i in 0..32 {
         // Check the hash of dg1 is indeed in the e_content
@@ -43,7 +44,7 @@ pub fn check_integrity_of_data_sha256(
     // --- Additionally, clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff" ---
     // --- That "stuff" is the thing which is actually signed ---
     let ryan_computed_final_hash =
-        noir_native_sha256::ryan_sha256_noir::sha256_var(e_content, e_content.len() as u64); // Wrong result but passes R1CS constraints
+        sha256_var(e_content, e_content.len() as u64); // Wrong result but passes R1CS constraints
 
     for i in 0..32 {
         // The last 32 bytes of the signed_attributes are the hash of the data groups

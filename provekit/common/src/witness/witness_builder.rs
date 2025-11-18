@@ -2,7 +2,10 @@ use {
     crate::{
         utils::{serde_ark, serde_ark_option},
         witness::{
-            binops::BINOP_ATOMIC_BITS, digits::DigitalDecompositionWitnesses, ram::SpiceWitnesses,
+            binops::BINOP_ATOMIC_BITS,
+            digits::DigitalDecompositionWitnesses,
+            layer_scheduler::{LayerScheduler, LayeredWitnessBuilders},
+            ram::SpiceWitnesses,
             ConstantOrR1CSWitness,
         },
         FieldElement,
@@ -108,6 +111,18 @@ pub enum WitnessBuilder {
     /// Witness values for the number of times that each pair of input values
     /// occurs in the bin op.
     MultiplicitiesForBinOp(usize, Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>),
+    /// U32 addition with carry: computes result = (a + b) % 2^32 and carry = (a
+    /// + b) / 2^32 Arguments: (result_witness_index, carry_witness_index,
+    /// a, b)
+    U32Addition(usize, usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// AND operation: computes result = a & b
+    /// Arguments: (result_witness_index, a, b)
+    /// Note: only for 32-bit operands
+    And(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// XOR operation: computes result = a ⊕ b
+    /// Arguments: (result_witness_index, a, b)
+    /// Note: only for 32-bit operands
+    Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
 }
 
 impl WitnessBuilder {
@@ -121,7 +136,21 @@ impl WitnessBuilder {
                 spice_witnesses_struct.num_witnesses
             }
             WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
+            WitnessBuilder::U32Addition(..) => 2,
             _ => 1,
         }
+    }
+
+    /// Constructs a layered execution plan optimized for batch inversion.
+    ///
+    /// Uses frontier-based scheduling to group operations and minimize
+    /// expensive field inversions via Montgomery's batch inversion trick.
+    pub fn prepare_layers(witness_builders: &[WitnessBuilder]) -> LayeredWitnessBuilders {
+        if witness_builders.is_empty() {
+            return LayeredWitnessBuilders { layers: Vec::new() };
+        }
+
+        let scheduler = LayerScheduler::new(witness_builders);
+        scheduler.build_layers()
     }
 }

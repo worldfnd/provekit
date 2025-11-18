@@ -136,13 +136,13 @@ pub fn run_sumcheck_verifier(
         let _ = arthur.fill_next_scalars(&mut hhat_i);
         let _ = arthur.fill_challenge_scalars(&mut alpha_i);
         *item = alpha_i[0];
-        let hhat_i_at_zero = eval_cubic_poly(&hhat_i, &FieldElement::zero());
-        let hhat_i_at_one = eval_cubic_poly(&hhat_i, &FieldElement::one());
+        let hhat_i_at_zero = eval_cubic_poly(hhat_i, FieldElement::zero());
+        let hhat_i_at_one = eval_cubic_poly(hhat_i, FieldElement::one());
         ensure!(
             saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
             "Sumcheck equality assertion failed"
         );
-        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(&hhat_i, &alpha_i[0]);
+        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i[0]);
     }
     let mut values_of_polynomial_sums = [FieldElement::zero(); 2];
     let _ = arthur.fill_next_scalars(&mut values_of_polynomial_sums);

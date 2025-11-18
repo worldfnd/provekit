@@ -20,16 +20,48 @@ pub enum BinOp {
     Xor,
 }
 
+/// Allocate a witness for a binary operation result, add the appropriate
+/// WitnessBuilder for value computation, and collect the operation for later
+/// constraint generation. Returns the witness index of the result.
+pub(crate) fn add_binop(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    op: BinOp,
+    collected_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    lhs: ConstantOrR1CSWitness,
+    rhs: ConstantOrR1CSWitness,
+) -> usize {
+    let result_witness = match op {
+        BinOp::And => r1cs_compiler.add_witness_builder(WitnessBuilder::And(
+            r1cs_compiler.num_witnesses(),
+            lhs,
+            rhs,
+        )),
+        BinOp::Xor => r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
+            r1cs_compiler.num_witnesses(),
+            lhs,
+            rhs,
+        )),
+    };
+
+    collected_ops.push((lhs, rhs, result_witness));
+
+    result_witness
+}
+
 /// Add the witnesses and constraints for a [BinOp] (i.e. AND, XOR). Uses a
 /// digital decomposition of the operands and output into [NUM_DIGITS] digits of
 /// [BINOP_ATOMIC_BITS] bits each, followed by a lookup table of size 2x
 /// [BINOP_ATOMIC_BITS].
-pub(crate) fn add_binop(
+pub(crate) fn add_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     op: BinOp,
     inputs_and_outputs: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
 ) {
     let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
+
+    if inputs_and_outputs.is_empty() {
+        return;
+    }
 
     // Collect all witnesses that require digital decomposition (constants are
     // decomposed separately).
@@ -97,7 +129,7 @@ pub(crate) fn add_binop(
         };
         let output_atoms = {
             let counter = witness_dd_counter;
-            let ref dd = dd_struct;
+            let dd = &dd_struct;
             (0..NUM_DIGITS).map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
         };
         witness_dd_counter += 1;
@@ -114,7 +146,7 @@ pub(crate) fn add_binop(
         r1cs_compiler.num_witnesses(),
         inputs_and_outputs_atomic
             .iter()
-            .map(|(lh_operand, rh_operand, _output)| (lh_operand.clone(), rh_operand.clone()))
+            .map(|(lh_operand, rh_operand, _output)| (*lh_operand, *rh_operand))
             .collect(),
     );
     let multiplicities_first_witness = r1cs_compiler.add_witness_builder(multiplicities_wb);
@@ -203,9 +235,9 @@ fn add_lookup_summand(
         sz_challenge,
         rs_challenge,
         rs_challenge_sqrd,
-        lh_operand.clone(),
-        rh_operand.clone(),
-        output.clone(),
+        lh_operand,
+        rh_operand,
+        output,
     );
     let denominator = r1cs_compiler.add_witness_builder(wb);
     // Add an intermediate witness if the output is a witness (otherwise can just

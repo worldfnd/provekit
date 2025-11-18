@@ -4,6 +4,7 @@ use utils::{
     get_array_slice, get_mrz_from_dg1, ID_CARD_MRZ_BIRTHDATE_INDEX, is_id_card,
     PASSPORT_MRZ_BIRTHDATE_INDEX, PROOF_TYPE_AGE,
 };
+use sha256::sha256_var;
 
 fn get_birthdate(dg1: [u8; 95], timestamp: u64) -> Date {
     let mut birthdate_bytes = [0 as u8; 6];
@@ -124,6 +125,6 @@ pub fn calculate_param_commitment_sha2(
     }
     params[9] = min_age_required;
     params[10] = max_age_required;
-    let hash = noir_native_sha256::ryan_sha256_noir::sha256_var(params, 11);
+    let hash = sha256_var(params, 11);
     utils::pack_be_bytes_into_field::<32, 31>(hash)
 }

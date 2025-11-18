@@ -2,10 +2,9 @@ pub mod mock_generator;
 pub mod mock_keys;
 mod parser;
 
+pub use crate::parser::{binary::Binary, sod::SOD};
 use {
     crate::parser::{
-        binary::Binary,
-        sod::SOD,
         types::{
             PassportError, SignatureAlgorithmName, MAX_DG1_SIZE, MAX_ECONTENT_SIZE,
             MAX_SIGNED_ATTRIBUTES_SIZE, MAX_TBS_SIZE, SIG_BYTES,
@@ -67,6 +66,15 @@ pub struct PassportValidityContent {
 }
 
 impl PassportReader {
+    pub fn new(dg1: Binary, sod: SOD, mockdata: bool, csca_pubkey: Option<RsaPublicKey>) -> Self {
+        Self {
+            dg1,
+            sod,
+            mockdata,
+            csca_pubkey,
+        }
+    }
+
     /// Extract SignedAttributes (padded + size)
     fn extract_signed_attrs(
         &self,
