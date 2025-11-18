@@ -199,10 +199,6 @@ func convertFullMultiPathToFullMultiPathWithCapping(
 			for i := 0; i < len(proof.AuthPath); i = i + 1 {
 				authPath[i] = proof.AuthPath[len(proof.AuthPath)-1-i]
 			}
-			err := VerifyAuthPath(HashLeafData(currentMPAnswers[i]), proof.LeafSiblingHash, authPath, proof.LeafIndex, uint64(depth), capContainer[1])
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify auth path for index %d: %w", proof.LeafIndex, err)
-			}
 
 			trimLen := len(proof.AuthPath) - cappedDepth
 			if trimLen < 0 {
