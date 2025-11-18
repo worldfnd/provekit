@@ -138,7 +138,7 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.1
 
 # Cryptography and proof systems
 ark-bn254 = { version = "0.5.0", default-features = false, features = ["scalar_field"] }
-ark-crypto-primitives = { version = "0.5.0", features = ["merkle_tree"] }
+ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
