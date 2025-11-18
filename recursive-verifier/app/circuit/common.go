@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math/bits"
-	"sort"
 
 	"github.com/consensys/gnark/backend/groth16"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
@@ -21,138 +20,138 @@ type IndexPair struct {
 	index uint64
 }
 
-func convertMultiIndexMTProofsToFullMultiPath(
-	merklePaths []MultiIndexMerkleTreeProof[Digest],
-	stirAnswers [][][]Fp256,
-) []FullMultiPathWithCapping[Digest] {
-	fullMerklePaths := make([]FullMultiPathWithCapping[Digest], 0, len(merklePaths))
-	for mIndex, mp := range merklePaths {
-		depth := mp.Depth
-		proofIter := 0
+// func convertMultiIndexMTProofsToFullMultiPath(
+// 	merklePaths []MultiIndexMerkleTreeProof[Digest],
+// 	stirAnswers [][][]Fp256,
+// ) []FullMultiPathWithCapping[Digest] {
+// 	fullMerklePaths := make([]FullMultiPathWithCapping[Digest], 0, len(merklePaths))
+// 	for mIndex, mp := range merklePaths {
+// 		depth := mp.Depth
+// 		proofIter := 0
 
-		currentMPAnswers := stirAnswers[mIndex]
-		if len(currentMPAnswers) != len(mp.Indices) {
-			panic(fmt.Sprintf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(mp.Indices)))
-		}
+// 		currentMPAnswers := stirAnswers[mIndex]
+// 		if len(currentMPAnswers) != len(mp.Indices) {
+// 			panic(fmt.Sprintf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(mp.Indices)))
+// 		}
 
-		leafHashes := make(map[uint64]Digest)
-		for i := range mp.Indices {
-			leafHashes[mp.Indices[i]] = HashLeafData(currentMPAnswers[i])
-		}
+// 		leafHashes := make(map[uint64]Digest)
+// 		for i := range mp.Indices {
+// 			leafHashes[mp.Indices[i]] = HashLeafData(currentMPAnswers[i])
+// 		}
 
-		uniqueIndices := make(map[uint64]bool)
-		for _, idx := range mp.Indices {
-			uniqueIndices[idx] = true
-		}
+// 		uniqueIndices := make(map[uint64]bool)
+// 		for _, idx := range mp.Indices {
+// 			uniqueIndices[idx] = true
+// 		}
 
-		indices := make([]uint64, 0, len(uniqueIndices))
-		for idx := range uniqueIndices {
-			indices = append(indices, idx)
-		}
-		sort.Slice(indices, func(i, j int) bool {
-			return indices[i] < indices[j]
-		})
+// 		indices := make([]uint64, 0, len(uniqueIndices))
+// 		for idx := range uniqueIndices {
+// 			indices = append(indices, idx)
+// 		}
+// 		sort.Slice(indices, func(i, j int) bool {
+// 			return indices[i] < indices[j]
+// 		})
 
-		treeElements := make(map[IndexPair]Digest, len(indices))
+// 		treeElements := make(map[IndexPair]Digest, len(indices))
 
-		cappedDepth := bits.Len(uint(len(mp.Indices))) - 1
+// 		cappedDepth := bits.Len(uint(len(mp.Indices))) - 1
 
-		if cappedDepth >= int(mp.Depth) {
-			// We need to have at least one level, in order to produce the hash and consume the siblings
-			cappedDepth = int(mp.Depth) - 1
-		}
-		capContainer := make([]Digest, 2<<cappedDepth)
-		for i := range capContainer {
-			capContainer[i] = Digest{Digest: [32]uint8{}}
-		}
-		for d := depth; d > 0; d-- {
-			nextIndices := make([]uint64, 0, len(indices))
-			capIndices := make([]uint64, 0, 1<<depth)
-			i := 0
-			for i < len(indices) {
-				idx := indices[i]
-				var node Digest
-				if d == depth {
-					node = leafHashes[idx]
-				} else {
-					node = treeElements[IndexPair{depth: d, index: idx}]
-				}
+// 		if cappedDepth >= int(mp.Depth) {
+// 			// We need to have at least one level, in order to produce the hash and consume the siblings
+// 			cappedDepth = int(mp.Depth) - 1
+// 		}
+// 		capContainer := make([]Digest, 2<<cappedDepth)
+// 		for i := range capContainer {
+// 			capContainer[i] = Digest{Digest: [32]uint8{}}
+// 		}
+// 		for d := depth; d > 0; d-- {
+// 			nextIndices := make([]uint64, 0, len(indices))
+// 			capIndices := make([]uint64, 0, 1<<depth)
+// 			i := 0
+// 			for i < len(indices) {
+// 				idx := indices[i]
+// 				var node Digest
+// 				if d == depth {
+// 					node = leafHashes[idx]
+// 				} else {
+// 					node = treeElements[IndexPair{depth: d, index: idx}]
+// 				}
 
-				if idx%2 == 0 {
-					treeElements[IndexPair{depth: d, index: idx}] = node
-					if i+1 < len(indices) && indices[i+1] == idx+1 {
-						var otherNode Digest
-						if d == depth {
-							otherNode = leafHashes[idx+1]
-						} else {
-							otherNode = treeElements[IndexPair{depth: d, index: idx + 1}]
-						}
-						capIndices = append(capIndices, idx)
-						capIndices = append(capIndices, idx+1)
-						parentHash := HashTwoDigests(node, otherNode)
-						treeElements[IndexPair{depth: d, index: idx + 1}] = otherNode
-						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = parentHash
-						nextIndices = append(nextIndices, idx/2)
-						i += 2
-					} else {
-						// missing right sibling → from proof
-						if proofIter >= len(mp.Proof) {
-							panic("insufficient siblings")
-						}
-						sib := mp.Proof[proofIter]
-						capIndices = append(capIndices, idx)
-						capIndices = append(capIndices, idx+1)
-						treeElements[IndexPair{depth: d, index: idx + 1}] = sib
-						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(node, sib)
-						proofIter++
-						nextIndices = append(nextIndices, idx/2)
-						i++
-					}
-				} else {
-					// right child
-					if proofIter >= len(mp.Proof) {
-						panic("insufficient siblings")
-					}
-					sib := mp.Proof[proofIter]
-					capIndices = append(capIndices, idx-1)
-					capIndices = append(capIndices, idx)
-					treeElements[IndexPair{depth: d, index: idx - 1}] = sib
-					treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(sib, node)
+// 				if idx%2 == 0 {
+// 					treeElements[IndexPair{depth: d, index: idx}] = node
+// 					if i+1 < len(indices) && indices[i+1] == idx+1 {
+// 						var otherNode Digest
+// 						if d == depth {
+// 							otherNode = leafHashes[idx+1]
+// 						} else {
+// 							otherNode = treeElements[IndexPair{depth: d, index: idx + 1}]
+// 						}
+// 						capIndices = append(capIndices, idx)
+// 						capIndices = append(capIndices, idx+1)
+// 						parentHash := HashTwoDigests(node, otherNode)
+// 						treeElements[IndexPair{depth: d, index: idx + 1}] = otherNode
+// 						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = parentHash
+// 						nextIndices = append(nextIndices, idx/2)
+// 						i += 2
+// 					} else {
+// 						// missing right sibling → from proof
+// 						if proofIter >= len(mp.Proof) {
+// 							panic("insufficient siblings")
+// 						}
+// 						sib := mp.Proof[proofIter]
+// 						capIndices = append(capIndices, idx)
+// 						capIndices = append(capIndices, idx+1)
+// 						treeElements[IndexPair{depth: d, index: idx + 1}] = sib
+// 						treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(node, sib)
+// 						proofIter++
+// 						nextIndices = append(nextIndices, idx/2)
+// 						i++
+// 					}
+// 				} else {
+// 					// right child
+// 					if proofIter >= len(mp.Proof) {
+// 						panic("insufficient siblings")
+// 					}
+// 					sib := mp.Proof[proofIter]
+// 					capIndices = append(capIndices, idx-1)
+// 					capIndices = append(capIndices, idx)
+// 					treeElements[IndexPair{depth: d, index: idx - 1}] = sib
+// 					treeElements[IndexPair{depth: d - 1, index: idx / 2}] = HashTwoDigests(sib, node)
 
-					proofIter++
-					nextIndices = append(nextIndices, idx/2)
-					i++
-				}
-			}
-			if d <= (uint64(cappedDepth)) {
-				for j := range capIndices {
-					offset := 1 << d
-					capContainer[int(offset)+int(capIndices[j])] = treeElements[IndexPair{depth: d, index: uint64(capIndices[j])}]
-				}
-			}
-			indices = nextIndices
-		}
+// 					proofIter++
+// 					nextIndices = append(nextIndices, idx/2)
+// 					i++
+// 				}
+// 			}
+// 			if d <= (uint64(cappedDepth)) {
+// 				for j := range capIndices {
+// 					offset := 1 << d
+// 					capContainer[int(offset)+int(capIndices[j])] = treeElements[IndexPair{depth: d, index: uint64(capIndices[j])}]
+// 				}
+// 			}
+// 			indices = nextIndices
+// 		}
 
-		capContainer[1] = treeElements[IndexPair{depth: 0, index: 0}]
+// 		capContainer[1] = treeElements[IndexPair{depth: 0, index: 0}]
 
-		var paths []Path[Digest]
-		for _, origIdx := range mp.Indices {
-			leafSibling, authPath, err := ExtractAuthPath(treeElements, origIdx, depth)
-			if err != nil {
-				panic(fmt.Sprintf("failed to extract auth path for index %d: %v", origIdx, err))
-			}
+// 		var paths []Path[Digest]
+// 		for _, origIdx := range mp.Indices {
+// 			leafSibling, authPath, err := ExtractAuthPath(treeElements, origIdx, depth)
+// 			if err != nil {
+// 				panic(fmt.Sprintf("failed to extract auth path for index %d: %v", origIdx, err))
+// 			}
 
-			paths = append(paths, Path[Digest]{
-				LeafIndex:       origIdx,
-				LeafSiblingHash: leafSibling,
-				AuthPath:        authPath[:len(authPath)-cappedDepth],
-			})
-		}
+// 			paths = append(paths, Path[Digest]{
+// 				LeafIndex:       origIdx,
+// 				LeafSiblingHash: leafSibling,
+// 				AuthPath:        authPath[:len(authPath)-cappedDepth],
+// 			})
+// 		}
 
-		fullMerklePaths = append(fullMerklePaths, FullMultiPathWithCapping[Digest]{Proofs: paths, CapContainer: capContainer})
-	}
-	return fullMerklePaths
-}
+// 		fullMerklePaths = append(fullMerklePaths, FullMultiPathWithCapping[Digest]{Proofs: paths, CapContainer: capContainer})
+// 	}
+// 	return fullMerklePaths
+// }
 
 func convertFullMultiPathToFullMultiPathWithCapping(
 	paths []FullMultiPath[Digest],
@@ -163,7 +162,7 @@ func convertFullMultiPathToFullMultiPathWithCapping(
 		currentMPAnswers := stirAnswers[mIndex]
 
 		if len(currentMPAnswers) != len(path.Proofs) {
-			panic(fmt.Sprintf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(path.Proofs)))
+			return nil, fmt.Errorf("mismatched stirAnswers (%d) and indices (%d)", len(currentMPAnswers), len(path.Proofs))
 		}
 		depth := len(path.Proofs[0].AuthPath) + 1
 
@@ -367,6 +366,9 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 
 	// convertMultiIndexMTProofsToFullMultiPath(merklePaths, stirAnswers, &fullMerklePaths)
 	fullMerklePaths, err := convertFullMultiPathToFullMultiPathWithCapping(merklePaths, stirAnswers)
+	if err != nil {
+		return fmt.Errorf("failed to convert full multi path to full multi path with capping: %w", err)
+	}
 
 	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &fullMerklePaths, &stirAnswers)
 	var witnessData = consumeWhirData(config.WHIRConfigWitness, &fullMerklePaths, &stirAnswers)

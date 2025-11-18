@@ -70,11 +70,6 @@ func limbsToBigInt(limbs [4]uint64) *big.Int {
 	return result.Mod(result, bn254Modulus)
 }
 
-// Convert Fp256 to big.Int
-func fp256ToBigInt(fp Fp256) *big.Int {
-	return limbsToBigInt(fp.Limbs)
-}
-
 // Convert big.Int to [4]uint64 limbs
 func bigIntToLimbs(val *big.Int) [4]uint64 {
 	// Ensure value is positive and reduced
