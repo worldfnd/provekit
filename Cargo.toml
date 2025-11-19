@@ -149,6 +149,6 @@ ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
-] }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "3d627d31cec7d73a470a31a913229dd3128ee0cf" }
+], rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "c2bafc36a878500a3e19c12d3239d488ff7b5d61" }
