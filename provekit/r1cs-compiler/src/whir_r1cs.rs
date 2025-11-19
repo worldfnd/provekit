@@ -1,8 +1,13 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS}, std::sync::Arc, whir::{ntt::RSDefault, parameters::{
-        default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
-        MultivariateParameters, ProtocolParameters, SoundnessType,
-    }}
+    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    std::sync::Arc,
+    whir::{
+        ntt::RSDefault,
+        parameters::{
+            default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
+            MultivariateParameters, ProtocolParameters, SoundnessType,
+        },
+    },
 };
 
 // Minimum log2 of the WHIR evaluation domain (lower bound for m).
