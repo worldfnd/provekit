@@ -80,13 +80,12 @@ impl Prove for Prover {
         let mut witness_merlin = witness_io.to_prover_state();
         self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
 
-        let split_witness_builders = self.split_witness_builders.take().unwrap();
-        let mut all_layers = split_witness_builders.w1_layers.layers;
-        all_layers.extend(split_witness_builders.w2_layers.layers);
+        let mut all_layers = self.split_witness_builders.w1_layers.layers;
+        all_layers.extend(self.split_witness_builders.w2_layers.layers);
         let layered_witness_builders = LayeredWitnessBuilders { layers: all_layers };
 
         let partial_witness = self.r1cs.solve_witness_vec(
-            self.layered_witness_builders,
+            layered_witness_builders,
             acir_witness_idx_to_value_map,
             &mut witness_merlin,
         );
@@ -111,9 +110,11 @@ impl Prove for Prover {
         let circuit = &self.program.functions[0];
         let public_idxs = circuit.public_inputs().indices();
         let num_challenges = self
-            .layered_witness_builders
+            .split_witness_builders
+            .w1_layers
             .layers
             .iter()
+            .chain(self.split_witness_builders.w2_layers.layers.iter())
             .flat_map(|layer| &layer.witness_builders)
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
             .count();
