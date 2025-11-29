@@ -97,10 +97,16 @@ impl Prove for Prover {
             .test_witness_satisfaction(&witness)
             .context("While verifying R1CS instance")?;
 
+        // Commit to witness
+        let commitment = self
+            .whir_for_witness
+            .commit(&self.r1cs, witness)
+            .context("While committing to witness")?;
+
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(self.r1cs, witness)
+            .prove(self.r1cs, commitment)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })

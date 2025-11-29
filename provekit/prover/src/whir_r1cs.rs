@@ -32,13 +32,22 @@ use {
     },
 };
 
+pub struct WhirR1CSCommitment {
+    pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub masked_polynomial:     EvaluationsList<FieldElement>,
+    pub random_polynomial:     EvaluationsList<FieldElement>,
+    pub merlin:                ProverState<SkyscraperSponge, FieldElement>,
+    pub padded_witness:        Vec<FieldElement>,
+}
+
 pub trait WhirR1CSProver {
-    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
+    fn commit(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSCommitment>;
+    fn prove(&self, r1cs: R1CS, commitment: WhirR1CSCommitment) -> Result<WhirR1CSProof>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
-    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
+    fn commit(&self, r1cs: &R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSCommitment> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -64,12 +73,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let target_len = 1usize << (whir_num_vars - 1);
 
         // Pad witness to power-of-two, then extend to target_len with zeros.
-        let mut z = pad_to_power_of_two(witness);
-        if z.len() < target_len {
-            z.resize(target_len, FieldElement::zero());
+        let mut padded_witness = pad_to_power_of_two(witness);
+        if padded_witness.len() < target_len {
+            padded_witness.resize(target_len, FieldElement::zero());
         }
 
-        let witness_polynomial_evals = EvaluationsList::new(z.clone());
+        let witness_polynomial_evals = EvaluationsList::new(padded_witness.clone());
 
         let (commitment_to_witness, masked_polynomial, random_polynomial) =
             batch_commit_to_polynomial(
@@ -79,9 +88,28 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &mut merlin,
             );
 
+        Ok(WhirR1CSCommitment {
+            commitment_to_witness,
+            masked_polynomial,
+            random_polynomial,
+            merlin,
+            padded_witness,
+        })
+    }
+
+    #[instrument(skip_all)]
+    fn prove(&self, r1cs: R1CS, commitment: WhirR1CSCommitment) -> Result<WhirR1CSProof> {
+        let WhirR1CSCommitment {
+            commitment_to_witness,
+            masked_polynomial,
+            random_polynomial,
+            merlin,
+            padded_witness,
+        } = commitment;
+
         // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
         // witness
-        let witness_slice = &z[..r1cs.num_witnesses()];
+        let witness_slice = &padded_witness[..r1cs.num_witnesses()];
         let (mut merlin, alpha) = run_zk_sumcheck_prover(
             &r1cs,
             witness_slice,
@@ -89,7 +117,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             self.m_0,
             &self.whir_for_hiding_spartan,
         );
-        drop(z);
+        drop(padded_witness);
 
         // Compute weights from R1CS instance
         let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
