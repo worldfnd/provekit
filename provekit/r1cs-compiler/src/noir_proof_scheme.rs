@@ -62,7 +62,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         );
 
         // Split witness builders and remap indices for sound challenge generation
-        let (split_witness_builders, remapped_r1cs, remapped_witness_map) =
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
             WitnessBuilder::split_and_prepare_layers(&witness_builders, r1cs, witness_map);
         info!(
             "Witness split: w1 size = {}, w2 size = {}",
@@ -78,7 +78,11 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         );
 
         // Configure Whir for full witness
-        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&remapped_r1cs);
+        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
+            &remapped_r1cs,
+            split_witness_builders.w1_size,
+            num_challenges,
+        );
 
         Ok(Self {
             program: program.bytecode,

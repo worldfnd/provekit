@@ -54,6 +54,14 @@ impl LayeredWitnessBuilders {
     pub fn layers_len(&self) -> usize {
         self.layers.len()
     }
+
+    /// Returns the total number of builders across all layers.
+    pub fn builders_len(&self) -> usize {
+        self.layers
+            .iter()
+            .map(|layer| layer.witness_builders.len())
+            .sum()
+    }
 }
 
 /// Split witness builders for sound challenge generation.

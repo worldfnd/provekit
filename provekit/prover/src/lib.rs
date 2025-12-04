@@ -1,22 +1,12 @@
 use {
-    crate::{
-        r1cs::R1CSSolver,
-        whir_r1cs::WhirR1CSProver,
-        witness::{fill_witness, witness_io_pattern::WitnessIOPattern},
-    },
+    crate::{r1cs::R1CSSolver, whir_r1cs::WhirR1CSProver},
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{
-        skyscraper::SkyscraperSponge,
-        utils::noir_to_native,
-        witness::{LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, IOPattern, NoirElement, NoirProof, Prover,
-    },
-    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
+    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover},
     std::path::Path,
     tracing::instrument,
 };
@@ -29,14 +19,6 @@ pub trait Prove {
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
-
-    fn create_witness_io_pattern(&self) -> IOPattern;
-
-    fn seed_witness_merlin(
-        &mut self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        witness: &WitnessMap<NoirElement>,
-    ) -> Result<()>;
 }
 
 impl Prove for Prover {
@@ -75,86 +57,66 @@ impl Prove for Prover {
 
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
-        // Solve R1CS instance
-        let witness_io = self.create_witness_io_pattern();
-        let mut witness_merlin = witness_io.to_prover_state();
-        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+        // Set up transcript
+        let io: IOPattern = self.whir_for_witness.create_io_pattern();
+        let mut merlin = io.to_prover_state();
+        drop(io);
 
-        let mut all_layers = self.split_witness_builders.w1_layers.layers;
-        all_layers.extend(self.split_witness_builders.w2_layers.layers);
-        let layered_witness_builders = LayeredWitnessBuilders { layers: all_layers };
+        let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
 
-        let partial_witness = self.r1cs.solve_witness_vec(
-            layered_witness_builders,
-            acir_witness_idx_to_value_map,
-            &mut witness_merlin,
+        // Solve w1
+        self.r1cs.solve_witness_vec(
+            &mut witness,
+            self.split_witness_builders.w1_layers,
+            &acir_witness_idx_to_value_map,
+            &mut merlin,
         );
-        let witness = fill_witness(partial_witness).context("while filling witness")?;
+        let w1 = witness[..self.whir_for_witness.w1_size]
+            .iter()
+            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+            .collect::<Result<Vec<_>>>()?;
+
+        // Commit to w1
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, &self.r1cs, w1, true)
+            .context("While committing to witness")?;
+
+        // Solve w2
+        self.r1cs.solve_witness_vec(
+            &mut witness,
+            self.split_witness_builders.w2_layers,
+            &acir_witness_idx_to_value_map,
+            &mut merlin,
+        );
+        let w2 = witness[self.whir_for_witness.w1_size..]
+            .into_iter()
+            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+            .collect::<Result<Vec<_>>>()?;
+        drop(acir_witness_idx_to_value_map);
+
+        // Commit to w2
+        let commitment_2 = self
+            .whir_for_witness
+            .commit(&mut merlin, &self.r1cs, w2, false)
+            .context("While committing to witness")?;
 
         // Verify witness (redudant with solve)
         #[cfg(test)]
-        self.r1cs
-            .test_witness_satisfaction(&witness)
-            .context("While verifying R1CS instance")?;
-
-        // Commit to witness
-        let commitment = self
-            .whir_for_witness
-            .commit(&self.r1cs, witness)
-            .context("While committing to witness")?;
+        {
+            self.r1cs
+                .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+                .context("While verifying R1CS instance")?;
+        }
+        drop(witness);
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(self.r1cs, commitment)
+            .prove(merlin, self.r1cs, commitment_1, commitment_2)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
-    }
-
-    fn create_witness_io_pattern(&self) -> IOPattern {
-        let circuit = &self.program.functions[0];
-        let public_idxs = circuit.public_inputs().indices();
-        let num_challenges = self
-            .split_witness_builders
-            .w1_layers
-            .layers
-            .iter()
-            .chain(self.split_witness_builders.w2_layers.layers.iter())
-            .flat_map(|layer| &layer.witness_builders)
-            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
-            .count();
-
-        // Create witness IO pattern
-        IOPattern::new("📜")
-            .add_shape()
-            .add_public_inputs(public_idxs.len())
-            .add_logup_challenges(num_challenges)
-    }
-
-    fn seed_witness_merlin(
-        &mut self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        witness: &WitnessMap<NoirElement>,
-    ) -> Result<()> {
-        // Absorb circuit shape
-        let _ = merlin.add_scalars(&[
-            FieldElement::from(self.r1cs.num_constraints() as u64),
-            FieldElement::from(self.r1cs.num_witnesses() as u64),
-        ]);
-
-        // Absorb public inputs (values) in canonical order
-        let circuit = &self.program.functions[0];
-        let public_idxs = circuit.public_inputs().indices();
-        if !public_idxs.is_empty() {
-            let pub_vals: Vec<FieldElement> = public_idxs
-                .iter()
-                .map(|&i| noir_to_native(*witness.get_index(i).expect("missing public input")))
-                .collect();
-            let _ = merlin.add_scalars(&pub_vals);
-        }
-
-        Ok(())
     }
 }
 

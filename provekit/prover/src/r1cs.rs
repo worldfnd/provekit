@@ -16,10 +16,11 @@ use {
 pub trait R1CSSolver {
     fn solve_witness_vec(
         &self,
+        witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
-        acir_map: WitnessMap<NoirElement>,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) -> Vec<Option<FieldElement>>;
+    );
 
     #[cfg(test)]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
@@ -49,18 +50,17 @@ impl R1CSSolver for R1CS {
     #[instrument(skip_all)]
     fn solve_witness_vec(
         &self,
+        witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
-        acir_map: WitnessMap<NoirElement>,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) -> Vec<Option<FieldElement>> {
-        let mut witness = vec![None; self.num_witnesses()];
-
+    ) {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, &mut witness, transcript);
+                        builder.solve(&acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {
@@ -100,8 +100,6 @@ impl R1CSSolver for R1CS {
                 }
             }
         }
-
-        witness
     }
 
     // Tests R1CS Witness satisfaction given the constraints provided by the

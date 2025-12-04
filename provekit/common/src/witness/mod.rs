@@ -4,6 +4,7 @@ mod ram;
 mod scheduling;
 mod witness_builder;
 mod witness_generator;
+mod witness_io_pattern;
 
 use {
     crate::{utils::serde_ark, FieldElement},
@@ -19,6 +20,7 @@ pub use {
         ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
     },
     witness_generator::NoirWitnessGenerator,
+    witness_io_pattern::WitnessIOPattern,
 };
 
 /// The index of the constant 1 witness in the R1CS instance

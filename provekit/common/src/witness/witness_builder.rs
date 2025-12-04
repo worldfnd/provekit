@@ -174,7 +174,7 @@ impl WitnessBuilder {
         witness_builders: &[WitnessBuilder],
         r1cs: R1CS,
         witness_map: Vec<Option<NonZeroU32>>,
-    ) -> (SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>) {
+    ) -> (SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, usize) {
         if witness_builders.is_empty() {
             return (
                 SplitWitnessBuilders {
@@ -184,6 +184,7 @@ impl WitnessBuilder {
                 },
                 r1cs,
                 witness_map,
+                0,
             );
         }
 
@@ -236,6 +237,13 @@ impl WitnessBuilder {
             scheduler.build_layers()
         };
 
+        let num_challenges = w2_layers
+            .layers
+            .iter()
+            .flat_map(|layer| &layer.witness_builders)
+            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
+            .count();
+
         (
             SplitWitnessBuilders {
                 w1_layers,
@@ -244,6 +252,7 @@ impl WitnessBuilder {
             },
             remapped_r1cs,
             remapped_witness_map,
+            num_challenges,
         )
     }
 }
