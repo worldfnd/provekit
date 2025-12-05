@@ -39,62 +39,83 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let io = self.create_io_pattern();
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
-        // Parse TWO commitments (same config, different polynomials)
         let commitment_reader = CommitmentReader::new(&self.whir_witness);
         let parsed_commitment_1 = commitment_reader.parse_commitment(&mut arthur)?;
-        // Squeeze logup challenges to advance transcript state (values not needed by
-        // verifier)
-        let mut _logup_challenges = vec![FieldElement::zero(); self.num_challenges];
-        arthur.fill_challenge_scalars(&mut _logup_challenges)?;
-        let parsed_commitment_2 = commitment_reader.parse_commitment(&mut arthur)?;
 
-        // Sumcheck verification
+        // Parse second commitment only if we have challenges
+        let parsed_commitment_2 = if self.num_challenges > 0 {
+            let mut _logup_challenges = vec![FieldElement::zero(); self.num_challenges];
+            arthur.fill_challenge_scalars(&mut _logup_challenges)?;
+            Some(commitment_reader.parse_commitment(&mut arthur)?)
+        } else {
+            None
+        };
+
+        // Sumcheck verification (common to both paths)
         let data_from_sumcheck_verifier =
             run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
                 .context("while verifying sumcheck")?;
 
-        // Read hints for both commitments
-        let whir_query_answer_sum_vectors_1: (Vec<FieldElement>, Vec<FieldElement>) =
-            arthur.hint()?;
-        let whir_query_answer_sum_vectors_2: (Vec<FieldElement>, Vec<FieldElement>) =
-            arthur.hint()?;
+        // Read hints and verify WHIR proof
+        let (az_at_alpha, bz_at_alpha, cz_at_alpha) =
+            if let Some(parsed_commitment_2) = parsed_commitment_2 {
+                // Dual commitment mode
+                let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+                let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
 
-        let whir_query_answer_sums_1 = (
-            whir_query_answer_sum_vectors_1.0.try_into().unwrap(),
-            whir_query_answer_sum_vectors_1.1.try_into().unwrap(),
-        );
-        let whir_query_answer_sums_2 = (
-            whir_query_answer_sum_vectors_2.0.try_into().unwrap(),
-            whir_query_answer_sum_vectors_2.1.try_into().unwrap(),
-        );
+                let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
+                    (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
+                let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
+                    (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
 
-        // Prepare statements for both witnesses
-        let statement_1 = prepare_statement_for_witness_verifier::<3>(
-            self.m,
-            &parsed_commitment_1,
-            &whir_query_answer_sums_1,
-        );
-        let statement_2 = prepare_statement_for_witness_verifier::<3>(
-            self.m,
-            &parsed_commitment_2,
-            &whir_query_answer_sums_2,
-        );
+                let statement_1 = prepare_statement_for_witness_verifier::<3>(
+                    self.m,
+                    &parsed_commitment_1,
+                    &whir_sums_1,
+                );
+                let statement_2 = prepare_statement_for_witness_verifier::<3>(
+                    self.m,
+                    &parsed_commitment_2,
+                    &whir_sums_2,
+                );
 
-        // Verify batch WHIR proof for both commitments
-        let (folding_randomness, deferred) = run_whir_pcs_batch_verifier(
-            &mut arthur,
-            &self.whir_witness,
-            &[parsed_commitment_1, parsed_commitment_2],
-            &[statement_1, statement_2],
-        )
-        .context("while verifying WHIR proof")?;
+                run_whir_pcs_batch_verifier(
+                    &mut arthur,
+                    &self.whir_witness,
+                    &[parsed_commitment_1, parsed_commitment_2],
+                    &[statement_1, statement_2],
+                )
+                .context("while verifying WHIR batch proof")?;
 
-        // Check the Spartan sumcheck relation using BOTH commitments' sums
-        // (A*z)[α] = f_sums_1[i] + f_sums_2[i] for i = 0,1,2
-        let az_at_alpha = whir_query_answer_sums_1.0[0] + whir_query_answer_sums_2.0[0];
-        let bz_at_alpha = whir_query_answer_sums_1.0[1] + whir_query_answer_sums_2.0[1];
-        let cz_at_alpha = whir_query_answer_sums_1.0[2] + whir_query_answer_sums_2.0[2];
+                (
+                    whir_sums_1.0[0] + whir_sums_2.0[0],
+                    whir_sums_1.0[1] + whir_sums_2.0[1],
+                    whir_sums_1.0[2] + whir_sums_2.0[2],
+                )
+            } else {
+                // Single commitment mode
+                let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+                let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
+                    (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
 
+                let statement = prepare_statement_for_witness_verifier::<3>(
+                    self.m,
+                    &parsed_commitment_1,
+                    &whir_sums,
+                );
+
+                run_whir_pcs_verifier(
+                    &mut arthur,
+                    &parsed_commitment_1,
+                    &self.whir_witness,
+                    &statement,
+                )
+                .context("while verifying WHIR proof")?;
+
+                (whir_sums.0[0], whir_sums.0[1], whir_sums.0[2])
+            };
+
+        // Check the Spartan sumcheck relation
         ensure!(
             data_from_sumcheck_verifier.last_sumcheck_val
                 == (az_at_alpha * bz_at_alpha - cz_at_alpha)

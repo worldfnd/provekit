@@ -29,25 +29,40 @@ pub struct WhirR1CSScheme {
 impl WhirR1CSScheme {
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        // Compute total constraints: OOD + statement
-        // OOD: 2 witnesses × committment_ood_samples each
-        // Statement: 2 statements × 3 constraints each = 6
-        let num_witnesses = 2;
-        let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
-        let num_statement_constraints = 6; // 2 statements × 3 constraints
-        let num_constraints_total = num_ood_constraints + num_statement_constraints;
+        let mut io = IOPattern::new("🌪️");
 
-        IOPattern::new("🌪️")
-            .commit_statement(&self.whir_witness) // C1
-            .add_logup_challenges(self.num_challenges)
-            .commit_statement(&self.whir_witness) // C2
-            .add_rand(self.m_0)
-            .commit_statement(&self.whir_for_hiding_spartan)
-            .add_zk_sumcheck_polynomials(self.m_0)
-            .add_whir_proof(&self.whir_for_hiding_spartan)
-            .hint("claimed_evaluations_1")
-            .hint("claimed_evaluations_2")
-            .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total)
+        if self.num_challenges > 0 {
+            // Compute total constraints: OOD + statement
+            // OOD: 2 witnesses × committment_ood_samples each
+            // Statement: 2 statements × 3 constraints each = 6
+            let num_witnesses = 2;
+            let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
+            let num_statement_constraints = 6; // 2 statements × 3 constraints
+            let num_constraints_total = num_ood_constraints + num_statement_constraints;
+
+            io = io
+                .commit_statement(&self.whir_witness) // C1
+                .add_logup_challenges(self.num_challenges)
+                .commit_statement(&self.whir_witness) // C2
+                .add_rand(self.m_0)
+                .commit_statement(&self.whir_for_hiding_spartan)
+                .add_zk_sumcheck_polynomials(self.m_0)
+                .add_whir_proof(&self.whir_for_hiding_spartan)
+                .hint("claimed_evaluations_1")
+                .hint("claimed_evaluations_2")
+                .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total);
+        } else {
+            io = io
+                .commit_statement(&self.whir_witness)
+                .add_rand(self.m_0)
+                .commit_statement(&self.whir_for_hiding_spartan)
+                .add_zk_sumcheck_polynomials(self.m_0)
+                .add_whir_proof(&self.whir_for_hiding_spartan)
+                .hint("claimed_evaluations")
+                .add_whir_proof(&self.whir_witness);
+        }
+
+        io
     }
 }
 

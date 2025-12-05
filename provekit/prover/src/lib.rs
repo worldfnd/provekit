@@ -64,56 +64,59 @@ impl Prove for Prover {
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
 
-        // Solve w1
+        // Solve w1 (or all witnesses if no challenges)
         self.r1cs.solve_witness_vec(
             &mut witness,
             self.split_witness_builders.w1_layers,
             &acir_witness_idx_to_value_map,
             &mut merlin,
         );
+
         let w1 = witness[..self.whir_for_witness.w1_size]
             .iter()
             .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
             .collect::<Result<Vec<_>>>()?;
 
-        // Commit to w1
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, &self.r1cs, w1, true)
-            .context("While committing to witness")?;
+            .context("While committing to w1")?;
 
-        // Solve w2
-        self.r1cs.solve_witness_vec(
-            &mut witness,
-            self.split_witness_builders.w2_layers,
-            &acir_witness_idx_to_value_map,
-            &mut merlin,
-        );
-        let w2 = witness[self.whir_for_witness.w1_size..]
-            .into_iter()
-            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
-            .collect::<Result<Vec<_>>>()?;
+        // Build commitment list based on whether we have challenges
+        let commitments = if self.whir_for_witness.num_challenges > 0 {
+            // Solve w2
+            self.r1cs.solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w2_layers,
+                &acir_witness_idx_to_value_map,
+                &mut merlin,
+            );
+
+            let w2 = witness[self.whir_for_witness.w1_size..]
+                .iter()
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                .collect::<Result<Vec<_>>>()?;
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, &self.r1cs, w2, false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            vec![commitment_1]
+        };
         drop(acir_witness_idx_to_value_map);
 
-        // Commit to w2
-        let commitment_2 = self
-            .whir_for_witness
-            .commit(&mut merlin, &self.r1cs, w2, false)
-            .context("While committing to witness")?;
-
-        // Verify witness (redudant with solve)
         #[cfg(test)]
-        {
-            self.r1cs
-                .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
-                .context("While verifying R1CS instance")?;
-        }
+        self.r1cs
+            .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+            .context("While verifying R1CS instance")?;
         drop(witness);
 
-        // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(merlin, self.r1cs, commitment_1, commitment_2)
+            .prove(merlin, self.r1cs, commitments)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })

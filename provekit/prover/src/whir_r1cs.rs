@@ -47,12 +47,12 @@ pub trait WhirR1CSProver {
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment>;
+
     fn prove(
         &self,
         merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
-        commitment_1: WhirR1CSCommitment,
-        commitment_2: WhirR1CSCommitment,
+        commitments: Vec<WhirR1CSCommitment>,
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -119,83 +119,107 @@ impl WhirR1CSProver for WhirR1CSScheme {
         &self,
         mut merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
-        commitment_1: WhirR1CSCommitment,
-        commitment_2: WhirR1CSCommitment,
+        commitments: Vec<WhirR1CSCommitment>,
     ) -> Result<WhirR1CSProof> {
-        let WhirR1CSCommitment {
-            commitment_to_witness: commitment_to_witness_1,
-            masked_polynomial: masked_polynomial_1,
-            random_polynomial: random_polynomial_1,
-            padded_witness: mut padded_witness_1,
-        } = commitment_1;
-        let WhirR1CSCommitment {
-            commitment_to_witness: commitment_to_witness_2,
-            masked_polynomial: masked_polynomial_2,
-            random_polynomial: random_polynomial_2,
-            padded_witness: padded_witness_2,
-        } = commitment_2;
+        ensure!(!commitments.is_empty(), "Need at least one commitment");
 
-        // First round of sumcheck to reduce R1CS to a batch weighted evaluation of the
-        // witness
-        padded_witness_1.truncate(self.w1_size);
-        padded_witness_1
-            .extend_from_slice(&padded_witness_2[..(r1cs.num_witnesses() - self.w1_size)]);
+        let is_single = commitments.len() == 1;
 
+        // Reconstruct full witness for sumcheck
+        let full_witness: Vec<FieldElement> = if is_single {
+            // Truncate padded witness back to actual R1CS witness size
+            commitments[0].padded_witness[..r1cs.num_witnesses()].to_vec()
+        } else {
+            let mut w = commitments[0].padded_witness[..self.w1_size].to_vec();
+            w.extend_from_slice(
+                &commitments[1].padded_witness[..(r1cs.num_witnesses() - self.w1_size)],
+            );
+            w
+        };
+
+        // First round: ZK sumcheck to reduce R1CS to weighted evaluation
         let alpha = run_zk_sumcheck_prover(
             &r1cs,
-            &padded_witness_1,
+            &full_witness,
             &mut merlin,
             self.m_0,
             &self.whir_for_hiding_spartan,
         );
-        drop(padded_witness_1);
-        drop(padded_witness_2);
+        drop(full_witness);
 
-        // Compute weights from R1CS instance
+        // Compute weights from R1CS matrices
         let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
-        let mut alphas_1_vecs = Vec::with_capacity(3);
-        let mut alphas_2_vecs = Vec::with_capacity(3);
 
-        for mut alpha_vec in alphas {
-            let alpha_2_part = alpha_vec.split_off(self.w1_size);
-            alphas_1_vecs.push(alpha_vec);
-            alphas_2_vecs.push(alpha_2_part);
+        if is_single {
+            // Single commitment path
+            let commitment = commitments.into_iter().next().unwrap();
+            let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
+
+            let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
+                self.m,
+                &commitment.commitment_to_witness,
+                commitment.masked_polynomial,
+                commitment.random_polynomial,
+                &alphas,
+            );
+
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
+
+            run_zk_whir_pcs_prover(
+                commitment.commitment_to_witness,
+                statement,
+                &self.whir_witness,
+                &mut merlin,
+            );
+        } else {
+            // Dual commitment path
+            let mut commitments = commitments.into_iter();
+            let c1 = commitments.next().unwrap();
+            let c2 = commitments.next().unwrap();
+
+            // Split alphas between w1 and w2
+            let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
+                .into_iter()
+                .map(|mut v| {
+                    let v2 = v.split_off(self.w1_size);
+                    (v, v2)
+                })
+                .unzip();
+
+            let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
+            let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+
+            let (statement_1, f_sums_1, g_sums_1) =
+                create_combined_statement_over_two_polynomials::<3>(
+                    self.m,
+                    &c1.commitment_to_witness,
+                    c1.masked_polynomial,
+                    c1.random_polynomial,
+                    &alphas_1,
+                );
+            let (statement_2, f_sums_2, g_sums_2) =
+                create_combined_statement_over_two_polynomials::<3>(
+                    self.m,
+                    &c2.commitment_to_witness,
+                    c2.masked_polynomial,
+                    c2.random_polynomial,
+                    &alphas_2,
+                );
+
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
+
+            run_zk_whir_pcs_batch_prover(
+                &[c1.commitment_to_witness, c2.commitment_to_witness],
+                &[statement_1, statement_2],
+                &self.whir_witness,
+                &mut merlin,
+            );
         }
 
-        let alphas_1: [Vec<FieldElement>; 3] = alphas_1_vecs.try_into().unwrap();
-        let alphas_2: [Vec<FieldElement>; 3] = alphas_2_vecs.try_into().unwrap();
-
-        let (statement_1, f_sums_1, g_sums_1) = create_combined_statement_over_two_polynomials::<3>(
-            self.m,
-            &commitment_to_witness_1,
-            masked_polynomial_1,
-            random_polynomial_1,
-            &alphas_1,
-        );
-        let (statement_2, f_sums_2, g_sums_2) = create_combined_statement_over_two_polynomials::<3>(
-            self.m,
-            &commitment_to_witness_2,
-            masked_polynomial_2,
-            random_polynomial_2,
-            &alphas_2,
-        );
-        drop(alphas_1);
-        drop(alphas_2);
-
-        let _ = merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1));
-        let _ = merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2));
-
-        // Compute WHIR weighted batch opening proof
-        let _ = run_zk_whir_pcs_batch_prover(
-            &[commitment_to_witness_1, commitment_to_witness_2],
-            &[statement_1, statement_2],
-            &self.whir_witness,
-            &mut merlin,
-        );
-
-        let transcript = merlin.narg_string().to_vec();
-
-        Ok(WhirR1CSProof { transcript })
+        Ok(WhirR1CSProof {
+            transcript: merlin.narg_string().to_vec(),
+        })
     }
 }
 
