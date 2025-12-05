@@ -128,19 +128,31 @@ impl<'a> WitnessSplitter<'a> {
             .map(|&idx| DependencyInfo::extract_writes(&self.witness_builders[idx]).len())
             .sum();
 
-        // Step 7: Greedy balancing - assign free builders to smaller side
+        // Step 7: Assign free builders greedily while respecting dependencies
+        // Rule: if any dependency is in w2, the builder must also be in w2
+        // (because w1 is solved before w2)
         let mut w1_set = mandatory_w1;
         let mut w2_set = mandatory_w2;
 
-        for &free_idx in &free_builders {
-            let witness_count =
-                DependencyInfo::extract_writes(&self.witness_builders[free_idx]).len();
+        for idx in free_builders {
+            // Check if any dependency is in w2
+            let must_be_w2 = self.deps.reads[idx].iter().any(|&read_witness| {
+                self.deps
+                    .witness_producer
+                    .get(&read_witness)
+                    .map_or(false, |&producer| w2_set.contains(&producer))
+            });
 
-            if w1_witness_count <= w2_witness_count {
-                w1_set.insert(free_idx);
+            let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
+
+            if must_be_w2 {
+                w2_set.insert(idx);
+                w2_witness_count += witness_count;
+            } else if w1_witness_count <= w2_witness_count {
+                w1_set.insert(idx);
                 w1_witness_count += witness_count;
             } else {
-                w2_set.insert(free_idx);
+                w2_set.insert(idx);
                 w2_witness_count += witness_count;
             }
         }
