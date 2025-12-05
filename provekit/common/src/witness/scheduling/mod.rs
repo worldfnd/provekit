@@ -68,7 +68,7 @@ impl LayeredWitnessBuilders {
 ///
 /// Contains w1 (pre-challenge commitment) and w2 (post-challenge) witness
 /// builders, each with their own layered execution plans.
-/// Reference: https://hackmd.io/@shreyas-londhe/HkgVaTXCxx
+/// Reference: <https://hackmd.io/@shreyas-londhe/HkgVaTXCxx>
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SplitWitnessBuilders {
     /// Witness builders that must be computed before challenge extraction.
