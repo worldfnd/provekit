@@ -91,7 +91,7 @@ impl LinearForm {
         }
     }
 
-    /// Add another linear form into `self`
+    /// Add another linear form into `self`.
     fn add_mut(&mut self, other: &Self) {
         let self_len = self.terms.len();
         let other_len = other.terms.len();
@@ -130,7 +130,7 @@ impl LinearForm {
         self.constant += other.constant;
     }
 
-    /// Scale this linear form in-place .
+    /// Scale this linear form in-place.
     fn scale_mut(&mut self, scalar: FieldElement) {
         if scalar.is_one() {
             return;
@@ -504,7 +504,7 @@ fn mds_t_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
         2 => mds2_block_forms(s),
         3 => mds3_block_forms(s),
         4 => mds4_block_forms(s),
-        t if [4, 8, 12, 16].contains(&t) => {
+        t if [8, 12, 16].contains(&t) => {
             let blocks = t / 4;
 
             // Per-block outputs, each block is 4 lanes.
