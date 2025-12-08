@@ -2,7 +2,7 @@ use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement, R1CS,
+        NoirElement, R1CS, PublicInputs,
     },
     acir::circuit::Program,
     serde::{Deserialize, Serialize},
@@ -20,6 +20,7 @@ pub struct NoirProofScheme {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
+    pub public_inputs:   PublicInputs,
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 

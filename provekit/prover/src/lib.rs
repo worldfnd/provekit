@@ -6,7 +6,7 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover},
+    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
 };
@@ -119,7 +119,9 @@ impl Prove for Prover {
             .prove(merlin, self.r1cs, commitments)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { whir_r1cs_proof })
+        let public_inputs = PublicInputs::new();
+
+        Ok(NoirProof { public_inputs, whir_r1cs_proof })
     }
 }
 
