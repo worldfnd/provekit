@@ -26,7 +26,7 @@ impl<'a> WitnessSplitter<'a> {
     /// (post-challenge).
     ///
     /// Returns (w1_builder_indices, w2_builder_indices)
-    pub fn split_builders(&self) -> (Vec<usize>, Vec<usize>) {
+    pub fn split_builders(&self, acir_public_inputs_indices_set: HashSet<u32>) -> (Vec<usize>, Vec<usize>) {
         let builder_count = self.witness_builders.len();
 
         // Step 1: Find all Challenge builders
@@ -40,7 +40,11 @@ impl<'a> WitnessSplitter<'a> {
             .collect();
 
         if challenge_builders.is_empty() {
-            return ((0..builder_count).collect(), Vec::new());
+            let w1_indices = self.rearrange_w1(
+                (0..builder_count).collect(),
+                &acir_public_inputs_indices_set,
+            );
+            return (w1_indices, Vec::new());
         }
 
         // Step 2: Forward DFS from challenges to find mandatory_w2
@@ -135,6 +139,7 @@ impl<'a> WitnessSplitter<'a> {
         // Step 7: Assign free builders greedily while respecting dependencies
         // Rule: if any dependency is in w2, the builder must also be in w2
         // (because w1 is solved before w2)
+        // with the exception of public builders writing public witnesses)
         let mut w1_set = mandatory_w1;
         let mut w2_set = mandatory_w2;
 
@@ -148,6 +153,15 @@ impl<'a> WitnessSplitter<'a> {
             });
 
             let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
+
+             // If free builder writes a public witness, add it to w1_set.
+            if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
+                if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
+                    w1_set.insert(idx);
+                    w1_witness_count += witness_count;
+                    continue;
+                }
+            }
 
             if must_be_w2 {
                 w2_set.insert(idx);
@@ -169,5 +183,46 @@ impl<'a> WitnessSplitter<'a> {
         w2_indices.sort_unstable();
 
         (w1_indices, w2_indices)
+    }
+
+        /// Rearranges w1 indices: constant builder (0) first, then public inputs,
+    /// then rest.
+    fn rearrange_w1(
+        &self,
+        w1_indices: Vec<usize>,
+        acir_public_inputs_indices_set: &HashSet<u32>,
+    ) -> Vec<usize> {
+        let mut public_input_builder_indices = Vec::new();
+        let mut rest_indices = Vec::new();
+
+        // Sanity Check: Make sure all public inputs and WITNESS_ONE_IDX are in
+        // w1_indices.
+        for &idx in acir_public_inputs_indices_set.iter() {
+            if !w1_indices.contains(&(idx as usize)) {
+                panic!("Public input {} is not in w1_indices", idx);
+            }
+        }
+
+        // Separate into: 0, public inputs, and rest
+        for builder_idx in w1_indices {
+            if builder_idx == 0 {
+                continue; // Will add 0 first
+            } else if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[builder_idx] {
+                if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
+                    public_input_builder_indices.push(builder_idx);
+                    continue;
+                }
+            }
+            rest_indices.push(builder_idx);
+        }
+
+        public_input_builder_indices.sort_unstable();
+        rest_indices.sort_unstable();
+
+        // Reorder: 0 first, then public inputs, then rest
+        let mut new_w1_indices = vec![0];
+        new_w1_indices.extend(public_input_builder_indices);
+        new_w1_indices.extend(rest_indices);
+        new_w1_indices
     }
 }

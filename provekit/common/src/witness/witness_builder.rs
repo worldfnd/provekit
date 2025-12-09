@@ -14,6 +14,7 @@ use {
         FieldElement, R1CS,
     },
     serde::{Deserialize, Serialize},
+    std::collections::HashSet,
     std::num::NonZeroU32,
 };
 
@@ -174,6 +175,7 @@ impl WitnessBuilder {
         witness_builders: &[WitnessBuilder],
         r1cs: R1CS,
         witness_map: Vec<Option<NonZeroU32>>,
+        acir_public_inputs_indices_set: HashSet<u32>,
     ) -> (SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, usize) {
         if witness_builders.is_empty() {
             return (
@@ -190,7 +192,7 @@ impl WitnessBuilder {
 
         // Step 1: Analyze dependencies and split into w1/w2
         let splitter = WitnessSplitter::new(witness_builders);
-        let (w1_indices, w2_indices) = splitter.split_builders();
+        let (w1_indices, w2_indices) = splitter.split_builders(acir_public_inputs_indices_set);
 
         // Step 2: Extract w1 and w2 builders in order
         let w1_builders: Vec<WitnessBuilder> = w1_indices
