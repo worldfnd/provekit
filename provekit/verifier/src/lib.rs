@@ -17,7 +17,7 @@ impl Verify for Verifier {
         self.whir_for_witness
             .take()
             .unwrap()
-            .verify(&proof.whir_r1cs_proof)?;
+            .verify(&proof.whir_r1cs_proof, &proof.public_inputs)?;
 
         Ok(())
     }
