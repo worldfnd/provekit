@@ -50,6 +50,8 @@ impl WhirR1CSScheme {
                 .add_whir_proof(&self.whir_for_hiding_spartan)
                 .hint("claimed_evaluations_1")
                 .hint("claimed_evaluations_2")
+                .add_public_inputs()
+                .hint("public_weights_evaluations")
                 .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total);
         } else {
             io = io
@@ -59,6 +61,8 @@ impl WhirR1CSScheme {
                 .add_zk_sumcheck_polynomials(self.m_0)
                 .add_whir_proof(&self.whir_for_hiding_spartan)
                 .hint("claimed_evaluations")
+                .add_public_inputs()
+                .hint("public_weights_evaluations")
                 .add_whir_proof(&self.whir_witness);
         }
 
