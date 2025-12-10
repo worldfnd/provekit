@@ -210,7 +210,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
 
-            let (statement_1, f_sums_1, g_sums_1) =
+            let (mut statement_1, f_sums_1, g_sums_1) =
                 create_combined_statement_over_two_polynomials::<3>(
                     self.m,
                     &c1.commitment_to_witness,
@@ -232,6 +232,18 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
+
+            // VERIFY the size given by self.m
+            let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
+            let (public_f_sum, public_g_sum) = update_statement_with_public_weights(
+                &mut statement_1,
+                &c1.commitment_to_witness,
+                &c1.masked_polynomial,
+                &c1.random_polynomial,
+                public_weight,
+            );
+    
+            let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
 
             run_zk_whir_pcs_batch_prover(
                 &[c1.commitment_to_witness, c2.commitment_to_witness],
