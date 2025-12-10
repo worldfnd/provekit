@@ -28,6 +28,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var stirAnswers [][][]Fp256
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
+	var claimedEvaluations2 ClaimedEvaluations
 
 	for _, op := range io.Ops {
 		switch op.Kind {
@@ -73,6 +74,8 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 					return fmt.Errorf("failed to deserialize deferred hint: %w", err)
 				}
 				deferred = append(deferred, deferredTemporary...)
+
+			// Single mode hint
 			case "claimed_evaluations":
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
@@ -81,6 +84,27 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 				)
 				if err != nil {
 					return fmt.Errorf("failed to deserialize claimed_evaluations: %w", err)
+				}
+
+			// Dual mode hints
+			case "claimed_evaluations_1":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&claimedEvaluations,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize claimed_evaluations_1: %w", err)
+				}
+
+			case "claimed_evaluations_2":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&claimedEvaluations2,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize claimed_evaluations_2: %w", err)
 				}
 			}
 
@@ -121,15 +145,44 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("failed to deserialize interner: %w", err)
 	}
 
-	var hidingSpartanData = consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
+	hidingSpartanData := consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
 
-	var witnessData = consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+	// Build witness hints based on mode
+	var witnessFirstRoundHints []FirstRoundHint
+	var witnessRoundHints ZKHint
+
+	if config.NumChallenges > 0 {
+		// Batch mode: N commitments
+		// Rust emits: N first-round hints, then NRounds hints for batched polynomial
+		var numCommitments int
+		if config.NumChallenges > 0 {
+			numCommitments = 2
+		} else {
+			numCommitments = 1
+		}
+
+		// Consume first-round hints for each original commitment
+		witnessFirstRoundHints = make([]FirstRoundHint, numCommitments)
+		for i := 0; i < numCommitments; i++ {
+			witnessFirstRoundHints[i] = consumeFirstRoundOnly(&merklePaths, &stirAnswers)
+		}
+
+		// Consume rounds 1+ for the batched polynomial
+		witnessRoundHints = consumeWhirDataRoundsOnly(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+	} else {
+		// Single mode
+		witnessData := consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+		witnessFirstRoundHints = []FirstRoundHint{witnessData.firstRoundMerklePaths}
+		witnessRoundHints = witnessData
+	}
 
 	hints := Hints{
-		witnessHints:      witnessData,
-		spartanHidingHint: hidingSpartanData,
+		spartanHidingHint:      hidingSpartanData,
+		WitnessFirstRoundHints: witnessFirstRoundHints,
+		WitnessRoundHints:      witnessRoundHints,
 	}
-	err = verifyCircuit(deferred, config, hints, pk, vk, claimedEvaluations, r1cs, interner, buildOps)
+
+	err = verifyCircuit(deferred, config, hints, pk, vk, claimedEvaluations, claimedEvaluations2, r1cs, interner, buildOps)
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}
