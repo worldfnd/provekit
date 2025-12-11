@@ -95,6 +95,7 @@ impl VerificationService {
             whir_scheme.m_0,
             whir_scheme.m,
             whir_scheme.a_num_terms,
+            whir_scheme.num_challenges,
             gnark_params_path,
         );
 

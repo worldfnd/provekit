@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/consensys/gnark/backend/groth16"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
@@ -45,6 +46,27 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 			}
 
 			switch string(op.Label) {
+			default:
+				// Handle batch-mode hints: stir_answers_witness_X and merkle_proof_witness_X
+				label := string(op.Label)
+				if strings.HasPrefix(label, "merkle_proof_witness_") {
+					var path FullMultiPath[KeccakDigest]
+					_, err = arkSerialize.CanonicalDeserializeWithMode(
+						bytes.NewReader(config.Transcript[start:end]),
+						&path,
+						false, false,
+					)
+					merklePaths = append(merklePaths, path)
+				} else if strings.HasPrefix(label, "stir_answers_witness_") {
+					var stirAnswersTemporary [][]Fp256
+					_, err = arkSerialize.CanonicalDeserializeWithMode(
+						bytes.NewReader(config.Transcript[start:end]),
+						&stirAnswersTemporary,
+						false, false,
+					)
+					stirAnswers = append(stirAnswers, stirAnswersTemporary)
+				}
+
 			case "merkle_proof":
 				var path FullMultiPath[KeccakDigest]
 				_, err = arkSerialize.CanonicalDeserializeWithMode(
