@@ -100,6 +100,7 @@ type Config struct {
 	WitnessStatementEvaluations  []string   `json:"witness_statement_evaluations"`
 	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
 	NumChallenges                int        `json:"num_challenges"`
+	W1Size                       int        `json:"w1_size"`
 }
 
 // Update Hints to support batch mode

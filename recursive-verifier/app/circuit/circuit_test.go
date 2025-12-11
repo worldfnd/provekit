@@ -290,14 +290,26 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	matrixB := buildMatrix(r1csData.B, interner)
 	matrixC := buildMatrix(r1csData.C, interner)
 
-	// Parse evaluations
-	witnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	// Parse evaluations - need separate values for circuit (placeholder) and assignment (actual)
 	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
+	hidingSpartanLinearStatementEvaluationsAssign := make([]frontend.Variable, 1)
+	hidingSpartanLinearStatementEvaluationsAssign[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
 
-	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	witnessLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[1].Limbs)
-	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
-	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
+	var witnessLinearStatementEvalsSize int
+	if config.NumChallenges > 0 {
+		witnessLinearStatementEvalsSize = 6 // 3 per commitment
+	} else {
+		witnessLinearStatementEvalsSize = 3
+	}
+
+	// For circuit definition: placeholder values (nil)
+	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
+
+	// For assignment: actual values
+	witnessLinearStatementEvaluationsAssign := make([]frontend.Variable, witnessLinearStatementEvalsSize)
+	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
+		witnessLinearStatementEvaluationsAssign[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	}
 
 	// Build transcript
 	transcriptT := make([]uints.U8, config.TranscriptLen)
@@ -332,13 +344,14 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		LogANumTerms:                            config.LogANumTerms,
 		WitnessClaimedEvaluations:               witnessClaimedEvals,
 		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		WitnessLinearStatementEvaluations:       make([]frontend.Variable, 3),
-		HidingSpartanLinearStatementEvaluations: make([]frontend.Variable, 1),
+		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
+		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
 		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, true),
 		NumChallenges:                           config.NumChallenges,
+		W1Size:                                  config.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
 		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,
@@ -365,13 +378,14 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		LogNumConstraints:                       config.LogNumConstraints,
 		WitnessClaimedEvaluations:               witnessClaimedEvalsAssign,
 		WitnessBlindingEvaluations:              witnessBlindingEvalsAssign,
-		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
-		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
+		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluationsAssign,
+		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluationsAssign,
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
 		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
 		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, false),
 		NumChallenges:                           config.NumChallenges,
+		W1Size:                                  config.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
 		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,

@@ -32,6 +32,7 @@ type Circuit struct {
 	WHIRParamsWitness                       WHIRParams
 	WHIRParamsHidingSpartan                 WHIRParams
 	NumChallenges                           int
+	W1Size                                  int
 
 	// Witness commitments (length 1 for single mode, N for batch mode)
 	WitnessFirstRounds         []Merkle
@@ -56,13 +57,13 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	// Parse first commitment (C1)
+	// Parse first commitment (C1) - needed to consume transcript
 	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 	if err != nil {
 		return err
 	}
 
-	// Dual commitment mode: squeeze challenges, then parse second commitment (C2)
+	// Variables for second commitment (only used in dual mode)
 	var rootHash2, batchingRandomness2 frontend.Variable
 	var initialOODQueries2 []frontend.Variable
 	var initialOODAnswers2 [][]frontend.Variable
@@ -74,7 +75,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return err
 		}
 
-		// Parse second commitment
+		// Parse second commitment (C2)
 		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 		if err != nil {
 			return err
@@ -149,11 +150,18 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	// Matrix extension check
-	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
-
-	for i := 0; i < 3; i++ {
-		api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+	if circuit.NumChallenges > 0 {
+		// Batch mode - check 6 deferred values
+		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
+		for i := 0; i < 6; i++ {
+			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		}
+	} else {
+		// Single mode - existing logic
+		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+		for i := 0; i < 3; i++ {
+			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		}
 	}
 
 	return nil
