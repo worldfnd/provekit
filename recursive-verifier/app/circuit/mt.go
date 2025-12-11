@@ -60,13 +60,6 @@ func newMerkle(
 	}
 }
 
-func newMerkleOrEmpty(hint Hint, useHint bool, isContainer bool) Merkle {
-	if !useHint {
-		return Merkle{} // Empty merkle for single mode
-	}
-	return newMerkle(hint, isContainer)
-}
-
 func oodAnswers(
 	api frontend.API,
 	answers [][]frontend.Variable,
