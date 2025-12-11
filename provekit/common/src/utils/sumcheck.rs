@@ -8,6 +8,7 @@ use {
     spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
     tracing::instrument,
+    spartan_vm::{api as spartan_api, compiled_artifacts::CompiledArtifacts},
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
@@ -152,7 +153,7 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
 }
 
 /// Evaluates the equality polynomial recursively.
-fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement) {
+fn eval_eq(eval: &[FieldElement], mut out: &mut [FieldElement], scalar: FieldElement) {
     debug_assert_eq!(out.len(), 1 << eval.len());
     let size = out.len();
     if let Some((&x, tail)) = eval.split_first() {
@@ -215,4 +216,19 @@ pub fn calculate_external_row_of_r1cs_matrices(
         || eq_alpha * r1cs.c(),
     );
     [a, b, c]
+}
+
+#[instrument(skip_all)]
+pub fn calculate_external_row_of_r1cs_matrices_with_ad(
+    alpha: Vec<FieldElement>,
+    r1cs: R1CS,
+    artifacts: &mut CompiledArtifacts,
+) -> [Vec<FieldElement>; 3] {
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
+    let eq_alpha = &eq_alpha[..r1cs.num_constraints()];
+
+    let (ad_a, ad_b, ad_c, _ad_instrumenter) =
+        spartan_api::run_ad_from_binary(&mut artifacts.ad_binary, &artifacts.r1cs, &eq_alpha);
+
+    [ad_a, ad_b, ad_c]
 }

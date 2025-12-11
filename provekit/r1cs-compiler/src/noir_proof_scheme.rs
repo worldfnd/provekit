@@ -1,15 +1,9 @@
 use {
-    crate::{
-        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
-        witness_generator::NoirWitnessGeneratorBuilder,
-    },
+    crate::whir_r1cs::WhirR1CSSchemeBuilder,
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
-    provekit_common::{
-        utils::PrintAbi,
-        witness::{NoirWitnessGenerator, WitnessBuilder},
-        NoirProofScheme, WhirR1CSScheme,
-    },
+    provekit_common::{utils::{convert_spartan_r1cs_to_provekit, PrintAbi}, NoirProofScheme, WhirR1CSScheme},
+    spartan_vm::api as spartan_api,
     std::{fs::File, path::Path},
     tracing::{info, instrument},
 };
@@ -19,7 +13,7 @@ pub trait NoirProofSchemeBuilder {
     where
         Self: Sized;
 
-    fn from_program(program: ProgramArtifact) -> Result<Self>
+    fn from_program(program: ProgramArtifact, project_path: impl AsRef<Path>) -> Result<Self>
     where
         Self: Sized;
 }
@@ -27,14 +21,21 @@ pub trait NoirProofSchemeBuilder {
 impl NoirProofSchemeBuilder for NoirProofScheme {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
+        let path = path.as_ref();
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
-        Self::from_program(program)
+        // Derive the project directory from the JSON file path.
+        // The JSON file is typically at `project/target/name.json`, so we go up 2 levels.
+        let project_path = path
+            .parent()
+            .and_then(|p| p.parent())
+            .context("Could not derive project path from JSON file path")?;
+
+        Self::from_program(program, project_path)
     }
 
-    #[instrument(skip_all)]
-    fn from_program(program: ProgramArtifact) -> Result<Self> {
+    fn from_program(program: ProgramArtifact, project_path: impl AsRef<Path>) -> Result<Self> {
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(
@@ -42,7 +43,6 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             "Program must have one entry point."
         );
 
-        // Extract bits from Program Artifact.
         let main = &program.bytecode.functions[0];
         info!(
             "ACIR: {} witnesses, {} opcodes.",
@@ -50,31 +50,15 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             main.opcodes.len()
         );
 
-        // Compile to R1CS schemes
-        let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
-        info!(
-            "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
-            r1cs.num_constraints(),
-            r1cs.num_witnesses(),
-            r1cs.a.num_entries(),
-            r1cs.b.num_entries(),
-            r1cs.c.num_entries()
-        );
-        let layered_witness_builders = WitnessBuilder::prepare_layers(&witness_builders);
+        let artifacts = spartan_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
 
-        // Configure witness generator
-        let witness_generator =
-            NoirWitnessGenerator::new(&program, witness_map, r1cs.num_witnesses());
-
-        // Configure Whir
-        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(&r1cs);
+        let whir_for_witness = WhirR1CSScheme::new_from_spartan_r1cs(&artifacts.r1cs);
+        let r1cs = convert_spartan_r1cs_to_provekit(&artifacts.r1cs);
 
         Ok(Self {
-            program: program.bytecode,
-            r1cs,
-            layered_witness_builders,
-            witness_generator,
             whir_for_witness,
+            artifacts,
+            r1cs,
         })
     }
 }
@@ -113,9 +97,6 @@ mod tests {
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
         let proof_schema = NoirProofScheme::from_file(path).unwrap();
 
-        test_serde(&proof_schema.r1cs);
-        test_serde(&proof_schema.layered_witness_builders);
-        test_serde(&proof_schema.witness_generator);
         test_serde(&proof_schema.whir_for_witness);
     }
 

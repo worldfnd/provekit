@@ -64,6 +64,23 @@ impl SparseMatrix {
         self.new_row_indices.resize(rows, self.values.len() as u32);
     }
 
+    pub fn reserve(&mut self, additional_rows: usize, additional_entries: usize) {
+        self.new_row_indices.reserve(additional_rows);
+        self.col_indices.reserve(additional_entries);
+        self.values.reserve(additional_entries);
+    }
+
+    #[inline]
+    pub fn push_row(&mut self, entries: impl Iterator<Item = (u32, InternedFieldElement)>) {
+        self.new_row_indices.push(self.values.len() as u32);
+        self.num_rows += 1;
+        for (col, value) in entries {
+            debug_assert!((col as usize) < self.num_cols, "column index out of bounds");
+            self.col_indices.push(col);
+            self.values.push(value);
+        }
+    }
+
     /// Set the value at the given row and column.
     pub fn set(&mut self, row: usize, col: usize, value: InternedFieldElement) {
         assert!(row < self.num_rows, "row index out of bounds");

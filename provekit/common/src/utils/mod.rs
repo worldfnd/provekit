@@ -68,6 +68,59 @@ pub fn noir_to_native(n: NoirElement) -> FieldElement {
     FieldElement::from(BigInt(limbs))
 }
 
+pub fn convert_spartan_r1cs_to_provekit(spartan_r1cs: &spartan_vm::compiler::r1cs_gen::R1CS) -> crate::R1CS {
+    let num_witnesses = spartan_r1cs.witness_layout.size();
+    let num_constraints = spartan_r1cs.constraints.len();
+
+    let total_entries: usize = spartan_r1cs
+        .constraints
+        .iter()
+        .map(|c| c.a.len() + c.b.len() + c.c.len())
+        .sum();
+
+    let mut r1cs = crate::R1CS::new();
+    r1cs.add_witnesses(num_witnesses);
+    r1cs.reserve_constraints(num_constraints, total_entries);
+
+    let mut a_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut b_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut c_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+
+    for constraint in &spartan_r1cs.constraints {
+        a_buf.clear();
+        a_buf.extend(
+            constraint
+                .a
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        b_buf.clear();
+        b_buf.extend(
+            constraint
+                .b
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        c_buf.clear();
+        c_buf.extend(
+            constraint
+                .c
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        r1cs.push_constraint(
+            a_buf.iter().copied(),
+            b_buf.iter().copied(),
+            c_buf.iter().copied(),
+        );
+    }
+
+    r1cs
+}
+
 /// Calculates the degree of the next smallest power of two
 pub const fn next_power_of_two(n: usize) -> usize {
     let mut power = 1;

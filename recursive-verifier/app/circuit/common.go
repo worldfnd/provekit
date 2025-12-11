@@ -358,7 +358,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 
 	var interner Interner
 	_, err = arkSerialize.CanonicalDeserializeWithMode(
-		bytes.NewReader(internerBytes), &interner, false, false,
+		bytes.NewReader(internerBytes), &interner.Values, false, false,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to deserialize interner: %w", err)

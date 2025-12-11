@@ -1,0 +1,64 @@
+fn main@0(block 0) ->  [returns: [], cfg_taint: V3] {
+  v7 = U(32, 1)
+  v3 = U(32, 10000)
+  v1 = U(32, 0)
+  block_0(v0 : Field [V4]) [cfg_taint: V8] {
+
+    jmp block_1(v1)
+  }
+  block_1(v2 : u32 [V5]) [cfg_taint: V9] {
+    v4[V5 ∪ P] = v2 < v3
+    jmp_if v4 to block_2, else to block_3
+  }
+  block_2() [cfg_taint: V6] {
+    v5[V5] = cast v2 to Field
+    v6[V4 ∪ V5] = v0 + v5
+     = call assert_max_bit_size@1(v6)
+    v8[V5 ∪ P] = v2 + v7
+    jmp block_1(v8)
+  }
+  block_3() [cfg_taint: V7] {
+
+    return 
+  }
+}
+
+fn assert_max_bit_size@1(block 0) ->  [returns: [], cfg_taint: V0] {
+  v31 = U(8, 51)
+  v13 = U(8, 98)
+  v16 = U(8, 104)
+  v3 = U(8, 84)
+  v17 = U(8, 97)
+  v18 = U(8, 110)
+  v19 = U(8, 111)
+  v12 = U(8, 116)
+  v20 = U(8, 100)
+  v4 = U(8, 95)
+  v27 = U(8, 114)
+  v21 = U(8, 105)
+  v26 = U(8, 58)
+  v28 = U(8, 103)
+  v14 = U(8, 101)
+  v7 = U(8, 69)
+  v8 = U(8, 32)
+  v2 = U(8, 73)
+  v32 = U(8, 125)
+  v5 = U(8, 83)
+  v23 = U(8, 123)
+  v10 = U(8, 117)
+  v9 = U(8, 109)
+  v1 = U(8, 66)
+  v30 = U(8, 52)
+  v15 = U(8, 108)
+  v29 = U(8, 44)
+  v6 = U(8, 90)
+  v25 = U(8, 107)
+  v24 = U(8, 34)
+  v11 = U(8, 115)
+  block_0(v0 : Field [V1]) [cfg_taint: V2] {
+    v22[[P of P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P]] = [v1, v2, v3, v4, v5, v2, v6, v7, v8, v9, v10, v11, v12, v8, v13, v14, v8, v15, v14, v11, v11, v8, v12, v16, v17, v18, v8, v9, v19, v20, v10, v15, v10, v11, v4, v18, v10, v9, v4, v13, v21, v12, v11] : Array[43] of u8
+    v33[[P of P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P ∪ P]] = [v23, v24, v25, v21, v18, v20, v24, v26, v24, v11, v12, v27, v21, v18, v28, v24, v29, v24, v15, v14, v18, v28, v12, v16, v24, v26, v30, v31, v32] : Array[29] of u8
+    rangecheck(v0, 32)
+    return 
+  }
+}
