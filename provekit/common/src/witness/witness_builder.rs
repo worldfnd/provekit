@@ -194,6 +194,9 @@ impl WitnessBuilder {
         let splitter = WitnessSplitter::new(witness_builders);
         let (w1_indices, w2_indices) = splitter.split_builders(acir_public_inputs_indices_set);
 
+        println!("Dx {:?}", w1_indices);
+        println!("DEBUG_ASH: w2_indices: {:?}", w2_indices);
+
         // Step 2: Extract w1 and w2 builders in order
         let w1_builders: Vec<WitnessBuilder> = w1_indices
             .iter()

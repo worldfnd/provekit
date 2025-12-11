@@ -157,6 +157,7 @@ impl<'a> WitnessSplitter<'a> {
              // If free builder writes a public witness, add it to w1_set.
             if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
+                    println!("DEBUG_ASH w2 exists: acir_idx: {:?}, idx: {:?}", acir_idx, idx);
                     w1_set.insert(idx);
                     w1_witness_count += witness_count;
                     continue;
@@ -179,7 +180,7 @@ impl<'a> WitnessSplitter<'a> {
         let mut w1_indices: Vec<usize> = w1_set.into_iter().collect();
         let mut w2_indices: Vec<usize> = w2_set.into_iter().collect();
 
-        w1_indices.sort_unstable();
+        w1_indices = self.rearrange_w1(w1_indices, &acir_public_inputs_indices_set);
         w2_indices.sort_unstable();
 
         (w1_indices, w2_indices)
@@ -209,6 +210,7 @@ impl<'a> WitnessSplitter<'a> {
                 continue; // Will add 0 first
             } else if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[builder_idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
+                    println!("DEBUG_ASH: acir_idx: {:?}, builder_idx: {:?}", acir_idx, builder_idx);
                     public_input_builder_indices.push(builder_idx);
                     continue;
                 }

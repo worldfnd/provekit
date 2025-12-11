@@ -144,8 +144,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             w
         };
 
-        println!("DEBUG_ASH: full_witness: {:?}", full_witness);
-
         // First round: ZK sumcheck to reduce R1CS to weighted evaluation
         let alpha = run_zk_sumcheck_prover(
             &r1cs,
@@ -209,6 +207,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+
+            println!("DEBUG_ASH: &c1.parsed_commitment: {:?}", &c1.padded_witness);
 
             let (mut statement_1, f_sums_1, g_sums_1) =
                 create_combined_statement_over_two_polynomials::<3>(
