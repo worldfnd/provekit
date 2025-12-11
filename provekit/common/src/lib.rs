@@ -10,17 +10,15 @@ mod verifier;
 mod whir_r1cs;
 pub mod witness;
 
-use crate::{
-    interner::{InternedFieldElement, Interner},
-    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
-};
+use crate::sparse_matrix::{HydratedSparseMatrix, SparseMatrix};
 pub use {
     acir::FieldElement as NoirElement,
+    interner::{InternedFieldElement, Interner},
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
     verifier::Verifier,
-    whir::crypto::fields::Field256 as FieldElement,
+    spartan_vm::compiler::Field as FieldElement,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
 };
 

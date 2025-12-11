@@ -1,31 +1,17 @@
 use {
     crate::{
-        r1cs::R1CSSolver,
         whir_r1cs::WhirR1CSProver,
-        witness::{fill_witness, witness_io_pattern::WitnessIOPattern},
-    },
-    acir::native_types::WitnessMap,
+        witness::{witness_io_pattern::WitnessIOPattern},
+    }, provekit_common::{
+        FieldElement, IOPattern,  NoirProof, Prover, skyscraper::SkyscraperSponge, utils::convert_spartan_r1cs_to_provekit,
+    }, spartan_vm::api as spartan_api, spongefish::ProverState, std::path::Path,
     anyhow::{Context, Result},
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
-    provekit_common::{
-        skyscraper::SkyscraperSponge, utils::noir_to_native, witness::WitnessBuilder, FieldElement,
-        IOPattern, NoirElement, NoirProof, Prover,
-    },
-    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
-    std::path::Path,
-    tracing::instrument,
 };
 
-mod r1cs;
 mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
-
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
     fn create_witness_io_pattern(&self) -> IOPattern;
@@ -33,112 +19,73 @@ pub trait Prove {
     fn seed_witness_merlin(
         &mut self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        witness: &WitnessMap<NoirElement>,
+        witness: &Vec<FieldElement>,
     ) -> Result<()>;
 }
 
 impl Prove for Prover {
-    #[instrument(skip_all)]
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        let solver = Bn254BlackBoxSolver::default();
-        let mut output_buffer = Vec::new();
-        let mut foreign_call_executor = DefaultForeignCallBuilder {
-            output:       &mut output_buffer,
-            enable_mocks: false,
-            resolver_url: None,
-            root_path:    None,
-            package_name: None,
-        }
-        .build();
-
-        let initial_witness = self.witness_generator.abi().encode(&input_map, None)?;
-
-        let mut witness_stack = nargo::ops::execute_program(
-            &self.program,
-            initial_witness,
-            &solver,
-            &mut foreign_call_executor,
-        )?;
-
-        Ok(witness_stack
-            .pop()
-            .context("Missing witness results")?
-            .witness)
-    }
-
-    #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        let (input_map, _expected_return) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        // Derive the project directory from the Prover.toml path.
+        let project_path = prover_toml
+            .as_ref()
+            .parent()
+            .context("Could not derive project path from Prover.toml path")?;
 
-        let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
+        let (driver, _) = spartan_api::compile_to_r1cs(project_path.to_path_buf(), false)?;
 
-        // Solve R1CS instance
-        let witness_io = self.create_witness_io_pattern();
-        let mut witness_merlin = witness_io.to_prover_state();
-        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+        let params = spartan_api::read_prover_inputs(&project_path.to_path_buf(), driver.abi())?;
+        
+        let witgen_result = spartan_api::run_witgen_from_binary(&mut self.artifacts.witgen_binary, &self.artifacts.r1cs, &params);
+        let witness: Vec<FieldElement> = [witgen_result.out_wit_pre_comm.clone(), witgen_result.out_wit_post_comm.clone()].concat();
 
-        let partial_witness = self.r1cs.solve_witness_vec(
-            self.layered_witness_builders,
-            acir_witness_idx_to_value_map,
-            &mut witness_merlin,
-        );
-        let witness = fill_witness(partial_witness).context("while filling witness")?;
-
-        // Verify witness (redudant with solve)
         #[cfg(test)]
-        self.r1cs
-            .test_witness_satisfaction(&witness)
-            .context("While verifying R1CS instance")?;
+        assert!(spartan_api::check_witgen(&self.artifacts.r1cs, &witgen_result));
 
-        // Prove R1CS instance
+        let converted_r1cs = convert_spartan_r1cs_to_provekit(&self.artifacts.r1cs);
+
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(self.r1cs, witness)
+            .prove(converted_r1cs, witness, &mut self.artifacts)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {
-        let circuit = &self.program.functions[0];
-        let public_idxs = circuit.public_inputs().indices();
-        let num_challenges = self
-            .layered_witness_builders
-            .layers
-            .iter()
-            .flat_map(|layer| &layer.witness_builders)
-            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
-            .count();
+        // let circuit = &self.program.functions[0];
+        // let public_idxs = circuit.public_inputs().indices();
+        // let num_challenges = self
+        //     .layered_witness_builders
+        //     .layers
+        //     .iter()
+        //     .flat_map(|layer| &layer.witness_builders)
+        //     .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
+        //     .count();
+        // println!("Number of challenges: {:?} public inputs: {:?}", num_challenges, public_idxs.len());
 
         // Create witness IO pattern
         IOPattern::new("📜")
             .add_shape()
-            .add_public_inputs(public_idxs.len())
-            .add_logup_challenges(num_challenges)
+            .add_public_inputs(self.artifacts.r1cs.witness_layout.challenges_size + 1)
+            .add_logup_challenges(self.artifacts.r1cs.witness_layout.lookups_data_size)
     }
 
     fn seed_witness_merlin(
         &mut self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        witness: &WitnessMap<NoirElement>,
+        public_inputs: &Vec<FieldElement>,
     ) -> Result<()> {
         // Absorb circuit shape
-        let _ = merlin.add_scalars(&[
-            FieldElement::from(self.r1cs.num_constraints() as u64),
-            FieldElement::from(self.r1cs.num_witnesses() as u64),
-        ]);
+        // let _ = merlin.add_scalars(&[
+        //     FieldElement::from(self.artifacts.r1cs.constraints.len() as u64),
+        //     FieldElement::from(self.artifacts.r1cs.witness_layout.algebraic_size as u64),
+        // ]);
 
         // Absorb public inputs (values) in canonical order
-        let circuit = &self.program.functions[0];
-        let public_idxs = circuit.public_inputs().indices();
-        if !public_idxs.is_empty() {
-            let pub_vals: Vec<FieldElement> = public_idxs
-                .iter()
-                .map(|&i| noir_to_native(*witness.get_index(i).expect("missing public input")))
-                .collect();
-            let _ = merlin.add_scalars(&pub_vals);
-        }
+        // let circuit = &self.program.functions[0];
+        // if !public_inputs.is_empty() {
+        //     let _ = merlin.add_scalars(&public_inputs);
+        // }
 
         Ok(())
     }

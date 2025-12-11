@@ -1,36 +1,30 @@
 use {
     crate::{
-        noir_proof_scheme::NoirProofScheme,
-        whir_r1cs::WhirR1CSScheme,
-        witness::{LayeredWitnessBuilders, NoirWitnessGenerator},
-        NoirElement, R1CS,
+        noir_proof_scheme::NoirProofScheme, whir_r1cs::WhirR1CSScheme, R1CS,
     },
-    acir::circuit::Program,
     serde::{Deserialize, Serialize},
+    spartan_vm::CompiledArtifacts,
 };
 
 /// A prover for a Noir Proof Scheme
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prover {
-    pub program:                  Program<NoirElement>,
-    pub r1cs:                     R1CS,
-    pub layered_witness_builders: LayeredWitnessBuilders,
-    pub witness_generator:        NoirWitnessGenerator,
-    pub whir_for_witness:         WhirR1CSScheme,
+    pub whir_for_witness: WhirR1CSScheme,
+    pub artifacts:        CompiledArtifacts,
+    /// R1CS in the format expected by the recursive verifier (Go/gnark)
+    pub r1cs:             R1CS,
 }
 
 impl Prover {
     pub fn from_noir_proof_scheme(noir_proof_scheme: NoirProofScheme) -> Self {
         Self {
-            program:                  noir_proof_scheme.program,
-            r1cs:                     noir_proof_scheme.r1cs,
-            layered_witness_builders: noir_proof_scheme.layered_witness_builders,
-            witness_generator:        noir_proof_scheme.witness_generator,
-            whir_for_witness:         noir_proof_scheme.whir_for_witness,
+            whir_for_witness: noir_proof_scheme.whir_for_witness,
+            artifacts:        noir_proof_scheme.artifacts,
+            r1cs:             noir_proof_scheme.r1cs,
         }
     }
 
     pub const fn size(&self) -> (usize, usize) {
-        (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+        (self.artifacts.r1cs.constraints.len(), self.artifacts.r1cs.witness_layout.algebraic_size)
     }
 }

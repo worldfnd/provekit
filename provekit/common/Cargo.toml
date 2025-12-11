@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 skyscraper.workspace = true
+spartan-vm.workspace = true
 
 # Noir language
 acir.workspace = true

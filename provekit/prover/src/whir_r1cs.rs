@@ -1,27 +1,13 @@
 use {
-    anyhow::{ensure, Result},
-    ark_ff::UniformRand,
-    ark_std::{One, Zero},
-    provekit_common::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
-        utils::{
-            pad_to_power_of_two,
-            sumcheck::{
-                calculate_evaluations_over_boolean_hypercube_for_eq,
-                calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
-                sumcheck_fold_map_reduce,
-            },
-            zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
-            HALF,
-        },
-        FieldElement, IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
-    },
-    spongefish::{
-        codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
-        ProverState,
-    },
-    tracing::{info, instrument, warn},
-    whir::{
+    anyhow::{Result, ensure}, ark_ff::UniformRand, ark_std::{One, Zero}, provekit_common::{
+        FieldElement, IOPattern, R1CS, WhirConfig, WhirR1CSProof, WhirR1CSScheme, skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge}, utils::{
+            HALF, pad_to_power_of_two, sumcheck::{
+                calculate_evaluations_over_boolean_hypercube_for_eq, calculate_external_row_of_r1cs_matrices_with_ad, calculate_witness_bounds, eval_cubic_poly, sumcheck_fold_map_reduce
+            }, zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial}
+        }
+    }, spartan_vm::CompiledArtifacts, spongefish::{
+        ProverState, codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField}
+    }, tracing::{info, instrument, warn}, whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
@@ -29,16 +15,15 @@ use {
             statement::{Statement, Weights},
             utils::HintSerialize,
         },
-    },
+    }
 };
 
 pub trait WhirR1CSProver {
-    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof>;
+    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>, artifacts: &mut CompiledArtifacts) -> Result<WhirR1CSProof>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
-    #[instrument(skip_all)]
-    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>) -> Result<WhirR1CSProof> {
+    fn prove(&self, r1cs: R1CS, witness: Vec<FieldElement>, artifacts: &mut CompiledArtifacts) -> Result<WhirR1CSProof> {
         ensure!(
             witness.len() == r1cs.num_witnesses(),
             "Unexpected witness length for R1CS instance"
@@ -92,7 +77,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         drop(z);
 
         // Compute weights from R1CS instance
-        let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+        let alphas = calculate_external_row_of_r1cs_matrices_with_ad(alpha, r1cs, artifacts);
         let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
             self.m,
             &commitment_to_witness,
@@ -146,10 +131,7 @@ pub fn compute_blinding_coefficients_for_round(
     for _ in 0..(n - 1 - compute_for) {
         prefix_multiplier = prefix_multiplier + prefix_multiplier;
     }
-    let suffix_multiplier: ark_ff::Fp<
-        ark_ff::MontBackend<whir::crypto::fields::BN254Config, 4>,
-        4,
-    > = prefix_multiplier / two;
+    let suffix_multiplier: FieldElement = prefix_multiplier / two;
 
     let constant_term_from_other_items =
         prefix_multiplier * prefix_sum + suffix_multiplier * suffix_sum;
@@ -255,7 +237,6 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
     }
 }
 
-#[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
     z: &[FieldElement],
@@ -475,7 +456,6 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     (statement, f_sums, g_sums)
 }
 
-#[instrument(skip_all)]
 pub fn run_zk_whir_pcs_prover(
     witness: Witness<FieldElement, SkyscraperMerkleConfig>,
     statement: Statement<FieldElement>,

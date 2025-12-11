@@ -23,13 +23,11 @@ type InternerAsString struct {
 }
 
 type R1CS struct {
-	PublicInputs uint64           `json:"public_inputs"`
-	Witnesses    uint64           `json:"witnesses"`
-	Constraints  uint64           `json:"constraints"`
-	Interner     InternerAsString `json:"interner"`
-	A            SparseMatrix     `json:"a"`
-	B            SparseMatrix     `json:"b"`
-	C            SparseMatrix     `json:"c"`
+	NumPublicInputs uint64           `json:"num_public_inputs"`
+	Interner        InternerAsString `json:"interner"`
+	A               SparseMatrix     `json:"a"`
+	B               SparseMatrix     `json:"b"`
+	C               SparseMatrix     `json:"c"`
 }
 
 type MatrixCell struct {
