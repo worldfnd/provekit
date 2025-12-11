@@ -186,15 +186,23 @@ func verifyCircuit(
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	witnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	// Determine witness linear statement evals size based on mode
+	var witnessLinearStatementEvalsSize int
+	if cfg.NumChallenges > 0 {
+		witnessLinearStatementEvalsSize = 6 // 3 per commitment in batch mode
+	} else {
+		witnessLinearStatementEvalsSize = 3
+	}
+
+	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
 	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	contWitnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
 	contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
 
 	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	witnessLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[1].Limbs)
-	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
-	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
+	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
+		witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	}
 
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
@@ -250,27 +258,37 @@ func verifyCircuit(
 		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
 	}
 
+	// Build witness slices conditionally
+	var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
+	if cfg.NumChallenges > 0 {
+		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	} else {
+		witnessClaimedEvals = [][]frontend.Variable{fSums}
+		witnessBlindingEvals = [][]frontend.Variable{gSums}
+	}
+
 	circuit := Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
 		LogNumConstraints:                       cfg.LogNumConstraints,
 		LogNumVariables:                         cfg.LogNumVariables,
 		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               [][]frontend.Variable{fSums, fSums2},
-		WitnessBlindingEvaluations:              [][]frontend.Variable{gSums, gSums2},
+		WitnessClaimedEvaluations:               witnessClaimedEvals,
+		WitnessBlindingEvaluations:              witnessBlindingEvals,
 		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
+		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, true),
 		NumChallenges:                           cfg.NumChallenges,
-
-		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -352,29 +370,32 @@ func verifyCircuit(
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
 	if cfg.NumChallenges > 0 {
 		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
+		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	} else {
+		witnessClaimedEvals = [][]frontend.Variable{fSums}
+		witnessBlindingEvals = [][]frontend.Variable{gSums}
 	}
 
 	assignment := Circuit{
-		IO:                []byte(cfg.IOPattern),
-		Transcript:        transcriptT,
-		LogNumConstraints: cfg.LogNumConstraints,
-
-		WitnessClaimedEvaluations:               [][]frontend.Variable{fSums, fSums2},
-		WitnessBlindingEvaluations:              [][]frontend.Variable{gSums, gSums2},
+		IO:                                      []byte(cfg.IOPattern),
+		Transcript:                              transcriptT,
+		LogNumConstraints:                       cfg.LogNumConstraints,
+		WitnessClaimedEvaluations:               witnessClaimedEvals,
+		WitnessBlindingEvaluations:              witnessBlindingEvals,
 		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-
-		HidingSpartanFirstRound: newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessFirstRounds:      witnessFirstRounds(hints, false),
-		NumChallenges:           cfg.NumChallenges,
-
-		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
+		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
+		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
+		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, false),
+		NumChallenges:                           cfg.NumChallenges,
+		W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
