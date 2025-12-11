@@ -20,6 +20,7 @@ use {
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
     },
+    std::mem,
     tracing::{info, instrument, warn},
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
@@ -119,7 +120,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         &self,
         mut merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
-        commitments: Vec<WhirR1CSCommitment>,
+        mut commitments: Vec<WhirR1CSCommitment>,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -128,12 +129,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
         // Reconstruct full witness for sumcheck
         let full_witness: Vec<FieldElement> = if is_single {
             // Truncate padded witness back to actual R1CS witness size
-            commitments[0].padded_witness[..r1cs.num_witnesses()].to_vec()
+            let mut w = mem::take(&mut commitments[0].padded_witness);
+            w.truncate(r1cs.num_witnesses());
+            w
         } else {
-            let mut w = commitments[0].padded_witness[..self.w1_size].to_vec();
-            w.extend_from_slice(
-                &commitments[1].padded_witness[..(r1cs.num_witnesses() - self.w1_size)],
-            );
+            let mut w = std::mem::take(&mut commitments[0].padded_witness);
+            w.truncate(self.w1_size);
+            let w2_len = r1cs.num_witnesses() - self.w1_size;
+            w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
+            commitments[1].padded_witness = Vec::new();
             w
         };
 
@@ -197,6 +201,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     c1.random_polynomial,
                     &alphas_1,
                 );
+            drop(alphas_1);
+
             let (statement_2, f_sums_2, g_sums_2) =
                 create_combined_statement_over_two_polynomials::<3>(
                     self.m,
@@ -205,6 +211,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     c2.random_polynomial,
                     &alphas_2,
                 );
+            drop(alphas_2);
 
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
@@ -501,6 +508,7 @@ pub fn run_zk_sumcheck_prover(
         saved_val_for_sumcheck_equality_assertion =
             eval_cubic_poly(combined_hhat_i_coeffs, alpha_i);
     }
+    drop((a, b, c, eq));
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
         create_combined_statement_over_two_polynomials::<1>(
