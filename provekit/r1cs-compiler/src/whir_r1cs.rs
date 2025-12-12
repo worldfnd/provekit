@@ -20,16 +20,13 @@ const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(r1cs: &R1CS) -> Self;
 
-    /// Create a WhirR1CSScheme directly from spartan R1CS dimensions.
-    /// This avoids the expensive R1CS conversion step.
     fn new_from_spartan_r1cs(r1cs: &SpartanR1CS) -> Self;
 
-    /// Create a WhirR1CSScheme from raw R1CS dimensions.
-    /// - `num_witnesses`: number of witnesses (columns) in the R1CS matrices
-    /// - `num_constraints`: number of constraints (rows) in the R1CS matrices
-    /// - `a_num_entries`: number of non-zero entries in matrix A
-    fn new_from_dimensions(num_witnesses: usize, num_constraints: usize, a_num_entries: usize)
-        -> Self;
+    fn new_from_dimensions(
+        num_witnesses: usize,
+        num_constraints: usize,
+        a_num_entries: usize,
+    ) -> Self;
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
 }

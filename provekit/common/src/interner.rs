@@ -15,7 +15,7 @@ fn field_to_key(value: FieldElement) -> FieldKey {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Interner {
     #[serde(with = "serde_ark")]
-    values: Vec<FieldElement>,
+    values:    Vec<FieldElement>,
     #[serde(skip)]
     index_map: HashMap<FieldKey, usize>,
 }
@@ -57,7 +57,7 @@ impl Default for Interner {
 impl Interner {
     pub fn new() -> Self {
         Self {
-            values: Vec::new(),
+            values:    Vec::new(),
             index_map: HashMap::new(),
         }
     }

@@ -17,8 +17,8 @@ pub use {
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
-    verifier::Verifier,
     spartan_vm::compiler::Field as FieldElement,
+    verifier::Verifier,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
 };
 

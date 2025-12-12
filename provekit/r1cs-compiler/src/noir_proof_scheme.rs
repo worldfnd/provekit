@@ -2,7 +2,10 @@ use {
     crate::whir_r1cs::WhirR1CSSchemeBuilder,
     anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
-    provekit_common::{utils::{convert_spartan_r1cs_to_provekit, PrintAbi}, NoirProofScheme, WhirR1CSScheme},
+    provekit_common::{
+        utils::{convert_spartan_r1cs_to_provekit, PrintAbi},
+        NoirProofScheme, WhirR1CSScheme,
+    },
     spartan_vm::api as spartan_api,
     std::{fs::File, path::Path},
     tracing::{info, instrument},
@@ -26,7 +29,8 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
         // Derive the project directory from the JSON file path.
-        // The JSON file is typically at `project/target/name.json`, so we go up 2 levels.
+        // The JSON file is typically at `project/target/name.json`, so we go up 2
+        // levels.
         let project_path = path
             .parent()
             .and_then(|p| p.parent())
@@ -50,7 +54,8 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             main.opcodes.len()
         );
 
-        let artifacts = spartan_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
+        let artifacts =
+            spartan_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
 
         let whir_for_witness = WhirR1CSScheme::new_from_spartan_r1cs(&artifacts.r1cs);
         let r1cs = convert_spartan_r1cs_to_provekit(&artifacts.r1cs);

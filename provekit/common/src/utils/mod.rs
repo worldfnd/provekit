@@ -68,7 +68,9 @@ pub fn noir_to_native(n: NoirElement) -> FieldElement {
     FieldElement::from(BigInt(limbs))
 }
 
-pub fn convert_spartan_r1cs_to_provekit(spartan_r1cs: &spartan_vm::compiler::r1cs_gen::R1CS) -> crate::R1CS {
+pub fn convert_spartan_r1cs_to_provekit(
+    spartan_r1cs: &spartan_vm::compiler::r1cs_gen::R1CS,
+) -> crate::R1CS {
     let num_witnesses = spartan_r1cs.witness_layout.size();
     let num_constraints = spartan_r1cs.constraints.len();
 

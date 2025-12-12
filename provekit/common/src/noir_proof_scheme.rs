@@ -24,6 +24,9 @@ pub struct NoirProof {
 impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
-        (self.artifacts.r1cs.constraints.len(), self.artifacts.r1cs.witness_layout.algebraic_size)
+        (
+            self.artifacts.r1cs.constraints.len(),
+            self.artifacts.r1cs.witness_layout.algebraic_size,
+        )
     }
 }

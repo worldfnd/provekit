@@ -1,7 +1,5 @@
 use {
-    crate::{
-        noir_proof_scheme::NoirProofScheme, whir_r1cs::WhirR1CSScheme, R1CS,
-    },
+    crate::{noir_proof_scheme::NoirProofScheme, whir_r1cs::WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
     spartan_vm::CompiledArtifacts,
 };
@@ -11,7 +9,6 @@ use {
 pub struct Prover {
     pub whir_for_witness: WhirR1CSScheme,
     pub artifacts:        CompiledArtifacts,
-    /// R1CS in the format expected by the recursive verifier (Go/gnark)
     pub r1cs:             R1CS,
 }
 
@@ -25,6 +22,9 @@ impl Prover {
     }
 
     pub const fn size(&self) -> (usize, usize) {
-        (self.artifacts.r1cs.constraints.len(), self.artifacts.r1cs.witness_layout.algebraic_size)
+        (
+            self.artifacts.r1cs.constraints.len(),
+            self.artifacts.r1cs.witness_layout.algebraic_size,
+        )
     }
 }

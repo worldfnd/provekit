@@ -5,10 +5,10 @@ use {
     },
     ark_std::{One, Zero},
     rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
+    spartan_vm::{api as spartan_api, compiled_artifacts::CompiledArtifacts},
     spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
     tracing::instrument,
-    spartan_vm::{api as spartan_api, compiled_artifacts::CompiledArtifacts},
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
@@ -153,7 +153,7 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
 }
 
 /// Evaluates the equality polynomial recursively.
-fn eval_eq(eval: &[FieldElement], mut out: &mut [FieldElement], scalar: FieldElement) {
+fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement) {
     debug_assert_eq!(out.len(), 1 << eval.len());
     let size = out.len();
     if let Some((&x, tail)) = eval.split_first() {
