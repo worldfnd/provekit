@@ -7,8 +7,10 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
-    std::collections::{HashMap, HashSet},
-    std::path::Path,
+    std::{
+        collections::{HashMap, HashSet},
+        path::Path,
+    },
     tracing::instrument,
 };
 
@@ -79,7 +81,6 @@ impl Prove for Prover {
             .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
             .collect::<Result<Vec<_>>>()?;
 
-        println!("DEBUG_ASH: w1: {:?}", w1);
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, &self.r1cs, w1, true)
@@ -93,7 +94,7 @@ impl Prove for Prover {
                 self.split_witness_builders.w2_layers,
                 &acir_witness_idx_to_value_map,
                 &mut merlin,
-            ); 
+            );
 
             let w2 = witness[self.whir_for_witness.w1_size..]
                 .iter()
@@ -116,7 +117,7 @@ impl Prove for Prover {
             .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
             .context("While verifying R1CS instance")?;
 
-        // Gather public inputs from witness 
+        // Gather public inputs from witness
         let num_public_inputs = acir_public_inputs.len();
         let public_inputs = PublicInputs::from_vec_with_constant_one(
             witness[0..=num_public_inputs]
@@ -131,8 +132,10 @@ impl Prove for Prover {
             .prove(merlin, self.r1cs, commitments, &public_inputs)
             .context("While proving R1CS instance")?;
 
-        println!("DEBUG_ASH: public_inputs: {:?}", public_inputs);
-        Ok(NoirProof { public_inputs, whir_r1cs_proof })
+        Ok(NoirProof {
+            public_inputs,
+            whir_r1cs_proof,
+        })
     }
 }
 

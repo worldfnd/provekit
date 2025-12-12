@@ -3,7 +3,6 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        PublicInputs,
         skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         utils::{
             pad_to_power_of_two,
@@ -15,7 +14,7 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -181,9 +180,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &commitment.random_polynomial,
                 public_weight,
             );
-    
+
             let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
-    
+
             run_zk_whir_pcs_prover(
                 commitment.commitment_to_witness,
                 statement,
@@ -207,8 +206,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
-
-            println!("DEBUG_ASH: &c1.parsed_commitment: {:?}", &c1.padded_witness);
 
             let (mut statement_1, f_sums_1, g_sums_1) =
                 create_combined_statement_over_two_polynomials::<3>(
@@ -242,7 +239,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &c1.random_polynomial,
                 public_weight,
             );
-    
+
             let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
 
             run_zk_whir_pcs_batch_prover(
@@ -657,7 +654,6 @@ pub fn run_zk_whir_pcs_batch_prover(
 
     (randomness, deferred)
 }
-
 
 fn update_statement_with_public_weights(
     statement: &mut Statement<FieldElement>,

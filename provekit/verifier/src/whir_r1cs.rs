@@ -2,10 +2,9 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        PublicInputs,
         skyscraper::SkyscraperSponge,
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
-        FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
@@ -89,11 +88,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     expected_public_inputs_hash,
                     public_inputs_hash_buf[0]
                 );
-        
+
                 let mut public_weights_vector_random_buf = [FieldElement::zero()];
                 arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
-            
-                let whir_pub_weights_query_answer: (FieldElement, FieldElement) = arthur.hint().unwrap();
+
+                let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
+                    arthur.hint().unwrap();
                 update_statement_for_witness_verifier(
                     self.m,
                     &mut statement_1,
@@ -135,11 +135,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     expected_public_inputs_hash,
                     public_inputs_hash_buf[0]
                 );
-        
+
                 let mut public_weights_vector_random_buf = [FieldElement::zero()];
                 arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
-            
-                let whir_pub_weights_query_answer: (FieldElement, FieldElement) = arthur.hint().unwrap();
+
+                let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
+                    arthur.hint().unwrap();
                 update_statement_for_witness_verifier(
                     self.m,
                     &mut statement,

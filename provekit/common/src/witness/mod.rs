@@ -7,7 +7,10 @@ mod witness_generator;
 mod witness_io_pattern;
 
 use {
-    crate::{utils::{serde_ark, serde_ark_vec}, FieldElement},
+    crate::{
+        utils::{serde_ark, serde_ark_vec},
+        FieldElement,
+    },
     ark_ff::{BigInt, One, PrimeField},
     serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
@@ -42,7 +45,6 @@ impl ConstantOrR1CSWitness {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
@@ -61,7 +63,8 @@ impl PublicInputs {
         Self(vec)
     }
 
-    /// Assuming the given vector already has a constant 1 field element at the start.
+    /// Assuming the given vector already has a constant 1 field element at the
+    /// start.
     pub fn from_vec_with_constant_one(vec: Vec<FieldElement>) -> Self {
         Self(vec)
     }

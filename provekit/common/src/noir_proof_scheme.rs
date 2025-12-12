@@ -2,7 +2,7 @@ use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement, R1CS, PublicInputs,
+        NoirElement, PublicInputs, R1CS,
     },
     acir::circuit::Program,
     serde::{Deserialize, Serialize},

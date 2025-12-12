@@ -10,7 +10,6 @@ use {
         FieldElement, NoirElement, R1CS,
     },
     spongefish::ProverState,
-    std::collections::{HashMap, HashSet},
     tracing::instrument,
 };
 

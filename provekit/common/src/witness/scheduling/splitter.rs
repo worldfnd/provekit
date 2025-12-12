@@ -26,7 +26,10 @@ impl<'a> WitnessSplitter<'a> {
     /// (post-challenge).
     ///
     /// Returns (w1_builder_indices, w2_builder_indices)
-    pub fn split_builders(&self, acir_public_inputs_indices_set: HashSet<u32>) -> (Vec<usize>, Vec<usize>) {
+    pub fn split_builders(
+        &self,
+        acir_public_inputs_indices_set: HashSet<u32>,
+    ) -> (Vec<usize>, Vec<usize>) {
         let builder_count = self.witness_builders.len();
 
         // Step 1: Find all Challenge builders
@@ -154,10 +157,9 @@ impl<'a> WitnessSplitter<'a> {
 
             let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
 
-             // If free builder writes a public witness, add it to w1_set.
+            // If free builder writes a public witness, add it to w1_set.
             if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
-                    println!("DEBUG_ASH w2 exists: acir_idx: {:?}, idx: {:?}", acir_idx, idx);
                     w1_set.insert(idx);
                     w1_witness_count += witness_count;
                     continue;
@@ -186,7 +188,7 @@ impl<'a> WitnessSplitter<'a> {
         (w1_indices, w2_indices)
     }
 
-        /// Rearranges w1 indices: constant builder (0) first, then public inputs,
+    /// Rearranges w1 indices: constant builder (0) first, then public inputs,
     /// then rest.
     fn rearrange_w1(
         &self,
@@ -210,7 +212,6 @@ impl<'a> WitnessSplitter<'a> {
                 continue; // Will add 0 first
             } else if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[builder_idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
-                    println!("DEBUG_ASH: acir_idx: {:?}, builder_idx: {:?}", acir_idx, builder_idx);
                     public_input_builder_indices.push(builder_idx);
                     continue;
                 }
