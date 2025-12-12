@@ -21,8 +21,6 @@ pub trait R1CSSolver {
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-        acir_public_inputs_set: &HashSet<u32>,
-        acir_to_r1cs_public_map: &mut HashMap<u32, usize>,
     );
 
     #[cfg(test)]
@@ -57,22 +55,12 @@ impl R1CSSolver for R1CS {
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-        acir_public_inputs_set: &HashSet<u32>,
-        acir_to_r1cs_public_map: &mut HashMap<u32, usize>,
     ) {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        
-                        if let WitnessBuilder::Acir(r1cs_witness_idx, acir_witness_idx) = builder {
-                            if acir_public_inputs_set.contains(&(*acir_witness_idx as u32)) {
-                                acir_to_r1cs_public_map
-                                    .insert(*acir_witness_idx as u32, *r1cs_witness_idx);
-                            }
-                        }
-
                         builder.solve(&acir_map, witness, transcript);
                     }
                 }

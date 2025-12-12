@@ -61,6 +61,11 @@ impl PublicInputs {
         Self(vec)
     }
 
+    /// Assuming the given vector already has a constant 1 field element at the start.
+    pub fn from_vec_with_constant_one(vec: Vec<FieldElement>) -> Self {
+        Self(vec)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
