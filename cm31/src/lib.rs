@@ -1,3 +1,4 @@
+/// When modifying this file, rerun with Kani
 use std::ops::{Add, Mul, Neg, Shl, Sub};
 
 #[derive(Copy, Clone)]
@@ -43,6 +44,7 @@ impl Reduce for M31I<i64> {
     }
 
     fn full_reduce(&self) -> u32 {
+        // Only need two rounds to fully reduce down
         let tmp = self.reduce_u32().0;
         let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
         // branch should become CSEL
@@ -54,6 +56,8 @@ impl Reduce for M31I<i64> {
     }
 }
 
+// u32 is mostly for storage. Staying within u32 has no benefit on 64 bit
+// machines
 impl Reduce for M31I<u32> {
     #[inline]
     fn reduce_u32(&self) -> M31I<u32> {
@@ -109,6 +113,7 @@ fn one_complement(r: i64) -> u64 {
 
     // Would checking the N-flag
     // be better? Does the compiler do this optimisation?
+    // Relies on the *arithmic* shift left to maintain the sign.
     let sign = r >> 61;
     // Turn into one complement and clear out the top two bits. These top bits would
     // lead to wrong calculations as we only do not contain any information.
@@ -163,69 +168,39 @@ impl<T: Into<i64>, K: Into<i64>> Add<M31I<T>> for M31I<K> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use {
-        crate::{reduce, Reduce, M31I},
-        proptest::prelude::*,
-    };
-    proptest! {
-        #[test]
-        fn reduce_u64(x: u64){
-            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(reduce(x)).full_reduce())
-        }
+#[cfg(kani)]
+mod verification {
+    use crate::{reduce, Reduce, M31I};
+    // Takes a 62bit number and sign extends it into a valid i64
+    fn sign_extend(x: u64) -> i64 {
+        let sign = x >> 61;
+        let sign = sign << 2 | sign << 1 | sign;
+        ((sign << 61) | x) as i64
     }
-    proptest! {
-        // Use Kani
-        fn reduce_i64(x: i64){
-            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(x).full_reduce())
-        }
+
+    #[kani::proof]
+    fn reduce_i64() {
+        let x: u64 = kani::any::<u64>() & ((1 << 62) - 1);
+        let x = sign_extend(x);
+        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
     }
-    proptest! {
-        fn reduce_u32(x: u32){
-            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(x).full_reduce())
-        }
+
+    // The proof for the multiplier is too slow. Therefore we model check the inner
+    // part. The input slightly larger than what it would be within the multiplier.
+    #[kani::proof]
+    fn reduce_u64() {
+        let x: u64 = kani::any::<u64>();
+        assert_eq!(
+            x.rem_euclid((1 << 31) - 1) as u32,
+            M31I(reduce(x)).full_reduce()
+        )
     }
-}
 
-// Takes a 62bit number and sign extends it into a valid i64
-fn sign_extend(x: u64) -> i64 {
-    let sign = x >> 61;
-    let sign = sign << 2 | sign << 1 | sign;
-    ((sign << 61) | x) as i64
-}
-
-#[kani::proof]
-fn reduce_i64() {
-    let x: u64 = kani::any::<u64>() & ((1 << 61) - 1);
-    let x = sign_extend(x);
-    assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
-}
-
-// Checks the reduction inside the multiplier
-#[kani::proof]
-fn reduce_u64() {
-    let x: u64 = kani::any::<u64>();
-    assert_eq!(
-        x.rem_euclid((1 << 31) - 1) as u32,
-        M31I(reduce(x)).full_reduce()
-    )
-}
-
-// TOO slow
-// #[kani::proof]
-// fn reduce_mul_u32() {
-//     let x: u32 = kani::any::<u32>();
-//     let y: u32 = kani::any::<u32>();
-//     let z = (x as u64) * (y as u64);
-//     assert_eq!(
-//         z.rem_euclid((1 << 31) - 1) as u32,
-//         (M31I(x) * M31I(y)).full_reduce()
-//     )
-// }
-
-#[kani::proof]
-fn reduce_u32() {
-    let x = kani::any::<u32>();
-    assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
+    // Checking the reduction of i64 is not enough as it will not cover the full
+    // range of u32. Other libraries use
+    #[kani::proof]
+    fn reduce_u32() {
+        let x = kani::any::<u32>();
+        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
+    }
 }
