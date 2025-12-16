@@ -36,6 +36,7 @@ impl Reduce for M31I<i64> {
     // the top bits zero.
     // The only way the upper bits can be set is due to additions. After a
     // multiplication will go to 34 bits.
+    #[inline(always)]
     fn reduce_u32(&self) -> M31I<u32> {
         // TODO add debug assertion for top bits
         // these operations are only intended for kernel
@@ -43,6 +44,7 @@ impl Reduce for M31I<i64> {
         M31I(reduced)
     }
 
+    #[inline(always)]
     fn full_reduce(&self) -> u32 {
         // Only need two rounds to fully reduce down
         let tmp = self.reduce_u32().0;
@@ -59,11 +61,12 @@ impl Reduce for M31I<i64> {
 // u32 is mostly for storage. Staying within u32 has no benefit on 64 bit
 // machines
 impl Reduce for M31I<u32> {
-    #[inline]
+    #[inline(always)]
     fn reduce_u32(&self) -> M31I<u32> {
         *self
     }
 
+    #[inline(always)]
     fn full_reduce(&self) -> u32 {
         let tmp = self.0;
         let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
@@ -85,6 +88,7 @@ impl Reduce for M31I<u32> {
 // max(lo, hi) + 1
 // where lo max 31 bits and hi max 33 bits
 // so maximum is 34 bits
+#[inline(always)]
 fn reduce(r: u64) -> i64 {
     // What are the precedence rules for shift?
     // Three cheap operations mask, shift, addition
@@ -105,6 +109,7 @@ fn reduce(r: u64) -> i64 {
 // between the two representations. But not when it's in two complement.
 
 // limit to 62 bits otherwise two reduction steps need to be done.
+// implicitly says that the result we take in is two complement
 fn one_complement(r: i64) -> u64 {
     // A shift of 61 and 62 might look strange at first, but that is because in
     // contrary to other shifting operations there is no splitting into an upper
@@ -132,6 +137,7 @@ fn one_complement(r: i64) -> u64 {
 impl<T: Reduce> Mul<T> for M31I<i64> {
     type Output = M31I<i64>;
 
+    #[inline(always)]
     fn mul(self, rhs: T) -> Self::Output {
         let lhs = self.reduce_u32();
         lhs * rhs
@@ -143,6 +149,7 @@ impl<T: Reduce> Mul<T> for M31I<u32> {
 
     // Mul returns a partial reduced to 34 bits as to only have to do a single
     // round.
+    #[inline(always)]
     fn mul(self, rhs: T) -> Self::Output {
         let lhs = self;
         let rhs = rhs.reduce_u32();
@@ -165,6 +172,15 @@ impl<T: Into<i64>, K: Into<i64>> Add<M31I<T>> for M31I<K> {
 
     fn add(self, rhs: M31I<T>) -> Self::Output {
         M31I(self.0.into() + rhs.0.into())
+    }
+}
+
+// TODO implement shift left
+impl<K: Into<i64>> Shl<u8> for M31I<K> {
+    type Output = M31I<i64>;
+
+    fn shl(self, rhs: u8) -> Self::Output {
+        M31I(self.0.into() << rhs)
     }
 }
 
