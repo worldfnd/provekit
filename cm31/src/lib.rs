@@ -7,17 +7,7 @@ trait Reduce {
     fn reduce_u32(&self) -> M31I<u32>;
     // Assumes >= 62 bits representation, "enforced" by the allowed trait
     // implementations. And also not being i32.
-    fn full_reduce(&self) -> u32 {
-        let tmp = self.reduce_u32().0;
-        let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
-        let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
-        // branch should become CSEL
-        if tmp == ((1 << 31) - 1) {
-            0
-        } else {
-            tmp
-        }
-    }
+    fn full_reduce(&self) -> u32;
 }
 
 // Working with two redundant forms i64 and u32
@@ -51,12 +41,35 @@ impl Reduce for M31I<i64> {
         let reduced = reduce(one_complement(self.0)) as u32;
         M31I(reduced)
     }
+
+    fn full_reduce(&self) -> u32 {
+        let tmp = self.reduce_u32().0;
+        let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
+        // branch should become CSEL
+        if tmp == ((1 << 31) - 1) {
+            0
+        } else {
+            tmp
+        }
+    }
 }
 
 impl Reduce for M31I<u32> {
     #[inline]
     fn reduce_u32(&self) -> M31I<u32> {
         *self
+    }
+
+    fn full_reduce(&self) -> u32 {
+        let tmp = self.0;
+        let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
+        let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
+        // branch should become CSEL
+        if tmp == ((1 << 31) - 1) {
+            0
+        } else {
+            tmp
+        }
     }
 }
 
