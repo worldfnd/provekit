@@ -149,3 +149,70 @@ impl<T: Into<i64>, K: Into<i64>> Add<M31I<T>> for M31I<K> {
         M31I(self.0.into() + rhs.0.into())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        crate::{reduce, Reduce, M31I},
+        proptest::prelude::*,
+    };
+    proptest! {
+        #[test]
+        fn reduce_u64(x: u64){
+            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(reduce(x)).full_reduce())
+        }
+    }
+    proptest! {
+        // Use Kani
+        fn reduce_i64(x: i64){
+            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(x).full_reduce())
+        }
+    }
+    proptest! {
+        fn reduce_u32(x: u32){
+            assert_eq!(x.rem_euclid((1<<31) - 1) as u32, M31I(x).full_reduce())
+        }
+    }
+}
+
+// Takes a 62bit number and sign extends it into a valid i64
+fn sign_extend(x: u64) -> i64 {
+    let sign = x >> 61;
+    let sign = sign << 2 | sign << 1 | sign;
+    ((sign << 61) | x) as i64
+}
+
+#[kani::proof]
+fn reduce_i64() {
+    let x: u64 = kani::any::<u64>() & ((1 << 61) - 1);
+    let x = sign_extend(x);
+    assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
+}
+
+// Checks the reduction inside the multiplier
+#[kani::proof]
+fn reduce_u64() {
+    let x: u64 = kani::any::<u64>();
+    assert_eq!(
+        x.rem_euclid((1 << 31) - 1) as u32,
+        M31I(reduce(x)).full_reduce()
+    )
+}
+
+// TOO slow
+// #[kani::proof]
+// fn reduce_mul_u32() {
+//     let x: u32 = kani::any::<u32>();
+//     let y: u32 = kani::any::<u32>();
+//     let z = (x as u64) * (y as u64);
+//     assert_eq!(
+//         z.rem_euclid((1 << 31) - 1) as u32,
+//         (M31I(x) * M31I(y)).full_reduce()
+//     )
+// }
+
+#[kani::proof]
+fn reduce_u32() {
+    let x = kani::any::<u32>();
+    assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, M31I(x).full_reduce())
+}
