@@ -2,24 +2,29 @@
 use std::ops::{Add, Mul, Shl, Sub};
 
 #[derive(Copy, Clone)]
+/// 
 pub struct M31<T>(T);
 
 trait M31Reduce {
+    /// Performs the necessary rounds to get the result to fit inside 32 bits.
     fn reduce_u32(self) -> M31<u32>;
-    fn full_reduce(self) -> u32;
+    /// Performs the necessary rounds to get the result to fit inside 31 bits.
+    fn reduce_fully(self) -> u32;
 }
 
-/// Code operating on M31 integers will mostly be operation on i62 (i64).
+/// Code operating on M31 integers will mostly be operation on i62 (represented
+/// as i64).
 ///
-/// All operations assume that i64 works is being treated as a i62 integer. No
-/// newtype wrapper for i62 has been introduced to keep boilerplate to a
-/// minimum. It is up to the user to make sure that the signed results stays
-/// within 62 bits. As most operations will never reach 62 bits and using the
-/// upper two bits would require an extra reduction round.
+/// All operations assume that i64 is as a i62. No newtype wrapper for i62 has
+/// been introduced to keep boilerplate to a minimum. It is up to the user to
+/// make sure that the signed results stays within 62 bits. As most operations
+/// will never reach 62 bits and using the upper two bits would require an extra
+/// reduction round.
 ///
-/// One way to think of it is that the upper three bits act as the sign but and
-/// therefore can not be different for each other.
-/// This also allows for efficient implementation on 64 bit register machines
+/// One way to think of it is that the upper three bits act as the sign bit and
+/// therefore can not be different from each other.
+/// This representation allows for efficient implementation of i62 on 64b
+/// machines.
 impl M31Reduce for i64 {
     #[inline(always)]
     fn reduce_u32(self) -> M31<u32> {
@@ -28,7 +33,7 @@ impl M31Reduce for i64 {
     }
 
     #[inline(always)]
-    fn full_reduce(self) -> u32 {
+    fn reduce_fully(self) -> u32 {
         // Two rounds to fully reduce down
         let tmp = self.reduce_u32().0;
         let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
@@ -52,7 +57,7 @@ impl M31Reduce for u32 {
     }
 
     #[inline(always)]
-    fn full_reduce(self) -> u32 {
+    fn reduce_fully(self) -> u32 {
         let tmp = self;
         let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
         let tmp = (tmp >> 31) + (tmp & ((1 << 31) - 1));
@@ -122,7 +127,6 @@ impl<T: Into<i64>, K: Into<i64>> Add<M31<T>> for M31<K> {
     }
 }
 
-// TODO implement shift left
 impl<K: Into<i64>> Shl<u8> for M31<K> {
     type Output = M31<i64>;
     // A fully reduced m31 has space for two 15 left shifts. So in practice there
@@ -135,8 +139,8 @@ impl<K: Into<i64>> Shl<u8> for M31<K> {
 
 #[cfg(kani)]
 mod verification {
-    use crate::{reduce_round, M31Reduce, M31};
-    // Takes a 62bit number and sign extends it into a valid i64
+    use super::*;
+    // Takes a signed 62bit number and sign extends it into a valid i64
     fn sign_extend(x: u64) -> i64 {
         let sign = x >> 61;
         let sign = sign << 2 | sign << 1 | sign;
@@ -147,7 +151,7 @@ mod verification {
     fn reduce_i64() {
         let x: u64 = kani::any::<u64>() & ((1 << 62) - 1);
         let x = sign_extend(x);
-        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, x.full_reduce())
+        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, x.reduce_fully())
     }
 
     // The proof for the multiplier is too slow. Therefore we model check the inner
@@ -157,7 +161,7 @@ mod verification {
         let x: u64 = kani::any::<u64>();
         assert_eq!(
             x.rem_euclid((1 << 31) - 1) as u32,
-            reduce_round(x).full_reduce()
+            reduce_round(x).reduce_fully()
         )
     }
 
@@ -166,6 +170,6 @@ mod verification {
     #[kani::proof]
     fn reduce_u32() {
         let x = kani::any::<u32>();
-        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, x.full_reduce())
+        assert_eq!(x.rem_euclid((1 << 31) - 1) as u32, x.reduce_fully())
     }
 }
