@@ -5,6 +5,7 @@ pub mod hash_config;
 mod interner;
 pub mod keccak;
 mod noir_proof_scheme;
+pub mod ntt;
 mod prover;
 mod r1cs;
 pub mod runtime_hash;
