@@ -16,9 +16,7 @@ members = [
   "tooling/verifier-server",
   "ntt",
 ]
-exclude = [
-  "playground/passport-input-gen",
-]
+exclude = ["playground/passport-input-gen"]
 
 [workspace.package]
 edition = "2021"
@@ -77,6 +75,7 @@ block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
+ntt = { path = "ntt" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
@@ -122,8 +121,8 @@ tower-http = { version = "0.6.6", features = ["cors", "timeout", "trace"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
-tracy-client= "=0.18.0"
-tracy-client-sys= "=0.24.3"
+tracy-client = "=0.18.0"
+tracy-client-sys = "=0.24.3"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13.3"
