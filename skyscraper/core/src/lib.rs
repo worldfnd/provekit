@@ -4,7 +4,9 @@
 
 pub mod arithmetic;
 pub mod bar;
+#[cfg(target_arch = "aarch64")]
 pub mod block3;
+#[cfg(target_arch = "aarch64")]
 pub mod block4;
 pub mod constants;
 pub mod generic;

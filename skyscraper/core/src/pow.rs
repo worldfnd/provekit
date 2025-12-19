@@ -1,7 +1,10 @@
 use {
-    crate::{arithmetic::less_than, block4::compress_many, generic, simple::compress, WIDTH_LCM},
+    crate::{arithmetic::less_than, generic, simple::{self, compress}, WIDTH_LCM},
     ark_ff::Zero,
 };
+
+#[cfg(target_arch = "aarch64")]
+use crate::block4;
 
 const PROVER_BIAS: f64 = 0.01;
 
@@ -35,7 +38,10 @@ pub fn solve(challenge: [u64; 4], difficulty: f64) -> u64 {
         return 0;
     }
     let threshold = threshold(difficulty + PROVER_BIAS);
-    let nonce = generic::solve::<_, { WIDTH_LCM * 10 }>(compress_many, challenge, threshold);
+    #[cfg(target_arch = "aarch64")]
+    let nonce = generic::solve::<_, { WIDTH_LCM * 10 }>(block4::compress_many, challenge, threshold);
+    #[cfg(not(target_arch = "aarch64"))]
+    let nonce = generic::solve::<_, { WIDTH_LCM * 10 }>(simple::compress_many, challenge, threshold);
     debug_assert!(verify(challenge, difficulty, nonce));
     nonce
 }

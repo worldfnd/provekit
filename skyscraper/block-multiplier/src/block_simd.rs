@@ -9,13 +9,15 @@ use {
         },
     },
     core::{
-        arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
         simd::{num::SimdFloat, Simd},
     },
     fp_rounding::{RoundingGuard, Zero},
     std::simd::StdFloat,
 };
+
+#[cfg(target_arch = "aarch64")]
+use core::arch::aarch64::vcvtq_f64_u64;
 
 #[inline]
 pub fn block_sqr(

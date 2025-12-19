@@ -1,7 +1,6 @@
 use {
     crate::constants::{C1, C2, MASK52, U52_2P, U64_2P},
     std::{
-        arch::aarch64::vcvtq_f64_u64,
         array,
         ops::BitAnd,
         simd::{
@@ -11,6 +10,9 @@ use {
         },
     },
 };
+
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::vcvtq_f64_u64;
 
 /// Macro to extract a subarray from an array.
 ///
@@ -113,10 +115,48 @@ pub fn u260_to_u256_simd(limbs: [Simd<u64, 2>; 5]) -> [Simd<u64, 2>; 4] {
     ]
 }
 
+#[cfg(target_arch = "aarch64")]
 #[inline(always)]
 pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<u64, 2>; 6] {
     let mut t = [Simd::splat(0); 6];
     let s: Simd<f64, 2> = unsafe { vcvtq_f64_u64(s.into()).into() };
+
+    let p_hi_0 = s.mul_add(Simd::splat(v[0] as f64), Simd::splat(C1));
+    let p_lo_0 = s.mul_add(Simd::splat(v[0] as f64), Simd::splat(C2) - p_hi_0);
+    t[1] += p_hi_0.to_bits();
+    t[0] += p_lo_0.to_bits();
+
+    let p_hi_1 = s.mul_add(Simd::splat(v[1] as f64), Simd::splat(C1));
+    let p_lo_1 = s.mul_add(Simd::splat(v[1] as f64), Simd::splat(C2) - p_hi_1);
+    t[2] += p_hi_1.to_bits();
+    t[1] += p_lo_1.to_bits();
+
+    let p_hi_2 = s.mul_add(Simd::splat(v[2] as f64), Simd::splat(C1));
+    let p_lo_2 = s.mul_add(Simd::splat(v[2] as f64), Simd::splat(C2) - p_hi_2);
+    t[3] += p_hi_2.to_bits();
+    t[2] += p_lo_2.to_bits();
+
+    let p_hi_3 = s.mul_add(Simd::splat(v[3] as f64), Simd::splat(C1));
+    let p_lo_3 = s.mul_add(Simd::splat(v[3] as f64), Simd::splat(C2) - p_hi_3);
+    t[4] += p_hi_3.to_bits();
+    t[3] += p_lo_3.to_bits();
+
+    let p_hi_4 = s.mul_add(Simd::splat(v[4] as f64), Simd::splat(C1));
+    let p_lo_4 = s.mul_add(Simd::splat(v[4] as f64), Simd::splat(C2) - p_hi_4);
+    t[5] += p_hi_4.to_bits();
+    t[4] += p_lo_4.to_bits();
+
+    t
+}
+
+// Portable fallback for non-aarch64 targets
+#[cfg(not(target_arch = "aarch64"))]
+#[inline(always)]
+pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<u64, 2>; 6] {
+    let mut t = [Simd::splat(0); 6];
+    // Portable conversion from u64 to f64 (may be less efficient)
+    let s_array = s.to_array();
+    let s: Simd<f64, 2> = Simd::from_array([s_array[0] as f64, s_array[1] as f64]);
 
     let p_hi_0 = s.mul_add(Simd::splat(v[0] as f64), Simd::splat(C1));
     let p_lo_0 = s.mul_add(Simd::splat(v[0] as f64), Simd::splat(C2) - p_hi_0);
