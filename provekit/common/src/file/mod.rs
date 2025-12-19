@@ -1,21 +1,21 @@
+#[cfg(not(target_arch = "wasm32"))]
 mod bin;
 mod buf_ext;
+#[cfg(not(target_arch = "wasm32"))]
 mod counting_writer;
 mod json;
 
 use {
-    self::{
-        bin::{read_bin, write_bin},
-        buf_ext::BufExt,
-        counting_writer::CountingWriter,
-        json::{read_json, write_json},
-    },
+    self::{buf_ext::BufExt, json::{read_json, write_json}},
     crate::{NoirProof, NoirProofScheme, Prover, Verifier},
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
     tracing::instrument,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use self::{bin::{read_bin, write_bin}, counting_writer::CountingWriter};
 
 /// Trait for structures that can be serialized to and deserialized from files.
 pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
@@ -53,6 +53,7 @@ impl FileFormat for NoirProof {
 pub fn write<T: FileFormat>(value: &T, path: &Path) -> Result<()> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => write_json(value, path),
+        #[cfg(not(target_arch = "wasm32"))]
         Some(ext) if ext == T::EXTENSION => write_bin(value, path, T::FORMAT, T::VERSION),
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",
@@ -66,6 +67,7 @@ pub fn write<T: FileFormat>(value: &T, path: &Path) -> Result<()> {
 pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => read_json(path),
+        #[cfg(not(target_arch = "wasm32"))]
         Some(ext) if ext == T::EXTENSION => read_bin(path, T::FORMAT, T::VERSION),
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",

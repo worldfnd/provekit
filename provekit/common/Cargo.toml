@@ -8,13 +8,16 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = ["parallel"]
+parallel = []
+
 [dependencies]
 # Workspace crates
 skyscraper.workspace = true
 
 # Noir language
 acir.workspace = true
-noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems
@@ -41,6 +44,9 @@ serde_json.workspace = true
 tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
+
+# Target-specific dependencies: only on non-WASM targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd.workspace = true
 
 [lints]

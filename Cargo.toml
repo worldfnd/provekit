@@ -14,6 +14,7 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-wasm",
   "tooling/verifier-server",
   "ntt",
 ]
@@ -80,13 +81,14 @@ skyscraper = { path = "skyscraper/core" }
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common" }
+provekit-common = { path = "provekit/common", default-features = true }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover" }
+provekit-prover = { path = "provekit/prover", default-features = true }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
 anyhow = "1.0.93"
@@ -127,6 +129,14 @@ tracy-client-sys= "=0.24.3"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13.3"
+ruzstd = "0.7"  # Pure Rust zstd decoder for WASM compatibility
+
+# WASM-specific dependencies
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
@@ -151,5 +161,7 @@ ark-std = { version = "0.5", features = ["std"] }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ], rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
+# spongefish-pow with parallel feature for wasm-bindgen-rayon support
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
+# WHIR proof system with parallel feature for wasm-bindgen-rayon support
 whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "15cf6668e904ed2e80c9e6209dcce69f5bcf79b9" }

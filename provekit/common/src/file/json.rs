@@ -1,13 +1,19 @@
 use {
-    super::CountingWriter,
-    crate::utils::human,
     anyhow::{Context as _, Result},
     serde::{Deserialize, Serialize},
-    std::{fs::File, path::Path},
+    std::path::Path,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    super::CountingWriter,
+    crate::utils::human,
+    std::fs::File,
     tracing::{info, instrument},
 };
 
 /// Write a human readable JSON file (slow and large).
+#[cfg(not(target_arch = "wasm32"))]
 #[instrument(skip(value))]
 pub fn write_json<T: Serialize>(value: &T, path: &Path) -> Result<()> {
     // Open file
@@ -31,8 +37,20 @@ pub fn write_json<T: Serialize>(value: &T, path: &Path) -> Result<()> {
 }
 
 /// Read a JSON file.
+#[cfg(not(target_arch = "wasm32"))]
 #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
 pub fn read_json<T: for<'a> Deserialize<'a>>(path: &Path) -> Result<T> {
     let mut file = File::open(path).context("while opening input file")?;
     serde_json::from_reader(&mut file).context("while reading JSON")
+}
+
+// WASM stubs - these functions are not available on WASM
+#[cfg(target_arch = "wasm32")]
+pub fn write_json<T: Serialize>(_value: &T, _path: &Path) -> Result<()> {
+    anyhow::bail!("File I/O not supported on WASM")
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn read_json<T: for<'a> Deserialize<'a>>(_path: &Path) -> Result<T> {
+    anyhow::bail!("File I/O not supported on WASM")
 }

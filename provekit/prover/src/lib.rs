@@ -6,17 +6,21 @@ use {
     },
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
     provekit_common::{
         skyscraper::SkyscraperSponge, utils::noir_to_native, witness::WitnessBuilder, FieldElement,
         IOPattern, NoirElement, NoirProof, Prover,
     },
     spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
-    std::path::Path,
     tracing::instrument,
+};
+
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+use {
+    bn254_blackbox_solver::Bn254BlackBoxSolver,
+    nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file,
+    noirc_abi::InputMap,
+    std::path::Path,
 };
 
 mod r1cs;
@@ -24,9 +28,18 @@ mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+
+    /// Generate a proof from a pre-computed witness map.
+    ///
+    /// This method is WASM-compatible and does not require witness generation
+    /// dependencies. The witness should be generated externally (e.g., using
+    /// @noir-lang/noir_js in the browser).
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 
     fn create_witness_io_pattern(&self) -> IOPattern;
 
@@ -38,6 +51,7 @@ pub trait Prove {
 }
 
 impl Prove for Prover {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
         let solver = Bn254BlackBoxSolver::default();
@@ -66,6 +80,7 @@ impl Prove for Prover {
             .witness)
     }
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _expected_return) =
@@ -86,6 +101,35 @@ impl Prove for Prover {
         let witness = fill_witness(partial_witness).context("while filling witness")?;
 
         // Verify witness (redudant with solve)
+        #[cfg(test)]
+        self.r1cs
+            .test_witness_satisfaction(&witness)
+            .context("While verifying R1CS instance")?;
+
+        // Prove R1CS instance
+        let whir_r1cs_proof = self
+            .whir_for_witness
+            .prove(self.r1cs, witness)
+            .context("While proving R1CS instance")?;
+
+        Ok(NoirProof { whir_r1cs_proof })
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_witness(mut self, acir_witness_idx_to_value_map: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        // Solve R1CS instance
+        let witness_io = self.create_witness_io_pattern();
+        let mut witness_merlin = witness_io.to_prover_state();
+        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+
+        let partial_witness = self.r1cs.solve_witness_vec(
+            self.layered_witness_builders,
+            acir_witness_idx_to_value_map,
+            &mut witness_merlin,
+        );
+        let witness = fill_witness(partial_witness).context("while filling witness")?;
+
+        // Verify witness (redundant with solve)
         #[cfg(test)]
         self.r1cs
             .test_witness_satisfaction(&witness)

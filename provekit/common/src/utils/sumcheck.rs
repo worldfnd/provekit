@@ -183,8 +183,10 @@ pub fn calculate_witness_bounds(
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
+
     // Derive C from R1CS relation (faster than matrix multiplication)
     let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
+
     (
         pad_to_power_of_two(a),
         pad_to_power_of_two(b),
@@ -210,9 +212,11 @@ pub fn calculate_external_row_of_r1cs_matrices(
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
     let eq_alpha = &eq_alpha[..r1cs.num_constraints()];
+
     let ((a, b), c) = rayon::join(
         || rayon::join(|| eq_alpha * r1cs.a(), || eq_alpha * r1cs.b()),
         || eq_alpha * r1cs.c(),
     );
+
     [a, b, c]
 }
