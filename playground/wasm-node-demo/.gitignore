@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Generated artifacts (created by setup script)
+artifacts/
+pkg/
+pkg-web/
+noir-web/
+
+# Build outputs
+*.wasm
+!src/**/*.wasm
