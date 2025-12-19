@@ -1,3 +1,5 @@
+#[cfg(target_arch = "aarch64")]
+use core::arch::aarch64::vcvtq_f64_u64;
 use {
     crate::{
         constants::*,
@@ -15,9 +17,6 @@ use {
     fp_rounding::{RoundingGuard, Zero},
     std::simd::StdFloat,
 };
-
-#[cfg(target_arch = "aarch64")]
-use core::arch::aarch64::vcvtq_f64_u64;
 
 #[inline]
 pub fn block_sqr(

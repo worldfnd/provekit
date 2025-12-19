@@ -13,7 +13,6 @@ mod test_utils;
 mod utils;
 
 pub use crate::scalar::{scalar_mul, scalar_sqr};
-
 #[cfg(target_arch = "aarch64")]
 pub use crate::{
     aarch64::{

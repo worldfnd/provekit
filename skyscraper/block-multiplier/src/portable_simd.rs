@@ -1,3 +1,5 @@
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::vcvtq_f64_u64;
 use {
     crate::{
         constants::*,
@@ -11,9 +13,6 @@ use {
         simd::{num::SimdFloat, Simd, StdFloat},
     },
 };
-
-#[cfg(target_arch = "aarch64")]
-use std::arch::aarch64::vcvtq_f64_u64;
 
 #[inline]
 pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {

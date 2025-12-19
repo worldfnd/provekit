@@ -1,15 +1,14 @@
-use {
-    anyhow::{Context as _, Result},
-    serde::{Deserialize, Serialize},
-    std::path::Path,
-};
-
 #[cfg(not(target_arch = "wasm32"))]
 use {
     super::CountingWriter,
     crate::utils::human,
     std::fs::File,
     tracing::{info, instrument},
+};
+use {
+    anyhow::{Context as _, Result},
+    serde::{Deserialize, Serialize},
+    std::path::Path,
 };
 
 /// Write a human readable JSON file (slow and large).

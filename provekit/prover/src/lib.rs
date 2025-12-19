@@ -13,14 +13,10 @@ use {
     spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
     tracing::instrument,
 };
-
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 use {
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
-    std::path::Path,
+    bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap, std::path::Path,
 };
 
 mod r1cs;
@@ -116,7 +112,10 @@ impl Prove for Prover {
     }
 
     #[instrument(skip_all)]
-    fn prove_with_witness(mut self, acir_witness_idx_to_value_map: WitnessMap<NoirElement>) -> Result<NoirProof> {
+    fn prove_with_witness(
+        mut self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
         // Solve R1CS instance
         let witness_io = self.create_witness_io_pattern();
         let mut witness_merlin = witness_io.to_prover_state();

@@ -1,4 +1,7 @@
-use {crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*, whir::poly_utils::evals::EvaluationsList};
+use {
+    crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*,
+    whir::poly_utils::evals::EvaluationsList,
+};
 
 pub fn create_masked_polynomial(
     original: EvaluationsList<FieldElement>,

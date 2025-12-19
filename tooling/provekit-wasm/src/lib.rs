@@ -26,7 +26,6 @@
 
 // Re-export wasm-bindgen-rayon's thread pool initialization
 pub use wasm_bindgen_rayon::init_thread_pool;
-
 use {
     acir::{
         native_types::{Witness, WitnessMap},
@@ -170,14 +169,15 @@ pub fn init_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
-// TODO: Re-enable Verifier once tokio/mio dependency issue is resolved for WASM targets
-// The verifier depends on provekit-verifier which has transitive dependencies on tokio
-// with networking features, which pulls in mio that doesn't support WASM.
+// TODO: Re-enable Verifier once tokio/mio dependency issue is resolved for WASM
+// targets The verifier depends on provekit-verifier which has transitive
+// dependencies on tokio with networking features, which pulls in mio that
+// doesn't support WASM.
 //
 // /// A verifier instance for verifying zero-knowledge proofs in WebAssembly.
 // ///
-// /// This struct wraps a ProveKit verifier and provides methods to verify proofs.
-// /// Create an instance using the JSON-encoded verifier artifact.
+// /// This struct wraps a ProveKit verifier and provides methods to verify
+// proofs. /// Create an instance using the JSON-encoded verifier artifact.
 // #[wasm_bindgen]
 // pub struct Verifier {
 //     inner: VerifierCore,
@@ -185,8 +185,8 @@ pub fn init_panic_hook() {
 //
 // #[wasm_bindgen]
 // impl Verifier {
-//     /// Creates a new verifier from a JSON-encoded ProveKit verifier artifact.
-//     ///
+//     /// Creates a new verifier from a JSON-encoded ProveKit verifier
+// artifact.     ///
 //     /// # Arguments
 //     ///
 //     /// * `verifier_json` - A byte slice containing the JSON-encoded verifier
@@ -199,8 +199,8 @@ pub fn init_panic_hook() {
 //     #[wasm_bindgen(constructor)]
 //     pub fn new(verifier_json: &[u8]) -> Result<Verifier, JsError> {
 //         let inner: VerifierCore = serde_json::from_slice(verifier_json)
-//             .map_err(|err| JsError::new(&format!("Failed to parse verifier JSON: {err}")))?;
-//         Ok(Self { inner })
+//             .map_err(|err| JsError::new(&format!("Failed to parse verifier
+// JSON: {err}")))?;         Ok(Self { inner })
 //     }
 //
 //     /// Verifies a proof given as JSON bytes.
@@ -219,9 +219,10 @@ pub fn init_panic_hook() {
 //     /// Returns an error if the proof JSON cannot be parsed or verification
 //     /// fails.
 //     #[wasm_bindgen(js_name = verifyBytes)]
-//     pub fn verify_bytes(&mut self, proof_json: &[u8]) -> Result<(), JsError> {
-//         let proof: NoirProof = serde_json::from_slice(proof_json)
-//             .map_err(|err| JsError::new(&format!("Failed to parse proof JSON: {err}")))?;
+//     pub fn verify_bytes(&mut self, proof_json: &[u8]) -> Result<(), JsError>
+// {         let proof: NoirProof = serde_json::from_slice(proof_json)
+//             .map_err(|err| JsError::new(&format!("Failed to parse proof JSON:
+// {err}")))?;
 //
 //         self.inner
 //             .verify(&proof)
@@ -246,7 +247,8 @@ pub fn init_panic_hook() {
 //     #[wasm_bindgen(js_name = verifyJs)]
 //     pub fn verify_js(&mut self, proof_js: JsValue) -> Result<(), JsError> {
 //         let proof: NoirProof = serde_wasm_bindgen::from_value(proof_js)
-//             .map_err(|err| JsError::new(&format!("Failed to parse proof: {err}")))?;
+//             .map_err(|err| JsError::new(&format!("Failed to parse proof:
+// {err}")))?;
 //
 //         self.inner
 //             .verify(&proof)
@@ -314,13 +316,15 @@ fn parse_binary_prover(data: &[u8]) -> Result<ProverCore, JsError> {
 /// 1. A Map<number, string> where strings are hex-encoded field elements
 /// 2. A plain JavaScript object { [index: number]: string }
 fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsError> {
-    // Try to deserialize as a BTreeMap with string keys (JS object keys are always strings)
-    let map: BTreeMap<String, String> = serde_wasm_bindgen::from_value(js_value).map_err(|err| {
-        JsError::new(&format!(
-            "Failed to parse witness map. Expected object mapping witness indices to hex strings: \
-             {err}"
-        ))
-    })?;
+    // Try to deserialize as a BTreeMap with string keys (JS object keys are always
+    // strings)
+    let map: BTreeMap<String, String> =
+        serde_wasm_bindgen::from_value(js_value).map_err(|err| {
+            JsError::new(&format!(
+                "Failed to parse witness map. Expected object mapping witness indices to hex \
+                 strings: {err}"
+            ))
+        })?;
 
     if map.is_empty() {
         return Err(JsError::new("Witness map is empty"));

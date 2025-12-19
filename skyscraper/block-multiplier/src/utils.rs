@@ -1,3 +1,5 @@
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::vcvtq_f64_u64;
 use {
     crate::constants::{C1, C2, MASK52, U52_2P, U64_2P},
     std::{
@@ -10,9 +12,6 @@ use {
         },
     },
 };
-
-#[cfg(target_arch = "aarch64")]
-use std::arch::aarch64::vcvtq_f64_u64;
 
 /// Macro to extract a subarray from an array.
 ///

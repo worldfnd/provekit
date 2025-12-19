@@ -5,17 +5,22 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
+#[cfg(not(target_arch = "wasm32"))]
+use self::{
+    bin::{read_bin, write_bin},
+    counting_writer::CountingWriter,
+};
 use {
-    self::{buf_ext::BufExt, json::{read_json, write_json}},
+    self::{
+        buf_ext::BufExt,
+        json::{read_json, write_json},
+    },
     crate::{NoirProof, NoirProofScheme, Prover, Verifier},
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
     tracing::instrument,
 };
-
-#[cfg(not(target_arch = "wasm32"))]
-use self::{bin::{read_bin, write_bin}, counting_writer::CountingWriter};
 
 /// Trait for structures that can be serialized to and deserialized from files.
 pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
