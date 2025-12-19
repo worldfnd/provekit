@@ -449,7 +449,7 @@ fn apply_sbox_to_linear_forms_out(
     out.clear();
     out.reserve(t);
 
-    for (i, mut form) in forms.iter_mut().enumerate() {
+    for (i, form) in forms.iter_mut().enumerate() {
         form.add_constant_mut(rc[i]);
         out.push(linear_form_pow5(
             r1cs_compiler,
@@ -461,28 +461,28 @@ fn apply_sbox_to_linear_forms_out(
 }
 
 /// external MDS2 as linear forms
-fn mds2_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
+fn mds2_block_forms(s: &[ConstantOrR1CSWitness]) -> [LinearForm; 2] {
     let f1 = FieldElement::ONE;
     let f2 = FieldElement::from(2u64);
 
     let o0 = compute_linear_form(&[f2, f1], s);
     let o1 = compute_linear_form(&[f1, f2], s);
-    vec![o0, o1]
+    [o0, o1]
 }
 
 /// external MDS3 as linear forms
-fn mds3_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
+fn mds3_block_forms(s: &[ConstantOrR1CSWitness]) -> [LinearForm; 3] {
     let f1 = FieldElement::ONE;
     let f2 = FieldElement::from(2u64);
 
     let o0 = compute_linear_form(&[f2, f1, f1], s);
     let o1 = compute_linear_form(&[f1, f2, f1], s);
     let o2 = compute_linear_form(&[f1, f1, f2], s);
-    vec![o0, o1, o2]
+    [o0, o1, o2]
 }
 
 /// external MDS4 as linear forms on a 4-lane block, matching
-fn mds4_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
+fn mds4_block_forms(s: &[ConstantOrR1CSWitness]) -> [LinearForm; 4] {
     let f1 = FieldElement::from(1u64);
     let f3 = FieldElement::from(3u64);
     let f4 = FieldElement::from(4u64);
@@ -494,16 +494,16 @@ fn mds4_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
     let o1 = compute_linear_form(&[f4, f6, f1, f1], s);
     let o2 = compute_linear_form(&[f1, f3, f5, f7], s);
     let o3 = compute_linear_form(&[f1, f1, f4, f6], s);
-    vec![o0, o1, o2, o3]
+    [o0, o1, o2, o3]
 }
 
 /// External MDS for general t in {2, 3, 4, 8, 12, 16}.
 fn mds_t_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
     let t = s.len();
     match t {
-        2 => mds2_block_forms(s),
-        3 => mds3_block_forms(s),
-        4 => mds4_block_forms(s),
+        2 => mds2_block_forms(s).to_vec(),
+        3 => mds3_block_forms(s).to_vec(),
+        4 => mds4_block_forms(s).to_vec(),
         t if [8, 12, 16].contains(&t) => {
             let blocks = t / 4;
 
