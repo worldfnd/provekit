@@ -197,7 +197,7 @@ impl LinearForm {
         }
 
         // Shared owner: clone, canonicalize, then re-wrap.
-        let mut owned: Vec<(FieldElement, usize)> = self.terms.as_ref().clone();
+        let mut owned: Vec<(FieldElement, usize)> = self.terms.to_vec();
         collapse_terms_inplace(&mut owned, threshold);
         self.terms = Rc::new(owned);
     }
