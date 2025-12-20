@@ -21,7 +21,7 @@ impl PKBuf {
         }
     }
 
-    /// Create a buffer from a Vec<u8>, transferring ownership
+    /// Create a buffer from a `Vec<u8>`, transferring ownership
     pub fn from_vec(mut v: Vec<u8>) -> Self {
         let ptr = v.as_mut_ptr();
         let len = v.len();
