@@ -109,6 +109,10 @@ impl<'a> WitnessSplitter<'a> {
             }
         }
 
+        // witness_one (builder 0) must always be in w1 to preserve R1CS index 0
+        // invariant
+        mandatory_w1.insert(0);
+
         // Step 5: Identify free builders (not in either mandatory set)
         let mut free_builders = Vec::new();
         for idx in 0..builder_count {
