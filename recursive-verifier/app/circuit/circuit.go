@@ -40,7 +40,7 @@ type Circuit struct {
 	WitnessBlindingEvaluations [][]frontend.Variable
 
 	// Batch mode only: batched polynomial for rounds 1+
-	BatchedWitnessMerkle Merkle
+	WitnessMerkle Merkle
 
 	MatrixA []MatrixCell
 	MatrixB []MatrixCell
@@ -108,7 +108,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
 			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
 			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
-			circuit.BatchedWitnessMerkle,                                    // batchedMerkle
+			circuit.WitnessMerkle,                                           // batchedMerkle
 			[][][]frontend.Variable{ // linearStatementEvals
 				{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
 				{circuit.WitnessClaimedEvaluations[1], circuit.WitnessBlindingEvaluations[1]},
@@ -128,7 +128,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		// Single commitment mode
 		whirFoldingRandomness, err = RunZKWhir(
 			api, arthur, uapi, sc,
-			circuit.WitnessFirstRounds[0], circuit.WitnessFirstRounds[0],
+			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
 			circuit.WHIRParamsWitness,
 			[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
 			circuit.WitnessLinearStatementEvaluations,
@@ -281,7 +281,7 @@ func verifyCircuit(
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
-		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, true),
+		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
 		NumChallenges:                           cfg.NumChallenges,
 		W1Size:                                  cfg.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
@@ -388,7 +388,7 @@ func verifyCircuit(
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
 		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
-		BatchedWitnessMerkle:                    newMerkle(hints.WitnessRoundHints.roundHints, false),
+		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
 		NumChallenges:                           cfg.NumChallenges,
 		W1Size:                                  cfg.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
