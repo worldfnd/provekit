@@ -48,29 +48,29 @@ impl<'a> WitnessSplitter<'a> {
         // Also collect lookup builders (direct challenge consumers)
         let mut mandatory_w2 = challenge_builders.clone();
         let mut lookup_builders = HashSet::new();
-        let mut visited = vec![false; builder_count];
-        let mut stack = VecDeque::new();
+        let mut forward_visited = vec![false; builder_count];
+        let mut forward_stack = VecDeque::new();
 
         for &challenge_idx in &challenge_builders {
-            visited[challenge_idx] = true;
+            forward_visited[challenge_idx] = true;
             // Collect direct consumers as lookup builders
             for &consumer_idx in &self.deps.adjacency_list[challenge_idx] {
                 lookup_builders.insert(consumer_idx);
-                if !visited[consumer_idx] {
-                    visited[consumer_idx] = true;
+                if !forward_visited[consumer_idx] {
+                    forward_visited[consumer_idx] = true;
                     mandatory_w2.insert(consumer_idx);
-                    stack.push_back(consumer_idx);
+                    forward_stack.push_back(consumer_idx);
                 }
             }
         }
 
         // Continue DFS to find all transitive dependents
-        while let Some(current_idx) = stack.pop_front() {
+        while let Some(current_idx) = forward_stack.pop_front() {
             for &consumer_idx in &self.deps.adjacency_list[current_idx] {
-                if !visited[consumer_idx] {
-                    visited[consumer_idx] = true;
+                if !forward_visited[consumer_idx] {
+                    forward_visited[consumer_idx] = true;
                     mandatory_w2.insert(consumer_idx);
-                    stack.push_back(consumer_idx);
+                    forward_stack.push_back(consumer_idx);
                 }
             }
         }
@@ -79,18 +79,18 @@ impl<'a> WitnessSplitter<'a> {
         // (exclude anything in mandatory_w2 to maintain disjoint sets)
         let witness_producer = &self.deps.witness_producer;
         let mut mandatory_w1 = HashSet::new();
-        let mut visited = vec![false; builder_count];
-        let mut stack = VecDeque::new();
+        let mut backward_visited = vec![false; builder_count];
+        let mut backward_stack = VecDeque::new();
 
         for &lookup_idx in &lookup_builders {
-            stack.push_back(lookup_idx);
+            backward_stack.push_back(lookup_idx);
         }
 
-        while let Some(current_idx) = stack.pop_front() {
-            if visited[current_idx] {
+        while let Some(current_idx) = backward_stack.pop_front() {
+            if backward_visited[current_idx] {
                 continue;
             }
-            visited[current_idx] = true;
+            backward_visited[current_idx] = true;
 
             // Only add to w1 if not in mandatory_w2 (maintain disjoint)
             if !mandatory_w2.contains(&current_idx)
@@ -102,8 +102,8 @@ impl<'a> WitnessSplitter<'a> {
 
             for &witness_idx in &self.deps.reads[current_idx] {
                 if let Some(&producer_idx) = witness_producer.get(&witness_idx) {
-                    if !visited[producer_idx] && !mandatory_w2.contains(&producer_idx) {
-                        stack.push_back(producer_idx);
+                    if !backward_visited[producer_idx] && !mandatory_w2.contains(&producer_idx) {
+                        backward_stack.push_back(producer_idx);
                     }
                 }
             }
