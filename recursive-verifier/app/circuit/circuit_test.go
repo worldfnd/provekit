@@ -191,45 +191,62 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 
 			case "merkle_proof":
 				var path FullMultiPath[KeccakDigest]
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&path, false, false,
 				)
+				if err != nil {
+					return nil, nil, err
+				}
 				merklePaths = append(merklePaths, path)
 
 			case "stir_answers":
 				var stirAnswersTemporary [][]Fp256
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&stirAnswersTemporary, false, false,
 				)
+				if err != nil {
+					return nil, nil, err
+				}
 				stirAnswers = append(stirAnswers, stirAnswersTemporary)
 
 			case "deferred_weight_evaluations":
 				var deferredTemporary []Fp256
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&deferredTemporary, false, false,
 				)
+				if err != nil {
+					return nil, nil, err
+				}
 				deferred = append(deferred, deferredTemporary...)
 
 			case "claimed_evaluations":
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&claimedEvaluations, false, false,
 				)
-
+				if err != nil {
+					return nil, nil, err
+				}
 			case "claimed_evaluations_1":
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&claimedEvaluations, false, false,
 				)
+				if err != nil {
+					return nil, nil, err
+				}
 
 			case "claimed_evaluations_2":
-				_, _ = arkSerialize.CanonicalDeserializeWithMode(
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
 					bytes.NewReader(config.Transcript[start:end]),
 					&claimedEvaluations2, false, false,
 				)
+				if err != nil {
+					return nil, nil, err
+				}
 			}
 			pointer = end
 
