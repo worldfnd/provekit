@@ -1,0 +1,18 @@
+name: Kani model checking
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  kani:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          # Whitelist directories that use Kani this prevents the entire project from being built.
+          working-directory: "./cm31"
