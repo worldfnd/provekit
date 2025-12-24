@@ -27,18 +27,25 @@ type Circuit struct {
 	LogNumConstraints                       int
 	LogNumVariables                         int
 	LogANumTerms                            int
-	WitnessClaimedEvaluations               []frontend.Variable
-	WitnessBlindingEvaluations              []frontend.Variable
 	HidingSpartanFirstRound                 Merkle
 	HidingSpartanMerkle                     Merkle
-	WitnessMerkle                           Merkle
-	WitnessFirstRound                       Merkle
 	WHIRParamsWitness                       WHIRParams
 	WHIRParamsHidingSpartan                 WHIRParams
+	NumChallenges                           int
+	W1Size                                  int
+
+	// Witness commitments (length 1 for single mode, N for batch mode)
+	WitnessFirstRounds         []Merkle
+	WitnessClaimedEvaluations  [][]frontend.Variable // [commitment_idx][eval_idx]
+	WitnessBlindingEvaluations [][]frontend.Variable
+
+	// Batch mode only: batched polynomial for rounds 1+
+	WitnessMerkle Merkle
 
 	MatrixA []MatrixCell
 	MatrixB []MatrixCell
 	MatrixC []MatrixCell
+
 	// Public Input
 	IO         []byte
 	Transcript []uints.U8 `gnark:",public"`
@@ -50,43 +57,127 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
-
+	// Parse first commitment (C1) - needed to consume transcript
+	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
 	if err != nil {
 		return err
 	}
 
+	// Variables for second commitment (only used in dual mode)
+	var rootHash2, batchingRandomness2 frontend.Variable
+	var initialOODQueries2 []frontend.Variable
+	var initialOODAnswers2 [][]frontend.Variable
+
+	if circuit.NumChallenges > 0 {
+		// Squeeze logup challenges
+		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
+		if err = arthur.FillChallengeScalars(logupChallenges); err != nil {
+			return err
+		}
+
+		// Parse second commitment (C2)
+		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Squeeze tRand for Spartan
 	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
 	err = arthur.FillChallengeScalars(tRand)
 	if err != nil {
 		return err
 	}
 
+	// Run ZK sumcheck
 	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
 	if err != nil {
 		return err
 	}
 
-	whirFoldingRandomness, err := RunZKWhir(api, arthur, uapi, sc, circuit.WitnessMerkle, circuit.WitnessFirstRound, circuit.WHIRParamsWitness, [][]frontend.Variable{circuit.WitnessClaimedEvaluations, circuit.WitnessBlindingEvaluations}, circuit.WitnessLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
+	// WHIR verification
+	var whirFoldingRandomness []frontend.Variable
+	var az, bz, cz frontend.Variable
 
-	if err != nil {
-		return err
+	if circuit.NumChallenges > 0 {
+		// Dual commitment mode: batch WHIR verification
+		whirFoldingRandomness, err = RunZKWhirBatch(
+			api, arthur, uapi, sc,
+			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
+			[]frontend.Variable{batchingRandomness1, batchingRandomness2},   // batchingRandomnesses
+			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
+			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
+			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
+			circuit.WitnessMerkle,                                           // batchedMerkle
+			[][][]frontend.Variable{ // linearStatementEvals
+				{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
+				{circuit.WitnessClaimedEvaluations[1], circuit.WitnessBlindingEvaluations[1]},
+			},
+			circuit.WHIRParamsWitness,                 // whirParams
+			circuit.WitnessLinearStatementEvaluations, // linearStatementValuesAtPoints
+		)
+		if err != nil {
+			return err
+		}
+
+		// Sum evaluations from both commitments
+		az = api.Add(circuit.WitnessClaimedEvaluations[0][0], circuit.WitnessClaimedEvaluations[1][0])
+		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
+		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
+	} else {
+		// Single commitment mode
+		whirFoldingRandomness, err = RunZKWhir(
+			api, arthur, uapi, sc,
+			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
+			circuit.WHIRParamsWitness,
+			[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
+			circuit.WitnessLinearStatementEvaluations,
+			batchingRandomness1,
+			initialOODQueries1,
+			initialOODAnswers1,
+			rootHash1,
+		)
+		if err != nil {
+			return err
+		}
+
+		az = circuit.WitnessClaimedEvaluations[0][0]
+		bz = circuit.WitnessClaimedEvaluations[0][1]
+		cz = circuit.WitnessClaimedEvaluations[0][2]
 	}
 
-	x := api.Mul(api.Sub(api.Mul(circuit.WitnessClaimedEvaluations[0], circuit.WitnessClaimedEvaluations[1]), circuit.WitnessClaimedEvaluations[2]), calculateEQ(api, spartanSumcheckRand, tRand))
+	// Spartan sumcheck relation check (common to both modes)
+	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
-
-	for i := 0; i < 3; i++ {
-		api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+	if circuit.NumChallenges > 0 {
+		// Batch mode - check 6 deferred values
+		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
+		for i := 0; i < 6; i++ {
+			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		}
+	} else {
+		// Single mode - existing logic
+		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+		for i := 0; i < 3; i++ {
+			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[i])
+		}
 	}
 
 	return nil
 }
 
 func verifyCircuit(
-	deferred []Fp256, cfg Config, hints Hints, pk *groth16.ProvingKey, vk *groth16.VerifyingKey, claimedEvaluations ClaimedEvaluations, internedR1CS R1CS, interner Interner, buildOps common.BuildOps,
+	deferred []Fp256,
+	cfg Config,
+	hints Hints,
+	pk *groth16.ProvingKey,
+	vk *groth16.VerifyingKey,
+	claimedEvaluations ClaimedEvaluations,
+	claimedEvaluations2 ClaimedEvaluations,
+	internedR1CS R1CS,
+	interner Interner,
+	buildOps common.BuildOps,
 ) error {
 	transcriptT := make([]uints.U8, cfg.TranscriptLen)
 	contTranscript := make([]uints.U8, cfg.TranscriptLen)
@@ -95,17 +186,23 @@ func verifyCircuit(
 		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
 	}
 
-	witnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	// Determine witness linear statement evals size based on mode
+	var witnessLinearStatementEvalsSize int
+	if cfg.NumChallenges > 0 {
+		witnessLinearStatementEvalsSize = 6 // 3 per commitment in batch mode
+	} else {
+		witnessLinearStatementEvalsSize = 3
+	}
+
+	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
 	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	contWitnessLinearStatementEvaluations := make([]frontend.Variable, 3)
+	contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
 	contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
 
 	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	witnessLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[1].Limbs)
-	witnessLinearStatementEvaluations[1] = typeConverters.LimbsToBigIntMod(deferred[2].Limbs)
-	witnessLinearStatementEvaluations[2] = typeConverters.LimbsToBigIntMod(deferred[3].Limbs)
-
-	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
+	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
+		witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	}
 
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
@@ -152,27 +249,46 @@ func verifyCircuit(
 		}
 	}
 
-	var circuit = Circuit{
+	// Parse claimed evaluations for first commitment
+	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
+
+	// Parse claimed evaluations for second commitment (if dual mode)
+	var fSums2, gSums2 []frontend.Variable
+	if cfg.NumChallenges > 0 {
+		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
+	}
+
+	// Build witness slices conditionally
+	var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
+	if cfg.NumChallenges > 0 {
+		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	} else {
+		witnessClaimedEvals = [][]frontend.Variable{fSums}
+		witnessBlindingEvals = [][]frontend.Variable{gSums}
+	}
+
+	circuit := Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
 		LogNumConstraints:                       cfg.LogNumConstraints,
 		LogNumVariables:                         cfg.LogNumVariables,
 		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               fSums,
-		WitnessBlindingEvaluations:              gSums,
+		WitnessClaimedEvaluations:               witnessClaimedEvals,
+		WitnessBlindingEvaluations:              witnessBlindingEvals,
 		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
 		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
 		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessMerkle:                           newMerkle(hints.witnessHints.roundHints, true),
-		WitnessFirstRound:                       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, true),
-
-		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
+		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
+		NumChallenges:                           cfg.NumChallenges,
+		W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -203,7 +319,7 @@ func verifyCircuit(
 
 		if buildOps.ShouldSaveKeys() {
 			// Create the save keys directory if it doesn't exist
-			if err := os.MkdirAll(buildOps.SaveKeys, 0755); err != nil {
+			if err := os.MkdirAll(buildOps.SaveKeys, 0o755); err != nil {
 				log.Printf("Failed to create save keys directory %s: %v", buildOps.SaveKeys, err)
 			}
 
@@ -250,29 +366,36 @@ func verifyCircuit(
 		}
 	}
 
+	// Parse actual values for assignment
 	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
+	if cfg.NumChallenges > 0 {
+		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
+		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	} else {
+		witnessClaimedEvals = [][]frontend.Variable{fSums}
+		witnessBlindingEvals = [][]frontend.Variable{gSums}
+	}
 
 	assignment := Circuit{
-		IO:                []byte(cfg.IOPattern),
-		Transcript:        transcriptT,
-		LogNumConstraints: cfg.LogNumConstraints,
-
-		WitnessClaimedEvaluations:               fSums,
-		WitnessBlindingEvaluations:              gSums,
+		IO:                                      []byte(cfg.IOPattern),
+		Transcript:                              transcriptT,
+		LogNumConstraints:                       cfg.LogNumConstraints,
+		WitnessClaimedEvaluations:               witnessClaimedEvals,
+		WitnessBlindingEvaluations:              witnessBlindingEvals,
 		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
 		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-
-		HidingSpartanFirstRound: newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessMerkle:           newMerkle(hints.witnessHints.roundHints, false),
-		WitnessFirstRound:       newMerkle(hints.witnessHints.firstRoundMerklePaths.path, false),
-
-		WHIRParamsWitness:       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan: NewWhirParams(cfg.WHIRConfigHidingSpartan),
-
-		MatrixA: matrixA,
-		MatrixB: matrixB,
-		MatrixC: matrixC,
+		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
+		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
+		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
+		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
+		NumChallenges:                           cfg.NumChallenges,
+		W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
+		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
+		MatrixA:                                 matrixA,
+		MatrixB:                                 matrixB,
+		MatrixC:                                 matrixC,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
@@ -304,4 +427,12 @@ func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer 
 	}
 
 	return fSums, gSums
+}
+
+func witnessFirstRounds(hints Hints, isContainer bool) []Merkle {
+	result := make([]Merkle, len(hints.WitnessFirstRoundHints))
+	for i, hint := range hints.WitnessFirstRoundHints {
+		result[i] = newMerkle(hint.path, isContainer)
+	}
+	return result
 }

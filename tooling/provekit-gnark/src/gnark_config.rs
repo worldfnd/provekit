@@ -25,6 +25,10 @@ pub struct GnarkConfig {
     pub transcript:                 Vec<u8>,
     /// length of the transcript
     pub transcript_len:             usize,
+    /// number of logup challenges (0 = single commitment mode)
+    pub num_challenges:             usize,
+    /// size of w1
+    pub w1_size:                    usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -108,16 +112,20 @@ pub fn gnark_parameters(
     m_0: usize,
     m: usize,
     a_num_terms: usize,
+    num_challenges: usize,
+    w1_size: usize,
 ) -> GnarkConfig {
     GnarkConfig {
-        whir_config_witness:        WHIRConfigGnark::new(whir_params_witness),
+        whir_config_witness: WHIRConfigGnark::new(whir_params_witness),
         whir_config_hiding_spartan: WHIRConfigGnark::new(whir_params_hiding_spartan),
-        log_num_constraints:        m_0,
-        log_num_variables:          m,
-        log_a_num_terms:            a_num_terms,
-        io_pattern:                 String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript:                 transcript.to_vec(),
-        transcript_len:             transcript.to_vec().len(),
+        log_num_constraints: m_0,
+        log_num_variables: m,
+        log_a_num_terms: a_num_terms,
+        io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
+        transcript: transcript.to_vec(),
+        transcript_len: transcript.to_vec().len(),
+        num_challenges,
+        w1_size,
     }
 }
 
@@ -131,6 +139,8 @@ pub fn write_gnark_parameters_to_file(
     m_0: usize,
     m: usize,
     a_num_terms: usize,
+    num_challenges: usize,
+    w1_size: usize,
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
@@ -141,6 +151,8 @@ pub fn write_gnark_parameters_to_file(
         m_0,
         m,
         a_num_terms,
+        num_challenges,
+        w1_size,
     );
     let mut file_params = File::create(file_path).unwrap();
     file_params

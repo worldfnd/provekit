@@ -3,6 +3,7 @@ mod digits;
 mod memory;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
+mod poseidon2;
 mod range_check;
 mod sha256_compression;
 mod whir_r1cs;
