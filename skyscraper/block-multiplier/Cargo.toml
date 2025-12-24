@@ -8,7 +8,7 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
-[target.'cfg(target_arch = "aarch64")'.dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Workspace crates
 fp-rounding.workspace = true
 
