@@ -17,31 +17,34 @@ const MIN_WHIR_NUM_VARIABLES: usize = 12;
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
-    fn new_for_r1cs(r1cs: &R1CS) -> Self;
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self;
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
-    fn new_for_r1cs(r1cs: &R1CS) -> Self {
-        // m_raw is equal to ceiling(log(number of variables in constraint system)). It
-        // is equal to the log of the width of the matrices.
-        let m_raw = next_power_of_two(r1cs.num_witnesses());
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self {
+        let total_witnesses = r1cs.num_witnesses();
+        assert!(
+            w1_size <= total_witnesses,
+            "w1_size exceeds total witnesses"
+        );
+        let w2_size = total_witnesses - w1_size;
 
-        // m0_raw is equal to ceiling(log(number_of_constraints)). It is equal to the
-        // number of variables in the multilinear polynomial we are running our sumcheck
-        // on.
+        let m1_raw = next_power_of_two(w1_size);
+        let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(r1cs.num_constraints());
 
-        let m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        // Whir parameters
         Self {
-            m: m + 1,
+            m: m_raw + 1,
+            w1_size,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
-            whir_witness: Self::new_whir_config_for_size(m + 1, 2),
+            num_challenges,
+            whir_witness: Self::new_whir_config_for_size(m_raw + 1, 2),
             whir_for_hiding_spartan: Self::new_whir_config_for_size(
                 next_power_of_two(4 * m_0) + 1,
                 2,

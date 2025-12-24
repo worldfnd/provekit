@@ -59,6 +59,55 @@ func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []f
 	return []frontend.Variable{ansA, ansB, ansC}
 }
 
+func evaluateR1CSMatrixExtensionBatch(
+	api frontend.API,
+	circuit *Circuit,
+	rowRand []frontend.Variable,
+	colRand []frontend.Variable,
+	w1Size int,
+) []frontend.Variable {
+	// Returns [Az1, Bz1, Cz1, Az2, Bz2, Cz2]
+	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+	colEval := calculateEQOverBooleanHypercube(api, colRand)
+
+	ans := make([]frontend.Variable, 6)
+	for i := range ans {
+		ans[i] = frontend.Variable(0)
+	}
+
+	for i := range circuit.MatrixA {
+		col := circuit.MatrixA[i].column
+		row := circuit.MatrixA[i].row
+		val := circuit.MatrixA[i].value
+
+		if col < w1Size {
+			ans[0] = api.Add(ans[0], api.Mul(val, api.Mul(rowEval[row], colEval[col])))
+		} else {
+			ans[3] = api.Add(ans[3], api.Mul(val, api.Mul(rowEval[row], colEval[col-w1Size])))
+		}
+	}
+
+	for i := range circuit.MatrixB {
+		col := circuit.MatrixB[i].column
+		if col < w1Size {
+			ans[1] = api.Add(ans[1], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col])))
+		} else {
+			ans[4] = api.Add(ans[4], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col-w1Size])))
+		}
+	}
+
+	for i := range circuit.MatrixC {
+		col := circuit.MatrixC[i].column
+		if col < w1Size {
+			ans[2] = api.Add(ans[2], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col])))
+		} else {
+			ans[5] = api.Add(ans[5], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col-w1Size])))
+		}
+	}
+
+	return ans
+}
+
 func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
 	ans := []frontend.Variable{frontend.Variable(1)}
 

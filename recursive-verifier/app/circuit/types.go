@@ -99,11 +99,20 @@ type Config struct {
 	TranscriptLen                int        `json:"transcript_len"`
 	WitnessStatementEvaluations  []string   `json:"witness_statement_evaluations"`
 	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
+	NumChallenges                int        `json:"num_challenges"`
+	W1Size                       int        `json:"w1_size"`
 }
 
+// Update Hints to support batch mode
 type Hints struct {
-	witnessHints      ZKHint
 	spartanHidingHint ZKHint
+
+	// Witness hints (length 1 for single mode, N for batch mode)
+	WitnessFirstRoundHints []FirstRoundHint
+
+	// Single mode: rounds 1+ for the one commitment
+	// Batch mode: rounds 1+ for batched polynomial
+	WitnessRoundHints ZKHint
 }
 
 type Hint struct {
@@ -124,4 +133,9 @@ type ZKHint struct {
 type ClaimedEvaluations struct {
 	FSums []Fp256
 	GSums []Fp256
+}
+
+type DualClaimedEvaluations struct {
+	First  ClaimedEvaluations
+	Second ClaimedEvaluations
 }

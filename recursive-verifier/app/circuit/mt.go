@@ -11,14 +11,14 @@ func newMerkle(
 	hint Hint,
 	isContainer bool,
 ) Merkle {
-	var totalAuthPath = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeaves = make([][][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafSiblingHashes = make([][]frontend.Variable, len(hint.merklePaths))
-	var totalLeafIndexes = make([][]uints.U64, len(hint.merklePaths))
+	totalAuthPath := make([][][]frontend.Variable, len(hint.merklePaths))
+	totalLeaves := make([][][]frontend.Variable, len(hint.merklePaths))
+	totalLeafSiblingHashes := make([][]frontend.Variable, len(hint.merklePaths))
+	totalLeafIndexes := make([][]uints.U64, len(hint.merklePaths))
 
 	for i, merkle_path := range hint.merklePaths {
-		var numOfLeavesProved = len(merkle_path.Proofs)
-		var treeHeight = len(merkle_path.Proofs[0].AuthPath)
+		numOfLeavesProved := len(merkle_path.Proofs)
+		treeHeight := len(merkle_path.Proofs[0].AuthPath)
 
 		totalAuthPath[i] = make([][]frontend.Variable, numOfLeavesProved)
 		totalLeaves[i] = make([][]frontend.Variable, numOfLeavesProved)
@@ -65,7 +65,6 @@ func oodAnswers(
 	answers [][]frontend.Variable,
 	randomness frontend.Variable,
 ) (result []frontend.Variable) {
-
 	if len(answers) == 0 {
 		return nil
 	}

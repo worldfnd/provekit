@@ -56,7 +56,6 @@ func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.Ve
 	_, err = pk.ReadFrom(pkFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to restore proving key: %w", err)
-
 	}
 
 	vkFile, err := os.Open(vkPath)
@@ -80,7 +79,6 @@ func keysFromFiles(pkPath string, vkPath string) (groth16.ProvingKey, groth16.Ve
 }
 
 func keysFromUrl(pkUrl string, vkUrl string) (groth16.ProvingKey, groth16.VerifyingKey, error) {
-
 	vkBytes, err := downloadFromUrl(vkUrl)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to download verifying key: %w", err)
@@ -175,7 +173,6 @@ func runZKSumcheck(
 	polynomialDegree int,
 	whirParams WHIRParams,
 ) ([]frontend.Variable, frontend.Variable, error) {
-
 	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, whirParams)
 	if err != nil {
 		return nil, nil, err
@@ -266,6 +263,50 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Keccak
 	for i := 0; i < expectedRounds && len(*merkle_paths) > 0 && len(*stir_answers) > 0; i++ {
 		remainingMerklePaths = append(remainingMerklePaths, consumeFront(merkle_paths))
 		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stir_answers))
+	}
+
+	zkHint.roundHints = Hint{
+		merklePaths: remainingMerklePaths,
+		stirAnswers: remainingStirAnswers,
+	}
+
+	return zkHint
+}
+
+// consumeFirstRoundOnly consumes only the first round hint (no subsequent rounds)
+// Used for batch mode where each original commitment has its own first round
+func consumeFirstRoundOnly(merklePaths *[]FullMultiPath[KeccakDigest], stirAnswers *[][][]Fp256) FirstRoundHint {
+	var hint FirstRoundHint
+
+	if len(*merklePaths) > 0 && len(*stirAnswers) > 0 {
+		firstRoundMerklePath := consumeFront(merklePaths)
+		firstRoundStirAnswers := consumeFront(stirAnswers)
+
+		hint = FirstRoundHint{
+			path: Hint{
+				merklePaths: []FullMultiPath[KeccakDigest]{firstRoundMerklePath},
+				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
+			},
+			expectedStirAnswers: firstRoundStirAnswers,
+		}
+	}
+
+	return hint
+}
+
+// consumeWhirDataRoundsOnly consumes only the round hints (not first round)
+// Used for batched polynomial in batch mode
+func consumeWhirDataRoundsOnly(whirConfig WHIRConfig, merklePaths *[]FullMultiPath[KeccakDigest], stirAnswers *[][][]Fp256) ZKHint {
+	var zkHint ZKHint
+
+	expectedRounds := whirConfig.NRounds
+
+	var remainingMerklePaths []FullMultiPath[KeccakDigest]
+	var remainingStirAnswers [][][]Fp256
+
+	for i := 0; i < expectedRounds && len(*merklePaths) > 0 && len(*stirAnswers) > 0; i++ {
+		remainingMerklePaths = append(remainingMerklePaths, consumeFront(merklePaths))
+		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stirAnswers))
 	}
 
 	zkHint.roundHints = Hint{
