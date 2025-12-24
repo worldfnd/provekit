@@ -1,12 +1,12 @@
 use {
     crate::{
         constants::*,
-        subarray,
-        utils::{
-            addv, addv_simd, carrying_mul_add, make_initial, reduce_ct, reduce_ct_simd,
-            smult_noinit_simd, transpose_simd_to_u256, transpose_u256_to_simd,
-            u256_to_u260_shl2_simd, u260_to_u256_simd,
+        simd_utils::{
+            addv_simd, make_initial, reduce_ct_simd, smult_noinit_simd, transpose_simd_to_u256,
+            transpose_u256_to_simd, u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
+        subarray,
+        utils::{addv, carrying_mul_add, reduce_ct},
     },
     core::{
         arch::aarch64::vcvtq_f64_u64,

@@ -8,10 +8,11 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
-[dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 # Workspace crates
 fp-rounding.workspace = true
 
+[dependencies]
 # 3rd party
 seq-macro.workspace = true
 
