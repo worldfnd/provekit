@@ -7,10 +7,7 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
-    std::{
-        collections::{HashMap, HashSet},
-        path::Path,
-    },
+    std::path::Path,
     tracing::instrument,
 };
 
@@ -119,12 +116,16 @@ impl Prove for Prover {
 
         // Gather public inputs from witness
         let num_public_inputs = acir_public_inputs.len();
-        let public_inputs = PublicInputs::from_vec_with_constant_one(
-            witness[0..=num_public_inputs]
-                .iter()
-                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
-                .collect::<Result<Vec<FieldElement>>>()?,
-        );
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(
+                witness[1..=num_public_inputs]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
+                    .collect::<Result<Vec<FieldElement>>>()?,
+            )
+        };
         drop(witness);
 
         let whir_r1cs_proof = self

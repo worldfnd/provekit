@@ -94,12 +94,15 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
                 let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
                     arthur.hint().unwrap();
-                update_statement_for_witness_verifier(
-                    self.m,
-                    &mut statement_1,
-                    &parsed_commitment_1,
-                    whir_pub_weights_query_answer,
-                );
+
+                if public_inputs.len() > 0 {
+                    update_statement_for_witness_verifier(
+                        self.m,
+                        &mut statement_1,
+                        &parsed_commitment_1,
+                        whir_pub_weights_query_answer,
+                    );
+                }
 
                 run_whir_pcs_batch_verifier(
                     &mut arthur,
@@ -141,12 +144,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
                 let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
                     arthur.hint().unwrap();
-                update_statement_for_witness_verifier(
-                    self.m,
-                    &mut statement,
-                    &parsed_commitment_1,
-                    whir_pub_weights_query_answer,
-                );
+                if public_inputs.len() > 0 {
+                    update_statement_for_witness_verifier(
+                        self.m,
+                        &mut statement,
+                        &parsed_commitment_1,
+                        whir_pub_weights_query_answer,
+                    );
+                }
 
                 run_whir_pcs_verifier(
                     &mut arthur,

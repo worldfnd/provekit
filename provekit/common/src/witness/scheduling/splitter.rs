@@ -219,7 +219,6 @@ impl<'a> WitnessSplitter<'a> {
             rest_indices.push(builder_idx);
         }
 
-        public_input_builder_indices.sort_unstable();
         rest_indices.sort_unstable();
 
         // Reorder: 0 first, then public inputs, then rest

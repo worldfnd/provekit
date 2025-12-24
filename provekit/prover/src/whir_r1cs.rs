@@ -173,13 +173,21 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             // VERIFY the size given by self.m
             let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
-            let (public_f_sum, public_g_sum) = update_statement_with_public_weights(
-                &mut statement,
-                &commitment.commitment_to_witness,
-                &commitment.masked_polynomial,
-                &commitment.random_polynomial,
-                public_weight,
-            );
+            let (public_f_sum, public_g_sum) = if public_inputs.len() == 0 {
+                // If there are no public inputs, the hint is unused by the verifier and can be
+                // assigned an arbitrary value.
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement,
+                    &commitment.commitment_to_witness,
+                    &commitment.masked_polynomial,
+                    &commitment.random_polynomial,
+                    public_weight,
+                )
+            };
 
             let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
 
@@ -230,15 +238,20 @@ impl WhirR1CSProver for WhirR1CSScheme {
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
 
-            // VERIFY the size given by self.m
             let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
-            let (public_f_sum, public_g_sum) = update_statement_with_public_weights(
-                &mut statement_1,
-                &c1.commitment_to_witness,
-                &c1.masked_polynomial,
-                &c1.random_polynomial,
-                public_weight,
-            );
+            let (public_f_sum, public_g_sum) = if public_inputs.len() == 0 {
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement_1,
+                    &c1.commitment_to_witness,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    public_weight,
+                )
+            };
 
             let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
 
@@ -674,7 +687,9 @@ fn get_public_weights(
     m: usize,
 ) -> Weights<FieldElement> {
     // Add hash to transcript
+    info!("ASH_TEST : Public inputs: {:?}", public_inputs.0);
     let public_inputs_hash = public_inputs.hash();
+    info!("ASH_TEST : Public inputs hash: {:?}", public_inputs_hash);
     let _ = merlin.add_scalars(&[public_inputs_hash]);
 
     // Get random point x

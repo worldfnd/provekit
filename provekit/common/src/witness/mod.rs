@@ -49,23 +49,13 @@ impl ConstantOrR1CSWitness {
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
 impl PublicInputs {
-    /// Creates a new `PublicInputs` with a constant 1 field element at the
-    /// start.
+    /// Creates a new `PublicInputs` with an empty vector.
     pub fn new() -> Self {
-        Self(vec![FieldElement::one()])
+        Self(Vec::new())
     }
 
-    /// Creates a new `PublicInputs` from a vector, adding a constant 1 field
-    /// element at the start. To emulate the constant 1 witness in the R1CS
-    /// instance.
-    pub fn from_vec(mut vec: Vec<FieldElement>) -> Self {
-        vec.insert(0, FieldElement::one());
-        Self(vec)
-    }
-
-    /// Assuming the given vector already has a constant 1 field element at the
-    /// start.
-    pub fn from_vec_with_constant_one(vec: Vec<FieldElement>) -> Self {
+    /// Creates a new `PublicInputs` from a vector.
+    pub fn from_vec(vec: Vec<FieldElement>) -> Self {
         Self(vec)
     }
 
