@@ -94,47 +94,36 @@ pub(crate) fn add_right_rotate(
     let shift_left_amount = 32 - rotation_amount;
     let shift_multiplier = FieldElement::from(1u64 << shift_left_amount);
 
-    // Create witness for low_bits << (32-n)
-    let shifted_low_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(shifted_low_witness, vec![SumTerm(
-        Some(shift_multiplier),
-        low_bits_witness,
-    )]));
+  
 
-    // Constraint: shifted_low = low_bits * 2^(32-n)
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, low_bits_witness)],
-        &[(shift_multiplier, r1cs_compiler.witness_one())],
-        &[(FieldElement::ONE, shifted_low_witness)],
-    );
-
-    // The result is: high_bits + shifted_low_bits
-    // Since high_bits occupies lower (32-n) bits and shifted_low occupies
-    // upper n bits with no overlap, XOR equals addition in this case.
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_witness, vec![
-        SumTerm(None, high_bits_witness),
-        SumTerm(None, shifted_low_witness),
-    ]));
-
-    // Constraint: result = high_bits + shifted_low
-    r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::ONE, high_bits_witness),
-            (FieldElement::ONE, shifted_low_witness),
+       let result_witness = r1cs_compiler.num_witnesses();
+r1cs_compiler.add_witness_builder(
+    WitnessBuilder::Sum(
+        result_witness,
+        vec![
+            SumTerm(None, high_bits_witness),
+            SumTerm(Some(shift_multiplier), low_bits_witness),
         ],
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[(FieldElement::ONE, result_witness)],
-    );
+    )
+);
+
+
+   
+// result = high_bits + low_bits * 2^(32 - n)
+r1cs_compiler.r1cs.add_constraint(
+    &[
+        (FieldElement::ONE, high_bits_witness),
+        (shift_multiplier, low_bits_witness),
+    ],
+    &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+    &[(FieldElement::ONE, result_witness)],
+);
+
 
     // Range check the result to ensure it's a valid 32-bit value
     range_checks.entry(32).or_default().push(result_witness);
 
-    // Range check intermediate values
-    range_checks
-        .entry(32)
-        .or_default()
-        .push(shifted_low_witness);
+
 
     result_witness
 }
