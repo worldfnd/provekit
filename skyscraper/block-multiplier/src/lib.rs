@@ -1,5 +1,8 @@
 #![feature(portable_simd)]
 #![feature(bigint_helper_methods)]
+//#![no_std] This crate can technically be no_std. This requires replacing the
+// use StdFloat.mul_add as this has a fallback which on our supported
+// target platforms is not needed.
 
 #[cfg(target_arch = "aarch64")]
 mod aarch64;

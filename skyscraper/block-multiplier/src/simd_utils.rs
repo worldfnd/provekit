@@ -1,15 +1,16 @@
 use {
     crate::constants::{C1, C2, MASK52, U52_2P},
-    std::{
+    core::{
         arch::aarch64::vcvtq_f64_u64,
         array,
         ops::BitAnd,
         simd::{
             cmp::SimdPartialEq,
             num::{SimdFloat, SimdInt, SimdUint},
-            Simd, StdFloat,
+            Simd,
         },
     },
+    std::simd::StdFloat,
 };
 
 // -- [SIMD UTILS]
