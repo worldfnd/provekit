@@ -26,7 +26,6 @@ fp-rounding.workspace = true
 
 [dev-dependencies]
 divan.workspace = true
-primitive-types.workspace = true
 rand.workspace = true
 proptest.workspace = true
 
