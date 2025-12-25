@@ -94,36 +94,24 @@ pub(crate) fn add_right_rotate(
     let shift_left_amount = 32 - rotation_amount;
     let shift_multiplier = FieldElement::from(1u64 << shift_left_amount);
 
-  
+    let result_witness = r1cs_compiler.num_witnesses();
+    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_witness, vec![
+        SumTerm(None, high_bits_witness),
+        SumTerm(Some(shift_multiplier), low_bits_witness),
+    ]));
 
-       let result_witness = r1cs_compiler.num_witnesses();
-r1cs_compiler.add_witness_builder(
-    WitnessBuilder::Sum(
-        result_witness,
-        vec![
-            SumTerm(None, high_bits_witness),
-            SumTerm(Some(shift_multiplier), low_bits_witness),
+    // result = high_bits + low_bits * 2^(32 - n)
+    r1cs_compiler.r1cs.add_constraint(
+        &[
+            (FieldElement::ONE, high_bits_witness),
+            (shift_multiplier, low_bits_witness),
         ],
-    )
-);
-
-
-   
-// result = high_bits + low_bits * 2^(32 - n)
-r1cs_compiler.r1cs.add_constraint(
-    &[
-        (FieldElement::ONE, high_bits_witness),
-        (shift_multiplier, low_bits_witness),
-    ],
-    &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-    &[(FieldElement::ONE, result_witness)],
-);
-
+        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+        &[(FieldElement::ONE, result_witness)],
+    );
 
     // Range check the result to ensure it's a valid 32-bit value
     range_checks.entry(32).or_default().push(result_witness);
-
-
 
     result_witness
 }
