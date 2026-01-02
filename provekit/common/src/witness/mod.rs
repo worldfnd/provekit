@@ -63,6 +63,10 @@ impl PublicInputs {
         self.0.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Hashes the public input values using SHA-256 and converts the result to
     /// a FieldElement.
     pub fn hash(&self) -> FieldElement {
@@ -84,5 +88,11 @@ impl PublicInputs {
             .collect::<Vec<_>>();
 
         FieldElement::new(BigInt::new(limbs.try_into().unwrap()))
+    }
+}
+
+impl Default for PublicInputs {
+    fn default() -> Self {
+        Self::new()
     }
 }

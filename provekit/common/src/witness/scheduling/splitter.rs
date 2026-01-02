@@ -142,7 +142,7 @@ impl<'a> WitnessSplitter<'a> {
         // Step 7: Assign free builders greedily while respecting dependencies
         // Rule: if any dependency is in w2, the builder must also be in w2
         // (because w1 is solved before w2)
-        // with the exception of public builders writing public witnesses)
+        // A free builder for public input witnesses goes in w1.
         let mut w1_set = mandatory_w1;
         let mut w2_set = mandatory_w2;
 
@@ -188,8 +188,10 @@ impl<'a> WitnessSplitter<'a> {
         (w1_indices, w2_indices)
     }
 
-    /// Rearranges w1 indices: constant builder (0) first, then public inputs,
-    /// then rest.
+    /// Rearranges w1 builder indices into a canonical order:
+    /// 1. Constant builder (index 0) first, to preserve R1CS index 0 invariant
+    /// 2. Public input builders next, grouped together
+    /// 3. All other w1 builders last, sorted by index
     fn rearrange_w1(
         &self,
         w1_indices: Vec<usize>,
@@ -200,8 +202,10 @@ impl<'a> WitnessSplitter<'a> {
 
         // Sanity Check: Make sure all public inputs and WITNESS_ONE_IDX are in
         // w1_indices.
+        // Convert to HashSet for O(1) lookups since we're checking many times
+        let w1_indices_set = w1_indices.iter().copied().collect::<HashSet<_>>();
         for &idx in acir_public_inputs_indices_set.iter() {
-            if !w1_indices.contains(&(idx as usize)) {
+            if !w1_indices_set.contains(&(idx as usize)) {
                 panic!("Public input {} is not in w1_indices", idx);
             }
         }

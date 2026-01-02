@@ -92,15 +92,16 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 let mut public_weights_vector_random_buf = [FieldElement::zero()];
                 arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
 
-                let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
-                    arthur.hint().unwrap();
+                let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
+                    .hint()
+                    .context("failed to read WHIR public weights query answer")?;
 
-                if public_inputs.len() > 0 {
+                if !public_inputs.is_empty() {
                     update_statement_for_witness_verifier(
                         self.m,
                         &mut statement_1,
                         &parsed_commitment_1,
-                        whir_pub_weights_query_answer,
+                        whir_public_weights_query_answer,
                     );
                 }
 
@@ -142,14 +143,15 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 let mut public_weights_vector_random_buf = [FieldElement::zero()];
                 arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
 
-                let whir_pub_weights_query_answer: (FieldElement, FieldElement) =
-                    arthur.hint().unwrap();
-                if public_inputs.len() > 0 {
+                let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
+                    .hint()
+                    .context("failed to read WHIR public weights query answer")?;
+                if !public_inputs.is_empty() {
                     update_statement_for_witness_verifier(
                         self.m,
                         &mut statement,
                         &parsed_commitment_1,
-                        whir_pub_weights_query_answer,
+                        whir_public_weights_query_answer,
                     );
                 }
 

@@ -173,7 +173,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             // VERIFY the size given by self.m
             let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
-            let (public_f_sum, public_g_sum) = if public_inputs.len() == 0 {
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
                 // If there are no public inputs, the hint is unused by the verifier and can be
                 // assigned an arbitrary value.
                 let public_f_sum = FieldElement::zero();
@@ -189,7 +189,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 )
             };
 
-            let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
 
             run_zk_whir_pcs_prover(
                 commitment.commitment_to_witness,
@@ -239,7 +239,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
 
             let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
-            let (public_f_sum, public_g_sum) = if public_inputs.len() == 0 {
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
                 let public_f_sum = FieldElement::zero();
                 let public_g_sum = FieldElement::zero();
                 (public_f_sum, public_g_sum)
@@ -253,7 +253,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 )
             };
 
-            let _ = merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum));
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
 
             run_zk_whir_pcs_batch_prover(
                 &[c1.commitment_to_witness, c2.commitment_to_witness],
@@ -687,9 +687,7 @@ fn get_public_weights(
     m: usize,
 ) -> Weights<FieldElement> {
     // Add hash to transcript
-    info!("ASH_TEST : Public inputs: {:?}", public_inputs.0);
     let public_inputs_hash = public_inputs.hash();
-    info!("ASH_TEST : Public inputs hash: {:?}", public_inputs_hash);
     let _ = merlin.add_scalars(&[public_inputs_hash]);
 
     // Get random point x

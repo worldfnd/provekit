@@ -35,10 +35,10 @@ impl WhirR1CSScheme {
             // Compute total constraints: OOD + statement
             // OOD: 2 witnesses × committment_ood_samples each
             // Statement: statement_1 has 3 constraints + 1 public weights constraint = 4,
-            // statement_2 has 3 = 3, total = 7
+            // statement_2 has 3 constraints = 3, total = 7
             let num_witnesses = 2;
             let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
-            let num_statement_constraints = 7; // (3+1) + (3)
+            let num_statement_constraints = 7;
             let num_constraints_total = num_ood_constraints + num_statement_constraints;
 
             io = io
