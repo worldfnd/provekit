@@ -68,7 +68,32 @@ pub fn sub<const N: usize>(a: [u64; N], b: [u64; N]) -> [u64; N] {
 }
 
 #[inline(always)]
-pub fn carrying_mul_add(a: u64, b: u64, add: u64, carry: u64) -> (u64, u64) {
-    let c: u128 = a as u128 * b as u128 + carry as u128 + add as u128;
+// Based on ark-ff
+// On WASM first doing a widening on the operands will cause __multi3 called
+// which is u128xu128 -> u128 causing unnecessary multiplications
+pub const fn widening_mul(a: u64, b: u64) -> u128 {
+    #[cfg(not(target_family = "wasm"))]
+    {
+        a as u128 * b as u128
+    }
+    #[cfg(target_family = "wasm")]
+    {
+        let a0 = a as u32 as u64;
+        let a1 = a >> 32;
+        let b0 = b as u32 as u64;
+        let b1 = b >> 32;
+
+        let c00 = (a0 * b0) as u128;
+        let c01 = (a0 * b1) as u128;
+        let c10 = (a1 * b0) as u128;
+        let cxx = (c01 + c10) << 32;
+        let c11 = ((a1 * b1) as u128) << 64;
+        (c00 | c11) + cxx
+    }
+}
+
+#[inline(always)]
+pub const fn carrying_mul_add(a: u64, b: u64, add: u64, carry: u64) -> (u64, u64) {
+    let c: u128 = widening_mul(a, b) + carry as u128 + add as u128;
     (c as u64, (c >> 64) as u64)
 }
