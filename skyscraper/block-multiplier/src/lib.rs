@@ -17,6 +17,7 @@ mod simd_utils;
 
 pub mod constants;
 mod scalar;
+#[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 mod test_utils;
 mod utils;
 

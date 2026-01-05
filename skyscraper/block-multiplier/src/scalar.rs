@@ -131,6 +131,7 @@ pub fn scalar_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     reduce_ct(subarray!(addv(s, mp), 1, 4))
 }
 
+#[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 #[cfg(test)]
 mod tests {
     use {

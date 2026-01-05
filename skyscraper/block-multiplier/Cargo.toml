@@ -24,8 +24,10 @@ ark-ff.workspace = true
 # 3rd party
 divan.workspace = true
 primitive-types.workspace = true
-proptest.workspace = true
 rand.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest.workspace = true
 
 [build-dependencies]
 # Workspace crates
