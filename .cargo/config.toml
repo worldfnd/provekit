@@ -3,8 +3,8 @@
 rustdocflags = "--html-in-header .cargo/katex-header.html"
 
 [target.wasm32-wasip2]
-rustflags = ["-C", "target-feature=+relaxed-simd"]
+rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
 
 [target.wasm32-wasip1]
 runner = "wasmtime run --dir . "
-rustflags = ["-C", "target-feature=+relaxed-simd"]
+rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
