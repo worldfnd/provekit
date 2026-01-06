@@ -15,8 +15,11 @@ mod portable_simd;
 #[cfg(target_arch = "aarch64")]
 mod simd_utils;
 
+// pub mod block_simd_wasm;
 pub mod constants;
+pub mod portable_simd_wasm;
 mod scalar;
+mod simd_utils_wasm;
 #[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 mod test_utils;
 mod utils;

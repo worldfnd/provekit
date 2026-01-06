@@ -31,6 +31,16 @@ mod mul {
             .bench_local_values(|(a, b)| a * b);
     }
 
+    #[divan::bench]
+    fn simd_mul(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(2usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|(a, b, c, d)| {
+                block_multiplier::portable_simd_wasm::simd_mul(a, b, c, d)
+            });
+    }
+
     #[cfg(target_arch = "aarch64")]
     mod aarch64 {
         use {
