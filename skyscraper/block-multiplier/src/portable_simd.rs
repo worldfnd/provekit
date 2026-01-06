@@ -377,3 +377,36 @@ pub fn simd_mul(
     let v = transpose_simd_to_u256(u256_result);
     (v[0], v[1])
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
+        ark_bn254::Fr,
+        ark_ff::BigInt,
+        fp_rounding::{with_rounding_mode, Zero},
+        proptest::proptest,
+    };
+
+    #[test]
+    fn test_simd_mul() {
+        proptest!(|(
+            a in safe_bn254_montgomery_input(),
+            b in safe_bn254_montgomery_input(),
+            c in safe_bn254_montgomery_input(),
+        )| {
+            unsafe {
+                with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
+
+            let (ab, bc) = simd_mul(a, b, b,c);
+            let ab_ref = ark_ff_reference(a, b);
+            let bc_ref = ark_ff_reference(b, c);
+            let ab = Fr::new(BigInt(ab));
+            let bc = Fr::new(BigInt(bc));
+            assert_eq!(ab_ref, ab);
+            assert_eq!(bc_ref, bc);
+                });}
+        });
+    }
+}
