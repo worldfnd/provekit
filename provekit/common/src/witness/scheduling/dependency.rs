@@ -133,6 +133,15 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::BytePartition { x, .. } => vec![*x],
+
+            WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
+                .iter()
+                .filter_map(|c| match c {
+                    ConstantOrR1CSWitness::Witness(w) => Some(*w),
+                    ConstantOrR1CSWitness::Constant(_) => None,
+                })
+                .collect(),
             WitnessBuilder::MultiplicitiesForBinOp(_, pairs) => {
                 let mut v = Vec::with_capacity(pairs.len() * 2);
                 for (lhs, rhs) in pairs {
@@ -198,6 +207,10 @@ impl DependencyInfo {
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {
                 vec![*result_idx, *carry_idx]
             }
+            WitnessBuilder::U32AdditionMulti(result_idx, carry_idx, ..) => {
+                vec![*result_idx, *carry_idx]
+            }
+            WitnessBuilder::BytePartition { lo, hi, .. } => vec![*lo, *hi],
         }
     }
 }

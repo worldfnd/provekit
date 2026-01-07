@@ -95,6 +95,16 @@ pub enum WitnessBuilder {
         usize,
         WitnessCoefficient,
     ),
+    /// Splits an 8-bit witness into two parts at a given bit boundary.
+    /// Builds witnesses `lo` and `hi` such that: x = lo + hi * 2^k
+    /// where `lo` contains the lower `k` bits and `hi` contains the remaining
+    /// upper bits. Used for byte-level rotations and shifts.
+    BytePartition {
+        lo: usize,
+        hi: usize,
+        x:  usize,
+        k:  u8,
+    },
     /// Builds the witnesses values required for the Spice memory model.
     /// (Note that some witness values are already solved for by the ACIR
     /// solver.)
@@ -119,6 +129,12 @@ pub enum WitnessBuilder {
     /// + b) / 2^32 Arguments: (result_witness_index, carry_witness_index,
     /// a, b)
     U32Addition(usize, usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// Variadic 32-bit addition with carry.
+    ///   Computes: result = (sum of inputs) mod 2^32, carry  = floor((sum of
+    /// inputs) / 2^32) Inputs may be witnesses or constants. This is more
+    /// efficient than chaining pairwise U32 additions, as it introduces
+    /// only one carry and one modulo constraint.
+    U32AdditionMulti(usize, usize, Vec<ConstantOrR1CSWitness>),
     /// AND operation: computes result = a & b
     /// Arguments: (result_witness_index, a, b)
     /// Note: only for 32-bit operands
@@ -141,6 +157,9 @@ impl WitnessBuilder {
             }
             WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
             WitnessBuilder::U32Addition(..) => 2,
+            WitnessBuilder::U32AdditionMulti(..) => 2,
+            WitnessBuilder::BytePartition { .. } => 2,
+
             _ => 1,
         }
     }

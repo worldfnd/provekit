@@ -194,6 +194,23 @@ impl WitnessIndexRemapper {
                     num_witnesses:        sw.num_witnesses,
                 })
             }
+            WitnessBuilder::U32AdditionMulti(result_idx, carry_idx, inputs) => {
+                WitnessBuilder::U32AdditionMulti(
+                    self.remap(*result_idx),
+                    self.remap(*carry_idx),
+                    inputs
+                        .iter()
+                        .map(|c| self.remap_const_or_witness(c))
+                        .collect(),
+                )
+            }
+            WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
+                lo: self.remap(*lo),
+                hi: self.remap(*hi),
+                x:  self.remap(*x),
+                k:  *k,
+            },
+
             WitnessBuilder::BinOpLookupDenominator(idx, sz, rs, rs2, lhs, rhs, output) => {
                 WitnessBuilder::BinOpLookupDenominator(
                     self.remap(*idx),

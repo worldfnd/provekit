@@ -219,6 +219,25 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*result_witness_idx] = Some(FieldElement::from(remainder));
                 witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
             }
+            WitnessBuilder::U32AdditionMulti(result_witness_idx, carry_witness_idx, inputs) => {
+                // Sum all inputs as u64 to handle overflow.
+                let mut sum: u64 = 0;
+                for input in inputs {
+                    let val = match input {
+                        ConstantOrR1CSWitness::Constant(c) => c.into_bigint().0[0],
+                        ConstantOrR1CSWitness::Witness(idx) => {
+                            witness[*idx].unwrap().into_bigint().0[0]
+                        }
+                    };
+                    assert!(val < (1u64 << 32), "input must be 32-bit");
+                    sum += val;
+                }
+                let two_pow_32 = 1u64 << 32;
+                let remainder = sum % two_pow_32;
+                let quotient = sum / two_pow_32;
+                witness[*result_witness_idx] = Some(FieldElement::from(remainder));
+                witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
+            }
             WitnessBuilder::And(result_witness_idx, lh, rh) => {
                 let lh_val = match lh {
                     ConstantOrR1CSWitness::Constant(c) => *c,
@@ -264,6 +283,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*result_witness_idx] = Some(FieldElement::new(
                     lh_val.into_bigint() ^ rh_val.into_bigint(),
                 ));
+            }
+            WitnessBuilder::BytePartition { lo, hi, x, k } => {
+                let x_val = witness[*x].unwrap().into_bigint().0[0];
+                debug_assert!(x_val < 256, "BytePartition input must be 8-bit");
+
+                let mask = (1u64 << *k) - 1;
+                let lo_val = x_val & mask;
+                let hi_val = x_val >> *k;
+
+                witness[*lo] = Some(FieldElement::from(lo_val));
+                witness[*hi] = Some(FieldElement::from(hi_val));
             }
         }
     }

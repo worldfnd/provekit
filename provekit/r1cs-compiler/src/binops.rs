@@ -2,6 +2,7 @@ use {
     crate::{
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
+        uints::U8,
     },
     ark_std::One,
     provekit_common::{
@@ -19,33 +20,43 @@ pub enum BinOp {
     And,
     Xor,
 }
-
-/// Allocate a witness for a binary operation result, add the appropriate
-/// WitnessBuilder for value computation, and collect the operation for later
-/// constraint generation. Returns the witness index of the result.
-pub(crate) fn add_binop(
+/// Allocate a witness for a byte-level binary operation (AND / XOR).
+/// This path performs the operation directly at the byte level,
+/// without any digital decomposition.
+pub(crate) fn add_byte_binop(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     op: BinOp,
-    collected_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    lhs: ConstantOrR1CSWitness,
-    rhs: ConstantOrR1CSWitness,
-) -> usize {
-    let result_witness = match op {
+    ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    a: U8,
+    b: U8,
+) -> U8 {
+    debug_assert!(
+        a.range_checked && b.range_checked,
+        "Byte binop requires inputs to be range-checked U8s"
+    );
+
+    let result = match op {
         BinOp::And => r1cs_compiler.add_witness_builder(WitnessBuilder::And(
             r1cs_compiler.num_witnesses(),
-            lhs,
-            rhs,
+            ConstantOrR1CSWitness::Witness(a.idx),
+            ConstantOrR1CSWitness::Witness(b.idx),
         )),
         BinOp::Xor => r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
             r1cs_compiler.num_witnesses(),
-            lhs,
-            rhs,
+            ConstantOrR1CSWitness::Witness(a.idx),
+            ConstantOrR1CSWitness::Witness(b.idx),
         )),
     };
 
-    collected_ops.push((lhs, rhs, result_witness));
+    // Record the operation for batched lookup constraint generation
+    ops.push((
+        ConstantOrR1CSWitness::Witness(a.idx),
+        ConstantOrR1CSWitness::Witness(b.idx),
+        result,
+    ));
 
-    result_witness
+    // Output remains a valid byte since AND/XOR preserve [0, 255]
+    U8::new(result, true)
 }
 
 /// Add the witnesses and constraints for a [BinOp] (i.e. AND, XOR). Uses a
@@ -56,91 +67,97 @@ pub(crate) fn add_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     op: BinOp,
     inputs_and_outputs: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    is_byte_level: bool,
 ) {
-    let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-
     if inputs_and_outputs.is_empty() {
         return;
     }
+    let inputs_and_outputs_atomic = if is_byte_level {
+        // Already byte-level - no decomposition needed!
+        inputs_and_outputs
+    } else {
+        let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
 
-    // Collect all witnesses that require digital decomposition (constants are
-    // decomposed separately).
-    let mut witnesses_to_decompose = vec![];
-    for (lh, rh, output) in &inputs_and_outputs {
-        if let ConstantOrR1CSWitness::Witness(witness) = lh {
-            witnesses_to_decompose.push(*witness);
-        }
-        if let ConstantOrR1CSWitness::Witness(witness) = rh {
-            witnesses_to_decompose.push(*witness);
-        }
-        witnesses_to_decompose.push(*output);
-    }
-    let dd_struct =
-        add_digital_decomposition(r1cs_compiler, log_bases.clone(), witnesses_to_decompose);
-
-    // Match up the digit witnesses and the digits of decompositions of constants to
-    // obtain a decomposed version of the inputs and outputs.
-    let mut inputs_and_outputs_atomic = vec![];
-    // Track how many witness digital decompositions we've seen so far (for
-    // associating the digit witnesses with the original witnesses).
-    let mut witness_dd_counter = 0;
-    for (lh, rh, _output) in inputs_and_outputs {
-        let lh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match lh {
-            ConstantOrR1CSWitness::Witness(_) => {
-                let counter = witness_dd_counter;
-                let r#struct = &dd_struct;
-
-                witness_dd_counter += 1;
-
-                Box::new(
-                    (0..NUM_DIGITS)
-                        .map(move |digit_place| {
-                            r#struct.get_digit_witness_index(digit_place, counter)
-                        })
-                        .map(ConstantOrR1CSWitness::Witness),
-                )
+        // Collect all witnesses that require digital decomposition (constants are
+        // decomposed separately).
+        let mut witnesses_to_decompose = vec![];
+        for (lh, rh, output) in &inputs_and_outputs {
+            if let ConstantOrR1CSWitness::Witness(witness) = lh {
+                witnesses_to_decompose.push(*witness);
             }
-            ConstantOrR1CSWitness::Constant(value) => Box::new(
-                decompose_into_digits(value, &log_bases)
-                    .into_iter()
-                    .map(ConstantOrR1CSWitness::Constant),
-            ),
-        };
-        let rh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match rh {
-            ConstantOrR1CSWitness::Witness(_) => {
-                let counter = witness_dd_counter;
-                let r#struct = &dd_struct;
-
-                witness_dd_counter += 1;
-
-                Box::new(
-                    (0..NUM_DIGITS)
-                        .map(move |digit_place| {
-                            r#struct.get_digit_witness_index(digit_place, counter)
-                        })
-                        .map(ConstantOrR1CSWitness::Witness),
-                )
+            if let ConstantOrR1CSWitness::Witness(witness) = rh {
+                witnesses_to_decompose.push(*witness);
             }
-            ConstantOrR1CSWitness::Constant(value) => Box::new(
-                decompose_into_digits(value, &log_bases)
-                    .into_iter()
-                    .map(ConstantOrR1CSWitness::Constant),
-            ),
-        };
-        let output_atoms = {
-            let counter = witness_dd_counter;
-            let dd = &dd_struct;
-            (0..NUM_DIGITS).map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
-        };
-        witness_dd_counter += 1;
+            witnesses_to_decompose.push(*output);
+        }
+        let dd_struct =
+            add_digital_decomposition(r1cs_compiler, log_bases.clone(), witnesses_to_decompose);
 
-        lh_atoms
-            .zip(rh_atoms)
-            .zip(output_atoms)
-            .for_each(|((lh, rh), output)| {
-                inputs_and_outputs_atomic.push((lh, rh, output));
-            });
-    }
+        let mut atomic_ops = vec![];
+        // Track how many witness digital decompositions we've seen so far (for
+        // associating the digit witnesses with the original witnesses).
+
+        let mut witness_dd_counter = 0;
+        for (lh, rh, _output) in inputs_and_outputs {
+            let lh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match lh {
+                ConstantOrR1CSWitness::Witness(_) => {
+                    let counter = witness_dd_counter;
+                    let r#struct = &dd_struct;
+
+                    witness_dd_counter += 1;
+
+                    Box::new(
+                        (0..NUM_DIGITS)
+                            .map(move |digit_place| {
+                                r#struct.get_digit_witness_index(digit_place, counter)
+                            })
+                            .map(ConstantOrR1CSWitness::Witness),
+                    )
+                }
+                ConstantOrR1CSWitness::Constant(value) => Box::new(
+                    decompose_into_digits(value, &log_bases)
+                        .into_iter()
+                        .map(ConstantOrR1CSWitness::Constant),
+                ),
+            };
+            let rh_atoms: Box<dyn Iterator<Item = ConstantOrR1CSWitness>> = match rh {
+                ConstantOrR1CSWitness::Witness(_) => {
+                    let counter = witness_dd_counter;
+                    let r#struct = &dd_struct;
+
+                    witness_dd_counter += 1;
+
+                    Box::new(
+                        (0..NUM_DIGITS)
+                            .map(move |digit_place| {
+                                r#struct.get_digit_witness_index(digit_place, counter)
+                            })
+                            .map(ConstantOrR1CSWitness::Witness),
+                    )
+                }
+                ConstantOrR1CSWitness::Constant(value) => Box::new(
+                    decompose_into_digits(value, &log_bases)
+                        .into_iter()
+                        .map(ConstantOrR1CSWitness::Constant),
+                ),
+            };
+            let output_atoms = {
+                let counter = witness_dd_counter;
+                let dd = &dd_struct;
+                (0..NUM_DIGITS)
+                    .map(move |digit_place| dd.get_digit_witness_index(digit_place, counter))
+            };
+            witness_dd_counter += 1;
+
+            lh_atoms
+                .zip(rh_atoms)
+                .zip(output_atoms)
+                .for_each(|((lh, rh), output)| {
+                    atomic_ops.push((lh, rh, output));
+                });
+        }
+        atomic_ops
+    };
 
     let multiplicities_wb = WitnessBuilder::MultiplicitiesForBinOp(
         r1cs_compiler.num_witnesses(),
