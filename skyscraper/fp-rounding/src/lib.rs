@@ -1,4 +1,5 @@
 #![allow(unsafe_code)]
+#![no_std]
 //! Round Toward Zero (RTZ) floating-point rounding mode control
 //!
 //! Rust/LLVM does not support different float point mode rounding modes and

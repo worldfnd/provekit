@@ -1,16 +1,17 @@
 use {
     crate::{
         constants::*,
-        utils::{
+        simd_utils::{
             addv_simd, make_initial, reduce_ct_simd, smult_noinit_simd, transpose_simd_to_u256,
             transpose_u256_to_simd, u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
     },
-    std::{
+    core::{
         arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
-        simd::{num::SimdFloat, Simd, StdFloat},
+        simd::{num::SimdFloat, Simd},
     },
+    std::simd::StdFloat,
 };
 
 #[inline]

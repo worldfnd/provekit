@@ -37,6 +37,6 @@ pub fn fence<T>(val: T) -> T {
     // read_volatile makes a copy, but this is an unintentional side effect.
     // Since running the destructor/Drop twice is undesirable, the memory is
     // freed up here.
-    std::mem::forget(val);
+    core::mem::forget(val);
     copy
 }

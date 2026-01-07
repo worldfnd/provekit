@@ -14,7 +14,6 @@ skyscraper.workspace = true
 
 # Noir language
 acir.workspace = true
-noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems
