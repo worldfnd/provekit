@@ -14,10 +14,21 @@ use {
 // -- [SIMD UTILS]
 // ---------------------------------------------------------------------------------
 #[inline(always)]
-// 52 bit conversion does not have to go through and expensive
+/// On WASSM there is no single specialised instruction to cast an integer to a
+/// float. Since we are only interested in 52 bits, we can emulate it with fewer
+/// instructions.
 pub fn i2f(a: Simd<u64, 2>) -> Simd<f64, 2> {
-    unsafe { core::mem::transmute(a) }
-    // TODO: add the addition for proper conversion
+    // This function has not target gating as we want to verify this function with
+    // kani and proptest on a different platform than wasm
+
+    // By adding 2^52 represented as float (0x1p52) -> 0x433 << 52, we align the
+    // 52bit number fully in the mantissa. This can be done with a simple or. Then
+    // to convert a to it's floating point number we subtract this again. This way
+    // we only pay for the conversion of the lower bits and not the full 64 bits.
+    let exponent = Simd::splat(0x433 << 52);
+    let a: Simd<f64, _> = unsafe { core::mem::transmute(a | exponent) };
+    let b: Simd<f64, _> = unsafe { core::mem::transmute(exponent) };
+    a - b
 }
 
 #[inline(always)]
