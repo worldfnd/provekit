@@ -1,8 +1,8 @@
 use {
     crate::{
-        binops::{add_binop, BinOp},
-        digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
+        binops::{add_byte_binop, BinOp},
         noir_to_r1cs::NoirToR1CSCompiler,
+        uints::{U32, U8},
     },
     ark_ff::Field,
     provekit_common::{
@@ -24,30 +24,295 @@ const SHA256_K: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
-/// Add two u32 values modulo 2^32, returning the witness index of the result
-/// The solver will compute: result = (a + b) % 2^32, carry = (a + b) / 2^32
-pub(crate) fn add_u32_addition(
+/// Byte-wise XOR of two 32-bit words.
+/// Performs 4 independent U8 XOR operations (one per byte).
+pub(crate) fn xor_u32(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    a: &U32,
+    b: &U32,
+) -> U32 {
+    U32::new([
+        add_byte_binop(r1cs_compiler, BinOp::Xor, xor_ops, a.bytes[0], b.bytes[0]),
+        add_byte_binop(r1cs_compiler, BinOp::Xor, xor_ops, a.bytes[1], b.bytes[1]),
+        add_byte_binop(r1cs_compiler, BinOp::Xor, xor_ops, a.bytes[2], b.bytes[2]),
+        add_byte_binop(r1cs_compiler, BinOp::Xor, xor_ops, a.bytes[3], b.bytes[3]),
+    ])
+}
+
+/// Byte-wise AND of two 32-bit words.
+/// Performs 4 independent U8 AND operations (one per byte).
+pub(crate) fn and_u32(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    a: &U32,
+    b: &U32,
+) -> U32 {
+    U32::new([
+        add_byte_binop(r1cs_compiler, BinOp::And, and_ops, a.bytes[0], b.bytes[0]),
+        add_byte_binop(r1cs_compiler, BinOp::And, and_ops, a.bytes[1], b.bytes[1]),
+        add_byte_binop(r1cs_compiler, BinOp::And, and_ops, a.bytes[2], b.bytes[2]),
+        add_byte_binop(r1cs_compiler, BinOp::And, and_ops, a.bytes[3], b.bytes[3]),
+    ])
+}
+
+/// Byte-wise NOT of a 32-bit word.
+/// Computes `~x` by applying `255 - byte` on each U8.
+pub(crate) fn not_u32(r1cs_compiler: &mut NoirToR1CSCompiler, a: &U32) -> U32 {
+    U32::new([
+        not_u8(r1cs_compiler, a.bytes[0]),
+        not_u8(r1cs_compiler, a.bytes[1]),
+        not_u8(r1cs_compiler, a.bytes[2]),
+        not_u8(r1cs_compiler, a.bytes[3]),
+    ])
+}
+
+/// Arithmetic NOT of a single byte: computes `255 - x`.
+fn not_u8(r1cs_compiler: &mut NoirToR1CSCompiler, byte: U8) -> U8 {
+    // Requires byte ∈ [0, 255]
+    assert!(byte.range_checked, "not_u8 requires a range-checked byte");
+    let ff = FieldElement::from(255u64);
+    let result_idx = r1cs_compiler.num_witnesses();
+
+    // result = 255 - byte
+    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_idx, vec![
+        SumTerm(Some(ff), r1cs_compiler.witness_one()),
+        SumTerm(Some(-FieldElement::ONE), byte.idx),
+    ]));
+
+    // Enforce: result + byte = 255
+    r1cs_compiler.r1cs.add_constraint(
+        &[
+            (FieldElement::ONE, result_idx),
+            (FieldElement::ONE, byte.idx),
+        ],
+        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+        &[(ff, r1cs_compiler.witness_one())],
+    );
+
+    U8::new(result_idx, byte.range_checked)
+}
+
+/// Right-rotates a 32-bit word represented as 4 little-endian bytes.
+/// Implements ROTR(n) using byte permutation + intra-byte bit recombination.
+/// Uses fused constraint: `result[i] * 2^k + lo[i] = byte[i] + lo[(i+1)%4] *
+/// 256`
+pub(crate) fn rotr_u32(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    a: ConstantOrR1CSWitness,
-    b: ConstantOrR1CSWitness,
-) -> usize {
-    // Reserve witnesses for carry and result (solver will compute these)
-    let carry_witness = r1cs_compiler.num_witnesses();
-    let result_witness = carry_witness + 1;
+    x: &U32,
+    n: u32,
+) -> U32 {
+    assert!(n > 0 && n < 32);
 
-    // Add witness builder with explicit computation logic
-    r1cs_compiler.add_witness_builder(WitnessBuilder::U32Addition(
+    let byte_rot = (n / 8) as usize;
+    let bit_rot = n % 8;
+
+    // Step 1: Byte-level rotation
+    // ROTR moves bits toward LSB, so byte[i] comes from byte[i + byte_rot]
+    let rot = [
+        x.bytes[byte_rot % 4],
+        x.bytes[(1 + byte_rot) % 4],
+        x.bytes[(2 + byte_rot) % 4],
+        x.bytes[(3 + byte_rot) % 4],
+    ];
+
+    if bit_rot == 0 {
+        return U32::new(rot);
+    }
+
+    let two_pow_k = FieldElement::from(1u64 << bit_rot);
+    let two_pow_8 = FieldElement::from(256u64);
+    let shift_coeff = FieldElement::from(1u64 << (8 - bit_rot));
+
+    // Step 2: Create partition witnesses (lo, hi) with range check on lo only
+    let mut parts = [(U8::new(0, false), U8::new(0, false)); 4];
+    for i in 0..4 {
+        parts[i] = partition_byte_witnesses(r1cs_compiler, range_checks, rot[i], bit_rot);
+    }
+
+    // Step 3: Create result witnesses with fused constraints
+    // out[i] = hi[i] + lo[(i+1)%4] * 2^(8-k)
+    // Fused constraint: result[i] * 2^k + lo[i] = byte[i] + lo[(i+1)%4] * 256
+    let mut out_bytes = [U8::new(0, false); 4];
+    for i in 0..4 {
+        let next = (i + 1) % 4;
+        let res_idx = r1cs_compiler.num_witnesses();
+
+        // Witness: result = hi[i] + lo[next] * 2^(8-k)
+        r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(res_idx, vec![
+            SumTerm(None, parts[i].1.idx),
+            SumTerm(Some(shift_coeff), parts[next].0.idx),
+        ]));
+
+        // Fused constraint: result * 2^k + lo[i] = byte[i] + lo[next] * 256
+        r1cs_compiler.r1cs.add_constraint(
+            &[(two_pow_k, res_idx), (FieldElement::ONE, parts[i].0.idx)],
+            &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+            &[
+                (FieldElement::ONE, rot[i].idx),
+                (two_pow_8, parts[next].0.idx),
+            ],
+        );
+
+        out_bytes[i] = U8::new(res_idx, true);
+    }
+
+    U32::new(out_bytes)
+}
+
+/// Right shifts U32 by n bits (zero-fill).
+/// Uses fused constraint: `result[i] * 2^k + lo[i] = byte[i] + lo[i+1] * 256`
+pub(crate) fn shr_u32(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    x: &U32,
+    n: u32,
+) -> U32 {
+    assert!(n > 0 && n < 32);
+
+    let byte_shift = (n / 8) as usize;
+    let bit_shift = n % 8;
+
+    let zero = U8::zero(r1cs_compiler);
+
+    // Step 1: byte shift with zero fill
+    let mut shifted = [zero; 4];
+    for i in 0..(4 - byte_shift) {
+        shifted[i] = x.bytes[i + byte_shift];
+    }
+
+    // Pure byte shift (no bit shifting needed)
+    if bit_shift == 0 {
+        return U32::new(shifted);
+    }
+
+    let non_zero_bytes = 4 - byte_shift;
+    let two_pow_k = FieldElement::from(1u64 << bit_shift);
+    let two_pow_8 = FieldElement::from(256u64);
+    let shift_coeff = FieldElement::from(1u64 << (8 - bit_shift));
+
+    // Step 2: Create partition witnesses (lo, hi) without constraints
+    // We only need lo for range checking; hi is used in witness computation
+    let mut parts = [(zero, zero); 4];
+    for i in 0..non_zero_bytes {
+        parts[i] = partition_byte_witnesses(r1cs_compiler, range_checks, shifted[i], bit_shift);
+    }
+
+    // Step 3: Create result witnesses with fused constraints
+    let mut result = [zero; 4];
+
+    for i in 0..non_zero_bytes {
+        let res_idx = r1cs_compiler.num_witnesses();
+
+        if i < non_zero_bytes - 1 {
+            // Middle bytes: result = hi[i] + lo[i+1] * 2^(8-k)
+            // Witness builder computes this from the partition values
+            r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(res_idx, vec![
+                SumTerm(None, parts[i].1.idx),                  // hi[i]
+                SumTerm(Some(shift_coeff), parts[i + 1].0.idx), // lo[i+1] * 2^(8-k)
+            ]));
+
+            // Fused constraint: result * 2^k + lo[i] = byte[i] + lo[i+1] * 256
+            r1cs_compiler.r1cs.add_constraint(
+                &[(two_pow_k, res_idx), (FieldElement::ONE, parts[i].0.idx)],
+                &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+                &[
+                    (FieldElement::ONE, shifted[i].idx),
+                    (two_pow_8, parts[i + 1].0.idx),
+                ],
+            );
+        } else {
+            // MSB byte: result = hi[i] (zeros fill from top)
+            r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(res_idx, vec![SumTerm(
+                None,
+                parts[i].1.idx,
+            )]));
+
+            // Constraint: result * 2^k + lo[i] = byte[i]
+            r1cs_compiler.r1cs.add_constraint(
+                &[(two_pow_k, res_idx), (FieldElement::ONE, parts[i].0.idx)],
+                &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+                &[(FieldElement::ONE, shifted[i].idx)],
+            );
+        }
+
+        result[i] = U8::new(res_idx, true);
+    }
+
+    U32::new(result)
+}
+
+/// Creates partition witnesses (lo, hi) for splitting a byte at bit position k.
+/// Used by rotr_u32 and shr_u32 which add their own fused constraints.
+/// Only range-checks lo (k bits) since hi is implicitly bounded by the fused
+/// constraint when the input byte is already range-checked.
+fn partition_byte_witnesses(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    byte: U8,
+    k: u32,
+) -> (U8, U8) {
+    assert!(
+        byte.range_checked,
+        "partition_byte_witnesses requires a range-checked byte"
+    );
+    let lo = r1cs_compiler.num_witnesses();
+    let hi = lo + 1;
+
+    r1cs_compiler.add_witness_builder(WitnessBuilder::BytePartition {
+        lo,
+        hi,
+        x: byte.idx,
+        k: k as u8,
+    });
+
+    // Range check lo - required for soundness
+    range_checks.entry(k).or_default().push(lo);
+
+    (U8::new(lo, true), U8::new(hi, true))
+}
+
+/// Adds multiple u32 values modulo 2^32, returning the witness index of the
+/// result. Uses fused constraint: packed[0] + packed[1] + ... = result + carry
+/// * 2^32
+pub(crate) fn add_u32_multi_addition(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    inputs: &[&U32],
+) -> U32 {
+    assert!(!inputs.is_empty(), "Need at least 1 input");
+
+    if inputs.len() == 1 {
+        return *inputs[0];
+    }
+
+    // Step 1: Pack all U32 inputs to field elements
+    let packed: Vec<usize> = inputs
+        .iter()
+        .map(|u| u.pack(r1cs_compiler, range_checks))
+        .collect();
+
+    // Step 2: Create result and carry witnesses
+    let result_witness = r1cs_compiler.num_witnesses();
+    let carry_witness = result_witness + 1;
+
+    r1cs_compiler.add_witness_builder(WitnessBuilder::U32AdditionMulti(
         result_witness,
         carry_witness,
-        a,
-        b,
+        packed
+            .iter()
+            .map(|&w| ConstantOrR1CSWitness::Witness(w))
+            .collect(),
     ));
 
-    // Add constraint: a + b = result + carry * 2^32
+    // Step 3: Fused constraint: packed[0] + packed[1] + ... = result + carry * 2^32
+    // This eliminates the intermediate sum witness
+    let sum_lhs: Vec<(FieldElement, usize)> =
+        packed.iter().map(|&w| (FieldElement::ONE, w)).collect();
     let two_pow_32 = FieldElement::from(1u64 << 32);
     r1cs_compiler.r1cs.add_constraint(
-        &[a.to_tuple(), b.to_tuple()],
+        &sum_lhs,
         &[(FieldElement::ONE, r1cs_compiler.witness_one())],
         &[
             (FieldElement::ONE, result_witness),
@@ -55,99 +320,103 @@ pub(crate) fn add_u32_addition(
         ],
     );
 
-    // Range checks to ensure correctness
-    range_checks.entry(1).or_default().push(carry_witness); // carry ∈ {0, 1}
-    range_checks.entry(32).or_default().push(result_witness); // result ∈ [0, 2^32-1]
+    // Range check carry: max carry is (N-1) for N inputs
+    let n = inputs.len();
+    let max_carry = n - 1;
+    let carry_bits = if max_carry == 0 {
+        1
+    } else {
+        (usize::BITS - max_carry.leading_zeros()) as u32
+    };
+    range_checks
+        .entry(carry_bits)
+        .or_default()
+        .push(carry_witness);
 
-    result_witness
+    // Step 4: Unpack result back to U32
+    U32::unpack_u32(r1cs_compiler, range_checks, result_witness)
 }
 
-/// Perform right rotation of a 32-bit value: ROTR(x, n) = (x >> n) | (x <<
-/// (32-n)) Returns the witness index of the rotated result
-pub(crate) fn add_right_rotate(
+/// Adds multiple U32 values with constants modulo 2^32
+/// Uses fused constraint: packed[0] + ... + const_sum = result + carry * 2^32
+pub(crate) fn add_u32_multi_addition_with_const(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-    rotation_amount: u32,
-) -> usize {
-    assert!(rotation_amount < 32, "Rotation amount must be less than 32");
-
-    if rotation_amount == 0 {
-        return x_witness; // No rotation needed
-    }
-
-    // Split x into two parts using digital decomposition:
-    // x = high_bits * 2^n + low_bits
-    // where low_bits has n bits and high_bits has (32-n) bits
-    let log_bases = vec![rotation_amount as usize, (32 - rotation_amount) as usize];
-    let dd_struct = add_digital_decomposition(r1cs_compiler, log_bases, vec![x_witness]);
-
-    // Get the digit witnesses: [low_bits, high_bits]
-    let low_bits_witness = dd_struct.get_digit_witness_index(0, 0);
-    let high_bits_witness = dd_struct.get_digit_witness_index(1, 0);
-
-    // Compute the shifts:
-    // - low_bits shifted left by (32-n): low_bits * 2^(32-n)
-    // - high_bits shifted right by n: high_bits / 2^n = high_bits (already shifted
-    //   by the decomposition)
-
-    let shift_left_amount = 32 - rotation_amount;
-    let shift_multiplier = FieldElement::from(1u64 << shift_left_amount);
-
-    let result_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_witness, vec![
-        SumTerm(None, high_bits_witness),
-        SumTerm(Some(shift_multiplier), low_bits_witness),
-    ]));
-
-    // result = high_bits + low_bits * 2^(32 - n)
-    r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::ONE, high_bits_witness),
-            (shift_multiplier, low_bits_witness),
-        ],
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[(FieldElement::ONE, result_witness)],
+    inputs: &[&U32],
+    constants: &[u32],
+) -> U32 {
+    assert!(
+        !inputs.is_empty() || !constants.is_empty(),
+        "Need at least 1 input"
     );
 
-    // Range check the result to ensure it's a valid 32-bit value
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
-}
-
-/// Perform right shift of a 32-bit value: SHR(x, n) = x >> n
-/// Returns the witness index of the shifted result
-pub(crate) fn add_right_shift(
-    r1cs_compiler: &mut NoirToR1CSCompiler,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-    shift_amount: u32,
-) -> usize {
-    assert!(shift_amount < 32, "Shift amount must be less than 32");
-
-    if shift_amount == 0 {
-        return x_witness; // No shift needed
+    // Constants-only fast path
+    if inputs.is_empty() {
+        let sum: u64 = constants.iter().map(|&c| c as u64).sum();
+        let result = (sum % (1u64 << 32)) as u32;
+        return U32::from_const(r1cs_compiler, result);
     }
 
-    // Split x using digital decomposition: x = result * 2^n + discarded_bits
-    // where discarded_bits has n bits (the bits that get shifted out)
-    // and result has (32-n) bits (the bits that remain)
-    let log_bases = vec![shift_amount as usize, (32 - shift_amount) as usize];
-    let dd_struct = add_digital_decomposition(r1cs_compiler, log_bases, vec![x_witness]);
+    // Step 1: Pack all U32 inputs
+    let packed: Vec<usize> = inputs
+        .iter()
+        .map(|u| u.pack(r1cs_compiler, range_checks))
+        .collect();
 
-    // Get the digit witnesses: [discarded_bits, result]
-    let _discarded_bits_witness = dd_struct.get_digit_witness_index(0, 0);
-    let result_witness = dd_struct.get_digit_witness_index(1, 0);
+    // Step 2: Compute constant sum
+    let const_sum: u64 = constants.iter().map(|&c| c as u64).sum();
+    let const_field = FieldElement::from(const_sum);
 
-    // The result is already computed by the digital decomposition
-    // No additional constraints needed, just range check
+    // Step 3: Create result and carry witnesses
+    let result_witness = r1cs_compiler.num_witnesses();
+    let carry_witness = result_witness + 1;
+
+    // Build inputs for witness builder (witnesses + constants)
+    let mut wb_inputs: Vec<ConstantOrR1CSWitness> = packed
+        .iter()
+        .map(|&w| ConstantOrR1CSWitness::Witness(w))
+        .collect();
+    for &c in constants {
+        wb_inputs.push(ConstantOrR1CSWitness::Constant(FieldElement::from(
+            c as u64,
+        )));
+    }
+
+    r1cs_compiler.add_witness_builder(WitnessBuilder::U32AdditionMulti(
+        result_witness,
+        carry_witness,
+        wb_inputs,
+    ));
+
+    // Step 4: Fused constraint: packed[0] + ... + const_sum = result + carry * 2^32
+    let mut sum_lhs: Vec<(FieldElement, usize)> =
+        packed.iter().map(|&w| (FieldElement::ONE, w)).collect();
+    sum_lhs.push((const_field, r1cs_compiler.witness_one()));
+    let two_pow_32 = FieldElement::from(1u64 << 32);
+    r1cs_compiler.r1cs.add_constraint(
+        &sum_lhs,
+        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+        &[
+            (FieldElement::ONE, result_witness),
+            (two_pow_32, carry_witness),
+        ],
+    );
+
+    // Range check carry: max carry is (total_inputs - 1)
+    let total_inputs = inputs.len() + constants.len();
+    let max_carry = total_inputs - 1;
+    let carry_bits = if max_carry == 0 {
+        1
+    } else {
+        (usize::BITS - max_carry.leading_zeros()) as u32
+    };
     range_checks
-        .entry(32 - shift_amount)
+        .entry(carry_bits)
         .or_default()
-        .push(result_witness);
+        .push(carry_witness);
 
-    result_witness
+    // Step 5: Unpack
+    U32::unpack_u32(r1cs_compiler, range_checks, result_witness)
 }
 
 /// SHA256 sigma0 function: σ₀(x) = ROTR(x,7) ⊕ ROTR(x,18) ⊕ SHR(x,3)
@@ -156,35 +425,14 @@ pub(crate) fn add_sigma0(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-) -> usize {
-    // Compute the three components
-    let rotr7 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 7);
-    let rotr18 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 18);
-    let shr3 = add_right_shift(r1cs_compiler, range_checks, x_witness, 3);
+    x: &U32,
+) -> U32 {
+    let r7 = rotr_u32(r1cs_compiler, range_checks, x, 7);
+    let r18 = rotr_u32(r1cs_compiler, range_checks, x, 18);
+    let s3 = shr_u32(r1cs_compiler, range_checks, x, 3);
 
-    // First XOR: rotr7 ⊕ rotr18
-    let temp_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(rotr7),
-        ConstantOrR1CSWitness::Witness(rotr18),
-    );
-
-    // Second XOR: (rotr7 ⊕ rotr18) ⊕ shr3
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(temp_witness),
-        ConstantOrR1CSWitness::Witness(shr3),
-    );
-
-    // Range check the result
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
+    let t = xor_u32(r1cs_compiler, xor_ops, &r7, &r18);
+    xor_u32(r1cs_compiler, xor_ops, &t, &s3)
 }
 
 /// SHA256 sigma1 function: σ₁(x) = ROTR(x,17) ⊕ ROTR(x,19) ⊕ SHR(x,10)
@@ -193,72 +441,14 @@ pub(crate) fn add_sigma1(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-) -> usize {
-    // Compute the three components
-    let rotr17 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 17);
-    let rotr19 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 19);
-    let shr10 = add_right_shift(r1cs_compiler, range_checks, x_witness, 10);
+    x: &U32,
+) -> U32 {
+    let r17 = rotr_u32(r1cs_compiler, range_checks, x, 17);
+    let r19 = rotr_u32(r1cs_compiler, range_checks, x, 19);
+    let s10 = shr_u32(r1cs_compiler, range_checks, x, 10);
 
-    // First XOR: rotr17 ⊕ rotr19
-    let temp_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(rotr17),
-        ConstantOrR1CSWitness::Witness(rotr19),
-    );
-
-    // Second XOR: (rotr17 ⊕ rotr19) ⊕ shr10
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(temp_witness),
-        ConstantOrR1CSWitness::Witness(shr10),
-    );
-
-    // Range check the result
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
-}
-
-/// SHA256 capital sigma0 function: Σ₀(x) = ROTR(x,2) ⊕ ROTR(x,13) ⊕ ROTR(x,22)
-/// Used in main compression rounds
-pub(crate) fn add_cap_sigma0(
-    r1cs_compiler: &mut NoirToR1CSCompiler,
-    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-) -> usize {
-    // Compute the three components
-    let rotr2 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 2);
-    let rotr13 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 13);
-    let rotr22 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 22);
-
-    // First XOR: rotr2 ⊕ rotr13
-    let temp_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(rotr2),
-        ConstantOrR1CSWitness::Witness(rotr13),
-    );
-
-    // Second XOR: (rotr2 ⊕ rotr13) ⊕ rotr22
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(temp_witness),
-        ConstantOrR1CSWitness::Witness(rotr22),
-    );
-
-    // Range check the result
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
+    let t = xor_u32(r1cs_compiler, xor_ops, &r17, &r19);
+    xor_u32(r1cs_compiler, xor_ops, &t, &s10)
 }
 
 /// SHA256 capital sigma1 function: Σ₁(x) = ROTR(x,6) ⊕ ROTR(x,11) ⊕ ROTR(x,25)
@@ -267,35 +457,30 @@ pub(crate) fn add_cap_sigma1(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-) -> usize {
-    // Compute the three components
-    let rotr6 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 6);
-    let rotr11 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 11);
-    let rotr25 = add_right_rotate(r1cs_compiler, range_checks, x_witness, 25);
+    x: &U32,
+) -> U32 {
+    let r6 = rotr_u32(r1cs_compiler, range_checks, x, 6);
+    let r11 = rotr_u32(r1cs_compiler, range_checks, x, 11);
+    let r25 = rotr_u32(r1cs_compiler, range_checks, x, 25);
 
-    // First XOR: rotr6 ⊕ rotr11
-    let temp_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(rotr6),
-        ConstantOrR1CSWitness::Witness(rotr11),
-    );
+    let t = xor_u32(r1cs_compiler, xor_ops, &r6, &r11);
+    xor_u32(r1cs_compiler, xor_ops, &t, &r25)
+}
 
-    // Second XOR: (rotr6 ⊕ rotr11) ⊕ rotr25
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(temp_witness),
-        ConstantOrR1CSWitness::Witness(rotr25),
-    );
+/// SHA256 capital sigma0 function: Σ₀(x) = ROTR(x,2) ⊕ ROTR(x,13) ⊕ ROTR(x,22)
+/// Used in main compression rounds
+pub(crate) fn add_cap_sigma0(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    x: &U32,
+) -> U32 {
+    let r2 = rotr_u32(r1cs_compiler, range_checks, x, 2);
+    let r13 = rotr_u32(r1cs_compiler, range_checks, x, 13);
+    let r22 = rotr_u32(r1cs_compiler, range_checks, x, 22);
 
-    // Range check the result
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
+    let t = xor_u32(r1cs_compiler, xor_ops, &r2, &r13);
+    xor_u32(r1cs_compiler, xor_ops, &t, &r22)
 }
 
 /// SHA256 choice function: Ch(x,y,z) = (x & y) ⊕ (~x & z)
@@ -304,278 +489,120 @@ pub(crate) fn add_ch(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-    y_witness: usize,
-    z_witness: usize,
-) -> usize {
-    // First, compute x & y
-    let xy_witness = add_binop(
-        r1cs_compiler,
-        BinOp::And,
-        and_ops,
-        ConstantOrR1CSWitness::Witness(x_witness),
-        ConstantOrR1CSWitness::Witness(y_witness),
-    );
-
-    // Next, compute ~x & z
-    // ~x = (2^32 - 1) - x (bitwise NOT in u32)
-    //
-    // NOTE: Using arithmetic NOT for efficiency. NOT is used ~64 times vs
-    // ~600+ AND/XOR operations. Consider BinOp::Not with lookup table if
-    // NOT usage increases significantly.
-    let max_u32 = FieldElement::from((1u64 << 32) - 1);
-    let not_x_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(not_x_witness, vec![
-        SumTerm(Some(max_u32), r1cs_compiler.witness_one()),
-        SumTerm(Some(-FieldElement::ONE), x_witness),
-    ]));
-
-    // Constraint: not_x = 0xFFFFFFFF - x
-    r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::ONE, x_witness),
-            (FieldElement::ONE, not_x_witness),
-        ],
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[(max_u32, r1cs_compiler.witness_one())],
-    );
-
-    // Compute (~x & z)
-    let not_x_z_witness = add_binop(
-        r1cs_compiler,
-        BinOp::And,
-        and_ops,
-        ConstantOrR1CSWitness::Witness(not_x_witness),
-        ConstantOrR1CSWitness::Witness(z_witness),
-    );
-
-    // Finally, compute (x & y) ⊕ (~x & z)
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(xy_witness),
-        ConstantOrR1CSWitness::Witness(not_x_z_witness),
-    );
-
-    // Range checks
-    range_checks.entry(32).or_default().push(not_x_witness);
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
+    x: &U32,
+    y: &U32,
+    z: &U32,
+) -> U32 {
+    let xy = and_u32(r1cs_compiler, and_ops, x, y);
+    let not_x = not_u32(r1cs_compiler, x);
+    let not_x_z = and_u32(r1cs_compiler, and_ops, &not_x, z);
+    xor_u32(r1cs_compiler, xor_ops, &xy, &not_x_z)
 }
 
 /// SHA256 majority function: Maj(x,y,z) = (x & y) ⊕ (x & z) ⊕ (y & z)
 /// Used in main compression rounds
-pub(crate) fn add_maj(
+pub(crate) fn maj(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    x_witness: usize,
-    y_witness: usize,
-    z_witness: usize,
-) -> usize {
-    // Compute x & y
-    let xy_witness = add_binop(
-        r1cs_compiler,
-        BinOp::And,
-        and_ops,
-        ConstantOrR1CSWitness::Witness(x_witness),
-        ConstantOrR1CSWitness::Witness(y_witness),
-    );
+    x: &U32,
+    y: &U32,
+    z: &U32,
+) -> U32 {
+    let xy = and_u32(r1cs_compiler, and_ops, x, y);
+    let xz = and_u32(r1cs_compiler, and_ops, x, z);
+    let yz = and_u32(r1cs_compiler, and_ops, y, z);
 
-    // Compute x & z
-    let xz_witness = add_binop(
-        r1cs_compiler,
-        BinOp::And,
-        and_ops,
-        ConstantOrR1CSWitness::Witness(x_witness),
-        ConstantOrR1CSWitness::Witness(z_witness),
-    );
-
-    // Compute y & z
-    let yz_witness = add_binop(
-        r1cs_compiler,
-        BinOp::And,
-        and_ops,
-        ConstantOrR1CSWitness::Witness(y_witness),
-        ConstantOrR1CSWitness::Witness(z_witness),
-    );
-
-    // First XOR: (x & y) ⊕ (x & z)
-    let temp_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(xy_witness),
-        ConstantOrR1CSWitness::Witness(xz_witness),
-    );
-
-    // Second XOR: ((x & y) ⊕ (x & z)) ⊕ (y & z)
-    let result_witness = add_binop(
-        r1cs_compiler,
-        BinOp::Xor,
-        xor_ops,
-        ConstantOrR1CSWitness::Witness(temp_witness),
-        ConstantOrR1CSWitness::Witness(yz_witness),
-    );
-
-    // Range check the result
-    range_checks.entry(32).or_default().push(result_witness);
-
-    result_witness
+    let t = xor_u32(r1cs_compiler, xor_ops, &xy, &xz);
+    xor_u32(r1cs_compiler, xor_ops, &t, &yz)
 }
 
 /// SHA256 message schedule expansion: expand 16 u32 words to 64 u32 words
-/// W\[i\] = σ₁(W\[i-2\]) + W\[i-7\] + σ₀(W\[i-15\]) + W\[i-16\] for i = 16..64
+/// W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16] for i = 16..64
 pub(crate) fn add_message_schedule_expansion(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    input_words: &[usize; 16],
-) -> [usize; 64] {
-    let mut w: [usize; 64] = [0usize; 64];
-
-    // First 16 words are the input
-    w[..16].copy_from_slice(input_words);
+    input_words: &[U32; 16],
+) -> [U32; 64] {
+    // Initialize with input words
+    let mut w: Vec<U32> = input_words.to_vec();
 
     // Expand to 64 words
-    for i in 16..64 {
+    for _ in 16..64 {
         // Compute σ₁(W[i-2])
-        let sigma1_w_i_minus_2 = add_sigma1(r1cs_compiler, xor_ops, range_checks, w[i - 2]);
+        let s1 = add_sigma1(r1cs_compiler, xor_ops, range_checks, &w[w.len() - 2]);
 
         // Compute σ₀(W[i-15])
-        let sigma0_w_i_minus_15 = add_sigma0(r1cs_compiler, xor_ops, range_checks, w[i - 15]);
+        let s0 = add_sigma0(r1cs_compiler, xor_ops, range_checks, &w[w.len() - 15]);
 
-        // First addition: σ₁(W[i-2]) + W[i-7]
-        let temp1 = add_u32_addition(
-            r1cs_compiler,
-            range_checks,
-            ConstantOrR1CSWitness::Witness(sigma1_w_i_minus_2),
-            ConstantOrR1CSWitness::Witness(w[i - 7]),
-        );
+        // W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16]
+        let new_w = add_u32_multi_addition(r1cs_compiler, range_checks, &[
+            &s1,
+            &w[w.len() - 7],
+            &s0,
+            &w[w.len() - 16],
+        ]);
 
-        // Second addition: temp1 + σ₀(W[i-15])
-        let temp2 = add_u32_addition(
-            r1cs_compiler,
-            range_checks,
-            ConstantOrR1CSWitness::Witness(temp1),
-            ConstantOrR1CSWitness::Witness(sigma0_w_i_minus_15),
-        );
-
-        // Final addition: temp2 + W[i-16]
-        w[i] = add_u32_addition(
-            r1cs_compiler,
-            range_checks,
-            ConstantOrR1CSWitness::Witness(temp2),
-            ConstantOrR1CSWitness::Witness(w[i - 16]),
-        );
+        w.push(new_w);
     }
 
-    w
+    w.try_into().unwrap()
 }
 
 /// SHA256 single compression round
 /// Updates working variables: a, b, c, d, e, f, g, h
-/// T1 = h + Σ₁(e) + Ch(e,f,g) + K\[i\] + W\[i\]
+/// T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
 /// T2 = Σ₀(a) + Maj(a,b,c)
-/// Returns new (a, b, c, d, e, f, g, h) where a = T1+T2, e = d+T1, others
+/// Returns new [a, b, c, d, e, f, g, h] where a = T1+T2, e = d+T1, others
 /// rotate
 pub(crate) fn add_sha256_round(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    working_vars: [usize; 8], // [a, b, c, d, e, f, g, h]
-    k_constant: FieldElement, // Round constant K[i]
-    w_word: usize,            // Message schedule word W[i]
-) -> [usize; 8] {
+    working_vars: [U32; 8],
+    k_constant: u32,
+    w_word: &U32,
+) -> [U32; 8] {
     let [a, b, c, d, e, f, g, h] = working_vars;
 
-    // Compute T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+    // Σ₁(e)
+    let sigma1_e = add_cap_sigma1(r1cs_compiler, xor_ops, range_checks, &e);
 
-    // Step 1: Σ₁(e)
-    let sigma1_e = add_cap_sigma1(r1cs_compiler, xor_ops, range_checks, e);
+    // Ch(e, f, g)
+    let ch_efg = add_ch(r1cs_compiler, and_ops, xor_ops, &e, &f, &g);
 
-    // Step 2: Ch(e,f,g)
-    let ch_efg = add_ch(r1cs_compiler, and_ops, xor_ops, range_checks, e, f, g);
-
-    // Step 3: h + Σ₁(e)
-    let temp1 = add_u32_addition(
+    // T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+    // Single variadic addition instead of 4 chained additions!
+    let t1 = add_u32_multi_addition_with_const(
         r1cs_compiler,
         range_checks,
-        ConstantOrR1CSWitness::Witness(h),
-        ConstantOrR1CSWitness::Witness(sigma1_e),
+        &[&h, &sigma1_e, &ch_efg, w_word],
+        &[k_constant],
     );
 
-    // Step 4: temp1 + Ch(e,f,g)
-    let temp2 = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(temp1),
-        ConstantOrR1CSWitness::Witness(ch_efg),
-    );
+    // Σ₀(a)
+    let sigma0_a = add_cap_sigma0(r1cs_compiler, xor_ops, range_checks, &a);
 
-    // Step 5: temp2 + K[i]
-    let temp3 = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(temp2),
-        ConstantOrR1CSWitness::Constant(k_constant),
-    );
+    // Maj(a, b, c)
+    let maj_abc = maj(r1cs_compiler, and_ops, xor_ops, &a, &b, &c);
 
-    // Step 6: T1 = temp3 + W[i]
-    let t1 = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(temp3),
-        ConstantOrR1CSWitness::Witness(w_word),
-    );
+    // T2 = Σ₀(a) + Maj(a,b,c)
+    let t2 = add_u32_multi_addition(r1cs_compiler, range_checks, &[&sigma0_a, &maj_abc]);
 
-    // Compute T2 = Σ₀(a) + Maj(a,b,c)
-
-    // Step 1: Σ₀(a)
-    let sigma0_a = add_cap_sigma0(r1cs_compiler, xor_ops, range_checks, a);
-
-    // Step 2: Maj(a,b,c)
-    let maj_abc = add_maj(r1cs_compiler, and_ops, xor_ops, range_checks, a, b, c);
-
-    // Step 3: T2 = Σ₀(a) + Maj(a,b,c)
-    let t2 = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(sigma0_a),
-        ConstantOrR1CSWitness::Witness(maj_abc),
-    );
-
-    // Update working variables
-    // new_h = g
-    // new_g = f
-    // new_f = e
     // new_e = d + T1
-    // new_d = c
-    // new_c = b
-    // new_b = a
+    let new_e = add_u32_multi_addition(r1cs_compiler, range_checks, &[&d, &t1]);
+
     // new_a = T1 + T2
+    let new_a = add_u32_multi_addition(r1cs_compiler, range_checks, &[&t1, &t2]);
 
-    let new_e = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(d),
-        ConstantOrR1CSWitness::Witness(t1),
-    );
-    let new_a = add_u32_addition(
-        r1cs_compiler,
-        range_checks,
-        ConstantOrR1CSWitness::Witness(t1),
-        ConstantOrR1CSWitness::Witness(t2),
-    );
-
+    // Return updated working variables
+    // [new_a, a, b, c, new_e, e, f, g]
     [new_a, a, b, c, new_e, e, f, g]
 }
 
+/// SHA256 compression function
 pub(crate) fn add_sha256_compression(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
@@ -588,7 +615,6 @@ pub(crate) fn add_sha256_compression(
     )>,
 ) {
     for (inputs, hash_values, outputs) in inputs_and_outputs {
-        // Ensure we have exactly 16 input words and 8 hash values and 8 outputs
         assert_eq!(
             inputs.len(),
             16,
@@ -605,11 +631,15 @@ pub(crate) fn add_sha256_compression(
             "SHA256 produces exactly 8 output u32 words"
         );
 
-        // Convert inputs to witness indices (assuming they're all witnesses for now)
-        let input_witnesses: [usize; 16] = inputs
+        // Convert inputs to U32 (unpack from 32-bit witnesses to 4 bytes each)
+        let input_u32s: [U32; 16] = inputs
             .iter()
             .map(|input| match input {
-                ConstantOrR1CSWitness::Witness(idx) => *idx,
+                ConstantOrR1CSWitness::Witness(idx) => {
+                    // Range check input and unpack to bytes
+                    range_checks.entry(32).or_default().push(*idx);
+                    U32::unpack_u32(r1cs_compiler, range_checks, *idx)
+                }
                 ConstantOrR1CSWitness::Constant(_) => {
                     panic!("Input constants not yet supported")
                 }
@@ -618,11 +648,14 @@ pub(crate) fn add_sha256_compression(
             .try_into()
             .unwrap();
 
-        // Convert initial hash values to witness indices
-        let initial_hash_witnesses: [usize; 8] = hash_values
+        // Convert initial hash values to U32
+        let initial_hash: [U32; 8] = hash_values
             .iter()
             .map(|hash_val| match hash_val {
-                ConstantOrR1CSWitness::Witness(idx) => *idx,
+                ConstantOrR1CSWitness::Witness(idx) => {
+                    range_checks.entry(32).or_default().push(*idx);
+                    U32::unpack_u32(r1cs_compiler, range_checks, *idx)
+                }
                 ConstantOrR1CSWitness::Constant(_) => {
                     panic!("Hash value constants not yet supported")
                 }
@@ -631,56 +664,39 @@ pub(crate) fn add_sha256_compression(
             .try_into()
             .unwrap();
 
-        // Range check inputs and initial hash values to ensure they're valid 32-bit
-        // values. This prevents field underflow in NOT operations and ensures
-        // correct SHA256 semantics.
-        for &input_idx in &input_witnesses {
-            range_checks.entry(32).or_default().push(input_idx);
-        }
-        for &hash_idx in &initial_hash_witnesses {
-            range_checks.entry(32).or_default().push(hash_idx);
-        }
-
         // Step 1: Message schedule expansion (16 words -> 64 words)
-        let w =
-            add_message_schedule_expansion(r1cs_compiler, xor_ops, range_checks, &input_witnesses);
+        let w = add_message_schedule_expansion(r1cs_compiler, xor_ops, range_checks, &input_u32s);
 
         // Step 2: Initialize working variables with initial hash values
-        let mut working_vars = initial_hash_witnesses;
+        let mut working_vars = initial_hash;
 
         // Step 3: Main compression loop - 64 rounds
         for i in 0..64 {
-            let k_constant = FieldElement::from(SHA256_K[i] as u64);
             working_vars = add_sha256_round(
                 r1cs_compiler,
                 and_ops,
                 xor_ops,
                 range_checks,
                 working_vars,
-                k_constant,
-                w[i],
+                SHA256_K[i],
+                &w[i],
             );
         }
 
-        // Step 4: Add initial hash values to final working variables (modulo 2^32)
-        // This implements the final step of SHA256: H' = H + working_vars
-        let final_hash: [usize; 8] = (0..8)
-            .map(|i| {
-                add_u32_addition(
-                    r1cs_compiler,
-                    range_checks,
-                    ConstantOrR1CSWitness::Witness(initial_hash_witnesses[i]),
-                    ConstantOrR1CSWitness::Witness(working_vars[i]),
-                )
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        // Step 5: Constrain outputs to equal computed hash
+        // Step 4: Add initial hash values to final working variables (mod 2^32)
+        let mut final_hash = [U32::from_const(r1cs_compiler, 0); 8];
         for i in 0..8 {
+            final_hash[i] = add_u32_multi_addition(r1cs_compiler, range_checks, &[
+                &initial_hash[i],
+                &working_vars[i],
+            ]);
+        }
+
+        // Step 5: Pack final hash back to 32-bit and constrain to outputs
+        for i in 0..8 {
+            let final_packed = final_hash[i].pack(r1cs_compiler, range_checks);
             r1cs_compiler.r1cs.add_constraint(
-                &[(FieldElement::ONE, final_hash[i])],
+                &[(FieldElement::ONE, final_packed)],
                 &[(FieldElement::ONE, r1cs_compiler.witness_one())],
                 &[(FieldElement::ONE, outputs[i])],
             );
