@@ -274,8 +274,8 @@ fn partition_byte_witnesses(
 }
 
 /// Adds multiple u32 values modulo 2^32, returning the witness index of the
-/// result. Uses fused constraint: `packed[0] + packed[1] + ... = result + carry
-/// * 2^32`
+/// result. Uses fused constraint: `packed[0] + packed[1] + ... = result +
+/// carry* 2^32`
 pub(crate) fn add_u32_multi_addition(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
