@@ -274,7 +274,8 @@ fn partition_byte_witnesses(
 }
 
 /// Adds multiple u32 values modulo 2^32, returning the witness index of the
-/// result. Uses fused constraint: `packed[0] + packed[1] + ... = result + carry * 2^32`
+/// result. Uses fused constraint: `packed[0] + packed[1] + ... = result + carry
+/// * 2^32`
 pub(crate) fn add_u32_multi_addition(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -553,7 +554,8 @@ pub(crate) fn add_message_schedule_expansion(
 /// Updates working variables: a, b, c, d, e, f, g, h
 /// `T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]`
 /// `T2 = Σ₀(a) + Maj(a,b,c)`
-/// Returns new `[a, b, c, d, e, f, g, h]` where a = T1+T2, e = d+T1, others rotate
+/// Returns new `[a, b, c, d, e, f, g, h]` where a = T1+T2, e = d+T1, others
+/// rotate
 pub(crate) fn add_sha256_round(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
