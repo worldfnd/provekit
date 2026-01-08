@@ -1,6 +1,6 @@
 use {
     crate::{
-        hash::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        hash::{HashFunction, SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::{serde_hex, sumcheck::SumcheckIOPattern},
         witness::WitnessIOPattern,
         FieldElement,
@@ -17,6 +17,8 @@ pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
+    #[serde(default)]
+    pub hash_function: HashFunction,
     pub m: usize,
     pub w1_size: usize,
     pub m_0: usize,
@@ -76,6 +78,7 @@ pub struct WhirR1CSProof {
 impl Debug for WhirR1CSScheme {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WhirR1CSScheme")
+            .field("hash_function", &self.hash_function)
             .field("m", &self.m)
             .field("w1_size", &self.w1_size)
             .field("m_0", &self.m_0)

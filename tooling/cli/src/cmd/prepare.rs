@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::write, NoirProofScheme, Prover, Verifier},
+    provekit_common::{file::write, hash::HashFunction, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     std::path::PathBuf,
     tracing::instrument,
@@ -33,12 +33,17 @@ pub struct Args {
         default = "PathBuf::from(\"noir_proof_scheme.pkv\")"
     )]
     pkv_path: PathBuf,
+
+    /// hash function to use (skyscraper, sha2, sha3, blake3)
+    #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
+    hash: String,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let scheme = NoirProofScheme::from_file(&self.program_path)
+        let hash_function = HashFunction::from_str(&self.hash);
+        let scheme = NoirProofScheme::from_file(&self.program_path, hash_function)
             .context("while compiling Noir program")?;
         write(
             &Prover::from_noir_proof_scheme(scheme.clone()),
