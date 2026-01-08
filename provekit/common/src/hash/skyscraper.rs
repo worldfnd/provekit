@@ -24,7 +24,6 @@ fn from_fr(x: Fr) -> FieldElement {
 pub struct SkyscraperHasher;
 
 impl HashCore for SkyscraperHasher {
-    /// Native algebraic compress using skyscraper.
     fn compress(left: FieldElement, right: FieldElement) -> FieldElement {
         let l64 = left.into_bigint().0;
         let r64 = right.into_bigint().0;
@@ -32,20 +31,17 @@ impl HashCore for SkyscraperHasher {
         FieldElement::new(BigInt(out))
     }
 
-    /// Native algebraic permutation using skyscraper.
     fn permute(left: FieldElement, right: FieldElement) -> (FieldElement, FieldElement) {
         let (l2, r2) = skyscraper::reference::permute(to_fr(left), to_fr(right));
         (from_fr(l2), from_fr(r2))
     }
 
-    /// Optimized native PoW solver.
     fn solve_pow(challenge: [u8; 32], bits: f64) -> Option<u64> {
         assert!((0.0..60.0).contains(&bits), "bits must be smaller than 60");
         let challenge: [u64; 4] = transmute!(challenge);
         Some(skyscraper::pow::solve(challenge, bits))
     }
 
-    /// Native PoW verification.
     fn check_pow(challenge: [u8; 32], bits: f64, nonce: u64) -> bool {
         let challenge: [u64; 4] = transmute!(challenge);
         skyscraper::pow::verify(challenge, bits, nonce)

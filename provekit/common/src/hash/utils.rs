@@ -3,12 +3,10 @@ use {
     ark_ff::{BigInt, PrimeField},
 };
 
-/// Trait for byte-based hash functions (SHA2, SHA3, BLAKE3).
 pub trait ByteHasher: Clone + Send + Sync + 'static {
     fn hash(data: &[u8]) -> [u8; 32];
 }
 
-/// Compress two field elements using a byte-based hash (Feistel structure).
 #[inline]
 pub fn byte_hash_compress<H: ByteHasher>(l: FieldElement, r: FieldElement) -> FieldElement {
     let mut data = [0u8; 64];
@@ -17,7 +15,6 @@ pub fn byte_hash_compress<H: ByteHasher>(l: FieldElement, r: FieldElement) -> Fi
     bytes_to_field(H::hash(&data))
 }
 
-/// Feistel permutation for byte-based hashes.
 #[inline]
 pub fn byte_hash_permute<H: ByteHasher>(
     l: FieldElement,
@@ -26,7 +23,6 @@ pub fn byte_hash_permute<H: ByteHasher>(
     (r, byte_hash_compress::<H>(l, r))
 }
 
-/// Brute-force PoW solver for byte-based hashes.
 pub fn byte_hash_solve_pow<H: ByteHasher>(challenge: [u8; 32], bits: f64) -> Option<u64> {
     for nonce in 0..u64::MAX {
         if byte_hash_check_pow::<H>(challenge, bits, nonce) {
@@ -36,7 +32,6 @@ pub fn byte_hash_solve_pow<H: ByteHasher>(challenge: [u8; 32], bits: f64) -> Opt
     None
 }
 
-/// PoW verification for byte-based hashes.
 #[inline]
 pub fn byte_hash_check_pow<H: ByteHasher>(challenge: [u8; 32], bits: f64, nonce: u64) -> bool {
     let mut data = [0u8; 40];

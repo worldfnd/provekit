@@ -6,7 +6,6 @@ use {
     zeroize::Zeroize,
 };
 
-/// Generic sponge permutation using HashCore trait.
 #[derive(Clone, Zeroize)]
 pub struct HashPermutation<H: HashCore> {
     state:   [FieldElement; 2],
@@ -54,5 +53,4 @@ impl<H: HashCore> Permutation for HashPermutation<H> {
     }
 }
 
-/// Type alias for sponge using any HashCore.
 pub type HashSponge<H> = DuplexSponge<HashPermutation<H>>;

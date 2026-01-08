@@ -1,6 +1,5 @@
 use {super::traits::HashCore, spongefish_pow::PowStrategy, std::marker::PhantomData};
 
-/// Generic proof-of-work using HashCore trait.
 #[derive(Clone, Copy)]
 pub struct HashPoW<H: HashCore> {
     challenge: [u8; 32],

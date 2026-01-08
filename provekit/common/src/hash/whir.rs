@@ -1,8 +1,3 @@
-/// Macro to generate WHIR-compatible types (CRH, TwoToOne, MerkleConfig) and
-/// trait impls.
-///
-/// Requires the calling module to have `FieldElement` and the hasher type in
-/// scope. The hasher must implement `HashCore`.
 #[macro_export]
 macro_rules! impl_hash_whir {
     ($name:ident, $hasher:ty) => {
