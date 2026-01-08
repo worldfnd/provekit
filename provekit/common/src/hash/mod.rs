@@ -1,9 +1,12 @@
 mod blake3;
+mod pow;
 mod sha2;
 mod sha3;
 mod skyscraper;
+mod sponge;
 mod traits;
 mod utils;
+mod whir;
 
 pub use traits::ProtocolHash;
 

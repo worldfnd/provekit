@@ -28,6 +28,7 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+paste.workspace = true
 bytes.workspace = true
 blake3.workspace = true
 hex.workspace = true
