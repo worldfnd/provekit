@@ -8,18 +8,17 @@ mod traits;
 mod utils;
 mod whir;
 
-pub use traits::ProtocolHash;
-
-pub use blake3::{Blake3, Blake3MerkleConfig, Blake3Permutation, Blake3PoW, Blake3Sponge};
-pub use sha2::{Sha2, Sha2MerkleConfig, Sha2Permutation, Sha2PoW, Sha2Sponge};
-pub use sha3::{Sha3, Sha3MerkleConfig, Sha3Permutation, Sha3PoW, Sha3Sponge};
-pub use skyscraper::{
-    Skyscraper, SkyscraperMerkleConfig, SkyscraperPermutation, SkyscraperPoW, SkyscraperSponge,
-};
-
-pub use utils::{bigint_from_bytes_le, bytes_to_field, field_to_bytes};
-
 use serde::{Deserialize, Serialize};
+pub use {
+    blake3::{Blake3, Blake3MerkleConfig, Blake3Permutation, Blake3PoW, Blake3Sponge},
+    sha2::{Sha2, Sha2MerkleConfig, Sha2Permutation, Sha2PoW, Sha2Sponge},
+    sha3::{Sha3, Sha3MerkleConfig, Sha3Permutation, Sha3PoW, Sha3Sponge},
+    skyscraper::{
+        Skyscraper, SkyscraperMerkleConfig, SkyscraperPermutation, SkyscraperPoW, SkyscraperSponge,
+    },
+    traits::ProtocolHash,
+    utils::{bigint_from_bytes_le, bytes_to_field, field_to_bytes},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashFunction {
@@ -80,7 +79,10 @@ mod tests {
         assert_eq!(HashFunction::from_str("sha3"), HashFunction::Sha3);
         assert_eq!(HashFunction::from_str("keccak"), HashFunction::Sha3);
         assert_eq!(HashFunction::from_str("blake3"), HashFunction::Blake3);
-        assert_eq!(HashFunction::from_str("skyscraper"), HashFunction::Skyscraper);
+        assert_eq!(
+            HashFunction::from_str("skyscraper"),
+            HashFunction::Skyscraper
+        );
         assert_eq!(HashFunction::from_str("unknown"), HashFunction::Skyscraper);
     }
 

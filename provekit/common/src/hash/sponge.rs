@@ -1,6 +1,6 @@
 use {
-    crate::FieldElement,
     super::{traits::HashCore, utils::bigint_from_bytes_le},
+    crate::FieldElement,
     spongefish::duplex_sponge::{DuplexSponge, Permutation},
     std::marker::PhantomData,
     zeroize::Zeroize,
@@ -9,7 +9,7 @@ use {
 /// Generic sponge permutation using HashCore trait.
 #[derive(Clone, Zeroize)]
 pub struct HashPermutation<H: HashCore> {
-    state: [FieldElement; 2],
+    state:   [FieldElement; 2],
     #[zeroize(skip)]
     _marker: PhantomData<H>,
 }
@@ -17,7 +17,7 @@ pub struct HashPermutation<H: HashCore> {
 impl<H: HashCore> Default for HashPermutation<H> {
     fn default() -> Self {
         Self {
-            state: [FieldElement::from(0u64), FieldElement::from(0u64)],
+            state:   [FieldElement::from(0u64), FieldElement::from(0u64)],
             _marker: PhantomData,
         }
     }
@@ -43,7 +43,7 @@ impl<H: HashCore> Permutation for HashPermutation<H> {
     fn new(iv: [u8; 32]) -> Self {
         let felt = FieldElement::new(bigint_from_bytes_le(&iv));
         Self {
-            state: [FieldElement::from(0u64), felt],
+            state:   [FieldElement::from(0u64), felt],
             _marker: PhantomData,
         }
     }

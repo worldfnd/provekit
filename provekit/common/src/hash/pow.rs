@@ -1,15 +1,11 @@
-use {
-    super::traits::HashCore,
-    spongefish_pow::PowStrategy,
-    std::marker::PhantomData,
-};
+use {super::traits::HashCore, spongefish_pow::PowStrategy, std::marker::PhantomData};
 
 /// Generic proof-of-work using HashCore trait.
 #[derive(Clone, Copy)]
 pub struct HashPoW<H: HashCore> {
     challenge: [u8; 32],
-    bits: f64,
-    _marker: PhantomData<H>,
+    bits:      f64,
+    _marker:   PhantomData<H>,
 }
 
 impl<H: HashCore> PowStrategy for HashPoW<H> {

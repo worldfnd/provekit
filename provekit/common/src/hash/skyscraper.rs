@@ -79,12 +79,14 @@ crate::impl_hash_whir!(Skyscraper, SkyscraperHasher);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use spongefish::{
-        ByteDomainSeparator, BytesToUnitDeserialize, BytesToUnitSerialize, DefaultHash,
-        DomainSeparator,
+    use {
+        super::*,
+        spongefish::{
+            ByteDomainSeparator, BytesToUnitDeserialize, BytesToUnitSerialize, DefaultHash,
+            DomainSeparator,
+        },
+        spongefish_pow::{PoWChallenge, PoWDomainSeparator},
     };
-    use spongefish_pow::{PoWChallenge, PoWDomainSeparator};
 
     #[test]
     fn test_pow_skyscraper() {

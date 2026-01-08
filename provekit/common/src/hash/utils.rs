@@ -19,7 +19,10 @@ pub fn byte_hash_compress<H: ByteHasher>(l: FieldElement, r: FieldElement) -> Fi
 
 /// Feistel permutation for byte-based hashes.
 #[inline]
-pub fn byte_hash_permute<H: ByteHasher>(l: FieldElement, r: FieldElement) -> (FieldElement, FieldElement) {
+pub fn byte_hash_permute<H: ByteHasher>(
+    l: FieldElement,
+    r: FieldElement,
+) -> (FieldElement, FieldElement) {
     (r, byte_hash_compress::<H>(l, r))
 }
 

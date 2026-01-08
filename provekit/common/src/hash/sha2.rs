@@ -4,7 +4,10 @@ use {
             pow::HashPoW,
             sponge::{HashPermutation, HashSponge},
             traits::{HashCore, ProtocolHash},
-            utils::{byte_hash_check_pow, byte_hash_compress, byte_hash_permute, byte_hash_solve_pow, ByteHasher},
+            utils::{
+                byte_hash_check_pow, byte_hash_compress, byte_hash_permute, byte_hash_solve_pow,
+                ByteHasher,
+            },
         },
         FieldElement,
     },
