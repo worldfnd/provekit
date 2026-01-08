@@ -3,7 +3,7 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
+        hash::{SkyscraperMerkleConfig, SkyscraperSponge},
         utils::{
             pad_to_power_of_two,
             sumcheck::{

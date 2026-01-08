@@ -4,7 +4,7 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
+        hash::SkyscraperSponge,
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,

@@ -1,6 +1,6 @@
 use {
     crate::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        hash::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::{serde_hex, sumcheck::SumcheckIOPattern},
         witness::WitnessIOPattern,
         FieldElement,

@@ -9,6 +9,7 @@ use {
 fn to_fr(x: FieldElement) -> Fr {
     Fr::new(BigInt(x.into_bigint().0))
 }
+
 fn from_fr(x: Fr) -> FieldElement {
     FieldElement::new(x.into_bigint())
 }
@@ -24,22 +25,23 @@ fn bigint_from_bytes_le<const N: usize>(bytes: &[u8]) -> BigInt<N> {
 type State = [FieldElement; 2];
 
 #[derive(Clone, Default, Zeroize)]
-pub struct Skyscraper {
+pub struct SkyscraperPermutation {
     state: State,
 }
 
-impl AsRef<[FieldElement]> for Skyscraper {
+impl AsRef<[FieldElement]> for SkyscraperPermutation {
     fn as_ref(&self) -> &[FieldElement] {
         &self.state
     }
 }
-impl AsMut<[FieldElement]> for Skyscraper {
+
+impl AsMut<[FieldElement]> for SkyscraperPermutation {
     fn as_mut(&mut self) -> &mut [FieldElement] {
         &mut self.state
     }
 }
 
-impl Permutation for Skyscraper {
+impl Permutation for SkyscraperPermutation {
     type U = FieldElement;
     const N: usize = 2;
     const R: usize = 1;
@@ -57,4 +59,4 @@ impl Permutation for Skyscraper {
     }
 }
 
-pub type SkyscraperSponge = DuplexSponge<Skyscraper>;
+pub type SkyscraperSponge = DuplexSponge<SkyscraperPermutation>;

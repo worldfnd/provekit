@@ -2,7 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::SkyscraperSponge,
+        hash::SkyscraperSponge,
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },

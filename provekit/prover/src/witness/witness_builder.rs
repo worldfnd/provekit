@@ -4,7 +4,7 @@ use {
     ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
+        hash::SkyscraperSponge,
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,

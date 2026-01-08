@@ -1,11 +1,11 @@
 use {
-    crate::{skyscraper::SkyscraperSponge, FieldElement},
+    crate::FieldElement,
+    super::sponge::{compress, Sha2Sponge},
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
         Error,
     },
-    ark_ff::{BigInt, PrimeField},
     rand08::Rng,
     serde::{Deserialize, Serialize},
     spongefish::{
@@ -17,23 +17,18 @@ use {
     std::borrow::Borrow,
 };
 
-fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-    let l64 = l.into_bigint().0;
-    let r64 = r.into_bigint().0;
-    let out = skyscraper::simple::compress(l64, r64);
-    FieldElement::new(BigInt(out))
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperCRH;
+pub struct Sha2CRH;
 
-impl CRHScheme for SkyscraperCRH {
+impl CRHScheme for Sha2CRH {
     type Input = [FieldElement];
     type Output = FieldElement;
     type Parameters = ();
+
     fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
+
     fn evaluate<T: Borrow<Self::Input>>(
         _: &Self::Parameters,
         input: T,
@@ -48,15 +43,17 @@ impl CRHScheme for SkyscraperCRH {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperTwoToOne;
+pub struct Sha2TwoToOne;
 
-impl TwoToOneCRHScheme for SkyscraperTwoToOne {
+impl TwoToOneCRHScheme for Sha2TwoToOne {
     type Input = FieldElement;
     type Output = FieldElement;
     type Parameters = ();
+
     fn setup<R: Rng>(_r: &mut R) -> Result<Self::Parameters, Error> {
         Ok(())
     }
+
     fn evaluate<T: Borrow<Self::Input>>(
         _: &Self::Parameters,
         l: T,
@@ -64,6 +61,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
     ) -> Result<Self::Output, Error> {
         Ok(compress(*l.borrow(), *r.borrow()))
     }
+
     fn compress<T: Borrow<Self::Output>>(
         p: &Self::Parameters,
         l: T,
@@ -74,35 +72,35 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperMerkleConfig;
+pub struct Sha2MerkleConfig;
 
-impl Config for SkyscraperMerkleConfig {
+impl Config for Sha2MerkleConfig {
     type Leaf = [FieldElement];
     type LeafDigest = FieldElement;
     type LeafInnerDigestConverter = IdentityDigestConverter<FieldElement>;
     type InnerDigest = FieldElement;
-    type LeafHash = SkyscraperCRH;
-    type TwoToOneHash = SkyscraperTwoToOne;
+    type LeafHash = Sha2CRH;
+    type TwoToOneHash = Sha2TwoToOne;
 }
 
-impl whir::whir::domainsep::DigestDomainSeparator<SkyscraperMerkleConfig>
-    for DomainSeparator<SkyscraperSponge, FieldElement>
+impl whir::whir::domainsep::DigestDomainSeparator<Sha2MerkleConfig>
+    for DomainSeparator<Sha2Sponge, FieldElement>
 {
     fn add_digest(self, label: &str) -> Self {
         <Self as FieldDomainSeparator<FieldElement>>::add_scalars(self, 1, label)
     }
 }
 
-impl whir::whir::utils::DigestToUnitSerialize<SkyscraperMerkleConfig>
-    for ProverState<SkyscraperSponge, FieldElement>
+impl whir::whir::utils::DigestToUnitSerialize<Sha2MerkleConfig>
+    for ProverState<Sha2Sponge, FieldElement>
 {
     fn add_digest(&mut self, digest: FieldElement) -> ProofResult<()> {
         self.add_scalars(&[digest])
     }
 }
 
-impl whir::whir::utils::DigestToUnitDeserialize<SkyscraperMerkleConfig>
-    for VerifierState<'_, SkyscraperSponge, FieldElement>
+impl whir::whir::utils::DigestToUnitDeserialize<Sha2MerkleConfig>
+    for VerifierState<'_, Sha2Sponge, FieldElement>
 {
     fn read_digest(&mut self) -> ProofResult<FieldElement> {
         let [r] = self.next_scalars()?;

@@ -4,11 +4,10 @@ use {
     zerocopy::transmute,
 };
 
-/// Skyscraper proof of work
 #[derive(Clone, Copy)]
 pub struct SkyscraperPoW {
     challenge: [u64; 4],
-    bits:      f64,
+    bits: f64,
 }
 
 impl PowStrategy for SkyscraperPoW {
