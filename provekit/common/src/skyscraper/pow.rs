@@ -5,7 +5,7 @@ use {
 };
 
 /// Skyscraper proof of work
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SkyscraperPoW {
     challenge: [u64; 4],
     bits:      f64,
