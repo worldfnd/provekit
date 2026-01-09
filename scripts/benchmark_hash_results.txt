@@ -1,0 +1,84 @@
+==========================================
+ProveKit Hash Function Benchmark
+Circuit: complete_age_check
+==========================================
+
+Building release binary...
+
+==========================================
+Preparing circuits for each hash function
+==========================================
+Preparing skyscraper...
+╯ [2mrun: [22m6.57 s[2m duration, [22m3.16 GB[2m peak memory, [22m3.16 GB[2m local, [22m129 kB[2m current, [22m32.8M[2m allocations[22m
+Preparing sha2...
+╯ [2mrun: [22m6.43 s[2m duration, [22m3.16 GB[2m peak memory, [22m3.16 GB[2m local, [22m129 kB[2m current, [22m32.8M[2m allocations[22m
+Preparing sha3...
+╯ [2mrun: [22m6.30 s[2m duration, [22m3.16 GB[2m peak memory, [22m3.16 GB[2m local, [22m129 kB[2m current, [22m32.8M[2m allocations[22m
+Preparing blake3...
+╯ [2mrun: [22m6.63 s[2m duration, [22m3.16 GB[2m peak memory, [22m3.16 GB[2m local, [22m129 kB[2m current, [22m32.8M[2m allocations[22m
+
+==========================================
+Benchmarking PROVE (5 runs each)
+==========================================
+Benchmark 1: skyscraper
+  Time (mean ± σ):      9.209 s ±  0.693 s    [User: 60.130 s, System: 2.408 s]
+  Range (min … max):    8.707 s … 10.246 s    5 runs
+ 
+Benchmark 2: sha2
+  Time (mean ± σ):      9.074 s ±  0.318 s    [User: 56.993 s, System: 2.368 s]
+  Range (min … max):    8.835 s …  9.608 s    5 runs
+ 
+Benchmark 3: sha3
+  Time (mean ± σ):      8.452 s ±  0.418 s    [User: 49.487 s, System: 2.403 s]
+  Range (min … max):    8.222 s …  9.195 s    5 runs
+ 
+Benchmark 4: blake3
+  Time (mean ± σ):      7.217 s ±  0.222 s    [User: 42.905 s, System: 2.165 s]
+  Range (min … max):    6.878 s …  7.417 s    5 runs
+ 
+Summary
+  blake3 ran
+    1.17 ± 0.07 times faster than sha3
+    1.26 ± 0.06 times faster than sha2
+    1.28 ± 0.10 times faster than skyscraper
+
+==========================================
+Benchmarking VERIFY (10 runs each)
+==========================================
+Benchmark 1: skyscraper
+  Time (mean ± σ):     164.4 ms ±  18.7 ms    [User: 63.7 ms, System: 103.1 ms]
+  Range (min … max):   148.0 ms … 205.1 ms    10 runs
+ 
+Benchmark 2: sha2
+  Time (mean ± σ):     156.7 ms ±   8.7 ms    [User: 61.0 ms, System: 104.1 ms]
+  Range (min … max):   146.1 ms … 170.8 ms    10 runs
+ 
+Benchmark 3: sha3
+  Time (mean ± σ):     141.6 ms ±   9.5 ms    [User: 55.7 ms, System: 97.8 ms]
+  Range (min … max):   136.9 ms … 168.0 ms    10 runs
+ 
+Benchmark 4: blake3
+  Time (mean ± σ):     138.3 ms ±   7.8 ms    [User: 53.7 ms, System: 98.8 ms]
+  Range (min … max):   133.7 ms … 159.4 ms    10 runs
+ 
+Summary
+  blake3 ran
+    1.02 ± 0.09 times faster than sha3
+    1.13 ± 0.09 times faster than sha2
+    1.19 ± 0.15 times faster than skyscraper
+
+==========================================
+Proof Sizes
+==========================================
+/tmp/provekit-bench/blake3.np 513K
+/tmp/provekit-bench/sha2.np 512K
+/tmp/provekit-bench/sha3.np 518K
+/tmp/provekit-bench/sky.np 518K
+
+==========================================
+Results saved to:
+  - /tmp/provekit-bench/prove_results.md
+  - /tmp/provekit-bench/verify_results.md
+  - /tmp/provekit-bench/prove_results.json
+  - /tmp/provekit-bench/verify_results.json
+==========================================
