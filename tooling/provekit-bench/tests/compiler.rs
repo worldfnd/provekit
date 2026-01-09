@@ -38,7 +38,8 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
     let witness_file_path = test_case_path.join("Prover.toml");
 
-    let schema = NoirProofScheme::from_file(&circuit_path, HashFunction::default()).expect("Reading proof scheme");
+    let schema = NoirProofScheme::from_file(&circuit_path, HashFunction::default())
+        .expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 

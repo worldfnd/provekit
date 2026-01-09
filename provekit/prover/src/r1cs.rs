@@ -4,23 +4,26 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        hash::SkyscraperSponge,
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
     },
-    spongefish::ProverState,
+    spongefish::{
+        codecs::arkworks_algebra::UnitToField, duplex_sponge::DuplexSpongeInterface, ProverState,
+    },
     tracing::instrument,
 };
 
 pub trait R1CSSolver {
-    fn solve_witness_vec(
+    fn solve_witness_vec<S>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    );
+        transcript: &mut ProverState<S, FieldElement>,
+    ) where
+        S: DuplexSpongeInterface<FieldElement>,
+        ProverState<S, FieldElement>: UnitToField<FieldElement>;
 
     #[cfg(test)]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
@@ -48,13 +51,16 @@ impl R1CSSolver for R1CS {
     /// Panics if a denominator witness is not set when needed for inversion.
     /// This indicates a bug in the layer scheduling algorithm.
     #[instrument(skip_all)]
-    fn solve_witness_vec(
+    fn solve_witness_vec<S>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) {
+        transcript: &mut ProverState<S, FieldElement>,
+    ) where
+        S: DuplexSpongeInterface<FieldElement>,
+        ProverState<S, FieldElement>: UnitToField<FieldElement>,
+    {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {

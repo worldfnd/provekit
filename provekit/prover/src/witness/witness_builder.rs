@@ -4,7 +4,6 @@ use {
     ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
-        hash::SkyscraperSponge,
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
@@ -12,25 +11,32 @@ use {
         },
         FieldElement, NoirElement,
     },
-    spongefish::{codecs::arkworks_algebra::UnitToField, ProverState},
+    spongefish::{
+        codecs::arkworks_algebra::UnitToField, duplex_sponge::DuplexSpongeInterface, ProverState,
+    },
 };
 
 pub trait WitnessBuilderSolver {
-    fn solve(
+    fn solve<S>(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    );
+        transcript: &mut ProverState<S, FieldElement>,
+    ) where
+        S: DuplexSpongeInterface<FieldElement>,
+        ProverState<S, FieldElement>: UnitToField<FieldElement>;
 }
 
 impl WitnessBuilderSolver for WitnessBuilder {
-    fn solve(
+    fn solve<S>(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) {
+        transcript: &mut ProverState<S, FieldElement>,
+    ) where
+        S: DuplexSpongeInterface<FieldElement>,
+        ProverState<S, FieldElement>: UnitToField<FieldElement>,
+    {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
                 witness[*witness_idx] = Some(*c);

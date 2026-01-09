@@ -16,7 +16,10 @@ use {
 };
 
 pub trait NoirProofSchemeBuilder {
-    fn from_file(path: impl AsRef<Path> + std::fmt::Debug, hash_function: HashFunction) -> Result<Self>
+    fn from_file(
+        path: impl AsRef<Path> + std::fmt::Debug,
+        hash_function: HashFunction,
+    ) -> Result<Self>
     where
         Self: Sized;
 
@@ -27,7 +30,10 @@ pub trait NoirProofSchemeBuilder {
 
 impl NoirProofSchemeBuilder for NoirProofScheme {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
-    fn from_file(path: impl AsRef<Path> + std::fmt::Debug, hash_function: HashFunction) -> Result<Self> {
+    fn from_file(
+        path: impl AsRef<Path> + std::fmt::Debug,
+        hash_function: HashFunction,
+    ) -> Result<Self> {
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
