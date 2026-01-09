@@ -483,7 +483,7 @@ pub(crate) fn add_cap_sigma0(
     xor_u32(r1cs_compiler, xor_ops, &t, &r22)
 }
 
-/// SHA256 choice function: Ch(x,y,z) = (x & y) ⊕ (~x & z)
+/// SHA256 choice function: Ch(x,y,z) = z ⊕ (x & (y ⊕ z))
 /// Used in main compression rounds
 pub(crate) fn add_ch(
     r1cs_compiler: &mut NoirToR1CSCompiler,
@@ -493,13 +493,12 @@ pub(crate) fn add_ch(
     y: &U32,
     z: &U32,
 ) -> U32 {
-    let xy = and_u32(r1cs_compiler, and_ops, x, y);
-    let not_x = not_u32(r1cs_compiler, x);
-    let not_x_z = and_u32(r1cs_compiler, and_ops, &not_x, z);
-    xor_u32(r1cs_compiler, xor_ops, &xy, &not_x_z)
+    let y_xor_z = xor_u32(r1cs_compiler, xor_ops, y, z);
+    let x_and_yz = and_u32(r1cs_compiler, and_ops, x, &y_xor_z);
+    xor_u32(r1cs_compiler, xor_ops, z, &x_and_yz)
 }
 
-/// SHA256 majority function: Maj(x,y,z) = (x & y) ⊕ (x & z) ⊕ (y & z)
+/// SHA256 majority function: Maj(x,y,z) = (x & y) ⊕ ((x ⊕ y) & z)
 /// Used in main compression rounds
 pub(crate) fn maj(
     r1cs_compiler: &mut NoirToR1CSCompiler,
@@ -510,11 +509,9 @@ pub(crate) fn maj(
     z: &U32,
 ) -> U32 {
     let xy = and_u32(r1cs_compiler, and_ops, x, y);
-    let xz = and_u32(r1cs_compiler, and_ops, x, z);
-    let yz = and_u32(r1cs_compiler, and_ops, y, z);
-
-    let t = xor_u32(r1cs_compiler, xor_ops, &xy, &xz);
-    xor_u32(r1cs_compiler, xor_ops, &t, &yz)
+    let x_xor_y = xor_u32(r1cs_compiler, xor_ops, x, y);
+    let xor_and_z = and_u32(r1cs_compiler, and_ops, &x_xor_y, z);
+    xor_u32(r1cs_compiler, xor_ops, &xy, &xor_and_z)
 }
 
 /// SHA256 message schedule expansion: expand 16 u32 words to 64 u32 words
