@@ -1,4 +1,5 @@
 use {
+    super::{compute_blinding_coefficients_for_round, pad_to_pow2_len_min2, sum_over_hypercube},
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
@@ -33,7 +34,37 @@ use {
     },
 };
 
-/// Macro to generate prover implementation for a specific hash type
+fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 4]> {
+    let mut rng = ark_std::rand::thread_rng();
+    let mut g_univariates = Vec::with_capacity(m_0);
+
+    for _ in 0..m_0 {
+        let coeffs: [FieldElement; 4] = [
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+            FieldElement::rand(&mut rng),
+        ];
+        g_univariates.push(coeffs);
+    }
+    g_univariates
+}
+
+fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
+    let mut result = Vec::with_capacity(values.len() * 4);
+    for &value in values {
+        result.push(FieldElement::one());
+        result.push(value);
+        result.push(value * value);
+        result.push(value * value * value);
+    }
+    result
+}
+
+/// Macro to generate prover implementation for a specific hash type.
+///
+/// This generates a module with all the prover functions specialized for
+/// a specific hash configuration (MerkleConfig, Sponge, PoW).
 macro_rules! impl_prover_for_hash {
     ($name:ident, $merkle_config:ty, $sponge:ty, $pow:ty) => {
         paste::paste! {
@@ -88,7 +119,6 @@ macro_rules! impl_prover_for_hash {
                     GenericWhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
                 }
 
-                /// Create the IO pattern for this hash type
                 #[instrument(skip_all)]
                 pub fn create_io_pattern(scheme: &WhirR1CSScheme) -> IOPattern {
                     use provekit_common::utils::next_power_of_two;
@@ -97,7 +127,7 @@ macro_rules! impl_prover_for_hash {
                     // Must match r1cs-compiler: next_power_of_two(4 * m_0) + 1, batch_size = 2
                     let whir_for_hiding_spartan = build_whir_config(next_power_of_two(4 * scheme.m_0) + 1, 2);
 
-                    let mut io = IOPattern::new("🌪️");
+                    let mut io = IOPattern::new("\u{1F32A}\u{FE0F}");
 
                     if scheme.num_challenges > 0 {
                         let num_witnesses = 2;
@@ -561,125 +591,6 @@ macro_rules! impl_prover_for_hash {
             }
         }
     };
-}
-
-// Helper functions used by all hash implementations
-pub fn compute_blinding_coefficients_for_round(
-    g_univariates: &[[FieldElement; 4]],
-    compute_for: usize,
-    alphas: &[FieldElement],
-) -> [FieldElement; 4] {
-    let mut compute_for = compute_for;
-    let n = g_univariates.len();
-    assert!(compute_for <= n);
-    assert_eq!(alphas.len(), compute_for);
-    let mut all_fixed = false;
-    if compute_for == n {
-        all_fixed = true;
-        compute_for = n - 1;
-    }
-
-    let mut prefix_sum = FieldElement::zero();
-    for i in 0..compute_for {
-        prefix_sum += eval_cubic_poly(g_univariates[i], alphas[i]);
-    }
-
-    let mut suffix_sum = FieldElement::zero();
-    for g_coeffs in g_univariates.iter().skip(compute_for + 1) {
-        suffix_sum += eval_cubic_poly(*g_coeffs, FieldElement::zero())
-            + eval_cubic_poly(*g_coeffs, FieldElement::one());
-    }
-
-    let two = FieldElement::one() + FieldElement::one();
-    let mut prefix_multiplier = FieldElement::one();
-    for _ in 0..(n - 1 - compute_for) {
-        prefix_multiplier = prefix_multiplier + prefix_multiplier;
-    }
-    let suffix_multiplier: ark_ff::Fp<
-        ark_ff::MontBackend<whir::crypto::fields::BN254Config, 4>,
-        4,
-    > = prefix_multiplier / two;
-
-    let constant_term_from_other_items =
-        prefix_multiplier * prefix_sum + suffix_multiplier * suffix_sum;
-
-    let coefficient_for_current_index = &g_univariates[compute_for];
-
-    if all_fixed {
-        let value = eval_cubic_poly(
-            [
-                prefix_multiplier * coefficient_for_current_index[0]
-                    + constant_term_from_other_items,
-                prefix_multiplier * coefficient_for_current_index[1],
-                prefix_multiplier * coefficient_for_current_index[2],
-                prefix_multiplier * coefficient_for_current_index[3],
-            ],
-            alphas[compute_for],
-        );
-        return [
-            value,
-            FieldElement::zero(),
-            FieldElement::zero(),
-            FieldElement::zero(),
-        ];
-    }
-
-    [
-        prefix_multiplier * coefficient_for_current_index[0] + constant_term_from_other_items,
-        prefix_multiplier * coefficient_for_current_index[1],
-        prefix_multiplier * coefficient_for_current_index[2],
-        prefix_multiplier * coefficient_for_current_index[3],
-    ]
-}
-
-pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
-    let fixed_variables: &[FieldElement] = &[];
-    let polynomial_coefficient =
-        compute_blinding_coefficients_for_round(g_univariates, 0, fixed_variables);
-
-    eval_cubic_poly(polynomial_coefficient, FieldElement::zero())
-        + eval_cubic_poly(polynomial_coefficient, FieldElement::one())
-}
-
-fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 4]> {
-    let mut rng = ark_std::rand::thread_rng();
-    let mut g_univariates = Vec::with_capacity(m_0);
-
-    for _ in 0..m_0 {
-        let coeffs: [FieldElement; 4] = [
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-        ];
-        g_univariates.push(coeffs);
-    }
-    g_univariates
-}
-
-#[inline]
-pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
-    let min = v.len().max(2);
-
-    let target = match min.checked_next_power_of_two() {
-        Some(p2) => p2,
-        None => min,
-    };
-
-    if v.len() < target {
-        v.resize(target, FieldElement::zero());
-    }
-}
-
-fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = Vec::with_capacity(values.len() * 4);
-    for &value in values {
-        result.push(FieldElement::one());
-        result.push(value);
-        result.push(value * value);
-        result.push(value * value * value);
-    }
-    result
 }
 
 // Generate prover implementations for each hash type
