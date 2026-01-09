@@ -1,9 +1,8 @@
 mod whir_r1cs;
 
 use {
-    crate::whir_r1cs::WhirR1CSVerifier,
     anyhow::Result,
-    provekit_common::{NoirProof, Verifier},
+    provekit_common::{hash::HashFunction, NoirProof, Verifier},
     tracing::instrument,
 };
 
@@ -14,12 +13,18 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &NoirProof) -> Result<()> {
-        self.whir_for_witness
-            .take()
-            .unwrap()
-            .verify(&proof.whir_r1cs_proof)?;
+        let scheme = self.whir_for_witness.take().unwrap();
 
-        Ok(())
+        match scheme.hash_function {
+            HashFunction::Skyscraper => {
+                whir_r1cs::skyscraper_verifier::verify(&scheme, &proof.whir_r1cs_proof)
+            }
+            HashFunction::Sha2 => whir_r1cs::sha2_verifier::verify(&scheme, &proof.whir_r1cs_proof),
+            HashFunction::Sha3 => whir_r1cs::sha3_verifier::verify(&scheme, &proof.whir_r1cs_proof),
+            HashFunction::Blake3 => {
+                whir_r1cs::blake3_verifier::verify(&scheme, &proof.whir_r1cs_proof)
+            }
+        }
     }
 }
 

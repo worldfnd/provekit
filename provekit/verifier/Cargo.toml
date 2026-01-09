@@ -19,6 +19,7 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+paste.workspace = true
 tracing.workspace = true
 
 [lints]
