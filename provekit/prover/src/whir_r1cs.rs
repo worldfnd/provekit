@@ -91,8 +91,11 @@ macro_rules! impl_prover_for_hash {
                 /// Create the IO pattern for this hash type
                 #[instrument(skip_all)]
                 pub fn create_io_pattern(scheme: &WhirR1CSScheme) -> IOPattern {
+                    use provekit_common::utils::next_power_of_two;
+
                     let whir_witness = build_whir_config(scheme.m, 2);
-                    let whir_for_hiding_spartan = build_whir_config(scheme.m_0, 4);
+                    // Must match r1cs-compiler: next_power_of_two(4 * m_0) + 1, batch_size = 2
+                    let whir_for_hiding_spartan = build_whir_config(next_power_of_two(4 * scheme.m_0) + 1, 2);
 
                     let mut io = IOPattern::new("🌪️");
 
