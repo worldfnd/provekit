@@ -17,7 +17,7 @@ pub use {
         Skyscraper, SkyscraperMerkleConfig, SkyscraperPermutation, SkyscraperPoW, SkyscraperSponge,
     },
     traits::ProtocolHash,
-    utils::{bigint_from_bytes_le, bytes_to_field, field_to_bytes},
+    utils::{bigint_from_bytes_le, field_to_bytes},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

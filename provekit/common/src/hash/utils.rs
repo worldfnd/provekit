@@ -12,7 +12,8 @@ pub fn byte_hash_compress<H: ByteHasher>(l: FieldElement, r: FieldElement) -> Fi
     let mut data = [0u8; 64];
     data[..32].copy_from_slice(&field_to_bytes(l));
     data[32..].copy_from_slice(&field_to_bytes(r));
-    bytes_to_field(H::hash(&data))
+
+    FieldElement::from_le_bytes_mod_order(&H::hash(&data))
 }
 
 #[inline]
@@ -48,17 +49,6 @@ pub fn field_to_bytes(f: FieldElement) -> [u8; 32] {
         bytes[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
     }
     bytes
-}
-
-#[inline]
-pub fn bytes_to_field(bytes: [u8; 32]) -> FieldElement {
-    let limbs: [u64; 4] = [
-        u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
-        u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
-        u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
-        u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
-    ];
-    FieldElement::from(BigInt::new(limbs))
 }
 
 #[inline]

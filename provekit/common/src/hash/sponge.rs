@@ -1,6 +1,7 @@
 use {
-    super::{traits::HashCore, utils::bigint_from_bytes_le},
+    super::traits::HashCore,
     crate::FieldElement,
+    ark_ff::PrimeField,
     spongefish::duplex_sponge::{DuplexSponge, Permutation},
     std::marker::PhantomData,
     zeroize::Zeroize,
@@ -40,7 +41,7 @@ impl<H: HashCore> Permutation for HashPermutation<H> {
     const R: usize = 1;
 
     fn new(iv: [u8; 32]) -> Self {
-        let felt = FieldElement::new(bigint_from_bytes_le(&iv));
+        let felt = FieldElement::from_le_bytes_mod_order(&iv);
         Self {
             state:   [FieldElement::from(0u64), felt],
             _marker: PhantomData,
