@@ -1,0 +1,39 @@
+Benchmarking hash functions in the age check circuit...
+
+Prepare the Noir program
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 12.8 s
+Peak Memory (RSS)   | 3.16 GB peak
+Local Memory        | 3.16 GB local
+Current Memory      | 121 kB current
+Total Allocations   | 32.8M
+--------------------------------------------------
+
+
+Generate proof
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 14.8 s
+Peak Memory (RSS)   | 3.63 GB peak
+Local Memory        | 3.63 GB local
+Current Memory      | 16.9 MB current
+Total Allocations   | 4.44M
+--------------------------------------------------
+
+
+Verify proof
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 257 ms
+Peak Memory (RSS)   | 1.61 GB peak
+Local Memory        | 1.61 GB local
+Current Memory      | 120 kB current
+Total Allocations   | 76.8k
+--------------------------------------------------
+
+
+
