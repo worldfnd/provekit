@@ -82,7 +82,8 @@ impl R1CSSolver for R1CS {
                                 let denominator =
                                     witness[*denominator_witness].unwrap_or_else(|| {
                                         panic!(
-                                            "Denominator witness {} not set before inverse operation",
+                                            "Denominator witness {} not set before inverse \
+                                             operation",
                                             denominator_witness
                                         )
                                     });
@@ -101,10 +102,7 @@ impl R1CSSolver for R1CS {
                                     )
                                 });
                                 let val = witness[*value].unwrap_or_else(|| {
-                                    panic!(
-                                        "Value witness {} not set before LogUpInverse",
-                                        value
-                                    )
+                                    panic!("Value witness {} not set before LogUpInverse", value)
                                 });
                                 // Compute denominator: sz_challenge - value_coeff * value
                                 let denominator = sz - (*value_coeff * val);
@@ -112,7 +110,8 @@ impl R1CSSolver for R1CS {
                             }
                             _ => {
                                 panic!(
-                                    "Invalid builder in inverse batch: expected Inverse or LogUpInverse, got {:?}",
+                                    "Invalid builder in inverse batch: expected Inverse or \
+                                     LogUpInverse, got {:?}",
                                     inverse_builder
                                 );
                             }
