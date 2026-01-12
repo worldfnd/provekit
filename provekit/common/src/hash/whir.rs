@@ -1,5 +1,11 @@
 use {
-    crate::{skyscraper::SkyscraperSponge, FieldElement},
+    crate::{
+        hash::{
+            hash::{CompressionScheme, PermutationScheme},
+            Sponge,
+        },
+        FieldElement,
+    },
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
@@ -12,22 +18,26 @@ use {
         codecs::arkworks_algebra::{
             FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
         },
-        DomainSeparator, ProofResult, ProverState, VerifierState,
+        DomainSeparator as SpongeDomainSeparator, ProofResult, ProverState, VerifierState,
     },
     std::borrow::Borrow,
+    whir::whir::{
+        domainsep::DigestDomainSeparator,
+        utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
+    },
 };
 
-fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+fn compress<C: CompressionScheme>(l: FieldElement, r: FieldElement) -> FieldElement {
     let l64 = l.into_bigint().0;
     let r64 = r.into_bigint().0;
-    let out = skyscraper::simple::compress(l64, r64);
+    let out = C::compress(l64, r64);
     FieldElement::new(BigInt(out))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperCRH;
+pub struct CRH<C: CompressionScheme>(std::marker::PhantomData<C>);
 
-impl CRHScheme for SkyscraperCRH {
+impl<C: CompressionScheme> CRHScheme for CRH<C> {
     type Input = [FieldElement];
     type Output = FieldElement;
     type Parameters = ();
@@ -42,15 +52,15 @@ impl CRHScheme for SkyscraperCRH {
             .borrow()
             .iter()
             .copied()
-            .reduce(compress)
+            .reduce(compress::<C>)
             .ok_or(Error::IncorrectInputLength(0))
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperTwoToOne;
+pub struct TwoToOne<C: CompressionScheme>(std::marker::PhantomData<C>);
 
-impl TwoToOneCRHScheme for SkyscraperTwoToOne {
+impl<C: CompressionScheme> TwoToOneCRHScheme for TwoToOne<C> {
     type Input = FieldElement;
     type Output = FieldElement;
     type Parameters = ();
@@ -62,7 +72,7 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
         l: T,
         r: T,
     ) -> Result<Self::Output, Error> {
-        Ok(compress(*l.borrow(), *r.borrow()))
+        Ok(compress::<C>(*l.borrow(), *r.borrow()))
     }
     fn compress<T: Borrow<Self::Output>>(
         p: &Self::Parameters,
@@ -74,35 +84,37 @@ impl TwoToOneCRHScheme for SkyscraperTwoToOne {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SkyscraperMerkleConfig;
+pub struct MerkleConfig<C: CompressionScheme> {
+    _marker: std::marker::PhantomData<C>,
+}
 
-impl Config for SkyscraperMerkleConfig {
+impl<C: CompressionScheme> Config for MerkleConfig<C> {
     type Leaf = [FieldElement];
     type LeafDigest = FieldElement;
     type LeafInnerDigestConverter = IdentityDigestConverter<FieldElement>;
     type InnerDigest = FieldElement;
-    type LeafHash = SkyscraperCRH;
-    type TwoToOneHash = SkyscraperTwoToOne;
+    type LeafHash = CRH<C>;
+    type TwoToOneHash = TwoToOne<C>;
 }
 
-impl whir::whir::domainsep::DigestDomainSeparator<SkyscraperMerkleConfig>
-    for DomainSeparator<SkyscraperSponge, FieldElement>
+impl<C: CompressionScheme, P: PermutationScheme> DigestDomainSeparator<MerkleConfig<C>>
+    for SpongeDomainSeparator<Sponge<P>, FieldElement>
 {
     fn add_digest(self, label: &str) -> Self {
         <Self as FieldDomainSeparator<FieldElement>>::add_scalars(self, 1, label)
     }
 }
 
-impl whir::whir::utils::DigestToUnitSerialize<SkyscraperMerkleConfig>
-    for ProverState<SkyscraperSponge, FieldElement>
+impl<C: CompressionScheme, P: PermutationScheme> DigestToUnitSerialize<MerkleConfig<C>>
+    for ProverState<Sponge<P>, FieldElement>
 {
     fn add_digest(&mut self, digest: FieldElement) -> ProofResult<()> {
         self.add_scalars(&[digest])
     }
 }
 
-impl whir::whir::utils::DigestToUnitDeserialize<SkyscraperMerkleConfig>
-    for VerifierState<'_, SkyscraperSponge, FieldElement>
+impl<C: CompressionScheme, P: PermutationScheme> DigestToUnitDeserialize<MerkleConfig<C>>
+    for VerifierState<'_, Sponge<P>, FieldElement>
 {
     fn read_digest(&mut self) -> ProofResult<FieldElement> {
         let [r] = self.next_scalars()?;

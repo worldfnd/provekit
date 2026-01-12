@@ -4,7 +4,7 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
+        hash::{Skyscraper, Sponge},
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
@@ -19,7 +19,7 @@ pub trait R1CSSolver {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
     );
 
     #[cfg(test)]
@@ -53,7 +53,7 @@ impl R1CSSolver for R1CS {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
     ) {
         for layer in &plan.layers {
             match layer.typ {

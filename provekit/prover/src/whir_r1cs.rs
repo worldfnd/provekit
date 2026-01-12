@@ -3,7 +3,7 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
+        hash::{MerkleConfig, Skyscraper, Sponge},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -34,7 +34,7 @@ use {
 };
 
 pub struct WhirR1CSCommitment {
-    pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+    pub commitment_to_witness: Witness<FieldElement, MerkleConfig<Skyscraper>>,
     pub masked_polynomial:     EvaluationsList<FieldElement>,
     pub random_polynomial:     EvaluationsList<FieldElement>,
     pub padded_witness:        Vec<FieldElement>,
@@ -43,7 +43,7 @@ pub struct WhirR1CSCommitment {
 pub trait WhirR1CSProver {
     fn commit(
         &self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
@@ -51,7 +51,7 @@ pub trait WhirR1CSProver {
 
     fn prove(
         &self,
-        merlin: ProverState<SkyscraperSponge, FieldElement>,
+        merlin: ProverState<Sponge<Skyscraper>, FieldElement>,
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
     ) -> Result<WhirR1CSProof>;
@@ -61,7 +61,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn commit(
         &self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
@@ -118,7 +118,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn prove(
         &self,
-        mut merlin: ProverState<SkyscraperSponge, FieldElement>,
+        mut merlin: ProverState<Sponge<Skyscraper>, FieldElement>,
         r1cs: R1CS,
         mut commitments: Vec<WhirR1CSCommitment>,
     ) -> Result<WhirR1CSProof> {
@@ -313,9 +313,9 @@ pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
     witness: EvaluationsList<FieldElement>,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
 ) -> (
-    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, MerkleConfig<Skyscraper>>,
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
 ) {
@@ -376,7 +376,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
     z: &[FieldElement],
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
     m_0: usize,
     whir_for_blinding_of_spartan_config: &WhirConfig,
 ) -> Vec<FieldElement> {
@@ -547,7 +547,7 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
 
 fn create_combined_statement_over_two_polynomials<const N: usize>(
     cfg_nv: usize,
-    witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
+    witness: &Witness<FieldElement, MerkleConfig<Skyscraper>>,
     f_polynomial: EvaluationsList<FieldElement>,
     g_polynomial: EvaluationsList<FieldElement>,
     alphas: &[Vec<FieldElement>; N],
@@ -592,10 +592,10 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_prover(
-    witnesses: Witness<FieldElement, SkyscraperMerkleConfig>,
+    witnesses: Witness<FieldElement, MerkleConfig<Skyscraper>>,
     statements: Statement<FieldElement>,
     params: &WhirConfig,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     info!("WHIR Parameters: {params}");
 
@@ -613,10 +613,10 @@ pub fn run_zk_whir_pcs_prover(
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_batch_prover(
-    witnesses: &[Witness<FieldElement, SkyscraperMerkleConfig>],
+    witnesses: &[Witness<FieldElement, MerkleConfig<Skyscraper>>],
     statements: &[Statement<FieldElement>],
     params: &WhirConfig,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     info!("WHIR Parameters: {params}");
 
