@@ -325,7 +325,7 @@ pub fn batch_commit_to_polynomial(
 
     let committer = CommitmentWriter::new(whir_config.clone());
     let witness_new = committer
-        .commit_batch::<_>(merlin, &[
+        .commit_batch(merlin, &[
             &masked_polynomial_coeff,
             &random_polynomial_coeff,
         ])
