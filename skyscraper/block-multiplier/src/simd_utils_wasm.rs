@@ -49,7 +49,7 @@ pub fn fma(a: Simd<f64, 2>, b: Simd<f64, 2>, c: Simd<f64, 2>) -> Simd<f64, 2> {
 #[inline(always)]
 pub const fn make_initial(low_count: usize, high_count: usize) -> u64 {
     let val = high_count * 0x467 + low_count * 0x433;
-    -((val as i64 & 0xfff) << 52) as u64
+    -((val as i64) << 52) as u64
 }
 
 #[inline(always)]

@@ -133,6 +133,8 @@ pub const C1: f64 = pow_2(104); // 2.0^104
 pub const C2: f64 = pow_2(104) + pow_2(52); // 2.0^104 + 2.0^52
                                             // const C3: f64 = pow_2(52); // 2.0^52
                                             // -------------------------------------------------------------------------------------------------
+pub const C1F51: f64 = pow_2(103);
+pub const C2F51: f64 = pow_2(103) + pow_2(52) + pow_2(51);
 
 const fn pow_2(n: u32) -> f64 {
     // Unfortunately we can't use f64::powi in const fn yet
