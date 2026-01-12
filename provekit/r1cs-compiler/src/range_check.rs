@@ -101,7 +101,6 @@ pub(crate) fn add_range_checks(
 
 /// Helper function which computes all the terms of the summation for
 /// each side (LHS and RHS) of the log-derivative multiset check.
-///
 /// Uses a fused constraint to check equality of both sums directly.
 fn add_range_check_via_lookup(
     r1cs_compiler: &mut NoirToR1CSCompiler,
@@ -121,7 +120,7 @@ fn add_range_check_via_lookup(
         r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
 
     // Collect table side terms: multiplicity * 1/(X - table_value)
-    let mut fused_terms: Vec<(FieldElement, usize)> = (0..(1 << num_bits))
+    let mut logup_summands: Vec<(FieldElement, usize)> = (0..(1 << num_bits))
         .map(|table_value| {
             let table_denom = add_lookup_factor(
                 r1cs_compiler,
@@ -141,12 +140,12 @@ fn add_range_check_via_lookup(
     for value in values_to_lookup {
         let witness_idx =
             add_lookup_factor(r1cs_compiler, sz_challenge, FieldElement::one(), *value);
-        fused_terms.push((FieldElement::one().neg(), witness_idx));
+        logup_summands.push((FieldElement::one().neg(), witness_idx));
     }
 
-    // Single fused constraint: (Σ table_terms - Σ witness_terms) * 1 = 0
+    // Constraint: (Σ table_terms - Σ witness_terms) * 1 = 0
     r1cs_compiler.r1cs.add_constraint(
-        &fused_terms,
+        &logup_summands,
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
         &[(FieldElement::zero(), r1cs_compiler.witness_one())],
     );
