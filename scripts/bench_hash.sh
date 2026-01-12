@@ -41,15 +41,23 @@ cargo run --release --bin provekit-cli prepare \
   --pkv $CIRCUIT_DIR/verifier.pkv 2>&1 | format_benchmark_table
 echo "\n"
 
-echo "Generate proof"
-# Generate the Noir Proof using the input Toml file
-cargo run --release --bin provekit-cli prove $CIRCUIT_DIR/prover.pkp $CIRCUIT_DIR/Prover.toml -o /proof.np 2>&1 | format_benchmark_table
-echo "\n"
 
-echo "Verify proof"
-# Verify the Noir Proof
-cargo run --release --bin provekit-cli verify $CIRCUIT_DIR/verifier.pkv $CIRCUIT_DIR/proof.np 2>&1 | format_benchmark_table
-echo "\n"
+# ./target/release/provekit-cli prepare \
+#   $CIRCUIT_DIR/target/complete_age_check.json \
+#   --pkp $CIRCUIT_DIR/prover.pkp \
+#   --pkv $CIRCUIT_DIR/verifier.pkv
+# echo "\n"
+
+
+# echo "Generate proof"
+# # Generate the Noir Proof using the input Toml file
+# cargo run --release --bin provekit-cli prove $CIRCUIT_DIR/prover.pkp $CIRCUIT_DIR/Prover.toml -o /proof.np 2>&1 | format_benchmark_table
+# echo "\n"
+
+# echo "Verify proof"
+# # Verify the Noir Proof
+# cargo run --release --bin provekit-cli verify $CIRCUIT_DIR/verifier.pkv $CIRCUIT_DIR/proof.np 2>&1 | format_benchmark_table
+# echo "\n"
 
 
 # Run each benchmark multiple times

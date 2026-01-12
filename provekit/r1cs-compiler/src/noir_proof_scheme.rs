@@ -3,12 +3,10 @@ use {
         noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
         witness_generator::NoirWitnessGeneratorBuilder,
     },
-    anyhow::{ensure, Context as _, Result},
+    anyhow::{Context as _, Result, ensure},
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
-        utils::PrintAbi,
-        witness::{NoirWitnessGenerator, WitnessBuilder},
-        NoirProofScheme, WhirR1CSScheme,
+        NoirProofScheme, WhirR1CSScheme, utils::PrintAbi, witness::{NoirWitnessGenerator, WitnessBuilder}, hash::HashType
     },
     std::{fs::File, path::Path},
     tracing::{info, instrument},
@@ -90,6 +88,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             split_witness_builders,
             witness_generator,
             whir_for_witness,
+            hash_type: HashType::default()
         })
     }
 }

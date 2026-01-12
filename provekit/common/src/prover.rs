@@ -4,6 +4,7 @@ use {
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         NoirElement, R1CS,
+        hash::HashType
     },
     acir::circuit::Program,
     serde::{Deserialize, Serialize},
@@ -17,6 +18,7 @@ pub struct Prover {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
+    pub hash_type: HashType
 }
 
 impl Prover {
@@ -27,6 +29,7 @@ impl Prover {
             split_witness_builders: noir_proof_scheme.split_witness_builders,
             witness_generator:      noir_proof_scheme.witness_generator,
             whir_for_witness:       noir_proof_scheme.whir_for_witness,
+            hash_type:              noir_proof_scheme.hash_type
         }
     }
 

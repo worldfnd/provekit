@@ -23,7 +23,7 @@ pub struct WhirR1CSScheme {
     pub a_num_terms: usize,
     pub num_challenges: usize,
     pub whir_witness: WhirConfig,
-    pub whir_for_hiding_spartan: WhirConfig,
+    pub whir_for_hiding_spartan: WhirConfig
 }
 
 impl WhirR1CSScheme {

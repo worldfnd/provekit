@@ -3,9 +3,10 @@ use {
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         NoirElement, R1CS,
+        hash::HashType
     },
     acir::circuit::Program,
-    serde::{Deserialize, Serialize},
+    serde::{Deserialize, Serialize}
 };
 
 /// A scheme for proving a Noir program.
@@ -16,6 +17,7 @@ pub struct NoirProofScheme {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
+    pub hash_type: HashType
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,5 +29,9 @@ impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    }
+
+    pub fn set_hash_type(&mut self, hash_type: HashType) {
+        self.hash_type = hash_type;
     }
 }

@@ -1,11 +1,12 @@
 mod hash;
 mod pow;
+mod sha2;
 mod skyscraper;
 mod sponge;
 mod whir;
 
 pub use {
-    hash::{CompressionScheme, PermutationScheme, PowScheme},
+    hash::{CompressionScheme, HashType, PermutationScheme, PowScheme},
     pow::PoW,
     skyscraper::Skyscraper,
     sponge::Sponge,
