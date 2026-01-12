@@ -1,7 +1,6 @@
 pub mod file;
 mod interner;
 mod noir_proof_scheme;
-pub mod ntt;
 mod prover;
 mod r1cs;
 pub mod skyscraper;

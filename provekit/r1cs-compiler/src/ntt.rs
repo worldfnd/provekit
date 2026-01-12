@@ -1,3 +1,4 @@
+#![allow(dead_code)] // Remove once RSFr is used for WHIR
 use {ark_bn254::Fr, ark_ff::AdditiveGroup, ntt::ntt_nr, whir::ntt::ReedSolomon};
 
 pub struct RSFr;

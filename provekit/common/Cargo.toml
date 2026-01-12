@@ -22,7 +22,6 @@ ark-crypto-primitives.workspace = true
 ark-ff.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
-ntt.workspace = true
 spongefish.workspace = true
 spongefish-pow.workspace = true
 whir.workspace = true
