@@ -8,6 +8,7 @@ impl ReedSolomon<Fr> for RSFr {
         expansion: usize,
         fold_factor: usize,
     ) -> Vec<Fr> {
+        debug_assert!(expansion > 0);
         interleaved_rs_encode(interleaved_coeffs, expansion, fold_factor)
     }
 }
@@ -27,7 +28,7 @@ fn interleaved_rs_encode(
     result[..interleaved_coeffs.len()].copy_from_slice(interleaved_coeffs);
 
     let mut ntt = ntt::NTT::new(result, fold_factor_exp)
-        .expect("interleaved_coeffs.len() * expension / 2^fold_factor needs to be a power of two.");
+        .expect("interleaved_coeffs.len() * expansion / 2^fold_factor needs to be a power of two.");
 
     ntt_nr(&mut ntt);
 
