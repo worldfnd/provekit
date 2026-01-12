@@ -161,7 +161,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
         return;
     }
 
-    let number_of_polyes = n / order;
+    let number_of_polynomials = n / order;
 
     // Each unique twiddle factor within a stage is a group.
     let mut pairs_in_group = n / 2;
@@ -215,7 +215,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
         .par_chunks_exact_mut(2 * pairs_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, number_of_polyes);
+            dit_nr_cache(reversed_ordered_roots, k, group, number_of_polynomials);
         });
 }
 
