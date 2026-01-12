@@ -131,6 +131,13 @@ impl WitnessIndexRemapper {
                     WitnessCoefficient(*coeff, self.remap(*value)),
                 )
             }
+            WitnessBuilder::LogUpInverse(idx, sz, WitnessCoefficient(coeff, value)) => {
+                WitnessBuilder::LogUpInverse(
+                    self.remap(*idx),
+                    self.remap(*sz),
+                    WitnessCoefficient(*coeff, self.remap(*value)),
+                )
+            }
             WitnessBuilder::DigitalDecomposition(dd) => {
                 let new_witnesses_to_decompose = dd
                     .witnesses_to_decompose

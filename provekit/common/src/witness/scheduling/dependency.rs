@@ -95,7 +95,8 @@ impl DependencyInfo {
             ) => {
                 vec![*x, *y]
             }
-            WitnessBuilder::LogUpDenominator(_, sz, WitnessCoefficient(_, value)) => {
+            WitnessBuilder::LogUpDenominator(_, sz, WitnessCoefficient(_, value))
+            | WitnessBuilder::LogUpInverse(_, sz, WitnessCoefficient(_, value)) => {
                 vec![*sz, *value]
             }
             WitnessBuilder::DigitalDecomposition(dd) => dd.witnesses_to_decompose.clone(),
@@ -186,6 +187,7 @@ impl DependencyInfo {
             | WitnessBuilder::Inverse(idx, _)
             | WitnessBuilder::ProductLinearOperation(idx, ..)
             | WitnessBuilder::LogUpDenominator(idx, ..)
+            | WitnessBuilder::LogUpInverse(idx, ..)
             | WitnessBuilder::SpiceMultisetFactor(idx, ..)
             | WitnessBuilder::BinOpLookupDenominator(idx, ..)
             | WitnessBuilder::And(idx, ..)

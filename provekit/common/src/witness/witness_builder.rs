@@ -77,6 +77,10 @@ pub enum WitnessBuilder {
     /// For solving for the denominator of a lookup (non-indexed).
     /// Field are (witness index, sz_challenge, (value_coeff, value)).
     LogUpDenominator(usize, usize, WitnessCoefficient),
+    /// For solving for the inverse of a lookup denominator directly.
+    /// Computes 1/(sz_challenge - value_coeff * value).
+    /// Fields are (witness index, sz_challenge, (value_coeff, value)).
+    LogUpInverse(usize, usize, WitnessCoefficient),
     /// Builds the witnesses values required for the mixed base digital
     /// decomposition of other witness values.
     DigitalDecomposition(DigitalDecompositionWitnesses),

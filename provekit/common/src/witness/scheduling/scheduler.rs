@@ -136,7 +136,8 @@ impl<'a> LayerScheduler<'a> {
     /// others are added to the current layer immediately.
     fn process_node(&mut self, node_idx: usize) {
         match &self.witness_builders[node_idx] {
-            WitnessBuilder::Inverse(out_witness, _) => {
+            WitnessBuilder::Inverse(out_witness, _)
+            | WitnessBuilder::LogUpInverse(out_witness, ..) => {
                 // Defer inverse for batching
                 self.pending_inverses.push(node_idx);
                 self.pending_inverse_outputs.insert(*out_witness);

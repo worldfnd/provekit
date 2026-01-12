@@ -6,7 +6,7 @@ use {
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
-        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
+        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder, WitnessCoefficient},
         FieldElement, NoirElement, R1CS,
     },
     spongefish::ProverState,
@@ -70,24 +70,47 @@ impl R1CSSolver for R1CS {
                     let mut denominators = Vec::with_capacity(batch_size);
 
                     for inverse_builder in &layer.witness_builders {
-                        let WitnessBuilder::Inverse(output_witness, denominator_witness) =
-                            inverse_builder
-                        else {
-                            panic!(
-                                "Invalid builder in inverse batch: expected Inverse, got {:?}",
-                                inverse_builder
-                            );
-                        };
-
-                        output_witnesses.push(*output_witness);
-
-                        let denominator = witness[*denominator_witness].unwrap_or_else(|| {
-                            panic!(
-                                "Denominator witness {} not set before inverse operation",
-                                denominator_witness
-                            )
-                        });
-                        denominators.push(denominator);
+                        match inverse_builder {
+                            WitnessBuilder::Inverse(output_witness, denominator_witness) => {
+                                output_witnesses.push(*output_witness);
+                                let denominator =
+                                    witness[*denominator_witness].unwrap_or_else(|| {
+                                        panic!(
+                                            "Denominator witness {} not set before inverse operation",
+                                            denominator_witness
+                                        )
+                                    });
+                                denominators.push(denominator);
+                            }
+                            WitnessBuilder::LogUpInverse(
+                                output_witness,
+                                sz_challenge,
+                                WitnessCoefficient(value_coeff, value),
+                            ) => {
+                                output_witnesses.push(*output_witness);
+                                let sz = witness[*sz_challenge].unwrap_or_else(|| {
+                                    panic!(
+                                        "SZ challenge witness {} not set before LogUpInverse",
+                                        sz_challenge
+                                    )
+                                });
+                                let val = witness[*value].unwrap_or_else(|| {
+                                    panic!(
+                                        "Value witness {} not set before LogUpInverse",
+                                        value
+                                    )
+                                });
+                                // Compute denominator: sz_challenge - value_coeff * value
+                                let denominator = sz - (*value_coeff * val);
+                                denominators.push(denominator);
+                            }
+                            _ => {
+                                panic!(
+                                    "Invalid builder in inverse batch: expected Inverse or LogUpInverse, got {:?}",
+                                    inverse_builder
+                                );
+                            }
+                        }
                     }
 
                     // Perform batch inversion and write results

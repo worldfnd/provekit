@@ -104,6 +104,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     witness[*sz_challenge].unwrap() - (*value_coeff * witness[*value].unwrap()),
                 );
             }
+            WitnessBuilder::LogUpInverse(..) => {
+                unreachable!("LogUpInverse should be handled via batch inversion")
+            }
             WitnessBuilder::ProductLinearOperation(
                 witness_idx,
                 ProductLinearTerm(x, a, b),
