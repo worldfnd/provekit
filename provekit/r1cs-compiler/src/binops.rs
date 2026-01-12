@@ -4,11 +4,11 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
         uints::U8,
     },
-    ark_std::One,
+    ark_std::{One, Zero},
     provekit_common::{
         witness::{
-            decompose_into_digits, ConstantOrR1CSWitness, SumTerm, WitnessBuilder,
-            BINOP_ATOMIC_BITS, NUM_DIGITS,
+            decompose_into_digits, ConstantOrR1CSWitness, WitnessBuilder, BINOP_ATOMIC_BITS,
+            NUM_DIGITS,
         },
         FieldElement,
     },
@@ -175,11 +175,11 @@ pub(crate) fn add_binop_constraints(
         r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
     let rs_challenge_sqrd = r1cs_compiler.add_product(rs_challenge, rs_challenge);
 
-    // Calculate the sum, over all invocations of the bin op, of 1 / denominator
-    let summands_for_bin_op = inputs_and_outputs_atomic
+    // Collect binop side terms: 1/(denominator) for each operation
+    let mut summands_for_bin_op: Vec<(FieldElement, usize)> = inputs_and_outputs_atomic
         .into_iter()
         .map(|(lh, rh, output)| {
-            add_lookup_summand(
+            let inverse = add_lookup_summand(
                 r1cs_compiler,
                 sz_challenge,
                 rs_challenge,
@@ -187,24 +187,19 @@ pub(crate) fn add_binop_constraints(
                 lh,
                 rh,
                 ConstantOrR1CSWitness::Witness(output),
-            )
+            );
+            (FieldElement::one(), inverse)
         })
-        .map(|coeff| SumTerm(None, coeff))
         .collect();
-    let sum_for_bin_op = r1cs_compiler.add_sum(summands_for_bin_op);
 
-    // Calculate the sum over all table elements of multiplicity / denominator
-    let summands_for_table = (0..1 << BINOP_ATOMIC_BITS)
-        .flat_map(|lh_operand: u32| {
-            (0..1 << BINOP_ATOMIC_BITS).map(move |rh_operand: u32| {
-                let output = match op {
-                    BinOp::And => lh_operand & rh_operand,
-                    BinOp::Xor => lh_operand ^ rh_operand,
-                };
-                (lh_operand, rh_operand, output)
-            })
-        })
-        .map(|(lh_operand, rh_operand, output)| {
+    // Collect table side terms with negated coefficients:
+    // -multiplicity/(denominator)
+    for lh_operand in 0..(1u32 << BINOP_ATOMIC_BITS) {
+        for rh_operand in 0..(1u32 << BINOP_ATOMIC_BITS) {
+            let output = match op {
+                BinOp::And => lh_operand & rh_operand,
+                BinOp::Xor => lh_operand ^ rh_operand,
+            };
             let denominator = add_lookup_summand(
                 r1cs_compiler,
                 sz_challenge,
@@ -217,17 +212,16 @@ pub(crate) fn add_binop_constraints(
             let multiplicity_witness_idx = multiplicities_first_witness
                 + (lh_operand << BINOP_ATOMIC_BITS) as usize
                 + rh_operand as usize;
-            r1cs_compiler.add_product(multiplicity_witness_idx, denominator)
-        })
-        .map(|coeff| SumTerm(None, coeff))
-        .collect();
-    let sum_for_table = r1cs_compiler.add_sum(summands_for_table);
+            let product = r1cs_compiler.add_product(multiplicity_witness_idx, denominator);
+            summands_for_bin_op.push((FieldElement::one().neg(), product));
+        }
+    }
 
-    // Check that these two sums are equal.
+    // Constraint: (Σ binop_terms - Σ table_terms) * 1 = 0
     r1cs_compiler.r1cs.add_constraint(
+        &summands_for_bin_op,
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
-        &[(FieldElement::one(), sum_for_bin_op)],
-        &[(FieldElement::one(), sum_for_table)],
+        &[(FieldElement::zero(), r1cs_compiler.witness_one())],
     );
 }
 
