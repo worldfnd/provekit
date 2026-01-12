@@ -56,43 +56,6 @@ pub(crate) fn and_u32(
     ])
 }
 
-/// Byte-wise NOT of a 32-bit word.
-/// Computes `~x` by applying `255 - byte` on each U8.
-pub(crate) fn not_u32(r1cs_compiler: &mut NoirToR1CSCompiler, a: &U32) -> U32 {
-    U32::new([
-        not_u8(r1cs_compiler, a.bytes[0]),
-        not_u8(r1cs_compiler, a.bytes[1]),
-        not_u8(r1cs_compiler, a.bytes[2]),
-        not_u8(r1cs_compiler, a.bytes[3]),
-    ])
-}
-
-/// Arithmetic NOT of a single byte: computes `255 - x`.
-fn not_u8(r1cs_compiler: &mut NoirToR1CSCompiler, byte: U8) -> U8 {
-    // Requires byte ∈ [0, 255]
-    assert!(byte.range_checked, "not_u8 requires a range-checked byte");
-    let ff = FieldElement::from(255u64);
-    let result_idx = r1cs_compiler.num_witnesses();
-
-    // result = 255 - byte
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(result_idx, vec![
-        SumTerm(Some(ff), r1cs_compiler.witness_one()),
-        SumTerm(Some(-FieldElement::ONE), byte.idx),
-    ]));
-
-    // Enforce: result + byte = 255
-    r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::ONE, result_idx),
-            (FieldElement::ONE, byte.idx),
-        ],
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[(ff, r1cs_compiler.witness_one())],
-    );
-
-    U8::new(result_idx, byte.range_checked)
-}
-
 /// Right-rotates a 32-bit word represented as 4 little-endian bytes.
 /// Implements ROTR(n) using byte permutation + intra-byte bit recombination.
 /// Uses fused constraint: `result[i] * 2^k + lo[i] = byte[i] + lo[(i+1)%4] *
