@@ -3,7 +3,6 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperSponge},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -14,18 +13,20 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
         ProverState,
     },
+    spongefish_pow,
     std::mem,
     tracing::{info, instrument, warn},
     whir::{
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{CommitmentWriter, Witness},
+            parameters::WhirConfig as GenericWhirConfig,
             prover::Prover,
             statement::{Statement, Weights},
             utils::HintSerialize,
@@ -33,201 +34,201 @@ use {
     },
 };
 
-pub struct WhirR1CSCommitment {
-    pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
+/// Generic commitment structure that works with any Merkle config
+pub struct GenericWhirR1CSCommitment<MerkleConfig: ark_crypto_primitives::merkle_tree::Config> {
+    pub commitment_to_witness: Witness<FieldElement, MerkleConfig>,
     pub masked_polynomial:     EvaluationsList<FieldElement>,
     pub random_polynomial:     EvaluationsList<FieldElement>,
     pub padded_witness:        Vec<FieldElement>,
 }
 
-pub trait WhirR1CSProver {
-    fn commit(
-        &self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: &R1CS,
-        witness: Vec<FieldElement>,
-        is_w1: bool,
-    ) -> Result<WhirR1CSCommitment>;
+/// Commits to a witness polynomial in the WHIR R1CS protocol.
+#[instrument(skip_all)]
+pub fn commit<Sponge, U, MerkleConfig, PowStrategy>(
+    scheme: &WhirR1CSScheme<MerkleConfig, PowStrategy>,
+    merlin: &mut ProverState<Sponge, U>,
+    r1cs: &R1CS,
+    witness: Vec<FieldElement>,
+    is_w1: bool,
+) -> Result<GenericWhirR1CSCommitment<MerkleConfig>>
+where
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: spongefish_pow::PowStrategy,
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
+    let witness_size = if is_w1 {
+        scheme.w1_size
+    } else {
+        r1cs.num_witnesses() - scheme.w1_size
+    };
 
-    fn prove(
-        &self,
-        merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
-        commitments: Vec<WhirR1CSCommitment>,
-    ) -> Result<WhirR1CSProof>;
-}
+    ensure!(
+        witness.len() == witness_size,
+        "Unexpected witness length for R1CS instance"
+    );
+    ensure!(
+        witness_size <= 1 << scheme.m,
+        "R1CS witness length exceeds scheme capacity"
+    );
+    ensure!(
+        r1cs.num_constraints() <= 1 << scheme.m_0,
+        "R1CS constraints exceed scheme capacity"
+    );
 
-impl WhirR1CSProver for WhirR1CSScheme {
-    #[instrument(skip_all)]
-    fn commit(
-        &self,
-        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: &R1CS,
-        witness: Vec<FieldElement>,
-        is_w1: bool,
-    ) -> Result<WhirR1CSCommitment> {
-        let witness_size = if is_w1 {
-            self.w1_size
-        } else {
-            r1cs.num_witnesses() - self.w1_size
-        };
+    let whir_num_vars = scheme.whir_witness.mv_parameters.num_variables;
+    let target_len = 1usize << (whir_num_vars - 1);
 
-        ensure!(
-            witness.len() == witness_size,
-            "Unexpected witness length for R1CS instance"
-        );
-        ensure!(
-            witness_size <= 1 << self.m,
-            "R1CS witness length exceeds scheme capacity"
-        );
-        ensure!(
-            r1cs.num_constraints() <= 1 << self.m_0,
-            "R1CS constraints exceed scheme capacity"
-        );
-
-        // log2(domain) for WHIR witness evaluations.
-        let whir_num_vars = self.whir_witness.mv_parameters.num_variables;
-
-        // Expected evaluation length = 2^(log2(domain) - 1).
-        let target_len = 1usize << (whir_num_vars - 1);
-
-        // Pad witness to power-of-two, then extend to target_len with zeros.
-        let mut padded_witness = pad_to_power_of_two(witness);
-        if padded_witness.len() < target_len {
-            padded_witness.resize(target_len, FieldElement::zero());
-        }
-
-        let witness_polynomial_evals = EvaluationsList::new(padded_witness.clone());
-
-        let (commitment_to_witness, masked_polynomial, random_polynomial) =
-            batch_commit_to_polynomial(
-                self.m,
-                &self.whir_witness,
-                witness_polynomial_evals,
-                merlin,
-            );
-
-        Ok(WhirR1CSCommitment {
-            commitment_to_witness,
-            masked_polynomial,
-            random_polynomial,
-            padded_witness,
-        })
+    let mut padded_witness = pad_to_power_of_two(witness);
+    if padded_witness.len() < target_len {
+        padded_witness.resize(target_len, FieldElement::zero());
     }
 
-    #[instrument(skip_all)]
-    fn prove(
-        &self,
-        mut merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
-        mut commitments: Vec<WhirR1CSCommitment>,
-    ) -> Result<WhirR1CSProof> {
-        ensure!(!commitments.is_empty(), "Need at least one commitment");
+    let witness_polynomial_evals = EvaluationsList::new(padded_witness.clone());
 
-        let is_single = commitments.len() == 1;
-
-        // Reconstruct full witness for sumcheck
-        let full_witness: Vec<FieldElement> = if is_single {
-            // Truncate padded witness back to actual R1CS witness size
-            let mut w = mem::take(&mut commitments[0].padded_witness);
-            w.truncate(r1cs.num_witnesses());
-            w
-        } else {
-            let mut w = std::mem::take(&mut commitments[0].padded_witness);
-            w.truncate(self.w1_size);
-            let w2_len = r1cs.num_witnesses() - self.w1_size;
-            w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
-            commitments[1].padded_witness = Vec::new();
-            w
-        };
-
-        // First round: ZK sumcheck to reduce R1CS to weighted evaluation
-        let alpha = run_zk_sumcheck_prover(
-            &r1cs,
-            &full_witness,
-            &mut merlin,
-            self.m_0,
-            &self.whir_for_hiding_spartan,
+    let (commitment_to_witness, masked_polynomial, random_polynomial) =
+        batch_commit_to_polynomial::<Sponge, U, MerkleConfig, PowStrategy>(
+            scheme.m,
+            &scheme.whir_witness,
+            witness_polynomial_evals,
+            merlin,
         );
-        drop(full_witness);
 
-        // Compute weights from R1CS matrices
-        let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+    Ok(GenericWhirR1CSCommitment {
+        commitment_to_witness,
+        masked_polynomial,
+        random_polynomial,
+        padded_witness,
+    })
+}
 
-        if is_single {
-            // Single commitment path
-            let commitment = commitments.into_iter().next().unwrap();
-            let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
+/// Generates a WHIR R1CS proof from commitments.
+#[instrument(skip_all)]
+pub fn prove<Sponge, U, MerkleConfig, PowStrategy>(
+    scheme: &WhirR1CSScheme<MerkleConfig, PowStrategy>,
+    mut merlin: ProverState<Sponge, U>,
+    r1cs: R1CS,
+    mut commitments: Vec<GenericWhirR1CSCommitment<MerkleConfig>>,
+) -> Result<WhirR1CSProof>
+where
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: spongefish_pow::PowStrategy,
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + spongefish::UnitToBytes
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
+    ensure!(!commitments.is_empty(), "Need at least one commitment");
 
-            let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
-                self.m,
+    let is_single = commitments.len() == 1;
+
+    // Reconstruct full witness for sumcheck
+    let full_witness: Vec<FieldElement> = if is_single {
+        let mut w = mem::take(&mut commitments[0].padded_witness);
+        w.truncate(r1cs.num_witnesses());
+        w
+    } else {
+        let mut w = std::mem::take(&mut commitments[0].padded_witness);
+        w.truncate(scheme.w1_size);
+        let w2_len = r1cs.num_witnesses() - scheme.w1_size;
+        w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
+        commitments[1].padded_witness = Vec::new();
+        w
+    };
+
+    // First round: ZK sumcheck to reduce R1CS to weighted evaluation
+    let alpha = run_zk_sumcheck_prover::<Sponge, U, MerkleConfig, PowStrategy>(
+        &r1cs,
+        &full_witness,
+        &mut merlin,
+        scheme.m_0,
+        &scheme.whir_for_hiding_spartan,
+    );
+    drop(full_witness);
+
+    // Compute weights from R1CS matrices
+    let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+
+    if is_single {
+        let commitment = commitments.into_iter().next().unwrap();
+        let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
+
+        let (statement, f_sums, g_sums) =
+            create_combined_statement_over_two_polynomials::<3, MerkleConfig>(
+                scheme.m,
                 &commitment.commitment_to_witness,
                 commitment.masked_polynomial,
                 commitment.random_polynomial,
                 &alphas,
             );
 
-            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
+        merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
 
-            run_zk_whir_pcs_prover(
-                commitment.commitment_to_witness,
-                statement,
-                &self.whir_witness,
-                &mut merlin,
+        run_zk_whir_pcs_prover::<Sponge, U, MerkleConfig, PowStrategy>(
+            commitment.commitment_to_witness,
+            statement,
+            &scheme.whir_witness,
+            &mut merlin,
+        );
+    } else {
+        let mut commitments = commitments.into_iter();
+        let c1 = commitments.next().unwrap();
+        let c2 = commitments.next().unwrap();
+
+        let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
+            .into_iter()
+            .map(|mut v| {
+                let v2 = v.split_off(scheme.w1_size);
+                (v, v2)
+            })
+            .unzip();
+
+        let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
+        let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+
+        let (statement_1, f_sums_1, g_sums_1) =
+            create_combined_statement_over_two_polynomials::<3, MerkleConfig>(
+                scheme.m,
+                &c1.commitment_to_witness,
+                c1.masked_polynomial,
+                c1.random_polynomial,
+                &alphas_1,
             );
-        } else {
-            // Dual commitment path
-            let mut commitments = commitments.into_iter();
-            let c1 = commitments.next().unwrap();
-            let c2 = commitments.next().unwrap();
+        drop(alphas_1);
 
-            // Split alphas between w1 and w2
-            let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
-                .into_iter()
-                .map(|mut v| {
-                    let v2 = v.split_off(self.w1_size);
-                    (v, v2)
-                })
-                .unzip();
-
-            let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
-            let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
-
-            let (statement_1, f_sums_1, g_sums_1) =
-                create_combined_statement_over_two_polynomials::<3>(
-                    self.m,
-                    &c1.commitment_to_witness,
-                    c1.masked_polynomial,
-                    c1.random_polynomial,
-                    &alphas_1,
-                );
-            drop(alphas_1);
-
-            let (statement_2, f_sums_2, g_sums_2) =
-                create_combined_statement_over_two_polynomials::<3>(
-                    self.m,
-                    &c2.commitment_to_witness,
-                    c2.masked_polynomial,
-                    c2.random_polynomial,
-                    &alphas_2,
-                );
-            drop(alphas_2);
-
-            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
-            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
-
-            run_zk_whir_pcs_batch_prover(
-                &[c1.commitment_to_witness, c2.commitment_to_witness],
-                &[statement_1, statement_2],
-                &self.whir_witness,
-                &mut merlin,
+        let (statement_2, f_sums_2, g_sums_2) =
+            create_combined_statement_over_two_polynomials::<3, MerkleConfig>(
+                scheme.m,
+                &c2.commitment_to_witness,
+                c2.masked_polynomial,
+                c2.random_polynomial,
+                &alphas_2,
             );
-        }
+        drop(alphas_2);
 
-        Ok(WhirR1CSProof {
-            transcript: merlin.narg_string().to_vec(),
-        })
+        merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
+        merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
+
+        run_zk_whir_pcs_batch_prover::<Sponge, U, MerkleConfig, PowStrategy>(
+            &[c1.commitment_to_witness, c2.commitment_to_witness],
+            &[statement_1, statement_2],
+            &scheme.whir_witness,
+            &mut merlin,
+        );
     }
+
+    Ok(WhirR1CSProof {
+        transcript: merlin.narg_string().to_vec(),
+    })
 }
 
 pub fn compute_blinding_coefficients_for_round(
@@ -309,16 +310,29 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
         + eval_cubic_poly(polynomial_coefficient, FieldElement::one())
 }
 
-pub fn batch_commit_to_polynomial(
+pub fn batch_commit_to_polynomial<Sponge, U, MerkleConfig, PowStrategy>(
     m: usize,
-    whir_config: &WhirConfig,
+    whir_config: &GenericWhirConfig<FieldElement, MerkleConfig, PowStrategy>,
     witness: EvaluationsList<FieldElement>,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge, U>,
 ) -> (
-    Witness<FieldElement, SkyscraperMerkleConfig>,
+    Witness<FieldElement, MerkleConfig>,
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
-) {
+)
+where
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: Clone,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
     let mask = generate_random_multilinear_polynomial(witness.num_variables());
     let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
     drop(mask);
@@ -326,7 +340,7 @@ pub fn batch_commit_to_polynomial(
     let random_polynomial_coeff =
         EvaluationsList::new(generate_random_multilinear_polynomial(m)).to_coeffs();
 
-    let committer = CommitmentWriter::new(whir_config.clone());
+    let committer = CommitmentWriter::new((*whir_config).clone());
     let witness_new = committer
         .commit_batch(merlin, &[
             &masked_polynomial_coeff,
@@ -373,25 +387,41 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_sumcheck_prover(
+pub fn run_zk_sumcheck_prover<Sponge, U, MerkleConfig, PowStrategy>(
     r1cs: &R1CS,
     z: &[FieldElement],
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    merlin: &mut ProverState<Sponge, U>,
     m_0: usize,
-    whir_for_blinding_of_spartan_config: &WhirConfig,
-) -> Vec<FieldElement> {
-    // r is the combination randomness from the 2nd item of the interaction phase
+    whir_for_blinding_of_spartan_config: &GenericWhirConfig<
+        FieldElement,
+        MerkleConfig,
+        PowStrategy,
+    >,
+) -> Vec<FieldElement>
+where
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: Clone + spongefish_pow::PowStrategy,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + spongefish::UnitToBytes
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
     let mut r = vec![FieldElement::zero(); m_0];
     merlin
         .fill_challenge_scalars(&mut r)
         .expect("Failed to extract challenge scalars from Merlin");
-    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
+
     let ((mut a, mut b, mut c), mut eq) = rayon::join(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
 
-    // Ensure each vector has length ≥2 and is a power of two.
     pad_to_pow2_len_min2(&mut a);
     pad_to_pow2_len_min2(&mut b);
     pad_to_pow2_len_min2(&mut c);
@@ -401,13 +431,11 @@ pub fn run_zk_sumcheck_prover(
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
 
-    // Spartan blinding: m = log2(domain), target_len = 2^(m-1).
     let blinding_num_vars = whir_for_blinding_of_spartan_config
         .mv_parameters
         .num_variables;
     let target_b = 1usize << (blinding_num_vars - 1);
 
-    //  Flatten and pad to exactly 1 << blinding_num_vars - 1
     let mut flat = blinding_polynomial
         .iter()
         .flatten()
@@ -421,7 +449,7 @@ pub fn run_zk_sumcheck_prover(
     let blinding_polynomial_for_committing = EvaluationsList::new(flat);
     let blinding_polynomial_variables = blinding_polynomial_for_committing.num_variables();
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
-        batch_commit_to_polynomial(
+        batch_commit_to_polynomial::<Sponge, U, MerkleConfig, PowStrategy>(
             blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
             blinding_polynomial_for_committing,
@@ -436,15 +464,11 @@ pub fn run_zk_sumcheck_prover(
     let _ = merlin.fill_challenge_scalars(&mut rho_buf);
     let rho = rho_buf[0];
 
-    // Instead of proving that sum of F over the boolean hypercube is 0, we prove
-    // that sum of F + rho * G over the boolean hypercube is rho * Sum G.
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
 
     let mut fold = None;
 
     for idx in 0..m_0 {
-        // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
-        // polynomial sent by the prover.
         let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
             sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
                 let f0 = eq.0 * (a.0 * b.0 - c.0);
@@ -511,7 +535,7 @@ pub fn run_zk_sumcheck_prover(
     drop((a, b, c, eq));
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
-        create_combined_statement_over_two_polynomials::<1>(
+        create_combined_statement_over_two_polynomials(
             blinding_polynomial_variables + 1,
             &commitment_to_blinding_polynomial,
             blindings_mask_polynomial,
@@ -524,16 +548,17 @@ pub fn run_zk_sumcheck_prover(
         blinding_blind_polynomial_sum[0],
     ]);
 
-    let (_sums, _deferred) = run_zk_whir_pcs_prover(
+    let (_sums, _deferred) = run_zk_whir_pcs_prover::<Sponge, U, MerkleConfig, PowStrategy>(
         commitment_to_blinding_polynomial,
         statement,
-        &whir_for_blinding_of_spartan_config,
+        whir_for_blinding_of_spartan_config,
         merlin,
     );
 
     alpha
 }
 
+#[instrument(skip_all)]
 fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
     let mut result = Vec::with_capacity(values.len() * 4);
     for &value in values {
@@ -545,9 +570,12 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
     result
 }
 
-fn create_combined_statement_over_two_polynomials<const N: usize>(
+fn create_combined_statement_over_two_polynomials<
+    const N: usize,
+    MerkleConfig: ark_crypto_primitives::merkle_tree::Config,
+>(
     cfg_nv: usize,
-    witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
+    witness: &Witness<FieldElement, MerkleConfig>,
     f_polynomial: EvaluationsList<FieldElement>,
     g_polynomial: EvaluationsList<FieldElement>,
     alphas: &[Vec<FieldElement>; N],
@@ -556,7 +584,6 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     Vec<FieldElement>,
     Vec<FieldElement>,
 ) {
-    // base_nv = cfg_nv - 1; lengths: 2^(cfg_nv-1) and 2^cfg_nv.
     let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
     let base_len = 1usize << base_nv;
     let final_len = 1usize << cfg_nv;
@@ -566,11 +593,9 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
     let mut g_sums = Vec::with_capacity(N);
 
     for w in alphas.into_iter() {
-        // lift to 2^{cfg_nv} by zeroing the mask half: [w || 0]
         let mut w_full = Vec::with_capacity(final_len);
         w_full.extend_from_slice(w);
 
-        // Ensure w has length base_len (pad if shorter, assert if longer)
         if w_full.len() < base_len {
             w_full.resize(base_len, FieldElement::zero());
         } else {
@@ -591,19 +616,33 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_whir_pcs_prover(
-    witnesses: Witness<FieldElement, SkyscraperMerkleConfig>,
+pub fn run_zk_whir_pcs_prover<Sponge, U, MerkleConfig, PowStrategy>(
+    witnesses: Witness<FieldElement, MerkleConfig>,
     statements: Statement<FieldElement>,
-    params: &WhirConfig,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
+    params: &GenericWhirConfig<FieldElement, MerkleConfig, PowStrategy>,
+    merlin: &mut ProverState<Sponge, U>,
+) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>)
+where
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: Clone + spongefish_pow::PowStrategy,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + spongefish::UnitToBytes
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
     info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
         warn!("More PoW bits required than specified.");
     }
 
-    let prover = Prover::new(params.clone());
+    let prover = Prover::new((*params).clone());
     let (randomness, deferred) = prover
         .prove(merlin, statements, witnesses)
         .expect("WHIR prover failed to generate a proof");
@@ -612,19 +651,33 @@ pub fn run_zk_whir_pcs_prover(
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_whir_pcs_batch_prover(
-    witnesses: &[Witness<FieldElement, SkyscraperMerkleConfig>],
+pub fn run_zk_whir_pcs_batch_prover<Sponge, U, MerkleConfig, PowStrategy>(
+    witnesses: &[Witness<FieldElement, MerkleConfig>],
     statements: &[Statement<FieldElement>],
-    params: &WhirConfig,
-    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
+    params: &GenericWhirConfig<FieldElement, MerkleConfig, PowStrategy>,
+    merlin: &mut ProverState<Sponge, U>,
+) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>)
+where
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: Clone + spongefish_pow::PowStrategy,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + spongefish::UnitToBytes
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+{
     info!("WHIR Parameters: {params}");
 
     if !params.check_pow_bits() {
         warn!("More PoW bits required than specified.");
     }
 
-    let prover = Prover::new(params.clone());
+    let prover = Prover::new((*params).clone());
     let (randomness, deferred) = prover
         .prove_batch(merlin, statements, witnesses)
         .expect("WHIR prover failed to generate a proof");

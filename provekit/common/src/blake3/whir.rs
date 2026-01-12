@@ -1,9 +1,11 @@
 //! WHIR integration for BLAKE3-based Merkle trees.
 //!
-//! Implements the necessary traits to use BLAKE3 Merkle trees with WHIR's proof system.
+//! Implements the necessary traits to use BLAKE3 Merkle trees with WHIR's proof
+//! system.
 //!
 //! Provides two implementations:
-//! 1. **Hybrid**: BLAKE3 Merkle + Skyscraper Fiat-Shamir (field-native operations)
+//! 1. **Hybrid**: BLAKE3 Merkle + Skyscraper Fiat-Shamir (field-native
+//!    operations)
 //! 2. **Pure**: BLAKE3 Merkle + BLAKE3 Fiat-Shamir (pure cryptographic hash)
 
 use {
@@ -17,8 +19,8 @@ use {
         codecs::arkworks_algebra::{
             FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
         },
-        DomainSeparator, ProofResult, ProverState, VerifierState,
-        BytesToUnitSerialize, BytesToUnitDeserialize,
+        BytesToUnitDeserialize, BytesToUnitSerialize, DomainSeparator, ProofResult, ProverState,
+        VerifierState,
     },
 };
 
@@ -28,7 +30,8 @@ use {
 // BLAKE3 for Merkle commitments + Skyscraper for Fiat-Shamir transcript
 // This is the standard approach used in production ZK systems.
 
-/// Implementation of DigestDomainSeparator for BLAKE3 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for BLAKE3 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<Blake3MerkleConfig>
     for DomainSeparator<SkyscraperSponge, FieldElement>
 {
@@ -38,7 +41,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<Blake3MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for BLAKE3 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for BLAKE3 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<Blake3MerkleConfig>
     for ProverState<SkyscraperSponge, FieldElement>
 {
@@ -55,7 +59,8 @@ impl whir::whir::utils::DigestToUnitSerialize<Blake3MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for BLAKE3 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for BLAKE3 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<Blake3MerkleConfig>
     for VerifierState<'_, SkyscraperSponge, FieldElement>
 {
@@ -83,7 +88,8 @@ impl whir::whir::utils::DigestToUnitDeserialize<Blake3MerkleConfig>
 // BLAKE3 for both Merkle commitments AND Fiat-Shamir transcript
 // Uses byte serialization for field elements through spongefish codecs.
 
-/// Implementation of DigestDomainSeparator for BLAKE3 Merkle with BLAKE3 Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for BLAKE3 Merkle with BLAKE3
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<Blake3MerkleConfig>
     for DomainSeparator<Blake3Sponge, u8>
 {
@@ -93,7 +99,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<Blake3MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for BLAKE3 Merkle with BLAKE3 Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for BLAKE3 Merkle with BLAKE3
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<Blake3MerkleConfig>
     for ProverState<Blake3Sponge, u8>
 {
@@ -104,7 +111,8 @@ impl whir::whir::utils::DigestToUnitSerialize<Blake3MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for BLAKE3 Merkle with BLAKE3 Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for BLAKE3 Merkle with BLAKE3
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<Blake3MerkleConfig>
     for VerifierState<'_, Blake3Sponge, u8>
 {

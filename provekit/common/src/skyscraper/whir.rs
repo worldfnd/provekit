@@ -85,6 +85,12 @@ impl Config for SkyscraperMerkleConfig {
     type TwoToOneHash = SkyscraperTwoToOne;
 }
 
+impl crate::hash_config::TypedHashConfig for SkyscraperMerkleConfig {
+    const HASH_CONFIG: crate::HashConfig = crate::HashConfig::Skyscraper;
+    type Sponge = crate::skyscraper::SkyscraperSponge;
+    type Unit = crate::FieldElement;
+}
+
 impl whir::whir::domainsep::DigestDomainSeparator<SkyscraperMerkleConfig>
     for DomainSeparator<SkyscraperSponge, FieldElement>
 {

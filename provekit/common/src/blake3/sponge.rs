@@ -1,17 +1,10 @@
-//! Pure BLAKE3 sponge for Fiat-Shamir transcripts.
+//! BLAKE3 sponge for Fiat-Shamir transcripts.
 //!
 //! This module provides a BLAKE3-based duplex sponge construction
-//! that can be used for Fiat-Shamir transformations in WHIR proofs.
-//!
-//! Unlike the hybrid approach (which uses Skyscraper for Fiat-Shamir),
-//! this uses pure BLAKE3 for all operations, leveraging its extendable
-//! output function (XOF) capabilities.
+//! for Fiat-Shamir transformations in WHIR proofs, leveraging BLAKE3's
+//! extendable output function (XOF) capabilities.
 
-use {
-    blake3,
-    spongefish::duplex_sponge::DuplexSpongeInterface,
-    zeroize::Zeroize,
-};
+use {blake3, spongefish::duplex_sponge::DuplexSpongeInterface, zeroize::Zeroize};
 
 /// BLAKE3 duplex sponge for Fiat-Shamir transcripts.
 ///
@@ -25,19 +18,19 @@ use {
 #[derive(Clone)]
 pub struct Blake3Sponge {
     /// Current hasher state for absorbing
-    hasher: blake3::Hasher,
+    hasher:        blake3::Hasher,
     /// Cached output for squeezing
     output_reader: Option<blake3::OutputReader>,
     /// Mode: true = absorbing, false = squeezing
-    absorbing: bool,
+    absorbing:     bool,
 }
 
 impl Default for Blake3Sponge {
     fn default() -> Self {
         Self {
-            hasher: blake3::Hasher::new(),
+            hasher:        blake3::Hasher::new(),
             output_reader: None,
-            absorbing: true,
+            absorbing:     true,
         }
     }
 }

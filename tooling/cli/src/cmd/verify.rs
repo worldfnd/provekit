@@ -2,17 +2,20 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, Verifier},
+    provekit_common::{
+        file::{read, read_hash_config},
+        runtime_hash, Verifier,
+    },
     provekit_verifier::Verify,
     std::path::PathBuf,
     tracing::instrument,
 };
 
-/// Prove a prepared Noir program
+/// Verify a Noir proof
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "verify")]
 pub struct Args {
-    /// path to the compiled Noir program
+    /// path to the verifier
     #[argh(positional)]
     verifier_path: PathBuf,
 
@@ -24,18 +27,24 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let mut verifier: Verifier =
-            read(&self.verifier_path).context("while reading Provekit Verifier")?;
+        // Read the hash config from the file header
+        let hash_config = read_hash_config::<Verifier>(&self.verifier_path)
+            .context("while reading hash config from verifier file")?;
 
-        // Read the proof
-        let proof = read(&self.proof_path).context("while reading proof")?;
+        // Use dispatch macro to read with correct types and verify
+        runtime_hash!(hash_config, |MerkleConfig, PowStrategy| {
+            let mut verifier: Verifier<MerkleConfig, PowStrategy> =
+                read(&self.verifier_path).context("while reading Provekit Verifier")?;
 
-        // Verify the proof
-        verifier
-            .verify(&proof)
-            .context("While verifying Noir proof")?;
+            // Read the proof
+            let proof = read(&self.proof_path).context("while reading proof")?;
 
-        Ok(())
+            // Verify the proof
+            verifier
+                .verify(&proof)
+                .context("While verifying Noir proof")?;
+
+            Ok(())
+        })
     }
 }

@@ -7,37 +7,44 @@ use {sha2::Digest, spongefish::duplex_sponge::DuplexSpongeInterface, zeroize::Ze
 
 /// SHA256 duplex sponge for Fiat-Shamir transcripts.
 ///
-/// Uses SHA256 as the underlying hash function with a simple sponge construction.
+/// Uses SHA256 as the underlying hash function with a simple sponge
+/// construction. Optimized with fixed-size buffers to avoid allocations.
 #[derive(Clone)]
 pub struct Sha256Sponge {
-    /// Current state buffer
-    state: Vec<u8>,
+    /// Current state buffer (dynamically sized during absorb phase)
+    state:         Vec<u8>,
+    /// Length of valid data in state
+    state_len:     usize,
     /// Mode: true = absorbing, false = squeezing
-    absorbing: bool,
-    /// Output buffer for squeezing
-    output_buffer: Vec<u8>,
+    absorbing:     bool,
+    /// Output buffer for squeezing (32 bytes = SHA256 output size)
+    output_buffer: [u8; 32],
     /// Position in output buffer
-    output_pos: usize,
+    output_pos:    usize,
 }
 
 impl Default for Sha256Sponge {
     fn default() -> Self {
         Self {
-            state: Vec::new(),
-            absorbing: true,
-            output_buffer: Vec::new(),
-            output_pos: 0,
+            state:         Vec::with_capacity(256), // Pre-allocate to avoid resizes
+            state_len:     0,
+            absorbing:     true,
+            output_buffer: [0u8; 32],
+            output_pos:    32, // Force refill on first squeeze
         }
     }
 }
 
 impl DuplexSpongeInterface<u8> for Sha256Sponge {
     fn new(iv: [u8; 32]) -> Self {
+        let mut state = Vec::with_capacity(256);
+        state.extend_from_slice(&iv);
         Self {
-            state: iv.to_vec(),
-            absorbing: true,
-            output_buffer: Vec::new(),
-            output_pos: 0,
+            state,
+            state_len:     32,
+            absorbing:     true,
+            output_buffer: [0u8; 32],
+            output_pos:    32,
         }
     }
 
@@ -45,15 +52,20 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
         // If we were squeezing, finalize that phase
         if !self.absorbing {
             // Ratchet: hash the current state
-            let hash = sha2::Sha256::digest(&self.state);
-            self.state = hash.to_vec();
-            self.output_buffer.clear();
-            self.output_pos = 0;
+            let hash = sha2::Sha256::digest(&self.state[..self.state_len]);
+            self.state.clear();
+            self.state.extend_from_slice(&hash);
+            self.state_len = 32;
+            self.output_pos = 32;
             self.absorbing = true;
         }
 
-        // Absorb new input
+        // Absorb new input (Vec still used for variable-length absorb)
+        if self.state.len() < self.state_len + input.len() {
+            self.state.reserve(input.len());
+        }
         self.state.extend_from_slice(input);
+        self.state_len += input.len();
         self
     }
 
@@ -61,8 +73,7 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
         // If we were absorbing, switch to squeezing mode
         if self.absorbing {
             self.absorbing = false;
-            self.output_buffer.clear();
-            self.output_pos = 0;
+            self.output_pos = 32; // Force refill
         }
 
         let mut remaining = output.len();
@@ -70,15 +81,17 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
 
         while remaining > 0 {
             // Refill output buffer if needed
-            if self.output_pos >= self.output_buffer.len() {
-                let hash = sha2::Sha256::digest(&self.state);
-                self.output_buffer = hash.to_vec();
+            if self.output_pos >= 32 {
+                let hash = sha2::Sha256::digest(&self.state[..self.state_len]);
+                self.output_buffer.copy_from_slice(&hash);
                 self.output_pos = 0;
                 // Update state for next squeeze
-                self.state = hash.to_vec();
+                self.state.clear();
+                self.state.extend_from_slice(&hash);
+                self.state_len = 32;
             }
 
-            let available = self.output_buffer.len() - self.output_pos;
+            let available = 32 - self.output_pos;
             let to_copy = remaining.min(available);
 
             output[output_offset..output_offset + to_copy]
@@ -94,10 +107,11 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
 
     fn ratchet_unchecked(&mut self) -> &mut Self {
         // Hash the current state to get a new state
-        let hash = sha2::Sha256::digest(&self.state);
-        self.state = hash.to_vec();
-        self.output_buffer.clear();
-        self.output_pos = 0;
+        let hash = sha2::Sha256::digest(&self.state[..self.state_len]);
+        self.state.clear();
+        self.state.extend_from_slice(&hash);
+        self.state_len = 32;
+        self.output_pos = 32;
         self.absorbing = true;
         self
     }
@@ -106,8 +120,9 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
 impl Zeroize for Sha256Sponge {
     fn zeroize(&mut self) {
         self.state.zeroize();
+        self.state_len = 0;
         self.output_buffer.zeroize();
-        self.output_pos = 0;
+        self.output_pos = 32;
         self.absorbing = true;
     }
 }

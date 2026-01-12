@@ -1,4 +1,5 @@
 use {
+    crate::FieldElement,
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
@@ -10,10 +11,11 @@ use {
     rand08::Rng,
     serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
-    std::{borrow::Borrow, io::{Read, Write}},
+    std::{
+        borrow::Borrow,
+        io::{Read, Write},
+    },
 };
-
-use crate::FieldElement;
 
 /// Wrapper type for SHA256 digest that implements `Absorb` trait.
 ///
@@ -170,4 +172,10 @@ impl Config for Sha256MerkleConfig {
     type InnerDigest = Sha256Digest;
     type LeafHash = Sha256CRH;
     type TwoToOneHash = Sha256TwoToOne;
+}
+
+impl crate::hash_config::TypedHashConfig for Sha256MerkleConfig {
+    const HASH_CONFIG: crate::HashConfig = crate::HashConfig::Sha256;
+    type Sponge = crate::sha256::Sha256Sponge;
+    type Unit = u8;
 }

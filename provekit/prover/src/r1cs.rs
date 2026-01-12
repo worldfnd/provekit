@@ -4,7 +4,6 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
@@ -14,13 +13,16 @@ use {
 };
 
 pub trait R1CSSolver {
-    fn solve_witness_vec(
+    fn solve_witness_vec<Sponge, U>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    );
+        transcript: &mut ProverState<Sponge, U>,
+    ) where
+        Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U>,
+        U: spongefish::Unit,
+        ProverState<Sponge, U>: spongefish::codecs::arkworks_algebra::UnitToField<FieldElement>;
 
     #[cfg(test)]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
@@ -48,19 +50,23 @@ impl R1CSSolver for R1CS {
     /// Panics if a denominator witness is not set when needed for inversion.
     /// This indicates a bug in the layer scheduling algorithm.
     #[instrument(skip_all)]
-    fn solve_witness_vec(
+    fn solve_witness_vec<Sponge, U>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) {
+        transcript: &mut ProverState<Sponge, U>,
+    ) where
+        Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U>,
+        U: spongefish::Unit,
+        ProverState<Sponge, U>: spongefish::codecs::arkworks_algebra::UnitToField<FieldElement>,
+    {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, witness, transcript);
+                        builder.solve::<Sponge, U>(&acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {

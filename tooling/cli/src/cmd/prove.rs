@@ -3,15 +3,13 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
-        file::{read, write},
-        Prover,
+        file::{read, read_hash_config, write},
+        runtime_hash, Prover,
     },
     provekit_prover::Prove,
     std::path::PathBuf,
     tracing::{info, instrument},
 };
-#[cfg(test)]
-use {provekit_common::Verifier, provekit_verifier::Verify};
 
 /// Prove a prepared Noir program
 #[derive(FromArgs, PartialEq, Eq, Debug)]
@@ -20,11 +18,6 @@ pub struct Args {
     /// path to the prepared proof scheme
     #[argh(positional)]
     prover_path: PathBuf,
-
-    #[cfg(test)]
-    /// path to the verifier
-    #[argh(positional)]
-    verifier_path: PathBuf,
 
     /// path to the input values
     #[argh(positional)]
@@ -43,32 +36,29 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
-        let (constraints, witnesses) = prover.size();
-        info!(constraints, witnesses, "Read Noir proof scheme");
+        // Read the hash config from the file header
+        let hash_config = read_hash_config::<Prover>(&self.prover_path)
+            .context("while reading hash config from prover file")?;
 
-        // // Read the input toml
-        // let input_map = scheme.read_witness(&self.input_path)?;
+        info!(?hash_config, "Using hash configuration");
 
-        // Generate the proof
-        let proof = prover
-            .prove(&self.input_path)
-            .context("While proving Noir program statement")?;
+        // Use dispatch macro to read with correct types and prove
+        runtime_hash!(hash_config, |MerkleConfig, PowStrategy| {
+            let prover: Prover<MerkleConfig, PowStrategy> =
+                read(&self.prover_path).context("while reading Provekit Prover")?;
 
-        // Verify the proof (not in release build)
-        #[cfg(test)]
-        {
-            let mut verifier: Verifier =
-                read(&self.verifier_path).context("while reading Provekit Verifier")?;
-            verifier
-                .verify(&proof)
-                .context("While verifying Noir proof")?;
-        }
+            let (constraints, witnesses) = prover.size();
+            info!(constraints, witnesses, hash = ?hash_config, "Read Noir proof scheme");
 
-        // Store the proof to file
-        write(&proof, &self.proof_path).context("while writing proof")?;
+            // Generate the proof
+            let proof = prover
+                .prove(&self.input_path)
+                .context("While proving Noir program statement")?;
 
-        Ok(())
+            // Store the proof to file
+            write(&proof, &self.proof_path).context("while writing proof")?;
+
+            Ok(())
+        })
     }
 }

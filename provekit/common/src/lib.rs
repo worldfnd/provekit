@@ -1,6 +1,6 @@
 pub mod blake3;
 pub mod file;
-mod hash_config;
+pub mod hash_config;
 mod interner;
 pub mod keccak;
 mod noir_proof_scheme;
@@ -21,11 +21,10 @@ use crate::{
 };
 pub use {
     acir::FieldElement as NoirElement,
-    hash_config::HashConfig,
+    hash_config::{HashConfig, TypedHashConfig},
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
-    runtime_hash::{DigestAny, NoirProofSchemeAny, ProverAny, VerifierAny, WhirConfigAny},
     verifier::Verifier,
     whir::crypto::fields::Field256 as FieldElement,
     whir_r1cs::{

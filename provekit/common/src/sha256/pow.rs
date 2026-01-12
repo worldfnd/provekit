@@ -9,7 +9,7 @@ use {
 #[derive(Clone, Copy, Debug)]
 pub struct Sha256PoW {
     challenge: [u8; 32],
-    bits: f64,
+    bits:      f64,
 }
 
 impl PowStrategy for Sha256PoW {
@@ -59,7 +59,7 @@ impl Sha256PoW {
 
         // Check remaining bits in the next byte
         if remaining_bits > 0 && full_bytes < hash.len() {
-            let mask = 0xFF << (8 - remaining_bits);
+            let mask = 0xff << (8 - remaining_bits);
             if hash[full_bytes] & mask != 0 {
                 return false;
             }
@@ -89,10 +89,16 @@ mod tests {
     fn test_leading_zeros() {
         let pow = Sha256PoW {
             challenge: [0; 32],
-            bits: 8.0,
+            bits:      8.0,
         };
 
-        assert!(pow.has_required_leading_zeros(&[0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
-        assert!(!pow.has_required_leading_zeros(&[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
+        assert!(pow.has_required_leading_zeros(&[
+            0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0
+        ]));
+        assert!(!pow.has_required_leading_zeros(&[
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0
+        ]));
     }
 }

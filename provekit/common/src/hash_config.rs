@@ -2,18 +2,15 @@
 ///
 /// This module provides runtime selection of hash algorithms, replacing
 /// the previous compile-time feature flag approach.
-
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
-/// Each variant uses the **same hash** for both:
+/// Each variant uses the same hash algorithm for:
 /// - **Merkle tree commitments**: Binds polynomial data
 /// - **Fiat-Shamir transcript**: Interactive proof made non-interactive
 /// - **Proof of Work**: Optional computational puzzle
-///
-/// All configurations are "pure" (not hybrid).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HashConfig {
@@ -73,6 +70,27 @@ impl HashConfig {
         }
     }
 
+    /// Converts hash configuration to a single byte for binary file headers.
+    pub fn to_byte(&self) -> u8 {
+        match self {
+            Self::Skyscraper => 0,
+            Self::Sha256 => 1,
+            Self::Keccak => 2,
+            Self::Blake3 => 3,
+        }
+    }
+
+    /// Converts a byte from binary file header to hash configuration.
+    pub fn from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Self::Skyscraper),
+            1 => Some(Self::Sha256),
+            2 => Some(Self::Keccak),
+            3 => Some(Self::Blake3),
+            _ => None,
+        }
+    }
+
     /// Returns a short description of this configuration.
     pub fn description(&self) -> &'static str {
         match self {
@@ -100,7 +118,10 @@ impl HashConfig {
     /// ```
     /// use provekit_common::HashConfig;
     ///
-    /// assert_eq!(HashConfig::from_str("skyscraper"), Some(HashConfig::Skyscraper));
+    /// assert_eq!(
+    ///     HashConfig::from_str("skyscraper"),
+    ///     Some(HashConfig::Skyscraper)
+    /// );
     /// assert_eq!(HashConfig::from_str("sha256"), Some(HashConfig::Sha256));
     /// assert_eq!(HashConfig::from_str("keccak"), Some(HashConfig::Keccak));
     /// assert_eq!(HashConfig::from_str("blake3"), Some(HashConfig::Blake3));
@@ -155,7 +176,8 @@ impl fmt::Display for HashConfigError {
             Self::InvalidName(name) => {
                 write!(
                     f,
-                    "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, blake3",
+                    "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, \
+                     blake3",
                     name
                 )
             }
@@ -165,13 +187,30 @@ impl fmt::Display for HashConfigError {
 
 impl std::error::Error for HashConfigError {}
 
+/// Trait for types that have an associated HashConfig.
+/// This allows us to derive the hash configuration from generic type parameters
+/// rather than storing it as a field.
+pub trait TypedHashConfig {
+    /// The hash configuration for this type.
+    const HASH_CONFIG: HashConfig;
+
+    /// The sponge type used for Fiat-Shamir transcripts.
+    type Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<Self::Unit> + Clone + 'static;
+
+    /// The unit type used by the sponge.
+    type Unit: spongefish::Unit + Clone + 'static;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_names() {
-        assert_eq!(HashConfig::from_str("skyscraper"), Some(HashConfig::Skyscraper));
+        assert_eq!(
+            HashConfig::from_str("skyscraper"),
+            Some(HashConfig::Skyscraper)
+        );
         assert_eq!(HashConfig::from_str("sky"), Some(HashConfig::Skyscraper));
         assert_eq!(HashConfig::from_str("sha256"), Some(HashConfig::Sha256));
         assert_eq!(HashConfig::from_str("sha"), Some(HashConfig::Sha256));

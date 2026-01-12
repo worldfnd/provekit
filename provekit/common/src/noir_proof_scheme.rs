@@ -10,7 +10,8 @@ use {
 };
 
 /// A scheme for proving a Noir program.
-/// Generic over MerkleConfig and PowStrategy to support different hash algorithms.
+/// Generic over MerkleConfig and PowStrategy to support different hash
+/// algorithms.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NoirProofScheme<MerkleConfig = SkyscraperMerkleConfig, PowStrategy = SkyscraperPoW>
@@ -22,9 +23,6 @@ where
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme<MerkleConfig, PowStrategy>,
-    /// Hash configuration used for this proof scheme.
-    /// Defaults to Skyscraper.
-    #[serde(default)]
     pub hash_config:            HashConfig,
 }
 

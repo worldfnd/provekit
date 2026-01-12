@@ -20,7 +20,8 @@ use {
 // SHA256 for Merkle commitments + Skyscraper for Fiat-Shamir transcript
 // This is the standard approach used in production ZK systems.
 
-/// Implementation of DigestDomainSeparator for SHA256 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for SHA256 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<Sha256MerkleConfig>
     for DomainSeparator<SkyscraperSponge, FieldElement>
 {
@@ -30,7 +31,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<Sha256MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for SHA256 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for SHA256 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<Sha256MerkleConfig>
     for ProverState<SkyscraperSponge, FieldElement>
 {
@@ -47,7 +49,8 @@ impl whir::whir::utils::DigestToUnitSerialize<Sha256MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for SHA256 Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for SHA256 Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<Sha256MerkleConfig>
     for VerifierState<'_, SkyscraperSponge, FieldElement>
 {
@@ -75,7 +78,8 @@ impl whir::whir::utils::DigestToUnitDeserialize<Sha256MerkleConfig>
 // SHA256 for both Merkle commitments AND Fiat-Shamir transcript
 // Uses byte serialization for field elements through spongefish codecs.
 
-/// Implementation of DigestDomainSeparator for SHA256 Merkle with SHA256 Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for SHA256 Merkle with SHA256
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<Sha256MerkleConfig>
     for DomainSeparator<Sha256Sponge, u8>
 {
@@ -85,7 +89,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<Sha256MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for SHA256 Merkle with SHA256 Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for SHA256 Merkle with SHA256
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<Sha256MerkleConfig>
     for ProverState<Sha256Sponge, u8>
 {
@@ -96,7 +101,8 @@ impl whir::whir::utils::DigestToUnitSerialize<Sha256MerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for SHA256 Merkle with SHA256 Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for SHA256 Merkle with SHA256
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<Sha256MerkleConfig>
     for VerifierState<'_, Sha256Sponge, u8>
 {

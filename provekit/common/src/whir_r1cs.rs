@@ -1,3 +1,10 @@
+// ============================================================================
+// Hash Algorithm Configuration
+// ============================================================================
+// Default: Skyscraper
+//
+// Alternative configurations available via --hash flag:
+use crate::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge};
 use {
     crate::{
         utils::{serde_hex, sumcheck::SumcheckIOPattern},
@@ -10,15 +17,6 @@ use {
     tracing::instrument,
     whir::whir::{domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig},
 };
-
-// ============================================================================
-// Hash Algorithm Configuration
-// ============================================================================
-// Default: Skyscraper 
-//
-// Alternative configurations available via --hash flag:
-
-use crate::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge};
 
 // Default hash configuration (Pure Skyscraper)
 type CurrentMerkleConfig = SkyscraperMerkleConfig;
@@ -56,40 +54,29 @@ where
 impl WhirR1CSScheme<CurrentMerkleConfig, CurrentPoW> {
     #[instrument(skip_all)]
     pub fn create_io_pattern(&self) -> IOPattern {
-        let mut io = IOPattern::new("🌪️");
+        self.create_generic_io_pattern()
+    }
+}
 
-        if self.num_challenges > 0 {
-            // Compute total constraints: OOD + statement
-            // OOD: 2 witnesses × committment_ood_samples each
-            // Statement: 2 statements × 3 constraints each = 6
-            let num_witnesses = 2;
-            let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
-            let num_statement_constraints = 6; // 2 statements × 3 constraints
-            let num_constraints_total = num_ood_constraints + num_statement_constraints;
+// Type-specific implementations for each hash algorithm
+impl WhirR1CSScheme<crate::sha256::Sha256MerkleConfig, crate::sha256::Sha256PoW> {
+    #[instrument(skip_all)]
+    pub fn create_io_pattern(&self) -> DomainSeparator<crate::sha256::Sha256Sponge, u8> {
+        self.create_generic_io_pattern()
+    }
+}
 
-            io = io
-                .commit_statement(&self.whir_witness) // C1
-                .add_logup_challenges(self.num_challenges)
-                .commit_statement(&self.whir_witness) // C2
-                .add_rand(self.m_0)
-                .commit_statement(&self.whir_for_hiding_spartan)
-                .add_zk_sumcheck_polynomials(self.m_0)
-                .add_whir_proof(&self.whir_for_hiding_spartan)
-                .hint("claimed_evaluations_1")
-                .hint("claimed_evaluations_2")
-                .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total);
-        } else {
-            io = io
-                .commit_statement(&self.whir_witness)
-                .add_rand(self.m_0)
-                .commit_statement(&self.whir_for_hiding_spartan)
-                .add_zk_sumcheck_polynomials(self.m_0)
-                .add_whir_proof(&self.whir_for_hiding_spartan)
-                .hint("claimed_evaluations")
-                .add_whir_proof(&self.whir_witness);
-        }
+impl WhirR1CSScheme<crate::keccak::KeccakMerkleConfig, crate::keccak::KeccakPoW> {
+    #[instrument(skip_all)]
+    pub fn create_io_pattern(&self) -> DomainSeparator<crate::keccak::KeccakSponge, u8> {
+        self.create_generic_io_pattern()
+    }
+}
 
-        io
+impl WhirR1CSScheme<crate::blake3::Blake3MerkleConfig, crate::blake3::Blake3PoW> {
+    #[instrument(skip_all)]
+    pub fn create_io_pattern(&self) -> DomainSeparator<crate::blake3::Blake3Sponge, u8> {
+        self.create_generic_io_pattern()
     }
 }
 

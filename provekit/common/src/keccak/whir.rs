@@ -1,9 +1,11 @@
 //! WHIR integration for Keccak-based Merkle trees.
 //!
-//! Implements the necessary traits to use Keccak Merkle trees with WHIR's proof system.
+//! Implements the necessary traits to use Keccak Merkle trees with WHIR's proof
+//! system.
 //!
 //! Provides two implementations:
-//! 1. **Hybrid**: Keccak Merkle + Skyscraper Fiat-Shamir (field-native operations)
+//! 1. **Hybrid**: Keccak Merkle + Skyscraper Fiat-Shamir (field-native
+//!    operations)
 //! 2. **Pure**: Keccak Merkle + Keccak Fiat-Shamir (pure cryptographic hash)
 
 use {
@@ -17,8 +19,8 @@ use {
         codecs::arkworks_algebra::{
             FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
         },
-        DomainSeparator, ProofResult, ProverState, VerifierState,
-        BytesToUnitSerialize, BytesToUnitDeserialize,
+        BytesToUnitDeserialize, BytesToUnitSerialize, DomainSeparator, ProofResult, ProverState,
+        VerifierState,
     },
 };
 
@@ -28,7 +30,8 @@ use {
 // Keccak for Merkle commitments + Skyscraper for Fiat-Shamir transcript
 // This is the standard approach used in production ZK systems.
 
-/// Implementation of DigestDomainSeparator for Keccak Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for Keccak Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<KeccakMerkleConfig>
     for DomainSeparator<SkyscraperSponge, FieldElement>
 {
@@ -38,7 +41,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<KeccakMerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for Keccak Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for Keccak Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<KeccakMerkleConfig>
     for ProverState<SkyscraperSponge, FieldElement>
 {
@@ -55,7 +59,8 @@ impl whir::whir::utils::DigestToUnitSerialize<KeccakMerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for Keccak Merkle with Skyscraper Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for Keccak Merkle with Skyscraper
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<KeccakMerkleConfig>
     for VerifierState<'_, SkyscraperSponge, FieldElement>
 {
@@ -83,7 +88,8 @@ impl whir::whir::utils::DigestToUnitDeserialize<KeccakMerkleConfig>
 // Keccak for both Merkle commitments AND Fiat-Shamir transcript
 // Uses byte serialization for field elements through spongefish codecs.
 
-/// Implementation of DigestDomainSeparator for Keccak Merkle with Keccak Fiat-Shamir.
+/// Implementation of DigestDomainSeparator for Keccak Merkle with Keccak
+/// Fiat-Shamir.
 impl whir::whir::domainsep::DigestDomainSeparator<KeccakMerkleConfig>
     for DomainSeparator<KeccakSponge, u8>
 {
@@ -93,7 +99,8 @@ impl whir::whir::domainsep::DigestDomainSeparator<KeccakMerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitSerialize for Keccak Merkle with Keccak Fiat-Shamir.
+/// Implementation of DigestToUnitSerialize for Keccak Merkle with Keccak
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitSerialize<KeccakMerkleConfig>
     for ProverState<KeccakSponge, u8>
 {
@@ -104,7 +111,8 @@ impl whir::whir::utils::DigestToUnitSerialize<KeccakMerkleConfig>
     }
 }
 
-/// Implementation of DigestToUnitDeserialize for Keccak Merkle with Keccak Fiat-Shamir.
+/// Implementation of DigestToUnitDeserialize for Keccak Merkle with Keccak
+/// Fiat-Shamir.
 impl whir::whir::utils::DigestToUnitDeserialize<KeccakMerkleConfig>
     for VerifierState<'_, KeccakSponge, u8>
 {

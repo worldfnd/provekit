@@ -1,14 +1,16 @@
 use {
-    crate::{r1cs::R1CSSolver, whir_r1cs::WhirR1CSProver},
+    crate::r1cs::R1CSSolver,
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover},
+    provekit_common::{skyscraper::SkyscraperSponge, FieldElement, NoirElement, NoirProof, Prover},
+    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, DomainSeparator, ProverState},
     std::path::Path,
     tracing::instrument,
+    whir::whir::domainsep::WhirDomainSeparator,
 };
 
 mod r1cs;
@@ -21,106 +23,204 @@ pub trait Prove {
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 }
 
-impl Prove for Prover {
+// Helper function for witness generation (shared across all implementations)
+fn generate_witness_internal<MerkleConfig, PowStrategy>(
+    prover: &mut Prover<MerkleConfig, PowStrategy>,
+    input_map: InputMap,
+) -> Result<WitnessMap<NoirElement>>
+where
+    MerkleConfig: ark_crypto_primitives::merkle_tree::Config,
+{
+    let solver = Bn254BlackBoxSolver::default();
+    let mut output_buffer = Vec::new();
+    let mut foreign_call_executor = DefaultForeignCallBuilder {
+        output:       &mut output_buffer,
+        enable_mocks: false,
+        resolver_url: None,
+        root_path:    None,
+        package_name: None,
+    }
+    .build();
+
+    let initial_witness = prover.witness_generator.abi().encode(&input_map, None)?;
+
+    let mut witness_stack = nargo::ops::execute_program(
+        &prover.program,
+        initial_witness,
+        &solver,
+        &mut foreign_call_executor,
+    )?;
+
+    Ok(witness_stack
+        .pop()
+        .context("Missing witness results")?
+        .witness)
+}
+
+impl Prove
+    for Prover<
+        provekit_common::skyscraper::SkyscraperMerkleConfig,
+        provekit_common::skyscraper::SkyscraperPoW,
+    >
+{
     #[instrument(skip_all)]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        let solver = Bn254BlackBoxSolver::default();
-        let mut output_buffer = Vec::new();
-        let mut foreign_call_executor = DefaultForeignCallBuilder {
-            output:       &mut output_buffer,
-            enable_mocks: false,
-            resolver_url: None,
-            root_path:    None,
-            package_name: None,
-        }
-        .build();
-
-        let initial_witness = self.witness_generator.abi().encode(&input_map, None)?;
-
-        let mut witness_stack = nargo::ops::execute_program(
-            &self.program,
-            initial_witness,
-            &solver,
-            &mut foreign_call_executor,
-        )?;
-
-        Ok(witness_stack
-            .pop()
-            .context("Missing witness results")?
-            .witness)
+        generate_witness_internal(self, input_map)
     }
 
     #[instrument(skip_all)]
-    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        let (input_map, _expected_return) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        prove_with_hash::<SkyscraperSponge, FieldElement, _, _>(self, prover_toml)
+    }
+}
 
-        let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
+impl Prove
+    for Prover<provekit_common::sha256::Sha256MerkleConfig, provekit_common::sha256::Sha256PoW>
+{
+    #[instrument(skip_all)]
+    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
+        generate_witness_internal(self, input_map)
+    }
 
-        // Set up transcript
-        let io: IOPattern = self.whir_for_witness.create_io_pattern();
-        let mut merlin = io.to_prover_state();
-        drop(io);
+    #[instrument(skip_all)]
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        // Use SHA256 sponge for SHA256 Merkle (pure configuration)
+        prove_with_hash::<provekit_common::sha256::Sha256Sponge, u8, _, _>(self, prover_toml)
+    }
+}
 
-        let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
+impl Prove
+    for Prover<provekit_common::keccak::KeccakMerkleConfig, provekit_common::keccak::KeccakPoW>
+{
+    #[instrument(skip_all)]
+    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
+        generate_witness_internal(self, input_map)
+    }
 
-        // Solve w1 (or all witnesses if no challenges)
-        self.r1cs.solve_witness_vec(
+    #[instrument(skip_all)]
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        // Use Keccak sponge for Keccak Merkle (pure configuration)
+        prove_with_hash::<provekit_common::keccak::KeccakSponge, u8, _, _>(self, prover_toml)
+    }
+}
+
+impl Prove
+    for Prover<provekit_common::blake3::Blake3MerkleConfig, provekit_common::blake3::Blake3PoW>
+{
+    #[instrument(skip_all)]
+    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
+        generate_witness_internal(self, input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        prove_with_hash::<provekit_common::blake3::Blake3Sponge, u8, _, _>(self, prover_toml)
+    }
+}
+
+/// Generates a proof for a Noir program.
+#[instrument(skip_all)]
+fn prove_with_hash<Sponge, U, MerkleConfig, PowStrategy>(
+    mut prover: Prover<MerkleConfig, PowStrategy>,
+    prover_toml: impl AsRef<Path>,
+) -> Result<NoirProof>
+where
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    PowStrategy: Clone + spongefish_pow::PowStrategy,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
+    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
+    U: spongefish::Unit + Clone + 'static,
+    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
+        + spongefish::codecs::arkworks_algebra::UnitToField<FieldElement>
+        + spongefish::BytesToUnitSerialize
+        + spongefish::UnitToBytes
+        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    DomainSeparator<Sponge, U>: WhirDomainSeparator<FieldElement, MerkleConfig>
+        + spongefish::ByteDomainSeparator
+        + spongefish::codecs::arkworks_algebra::FieldDomainSeparator<FieldElement>,
+{
+    let (input_map, _expected_return) =
+        read_inputs_from_file(prover_toml.as_ref(), prover.witness_generator.abi())?;
+
+    let acir_witness_idx_to_value_map = generate_witness_internal(&mut prover, input_map)?;
+
+    // Set up Fiat-Shamir transcript
+    let io = prover.whir_for_witness.create_generic_io_pattern();
+    let mut merlin = io.to_prover_state();
+    drop(io);
+
+    let mut witness: Vec<Option<FieldElement>> = vec![None; prover.r1cs.num_witnesses()];
+
+    // Solve witness values
+    prover.r1cs.solve_witness_vec(
+        &mut witness,
+        prover.split_witness_builders.w1_layers,
+        &acir_witness_idx_to_value_map,
+        &mut merlin,
+    );
+
+    let w1 = witness[..prover.whir_for_witness.w1_size]
+        .iter()
+        .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+        .collect::<Result<Vec<_>>>()?;
+
+    let commitment_1 = whir_r1cs::commit::<Sponge, U, MerkleConfig, PowStrategy>(
+        &prover.whir_for_witness,
+        &mut merlin,
+        &prover.r1cs,
+        w1,
+        true,
+    )
+    .context("While committing to w1")?;
+
+    // Build commitment list based on whether we have challenges
+    let commitments = if prover.whir_for_witness.num_challenges > 0 {
+        // Solve w2 - using same sponge
+        prover.r1cs.solve_witness_vec(
             &mut witness,
-            self.split_witness_builders.w1_layers,
+            prover.split_witness_builders.w2_layers,
             &acir_witness_idx_to_value_map,
             &mut merlin,
         );
 
-        let w1 = witness[..self.whir_for_witness.w1_size]
+        let w2 = witness[prover.whir_for_witness.w1_size..]
             .iter()
-            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
             .collect::<Result<Vec<_>>>()?;
 
-        let commitment_1 = self
-            .whir_for_witness
-            .commit(&mut merlin, &self.r1cs, w1, true)
-            .context("While committing to w1")?;
+        let commitment_2 = whir_r1cs::commit::<Sponge, U, MerkleConfig, PowStrategy>(
+            &prover.whir_for_witness,
+            &mut merlin,
+            &prover.r1cs,
+            w2,
+            false,
+        )
+        .context("While committing to w2")?;
 
-        // Build commitment list based on whether we have challenges
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
-            // Solve w2
-            self.r1cs.solve_witness_vec(
-                &mut witness,
-                self.split_witness_builders.w2_layers,
-                &acir_witness_idx_to_value_map,
-                &mut merlin,
-            );
+        vec![commitment_1, commitment_2]
+    } else {
+        vec![commitment_1]
+    };
+    drop(acir_witness_idx_to_value_map);
 
-            let w2 = witness[self.whir_for_witness.w1_size..]
-                .iter()
-                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
-                .collect::<Result<Vec<_>>>()?;
+    #[cfg(test)]
+    prover
+        .r1cs
+        .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+        .context("While verifying R1CS instance")?;
+    drop(witness);
 
-            let commitment_2 = self
-                .whir_for_witness
-                .commit(&mut merlin, &self.r1cs, w2, false)
-                .context("While committing to w2")?;
+    let whir_r1cs_proof = whir_r1cs::prove::<Sponge, U, MerkleConfig, PowStrategy>(
+        &prover.whir_for_witness,
+        merlin,
+        prover.r1cs,
+        commitments,
+    )
+    .context("While proving R1CS instance")?;
 
-            vec![commitment_1, commitment_2]
-        } else {
-            vec![commitment_1]
-        };
-        drop(acir_witness_idx_to_value_map);
-
-        #[cfg(test)]
-        self.r1cs
-            .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
-            .context("While verifying R1CS instance")?;
-        drop(witness);
-
-        let whir_r1cs_proof = self
-            .whir_for_witness
-            .prove(merlin, self.r1cs, commitments)
-            .context("While proving R1CS instance")?;
-
-        Ok(NoirProof { whir_r1cs_proof })
-    }
+    Ok(NoirProof { whir_r1cs_proof })
 }
 
 #[cfg(test)]

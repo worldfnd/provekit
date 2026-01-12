@@ -32,6 +32,9 @@ toml.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+
 [[bench]]
 name = "bench"
 harness = false

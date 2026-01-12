@@ -24,7 +24,13 @@ pub trait NoirProofSchemeBuilder {
         Self: Sized;
 }
 
-impl NoirProofSchemeBuilder for NoirProofScheme {
+impl<MerkleConfig, PowStrategy> NoirProofSchemeBuilder
+    for NoirProofScheme<MerkleConfig, PowStrategy>
+where
+    MerkleConfig:
+        ark_crypto_primitives::merkle_tree::Config + provekit_common::hash_config::TypedHashConfig,
+    WhirR1CSScheme<MerkleConfig, PowStrategy>: WhirR1CSSchemeBuilder<MerkleConfig, PowStrategy>,
+{
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
         let file = File::open(path).context("while opening Noir program")?;
@@ -85,6 +91,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         );
 
         Ok(Self {
+            hash_config: MerkleConfig::HASH_CONFIG,
             program: program.bytecode,
             r1cs: remapped_r1cs,
             split_witness_builders,

@@ -23,8 +23,15 @@ pub struct Blake3MerkleConfig;
 impl Config for Blake3MerkleConfig {
     type Leaf = [FieldElement];
     type LeafDigest = Blake3Digest;
-    type LeafInnerDigestConverter = ark_crypto_primitives::merkle_tree::IdentityDigestConverter<Blake3Digest>;
+    type LeafInnerDigestConverter =
+        ark_crypto_primitives::merkle_tree::IdentityDigestConverter<Blake3Digest>;
     type InnerDigest = Blake3Digest;
     type LeafHash = Blake3LeafHash<FieldElement>;
     type TwoToOneHash = Blake3Compress;
+}
+
+impl crate::hash_config::TypedHashConfig for Blake3MerkleConfig {
+    const HASH_CONFIG: crate::HashConfig = crate::HashConfig::Blake3;
+    type Sponge = crate::blake3::Blake3Sponge;
+    type Unit = u8;
 }

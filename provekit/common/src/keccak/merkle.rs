@@ -16,15 +16,23 @@ pub type KeccakDigest = GenericDigest<32>;
 
 /// Keccak-based Merkle tree configuration for ProveKit.
 ///
-/// This uses Keccak256 (Ethereum-compatible) for both leaf and inner node hashing.
+/// This uses Keccak256 (Ethereum-compatible) for both leaf and inner node
+/// hashing.
 #[derive(Clone, Debug)]
 pub struct KeccakMerkleConfig;
 
 impl Config for KeccakMerkleConfig {
     type Leaf = [FieldElement];
     type LeafDigest = KeccakDigest;
-    type LeafInnerDigestConverter = ark_crypto_primitives::merkle_tree::IdentityDigestConverter<KeccakDigest>;
+    type LeafInnerDigestConverter =
+        ark_crypto_primitives::merkle_tree::IdentityDigestConverter<KeccakDigest>;
     type InnerDigest = KeccakDigest;
     type LeafHash = KeccakLeafHash<FieldElement>;
     type TwoToOneHash = KeccakCompress;
+}
+
+impl crate::hash_config::TypedHashConfig for KeccakMerkleConfig {
+    const HASH_CONFIG: crate::HashConfig = crate::HashConfig::Keccak;
+    type Sponge = crate::keccak::KeccakSponge;
+    type Unit = u8;
 }

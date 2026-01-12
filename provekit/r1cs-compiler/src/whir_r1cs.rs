@@ -1,5 +1,5 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::next_power_of_two, WhirR1CSScheme, R1CS},
     std::sync::Arc,
     whir::{
         ntt::RSDefault,
@@ -7,22 +7,35 @@ use {
             default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
             MultivariateParameters, ProtocolParameters, SoundnessType,
         },
+        whir::parameters::WhirConfig as GenericWhirConfig,
     },
 };
 
 // Minimum log2 of the WHIR evaluation domain (lower bound for m).
 const MIN_WHIR_NUM_VARIABLES: usize = 12;
-// Minimum number of variables in the sumcheck’s multilinear polynomial (lower
+// Minimum number of variables in the sumcheck's multilinear polynomial (lower
 // bound for m_0).
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
-pub trait WhirR1CSSchemeBuilder {
+pub trait WhirR1CSSchemeBuilder<MerkleConfig, PowStrategy>
+where
+    MerkleConfig: ark_crypto_primitives::merkle_tree::Config,
+{
     fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self;
 
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
+    fn new_whir_config_for_size(
+        num_variables: usize,
+        batch_size: usize,
+    ) -> GenericWhirConfig<provekit_common::FieldElement, MerkleConfig, PowStrategy>;
 }
 
-impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
+impl<MerkleConfig, PowStrategy> WhirR1CSSchemeBuilder<MerkleConfig, PowStrategy>
+    for WhirR1CSScheme<MerkleConfig, PowStrategy>
+where
+    MerkleConfig: ark_crypto_primitives::merkle_tree::Config,
+    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Default,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Default,
+{
     fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self {
         let total_witnesses = r1cs.num_witnesses();
         assert!(
@@ -52,7 +65,10 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         }
     }
 
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
+    fn new_whir_config_for_size(
+        num_variables: usize,
+        batch_size: usize,
+    ) -> GenericWhirConfig<provekit_common::FieldElement, MerkleConfig, PowStrategy> {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
         let mv_params = MultivariateParameters::new(nv);
@@ -61,8 +77,8 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             security_level: 128,
             pow_bits: default_max_pow(nv, 1),
             folding_factor: FoldingFactor::Constant(4),
-            leaf_hash_params: (),
-            two_to_one_params: (),
+            leaf_hash_params: Default::default(),
+            two_to_one_params: Default::default(),
             soundness_type: SoundnessType::ConjectureList,
             _pow_parameters: Default::default(),
             starting_log_inv_rate: 1,
@@ -72,6 +88,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         };
         let reed_solomon = Arc::new(RSDefault);
         let basefield_reed_solomon = reed_solomon.clone();
-        WhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
+        GenericWhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
     }
 }
