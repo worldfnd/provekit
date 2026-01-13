@@ -52,7 +52,7 @@ impl SparseMatrix {
         }
     }
 
-    pub const fn num_entries(&self) -> usize {
+    pub fn num_entries(&self) -> usize {
         self.values.len()
     }
 

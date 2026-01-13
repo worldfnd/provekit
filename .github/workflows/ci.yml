@@ -25,7 +25,7 @@ jobs:
       - name: Setup rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly-2025-04-05
+          channel: nightly-2025-10-20
           cache-base: main
           components: rustfmt, clippy
       - run: cargo fmt --all --check

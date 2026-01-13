@@ -46,7 +46,7 @@ pub unsafe extern "C" fn pk_prove_to_file(
         let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Generate the proof
-        let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;
+        let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
 
         // Write the proof to file
         provekit_common::file::write(&proof, Path::new(out_path))
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn pk_prove_to_json(
         let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
         // Generate the proof
-        let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;
+        let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
 
         // Serialize to JSON
         let json_string = serde_json::to_string(&proof).map_err(|_| PKError::SerializationError)?;
