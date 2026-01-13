@@ -1,11 +1,13 @@
 use {
-    crate::hash::{CompressionScheme, PermutationScheme, PowScheme},
+    crate::hash::{CompressionScheme, HashScheme, PermutationScheme, PowScheme},
     ark_bn254::Fr,
     ark_ff::{BigInt, PrimeField},
+    serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
+    zerocopy::transmute,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Sha2;
 
 impl CompressionScheme for Sha2 {
@@ -57,28 +59,31 @@ impl PermutationScheme for Sha2 {
 
 impl PowScheme for Sha2 {
     fn check(challenge: [u64; 4], bits: f64, nonce: u64) -> bool {
-        assert!((0.0..60.0).contains(&bits), "bits must be smaller than 60");
-
         let mut hasher = Sha256::new();
-        for limb in &challenge {
-            hasher.update(limb.to_le_bytes());
-        }
+        let challenge_bytes: [u8; 32] = unsafe { transmute!(challenge) };
+
+        hasher.update(challenge_bytes);
         hasher.update(nonce.to_le_bytes());
 
         let result = hasher.finalize();
-        let leading_zeros = result[0].leading_zeros() as f64;
 
-        leading_zeros >= bits
+        let difficulty = (1u128 << (128 - bits as u32));
+        let hash_val = u128::from_le_bytes(result[0..16].try_into().unwrap());
+        hash_val < difficulty
     }
 
     fn solve(challenge: [u64; 4], bits: f64) -> Option<u64> {
-        assert!((0.0..60.0).contains(&bits), "bits must be smaller than 60");
-
-        for nonce in 0u64..u64::MAX {
+        let mut nonce = 0u64;
+        loop {
             if Self::check(challenge, bits, nonce) {
                 return Some(nonce);
             }
+            nonce += 1;
+            if nonce == u64::MAX {
+                return None;
+            }
         }
-        None
     }
 }
+
+impl HashScheme for Sha2 {}

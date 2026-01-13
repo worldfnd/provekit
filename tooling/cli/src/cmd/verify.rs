@@ -2,10 +2,14 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, Verifier},
+    provekit_common::{
+        file::{read, read_hash_type},
+        hash::{HashType, Sha2, Skyscraper},
+        Verifier,
+    },
     provekit_verifier::Verify,
     std::path::PathBuf,
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 /// Prove a prepared Noir program
@@ -24,18 +28,28 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let mut verifier: Verifier =
-            read(&self.verifier_path).context("while reading Provekit Verifier")?;
+        let hash_type = read_hash_type(&self.verifier_path)?;
+        info!(hash_type = ?hash_type, "Hash Type");
 
-        // Read the proof
-        let proof = read(&self.proof_path).context("while reading proof")?;
-
-        // Verify the proof
-        verifier
-            .verify(&proof)
-            .context("While verifying Noir proof")?;
-
+        match hash_type {
+            HashType::Skyscraper => {
+                let mut verifier: Verifier<Skyscraper> =
+                    read(&self.verifier_path).context("while reading Provekit Verifier")?;
+                let proof = read(&self.proof_path).context("while reading proof")?;
+                verifier
+                    .verify(&proof)
+                    .context("While verifying Noir proof")?;
+            }
+            HashType::Sha2 => {
+                let mut verifier: Verifier<Sha2> =
+                    read(&self.verifier_path).context("while reading Provekit Verifier")?;
+                let proof = read(&self.proof_path).context("while reading proof")?;
+                verifier
+                    .verify(&proof)
+                    .context("While verifying Noir proof")?;
+            }
+            _ => panic!("Unsupported hash type for verifier"),
+        }
         Ok(())
     }
 }

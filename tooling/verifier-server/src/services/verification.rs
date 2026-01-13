@@ -9,7 +9,7 @@ use {
         models::VerifyRequest,
         services::artifact::ArtifactPaths,
     },
-    provekit_common::{NoirProof, Verifier},
+    provekit_common::{hash::HashScheme, NoirProof, Verifier},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
     tokio_util::sync::CancellationToken,
@@ -35,11 +35,11 @@ impl VerificationService {
     }
 
     /// Perform complete proof verification
-    pub async fn verify_proof(
+    pub async fn verify_proof<H: HashScheme>(
         &self,
         request: &VerifyRequest,
         proof: &NoirProof,
-        verifier: &Verifier,
+        verifier: &Verifier<H>,
         paths: &ArtifactPaths,
         cancellation_token: CancellationToken,
     ) -> AppResult<u64> {
@@ -66,10 +66,10 @@ impl VerificationService {
     }
 
     /// Prepare gnark parameters file for verification
-    fn prepare_gnark_parameters(
+    fn prepare_gnark_parameters<H: HashScheme>(
         &self,
         proof: &NoirProof,
-        verifier: &Verifier,
+        verifier: &Verifier<H>,
         paths: &ArtifactPaths,
     ) -> AppResult<()> {
         info!(

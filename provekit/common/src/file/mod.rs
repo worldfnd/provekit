@@ -5,12 +5,15 @@ mod json;
 
 use {
     self::{
-        bin::{read_bin, write_bin},
+        bin::{read_bin, read_hash_type_bin, write_bin},
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{NoirProof, NoirProofScheme, Prover, Verifier},
+    crate::{
+        hash::{HashScheme, HashType},
+        NoirProof, NoirProofScheme, Prover, Verifier,
+    },
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
@@ -24,19 +27,28 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const VERSION: (u16, u16);
 }
 
-impl FileFormat for NoirProofScheme {
+impl<H> FileFormat for NoirProofScheme<H>
+where
+    H: HashScheme + Serialize + for<'de> Deserialize<'de>,
+{
     const FORMAT: [u8; 8] = *b"NrProScm";
     const EXTENSION: &'static str = "nps";
     const VERSION: (u16, u16) = (0, 0);
 }
 
-impl FileFormat for Prover {
+impl<H> FileFormat for Prover<H>
+where
+    H: HashScheme + Serialize + for<'de> Deserialize<'de>,
+{
     const FORMAT: [u8; 8] = *b"PrvKitPr";
     const EXTENSION: &'static str = "pkp";
     const VERSION: (u16, u16) = (0, 0);
 }
 
-impl FileFormat for Verifier {
+impl<H> FileFormat for Verifier<H>
+where
+    H: HashScheme + Serialize + for<'de> Deserialize<'de>,
+{
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
     const VERSION: (u16, u16) = (0, 0);
@@ -50,10 +62,12 @@ impl FileFormat for NoirProof {
 
 /// Write a file with format determined from extension.
 #[instrument(skip(value))]
-pub fn write<T: FileFormat>(value: &T, path: &Path) -> Result<()> {
+pub fn write<T: FileFormat>(value: &T, path: &Path, hash_type: HashType) -> Result<()> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => write_json(value, path),
-        Some(ext) if ext == T::EXTENSION => write_bin(value, path, T::FORMAT, T::VERSION),
+        Some(ext) if ext == T::EXTENSION => {
+            write_bin(value, path, T::FORMAT, T::VERSION, hash_type)
+        }
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",
             T::EXTENSION
@@ -72,4 +86,10 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
             T::EXTENSION
         )),
     }
+}
+
+/// Read a file with format determined from extension.
+#[instrument()]
+pub fn read_hash_type(path: &Path) -> Result<HashType> {
+    read_hash_type_bin(path)
 }

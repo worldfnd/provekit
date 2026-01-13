@@ -2,7 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        hash::{Skyscraper, Sponge},
+        hash::{HashScheme, HashType, Skyscraper, Sponge},
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },
@@ -32,7 +32,7 @@ pub trait WhirR1CSVerifier {
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()>;
 }
 
-impl WhirR1CSVerifier for WhirR1CSScheme {
+impl<H: HashScheme> WhirR1CSVerifier for WhirR1CSScheme<H> {
     #[instrument(skip_all)]
     #[allow(unused)]
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
@@ -53,7 +53,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         // Sumcheck verification (common to both paths)
         let data_from_sumcheck_verifier =
-            run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
+            run_sumcheck_verifier::<H>(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
                 .context("while verifying sumcheck")?;
 
         // Read hints and verify WHIR proof
@@ -79,7 +79,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     &whir_sums_2,
                 );
 
-                run_whir_pcs_batch_verifier(
+                run_whir_pcs_batch_verifier::<H>(
                     &mut arthur,
                     &self.whir_witness,
                     &[parsed_commitment_1, parsed_commitment_2],
@@ -104,7 +104,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     &whir_sums,
                 );
 
-                run_whir_pcs_verifier(
+                run_whir_pcs_verifier::<H>(
                     &mut arthur,
                     &parsed_commitment_1,
                     &self.whir_witness,
@@ -148,10 +148,10 @@ fn prepare_statement_for_witness_verifier<const N: usize>(
 }
 
 #[instrument(skip_all)]
-pub fn run_sumcheck_verifier(
-    arthur: &mut VerifierState<Sponge<Skyscraper>, FieldElement>,
+pub fn run_sumcheck_verifier<H: HashScheme>(
+    arthur: &mut VerifierState<Sponge<H>, FieldElement>,
     m_0: usize,
-    whir_for_spartan_blinding_config: &WhirConfig,
+    whir_for_spartan_blinding_config: &WhirConfig<H>,
 ) -> Result<DataFromSumcheckVerifier> {
     let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
@@ -214,10 +214,10 @@ pub fn run_sumcheck_verifier(
 }
 
 #[instrument(skip_all)]
-pub fn run_whir_pcs_verifier(
-    arthur: &mut VerifierState<Sponge<Skyscraper>, FieldElement>,
+pub fn run_whir_pcs_verifier<H: HashScheme>(
+    arthur: &mut VerifierState<Sponge<H>, FieldElement>,
     parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
-    params: &WhirConfig,
+    params: &WhirConfig<H>,
     statement_verifier: &Statement<FieldElement>,
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let verifier = Verifier::new(params);
@@ -228,9 +228,9 @@ pub fn run_whir_pcs_verifier(
 }
 
 #[instrument(skip_all)]
-pub fn run_whir_pcs_batch_verifier(
-    arthur: &mut VerifierState<Sponge<Skyscraper>, FieldElement>,
-    params: &WhirConfig,
+pub fn run_whir_pcs_batch_verifier<H: HashScheme>(
+    arthur: &mut VerifierState<Sponge<H>, FieldElement>,
+    params: &WhirConfig<H>,
     parsed_commitments: &[ParsedCommitment<FieldElement, FieldElement>],
     statements: &[Statement<FieldElement>],
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {

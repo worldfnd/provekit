@@ -1,6 +1,6 @@
 use {
     super::{BufExt as _, CountingWriter},
-    crate::utils::human,
+    crate::{hash::HashType, utils::human},
     anyhow::{ensure, Context as _, Result},
     bytes::{Buf, BufMut as _, Bytes, BytesMut},
     serde::{Deserialize, Serialize},
@@ -14,8 +14,18 @@ use {
 };
 
 const ZSTD_COMPRESSION: i32 = zstd::DEFAULT_COMPRESSION_LEVEL;
-const HEADER_SIZE: usize = 20;
+const HEADER_SIZE: usize = 21;
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
+
+pub fn read_hash_type_bin(path: &Path) -> Result<HashType> {
+    let mut file = File::open(path)?;
+    let mut buffer = [0; HEADER_SIZE];
+    file.read_exact(&mut buffer)?;
+
+    // Extract the hash_type from the known position (byte index 20)
+    let hash_byte = buffer[20];
+    Ok(HashType::from(hash_byte))
+}
 
 /// Write a compressed binary file (fast and small).
 #[instrument(skip(value))]
@@ -24,6 +34,7 @@ pub fn write_bin<T: Serialize>(
     path: &Path,
     format: [u8; 8],
     (major, minor): (u16, u16),
+    hash_type: HashType,
 ) -> Result<()> {
     // Open file
     let mut file = File::create(path).context("while creating output file")?;
@@ -35,6 +46,7 @@ pub fn write_bin<T: Serialize>(
     header.put(&format[..]);
     header.put_u16_le(major);
     header.put_u16_le(minor);
+    header.put_u8(hash_type as u8);
     file_counter
         .write_all(&header)
         .context("while writing header")?;

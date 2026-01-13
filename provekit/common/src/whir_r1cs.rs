@@ -1,6 +1,6 @@
 use {
     crate::{
-        hash::{MerkleConfig, PoW, Skyscraper, Sponge},
+        hash::{HashScheme, HashType, MerkleConfig, PoW, Sponge},
         utils::{serde_hex, sumcheck::SumcheckIOPattern},
         witness::WitnessIOPattern,
         FieldElement,
@@ -12,23 +12,27 @@ use {
     whir::whir::{domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig},
 };
 
-pub type WhirConfig = GenericWhirConfig<FieldElement, MerkleConfig<Skyscraper>, PoW<Skyscraper>>;
-pub type IOPattern = DomainSeparator<Sponge<Skyscraper>, FieldElement>;
 
+pub type WhirConfig<H> = GenericWhirConfig<FieldElement, MerkleConfig<H>, PoW<H>>;
+pub type IOPattern<H> = DomainSeparator<Sponge<H>, FieldElement>;
+
+// 2. Update your struct to be generic over H
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct WhirR1CSScheme {
+#[serde(bound = "")]
+pub struct WhirR1CSScheme<H: HashScheme> {
     pub m: usize,
     pub w1_size: usize,
     pub m_0: usize,
     pub a_num_terms: usize,
     pub num_challenges: usize,
-    pub whir_witness: WhirConfig,
-    pub whir_for_hiding_spartan: WhirConfig
+    // Use the generic alias here
+    pub whir_witness: WhirConfig<H>,
+    pub whir_for_hiding_spartan: WhirConfig<H>,
 }
 
-impl WhirR1CSScheme {
+impl<H: HashScheme> WhirR1CSScheme<H> {
     #[instrument(skip_all)]
-    pub fn create_io_pattern(&self) -> IOPattern {
+    pub fn create_io_pattern(&self) -> IOPattern<H> {
         let mut io = IOPattern::new("🌪️");
 
         if self.num_challenges > 0 {
@@ -73,7 +77,7 @@ pub struct WhirR1CSProof {
 }
 
 // TODO: Implement Debug for WhirConfig and derive.
-impl Debug for WhirR1CSScheme {
+impl<H: HashScheme> Debug for WhirR1CSScheme<H> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WhirR1CSScheme")
             .field("m", &self.m)

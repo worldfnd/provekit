@@ -16,7 +16,18 @@ pub trait CompressionScheme: Clone + Send + Sync + 'static {
     fn compress(l: [u64; 4], r: [u64; 4]) -> [u64; 4];
 }
 
+pub trait HashScheme:
+    PowScheme
+    + PermutationScheme
+    + CompressionScheme
+    + PartialEq
+    + Serialize
+    + for<'de> serde::Deserialize<'de>
+{
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "u8", from = "u8")]
 pub enum HashType {
     #[default]
     Skyscraper,
@@ -24,6 +35,24 @@ pub enum HashType {
     Sha3,
     Sha2v2,
     Blake3,
+}
+
+impl From<HashType> for u8 {
+    fn from(t: HashType) -> Self {
+        t as u8
+    }
+}
+
+impl From<u8> for HashType {
+    fn from(v: u8) -> Self {
+        match v {
+            0 => HashType::Skyscraper,
+            1 => HashType::Sha2,
+            2 => HashType::Sha3,
+            3 => HashType::Sha2v2,
+            _ => HashType::Skyscraper,
+        }
+    }
 }
 
 impl HashType {
@@ -38,6 +67,16 @@ impl HashType {
             "blake3" => HashType::Blake3,
             "blake" => HashType::Blake3,
             _ => HashType::Skyscraper,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            HashType::Skyscraper => "Skyscraper".to_string(),
+            HashType::Sha2 => "SHA2".to_string(),
+            HashType::Sha3 => "SHA3".to_string(),
+            HashType::Sha2v2 => "SHA2v2".to_string(),
+            HashType::Blake3 => "BLAKE3".to_string(),
         }
     }
 }

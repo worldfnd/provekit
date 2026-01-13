@@ -3,10 +3,13 @@ use {
         noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
         witness_generator::NoirWitnessGeneratorBuilder,
     },
-    anyhow::{Context as _, Result, ensure},
+    anyhow::{ensure, Context as _, Result},
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
-        NoirProofScheme, WhirR1CSScheme, utils::PrintAbi, witness::{NoirWitnessGenerator, WitnessBuilder}, hash::HashType
+        hash::{HashScheme, HashType},
+        utils::PrintAbi,
+        witness::{NoirWitnessGenerator, WitnessBuilder},
+        NoirProofScheme, WhirR1CSScheme,
     },
     std::{fs::File, path::Path},
     tracing::{info, instrument},
@@ -22,7 +25,7 @@ pub trait NoirProofSchemeBuilder {
         Self: Sized;
 }
 
-impl NoirProofSchemeBuilder for NoirProofScheme {
+impl<H: HashScheme> NoirProofSchemeBuilder for NoirProofScheme<H> {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
         let file = File::open(path).context("while opening Noir program")?;
@@ -88,7 +91,6 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             split_witness_builders,
             witness_generator,
             whir_for_witness,
-            hash_type: HashType::default()
         })
     }
 }
@@ -99,6 +101,7 @@ mod tests {
         crate::NoirProofSchemeBuilder,
         ark_std::One,
         provekit_common::{
+            hash::Skyscraper,
             witness::{ConstantTerm, SumTerm, WitnessBuilder},
             FieldElement, NoirProofScheme,
         },
@@ -125,7 +128,7 @@ mod tests {
     #[test]
     fn test_noir_proof_scheme_serde() {
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
-        let proof_schema = NoirProofScheme::from_file(path).unwrap();
+        let proof_schema = NoirProofScheme::<Skyscraper>::from_file(path).unwrap();
 
         test_serde(&proof_schema.r1cs);
         test_serde(&proof_schema.split_witness_builders);

@@ -4,7 +4,7 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        hash::{Skyscraper, Sponge},
+        hash::{HashScheme, Sponge},
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
@@ -14,12 +14,12 @@ use {
 };
 
 pub trait R1CSSolver {
-    fn solve_witness_vec(
+    fn solve_witness_vec<H: HashScheme>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        transcript: &mut ProverState<Sponge<H>, FieldElement>,
     );
 
     #[cfg(test)]
@@ -48,12 +48,12 @@ impl R1CSSolver for R1CS {
     /// Panics if a denominator witness is not set when needed for inversion.
     /// This indicates a bug in the layer scheduling algorithm.
     #[instrument(skip_all)]
-    fn solve_witness_vec(
+    fn solve_witness_vec<H: HashScheme>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        transcript: &mut ProverState<Sponge<H>, FieldElement>,
     ) {
         for layer in &plan.layers {
             match layer.typ {

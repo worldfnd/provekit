@@ -1,6 +1,7 @@
 use {
-    crate::hash::{CompressionScheme, PermutationScheme, PowScheme},
+    crate::hash::{CompressionScheme, HashScheme, PermutationScheme, PowScheme},
     ark_bn254::Fr,
+    serde::{Deserialize, Serialize},
     skyscraper::{
         pow::{solve, verify},
         reference::permute,
@@ -8,7 +9,7 @@ use {
     },
 };
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Skyscraper;
 
 impl CompressionScheme for Skyscraper {
@@ -33,3 +34,5 @@ impl PowScheme for Skyscraper {
         Some(solve(challenge, bits))
     }
 }
+
+impl HashScheme for Skyscraper {}

@@ -2,7 +2,7 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, Prover},
+    provekit_common::{file::read, hash::Skyscraper, NoirProof, Prover},
     provekit_gnark::write_gnark_parameters_to_file,
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
@@ -45,7 +45,8 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the prover
-        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover<Skyscraper> =
+            read(&self.prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 

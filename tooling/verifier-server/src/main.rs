@@ -5,6 +5,7 @@ use {
         routing::{get, post},
         Router,
     },
+    provekit_common::hash::{HashScheme, Skyscraper},
     std::net::SocketAddr,
     tower::ServiceBuilder,
     tower_http::{
@@ -39,7 +40,8 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create the application router
-    let app = create_app(config.clone()).with_state(app_state);
+    // Default one used. Refactor later.
+    let app = create_app::<Skyscraper>(config.clone()).with_state(app_state);
 
     // Bind to the configured address
     let addr = SocketAddr::new(
@@ -68,9 +70,9 @@ fn init_tracing() {
 }
 
 /// Create the Axum application with all routes and middleware
-fn create_app(config: Config) -> Router<AppState> {
+fn create_app<H: HashScheme>(config: Config) -> Router<AppState> {
     Router::new()
-        .route("/verify", post(verify_handler))
+        .route("/verify", post(verify_handler::<H>))
         .route("/health", get(health_check))
         .layer(
             ServiceBuilder::new()

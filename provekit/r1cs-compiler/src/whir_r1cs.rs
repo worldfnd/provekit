@@ -1,5 +1,7 @@
 use {
-    provekit_common::{hash::HashType, utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{
+        hash::HashScheme, utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS,
+    },
     std::sync::Arc,
     whir::{
         ntt::RSDefault,
@@ -16,22 +18,14 @@ const MIN_WHIR_NUM_VARIABLES: usize = 12;
 // bound for m_0).
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
-pub trait WhirR1CSSchemeBuilder {
-    fn new_for_r1cs(
-        r1cs: &R1CS,
-        w1_size: usize,
-        num_challenges: usize
-    ) -> Self;
+pub trait WhirR1CSSchemeBuilder<H: HashScheme> {
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self;
 
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
+    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig<H>;
 }
 
-impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
-    fn new_for_r1cs(
-        r1cs: &R1CS,
-        w1_size: usize,
-        num_challenges: usize
-    ) -> Self {
+impl<H: HashScheme> WhirR1CSSchemeBuilder<H> for WhirR1CSScheme<H> {
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self {
         let total_witnesses = r1cs.num_witnesses();
         assert!(
             w1_size <= total_witnesses,
@@ -60,7 +54,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         }
     }
 
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
+    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig<H> {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
         let mv_params = MultivariateParameters::new(nv);

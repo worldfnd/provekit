@@ -3,7 +3,7 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        hash::{MerkleConfig, Skyscraper, Sponge},
+        hash::{HashScheme, MerkleConfig, Sponge},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -33,39 +33,39 @@ use {
     },
 };
 
-pub struct WhirR1CSCommitment {
-    pub commitment_to_witness: Witness<FieldElement, MerkleConfig<Skyscraper>>,
+pub struct WhirR1CSCommitment<H: HashScheme> {
+    pub commitment_to_witness: Witness<FieldElement, MerkleConfig<H>>,
     pub masked_polynomial:     EvaluationsList<FieldElement>,
     pub random_polynomial:     EvaluationsList<FieldElement>,
     pub padded_witness:        Vec<FieldElement>,
 }
 
-pub trait WhirR1CSProver {
+pub trait WhirR1CSProver<H: HashScheme> {
     fn commit(
         &self,
-        merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        merlin: &mut ProverState<Sponge<H>, FieldElement>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
-    ) -> Result<WhirR1CSCommitment>;
+    ) -> Result<WhirR1CSCommitment<H>>;
 
     fn prove(
         &self,
-        merlin: ProverState<Sponge<Skyscraper>, FieldElement>,
+        merlin: ProverState<Sponge<H>, FieldElement>,
         r1cs: R1CS,
-        commitments: Vec<WhirR1CSCommitment>,
+        commitments: Vec<WhirR1CSCommitment<H>>,
     ) -> Result<WhirR1CSProof>;
 }
 
-impl WhirR1CSProver for WhirR1CSScheme {
+impl<H: HashScheme> WhirR1CSProver<H> for WhirR1CSScheme<H> {
     #[instrument(skip_all)]
     fn commit(
         &self,
-        merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        merlin: &mut ProverState<Sponge<H>, FieldElement>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
-    ) -> Result<WhirR1CSCommitment> {
+    ) -> Result<WhirR1CSCommitment<H>> {
         let witness_size = if is_w1 {
             self.w1_size
         } else {
@@ -118,9 +118,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn prove(
         &self,
-        mut merlin: ProverState<Sponge<Skyscraper>, FieldElement>,
+        mut merlin: ProverState<Sponge<H>, FieldElement>,
         r1cs: R1CS,
-        mut commitments: Vec<WhirR1CSCommitment>,
+        mut commitments: Vec<WhirR1CSCommitment<H>>,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -159,7 +159,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let commitment = commitments.into_iter().next().unwrap();
             let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
 
-            let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
+            let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3, H>(
                 self.m,
                 &commitment.commitment_to_witness,
                 commitment.masked_polynomial,
@@ -194,7 +194,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
 
             let (statement_1, f_sums_1, g_sums_1) =
-                create_combined_statement_over_two_polynomials::<3>(
+                create_combined_statement_over_two_polynomials::<3, H>(
                     self.m,
                     &c1.commitment_to_witness,
                     c1.masked_polynomial,
@@ -204,7 +204,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             drop(alphas_1);
 
             let (statement_2, f_sums_2, g_sums_2) =
-                create_combined_statement_over_two_polynomials::<3>(
+                create_combined_statement_over_two_polynomials::<3, H>(
                     self.m,
                     &c2.commitment_to_witness,
                     c2.masked_polynomial,
@@ -309,13 +309,13 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
         + eval_cubic_poly(polynomial_coefficient, FieldElement::one())
 }
 
-pub fn batch_commit_to_polynomial(
+pub fn batch_commit_to_polynomial<H: HashScheme>(
     m: usize,
-    whir_config: &WhirConfig,
+    whir_config: &WhirConfig<H>,
     witness: EvaluationsList<FieldElement>,
-    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+    merlin: &mut ProverState<Sponge<H>, FieldElement>,
 ) -> (
-    Witness<FieldElement, MerkleConfig<Skyscraper>>,
+    Witness<FieldElement, MerkleConfig<H>>,
     EvaluationsList<FieldElement>,
     EvaluationsList<FieldElement>,
 ) {
@@ -373,12 +373,12 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_sumcheck_prover(
+pub fn run_zk_sumcheck_prover<H: HashScheme>(
     r1cs: &R1CS,
     z: &[FieldElement],
-    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+    merlin: &mut ProverState<Sponge<H>, FieldElement>,
     m_0: usize,
-    whir_for_blinding_of_spartan_config: &WhirConfig,
+    whir_for_blinding_of_spartan_config: &WhirConfig<H>,
 ) -> Vec<FieldElement> {
     // r is the combination randomness from the 2nd item of the interaction phase
     let mut r = vec![FieldElement::zero(); m_0];
@@ -511,7 +511,7 @@ pub fn run_zk_sumcheck_prover(
     drop((a, b, c, eq));
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
-        create_combined_statement_over_two_polynomials::<1>(
+        create_combined_statement_over_two_polynomials::<1, H>(
             blinding_polynomial_variables + 1,
             &commitment_to_blinding_polynomial,
             blindings_mask_polynomial,
@@ -545,9 +545,9 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
     result
 }
 
-fn create_combined_statement_over_two_polynomials<const N: usize>(
+fn create_combined_statement_over_two_polynomials<const N: usize, H: HashScheme>(
     cfg_nv: usize,
-    witness: &Witness<FieldElement, MerkleConfig<Skyscraper>>,
+    witness: &Witness<FieldElement, MerkleConfig<H>>,
     f_polynomial: EvaluationsList<FieldElement>,
     g_polynomial: EvaluationsList<FieldElement>,
     alphas: &[Vec<FieldElement>; N],
@@ -591,11 +591,11 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_whir_pcs_prover(
-    witnesses: Witness<FieldElement, MerkleConfig<Skyscraper>>,
+pub fn run_zk_whir_pcs_prover<H: HashScheme>(
+    witnesses: Witness<FieldElement, MerkleConfig<H>>,
     statements: Statement<FieldElement>,
-    params: &WhirConfig,
-    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+    params: &WhirConfig<H>,
+    merlin: &mut ProverState<Sponge<H>, FieldElement>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     info!("WHIR Parameters: {params}");
 
@@ -612,11 +612,11 @@ pub fn run_zk_whir_pcs_prover(
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_whir_pcs_batch_prover(
-    witnesses: &[Witness<FieldElement, MerkleConfig<Skyscraper>>],
+pub fn run_zk_whir_pcs_batch_prover<H: HashScheme>(
+    witnesses: &[Witness<FieldElement, MerkleConfig<H>>],
     statements: &[Statement<FieldElement>],
-    params: &WhirConfig,
-    merlin: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+    params: &WhirConfig<H>,
+    merlin: &mut ProverState<Sponge<H>, FieldElement>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     info!("WHIR Parameters: {params}");
 

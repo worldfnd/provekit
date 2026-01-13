@@ -1,6 +1,6 @@
 use {
     ark_poly::EvaluationDomain,
-    provekit_common::{IOPattern, WhirConfig},
+    provekit_common::{hash::HashScheme, IOPattern, WhirConfig},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -32,7 +32,6 @@ pub struct GnarkConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-
 pub struct WHIRConfigGnark {
     /// number of rounds
     pub n_rounds:               usize,
@@ -61,7 +60,7 @@ pub struct WHIRConfigGnark {
 }
 
 impl WHIRConfigGnark {
-    pub fn new(whir_params: &WhirConfig) -> Self {
+    pub fn new<H: HashScheme>(whir_params: &WhirConfig<H>) -> Self {
         WHIRConfigGnark {
             n_rounds:               whir_params
                 .folding_factor
@@ -104,11 +103,11 @@ impl WHIRConfigGnark {
 
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
-pub fn gnark_parameters(
-    whir_params_witness: &WhirConfig,
-    whir_params_hiding_spartan: &WhirConfig,
+pub fn gnark_parameters<H: HashScheme>(
+    whir_params_witness: &WhirConfig<H>,
+    whir_params_hiding_spartan: &WhirConfig<H>,
     transcript: &[u8],
-    io: &IOPattern,
+    io: &IOPattern<H>,
     m_0: usize,
     m: usize,
     a_num_terms: usize,
@@ -131,11 +130,11 @@ pub fn gnark_parameters(
 
 /// Writes config used for Gnark circuit to a file
 #[instrument(skip_all)]
-pub fn write_gnark_parameters_to_file(
-    whir_params_witness: &WhirConfig,
-    whir_params_hiding_spartan: &WhirConfig,
+pub fn write_gnark_parameters_to_file<H: HashScheme>(
+    whir_params_witness: &WhirConfig<H>,
+    whir_params_hiding_spartan: &WhirConfig<H>,
     transcript: &[u8],
-    io: &IOPattern,
+    io: &IOPattern<H>,
     m_0: usize,
     m: usize,
     a_num_terms: usize,

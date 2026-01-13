@@ -2,11 +2,14 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    core::hash,
-    provekit_common::{file::write, hash::HashType, NoirProofScheme, Prover, Verifier},
+    provekit_common::{
+        file::write,
+        hash::{HashType, Skyscraper},
+        NoirProofScheme, Prover, Verifier,
+    },
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     std::path::PathBuf,
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 /// Prepare a Noir program for proving
@@ -48,22 +51,23 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-    
-        let mut scheme = NoirProofScheme::from_file(&self.program_path)
-        .context("while compiling Noir program")?;
+        let scheme: NoirProofScheme<Skyscraper> = NoirProofScheme::from_file(&self.program_path)
+            .context("while compiling Noir program")?;
 
         let hash_type = HashType::from_str(&self.hash);
-        scheme.set_hash_type(hash_type);
+        info!(hash_type = ?hash_type, "Hash Type in prepare command");
 
         write(
             &Prover::from_noir_proof_scheme(scheme.clone()),
             &self.pkp_path,
+            hash_type,
         )
         .context("while writing Noir proof scheme")?;
 
         write(
-            &Verifier::from_noir_proof_scheme(scheme), 
-            &self.pkv_path
+            &Verifier::from_noir_proof_scheme(scheme),
+            &self.pkv_path,
+            hash_type,
         )
         .context("while writing Noir proof scheme")?;
 

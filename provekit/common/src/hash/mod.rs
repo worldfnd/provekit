@@ -6,8 +6,9 @@ mod sponge;
 mod whir;
 
 pub use {
-    hash::{CompressionScheme, HashType, PermutationScheme, PowScheme},
+    hash::{CompressionScheme, HashScheme, HashType, PermutationScheme, PowScheme},
     pow::PoW,
+    sha2::Sha2,
     skyscraper::Skyscraper,
     sponge::Sponge,
     whir::MerkleConfig,

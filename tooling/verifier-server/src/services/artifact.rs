@@ -5,7 +5,7 @@
 
 use {
     crate::error::{AppError, AppResult},
-    provekit_common::Verifier,
+    provekit_common::{hash::HashScheme, Verifier},
     sha2::{Digest, Sha256},
     std::path::{Path, PathBuf},
     tracing::{info, instrument},
@@ -28,13 +28,13 @@ impl ArtifactService {
 
     /// Download and cache all required artifacts for verification
     #[instrument(skip(self))]
-    pub async fn prepare_artifacts(
+    pub async fn prepare_artifacts<H: HashScheme>(
         &self,
         pkv_url: &str,
         r1cs_url: &str,
         pk_url: Option<&str>,
         vk_url: Option<&str>,
-    ) -> AppResult<(Verifier, ArtifactPaths)> {
+    ) -> AppResult<(Verifier<H>, ArtifactPaths)> {
         let cache_dir = self.create_cache_directory(pkv_url).await?;
         let paths = ArtifactPaths::new(&cache_dir);
 
@@ -180,7 +180,7 @@ impl ArtifactService {
     }
 
     /// Load a Verifier from the PKV file
-    async fn load_verifier(&self, pkv_file: &Path) -> AppResult<Verifier> {
+    async fn load_verifier<H: HashScheme>(&self, pkv_file: &Path) -> AppResult<Verifier<H>> {
         info!(
             pkv_file = %pkv_file.display(),
             "Loading Verifier"

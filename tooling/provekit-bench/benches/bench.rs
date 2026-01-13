@@ -3,7 +3,7 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    provekit_common::{file::read, NoirProof, Prover, Verifier},
+    provekit_common::{file::read, hash::Skyscraper, NoirProof, Prover, Verifier},
     provekit_prover::Prove,
     provekit_verifier::Verify,
     std::path::Path,
@@ -13,7 +13,7 @@ use {
 fn read_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
-    bencher.bench(|| read::<Prover>(&proof_prover_path));
+    bencher.bench(|| read::<Prover<Skyscraper>>(&proof_prover_path));
 }
 
 #[divan::bench]
@@ -21,7 +21,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
 
-    let prover: Prover = read(&proof_prover_path)
+    let prover: Prover<Skyscraper> = read(&proof_prover_path)
         .with_context(|| format!("Reading {}", proof_prover_path.display()))
         .expect("Reading prover");
 
@@ -42,7 +42,7 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {
-        let prover: Prover = read(&proof_prover_path)
+        let prover: Prover<Skyscraper> = read(&proof_prover_path)
             .with_context(|| {
                 format!(
                     "Failed to read scheme from path: {} (working dir: {:?})",
@@ -60,7 +60,7 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 fn verify_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_verifier_path = crate_dir.join("noir-provekit-verifier.pkv");
-    let mut verifier: Verifier = read(&proof_verifier_path).unwrap();
+    let mut verifier: Verifier<Skyscraper> = read(&proof_verifier_path).unwrap();
     let proof_path = crate_dir.join("noir-proof.np");
     let proof: NoirProof = read(&proof_path).unwrap();
     bencher.bench_local(|| black_box(&mut verifier).verify(black_box(&proof)));

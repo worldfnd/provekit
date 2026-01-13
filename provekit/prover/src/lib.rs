@@ -6,7 +6,7 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover},
+    provekit_common::{hash::HashScheme, FieldElement, IOPattern, NoirElement, NoirProof, Prover},
     std::path::Path,
     tracing::instrument,
 };
@@ -21,7 +21,7 @@ pub trait Prove {
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 }
 
-impl Prove for Prover {
+impl<H: HashScheme> Prove for Prover<H> {
     #[instrument(skip_all)]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
         let solver = Bn254BlackBoxSolver::default();
@@ -58,7 +58,7 @@ impl Prove for Prover {
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
         // Set up transcript
-        let io: IOPattern = self.whir_for_witness.create_io_pattern();
+        let io = self.whir_for_witness.create_io_pattern();
         let mut merlin = io.to_prover_state();
         drop(io);
 

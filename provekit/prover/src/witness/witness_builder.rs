@@ -4,7 +4,7 @@ use {
     ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
-        hash::{Skyscraper, Sponge},
+        hash::{HashScheme, Sponge},
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
@@ -15,21 +15,21 @@ use {
     spongefish::{codecs::arkworks_algebra::UnitToField, ProverState},
 };
 
-pub trait WitnessBuilderSolver {
+pub trait WitnessBuilderSolver<H: HashScheme> {
     fn solve(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        transcript: &mut ProverState<Sponge<H>, FieldElement>,
     );
 }
 
-impl WitnessBuilderSolver for WitnessBuilder {
+impl<H: HashScheme> WitnessBuilderSolver<H> for WitnessBuilder {
     fn solve(
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<Sponge<Skyscraper>, FieldElement>,
+        transcript: &mut ProverState<Sponge<H>, FieldElement>,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {

@@ -8,6 +8,7 @@ use {
         extract::{Json, State},
         response::Json as ResponseJson,
     },
+    provekit_common::hash::HashScheme,
     std::time::Instant,
     tokio::sync::OwnedSemaphorePermit,
     tokio_util::sync::CancellationToken,
@@ -15,7 +16,7 @@ use {
 };
 
 /// Handle proof verification requests
-pub async fn verify_handler(
+pub async fn verify_handler<H: HashScheme>(
     State(state): State<AppState>,
     Json(payload): Json<VerifyRequest>,
 ) -> AppResult<ResponseJson<VerifyResponse>> {
@@ -73,7 +74,7 @@ pub async fn verify_handler(
         let state = state.clone();
         let payload = payload.clone();
         let token = cancellation_token.clone();
-        tokio::spawn(async move { verification(&state, &payload, token).await })
+        tokio::spawn(async move { verification::<H>(&state, &payload, token).await })
     };
 
     // Wait for either verification completion or cancellation
@@ -161,7 +162,7 @@ pub async fn verify_handler(
 }
 
 /// Perform the proof verification using services
-async fn verification(
+async fn verification<H: HashScheme>(
     state: &AppState,
     request: &VerifyRequest,
     cancellation_token: CancellationToken,
@@ -176,7 +177,7 @@ async fn verification(
     // Download and prepare artifacts
     let (verifier, paths) = state
         .artifact_service
-        .prepare_artifacts(
+        .prepare_artifacts::<H>(
             &request.pkv_url,
             &request.r1cs_url,
             request.pk_url.as_deref(),
