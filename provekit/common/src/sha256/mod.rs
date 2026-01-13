@@ -17,7 +17,7 @@ mod sponge;
 mod whir;
 
 pub use {
-    merkle::{Sha256Digest, Sha256MerkleConfig},
+    merkle::{Sha256CRH, Sha256Digest, Sha256MerkleConfig, Sha256TwoToOne},
     pow::Sha256PoW,
     sponge::Sha256Sponge,
 };

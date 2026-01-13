@@ -24,10 +24,16 @@ noirc_artifacts.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+ark-crypto-primitives.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
 divan.workspace = true
+rand.workspace = true
 serde.workspace = true
+spongefish.workspace = true
 test-case.workspace = true
 toml.workspace = true
+whir.workspace = true
 
 [lints]
 workspace = true
@@ -37,4 +43,8 @@ default = []
 
 [[bench]]
 name = "bench"
+harness = false
+
+[[bench]]
+name = "hash_bench"
 harness = false
