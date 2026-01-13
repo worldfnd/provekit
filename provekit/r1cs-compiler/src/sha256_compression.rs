@@ -9,8 +9,11 @@ use {
         witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::collections::BTreeMap,
+    std::collections::{BTreeMap, HashMap},
 };
+
+/// Type alias for pack cache: maps byte indices to packed witness index
+pub(crate) type PackCache = HashMap<[usize; 4], usize>;
 
 /// SHA256 round constants K[0..63]
 const SHA256_K: [u32; 64] = [
@@ -207,9 +210,64 @@ pub(crate) fn shr_u32(
 }
 
 /// Creates partition witnesses (lo, hi) for splitting a byte at bit position k.
-/// Used by rotr_u32 and shr_u32 which add their own fused constraints.
-/// Only range-checks lo (k bits) since hi is implicitly bounded by the fused
-/// constraint when the input byte is already range-checked.
+///
+/// Given a byte value `x`, produces `lo = x mod 2^k` and `hi = x / 2^k`.
+///
+/// # Why `hi` Does NOT Need an Explicit Range Check
+///
+/// Only `lo` is explicitly range-checked to `[0, 2^k - 1]`. The soundness of
+/// `hi` is **implicitly enforced** by the fused constraint added by the caller
+/// (rotr_u32/shr_u32). Here's the detailed proof:
+///
+/// ## Step 1: The Fused Constraint
+///
+/// The caller adds this constraint:
+/// ```text
+/// result[i] * 2^k + lo[i] = byte[i] + lo[i+1] * 256
+/// ```
+///
+/// ## Step 2: Witness Definition
+///
+/// The witness builder computes: `result[i] = hi[i] + lo[i+1] * 2^(8-k)`
+///
+/// ## Step 3: Substitution
+///
+/// Substituting into the constraint:
+/// ```text
+/// (hi[i] + lo[i+1] * 2^(8-k)) * 2^k + lo[i] = byte[i] + lo[i+1] * 256
+/// hi[i] * 2^k + lo[i+1] * 2^8 + lo[i] = byte[i] + lo[i+1] * 2^8
+/// ```
+///
+/// ## Step 4: Simplification
+///
+/// The `lo[i+1] * 2^8` terms cancel on both sides:
+/// ```text
+/// hi[i] * 2^k + lo[i] = byte[i]
+/// ```
+///
+/// ## Step 5: Why This Bounds `hi`
+///
+/// Given:
+/// - `byte ∈ [0, 255]` (input is range-checked)
+/// - `lo ∈ [0, 2^k - 1]` (explicitly range-checked)
+///
+/// The constraint `hi * 2^k + lo = byte` implies:
+/// - `hi * 2^k = byte - lo`
+/// - Since `byte ≤ 255` and `lo ≥ 0`: `hi * 2^k ≤ 255`
+/// - Therefore: `hi ≤ 255 / 2^k = 2^(8-k) - 1` (integer division)
+///
+/// Since `byte - lo` must be non-negative and divisible by `2^k` for `hi` to be
+/// an integer, and the field modulus `p` is much larger than 256, there's no
+/// wrap-around attack possible. An attacker cannot pick a malicious `hi` value
+/// (like `p - 1`) because `hi * 2^k` would exceed 255, violating the
+/// constraint.
+/// - `hi` is automatically bounded to `[0, 31]` without explicit range check
+///
+/// # Warning
+///
+/// This function is **only sound when used with the fused constraints** in
+/// rotr_u32 and shr_u32. If reused elsewhere without equivalent constraints,
+/// an explicit range check on `hi` would be required.
 fn partition_byte_witnesses(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -230,7 +288,8 @@ fn partition_byte_witnesses(
         k: k as u8,
     });
 
-    // Range check lo - required for soundness
+    // Range check lo - required for soundness.
+    // hi is implicitly bounded by the fused constraint (see doc comment).
     range_checks.entry(k).or_default().push(lo);
 
     (U8::new(lo, true), U8::new(hi, true))
@@ -242,6 +301,7 @@ fn partition_byte_witnesses(
 pub(crate) fn add_u32_multi_addition(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    pack_cache: &mut PackCache,
     inputs: &[&U32],
 ) -> U32 {
     assert!(!inputs.is_empty(), "Need at least 1 input");
@@ -250,10 +310,10 @@ pub(crate) fn add_u32_multi_addition(
         return *inputs[0];
     }
 
-    // Step 1: Pack all U32 inputs to field elements
+    // Step 1: Pack all U32 inputs to field elements (with caching)
     let packed: Vec<usize> = inputs
         .iter()
-        .map(|u| u.pack(r1cs_compiler, range_checks))
+        .map(|u| u.pack_cached(r1cs_compiler, range_checks, pack_cache))
         .collect();
 
     // Step 2: Create result and carry witnesses
@@ -305,6 +365,7 @@ pub(crate) fn add_u32_multi_addition(
 pub(crate) fn add_u32_multi_addition_with_const(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    pack_cache: &mut PackCache,
     inputs: &[&U32],
     constants: &[u32],
 ) -> U32 {
@@ -320,10 +381,10 @@ pub(crate) fn add_u32_multi_addition_with_const(
         return U32::from_const(r1cs_compiler, result);
     }
 
-    // Step 1: Pack all U32 inputs
+    // Step 1: Pack all U32 inputs (with caching)
     let packed: Vec<usize> = inputs
         .iter()
-        .map(|u| u.pack(r1cs_compiler, range_checks))
+        .map(|u| u.pack_cached(r1cs_compiler, range_checks, pack_cache))
         .collect();
 
     // Step 2: Compute constant sum
@@ -483,6 +544,7 @@ pub(crate) fn add_message_schedule_expansion(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    pack_cache: &mut PackCache,
     input_words: &[U32; 16],
 ) -> [U32; 64] {
     // Initialize with input words
@@ -497,7 +559,7 @@ pub(crate) fn add_message_schedule_expansion(
         let s0 = add_sigma0(r1cs_compiler, xor_ops, range_checks, &w[w.len() - 15]);
 
         // W[i] = σ₁(W[i-2]) + W[i-7] + σ₀(W[i-15]) + W[i-16]
-        let new_w = add_u32_multi_addition(r1cs_compiler, range_checks, &[
+        let new_w = add_u32_multi_addition(r1cs_compiler, range_checks, pack_cache, &[
             &s1,
             &w[w.len() - 7],
             &s0,
@@ -516,11 +578,17 @@ pub(crate) fn add_message_schedule_expansion(
 /// `T2 = Σ₀(a) + Maj(a,b,c)`
 /// Returns new `[a, b, c, d, e, f, g, h]` where a = T1+T2, e = d+T1, others
 /// rotate
+///
+/// Optimization: Instead of computing T1 and T2 as intermediate values, we
+/// inline them directly into new_e and new_a computations. This eliminates
+/// 2 × 6 = 12 witnesses per round (T1 and T2 each needed result + carry + 4
+/// unpacked bytes).
 pub(crate) fn add_sha256_round(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    pack_cache: &mut PackCache,
     working_vars: [U32; 8],
     k_constant: u32,
     w_word: &U32,
@@ -533,29 +601,41 @@ pub(crate) fn add_sha256_round(
     // Ch(e, f, g)
     let ch_efg = add_ch(r1cs_compiler, and_ops, xor_ops, &e, &f, &g);
 
-    // T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
-    // Single variadic addition instead of 4 chained additions!
-    let t1 = add_u32_multi_addition_with_const(
-        r1cs_compiler,
-        range_checks,
-        &[&h, &sigma1_e, &ch_efg, w_word],
-        &[k_constant],
-    );
-
     // Σ₀(a)
     let sigma0_a = add_cap_sigma0(r1cs_compiler, xor_ops, range_checks, &a);
 
     // Maj(a, b, c)
     let maj_abc = maj(r1cs_compiler, and_ops, xor_ops, &a, &b, &c);
 
-    // T2 = Σ₀(a) + Maj(a,b,c)
-    let t2 = add_u32_multi_addition(r1cs_compiler, range_checks, &[&sigma0_a, &maj_abc]);
+    // Optimized: Compute new_e and new_a directly without T1/T2 intermediates
+    //
+    // Original formulas:
+    //   T1 = h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+    //   T2 = Σ₀(a) + Maj(a,b,c)
+    //   new_e = d + T1
+    //   new_a = T1 + T2
+    //
+    // Inlined:
+    //   new_e = d + h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+    //   new_a = h + Σ₁(e) + Ch(e,f,g) + Σ₀(a) + Maj(a,b,c) + K[i] + W[i]
 
-    // new_e = d + T1
-    let new_e = add_u32_multi_addition(r1cs_compiler, range_checks, &[&d, &t1]);
+    // new_e = d + h + Σ₁(e) + Ch(e,f,g) + K[i] + W[i]
+    let new_e = add_u32_multi_addition_with_const(
+        r1cs_compiler,
+        range_checks,
+        pack_cache,
+        &[&d, &h, &sigma1_e, &ch_efg, w_word],
+        &[k_constant],
+    );
 
-    // new_a = T1 + T2
-    let new_a = add_u32_multi_addition(r1cs_compiler, range_checks, &[&t1, &t2]);
+    // new_a = h + Σ₁(e) + Ch(e,f,g) + Σ₀(a) + Maj(a,b,c) + K[i] + W[i]
+    let new_a = add_u32_multi_addition_with_const(
+        r1cs_compiler,
+        range_checks,
+        pack_cache,
+        &[&h, &sigma1_e, &ch_efg, &sigma0_a, &maj_abc, w_word],
+        &[k_constant],
+    );
 
     // Return updated working variables
     // [new_a, a, b, c, new_e, e, f, g]
@@ -596,8 +676,7 @@ pub(crate) fn add_sha256_compression(
             .iter()
             .map(|input| match input {
                 ConstantOrR1CSWitness::Witness(idx) => {
-                    // Range check input and unpack to bytes
-                    range_checks.entry(32).or_default().push(*idx);
+                    // Unpack to bytes (adds 4× 8-bit range checks internally)
                     U32::unpack_u32(r1cs_compiler, range_checks, *idx)
                 }
                 ConstantOrR1CSWitness::Constant(_) => {
@@ -613,7 +692,7 @@ pub(crate) fn add_sha256_compression(
             .iter()
             .map(|hash_val| match hash_val {
                 ConstantOrR1CSWitness::Witness(idx) => {
-                    range_checks.entry(32).or_default().push(*idx);
+                    // Unpack to bytes (adds 4× 8-bit range checks internally)
                     U32::unpack_u32(r1cs_compiler, range_checks, *idx)
                 }
                 ConstantOrR1CSWitness::Constant(_) => {
@@ -624,8 +703,17 @@ pub(crate) fn add_sha256_compression(
             .try_into()
             .unwrap();
 
+        // Create pack cache for this compression - avoids repacking same U32 values
+        let mut pack_cache = PackCache::new();
+
         // Step 1: Message schedule expansion (16 words -> 64 words)
-        let w = add_message_schedule_expansion(r1cs_compiler, xor_ops, range_checks, &input_u32s);
+        let w = add_message_schedule_expansion(
+            r1cs_compiler,
+            xor_ops,
+            range_checks,
+            &mut pack_cache,
+            &input_u32s,
+        );
 
         // Step 2: Initialize working variables with initial hash values
         let mut working_vars = initial_hash;
@@ -637,6 +725,7 @@ pub(crate) fn add_sha256_compression(
                 and_ops,
                 xor_ops,
                 range_checks,
+                &mut pack_cache,
                 working_vars,
                 SHA256_K[i],
                 &w[i],
@@ -646,15 +735,17 @@ pub(crate) fn add_sha256_compression(
         // Step 4: Add initial hash values to final working variables (mod 2^32)
         let mut final_hash = [U32::from_const(r1cs_compiler, 0); 8];
         for i in 0..8 {
-            final_hash[i] = add_u32_multi_addition(r1cs_compiler, range_checks, &[
-                &initial_hash[i],
-                &working_vars[i],
-            ]);
+            final_hash[i] =
+                add_u32_multi_addition(r1cs_compiler, range_checks, &mut pack_cache, &[
+                    &initial_hash[i],
+                    &working_vars[i],
+                ]);
         }
 
         // Step 5: Pack final hash back to 32-bit and constrain to outputs
         for i in 0..8 {
-            let final_packed = final_hash[i].pack(r1cs_compiler, range_checks);
+            let final_packed =
+                final_hash[i].pack_cached(r1cs_compiler, range_checks, &mut pack_cache);
             r1cs_compiler.r1cs.add_constraint(
                 &[(FieldElement::ONE, final_packed)],
                 &[(FieldElement::ONE, r1cs_compiler.witness_one())],
