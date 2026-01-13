@@ -28,6 +28,17 @@ use {
 /// Breakdown of R1CS costs by operation type.
 #[derive(Debug, Clone, Default)]
 pub struct R1CSBreakdown {
+    // AssertZero constraints from ACIR opcodes
+    pub assert_zero_constraints: usize,
+    pub assert_zero_witnesses:   usize,
+
+    // Memory operations
+    pub memory_rom_constraints: usize,
+    pub memory_rom_witnesses:   usize,
+    pub memory_ram_constraints: usize,
+    pub memory_ram_witnesses:   usize,
+
+    // Batched operations (AND/XOR/RANGE)
     pub and_constraints:   usize,
     pub and_witnesses:     usize,
     pub xor_constraints:   usize,
@@ -36,11 +47,15 @@ pub struct R1CSBreakdown {
     pub range_witnesses:   usize,
 
     // SHA256-specific contributions
-    pub sha256_direct_constraints: usize, // NOT operations, u32 additions, etc.
+    pub sha256_direct_constraints: usize,
     pub sha256_direct_witnesses:   usize,
-    pub sha256_and_ops:            usize, // Number of AND operations
-    pub sha256_xor_ops:            usize, // Number of XOR operations
-    pub sha256_range_ops:          usize, // Number of RANGE operations
+    pub sha256_and_ops:            usize,
+    pub sha256_xor_ops:            usize,
+    pub sha256_range_ops:          usize,
+
+    // Poseidon2-specific contributions
+    pub poseidon2_constraints: usize,
+    pub poseidon2_witnesses:   usize,
 }
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
@@ -273,6 +288,10 @@ impl NoirToR1CSCompiler {
 
         let mut breakdown = R1CSBreakdown::default();
 
+        // Track AssertZero costs
+        let constraints_before_assert = self.r1cs.num_constraints();
+        let witnesses_before_assert = self.num_witnesses();
+
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
@@ -463,22 +482,48 @@ impl NoirToR1CSCompiler {
             }
         }
 
-        // For each memory block, add appropriate constraints (depending on whether it
-        // is read-only or not)
-        memory_blocks.iter().for_each(|(_, block)| {
+        // Capture AssertZero costs (from opcode processing above)
+        breakdown.assert_zero_constraints =
+            self.r1cs.num_constraints() - constraints_before_assert;
+        breakdown.assert_zero_witnesses = self.num_witnesses() - witnesses_before_assert;
+
+        // Track Memory ROM costs
+        let constraints_before_rom = self.r1cs.num_constraints();
+        let witnesses_before_rom = self.num_witnesses();
+
+        // Track Memory RAM costs
+        let mut constraints_before_ram = 0;
+        let mut witnesses_before_ram = 0;
+
+        for (_, block) in memory_blocks.iter() {
             if block.is_read_only() {
-                // Use a lookup to enforce that the reads are correct.
                 add_rom_checking(self, block);
             } else {
-                // Read/write memory block - use Spice offline memory checking.
-                // Returns witnesses that need to be range checked.
+                if constraints_before_ram == 0 {
+                    breakdown.memory_rom_constraints =
+                        self.r1cs.num_constraints() - constraints_before_rom;
+                    breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
+                    constraints_before_ram = self.r1cs.num_constraints();
+                    witnesses_before_ram = self.num_witnesses();
+                }
                 let (num_bits, witnesses_to_range_check) = add_ram_checking(self, block);
                 let range_check = range_checks.entry(num_bits).or_default();
                 witnesses_to_range_check
                     .iter()
                     .for_each(|value| range_check.push(*value));
             }
-        });
+        }
+
+        // Finalize memory tracking
+        if constraints_before_ram == 0 {
+            breakdown.memory_rom_constraints =
+                self.r1cs.num_constraints() - constraints_before_rom;
+            breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
+        } else {
+            breakdown.memory_ram_constraints =
+                self.r1cs.num_constraints() - constraints_before_ram;
+            breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
+        }
 
         // Track SHA256's contribution to batched operations and direct constraints
         let and_ops_before = and_ops.len();
@@ -520,8 +565,12 @@ impl NoirToR1CSCompiler {
         breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before;
         breakdown.xor_witnesses = self.num_witnesses() - witnesses_before;
 
-        // For the Poseidon2 permutation operation.
+        // Track Poseidon2 permutation costs
+        let constraints_before = self.r1cs.num_constraints();
+        let witnesses_before = self.num_witnesses();
         add_poseidon2_permutation(self, poseidon2_ops);
+        breakdown.poseidon2_constraints = self.r1cs.num_constraints() - constraints_before;
+        breakdown.poseidon2_witnesses = self.num_witnesses() - witnesses_before;
 
         // Track range check costs
         let constraints_before = self.r1cs.num_constraints();

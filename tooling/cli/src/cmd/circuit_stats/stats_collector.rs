@@ -16,12 +16,6 @@ use {
     std::collections::{HashMap, HashSet},
 };
 
-/// R1CS complexity constants for black box functions (measured empirically).
-pub(super) const SHA256_COMPRESSION_CONSTRAINTS: usize = 31_264;
-pub(super) const SHA256_COMPRESSION_WITNESSES: usize = 30_959;
-pub(super) const POSEIDON2_PERMUTATION_CONSTRAINTS: usize = 415;
-pub(super) const POSEIDON2_PERMUTATION_WITNESSES: usize = 417;
-
 /// Comprehensive circuit statistics collector.
 pub(super) struct CircuitStats {
     // AssertZero statistics

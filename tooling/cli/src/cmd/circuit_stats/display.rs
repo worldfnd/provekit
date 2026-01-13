@@ -5,9 +5,7 @@
 use {
     super::{
         memory::{describe_block_type, MemoryAggregation},
-        stats_collector::{
-            CircuitStats, POSEIDON2_PERMUTATION_CONSTRAINTS, POSEIDON2_PERMUTATION_WITNESSES,
-        },
+        stats_collector::CircuitStats,
     },
     acir::{circuit::Circuit, FieldElement},
     provekit_common::R1CS,
@@ -255,7 +253,7 @@ pub(super) fn print_r1cs_breakdown(
 fn collect_r1cs_components(
     stats: &CircuitStats,
     circuit: &Circuit<FieldElement>,
-    memory_summary: &MemoryAggregation,
+    _memory_summary: &MemoryAggregation,
     breakdown: &R1CSBreakdown,
 ) -> Vec<String> {
     let mut components = Vec::new();
@@ -267,15 +265,13 @@ fn collect_r1cs_components(
         base_witnesses
     ));
 
-    // AssertZero
-    if stats.num_assert_zero_opcodes > 0 {
-        let constraints = stats.num_mul_terms;
-        let witnesses = stats
-            .num_mul_terms
-            .saturating_sub(stats.num_assert_zero_opcodes);
+    // AssertZero - use exact numbers from breakdown
+    if stats.num_assert_zero_opcodes > 0 || breakdown.assert_zero_constraints > 0 {
         components.push(format!(
             "AssertZero ({} opcodes):             {:>8} constraints {:>8} witnesses",
-            stats.num_assert_zero_opcodes, constraints, witnesses
+            stats.num_assert_zero_opcodes,
+            breakdown.assert_zero_constraints,
+            breakdown.assert_zero_witnesses
         ));
     }
 
@@ -291,32 +287,32 @@ fn collect_r1cs_components(
         }
     }
 
-    // Poseidon2
+    // Poseidon2 - use exact numbers from breakdown
     if let Some(&count) = stats.blackbox_func_counts.get("Poseidon2Permutation") {
         if count > 0 {
-            let constraints = POSEIDON2_PERMUTATION_CONSTRAINTS * count;
-            let witnesses = POSEIDON2_PERMUTATION_WITNESSES * count;
             components.push(format!(
                 "Poseidon2 Permutation ({} calls):    {:>8} constraints {:>8} witnesses",
-                count, constraints, witnesses
+                count, breakdown.poseidon2_constraints, breakdown.poseidon2_witnesses
             ));
         }
     }
 
-    // Memory
-    if memory_summary.rom_constraints > 0 {
+    // Memory - use exact numbers from breakdown
+    if breakdown.memory_rom_constraints > 0 {
         components.push(format!(
             "Memory ROM ({} blocks):              {:>8} constraints {:>8} witnesses",
             stats.memory.read_only_block_count(),
-            memory_summary.rom_constraints,
-            memory_summary.rom_witnesses
+            breakdown.memory_rom_constraints,
+            breakdown.memory_rom_witnesses
         ));
     }
-    if memory_summary.ram_constraints > 0 {
+    if breakdown.memory_ram_constraints > 0 {
         let ram_blocks = stats.memory.total_blocks() - stats.memory.read_only_block_count();
         components.push(format!(
             "Memory RAM ({} blocks):              {:>8} constraints {:>8} witnesses",
-            ram_blocks, memory_summary.ram_constraints, memory_summary.ram_witnesses
+            ram_blocks,
+            breakdown.memory_ram_constraints,
+            breakdown.memory_ram_witnesses
         ));
     }
 
