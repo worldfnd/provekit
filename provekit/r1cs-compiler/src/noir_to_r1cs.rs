@@ -1,6 +1,6 @@
 use {
     crate::{
-        binops::{add_binop_constraints, BinOp},
+        binops::add_combined_binop_constraints,
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
@@ -241,15 +241,21 @@ impl NoirToR1CSCompiler {
         // (input, input, output) tuples for AND and XOR operations.
         // Inputs may be either constants or R1CS witnesses.
         // Outputs are always R1CS witnesses.
+        // General ops from Noir blackbox calls (may be >8 bits, need decomposition)
         let mut and_ops = vec![];
         let mut xor_ops = vec![];
+        // Byte-level ops from SHA256 (exactly 8 bits, no decomposition needed)
+        let mut and_ops_byte = vec![];
+        let mut xor_ops_byte = vec![];
 
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
 
         for opcode in &circuit.opcodes {
             match opcode {
-                Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
+                Opcode::AssertZero(expr) => {
+                    self.add_acir_assert_zero(expr);
+                }
 
                 // Brillig is only for witness generation and does not produce constraints.
                 Opcode::BrilligCall { .. } => {}
@@ -454,22 +460,17 @@ impl NoirToR1CSCompiler {
             }
         });
 
-        // For the SHA256 compression operations, add the appropriate constraints.
         add_sha256_compression(
             self,
-            &mut and_ops,
-            &mut xor_ops,
+            &mut and_ops_byte,
+            &mut xor_ops_byte,
             &mut range_checks,
             sha256_compression_ops,
         );
 
-        // For the AND and XOR operations, add the appropriate constraints.
-        add_binop_constraints(self, BinOp::And, and_ops);
-        add_binop_constraints(self, BinOp::Xor, xor_ops);
-        // For the Poseidon2 permutation operation.
+        add_combined_binop_constraints(self, and_ops_byte, xor_ops_byte, true);
+        add_combined_binop_constraints(self, and_ops, xor_ops, false);
         add_poseidon2_permutation(self, poseidon2_ops);
-
-        // Perform all range checks
         add_range_checks(self, range_checks);
 
         Ok(())

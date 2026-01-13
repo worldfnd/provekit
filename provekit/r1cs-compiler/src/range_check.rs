@@ -8,7 +8,7 @@ use {
         witness::{ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient},
         FieldElement,
     },
-    std::{collections::BTreeMap, ops::Neg},
+    std::{collections::BTreeMap, collections::HashSet, ops::Neg},
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
@@ -47,6 +47,15 @@ pub(crate) fn add_range_checks(
     range_checks
         .into_iter()
         .for_each(|(num_bits, values_to_lookup)| {
+            // Deduplicate witnesses - checking the same witness multiple times is redundant
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                values_to_lookup
+                    .into_iter()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
+
             if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                 let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                 let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
@@ -84,11 +93,16 @@ pub(crate) fn add_range_checks(
         .iter()
         .enumerate()
         .for_each(|(num_bits, all_values_to_lookup)| {
-            let values_to_lookup = all_values_to_lookup
-                .iter()
-                .flat_map(|v| v.iter())
-                .copied()
-                .collect::<Vec<_>>();
+            // Deduplicate - digit witnesses from different decompositions might overlap
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                all_values_to_lookup
+                    .iter()
+                    .flat_map(|v| v.iter())
+                    .copied()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
             if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
                 add_range_check_via_lookup(r1cs, num_bits as u32, &values_to_lookup);
             } else {
@@ -160,39 +174,34 @@ fn add_range_check_via_lookup(
     );
 }
 
-/// Helper function that computes the LogUp denominator either for
-/// the table values: (X - t_j), or for the witness values:
-/// (X - w_i). Computes the inverse and also checks that this is
-/// the appropriate inverse.
+/// Helper function that computes the LogUp lookup factor for witness values:
+/// (X - w_i). Computes the inverse 1/(sz - coeff*value).
+///
+/// Uses LogUpInverse to compute the inverse inline during batch inversion,
+/// eliminating the separate denominator witness.
 pub(crate) fn add_lookup_factor(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     sz_challenge: usize,
     value_coeff: FieldElement,
     value_witness: usize,
 ) -> usize {
-    let denom_wb = WitnessBuilder::LogUpDenominator(
+    // Create inverse witness directly - denominator is computed inline during batch inversion
+    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::LogUpInverse(
         r1cs_compiler.num_witnesses(),
         sz_challenge,
         WitnessCoefficient(value_coeff, value_witness),
-    );
-    let denominator = r1cs_compiler.add_witness_builder(denom_wb);
+    ));
+
+    // Single constraint: (sz - coeff * value) * inverse = 1
     r1cs_compiler.r1cs.add_constraint(
         &[
             (FieldElement::one(), sz_challenge),
-            (FieldElement::one().neg() * value_coeff, value_witness),
+            (value_coeff.neg(), value_witness),
         ],
-        &[(FieldElement::one(), r1cs_compiler.witness_one())],
-        &[(FieldElement::one(), denominator)],
-    );
-    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::Inverse(
-        r1cs_compiler.num_witnesses(),
-        denominator,
-    ));
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::one(), denominator)],
         &[(FieldElement::one(), inverse)],
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
     );
+
     inverse
 }
 

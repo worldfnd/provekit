@@ -95,7 +95,8 @@ impl DependencyInfo {
             ) => {
                 vec![*x, *y]
             }
-            WitnessBuilder::LogUpDenominator(_, sz, WitnessCoefficient(_, value)) => {
+            WitnessBuilder::LogUpDenominator(_, sz, WitnessCoefficient(_, value))
+            | WitnessBuilder::LogUpInverse(_, sz, WitnessCoefficient(_, value)) => {
                 vec![*sz, *value]
             }
             WitnessBuilder::DigitalDecomposition(dd) => dd.witnesses_to_decompose.clone(),
@@ -133,6 +134,34 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::CombinedBinOpLookupDenominator(
+                _,
+                sz,
+                rs,
+                rs2,
+                rs3,
+                lhs,
+                rhs,
+                and_out,
+                xor_out,
+            ) => {
+                let mut v = vec![*sz, *rs, *rs2, *rs3];
+                for c in [lhs, rhs, and_out, xor_out] {
+                    if let ConstantOrR1CSWitness::Witness(w) = c {
+                        v.push(*w);
+                    }
+                }
+                v
+            }
+            WitnessBuilder::BytePartition { x, .. } => vec![*x],
+
+            WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
+                .iter()
+                .filter_map(|c| match c {
+                    ConstantOrR1CSWitness::Witness(w) => Some(*w),
+                    ConstantOrR1CSWitness::Constant(_) => None,
+                })
+                .collect(),
             WitnessBuilder::MultiplicitiesForBinOp(_, pairs) => {
                 let mut v = Vec::with_capacity(pairs.len() * 2);
                 for (lhs, rhs) in pairs {
@@ -162,6 +191,24 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::XorTriple(_, a, b, c) => {
+                let mut v = Vec::new();
+                for op in [a, b, c] {
+                    if let ConstantOrR1CSWitness::Witness(w) = op {
+                        v.push(*w);
+                    }
+                }
+                v
+            }
+            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                vec![
+                    data.sz_challenge,
+                    data.rs_challenge,
+                    data.rs_sqrd,
+                    data.rs_cubed,
+                ]
+            }
+            WitnessBuilder::ByteBitDecomposition { source, .. } => vec![*source],
         }
     }
 
@@ -177,10 +224,14 @@ impl DependencyInfo {
             | WitnessBuilder::Inverse(idx, _)
             | WitnessBuilder::ProductLinearOperation(idx, ..)
             | WitnessBuilder::LogUpDenominator(idx, ..)
+            | WitnessBuilder::LogUpInverse(idx, ..)
             | WitnessBuilder::SpiceMultisetFactor(idx, ..)
             | WitnessBuilder::BinOpLookupDenominator(idx, ..)
+            | WitnessBuilder::CombinedBinOpLookupDenominator(idx, ..)
             | WitnessBuilder::And(idx, ..)
-            | WitnessBuilder::Xor(idx, ..) => vec![*idx],
+            | WitnessBuilder::Xor(idx, ..)
+            | WitnessBuilder::XorTriple(idx, ..) => vec![*idx],
+            WitnessBuilder::CombinedTableEntryInverse(data) => vec![data.idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
@@ -197,6 +248,13 @@ impl DependencyInfo {
             }
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {
                 vec![*result_idx, *carry_idx]
+            }
+            WitnessBuilder::U32AdditionMulti(result_idx, carry_idx, ..) => {
+                vec![*result_idx, *carry_idx]
+            }
+            WitnessBuilder::BytePartition { lo, hi, .. } => vec![*lo, *hi],
+            WitnessBuilder::ByteBitDecomposition { start_idx, .. } => {
+                (*start_idx..*start_idx + 8).collect()
             }
         }
     }
