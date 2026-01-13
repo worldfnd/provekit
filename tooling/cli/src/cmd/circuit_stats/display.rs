@@ -1,12 +1,5 @@
-//! Formatted output for circuit statistics.
-//!
-//! Provides clean, professional display of all collected statistics.
-
 use {
-    super::{
-        memory::{describe_block_type, MemoryAggregation},
-        stats_collector::CircuitStats,
-    },
+    super::{memory::describe_block_type, stats_collector::CircuitStats},
     acir::{circuit::Circuit, FieldElement},
     provekit_common::R1CS,
     provekit_r1cs_compiler::R1CSBreakdown,
@@ -16,7 +9,6 @@ use {
 const SEPARATOR: &str = "══════════════════════════════════════════════════════════════════════";
 const SUBSECTION: &str = "─────────────────────────────────────────────";
 
-/// Prints circuit input/output summary.
 pub(super) fn print_io_summary(circuit: &Circuit<FieldElement>) {
     println!("\n┌─ Circuit I/O Summary");
     println!("│  Private inputs:  {}", circuit.private_parameters.len());
@@ -26,7 +18,6 @@ pub(super) fn print_io_summary(circuit: &Circuit<FieldElement>) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints all ACIR-level statistics.
 pub(super) fn print_acir_stats(stats: &CircuitStats) {
     print_assert_zero_stats(stats);
     print_blackbox_stats(stats);
@@ -36,7 +27,6 @@ pub(super) fn print_acir_stats(stats: &CircuitStats) {
     print_call_stats(stats);
 }
 
-/// Prints AssertZero constraint statistics.
 fn print_assert_zero_stats(stats: &CircuitStats) {
     println!("\n┌─ AssertZero Constraints");
     println!("│  Opcodes:             {}", stats.num_assert_zero_opcodes);
@@ -44,7 +34,6 @@ fn print_assert_zero_stats(stats: &CircuitStats) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints black box function usage.
 fn print_blackbox_stats(stats: &CircuitStats) {
     let mut sorted_funcs: Vec<_> = stats.blackbox_func_counts.iter().collect();
     sorted_funcs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
@@ -65,7 +54,6 @@ fn print_blackbox_stats(stats: &CircuitStats) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints range check statistics.
 fn print_range_check_stats(stats: &CircuitStats) {
     if stats.range_check_bit_counts.is_empty() {
         return;
@@ -81,7 +69,6 @@ fn print_range_check_stats(stats: &CircuitStats) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints AND/XOR operation details.
 fn print_and_xor_stats(stats: &CircuitStats) {
     if !stats.and_bit_counts.is_empty() {
         println!("\n┌─ AND Operations");
@@ -136,7 +123,6 @@ fn print_and_xor_stats(stats: &CircuitStats) {
     }
 }
 
-/// Prints memory operation statistics.
 fn print_memory_stats(stats: &CircuitStats) {
     if stats.memory.total_blocks() == 0 {
         return;
@@ -188,7 +174,6 @@ fn print_memory_stats(stats: &CircuitStats) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints function call statistics.
 fn print_call_stats(stats: &CircuitStats) {
     if stats.num_brillig_calls == 0 && stats.num_calls == 0 {
         return;
@@ -212,7 +197,6 @@ fn print_call_stats(stats: &CircuitStats) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints comprehensive R1CS complexity breakdown.
 pub(super) fn print_r1cs_breakdown(
     stats: &CircuitStats,
     circuit: &Circuit<FieldElement>,
@@ -229,43 +213,32 @@ pub(super) fn print_r1cs_breakdown(
         *combined_range_checks.entry(*bits).or_insert(0) += *count;
     }
 
-    // Collect component costs
-    let components = collect_r1cs_components(stats, circuit, &memory_summary, breakdown);
-
-    // Print each component
+    let components = collect_r1cs_components(stats, circuit, breakdown);
     for component in &components {
         println!("{}", component);
     }
 
-    // Print range check details if present
     if !combined_range_checks.is_empty() {
         print_range_check_details(&combined_range_checks);
     }
 
-    // Print batched operations section
     print_batched_operations(stats, breakdown);
-
-    // Print totals and matrix info
-    print_r1cs_totals(r1cs);
+    print_r1cs_totals(r1cs, breakdown);
 }
 
-/// Collects all R1CS component costs for display.
 fn collect_r1cs_components(
     stats: &CircuitStats,
     circuit: &Circuit<FieldElement>,
-    _memory_summary: &MemoryAggregation,
     breakdown: &R1CSBreakdown,
 ) -> Vec<String> {
     let mut components = Vec::new();
 
-    // Base witnesses
     let base_witnesses = (circuit.current_witness_index as usize) + 1;
     components.push(format!(
         "Base witnesses:                      {:>8} witnesses  (ACIR + constant)",
         base_witnesses
     ));
 
-    // AssertZero - use exact numbers from breakdown
     if stats.num_assert_zero_opcodes > 0 || breakdown.assert_zero_constraints > 0 {
         components.push(format!(
             "AssertZero ({} opcodes):             {:>8} constraints {:>8} witnesses",
@@ -275,19 +248,15 @@ fn collect_r1cs_components(
         ));
     }
 
-    // SHA256 - use exact numbers from breakdown, not estimates
     if let Some(&count) = stats.blackbox_func_counts.get("Sha256Compression") {
         if count > 0 {
-            let sha256_direct = breakdown.sha256_direct_constraints;
-            let sha256_direct_witnesses = breakdown.sha256_direct_witnesses;
             components.push(format!(
                 "SHA256 Direct ({} calls):            {:>8} constraints {:>8} witnesses",
-                count, sha256_direct, sha256_direct_witnesses
+                count, breakdown.sha256_direct_constraints, breakdown.sha256_direct_witnesses
             ));
         }
     }
 
-    // Poseidon2 - use exact numbers from breakdown
     if let Some(&count) = stats.blackbox_func_counts.get("Poseidon2Permutation") {
         if count > 0 {
             components.push(format!(
@@ -297,7 +266,6 @@ fn collect_r1cs_components(
         }
     }
 
-    // Memory - use exact numbers from breakdown
     if breakdown.memory_rom_constraints > 0 {
         components.push(format!(
             "Memory ROM ({} blocks):              {:>8} constraints {:>8} witnesses",
@@ -310,16 +278,13 @@ fn collect_r1cs_components(
         let ram_blocks = stats.memory.total_blocks() - stats.memory.read_only_block_count();
         components.push(format!(
             "Memory RAM ({} blocks):              {:>8} constraints {:>8} witnesses",
-            ram_blocks,
-            breakdown.memory_ram_constraints,
-            breakdown.memory_ram_witnesses
+            ram_blocks, breakdown.memory_ram_constraints, breakdown.memory_ram_witnesses
         ));
     }
 
     components
 }
 
-/// Prints detailed range check breakdown.
 fn print_range_check_details(range_checks: &HashMap<u32, usize>) {
     println!("\n┌─ Range Check Details");
     let mut sorted: Vec<_> = range_checks.iter().collect();
@@ -333,7 +298,6 @@ fn print_range_check_details(range_checks: &HashMap<u32, usize>) {
     println!("└{}", SUBSECTION);
 }
 
-/// Prints batched operations cost (AND/XOR/RANGE) with exact breakdown.
 fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     let and_count = *stats.blackbox_func_counts.get("AND").unwrap_or(&0);
     let xor_count = *stats.blackbox_func_counts.get("XOR").unwrap_or(&0);
@@ -343,7 +307,12 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
         .get("Sha256Compression")
         .unwrap_or(&0);
 
-    if and_count == 0 && xor_count == 0 && range_count == 0 {
+    if and_count == 0
+        && xor_count == 0
+        && range_count == 0
+        && breakdown.sha256_and_ops == 0
+        && breakdown.sha256_xor_ops == 0
+    {
         return;
     }
 
@@ -355,24 +324,16 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     println!("\n┌─ Batched Operations (Exact Breakdown)");
 
     if and_count > 0 || breakdown.and_constraints > 0 || breakdown.and_witnesses > 0 {
-        let explicit_and = and_count;
         println!(
             "│  AND ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
-            explicit_and,
-            breakdown.sha256_and_ops,
-            breakdown.and_constraints,
-            breakdown.and_witnesses
+            and_count, breakdown.sha256_and_ops, breakdown.and_constraints, breakdown.and_witnesses
         );
     }
 
     if xor_count > 0 || breakdown.xor_constraints > 0 || breakdown.xor_witnesses > 0 {
-        let explicit_xor = xor_count;
         println!(
             "│  XOR ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
-            explicit_xor,
-            breakdown.sha256_xor_ops,
-            breakdown.xor_constraints,
-            breakdown.xor_witnesses
+            xor_count, breakdown.sha256_xor_ops, breakdown.xor_constraints, breakdown.xor_witnesses
         );
     }
 
@@ -396,50 +357,80 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
         "│  Total batched:       {:>8} constraints {:>8} witnesses",
         total_batched_constraints, total_batched_witnesses
     );
-    println!("│  (includes digital decomposition, lookup tables, challenges, inverses)");
     println!("└{}", SUBSECTION);
 
-    // SHA256 Total Summary (if applicable)
     if sha256_count > 0 {
         let sha256_direct = breakdown.sha256_direct_constraints;
-        // In this circuit, all batched operations are from SHA256
         let sha256_batched =
             breakdown.and_constraints + breakdown.xor_constraints + breakdown.range_constraints;
-
         let sha256_total_constraints = sha256_direct + sha256_batched;
         let per_sha256 = sha256_total_constraints / sha256_count;
 
+        let sha256_direct_w = breakdown.sha256_direct_witnesses;
+        let sha256_batched_w =
+            breakdown.and_witnesses + breakdown.xor_witnesses + breakdown.range_witnesses;
+        let sha256_total_witnesses = sha256_direct_w + sha256_batched_w;
+        let per_sha256_w = sha256_total_witnesses / sha256_count;
+
         println!("\n┌─ SHA256 Total Cost Summary");
-        println!("│  Direct operations:   {:>8} constraints", sha256_direct);
         println!(
-            "│  Batched (AND):       {:>8} constraints",
-            breakdown.and_constraints
+            "│  Direct:              {:>8} constraints {:>8} witnesses",
+            sha256_direct, sha256_direct_w
         );
         println!(
-            "│  Batched (XOR):       {:>8} constraints",
-            breakdown.xor_constraints
+            "│  Batched (AND):       {:>8} constraints {:>8} witnesses",
+            breakdown.and_constraints, breakdown.and_witnesses
         );
         println!(
-            "│  Batched (RANGE):     {:>8} constraints",
-            breakdown.range_constraints
+            "│  Batched (XOR):       {:>8} constraints {:>8} witnesses",
+            breakdown.xor_constraints, breakdown.xor_witnesses
         );
-        println!("│  ─────────────────────────────────────");
         println!(
-            "│  Total SHA256:        {:>8} constraints ({} calls)",
-            sha256_total_constraints, sha256_count
+            "│  Batched (RANGE):     {:>8} constraints {:>8} witnesses",
+            breakdown.range_constraints, breakdown.range_witnesses
         );
-        println!("│  Per compression:     {:>8} constraints/call", per_sha256);
+        println!("│  ─────────────────────────────────────────────────────────────");
         println!(
-            "│  vs Circom (~30,328): {:>8.1}x overhead",
-            per_sha256 as f64 / 30328.0
+            "│  Total SHA256:        {:>8} constraints {:>8} witnesses ({} calls)",
+            sha256_total_constraints, sha256_total_witnesses, sha256_count
+        );
+        println!(
+            "│  Per compression:     {:>8} constraints {:>8} witnesses",
+            per_sha256, per_sha256_w
         );
         println!("└{}", SUBSECTION);
     }
 }
 
-/// Prints final R1CS totals and matrix information.
-fn print_r1cs_totals(r1cs: &R1CS) {
+fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
+    let total_tracked_constraints = breakdown.assert_zero_constraints
+        + breakdown.memory_rom_constraints
+        + breakdown.memory_ram_constraints
+        + breakdown.sha256_direct_constraints
+        + breakdown.poseidon2_constraints
+        + breakdown.and_constraints
+        + breakdown.xor_constraints
+        + breakdown.range_constraints;
+
+    let total_tracked_witnesses = breakdown.assert_zero_witnesses
+        + breakdown.memory_rom_witnesses
+        + breakdown.memory_ram_witnesses
+        + breakdown.sha256_direct_witnesses
+        + breakdown.poseidon2_witnesses
+        + breakdown.and_witnesses
+        + breakdown.xor_witnesses
+        + breakdown.range_witnesses;
+
     println!("\n{}", SEPARATOR);
+    println!(
+        "TRACKED CONSTRAINTS: {:>8}  (sum of breakdown)",
+        total_tracked_constraints
+    );
+    println!(
+        "TRACKED WITNESSES:   {:>8}  (sum of breakdown, excludes base)",
+        total_tracked_witnesses
+    );
+    println!("{}", SEPARATOR);
     println!(
         "TOTAL CONSTRAINTS:   {:>8}  (2^{:.2})",
         r1cs.num_constraints(),
@@ -451,6 +442,15 @@ fn print_r1cs_totals(r1cs: &R1CS) {
         (r1cs.num_witnesses() as f64).log2()
     );
     println!("{}", SEPARATOR);
+
+    if total_tracked_constraints != r1cs.num_constraints() {
+        println!(
+            "UNTRACKED CONSTRAINTS: {:>8}",
+            r1cs.num_constraints()
+                .saturating_sub(total_tracked_constraints)
+        );
+    }
+
     println!(
         "\nR1CS Matrix Sparsity: A = {} entries, B = {} entries, C = {} entries",
         r1cs.a.num_entries(),

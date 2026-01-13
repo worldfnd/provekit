@@ -45,6 +45,12 @@ Generate inputs for Gnark circuit:
 cargo run --release --bin provekit-cli generate-gnark-inputs ./prover.pkp ./proof.np
 ```
 
+Analyze circuit statistics and R1CS complexity:
+
+```sh
+cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
+```
+
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
 
 ```sh

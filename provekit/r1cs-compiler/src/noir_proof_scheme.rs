@@ -57,7 +57,7 @@ where
         );
 
         // Compile to R1CS schemes
-        let (r1cs, witness_map, witness_builders, _breakdown) = noir_to_r1cs(main)?;
+        let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.num_constraints(),
