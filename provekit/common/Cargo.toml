@@ -31,10 +31,12 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+arrayvec.workspace = true
 bytes.workspace = true
 hex.workspace = true
 itertools.workspace = true
 postcard.workspace = true
+rand.workspace = true
 rand08.workspace = true
 rayon.workspace = true
 ruint.workspace = true

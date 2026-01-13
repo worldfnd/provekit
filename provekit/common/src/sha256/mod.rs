@@ -5,6 +5,11 @@
 //! - **Proof-of-Work**: SHA256
 //!
 //! **Use Case**: NIST FIPS 180-4 compliance, industry-standard cryptography.
+//!
+//! # Optimizations
+//!
+//! The `sha2` crate is configured with the `asm` feature, which provides
+//! hardware-accelerated SHA256 on aarch64 (ARM) and x86_64 platforms.
 
 mod merkle;
 mod pow;

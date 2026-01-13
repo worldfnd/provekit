@@ -6,7 +6,7 @@ use {
         sponge::Absorb,
         Error,
     },
-    ark_ff::{BigInteger, Field, PrimeField},
+    ark_ff::{Field, PrimeField},
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     rand08::Rng,
     serde::{Deserialize, Serialize},
@@ -117,11 +117,14 @@ impl CRHScheme for Sha256CRH {
         input: T,
     ) -> Result<Self::Output, Error> {
         let mut hasher = Sha256::new();
+        let mut buf = [0u8; 32];
 
-        // Hash each field element as 32 bytes (little-endian)
         for elem in input.borrow() {
-            let bytes = elem.into_bigint().to_bytes_le();
-            hasher.update(&bytes);
+            let bigint = elem.into_bigint();
+            for (i, limb) in bigint.0.iter().enumerate() {
+                buf[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+            }
+            hasher.update(&buf);
         }
 
         Ok(Sha256Digest(hasher.finalize().into()))
@@ -146,6 +149,7 @@ impl TwoToOneCRHScheme for Sha256TwoToOne {
         left: T,
         right: T,
     ) -> Result<Self::Output, Error> {
+        // sha2 crate with "asm" feature uses hardware acceleration on aarch64
         let mut hasher = Sha256::new();
         hasher.update(&left.borrow().0);
         hasher.update(&right.borrow().0);

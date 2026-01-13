@@ -1,17 +1,15 @@
 //! Keccak-based hash components for ProveKit.
-//!
-//! - **Merkle Commitments**: Keccak256 (NIST FIPS 202)
-//! - **Fiat-Shamir Transcript**: Keccak sponge (SHAKE-256 duplex construction)
-//! - **Proof-of-Work**: Keccak256
-//!
-//! **Use Case**: NIST FIPS 202 compliance, Ethereum compatibility.
 
+mod hash;
 mod merkle;
+// #[cfg(all(target_arch = "aarch64", target_feature = "sha3"))]
+// pub mod neon;
 mod pow;
 mod sponge;
 mod whir;
 
 pub use {
+    hash::{Keccak256Compress, Keccak256LeafHash},
     merkle::{KeccakDigest, KeccakMerkleConfig},
     pow::KeccakPoW,
     sponge::KeccakSponge,
