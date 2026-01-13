@@ -1,6 +1,6 @@
 use {
     crate::{
-        binops::{add_binop_constraints, BinOp},
+        binops::add_combined_binop_constraints,
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
@@ -327,9 +327,8 @@ impl NoirToR1CSCompiler {
         let mut and_ops = vec![];
         let mut xor_ops = vec![];
         // Byte-level ops from SHA256 (exactly 8 bits, no decomposition needed)
-        let mut and_ops_byte = vec![];
-        let mut xor_ops_byte = vec![];
-
+        let mut and_ops_byte: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)> = vec![];
+        let mut xor_ops_byte: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)> = vec![];
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
 
@@ -542,7 +541,7 @@ impl NoirToR1CSCompiler {
                     .iter()
                     .for_each(|value| range_check.push(*value));
             }
-        }
+ }
         breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;
         breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
 
@@ -585,15 +584,8 @@ impl NoirToR1CSCompiler {
         breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before_xor;
         breakdown.xor_witnesses = self.num_witnesses() - witnesses_before_xor;
 
-        // For general AND and XOR operations (from Noir blackbox), need decomposition.
-        add_binop_constraints(self, BinOp::And, and_ops, false);
-        add_binop_constraints(self, BinOp::Xor, xor_ops, false);
-
-        // For byte-level AND and XOR operations (from SHA256), no decomposition needed.
-        add_binop_constraints(self, BinOp::And, and_ops_byte, true);
-        add_binop_constraints(self, BinOp::Xor, xor_ops_byte, true);
-
-        // For the Poseidon2 permutation operation.
+        add_combined_binop_constraints(self, and_ops_byte, xor_ops_byte, true);
+        add_combined_binop_constraints(self, and_ops, xor_ops, false);
         let constraints_before_poseidon = self.r1cs.num_constraints();
         let witnesses_before_poseidon = self.num_witnesses();
         add_poseidon2_permutation(self, poseidon2_ops);

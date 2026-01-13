@@ -8,7 +8,7 @@ use {
         witness::{ConstantTerm, SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::collections::BTreeMap,
+    std::collections::{BTreeMap, HashMap},
 };
 
 /// A single-byte witness.
@@ -108,7 +108,7 @@ impl U32 {
         for byte in self.bytes {
             terms.push(SumTerm(Some(multiplier), byte.idx));
             constraint_terms.push((multiplier, byte.idx));
-            multiplier = multiplier * FieldElement::from(256u64);
+            multiplier *= FieldElement::from(256u64);
         }
 
         r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(idx, terms));
@@ -124,6 +124,28 @@ impl U32 {
         if !self.bytes.iter().all(|b| b.range_checked) {
             range_checks.entry(32).or_default().push(idx);
         }
+        idx
+    }
+
+    /// Packs four bytes into a single field element, using a cache to avoid
+    /// repacking. The cache key is the tuple of 4 byte witness indices.
+    pub(crate) fn pack_cached(
+        &self,
+        r1cs_compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        pack_cache: &mut HashMap<[usize; 4], usize>,
+    ) -> usize {
+        let key = [
+            self.bytes[0].idx,
+            self.bytes[1].idx,
+            self.bytes[2].idx,
+            self.bytes[3].idx,
+        ];
+        if let Some(&cached_idx) = pack_cache.get(&key) {
+            return cached_idx;
+        }
+        let idx = self.pack(r1cs_compiler, range_checks);
+        pack_cache.insert(key, idx);
         idx
     }
 

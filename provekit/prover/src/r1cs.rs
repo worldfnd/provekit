@@ -86,26 +86,34 @@ impl R1CSSolver for R1CS {
                             WitnessBuilder::LogUpInverse(
                                 output_witness,
                                 sz_challenge,
-                                WitnessCoefficient(value_coeff, value),
+                                provekit_common::witness::WitnessCoefficient(coeff, value_witness),
                             ) => {
                                 output_witnesses.push(*output_witness);
-                                let sz = witness[*sz_challenge].unwrap_or_else(|| {
-                                    panic!(
-                                        "SZ challenge witness {} not set before LogUpInverse",
-                                        sz_challenge
-                                    )
-                                });
-                                let val = witness[*value].unwrap_or_else(|| {
-                                    panic!("Value witness {} not set before LogUpInverse", value)
-                                });
-                                // Compute denominator: sz_challenge - value_coeff * value
-                                let denominator = sz - (*value_coeff * val);
+                                // Compute denominator inline: sz - coeff * value
+                                let sz = witness[*sz_challenge].unwrap();
+                                let value = witness[*value_witness].unwrap();
+                                let denominator = sz - (*coeff * value);
+                                denominators.push(denominator);
+                            }
+                            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                                output_witnesses.push(data.idx);
+                                // Compute denominator inline:
+                                // sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out
+                                let sz = witness[data.sz_challenge].unwrap();
+                                let rs = witness[data.rs_challenge].unwrap();
+                                let rs_sqrd = witness[data.rs_sqrd].unwrap();
+                                let rs_cubed = witness[data.rs_cubed].unwrap();
+                                let denominator = sz
+                                    - data.lhs
+                                    - (rs * data.rhs)
+                                    - (rs_sqrd * data.and_out)
+                                    - (rs_cubed * data.xor_out);
                                 denominators.push(denominator);
                             }
                             _ => {
                                 panic!(
-                                    "Invalid builder in inverse batch: expected Inverse or \
-                                     LogUpInverse, got {:?}",
+                                    "Invalid builder in inverse batch: expected Inverse, \
+                                     LogUpInverse, or CombinedTableEntryInverse, got {:?}",
                                     inverse_builder
                                 );
                             }

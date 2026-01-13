@@ -36,6 +36,25 @@ pub struct ProductLinearTerm(
     #[serde(with = "serde_ark")] pub FieldElement,
 );
 
+/// Data for combined table entry inverse computation.
+/// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CombinedTableEntryInverseData {
+    pub idx:          usize,
+    pub sz_challenge: usize,
+    pub rs_challenge: usize,
+    pub rs_sqrd:      usize,
+    pub rs_cubed:     usize,
+    #[serde(with = "serde_ark")]
+    pub lhs:          FieldElement,
+    #[serde(with = "serde_ark")]
+    pub rhs:          FieldElement,
+    #[serde(with = "serde_ark")]
+    pub and_out:      FieldElement,
+    #[serde(with = "serde_ark")]
+    pub xor_out:      FieldElement,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Indicates how to solve for a collection of R1CS witnesses in terms of
 /// earlier (i.e. already solved for) R1CS witnesses and/or ACIR witness values.
@@ -126,12 +145,26 @@ pub enum WitnessBuilder {
         ConstantOrR1CSWitness,
         ConstantOrR1CSWitness,
     ),
+    /// A witness value for the denominator of a combined AND/XOR lookup.
+    /// Uses encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
+    /// Arguments: `(witness index, sz_challenge, rs_challenge, rs_sqrd,
+    /// rs_cubed, lhs, rhs, and_output, xor_output)`.
+    CombinedBinOpLookupDenominator(
+        usize,
+        usize,
+        usize,
+        usize,
+        usize,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+    ),
     /// Witness values for the number of times that each pair of input values
     /// occurs in the bin op.
     MultiplicitiesForBinOp(usize, Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>),
     /// U32 addition with carry: computes result = (a + b) % 2^32 and carry = (a
-    /// + b) / 2^32 Arguments: (result_witness_index, carry_witness_index,
-    /// a, b)
+    /// + b) / 2^32.
     U32Addition(usize, usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
     /// Variadic 32-bit addition with carry.
     ///   Computes: result = (sum of inputs) mod 2^32, carry  = floor((sum of
@@ -147,6 +180,24 @@ pub enum WitnessBuilder {
     /// Arguments: (result_witness_index, a, b)
     /// Note: only for 32-bit operands
     Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
+    /// 3-way XOR operation: computes result = a ⊕ b ⊕ c
+    /// Arguments: (result_witness_index, a, b, c)
+    /// Used in SHA256 sigma functions to avoid intermediate witnesses.
+    XorTriple(
+        usize,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+    ),
+    /// Inverse of combined lookup table entry denominator (constant operands).
+    /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
+    /// Used for optimized table entries where we inline the denominator.
+    CombinedTableEntryInverse(CombinedTableEntryInverseData),
+    /// Decomposes a byte into 8 individual bit witnesses.
+    /// Used for JOLT-style bit-level AND/XOR operations.
+    /// Arguments: start_idx is the first witness index (8 consecutive),
+    /// source is the byte witness to decompose.
+    ByteBitDecomposition { start_idx: usize, source: usize },
 }
 
 impl WitnessBuilder {

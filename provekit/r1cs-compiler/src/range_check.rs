@@ -8,7 +8,10 @@ use {
         witness::{ProductLinearTerm, WitnessBuilder, WitnessCoefficient},
         FieldElement,
     },
-    std::{collections::BTreeMap, ops::Neg},
+    std::{
+        collections::{BTreeMap, HashSet},
+        ops::Neg,
+    },
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
@@ -47,6 +50,15 @@ pub(crate) fn add_range_checks(
     range_checks
         .into_iter()
         .for_each(|(num_bits, values_to_lookup)| {
+            // Deduplicate witnesses - checking the same witness multiple times is redundant
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                values_to_lookup
+                    .into_iter()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
+
             if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                 let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                 let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
@@ -84,11 +96,16 @@ pub(crate) fn add_range_checks(
         .iter()
         .enumerate()
         .for_each(|(num_bits, all_values_to_lookup)| {
-            let values_to_lookup = all_values_to_lookup
-                .iter()
-                .flat_map(|v| v.iter())
-                .copied()
-                .collect::<Vec<_>>();
+            // Deduplicate - digit witnesses from different decompositions might overlap
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                all_values_to_lookup
+                    .iter()
+                    .flat_map(|v| v.iter())
+                    .copied()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
             if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
                 add_range_check_via_lookup(r1cs, num_bits as u32, &values_to_lookup);
             } else {
@@ -170,11 +187,12 @@ pub(crate) fn add_lookup_factor(
     r1cs_compiler.r1cs.add_constraint(
         &[
             (FieldElement::one(), sz_challenge),
-            (FieldElement::one().neg() * value_coeff, value_witness),
+            (value_coeff.neg(), value_witness),
         ],
         &[(FieldElement::one(), inverse)],
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
     );
+
     inverse
 }
 

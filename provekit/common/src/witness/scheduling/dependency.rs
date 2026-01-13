@@ -134,6 +134,25 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::CombinedBinOpLookupDenominator(
+                _,
+                sz,
+                rs,
+                rs2,
+                rs3,
+                lhs,
+                rhs,
+                and_out,
+                xor_out,
+            ) => {
+                let mut v = vec![*sz, *rs, *rs2, *rs3];
+                for c in [lhs, rhs, and_out, xor_out] {
+                    if let ConstantOrR1CSWitness::Witness(w) = c {
+                        v.push(*w);
+                    }
+                }
+                v
+            }
             WitnessBuilder::BytePartition { x, .. } => vec![*x],
 
             WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
@@ -172,6 +191,24 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::XorTriple(_, a, b, c) => {
+                let mut v = Vec::new();
+                for op in [a, b, c] {
+                    if let ConstantOrR1CSWitness::Witness(w) = op {
+                        v.push(*w);
+                    }
+                }
+                v
+            }
+            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                vec![
+                    data.sz_challenge,
+                    data.rs_challenge,
+                    data.rs_sqrd,
+                    data.rs_cubed,
+                ]
+            }
+            WitnessBuilder::ByteBitDecomposition { source, .. } => vec![*source],
         }
     }
 
@@ -190,8 +227,11 @@ impl DependencyInfo {
             | WitnessBuilder::LogUpInverse(idx, ..)
             | WitnessBuilder::SpiceMultisetFactor(idx, ..)
             | WitnessBuilder::BinOpLookupDenominator(idx, ..)
+            | WitnessBuilder::CombinedBinOpLookupDenominator(idx, ..)
             | WitnessBuilder::And(idx, ..)
-            | WitnessBuilder::Xor(idx, ..) => vec![*idx],
+            | WitnessBuilder::Xor(idx, ..)
+            | WitnessBuilder::XorTriple(idx, ..) => vec![*idx],
+            WitnessBuilder::CombinedTableEntryInverse(data) => vec![data.idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
@@ -213,6 +253,9 @@ impl DependencyInfo {
                 vec![*result_idx, *carry_idx]
             }
             WitnessBuilder::BytePartition { lo, hi, .. } => vec![*lo, *hi],
+            WitnessBuilder::ByteBitDecomposition { start_idx, .. } => {
+                (*start_idx..*start_idx + 8).collect()
+            }
         }
     }
 }

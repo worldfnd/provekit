@@ -61,8 +61,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 witness[*witness_idx] = Some(a * b);
             }
-            WitnessBuilder::Inverse(..) => {
-                unreachable!("Inverse should not be called")
+            WitnessBuilder::Inverse(..) | WitnessBuilder::LogUpInverse(..) => {
+                unreachable!(
+                    "Inverse/LogUpInverse should not be called - handled by batch inversion"
+                )
             }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,
@@ -103,9 +105,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*witness_idx] = Some(
                     witness[*sz_challenge].unwrap() - (*value_coeff * witness[*value].unwrap()),
                 );
-            }
-            WitnessBuilder::LogUpInverse(..) => {
-                unreachable!("LogUpInverse should be handled via batch inversion")
             }
             WitnessBuilder::ProductLinearOperation(
                 witness_idx,
@@ -165,6 +164,42 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         - (lhs
                             + witness[*rs_challenge].unwrap() * rhs
                             + witness[*rs_challenge_sqrd].unwrap() * output),
+                );
+            }
+            WitnessBuilder::CombinedBinOpLookupDenominator(
+                witness_idx,
+                sz_challenge,
+                rs_challenge,
+                rs_sqrd,
+                rs_cubed,
+                lhs,
+                rhs,
+                and_output,
+                xor_output,
+            ) => {
+                let lhs = match lhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let rhs = match rhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let and_out = match and_output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let xor_out = match xor_output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                // Encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
+                witness[*witness_idx] = Some(
+                    witness[*sz_challenge].unwrap()
+                        - (lhs
+                            + witness[*rs_challenge].unwrap() * rhs
+                            + witness[*rs_sqrd].unwrap() * and_out
+                            + witness[*rs_cubed].unwrap() * xor_out),
                 );
             }
             WitnessBuilder::MultiplicitiesForBinOp(witness_idx, operands) => {
@@ -297,6 +332,37 @@ impl WitnessBuilderSolver for WitnessBuilder {
 
                 witness[*lo] = Some(FieldElement::from(lo_val));
                 witness[*hi] = Some(FieldElement::from(hi_val));
+            }
+            WitnessBuilder::XorTriple(result_witness_idx, a, b, c) => {
+                let a_val = match a {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let b_val = match b {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let c_val = match c {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                witness[*result_witness_idx] = Some(FieldElement::new(
+                    a_val.into_bigint() ^ b_val.into_bigint() ^ c_val.into_bigint(),
+                ));
+            }
+            WitnessBuilder::CombinedTableEntryInverse(..) => {
+                unreachable!(
+                    "CombinedTableEntryInverse should not be called - handled by batch inversion"
+                )
+            }
+            WitnessBuilder::ByteBitDecomposition { start_idx, source } => {
+                let source_val = witness[*source].unwrap().into_bigint().0[0];
+                debug_assert!(source_val < 256, "ByteBitDecomposition input must be 8-bit");
+
+                for i in 0..8 {
+                    let bit = (source_val >> i) & 1;
+                    witness[start_idx + i] = Some(FieldElement::from(bit));
+                }
             }
         }
     }
