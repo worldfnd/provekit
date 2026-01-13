@@ -10,9 +10,20 @@ use {
     provekit_prover::Prove,
     std::{
         os::raw::{c_char, c_int},
+        panic,
         path::Path,
     },
 };
+
+/// Catches panics and converts them to error codes to prevent unwinding across
+/// FFI boundary.
+#[inline]
+fn catch_panic<F, T>(default: T, f: F) -> T
+where
+    F: FnOnce() -> T + panic::UnwindSafe,
+{
+    panic::catch_unwind(f).unwrap_or(default)
+}
 
 /// Prove a Noir program and write the proof to a file.
 ///
@@ -37,28 +48,28 @@ pub unsafe extern "C" fn pk_prove_to_file(
     input_path: *const c_char,
     out_path: *const c_char,
 ) -> c_int {
-    let result = (|| -> Result<(), PKError> {
-        let prover_path = c_str_to_str(prover_path)?;
-        let input_path = c_str_to_str(input_path)?;
-        let out_path = c_str_to_str(out_path)?;
+    catch_panic(PKError::ProofError.into(), || {
+        let result = (|| -> Result<(), PKError> {
+            let prover_path = c_str_to_str(prover_path)?;
+            let input_path = c_str_to_str(input_path)?;
+            let out_path = c_str_to_str(out_path)?;
 
-        // Read the scheme file (.pkp or .json)
-        let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+            let prover: Prover =
+                read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
-        // Generate the proof
-        let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
+            let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
 
-        // Write the proof to file
-        provekit_common::file::write(&proof, Path::new(out_path))
-            .map_err(|_| PKError::FileWriteError)?;
+            provekit_common::file::write(&proof, Path::new(out_path))
+                .map_err(|_| PKError::FileWriteError)?;
 
-        Ok(())
-    })();
+            Ok(())
+        })();
 
-    match result {
-        Ok(()) => PKError::Success.into(),
-        Err(error) => error.into(),
-    }
+        match result {
+            Ok(()) => PKError::Success.into(),
+            Err(error) => error.into(),
+        }
+    })
 }
 
 /// Prove a Noir program and return the proof as JSON string.
@@ -88,42 +99,41 @@ pub unsafe extern "C" fn pk_prove_to_json(
     input_path: *const c_char,
     out_buf: *mut PKBuf,
 ) -> c_int {
-    // Validate inputs
     if out_buf.is_null() {
         return PKError::InvalidInput.into();
     }
 
-    let out_buf = match out_buf.as_mut() {
-        Some(buf) => buf,
-        None => return PKError::InvalidInput.into(),
-    };
+    catch_panic(PKError::ProofError.into(), || {
+        let out_buf = match out_buf.as_mut() {
+            Some(buf) => buf,
+            None => return PKError::InvalidInput.into(),
+        };
 
-    // Initialize output buffer to empty state
-    *out_buf = PKBuf::empty();
+        *out_buf = PKBuf::empty();
 
-    let result = (|| -> Result<Vec<u8>, PKError> {
-        let prover_path = c_str_to_str(prover_path)?;
-        let input_path = c_str_to_str(input_path)?;
+        let result = (|| -> Result<Vec<u8>, PKError> {
+            let prover_path = c_str_to_str(prover_path)?;
+            let input_path = c_str_to_str(input_path)?;
 
-        // Read the scheme file (.pkp or .json)
-        let prover: Prover = read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+            let prover: Prover =
+                read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
-        // Generate the proof
-        let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
+            let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
 
-        // Serialize to JSON
-        let json_string = serde_json::to_string(&proof).map_err(|_| PKError::SerializationError)?;
+            let json_string =
+                serde_json::to_string(&proof).map_err(|_| PKError::SerializationError)?;
 
-        Ok(json_string.into_bytes())
-    })();
+            Ok(json_string.into_bytes())
+        })();
 
-    match result {
-        Ok(json_bytes) => {
-            *out_buf = PKBuf::from_vec(json_bytes);
-            PKError::Success.into()
+        match result {
+            Ok(json_bytes) => {
+                *out_buf = PKBuf::from_vec(json_bytes);
+                PKError::Success.into()
+            }
+            Err(error) => error.into(),
         }
-        Err(error) => error.into(),
-    }
+    })
 }
 
 /// Free a buffer allocated by ProveKit FFI functions.
