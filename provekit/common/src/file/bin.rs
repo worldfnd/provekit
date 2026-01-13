@@ -36,7 +36,7 @@ pub fn write_bin<T: Serialize>(
     header.put(&format[..]);
     header.put_u16_le(major);
     header.put_u16_le(minor);
-    header.put_u8(hash_config.map(|c| c.to_byte()).unwrap_or(0xFF));
+    header.put_u8(hash_config.map(|c| c.to_byte()).unwrap_or(0xff));
 
     file_counter
         .write_all(&header)

@@ -123,10 +123,14 @@ impl TwoToOneCRHScheme for Blake3Compress {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ark_crypto_primitives::crh::{CRHScheme, TwoToOneCRHScheme};
-    use ark_ff::One;
-    use whir::crypto::merkle_tree::blake3::{Blake3Compress as WhirCompress, Blake3LeafHash as WhirLeafHash};
+    use {
+        super::*,
+        ark_crypto_primitives::crh::{CRHScheme, TwoToOneCRHScheme},
+        ark_ff::One,
+        whir::crypto::merkle_tree::blake3::{
+            Blake3Compress as WhirCompress, Blake3LeafHash as WhirLeafHash,
+        },
+    };
 
     #[test]
     fn leaf_hash_matches_whir() {

@@ -132,8 +132,10 @@ mod tests {
 
     #[test]
     fn test_noir_proof_scheme_serde() {
+        use provekit_common::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW};
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
-        let proof_schema = NoirProofScheme::from_file(path).unwrap();
+        let proof_schema: NoirProofScheme<SkyscraperMerkleConfig, SkyscraperPoW> =
+            NoirProofScheme::from_file(path).unwrap();
 
         test_serde(&proof_schema.r1cs);
         test_serde(&proof_schema.split_witness_builders);

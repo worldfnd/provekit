@@ -49,13 +49,22 @@ fn human(value: f64) -> impl Display {
     struct Human(f64);
     impl Display for Human {
         fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-            let log10 = if self.0.is_normal() { self.0.abs().log10() } else { 0.0 };
+            let log10 = if self.0.is_normal() {
+                self.0.abs().log10()
+            } else {
+                0.0
+            };
             let si_power = ((log10 / 3.0).floor() as isize).clamp(-10, 10);
             let value = self.0 * 10_f64.powi((-si_power * 3) as i32);
             let digits = f.precision().unwrap_or(3) - 1 - (log10 - 3.0 * si_power as f64) as usize;
             write!(f, "{value:.digits$} ")?;
-            let suffix = "qryzafpnum kMGTPEZYRQ".chars().nth((si_power + 10) as usize).unwrap();
-            if suffix != ' ' { write!(f, "{suffix}")?; }
+            let suffix = "qryzafpnum kMGTPEZYRQ"
+                .chars()
+                .nth((si_power + 10) as usize)
+                .unwrap();
+            if suffix != ' ' {
+                write!(f, "{suffix}")?;
+            }
             Ok(())
         }
     }
@@ -63,15 +72,15 @@ fn human(value: f64) -> impl Display {
 }
 
 mod blake3_bench {
-    use super::*;
-    use provekit_common::blake3::{Blake3Compress, Blake3LeafHash, Blake3Sponge};
+    use {
+        super::*,
+        provekit_common::blake3::{Blake3Compress, Blake3LeafHash, Blake3Sponge},
+    };
 
     #[divan::bench(args = [4, 16, 64, 256, 1024])]
     fn leaf_hash(bencher: Bencher, count: usize) {
         let input = random_field_elements(count);
-        bencher.bench_local(|| {
-            Blake3LeafHash::evaluate(&(), black_box(input.as_slice()))
-        });
+        bencher.bench_local(|| Blake3LeafHash::evaluate(&(), black_box(input.as_slice())));
     }
 
     #[divan::bench(args = [100, 1000, 10000])]
@@ -82,7 +91,8 @@ mod blake3_bench {
         bencher.bench_local(|| {
             let mut result = start.clone();
             for _ in 0..iterations {
-                result = Blake3Compress::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
+                result =
+                    Blake3Compress::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
             }
             result
         });
@@ -118,15 +128,15 @@ mod blake3_bench {
 }
 
 mod sha256_bench {
-    use super::*;
-    use provekit_common::sha256::{Sha256CRH, Sha256Sponge, Sha256TwoToOne};
+    use {
+        super::*,
+        provekit_common::sha256::{Sha256CRH, Sha256Sponge, Sha256TwoToOne},
+    };
 
     #[divan::bench(args = [4, 16, 64, 256, 1024])]
     fn leaf_hash(bencher: Bencher, count: usize) {
         let input = random_field_elements(count);
-        bencher.bench_local(|| {
-            Sha256CRH::evaluate(&(), black_box(input.as_slice()))
-        });
+        bencher.bench_local(|| Sha256CRH::evaluate(&(), black_box(input.as_slice())));
     }
 
     #[divan::bench(args = [100, 1000, 10000])]
@@ -137,7 +147,8 @@ mod sha256_bench {
         bencher.bench_local(|| {
             let mut result = left.clone();
             for _ in 0..iterations {
-                result = Sha256TwoToOne::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
+                result =
+                    Sha256TwoToOne::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
             }
             result
         });
@@ -173,15 +184,15 @@ mod sha256_bench {
 }
 
 mod keccak_bench {
-    use super::*;
-    use provekit_common::keccak::{Keccak256Compress, Keccak256LeafHash, KeccakSponge};
+    use {
+        super::*,
+        provekit_common::keccak::{Keccak256Compress, Keccak256LeafHash, KeccakSponge},
+    };
 
     #[divan::bench(args = [4, 16, 64, 256, 1024])]
     fn leaf_hash(bencher: Bencher, count: usize) {
         let input = random_field_elements(count);
-        bencher.bench_local(|| {
-            Keccak256LeafHash::evaluate(&(), black_box(input.as_slice()))
-        });
+        bencher.bench_local(|| Keccak256LeafHash::evaluate(&(), black_box(input.as_slice())));
     }
 
     #[divan::bench(args = [100, 1000, 10000])]
@@ -192,7 +203,8 @@ mod keccak_bench {
         bencher.bench_local(|| {
             let mut result = start.clone();
             for _ in 0..iterations {
-                result = Keccak256Compress::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
+                result = Keccak256Compress::evaluate(&(), black_box(&result), black_box(&right))
+                    .unwrap();
             }
             result
         });
@@ -228,15 +240,15 @@ mod keccak_bench {
 }
 
 mod skyscraper_bench {
-    use super::*;
-    use provekit_common::skyscraper::{SkyscraperCRH, SkyscraperSponge, SkyscraperTwoToOne};
+    use {
+        super::*,
+        provekit_common::skyscraper::{SkyscraperCRH, SkyscraperSponge, SkyscraperTwoToOne},
+    };
 
     #[divan::bench(args = [4, 16, 64, 256, 1024])]
     fn leaf_hash(bencher: Bencher, count: usize) {
         let input = random_field_elements(count);
-        bencher.bench_local(|| {
-            SkyscraperCRH::evaluate(&(), black_box(input.as_slice()))
-        });
+        bencher.bench_local(|| SkyscraperCRH::evaluate(&(), black_box(input.as_slice())));
     }
 
     #[divan::bench(args = [100, 1000, 10000])]
@@ -246,7 +258,8 @@ mod skyscraper_bench {
         bencher.bench_local(|| {
             let mut result = left;
             for _ in 0..iterations {
-                result = SkyscraperTwoToOne::evaluate(&(), black_box(&result), black_box(&right)).unwrap();
+                result = SkyscraperTwoToOne::evaluate(&(), black_box(&result), black_box(&right))
+                    .unwrap();
             }
             result
         });
@@ -283,8 +296,7 @@ mod skyscraper_bench {
 }
 
 mod comparison {
-    use super::*;
-    use ark_crypto_primitives::crh::CRHScheme;
+    use {super::*, ark_crypto_primitives::crh::CRHScheme};
 
     const LEAF_SIZE: usize = 16;
 
@@ -336,9 +348,7 @@ mod merkle_tree_sim {
             while layer.len() > 1 {
                 layer = layer
                     .chunks(2)
-                    .map(|pair| {
-                        Blake3Compress::evaluate(&(), &pair[0], &pair[1]).unwrap()
-                    })
+                    .map(|pair| Blake3Compress::evaluate(&(), &pair[0], &pair[1]).unwrap())
                     .collect();
             }
             layer[0].clone()
@@ -348,18 +358,14 @@ mod merkle_tree_sim {
     #[divan::bench(args = [256, 1024, 4096])]
     fn sha256_merkle_layer(bencher: Bencher, num_leaves: usize) {
         use provekit_common::sha256::{Sha256Digest, Sha256TwoToOne};
-        let leaves: Vec<Sha256Digest> = (0..num_leaves)
-            .map(|_| Sha256Digest::default())
-            .collect();
+        let leaves: Vec<Sha256Digest> = (0..num_leaves).map(|_| Sha256Digest::default()).collect();
 
         bencher.bench_local(|| {
             let mut layer = leaves.clone();
             while layer.len() > 1 {
                 layer = layer
                     .chunks(2)
-                    .map(|pair| {
-                        Sha256TwoToOne::evaluate(&(), &pair[0], &pair[1]).unwrap()
-                    })
+                    .map(|pair| Sha256TwoToOne::evaluate(&(), &pair[0], &pair[1]).unwrap())
                     .collect();
             }
             layer[0].clone()
@@ -382,9 +388,7 @@ mod merkle_tree_sim {
             while layer.len() > 1 {
                 layer = layer
                     .chunks(2)
-                    .map(|pair| {
-                        Keccak256Compress::evaluate(&(), &pair[0], &pair[1]).unwrap()
-                    })
+                    .map(|pair| Keccak256Compress::evaluate(&(), &pair[0], &pair[1]).unwrap())
                     .collect();
             }
             layer[0].clone()
@@ -403,9 +407,7 @@ mod merkle_tree_sim {
             while layer.len() > 1 {
                 layer = layer
                     .chunks(2)
-                    .map(|pair| {
-                        SkyscraperTwoToOne::evaluate(&(), &pair[0], &pair[1]).unwrap()
-                    })
+                    .map(|pair| SkyscraperTwoToOne::evaluate(&(), &pair[0], &pair[1]).unwrap())
                     .collect();
             }
             layer[0]
@@ -436,10 +438,17 @@ fn print_comparison_table() {
     let right: Blake3Digest = [2u8; 32].into();
     let compress = measure(duration, || {
         let mut r = start.clone();
-        for _ in 0..1000 { r = Blake3Compress::evaluate(&(), &r, &right).unwrap(); }
+        for _ in 0..1000 {
+            r = Blake3Compress::evaluate(&(), &r, &right).unwrap();
+        }
         r
     }) / 1000.0;
-    println!("{:<12} {:>15} {:>15}", "blake3", format!("{:#}s", human(leaf)), format!("{:#}s", human(compress)));
+    println!(
+        "{:<12} {:>15} {:>15}",
+        "blake3",
+        format!("{:#}s", human(leaf)),
+        format!("{:#}s", human(compress))
+    );
 
     // SHA256
     let leaf = measure(duration, || Sha256CRH::evaluate(&(), input.as_slice()));
@@ -447,21 +456,37 @@ fn print_comparison_table() {
     let right = Sha256Digest::default();
     let compress = measure(duration, || {
         let mut r = start;
-        for _ in 0..1000 { r = Sha256TwoToOne::evaluate(&(), &r, &right).unwrap(); }
+        for _ in 0..1000 {
+            r = Sha256TwoToOne::evaluate(&(), &r, &right).unwrap();
+        }
         r
     }) / 1000.0;
-    println!("{:<12} {:>15} {:>15}", "sha256", format!("{:#}s", human(leaf)), format!("{:#}s", human(compress)));
+    println!(
+        "{:<12} {:>15} {:>15}",
+        "sha256",
+        format!("{:#}s", human(leaf)),
+        format!("{:#}s", human(compress))
+    );
 
     // Keccak
-    let leaf = measure(duration, || Keccak256LeafHash::evaluate(&(), input.as_slice()));
+    let leaf = measure(duration, || {
+        Keccak256LeafHash::evaluate(&(), input.as_slice())
+    });
     let start: KeccakDigest = [1u8; 32].into();
     let right: KeccakDigest = [2u8; 32].into();
     let compress = measure(duration, || {
         let mut r = start.clone();
-        for _ in 0..1000 { r = Keccak256Compress::evaluate(&(), &r, &right).unwrap(); }
+        for _ in 0..1000 {
+            r = Keccak256Compress::evaluate(&(), &r, &right).unwrap();
+        }
         r
     }) / 1000.0;
-    println!("{:<12} {:>15} {:>15}", "keccak", format!("{:#}s", human(leaf)), format!("{:#}s", human(compress)));
+    println!(
+        "{:<12} {:>15} {:>15}",
+        "keccak",
+        format!("{:#}s", human(leaf)),
+        format!("{:#}s", human(compress))
+    );
 
     // Skyscraper
     let leaf = measure(duration, || SkyscraperCRH::evaluate(&(), input.as_slice()));
@@ -469,10 +494,17 @@ fn print_comparison_table() {
     let right = FieldElement::from(2u64);
     let compress = measure(duration, || {
         let mut r = start;
-        for _ in 0..1000 { r = SkyscraperTwoToOne::evaluate(&(), &r, &right).unwrap(); }
+        for _ in 0..1000 {
+            r = SkyscraperTwoToOne::evaluate(&(), &r, &right).unwrap();
+        }
         r
     }) / 1000.0;
-    println!("{:<12} {:>15} {:>15}", "skyscraper", format!("{:#}s", human(leaf)), format!("{:#}s", human(compress)));
+    println!(
+        "{:<12} {:>15} {:>15}",
+        "skyscraper",
+        format!("{:#}s", human(leaf)),
+        format!("{:#}s", human(compress))
+    );
 
     println!("============================================================\n");
 }

@@ -1,8 +1,7 @@
 //! Keccak-based Merkle tree configuration.
 
 use {
-    crate::FieldElement,
-    ark_crypto_primitives::merkle_tree::Config,
+    crate::FieldElement, ark_crypto_primitives::merkle_tree::Config,
     whir::crypto::merkle_tree::digest::GenericDigest,
 };
 

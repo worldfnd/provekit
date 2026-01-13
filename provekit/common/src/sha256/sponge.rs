@@ -41,10 +41,10 @@ impl DuplexSpongeInterface<u8> for Sha256Sponge {
         state.extend_from_slice(&iv);
         Self {
             state,
-            state_len:     32,
-            absorbing:     true,
+            state_len: 32,
+            absorbing: true,
             output_buffer: [0u8; 32],
-            output_pos:    32,
+            output_pos: 32,
         }
     }
 

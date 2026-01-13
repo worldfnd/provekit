@@ -39,9 +39,8 @@ where
     MerkleConfig: ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]>
         + provekit_common::hash_config::TypedHashConfig,
     PowStrategy: spongefish_pow::PowStrategy,
-    MerkleConfig::Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<MerkleConfig::Unit>
-        + Clone
-        + 'static,
+    MerkleConfig::Sponge:
+        spongefish::duplex_sponge::DuplexSpongeInterface<MerkleConfig::Unit> + Clone + 'static,
     MerkleConfig::Unit: spongefish::Unit + Clone + 'static,
     for<'a> VerifierState<'a, MerkleConfig::Sponge, MerkleConfig::Unit>:
         FieldToUnitDeserialize<FieldElement>

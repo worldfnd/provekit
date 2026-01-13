@@ -2,8 +2,6 @@
 
 mod hash;
 mod merkle;
-// #[cfg(all(target_arch = "aarch64", target_feature = "sha3"))]
-// pub mod neon;
 mod pow;
 mod sponge;
 mod whir;

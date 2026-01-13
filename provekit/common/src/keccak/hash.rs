@@ -90,10 +90,10 @@ pub use whir::crypto::merkle_tree::keccak::KeccakCompress as Keccak256Compress;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ark_crypto_primitives::crh::CRHScheme;
-    use ark_ff::One;
-    use whir::crypto::merkle_tree::keccak::KeccakLeafHash;
+    use {
+        super::*, ark_crypto_primitives::crh::CRHScheme, ark_ff::One,
+        whir::crypto::merkle_tree::keccak::KeccakLeafHash,
+    };
 
     #[test]
     fn leaf_hash_matches_whir() {

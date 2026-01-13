@@ -4,9 +4,9 @@
 // Default: Skyscraper
 //
 // Alternative configurations available via --hash flag:
-use crate::skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge};
 use {
     crate::{
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::{serde_hex, sumcheck::SumcheckIOPattern},
         witness::WitnessIOPattern,
         FieldElement,
