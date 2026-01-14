@@ -122,7 +122,6 @@ impl PowScheme for Blake3 {
 
 impl HashScheme for Blake3 {}
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,19 +134,19 @@ mod tests {
         // Ensure hash is deterministic across multiple calls
         let hash1 = Blake3::compress(left, right);
         let hash2 = Blake3::compress(left, right);
-        
+
         assert_eq!(hash1, hash2, "Blake3 compression must be deterministic");
         assert_ne!(hash1, [0u64; 4], "Hash result should not be trivial zero");
     }
-    
+
     #[test]
     fn test_blake3_pow_logic() {
-        let challenge = [0x11223344, 0x55667788, 0x99AABBCC, 0xDDEEFF00];
+        let challenge = [0x11223344, 0x55667788, 0x99aabbcc, 0xddeeff00];
         let bits = 12.0; // Difficulty: 1 in 4096 nonces should pass
 
         // 1. Test Solving
-        let nonce = Blake3::solve(challenge, bits)
-            .expect("Blake3 should find a valid nonce quickly");
+        let nonce =
+            Blake3::solve(challenge, bits).expect("Blake3 should find a valid nonce quickly");
 
         // 2. Test Checking (The found nonce must pass)
         let is_valid = Blake3::check(challenge, bits, nonce);
@@ -156,7 +155,10 @@ mod tests {
         // 3. Test Invalidity (A different nonce should fail)
         // Statistical check: highly likely to fail for 12 bits
         let is_invalid = Blake3::check(challenge, bits, nonce + 1);
-        assert!(!is_invalid, "Incorrect nonce should not pass the difficulty check");
+        assert!(
+            !is_invalid,
+            "Incorrect nonce should not pass the difficulty check"
+        );
     }
 
     #[test]
@@ -164,7 +166,7 @@ mod tests {
         // Ensure our unsafe transmute correctly handles end-to-end data
         let input: [u64; 4] = [u64::MAX, 0, u64::MAX, 0];
         let bytes: [u8; 32] = unsafe { std::mem::transmute(input) };
-        
+
         // On Little Endian: [255... (8 times), 0... (8 times), ...]
         assert_eq!(bytes[0], 255);
         assert_eq!(bytes[8], 0);

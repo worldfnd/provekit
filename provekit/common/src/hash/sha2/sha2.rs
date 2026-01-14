@@ -1,7 +1,7 @@
 use {
     crate::hash::{CompressionScheme, HashScheme, PermutationScheme, PowScheme},
     ark_bn254::Fr,
-    ark_ff::{PrimeField},
+    ark_ff::PrimeField,
     serde::{Deserialize, Serialize},
     sha2::{Digest, Sha256},
     std::{cell::RefCell, mem::transmute},

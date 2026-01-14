@@ -33,7 +33,7 @@ pub enum HashType {
     Skyscraper,
     Sha2,
     Sha3,
-    Blake3
+    Blake3,
 }
 
 impl From<HashType> for u8 {

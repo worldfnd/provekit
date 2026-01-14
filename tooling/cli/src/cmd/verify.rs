@@ -36,7 +36,7 @@ impl Command for Args {
             HashType::Skyscraper => verify!(self, Skyscraper),
             HashType::Sha2 => verify!(self, Sha2),
             HashType::Sha3 => verify!(self, Sha3),
-            HashType::Blake3 => verify!(self, Blake3)
+            HashType::Blake3 => verify!(self, Blake3),
         }
         Ok(())
     }

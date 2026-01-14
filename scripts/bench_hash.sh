@@ -40,7 +40,7 @@ export -f format_benchmark_table
 
 # Build the provekit-cli binary
 # echo "Building provekit-cli..."
-# # cargo build --release -p provekit-cli 2>&1
+# cargo build --release -p provekit-cli 2>&1
 # echo "\n"
 
 
@@ -53,6 +53,7 @@ NC='\033[0m' # No Color
 
 # --- Header ---
 echo "${BOLD}==========================================================${NC}"
+echo "${BOLD}==========================================================${NC}"
 echo "${BOLD}           PROVEKIT BENCHMARK SUITE                       ${NC}"
 echo "${BOLD}==========================================================${NC}"
 
@@ -60,10 +61,12 @@ echo "Single Run Benchmarks for Different Hash Functions:\n"
 
 
 for HASH in "${HASH_FUNCTIONS[@]}"; do
+    echo "${BOLD}==========================================================${NC}"
     echo "\n${YELLOW}▶ Testing Hash Strategy:${NC} ${BOLD}${HASH}${NC}"
+    echo "${BOLD}==========================================================${NC}"
 
     # 1. PREPARE STAGE
-    echo "${BOLD}[1/3]${NC} Generating Prover/Verifier artifacts... "
+    echo "${BOLD}[1/3]${NC} Generating Prover/Verifier artifacts. "
     PREPARE_OUT=$($RUN prepare \
       $CIRCUIT_JSON\
       --pkp "$CIRCUIT_DIR/$HASH.pkp" \
@@ -86,6 +89,7 @@ for HASH in "${HASH_FUNCTIONS[@]}"; do
 
 done
 
+echo "${BOLD}==========================================================${NC}"
 echo "\n${BOLD}==========================================================${NC}"
 # Multi runs with hyperfine
 echo "Multi Run Benchmarks for Different Hash Functions with hyperfine:\n"
