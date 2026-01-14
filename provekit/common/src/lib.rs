@@ -1,4 +1,5 @@
 pub mod blake3;
+pub mod buffer;
 pub mod file;
 pub mod hash_config;
 mod interner;

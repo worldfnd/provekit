@@ -1,13 +1,13 @@
 //! Keccak256 hash implementations for Merkle tree construction.
 
 use {
-    crate::FieldElement,
+    crate::{buffer::StackBuffer, FieldElement},
     ark_crypto_primitives::{crh::CRHScheme, Error},
     ark_serialize::CanonicalSerialize,
     rand08::Rng,
     serde::{Deserialize, Serialize},
     sha3::Digest,
-    std::{borrow::Borrow, io::Write},
+    std::borrow::Borrow,
     whir::crypto::merkle_tree::digest::GenericDigest,
 };
 
@@ -15,43 +15,6 @@ pub type Keccak256Digest = GenericDigest<32>;
 
 /// 8-byte length prefix + up to 16 field elements (16 * 32 = 512 bytes).
 const LEAF_BUFFER_SIZE: usize = 528;
-
-struct StackBuffer {
-    buf: [u8; LEAF_BUFFER_SIZE],
-    pos: usize,
-}
-
-impl StackBuffer {
-    fn new() -> Self {
-        Self {
-            buf: [0u8; LEAF_BUFFER_SIZE],
-            pos: 0,
-        }
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        &self.buf[..self.pos]
-    }
-}
-
-impl Write for StackBuffer {
-    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-        let available = LEAF_BUFFER_SIZE - self.pos;
-        if data.len() > available {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::WriteZero,
-                "buffer overflow",
-            ));
-        }
-        self.buf[self.pos..self.pos + data.len()].copy_from_slice(data);
-        self.pos += data.len();
-        Ok(data.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Keccak256LeafHash;
@@ -73,7 +36,7 @@ impl CRHScheme for Keccak256LeafHash {
         let required_size = 8 + input.len() * 32;
 
         if required_size <= LEAF_BUFFER_SIZE {
-            let mut buf = StackBuffer::new();
+            let mut buf: StackBuffer<LEAF_BUFFER_SIZE> = StackBuffer::new();
             input.serialize_compressed(&mut buf)?;
             let output: [u8; 32] = sha3::Keccak256::digest(buf.as_slice()).into();
             Ok(output.into())
