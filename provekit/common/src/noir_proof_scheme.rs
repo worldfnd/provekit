@@ -1,7 +1,7 @@
 use {
     crate::{
         hash::HashScheme,
-        whir_r1cs::{self, WhirR1CSProof, WhirR1CSScheme},
+        whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         NoirElement, R1CS,
     },

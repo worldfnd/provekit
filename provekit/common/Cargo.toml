@@ -42,6 +42,8 @@ zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
 sha2.workspace = true
+blake3.workspace = true
+sha3.workspace = true
 
 [lints]
 workspace = true

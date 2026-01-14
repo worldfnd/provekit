@@ -1,5 +1,6 @@
 mod circuit_stats;
 mod generate_gnark_inputs;
+mod macros;
 mod prepare;
 mod prove;
 mod verify;

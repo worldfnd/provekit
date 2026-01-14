@@ -1,10 +1,11 @@
 use {
     super::Command,
-    anyhow::{bail, Context, Result},
+    crate::prove,
+    anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
         file::{read, read_hash_type, write},
-        hash::{HashType, Sha2, Skyscraper},
+        hash::{Blake3, HashType, Sha2, Sha3, Skyscraper},
         Prover,
     },
     provekit_prover::Prove,
@@ -48,61 +49,10 @@ impl Command for Args {
         info!(hash_type = ?hash_type, "Hash Type");
 
         match hash_type {
-            HashType::Skyscraper => {
-                let prover: Prover<Skyscraper> =
-                    read(&self.prover_path).context("while reading Provekit Prover")?;
-                let (constraints, witnesses) = prover.size();
-                info!(constraints, witnesses, "Read Noir proof scheme");
-
-                // // Read the input toml
-                // let input_map = scheme.read_witness(&self.input_path)?;
-
-                // Generate the proof
-                let proof = prover
-                    .prove(&self.input_path)
-                    .context("While proving Noir program statement")?;
-
-                // Verify the proof (not in release build)
-                #[cfg(test)]
-                {
-                    let mut verifier: Verifier<Skyscraper> =
-                        read(&self.verifier_path).context("while reading Provekit Verifier")?;
-                    verifier
-                        .verify(&proof)
-                        .context("While verifying Noir proof")?;
-                }
-
-                // Store the proof to file
-                write(&proof, &self.proof_path, hash_type).context("while writing proof")?;
-            }
-            HashType::Sha2 => {
-                let prover: Prover<Sha2> =
-                    read(&self.prover_path).context("while reading Provekit Prover")?;
-                let (constraints, witnesses) = prover.size();
-                info!(constraints, witnesses, "Read Noir proof scheme");
-
-                // // Read the input toml
-                // let input_map = scheme.read_witness(&self.input_path)?;
-
-                // Generate the proof
-                let proof = prover
-                    .prove(&self.input_path)
-                    .context("While proving Noir program statement")?;
-
-                // Verify the proof (not in release build)
-                #[cfg(test)]
-                {
-                    let mut verifier: Verifier<Skyscraper> =
-                        read(&self.verifier_path).context("while reading Provekit Verifier")?;
-                    verifier
-                        .verify(&proof)
-                        .context("While verifying Noir proof")?;
-                }
-
-                // Store the proof to file
-                write(&proof, &self.proof_path, hash_type).context("while writing proof")?;
-            }
-            _ => panic!("Unsupported hash type for verifier"),
+            HashType::Skyscraper => prove!(self, hash_type, Skyscraper),
+            HashType::Sha2 => prove!(self, hash_type, Sha2),
+            HashType::Sha3 => prove!(self, hash_type, Sha3),
+            HashType::Blake3 => prove!(self, hash_type, Blake3),
         }
         Ok(())
     }

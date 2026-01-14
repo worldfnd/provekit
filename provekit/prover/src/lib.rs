@@ -6,7 +6,7 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{hash::HashScheme, FieldElement, IOPattern, NoirElement, NoirProof, Prover},
+    provekit_common::{hash::HashScheme, FieldElement, NoirElement, NoirProof, Prover},
     std::path::Path,
     tracing::instrument,
 };

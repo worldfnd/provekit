@@ -1,39 +1,213 @@
 Benchmarking hash functions in the age check circuit...
 
-Prepare the Noir program
+==========================================================
+           PROVEKIT BENCHMARK SUITE                       
+==========================================================
+Single Run Benchmarks for Different Hash Functions:
+
+
+▶ Testing Hash Strategy: skyscraper
+[1/3] Generating Prover/Verifier artifacts... 
 --------------------------------------------------
 Metric              | Value
 --------------------|-----------------------------
-Total Duration      | 12.8 s
+Total Duration      | 7.39 s
 Peak Memory (RSS)   | 3.16 GB peak
 Local Memory        | 3.16 GB local
 Current Memory      | 121 kB current
 Total Allocations   | 32.8M
 --------------------------------------------------
 
-
-Generate proof
+[2/3] Executing ZK-Proof Generation...
 --------------------------------------------------
 Metric              | Value
 --------------------|-----------------------------
-Total Duration      | 14.8 s
+Total Duration      | 9.53 s
 Peak Memory (RSS)   | 3.63 GB peak
 Local Memory        | 3.63 GB local
 Current Memory      | 16.9 MB current
-Total Allocations   | 4.44M
+Total Allocations   | 4.45M
 --------------------------------------------------
 
-
-Verify proof
+[3/3] Validating Proof Integrity...
 --------------------------------------------------
 Metric              | Value
 --------------------|-----------------------------
-Total Duration      | 257 ms
+Total Duration      | 140 ms
 Peak Memory (RSS)   | 1.61 GB peak
 Local Memory        | 1.61 GB local
 Current Memory      | 120 kB current
 Total Allocations   | 76.8k
 --------------------------------------------------
 
+▶ Testing Hash Strategy: sha2
+[1/3] Generating Prover/Verifier artifacts... 
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 6.94 s
+Peak Memory (RSS)   | 3.16 GB peak
+Local Memory        | 3.16 GB local
+Current Memory      | 121 kB current
+Total Allocations   | 32.8M
+--------------------------------------------------
+
+[2/3] Executing ZK-Proof Generation...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 8.81 s
+Peak Memory (RSS)   | 3.63 GB peak
+Local Memory        | 3.63 GB local
+Current Memory      | 16.9 MB current
+Total Allocations   | 4.45M
+--------------------------------------------------
+
+[3/3] Validating Proof Integrity...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 138 ms
+Peak Memory (RSS)   | 1.61 GB peak
+Local Memory        | 1.61 GB local
+Current Memory      | 120 kB current
+Total Allocations   | 80.9k
+--------------------------------------------------
+
+▶ Testing Hash Strategy: sha3,
+[1/3] Generating Prover/Verifier artifacts... 
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 7.71 s
+Peak Memory (RSS)   | 3.16 GB peak
+Local Memory        | 3.16 GB local
+Current Memory      | 121 kB current
+Total Allocations   | 32.8M
+--------------------------------------------------
+
+[2/3] Executing ZK-Proof Generation...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 9.68 s
+Peak Memory (RSS)   | 3.63 GB peak
+Local Memory        | 3.63 GB local
+Current Memory      | 16.9 MB current
+Total Allocations   | 4.45M
+--------------------------------------------------
+
+[3/3] Validating Proof Integrity...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 141 ms
+Peak Memory (RSS)   | 1.61 GB peak
+Local Memory        | 1.61 GB local
+Current Memory      | 120 kB current
+Total Allocations   | 76.8k
+--------------------------------------------------
+
+▶ Testing Hash Strategy: blake3
+[1/3] Generating Prover/Verifier artifacts... 
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 7.63 s
+Peak Memory (RSS)   | 3.16 GB peak
+Local Memory        | 3.16 GB local
+Current Memory      | 121 kB current
+Total Allocations   | 32.8M
+--------------------------------------------------
+
+[2/3] Executing ZK-Proof Generation...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 7.13 s
+Peak Memory (RSS)   | 3.63 GB peak
+Local Memory        | 3.63 GB local
+Current Memory      | 16.9 MB current
+Total Allocations   | 4.44M
+--------------------------------------------------
+
+[3/3] Validating Proof Integrity...
+--------------------------------------------------
+Metric              | Value
+--------------------|-----------------------------
+Total Duration      | 131 ms
+Peak Memory (RSS)   | 1.61 GB peak
+Local Memory        | 1.61 GB local
+Current Memory      | 120 kB current
+Total Allocations   | 77.8k
+--------------------------------------------------
+
+==========================================================
+Benchmark Loop Completed.
+Multi Run Benchmarks for Different Hash Functions with hyperfine:
 
 
+⚒  STAGE 1: Artifact Preparation (PKP/PKV Generation)
+Benchmark 1: skyscraper
+  Time (abs ≡):         7.530 s               [User: 8.334 s, System: 1.200 s]
+ 
+Benchmark 2: sha2
+  Time (abs ≡):         7.464 s               [User: 8.169 s, System: 1.187 s]
+ 
+Benchmark 3: sha3,
+  Time (abs ≡):         7.491 s               [User: 8.265 s, System: 1.180 s]
+ 
+Benchmark 4: blake3
+  Time (abs ≡):         7.056 s               [User: 6.581 s, System: 1.179 s]
+ 
+Summary
+  blake3 ran
+    1.06 times faster than sha2
+    1.06 times faster than sha3,
+    1.07 times faster than skyscraper
+
+🚀 STAGE 2: Proving Performance 5 Runs 
+Benchmark 1: skyscraper
+  Time (mean ± σ):      9.469 s ±  0.107 s    [User: 62.005 s, System: 1.618 s]
+  Range (min … max):    9.305 s …  9.591 s    5 runs
+ 
+Benchmark 2: sha2
+  Time (mean ± σ):      8.633 s ±  0.244 s    [User: 54.247 s, System: 1.513 s]
+  Range (min … max):    8.390 s …  9.042 s    5 runs
+ 
+Benchmark 3: sha3,
+  Time (mean ± σ):      9.347 s ±  0.138 s    [User: 63.432 s, System: 1.592 s]
+  Range (min … max):    9.224 s …  9.564 s    5 runs
+ 
+Benchmark 4: blake3
+  Time (mean ± σ):      7.260 s ±  0.132 s    [User: 41.110 s, System: 1.427 s]
+  Range (min … max):    7.141 s …  7.467 s    5 runs
+ 
+Summary
+  blake3 ran
+    1.19 ± 0.04 times faster than sha2
+    1.29 ± 0.03 times faster than sha3,
+    1.30 ± 0.03 times faster than skyscraper
+
+⚖  STAGE 3: Verification Speed 5 Runs 
+Benchmark 1: skyscraper
+  Time (mean ± σ):     154.5 ms ±   2.5 ms    [User: 72.1 ms, System: 100.1 ms]
+  Range (min … max):   151.2 ms … 157.2 ms    5 runs
+ 
+Benchmark 2: sha2
+  Time (mean ± σ):     150.3 ms ±   4.3 ms    [User: 68.9 ms, System: 98.8 ms]
+  Range (min … max):   145.3 ms … 156.9 ms    5 runs
+ 
+Benchmark 3: sha3,
+  Time (mean ± σ):     152.6 ms ±   3.1 ms    [User: 71.8 ms, System: 99.3 ms]
+  Range (min … max):   147.9 ms … 155.6 ms    5 runs
+ 
+Benchmark 4: blake3
+  Time (mean ± σ):     144.4 ms ±   3.2 ms    [User: 63.5 ms, System: 95.9 ms]
+  Range (min … max):   140.1 ms … 148.3 ms    5 runs
+ 
+Summary
+  blake3 ran
+    1.04 ± 0.04 times faster than sha2
+    1.06 ± 0.03 times faster than sha3,
+    1.07 ± 0.03 times faster than skyscraper

@@ -1,10 +1,11 @@
 use {
     super::Command,
+    crate::verify,
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
         file::{read, read_hash_type},
-        hash::{HashType, Sha2, Skyscraper},
+        hash::{Blake3, HashType, Sha2, Sha3, Skyscraper},
         Verifier,
     },
     provekit_verifier::Verify,
@@ -32,23 +33,10 @@ impl Command for Args {
         info!(hash_type = ?hash_type, "Hash Type");
 
         match hash_type {
-            HashType::Skyscraper => {
-                let mut verifier: Verifier<Skyscraper> =
-                    read(&self.verifier_path).context("while reading Provekit Verifier")?;
-                let proof = read(&self.proof_path).context("while reading proof")?;
-                verifier
-                    .verify(&proof)
-                    .context("While verifying Noir proof")?;
-            }
-            HashType::Sha2 => {
-                let mut verifier: Verifier<Sha2> =
-                    read(&self.verifier_path).context("while reading Provekit Verifier")?;
-                let proof = read(&self.proof_path).context("while reading proof")?;
-                verifier
-                    .verify(&proof)
-                    .context("While verifying Noir proof")?;
-            }
-            _ => panic!("Unsupported hash type for verifier"),
+            HashType::Skyscraper => verify!(self, Skyscraper),
+            HashType::Sha2 => verify!(self, Sha2),
+            HashType::Sha3 => verify!(self, Sha3),
+            HashType::Blake3 => verify!(self, Blake3)
         }
         Ok(())
     }

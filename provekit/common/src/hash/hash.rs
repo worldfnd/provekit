@@ -33,8 +33,7 @@ pub enum HashType {
     Skyscraper,
     Sha2,
     Sha3,
-    Sha2v2,
-    Blake3,
+    Blake3
 }
 
 impl From<HashType> for u8 {
@@ -49,7 +48,7 @@ impl From<u8> for HashType {
             0 => HashType::Skyscraper,
             1 => HashType::Sha2,
             2 => HashType::Sha3,
-            3 => HashType::Sha2v2,
+            3 => HashType::Blake3,
             _ => HashType::Skyscraper,
         }
     }
@@ -63,7 +62,6 @@ impl HashType {
             "sha2" => HashType::Sha2,
             "sha" => HashType::Sha2,
             "sha3" => HashType::Sha3,
-            "sha2v2" => HashType::Sha2v2,
             "blake3" => HashType::Blake3,
             "blake" => HashType::Blake3,
             _ => HashType::Skyscraper,
@@ -75,7 +73,6 @@ impl HashType {
             HashType::Skyscraper => "Skyscraper".to_string(),
             HashType::Sha2 => "SHA2".to_string(),
             HashType::Sha3 => "SHA3".to_string(),
-            HashType::Sha2v2 => "SHA2v2".to_string(),
             HashType::Blake3 => "BLAKE3".to_string(),
         }
     }

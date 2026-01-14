@@ -1,6 +1,6 @@
 use {
     crate::{
-        hash::{HashScheme, HashType, Sha2, Skyscraper},
+        hash::{HashScheme},
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},

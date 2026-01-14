@@ -12,7 +12,6 @@ use {
     whir::whir::{domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig},
 };
 
-
 pub type WhirConfig<H> = GenericWhirConfig<FieldElement, MerkleConfig<H>, PoW<H>>;
 pub type IOPattern<H> = DomainSeparator<Sponge<H>, FieldElement>;
 
