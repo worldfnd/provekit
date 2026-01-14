@@ -70,6 +70,16 @@ extern "C"
     /// @param buf The buffer to free
     void pk_free_buf(PKBuf buf);
 
+    /// Set custom allocator functions for memory management.
+    ///
+    /// When set, all allocations will be delegated to the provided functions.
+    /// Pass NULL for both to use the system allocator (default).
+    ///
+    /// @param alloc_fn Function to allocate memory (size, align) -> ptr, or NULL
+    /// @param dealloc_fn Function to deallocate memory (ptr, size, align), or NULL
+    void pk_set_allocator(void *(*_Nullable alloc_fn)(size_t size, size_t align),
+                          void (*_Nullable dealloc_fn)(void *ptr, size_t size, size_t align));
+
 #ifdef __cplusplus
 }
 #endif

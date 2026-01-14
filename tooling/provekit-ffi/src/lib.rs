@@ -24,6 +24,7 @@
 //! to ensure proper memory management and valid pointer usage.
 
 pub mod ffi;
+mod ffi_allocator;
 pub mod types;
 pub mod utils;
 

@@ -266,6 +266,7 @@ lib.pk_free_buf(proof_buf)
 - `pk_prove_to_file()` - Generate proof and write to file
 - `pk_prove_to_json()` - Generate proof and return as JSON string in memory buffer
 - `pk_free_buf()` - Free buffers returned by ProveKit functions
+- `pk_set_allocator()` - Set custom allocator functions for memory management (optional)
 
 ### Error Codes
 
@@ -291,10 +292,27 @@ lib.pk_free_buf(proof_buf)
 
 All buffers returned by ProveKit functions must be freed using `pk_free_buf()`. Failure to do so will result in memory leaks.
 
+### Custom Allocator
+
+By default, ProveKit uses the system allocator. To use a custom allocator (e.g., for iOS memory tracking), call `pk_set_allocator()` before any other ProveKit functions:
+
+```c
+void* my_alloc(size_t size, size_t align) {
+    // Custom allocation logic
+}
+
+void my_dealloc(void* ptr, size_t size, size_t align) {
+    // Custom deallocation logic
+}
+
+// Set custom allocator (call once, before pk_init)
+pk_set_allocator(my_alloc, my_dealloc);
+```
+
+If `pk_set_allocator()` is not called, the system allocator is used.
+
 ## Thread Safety
 
 The FFI functions are not guaranteed to be thread-safe. If you need to call ProveKit functions from multiple threads, ensure proper synchronization.
 
-## Features
 
-The FFI library is built with JSON support by default, providing the `pk_prove_to_json` function.
