@@ -14,8 +14,14 @@ use {
 };
 
 const ZSTD_COMPRESSION: i32 = zstd::DEFAULT_COMPRESSION_LEVEL;
+
+/// Header layout: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1) =
+/// 21 bytes
 const HEADER_SIZE: usize = 21;
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
+/// Byte offset where hash config is stored: MAGIC(8) + FORMAT(8) + MAJOR(2) +
+/// MINOR(2) = 20
+const HASH_CONFIG_OFFSET: usize = 20;
 
 /// Write a compressed binary file (fast and small).
 #[instrument(skip(value))]
@@ -100,7 +106,8 @@ pub fn read_hash_config(
     ensure!(file_major == major, "Incompatible format major version");
     ensure!(file_minor >= minor, "Incompatible format minor version");
 
-    // Read hash_config from byte 20
+    // Read hash_config at HASH_CONFIG_OFFSET (byte 20)
+    debug_assert_eq!(header.remaining(), HEADER_SIZE - HASH_CONFIG_OFFSET);
     let hash_config_byte = header.get_u8();
     HashConfig::from_byte(hash_config_byte)
         .with_context(|| format!("Invalid hash config byte: 0x{:02X}", hash_config_byte))
