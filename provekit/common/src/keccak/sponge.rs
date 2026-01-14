@@ -7,8 +7,8 @@
 /// Keccak sponge type for Fiat-Shamir transcripts.
 ///
 /// This is spongefish's native Keccak implementation, which uses the
-/// Keccak-f\[1600\] permutation in duplex mode. It operates on bytes (`u8`), with
-/// field elements serialized/deserialized through the spongefish arkworks
+/// Keccak-f\[1600\] permutation in duplex mode. It operates on bytes (`u8`),
+/// with field elements serialized/deserialized through the spongefish arkworks
 /// codecs.
 ///
 /// - **Rate**: 136 bytes (1088 bits)
