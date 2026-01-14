@@ -2,6 +2,10 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
+        blake3::{Blake3MerkleConfig, Blake3PoW, Blake3Sponge},
+        keccak::{KeccakMerkleConfig, KeccakPoW, KeccakSponge},
+        sha256::{Sha256MerkleConfig, Sha256PoW, Sha256Sponge},
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
         FieldElement, WhirR1CSProof, WhirR1CSScheme,
     },
@@ -34,33 +38,28 @@ pub trait WhirR1CSVerifier {
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()>;
 }
 
-impl<MerkleConfig, PowStrategy> WhirR1CSVerifier for WhirR1CSScheme<MerkleConfig, PowStrategy>
-where
-    MerkleConfig: ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]>
-        + provekit_common::hash_config::TypedHashConfig,
-    PowStrategy: spongefish_pow::PowStrategy,
-    MerkleConfig::Sponge:
-        spongefish::duplex_sponge::DuplexSpongeInterface<MerkleConfig::Unit> + Clone + 'static,
-    MerkleConfig::Unit: spongefish::Unit + Clone + 'static,
-    for<'a> VerifierState<'a, MerkleConfig::Sponge, MerkleConfig::Unit>:
-        FieldToUnitDeserialize<FieldElement>
-            + UnitToField<FieldElement>
-            + spongefish::BytesToUnitDeserialize
-            + spongefish::UnitToBytes
-            + whir::whir::utils::DigestToUnitDeserialize<MerkleConfig>,
-    DomainSeparator<MerkleConfig::Sponge, MerkleConfig::Unit>:
-        WhirDomainSeparator<FieldElement, MerkleConfig>
-            + spongefish::ByteDomainSeparator
-            + spongefish::codecs::arkworks_algebra::FieldDomainSeparator<FieldElement>,
-{
-    #[instrument(skip_all)]
-    #[allow(unused)]
-    fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
-        verify_with_hash::<MerkleConfig::Sponge, MerkleConfig::Unit, MerkleConfig, PowStrategy>(
-            self, proof,
-        )
-    }
+/// Macro to implement `WhirR1CSVerifier` for each hash configuration.
+/// This generates monomorphized implementations for optimal performance,
+macro_rules! impl_whir_r1cs_verifier {
+    ($merkle:ty, $pow:ty, $sponge:ty, $unit:ty) => {
+        impl WhirR1CSVerifier for WhirR1CSScheme<$merkle, $pow> {
+            #[instrument(skip_all)]
+            fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
+                verify_with_hash::<$sponge, $unit, $merkle, $pow>(self, proof)
+            }
+        }
+    };
 }
+
+impl_whir_r1cs_verifier!(
+    SkyscraperMerkleConfig,
+    SkyscraperPoW,
+    SkyscraperSponge,
+    FieldElement
+);
+impl_whir_r1cs_verifier!(Sha256MerkleConfig, Sha256PoW, Sha256Sponge, u8);
+impl_whir_r1cs_verifier!(KeccakMerkleConfig, KeccakPoW, KeccakSponge, u8);
+impl_whir_r1cs_verifier!(Blake3MerkleConfig, Blake3PoW, Blake3Sponge, u8);
 
 /// Verifies a WHIR R1CS proof.
 #[instrument(skip_all)]

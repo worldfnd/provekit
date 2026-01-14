@@ -6,7 +6,13 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{skyscraper::SkyscraperSponge, FieldElement, NoirElement, NoirProof, Prover},
+    provekit_common::{
+        blake3::{Blake3MerkleConfig, Blake3PoW, Blake3Sponge},
+        keccak::{KeccakMerkleConfig, KeccakPoW, KeccakSponge},
+        sha256::{Sha256MerkleConfig, Sha256PoW, Sha256Sponge},
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        FieldElement, NoirElement, NoirProof, Prover,
+    },
     spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, DomainSeparator, ProverState},
     std::path::Path,
     tracing::instrument,
@@ -57,66 +63,33 @@ where
         .witness)
 }
 
-impl Prove
-    for Prover<
-        provekit_common::skyscraper::SkyscraperMerkleConfig,
-        provekit_common::skyscraper::SkyscraperPoW,
-    >
-{
-    #[instrument(skip_all)]
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        generate_witness_internal(self, input_map)
-    }
+/// Macro to implement `Prove` for each hash configuration.
+/// This generates monomorphized implementations for optimal performance.
+macro_rules! impl_prove {
+    ($merkle:ty, $pow:ty, $sponge:ty, $unit:ty) => {
+        impl Prove for Prover<$merkle, $pow> {
+            #[instrument(skip_all)]
+            fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
+                generate_witness_internal(self, input_map)
+            }
 
-    #[instrument(skip_all)]
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        prove_with_hash::<SkyscraperSponge, FieldElement, _, _>(self, prover_toml)
-    }
+            #[instrument(skip_all)]
+            fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+                prove_with_hash::<$sponge, $unit, _, _>(self, prover_toml)
+            }
+        }
+    };
 }
 
-impl Prove
-    for Prover<provekit_common::sha256::Sha256MerkleConfig, provekit_common::sha256::Sha256PoW>
-{
-    #[instrument(skip_all)]
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        generate_witness_internal(self, input_map)
-    }
-
-    #[instrument(skip_all)]
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        // Use SHA256 sponge for SHA256 Merkle (pure configuration)
-        prove_with_hash::<provekit_common::sha256::Sha256Sponge, u8, _, _>(self, prover_toml)
-    }
-}
-
-impl Prove
-    for Prover<provekit_common::keccak::KeccakMerkleConfig, provekit_common::keccak::KeccakPoW>
-{
-    #[instrument(skip_all)]
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        generate_witness_internal(self, input_map)
-    }
-
-    #[instrument(skip_all)]
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        // Use Keccak sponge for Keccak Merkle (pure configuration)
-        prove_with_hash::<provekit_common::keccak::KeccakSponge, u8, _, _>(self, prover_toml)
-    }
-}
-
-impl Prove
-    for Prover<provekit_common::blake3::Blake3MerkleConfig, provekit_common::blake3::Blake3PoW>
-{
-    #[instrument(skip_all)]
-    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-        generate_witness_internal(self, input_map)
-    }
-
-    #[instrument(skip_all)]
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        prove_with_hash::<provekit_common::blake3::Blake3Sponge, u8, _, _>(self, prover_toml)
-    }
-}
+impl_prove!(
+    SkyscraperMerkleConfig,
+    SkyscraperPoW,
+    SkyscraperSponge,
+    FieldElement
+);
+impl_prove!(Sha256MerkleConfig, Sha256PoW, Sha256Sponge, u8);
+impl_prove!(KeccakMerkleConfig, KeccakPoW, KeccakSponge, u8);
+impl_prove!(Blake3MerkleConfig, Blake3PoW, Blake3Sponge, u8);
 
 /// Generates a proof for a Noir program.
 #[instrument(skip_all)]
