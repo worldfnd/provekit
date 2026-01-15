@@ -104,8 +104,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return fmt.Errorf("failed to read public inputs hash: %w", err)
 	}
 
-	// TODO : Compute expected public inputs hash and verify
-	expectedHash, err := hashPublicInputs(api, sc, circuit.PublicInputs)
+	expectedHash, err := hashPublicInputs(sc, circuit.PublicInputs)
 	if err != nil {
 		return fmt.Errorf("failed to compute public inputs hash: %w", err)
 	}
@@ -367,6 +366,8 @@ func verifyCircuit(
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
 
+	log.Println("publicInputs", publicInputs)
+
 	circuit := Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
@@ -514,7 +515,7 @@ func verifyCircuit(
 	}
 
 	opts := []backend.ProverOption{
-		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf, utilities.HashPublicInputsHint)),
+		backend.WithSolverOptions(solver.WithHints(utilities.IndexOf)),
 		backend.WithIcicleAcceleration(),
 	}
 

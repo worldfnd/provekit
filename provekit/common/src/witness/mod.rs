@@ -8,12 +8,13 @@ mod witness_io_pattern;
 
 use {
     crate::{
+        skyscraper::SkyscraperCRH,
         utils::{serde_ark, serde_ark_vec},
         FieldElement,
     },
-    ark_ff::{BigInt, One, PrimeField},
+    ark_crypto_primitives::crh::CRHScheme,
+    ark_ff::One,
     serde::{Deserialize, Serialize},
-    sha2::{Digest, Sha256},
 };
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
@@ -49,12 +50,10 @@ impl ConstantOrR1CSWitness {
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
 impl PublicInputs {
-    /// Creates a new `PublicInputs` with an empty vector.
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
-    /// Creates a new `PublicInputs` from a vector.
     pub fn from_vec(vec: Vec<FieldElement>) -> Self {
         Self(vec)
     }
@@ -67,27 +66,20 @@ impl PublicInputs {
         self.0.is_empty()
     }
 
-    /// Hashes the public input values using SHA-256 and converts the result to
-    /// a FieldElement.
     pub fn hash(&self) -> FieldElement {
-        let mut hasher = Sha256::new();
-
-        // Hash all public values from witness
-        for value in self.0.iter() {
-            let bigint = value.into_bigint();
-            for limb in bigint.0.iter() {
-                hasher.update(&limb.to_le_bytes());
+        match self.0.len() {
+            0 => FieldElement::from(0u64),
+            1 => {
+                // For single element, hash it with zero to ensure it gets properly hashed
+                let padded = vec![self.0[0], FieldElement::from(0u64)];
+                SkyscraperCRH::evaluate(&(), &padded[..])
+                    .expect("hash should succeed")
+            }
+            _ => {
+                SkyscraperCRH::evaluate(&(), &self.0[..])
+                    .expect("hash should succeed for multiple inputs")
             }
         }
-
-        let result = hasher.finalize();
-
-        let limbs = result
-            .chunks_exact(8)
-            .map(|s| u64::from_le_bytes(s.try_into().unwrap()))
-            .collect::<Vec<_>>();
-
-        FieldElement::new(BigInt::new(limbs.try_into().unwrap()))
     }
 }
 

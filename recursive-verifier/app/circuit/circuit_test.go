@@ -70,7 +70,7 @@ func TestCircuitConstraints(t *testing.T) {
 		test.WithValidAssignment(assignment),
 		test.WithCurves(ecc.BN254),
 		test.WithBackends(backend.GROTH16),
-		test.WithSolverOpts(solver.WithHints(utilities.IndexOf, utilities.HashPublicInputsHint)),
+		test.WithSolverOpts(solver.WithHints(utilities.IndexOf)),
 	)
 }
 
@@ -124,7 +124,7 @@ func TestCircuitConstraintsSolverOnly(t *testing.T) {
 	}
 
 	// Solve the constraint system
-	_, err = ccs.Solve(witness, solver.WithHints(utilities.IndexOf, utilities.HashPublicInputsHint))
+	_, err = ccs.Solve(witness, solver.WithHints(utilities.IndexOf))
 	if err != nil {
 		t.Fatalf("Constraint system not satisfied: %v", err)
 	}
