@@ -62,6 +62,7 @@ impl Command for Args {
             prover.whir_for_witness.a_num_terms,
             prover.whir_for_witness.num_challenges,
             prover.whir_for_witness.w1_size,
+            &proof.public_inputs,
             &self.params_for_recursive_verifier,
         );
 
