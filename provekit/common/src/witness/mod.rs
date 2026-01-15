@@ -72,13 +72,10 @@ impl PublicInputs {
             1 => {
                 // For single element, hash it with zero to ensure it gets properly hashed
                 let padded = vec![self.0[0], FieldElement::from(0u64)];
-                SkyscraperCRH::evaluate(&(), &padded[..])
-                    .expect("hash should succeed")
+                SkyscraperCRH::evaluate(&(), &padded[..]).expect("hash should succeed")
             }
-            _ => {
-                SkyscraperCRH::evaluate(&(), &self.0[..])
-                    .expect("hash should succeed for multiple inputs")
-            }
+            _ => SkyscraperCRH::evaluate(&(), &self.0[..])
+                .expect("hash should succeed for multiple inputs"),
         }
     }
 }
