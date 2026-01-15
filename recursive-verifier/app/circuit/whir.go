@@ -256,7 +256,7 @@ func RunZKWhirBatch(
 	for i := 0; i < numPolynomials; i++ {
 		numOOD += len(initialOODQueries[i])
 	}
-	
+
 	numStatementConstraints := 0
 
 	// w1 has 4 (pub, Az, Bz, Cz) constraints, w2 and remaining have 3 (Az, Bz, Cz) constraints

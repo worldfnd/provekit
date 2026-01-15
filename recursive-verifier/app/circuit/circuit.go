@@ -198,9 +198,11 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
 	api.AssertIsEqual(spartanSumcheckLastValue, x)
 
-	// TODO : generalize it later on if we have more different kinds of statements
-	// for handling geometric weights statement added at starting
-	offset := 1
+	offset := 0
+	if !circuit.PublicInputs.IsEmpty() {
+		// can be generalized later on if we have more different kinds of statements
+		offset = 1
+	}
 
 	if circuit.NumChallenges > 0 {
 		// Batch mode - check 6 deferred values
