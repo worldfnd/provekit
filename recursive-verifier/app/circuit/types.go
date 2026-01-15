@@ -1,6 +1,8 @@
 package circuit
 
 import (
+	"reilabs/whir-verifier-circuit/app/utilities"
+
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
 )
@@ -101,6 +103,7 @@ type Config struct {
 	BlindingStatementEvaluations []string   `json:"blinding_statement_evaluations"`
 	NumChallenges                int        `json:"num_challenges"`
 	W1Size                       int        `json:"w1_size"`
+	PublicInputs                 PublicInputs `json:"public_inputs"`
 }
 
 // Update Hints to support batch mode
@@ -138,4 +141,21 @@ type ClaimedEvaluations struct {
 type DualClaimedEvaluations struct {
 	First  ClaimedEvaluations
 	Second ClaimedEvaluations
+}
+
+type PublicInputs struct {
+	Values []frontend.Variable
+}
+
+func (p *PublicInputs) UnmarshalJSON(data []byte) error {
+	values, err := utilities.UnmarshalPublicInputs(data)
+	if err != nil {
+		return err
+	}
+	p.Values = values
+	return nil
+}
+
+func (p *PublicInputs) IsEmpty() bool {
+	return len(p.Values) == 0
 }

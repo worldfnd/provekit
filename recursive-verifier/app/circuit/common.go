@@ -30,6 +30,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
 	var claimedEvaluations2 ClaimedEvaluations
+	var publicWeightsEvaluations [2]Fp256
 
 	for _, op := range io.Ops {
 		switch op.Kind {
@@ -128,6 +129,16 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 				if err != nil {
 					return fmt.Errorf("failed to deserialize claimed_evaluations_2: %w", err)
 				}
+
+			case "public_weights_evaluations":
+				_, err = arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&publicWeightsEvaluations,
+					false, false,
+				)
+				if err != nil {
+					return fmt.Errorf("failed to deserialize public_weights_evaluations: %w", err)
+				}
 			}
 
 			if err != nil {
@@ -204,7 +215,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		WitnessRoundHints:      witnessRoundHints,
 	}
 
-	err = verifyCircuit(deferred, config, hints, pk, vk, claimedEvaluations, claimedEvaluations2, r1cs, interner, buildOps)
+	err = verifyCircuit(deferred, config, hints, pk, vk, claimedEvaluations, claimedEvaluations2, publicWeightsEvaluations, r1cs, interner, buildOps, config.PublicInputs)
 	if err != nil {
 		return fmt.Errorf("verification failed: %w", err)
 	}

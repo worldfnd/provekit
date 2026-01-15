@@ -59,7 +59,7 @@ func RunZKWhir(
 	firstRound Merkle,
 	whirParams WHIRParams,
 	linearStatementEvaluations [][]frontend.Variable,
-	linearStatementValuesAtPoints []frontend.Variable,
+	linearStatementValuesAtPoints []frontend.Variable, // weights.evaluate(random_point) - this is what needs to be done 
 	batchingRandomness frontend.Variable,
 	initialOODQueries []frontend.Variable,
 	initialOODAnswers [][]frontend.Variable,
@@ -238,6 +238,7 @@ func RunZKWhirBatch(
 	// Common parameters
 	whirParams WHIRParams,
 	linearStatementValuesAtPoints []frontend.Variable,
+	publicInputs PublicInputs,
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 	numPolynomials := len(firstRounds)
 	if numPolynomials == 0 {

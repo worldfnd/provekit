@@ -1,6 +1,7 @@
 package circuit
 
 import (
+	"fmt"
 	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
@@ -111,4 +112,86 @@ func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize i
 		}
 	}
 	return collapsed
+}
+
+// hashPublicInputs computes the hash of public inputs by treating them as field elements
+// This mimics the Rust PublicInputs::hash() function using SHA-256, TODO : Shift to skyscraper hash function later
+func hashPublicInputs(api frontend.API, sc *skyscraper.Skyscraper, publicInputs PublicInputs) (frontend.Variable, error) {
+	if len(publicInputs.Values) == 0 {
+		// Return zero if no public inputs
+		return frontend.Variable(0), nil
+	}
+
+	// Use hint to compute SHA-256 hash outside the circuit
+	// The hint function will be called during witness generation
+	hashResult, err := api.Compiler().NewHint(utilities.HashPublicInputsHint, 1, publicInputs.Values...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hash hint: %w", err)
+	}
+
+	return hashResult[0], nil
+}
+
+// verifyPublicInputsAndReadWeights reads and verifies the public inputs hash from the transcript,
+// then reads the public weights challenge and query answer.
+// Returns (publicWeightsChallenge, publicWeightsQueryAnswer, error)
+func verifyPublicInputsAndReadWeights(
+	api frontend.API,
+	sc *skyscraper.Skyscraper,
+	arthur gnarkNimue.Arthur,
+	publicInputs PublicInputs,
+) (frontend.Variable, []frontend.Variable, error) {
+	// Read public inputs hash from transcript
+	publicInputsHashBuf := make([]frontend.Variable, 1)
+	if err := arthur.FillNextScalars(publicInputsHashBuf); err != nil {
+		return nil, nil, fmt.Errorf("failed to read public inputs hash: %w", err)
+	}
+
+	// Compute expected public inputs hash
+	expectedHash, err := hashPublicInputs(api, sc, publicInputs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to compute public inputs hash: %w", err)
+	}
+
+	// Verify hash matches
+	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
+
+	// Read public weights vector random challenge
+	publicWeightsChallenge := make([]frontend.Variable, 1)
+	if err := arthur.FillChallengeScalars(publicWeightsChallenge); err != nil {
+		return nil, nil, fmt.Errorf("failed to read public weights challenge: %w", err)
+	}
+
+	// Read WHIR public weights query answer (2 field elements: f_sum, g_sum)
+	publicWeightsQueryAnswer := make([]frontend.Variable, 2)
+	if err := arthur.FillNextScalars(publicWeightsQueryAnswer); err != nil {
+		return nil, nil, fmt.Errorf("failed to read public weights query answer: %w", err)
+	}
+
+	return publicWeightsChallenge[0], publicWeightsQueryAnswer, nil
+}
+
+// readPublicWeightsQueryAnswer reads only the public weights query answer from the transcript.
+// The challenge has already been read at the circuit level to match transcript order.
+// Returns (publicWeightsQueryAnswer, error)
+func readPublicWeightsQueryAnswer(arthur gnarkNimue.Arthur) ([]frontend.Variable, error) {
+	// Read WHIR public weights query answer (2 field elements: f_sum, g_sum)
+	publicWeightsQueryAnswer := make([]frontend.Variable, 2)
+	if err := arthur.FillNextScalars(publicWeightsQueryAnswer); err != nil {
+		return nil, fmt.Errorf("failed to read public weights query answer: %w", err)
+	}
+
+	return publicWeightsQueryAnswer, nil
+}
+
+// computePublicWeightsClaimedSum computes the claimed sum for the public weights constraint
+// This is: public_f_sum + public_g_sum * batching_randomness
+func computePublicWeightsClaimedSum(
+	api frontend.API,
+	publicWeightsQueryAnswer []frontend.Variable,
+	batchingRandomness frontend.Variable,
+) frontend.Variable {
+	publicFSum := publicWeightsQueryAnswer[0]
+	publicGSum := publicWeightsQueryAnswer[1]
+	return api.Add(publicFSum, api.Mul(publicGSum, batchingRandomness))
 }

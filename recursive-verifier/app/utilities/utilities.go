@@ -1,6 +1,10 @@
 package utilities
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"reilabs/whir-verifier-circuit/app/typeConverters"
@@ -55,6 +59,77 @@ func IndexOf(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
 	}
 
 	outputs[0] = big.NewInt(-1)
+	return nil
+}
+
+// HashPublicInputsHint is a hint function that computes SHA-256 hash of public inputs
+// matching the Rust PublicInputs::hash() implementation.
+// It takes public input values, converts them to BigInt, extracts limbs, hashes them,
+// and returns the hash as a field element.
+func HashPublicInputsHint(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
+	if len(outputs) != 1 {
+		return fmt.Errorf("expecting one output")
+	}
+
+	if len(inputs) == 0 {
+		outputs[0] = big.NewInt(0)
+		return nil
+	}
+
+	hasher := sha256.New()
+
+	// Process each public input value
+	for _, input := range inputs {
+		// Convert field element to BigInt (it's already a BigInt, but ensure it's in range)
+		value := new(big.Int).Set(input)
+
+		// Extract limbs (u64 values) from BigInt
+		// Field elements are represented as 4 u64 limbs in little-endian
+		limbs := make([]uint64, 4)
+		temp := new(big.Int).Set(value)
+		limbs[0] = temp.Uint64() // Least significant limb
+		temp.Rsh(temp, 64)
+		limbs[1] = temp.Uint64()
+		temp.Rsh(temp, 64)
+		limbs[2] = temp.Uint64()
+		temp.Rsh(temp, 64)
+		limbs[3] = temp.Uint64() // Most significant limb
+
+		// Hash each limb as little-endian bytes (8 bytes per limb)
+		for _, limb := range limbs {
+			limbBytes := make([]byte, 8)
+			binary.LittleEndian.PutUint64(limbBytes, limb)
+			hasher.Write(limbBytes)
+		}
+	}
+
+	// Get the hash result (32 bytes)
+	hashResult := hasher.Sum(nil)
+
+	// Convert hash result to field element by splitting into 4 u64 limbs
+	// Each chunk of 8 bytes becomes a u64 (little-endian)
+	limbs := make([]uint64, 4)
+	for i := 0; i < 4; i++ {
+		start := i * 8
+		end := start + 8
+		limbs[i] = binary.LittleEndian.Uint64(hashResult[start:end])
+	}
+
+	// Reconstruct field element from limbs
+	result := new(big.Int).SetUint64(limbs[0])
+	temp := new(big.Int).SetUint64(limbs[1])
+	result.Add(result, temp.Lsh(temp, 64))
+	temp.SetUint64(limbs[2])
+	result.Add(result, temp.Lsh(temp, 128))
+	temp.SetUint64(limbs[3])
+	result.Add(result, temp.Lsh(temp, 192))
+
+	// Apply modulus to ensure result is in field range
+	modulus := new(big.Int)
+	modulus.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	result.Mod(result, modulus)
+
+	outputs[0] = result
 	return nil
 }
 
@@ -209,4 +284,50 @@ func DotProduct(api frontend.API, a []frontend.Variable, b []frontend.Variable) 
 		acc = api.Add(acc, api.Mul(a[i], b[i]))
 	}
 	return acc
+}
+
+// ParseHexFieldElement parses a hex string representing a FieldElement (little-endian)
+// and converts it to a big.Int. The hex string should be 64 characters (32 bytes).
+func ParseHexFieldElement(hexStr string) (*big.Int, error) {
+	if len(hexStr) >= 2 && hexStr[0:2] == "0x" {
+		hexStr = hexStr[2:]
+	}
+
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex string: %w", err)
+	}
+
+	reversed := make([]byte, len(bytes))
+	for i, b := range bytes {
+		reversed[len(bytes)-1-i] = b
+	}
+
+	result := new(big.Int)
+	result.SetBytes(reversed)
+
+	modulus := new(big.Int)
+	modulus.SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	result.Mod(result, modulus)
+
+	return result, nil
+}
+
+// UnmarshalPublicInputs parses a JSON array of hex-encoded FieldElement strings
+// and returns them as frontend.Variable slice.
+func UnmarshalPublicInputs(data []byte) ([]frontend.Variable, error) {
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return nil, err
+	}
+
+	values := make([]frontend.Variable, len(arr))
+	for i, hexStr := range arr {
+		value, err := ParseHexFieldElement(hexStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse public input at index %d: %w", i, err)
+		}
+		values[i] = value
+	}
+	return values, nil
 }
