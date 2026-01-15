@@ -122,7 +122,32 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	var az, bz, cz frontend.Variable
 
 	if circuit.NumChallenges > 0 {
-		// Dual commitment mode: batch WHIR verification
+		// Only statement_1 (first commitment) gets extended with public weights, statement_2 remains unchanged
+		extendedLinearStatementEvalsBatch := make([][][]frontend.Variable, 2)
+
+		if !circuit.PublicInputs.IsEmpty() {
+			extendedLinearStatementEvalsBatch[0] = extendLinearStatement(
+				circuit,
+				[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
+				circuit.PubWitnessEvaluations,
+			)
+
+			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
+				circuit.WitnessClaimedEvaluations[1],
+				circuit.WitnessBlindingEvaluations[1],
+			}
+		} else {
+			// Use original arrays as before, no public inputs
+			extendedLinearStatementEvalsBatch[0] = [][]frontend.Variable{
+				circuit.WitnessClaimedEvaluations[0],
+				circuit.WitnessBlindingEvaluations[0],
+			}
+			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
+				circuit.WitnessClaimedEvaluations[1],
+				circuit.WitnessBlindingEvaluations[1],
+			}
+		}
+
 		whirFoldingRandomness, err = RunZKWhirBatch(
 			api, arthur, uapi, sc,
 			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
@@ -131,13 +156,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
 			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
 			circuit.WitnessMerkle,                                           // batchedMerkle
-			[][][]frontend.Variable{ // linearStatementEvals
-				{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
-				{circuit.WitnessClaimedEvaluations[1], circuit.WitnessBlindingEvaluations[1]},
-			},
-			circuit.WHIRParamsWitness,                 // whirParams
-			circuit.WitnessLinearStatementEvaluations, // linearStatementValuesAtPoints
-			circuit.PublicInputs,                      // publicInputs
+			extendedLinearStatementEvalsBatch,                               // linearStatementEvals (extended for first commitment)
+			circuit.WHIRParamsWitness,                                       // whirParams
+			circuit.WitnessLinearStatementEvaluations,                       // linearStatementValuesAtPoints
+			circuit.PublicInputs,                                            // publicInputs
 		)
 		if err != nil {
 			return err
