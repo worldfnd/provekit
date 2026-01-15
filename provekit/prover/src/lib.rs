@@ -7,16 +7,16 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{
-        blake3::{Blake3MerkleConfig, Blake3PoW, Blake3Sponge},
-        keccak::{KeccakMerkleConfig, KeccakPoW, KeccakSponge},
-        sha256::{Sha256MerkleConfig, Sha256PoW, Sha256Sponge},
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        FieldElement, NoirElement, NoirProof, Prover,
+        blake3::{Blake3MerkleConfig, Blake3PoW},
+        keccak::{KeccakMerkleConfig, KeccakPoW},
+        sha256::{Sha256MerkleConfig, Sha256PoW},
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW},
+        FieldElement, NoirElement, NoirProof, Prover, WhirDomainSep, WhirMerkleConfig,
+        WhirProverState,
     },
-    spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, DomainSeparator, ProverState},
+    spongefish::{DomainSeparator, ProverState},
     std::path::Path,
     tracing::instrument,
-    whir::whir::domainsep::WhirDomainSeparator,
 };
 
 mod r1cs;
@@ -66,7 +66,7 @@ where
 /// Macro to implement `Prove` for each hash configuration.
 /// This generates monomorphized implementations for optimal performance.
 macro_rules! impl_prove {
-    ($merkle:ty, $pow:ty, $sponge:ty, $unit:ty) => {
+    ($merkle:ty, $pow:ty) => {
         impl Prove for Prover<$merkle, $pow> {
             #[instrument(skip_all)]
             fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
@@ -75,44 +75,28 @@ macro_rules! impl_prove {
 
             #[instrument(skip_all)]
             fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-                prove_with_hash::<$sponge, $unit, _, _>(self, prover_toml)
+                prove_with_hash(self, prover_toml)
             }
         }
     };
 }
 
-impl_prove!(
-    SkyscraperMerkleConfig,
-    SkyscraperPoW,
-    SkyscraperSponge,
-    FieldElement
-);
-impl_prove!(Sha256MerkleConfig, Sha256PoW, Sha256Sponge, u8);
-impl_prove!(KeccakMerkleConfig, KeccakPoW, KeccakSponge, u8);
-impl_prove!(Blake3MerkleConfig, Blake3PoW, Blake3Sponge, u8);
+impl_prove!(SkyscraperMerkleConfig, SkyscraperPoW);
+impl_prove!(Sha256MerkleConfig, Sha256PoW);
+impl_prove!(KeccakMerkleConfig, KeccakPoW);
+impl_prove!(Blake3MerkleConfig, Blake3PoW);
 
 /// Generates a proof for a Noir program.
 #[instrument(skip_all)]
-fn prove_with_hash<Sponge, U, MerkleConfig, PowStrategy>(
+fn prove_with_hash<MerkleConfig, PowStrategy>(
     mut prover: Prover<MerkleConfig, PowStrategy>,
     prover_toml: impl AsRef<Path>,
 ) -> Result<NoirProof>
 where
-    MerkleConfig:
-        ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]> + Clone + 'static,
+    MerkleConfig: WhirMerkleConfig,
     PowStrategy: Clone + spongefish_pow::PowStrategy,
-    ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
-    ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
-    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
-    U: spongefish::Unit + Clone + 'static,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + spongefish::codecs::arkworks_algebra::UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
-    DomainSeparator<Sponge, U>: WhirDomainSeparator<FieldElement, MerkleConfig>
-        + spongefish::ByteDomainSeparator
-        + spongefish::codecs::arkworks_algebra::FieldDomainSeparator<FieldElement>,
+    ProverState<MerkleConfig::Sponge, MerkleConfig::Unit>: WhirProverState<MerkleConfig>,
+    DomainSeparator<MerkleConfig::Sponge, MerkleConfig::Unit>: WhirDomainSep<MerkleConfig>,
 {
     let (input_map, _expected_return) =
         read_inputs_from_file(prover_toml.as_ref(), prover.witness_generator.abi())?;
@@ -139,14 +123,15 @@ where
         .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
         .collect::<Result<Vec<_>>>()?;
 
-    let commitment_1 = whir_r1cs::commit::<Sponge, U, MerkleConfig, PowStrategy>(
-        &prover.whir_for_witness,
-        &mut merlin,
-        &prover.r1cs,
-        w1,
-        true,
-    )
-    .context("While committing to w1")?;
+    let commitment_1 =
+        whir_r1cs::commit::<MerkleConfig::Sponge, MerkleConfig::Unit, MerkleConfig, PowStrategy>(
+            &prover.whir_for_witness,
+            &mut merlin,
+            &prover.r1cs,
+            w1,
+            true,
+        )
+        .context("While committing to w1")?;
 
     // Build commitment list based on whether we have challenges
     let commitments = if prover.whir_for_witness.num_challenges > 0 {
@@ -163,7 +148,12 @@ where
             .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
             .collect::<Result<Vec<_>>>()?;
 
-        let commitment_2 = whir_r1cs::commit::<Sponge, U, MerkleConfig, PowStrategy>(
+        let commitment_2 = whir_r1cs::commit::<
+            MerkleConfig::Sponge,
+            MerkleConfig::Unit,
+            MerkleConfig,
+            PowStrategy,
+        >(
             &prover.whir_for_witness,
             &mut merlin,
             &prover.r1cs,
@@ -185,12 +175,12 @@ where
         .context("While verifying R1CS instance")?;
     drop(witness);
 
-    let whir_r1cs_proof = whir_r1cs::prove::<Sponge, U, MerkleConfig, PowStrategy>(
-        &prover.whir_for_witness,
-        merlin,
-        prover.r1cs,
-        commitments,
-    )
+    let whir_r1cs_proof = whir_r1cs::prove::<
+        MerkleConfig::Sponge,
+        MerkleConfig::Unit,
+        MerkleConfig,
+        PowStrategy,
+    >(&prover.whir_for_witness, merlin, prover.r1cs, commitments)
     .context("While proving R1CS instance")?;
 
     Ok(NoirProof { whir_r1cs_proof })

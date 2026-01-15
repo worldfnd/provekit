@@ -13,7 +13,7 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, WhirProverState, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -57,10 +57,7 @@ where
     PowStrategy: spongefish_pow::PowStrategy,
     Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
     U: spongefish::Unit + Clone + 'static,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig>,
 {
     let witness_size = if is_w1 {
         scheme.w1_size
@@ -121,11 +118,7 @@ where
     PowStrategy: spongefish_pow::PowStrategy,
     Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
     U: spongefish::Unit + Clone + 'static,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig> + spongefish::UnitToBytes,
 {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -328,10 +321,7 @@ where
     PowStrategy: Clone,
     ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
     ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig>,
 {
     let mask = generate_random_multilinear_polynomial(witness.num_variables());
     let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
@@ -406,11 +396,7 @@ where
     PowStrategy: Clone + spongefish_pow::PowStrategy,
     ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
     ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig> + spongefish::UnitToBytes,
 {
     let mut r = vec![FieldElement::zero(); m_0];
     merlin
@@ -630,11 +616,7 @@ where
     PowStrategy: Clone + spongefish_pow::PowStrategy,
     ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
     ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig> + spongefish::UnitToBytes,
 {
     info!("WHIR Parameters: {params}");
 
@@ -665,11 +647,7 @@ where
     PowStrategy: Clone + spongefish_pow::PowStrategy,
     ark_crypto_primitives::merkle_tree::LeafParam<MerkleConfig>: Clone,
     ark_crypto_primitives::merkle_tree::TwoToOneParam<MerkleConfig>: Clone,
-    ProverState<Sponge, U>: FieldToUnitSerialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitSerialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitSerialize<MerkleConfig>,
+    ProverState<Sponge, U>: WhirProverState<MerkleConfig> + spongefish::UnitToBytes,
 {
     info!("WHIR Parameters: {params}");
 

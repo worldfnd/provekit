@@ -2,8 +2,21 @@
 ///
 /// This module provides runtime selection of hash algorithms, replacing
 /// the previous compile-time feature flag approach.
-use serde::{Deserialize, Serialize};
-use std::fmt;
+use {
+    crate::FieldElement,
+    serde::{Deserialize, Serialize},
+    spongefish::{
+        codecs::arkworks_algebra::{
+            FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize, UnitToField,
+        },
+        ByteDomainSeparator, BytesToUnitDeserialize, BytesToUnitSerialize, UnitToBytes,
+    },
+    std::fmt,
+    whir::whir::{
+        domainsep::WhirDomainSeparator,
+        utils::{DigestToUnitDeserialize, DigestToUnitSerialize},
+    },
+};
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
@@ -14,47 +27,15 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HashConfig {
-    /// Skyscraper (algebraic hash) for all components.
-    ///
-    /// - **Merkle**: Skyscraper (~10-15 constraints/hash)
-    /// - **Fiat-Shamir**: Skyscraper sponge
-    /// - **PoW**: Skyscraper
-    ///
-    /// **Best for**: ZK-optimized performance (default)
-    /// **Type**: Algebraic hash
     #[serde(alias = "sky")]
     Skyscraper,
 
-    /// SHA256 for all components.
-    ///
-    /// - **Merkle**: SHA256 (~2000 constraints/hash)
-    /// - **Fiat-Shamir**: SHA256 sponge construction
-    /// - **PoW**: SHA256
-    ///
-    /// **Best for**: NIST FIPS 180-4 compliance
-    /// **Type**: Cryptographic hash (NIST standard)
     #[serde(alias = "sha", alias = "sha-256")]
     Sha256,
 
-    /// Keccak for all components.
-    ///
-    /// - **Merkle**: Keccak (~2000 constraints/hash)
-    /// - **Fiat-Shamir**: Keccak sponge (SHAKE-256)
-    /// - **PoW**: Keccak
-    ///
-    /// **Best for**: NIST FIPS 202 compliance, Ethereum compatibility
-    /// **Type**: Cryptographic sponge (NIST standard)
     #[serde(alias = "keccak-256", alias = "shake")]
     Keccak,
 
-    /// BLAKE3 for all components.
-    ///
-    /// - **Merkle**: BLAKE3 (~1500 constraints/hash)
-    /// - **Fiat-Shamir**: BLAKE3 XOF (extendable output)
-    /// - **PoW**: BLAKE3
-    ///
-    /// **Best for**: Modern cryptography, fastest cryptographic hash
-    /// **Type**: Cryptographic hash (modern, not NIST standardized)
     #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
 }
@@ -199,6 +180,86 @@ pub trait TypedHashConfig {
 
     /// The unit type used by the sponge.
     type Unit: spongefish::Unit + Clone + 'static;
+}
+
+/// Trait alias for MerkleConfig bounds required by WHIR.
+pub trait WhirMerkleConfig:
+    ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]>
+    + TypedHashConfig
+    + Clone
+    + 'static
+where
+    ark_crypto_primitives::merkle_tree::LeafParam<Self>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<Self>: Clone,
+{
+}
+
+impl<T> WhirMerkleConfig for T
+where
+    T: ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]>
+        + TypedHashConfig
+        + Clone
+        + 'static,
+    ark_crypto_primitives::merkle_tree::LeafParam<T>: Clone,
+    ark_crypto_primitives::merkle_tree::TwoToOneParam<T>: Clone,
+{
+}
+
+/// Trait alias for `ProverState` bounds required by WHIR proving.
+pub trait WhirProverState<M: ark_crypto_primitives::merkle_tree::Config>:
+    FieldToUnitSerialize<FieldElement>
+    + UnitToField<FieldElement>
+    + BytesToUnitSerialize
+    + UnitToBytes
+    + DigestToUnitSerialize<M>
+{
+}
+
+impl<T, M> WhirProverState<M> for T
+where
+    M: ark_crypto_primitives::merkle_tree::Config,
+    T: FieldToUnitSerialize<FieldElement>
+        + UnitToField<FieldElement>
+        + BytesToUnitSerialize
+        + UnitToBytes
+        + DigestToUnitSerialize<M>,
+{
+}
+
+/// Trait alias for `VerifierState` bounds required by WHIR verification.
+pub trait WhirVerifierState<M: ark_crypto_primitives::merkle_tree::Config>:
+    FieldToUnitDeserialize<FieldElement>
+    + UnitToField<FieldElement>
+    + BytesToUnitDeserialize
+    + UnitToBytes
+    + DigestToUnitDeserialize<M>
+{
+}
+
+impl<T, M> WhirVerifierState<M> for T
+where
+    M: ark_crypto_primitives::merkle_tree::Config,
+    T: FieldToUnitDeserialize<FieldElement>
+        + UnitToField<FieldElement>
+        + BytesToUnitDeserialize
+        + UnitToBytes
+        + DigestToUnitDeserialize<M>,
+{
+}
+
+/// Trait alias for `DomainSeparator` bounds required by WHIR.
+pub trait WhirDomainSep<M: ark_crypto_primitives::merkle_tree::Config>:
+    WhirDomainSeparator<FieldElement, M> + ByteDomainSeparator + FieldDomainSeparator<FieldElement>
+{
+}
+
+impl<T, M> WhirDomainSep<M> for T
+where
+    M: ark_crypto_primitives::merkle_tree::Config,
+    T: WhirDomainSeparator<FieldElement, M>
+        + ByteDomainSeparator
+        + FieldDomainSeparator<FieldElement>,
+{
 }
 
 #[cfg(test)]

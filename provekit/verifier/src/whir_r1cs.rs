@@ -2,12 +2,13 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        blake3::{Blake3MerkleConfig, Blake3PoW, Blake3Sponge},
-        keccak::{KeccakMerkleConfig, KeccakPoW, KeccakSponge},
-        sha256::{Sha256MerkleConfig, Sha256PoW, Sha256Sponge},
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
+        blake3::{Blake3MerkleConfig, Blake3PoW},
+        keccak::{KeccakMerkleConfig, KeccakPoW},
+        sha256::{Sha256MerkleConfig, Sha256PoW},
+        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW},
         utils::sumcheck::{calculate_eq, eval_cubic_poly},
-        FieldElement, WhirR1CSProof, WhirR1CSScheme,
+        FieldElement, WhirDomainSep, WhirMerkleConfig, WhirR1CSProof, WhirR1CSScheme,
+        WhirVerifierState,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
@@ -19,7 +20,6 @@ use {
         poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
         whir::{
             committer::{reader::ParsedCommitment, CommitmentReader},
-            domainsep::WhirDomainSeparator,
             parameters::WhirConfig as GenericWhirConfig,
             statement::{Statement, Weights},
             utils::HintDeserialize,
@@ -39,48 +39,36 @@ pub trait WhirR1CSVerifier {
 }
 
 /// Macro to implement `WhirR1CSVerifier` for each hash configuration.
-/// This generates monomorphized implementations for optimal performance,
+/// This generates monomorphized implementations for optimal performance.
 macro_rules! impl_whir_r1cs_verifier {
-    ($merkle:ty, $pow:ty, $sponge:ty, $unit:ty) => {
+    ($merkle:ty, $pow:ty) => {
         impl WhirR1CSVerifier for WhirR1CSScheme<$merkle, $pow> {
             #[instrument(skip_all)]
             fn verify(&self, proof: &WhirR1CSProof) -> Result<()> {
-                verify_with_hash::<$sponge, $unit, $merkle, $pow>(self, proof)
+                verify_with_hash::<$merkle, $pow>(self, proof)
             }
         }
     };
 }
 
-impl_whir_r1cs_verifier!(
-    SkyscraperMerkleConfig,
-    SkyscraperPoW,
-    SkyscraperSponge,
-    FieldElement
-);
-impl_whir_r1cs_verifier!(Sha256MerkleConfig, Sha256PoW, Sha256Sponge, u8);
-impl_whir_r1cs_verifier!(KeccakMerkleConfig, KeccakPoW, KeccakSponge, u8);
-impl_whir_r1cs_verifier!(Blake3MerkleConfig, Blake3PoW, Blake3Sponge, u8);
+impl_whir_r1cs_verifier!(SkyscraperMerkleConfig, SkyscraperPoW);
+impl_whir_r1cs_verifier!(Sha256MerkleConfig, Sha256PoW);
+impl_whir_r1cs_verifier!(KeccakMerkleConfig, KeccakPoW);
+impl_whir_r1cs_verifier!(Blake3MerkleConfig, Blake3PoW);
 
 /// Verifies a WHIR R1CS proof.
 #[instrument(skip_all)]
 #[allow(unused)]
-fn verify_with_hash<Sponge, U, MerkleConfig, PowStrategy>(
+fn verify_with_hash<MerkleConfig, PowStrategy>(
     scheme: &WhirR1CSScheme<MerkleConfig, PowStrategy>,
     proof: &WhirR1CSProof,
 ) -> Result<()>
 where
-    MerkleConfig: ark_crypto_primitives::merkle_tree::Config<Leaf = [FieldElement]>,
+    MerkleConfig: WhirMerkleConfig,
     PowStrategy: spongefish_pow::PowStrategy,
-    Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone + 'static,
-    U: spongefish::Unit + Clone + 'static,
-    for<'a> VerifierState<'a, Sponge, U>: FieldToUnitDeserialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitDeserialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitDeserialize<MerkleConfig>,
-    DomainSeparator<Sponge, U>: WhirDomainSeparator<FieldElement, MerkleConfig>
-        + spongefish::ByteDomainSeparator
-        + spongefish::codecs::arkworks_algebra::FieldDomainSeparator<FieldElement>,
+    for<'a> VerifierState<'a, MerkleConfig::Sponge, MerkleConfig::Unit>:
+        WhirVerifierState<MerkleConfig>,
+    DomainSeparator<MerkleConfig::Sponge, MerkleConfig::Unit>: WhirDomainSep<MerkleConfig>,
 {
     let io = scheme.create_generic_io_pattern();
     let mut arthur = io.to_verifier_state(&proof.transcript);
@@ -98,63 +86,71 @@ where
     };
 
     // Sumcheck verification (common to both paths)
-    let data_from_sumcheck_verifier =
-        run_sumcheck_verifier::<Sponge, U, MerkleConfig, PowStrategy>(
-            &mut arthur,
-            scheme.m_0,
-            &scheme.whir_for_hiding_spartan,
-        )
-        .context("while verifying sumcheck")?;
+    let data_from_sumcheck_verifier = run_sumcheck_verifier::<
+        MerkleConfig::Sponge,
+        MerkleConfig::Unit,
+        MerkleConfig,
+        PowStrategy,
+    >(
+        &mut arthur, scheme.m_0, &scheme.whir_for_hiding_spartan
+    )
+    .context("while verifying sumcheck")?;
 
     // Read hints and verify WHIR proof
-    let (az_at_alpha, bz_at_alpha, cz_at_alpha) =
-        if let Some(parsed_commitment_2) = parsed_commitment_2 {
-            // Dual commitment mode
-            let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
-            let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+    let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(parsed_commitment_2) =
+        parsed_commitment_2
+    {
+        // Dual commitment mode
+        let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+        let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
 
-            let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
-            let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
+        let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
+            (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
+        let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
+            (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
 
-            let statement_1 = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
-                scheme.m,
-                &parsed_commitment_1,
-                &whir_sums_1,
-            );
-            let statement_2 = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
-                scheme.m,
-                &parsed_commitment_2,
-                &whir_sums_2,
-            );
+        let statement_1 = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
+            scheme.m,
+            &parsed_commitment_1,
+            &whir_sums_1,
+        );
+        let statement_2 = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
+            scheme.m,
+            &parsed_commitment_2,
+            &whir_sums_2,
+        );
 
-            run_whir_pcs_batch_verifier::<Sponge, U, MerkleConfig, PowStrategy>(
-                &mut arthur,
-                &scheme.whir_witness,
-                &[parsed_commitment_1, parsed_commitment_2],
-                &[statement_1, statement_2],
-            )
-            .context("while verifying WHIR batch proof")?;
+        run_whir_pcs_batch_verifier::<
+            MerkleConfig::Sponge,
+            MerkleConfig::Unit,
+            MerkleConfig,
+            PowStrategy,
+        >(
+            &mut arthur,
+            &scheme.whir_witness,
+            &[parsed_commitment_1, parsed_commitment_2],
+            &[statement_1, statement_2],
+        )
+        .context("while verifying WHIR batch proof")?;
 
-            (
-                whir_sums_1.0[0] + whir_sums_2.0[0],
-                whir_sums_1.0[1] + whir_sums_2.0[1],
-                whir_sums_1.0[2] + whir_sums_2.0[2],
-            )
-        } else {
-            // Single commitment mode
-            let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
-            let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
+        (
+            whir_sums_1.0[0] + whir_sums_2.0[0],
+            whir_sums_1.0[1] + whir_sums_2.0[1],
+            whir_sums_1.0[2] + whir_sums_2.0[2],
+        )
+    } else {
+        // Single commitment mode
+        let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+        let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
+            (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
 
-            let statement = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
-                scheme.m,
-                &parsed_commitment_1,
-                &whir_sums,
-            );
+        let statement = prepare_statement_for_witness_verifier::<3, MerkleConfig>(
+            scheme.m,
+            &parsed_commitment_1,
+            &whir_sums,
+        );
 
-            run_whir_pcs_verifier::<Sponge, U, MerkleConfig, PowStrategy>(
+        run_whir_pcs_verifier::<MerkleConfig::Sponge, MerkleConfig::Unit, MerkleConfig, PowStrategy>(
                 &mut arthur,
                 &parsed_commitment_1,
                 &scheme.whir_witness,
@@ -162,8 +158,8 @@ where
             )
             .context("while verifying WHIR proof")?;
 
-            (whir_sums.0[0], whir_sums.0[1], whir_sums.0[2])
-        };
+        (whir_sums.0[0], whir_sums.0[1], whir_sums.0[2])
+    };
 
     // Check the Spartan sumcheck relation
     ensure!(
@@ -210,11 +206,7 @@ where
     PowStrategy: spongefish_pow::PowStrategy,
     Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone,
     U: spongefish::Unit + Clone,
-    for<'a> VerifierState<'a, Sponge, U>: FieldToUnitDeserialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitDeserialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitDeserialize<MerkleConfig>,
+    for<'a> VerifierState<'a, Sponge, U>: WhirVerifierState<MerkleConfig>,
 {
     let mut r = vec![FieldElement::zero(); m_0];
     let _ = arthur.fill_challenge_scalars(&mut r);
@@ -288,11 +280,7 @@ where
     PowStrategy: spongefish_pow::PowStrategy,
     Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone,
     U: spongefish::Unit + Clone,
-    for<'a> VerifierState<'a, Sponge, U>: FieldToUnitDeserialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitDeserialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitDeserialize<MerkleConfig>,
+    for<'a> VerifierState<'a, Sponge, U>: WhirVerifierState<MerkleConfig>,
 {
     let verifier = Verifier::new(params);
     let (folding_randomness, deferred) = verifier
@@ -313,11 +301,7 @@ where
     PowStrategy: spongefish_pow::PowStrategy,
     Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U> + Clone,
     U: spongefish::Unit + Clone,
-    for<'a> VerifierState<'a, Sponge, U>: FieldToUnitDeserialize<FieldElement>
-        + UnitToField<FieldElement>
-        + spongefish::BytesToUnitDeserialize
-        + spongefish::UnitToBytes
-        + whir::whir::utils::DigestToUnitDeserialize<MerkleConfig>,
+    for<'a> VerifierState<'a, Sponge, U>: WhirVerifierState<MerkleConfig>,
 {
     let verifier = Verifier::new(params);
     let (folding_randomness, deferred) = verifier

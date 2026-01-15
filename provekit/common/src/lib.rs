@@ -22,7 +22,10 @@ use crate::{
 };
 pub use {
     acir::FieldElement as NoirElement,
-    hash_config::{HashConfig, TypedHashConfig},
+    hash_config::{
+        HashConfig, TypedHashConfig, WhirDomainSep, WhirMerkleConfig, WhirProverState,
+        WhirVerifierState,
+    },
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
