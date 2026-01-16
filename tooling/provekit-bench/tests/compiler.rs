@@ -140,6 +140,16 @@ macro_rules! e2e_tests {
             }
 
             #[test]
+            fn bounded_vec() {
+                test_e2e("../../noir-examples/noir-r1cs-test-programs/bounded-vec");
+            }
+
+            #[test]
+            fn brillig_unconstrained() {
+                test_e2e("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained");
+            }
+
+            #[test]
             fn complete_age_check() {
                 test_e2e("../../noir-examples/noir-passport-examples/complete_age_check");
             }
