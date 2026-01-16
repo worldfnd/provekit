@@ -699,20 +699,20 @@ pub(crate) fn add_poseidon2_permutation(
             state_forms = mds_t_block_forms(&state_witnesses);
         }
 
-        // Materialize final linear forms into the requested output witnesses.
+        // Constrain final linear forms to equal the requested output witnesses.
+        // Output witnesses already have WitnessBuilder::Acir entries (from
+        // fetch_r1cs_witness_index), so their values come from the ACIR witness
+        // map (populated by the blackbox solver). We only need to add
+        // constraints here, not additional witness builders.
         let mut a_recipe: Vec<(FieldElement, usize)> = Vec::new();
-        let mut sum_terms: Vec<SumTerm> = Vec::new();
 
         for i in 0..t_usize {
             let form = &state_forms[i];
             let output_witness = outputs[i];
 
-            // Constant-only form: wire output_witness to a constant.
+            // Constant-only form: constrain output_witness to equal the constant.
             if form.terms.is_empty() {
                 let const_k = form.get_constant();
-                r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(output_witness, vec![
-                    SumTerm(Some(const_k), r1cs_compiler.witness_one()),
-                ]));
                 r1cs_compiler.r1cs.add_constraint(
                     &[(FieldElement::ONE, output_witness)],
                     &[(FieldElement::ONE, r1cs_compiler.witness_one())],
@@ -725,26 +725,13 @@ pub(crate) fn add_poseidon2_permutation(
             let const_val = form.get_constant();
             let need_const = !const_val.is_zero();
 
-            // Build a_recipe once per iteration
+            // Build a_recipe for the constraint
             a_recipe.clear();
             a_recipe.reserve(terms_slice.len() + if need_const { 1 } else { 0 });
             a_recipe.extend_from_slice(terms_slice);
             if need_const {
                 a_recipe.push((const_val, r1cs_compiler.witness_one()));
             }
-
-            // Build witness builder for the same linear combination.
-            sum_terms.clear();
-            sum_terms.reserve(terms_slice.len() + if need_const { 1 } else { 0 });
-            sum_terms.extend(terms_slice.iter().map(|(c, w)| SumTerm(Some(*c), *w)));
-            if need_const {
-                sum_terms.push(SumTerm(Some(const_val), r1cs_compiler.witness_one()));
-            }
-
-            r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(
-                output_witness,
-                std::mem::take(&mut sum_terms),
-            ));
 
             // Enforce: output_witness = Σ coeff_i * witness_i (+ const).
             r1cs_compiler.r1cs.add_constraint(
