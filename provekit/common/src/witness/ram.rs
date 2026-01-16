@@ -18,21 +18,21 @@ pub enum SpiceMemoryOperation {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SpiceWitnesses {
     /// The length of the memory block
-    pub memory_length:        usize,
-    /// The witness index of the first initial value (they are stored
-    /// contiguously) (Not written to)
-    pub initial_values_start: usize,
+    pub memory_length:           usize,
+    /// The witness indices of the initial values (may be non-contiguous)
+    /// (Not written to)
+    pub initial_value_witnesses: Vec<usize>,
     /// The memory operations, in the order that they occur; each
     /// SpiceMemoryOperation contains witness indices that will be written to)
-    pub memory_operations:    Vec<SpiceMemoryOperation>,
+    pub memory_operations:       Vec<SpiceMemoryOperation>,
     /// The witness index of the first of the memory_length final read values
     /// (stored contiguously) (these witnesses are written to)
-    pub rv_final_start:       usize,
+    pub rv_final_start:          usize,
     /// The witness index of the first of the memory_length final read
     /// timestamps (stored contiguously) (these witnesses are written to)
-    pub rt_final_start:       usize,
+    pub rt_final_start:          usize,
     /// The index of the first witness written to by the SpiceWitnesses struct
-    pub first_witness_idx:    usize,
+    pub first_witness_idx:       usize,
     /// The number of witnesses written to by the SpiceWitnesses struct
-    pub num_witnesses:        usize,
+    pub num_witnesses:           usize,
 }

@@ -17,7 +17,7 @@ pub trait SpiceWitnessesBuilder {
     fn new(
         next_witness_idx: usize,
         memory_length: usize,
-        initial_values_start: usize,
+        initial_value_witnesses: Vec<usize>,
         memory_operations: Vec<MemoryOperation>,
     ) -> Self;
 }
@@ -26,7 +26,7 @@ impl SpiceWitnessesBuilder for SpiceWitnesses {
     fn new(
         mut next_witness_idx: usize,
         memory_length: usize,
-        initial_values_start: usize,
+        initial_value_witnesses: Vec<usize>,
         memory_operations: Vec<MemoryOperation>,
     ) -> Self {
         let start_witness_idx = next_witness_idx;
@@ -56,7 +56,7 @@ impl SpiceWitnessesBuilder for SpiceWitnesses {
 
         Self {
             memory_length,
-            initial_values_start,
+            initial_value_witnesses,
             memory_operations: spice_memory_operations,
             rv_final_start,
             rt_final_start,
@@ -115,7 +115,7 @@ pub fn add_ram_checking(
     let spice_witnesses = SpiceWitnesses::new(
         r1cs_compiler.num_witnesses(),
         memory_length,
-        block.initial_value_witnesses[0],
+        block.initial_value_witnesses.clone(),
         block.operations.clone(),
     );
     r1cs_compiler.add_witness_builder(WitnessBuilder::SpiceWitnesses(spice_witnesses.clone()));
