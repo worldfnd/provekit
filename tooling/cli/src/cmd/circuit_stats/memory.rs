@@ -47,11 +47,21 @@ impl MemoryBlockStats {
     }
 
     /// R1CS constraint count for RAM (read-write memory).
+    ///
+    /// Formula derived from Spice offline memory checking:
+    /// - 7 constraints per memory operation (init/read/write) for multiset hash
+    /// - 2 constraints for final hash equality check
     pub fn ram_constraint_count(&self) -> usize {
         7 * (self.initial_size + self.total_ops()) + 2
     }
 
     /// R1CS witness count for RAM (read-write memory).
+    ///
+    /// Formula derived from Spice offline memory checking:
+    /// - 3 base witnesses (hash accumulators)
+    /// - 9 witnesses per init cell (addr, value, timestamp, intermediate
+    ///   products)
+    /// - 8 witnesses per read, 9 per write (includes timestamp witnesses)
     pub fn ram_witness_count(&self) -> usize {
         3 + 9 * self.initial_size + 8 * self.reads + 9 * self.writes
     }
@@ -71,11 +81,21 @@ impl MemoryBlockStats {
     }
 
     /// R1CS constraint count for ROM (read-only memory).
+    ///
+    /// Formula derived from lookup-based ROM checking:
+    /// - 2 constraints per read for lookup verification
+    /// - 3 constraints per init cell for table construction
+    /// - 3 constraints for accumulator finalization
     pub fn rom_constraint_count(&self) -> usize {
         2 * self.reads + 3 * self.initial_size + 3
     }
 
     /// R1CS witness count for ROM (read-only memory).
+    ///
+    /// Formula derived from lookup-based ROM checking:
+    /// - 2 witnesses per read (index, value)
+    /// - 4 witnesses per init cell (table entry + intermediate values)
+    /// - 4 witnesses for accumulator state
     pub fn rom_witness_count(&self) -> usize {
         2 * self.reads + 4 * self.initial_size + 4
     }

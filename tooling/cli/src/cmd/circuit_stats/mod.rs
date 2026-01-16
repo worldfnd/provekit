@@ -1,3 +1,11 @@
+//! Analyze ACIR circuit statistics and R1CS complexity.
+//!
+//! # Example
+//!
+//! ```sh
+//! cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
+//! ```
+
 mod display;
 mod memory;
 mod stats_collector;

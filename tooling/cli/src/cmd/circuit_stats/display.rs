@@ -1,3 +1,5 @@
+//! Display formatting for circuit statistics output.
+
 use {
     super::{memory::describe_block_type, stats_collector::CircuitStats},
     acir::{circuit::Circuit, FieldElement},
@@ -361,15 +363,49 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
 
     if sha256_count > 0 {
         let sha256_direct = breakdown.sha256_direct_constraints;
-        let sha256_batched =
-            breakdown.and_constraints + breakdown.xor_constraints + breakdown.range_constraints;
-        let sha256_total_constraints = sha256_direct + sha256_batched;
-        let per_sha256 = sha256_total_constraints / sha256_count;
-
         let sha256_direct_w = breakdown.sha256_direct_witnesses;
-        let sha256_batched_w =
-            breakdown.and_witnesses + breakdown.xor_witnesses + breakdown.range_witnesses;
-        let sha256_total_witnesses = sha256_direct_w + sha256_batched_w;
+
+        let sha256_and_constraints = if breakdown.and_ops_total > 0 {
+            (breakdown.and_constraints * breakdown.sha256_and_ops) / breakdown.and_ops_total
+        } else {
+            0
+        };
+        let sha256_and_witnesses = if breakdown.and_ops_total > 0 {
+            (breakdown.and_witnesses * breakdown.sha256_and_ops) / breakdown.and_ops_total
+        } else {
+            0
+        };
+
+        let sha256_xor_constraints = if breakdown.xor_ops_total > 0 {
+            (breakdown.xor_constraints * breakdown.sha256_xor_ops) / breakdown.xor_ops_total
+        } else {
+            0
+        };
+        let sha256_xor_witnesses = if breakdown.xor_ops_total > 0 {
+            (breakdown.xor_witnesses * breakdown.sha256_xor_ops) / breakdown.xor_ops_total
+        } else {
+            0
+        };
+
+        let sha256_range_constraints = if breakdown.range_ops_total > 0 {
+            (breakdown.range_constraints * breakdown.sha256_range_ops) / breakdown.range_ops_total
+        } else {
+            0
+        };
+        let sha256_range_witnesses = if breakdown.range_ops_total > 0 {
+            (breakdown.range_witnesses * breakdown.sha256_range_ops) / breakdown.range_ops_total
+        } else {
+            0
+        };
+
+        let sha256_batched_constraints =
+            sha256_and_constraints + sha256_xor_constraints + sha256_range_constraints;
+        let sha256_batched_witnesses =
+            sha256_and_witnesses + sha256_xor_witnesses + sha256_range_witnesses;
+
+        let sha256_total_constraints = sha256_direct + sha256_batched_constraints;
+        let sha256_total_witnesses = sha256_direct_w + sha256_batched_witnesses;
+        let per_sha256 = sha256_total_constraints / sha256_count;
         let per_sha256_w = sha256_total_witnesses / sha256_count;
 
         println!("\n┌─ SHA256 Total Cost Summary");
@@ -378,16 +414,25 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             sha256_direct, sha256_direct_w
         );
         println!(
-            "│  Batched (AND):       {:>8} constraints {:>8} witnesses",
-            breakdown.and_constraints, breakdown.and_witnesses
+            "│  Batched (AND):       {:>8} constraints {:>8} witnesses ({}/{} ops)",
+            sha256_and_constraints,
+            sha256_and_witnesses,
+            breakdown.sha256_and_ops,
+            breakdown.and_ops_total
         );
         println!(
-            "│  Batched (XOR):       {:>8} constraints {:>8} witnesses",
-            breakdown.xor_constraints, breakdown.xor_witnesses
+            "│  Batched (XOR):       {:>8} constraints {:>8} witnesses ({}/{} ops)",
+            sha256_xor_constraints,
+            sha256_xor_witnesses,
+            breakdown.sha256_xor_ops,
+            breakdown.xor_ops_total
         );
         println!(
-            "│  Batched (RANGE):     {:>8} constraints {:>8} witnesses",
-            breakdown.range_constraints, breakdown.range_witnesses
+            "│  Batched (RANGE):     {:>8} constraints {:>8} witnesses ({}/{} ops)",
+            sha256_range_constraints,
+            sha256_range_witnesses,
+            breakdown.sha256_range_ops,
+            breakdown.range_ops_total
         );
         println!("│  ─────────────────────────────────────────────────────────────");
         println!(
