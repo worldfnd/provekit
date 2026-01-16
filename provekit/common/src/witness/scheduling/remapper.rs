@@ -284,12 +284,6 @@ impl WitnessIndexRemapper {
                 self.remap_const_or_witness(lh),
                 self.remap_const_or_witness(rh),
             ),
-            WitnessBuilder::XorTriple(idx, a, b, c) => WitnessBuilder::XorTriple(
-                self.remap(*idx),
-                self.remap_const_or_witness(a),
-                self.remap_const_or_witness(b),
-                self.remap_const_or_witness(c),
-            ),
             WitnessBuilder::CombinedTableEntryInverse(data) => {
                 WitnessBuilder::CombinedTableEntryInverse(
                     crate::witness::CombinedTableEntryInverseData {
@@ -304,12 +298,6 @@ impl WitnessIndexRemapper {
                         xor_out:      data.xor_out,
                     },
                 )
-            }
-            WitnessBuilder::ByteBitDecomposition { start_idx, source } => {
-                WitnessBuilder::ByteBitDecomposition {
-                    start_idx: self.remap(*start_idx),
-                    source:    self.remap(*source),
-                }
             }
         }
     }

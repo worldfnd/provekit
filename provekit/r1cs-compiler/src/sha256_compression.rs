@@ -121,6 +121,8 @@ pub(crate) fn rotr_u32(
             ],
         );
 
+        // Result is implicitly range-checked by the fused constraint.
+        // See partition_byte_witnesses doc comment for the soundness proof.
         out_bytes[i] = U8::new(res_idx, true);
     }
 
@@ -203,6 +205,8 @@ pub(crate) fn shr_u32(
             );
         }
 
+        // Result is implicitly range-checked by the fused constraint.
+        // See partition_byte_witnesses doc comment for the soundness proof.
         result[i] = U8::new(res_idx, true);
     }
 
@@ -344,17 +348,16 @@ pub(crate) fn add_u32_multi_addition(
     );
 
     // Range check carry: max carry is (N-1) for N inputs
+    // Only add range check if overflow is possible (N >= 2)
     let n = inputs.len();
     let max_carry = n - 1;
-    let carry_bits = if max_carry == 0 {
-        1
-    } else {
-        (usize::BITS - max_carry.leading_zeros()) as u32
-    };
-    range_checks
-        .entry(carry_bits)
-        .or_default()
-        .push(carry_witness);
+    if max_carry > 0 {
+        let carry_bits = (usize::BITS - max_carry.leading_zeros()) as u32;
+        range_checks
+            .entry(carry_bits)
+            .or_default()
+            .push(carry_witness);
+    }
 
     // Step 4: Unpack result back to U32
     U32::unpack_u32(r1cs_compiler, range_checks, result_witness)
@@ -427,17 +430,16 @@ pub(crate) fn add_u32_multi_addition_with_const(
     );
 
     // Range check carry: max carry is (total_inputs - 1)
+    // Only add range check if overflow is possible (total_inputs >= 2)
     let total_inputs = inputs.len() + constants.len();
     let max_carry = total_inputs - 1;
-    let carry_bits = if max_carry == 0 {
-        1
-    } else {
-        (usize::BITS - max_carry.leading_zeros()) as u32
-    };
-    range_checks
-        .entry(carry_bits)
-        .or_default()
-        .push(carry_witness);
+    if max_carry > 0 {
+        let carry_bits = (usize::BITS - max_carry.leading_zeros()) as u32;
+        range_checks
+            .entry(carry_bits)
+            .or_default()
+            .push(carry_witness);
+    }
 
     // Step 5: Unpack
     U32::unpack_u32(r1cs_compiler, range_checks, result_witness)

@@ -5,7 +5,7 @@ use {
     acir::native_types::WitnessMap,
     provekit_common::{
         utils::batch_inverse_montgomery,
-        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder, WitnessCoefficient},
+        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
     },
     spongefish::ProverState,
