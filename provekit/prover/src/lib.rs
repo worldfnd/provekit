@@ -7,10 +7,6 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{
-        blake3::{Blake3MerkleConfig, Blake3PoW},
-        keccak::{KeccakMerkleConfig, KeccakPoW},
-        sha256::{Sha256MerkleConfig, Sha256PoW},
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW},
         FieldElement, NoirElement, NoirProof, Prover, WhirDomainSep, WhirMerkleConfig,
         WhirProverState,
     },
@@ -29,8 +25,27 @@ pub trait Prove {
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 }
 
-// Helper function for witness generation (shared across all implementations)
-fn generate_witness_internal<MerkleConfig, PowStrategy>(
+/// Blanket implementation of `Prove` for all valid hash configurations.
+/// This works for any `MerkleConfig` and `PowStrategy` that satisfy the WHIR bounds.
+impl<MerkleConfig, PowStrategy> Prove for Prover<MerkleConfig, PowStrategy>
+where
+    MerkleConfig: WhirMerkleConfig,
+    PowStrategy: Clone + spongefish_pow::PowStrategy,
+    ProverState<MerkleConfig::Sponge, MerkleConfig::Unit>: WhirProverState<MerkleConfig>,
+    DomainSeparator<MerkleConfig::Sponge, MerkleConfig::Unit>: WhirDomainSep<MerkleConfig>,
+{
+    #[instrument(skip_all)]
+    fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
+        generate_witness_impl(self, input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        prove_with_hash(self, prover_toml)
+    }
+}
+
+fn generate_witness_impl<MerkleConfig, PowStrategy>(
     prover: &mut Prover<MerkleConfig, PowStrategy>,
     input_map: InputMap,
 ) -> Result<WitnessMap<NoirElement>>
@@ -63,29 +78,6 @@ where
         .witness)
 }
 
-/// Macro to implement `Prove` for each hash configuration.
-/// This generates monomorphized implementations for optimal performance.
-macro_rules! impl_prove {
-    ($merkle:ty, $pow:ty) => {
-        impl Prove for Prover<$merkle, $pow> {
-            #[instrument(skip_all)]
-            fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
-                generate_witness_internal(self, input_map)
-            }
-
-            #[instrument(skip_all)]
-            fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-                prove_with_hash(self, prover_toml)
-            }
-        }
-    };
-}
-
-impl_prove!(SkyscraperMerkleConfig, SkyscraperPoW);
-impl_prove!(Sha256MerkleConfig, Sha256PoW);
-impl_prove!(KeccakMerkleConfig, KeccakPoW);
-impl_prove!(Blake3MerkleConfig, Blake3PoW);
-
 /// Generates a proof for a Noir program.
 #[instrument(skip_all)]
 fn prove_with_hash<MerkleConfig, PowStrategy>(
@@ -101,7 +93,7 @@ where
     let (input_map, _expected_return) =
         read_inputs_from_file(prover_toml.as_ref(), prover.witness_generator.abi())?;
 
-    let acir_witness_idx_to_value_map = generate_witness_internal(&mut prover, input_map)?;
+    let acir_witness_idx_to_value_map = generate_witness_impl(&mut prover, input_map)?;
 
     // Set up Fiat-Shamir transcript
     let io = prover.whir_for_witness.create_generic_io_pattern();

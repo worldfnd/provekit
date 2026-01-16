@@ -91,7 +91,6 @@ provekit-verifier-server = { path = "tooling/verifier-server" }
 # 3rd party
 anyhow = "1.0.93"
 argh = "0.1.12"
-arrayvec = "0.7"
 axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
