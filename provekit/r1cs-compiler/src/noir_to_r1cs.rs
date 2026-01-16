@@ -50,14 +50,20 @@ pub struct R1CSBreakdown {
     pub and_constraints:   usize,
     /// Witnesses for AND operations
     pub and_witnesses:     usize,
+    /// Total number of AND operations
+    pub and_ops_total:     usize,
     /// Constraints for batched XOR operations
     pub xor_constraints:   usize,
     /// Witnesses for XOR operations
     pub xor_witnesses:     usize,
+    /// Total number of XOR operations
+    pub xor_ops_total:     usize,
     /// Constraints for batched range checks
     pub range_constraints: usize,
     /// Witnesses for range checks
     pub range_witnesses:   usize,
+    /// Total number of range check operations
+    pub range_ops_total:   usize,
 
     /// Direct constraints from SHA256 compression (excluding batched ops)
     pub sha256_direct_constraints: usize,
@@ -91,6 +97,10 @@ pub(crate) struct NoirToR1CSCompiler {
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
 
+/// Compile a Noir circuit to an R1CS relation.
+///
+/// Returns the R1CS instance, a mapping from Noir witness indices to R1CS
+/// witness indices, and the witness builders for solving.
 pub fn noir_to_r1cs(
     circuit: &Circuit<NoirElement>,
 ) -> Result<(R1CS, Vec<Option<NonZeroU32>>, Vec<WitnessBuilder>)> {
@@ -302,8 +312,11 @@ impl NoirToR1CSCompiler {
         &mut self,
         circuit: &Circuit<NoirElement>,
     ) -> Result<R1CSBreakdown> {
+        // Memory blocks for building memory lookup constraints at the end
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
+        // Map from range size k to witnesses to be constrained within [0..2^k]
         let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+        // (input, input, output) tuples for batched AND/XOR operations
         let mut and_ops = vec![];
         let mut xor_ops = vec![];
         let mut sha256_compression_ops = vec![];
@@ -317,6 +330,7 @@ impl NoirToR1CSCompiler {
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
+                // Brillig is only for witness generation and does not produce constraints
                 Opcode::BrilligCall { .. } => {}
                 Opcode::MemoryInit {
                     block_id,
@@ -466,22 +480,25 @@ impl NoirToR1CSCompiler {
         breakdown.assert_zero_constraints = self.r1cs.num_constraints() - constraints_before_assert;
         breakdown.assert_zero_witnesses = self.num_witnesses() - witnesses_before_assert;
 
+        // Process ROM blocks first (read-only memory uses lookup constraints)
         let constraints_before_rom = self.r1cs.num_constraints();
         let witnesses_before_rom = self.num_witnesses();
-        let mut constraints_before_ram = 0;
-        let mut witnesses_before_ram = 0;
-
         for (_, block) in memory_blocks.iter() {
             if block.is_read_only() {
                 add_rom_checking(self, block);
-            } else {
-                if constraints_before_ram == 0 {
-                    breakdown.memory_rom_constraints =
-                        self.r1cs.num_constraints() - constraints_before_rom;
-                    breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
-                    constraints_before_ram = self.r1cs.num_constraints();
-                    witnesses_before_ram = self.num_witnesses();
-                }
+            }
+        }
+        breakdown.memory_rom_constraints = self.r1cs.num_constraints() - constraints_before_rom;
+        breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
+
+        // Process RAM blocks second (read-write memory uses Spice offline memory
+        // checking)
+        let constraints_before_ram = self.r1cs.num_constraints();
+        let witnesses_before_ram = self.num_witnesses();
+        for (_, block) in memory_blocks.iter() {
+            if !block.is_read_only() {
+                // RAM checking returns witnesses that need range checks for timestamp
+                // validation
                 let (num_bits, witnesses_to_range_check) = add_ram_checking(self, block);
                 let range_check = range_checks.entry(num_bits).or_default();
                 witnesses_to_range_check
@@ -489,14 +506,8 @@ impl NoirToR1CSCompiler {
                     .for_each(|value| range_check.push(*value));
             }
         }
-
-        if constraints_before_ram == 0 {
-            breakdown.memory_rom_constraints = self.r1cs.num_constraints() - constraints_before_rom;
-            breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
-        } else {
-            breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;
-            breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
-        }
+        breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;
+        breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
 
         let and_ops_before = and_ops.len();
         let xor_ops_before = xor_ops.len();
@@ -520,29 +531,32 @@ impl NoirToR1CSCompiler {
         breakdown.sha256_range_ops =
             range_checks.values().map(|v| v.len()).sum::<usize>() - range_ops_before;
 
-        let constraints_before = self.r1cs.num_constraints();
-        let witnesses_before = self.num_witnesses();
+        breakdown.and_ops_total = and_ops.len();
+        let constraints_before_and = self.r1cs.num_constraints();
+        let witnesses_before_and = self.num_witnesses();
         add_binop_constraints(self, BinOp::And, and_ops);
-        breakdown.and_constraints = self.r1cs.num_constraints() - constraints_before;
-        breakdown.and_witnesses = self.num_witnesses() - witnesses_before;
+        breakdown.and_constraints = self.r1cs.num_constraints() - constraints_before_and;
+        breakdown.and_witnesses = self.num_witnesses() - witnesses_before_and;
 
-        let constraints_before = self.r1cs.num_constraints();
-        let witnesses_before = self.num_witnesses();
+        breakdown.xor_ops_total = xor_ops.len();
+        let constraints_before_xor = self.r1cs.num_constraints();
+        let witnesses_before_xor = self.num_witnesses();
         add_binop_constraints(self, BinOp::Xor, xor_ops);
-        breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before;
-        breakdown.xor_witnesses = self.num_witnesses() - witnesses_before;
+        breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before_xor;
+        breakdown.xor_witnesses = self.num_witnesses() - witnesses_before_xor;
 
-        let constraints_before = self.r1cs.num_constraints();
-        let witnesses_before = self.num_witnesses();
+        let constraints_before_poseidon = self.r1cs.num_constraints();
+        let witnesses_before_poseidon = self.num_witnesses();
         add_poseidon2_permutation(self, poseidon2_ops);
-        breakdown.poseidon2_constraints = self.r1cs.num_constraints() - constraints_before;
-        breakdown.poseidon2_witnesses = self.num_witnesses() - witnesses_before;
+        breakdown.poseidon2_constraints = self.r1cs.num_constraints() - constraints_before_poseidon;
+        breakdown.poseidon2_witnesses = self.num_witnesses() - witnesses_before_poseidon;
 
-        let constraints_before = self.r1cs.num_constraints();
-        let witnesses_before = self.num_witnesses();
+        breakdown.range_ops_total = range_checks.values().map(|v| v.len()).sum();
+        let constraints_before_range = self.r1cs.num_constraints();
+        let witnesses_before_range = self.num_witnesses();
         add_range_checks(self, range_checks);
-        breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before;
-        breakdown.range_witnesses = self.num_witnesses() - witnesses_before;
+        breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before_range;
+        breakdown.range_witnesses = self.num_witnesses() - witnesses_before_range;
 
         Ok(breakdown)
     }
