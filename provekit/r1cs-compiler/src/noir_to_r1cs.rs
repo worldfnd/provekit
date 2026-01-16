@@ -312,11 +312,16 @@ impl NoirToR1CSCompiler {
         &mut self,
         circuit: &Circuit<NoirElement>,
     ) -> Result<R1CSBreakdown> {
-        // Memory blocks for building memory lookup constraints at the end
+        // Read-only memory blocks (used for building the memory lookup constraints at
+        // the end)
         let mut memory_blocks: BTreeMap<usize, MemoryBlock> = BTreeMap::new();
-        // Map from range size k to witnesses to be constrained within [0..2^k]
+        // Mapping the log of the range size k to the vector of witness indices that
+        // are to be constrained within the range [0..2^k].
+        // These will be digitally decomposed into smaller ranges, if necessary.
         let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-        // (input, input, output) tuples for batched AND/XOR operations
+        // (input, input, output) tuples for AND and XOR operations.
+        // Inputs may be either constants or R1CS witnesses.
+        // Outputs are always R1CS witnesses.
         let mut and_ops = vec![];
         let mut xor_ops = vec![];
         let mut sha256_compression_ops = vec![];
@@ -330,7 +335,7 @@ impl NoirToR1CSCompiler {
         for opcode in &circuit.opcodes {
             match opcode {
                 Opcode::AssertZero(expr) => self.add_acir_assert_zero(expr),
-                // Brillig is only for witness generation and does not produce constraints
+                // Brillig is only for witness generation and does not produce constraints.
                 Opcode::BrilligCall { .. } => {}
                 Opcode::MemoryInit {
                     block_id,
@@ -360,7 +365,10 @@ impl NoirToR1CSCompiler {
                     op,
                     predicate,
                 } => {
+                    // Panic if the predicate is set (according to Noir developers, predicate is
+                    // always None and will soon be removed).
                     assert!(predicate.is_none());
+
                     let block_id = block_id.0 as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
@@ -368,6 +376,12 @@ impl NoirToR1CSCompiler {
                         block_id
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
+
+                    // `op.index` is _always_ just a single ACIR witness, not a more complicated
+                    // expression, and not a constant. See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
+                    // Static reads are hard-wired into the circuit, or instead rendered as a
+                    // dummy dynamic read by introducing a new witness constrained to have the value
+                    // of the static address.
                     let addr = op.index.to_witness().map_or_else(
                         || {
                             unimplemented!(
@@ -378,6 +392,14 @@ impl NoirToR1CSCompiler {
                         |acir_witness| self.fetch_r1cs_witness_index(acir_witness),
                     );
                     let op = if op.operation.is_zero() {
+                        // Create a new (as yet unconstrained) witness `result_of_read` for the
+                        // result of the read; it will be constrained by later memory block
+                        // processing.
+                        // "In read operations, [op.value] corresponds to the witness index at which
+                        // the value from memory will be written." (from the Noir codebase)
+                        // At R1CS solving time, only need to map over the value of the
+                        // corresponding ACIR witness, whose value is already determined by the ACIR
+                        // solver.
                         let result_of_read =
                             self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
                         MemoryOperation::Load(addr, result_of_read)
@@ -410,6 +432,11 @@ impl NoirToR1CSCompiler {
                             .or_default()
                             .push(input_witness);
                     }
+
+                    // Binary operations:
+                    // The inputs and outputs will have already been solved for by the ACIR solver.
+                    // Collect the R1CS witnesses indices so that we can later constrain them
+                    // appropriately.
                     BlackBoxFuncCall::AND { lhs, rhs, output } => {
                         and_ops.push((
                             self.fetch_constant_or_r1cs_witness(lhs.input()),
@@ -432,10 +459,14 @@ impl NoirToR1CSCompiler {
                         assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
                         assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
                         let t = *len;
+
+                        // Only these widths are allowed for Poseidon2
                         assert!(
                             matches!(t, 2 | 3 | 4 | 8 | 12 | 16),
                             "Poseidon2: unsupported width {t}"
                         );
+
+                        // Convert ACIR inputs to (Constant | Witness)
                         let in_wits: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
                             .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
@@ -509,12 +540,14 @@ impl NoirToR1CSCompiler {
         breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;
         breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
 
+        // Track SHA256's contribution to batched operations
         let and_ops_before = and_ops.len();
         let xor_ops_before = xor_ops.len();
         let range_ops_before: usize = range_checks.values().map(|v| v.len()).sum();
         let constraints_before_sha256 = self.r1cs.num_constraints();
         let witnesses_before_sha256 = self.num_witnesses();
 
+        // For the SHA256 compression operations, add the appropriate constraints.
         add_sha256_compression(
             self,
             &mut and_ops,
@@ -545,6 +578,7 @@ impl NoirToR1CSCompiler {
         breakdown.xor_constraints = self.r1cs.num_constraints() - constraints_before_xor;
         breakdown.xor_witnesses = self.num_witnesses() - witnesses_before_xor;
 
+        // For the Poseidon2 permutation operation.
         let constraints_before_poseidon = self.r1cs.num_constraints();
         let witnesses_before_poseidon = self.num_witnesses();
         add_poseidon2_permutation(self, poseidon2_ops);
