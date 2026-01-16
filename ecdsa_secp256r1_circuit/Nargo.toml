@@ -1,0 +1,9 @@
+[package]
+name = "webauthn"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+
+[dependencies]
+base64 = { git = "https://github.com/noir-lang/noir_base64", tag = "v0.4.2" }
+nodash = { git = "https://github.com/olehmisar/nodash", tag = "v0.42.0" }

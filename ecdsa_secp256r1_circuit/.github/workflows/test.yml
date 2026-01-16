@@ -1,0 +1,40 @@
+name: Noir tests
+
+on: [push]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test on Nargo ${{matrix.toolchain}}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [1.0.0-beta.4, 1.0.0-beta.5]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Nargo
+        uses: noir-lang/noirup@v0.1.4
+        with:
+          toolchain: ${{ matrix.toolchain }}
+
+      - name: Run Noir tests
+        run: nargo test
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Nargo
+        uses: noir-lang/noirup@v0.1.4
+        with:
+          toolchain: 1.0.0-beta.5
+
+      - name: Run formatter
+        run: nargo fmt --check
