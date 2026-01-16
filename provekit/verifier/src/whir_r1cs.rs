@@ -34,7 +34,8 @@ pub trait WhirR1CSVerifier {
     fn verify(&self, proof: &WhirR1CSProof) -> Result<()>;
 }
 
-/// Blanket implementation of `WhirR1CSVerifier` for all valid hash configurations.
+/// Blanket implementation of `WhirR1CSVerifier` for all valid hash
+/// configurations.
 impl<MerkleConfig, PowStrategy> WhirR1CSVerifier for WhirR1CSScheme<MerkleConfig, PowStrategy>
 where
     MerkleConfig: WhirMerkleConfig,

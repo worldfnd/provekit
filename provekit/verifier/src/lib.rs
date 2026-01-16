@@ -13,7 +13,8 @@ pub trait Verify {
 }
 
 /// Blanket implementation of `Verify` for all valid hash configurations.
-/// This works for any `MerkleConfig` and `PowStrategy` that satisfy the WHIR bounds.
+/// This works for any `MerkleConfig` and `PowStrategy` that satisfy the WHIR
+/// bounds.
 impl<MerkleConfig, PowStrategy> Verify for Verifier<MerkleConfig, PowStrategy>
 where
     MerkleConfig: WhirMerkleConfig,

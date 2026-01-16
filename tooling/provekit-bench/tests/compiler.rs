@@ -76,8 +76,7 @@ macro_rules! e2e_tests {
                 // Prepare step: create proof scheme, prover, and verifier
                 let schema: NoirProofScheme<$merkle, $pow> =
                     NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
-                let prover: Prover<$merkle, $pow> =
-                    Prover::from_noir_proof_scheme(schema.clone());
+                let prover: Prover<$merkle, $pow> = Prover::from_noir_proof_scheme(schema.clone());
                 let mut verifier: Verifier<$merkle, $pow> =
                     Verifier::from_noir_proof_scheme(schema);
 

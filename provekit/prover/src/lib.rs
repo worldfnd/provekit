@@ -26,7 +26,8 @@ pub trait Prove {
 }
 
 /// Blanket implementation of `Prove` for all valid hash configurations.
-/// This works for any `MerkleConfig` and `PowStrategy` that satisfy the WHIR bounds.
+/// This works for any `MerkleConfig` and `PowStrategy` that satisfy the WHIR
+/// bounds.
 impl<MerkleConfig, PowStrategy> Prove for Prover<MerkleConfig, PowStrategy>
 where
     MerkleConfig: WhirMerkleConfig,
