@@ -1,6 +1,7 @@
 use {
     crate::{
         binops::{add_binop_constraints, BinOp},
+        ecdsa_secp256r1::add_ecdsa_secp256r1_verification,
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
@@ -246,6 +247,7 @@ impl NoirToR1CSCompiler {
 
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
+        let mut ecdsa_secp256r1_ops = vec![];
 
         for opcode in &circuit.opcodes {
             match opcode {
@@ -347,10 +349,6 @@ impl NoirToR1CSCompiler {
                                 self.fetch_r1cs_witness_index(witness)
                             }
                         };
-                        // println!(
-                        //     "RANGE CHECK of witness {} to {} bits",
-                        //     input_witness, num_bits
-                        // );
                         // Add the entry into the range blocks.
                         range_checks
                             .entry(num_bits)
@@ -427,6 +425,38 @@ impl NoirToR1CSCompiler {
                             output_witnesses,
                         ));
                     }
+                    BlackBoxFuncCall::EcdsaSecp256r1 {
+                        public_key_x,
+                        public_key_y,
+                        signature,
+                        hashed_message,
+                        output,
+                    } => {
+                        let public_key_x_witnesses: Vec<ConstantOrR1CSWitness> = public_key_x
+                            .iter()
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .collect();
+                        let public_key_y_witnesses: Vec<ConstantOrR1CSWitness> = public_key_y
+                            .iter()
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .collect();
+                        let signature_witnesses: Vec<ConstantOrR1CSWitness> = signature
+                            .iter()
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .collect();
+                        let hashed_message_witnesses: Vec<ConstantOrR1CSWitness> = hashed_message
+                            .iter()
+                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .collect();
+                        let output_witness = self.fetch_r1cs_witness_index(*output);
+                        ecdsa_secp256r1_ops.push((
+                            public_key_x_witnesses,
+                            public_key_y_witnesses,
+                            signature_witnesses,
+                            hashed_message_witnesses,
+                            output_witness,
+                        ));
+                    }
 
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
@@ -468,6 +498,8 @@ impl NoirToR1CSCompiler {
         add_binop_constraints(self, BinOp::Xor, xor_ops);
         // For the Poseidon2 permutation operation.
         add_poseidon2_permutation(self, poseidon2_ops);
+        // For the ECDSA secp256r1 verification operations.
+        add_ecdsa_secp256r1_verification(self, &mut range_checks, ecdsa_secp256r1_ops);
 
         // Perform all range checks
         add_range_checks(self, range_checks);

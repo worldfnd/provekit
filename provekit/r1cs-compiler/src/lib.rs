@@ -1,5 +1,6 @@
 mod binops;
 mod digits;
+mod ecdsa_secp256r1;
 mod memory;
 mod noir_proof_scheme;
 mod noir_to_r1cs;

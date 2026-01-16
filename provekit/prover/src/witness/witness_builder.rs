@@ -1,7 +1,7 @@
 use {
     crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     acir::native_types::WitnessMap,
-    ark_ff::{BigInteger, PrimeField},
+    ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
     provekit_common::{
         skyscraper::SkyscraperSponge,
@@ -61,8 +61,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 witness[*witness_idx] = Some(a * b);
             }
-            WitnessBuilder::Inverse(..) => {
-                unreachable!("Inverse should not be called")
+            WitnessBuilder::Inverse(witness_idx, operand_idx) => {
+                let operand = witness[*operand_idx].unwrap();
+                witness[*witness_idx] = Some(operand.inverse().unwrap());
             }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,

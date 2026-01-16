@@ -3,6 +3,7 @@ use anyhow::{ensure, Result};
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
+    ark_ff::Zero,
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
@@ -87,6 +88,20 @@ impl R1CSSolver for R1CS {
                                 denominator_witness
                             )
                         });
+
+                        // Debug: Check for zero denominators before batching
+                        if denominator.is_zero() {
+                            eprintln!("ERROR: Zero denominator detected!");
+                            eprintln!("  - Output witness: {}", output_witness);
+                            eprintln!("  - Denominator witness: {}", denominator_witness);
+                            eprintln!("  - Denominator value: {:?}", denominator);
+                            panic!(
+                                "Cannot invert zero: denominator witness {} is zero (output \
+                                 witness {})",
+                                denominator_witness, output_witness
+                            );
+                        }
+
                         denominators.push(denominator);
                     }
 
