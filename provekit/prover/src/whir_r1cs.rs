@@ -263,10 +263,7 @@ pub fn compute_blinding_coefficients_for_round(
     for _ in 0..(n - 1 - compute_for) {
         prefix_multiplier = prefix_multiplier + prefix_multiplier;
     }
-    let suffix_multiplier: ark_ff::Fp<
-        ark_ff::MontBackend<whir::crypto::fields::BN254Config, 4>,
-        4,
-    > = prefix_multiplier / two;
+    let suffix_multiplier = prefix_multiplier / two;
 
     let constant_term_from_other_items =
         prefix_multiplier * prefix_sum + suffix_multiplier * suffix_sum;
