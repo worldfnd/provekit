@@ -119,19 +119,20 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness_idx,
                 sz_challenge,
                 rs_challenge,
-                WitnessCoefficient(addr, addr_witness),
-                value,
-                WitnessCoefficient(timer, timer_witness),
+                WitnessCoefficient(addr_coeff, addr_witness),
+                value_witness,
+                WitnessCoefficient(timer_coeff, timer_witness),
             ) => {
-                witness[*witness_idx] = Some(
-                    witness[*sz_challenge].unwrap()
-                        - (*addr * witness[*addr_witness].unwrap()
-                            + witness[*rs_challenge].unwrap() * witness[*value].unwrap()
-                            + witness[*rs_challenge].unwrap()
-                                * witness[*rs_challenge].unwrap()
-                                * *timer
-                                * witness[*timer_witness].unwrap()),
-                );
+                let sz = witness[*sz_challenge].unwrap();
+                let rs = witness[*rs_challenge].unwrap();
+                let addr_val = witness[*addr_witness].unwrap();
+                let value_val = witness[*value_witness].unwrap();
+                let timer_val = witness[*timer_witness].unwrap();
+                let factor = sz
+                    - (*addr_coeff * addr_val
+                        + rs * value_val
+                        + rs * rs * *timer_coeff * timer_val);
+                witness[*witness_idx] = Some(factor);
             }
             WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
                 spice_witnesses.solve(witness);

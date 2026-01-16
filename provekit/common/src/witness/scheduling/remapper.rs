@@ -185,13 +185,17 @@ impl WitnessIndexRemapper {
                     })
                     .collect();
                 WitnessBuilder::SpiceWitnesses(crate::witness::SpiceWitnesses {
-                    memory_length:        sw.memory_length,
-                    initial_values_start: self.remap(sw.initial_values_start),
-                    memory_operations:    new_memory_operations,
-                    rv_final_start:       self.remap(sw.rv_final_start),
-                    rt_final_start:       self.remap(sw.rt_final_start),
-                    first_witness_idx:    self.remap(sw.first_witness_idx),
-                    num_witnesses:        sw.num_witnesses,
+                    memory_length:           sw.memory_length,
+                    initial_value_witnesses: sw
+                        .initial_value_witnesses
+                        .iter()
+                        .map(|w| self.remap(*w))
+                        .collect(),
+                    memory_operations:       new_memory_operations,
+                    rv_final_start:          self.remap(sw.rv_final_start),
+                    rt_final_start:          self.remap(sw.rt_final_start),
+                    first_witness_idx:       self.remap(sw.first_witness_idx),
+                    num_witnesses:           sw.num_witnesses,
                 })
             }
             WitnessBuilder::BinOpLookupDenominator(idx, sz, rs, rs2, lhs, rhs, output) => {
