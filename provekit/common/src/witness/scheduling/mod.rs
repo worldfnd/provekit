@@ -43,7 +43,7 @@ pub struct Layer {
 /// This enables Montgomery's batch inversion trick: instead of computing n
 /// individual field inversions (expensive), we compute them in a batch using
 /// only 1 inversion and 3n multiplications.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LayeredWitnessBuilders {
     /// The layers of witness builders in execution order.
     pub layers: Vec<Layer>,
@@ -69,7 +69,7 @@ impl LayeredWitnessBuilders {
 /// Contains w1 (pre-challenge commitment) and w2 (post-challenge) witness
 /// builders, each with their own layered execution plans.
 /// Reference: <https://hackmd.io/@shreyas-londhe/HkgVaTXCxx>
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SplitWitnessBuilders {
     /// Witness builders that must be computed before challenge extraction.
     /// These are committed to w1 before challenges are generated.
