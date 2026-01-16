@@ -13,7 +13,7 @@ use {
         },
         FieldElement,
     },
-    std::{collections::HashMap, ops::Neg},
+    std::{collections::BTreeMap, ops::Neg},
 };
 
 #[derive(Clone, Debug, Copy)]
@@ -101,18 +101,22 @@ pub(crate) fn add_combined_binop_constraints(
         // we already have both outputs and don't need to create complementary
         // witnesses.
 
-        // Helper to create a key for (lhs, rhs) pair
-        fn operand_key(op: &ConstantOrR1CSWitness) -> u64 {
+        // Key type that captures the full field element to avoid collisions.
+        // Uses all 4 limbs of the BigInt representation for constants.
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        enum OperandKey {
+            Witness(usize),
+            Constant([u64; 4]),
+        }
+
+        fn operand_key(op: &ConstantOrR1CSWitness) -> OperandKey {
             match op {
-                ConstantOrR1CSWitness::Witness(idx) => *idx as u64,
-                ConstantOrR1CSWitness::Constant(fe) => {
-                    // Use a high bit to distinguish constants, plus the value
-                    (1u64 << 63) | fe.into_bigint().0[0]
-                }
+                ConstantOrR1CSWitness::Witness(idx) => OperandKey::Witness(*idx),
+                ConstantOrR1CSWitness::Constant(fe) => OperandKey::Constant(fe.into_bigint().0),
             }
         }
 
-        let mut pair_map: HashMap<(u64, u64), PairMapEntry> = HashMap::new();
+        let mut pair_map: BTreeMap<(OperandKey, OperandKey), PairMapEntry> = BTreeMap::new();
 
         for (lhs, rhs, and_out) in &and_ops {
             let key = (operand_key(lhs), operand_key(rhs));

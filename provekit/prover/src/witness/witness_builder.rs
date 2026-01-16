@@ -333,36 +333,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*lo] = Some(FieldElement::from(lo_val));
                 witness[*hi] = Some(FieldElement::from(hi_val));
             }
-            WitnessBuilder::XorTriple(result_witness_idx, a, b, c) => {
-                let a_val = match a {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let b_val = match b {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let c_val = match c {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                witness[*result_witness_idx] = Some(FieldElement::new(
-                    a_val.into_bigint() ^ b_val.into_bigint() ^ c_val.into_bigint(),
-                ));
-            }
             WitnessBuilder::CombinedTableEntryInverse(..) => {
                 unreachable!(
                     "CombinedTableEntryInverse should not be called - handled by batch inversion"
                 )
-            }
-            WitnessBuilder::ByteBitDecomposition { start_idx, source } => {
-                let source_val = witness[*source].unwrap().into_bigint().0[0];
-                debug_assert!(source_val < 256, "ByteBitDecomposition input must be 8-bit");
-
-                for i in 0..8 {
-                    let bit = (source_val >> i) & 1;
-                    witness[start_idx + i] = Some(FieldElement::from(bit));
-                }
             }
         }
     }

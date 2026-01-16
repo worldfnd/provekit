@@ -180,24 +180,10 @@ pub enum WitnessBuilder {
     /// Arguments: (result_witness_index, a, b)
     /// Note: only for 32-bit operands
     Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
-    /// 3-way XOR operation: computes result = a ⊕ b ⊕ c
-    /// Arguments: (result_witness_index, a, b, c)
-    /// Used in SHA256 sigma functions to avoid intermediate witnesses.
-    XorTriple(
-        usize,
-        ConstantOrR1CSWitness,
-        ConstantOrR1CSWitness,
-        ConstantOrR1CSWitness,
-    ),
     /// Inverse of combined lookup table entry denominator (constant operands).
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
     /// Used for optimized table entries where we inline the denominator.
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
-    /// Decomposes a byte into 8 individual bit witnesses.
-    /// Used for JOLT-style bit-level AND/XOR operations.
-    /// Arguments: start_idx is the first witness index (8 consecutive),
-    /// source is the byte witness to decompose.
-    ByteBitDecomposition { start_idx: usize, source: usize },
 }
 
 impl WitnessBuilder {

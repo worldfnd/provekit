@@ -6,7 +6,7 @@ use {
     provekit_common::{
         skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
-        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder, WitnessCoefficient},
+        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
     },
     spongefish::ProverState,
