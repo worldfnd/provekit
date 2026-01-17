@@ -1,16 +1,9 @@
 use {
-    crate::{
-        digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
-        noir_to_r1cs::NoirToR1CSCompiler,
-        uints::U8,
-    },
+    crate::{noir_to_r1cs::NoirToR1CSCompiler, uints::U8},
     ark_ff::PrimeField,
     ark_std::One,
     provekit_common::{
-        witness::{
-            decompose_into_digits, ConstantOrR1CSWitness, DigitalDecompositionWitnesses, SumTerm,
-            WitnessBuilder, BINOP_ATOMIC_BITS, NUM_DIGITS,
-        },
+        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS},
         FieldElement,
     },
     std::{collections::BTreeMap, ops::Neg},
@@ -87,7 +80,7 @@ pub(crate) fn add_combined_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    is_byte_level: bool,
+  
 ) {
     if and_ops.is_empty() && xor_ops.is_empty() {
         return;
@@ -95,137 +88,61 @@ pub(crate) fn add_combined_binop_constraints(
 
     // For combined table, each operation needs both AND and XOR outputs.
     // Convert ops to atomic (byte-level) operations with both outputs.
-    let combined_ops_atomic = if is_byte_level {
-        // Already byte-level. Create combined ops with complementary outputs.
-        // Optimization: If the same (lhs, rhs) pair appears in both AND and XOR ops,
-        // we already have both outputs and don't need to create complementary
-        // witnesses.
+    // Optimization: If the same (lhs, rhs) pair appears in both AND and XOR ops,
+    // we already have both outputs and don't need to create complementary witnesses.
 
-        // Key type that captures the full field element to avoid collisions.
-        // Uses all 4 limbs of the BigInt representation for constants.
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-        enum OperandKey {
-            Witness(usize),
-            Constant([u64; 4]),
+    // Key type that captures the full field element to avoid collisions.
+    // Uses all 4 limbs of the BigInt representation for constants.
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum OperandKey {
+        Witness(usize),
+        Constant([u64; 4]),
+    }
+
+    fn operand_key(op: &ConstantOrR1CSWitness) -> OperandKey {
+        match op {
+            ConstantOrR1CSWitness::Witness(idx) => OperandKey::Witness(*idx),
+            ConstantOrR1CSWitness::Constant(fe) => OperandKey::Constant(fe.into_bigint().0),
         }
+    }
 
-        fn operand_key(op: &ConstantOrR1CSWitness) -> OperandKey {
-            match op {
-                ConstantOrR1CSWitness::Witness(idx) => OperandKey::Witness(*idx),
-                ConstantOrR1CSWitness::Constant(fe) => OperandKey::Constant(fe.into_bigint().0),
-            }
-        }
+    let mut pair_map: BTreeMap<(OperandKey, OperandKey), PairMapEntry> = BTreeMap::new();
 
-        let mut pair_map: BTreeMap<(OperandKey, OperandKey), PairMapEntry> = BTreeMap::new();
+    for (lhs, rhs, and_out) in &and_ops {
+        let key = (operand_key(lhs), operand_key(rhs));
+        pair_map
+            .entry(key)
+            .and_modify(|e| e.0 = Some(*and_out))
+            .or_insert((Some(*and_out), None, *lhs, *rhs));
+    }
 
-        for (lhs, rhs, and_out) in &and_ops {
-            let key = (operand_key(lhs), operand_key(rhs));
-            pair_map
-                .entry(key)
-                .and_modify(|e| e.0 = Some(*and_out))
-                .or_insert((Some(*and_out), None, *lhs, *rhs));
-        }
+    for (lhs, rhs, xor_out) in &xor_ops {
+        let key = (operand_key(lhs), operand_key(rhs));
+        pair_map
+            .entry(key)
+            .and_modify(|e| e.1 = Some(*xor_out))
+            .or_insert((None, Some(*xor_out), *lhs, *rhs));
+    }
 
-        for (lhs, rhs, xor_out) in &xor_ops {
-            let key = (operand_key(lhs), operand_key(rhs));
-            pair_map
-                .entry(key)
-                .and_modify(|e| e.1 = Some(*xor_out))
-                .or_insert((None, Some(*xor_out), *lhs, *rhs));
-        }
-
-        // Now build combined ops, creating complementary witnesses only when needed
-        let mut combined = Vec::with_capacity(pair_map.len());
-        for (_key, (and_opt, xor_opt, lhs, rhs)) in pair_map {
-            let and_out = and_opt.unwrap_or_else(|| {
-                r1cs_compiler.add_witness_builder(WitnessBuilder::And(
-                    r1cs_compiler.num_witnesses(),
-                    lhs,
-                    rhs,
-                ))
-            });
-            let xor_out = xor_opt.unwrap_or_else(|| {
-                r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
-                    r1cs_compiler.num_witnesses(),
-                    lhs,
-                    rhs,
-                ))
-            });
-            combined.push((lhs, rhs, and_out, xor_out));
-        }
-
-        combined
-    } else {
-        // Need digital decomposition for 32-bit operands
-        let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-
-        // Collect all witnesses that require digital decomposition
-        let mut witnesses_to_decompose = vec![];
-        for (lh, rh, output) in and_ops.iter().chain(xor_ops.iter()) {
-            if let ConstantOrR1CSWitness::Witness(witness) = lh {
-                witnesses_to_decompose.push(*witness);
-            }
-            if let ConstantOrR1CSWitness::Witness(witness) = rh {
-                witnesses_to_decompose.push(*witness);
-            }
-            witnesses_to_decompose.push(*output);
-        }
-        let dd_struct =
-            add_digital_decomposition(r1cs_compiler, log_bases.clone(), witnesses_to_decompose);
-
-        let mut combined = vec![];
-        let mut witness_dd_counter = 0;
-
-        // Process AND ops - decompose and create complementary XOR outputs
-        for (lh, rh, _and_output) in &and_ops {
-            let lh_atoms = get_atoms(lh, &dd_struct, &log_bases, &mut witness_dd_counter);
-            let rh_atoms = get_atoms(rh, &dd_struct, &log_bases, &mut witness_dd_counter);
-            let and_output_atoms = (0..NUM_DIGITS)
-                .map(|digit_place| {
-                    dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
-                })
-                .collect::<Vec<_>>();
-            witness_dd_counter += 1;
-
-            for ((lh_atom, rh_atom), and_atom) in
-                lh_atoms.into_iter().zip(rh_atoms).zip(and_output_atoms)
-            {
-                // Create XOR output witness for this digit
-                let xor_atom = r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
-                    r1cs_compiler.num_witnesses(),
-                    lh_atom,
-                    rh_atom,
-                ));
-                combined.push((lh_atom, rh_atom, and_atom, xor_atom));
-            }
-        }
-
-        // Process XOR ops - decompose and create complementary AND outputs
-        for (lh, rh, _xor_output) in &xor_ops {
-            let lh_atoms = get_atoms(lh, &dd_struct, &log_bases, &mut witness_dd_counter);
-            let rh_atoms = get_atoms(rh, &dd_struct, &log_bases, &mut witness_dd_counter);
-            let xor_output_atoms = (0..NUM_DIGITS)
-                .map(|digit_place| {
-                    dd_struct.get_digit_witness_index(digit_place, witness_dd_counter)
-                })
-                .collect::<Vec<_>>();
-            witness_dd_counter += 1;
-
-            for ((lh_atom, rh_atom), xor_atom) in
-                lh_atoms.into_iter().zip(rh_atoms).zip(xor_output_atoms)
-            {
-                // Create AND output witness for this digit
-                let and_atom = r1cs_compiler.add_witness_builder(WitnessBuilder::And(
-                    r1cs_compiler.num_witnesses(),
-                    lh_atom,
-                    rh_atom,
-                ));
-                combined.push((lh_atom, rh_atom, and_atom, xor_atom));
-            }
-        }
-
-        combined
-    };
+    // Now build combined ops, creating complementary witnesses only when needed
+    let mut combined_ops_atomic = Vec::with_capacity(pair_map.len());
+    for (_key, (and_opt, xor_opt, lhs, rhs)) in pair_map {
+        let and_out = and_opt.unwrap_or_else(|| {
+            r1cs_compiler.add_witness_builder(WitnessBuilder::And(
+                r1cs_compiler.num_witnesses(),
+                lhs,
+                rhs,
+            ))
+        });
+        let xor_out = xor_opt.unwrap_or_else(|| {
+            r1cs_compiler.add_witness_builder(WitnessBuilder::Xor(
+                r1cs_compiler.num_witnesses(),
+                lhs,
+                rhs,
+            ))
+        });
+        combined_ops_atomic.push((lhs, rhs, and_out, xor_out));
+    }
 
     // Build multiplicities for the combined table
     let multiplicities_wb = WitnessBuilder::MultiplicitiesForBinOp(
@@ -287,32 +204,6 @@ pub(crate) fn add_combined_binop_constraints(
         &[(FieldElement::one(), sum_for_ops)],
         &[(FieldElement::one(), sum_for_table)],
     );
-}
-
-/// Helper to get atomic (digit-level) operands for combined binop.
-fn get_atoms(
-    operand: &ConstantOrR1CSWitness,
-    dd_struct: &DigitalDecompositionWitnesses,
-    log_bases: &[usize],
-    witness_dd_counter: &mut usize,
-) -> Vec<ConstantOrR1CSWitness> {
-    match operand {
-        ConstantOrR1CSWitness::Witness(_) => {
-            let counter = *witness_dd_counter;
-            *witness_dd_counter += 1;
-            (0..NUM_DIGITS)
-                .map(|digit_place| {
-                    ConstantOrR1CSWitness::Witness(
-                        dd_struct.get_digit_witness_index(digit_place, counter),
-                    )
-                })
-                .collect()
-        }
-        ConstantOrR1CSWitness::Constant(value) => decompose_into_digits(*value, log_bases)
-            .into_iter()
-            .map(ConstantOrR1CSWitness::Constant)
-            .collect(),
-    }
 }
 
 fn add_table_entry_inverse(
