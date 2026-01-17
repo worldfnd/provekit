@@ -318,24 +318,21 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
         return;
     }
 
-    let total_batched_constraints =
-        breakdown.and_constraints + breakdown.xor_constraints + breakdown.range_constraints;
-    let total_batched_witnesses =
-        breakdown.and_witnesses + breakdown.xor_witnesses + breakdown.range_witnesses;
+    let total_batched_constraints = breakdown.binop_constraints + breakdown.range_constraints;
+    let total_batched_witnesses = breakdown.binop_witnesses + breakdown.range_witnesses;
 
     println!("\n┌─ Batched Operations (Exact Breakdown)");
 
-    if and_count > 0 || breakdown.and_constraints > 0 || breakdown.and_witnesses > 0 {
+    let total_binop_ops = breakdown.and_ops_total + breakdown.xor_ops_total;
+    let sha256_binop_ops = breakdown.sha256_and_ops + breakdown.sha256_xor_ops;
+    if total_binop_ops > 0 || breakdown.binop_constraints > 0 || breakdown.binop_witnesses > 0 {
         println!(
-            "│  AND ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
-            and_count, breakdown.sha256_and_ops, breakdown.and_constraints, breakdown.and_witnesses
-        );
-    }
-
-    if xor_count > 0 || breakdown.xor_constraints > 0 || breakdown.xor_witnesses > 0 {
-        println!(
-            "│  XOR ({} explicit, {} from SHA256): {:>8} constraints {:>8} witnesses",
-            xor_count, breakdown.sha256_xor_ops, breakdown.xor_constraints, breakdown.xor_witnesses
+            "│  BINOP ({} AND + {} XOR, {} from SHA256): {:>8} constraints {:>8} witnesses",
+            and_count,
+            xor_count,
+            sha256_binop_ops,
+            breakdown.binop_constraints,
+            breakdown.binop_witnesses
         );
     }
 
@@ -365,24 +362,16 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
         let sha256_direct = breakdown.sha256_direct_constraints;
         let sha256_direct_w = breakdown.sha256_direct_witnesses;
 
-        let sha256_and_constraints = if breakdown.and_ops_total > 0 {
-            (breakdown.and_constraints * breakdown.sha256_and_ops) / breakdown.and_ops_total
+        // Combined binop attribution for SHA256
+        let total_binop_ops = breakdown.and_ops_total + breakdown.xor_ops_total;
+        let sha256_binop_ops = breakdown.sha256_and_ops + breakdown.sha256_xor_ops;
+        let sha256_binop_constraints = if total_binop_ops > 0 {
+            (breakdown.binop_constraints * sha256_binop_ops) / total_binop_ops
         } else {
             0
         };
-        let sha256_and_witnesses = if breakdown.and_ops_total > 0 {
-            (breakdown.and_witnesses * breakdown.sha256_and_ops) / breakdown.and_ops_total
-        } else {
-            0
-        };
-
-        let sha256_xor_constraints = if breakdown.xor_ops_total > 0 {
-            (breakdown.xor_constraints * breakdown.sha256_xor_ops) / breakdown.xor_ops_total
-        } else {
-            0
-        };
-        let sha256_xor_witnesses = if breakdown.xor_ops_total > 0 {
-            (breakdown.xor_witnesses * breakdown.sha256_xor_ops) / breakdown.xor_ops_total
+        let sha256_binop_witnesses = if total_binop_ops > 0 {
+            (breakdown.binop_witnesses * sha256_binop_ops) / total_binop_ops
         } else {
             0
         };
@@ -398,10 +387,8 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             0
         };
 
-        let sha256_batched_constraints =
-            sha256_and_constraints + sha256_xor_constraints + sha256_range_constraints;
-        let sha256_batched_witnesses =
-            sha256_and_witnesses + sha256_xor_witnesses + sha256_range_witnesses;
+        let sha256_batched_constraints = sha256_binop_constraints + sha256_range_constraints;
+        let sha256_batched_witnesses = sha256_binop_witnesses + sha256_range_witnesses;
 
         let sha256_total_constraints = sha256_direct + sha256_batched_constraints;
         let sha256_total_witnesses = sha256_direct_w + sha256_batched_witnesses;
@@ -414,18 +401,8 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             sha256_direct, sha256_direct_w
         );
         println!(
-            "│  Batched (AND):       {:>8} constraints {:>8} witnesses ({}/{} ops)",
-            sha256_and_constraints,
-            sha256_and_witnesses,
-            breakdown.sha256_and_ops,
-            breakdown.and_ops_total
-        );
-        println!(
-            "│  Batched (XOR):       {:>8} constraints {:>8} witnesses ({}/{} ops)",
-            sha256_xor_constraints,
-            sha256_xor_witnesses,
-            breakdown.sha256_xor_ops,
-            breakdown.xor_ops_total
+            "│  Batched (BINOP):     {:>8} constraints {:>8} witnesses ({}/{} ops)",
+            sha256_binop_constraints, sha256_binop_witnesses, sha256_binop_ops, total_binop_ops
         );
         println!(
             "│  Batched (RANGE):     {:>8} constraints {:>8} witnesses ({}/{} ops)",
@@ -453,8 +430,7 @@ fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
         + breakdown.memory_ram_constraints
         + breakdown.sha256_direct_constraints
         + breakdown.poseidon2_constraints
-        + breakdown.and_constraints
-        + breakdown.xor_constraints
+        + breakdown.binop_constraints
         + breakdown.range_constraints;
 
     let total_tracked_witnesses = breakdown.assert_zero_witnesses
@@ -462,8 +438,7 @@ fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
         + breakdown.memory_ram_witnesses
         + breakdown.sha256_direct_witnesses
         + breakdown.poseidon2_witnesses
-        + breakdown.and_witnesses
-        + breakdown.xor_witnesses
+        + breakdown.binop_witnesses
         + breakdown.range_witnesses;
 
     println!("\n{}", SEPARATOR);

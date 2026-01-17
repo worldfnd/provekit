@@ -80,7 +80,6 @@ pub(crate) fn add_combined_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-  
 ) {
     if and_ops.is_empty() && xor_ops.is_empty() {
         return;
@@ -89,7 +88,8 @@ pub(crate) fn add_combined_binop_constraints(
     // For combined table, each operation needs both AND and XOR outputs.
     // Convert ops to atomic (byte-level) operations with both outputs.
     // Optimization: If the same (lhs, rhs) pair appears in both AND and XOR ops,
-    // we already have both outputs and don't need to create complementary witnesses.
+    // we already have both outputs and don't need to create complementary
+    // witnesses.
 
     // Key type that captures the full field element to avoid collisions.
     // Uses all 4 limbs of the BigInt representation for constants.
