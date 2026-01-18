@@ -337,7 +337,9 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     }
 
     if range_count > 0 || breakdown.range_constraints > 0 || breakdown.range_witnesses > 0 {
-        let non_sha256_range = range_count.saturating_sub(breakdown.sha256_range_ops);
+        let non_sha256_range = breakdown
+            .range_ops_total
+            .saturating_sub(breakdown.sha256_range_ops);
         println!(
             "│  RANGE ({} non-SHA256, {} from SHA256): {:>8} constraints {:>8} witnesses",
             non_sha256_range,
