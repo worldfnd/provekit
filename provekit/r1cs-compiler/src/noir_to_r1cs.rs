@@ -17,6 +17,7 @@ use {
         native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, Result},
+    ark_ff::PrimeField,
     ark_std::One,
     provekit_common::{
         utils::noir_to_native,
@@ -446,17 +447,38 @@ impl NoirToR1CSCompiler {
                             ConstantOrACIRWitness::Constant(_) => {
                                 // For constants, we still need a witness for decomposition
                                 let c = self.fetch_constant_or_r1cs_witness(lhs.input());
-                                if let ConstantOrR1CSWitness::Constant(_) = c {
+                                if let ConstantOrR1CSWitness::Constant(lhs_fe) = c {
                                     // Handle constant case: push byte-level constant ops
+                                    // IMPORTANT: Must decompose 32-bit constants into bytes
                                     let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
                                     let out_idx = self.fetch_r1cs_witness_index(*output);
                                     // Decompose output and create ops with constants
                                     let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
                                     let dd =
                                         add_digital_decomposition(self, log_bases, vec![out_idx]);
+                                    // Decompose lhs constant into bytes
+                                    let lhs_val: u64 = lhs_fe.into_bigint().0[0];
+                                    let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+                                    // Decompose rhs constant if needed
+                                    let rhs_bytes: Option<[u8; 4]> =
+                                        if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
+                                            let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                            Some((rhs_val as u32).to_le_bytes())
+                                        } else {
+                                            None
+                                        };
                                     for byte_idx in 0..NUM_DIGITS {
+                                        let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                            FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                        );
+                                        let rhs_byte = match rhs_bytes {
+                                            Some(bytes) => ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(bytes[byte_idx] as u64),
+                                            ),
+                                            None => rhs_c, // rhs is a witness, should not happen
+                                        };
                                         let out_byte = dd.get_digit_witness_index(byte_idx, 0);
-                                        and_ops.push((c, rhs_c, out_byte));
+                                        and_ops.push((lhs_byte, rhs_byte, out_byte));
                                     }
                                     continue;
                                 }
@@ -467,7 +489,6 @@ impl NoirToR1CSCompiler {
                             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
                             ConstantOrACIRWitness::Constant(_) => {
                                 // For rhs constant with witness lhs
-                                let _lhs_c = self.fetch_constant_or_r1cs_witness(lhs.input());
                                 let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
                                 let out_idx = self.fetch_r1cs_witness_index(*output);
                                 let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
@@ -475,12 +496,23 @@ impl NoirToR1CSCompiler {
                                     lhs_witness,
                                     out_idx,
                                 ]);
+                                // Decompose rhs constant into bytes
+                                let rhs_bytes: [u8; 4] =
+                                    if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
+                                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                        (rhs_val as u32).to_le_bytes()
+                                    } else {
+                                        unreachable!()
+                                    };
                                 for byte_idx in 0..NUM_DIGITS {
                                     let lhs_byte = ConstantOrR1CSWitness::Witness(
                                         dd.get_digit_witness_index(byte_idx, 0),
                                     );
+                                    let rhs_byte = ConstantOrR1CSWitness::Constant(
+                                        FieldElement::from(rhs_bytes[byte_idx] as u64),
+                                    );
                                     let out_byte = dd.get_digit_witness_index(byte_idx, 1);
-                                    and_ops.push((lhs_byte, rhs_c, out_byte));
+                                    and_ops.push((lhs_byte, rhs_byte, out_byte));
                                 }
                                 continue;
                             }
@@ -513,15 +545,35 @@ impl NoirToR1CSCompiler {
                             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
                             ConstantOrACIRWitness::Constant(_) => {
                                 let c = self.fetch_constant_or_r1cs_witness(lhs.input());
-                                if let ConstantOrR1CSWitness::Constant(_) = c {
+                                if let ConstantOrR1CSWitness::Constant(lhs_fe) = c {
                                     let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
                                     let out_idx = self.fetch_r1cs_witness_index(*output);
                                     let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
                                     let dd =
                                         add_digital_decomposition(self, log_bases, vec![out_idx]);
+                                    // Decompose lhs constant into bytes
+                                    let lhs_val: u64 = lhs_fe.into_bigint().0[0];
+                                    let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+                                    // Decompose rhs constant if needed
+                                    let rhs_bytes: Option<[u8; 4]> =
+                                        if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
+                                            let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                            Some((rhs_val as u32).to_le_bytes())
+                                        } else {
+                                            None
+                                        };
                                     for byte_idx in 0..NUM_DIGITS {
+                                        let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                            FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                        );
+                                        let rhs_byte = match rhs_bytes {
+                                            Some(bytes) => ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(bytes[byte_idx] as u64),
+                                            ),
+                                            None => rhs_c, // rhs is a witness, should not happen
+                                        };
                                         let out_byte = dd.get_digit_witness_index(byte_idx, 0);
-                                        xor_ops.push((c, rhs_c, out_byte));
+                                        xor_ops.push((lhs_byte, rhs_byte, out_byte));
                                     }
                                     continue;
                                 }
@@ -531,7 +583,6 @@ impl NoirToR1CSCompiler {
                         let rhs_witness = match rhs.input() {
                             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
                             ConstantOrACIRWitness::Constant(_) => {
-                                let _lhs_c = self.fetch_constant_or_r1cs_witness(lhs.input());
                                 let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
                                 let out_idx = self.fetch_r1cs_witness_index(*output);
                                 let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
@@ -539,12 +590,23 @@ impl NoirToR1CSCompiler {
                                     lhs_witness,
                                     out_idx,
                                 ]);
+                                // Decompose rhs constant into bytes
+                                let rhs_bytes: [u8; 4] =
+                                    if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
+                                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                        (rhs_val as u32).to_le_bytes()
+                                    } else {
+                                        unreachable!()
+                                    };
                                 for byte_idx in 0..NUM_DIGITS {
                                     let lhs_byte = ConstantOrR1CSWitness::Witness(
                                         dd.get_digit_witness_index(byte_idx, 0),
                                     );
+                                    let rhs_byte = ConstantOrR1CSWitness::Constant(
+                                        FieldElement::from(rhs_bytes[byte_idx] as u64),
+                                    );
                                     let out_byte = dd.get_digit_witness_index(byte_idx, 1);
-                                    xor_ops.push((lhs_byte, rhs_c, out_byte));
+                                    xor_ops.push((lhs_byte, rhs_byte, out_byte));
                                 }
                                 continue;
                             }
