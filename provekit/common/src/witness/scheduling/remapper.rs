@@ -131,6 +131,13 @@ impl WitnessIndexRemapper {
                     WitnessCoefficient(*coeff, self.remap(*value)),
                 )
             }
+            WitnessBuilder::LogUpInverse(idx, sz, WitnessCoefficient(coeff, value)) => {
+                WitnessBuilder::LogUpInverse(
+                    self.remap(*idx),
+                    self.remap(*sz),
+                    WitnessCoefficient(*coeff, self.remap(*value)),
+                )
+            }
             WitnessBuilder::DigitalDecomposition(dd) => {
                 let new_witnesses_to_decompose = dd
                     .witnesses_to_decompose
@@ -198,6 +205,23 @@ impl WitnessIndexRemapper {
                     num_witnesses:           sw.num_witnesses,
                 })
             }
+            WitnessBuilder::U32AdditionMulti(result_idx, carry_idx, inputs) => {
+                WitnessBuilder::U32AdditionMulti(
+                    self.remap(*result_idx),
+                    self.remap(*carry_idx),
+                    inputs
+                        .iter()
+                        .map(|c| self.remap_const_or_witness(c))
+                        .collect(),
+                )
+            }
+            WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
+                lo: self.remap(*lo),
+                hi: self.remap(*hi),
+                x:  self.remap(*x),
+                k:  *k,
+            },
+
             WitnessBuilder::BinOpLookupDenominator(idx, sz, rs, rs2, lhs, rhs, output) => {
                 WitnessBuilder::BinOpLookupDenominator(
                     self.remap(*idx),
@@ -209,6 +233,27 @@ impl WitnessIndexRemapper {
                     self.remap_const_or_witness(output),
                 )
             }
+            WitnessBuilder::CombinedBinOpLookupDenominator(
+                idx,
+                sz,
+                rs,
+                rs2,
+                rs3,
+                lhs,
+                rhs,
+                and_out,
+                xor_out,
+            ) => WitnessBuilder::CombinedBinOpLookupDenominator(
+                self.remap(*idx),
+                self.remap(*sz),
+                self.remap(*rs),
+                self.remap(*rs2),
+                self.remap(*rs3),
+                self.remap_const_or_witness(lhs),
+                self.remap_const_or_witness(rhs),
+                self.remap_const_or_witness(and_out),
+                self.remap_const_or_witness(xor_out),
+            ),
             WitnessBuilder::MultiplicitiesForBinOp(start, pairs) => {
                 let new_pairs = pairs
                     .iter()
@@ -239,6 +284,21 @@ impl WitnessIndexRemapper {
                 self.remap_const_or_witness(lh),
                 self.remap_const_or_witness(rh),
             ),
+            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                WitnessBuilder::CombinedTableEntryInverse(
+                    crate::witness::CombinedTableEntryInverseData {
+                        idx:          self.remap(data.idx),
+                        sz_challenge: self.remap(data.sz_challenge),
+                        rs_challenge: self.remap(data.rs_challenge),
+                        rs_sqrd:      self.remap(data.rs_sqrd),
+                        rs_cubed:     self.remap(data.rs_cubed),
+                        lhs:          data.lhs,
+                        rhs:          data.rhs,
+                        and_out:      data.and_out,
+                        xor_out:      data.xor_out,
+                    },
+                )
+            }
         }
     }
 

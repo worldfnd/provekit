@@ -5,10 +5,13 @@ use {
     },
     ark_std::{One, Zero},
     provekit_common::{
-        witness::{ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient},
+        witness::{ProductLinearTerm, WitnessBuilder, WitnessCoefficient},
         FieldElement,
     },
-    std::{collections::BTreeMap, ops::Neg},
+    std::{
+        collections::{BTreeMap, HashSet},
+        ops::Neg,
+    },
 };
 
 const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
@@ -47,6 +50,15 @@ pub(crate) fn add_range_checks(
     range_checks
         .into_iter()
         .for_each(|(num_bits, values_to_lookup)| {
+            // Deduplicate witnesses - checking the same witness multiple times is redundant
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                values_to_lookup
+                    .into_iter()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
+
             if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
                 let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
                 let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
@@ -84,11 +96,16 @@ pub(crate) fn add_range_checks(
         .iter()
         .enumerate()
         .for_each(|(num_bits, all_values_to_lookup)| {
-            let values_to_lookup = all_values_to_lookup
-                .iter()
-                .flat_map(|v| v.iter())
-                .copied()
-                .collect::<Vec<_>>();
+            // Deduplicate - digit witnesses from different decompositions might overlap
+            let values_to_lookup: Vec<usize> = {
+                let mut seen = HashSet::new();
+                all_values_to_lookup
+                    .iter()
+                    .flat_map(|v| v.iter())
+                    .copied()
+                    .filter(|v| seen.insert(*v))
+                    .collect()
+            };
             if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
                 add_range_check_via_lookup(r1cs, num_bits as u32, &values_to_lookup);
             } else {
@@ -101,8 +118,7 @@ pub(crate) fn add_range_checks(
 
 /// Helper function which computes all the terms of the summation for
 /// each side (LHS and RHS) of the log-derivative multiset check.
-///
-/// Checks that both sums (LHS and RHS) are equal at the end.
+/// Uses a fused constraint to check equality of both sums directly.
 fn add_range_check_via_lookup(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     num_bits: u32,
@@ -120,9 +136,8 @@ fn add_range_check_via_lookup(
     let sz_challenge =
         r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
 
-    // Compute all the terms in the summation for multiplicity/(X - table_value)
-    // for each table value.
-    let table_summands = (0..(1 << num_bits))
+    // Collect table side terms: multiplicity * 1/(X - table_value)
+    let mut logup_summands: Vec<(FieldElement, usize)> = (0..(1 << num_bits))
         .map(|table_value| {
             let table_denom = add_lookup_factor(
                 r1cs_compiler,
@@ -131,68 +146,53 @@ fn add_range_check_via_lookup(
                 r1cs_compiler.witness_one(),
             );
             let multiplicity_witness = multiplicities_first_witness + table_value;
-            SumTerm(
-                None,
+            (
+                FieldElement::one(),
                 r1cs_compiler.add_product(table_denom, multiplicity_witness),
             )
         })
         .collect();
-    let sum_for_table = r1cs_compiler.add_sum(table_summands);
-    // Compute all the terms in the summation for 1/(X - witness_value) for each
-    // witness value.
-    let witness_summands = values_to_lookup
-        .iter()
-        .map(|value| {
-            let witness_idx =
-                add_lookup_factor(r1cs_compiler, sz_challenge, FieldElement::one(), *value);
-            SumTerm(None, witness_idx)
-        })
-        .collect();
-    let sum_for_witness = r1cs_compiler.add_sum(witness_summands);
-    // Check that these two sums are equal.
+
+    // Collect witness side terms with negated coefficients: -1/(X - witness_value)
+    for value in values_to_lookup {
+        let witness_idx =
+            add_lookup_factor(r1cs_compiler, sz_challenge, FieldElement::one(), *value);
+        logup_summands.push((FieldElement::one().neg(), witness_idx));
+    }
+
+    // Constraint: (Σ table_terms - Σ witness_terms) * 1 = 0
     r1cs_compiler.r1cs.add_constraint(
-        &[
-            (FieldElement::one(), sum_for_table),
-            (FieldElement::one().neg(), sum_for_witness),
-        ],
+        &logup_summands,
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
         &[(FieldElement::zero(), r1cs_compiler.witness_one())],
     );
 }
 
-/// Helper function that computes the LogUp denominator either for
-/// the table values: (X - t_j), or for the witness values:
-/// (X - w_i). Computes the inverse and also checks that this is
-/// the appropriate inverse.
+/// Helper function that computes the inverse of the LogUp denominator
+/// for table values: 1/(X - t_j), or for witness values: 1/(X - w_i).
+/// Uses a single fused constraint to verify the inverse.
 pub(crate) fn add_lookup_factor(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     sz_challenge: usize,
     value_coeff: FieldElement,
     value_witness: usize,
 ) -> usize {
-    let denom_wb = WitnessBuilder::LogUpDenominator(
+    // Directly compute inverse of (X - c·v) using LogUpInverse
+    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::LogUpInverse(
         r1cs_compiler.num_witnesses(),
         sz_challenge,
         WitnessCoefficient(value_coeff, value_witness),
-    );
-    let denominator = r1cs_compiler.add_witness_builder(denom_wb);
+    ));
+    // Single fused constraint: (X - c·v) * inverse = 1
     r1cs_compiler.r1cs.add_constraint(
         &[
             (FieldElement::one(), sz_challenge),
-            (FieldElement::one().neg() * value_coeff, value_witness),
+            (value_coeff.neg(), value_witness),
         ],
-        &[(FieldElement::one(), r1cs_compiler.witness_one())],
-        &[(FieldElement::one(), denominator)],
-    );
-    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::Inverse(
-        r1cs_compiler.num_witnesses(),
-        denominator,
-    ));
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::one(), denominator)],
         &[(FieldElement::one(), inverse)],
         &[(FieldElement::one(), r1cs_compiler.witness_one())],
     );
+
     inverse
 }
 
