@@ -445,44 +445,65 @@ impl NoirToR1CSCompiler {
                         let lhs_witness = match lhs.input() {
                             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
                             ConstantOrACIRWitness::Constant(_) => {
-                                // For constants, we still need a witness for decomposition
-                                let c = self.fetch_constant_or_r1cs_witness(lhs.input());
-                                if let ConstantOrR1CSWitness::Constant(lhs_fe) = c {
-                                    // Handle constant case: push byte-level constant ops
-                                    // IMPORTANT: Must decompose 32-bit constants into bytes
-                                    let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
-                                    let out_idx = self.fetch_r1cs_witness_index(*output);
-                                    // Decompose output and create ops with constants
-                                    let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-                                    let dd =
-                                        add_digital_decomposition(self, log_bases, vec![out_idx]);
-                                    // Decompose lhs constant into bytes
-                                    let lhs_val: u64 = lhs_fe.into_bigint().0[0];
-                                    let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
-                                    // Decompose rhs constant if needed
-                                    let rhs_bytes: Option<[u8; 4]> =
-                                        if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
-                                            let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                                            Some((rhs_val as u32).to_le_bytes())
-                                        } else {
-                                            None
+                                // lhs is constant
+                                let lhs_c = self.fetch_constant_or_r1cs_witness(lhs.input());
+                                let ConstantOrR1CSWitness::Constant(lhs_fe) = lhs_c else {
+                                    unreachable!()
+                                };
+                                // Decompose lhs constant into bytes
+                                let lhs_val: u64 = lhs_fe.into_bigint().0[0];
+                                let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+
+                                let out_idx = self.fetch_r1cs_witness_index(*output);
+                                let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
+
+                                match rhs.input() {
+                                    ConstantOrACIRWitness::Constant(_) => {
+                                        // Both lhs and rhs are constants
+                                        let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
+                                        let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c else {
+                                            unreachable!()
                                         };
-                                    for byte_idx in 0..NUM_DIGITS {
-                                        let lhs_byte = ConstantOrR1CSWitness::Constant(
-                                            FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                        let rhs_bytes: [u8; 4] = (rhs_val as u32).to_le_bytes();
+
+                                        let dd = add_digital_decomposition(
+                                            self,
+                                            log_bases,
+                                            vec![out_idx],
                                         );
-                                        let rhs_byte = match rhs_bytes {
-                                            Some(bytes) => ConstantOrR1CSWitness::Constant(
-                                                FieldElement::from(bytes[byte_idx] as u64),
-                                            ),
-                                            None => rhs_c, // rhs is a witness, should not happen
-                                        };
-                                        let out_byte = dd.get_digit_witness_index(byte_idx, 0);
-                                        and_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        for byte_idx in 0..NUM_DIGITS {
+                                            let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                            );
+                                            let rhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(rhs_bytes[byte_idx] as u64),
+                                            );
+                                            let out_byte = dd.get_digit_witness_index(byte_idx, 0);
+                                            and_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        }
                                     }
-                                    continue;
+                                    ConstantOrACIRWitness::Witness(rhs_w) => {
+                                        // lhs constant, rhs witness - decompose rhs witness
+                                        let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
+                                        let dd = add_digital_decomposition(
+                                            self,
+                                            log_bases,
+                                            vec![rhs_witness, out_idx],
+                                        );
+                                        for byte_idx in 0..NUM_DIGITS {
+                                            let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                            );
+                                            let rhs_byte = ConstantOrR1CSWitness::Witness(
+                                                dd.get_digit_witness_index(byte_idx, 0),
+                                            );
+                                            let out_byte = dd.get_digit_witness_index(byte_idx, 1);
+                                            and_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        }
+                                    }
                                 }
-                                unreachable!()
+                                continue;
                             }
                         };
                         let rhs_witness = match rhs.input() {
@@ -544,40 +565,65 @@ impl NoirToR1CSCompiler {
                         let lhs_witness = match lhs.input() {
                             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
                             ConstantOrACIRWitness::Constant(_) => {
-                                let c = self.fetch_constant_or_r1cs_witness(lhs.input());
-                                if let ConstantOrR1CSWitness::Constant(lhs_fe) = c {
-                                    let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
-                                    let out_idx = self.fetch_r1cs_witness_index(*output);
-                                    let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-                                    let dd =
-                                        add_digital_decomposition(self, log_bases, vec![out_idx]);
-                                    // Decompose lhs constant into bytes
-                                    let lhs_val: u64 = lhs_fe.into_bigint().0[0];
-                                    let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
-                                    // Decompose rhs constant if needed
-                                    let rhs_bytes: Option<[u8; 4]> =
-                                        if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
-                                            let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                                            Some((rhs_val as u32).to_le_bytes())
-                                        } else {
-                                            None
+                                // lhs is constant
+                                let lhs_c = self.fetch_constant_or_r1cs_witness(lhs.input());
+                                let ConstantOrR1CSWitness::Constant(lhs_fe) = lhs_c else {
+                                    unreachable!()
+                                };
+                                // Decompose lhs constant into bytes
+                                let lhs_val: u64 = lhs_fe.into_bigint().0[0];
+                                let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+
+                                let out_idx = self.fetch_r1cs_witness_index(*output);
+                                let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
+
+                                match rhs.input() {
+                                    ConstantOrACIRWitness::Constant(_) => {
+                                        // Both lhs and rhs are constants
+                                        let rhs_c = self.fetch_constant_or_r1cs_witness(rhs.input());
+                                        let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c else {
+                                            unreachable!()
                                         };
-                                    for byte_idx in 0..NUM_DIGITS {
-                                        let lhs_byte = ConstantOrR1CSWitness::Constant(
-                                            FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
+                                        let rhs_bytes: [u8; 4] = (rhs_val as u32).to_le_bytes();
+
+                                        let dd = add_digital_decomposition(
+                                            self,
+                                            log_bases,
+                                            vec![out_idx],
                                         );
-                                        let rhs_byte = match rhs_bytes {
-                                            Some(bytes) => ConstantOrR1CSWitness::Constant(
-                                                FieldElement::from(bytes[byte_idx] as u64),
-                                            ),
-                                            None => rhs_c, // rhs is a witness, should not happen
-                                        };
-                                        let out_byte = dd.get_digit_witness_index(byte_idx, 0);
-                                        xor_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        for byte_idx in 0..NUM_DIGITS {
+                                            let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                            );
+                                            let rhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(rhs_bytes[byte_idx] as u64),
+                                            );
+                                            let out_byte = dd.get_digit_witness_index(byte_idx, 0);
+                                            xor_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        }
                                     }
-                                    continue;
+                                    ConstantOrACIRWitness::Witness(rhs_w) => {
+                                        // lhs constant, rhs witness - decompose rhs witness
+                                        let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
+                                        let dd = add_digital_decomposition(
+                                            self,
+                                            log_bases,
+                                            vec![rhs_witness, out_idx],
+                                        );
+                                        for byte_idx in 0..NUM_DIGITS {
+                                            let lhs_byte = ConstantOrR1CSWitness::Constant(
+                                                FieldElement::from(lhs_bytes[byte_idx] as u64),
+                                            );
+                                            let rhs_byte = ConstantOrR1CSWitness::Witness(
+                                                dd.get_digit_witness_index(byte_idx, 0),
+                                            );
+                                            let out_byte = dd.get_digit_witness_index(byte_idx, 1);
+                                            xor_ops.push((lhs_byte, rhs_byte, out_byte));
+                                        }
+                                    }
                                 }
-                                unreachable!()
+                                continue;
                             }
                         };
                         let rhs_witness = match rhs.input() {
