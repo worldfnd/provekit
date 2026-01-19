@@ -12,6 +12,12 @@ pub(crate) trait SpiceWitnessesSolver {
 
 impl SpiceWitnessesSolver for SpiceWitnesses {
     fn solve(&self, witness: &mut [Option<FieldElement>]) {
+        debug_assert_eq!(
+            self.initial_value_witnesses.len(),
+            self.memory_length,
+            "initial_value_witnesses length must equal memory_length"
+        );
+
         // Read from actual witness indices (may be non-contiguous)
         let mut rv_final: Vec<Option<FieldElement>> = self
             .initial_value_witnesses
@@ -21,26 +27,21 @@ impl SpiceWitnessesSolver for SpiceWitnesses {
         let mut rt_final = vec![0; self.memory_length];
         for (mem_op_index, mem_op) in self.memory_operations.iter().enumerate() {
             match mem_op {
-                SpiceMemoryOperation::Load(addr_idx, value_idx, read_timestamp_idx) => {
-                    let addr = witness[*addr_idx].unwrap();
+                SpiceMemoryOperation::Load(addr, value, read_timestamp) => {
+                    let addr = witness[*addr].unwrap();
                     let addr_as_usize = addr.into_bigint().0[0] as usize;
-                    witness[*read_timestamp_idx] =
+                    witness[*read_timestamp] =
                         Some(FieldElement::from(rt_final[addr_as_usize] as u64));
-                    rv_final[addr_as_usize] = witness[*value_idx];
+                    rv_final[addr_as_usize] = witness[*value];
                     rt_final[addr_as_usize] = mem_op_index + 1;
                 }
-                SpiceMemoryOperation::Store(
-                    addr_idx,
-                    old_value_idx,
-                    new_value_idx,
-                    read_timestamp_idx,
-                ) => {
-                    let addr = witness[*addr_idx].unwrap();
+                SpiceMemoryOperation::Store(addr, old_value, new_value, read_timestamp) => {
+                    let addr = witness[*addr].unwrap();
                     let addr_as_usize = addr.into_bigint().0[0] as usize;
-                    witness[*old_value_idx] = rv_final[addr_as_usize];
-                    witness[*read_timestamp_idx] =
+                    witness[*old_value] = rv_final[addr_as_usize];
+                    witness[*read_timestamp] =
                         Some(FieldElement::from(rt_final[addr_as_usize] as u64));
-                    let new_value = witness[*new_value_idx];
+                    let new_value = witness[*new_value];
                     rv_final[addr_as_usize] = new_value;
                     rt_final[addr_as_usize] = mem_op_index + 1;
                 }
