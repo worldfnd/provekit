@@ -285,10 +285,11 @@ impl NoirToR1CSCompiler {
                 } => {
                     // Panic if the predicate is set (according to Noir developers, predicate is
                     // always None and will soon be removed).
-                    if predicate.is_some() {
-                        eprintln!("WARNING: MemoryOp has predicate: {:?}", predicate);
-                    }
-                    assert!(predicate.is_none());
+                    assert!(
+                        predicate.is_none(),
+                        "MemoryOp has unexpected predicate: {:?}",
+                        predicate
+                    );
 
                     let block_id = block_id.0 as usize;
                     assert!(
