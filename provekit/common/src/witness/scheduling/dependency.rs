@@ -110,8 +110,7 @@ impl DependencyInfo {
                 vec![*sz, *rs, *addr_w, *value, *timer_w]
             }
             WitnessBuilder::SpiceWitnesses(sw) => {
-                let mut v: Vec<usize> =
-                    (sw.initial_values_start..sw.initial_values_start + sw.memory_length).collect();
+                let mut v: Vec<usize> = sw.initial_value_witnesses.clone();
                 for op in &sw.memory_operations {
                     match op {
                         crate::witness::SpiceMemoryOperation::Load(addr, value, _) => {

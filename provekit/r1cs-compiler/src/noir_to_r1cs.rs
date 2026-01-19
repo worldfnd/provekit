@@ -351,8 +351,8 @@ impl NoirToR1CSCompiler {
                         "Memory block {} already initialized",
                         block_id
                     );
-                    self.initial_memories
-                        .insert(block_id, init.iter().map(|w| w.0 as usize).collect());
+                    let acir_indices: Vec<usize> = init.iter().map(|w| w.0 as usize).collect();
+                    self.initial_memories.insert(block_id, acir_indices);
                     let mut block = MemoryBlock::new();
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness = self.fetch_r1cs_witness_index(*acir_witness);
@@ -367,7 +367,11 @@ impl NoirToR1CSCompiler {
                 } => {
                     // Panic if the predicate is set (according to Noir developers, predicate is
                     // always None and will soon be removed).
-                    assert!(predicate.is_none());
+                    assert!(
+                        predicate.is_none(),
+                        "MemoryOp has unexpected predicate: {:?}",
+                        predicate
+                    );
 
                     let block_id = block_id.0 as usize;
                     assert!(
