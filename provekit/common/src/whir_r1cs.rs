@@ -126,6 +126,14 @@ where
 
         io
     }
+
+    pub fn set_reed_solomon<RS: whir::ntt::ReedSolomon<FieldElement> + 'static>(&mut self, rs: RS) {
+        let rs = std::sync::Arc::new(rs);
+        self.whir_witness.set_reed_solomon(rs.clone());
+        self.whir_witness.set_basefield_reed_solomon(rs.clone());
+        self.whir_for_hiding_spartan.set_reed_solomon(rs.clone());
+        self.whir_for_hiding_spartan.set_basefield_reed_solomon(rs);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -49,4 +49,11 @@ where
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
     }
+
+    pub fn set_reed_solomon<RS: whir::ntt::ReedSolomon<crate::FieldElement> + 'static>(
+        &mut self,
+        rs: RS,
+    ) {
+        self.whir_for_witness.set_reed_solomon(rs);
+    }
 }

@@ -3,6 +3,7 @@ mod digits;
 mod memory;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
+mod ntt;
 mod poseidon2;
 mod range_check;
 mod sha256_compression;
@@ -13,6 +14,7 @@ mod witness_generator;
 pub use {
     noir_proof_scheme::NoirProofSchemeBuilder,
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
+    ntt::RSFr,
     whir_r1cs::WhirR1CSSchemeBuilder,
 };
 

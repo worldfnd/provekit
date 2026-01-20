@@ -7,6 +7,7 @@ use {
         runtime_hash, Prover,
     },
     provekit_prover::Prove,
+    provekit_r1cs_compiler::RSFr,
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -44,8 +45,10 @@ impl Command for Args {
 
         // Use dispatch macro to read with correct types and prove
         runtime_hash!(hash_config, |MerkleConfig, PowStrategy| {
-            let prover: Prover<MerkleConfig, PowStrategy> =
+            let mut prover: Prover<MerkleConfig, PowStrategy> =
                 read(&self.prover_path).context("while reading Provekit Prover")?;
+
+            prover.set_reed_solomon(RSFr);
 
             let (constraints, witnesses) = prover.size();
             info!(constraints, witnesses, hash = ?hash_config, "Read Noir proof scheme");
