@@ -134,7 +134,7 @@ impl SparseMatrix {
             *col = remap_fn(*col as usize) as u32;
         });
 
-        // Step 2: Re-sort each row sequentially (fast enough, avoids unsafe)
+        // Step 2: Re-sort each row using in-place insertion sort (avoids allocation)
         for row in 0..self.num_rows {
             let start = self.new_row_indices[row] as usize;
             let end = self
@@ -142,19 +142,21 @@ impl SparseMatrix {
                 .get(row + 1)
                 .map_or(self.col_indices.len(), |&v| v as usize);
 
+            let row_len = end - start;
+            if row_len <= 1 {
+                continue;
+            }
+
             let row_cols = &mut self.col_indices[start..end];
             let row_vals = &mut self.values[start..end];
 
-            let mut pairs: Vec<_> = row_cols
-                .iter()
-                .zip(row_vals.iter())
-                .map(|(&c, &v)| (c, v))
-                .collect();
-            pairs.sort_unstable_by_key(|(c, _)| *c);
-
-            for (i, (c, v)) in pairs.into_iter().enumerate() {
-                row_cols[i] = c;
-                row_vals[i] = v;
+            for i in 1..row_len {
+                let mut j = i;
+                while j > 0 && row_cols[j - 1] > row_cols[j] {
+                    row_cols.swap(j - 1, j);
+                    row_vals.swap(j - 1, j);
+                    j -= 1;
+                }
             }
         }
     }

@@ -515,7 +515,7 @@ where
         saved_val_for_sumcheck_equality_assertion =
             eval_cubic_poly(combined_hhat_i_coeffs, alpha_i);
     }
-    drop((a, b, c, eq));
+    drop((a, b, c, eq, blinding_polynomial));
 
     let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
         create_combined_statement_over_two_polynomials(

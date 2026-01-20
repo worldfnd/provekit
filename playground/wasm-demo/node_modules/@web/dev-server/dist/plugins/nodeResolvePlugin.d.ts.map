@@ -1,0 +1,1 @@
+{"version":3,"file":"nodeResolvePlugin.d.ts","sourceRoot":"","sources":["../../src/plugins/nodeResolvePlugin.ts"],"names":[],"mappings":"AAAA,OAAO,EAA8B,wBAAwB,EAAE,MAAM,wBAAwB,CAAC;AAC9F,OAAO,EAAE,MAAM,EAAE,MAAM,sBAAsB,CAAC;AAG9C,wBAAgB,iBAAiB,CAC/B,OAAO,EAAE,MAAM,EACf,gBAAgB,CAAC,EAAE,OAAO,EAC1B,WAAW,CAAC,EAAE,wBAAwB,GACrC,MAAM,CAqBR"}
