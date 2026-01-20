@@ -9,6 +9,7 @@ use {
             Simd,
         },
     },
+    std::simd::{LaneCount, SupportedLaneCount},
 };
 
 // -- [SIMD UTILS]
@@ -75,19 +76,30 @@ pub fn transpose_simd_to_u256(limbs: [Simd<u64, 2>; 4]) -> [[u64; 4]; 2] {
 }
 
 #[inline(always)]
-pub fn u256_to_u255_simd(limbs: [Simd<u64, 2>; 4]) -> [Simd<u64, 2>; 5] {
+/// Safety: If the input is too large for the conversion the top bit will be
+/// discarded. In debug mode it will throw an error.
+pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64, N>; 5]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     let [l0, l1, l2, l3] = limbs;
+    // Check whether the remainder of l3 fits in 51 bits -> does the input fit in
+    // 255 bits.
+    debug_assert_eq!(l3 >> 12 & Simd::splat(MASK51), l3 >> 12);
     [
         (l0) & Simd::splat(MASK51),
         ((l0 >> 51) | (l1 << 13)) & Simd::splat(MASK51),
         ((l1 >> 38) | (l2 << 26)) & Simd::splat(MASK51),
         ((l2 >> 25) | (l3 << 39)) & Simd::splat(MASK51),
-        l3 >> 12,
+        l3 >> 12 & Simd::splat(MASK51),
     ]
 }
 
 #[inline(always)]
-pub fn u255_to_u256_simd(limbs: [Simd<u64, 2>; 5]) -> [Simd<u64, 2>; 4] {
+pub fn u255_to_u256_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     let [l0, l1, l2, l3, l4] = limbs;
     [
         l0 | (l1 << 51),
@@ -166,4 +178,27 @@ pub fn addv_simd<const N: usize>(
         va[i] += vb[i];
     }
     va
+}
+
+#[cfg(kani)]
+mod tests {
+    use std::simd::Simd;
+
+    fn u255_to_u256(u: [u64; 5]) -> [u64; 4] {
+        crate::simd_utils_wasm::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+    }
+    fn u256_to_u255(u: [u64; 4]) -> [u64; 5] {
+        crate::simd_utils_wasm::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+    }
+
+    #[kani::proof]
+    fn u256_to_u255_kani_roundtrip() {
+        let u: [u64; 4] = [
+            kani::any(),
+            kani::any(),
+            kani::any(),
+            kani::any::<u64>() & 0x7fffffffffffffff,
+        ];
+        assert_eq!(u, u255_to_u256(u256_to_u255(u)))
+    }
 }

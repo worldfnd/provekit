@@ -13,7 +13,7 @@ use {
 
 /// Given a multiprecision integer in little-endian format, returns a
 /// `Strategy` that generates values uniformly in the range `0..=max`.
-fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
+pub fn max_multiprecision(max: Vec<u64>) -> impl Strategy<Value = Vec<u64>> {
     // Takes ownership of a vector rather to deal with the 'static
     // requirement of boxed()
     let size = max.len();

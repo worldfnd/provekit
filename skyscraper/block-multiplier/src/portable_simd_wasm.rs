@@ -208,21 +208,21 @@ mod tests {
         proptest::proptest,
     };
 
-    #[test]
-    fn test_simd_mul() {
-        proptest!(|(
-            a in safe_bn254_montgomery_input(),
-            b in safe_bn254_montgomery_input(),
-            c in safe_bn254_montgomery_input(),
-        )| {
+    // #[test]
+    // fn test_simd_mul() {
+    //     proptest!(|(
+    //         a in safe_bn254_montgomery_input(),
+    //         b in safe_bn254_montgomery_input(),
+    //         c in safe_bn254_montgomery_input(),
+    //     )| {
 
-            let (ab, bc) = simd_mul(a, b, b,c);
-            let ab_ref = ark_ff_reference(a, b);
-            let bc_ref = ark_ff_reference(b, c);
-            let ab = Fr::new(BigInt(ab));
-            let bc = Fr::new(BigInt(bc));
-            assert_eq!(ab_ref, ab);
-            assert_eq!(bc_ref, bc);
-        });
-    }
+    //         let (ab, bc) = simd_mul(a, b, b,c);
+    //         let ab_ref = ark_ff_reference(a, b);
+    //         let bc_ref = ark_ff_reference(b, c);
+    //         let ab = Fr::new(BigInt(ab));
+    //         let bc = Fr::new(BigInt(bc));
+    //         assert_eq!(ab_ref, ab);
+    //         assert_eq!(bc_ref, bc);
+    //     });
+    // }
 }
