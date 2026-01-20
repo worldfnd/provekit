@@ -1,10 +1,9 @@
 use {
     crate::{
-        constants::*,
+        constants_wasm::*,
         simd_utils_wasm::{
             addv_simd, fma, i2f, make_initial, reduce_ct_simd, smult_noinit_simd,
-            transpose_simd_to_u256, transpose_u256_to_simd, u256_to_u260_shl2_simd,
-            u260_to_u256_simd,
+            transpose_simd_to_u256, transpose_u256_to_simd, u255_to_u256_simd, u256_to_u255_simd,
         },
     },
     core::{
@@ -20,8 +19,8 @@ pub fn simd_mul(
     v1_a: [u64; 4],
     v1_b: [u64; 4],
 ) -> ([u64; 4], [u64; 4]) {
-    let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
-    let v0_b = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_b, v1_b]));
+    let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
+    let v0_b = u256_to_u255_simd(transpose_u256_to_simd([v0_b, v1_b]));
 
     let mut t: [Simd<u64, 2>; 10] = [Simd::splat(0); 10];
     t[0] = Simd::splat(make_initial(1, 0));
@@ -175,10 +174,10 @@ pub fn simd_mul(
     t[3] += t[2] >> 52;
     t[4] += t[3] >> 52;
 
-    let r0 = smult_noinit_simd(t[0].bitand(Simd::splat(MASK52)), RHO_4);
-    let r1 = smult_noinit_simd(t[1].bitand(Simd::splat(MASK52)), RHO_3);
-    let r2 = smult_noinit_simd(t[2].bitand(Simd::splat(MASK52)), RHO_2);
-    let r3 = smult_noinit_simd(t[3].bitand(Simd::splat(MASK52)), RHO_1);
+    let r0 = smult_noinit_simd(t[0].bitand(Simd::splat(MASK51)), RHO_4);
+    let r1 = smult_noinit_simd(t[1].bitand(Simd::splat(MASK51)), RHO_3);
+    let r2 = smult_noinit_simd(t[2].bitand(Simd::splat(MASK51)), RHO_2);
+    let r3 = smult_noinit_simd(t[3].bitand(Simd::splat(MASK51)), RHO_1);
 
     let s = [
         r0[0] + r1[0] + r2[0] + r3[0] + t[4],
@@ -189,11 +188,11 @@ pub fn simd_mul(
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
 
-    let m = (s[0] * Simd::splat(U52_NP0)).bitand(Simd::splat(MASK52));
+    let m = (s[0] * Simd::splat(U52_NP0)).bitand(Simd::splat(MASK51));
     let mp = smult_noinit_simd(m, U52_P);
 
     let reduced = reduce_ct_simd(addv_simd(s, mp));
-    let u256_result = u260_to_u256_simd(reduced);
+    let u256_result = u255_to_u256_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
     (v[0], v[1])
 }
@@ -206,7 +205,6 @@ mod tests {
         crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
         ark_bn254::Fr,
         ark_ff::BigInt,
-        fp_rounding::{with_rounding_mode, Zero},
         proptest::proptest,
     };
 
@@ -217,8 +215,6 @@ mod tests {
             b in safe_bn254_montgomery_input(),
             c in safe_bn254_montgomery_input(),
         )| {
-            unsafe {
-                with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
 
             let (ab, bc) = simd_mul(a, b, b,c);
             let ab_ref = ark_ff_reference(a, b);
@@ -227,7 +223,6 @@ mod tests {
             let bc = Fr::new(BigInt(bc));
             assert_eq!(ab_ref, ab);
             assert_eq!(bc_ref, bc);
-                });}
         });
     }
 }

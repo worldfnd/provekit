@@ -1,5 +1,5 @@
 use {
-    crate::constants::{C1, C2, MASK52, U52_2P},
+    crate::constants_wasm::{C1, C2, MASK51, U52_2P},
     core::{
         array,
         ops::BitAnd,
@@ -75,25 +75,25 @@ pub fn transpose_simd_to_u256(limbs: [Simd<u64, 2>; 4]) -> [[u64; 4]; 2] {
 }
 
 #[inline(always)]
-pub fn u256_to_u260_shl2_simd(limbs: [Simd<u64, 2>; 4]) -> [Simd<u64, 2>; 5] {
+pub fn u256_to_u255_simd(limbs: [Simd<u64, 2>; 4]) -> [Simd<u64, 2>; 5] {
     let [l0, l1, l2, l3] = limbs;
     [
-        (l0 << 2) & Simd::splat(MASK52),
-        ((l0 >> 50) | (l1 << 14)) & Simd::splat(MASK52),
-        ((l1 >> 38) | (l2 << 26)) & Simd::splat(MASK52),
-        ((l2 >> 26) | (l3 << 38)) & Simd::splat(MASK52),
-        l3 >> 14,
+        (l0) & Simd::splat(MASK51),
+        ((l0 >> 51) | (l1 << 13)) & Simd::splat(MASK51),
+        ((l1 >> 38) | (l2 << 26)) & Simd::splat(MASK51),
+        ((l2 >> 25) | (l3 << 39)) & Simd::splat(MASK51),
+        l3 >> 12,
     ]
 }
 
 #[inline(always)]
-pub fn u260_to_u256_simd(limbs: [Simd<u64, 2>; 5]) -> [Simd<u64, 2>; 4] {
+pub fn u255_to_u256_simd(limbs: [Simd<u64, 2>; 5]) -> [Simd<u64, 2>; 4] {
     let [l0, l1, l2, l3, l4] = limbs;
     [
-        l0 | (l1 << 52),
-        (l1 >> 12) | (l2 << 40),
-        (l2 >> 24) | (l3 << 28),
-        (l3 >> 36) | (l4 << 16),
+        l0 | (l1 << 51),
+        (l1 >> 13) | (l2 << 38),
+        (l2 >> 26) | (l3 << 25),
+        (l3 >> 39) | (l4 << 12),
     ]
 }
 
@@ -150,7 +150,7 @@ pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     let mut c = [Simd::splat(0); 5];
     for i in 0..c.len() {
         let tmp: Simd<i64, 2> = a[i].cast::<i64>() - b[i].cast() + borrow;
-        c[i] = tmp.cast().bitand(Simd::splat(MASK52));
+        c[i] = tmp.cast().bitand(Simd::splat(MASK51));
         borrow = tmp >> 52
     }
 

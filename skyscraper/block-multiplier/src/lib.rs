@@ -17,6 +17,7 @@ mod simd_utils;
 
 // pub mod block_simd_wasm;
 pub mod constants;
+pub mod constants_wasm;
 pub mod portable_simd_wasm;
 mod scalar;
 pub mod simd_utils_wasm;
