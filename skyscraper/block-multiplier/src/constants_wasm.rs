@@ -1,19 +1,12 @@
+// Double check if this is still correct
 pub const U52_NP0: u64 = 0x1f593efffffff;
 
-pub const U52_P: [u64; 5] = [
+pub const U51_P: [u64; 5] = [
     0x1f593f0000001,
-    0x4879b9709143e,
-    0x181585d2833e8,
-    0xa029b85045b68,
-    0x030644e72e131,
-];
-
-pub const U52_2P: [u64; 5] = [
-    0x3eb27e0000002,
-    0x90f372e12287c,
-    0x302b0ba5067d0,
-    0x405370a08b6d0,
-    0x060c89ce5c263,
+    0x10f372e12287c,
+    0x6056174a0cfa1,
+    0x014dc2822db40,
+    0x30644e72e131a,
 ];
 
 pub const F52_P: [f64; 5] = [

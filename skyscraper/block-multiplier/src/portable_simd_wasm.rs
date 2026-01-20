@@ -189,7 +189,7 @@ pub fn simd_mul(
     ];
 
     let m = (s[0] * Simd::splat(U52_NP0)).bitand(Simd::splat(MASK51));
-    let mp = smult_noinit_simd(m, U52_P);
+    let mp = smult_noinit_simd(m, U51_P);
 
     let reduced = reduce_ct_simd(addv_simd(s, mp));
     let u256_result = u255_to_u256_simd(reduced);

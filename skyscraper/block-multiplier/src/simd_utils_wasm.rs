@@ -1,5 +1,5 @@
 use {
-    crate::constants_wasm::{C1, C2, MASK51, U52_2P},
+    crate::constants_wasm::{C1, C2, MASK51, U51_P},
     core::{
         array,
         ops::BitAnd,
@@ -143,27 +143,37 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<u64, 2>; 6] {
 }
 
 #[inline(always)]
-/// Resolve the carry bits in the upper parts 12b and reduce the result to
-/// within < 3p
-pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
+/// Resolve the carry bits in the upper parts 13b and prepare result for final
+/// shift by adding p if the result is odd.
+/// The final division will be taken care off by the bit packing
+/// technically converts from a i64 representation to a u64 representation
+/// drops off the lowest limb which got zerood out, but it still contains
+/// carries as it is in redundant form
+pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     // The lowest limb contains carries that still need to be applied.
-    let mut borrow: Simd<i64, 2> = (red[0] >> 52).cast();
+    let mut borrow = red[0] >> 51;
     let a = [red[1], red[2], red[3], red[4], red[5]];
 
-    // To reduce Check whether the most significant bit is set
-    let mask = (a[4] >> 47).bitand(Simd::splat(1)).simd_eq(Simd::splat(0));
-
-    // Select values based on the mask: if mask lane is true, use zeros, else use
-    // U52_2P
-    let zeros = [Simd::splat(0); 5];
-    let twop = U52_2P.map(Simd::splat);
-    let b: [_; 5] = array::from_fn(|i| mask.select(zeros[i], twop[i]));
-
     let mut c = [Simd::splat(0); 5];
+    let tmp = a[0] + borrow;
+
+    // To reduce Check whether the least significant bit is set
+    let mask = (tmp).bitand(Simd::splat(1)).simd_eq(Simd::splat(1));
+
+    // Select values based on the mask: if mask lane is true, add p, else add
+    // zero
+    let zeros = [Simd::splat(0); 5];
+    let p = U51_P.map(Simd::splat);
+    let b: [_; 5] = array::from_fn(|i| mask.select(p[i], zeros[i]));
+
+    let tmp: Simd<i64, 2> = tmp + b[0].cast();
+    c[0] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
+    borrow = tmp >> 51;
+
     for i in 0..c.len() {
-        let tmp: Simd<i64, 2> = a[i].cast::<i64>() - b[i].cast() + borrow;
-        c[i] = tmp.cast().bitand(Simd::splat(MASK51));
-        borrow = tmp >> 52
+        let tmp: Simd<i64, 2> = a[i] + b[i].cast() + borrow;
+        c[i] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
+        borrow = tmp >> 51
     }
 
     c
