@@ -169,10 +169,10 @@ pub fn simd_mul(
     t[4 + 4 + 1] += p_hi.to_bits();
     t[4 + 4] += p_lo.to_bits();
 
-    t[1] += t[0] >> 52;
-    t[2] += t[1] >> 52;
-    t[3] += t[2] >> 52;
-    t[4] += t[3] >> 52;
+    t[1] += t[0] >> 51;
+    t[2] += t[1] >> 51;
+    t[3] += t[2] >> 51;
+    t[4] += t[3] >> 51;
 
     let r0 = smult_noinit_simd(t[0].bitand(Simd::splat(MASK51)), RHO_4);
     let r1 = smult_noinit_simd(t[1].bitand(Simd::splat(MASK51)), RHO_3);
