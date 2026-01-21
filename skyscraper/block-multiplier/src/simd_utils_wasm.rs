@@ -30,8 +30,8 @@ pub fn i2f(a: Simd<u64, 2>) -> Simd<f64, 2> {
     // to convert a to it's floating point number we subtract this again. This way
     // we only pay for the conversion of the lower bits and not the full 64 bits.
     let exponent = Simd::splat(0x433 << 52);
-    let a: Simd<f64, _> = unsafe { core::mem::transmute(a | exponent) };
-    let b: Simd<f64, _> = unsafe { core::mem::transmute(exponent) };
+    let a: Simd<f64, _> = Simd::<f64, 2>::from_bits(a | exponent);
+    let b: Simd<f64, _> = Simd::<f64, 2>::from_bits(exponent);
     a - b
 }
 
