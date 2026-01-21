@@ -171,11 +171,10 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 /// carries as it is in redundant form
 pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     // The lowest limb contains carries that still need to be applied.
-    let mut borrow = red[0] >> 51;
-    let a = [red[1], red[2], red[3], red[4], red[5]];
+    let a = [red[1] + (red[0] >> 51), red[2], red[3], red[4], red[5]];
 
     let mut c = [Simd::splat(0); 5];
-    let tmp = a[0] + borrow;
+    let tmp = a[0];
 
     // To reduce Check whether the least significant bit is set
     let mask = (tmp).bitand(Simd::splat(1)).simd_eq(Simd::splat(1));
@@ -188,7 +187,7 @@ pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
 
     let tmp: Simd<i64, 2> = tmp + b[0].cast();
     c[0] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
-    borrow = tmp >> 51;
+    let mut borrow = tmp >> 51;
 
     for i in 1..c.len() {
         let tmp: Simd<i64, 2> = a[i] + b[i].cast() + borrow;

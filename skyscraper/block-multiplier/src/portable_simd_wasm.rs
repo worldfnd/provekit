@@ -11,8 +11,20 @@ use {
         ops::BitAnd,
         simd::{num::SimdFloat, Simd},
     },
-    std::simd::num::{SimdInt, SimdUint},
+    std::simd::{
+        num::{SimdInt, SimdUint},
+        LaneCount, SupportedLaneCount,
+    },
 };
+
+#[inline(always)]
+pub fn single_mul(a: u64, b: u64) -> (i64, i64) {
+    let avi: Simd<f64, 2> = i2f(Simd::splat(a));
+    let bvj: Simd<f64, 2> = i2f(Simd::splat(b));
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    (p_lo.to_bits().cast()[0], p_hi.to_bits().cast()[0])
+}
 
 #[inline(always)]
 /// i64 signifies redundant carry form
@@ -220,28 +232,126 @@ mod tests {
         super::*,
         crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
         ark_bn254::Fr,
-        ark_ff::BigInt,
-        proptest::{prop_assert_eq, proptest},
+        ark_ff::{BigInt, PrimeField},
+        proptest::{
+            prelude::{prop, Strategy},
+            prop_assert_eq, proptest,
+        },
     };
 
     #[test]
     fn test_simd_mul() {
         proptest!(|(
-            mut a in safe_bn254_montgomery_input(),
-            mut b in safe_bn254_montgomery_input(),
-            mut c in safe_bn254_montgomery_input(),
-        )| {
+                a in limbs5_51(),
+                b in limbs5_51(),
+                // c in limbs5_51(),
+            )| {
 
-            // a[3] = a[3] & (2_u64.pow(63) - 1);
-            // b[3] = b[3] & (2_u64.pow(63) - 1);
-            // c[3] = c[3] & (2_u64.pow(63) - 1);
-            let (ab, bc) = simd_mul(a, b, b,c);
-            let ab_ref = ark_ff_reference(a, b);
-            let bc_ref = ark_ff_reference(b, c);
-            let ab = Fr::new(BigInt(ab));
-            let bc = Fr::new(BigInt(bc));
-            prop_assert_eq!(ab_ref, ab, "mismatch: l = {:#x}, b = {:#x}", ab_ref.0.0[0], ab.0.0[0]);
-            prop_assert_eq!(bc_ref, bc, "mismatch: l = {:#x}, b = {:#x}", bc_ref.0.0[0], bc.0.0[0]);
-        });
+                let a: [Simd<u64,1>;_] = a.map(Simd::splat);
+                let b: [Simd<u64,1>;_] = b.map(Simd::splat);
+                let a = u255_to_u256_simd(a).map(|x|x[0]);
+                let b = u255_to_u256_simd(b).map(|x|x[0]);
+                let (ab, _bc) = simd_mul(a, b, b,a);
+                let ab_ref = ark_ff_reference(a, b);
+                // let bc_ref = ark_ff_reference(b, c);
+                let ab = Fr::new(BigInt(ab));
+                // let bc = Fr::new(BigInt(bc));
+                prop_assert_eq!(ab_ref, ab, "mismatch: l = {:X}, b = {:X}", ab_ref.into_bigint(), ab.into_bigint());
+        })
+    }
+
+    fn limb51() -> impl Strategy<Value = u64> {
+        // Either of these is fine:
+        // 1) Range
+        0u64..(1u64 << 51)
+
+        // 2) Or mask (sometimes faster)
+        // any::<u64>().prop_map(|x| x & LIMB_MASK)
+    }
+
+    fn limbs5_51() -> impl Strategy<Value = [u64; 5]> {
+        prop::array::uniform5(limb51())
+    }
+
+    fn school_mul(ax: [u64; 5], bx: [u64; 5]) -> [u64; 10] {
+        let mut t = [0; 10];
+        for (ai, a) in ax.into_iter().enumerate() {
+            for (bi, b) in bx.into_iter().enumerate() {
+                let (lo, hi) = a.widening_mul(b);
+                let hi = hi << 13 | lo >> 51;
+                let lo = lo & MASK51;
+                t[ai + bi] += lo;
+                t[ai + bi + 1] += hi;
+            }
+        }
+
+        let mut carry = 0;
+        let mut res = [0; 10];
+
+        for (i, r) in t.into_iter().enumerate() {
+            let tmp = r + carry;
+            res[i] = tmp & MASK51;
+            carry = tmp >> 51;
+        }
+        res
+    }
+
+    fn init_t() -> [i64; 10] {
+        let mut count: [(u64, u64); _] = [(0, 0); 10];
+        for ai in 0..5 {
+            for bi in 0..5 {
+                count[ai + bi].0 += 1;
+                count[ai + bi + 1].1 += 1;
+            }
+        }
+
+        let res = count.map(|(lo, hi)| make_initial(lo, hi));
+
+        res
+    }
+
+    fn redundant_carry(t: [i64; 10]) -> [u64; 10] {
+        let mut borrow = 0;
+        let mut res = [0; 10];
+        for (i, x) in t.into_iter().enumerate() {
+            res[i] = ((x & MASK51 as i64) + borrow) as u64;
+            borrow = x >> 51;
+        }
+        res
+    }
+
+    #[test]
+    fn redundant_form_multi_mul() {
+        proptest!(|(a in limbs5_51(), b in limbs5_51())|{
+            let v0_a = a.map(Simd::splat);
+            let v0_b = b.map(Simd::splat);
+            let mut t = init_t().map(Simd::splat);
+            multimul(&mut t, v0_a, v0_b);
+            let school = school_mul(a,b);
+            let fp = redundant_carry(t.map(|x| x[0]));
+
+            prop_assert_eq!(school, fp)
+
+        })
+    }
+
+    #[test]
+    fn single_mul_test() {
+        proptest!(|(a in limb51(), b in limb51())|{
+            let (lo,hi) = single_mul(a, b);
+            let hi = hi.wrapping_add(-(C1.to_bits() as i64));
+            let lo = lo.wrapping_add(-(C3.to_bits() as i64));
+            let lo_carry = lo >> 51;
+            let hi = (hi + lo_carry) as u64;
+            let lo = lo as u64 & 2_u64.pow(51) - 1;
+            let fp = (lo,hi);
+
+            let (lo, hi) = a.widening_mul(b);
+            let hi = hi << 13 | lo >> 51;
+            let lo = lo & 2_u64.pow(51) - 1;
+            let school = (lo, hi);
+
+            prop_assert_eq!(school, fp)
+        })
     }
 }
