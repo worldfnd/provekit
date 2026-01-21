@@ -174,19 +174,19 @@ fn redundant_carry<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
     for (i, x) in t.into_iter().enumerate() {
         let tmp = x + borrow;
         res[i] = (tmp.cast()).bitand(Simd::splat(MASK51));
-        borrow = x >> 51;
+        borrow = tmp >> 51;
     }
     debug_assert!(borrow == Simd::splat(0));
     res
 }
 
-fn redundant_carry_u64<const N: usize>(t: [Simd<u64, 2>; N]) -> [Simd<u64, 2>; N] {
+fn redundant_carry_u64_exess<const N: usize>(t: [Simd<u64, 2>; N]) -> [Simd<u64, 2>; N] {
     let mut carry = Simd::splat(0);
     let mut res = [Simd::splat(0); N];
     for (i, x) in t.into_iter().enumerate() {
         let tmp = x + carry;
         res[i] = (tmp.cast()).bitand(Simd::splat(MASK51));
-        carry = x >> 51;
+        carry = tmp >> 51;
     }
     res[N - 1] = (carry << 51) | res[N - 1];
     // debug_assert!(carry == Simd::splat(0));
@@ -244,7 +244,7 @@ pub fn simd_mul(
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
 
-    let s = redundant_carry_u64(s);
+    let s = redundant_carry_u64_exess(s);
 
     // The upper bits of s will not affect the lower 51 bits of the product so we
     // defer the and'ing.
@@ -254,9 +254,9 @@ pub fn simd_mul(
     let mp = smult_noinit_simd(m, U51_P);
     let mp = redundant_carry(mp);
 
-    let addi = redundant_carry_u64(addv_simd(s, mp));
+    let addi = redundant_carry_u64_exess(addv_simd(s, mp));
     let reduced = reduce_ct_simd(addi);
-    let reduced = redundant_carry_u64(reduced);
+    let reduced = redundant_carry_u64_exess(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
     (v[0], v[1])
