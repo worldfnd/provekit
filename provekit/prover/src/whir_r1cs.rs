@@ -13,7 +13,7 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, WhirProverState, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, LazyR1CS, WhirProverState, WhirR1CSProof, WhirR1CSScheme,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -47,7 +47,7 @@ pub struct GenericWhirR1CSCommitment<MerkleConfig: ark_crypto_primitives::merkle
 pub fn commit<Sponge, U, MerkleConfig, PowStrategy>(
     scheme: &WhirR1CSScheme<MerkleConfig, PowStrategy>,
     merlin: &mut ProverState<Sponge, U>,
-    r1cs: &R1CS,
+    r1cs: &LazyR1CS,
     witness: Vec<FieldElement>,
     is_w1: bool,
 ) -> Result<GenericWhirR1CSCommitment<MerkleConfig>>
@@ -109,7 +109,7 @@ where
 pub fn prove<Sponge, U, MerkleConfig, PowStrategy>(
     scheme: &WhirR1CSScheme<MerkleConfig, PowStrategy>,
     mut merlin: ProverState<Sponge, U>,
-    r1cs: R1CS,
+    r1cs: LazyR1CS,
     mut commitments: Vec<GenericWhirR1CSCommitment<MerkleConfig>>,
 ) -> Result<WhirR1CSProof>
 where
@@ -375,7 +375,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 
 #[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover<Sponge, U, MerkleConfig, PowStrategy>(
-    r1cs: &R1CS,
+    r1cs: &LazyR1CS,
     z: &[FieldElement],
     merlin: &mut ProverState<Sponge, U>,
     m_0: usize,

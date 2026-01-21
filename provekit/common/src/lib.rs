@@ -4,6 +4,7 @@ pub mod file;
 pub mod hash_config;
 mod interner;
 pub mod keccak;
+mod lazy_r1cs;
 mod noir_proof_scheme;
 mod prover;
 mod r1cs;
@@ -26,6 +27,7 @@ pub use {
         HashConfig, TypedHashConfig, WhirDomainSep, WhirMerkleConfig, WhirProverState,
         WhirVerifierState,
     },
+    lazy_r1cs::LazyR1CS,
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,

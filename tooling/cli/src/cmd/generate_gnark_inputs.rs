@@ -65,7 +65,8 @@ impl Command for Args {
             &self.params_for_recursive_verifier,
         );
 
-        let json = serde_json::to_string_pretty(&prover.r1cs).unwrap(); // Or `to_string` for compact
+        let r1cs = prover.r1cs.into_r1cs();
+        let json = serde_json::to_string_pretty(&r1cs).unwrap();
         let mut file = File::create(&self.r1cs_path)?;
         file.write_all(json.as_bytes())?;
 

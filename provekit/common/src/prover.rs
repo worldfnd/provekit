@@ -1,10 +1,11 @@
 use {
     crate::{
         hash_config::TypedHashConfig,
+        lazy_r1cs::LazyR1CS,
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, NoirElement, R1CS,
+        HashConfig, NoirElement,
     },
     acir::circuit::Program,
     serde::{Deserialize, Serialize},
@@ -23,7 +24,7 @@ pub struct Prover<
 {
     pub hash_config:            HashConfig,
     pub program:                Program<NoirElement>,
-    pub r1cs:                   R1CS,
+    pub r1cs:                   LazyR1CS,
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme<MerkleConfig, PowStrategy>,
@@ -39,7 +40,7 @@ where
         Self {
             hash_config:            MerkleConfig::HASH_CONFIG,
             program:                noir_proof_scheme.program,
-            r1cs:                   noir_proof_scheme.r1cs,
+            r1cs:                   LazyR1CS::from_r1cs(noir_proof_scheme.r1cs),
             split_witness_builders: noir_proof_scheme.split_witness_builders,
             witness_generator:      noir_proof_scheme.witness_generator,
             whir_for_witness:       noir_proof_scheme.whir_for_witness,
