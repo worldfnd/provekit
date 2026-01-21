@@ -1,5 +1,5 @@
 // Double check if this is still correct
-pub const U52_NP0: u64 = 0x1f593efffffff;
+pub const U51_NP0: u64 = 0x1f593efffffff;
 
 pub const U51_P: [u64; 5] = [
     0x1f593f0000001,
@@ -56,6 +56,7 @@ pub const RHO_4: [u64; 5] = [
 
 pub const C1: f64 = pow_2(103);
 pub const C2: f64 = pow_2(103) + pow_2(52) + pow_2(51);
+pub const C3: f64 = pow_2(52) + pow_2(51);
 
 const fn pow_2(n: u32) -> f64 {
     assert!(n <= 1023);

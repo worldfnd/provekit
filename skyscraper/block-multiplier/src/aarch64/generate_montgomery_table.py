@@ -160,6 +160,7 @@ def single_step_simd_wasm(single_input_bound):
 
 
 if __name__ == "__main__":
+    print(hex(pow(-p, -1, 2**51)))
     # Test bounds for different input sizes
     test_bounds = [
         ("p", p),

@@ -1,5 +1,5 @@
 use {
-    crate::constants_wasm::{C1, C2, MASK51, U51_P},
+    crate::constants_wasm::{C1, C2, C3, MASK51, U51_P},
     core::{
         array,
         ops::BitAnd,
@@ -18,6 +18,9 @@ use {
 /// On WASSM there is no single specialised instruction to cast an integer to a
 /// float. Since we are only interested in 52 bits, we can emulate it with fewer
 /// instructions.
+///
+/// Warning: due to Rust's limitations this can not be a const function.
+/// Therefore check your dependency path as this will not be optimised out.
 pub fn i2f(a: Simd<u64, 2>) -> Simd<f64, 2> {
     // This function has not target gating as we want to verify this function with
     // kani and proptest on a different platform than wasm
@@ -48,9 +51,11 @@ pub fn fma(a: Simd<f64, 2>, b: Simd<f64, 2>, c: Simd<f64, 2>) -> Simd<f64, 2> {
 }
 
 #[inline(always)]
-pub const fn make_initial(low_count: usize, high_count: usize) -> u64 {
-    let val = high_count * 0x467 + low_count * 0x433;
-    -((val as i64) << 52) as u64
+pub const fn make_initial(low_count: u64, high_count: u64) -> i64 {
+    let val = high_count
+        .wrapping_mul(C1.to_bits())
+        .wrapping_add(low_count.wrapping_mul(C3.to_bits()));
+    -(val as i64)
 }
 
 #[inline(always)]
@@ -85,7 +90,6 @@ where
     let [l0, l1, l2, l3] = limbs;
     // Check whether the remainder of l3 fits in 51 bits -> does the input fit in
     // 255 bits.
-    debug_assert_eq!(l3 >> 12 & Simd::splat(MASK51), l3 >> 12);
     [
         (l0) & Simd::splat(MASK51),
         ((l0 >> 51) | (l1 << 13)) & Simd::splat(MASK51),
@@ -110,34 +114,50 @@ where
 }
 
 #[inline(always)]
-pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<u64, 2>; 6] {
+pub fn u255_to_u256_shr_1_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
+    let [l0, l1, l2, l3, l4] = limbs;
+    [
+        (l0 >> 1) | (l1 << 50),
+        (l1 >> 14) | (l2 << 37),
+        (l2 >> 27) | (l3 << 24),
+        (l3 >> 40) | (l4 << 11),
+    ]
+}
+
+#[inline(always)]
+// TODO check whether as f64 get's properly optimised away
+// won't be able to tell using just assembly view
+pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
     let mut t = [Simd::splat(0); 6];
     let s: Simd<f64, 2> = i2f(s);
 
     let p_hi_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C1));
     let p_lo_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C2) - p_hi_0);
-    t[1] += p_hi_0.to_bits();
-    t[0] += p_lo_0.to_bits();
+    t[1] += p_hi_0.to_bits().cast();
+    t[0] += p_lo_0.to_bits().cast();
 
     let p_hi_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C1));
     let p_lo_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C2) - p_hi_1);
-    t[2] += p_hi_1.to_bits();
-    t[1] += p_lo_1.to_bits();
+    t[2] += p_hi_1.to_bits().cast();
+    t[1] += p_lo_1.to_bits().cast();
 
     let p_hi_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C1));
     let p_lo_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C2) - p_hi_2);
-    t[3] += p_hi_2.to_bits();
-    t[2] += p_lo_2.to_bits();
+    t[3] += p_hi_2.to_bits().cast();
+    t[2] += p_lo_2.to_bits().cast();
 
     let p_hi_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C1));
     let p_lo_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C2) - p_hi_3);
-    t[4] += p_hi_3.to_bits();
-    t[3] += p_lo_3.to_bits();
+    t[4] += p_hi_3.to_bits().cast();
+    t[3] += p_lo_3.to_bits().cast();
 
     let p_hi_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C1));
     let p_lo_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C2) - p_hi_4);
-    t[5] += p_hi_4.to_bits();
-    t[4] += p_lo_4.to_bits();
+    t[5] += p_hi_4.to_bits().cast();
+    t[4] += p_lo_4.to_bits().cast();
 
     t
 }
@@ -170,20 +190,24 @@ pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     c[0] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
     borrow = tmp >> 51;
 
-    for i in 0..c.len() {
+    for i in 1..c.len() {
         let tmp: Simd<i64, 2> = a[i] + b[i].cast() + borrow;
         c[i] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
         borrow = tmp >> 51
     }
+
+    // Check that final result is even
+    debug_assert!(c[0][0] & 1 == 0);
+    debug_assert!(c[0][1] & 1 == 0);
 
     c
 }
 
 #[inline(always)]
 pub fn addv_simd<const N: usize>(
-    mut va: [Simd<u64, 2>; N],
-    vb: [Simd<u64, 2>; N],
-) -> [Simd<u64, 2>; N] {
+    mut va: [Simd<i64, 2>; N],
+    vb: [Simd<i64, 2>; N],
+) -> [Simd<i64, 2>; N] {
     for i in 0..va.len() {
         va[i] += vb[i];
     }
