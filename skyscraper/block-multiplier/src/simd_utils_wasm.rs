@@ -136,28 +136,28 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 
     let p_hi_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C1));
     let p_lo_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C2) - p_hi_0);
-    t[1] += p_hi_0.to_bits().cast();
-    t[0] += p_lo_0.to_bits().cast();
+    t[1] += (p_hi_0.to_bits() - Simd::splat(C1.to_bits())).cast();
+    t[0] += (p_lo_0.to_bits() - Simd::splat(C3.to_bits())).cast();
 
     let p_hi_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C1));
     let p_lo_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C2) - p_hi_1);
-    t[2] += p_hi_1.to_bits().cast();
-    t[1] += p_lo_1.to_bits().cast();
+    t[2] += (p_hi_1.to_bits() - Simd::splat(C1.to_bits())).cast();
+    t[1] += (p_lo_1.to_bits() - Simd::splat(C3.to_bits())).cast();
 
     let p_hi_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C1));
     let p_lo_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C2) - p_hi_2);
-    t[3] += p_hi_2.to_bits().cast();
-    t[2] += p_lo_2.to_bits().cast();
+    t[3] += (p_hi_2.to_bits() - Simd::splat(C1.to_bits())).cast();
+    t[2] += (p_lo_2.to_bits() - Simd::splat(C3.to_bits())).cast();
 
     let p_hi_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C1));
     let p_lo_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C2) - p_hi_3);
-    t[4] += p_hi_3.to_bits().cast();
-    t[3] += p_lo_3.to_bits().cast();
+    t[4] += (p_hi_3.to_bits() - Simd::splat(C1.to_bits())).cast();
+    t[3] += (p_lo_3.to_bits() - Simd::splat(C3.to_bits())).cast();
 
     let p_hi_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C1));
     let p_lo_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C2) - p_hi_4);
-    t[5] += p_hi_4.to_bits().cast();
-    t[4] += p_lo_4.to_bits().cast();
+    t[5] += (p_hi_4.to_bits() - Simd::splat(C1.to_bits())).cast();
+    t[4] += (p_lo_4.to_bits() - Simd::splat(C3.to_bits())).cast();
 
     t
 }
@@ -169,9 +169,9 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 /// technically converts from a i64 representation to a u64 representation
 /// drops off the lowest limb which got zerood out, but it still contains
 /// carries as it is in redundant form
-pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
+pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     // The lowest limb contains carries that still need to be applied.
-    let a = [red[1] + (red[0] >> 51), red[2], red[3], red[4], red[5]];
+    let a = [red[1], red[2], red[3], red[4], red[5]];
 
     let mut c = [Simd::splat(0); 5];
     let tmp = a[0];
@@ -185,14 +185,8 @@ pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     let p = U51_P.map(Simd::splat);
     let b: [_; 5] = array::from_fn(|i| mask.select(p[i], zeros[i]));
 
-    let tmp: Simd<i64, 2> = tmp + b[0].cast();
-    c[0] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
-    let mut borrow = tmp >> 51;
-
-    for i in 1..c.len() {
-        let tmp: Simd<i64, 2> = a[i] + b[i].cast() + borrow;
-        c[i] = tmp.bitand(Simd::splat(MASK51 as i64)).cast();
-        borrow = tmp >> 51
+    for i in 0..c.len() {
+        c[i] = a[i] + b[i];
     }
 
     // Check that final result is even
@@ -204,9 +198,9 @@ pub fn reduce_ct_simd(red: [Simd<i64, 2>; 6]) -> [Simd<u64, 2>; 5] {
 
 #[inline(always)]
 pub fn addv_simd<const N: usize>(
-    mut va: [Simd<i64, 2>; N],
-    vb: [Simd<i64, 2>; N],
-) -> [Simd<i64, 2>; N] {
+    mut va: [Simd<u64, 2>; N],
+    vb: [Simd<u64, 2>; N],
+) -> [Simd<u64, 2>; N] {
     for i in 0..va.len() {
         va[i] += vb[i];
     }
