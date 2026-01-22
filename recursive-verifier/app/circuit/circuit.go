@@ -389,7 +389,6 @@ func verifyCircuit(
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
 
-
 	circuit := Circuit{
 		IO:                                      []byte(cfg.IOPattern),
 		Transcript:                              contTranscript,
