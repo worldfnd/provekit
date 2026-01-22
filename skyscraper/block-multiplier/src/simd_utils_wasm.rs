@@ -136,28 +136,28 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 
     let p_hi_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C1));
     let p_lo_0 = fma(s, Simd::splat(v[0] as f64), Simd::splat(C2) - p_hi_0);
-    t[1] += (p_hi_0.to_bits() - Simd::splat(C1.to_bits())).cast();
-    t[0] += (p_lo_0.to_bits() - Simd::splat(C3.to_bits())).cast();
+    t[1] += p_hi_0.to_bits().cast();
+    t[0] += p_lo_0.to_bits().cast();
 
     let p_hi_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C1));
     let p_lo_1 = fma(s, Simd::splat(v[1] as f64), Simd::splat(C2) - p_hi_1);
-    t[2] += (p_hi_1.to_bits() - Simd::splat(C1.to_bits())).cast();
-    t[1] += (p_lo_1.to_bits() - Simd::splat(C3.to_bits())).cast();
+    t[2] += p_hi_1.to_bits().cast();
+    t[1] += p_lo_1.to_bits().cast();
 
     let p_hi_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C1));
     let p_lo_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C2) - p_hi_2);
-    t[3] += (p_hi_2.to_bits() - Simd::splat(C1.to_bits())).cast();
-    t[2] += (p_lo_2.to_bits() - Simd::splat(C3.to_bits())).cast();
+    t[3] += p_hi_2.to_bits().cast();
+    t[2] += p_lo_2.to_bits().cast();
 
     let p_hi_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C1));
     let p_lo_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C2) - p_hi_3);
-    t[4] += (p_hi_3.to_bits() - Simd::splat(C1.to_bits())).cast();
-    t[3] += (p_lo_3.to_bits() - Simd::splat(C3.to_bits())).cast();
+    t[4] += p_hi_3.to_bits().cast();
+    t[3] += p_lo_3.to_bits().cast();
 
     let p_hi_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C1));
     let p_lo_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C2) - p_hi_4);
-    t[5] += (p_hi_4.to_bits() - Simd::splat(C1.to_bits())).cast();
-    t[4] += (p_lo_4.to_bits() - Simd::splat(C3.to_bits())).cast();
+    t[5] += p_hi_4.to_bits().cast();
+    t[4] += p_lo_4.to_bits().cast();
 
     t
 }
