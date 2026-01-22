@@ -17,13 +17,13 @@ const MIN_WHIR_NUM_VARIABLES: usize = 12;
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
-    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self;
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize, has_public_inputs: bool) -> Self;
 
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
-    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize) -> Self {
+    fn new_for_r1cs(r1cs: &R1CS, w1_size: usize, num_challenges: usize, has_public_inputs: bool) -> Self {
         let total_witnesses = r1cs.num_witnesses();
         assert!(
             w1_size <= total_witnesses,
@@ -49,6 +49,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
                 next_power_of_two(4 * m_0) + 1,
                 2,
             ),
+            has_public_inputs,
         }
     }
 

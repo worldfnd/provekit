@@ -22,6 +22,7 @@ pub struct WhirR1CSScheme {
     pub m_0: usize,
     pub a_num_terms: usize,
     pub num_challenges: usize,
+    pub has_public_inputs: bool,
     pub whir_witness: WhirConfig,
     pub whir_for_hiding_spartan: WhirConfig,
 }
@@ -38,7 +39,7 @@ impl WhirR1CSScheme {
             // statement_2 has 3 constraints = 3, total = 7
             let num_witnesses = 2;
             let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
-            let num_statement_constraints = 7;
+            let num_statement_constraints = if self.has_public_inputs { 7 } else { 6 };
             let num_constraints_total = num_ood_constraints + num_statement_constraints;
 
             io = io
@@ -49,9 +50,9 @@ impl WhirR1CSScheme {
                 .commit_statement(&self.whir_for_hiding_spartan)
                 .add_zk_sumcheck_polynomials(self.m_0)
                 .add_whir_proof(&self.whir_for_hiding_spartan)
+                .add_public_inputs()
                 .hint("claimed_evaluations_1")
                 .hint("claimed_evaluations_2")
-                .add_public_inputs()
                 .hint("public_weights_evaluations")
                 .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total);
         } else {
@@ -61,8 +62,8 @@ impl WhirR1CSScheme {
                 .commit_statement(&self.whir_for_hiding_spartan)
                 .add_zk_sumcheck_polynomials(self.m_0)
                 .add_whir_proof(&self.whir_for_hiding_spartan)
-                .hint("claimed_evaluations")
                 .add_public_inputs()
+                .hint("claimed_evaluations")
                 .hint("public_weights_evaluations")
                 .add_whir_proof(&self.whir_witness);
         }

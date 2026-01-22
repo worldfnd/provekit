@@ -56,6 +56,19 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
                 .context("while verifying sumcheck")?;
 
+        // Verify public inputs hash
+        let mut public_inputs_hash_buf = [FieldElement::zero()];
+        arthur.fill_next_scalars(&mut public_inputs_hash_buf)?;
+        let expected_public_inputs_hash = public_inputs.hash();
+        ensure!(
+            public_inputs_hash_buf[0] == expected_public_inputs_hash,
+            "Public inputs hash mismatch: expected {:?}, got {:?}",
+            expected_public_inputs_hash,
+            public_inputs_hash_buf[0]
+        );
+        let mut public_weights_vector_random_buf = [FieldElement::zero()];
+        arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
+
         // Read hints and verify WHIR proof
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) =
             if let Some(parsed_commitment_2) = parsed_commitment_2 {
@@ -78,19 +91,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     &parsed_commitment_2,
                     &whir_sums_2,
                 );
-
-                let mut public_inputs_hash_buf = [FieldElement::zero()];
-                arthur.fill_next_scalars(&mut public_inputs_hash_buf)?;
-                let expected_public_inputs_hash = public_inputs.hash();
-                ensure!(
-                    public_inputs_hash_buf[0] == expected_public_inputs_hash,
-                    "Public inputs hash mismatch: expected {:?}, got {:?}",
-                    expected_public_inputs_hash,
-                    public_inputs_hash_buf[0]
-                );
-
-                let mut public_weights_vector_random_buf = [FieldElement::zero()];
-                arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
 
                 let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
                     .hint()
@@ -129,19 +129,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     &parsed_commitment_1,
                     &whir_sums,
                 );
-
-                let mut public_inputs_hash_buf = [FieldElement::zero()];
-                arthur.fill_next_scalars(&mut public_inputs_hash_buf)?;
-                let expected_public_inputs_hash = public_inputs.hash();
-                ensure!(
-                    public_inputs_hash_buf[0] == expected_public_inputs_hash,
-                    "Public inputs hash mismatch: expected {:?}, got {:?}",
-                    expected_public_inputs_hash,
-                    public_inputs_hash_buf[0]
-                );
-
-                let mut public_weights_vector_random_buf = [FieldElement::zero()];
-                arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
 
                 let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
                     .hint()
