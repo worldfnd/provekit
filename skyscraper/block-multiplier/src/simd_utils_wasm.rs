@@ -195,7 +195,7 @@ pub fn reduce_ct_simd(a: [Simd<i64, 2>; 5]) -> [Simd<i64, 2>; 5] {
 
 #[inline(always)]
 pub fn addv_simd<const N: usize>(
-    va: [Simd<u64, 2>; N],
+    va: [Simd<i64, 2>; N],
     vb: [Simd<i64, 2>; N],
 ) -> [Simd<i64, 2>; N] {
     let mut vc = [Simd::splat(0); N];
