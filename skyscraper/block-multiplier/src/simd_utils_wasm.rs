@@ -169,10 +169,7 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 /// technically converts from a i64 representation to a u64 representation
 /// drops off the lowest limb which got zerood out, but it still contains
 /// carries as it is in redundant form
-pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
-    // The lowest limb contains carries that still need to be applied.
-    let a = [red[1], red[2], red[3], red[4], red[5]];
-
+pub fn reduce_ct_simd(a: [Simd<i64, 2>; 5]) -> [Simd<i64, 2>; 5] {
     let mut c = [Simd::splat(0); 5];
     let tmp = a[0];
 
@@ -182,7 +179,7 @@ pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
     // Select values based on the mask: if mask lane is true, add p, else add
     // zero
     let zeros = [Simd::splat(0); 5];
-    let p = U51_P.map(Simd::splat);
+    let p = U51_P.map(|x| Simd::splat(x as i64));
     let b: [_; 5] = array::from_fn(|i| mask.select(p[i], zeros[i]));
 
     for i in 0..c.len() {

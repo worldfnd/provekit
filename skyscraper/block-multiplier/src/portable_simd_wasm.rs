@@ -265,9 +265,14 @@ pub fn simd_mul(
         .bitand(Simd::splat(MASK51));
     let mp = smult_noinit_simd(m, U51_P);
 
-    let addi = redundant_carry_excess(addv_simd(s, mp));
+    let mut addi = addv_simd(s, mp);
+    // Move over carries before dropping last limb
+    addi[1] += addi[0] >> 51;
+    let addi = [addi[1], addi[2], addi[3], addi[4], addi[5]];
+
+    // 1 bit reduction to go from R^-255 to R^-256
     let reduced = reduce_ct_simd(addi);
-    let reduced = redundant_carry_u64_exess(reduced);
+    let reduced = redundant_carry_excess(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
     (v[0], v[1])
