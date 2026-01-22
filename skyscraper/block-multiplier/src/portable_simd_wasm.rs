@@ -4,27 +4,174 @@ use {
         simd_utils_wasm::{
             addv_simd, fma, i2f, make_initial, reduce_ct_simd, smult_noinit_simd,
             transpose_simd_to_u256, transpose_u256_to_simd, u255_to_u256_shr_1_simd,
-            u255_to_u256_simd, u256_to_u255_simd,
+            u256_to_u255_simd,
         },
-        subarray,
     },
     core::{
         ops::BitAnd,
         simd::{num::SimdFloat, Simd},
     },
-    std::simd::{
-        num::{SimdInt, SimdUint},
-        LaneCount, SupportedLaneCount,
-    },
+    std::simd::num::{SimdInt, SimdUint},
 };
 
-#[inline(always)]
-pub fn single_mul(a: u64, b: u64) -> (i64, i64) {
-    let avi: Simd<f64, 2> = i2f(Simd::splat(a));
-    let bvj: Simd<f64, 2> = i2f(Simd::splat(b));
+#[inline]
+pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
+    let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
+
+    let mut t: [Simd<i64, 2>; 10] = [Simd::splat(0); 10];
+    t[0] = Simd::splat(make_initial(1, 0));
+    t[9] = Simd::splat(make_initial(0, 6));
+    t[1] = Simd::splat(make_initial(2, 1));
+    t[8] = Simd::splat(make_initial(6, 7));
+    t[2] = Simd::splat(make_initial(3, 2));
+    t[7] = Simd::splat(make_initial(7, 8));
+    t[3] = Simd::splat(make_initial(4, 3));
+    t[6] = Simd::splat(make_initial(8, 9));
+    t[4] = Simd::splat(make_initial(10, 4));
+    t[5] = Simd::splat(make_initial(9, 10));
+
+    let avi: Simd<f64, 2> = i2f(v0_a[0]);
+    let bvj: Simd<f64, 2> = i2f(v0_a[0]);
     let p_hi = fma(avi, bvj, Simd::splat(C1));
     let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    (p_lo.to_bits().cast()[0], p_hi.to_bits().cast()[0])
+    t[1] += p_hi.to_bits().cast();
+    t[0] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[1]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[1 + 1] += p_hi.to_bits().cast();
+    t[1] += p_lo.to_bits().cast();
+    t[1 + 1] += p_hi.to_bits().cast();
+    t[1] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[2 + 1] += p_hi.to_bits().cast();
+    t[2] += p_lo.to_bits().cast();
+    t[2 + 1] += p_hi.to_bits().cast();
+    t[2] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[3 + 1] += p_hi.to_bits().cast();
+    t[3] += p_lo.to_bits().cast();
+    t[3 + 1] += p_hi.to_bits().cast();
+    t[3] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[4 + 1] += p_hi.to_bits().cast();
+    t[4] += p_lo.to_bits().cast();
+    t[4 + 1] += p_hi.to_bits().cast();
+    t[4] += p_lo.to_bits().cast();
+
+    let avi: Simd<f64, 2> = i2f(v0_a[1]);
+    let bvj: Simd<f64, 2> = i2f(v0_a[1]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[1 + 1 + 1] += p_hi.to_bits().cast();
+    t[1 + 1] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[1 + 2 + 1] += p_hi.to_bits().cast();
+    t[1 + 2] += p_lo.to_bits().cast();
+    t[1 + 2 + 1] += p_hi.to_bits().cast();
+    t[1 + 2] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[1 + 3 + 1] += p_hi.to_bits().cast();
+    t[1 + 3] += p_lo.to_bits().cast();
+    t[1 + 3 + 1] += p_hi.to_bits().cast();
+    t[1 + 3] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[1 + 4 + 1] += p_hi.to_bits().cast();
+    t[1 + 4] += p_lo.to_bits().cast();
+    t[1 + 4 + 1] += p_hi.to_bits().cast();
+    t[1 + 4] += p_lo.to_bits().cast();
+
+    let avi: Simd<f64, 2> = i2f(v0_a[2]);
+    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[2 + 2 + 1] += p_hi.to_bits().cast();
+    t[2 + 2] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[2 + 3 + 1] += p_hi.to_bits().cast();
+    t[2 + 3] += p_lo.to_bits().cast();
+    t[2 + 3 + 1] += p_hi.to_bits().cast();
+    t[2 + 3] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[2 + 4 + 1] += p_hi.to_bits().cast();
+    t[2 + 4] += p_lo.to_bits().cast();
+    t[2 + 4 + 1] += p_hi.to_bits().cast();
+    t[2 + 4] += p_lo.to_bits().cast();
+
+    let avi: Simd<f64, 2> = i2f(v0_a[3]);
+    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[3 + 3 + 1] += p_hi.to_bits().cast();
+    t[3 + 3] += p_lo.to_bits().cast();
+    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[3 + 4 + 1] += p_hi.to_bits().cast();
+    t[3 + 4] += p_lo.to_bits().cast();
+    t[3 + 4 + 1] += p_hi.to_bits().cast();
+    t[3 + 4] += p_lo.to_bits().cast();
+
+    let avi: Simd<f64, 2> = i2f(v0_a[4]);
+    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
+    let p_hi = fma(avi, bvj, Simd::splat(C1));
+    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+    t[4 + 4 + 1] += p_hi.to_bits().cast();
+    t[4 + 4] += p_lo.to_bits().cast();
+
+    t[1] += t[0] >> 51;
+    t[2] += t[1] >> 51;
+    t[3] += t[2] >> 51;
+    t[4] += t[3] >> 51;
+
+    let r0 = smult_noinit_simd(t[0].cast().bitand(Simd::splat(MASK51)), RHO_4);
+    let r1 = smult_noinit_simd(t[1].cast().bitand(Simd::splat(MASK51)), RHO_3);
+    let r2 = smult_noinit_simd(t[2].cast().bitand(Simd::splat(MASK51)), RHO_2);
+    let r3 = smult_noinit_simd(t[3].cast().bitand(Simd::splat(MASK51)), RHO_1);
+
+    let s = [
+        r0[0] + r1[0] + r2[0] + r3[0] + t[4],
+        r0[1] + r1[1] + r2[1] + r3[1] + t[5],
+        r0[2] + r1[2] + r2[2] + r3[2] + t[6],
+        r0[3] + r1[3] + r2[3] + r3[3] + t[7],
+        r0[4] + r1[4] + r2[4] + r3[4] + t[8],
+        r0[5] + r1[5] + r2[5] + r3[5] + t[9],
+    ];
+
+    // The upper bits of s will not affect the lower 51 bits of the product so we
+    // defer the and'ing.
+    let m = (s[0].cast() * Simd::splat(U51_NP0)).bitand(Simd::splat(MASK51));
+    let mp = smult_noinit_simd(m, U51_P);
+
+    let mut addi = addv_simd(s, mp);
+    // Move over carries before dropping last limb
+    addi[1] += addi[0] >> 51;
+    let addi = [addi[1], addi[2], addi[3], addi[4], addi[5]];
+
+    // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
+    // and the final shift is done as part of the conversion back to u256
+    let reduced = reduce_ct_simd(addi);
+    // Are the following two shifts fused?
+    let reduced = redundant_carry(reduced);
+    let u256_result = u255_to_u256_shr_1_simd(reduced);
+    let v = transpose_simd_to_u256(u256_result);
+    (v[0], v[1])
 }
 
 #[inline(always)]
@@ -255,7 +402,7 @@ pub fn simd_mul(
 mod tests {
     use {
         super::*,
-        crate::test_utils::ark_ff_reference,
+        crate::{simd_utils_wasm::u255_to_u256_simd, test_utils::ark_ff_reference},
         ark_bn254::Fr,
         ark_ff::{BigInt, PrimeField},
         proptest::{
@@ -281,6 +428,23 @@ mod tests {
                 let ab = Fr::new(BigInt(ab));
                 // let bc = Fr::new(BigInt(bc));
                 prop_assert_eq!(ab_ref, ab, "mismatch: l = {:X}, b = {:X}", ab_ref.into_bigint(), ab.into_bigint());
+        })
+    }
+
+    #[test]
+    fn test_simd_sqr() {
+        proptest!(|(
+                a in limbs5_51(),
+                b in limbs5_51(),
+                // c in limbs5_51(),
+            )| {
+                let a: [Simd<u64,1>;_] = a.map(Simd::splat);
+                let b: [Simd<u64,1>;_] = b.map(Simd::splat);
+                let a = u255_to_u256_simd(a).map(|x|x[0]);
+                let b = u255_to_u256_simd(b).map(|x|x[0]);
+                let (a2, _b2) = simd_mul(a, a, b, b);
+                let (a2s, _b2s) = simd_sqr(a, b);
+                prop_assert_eq!(a2, a2s);
         })
     }
 

@@ -32,7 +32,7 @@ mod mul {
     }
 
     #[divan::bench]
-    fn simd_mul(bencher: Bencher) {
+    fn simd_mul_51b(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
@@ -50,7 +50,7 @@ mod mul {
         };
 
         #[divan::bench]
-        fn simd_mul(bencher: Bencher) {
+        fn simd_mul_52b(bencher: Bencher) {
             bencher
                 //.counter(ItemsCount::new(2usize))
                 .with_inputs(|| rng().random())
@@ -119,7 +119,7 @@ mod mul {
 
 // #[divan::bench_group]
 mod sqr {
-    use {super::*, ark_ff::Field};
+    use {super::*, ark_ff::Field, block_multiplier::portable_simd_wasm};
 
     #[divan::bench]
     fn scalar_sqr(bencher: Bencher) {
@@ -127,6 +127,14 @@ mod sqr {
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
             .bench_local_values(block_multiplier::scalar_sqr);
+    }
+
+    #[divan::bench]
+    fn simd_sqr_b51(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(1usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|(a, b)| portable_simd_wasm::simd_sqr(a, b));
     }
 
     #[divan::bench]
