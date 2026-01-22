@@ -170,7 +170,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
 		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
 	} else {
-		log.Println("Single Mode")
 		extendedLinearStatementEvals := extendLinearStatement(circuit, [][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]}, circuit.PubWitnessEvaluations)
 
 		// Single commitment mode
@@ -219,7 +218,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 	}
 
-	// Geomteric weights for public inputs
+	// Geometric weights for public inputs
 	if !circuit.PublicInputs.IsEmpty() {
 		publicWeightEval := computePublicWeightEvaluation(
 			api, circuit.PublicInputs, whirFoldingRandomness,
@@ -390,7 +389,6 @@ func verifyCircuit(
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
 
-	log.Println("publicInputs", publicInputs)
 
 	circuit := Circuit{
 		IO:                                      []byte(cfg.IOPattern),
@@ -534,7 +532,7 @@ func verifyCircuit(
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
 	publicWitness, err := witness.Public()
 	if err != nil {
-		log.Printf("Failed witess,Public(): %v", err)
+		log.Printf("Failed witness, Public(): %v", err)
 		return err
 	}
 

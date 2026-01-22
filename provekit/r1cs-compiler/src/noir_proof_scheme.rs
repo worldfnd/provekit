@@ -72,7 +72,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
                 r1cs,
                 witness_map,
                 acir_public_inputs_indices_set,
-            );
+            )?;
         info!(
             "Witness split: w1 size = {}, w2 size = {}",
             split_witness_builders.w1_size,

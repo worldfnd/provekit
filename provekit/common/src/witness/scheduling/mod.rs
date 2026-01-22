@@ -9,8 +9,10 @@ mod scheduler;
 mod splitter;
 
 pub use {
-    dependency::DependencyInfo, remapper::WitnessIndexRemapper, scheduler::LayerScheduler,
-    splitter::WitnessSplitter,
+    dependency::DependencyInfo,
+    remapper::WitnessIndexRemapper,
+    scheduler::LayerScheduler,
+    splitter::{SplitError, WitnessSplitter},
 };
 
 /// Type of operations contained in a layer.

@@ -1,7 +1,22 @@
 use {
     crate::witness::{scheduling::DependencyInfo, WitnessBuilder},
-    std::collections::{HashSet, VecDeque},
+    std::{
+        collections::{HashSet, VecDeque},
+        fmt,
+    },
 };
+
+/// Error returned when witness splitting validation fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplitError;
+
+impl fmt::Display for SplitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error in splitting witnesses into w1 and w2")
+    }
+}
+
+impl std::error::Error for SplitError {}
 
 /// Analyzes witness builder dependencies and splits them into w1/w2 groups.
 ///
@@ -29,7 +44,7 @@ impl<'a> WitnessSplitter<'a> {
     pub fn split_builders(
         &self,
         acir_public_inputs_indices_set: HashSet<u32>,
-    ) -> (Vec<usize>, Vec<usize>) {
+    ) -> Result<(Vec<usize>, Vec<usize>), SplitError> {
         let builder_count = self.witness_builders.len();
 
         // Step 1: Find all Challenge builders
@@ -46,8 +61,8 @@ impl<'a> WitnessSplitter<'a> {
             let w1_indices = self.rearrange_w1(
                 (0..builder_count).collect(),
                 &acir_public_inputs_indices_set,
-            );
-            return (w1_indices, Vec::new());
+            )?;
+            return Ok((w1_indices, Vec::new()));
         }
 
         // Step 2: Forward DFS from challenges to find mandatory_w2
@@ -182,10 +197,10 @@ impl<'a> WitnessSplitter<'a> {
         let mut w1_indices: Vec<usize> = w1_set.into_iter().collect();
         let mut w2_indices: Vec<usize> = w2_set.into_iter().collect();
 
-        w1_indices = self.rearrange_w1(w1_indices, &acir_public_inputs_indices_set);
+        w1_indices = self.rearrange_w1(w1_indices, &acir_public_inputs_indices_set)?;
         w2_indices.sort_unstable();
 
-        (w1_indices, w2_indices)
+        Ok((w1_indices, w2_indices))
     }
 
     /// Rearranges w1 builder indices into a canonical order:
@@ -196,7 +211,7 @@ impl<'a> WitnessSplitter<'a> {
         &self,
         w1_indices: Vec<usize>,
         acir_public_inputs_indices_set: &HashSet<u32>,
-    ) -> Vec<usize> {
+    ) -> Result<Vec<usize>, SplitError> {
         let mut public_input_builder_indices = Vec::new();
         let mut rest_indices = Vec::new();
 
@@ -206,7 +221,7 @@ impl<'a> WitnessSplitter<'a> {
         let w1_indices_set = w1_indices.iter().copied().collect::<HashSet<_>>();
         for &idx in acir_public_inputs_indices_set.iter() {
             if !w1_indices_set.contains(&(idx as usize)) {
-                panic!("Public input {} is not in w1_indices", idx);
+                return Err(SplitError);
             }
         }
 
@@ -229,6 +244,6 @@ impl<'a> WitnessSplitter<'a> {
         let mut new_w1_indices = vec![0];
         new_w1_indices.extend(public_input_builder_indices);
         new_w1_indices.extend(rest_indices);
-        new_w1_indices
+        Ok(new_w1_indices)
     }
 }

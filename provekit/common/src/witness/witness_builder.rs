@@ -6,8 +6,8 @@ use {
             digits::DigitalDecompositionWitnesses,
             ram::SpiceWitnesses,
             scheduling::{
-                LayerScheduler, LayeredWitnessBuilders, SplitWitnessBuilders, WitnessIndexRemapper,
-                WitnessSplitter,
+                LayerScheduler, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
+                WitnessIndexRemapper, WitnessSplitter,
             },
             ConstantOrR1CSWitness,
         },
@@ -175,9 +175,9 @@ impl WitnessBuilder {
         r1cs: R1CS,
         witness_map: Vec<Option<NonZeroU32>>,
         acir_public_inputs_indices_set: HashSet<u32>,
-    ) -> (SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, usize) {
+    ) -> Result<(SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, usize), SplitError> {
         if witness_builders.is_empty() {
-            return (
+            return Ok((
                 SplitWitnessBuilders {
                     w1_layers: LayeredWitnessBuilders { layers: Vec::new() },
                     w2_layers: LayeredWitnessBuilders { layers: Vec::new() },
@@ -186,12 +186,12 @@ impl WitnessBuilder {
                 r1cs,
                 witness_map,
                 0,
-            );
+            ));
         }
 
         // Step 1: Analyze dependencies and split into w1/w2
         let splitter = WitnessSplitter::new(witness_builders);
-        let (w1_indices, w2_indices) = splitter.split_builders(acir_public_inputs_indices_set);
+        let (w1_indices, w2_indices) = splitter.split_builders(acir_public_inputs_indices_set)?;
 
         // Step 2: Extract w1 and w2 builders in order
         let w1_builders: Vec<WitnessBuilder> = w1_indices
@@ -245,7 +245,7 @@ impl WitnessBuilder {
             .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
             .count();
 
-        (
+        Ok((
             SplitWitnessBuilders {
                 w1_layers,
                 w2_layers,
@@ -254,6 +254,6 @@ impl WitnessBuilder {
             remapped_r1cs,
             remapped_witness_map,
             num_challenges,
-        )
+        ))
     }
 }

@@ -20,7 +20,7 @@ pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
-    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitWitnessBuilders},
+    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders},
     witness_builder::{
         ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
     },

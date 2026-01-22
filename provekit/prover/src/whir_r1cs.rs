@@ -155,6 +155,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         // Compute weights from R1CS matrices
         let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+        let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
 
         if is_single {
             // Single commitment path
@@ -171,8 +172,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
 
-            // VERIFY the size given by self.m
-            let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
             let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
                 // If there are no public inputs, the hint is unused by the verifier and can be
                 // assigned an arbitrary value.
@@ -238,7 +237,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
 
-            let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
             let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
                 let public_f_sum = FieldElement::zero();
                 let public_g_sum = FieldElement::zero();
