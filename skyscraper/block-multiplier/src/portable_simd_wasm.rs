@@ -258,8 +258,6 @@ pub fn simd_mul(
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
 
-    let s = redundant_carry_u64_exess(s);
-
     // The upper bits of s will not affect the lower 51 bits of the product so we
     // defer the and'ing.
     let m = (s[0] * Simd::splat(U51_NP0))
