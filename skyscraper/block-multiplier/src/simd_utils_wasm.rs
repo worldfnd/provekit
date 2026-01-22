@@ -198,13 +198,14 @@ pub fn reduce_ct_simd(red: [Simd<u64, 2>; 6]) -> [Simd<u64, 2>; 5] {
 
 #[inline(always)]
 pub fn addv_simd<const N: usize>(
-    mut va: [Simd<u64, 2>; N],
-    vb: [Simd<u64, 2>; N],
-) -> [Simd<u64, 2>; N] {
+    va: [Simd<u64, 2>; N],
+    vb: [Simd<i64, 2>; N],
+) -> [Simd<i64, 2>; N] {
+    let mut vc = [Simd::splat(0); N];
     for i in 0..va.len() {
-        va[i] += vb[i];
+        vc[i] = va[i].cast() + vb[i];
     }
-    va
+    vc
 }
 
 #[cfg(kani)]

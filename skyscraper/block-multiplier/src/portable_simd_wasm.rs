@@ -180,6 +180,20 @@ fn redundant_carry<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
     res
 }
 
+fn redundant_carry_excess<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
+    let mut borrow = Simd::splat(0);
+    let mut res = [Simd::splat(0); N];
+    for (i, x) in t.into_iter().enumerate() {
+        let tmp = x + borrow;
+        res[i] = (tmp.cast()).bitand(Simd::splat(MASK51));
+        borrow = tmp >> 51;
+    }
+    // Check whether borrow is not negative.
+    debug_assert!(borrow >= Simd::splat(0));
+    res[N - 1] = (borrow << 51).cast() | res[N - 1];
+    res
+}
+
 fn redundant_carry_u64_exess<const N: usize>(t: [Simd<u64, 2>; N]) -> [Simd<u64, 2>; N] {
     let mut carry = Simd::splat(0);
     let mut res = [Simd::splat(0); N];
@@ -252,9 +266,8 @@ pub fn simd_mul(
         .cast()
         .bitand(Simd::splat(MASK51));
     let mp = smult_noinit_simd(m, U51_P);
-    let mp = redundant_carry(mp);
 
-    let addi = redundant_carry_u64_exess(addv_simd(s, mp));
+    let addi = redundant_carry_excess(addv_simd(s, mp));
     let reduced = reduce_ct_simd(addi);
     let reduced = redundant_carry_u64_exess(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
