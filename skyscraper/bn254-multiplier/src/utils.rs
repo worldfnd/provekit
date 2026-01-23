@@ -14,7 +14,7 @@ use crate::constants::U64_2P;
 /// # Example
 ///
 /// ```
-/// use block_multiplier::subarray;
+/// use bn254_multiplier::subarray;
 /// let array = [1, 2, 3, 4, 5];
 /// let sub = subarray!(array, 1, 3); // Creates [2, 3, 4]
 /// ```

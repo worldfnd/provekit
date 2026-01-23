@@ -185,7 +185,7 @@ mod parts {
         use skyscraper::reduce::reduce_partial;
         bencher
             .with_inputs(|| reduce_partial(array::from_fn(|_| rng().random())))
-            .bench_values(block_multiplier::scalar_sqr)
+            .bench_values(bn254_multiplier::scalar_sqr)
     }
 }
 

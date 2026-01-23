@@ -1,5 +1,5 @@
 [package]
-name = "block-multiplier"
+name = "bn254-multiplier"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -31,7 +31,7 @@ proptest.workspace = true
 
 [build-dependencies]
 # Workspace crates
-block-multiplier-codegen.workspace = true
+bn254-multiplier-codegen.workspace = true
 hla.workspace = true
 
 [lints]

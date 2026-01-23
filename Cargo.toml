@@ -3,8 +3,8 @@ resolver = "2"
 members = [
   "skyscraper/fp-rounding",
   "skyscraper/hla",
-  "skyscraper/block-multiplier",
-  "skyscraper/block-multiplier-codegen",
+  "skyscraper/bn254-multiplier",
+  "skyscraper/bn254-multiplier-codegen",
   "skyscraper/core",
   "provekit/common",
   "provekit/r1cs-compiler",
@@ -73,8 +73,8 @@ opt-level = 3
 
 [workspace.dependencies]
 # Workspace members - Skyscraper
-block-multiplier = { path = "skyscraper/block-multiplier" }
-block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
+bn254-multiplier = { path = "skyscraper/bn254-multiplier" }
+bn254-multiplier-codegen = { path = "skyscraper/bn254-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }

@@ -14,7 +14,7 @@ mod mul {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|(a, b)| block_multiplier::scalar_mul(a, b));
+            .bench_local_values(|(a, b)| bn254_multiplier::scalar_mul(a, b));
     }
 
     #[divan::bench]
@@ -37,7 +37,7 @@ mod mul {
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| {
-                block_multiplier::rne::portable_simd::simd_mul(a, b, c, d)
+                bn254_multiplier::rne::portable_simd::simd_mul(a, b, c, d)
             });
     }
 
@@ -55,7 +55,7 @@ mod mul {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c, d)| {
-                        block_multiplier::rtz::simd_mul(mode_guard, a, b, c, d)
+                        bn254_multiplier::rtz::simd_mul(mode_guard, a, b, c, d)
                     });
                 });
             }
@@ -69,7 +69,7 @@ mod mul {
             unsafe {
                 with_rounding_mode((), |guard, _| {
                     bencher.bench_local_values(|(a, b, c, d, e, f)| {
-                        block_multiplier::rtz::block_mul(guard, a, b, c, d, e, f)
+                        bn254_multiplier::rtz::block_mul(guard, a, b, c, d, e, f)
                     });
                 });
             }
@@ -90,7 +90,7 @@ mod mul {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c, d)| {
-                        block_multiplier::montgomery_interleaved_3(mode_guard, a, b, c, d)
+                        bn254_multiplier::montgomery_interleaved_3(mode_guard, a, b, c, d)
                     });
                 });
             }
@@ -113,7 +113,7 @@ mod mul {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c, d, e, f)| {
-                        block_multiplier::montgomery_interleaved_4(mode_guard, a, b, c, d, e, f)
+                        bn254_multiplier::montgomery_interleaved_4(mode_guard, a, b, c, d, e, f)
                     });
                 });
             }
@@ -123,14 +123,14 @@ mod mul {
 
 // #[divan::bench_group]
 mod sqr {
-    use {super::*, ark_ff::Field, block_multiplier::rne};
+    use {super::*, ark_ff::Field, bn254_multiplier::rne};
 
     #[divan::bench]
     fn scalar_sqr(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(block_multiplier::scalar_sqr);
+            .bench_local_values(bn254_multiplier::scalar_sqr);
     }
 
     #[divan::bench]
@@ -169,7 +169,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b)| {
-                        block_multiplier::montgomery_square_log_interleaved_3(mode_guard, a, b)
+                        bn254_multiplier::montgomery_square_log_interleaved_3(mode_guard, a, b)
                     });
                 });
             }
@@ -187,7 +187,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c)| {
-                        block_multiplier::montgomery_square_log_interleaved_4(mode_guard, a, b, c)
+                        bn254_multiplier::montgomery_square_log_interleaved_4(mode_guard, a, b, c)
                     });
                 });
             }
@@ -204,7 +204,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b)| {
-                        block_multiplier::montgomery_square_interleaved_3(mode_guard, a, b)
+                        bn254_multiplier::montgomery_square_interleaved_3(mode_guard, a, b)
                     });
                 });
             }
@@ -222,7 +222,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c)| {
-                        block_multiplier::montgomery_square_interleaved_4(mode_guard, a, b, c)
+                        bn254_multiplier::montgomery_square_interleaved_4(mode_guard, a, b, c)
                     });
                 });
             }
@@ -234,7 +234,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b)| {
-                        block_multiplier::rtz::simd_sqr(mode_guard, a, b)
+                        bn254_multiplier::rtz::simd_sqr(mode_guard, a, b)
                     });
                 });
             }
@@ -248,7 +248,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |guard, _| {
                     bencher.bench_local_values(|(a, b, c)| {
-                        block_multiplier::rtz::block_sqr(guard, a, b, c)
+                        bn254_multiplier::rtz::block_sqr(guard, a, b, c)
                     });
                 });
             }

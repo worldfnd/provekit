@@ -1,5 +1,5 @@
 [package]
-name = "block-multiplier-codegen"
+name = "bn254-multiplier-codegen"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
