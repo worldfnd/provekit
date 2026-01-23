@@ -7,7 +7,12 @@ mod witness_generator;
 mod witness_io_pattern;
 
 use {
-    crate::{utils::serde_ark, FieldElement},
+    crate::{
+        skyscraper::SkyscraperCRH,
+        utils::{serde_ark, serde_ark_vec},
+        FieldElement,
+    },
+    ark_crypto_primitives::crh::CRHScheme,
     ark_ff::One,
     serde::{Deserialize, Serialize},
 };
@@ -15,7 +20,7 @@ pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
-    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitWitnessBuilders},
+    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders},
     witness_builder::{
         CombinedTableEntryInverseData, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
         WitnessCoefficient,
@@ -39,5 +44,45 @@ impl ConstantOrR1CSWitness {
             ConstantOrR1CSWitness::Constant(c) => (*c, WITNESS_ONE_IDX),
             ConstantOrR1CSWitness::Witness(w) => (FieldElement::one(), *w),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
+
+impl PublicInputs {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn from_vec(vec: Vec<FieldElement>) -> Self {
+        Self(vec)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn hash(&self) -> FieldElement {
+        match self.0.len() {
+            0 => FieldElement::from(0u64),
+            1 => {
+                // For single element, hash it with zero to ensure it gets properly hashed
+                let padded = vec![self.0[0], FieldElement::from(0u64)];
+                SkyscraperCRH::evaluate(&(), &padded[..]).expect("hash should succeed")
+            }
+            _ => SkyscraperCRH::evaluate(&(), &self.0[..])
+                .expect("hash should succeed for multiple inputs"),
+        }
+    }
+}
+
+impl Default for PublicInputs {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -22,6 +22,7 @@ pub use {
     r1cs::R1CS,
     verifier::Verifier,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
+    witness::PublicInputs,
 };
 
 #[cfg(test)]

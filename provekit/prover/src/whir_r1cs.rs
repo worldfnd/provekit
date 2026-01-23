@@ -14,7 +14,7 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -54,6 +54,7 @@ pub trait WhirR1CSProver {
         merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -121,6 +122,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         mut merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
         mut commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -153,21 +155,40 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         // Compute weights from R1CS matrices
         let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+        let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
 
         if is_single {
             // Single commitment path
             let commitment = commitments.into_iter().next().unwrap();
             let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
 
-            let (statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
+            let (mut statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
                 self.m,
                 &commitment.commitment_to_witness,
-                commitment.masked_polynomial,
-                commitment.random_polynomial,
+                &commitment.masked_polynomial,
+                &commitment.random_polynomial,
                 &alphas,
             );
 
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
+
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
+                // If there are no public inputs, the hint is unused by the verifier and can be
+                // assigned an arbitrary value.
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement,
+                    &commitment.commitment_to_witness,
+                    &commitment.masked_polynomial,
+                    &commitment.random_polynomial,
+                    public_weight,
+                )
+            };
+
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
 
             run_zk_whir_pcs_prover(
                 commitment.commitment_to_witness,
@@ -193,12 +214,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
 
-            let (statement_1, f_sums_1, g_sums_1) =
+            let (mut statement_1, f_sums_1, g_sums_1) =
                 create_combined_statement_over_two_polynomials::<3>(
                     self.m,
                     &c1.commitment_to_witness,
-                    c1.masked_polynomial,
-                    c1.random_polynomial,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
                     &alphas_1,
                 );
             drop(alphas_1);
@@ -207,14 +228,30 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 create_combined_statement_over_two_polynomials::<3>(
                     self.m,
                     &c2.commitment_to_witness,
-                    c2.masked_polynomial,
-                    c2.random_polynomial,
+                    &c2.masked_polynomial,
+                    &c2.random_polynomial,
                     &alphas_2,
                 );
             drop(alphas_2);
 
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
             merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
+
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement_1,
+                    &c1.commitment_to_witness,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    public_weight,
+                )
+            };
+
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
 
             run_zk_whir_pcs_batch_prover(
                 &[c1.commitment_to_witness, c2.commitment_to_witness],
@@ -511,8 +548,8 @@ pub fn run_zk_sumcheck_prover(
         create_combined_statement_over_two_polynomials::<1>(
             blinding_polynomial_variables + 1,
             &commitment_to_blinding_polynomial,
-            blindings_mask_polynomial,
-            blindings_blind_polynomial,
+            &blindings_mask_polynomial,
+            &blindings_blind_polynomial,
             &[expand_powers(alpha.as_slice())],
         );
 
@@ -545,8 +582,8 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
 fn create_combined_statement_over_two_polynomials<const N: usize>(
     cfg_nv: usize,
     witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
-    f_polynomial: EvaluationsList<FieldElement>,
-    g_polynomial: EvaluationsList<FieldElement>,
+    f_polynomial: &EvaluationsList<FieldElement>,
+    g_polynomial: &EvaluationsList<FieldElement>,
     alphas: &[Vec<FieldElement>; N],
 ) -> (
     Statement<FieldElement>,
@@ -576,8 +613,8 @@ fn create_combined_statement_over_two_polynomials<const N: usize>(
         w_full.resize(final_len, FieldElement::zero());
 
         let weight = Weights::linear(EvaluationsList::new(w_full));
-        let f = weight.weighted_sum(&f_polynomial);
-        let g = weight.weighted_sum(&g_polynomial);
+        let f = weight.weighted_sum(f_polynomial);
+        let g = weight.weighted_sum(g_polynomial);
 
         statement.add_constraint(weight, f + witness.batching_randomness * g);
         f_sums.push(f);
@@ -627,4 +664,50 @@ pub fn run_zk_whir_pcs_batch_prover(
         .expect("WHIR prover failed to generate a proof");
 
     (randomness, deferred)
+}
+
+fn update_statement_with_public_weights(
+    statement: &mut Statement<FieldElement>,
+    witness: &Witness<FieldElement, SkyscraperMerkleConfig>,
+    f_polynomial: &EvaluationsList<FieldElement>,
+    g_polynomial: &EvaluationsList<FieldElement>,
+    public_weights: Weights<FieldElement>,
+) -> (FieldElement, FieldElement) {
+    let f = public_weights.weighted_sum(f_polynomial);
+    let g = public_weights.weighted_sum(g_polynomial);
+    statement.add_constraint_in_front(public_weights, f + witness.batching_randomness * g);
+    (f, g)
+}
+
+fn get_public_weights(
+    public_inputs: &PublicInputs,
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    m: usize,
+) -> Weights<FieldElement> {
+    // Add hash to transcript
+    let public_inputs_hash = public_inputs.hash();
+    let _ = merlin.add_scalars(&[public_inputs_hash]);
+
+    // Get random point x
+    let mut x_buf = [FieldElement::zero()];
+    merlin
+        .fill_challenge_scalars(&mut x_buf)
+        .expect("Failed to get challenge from Merlin");
+    let x = x_buf[0];
+
+    let domain_size = 1 << m;
+    let mut public_weights = vec![FieldElement::zero(); domain_size];
+
+    // Set public weights for public inputs [1,x,x^2,x^3...x^n-1,0,0,0...0]
+    let mut current_pow = FieldElement::one();
+    for (idx, _) in public_inputs.0.iter().enumerate() {
+        public_weights[idx] = current_pow;
+        current_pow = current_pow * x;
+    }
+
+    Weights::geometric(
+        x,
+        public_inputs.0.len(),
+        EvaluationsList::new(public_weights),
+    )
 }

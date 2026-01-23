@@ -114,6 +114,10 @@ pub trait SumcheckIOPattern {
     fn add_rand(self, num_rand: usize) -> Self;
 
     fn add_zk_sumcheck_polynomials(self, num_vars: usize) -> Self;
+
+    /// Prover sends the hash of the public inputs
+    /// Verifier sends randomness to construct weights
+    fn add_public_inputs(self) -> Self;
 }
 
 impl<IOPattern> SumcheckIOPattern for IOPattern
@@ -133,6 +137,12 @@ where
             self = self.add_scalars(4, "Sumcheck Polynomials");
             self = self.challenge_scalars(1, "Sumcheck Random");
         }
+        self
+    }
+
+    fn add_public_inputs(mut self) -> Self {
+        self = self.add_scalars(1, "Public Inputs Hash");
+        self = self.challenge_scalars(1, "Public Weights Vector Random");
         self
     }
 

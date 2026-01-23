@@ -112,3 +112,24 @@ func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize i
 	}
 	return collapsed
 }
+
+// hashPublicInputs computes the hash of public inputs as field elements sequentially
+func hashPublicInputs(sc *skyscraper.Skyscraper, publicInputs PublicInputs) (frontend.Variable, error) {
+
+	if len(publicInputs.Values) == 0 {
+		return frontend.Variable(0), nil
+	}
+
+	// For single element, we hash it with a zero
+	if len(publicInputs.Values) == 1 {
+		return sc.CompressV2(publicInputs.Values[0], frontend.Variable(0)), nil
+	}
+
+	// For 2+ elements, use standard approach
+	hash := sc.CompressV2(publicInputs.Values[0], publicInputs.Values[1])
+	for i := 2; i < len(publicInputs.Values); i++ {
+		hash = sc.CompressV2(hash, publicInputs.Values[i])
+	}
+
+	return hash, nil
+}

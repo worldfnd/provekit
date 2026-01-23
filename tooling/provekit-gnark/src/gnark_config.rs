@@ -1,6 +1,6 @@
 use {
     ark_poly::EvaluationDomain,
-    provekit_common::{IOPattern, WhirConfig},
+    provekit_common::{IOPattern, PublicInputs, WhirConfig},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -29,6 +29,8 @@ pub struct GnarkConfig {
     pub num_challenges:             usize,
     /// size of w1
     pub w1_size:                    usize,
+    /// public inputs
+    pub public_inputs:              PublicInputs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,6 +116,7 @@ pub fn gnark_parameters(
     a_num_terms: usize,
     num_challenges: usize,
     w1_size: usize,
+    public_inputs: &PublicInputs,
 ) -> GnarkConfig {
     GnarkConfig {
         whir_config_witness: WHIRConfigGnark::new(whir_params_witness),
@@ -126,6 +129,7 @@ pub fn gnark_parameters(
         transcript_len: transcript.to_vec().len(),
         num_challenges,
         w1_size,
+        public_inputs: public_inputs.clone(),
     }
 }
 
@@ -141,6 +145,7 @@ pub fn write_gnark_parameters_to_file(
     a_num_terms: usize,
     num_challenges: usize,
     w1_size: usize,
+    public_inputs: &PublicInputs,
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
@@ -153,6 +158,7 @@ pub fn write_gnark_parameters_to_file(
         a_num_terms,
         num_challenges,
         w1_size,
+        public_inputs,
     );
     let mut file_params = File::create(file_path).unwrap();
     file_params

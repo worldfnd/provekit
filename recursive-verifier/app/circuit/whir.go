@@ -238,6 +238,7 @@ func RunZKWhirBatch(
 	// Common parameters
 	whirParams WHIRParams,
 	linearStatementValuesAtPoints []frontend.Variable,
+	publicInputs PublicInputs,
 ) (totalFoldingRandomness []frontend.Variable, err error) {
 	numPolynomials := len(firstRounds)
 	if numPolynomials == 0 {
@@ -255,7 +256,15 @@ func RunZKWhirBatch(
 	for i := 0; i < numPolynomials; i++ {
 		numOOD += len(initialOODQueries[i])
 	}
-	numStatementConstraints := numPolynomials * 3 // 3 per commitment (Az, Bz, Cz)
+
+	numStatementConstraints := 0
+
+	// w1 has 4 (pub, Az, Bz, Cz) constraints, w2 and remaining have 3 (Az, Bz, Cz) constraints
+	if !publicInputs.IsEmpty() {
+		numStatementConstraints = 4 + 3*(numPolynomials-1)
+	} else {
+		numStatementConstraints = numPolynomials * 3
+	}
 	numConstraints := numOOD + numStatementConstraints
 
 	// Step 3: Read N×M evaluation matrix from transcript

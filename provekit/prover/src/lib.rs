@@ -6,7 +6,7 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover},
+    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
 };
@@ -56,6 +56,7 @@ impl Prove for Prover {
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
+        let acir_public_inputs = self.program.functions[0].public_inputs().indices();
 
         // Set up transcript
         let io: IOPattern = self.whir_for_witness.create_io_pattern();
@@ -112,14 +113,30 @@ impl Prove for Prover {
         self.r1cs
             .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
             .context("While verifying R1CS instance")?;
+
+        // Gather public inputs from witness
+        let num_public_inputs = acir_public_inputs.len();
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(
+                witness[1..=num_public_inputs]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
+                    .collect::<Result<Vec<FieldElement>>>()?,
+            )
+        };
         drop(witness);
 
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(merlin, self.r1cs, commitments)
+            .prove(merlin, self.r1cs, commitments, &public_inputs)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { whir_r1cs_proof })
+        Ok(NoirProof {
+            public_inputs,
+            whir_r1cs_proof,
+        })
     }
 }
 

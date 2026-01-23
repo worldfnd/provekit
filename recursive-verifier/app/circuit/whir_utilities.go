@@ -140,6 +140,7 @@ func computeWPoly(
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[j], utilities.EqPolyOutside(api, utilities.ExpandFromUnivariate(api, initialData.InitialOODQueries[j], numberVars), totalFoldingRandomness)))
 	}
 
+	// Values are directly used as all linearStatements are deffered and hints were given. Checking of hints will be done later on.
 	for j, linearStatementValueAtPoint := range linearStatementValuesAtPoints {
 		value = api.Add(value, api.Mul(initialData.InitialCombinationRandomness[len(initialData.InitialOODQueries)+j], linearStatementValueAtPoint))
 	}

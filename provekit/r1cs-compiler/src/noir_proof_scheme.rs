@@ -10,7 +10,7 @@ use {
         witness::{NoirWitnessGenerator, WitnessBuilder},
         NoirProofScheme, WhirR1CSScheme,
     },
-    std::{fs::File, path::Path},
+    std::{collections::HashSet, fs::File, path::Path},
     tracing::{info, instrument},
 };
 
@@ -61,9 +61,19 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             r1cs.c.num_entries()
         );
 
+        // Extract ACIR public input indices set
+        let acir_public_inputs_indices_set: HashSet<u32> =
+            main.public_inputs().indices().iter().cloned().collect();
+
+        let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
         // Split witness builders and remap indices for sound challenge generation
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
-            WitnessBuilder::split_and_prepare_layers(&witness_builders, r1cs, witness_map);
+            WitnessBuilder::split_and_prepare_layers(
+                &witness_builders,
+                r1cs,
+                witness_map,
+                acir_public_inputs_indices_set,
+            )?;
         info!(
             "Witness split: w1 size = {}, w2 size = {}",
             split_witness_builders.w1_size,
@@ -82,6 +92,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             &remapped_r1cs,
             split_witness_builders.w1_size,
             num_challenges,
+            has_public_inputs,
         );
 
         Ok(Self {
