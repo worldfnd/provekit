@@ -1,5 +1,5 @@
 use {
-    crate::constants_rne::{C1, C2, C3, MASK51, U51_P},
+    crate::rne::constants::{C1, C2, C3, MASK51, U51_P},
     core::{
         array,
         ops::BitAnd,

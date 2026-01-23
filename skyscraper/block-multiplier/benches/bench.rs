@@ -37,7 +37,7 @@ mod mul {
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| {
-                block_multiplier::portable_simd_rne::simd_mul(a, b, c, d)
+                block_multiplier::rne::portable_simd::simd_mul(a, b, c, d)
             });
     }
 
@@ -123,7 +123,7 @@ mod mul {
 
 // #[divan::bench_group]
 mod sqr {
-    use {super::*, ark_ff::Field, block_multiplier::portable_simd_rne};
+    use {super::*, ark_ff::Field, block_multiplier::rne};
 
     #[divan::bench]
     fn scalar_sqr(bencher: Bencher) {
@@ -138,7 +138,7 @@ mod sqr {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|(a, b)| portable_simd_rne::simd_sqr(a, b));
+            .bench_local_values(|(a, b)| rne::simd_sqr(a, b));
     }
 
     #[divan::bench]

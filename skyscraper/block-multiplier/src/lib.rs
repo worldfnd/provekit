@@ -17,11 +17,9 @@ mod simd_rtz_utils;
 
 // pub mod block_simd_wasm;
 pub mod constants;
-pub mod constants_rne;
 pub mod constants_rtz;
-pub mod portable_simd_rne;
+pub mod rne;
 mod scalar;
-pub mod simd_rne_utils;
 #[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 mod test_utils;
 mod utils;

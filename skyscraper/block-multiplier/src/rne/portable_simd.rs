@@ -1,7 +1,7 @@
 use {
-    crate::{
-        constants_rne::*,
-        simd_rne_utils::{
+    crate::rne::{
+        constants::*,
+        simd_utils::{
             addv_simd, fma, i2f, make_initial, reduce_ct_simd, smult_noinit_simd,
             transpose_simd_to_u256, transpose_u256_to_simd, u255_to_u256_shr_1_simd,
             u256_to_u255_simd,
@@ -323,7 +323,7 @@ pub fn simd_mul(
 mod tests {
     use {
         super::*,
-        crate::{simd_rne_utils::u255_to_u256_simd, test_utils::ark_ff_reference},
+        crate::{rne::simd_utils::u255_to_u256_simd, test_utils::ark_ff_reference},
         ark_bn254::Fr,
         ark_ff::{BigInt, PrimeField},
         proptest::{
