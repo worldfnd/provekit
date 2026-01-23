@@ -19,121 +19,42 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
 
     let mut t: [Simd<i64, 2>; 10] = [Simd::splat(0); 10];
-    t[0] = Simd::splat(make_initial(1, 0));
-    t[9] = Simd::splat(make_initial(0, 6));
-    t[1] = Simd::splat(make_initial(2, 1));
-    t[8] = Simd::splat(make_initial(6, 7));
-    t[2] = Simd::splat(make_initial(3, 2));
-    t[7] = Simd::splat(make_initial(7, 8));
-    t[3] = Simd::splat(make_initial(4, 3));
-    t[6] = Simd::splat(make_initial(8, 9));
-    t[4] = Simd::splat(make_initial(10, 4));
-    t[5] = Simd::splat(make_initial(9, 10));
 
-    let avi: Simd<f64, 2> = i2f(v0_a[0]);
-    let bvj: Simd<f64, 2> = i2f(v0_a[0]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1] += p_hi.to_bits().cast();
-    t[0] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[1]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1 + 1] += p_hi.to_bits().cast();
-    t[1] += p_lo.to_bits().cast();
-    t[1 + 1] += p_hi.to_bits().cast();
-    t[1] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[2 + 1] += p_hi.to_bits().cast();
-    t[2] += p_lo.to_bits().cast();
-    t[2 + 1] += p_hi.to_bits().cast();
-    t[2] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[3 + 1] += p_hi.to_bits().cast();
-    t[3] += p_lo.to_bits().cast();
-    t[3 + 1] += p_hi.to_bits().cast();
-    t[3] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[4 + 1] += p_hi.to_bits().cast();
-    t[4] += p_lo.to_bits().cast();
-    t[4 + 1] += p_hi.to_bits().cast();
-    t[4] += p_lo.to_bits().cast();
+    for i in 0..5 {
+        let avi: Simd<f64, 2> = i2f(v0_a[i]);
+        for j in (i + 1)..5 {
+            let bvj: Simd<f64, 2> = i2f(v0_a[j]);
+            let p_hi = fma(avi, bvj, Simd::splat(C1));
+            let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
+            t[i + j + 1] += p_hi.to_bits().cast();
+            t[i + j] += p_lo.to_bits().cast();
+        }
+    }
 
-    let avi: Simd<f64, 2> = i2f(v0_a[1]);
-    let bvj: Simd<f64, 2> = i2f(v0_a[1]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1 + 1 + 1] += p_hi.to_bits().cast();
-    t[1 + 1] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1 + 2 + 1] += p_hi.to_bits().cast();
-    t[1 + 2] += p_lo.to_bits().cast();
-    t[1 + 2 + 1] += p_hi.to_bits().cast();
-    t[1 + 2] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1 + 3 + 1] += p_hi.to_bits().cast();
-    t[1 + 3] += p_lo.to_bits().cast();
-    t[1 + 3 + 1] += p_hi.to_bits().cast();
-    t[1 + 3] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[1 + 4 + 1] += p_hi.to_bits().cast();
-    t[1 + 4] += p_lo.to_bits().cast();
-    t[1 + 4 + 1] += p_hi.to_bits().cast();
-    t[1 + 4] += p_lo.to_bits().cast();
+    // On most instruction sets SIMD shift left is more expensive than SIMD
+    // addition. While for scalar they tend to cost the same.
+    for i in 1..=8 {
+        t[i] += t[i];
+    }
 
-    let avi: Simd<f64, 2> = i2f(v0_a[2]);
-    let bvj: Simd<f64, 2> = i2f(v0_a[2]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[2 + 2 + 1] += p_hi.to_bits().cast();
-    t[2 + 2] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[2 + 3 + 1] += p_hi.to_bits().cast();
-    t[2 + 3] += p_lo.to_bits().cast();
-    t[2 + 3 + 1] += p_hi.to_bits().cast();
-    t[2 + 3] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[2 + 4 + 1] += p_hi.to_bits().cast();
-    t[2 + 4] += p_lo.to_bits().cast();
-    t[2 + 4 + 1] += p_hi.to_bits().cast();
-    t[2 + 4] += p_lo.to_bits().cast();
+    for i in 0..5 {
+        let avi: Simd<f64, 2> = i2f(v0_a[i]);
+        let p_hi = fma(avi, avi, Simd::splat(C1));
+        let p_lo = fma(avi, avi, Simd::splat(C2) - p_hi);
+        t[i + i + 1] += p_hi.to_bits().cast();
+        t[i + i] += p_lo.to_bits().cast();
+    }
 
-    let avi: Simd<f64, 2> = i2f(v0_a[3]);
-    let bvj: Simd<f64, 2> = i2f(v0_a[3]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[3 + 3 + 1] += p_hi.to_bits().cast();
-    t[3 + 3] += p_lo.to_bits().cast();
-    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[3 + 4 + 1] += p_hi.to_bits().cast();
-    t[3 + 4] += p_lo.to_bits().cast();
-    t[3 + 4 + 1] += p_hi.to_bits().cast();
-    t[3 + 4] += p_lo.to_bits().cast();
-
-    let avi: Simd<f64, 2> = i2f(v0_a[4]);
-    let bvj: Simd<f64, 2> = i2f(v0_a[4]);
-    let p_hi = fma(avi, bvj, Simd::splat(C1));
-    let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
-    t[4 + 4 + 1] += p_hi.to_bits().cast();
-    t[4 + 4] += p_lo.to_bits().cast();
+    t[0] += Simd::splat(make_initial(1, 0));
+    t[9] += Simd::splat(make_initial(0, 6));
+    t[1] += Simd::splat(make_initial(2, 1));
+    t[8] += Simd::splat(make_initial(6, 7));
+    t[2] += Simd::splat(make_initial(3, 2));
+    t[7] += Simd::splat(make_initial(7, 8));
+    t[3] += Simd::splat(make_initial(4, 3));
+    t[6] += Simd::splat(make_initial(8, 9));
+    t[4] += Simd::splat(make_initial(10, 4));
+    t[5] += Simd::splat(make_initial(9, 10));
 
     t[1] += t[0] >> 51;
     t[2] += t[1] >> 51;
