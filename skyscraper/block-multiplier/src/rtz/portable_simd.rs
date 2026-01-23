@@ -1,13 +1,12 @@
+// Montgomery multiplier
+// Requires RTZ
 use {
-    crate::{
+    crate::rtz::{
         constants::*,
-        constants_rtz::*,
-        simd_rtz_utils::{
+        simd_utils::{
             addv_simd, make_initial, reduce_ct_simd, smult_noinit_simd, transpose_simd_to_u256,
             transpose_u256_to_simd, u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
-        subarray,
-        utils::{addv, carrying_mul_add, reduce_ct},
     },
     core::{
         arch::aarch64::vcvtq_f64_u64,
@@ -19,42 +18,11 @@ use {
 };
 
 #[inline]
-pub fn block_sqr(
-    _rtz: &RoundingGuard<Zero>, // Proof that the mode has been set to RTZ
-    s0_a: [u64; 4],
+pub fn simd_sqr(
+    _rtz: &RoundingGuard<Zero>,
     v0_a: [u64; 4],
     v1_a: [u64; 4],
-) -> ([u64; 4], [u64; 4], [u64; 4]) {
-    // -- [SCALAR AB MULT]
-    // -------------------------------------------------------------------------
-    let mut s_t = [0_u64; 8];
-    let mut carry = 0;
-    (s_t[0], carry) = carrying_mul_add(s0_a[0], s0_a[0], s_t[0], carry);
-    (s_t[1], carry) = carrying_mul_add(s0_a[0], s0_a[1], s_t[1], carry);
-    (s_t[2], carry) = carrying_mul_add(s0_a[0], s0_a[2], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[0], s0_a[3], s_t[3], carry);
-    s_t[4] = carry;
-    carry = 0;
-    (s_t[1], carry) = carrying_mul_add(s0_a[1], s0_a[0], s_t[1], carry);
-    (s_t[2], carry) = carrying_mul_add(s0_a[1], s0_a[1], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[1], s0_a[2], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[1], s0_a[3], s_t[4], carry);
-    s_t[5] = carry;
-    carry = 0;
-    (s_t[2], carry) = carrying_mul_add(s0_a[2], s0_a[0], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[2], s0_a[1], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[2], s0_a[2], s_t[4], carry);
-    (s_t[5], carry) = carrying_mul_add(s0_a[2], s0_a[3], s_t[5], carry);
-    s_t[6] = carry;
-    carry = 0;
-    (s_t[3], carry) = carrying_mul_add(s0_a[3], s0_a[0], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[3], s0_a[1], s_t[4], carry);
-    (s_t[5], carry) = carrying_mul_add(s0_a[3], s0_a[2], s_t[5], carry);
-    (s_t[6], carry) = carrying_mul_add(s0_a[3], s0_a[3], s_t[6], carry);
-    s_t[7] = carry;
-    // ---------------------------------------------------------------------------------------------
-    // -- [VECTOR AB MULT]
-    // -------------------------------------------------------------------------
+) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
 
     let mut t: [Simd<u64, 2>; 10] = [Simd::splat(0); 10];
@@ -95,6 +63,7 @@ pub fn block_sqr(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[4 + 1] += p_hi.to_bits();
     t[4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[1].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -121,6 +90,7 @@ pub fn block_sqr(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[1 + 4 + 1] += p_hi.to_bits();
     t[1 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[2].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -147,6 +117,7 @@ pub fn block_sqr(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[2 + 4 + 1] += p_hi.to_bits();
     t[2 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[3].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -173,6 +144,7 @@ pub fn block_sqr(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[3 + 4 + 1] += p_hi.to_bits();
     t[3 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[4].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -199,9 +171,7 @@ pub fn block_sqr(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[4 + 4 + 1] += p_hi.to_bits();
     t[4 + 4] += p_lo.to_bits();
-    // ---------------------------------------------------------------------------------------------
-    // -- [VECTOR REDUCE]
-    // --------------------------------------------------------------------------
+
     t[1] += t[0] >> 52;
     t[2] += t[1] >> 52;
     t[3] += t[2] >> 52;
@@ -220,88 +190,24 @@ pub fn block_sqr(
         r0[4] + r1[4] + r2[4] + r3[4] + t[8],
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
-    // ---------------------------------------------------------------------------------------------
-    // -- [SCALAR REDUCE]
-    // --------------------------------------------------------------------------
-    let mut s_r1 = [0_u64; 5];
-    (s_r1[0], s_r1[1]) = carrying_mul_add(s_t[0], U64_I3[0], 0, 0);
-    (s_r1[1], s_r1[2]) = carrying_mul_add(s_t[0], U64_I3[1], s_r1[1], 0);
-    (s_r1[2], s_r1[3]) = carrying_mul_add(s_t[0], U64_I3[2], s_r1[2], 0);
-    (s_r1[3], s_r1[4]) = carrying_mul_add(s_t[0], U64_I3[3], s_r1[3], 0);
-
-    let mut s_r2 = [0_u64; 5];
-    (s_r2[0], s_r2[1]) = carrying_mul_add(s_t[1], U64_I2[0], 0, 0);
-    (s_r2[1], s_r2[2]) = carrying_mul_add(s_t[1], U64_I2[1], s_r2[1], 0);
-    (s_r2[2], s_r2[3]) = carrying_mul_add(s_t[1], U64_I2[2], s_r2[2], 0);
-    (s_r2[3], s_r2[4]) = carrying_mul_add(s_t[1], U64_I2[3], s_r2[3], 0);
-
-    let mut s_r3 = [0_u64; 5];
-    (s_r3[0], s_r3[1]) = carrying_mul_add(s_t[2], U64_I1[0], 0, 0);
-    (s_r3[1], s_r3[2]) = carrying_mul_add(s_t[2], U64_I1[1], s_r3[1], 0);
-    (s_r3[2], s_r3[3]) = carrying_mul_add(s_t[2], U64_I1[2], s_r3[2], 0);
-    (s_r3[3], s_r3[4]) = carrying_mul_add(s_t[2], U64_I1[3], s_r3[3], 0);
-
-    let s_s = addv(addv(subarray!(s_t, 3, 5), s_r1), addv(s_r2, s_r3));
-    // ---------------------------------------------------------------------------------------------
-    // -- [FINAL]
-    // ----------------------------------------------------------------------------------
-    let s_m = U64_MU0.wrapping_mul(s_s[0]);
-    let mut s_mp = [0_u64; 5];
-    (s_mp[0], s_mp[1]) = carrying_mul_add(s_m, U64_P[0], 0, 0);
-    (s_mp[1], s_mp[2]) = carrying_mul_add(s_m, U64_P[1], s_mp[1], 0);
-    (s_mp[2], s_mp[3]) = carrying_mul_add(s_m, U64_P[2], s_mp[2], 0);
-    (s_mp[3], s_mp[4]) = carrying_mul_add(s_m, U64_P[3], s_mp[3], 0);
-    let s0 = reduce_ct(subarray!(addv(s_s, s_mp), 1, 4));
 
     let m = (s[0] * Simd::splat(U52_NP0)).bitand(Simd::splat(MASK52));
     let mp = smult_noinit_simd(m, U52_P);
-    let resolve = reduce_ct_simd(addv_simd(s, mp));
-    let u256_result = u260_to_u256_simd(resolve);
+
+    let reduced = reduce_ct_simd(addv_simd(s, mp));
+    let u256_result = u260_to_u256_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
-    // ---------------------------------------------------------------------------------------------
-    (s0, v[0], v[1])
+    (v[0], v[1])
 }
 
 #[inline]
-pub fn block_mul(
-    _rtz: &RoundingGuard<Zero>, // Proof that the mode has been set to RTZ
-    s0_a: [u64; 4],
-    s0_b: [u64; 4],
+pub fn simd_mul(
+    _rtz: &RoundingGuard<Zero>,
     v0_a: [u64; 4],
     v0_b: [u64; 4],
     v1_a: [u64; 4],
     v1_b: [u64; 4],
-) -> ([u64; 4], [u64; 4], [u64; 4]) {
-    // -- [SCALAR AB MULT]
-    // -------------------------------------------------------------------------
-    let mut s_t = [0_u64; 8];
-    let mut carry = 0;
-    (s_t[0], carry) = carrying_mul_add(s0_a[0], s0_b[0], s_t[0], carry);
-    (s_t[1], carry) = carrying_mul_add(s0_a[0], s0_b[1], s_t[1], carry);
-    (s_t[2], carry) = carrying_mul_add(s0_a[0], s0_b[2], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[0], s0_b[3], s_t[3], carry);
-    s_t[4] = carry;
-    carry = 0;
-    (s_t[1], carry) = carrying_mul_add(s0_a[1], s0_b[0], s_t[1], carry);
-    (s_t[2], carry) = carrying_mul_add(s0_a[1], s0_b[1], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[1], s0_b[2], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[1], s0_b[3], s_t[4], carry);
-    s_t[5] = carry;
-    carry = 0;
-    (s_t[2], carry) = carrying_mul_add(s0_a[2], s0_b[0], s_t[2], carry);
-    (s_t[3], carry) = carrying_mul_add(s0_a[2], s0_b[1], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[2], s0_b[2], s_t[4], carry);
-    (s_t[5], carry) = carrying_mul_add(s0_a[2], s0_b[3], s_t[5], carry);
-    s_t[6] = carry;
-    carry = 0;
-    (s_t[3], carry) = carrying_mul_add(s0_a[3], s0_b[0], s_t[3], carry);
-    (s_t[4], carry) = carrying_mul_add(s0_a[3], s0_b[1], s_t[4], carry);
-    (s_t[5], carry) = carrying_mul_add(s0_a[3], s0_b[2], s_t[5], carry);
-    (s_t[6], carry) = carrying_mul_add(s0_a[3], s0_b[3], s_t[6], carry);
-    s_t[7] = carry;
-    // ---------------------------------------------------------------------------------------------
-    // -- [VECTOR AB MULT]
-    // -------------------------------------------------------------------------
+) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
     let v0_b = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_b, v1_b]));
 
@@ -343,6 +249,7 @@ pub fn block_mul(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[4 + 1] += p_hi.to_bits();
     t[4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[1].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_b[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -369,6 +276,7 @@ pub fn block_mul(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[1 + 4 + 1] += p_hi.to_bits();
     t[1 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[2].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_b[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -395,6 +303,7 @@ pub fn block_mul(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[2 + 4 + 1] += p_hi.to_bits();
     t[2 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[3].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_b[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -421,6 +330,7 @@ pub fn block_mul(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[3 + 4 + 1] += p_hi.to_bits();
     t[3 + 4] += p_lo.to_bits();
+
     let avi: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_a[4].into()).into() };
     let bvj: Simd<f64, 2> = unsafe { vcvtq_f64_u64(v0_b[0].into()).into() };
     let p_hi = avi.mul_add(bvj, Simd::splat(C1));
@@ -447,9 +357,7 @@ pub fn block_mul(
     let p_lo = avi.mul_add(bvj, Simd::splat(C2) - p_hi);
     t[4 + 4 + 1] += p_hi.to_bits();
     t[4 + 4] += p_lo.to_bits();
-    // ---------------------------------------------------------------------------------------------
-    // -- [VECTOR REDUCE]
-    // --------------------------------------------------------------------------
+
     t[1] += t[0] >> 52;
     t[2] += t[1] >> 52;
     t[3] += t[2] >> 52;
@@ -468,44 +376,45 @@ pub fn block_mul(
         r0[4] + r1[4] + r2[4] + r3[4] + t[8],
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
-    // ---------------------------------------------------------------------------------------------
-    // -- [SCALAR REDUCE]
-    // --------------------------------------------------------------------------
-    let mut s_r1 = [0_u64; 5];
-    (s_r1[0], s_r1[1]) = carrying_mul_add(s_t[0], U64_I3[0], 0, 0);
-    (s_r1[1], s_r1[2]) = carrying_mul_add(s_t[0], U64_I3[1], s_r1[1], 0);
-    (s_r1[2], s_r1[3]) = carrying_mul_add(s_t[0], U64_I3[2], s_r1[2], 0);
-    (s_r1[3], s_r1[4]) = carrying_mul_add(s_t[0], U64_I3[3], s_r1[3], 0);
-
-    let mut s_r2 = [0_u64; 5];
-    (s_r2[0], s_r2[1]) = carrying_mul_add(s_t[1], U64_I2[0], 0, 0);
-    (s_r2[1], s_r2[2]) = carrying_mul_add(s_t[1], U64_I2[1], s_r2[1], 0);
-    (s_r2[2], s_r2[3]) = carrying_mul_add(s_t[1], U64_I2[2], s_r2[2], 0);
-    (s_r2[3], s_r2[4]) = carrying_mul_add(s_t[1], U64_I2[3], s_r2[3], 0);
-
-    let mut s_r3 = [0_u64; 5];
-    (s_r3[0], s_r3[1]) = carrying_mul_add(s_t[2], U64_I1[0], 0, 0);
-    (s_r3[1], s_r3[2]) = carrying_mul_add(s_t[2], U64_I1[1], s_r3[1], 0);
-    (s_r3[2], s_r3[3]) = carrying_mul_add(s_t[2], U64_I1[2], s_r3[2], 0);
-    (s_r3[3], s_r3[4]) = carrying_mul_add(s_t[2], U64_I1[3], s_r3[3], 0);
-
-    let s_s = addv(addv(subarray!(s_t, 3, 5), s_r1), addv(s_r2, s_r3));
-    // ---------------------------------------------------------------------------------------------
-    // -- [FINAL]
-    // --------------------------------------------------------0-------------------------
-    let s_m = U64_MU0.wrapping_mul(s_s[0]);
-    let mut s_mp = [0_u64; 5];
-    (s_mp[0], s_mp[1]) = carrying_mul_add(s_m, U64_P[0], 0, 0);
-    (s_mp[1], s_mp[2]) = carrying_mul_add(s_m, U64_P[1], s_mp[1], 0);
-    (s_mp[2], s_mp[3]) = carrying_mul_add(s_m, U64_P[2], s_mp[2], 0);
-    (s_mp[3], s_mp[4]) = carrying_mul_add(s_m, U64_P[3], s_mp[3], 0);
-    let s0 = reduce_ct(subarray!(addv(s_s, s_mp), 1, 4));
 
     let m = (s[0] * Simd::splat(U52_NP0)).bitand(Simd::splat(MASK52));
     let mp = smult_noinit_simd(m, U52_P);
-    let resolve = reduce_ct_simd(addv_simd(s, mp));
-    let u256_result = u260_to_u256_simd(resolve);
+
+    let reduced = reduce_ct_simd(addv_simd(s, mp));
+    let u256_result = u260_to_u256_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
-    // ---------------------------------------------------------------------------------------------
-    (s0, v[0], v[1])
+    (v[0], v[1])
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
+        ark_bn254::Fr,
+        ark_ff::BigInt,
+        fp_rounding::{with_rounding_mode, Zero},
+        proptest::proptest,
+    };
+
+    #[test]
+    fn test_simd_mul() {
+        proptest!(|(
+            a in safe_bn254_montgomery_input(),
+            b in safe_bn254_montgomery_input(),
+            c in safe_bn254_montgomery_input(),
+        )| {
+            unsafe {
+                with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
+
+            let (ab, bc) = simd_mul(&rtz, a, b, b,c);
+            let ab_ref = ark_ff_reference(a, b);
+            let bc_ref = ark_ff_reference(b, c);
+            let ab = Fr::new(BigInt(ab));
+            let bc = Fr::new(BigInt(bc));
+            assert_eq!(ab_ref, ab);
+            assert_eq!(bc_ref, bc);
+                });}
+        });
+    }
 }

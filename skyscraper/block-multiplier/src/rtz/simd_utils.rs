@@ -1,5 +1,5 @@
 use {
-    crate::constants_rtz::{C1, C2, MASK52, U52_2P},
+    crate::rtz::constants::{C1, C2, MASK52, U52_2P},
     core::{
         arch::aarch64::vcvtq_f64_u64,
         array,

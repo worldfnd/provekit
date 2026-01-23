@@ -9,32 +9,23 @@ mod aarch64;
 // These can be made to work on x86,
 // but for now it uses an ARM NEON intrinsic.
 #[cfg(target_arch = "aarch64")]
-mod block_simd;
-#[cfg(target_arch = "aarch64")]
-mod portable_simd_rtz;
-#[cfg(target_arch = "aarch64")]
-mod simd_rtz_utils;
+pub mod rtz;
 
-// pub mod block_simd_wasm;
 pub mod constants;
-pub mod constants_rtz;
 pub mod rne;
 mod scalar;
-#[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
-mod test_utils;
 mod utils;
 
-pub use crate::scalar::{scalar_mul, scalar_sqr};
+#[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
+mod test_utils;
+
 #[cfg(target_arch = "aarch64")]
-pub use crate::{
-    aarch64::{
-        montgomery_interleaved_3, montgomery_interleaved_4, montgomery_square_interleaved_3,
-        montgomery_square_interleaved_4, montgomery_square_log_interleaved_3,
-        montgomery_square_log_interleaved_4,
-    },
-    block_simd::{block_mul, block_sqr},
-    portable_simd_rtz::{simd_mul, simd_sqr},
+pub use crate::aarch64::{
+    montgomery_interleaved_3, montgomery_interleaved_4, montgomery_square_interleaved_3,
+    montgomery_square_interleaved_4, montgomery_square_log_interleaved_3,
+    montgomery_square_log_interleaved_4,
 };
+pub use crate::scalar::{scalar_mul, scalar_sqr};
 
 const fn pow_2(n: u32) -> f64 {
     assert!(n <= 1023);

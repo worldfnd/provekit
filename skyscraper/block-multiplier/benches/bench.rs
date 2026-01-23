@@ -50,12 +50,12 @@ mod mul {
         };
 
         #[divan::bench]
-        fn simd_mul_52b(bencher: Bencher) {
+        fn simd_mul_rtz(bencher: Bencher) {
             let bencher = bencher.with_inputs(|| rng().random());
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
                     bencher.bench_local_values(|(a, b, c, d)| {
-                        block_multiplier::simd_mul(mode_guard, a, b, c, d)
+                        block_multiplier::rtz::simd_mul(mode_guard, a, b, c, d)
                     });
                 });
             }
@@ -69,7 +69,7 @@ mod mul {
             unsafe {
                 with_rounding_mode((), |guard, _| {
                     bencher.bench_local_values(|(a, b, c, d, e, f)| {
-                        block_multiplier::block_mul(guard, a, b, c, d, e, f)
+                        block_multiplier::rtz::block_mul(guard, a, b, c, d, e, f)
                     });
                 });
             }
@@ -233,8 +233,9 @@ mod sqr {
             let bencher = bencher.with_inputs(|| rng().random());
             unsafe {
                 with_rounding_mode((), |mode_guard, _| {
-                    bencher
-                        .bench_local_values(|(a, b)| block_multiplier::simd_sqr(mode_guard, a, b));
+                    bencher.bench_local_values(|(a, b)| {
+                        block_multiplier::rtz::simd_sqr(mode_guard, a, b)
+                    });
                 });
             }
         }
@@ -247,7 +248,7 @@ mod sqr {
             unsafe {
                 with_rounding_mode((), |guard, _| {
                     bencher.bench_local_values(|(a, b, c)| {
-                        block_multiplier::block_sqr(guard, a, b, c)
+                        block_multiplier::rtz::block_sqr(guard, a, b, c)
                     });
                 });
             }
