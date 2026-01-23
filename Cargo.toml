@@ -40,6 +40,9 @@ license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
 repository = "https://github.com/worldfnd/ProveKit"
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [workspace.lints.clippy]
 cargo = "warn"
 perf = "warn"
