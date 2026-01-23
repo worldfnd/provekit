@@ -11,16 +11,17 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 mod block_simd;
 #[cfg(target_arch = "aarch64")]
-mod portable_simd;
+mod portable_simd_rtz;
 #[cfg(target_arch = "aarch64")]
-mod simd_utils;
+mod simd_rtz_utils;
 
 // pub mod block_simd_wasm;
 pub mod constants;
-pub mod constants_wasm;
-pub mod portable_simd_wasm;
+pub mod constants_rne;
+pub mod constants_rtz;
+pub mod portable_simd_rne;
 mod scalar;
-pub mod simd_utils_wasm;
+pub mod simd_rne_utils;
 #[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 mod test_utils;
 mod utils;
@@ -34,5 +35,13 @@ pub use crate::{
         montgomery_square_log_interleaved_4,
     },
     block_simd::{block_mul, block_sqr},
-    portable_simd::{simd_mul, simd_sqr},
+    portable_simd_rtz::{simd_mul, simd_sqr},
 };
+
+const fn pow_2(n: u32) -> f64 {
+    assert!(n <= 1023);
+    // Unfortunately we can't use f64::powi in const fn yet
+    // This is a workaround that creates the bit pattern directly
+    let exp = (n as u64 + 1023) << 52;
+    f64::from_bits(exp)
+}

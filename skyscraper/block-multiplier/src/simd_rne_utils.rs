@@ -1,5 +1,5 @@
 use {
-    crate::constants_wasm::{C1, C2, C3, MASK51, U51_P},
+    crate::constants_rne::{C1, C2, C3, MASK51, U51_P},
     core::{
         array,
         ops::BitAnd,
@@ -210,10 +210,10 @@ mod tests {
     use std::simd::Simd;
 
     fn u255_to_u256(u: [u64; 5]) -> [u64; 4] {
-        crate::simd_utils_wasm::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+        crate::simd_rne_utils::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
     }
     fn u256_to_u255(u: [u64; 4]) -> [u64; 5] {
-        crate::simd_utils_wasm::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+        crate::simd_rne_utils::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
     }
 
     #[kani::proof]

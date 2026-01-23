@@ -37,7 +37,7 @@ mod mul {
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| {
-                block_multiplier::portable_simd_wasm::simd_mul(a, b, c, d)
+                block_multiplier::portable_simd_rne::simd_mul(a, b, c, d)
             });
     }
 
@@ -51,10 +51,14 @@ mod mul {
 
         #[divan::bench]
         fn simd_mul_52b(bencher: Bencher) {
-            bencher
-                //.counter(ItemsCount::new(2usize))
-                .with_inputs(|| rng().random())
-                .bench_local_values(|(a, b, c, d)| block_multiplier::simd_mul(a, b, c, d));
+            let bencher = bencher.with_inputs(|| rng().random());
+            unsafe {
+                with_rounding_mode((), |mode_guard, _| {
+                    bencher.bench_local_values(|(a, b, c, d)| {
+                        block_multiplier::simd_mul(mode_guard, a, b, c, d)
+                    });
+                });
+            }
         }
 
         #[divan::bench]
@@ -119,7 +123,7 @@ mod mul {
 
 // #[divan::bench_group]
 mod sqr {
-    use {super::*, ark_ff::Field, block_multiplier::portable_simd_wasm};
+    use {super::*, ark_ff::Field, block_multiplier::portable_simd_rne};
 
     #[divan::bench]
     fn scalar_sqr(bencher: Bencher) {
@@ -134,7 +138,7 @@ mod sqr {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|(a, b)| portable_simd_wasm::simd_sqr(a, b));
+            .bench_local_values(|(a, b)| portable_simd_rne::simd_sqr(a, b));
     }
 
     #[divan::bench]
@@ -226,10 +230,13 @@ mod sqr {
 
         #[divan::bench]
         fn simd_sqr(bencher: Bencher) {
-            bencher
-                //.counter(ItemsCount::new(2usize))
-                .with_inputs(|| rng().random())
-                .bench_local_values(|(a, b)| block_multiplier::simd_sqr(a, b));
+            let bencher = bencher.with_inputs(|| rng().random());
+            unsafe {
+                with_rounding_mode((), |mode_guard, _| {
+                    bencher
+                        .bench_local_values(|(a, b)| block_multiplier::simd_sqr(mode_guard, a, b));
+                });
+            }
         }
 
         #[divan::bench]

@@ -1,7 +1,9 @@
+// Montgomery multiplier
+// Requires RTZ
 use {
     crate::{
-        constants::*,
-        simd_utils::{
+        constants_rtz::*,
+        simd_rtz_utils::{
             addv_simd, make_initial, reduce_ct_simd, smult_noinit_simd, transpose_simd_to_u256,
             transpose_u256_to_simd, u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
@@ -11,11 +13,16 @@ use {
         ops::BitAnd,
         simd::{num::SimdFloat, Simd},
     },
+    fp_rounding::{RoundingGuard, Zero},
     std::simd::StdFloat,
 };
 
 #[inline]
-pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
+pub fn simd_sqr(
+    _rtz: &RoundingGuard<Zero>,
+    v0_a: [u64; 4],
+    v1_a: [u64; 4],
+) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u260_shl2_simd(transpose_u256_to_simd([v0_a, v1_a]));
 
     let mut t: [Simd<u64, 2>; 10] = [Simd::splat(0); 10];
@@ -195,6 +202,7 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
 
 #[inline]
 pub fn simd_mul(
+    _rtz: &RoundingGuard<Zero>,
     v0_a: [u64; 4],
     v0_b: [u64; 4],
     v1_a: [u64; 4],
@@ -399,7 +407,7 @@ mod tests {
             unsafe {
                 with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
 
-            let (ab, bc) = simd_mul(a, b, b,c);
+            let (ab, bc) = simd_mul(&rtz, a, b, b,c);
             let ab_ref = ark_ff_reference(a, b);
             let bc_ref = ark_ff_reference(b, c);
             let ab = Fr::new(BigInt(ab));
