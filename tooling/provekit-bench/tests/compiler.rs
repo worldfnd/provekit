@@ -41,12 +41,13 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
+    let r1cs = prover.r1cs.clone();
 
     let proof = prover
         .prove(&witness_file_path)
         .expect("While proving Noir program statement");
 
-    verifier.verify(&proof).expect("Verifying proof");
+    verifier.verify(&proof, &r1cs).expect("Verifying proof");
 }
 
 pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> {
