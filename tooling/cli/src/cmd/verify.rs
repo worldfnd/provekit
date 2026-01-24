@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, Verifier},
+    provekit_common::{file::read, Prover, Verifier},
     provekit_verifier::Verify,
     std::path::PathBuf,
     tracing::instrument,
@@ -15,6 +15,10 @@ pub struct Args {
     /// path to the compiled Noir program
     #[argh(positional)]
     verifier_path: PathBuf,
+
+    /// path to the prover file (.pkp)
+    #[argh(positional)]
+    prover_path: PathBuf,
 
     /// path to the proof file
     #[argh(positional)]
@@ -31,9 +35,12 @@ impl Command for Args {
         // Read the proof
         let proof = read(&self.proof_path).context("while reading proof")?;
 
+        // Read the prover and R1CS (similar to generate-gnark-inputs)
+        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
+
         // Verify the proof
         verifier
-            .verify(&proof)
+            .verify(&proof, &prover.r1cs)
             .context("While verifying Noir proof")?;
 
         Ok(())

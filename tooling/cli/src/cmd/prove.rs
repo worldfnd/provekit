@@ -48,8 +48,8 @@ impl Command for Args {
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        // // Read the input toml
-        // let input_map = scheme.read_witness(&self.input_path)?;
+        #[cfg(test)]
+        let r1cs = prover.r1cs.clone();
 
         // Generate the proof
         let proof = prover
@@ -62,7 +62,7 @@ impl Command for Args {
             let mut verifier: Verifier =
                 read(&self.verifier_path).context("while reading Provekit Verifier")?;
             verifier
-                .verify(&proof)
+                .verify(&proof, &r1cs)
                 .context("While verifying Noir proof")?;
         }
 
