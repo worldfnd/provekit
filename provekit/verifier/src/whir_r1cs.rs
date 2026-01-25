@@ -200,6 +200,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         // Linear deferred
         if self.num_challenges > 0 {
+            assert!(
+                deferred_evals.len() == offset + 6,
+                "Deferred evals length does not match"
+            );
+
             let matrix_extension_evals = evaluate_r1cs_matrix_extension_batch(
                 r1cs,
                 &data_from_sumcheck_verifier.alpha,
@@ -214,6 +219,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 );
             }
         } else {
+            assert!(
+                deferred_evals.len() == offset + 3,
+                "Deferred evals length does not match"
+            );
+
             let matrix_extension_evals = evaluate_r1cs_matrix_extension(
                 r1cs,
                 &data_from_sumcheck_verifier.alpha,
@@ -230,11 +240,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         }
 
         // Geometric deferred
-        if !public_inputs.is_empty() {
+        if !public_inputs.is_empty() && deferred_evals.len() > 0 {
             let public_weight_eval = compute_public_weight_evaluation(
                 public_inputs,
                 &whir_folding_randomness,
-                self.whir_witness.mv_parameters.num_variables,
                 public_weights_challenge,
             );
             ensure!(
@@ -441,31 +450,7 @@ fn evaluate_r1cs_matrix_extension_batch(
 fn compute_public_weight_evaluation(
     public_inputs: &PublicInputs,
     folding_randomness: &[FieldElement],
-    m: usize,
     x: FieldElement,
 ) -> FieldElement {
-    let domain_size = 1 << m;
-    let mut public_weights = vec![FieldElement::zero(); domain_size];
-
-    let mut current_pow = FieldElement::one();
-    for (idx, _) in public_inputs.0.iter().enumerate() {
-        public_weights[idx] = current_pow;
-        current_pow = current_pow * x;
-    }
-
-    let mle = geometric_till(x, public_inputs.len(), folding_randomness);
-
-    #[cfg(test)]
-    {
-        let eq_polys =
-            calculate_evaluations_over_boolean_hypercube_for_eq(folding_randomness.to_vec());
-        let sum: FieldElement = public_weights
-            .iter()
-            .zip(eq_polys.iter())
-            .map(|(w, eq)| *w * eq)
-            .sum();
-        assert!(sum == mle, "Sum does not match mle");
-    }
-
-    mle
+    geometric_till(x, public_inputs.len(), folding_randomness)
 }
