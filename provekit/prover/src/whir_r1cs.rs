@@ -705,9 +705,5 @@ fn get_public_weights(
         current_pow = current_pow * x;
     }
 
-    Weights::geometric(
-        x,
-        public_inputs.0.len(),
-        EvaluationsList::new(public_weights),
-    )
+    Weights::geometric(x, public_inputs.len(), EvaluationsList::new(public_weights))
 }

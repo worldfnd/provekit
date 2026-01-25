@@ -14,10 +14,11 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &NoirProof) -> Result<()> {
-        self.whir_for_witness
-            .take()
-            .unwrap()
-            .verify(&proof.whir_r1cs_proof, &proof.public_inputs)?;
+        self.whir_for_witness.take().unwrap().verify(
+            &proof.whir_r1cs_proof,
+            &proof.public_inputs,
+            &self.r1cs,
+        )?;
 
         Ok(())
     }

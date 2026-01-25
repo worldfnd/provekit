@@ -3,8 +3,13 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         skyscraper::SkyscraperSponge,
-        utils::sumcheck::{calculate_eq, eval_cubic_poly},
-        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+        utils::{
+            sumcheck::{
+                calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
+            },
+            zk_utils::geometric_till,
+        },
+        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
@@ -29,13 +34,23 @@ pub struct DataFromSumcheckVerifier {
 }
 
 pub trait WhirR1CSVerifier {
-    fn verify(&self, proof: &WhirR1CSProof, public_inputs: &PublicInputs) -> Result<()>;
+    fn verify(
+        &self,
+        proof: &WhirR1CSProof,
+        public_inputs: &PublicInputs,
+        r1cs: &R1CS,
+    ) -> Result<()>;
 }
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
     #[allow(unused)]
-    fn verify(&self, proof: &WhirR1CSProof, public_inputs: &PublicInputs) -> Result<()> {
+    fn verify(
+        &self,
+        proof: &WhirR1CSProof,
+        public_inputs: &PublicInputs,
+        r1cs: &R1CS,
+    ) -> Result<()> {
         let io = self.create_io_pattern();
         let mut arthur = io.to_verifier_state(&proof.transcript);
 
@@ -70,88 +85,104 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
 
         // Read hints and verify WHIR proof
-        let (az_at_alpha, bz_at_alpha, cz_at_alpha) =
-            if let Some(parsed_commitment_2) = parsed_commitment_2 {
-                // Dual commitment mode
-                let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
-                let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+        let (
+            az_at_alpha,
+            bz_at_alpha,
+            cz_at_alpha,
+            whir_folding_randomness,
+            deferred_evals,
+            public_weights_challenge,
+        ) = if let Some(parsed_commitment_2) = parsed_commitment_2 {
+            // Dual commitment mode
+            let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+            let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
 
-                let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
-                    (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
-                let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
-                    (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
+            let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
+                (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
+            let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
+                (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
 
-                let mut statement_1 = prepare_statement_for_witness_verifier::<3>(
+            let mut statement_1 = prepare_statement_for_witness_verifier::<3>(
+                self.m,
+                &parsed_commitment_1,
+                &whir_sums_1,
+            );
+            let statement_2 = prepare_statement_for_witness_verifier::<3>(
+                self.m,
+                &parsed_commitment_2,
+                &whir_sums_2,
+            );
+
+            let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
+                .hint()
+                .context("failed to read WHIR public weights query answer")?;
+
+            if !public_inputs.is_empty() {
+                update_statement_for_witness_verifier(
                     self.m,
+                    &mut statement_1,
                     &parsed_commitment_1,
-                    &whir_sums_1,
+                    whir_public_weights_query_answer,
                 );
-                let statement_2 = prepare_statement_for_witness_verifier::<3>(
+            }
+
+            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_batch_verifier(
+                &mut arthur,
+                &self.whir_witness,
+                &[parsed_commitment_1, parsed_commitment_2],
+                &[statement_1, statement_2],
+            )
+            .context("while verifying WHIR batch proof")?;
+
+            (
+                whir_sums_1.0[0] + whir_sums_2.0[0],
+                whir_sums_1.0[1] + whir_sums_2.0[1],
+                whir_sums_1.0[2] + whir_sums_2.0[2],
+                whir_folding_randomness.0.to_vec(),
+                deferred_evals,
+                public_weights_vector_random_buf[0],
+            )
+        } else {
+            // Single commitment mode
+            let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+            let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
+                (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
+
+            let mut statement = prepare_statement_for_witness_verifier::<3>(
+                self.m,
+                &parsed_commitment_1,
+                &whir_sums,
+            );
+
+            let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
+                .hint()
+                .context("failed to read WHIR public weights query answer")?;
+            if !public_inputs.is_empty() {
+                update_statement_for_witness_verifier(
                     self.m,
-                    &parsed_commitment_2,
-                    &whir_sums_2,
-                );
-
-                let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
-                    .hint()
-                    .context("failed to read WHIR public weights query answer")?;
-
-                if !public_inputs.is_empty() {
-                    update_statement_for_witness_verifier(
-                        self.m,
-                        &mut statement_1,
-                        &parsed_commitment_1,
-                        whir_public_weights_query_answer,
-                    );
-                }
-
-                run_whir_pcs_batch_verifier(
-                    &mut arthur,
-                    &self.whir_witness,
-                    &[parsed_commitment_1, parsed_commitment_2],
-                    &[statement_1, statement_2],
-                )
-                .context("while verifying WHIR batch proof")?;
-
-                (
-                    whir_sums_1.0[0] + whir_sums_2.0[0],
-                    whir_sums_1.0[1] + whir_sums_2.0[1],
-                    whir_sums_1.0[2] + whir_sums_2.0[2],
-                )
-            } else {
-                // Single commitment mode
-                let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
-                let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
-                    (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
-
-                let mut statement = prepare_statement_for_witness_verifier::<3>(
-                    self.m,
+                    &mut statement,
                     &parsed_commitment_1,
-                    &whir_sums,
+                    whir_public_weights_query_answer,
                 );
+            }
 
-                let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
-                    .hint()
-                    .context("failed to read WHIR public weights query answer")?;
-                if !public_inputs.is_empty() {
-                    update_statement_for_witness_verifier(
-                        self.m,
-                        &mut statement,
-                        &parsed_commitment_1,
-                        whir_public_weights_query_answer,
-                    );
-                }
+            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
+                &mut arthur,
+                &parsed_commitment_1,
+                &self.whir_witness,
+                &statement,
+            )
+            .context("while verifying WHIR proof")?;
 
-                run_whir_pcs_verifier(
-                    &mut arthur,
-                    &parsed_commitment_1,
-                    &self.whir_witness,
-                    &statement,
-                )
-                .context("while verifying WHIR proof")?;
-
-                (whir_sums.0[0], whir_sums.0[1], whir_sums.0[2])
-            };
+            (
+                whir_sums.0[0],
+                whir_sums.0[1],
+                whir_sums.0[2],
+                whir_folding_randomness.0.to_vec(),
+                deferred_evals,
+                public_weights_vector_random_buf[0],
+            )
+        };
 
         // Check the Spartan sumcheck relation
         ensure!(
@@ -163,6 +194,63 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     ),
             "last sumcheck value does not match"
         );
+
+        // Check deferred linear and geometric constraints
+        let offset = if public_inputs.is_empty() { 0 } else { 1 };
+
+        // Linear deferred
+        if self.num_challenges > 0 {
+            assert!(
+                deferred_evals.len() == offset + 6,
+                "Deferred evals length does not match"
+            );
+
+            let matrix_extension_evals = evaluate_r1cs_matrix_extension_batch(
+                r1cs,
+                &data_from_sumcheck_verifier.alpha,
+                &whir_folding_randomness,
+                self.w1_size,
+            );
+            for i in 0..6 {
+                ensure!(
+                    matrix_extension_evals[i] == deferred_evals[offset + i],
+                    "Matrix extension evaluation {} does not match deferred value",
+                    i
+                );
+            }
+        } else {
+            assert!(
+                deferred_evals.len() == offset + 3,
+                "Deferred evals length does not match"
+            );
+
+            let matrix_extension_evals = evaluate_r1cs_matrix_extension(
+                r1cs,
+                &data_from_sumcheck_verifier.alpha,
+                &whir_folding_randomness,
+            );
+
+            for i in 0..3 {
+                ensure!(
+                    matrix_extension_evals[i] == deferred_evals[offset + i],
+                    "Matrix extension evaluation {} does not match deferred value",
+                    i
+                );
+            }
+        }
+
+        // Geometric deferred
+        if !public_inputs.is_empty() && deferred_evals.len() > 0 {
+            let public_weight_eval = compute_public_weight_evaluation(
+                public_inputs,
+                &whir_folding_randomness,
+                public_weights_challenge,
+            );
+            ensure!(
+                public_weight_eval == deferred_evals[0],
+                "Public weight evaluation does not match deferred value"
+            );
+        }
 
         Ok(())
     }
@@ -291,4 +379,78 @@ pub fn run_whir_pcs_batch_verifier(
         .verify_batch(arthur, parsed_commitments, statements)
         .context("while verifying batch WHIR")?;
     Ok((folding_randomness, deferred))
+}
+
+fn evaluate_r1cs_matrix_extension(
+    r1cs: &R1CS,
+    row_rand: &[FieldElement],
+    col_rand: &[FieldElement],
+) -> [FieldElement; 3] {
+    let row_eval = calculate_evaluations_over_boolean_hypercube_for_eq(row_rand.to_vec());
+    let col_eval = calculate_evaluations_over_boolean_hypercube_for_eq(col_rand.to_vec());
+
+    let mut ans_a = FieldElement::zero();
+    let mut ans_b = FieldElement::zero();
+    let mut ans_c = FieldElement::zero();
+
+    for ((row, col), val) in r1cs.a().iter() {
+        ans_a += val * row_eval[row] * col_eval[col];
+    }
+
+    for ((row, col), val) in r1cs.b().iter() {
+        ans_b += val * row_eval[row] * col_eval[col];
+    }
+
+    for ((row, col), val) in r1cs.c().iter() {
+        ans_c += val * row_eval[row] * col_eval[col];
+    }
+
+    [ans_a, ans_b, ans_c]
+}
+
+fn evaluate_r1cs_matrix_extension_batch(
+    r1cs: &R1CS,
+    row_rand: &[FieldElement],
+    col_rand: &[FieldElement],
+    w1_size: usize,
+) -> [FieldElement; 6] {
+    let row_eval = calculate_evaluations_over_boolean_hypercube_for_eq(row_rand.to_vec());
+    let col_eval = calculate_evaluations_over_boolean_hypercube_for_eq(col_rand.to_vec());
+
+    let mut ans = [FieldElement::zero(); 6];
+
+    // Evaluate matrices - split by column based on w1_size
+    for ((row, col), val) in r1cs.a().iter() {
+        if col < w1_size {
+            ans[0] += val * row_eval[row] * col_eval[col];
+        } else {
+            ans[3] += val * row_eval[row] * col_eval[col - w1_size];
+        }
+    }
+
+    for ((row, col), val) in r1cs.b().iter() {
+        if col < w1_size {
+            ans[1] += val * row_eval[row] * col_eval[col];
+        } else {
+            ans[4] += val * row_eval[row] * col_eval[col - w1_size];
+        }
+    }
+
+    for ((row, col), val) in r1cs.c().iter() {
+        if col < w1_size {
+            ans[2] += val * row_eval[row] * col_eval[col];
+        } else {
+            ans[5] += val * row_eval[row] * col_eval[col - w1_size];
+        }
+    }
+
+    ans
+}
+
+fn compute_public_weight_evaluation(
+    public_inputs: &PublicInputs,
+    folding_randomness: &[FieldElement],
+    x: FieldElement,
+) -> FieldElement {
+    geometric_till(x, public_inputs.len(), folding_randomness)
 }
