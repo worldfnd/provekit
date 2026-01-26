@@ -95,12 +95,46 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     (v[0], v[1])
 }
 
+/// Move redundant carries from lower limbs to the higher limbs such that all
+/// limbs except the last one is 51 bits. The most significant limb can be
+/// larger than 51 bits as the input can be bigger 2^255-1.
 #[inline(always)]
-/// i64 signifies redundant carry form
-/// t initialise with right for multiplication test
-/// compare with school multiplication on 51 bits. This does not require having
-/// to move over carries
-fn multimul(t: &mut [Simd<i64, 2>; 10], v0_a: [Simd<u64, 2>; 5], v0_b: [Simd<u64, 2>; 5]) {
+fn redundant_carry<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
+    let mut borrow = Simd::splat(0);
+    let mut res = [Simd::splat(0); N];
+    for i in 0..t.len() - 1 {
+        let tmp = t[i] + borrow;
+        res[i] = (tmp.cast()).bitand(Simd::splat(MASK51));
+        borrow = tmp >> 51;
+    }
+
+    res[N - 1] = (t[N - 1] + borrow).cast();
+    res
+}
+
+#[inline(always)]
+/// Montgomery multiplier 
+pub fn simd_mul(
+    v0_a: [u64; 4],
+    v0_b: [u64; 4],
+    v1_a: [u64; 4],
+    v1_b: [u64; 4],
+) -> ([u64; 4], [u64; 4]) {
+    let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
+    let v0_b = u256_to_u255_simd(transpose_u256_to_simd([v0_b, v1_b]));
+
+    let mut t: [Simd<_, 2>; 10] = [Simd::splat(0); 10];
+    t[0] = Simd::splat(make_initial(1, 0));
+    t[9] = Simd::splat(make_initial(0, 6));
+    t[1] = Simd::splat(make_initial(2, 1));
+    t[8] = Simd::splat(make_initial(6, 7));
+    t[2] = Simd::splat(make_initial(3, 2));
+    t[7] = Simd::splat(make_initial(7, 8));
+    t[3] = Simd::splat(make_initial(4, 3));
+    t[6] = Simd::splat(make_initial(8, 9));
+    t[4] = Simd::splat(make_initial(10, 4));
+    t[5] = Simd::splat(make_initial(9, 10));
+
     let avi: Simd<f64, 2> = i2f(v0_a[0]);
     let bvj: Simd<f64, 2> = i2f(v0_b[0]);
     let p_hi = fma(avi, bvj, Simd::splat(C1));
@@ -235,46 +269,6 @@ fn multimul(t: &mut [Simd<i64, 2>; 10], v0_a: [Simd<u64, 2>; 5], v0_b: [Simd<u64
     let p_lo = fma(avi, bvj, Simd::splat(C2) - p_hi);
     t[4 + 4 + 1] += p_hi.to_bits().cast();
     t[4 + 4] += p_lo.to_bits().cast();
-}
-
-/// Deal with the redundant carries
-fn redundant_carry<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
-    let mut borrow = Simd::splat(0);
-    let mut res = [Simd::splat(0); N];
-    for i in 0..t.len() - 1 {
-        let tmp = t[i] + borrow;
-        res[i] = (tmp.cast()).bitand(Simd::splat(MASK51));
-        borrow = tmp >> 51;
-    }
-    // Last limb should not be truncated to 51 bits. As the input value can be
-    // bigger than 2^255 bits. In that sense the upper limb has no redundant carry.
-    res[N - 1] = (t[N - 1] + borrow).cast();
-    res
-}
-
-#[inline(always)]
-pub fn simd_mul(
-    v0_a: [u64; 4],
-    v0_b: [u64; 4],
-    v1_a: [u64; 4],
-    v1_b: [u64; 4],
-) -> ([u64; 4], [u64; 4]) {
-    let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
-    let v0_b = u256_to_u255_simd(transpose_u256_to_simd([v0_b, v1_b]));
-
-    let mut t: [Simd<_, 2>; 10] = [Simd::splat(0); 10];
-    t[0] = Simd::splat(make_initial(1, 0));
-    t[9] = Simd::splat(make_initial(0, 6));
-    t[1] = Simd::splat(make_initial(2, 1));
-    t[8] = Simd::splat(make_initial(6, 7));
-    t[2] = Simd::splat(make_initial(3, 2));
-    t[7] = Simd::splat(make_initial(7, 8));
-    t[3] = Simd::splat(make_initial(4, 3));
-    t[6] = Simd::splat(make_initial(8, 9));
-    t[4] = Simd::splat(make_initial(10, 4));
-    t[5] = Simd::splat(make_initial(9, 10));
-
-    multimul(&mut t, v0_a, v0_b);
 
     // sign extend redundant carries
     t[1] += t[0] >> 51;
@@ -337,18 +331,21 @@ mod tests {
         proptest!(|(
                 a in limbs5_51(),
                 b in limbs5_51(),
-                // c in limbs5_51(),
+                c in limbs5_51(),
             )| {
                 let a: [Simd<u64,1>;_] = a.map(Simd::splat);
                 let b: [Simd<u64,1>;_] = b.map(Simd::splat);
+                let c: [Simd<u64,1>;_] = c.map(Simd::splat);
                 let a = u255_to_u256_simd(a).map(|x|x[0]);
                 let b = u255_to_u256_simd(b).map(|x|x[0]);
-                let (ab, _bc) = simd_mul(a, b,a,b);
+                let c = u255_to_u256_simd(c).map(|x|x[0]);
+                let (ab, bc) = simd_mul(a, b,b,c);
                 let ab_ref = ark_ff_reference(a, b);
-                // let bc_ref = ark_ff_reference(b, c);
+                let bc_ref = ark_ff_reference(b, c);
                 let ab = Fr::new(BigInt(ab));
-                // let bc = Fr::new(BigInt(bc));
+                let bc = Fr::new(BigInt(bc));
                 prop_assert_eq!(ab_ref, ab, "mismatch: l = {:X}, b = {:X}", ab_ref.into_bigint(), ab.into_bigint());
+                prop_assert_eq!(bc_ref, bc, "mismatch: l = {:X}, b = {:X}", bc_ref.into_bigint(), bc.into_bigint());
         })
     }
 
@@ -357,7 +354,6 @@ mod tests {
         proptest!(|(
                 a in limbs5_51(),
                 b in limbs5_51(),
-                // c in limbs5_51(),
             )| {
                 let a: [Simd<u64,1>;_] = a.map(Simd::splat);
                 let b: [Simd<u64,1>;_] = b.map(Simd::splat);
@@ -370,12 +366,7 @@ mod tests {
     }
 
     fn limb51() -> impl Strategy<Value = u64> {
-        // Either of these is fine:
-        // 1) Range
         0u64..(1u64 << 51)
-
-        // 2) Or mask (sometimes faster)
-        // any::<u64>().prop_map(|x| x & LIMB_MASK)
     }
 
     fn limbs5_51() -> impl Strategy<Value = [u64; 5]> {

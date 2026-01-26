@@ -15,13 +15,16 @@ use {
 // -- [SIMD UTILS]
 // ---------------------------------------------------------------------------------
 #[inline(always)]
-/// On WASSM there is no single specialised instruction to cast an integer to a
+/// On WASM there is no single specialised instruction to cast an integer to a
 /// float. Since we are only interested in 52 bits, we can emulate it with fewer
 /// instructions.
 ///
 /// Warning: due to Rust's limitations this can not be a const function.
 /// Therefore check your dependency path as this will not be optimised out.
-pub fn i2f(a: Simd<u64, 2>) -> Simd<f64, 2> {
+pub fn i2f<const N: usize>(a: Simd<u64, N>) -> Simd<f64, N>
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     // This function has not target gating as we want to verify this function with
     // kani and proptest on a different platform than wasm
 
@@ -30,8 +33,8 @@ pub fn i2f(a: Simd<u64, 2>) -> Simd<f64, 2> {
     // to convert a to it's floating point number we subtract this again. This way
     // we only pay for the conversion of the lower bits and not the full 64 bits.
     let exponent = Simd::splat(0x433 << 52);
-    let a: Simd<f64, _> = Simd::<f64, 2>::from_bits(a | exponent);
-    let b: Simd<f64, _> = Simd::<f64, 2>::from_bits(exponent);
+    let a: Simd<f64, _> = Simd::<f64, N>::from_bits(a | exponent);
+    let b: Simd<f64, _> = Simd::<f64, N>::from_bits(exponent);
     a - b
 }
 
@@ -210,10 +213,10 @@ mod tests {
     use std::simd::Simd;
 
     fn u255_to_u256(u: [u64; 5]) -> [u64; 4] {
-        crate::simd_rne_utils::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+        crate::rne::simd_utils::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
     }
     fn u256_to_u255(u: [u64; 4]) -> [u64; 5] {
-        crate::simd_rne_utils::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
+        crate::rne::simd_utils::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
     }
 
     #[kani::proof]

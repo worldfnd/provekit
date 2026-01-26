@@ -1,5 +1,3 @@
-// Montgomery multiplier
-// Requires RTZ
 use {
     crate::rtz::{
         constants::*,
