@@ -212,14 +212,10 @@ pub fn addv_simd<const N: usize>(
 
 #[cfg(kani)]
 mod tests {
-    use std::simd::Simd;
-
-    fn u255_to_u256(u: [u64; 5]) -> [u64; 4] {
-        crate::rne::simd_utils::u255_to_u256_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
-    }
-    fn u256_to_u255(u: [u64; 4]) -> [u64; 5] {
-        crate::rne::simd_utils::u256_to_u255_simd::<1>(u.map(Simd::splat)).map(|v| v[0])
-    }
+    use {
+        crate::rne::simd_utils::{i2f, u255_to_u256_simd, u256_to_u255_simd},
+        std::simd::Simd,
+    };
 
     #[kani::proof]
     fn u256_to_u255_kani_roundtrip() {
@@ -229,6 +225,19 @@ mod tests {
             kani::any(),
             kani::any::<u64>() & 0x7fffffffffffffff,
         ];
-        assert_eq!(u, u255_to_u256(u256_to_u255(u)))
+        let u255 = u256_to_u255_simd::<1>(u.map(Simd::splat));
+        let roundtrip = u255_to_u256_simd::<1>(u255).map(|v| v[0]);
+        assert_eq!(u, roundtrip)
+    }
+
+    /// Verify that i2f correctly converts integers in the valid range [0, 2^52).
+    #[kani::proof]
+    fn i2f_kani_correctness() {
+        let val: u64 = kani::any();
+        kani::assume(val < (1u64 << 52));
+
+        let result = i2f(Simd::from_array([val]));
+
+        assert_eq!(result[0], val as f64);
     }
 }
