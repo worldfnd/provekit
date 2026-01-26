@@ -1,7 +1,11 @@
+//! Constants for RNE Montgomery multiplication over the BN254 scalar field.
+
 use crate::pow_2;
 
+/// Montgomery reduction constant: `-p⁻¹ mod 2⁵¹`
 pub const U51_NP0: u64 = 0x1f593efffffff;
 
+/// The BN254 scalar field prime in 51-bit limb representation.
 pub const U51_P: [u64; 5] = [
     0x1f593f0000001,
     0x10f372e12287c,
@@ -10,8 +14,10 @@ pub const U51_P: [u64; 5] = [
     0x30644e72e131a,
 ];
 
+/// Bit mask for 51-bit limbs.
 pub const MASK51: u64 = 2_u64.pow(51) - 1;
 
+/// Reduction constants: `RHO_i = 2^(51*i) * 2^255 mod p` in 51-bit limbs.
 pub const RHO_1: [u64; 5] = [
     0x05cc89dc987a4,
     0x64e24f262c77a,

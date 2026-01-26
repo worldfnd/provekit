@@ -1,3 +1,5 @@
+//! SIMD utilities for RNE Montgomery multiplication.
+
 use {
     crate::rne::constants::{C1, C2, C3, MASK51, U51_P},
     core::{
@@ -11,9 +13,6 @@ use {
     },
     std::simd::{LaneCount, SupportedLaneCount},
 };
-
-// -- [SIMD UTILS]
-// ---------------------------------------------------------------------------------
 #[inline(always)]
 /// On WASM there is no single specialised instruction to cast an integer to a
 /// float. Since we are only interested in 52 bits, we can emulate it with fewer
@@ -25,7 +24,7 @@ pub fn i2f<const N: usize>(a: Simd<u64, N>) -> Simd<f64, N>
 where
     LaneCount<N>: SupportedLaneCount,
 {
-    // This function has not target gating as we want to verify this function with
+    // This function has no target gating as we want to verify this function with
     // kani and proptest on a different platform than wasm
 
     // By adding 2^52 represented as float (0x1p52) -> 0x433 << 52, we align the
@@ -38,6 +37,7 @@ where
     a - b
 }
 
+/// Fused multiply-add: `a * b + c`.
 #[inline(always)]
 pub fn fma(a: Simd<f64, 2>, b: Simd<f64, 2>, c: Simd<f64, 2>) -> Simd<f64, 2> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -53,6 +53,10 @@ pub fn fma(a: Simd<f64, 2>, b: Simd<f64, 2>, c: Simd<f64, 2>) -> Simd<f64, 2> {
     }
 }
 
+/// Computes bias compensation for accumulator limbs.
+///
+/// - `low_count`: number of p_lo contributions
+/// - `high_count`: number of p_hi contributions
 #[inline(always)]
 pub const fn make_initial(low_count: u64, high_count: u64) -> i64 {
     let val = high_count
@@ -61,9 +65,9 @@ pub const fn make_initial(low_count: u64, high_count: u64) -> i64 {
     -(val as i64)
 }
 
+/// Transpose two 4-limb values into 4 SIMD vectors.
 #[inline(always)]
 pub fn transpose_u256_to_simd(limbs: [[u64; 4]; 2]) -> [Simd<u64, 2>; 4] {
-    // This does not issue multiple ldp and zip which might be marginally faster.
     [
         Simd::from_array([limbs[0][0], limbs[1][0]]),
         Simd::from_array([limbs[0][1], limbs[1][1]]),
@@ -72,6 +76,7 @@ pub fn transpose_u256_to_simd(limbs: [[u64; 4]; 2]) -> [Simd<u64, 2>; 4] {
     ]
 }
 
+/// Transpose 4 SIMD vectors back to two 4-limb values.
 #[inline(always)]
 pub fn transpose_simd_to_u256(limbs: [Simd<u64, 2>; 4]) -> [[u64; 4]; 2] {
     let tmp0 = limbs[0].to_array();
@@ -83,16 +88,14 @@ pub fn transpose_simd_to_u256(limbs: [Simd<u64, 2>; 4]) -> [[u64; 4]; 2] {
     ]]
 }
 
+/// Convert 4×64-bit to 5×51-bit limb representation.
+/// Input must fit in 255 bits; no runtime checking.
 #[inline(always)]
-/// Safety: If the input is too large for the conversion the top bit will be
-/// discarded. In debug mode it will throw an error.
 pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64, N>; 5]
 where
     LaneCount<N>: SupportedLaneCount,
 {
     let [l0, l1, l2, l3] = limbs;
-    // Check whether the remainder of l3 fits in 51 bits -> does the input fit in
-    // 255 bits.
     [
         (l0) & Simd::splat(MASK51),
         ((l0 >> 51) | (l1 << 13)) & Simd::splat(MASK51),
@@ -102,6 +105,7 @@ where
     ]
 }
 
+/// Convert 5×51-bit back to 4×64-bit limb representation.
 #[inline(always)]
 pub fn u255_to_u256_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
 where
@@ -116,6 +120,7 @@ where
     ]
 }
 
+/// Convert 5×51-bit to 4×64-bit with simultaneous division by 2.
 #[inline(always)]
 pub fn u255_to_u256_shr_1_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
 where
@@ -130,9 +135,9 @@ where
     ]
 }
 
+/// Multiply SIMD scalar by 5-limb constant using FMA splitting.
+/// Returns 6-limb result in redundant signed form.
 #[inline(always)]
-// TODO check whether as f64 get's properly optimised away
-// won't be able to tell using just assembly view
 pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
     let mut t = [Simd::splat(0); 6];
     let s: Simd<f64, 2> = i2f(s);
@@ -165,13 +170,9 @@ pub fn smult_noinit_simd(s: Simd<u64, 2>, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
     t
 }
 
+/// Constant-time conditional add of p to prepare for final bit reduction by
+/// making the result even.
 #[inline(always)]
-/// Resolve the carry bits in the upper parts 13b and prepare result for final
-/// shift by adding p if the result is odd.
-/// The final division will be taken care off by the bit packing
-/// technically converts from a i64 representation to a u64 representation
-/// drops off the lowest limb which got zerood out, but it still contains
-/// carries as it is in redundant form
 pub fn reduce_ct_simd(a: [Simd<i64, 2>; 5]) -> [Simd<i64, 2>; 5] {
     let mut c = [Simd::splat(0); 5];
     let tmp = a[0];
@@ -196,6 +197,7 @@ pub fn reduce_ct_simd(a: [Simd<i64, 2>; 5]) -> [Simd<i64, 2>; 5] {
     c
 }
 
+/// Element-wise vector addition in redundant form.
 #[inline(always)]
 pub fn addv_simd<const N: usize>(
     va: [Simd<i64, 2>; N],

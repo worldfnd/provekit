@@ -1,3 +1,8 @@
+//! Portable SIMD Montgomery multiplication and squaring.
+//!
+//! Processes two independent field multiplications in parallel using 2-lane
+//! SIMD.
+
 use {
     crate::rne::{
         constants::*,
@@ -14,6 +19,8 @@ use {
     std::simd::num::{SimdInt, SimdUint},
 };
 
+/// Two parallel Montgomery squarings: `(v0², v1²)`.
+/// input must fit in 2^255-1; no runtime checking
 #[inline]
 pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
@@ -31,8 +38,8 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
         }
     }
 
-    // On most instruction sets SIMD shift left is more expensive than SIMD
-    // addition. While for scalar they tend to cost the same.
+    // Most shifting operations are more expensive addition thus for multiplying by
+    // 2 we use addition.
     for i in 1..=8 {
         t[i] += t[i];
     }
@@ -75,20 +82,19 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
 
-    // The upper bits of s will not affect the lower 51 bits of the product so we
-    // defer the and'ing.
+    // The upper bits of s will not affect the lower 51 bits of the product and
+    // therefore we only have to bitmask once.
     let m = (s[0].cast() * Simd::splat(U51_NP0)).bitand(Simd::splat(MASK51));
     let mp = smult_noinit_simd(m, U51_P);
 
     let mut addi = addv_simd(s, mp);
-    // Move over carries before dropping last limb
+    // Apply carries before dropping the last limb
     addi[1] += addi[0] >> 51;
     let addi = [addi[1], addi[2], addi[3], addi[4], addi[5]];
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
     let reduced = reduce_ct_simd(addi);
-    // Are the following two shifts fused?
     let reduced = redundant_carry(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
@@ -112,8 +118,9 @@ fn redundant_carry<const N: usize>(t: [Simd<i64, 2>; N]) -> [Simd<u64, 2>; N] {
     res
 }
 
+/// Two parallel Montgomery multiplications: `(v0_a*v0_b, v1_a*v1_b)`.
+/// input must fit in 2^255-1; no runtime checking
 #[inline(always)]
-/// Montgomery multiplier 
 pub fn simd_mul(
     v0_a: [u64; 4],
     v0_b: [u64; 4],
@@ -276,8 +283,6 @@ pub fn simd_mul(
     t[3] += t[2] >> 51;
     t[4] += t[3] >> 51;
 
-    // lower 51 bits will have the right value as the carry part is either 0 or a
-    // multiple of -2^51 -> which prevents carry bits to leak into the lower part.
     let r0 = smult_noinit_simd(t[0].cast().bitand(Simd::splat(MASK51)), RHO_4);
     let r1 = smult_noinit_simd(t[1].cast().bitand(Simd::splat(MASK51)), RHO_3);
     let r2 = smult_noinit_simd(t[2].cast().bitand(Simd::splat(MASK51)), RHO_2);
@@ -292,20 +297,16 @@ pub fn simd_mul(
         r0[5] + r1[5] + r2[5] + r3[5] + t[9],
     ];
 
-    // The upper bits of s will not affect the lower 51 bits of the product so we
-    // defer the and'ing.
     let m = (s[0].cast() * Simd::splat(U51_NP0)).bitand(Simd::splat(MASK51));
     let mp = smult_noinit_simd(m, U51_P);
 
     let mut addi = addv_simd(s, mp);
-    // Move over carries before dropping last limb
     addi[1] += addi[0] >> 51;
     let addi = [addi[1], addi[2], addi[3], addi[4], addi[5]];
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
     let reduced = reduce_ct_simd(addi);
-    // Are the following two shifts fused?
     let reduced = redundant_carry(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
