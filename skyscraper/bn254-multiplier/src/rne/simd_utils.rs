@@ -230,7 +230,8 @@ mod tests {
         assert_eq!(u, roundtrip)
     }
 
-    /// Verify that i2f correctly converts integers in the valid range [0, 2^52).
+    /// Verify that i2f correctly converts integers in the valid range [0,
+    /// 2^52).
     #[kani::proof]
     fn i2f_kani_correctness() {
         let val: u64 = kani::any();
