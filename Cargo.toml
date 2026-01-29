@@ -13,6 +13,7 @@ members = [
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-gnark",
+  "tooling/provekit-ffi",
   "tooling/verifier-server",
   "ntt",
 ]
@@ -88,6 +89,7 @@ ntt = { path = "ntt" }
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
+provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
