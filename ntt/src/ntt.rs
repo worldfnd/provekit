@@ -6,7 +6,10 @@ use {
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
-    std::{mem::size_of, num::NonZeroUsize},
+    std::{
+        mem::size_of,
+        sync::{LazyLock, RwLock},
+    },
 };
 
 // Taken from utils in noir-r1cs crate
@@ -66,8 +69,7 @@ impl NTTEngine {
         if new_half_order > old_half_order {
             let col_len = new_half_order / old_half_order;
             let unity = Fr::get_root_of_unity(*order as u64).unwrap();
-            // Remark: change this to reserve exact if tighter control on memory is needed
-            table.reserve(new_half_order - old_half_order);
+            table.reserve_exact(new_half_order - old_half_order);
             let (init, uninit) = table.split_at_spare_mut();
 
             // When viewing the roots as a matrix every row is a multiple of the first row
@@ -91,43 +93,35 @@ impl NTTEngine {
         }
     }
 
-    /// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
-    /// normal-to-reverse order.
-    ///
-    /// # Use Case
-    /// Use this function when you have multiple polynomials
-    /// stored in an interleaved fashion within a single vector, such as
-    /// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
-    /// `c`, and `d`. By operating on interleaved data, you can perform the
-    /// NTT on all polynomials in-place without needing to first transpose
-    /// the data.
-    ///
-    /// For a single polynomial use [`NTTEngine::ntt_nr`].
-    ///
-    /// # Arguments
-    /// * `values` - A mutable reference to an NTT container holding the
-    ///   coefficients to be transformed.
-    /// * `num_of_polys` - The number of interleaved polynomials in `values`.
-
-    // TODO(xrvdg) The NTT can work with any number of interleaving but requires the
-    // individual polynomials to be a power of two.
-    pub fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
-        &mut self,
-        values: &mut NTT<Fr, C>,
-        num_of_polys: Pow2<NonZeroUsize>,
-    ) {
-        self.extend_roots_table(Pow2::new(*values.order() / *num_of_polys).unwrap());
-        interleaved_ntt_nr(&self.0, values, num_of_polys);
+    // Returns the maximum order that it supports without extention
+    fn order(&self) -> Pow2<usize> {
+        Pow2(self.0.len() * 2)
     }
+}
 
-    pub fn ntt_nr<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.interleaved_ntt_nr(values, NonZeroUsize::new(1).and_then(Pow2::new).unwrap());
-    }
+static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEngine::new()));
 
-    pub fn intt_rn<C: NTTContainer<Fr>>(&mut self, values: &mut NTT<Fr, C>) {
-        self.extend_roots_table(values.order());
-        intt_rn(&self.0, values);
-    }
+/// Performs an in-place, interleaved Number Theoretic Transform (NTT) in
+/// normal-to-reverse bit order.
+///
+/// # Arguments
+/// * `values` - A mutable reference to an NTT container holding the
+///   coefficients to be transformed.
+pub fn ntt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
+    let roots = ENGINE.read().unwrap();
+    let new_root = if roots.order() >= values.order() {
+        roots
+    } else {
+        // Drop read lock
+        drop(roots);
+        let mut roots = ENGINE.write().unwrap();
+        roots.extend_roots_table(values.order());
+        // Drop write lock
+        drop(roots);
+        ENGINE.read().unwrap()
+    };
+
+    interleaved_ntt_nr(&new_root.0, values)
 }
 
 impl Default for NTTEngine {
@@ -136,39 +130,38 @@ impl Default for NTTEngine {
     }
 }
 
-fn ntt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
-    interleaved_ntt_nr(
-        reverse_ordered_roots,
-        values,
-        NonZeroUsize::new(1).and_then(Pow2::new).unwrap(),
-    );
-}
-
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
+///
+/// # Use Case
+///
+/// Use this function when you have multiple polynomials
+/// stored in an interleaved fashion within a single vector, such as
+/// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
+/// `c`, and `d`. By operating on interleaved data, you can perform the
+/// NTT on all polynomials in-place without needing to first transpose
+/// the data
 ///
 /// # Arguments
 /// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
-    reversed_ordered_roots: &[Fr],
-    values: &mut NTT<Fr, C>,
-    num_of_polys: Pow2<NonZeroUsize>,
-) {
+fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
     let n = values.len();
 
     // The order of the interleaved NTTs themselves
-    let order = n / *num_of_polys;
+    let order = values.order().0;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if order <= 1 {
         return;
     }
+
+    let number_of_polynomials = n / order;
 
     // Each unique twiddle factor within a stage is a group.
     let mut pairs_in_group = n / 2;
@@ -222,7 +215,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(
         .par_chunks_exact_mut(2 * pairs_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, num_of_polys);
+            dit_nr_cache(reversed_ordered_roots, k, group, number_of_polynomials);
         });
 }
 
@@ -230,7 +223,7 @@ fn dit_nr_cache(
     reverse_ordered_roots: &[Fr],
     segment: usize,
     input: &mut [Fr],
-    num_of_polys: Pow2<NonZeroUsize>,
+    num_of_polys: usize,
 ) {
     let n = input.len();
     debug_assert!(n.is_power_of_two());
@@ -238,7 +231,7 @@ fn dit_nr_cache(
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
-    let single_n = n / *num_of_polys;
+    let single_n = n / num_of_polys;
 
     while num_of_groups < single_n {
         let twiddle_base = segment * num_of_groups;
@@ -328,20 +321,20 @@ fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
 }
 
 /// Note: not specifically optimized
-fn intt_rn<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], input: &mut NTT<Fr, C>) {
+pub fn intt_rn<C: NTTContainer<Fr>>(input: &mut NTT<Fr, C>) {
     reverse_order(input);
-    intt_nr(reverse_ordered_roots, input);
+    intt_nr(input);
     reverse_order(input);
 }
 
 // Inverse NTT
-fn intt_nr<C: NTTContainer<Fr>>(reverse_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+fn intt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
     match *values.order() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
             values[1..].reverse();
-            ntt_nr(reverse_ordered_roots, values);
+            ntt_nr(values);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
@@ -358,7 +351,10 @@ mod tests {
     use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, reverse_order},
-        crate::{ntt::NTTEngine, Pow2, NTT},
+        crate::{
+            ntt::{intt_rn, NTTEngine},
+            ntt_nr, Pow2, NTT,
+        },
         ark_bn254::Fr,
         ark_ff::BigInt,
         proptest::collection,
@@ -386,12 +382,13 @@ mod tests {
     /// length.
     fn ntt<T: fmt::Debug>(
         sizes: impl Strategy<Value = usize>,
+        number_of_polynomials: usize,
         elem: impl Strategy<Value = T> + Clone,
     ) -> impl Strategy<Value = NTT<T, Vec<T>>> {
         sizes
             .prop_map(|k| 1 << k)
             .prop_flat_map(move |len| collection::vec(elem.clone(), len..=len))
-            .prop_map(|v| NTT::new(v).unwrap())
+            .prop_map(move |v| NTT::new(v, number_of_polynomials).unwrap())
     }
 
     /// Newtype wrapper to prevent proptest from writing the contents of an NTT
@@ -399,6 +396,7 @@ mod tests {
     ///
     /// If the contents does have to be viewed replace [`hidden_ntt`] with
     /// [`ntt`] as the test strategy
+    #[derive(Clone, PartialEq)]
     struct HiddenNTT<T>(NTT<T, Vec<T>>);
 
     impl<T> fmt::Debug for HiddenNTT<T> {
@@ -409,23 +407,23 @@ mod tests {
 
     fn hidden_ntt<T: fmt::Debug>(
         sizes: impl Strategy<Value = usize>,
+        number_of_polynomials: usize,
         elem: impl Strategy<Value = T> + Clone,
     ) -> impl Strategy<Value = HiddenNTT<T>> {
-        ntt(sizes, elem).prop_map(HiddenNTT)
+        ntt(sizes, number_of_polynomials, elem).prop_map(HiddenNTT)
     }
 
     proptest! {
         #[test]
-        fn round_trip_ntt(original in ntt(0_usize..15, fr()))
+        fn round_trip_ntt(original in hidden_ntt(0_usize..15, 1, fr()))
         {
             let mut s = original.clone();
 
-            let mut engine = NTTEngine::new();
             // Forward NTT
-            engine.ntt_nr(&mut s);
+            ntt_nr(&mut s.0);
 
             // Inverse NTT
-            engine.intt_rn(&mut s);
+            intt_rn(&mut s.0);
 
             prop_assert_eq!(original,s);
         }
@@ -483,7 +481,7 @@ mod tests {
                 (
                     Just(constr(len - column)),
                     Just(constr(column)),
-                    hidden_ntt(len..=len, fr()),
+                    hidden_ntt(len..=len, constr(column).get(), fr()),
                 )
             })
         })
@@ -494,17 +492,16 @@ mod tests {
         fn test_interleaved((rows, columns, ntt) in interleaving_strategy(0_usize..20)) {
             let mut ntt = ntt.0;
             let mut transposed = transpose(&ntt, rows.get(), columns.get());
-            let mut engine = NTTEngine::new();
 
             for chunk in transposed.chunks_exact_mut(rows.get()){
-                let mut fold = NTT::new(chunk).unwrap();
-                engine.ntt_nr(&mut fold);
+                let mut fold = NTT::new(chunk,1).unwrap();
+                ntt_nr(&mut fold);
             }
 
-        let double_transposed = NTT::new(transpose(&transposed, columns.get(), rows.get())).unwrap();
+        let double_transposed = transpose(&transposed, columns.get(), rows.get());
 
-        engine.interleaved_ntt_nr(&mut ntt, columns);
-        prop_assert!(double_transposed == ntt);
+        ntt_nr(&mut ntt);
+        prop_assert!(double_transposed == ntt.into_inner());
 
         }
     }
@@ -512,9 +509,8 @@ mod tests {
     #[test]
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
-        let mut v = NTT::new(vec![]).unwrap();
-        let mut engine = NTTEngine::new();
-        engine.ntt_nr(&mut v);
+        let mut v = NTT::new(vec![], 1).unwrap();
+        ntt_nr(&mut v);
     }
 
     // Compare direct generation of the roots vs. extending from a base set of roots
@@ -529,7 +525,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn round_trip_reverse_order(original in ntt(0_usize..10, any::<u32>())){
+        fn round_trip_reverse_order(original in ntt(0_usize..10, 1, any::<u32>())){
             let mut v = original.clone();
             reverse_order(&mut v);
             reverse_order(&mut v);
@@ -539,7 +535,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn reverse_order_noop(original in ntt(0_usize..=1, any::<u32>())) {
+        fn reverse_order_noop(original in ntt(0_usize..=1, 1, any::<u32>())) {
             let mut v = original.clone();
             reverse_order(&mut v);
             assert_eq!(original, v)

@@ -13,25 +13,41 @@ impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
 /// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
 /// not supported. Note: empty vectors (size 0) are also supported as a special
 /// case.
+///
+/// NTTContainer can be a single polynomial or multiple polynomials that are
+/// interleaved. interleaved polynomials; `[a0, b0, c0, d0, a1, b1, c1, d1,
+/// ...]` for four polynomials `a`, `b`, `c`, and `d`. By operating on
+/// interleaved data, you can perform the NTT on all polynomials in-place
+/// without needing to first transpose the data
 #[derive(Debug, Clone, PartialEq)]
 pub struct NTT<T, C: NTTContainer<T>> {
     container: C,
+    order:     Pow2<usize>,
     _phantom:  PhantomData<T>,
 }
 
 impl<T, C: NTTContainer<T>> NTT<T, C> {
-    pub fn new(vec: C) -> Option<Self> {
-        match Pow2::<usize>::new(vec.as_ref().len()) {
-            Some(_) => Some(Self {
-                container: vec,
-                _phantom:  PhantomData,
-            }),
-            _ => None,
+    pub fn new(vec: C, number_of_polynomials: usize) -> Option<Self> {
+        let n = vec.as_ref().len();
+        // All polynomials of the same size
+        if number_of_polynomials == 0 || n % number_of_polynomials != 0 {
+            return None;
         }
+
+        // The order of the individual polynomials needs to be a power of two
+        Pow2::new(n / number_of_polynomials).map(|order| Self {
+            container: vec,
+            order,
+            _phantom: PhantomData,
+        })
     }
 
     pub fn order(&self) -> Pow2<usize> {
-        Pow2(self.container.as_ref().len())
+        self.order
+    }
+
+    pub fn into_inner(self) -> C {
+        self.container
     }
 }
 
@@ -54,7 +70,7 @@ impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
 /// The allowed values depend on the type parameter:
 /// - `Pow2<usize>`: length is 0 or a power of two (`{0} ∪ {2ⁿ : n ≥ 0}`).
 /// - `Pow2<NonZero<usize>>`: length is a nonzero power of two (`{2ⁿ : n ≥ 0}`).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pow2<T = usize>(T);
 
 impl<T: InPowerOfTwoSet> Pow2<T> {

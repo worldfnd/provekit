@@ -61,8 +61,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let b: FieldElement = witness[*operand_idx_b].unwrap();
                 witness[*witness_idx] = Some(a * b);
             }
-            WitnessBuilder::Inverse(..) => {
-                unreachable!("Inverse should not be called")
+            WitnessBuilder::Inverse(..) | WitnessBuilder::LogUpInverse(..) => {
+                unreachable!(
+                    "Inverse/LogUpInverse should not be called - handled by batch inversion"
+                )
             }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,
@@ -164,6 +166,42 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             + witness[*rs_challenge_sqrd].unwrap() * output),
                 );
             }
+            WitnessBuilder::CombinedBinOpLookupDenominator(
+                witness_idx,
+                sz_challenge,
+                rs_challenge,
+                rs_sqrd,
+                rs_cubed,
+                lhs,
+                rhs,
+                and_output,
+                xor_output,
+            ) => {
+                let lhs = match lhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let rhs = match rhs {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let and_out = match and_output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                let xor_out = match xor_output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
+                };
+                // Encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
+                witness[*witness_idx] = Some(
+                    witness[*sz_challenge].unwrap()
+                        - (lhs
+                            + witness[*rs_challenge].unwrap() * rhs
+                            + witness[*rs_sqrd].unwrap() * and_out
+                            + witness[*rs_cubed].unwrap() * xor_out),
+                );
+            }
             WitnessBuilder::MultiplicitiesForBinOp(witness_idx, operands) => {
                 let mut multiplicities = vec![0u32; 2usize.pow(2 * BINOP_ATOMIC_BITS as u32)];
                 for (lhs, rhs) in operands {
@@ -219,6 +257,25 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*result_witness_idx] = Some(FieldElement::from(remainder));
                 witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
             }
+            WitnessBuilder::U32AdditionMulti(result_witness_idx, carry_witness_idx, inputs) => {
+                // Sum all inputs as u64 to handle overflow.
+                let mut sum: u64 = 0;
+                for input in inputs {
+                    let val = match input {
+                        ConstantOrR1CSWitness::Constant(c) => c.into_bigint().0[0],
+                        ConstantOrR1CSWitness::Witness(idx) => {
+                            witness[*idx].unwrap().into_bigint().0[0]
+                        }
+                    };
+                    assert!(val < (1u64 << 32), "input must be 32-bit");
+                    sum += val;
+                }
+                let two_pow_32 = 1u64 << 32;
+                let remainder = sum % two_pow_32;
+                let quotient = sum / two_pow_32;
+                witness[*result_witness_idx] = Some(FieldElement::from(remainder));
+                witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
+            }
             WitnessBuilder::And(result_witness_idx, lh, rh) => {
                 let lh_val = match lh {
                     ConstantOrR1CSWitness::Constant(c) => *c,
@@ -264,6 +321,22 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*result_witness_idx] = Some(FieldElement::new(
                     lh_val.into_bigint() ^ rh_val.into_bigint(),
                 ));
+            }
+            WitnessBuilder::BytePartition { lo, hi, x, k } => {
+                let x_val = witness[*x].unwrap().into_bigint().0[0];
+                debug_assert!(x_val < 256, "BytePartition input must be 8-bit");
+
+                let mask = (1u64 << *k) - 1;
+                let lo_val = x_val & mask;
+                let hi_val = x_val >> *k;
+
+                witness[*lo] = Some(FieldElement::from(lo_val));
+                witness[*hi] = Some(FieldElement::from(hi_val));
+            }
+            WitnessBuilder::CombinedTableEntryInverse(..) => {
+                unreachable!(
+                    "CombinedTableEntryInverse should not be called - handled by batch inversion"
+                )
             }
         }
     }

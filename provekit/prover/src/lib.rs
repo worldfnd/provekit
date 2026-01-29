@@ -1,14 +1,10 @@
 use {
-    crate::{
-        r1cs::R1CSSolver,
-        whir_r1cs::WhirR1CSProver,
-        witness::{fill_witness, witness_io_pattern::WitnessIOPattern},
-    },
+    crate::{r1cs::R1CSSolver, whir_r1cs::WhirR1CSProver},
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     provekit_common::{
-        skyscraper::SkyscraperSponge, utils::noir_to_native, witness::WitnessBuilder, FieldElement,
-        IOPattern, NoirElement, NoirProof, Prover,
+        skyscraper::SkyscraperSponge, utils::noir_to_native, FieldElement, IOPattern, NoirElement,
+        NoirProof, Prover,
     },
     spongefish::{codecs::arkworks_algebra::FieldToUnitSerialize, ProverState},
     tracing::instrument,
@@ -84,28 +80,66 @@ impl Prove for Prover {
 
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
 
-        // Solve R1CS instance
-        let witness_io = self.create_witness_io_pattern();
-        let mut witness_merlin = witness_io.to_prover_state();
-        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+        // Set up transcript
+        let io: IOPattern = self.whir_for_witness.create_io_pattern();
+        let mut merlin = io.to_prover_state();
+        drop(io);
 
-        let partial_witness = self.r1cs.solve_witness_vec(
-            self.layered_witness_builders,
-            acir_witness_idx_to_value_map,
-            &mut witness_merlin,
+        let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
+
+        // Solve w1 (or all witnesses if no challenges)
+        self.r1cs.solve_witness_vec(
+            &mut witness,
+            self.split_witness_builders.w1_layers,
+            &acir_witness_idx_to_value_map,
+            &mut merlin,
         );
-        let witness = fill_witness(partial_witness).context("while filling witness")?;
 
-        // Verify witness (redudant with solve)
+        let w1 = witness[..self.whir_for_witness.w1_size]
+            .iter()
+            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+            .collect::<Result<Vec<_>>>()?;
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, &self.r1cs, w1, true)
+            .context("While committing to w1")?;
+
+        // Build commitment list based on whether we have challenges
+        let commitments = if self.whir_for_witness.num_challenges > 0 {
+            // Solve w2
+            self.r1cs.solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w2_layers,
+                &acir_witness_idx_to_value_map,
+                &mut merlin,
+            );
+
+            let w2 = witness[self.whir_for_witness.w1_size..]
+                .iter()
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                .collect::<Result<Vec<_>>>()?;
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, &self.r1cs, w2, false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            vec![commitment_1]
+        };
+        drop(acir_witness_idx_to_value_map);
+
         #[cfg(test)]
         self.r1cs
-            .test_witness_satisfaction(&witness)
+            .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
             .context("While verifying R1CS instance")?;
+        drop(witness);
 
-        // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(self.r1cs, witness)
+            .prove(merlin, self.r1cs, commitments)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
@@ -113,52 +147,79 @@ impl Prove for Prover {
 
     #[instrument(skip_all)]
     fn prove_with_witness(
-        mut self,
+        self,
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
     ) -> Result<NoirProof> {
-        // Solve R1CS instance
-        let witness_io = self.create_witness_io_pattern();
-        let mut witness_merlin = witness_io.to_prover_state();
-        self.seed_witness_merlin(&mut witness_merlin, &acir_witness_idx_to_value_map)?;
+        // Set up transcript
+        let io: IOPattern = self.whir_for_witness.create_io_pattern();
+        let mut merlin = io.to_prover_state();
+        drop(io);
 
-        let partial_witness = self.r1cs.solve_witness_vec(
-            self.layered_witness_builders,
-            acir_witness_idx_to_value_map,
-            &mut witness_merlin,
+        let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
+
+        // Solve w1 (or all witnesses if no challenges)
+        self.r1cs.solve_witness_vec(
+            &mut witness,
+            self.split_witness_builders.w1_layers,
+            &acir_witness_idx_to_value_map,
+            &mut merlin,
         );
-        let witness = fill_witness(partial_witness).context("while filling witness")?;
+
+        let w1 = witness[..self.whir_for_witness.w1_size]
+            .iter()
+            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+            .collect::<Result<Vec<_>>>()?;
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, &self.r1cs, w1, true)
+            .context("While committing to w1")?;
+
+        // Build commitment list based on whether we have challenges
+        let commitments = if self.whir_for_witness.num_challenges > 0 {
+            // Solve w2
+            self.r1cs.solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w2_layers,
+                &acir_witness_idx_to_value_map,
+                &mut merlin,
+            );
+
+            let w2 = witness[self.whir_for_witness.w1_size..]
+                .iter()
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                .collect::<Result<Vec<_>>>()?;
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, &self.r1cs, w2, false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            vec![commitment_1]
+        };
+        drop(acir_witness_idx_to_value_map);
 
         // Verify witness (redundant with solve)
         #[cfg(test)]
         self.r1cs
-            .test_witness_satisfaction(&witness)
+            .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
             .context("While verifying R1CS instance")?;
+        drop(witness);
 
         // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(self.r1cs, witness)
+            .prove(merlin, self.r1cs, commitments)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof { whir_r1cs_proof })
     }
 
     fn create_witness_io_pattern(&self) -> IOPattern {
-        let circuit = &self.program.functions[0];
-        let public_idxs = circuit.public_inputs().indices();
-        let num_challenges = self
-            .layered_witness_builders
-            .layers
-            .iter()
-            .flat_map(|layer| &layer.witness_builders)
-            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
-            .count();
-
-        // Create witness IO pattern
-        IOPattern::new("📜")
-            .add_shape()
-            .add_public_inputs(public_idxs.len())
-            .add_logup_challenges(num_challenges)
+        // Use the same IO pattern as the WHIR R1CS scheme
+        self.whir_for_witness.create_io_pattern()
     }
 
     fn seed_witness_merlin(

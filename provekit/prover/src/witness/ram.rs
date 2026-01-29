@@ -12,9 +12,18 @@ pub(crate) trait SpiceWitnessesSolver {
 
 impl SpiceWitnessesSolver for SpiceWitnesses {
     fn solve(&self, witness: &mut [Option<FieldElement>]) {
-        let mut rv_final = witness
-            [self.initial_values_start..self.initial_values_start + self.memory_length]
-            .to_vec();
+        debug_assert_eq!(
+            self.initial_value_witnesses.len(),
+            self.memory_length,
+            "initial_value_witnesses length must equal memory_length"
+        );
+
+        // Read from actual witness indices (may be non-contiguous)
+        let mut rv_final: Vec<Option<FieldElement>> = self
+            .initial_value_witnesses
+            .iter()
+            .map(|&idx| witness[idx])
+            .collect();
         let mut rt_final = vec![0; self.memory_length];
         for (mem_op_index, mem_op) in self.memory_operations.iter().enumerate() {
             match mem_op {

@@ -8,7 +8,6 @@ use {
 mod digits;
 mod ram;
 pub(crate) mod witness_builder;
-pub(crate) mod witness_io_pattern;
 
 /// Complete a partial witness with random values.
 #[instrument(skip_all, fields(size = witness.len()))]

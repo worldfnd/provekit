@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"math/bits"
+
 	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"

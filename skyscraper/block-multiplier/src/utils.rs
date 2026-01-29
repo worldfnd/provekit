@@ -232,17 +232,6 @@ pub fn sub<const N: usize>(a: [u64; N], b: [u64; N]) -> [u64; N] {
 }
 
 #[inline(always)]
-pub fn addv_simd<const N: usize>(
-    mut va: [Simd<u64, 2>; N],
-    vb: [Simd<u64, 2>; N],
-) -> [Simd<u64, 2>; N] {
-    for i in 0..va.len() {
-        va[i] += vb[i];
-    }
-    va
-}
-
-#[inline(always)]
 pub fn carrying_mul_add(a: u64, b: u64, add: u64, carry: u64) -> (u64, u64) {
     let c: u128 = a as u128 * b as u128 + carry as u128 + add as u128;
     (c as u64, (c >> 64) as u64)

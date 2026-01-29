@@ -7,7 +7,7 @@ env:
   BUCKET_NAME: "provekit"
   CIRCUIT_NAME: "complete_age_check"
   CIRCUIT_DIR: "noir-examples/noir-passport-examples/complete_age_check"
-  KEYS_NAME: "agecheck_pk_03Nov_07-35-45"
+  KEYS_NAME: "agecheck"
 
 
 permissions:

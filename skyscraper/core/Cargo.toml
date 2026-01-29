@@ -11,7 +11,6 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 block-multiplier.workspace = true
-fp-rounding.workspace = true
 
 # Cryptography and proof systems
 ark-bn254.workspace = true
@@ -22,14 +21,14 @@ rayon.workspace = true
 seq-macro.workspace = true
 zerocopy.workspace = true
 
-# Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+fp-rounding.workspace = true
 proptest.workspace = true
 
 [dev-dependencies]
 divan.workspace = true
-primitive-types.workspace = true
 rand.workspace = true
+proptest.workspace = true
 
 [lints]
 workspace = true

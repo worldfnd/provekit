@@ -16,10 +16,11 @@ use {
 pub trait R1CSSolver {
     fn solve_witness_vec(
         &self,
+        witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
-        acir_map: WitnessMap<NoirElement>,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) -> Vec<Option<FieldElement>>;
+    );
 
     #[cfg(test)]
     fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
@@ -49,18 +50,17 @@ impl R1CSSolver for R1CS {
     #[instrument(skip_all)]
     fn solve_witness_vec(
         &self,
+        witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
-        acir_map: WitnessMap<NoirElement>,
+        acir_map: &WitnessMap<NoirElement>,
         transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) -> Vec<Option<FieldElement>> {
-        let mut witness = vec![None; self.num_witnesses()];
-
+    ) {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, &mut witness, transcript);
+                        builder.solve(&acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {
@@ -70,24 +70,54 @@ impl R1CSSolver for R1CS {
                     let mut denominators = Vec::with_capacity(batch_size);
 
                     for inverse_builder in &layer.witness_builders {
-                        let WitnessBuilder::Inverse(output_witness, denominator_witness) =
-                            inverse_builder
-                        else {
-                            panic!(
-                                "Invalid builder in inverse batch: expected Inverse, got {:?}",
-                                inverse_builder
-                            );
-                        };
-
-                        output_witnesses.push(*output_witness);
-
-                        let denominator = witness[*denominator_witness].unwrap_or_else(|| {
-                            panic!(
-                                "Denominator witness {} not set before inverse operation",
-                                denominator_witness
-                            )
-                        });
-                        denominators.push(denominator);
+                        match inverse_builder {
+                            WitnessBuilder::Inverse(output_witness, denominator_witness) => {
+                                output_witnesses.push(*output_witness);
+                                let denominator =
+                                    witness[*denominator_witness].unwrap_or_else(|| {
+                                        panic!(
+                                            "Denominator witness {} not set before inverse \
+                                             operation",
+                                            denominator_witness
+                                        )
+                                    });
+                                denominators.push(denominator);
+                            }
+                            WitnessBuilder::LogUpInverse(
+                                output_witness,
+                                sz_challenge,
+                                provekit_common::witness::WitnessCoefficient(coeff, value_witness),
+                            ) => {
+                                output_witnesses.push(*output_witness);
+                                // Compute denominator inline: sz - coeff * value
+                                let sz = witness[*sz_challenge].unwrap();
+                                let value = witness[*value_witness].unwrap();
+                                let denominator = sz - (*coeff * value);
+                                denominators.push(denominator);
+                            }
+                            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                                output_witnesses.push(data.idx);
+                                // Compute denominator inline:
+                                // sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out
+                                let sz = witness[data.sz_challenge].unwrap();
+                                let rs = witness[data.rs_challenge].unwrap();
+                                let rs_sqrd = witness[data.rs_sqrd].unwrap();
+                                let rs_cubed = witness[data.rs_cubed].unwrap();
+                                let denominator = sz
+                                    - data.lhs
+                                    - (rs * data.rhs)
+                                    - (rs_sqrd * data.and_out)
+                                    - (rs_cubed * data.xor_out);
+                                denominators.push(denominator);
+                            }
+                            _ => {
+                                panic!(
+                                    "Invalid builder in inverse batch: expected Inverse, \
+                                     LogUpInverse, or CombinedTableEntryInverse, got {:?}",
+                                    inverse_builder
+                                );
+                            }
+                        }
                     }
 
                     // Perform batch inversion and write results
@@ -100,8 +130,6 @@ impl R1CSSolver for R1CS {
                 }
             }
         }
-
-        witness
     }
 
     // Tests R1CS Witness satisfaction given the constraints provided by the
