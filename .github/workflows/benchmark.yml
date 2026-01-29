@@ -18,6 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Replace divan with codspeed-divan-compat
+        run: |
+          sed -i 's/^divan = .*/divan = { package = "codspeed-divan-compat", version = "3.0.1" }/' Cargo.toml
+
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
         with:

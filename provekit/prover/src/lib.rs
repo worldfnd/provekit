@@ -208,7 +208,6 @@ impl Prove for Prover {
             .context("While verifying R1CS instance")?;
         drop(witness);
 
-        // Prove R1CS instance
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove(merlin, self.r1cs, commitments)

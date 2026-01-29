@@ -4,6 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ProveKit WASM Browser Demo</title>
+  
+  <!-- Import map for @noir-lang packages (using web builds from pnpm store) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@noir-lang/acvm_js": "./node_modules/.pnpm/@noir-lang+acvm_js@1.0.0-beta.11/node_modules/@noir-lang/acvm_js/web/acvm_js.js",
+      "@noir-lang/noirc_abi": "./node_modules/.pnpm/@noir-lang+noirc_abi@1.0.0-beta.11/node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm.js"
+    }
+  }
+  </script>
   <style>
     * {
       box-sizing: border-box;

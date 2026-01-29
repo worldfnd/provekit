@@ -1,0 +1,2 @@
+# We don't include the inline rust generated files as they will be part of bn254-multiplier-sys
+asm/

@@ -39,6 +39,7 @@ pub fn solve(challenge: [u64; 4], difficulty: f64) -> u64 {
         return 0;
     }
     let threshold = threshold(difficulty + PROVER_BIAS);
+
     let nonce = generic::solve::<_, { WIDTH_LCM * 10 }>(compress_many, challenge, threshold);
     debug_assert!(verify(challenge, difficulty, nonce));
     nonce

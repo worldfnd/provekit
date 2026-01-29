@@ -1,0 +1,68 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@iarna/toml':
+        specifier: ^2.2.5
+        version: 2.2.5
+      '@noir-lang/noir_js':
+        specifier: 1.0.0-beta.11
+        version: 1.0.0-beta.11
+      '@noir-lang/noirc_abi':
+        specifier: 1.0.0-beta.11
+        version: 1.0.0-beta.11
+      toml:
+        specifier: ^3.0.0
+        version: 3.0.0
+
+packages:
+
+  '@iarna/toml@2.2.5':
+    resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
+
+  '@noir-lang/acvm_js@1.0.0-beta.11':
+    resolution: {integrity: sha512-g1CeqJlWNyJx1j+1t9sm3MxnDChbWSHa9UOOIQYBskxczhUHuUVfYve3xbe0DwSEiIBQ3gmTIKDmRPs+QboPvA==}
+
+  '@noir-lang/noir_js@1.0.0-beta.11':
+    resolution: {integrity: sha512-pZlz5/mGooHBUnucUULmbdU3gicxbaCg7t+wNoBN45JuFMU4vV32As4C1aTNNJDpDFaGupV7yXKVRcsJNTZ49w==}
+
+  '@noir-lang/noirc_abi@1.0.0-beta.11':
+    resolution: {integrity: sha512-D8nBgDGYe8uu4meu9ctGo52KIa0NeE/u2GBQi4DHJzE7/q5dVEqSyVVPImOyZWpvjPvb6thySxcDWbqY6JxOiw==}
+
+  '@noir-lang/types@1.0.0-beta.11':
+    resolution: {integrity: sha512-b9zeK/uxecsOKxsgqRszNYtj7Z3A9k//GF4uQIzvYbDWyrPGgnfi297ysXZ8lqKV4xBSQ93qNp+VzW4XaTBGjQ==}
+
+  pako@2.1.0:
+    resolution: {integrity: sha512-w+eufiZ1WuJYgPXbV/PO3NCMEc3xqylkKHzp8bxp1uW4qaSNQUkwmLLEc3kKsfz8lpV1F8Ht3U1Cm+9Srog2ug==}
+
+  toml@3.0.0:
+    resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
+
+snapshots:
+
+  '@iarna/toml@2.2.5': {}
+
+  '@noir-lang/acvm_js@1.0.0-beta.11': {}
+
+  '@noir-lang/noir_js@1.0.0-beta.11':
+    dependencies:
+      '@noir-lang/acvm_js': 1.0.0-beta.11
+      '@noir-lang/noirc_abi': 1.0.0-beta.11
+      '@noir-lang/types': 1.0.0-beta.11
+      pako: 2.1.0
+
+  '@noir-lang/noirc_abi@1.0.0-beta.11':
+    dependencies:
+      '@noir-lang/types': 1.0.0-beta.11
+
+  '@noir-lang/types@1.0.0-beta.11': {}
+
+  pako@2.1.0: {}
+
+  toml@3.0.0: {}

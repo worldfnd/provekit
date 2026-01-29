@@ -124,12 +124,13 @@ impl Prover {
     /// const witnessStack = await generateWitness(compiledProgram, inputs);
     /// const prover = new Prover(proverJson);
     /// // Use the witness from the last stack item
+    /// // Note: prover is consumed after this call (single-use for memory efficiency)
     /// const proof = await prover.proveBytes(witnessStack[witnessStack.length - 1].witness);
     /// ```
     #[wasm_bindgen(js_name = proveBytes)]
-    pub fn prove_bytes(&self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
+    pub fn prove_bytes(self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
         let witness = parse_witness_map(witness_map)?;
-        let proof = generate_proof_from_witness(self.inner.clone(), witness)?;
+        let proof = generate_proof_from_witness(self.inner, witness)?;  // No clone!
         serde_json::to_vec(&proof)
             .map(|bytes| bytes.into_boxed_slice())
             .map_err(|err| JsError::new(&format!("Failed to serialize proof to JSON: {err}")))
@@ -141,6 +142,8 @@ impl Prover {
     /// Similar to [`proveBytes`](Self::prove_bytes), but returns the proof as a
     /// structured JavaScript object instead of JSON bytes.
     ///
+    /// Note: The prover is consumed after this call (single-use for memory efficiency).
+    ///
     /// # Arguments
     ///
     /// * `witness_map` - JavaScript Map or object mapping witness indices to
@@ -151,9 +154,9 @@ impl Prover {
     /// Returns an error if the witness map cannot be parsed or proof generation
     /// fails.
     #[wasm_bindgen(js_name = proveJs)]
-    pub fn prove_js(&self, witness_map: JsValue) -> Result<JsValue, JsError> {
+    pub fn prove_js(self, witness_map: JsValue) -> Result<JsValue, JsError> {
         let witness = parse_witness_map(witness_map)?;
-        let proof = generate_proof_from_witness(self.inner.clone(), witness)?;
+        let proof = generate_proof_from_witness(self.inner, witness)?;  // No clone!
         serde_wasm_bindgen::to_value(&proof)
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
     }

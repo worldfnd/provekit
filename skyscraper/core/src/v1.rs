@@ -5,7 +5,7 @@ use {
         generic,
         reduce::{reduce, reduce_partial, reduce_partial_add_rc},
     },
-    block_multiplier::scalar_sqr as square,
+    bn254_multiplier::scalar_sqr as square,
 };
 
 pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {

@@ -29,6 +29,33 @@ function updateStep(step, status, statusClass = "") {
 }
 
 /**
+ * Log memory usage and key object sizes
+ */
+function logMemory(label, extras = {}) {
+  let msg = `📊 ${label}`;
+  
+  // Log sizes of tracked objects
+  for (const [name, obj] of Object.entries(extras)) {
+    if (obj instanceof ArrayBuffer) {
+      msg += ` | ${name}: ${(obj.byteLength / 1024 / 1024).toFixed(2)} MB`;
+    } else if (obj instanceof Uint8Array) {
+      msg += ` | ${name}: ${(obj.byteLength / 1024 / 1024).toFixed(2)} MB`;
+    } else if (typeof obj === 'object' && obj !== null) {
+      const jsonSize = JSON.stringify(obj).length;
+      msg += ` | ${name}: ~${(jsonSize / 1024).toFixed(0)} KB`;
+    }
+  }
+  
+  // Chrome's non-standard memory API
+  if (performance.memory) {
+    const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
+    msg += ` | heap: ${used} MB`;
+  }
+  
+  log(msg, "info");
+}
+
+/**
  * Convert a Noir witness map to the format expected by ProveKit WASM.
  */
 function convertWitnessMap(witnessMap) {
@@ -95,23 +122,63 @@ async function runDemo() {
       wasmModule.initPanicHook();
     }
 
-    // Initialize thread pool for parallel proving
-    // Use navigator.hardwareConcurrency or default to 4 threads
-    const numThreads = navigator.hardwareConcurrency || 4;
-
-    // Update UI with thread count
+    // Platform detection
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isMobile = isIOS || isAndroid;
+    const maxThreads = navigator.hardwareConcurrency || 4;
     const threadCountEl = document.getElementById("threadCount");
-    if (threadCountEl) {
-      threadCountEl.textContent = numThreads;
+    const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
+    
+    // iOS WebKit has unreliable WASM threading - don't even try
+    if (isIOS) {
+      log("📱 iOS detected - WebKit WASM threading is unreliable");
+      log("Running in single-threaded mode (optimized for iOS)");
+      if (threadCountEl) {
+        threadCountEl.textContent = "1 (iOS)";
+      }
+      // Don't call initThreadPool on iOS - it will fail
+    } else if (isAndroid && hasSharedArrayBuffer) {
+      // Android with Chrome/Firefox - try threading
+      const androidThreads = Math.min(maxThreads, 4);
+      log(`📱 Android detected, trying ${androidThreads} threads...`);
+      try {
+        await wasmModule.initThreadPool(androidThreads);
+        log(`Thread pool ready (${androidThreads} workers)`);
+        if (threadCountEl) {
+          threadCountEl.textContent = `${androidThreads} (Android)`;
+        }
+      } catch (e) {
+        log(`Thread pool failed: ${e.message}`, "warn");
+        log("Falling back to single-threaded mode", "warn");
+        if (threadCountEl) {
+          threadCountEl.textContent = "1 (fallback)";
+        }
+      }
+    } else if (!isMobile) {
+      // Desktop
+      if (!hasSharedArrayBuffer) {
+        throw new Error(
+          "SharedArrayBuffer not available. This demo requires:\n" +
+          "• HTTPS or localhost\n" +
+          "• Cross-Origin-Isolation headers"
+        );
+      }
+      log(`Initializing thread pool with ${maxThreads} workers...`);
+      await wasmModule.initThreadPool(maxThreads);
+      log(`Thread pool ready (${maxThreads} workers)`);
+      if (threadCountEl) {
+        threadCountEl.textContent = maxThreads;
+      }
+    } else {
+      // Other mobile without SharedArrayBuffer
+      log("Mobile: running in single-threaded mode");
+      if (threadCountEl) {
+        threadCountEl.textContent = "1 (mobile)";
+      }
     }
 
-    log(`Initializing thread pool with ${numThreads} workers...`);
-    await wasmModule.initThreadPool(numThreads);
-    log(`Thread pool ready (${numThreads} workers)`);
-
     provekit = wasmModule;
-
-    log("ProveKit WASM loaded with parallelism");
     log("Initializing noir_js WASM modules...");
 
     // Wait for noir_js to be available (loaded via script tag)
@@ -162,11 +229,13 @@ async function runDemo() {
       `Circuit: ${circuitName}`;
 
     log("Loading prover artifact (this may take a moment)...");
+    logMemory("Before loading prover");
     const proverResponse = await fetch("artifacts/prover.pkp");
     proverBin = await proverResponse.arrayBuffer();
     log(
       `Prover artifact: ${(proverBin.byteLength / 1024 / 1024).toFixed(2)} MB`
     );
+    logMemory("After loading prover", { proverBin });
 
     updateStep(2, "Loaded", "success");
 
@@ -181,6 +250,7 @@ async function runDemo() {
     const inputs = await loadInputs();
     log(`Inputs loaded (${Object.keys(inputs).length} top-level keys)`);
     log("Generating witness using noir_js...");
+    logMemory("Before witness generation", { circuitJson, inputs });
 
     // Allow UI to update before heavy computation
     await new Promise((r) => setTimeout(r, 50));
@@ -188,8 +258,17 @@ async function runDemo() {
     const witnessStart = performance.now();
     const noir = new window.Noir(circuitJson);
     const { witness: compressedWitness } = await noir.execute(inputs);
-    const witnessMap = window.decompressWitness(compressedWitness);
+    // Decompress witness stack and get the main witness (first element)
+    const witnessStack = window.decompressWitness(compressedWitness);
+    const witnessMap = witnessStack[0].witness;
     witnessTime = performance.now() - witnessStart;
+    
+    // Estimate witness size
+    const witnessObjSize = witnessMap instanceof Map 
+      ? witnessMap.size * 64  // ~64 bytes per entry estimate
+      : Object.keys(witnessMap).length * 64;
+    log(`📊 Witness object: ~${(witnessObjSize / 1024).toFixed(0)} KB estimated`);
+    logMemory("After witness generation");
 
     witnessSize =
       witnessMap instanceof Map
@@ -212,13 +291,31 @@ async function runDemo() {
     log(`Converted ${Object.keys(convertedWitness).length} witness entries`);
 
     log("Generating proof (this may take a while)...");
+    logMemory("Before creating Prover");
 
     // Allow UI to update before heavy computation
     await new Promise((r) => setTimeout(r, 50));
 
     const proofStart = performance.now();
     const prover = new provekit.Prover(new Uint8Array(proverBin));
+    // Free the prover binary to reduce memory pressure (prover has its own copy now)
+    proverBin = null;
+    logMemory("After creating Prover (freed proverBin)");
+    
+    log("Starting proof computation...");
+    // Log WASM memory size if available
+    if (provekit.__wbindgen_export_0) {
+      const wasmMem = provekit.__wbindgen_export_0;
+      if (wasmMem.buffer) {
+        log(`📊 WASM memory before prove: ${(wasmMem.buffer.byteLength / 1024 / 1024).toFixed(1)} MB`);
+      }
+    }
+    logMemory("Before proveBytes");
     const proofBytes = prover.proveBytes(convertedWitness);
+    logMemory("After proveBytes");
+    if (provekit.__wbindgen_export_0?.buffer) {
+      log(`📊 WASM memory after prove: ${(provekit.__wbindgen_export_0.buffer.byteLength / 1024 / 1024).toFixed(1)} MB`);
+    }
     proofTime = performance.now() - proofStart;
 
     proofSize = proofBytes.length;
