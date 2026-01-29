@@ -1,0 +1,10 @@
+[package]
+name = "sig_check_dsc_720"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_rsa = { path = "../../zkpassport_libs/sig-check/rsa" }
+utils = { path = "../../zkpassport_libs/utils" }
+commitment = { path = "../../zkpassport_libs/commitment/common" }
+

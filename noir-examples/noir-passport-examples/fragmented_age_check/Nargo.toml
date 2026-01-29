@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "sig_check_dsc_720",
+    "sig_check_dsc_1300_hash",
+    "sig_check_dsc_1300_verify",
+    "sig_check_id_data_720",
+    "sig_check_id_data_1300",
+    "data_check_integrity_sa",
+    "compare_age",
+]

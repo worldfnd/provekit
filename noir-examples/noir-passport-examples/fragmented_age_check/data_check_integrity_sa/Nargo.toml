@@ -1,0 +1,9 @@
+[package]
+name = "data_check_integrity_sa"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+data_check_integrity = { path = "../../zkpassport_libs/data-check/integrity" }
+commitment = { path = "../../zkpassport_libs/commitment/integrity-to-disclosure" }
+utils = { path = "../../zkpassport_libs/utils" }

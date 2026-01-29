@@ -1,0 +1,20 @@
+CIRCUITS=(
+    "sig_check_dsc_1300_hash"
+    "sig_check_dsc_1300_verify"
+    "sig_check_id_data_1300"
+    "data_check_integrity_sa"
+    "compare_age"
+)  
+LOG_DIR="../../benchmark-inputs/logs/compile/case2"
+mkdir -p "$LOG_DIR"
+
+# Function to strip ANSI escape codes (works on macOS)
+strip_ansi() {
+    sed $'s/\x1b\[[0-9;]*m//g'
+}
+
+for circuit in "${CIRCUITS[@]}"; do
+    echo "Compiling $circuit"
+    nargo compile --force --print-acir --package "$circuit" 2>&1 | strip_ansi | tee "$LOG_DIR/$circuit.log"
+    echo "Compiled $circuit"
+done
