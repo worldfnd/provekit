@@ -1,0 +1,9 @@
+[package]
+name = "compute_nullifier"
+type = "bin"
+authors = []
+compiler_version = ">=1.0.0"
+
+[dependencies]
+common = { path = "../../zkpassport_libs/commitment/common" }
+utils = { path = "../../zkpassport_libs/utils" }

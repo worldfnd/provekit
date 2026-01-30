@@ -1,0 +1,10 @@
+[package]
+name = "t_add_dsc_verify"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+partial_sha256 = { path = "../../zkpassport_libs/partial-sha256" }
+sig_check_rsa = { path = "../../zkpassport_libs/sig-check/rsa" }
+utils = { path = "../../zkpassport_libs/utils" }
+commitment = { path = "../../zkpassport_libs/commitment/common" }

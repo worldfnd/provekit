@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "t_add_dsc_hash",
+    "t_add_dsc_verify",
+    "t_add_id_data",
+    "t_add_integrity_commit",
+    "t_attest",
+    "compute_nullifier",
+]
