@@ -20,6 +20,10 @@ use {
 #[global_allocator]
 static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
+#[cfg(all(feature = "jemalloc", not(feature = "profiling-allocator")))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 fn main() -> Result<()> {
     let args = argh::from_env::<cmd::Args>();
     let subscriber = Registry::default().with(SpanStats);

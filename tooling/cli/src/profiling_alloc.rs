@@ -1,9 +1,24 @@
+#[cfg(not(feature = "jemalloc"))]
+use std::alloc::System as InnerAlloc;
 use std::{
-    alloc::{GlobalAlloc, Layout, System as SystemAlloc},
+    alloc::{GlobalAlloc, Layout},
     sync::atomic::{AtomicUsize, Ordering},
 };
-#[cfg(feature = "tracy")]
-use {std::sync::atomic::AtomicBool, tracing_tracy::client::sys as tracy_sys};
+#[cfg(feature = "jemalloc")]
+type InnerAlloc = tikv_jemallocator::Jemalloc;
+#[cfg(not(feature = "jemalloc"))]
+type InnerAlloc = std::alloc::System;
+
+static INNER: InnerAlloc = {
+    #[cfg(feature = "jemalloc")]
+    {
+        tikv_jemallocator::Jemalloc
+    }
+    #[cfg(not(feature = "jemalloc"))]
+    {
+        std::alloc::System
+    }
+};
 
 /// Custom allocator that keeps track of statistics to see program memory
 /// consumption.
@@ -115,7 +130,7 @@ impl ProfilingAllocator {
 #[allow(unsafe_code)]
 unsafe impl GlobalAlloc for ProfilingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = SystemAlloc.alloc(layout);
+        let ptr = INNER.alloc(layout);
         let size = layout.size();
         let current = self
             .current
@@ -130,11 +145,11 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.current.fetch_sub(layout.size(), Ordering::SeqCst);
         self.tracy_dealloc(ptr);
-        SystemAlloc.dealloc(ptr, layout);
+        INNER.dealloc(ptr, layout);
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let ptr = SystemAlloc.alloc_zeroed(layout);
+        let ptr = INNER.alloc_zeroed(layout);
         let size = layout.size();
         let current = self
             .current
@@ -148,7 +163,7 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
 
     unsafe fn realloc(&self, ptr: *mut u8, old_layout: Layout, new_size: usize) -> *mut u8 {
         self.tracy_dealloc(ptr);
-        let ptr = SystemAlloc.realloc(ptr, old_layout, new_size);
+        let ptr = INNER.realloc(ptr, old_layout, new_size);
         let old_size = old_layout.size();
         if new_size > old_size {
             let diff = new_size - old_size;
