@@ -5,8 +5,9 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
+    noirc_abi::{Abi, InputMap},
     provekit_common::{
+        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         FieldElement, NoirElement, NoirProof, Prover, WhirDomainSep, WhirMerkleConfig,
         WhirProverState,
     },
@@ -93,8 +94,17 @@ where
 {
     let (input_map, _expected_return) =
         read_inputs_from_file(prover_toml.as_ref(), prover.witness_generator.abi())?;
+    drop(prover_toml);
 
     let acir_witness_idx_to_value_map = generate_witness_impl(&mut prover, input_map)?;
+
+    // Free witness generator and program — no longer needed after witness
+    // generation
+    prover.witness_generator = NoirWitnessGenerator {
+        abi:         Abi::default(),
+        witness_map: Vec::new(),
+    };
+    prover.program = Default::default();
 
     // Set up Fiat-Shamir transcript
     let io = prover.whir_for_witness.create_generic_io_pattern();
@@ -103,20 +113,22 @@ where
 
     let mut witness: Vec<Option<FieldElement>> = vec![None; prover.r1cs.num_witnesses()];
 
-    // Solve witness values
+    // Solve w1 witness values
     prover.r1cs.solve_witness_vec(
         &mut witness,
         prover.split_witness_builders.w1_layers,
         &acir_witness_idx_to_value_map,
         &mut merlin,
     );
+    // Free w1 layers after solving
+    prover.split_witness_builders.w1_layers = Default::default();
 
     let w1 = witness[..prover.whir_for_witness.w1_size]
         .iter()
         .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
         .collect::<Result<Vec<_>>>()?;
 
-    let commitment_1 =
+    let mut commitment_1 =
         whir_r1cs::commit::<MerkleConfig::Sponge, MerkleConfig::Unit, MerkleConfig, PowStrategy>(
             &prover.whir_for_witness,
             &mut merlin,
@@ -125,6 +137,7 @@ where
             true,
         )
         .context("While committing to w1")?;
+    commitment_1.commitment_to_witness.clear_merkle_leaves();
 
     // Build commitment list based on whether we have challenges
     let commitments = if prover.whir_for_witness.num_challenges > 0 {
@@ -135,13 +148,16 @@ where
             &acir_witness_idx_to_value_map,
             &mut merlin,
         );
+        drop(acir_witness_idx_to_value_map);
+        // Free w2 layers after solving
+        prover.split_witness_builders.w2_layers = Default::default();
 
         let w2 = witness[prover.whir_for_witness.w1_size..]
             .iter()
             .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
             .collect::<Result<Vec<_>>>()?;
 
-        let commitment_2 = whir_r1cs::commit::<
+        let mut commitment_2 = whir_r1cs::commit::<
             MerkleConfig::Sponge,
             MerkleConfig::Unit,
             MerkleConfig,
@@ -154,12 +170,13 @@ where
             false,
         )
         .context("While committing to w2")?;
+        commitment_2.commitment_to_witness.clear_merkle_leaves();
 
         vec![commitment_1, commitment_2]
     } else {
+        drop(acir_witness_idx_to_value_map);
         vec![commitment_1]
     };
-    drop(acir_witness_idx_to_value_map);
 
     #[cfg(test)]
     prover
@@ -167,6 +184,9 @@ where
         .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
         .context("While verifying R1CS instance")?;
     drop(witness);
+
+    // Free split witness builders before proving
+    prover.split_witness_builders = SplitWitnessBuilders::default();
 
     let whir_r1cs_proof = whir_r1cs::prove::<
         MerkleConfig::Sponge,

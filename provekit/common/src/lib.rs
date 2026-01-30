@@ -23,6 +23,7 @@ use crate::{
 };
 pub use {
     acir::FieldElement as NoirElement,
+    ark_bn254::Fr as FieldElement,
     hash_config::{
         HashConfig, TypedHashConfig, WhirDomainSep, WhirMerkleConfig, WhirProverState,
         WhirVerifierState,
@@ -32,7 +33,6 @@ pub use {
     prover::Prover,
     r1cs::R1CS,
     verifier::Verifier,
-    whir::crypto::fields::Field256 as FieldElement,
     whir_r1cs::{
         CurrentDigestType, CurrentMerkleConfigType, CurrentSpongeType, CurrentUnitType, IOPattern,
         WhirConfig, WhirR1CSProof, WhirR1CSScheme,

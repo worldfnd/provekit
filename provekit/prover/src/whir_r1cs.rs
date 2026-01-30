@@ -212,8 +212,8 @@ where
         merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
 
         run_zk_whir_pcs_batch_prover::<Sponge, U, MerkleConfig, PowStrategy>(
-            &[c1.commitment_to_witness, c2.commitment_to_witness],
-            &[statement_1, statement_2],
+            vec![c1.commitment_to_witness, c2.commitment_to_witness],
+            vec![statement_1, statement_2],
             &scheme.whir_witness,
             &mut merlin,
         );
@@ -631,8 +631,8 @@ where
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_batch_prover<Sponge, U, MerkleConfig, PowStrategy>(
-    witnesses: &[Witness<FieldElement, MerkleConfig>],
-    statements: &[Statement<FieldElement>],
+    witnesses: Vec<Witness<FieldElement, MerkleConfig>>,
+    statements: Vec<Statement<FieldElement>>,
     params: &GenericWhirConfig<FieldElement, MerkleConfig, PowStrategy>,
     merlin: &mut ProverState<Sponge, U>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>)

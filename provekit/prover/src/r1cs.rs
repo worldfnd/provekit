@@ -164,18 +164,22 @@ impl R1CSSolver for R1CS {
 
 impl R1CSSolver for LazyR1CS {
     #[instrument(skip_all)]
-    fn solve_witness_vec(
+    fn solve_witness_vec<Sponge, U>(
         &self,
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
-    ) {
+        transcript: &mut ProverState<Sponge, U>,
+    ) where
+        Sponge: spongefish::duplex_sponge::DuplexSpongeInterface<U>,
+        U: spongefish::Unit,
+        ProverState<Sponge, U>: spongefish::codecs::arkworks_algebra::UnitToField<FieldElement>,
+    {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, witness, transcript);
+                        builder.solve::<Sponge, U>(&acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {
