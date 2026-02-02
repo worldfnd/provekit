@@ -258,9 +258,9 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     ts[0] += Simd::from_array([make_initial(1, 0), make_initial(1, 1)]);
     ts[2] += Simd::from_array([make_initial(2, 1), make_initial(2, 2)]);
-    ts[4] += Simd::from_array([make_initial(3, 2), make_initial(2, 3)]);
-    ts[6] += Simd::from_array([make_initial(3, 2), make_initial(1, 3)]);
-    ts[8] += Simd::from_array([make_initial(2, 1), make_initial(0, 2)]);
+    ts[4] += Simd::from_array([make_initial(8, 2), make_initial(7, 8)]);
+    ts[6] += Simd::from_array([make_initial(8, 7), make_initial(6, 8)]);
+    ts[8] += Simd::from_array([make_initial(7, 6), make_initial(5, 7)]);
 
     let mut t: [i64; 4] = [0; 4];
 
@@ -291,18 +291,18 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     let mut ss = [ts[4], ts[5], ts[6], ts[7], ts[8], ts[9]];
 
-    // seq!( i in 0..6 {
-    //     ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
-    // });
+    seq!( i in 0..6 {
+        ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
+    });
 
     println!("ss[0][0]: {:x}", ss[0][0]);
 
     let m = (ss[0][0] as u64).wrapping_mul(U51_NP0) & MASK51;
     let mp = smult_noinit(m, U51_P);
 
-    // seq!( i in 0..6 {
-    //     ss[i] += mp[i];
-    // });
+    seq!( i in 0..6 {
+        ss[i] += mp[i];
+    });
 
     // Get rid of redundant SIMD form
     ss[0] += simd_swizzle!(Simd::splat(0), ss[1], [0, 2]);

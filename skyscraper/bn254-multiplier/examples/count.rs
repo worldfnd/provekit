@@ -67,14 +67,14 @@ fn diagonal() -> [usize; 12] {
     t[2 * 4 + 1] += HI;
     t[2 * 4] += LO;
 
-    // let i = 4;
-    // for _k in 0..5 {
-    //     for j in 0..3 {
-    //         t[i + 2 * j + 2] += HI;
-    //         t[i + 2 * j + 1] += LO + HI;
-    //         t[i + 2 * j] += LO;
-    //     }
-    // }
+    let i = 4;
+    for _k in 0..5 {
+        for j in 0..3 {
+            t[i + 2 * j + 2] += HI;
+            t[i + 2 * j + 1] += LO + HI;
+            t[i + 2 * j] += LO;
+        }
+    }
 
     t
 }
