@@ -22,9 +22,9 @@
 //! Point Arithmetic on the GPU, 2018 IEEE 25th Symposium on Computer Arithmetic
 //! (ARITH) by Emmart, Zheng and Weems; which uses RTZ.
 
+pub mod batched;
 pub mod constants;
-pub mod portable_simd;
+pub mod mono;
 pub mod simd_utils;
-pub mod single;
 
-pub use {constants::*, portable_simd::*, simd_utils::*};
+pub use {batched::*, constants::*, mono::*};

@@ -1,6 +1,8 @@
+//! Helper script to calculate the magic numbers to cancel out the anchors used
+//! in FMA multiplication.
 use bn254_multiplier::rne::{
-    make_initial,
-    single::{mul, sqr},
+    mono::{mul, sqr},
+    simd_utils::make_initial,
 };
 
 const LO: usize = 1;

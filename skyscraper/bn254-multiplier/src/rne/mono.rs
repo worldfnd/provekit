@@ -1,23 +1,9 @@
-//! Unbatched SIMD Montgomery multiplication and squaring for BN254.
+//! SIMD Montgomery multiplication and squaring for BN254.
 //!
-//! This module provides single-input Montgomery multiplication using relaxed
-//! SIMD FMA operations. Unlike [`portable_simd`](super::portable_simd) which
-//! batches two multiplications per call, this processes one at a time—faster
-//! on WASM when inputs aren't naturally paired.
-//!
-//! # Redundant Representations
-//!
-//! The code uses two distinct "redundant" representations:
-//!
-//! 1. **Redundant SIMD form**: FMA produces high/low product parts in separate
-//!    SIMD vectors with misaligned lanes. E.g., `ts[k] = [limb_k_lo, limb_{k+1}_lo]`
-//!    and `ts[k+1] = [limb_k_hi, limb_{k+1}_hi]`. Swizzle operations realign these
-//!    so adjacent limbs occupy consecutive positions.
-//!
-//! 2. **Redundant limb form**: Each 51-bit limb may temporarily exceed 51 bits.
-//!    The excess bits are carries (or borrows) that propagate to higher limbs.
-//!    - `u64` limbs: excess bits are positive carries
-//!    - `i64` limbs: excess bits may be negative, representing borrows from above
+//! This module provides single-input Montgomery multiplication using (relaxed)
+//! SIMD FMA operations. Unlike [`batched`](super::batched) which processes two
+//! multiplications per call, this handles one at a time— this variant is the
+//! fastest on WASM.
 
 use {
     crate::rne::{
@@ -31,9 +17,9 @@ use {
 
 /// Propagate carries/borrows from redundant limb form to normalized form.
 ///
-/// Input `i64` limbs may have excess bits (positive = carry, negative = borrow).
-/// Output `u64` limbs are normalized to exactly 51 bits, except the MSB which
-/// absorbs any remaining carry and may exceed 51 bits.
+/// Input `i64` limbs may have excess bits (positive = carry, negative =
+/// borrow). Output `u64` limbs are normalized to exactly 51 bits, except the
+/// MSB which absorbs any remaining carry and may exceed 51 bits.
 #[inline(always)]
 fn redundant_carry<const N: usize>(t: [i64; N]) -> [u64; N] {
     let mut borrow = 0;
@@ -78,7 +64,7 @@ pub const fn i2f_scalar(a: u64) -> f64 {
 
 /// Multiply a 51-bit scalar `s` by a 5×51-bit vector `v`.
 ///
-/// Returns 6 SIMD vectors in redundant form. "noinit" means no FMA anchor
+/// Returns vector redundant SIMD and carry form. "noinit" means no FMA anchor
 /// compensation is applied; the caller must initialize accumulators with
 /// `make_initial` biases.
 #[inline(always)]
@@ -129,30 +115,7 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
 /// Montgomery multiplication for BN254 scalar field.
 ///
 /// Computes `a * b * R^{-256} mod P` where R = 2^256.
-///
-/// # Algorithm Overview
-///
-/// Uses floating-point FMA for fast 51×51-bit multiplications via the
-/// Renes-Costello-Batina technique. The algorithm proceeds in phases:
-///
-/// 1. **Limb conversion**: Convert 4×64-bit inputs to 5×51-bit representation.
-///
-/// 2. **Schoolbook multiplication**: Compute the 10-limb product `a × b` using
-///    FMA-based multiply-accumulate. Results are stored in "redundant SIMD
-///    form" where high/low parts of products occupy separate SIMD lanes.
-///
-/// 3. **Parallel reduction**: Instead of sequential CIOS reduction, multiply
-///    the lower 4 limbs by precomputed `RHO_i = R^i mod P` constants. This
-///    converts `t[i] * 2^{51*i}` into an equivalent value in the upper limbs,
-///    allowing all reductions to proceed in parallel.
-///
-/// 4. **Final Montgomery step**: Compute `m = (result[0] * -P^{-1}) mod 2^51`,
-///    then add `m * P` to cancel the lowest limb.
-///
-/// 5. **Bit adjustment**: The 5×51 = 255 bit representation requires a final
-///    division by 2 (after conditional addition of P for odd results) to
-///    produce the correct R^{-256} Montgomery form.
-///
+
 /// # Preconditions
 ///
 /// - Both inputs must be < 2^255 (i.e., fit in 5×51-bit limbs)
@@ -164,6 +127,43 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
 /// (vs. `simd_mul` which batches two).
 #[inline(always)]
 pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+    // # Algorithm Overview
+    // Uses floating-point FMA for fast 51×51-bit multiplications via the
+    // Renes-Costello-Batina technique. The algorithm proceeds in phases:
+    //
+    // 1. **Limb conversion**: Convert 4×64-bit inputs to 5×51-bit representation.
+    //
+    // 2. **Schoolbook multiplication**: Compute the 10-limb product `a × b` using
+    //    FMA-based multiply-accumulate. Results are stored in "redundant SIMD form"
+    //    where high/low parts of products occupy separate SIMD lanes.
+    //
+    // 3. **Parallel reduction**: Instead of sequential CIOS reduction, multiply the
+    //    lower 4 limbs by precomputed `RHO_i = R^i mod P` constants. This converts
+    //    `t[i] * 2^{51*i}` into an equivalent value in the upper limbs, allowing
+    //    all reductions to proceed in parallel.
+    //
+    // 4. **Final Montgomery step**: Compute `m = (result[0] * -P^{-1}) mod 2^51`,
+    //    then add `m * P` to cancel the lowest limb.
+    //
+    // 5. **Bit adjustment**: The 5×51 = 255 bit representation requires a final
+    //    division by 2 (after conditional addition of P for odd results) to produce
+    //    the correct R^{-256} Montgomery form.
+    //
+    // # Redundant Representations
+    //
+    // The code uses two distinct "redundant" representations:
+    //
+    // 1. **Redundant SIMD form**: FMA produces high/low product parts in separate
+    //    SIMD vectors with misaligned lanes. E.g., `ts[k] = [limb_k_lo,
+    //    limb_{k+1}_lo]` and `ts[k+1] = [limb_k_hi, limb_{k+1}_hi]`. Swizzle
+    //    operations realign these so adjacent limbs occupy consecutive positions.
+    //
+    // 2. **Redundant limb form**: Each 51-bit limb may temporarily exceed 51 bits.
+    //    The excess bits are carries (or borrows) that propagate to higher limbs.
+    //    - `u64` limbs: excess bits are positive carries
+    //    - `i64` limbs: excess bits may be negative, representing borrows from
+    //      above
+
     let a = u256_to_u255(a);
     let b = u256_to_u255(b);
 
@@ -211,7 +211,8 @@ pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         t[k + 1] = ts[k][1];
     });
 
-    // Propagate carries/borrows through redundant limb form (i64 allows negative excess)
+    // Propagate carries/borrows through redundant limb form (i64 allows negative
+    // excess)
     t[1] += t[0] >> 51;
     t[2] += t[1] >> 51;
     t[3] += t[2] >> 51;
@@ -257,7 +258,8 @@ pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
         s[k + 1] = ss[k][1];
     });
 
-    // Propagate carry/borrow from s[0] and discard it (absorbed by Montgomery reduction)
+    // Propagate carry/borrow from s[0] and discard it (absorbed by Montgomery
+    // reduction)
     s[1] += s[0] >> 51;
     let s = [s[1], s[2], s[3], s[4], s[5]];
 
@@ -281,12 +283,15 @@ pub fn u255_to_u256_shr_1(limbs: [u64; 5]) -> [u64; 4] {
     ]
 }
 
-/// Montgomery squaring: `(va*v0_b, v1_a*v1_b)`.
-/// input must fit in 2^255-1; no runtime checking. Output lives in Montgomery
-/// space R=256.
+/// Montgomery squaring: a²
+///
+/// Input and output are in Montgomery form R=256.
+///
+/// Precondition:
+/// - a < 2^255; no runtime check.
 #[inline(always)]
-pub fn sqr(v0_a: [u64; 4]) -> [u64; 4] {
-    mul(v0_a, v0_a)
+pub fn sqr(a: [u64; 4]) -> [u64; 4] {
+    mul(a, a)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

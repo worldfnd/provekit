@@ -32,11 +32,11 @@ mod mul {
     }
 
     #[divan::bench]
-    fn single_b51(bencher: Bencher) {
+    fn mono_mul_b51(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|(a, b)| rne::single::mul(a, b));
+            .bench_local_values(|(a, b)| rne::mono::mul(a, b));
     }
 
     #[divan::bench]
@@ -45,7 +45,7 @@ mod mul {
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| {
-                bn254_multiplier::rne::portable_simd::simd_mul(a, b, c, d)
+                bn254_multiplier::rne::batched::simd_mul(a, b, c, d)
             });
     }
 
@@ -150,19 +150,11 @@ mod sqr {
     }
 
     #[divan::bench]
-    fn single_sqr_b51(bencher: Bencher) {
+    fn mono_sqr_b51(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|a| rne::single::sqr(a));
-    }
-
-    #[divan::bench]
-    fn single_mul_sqr_b51(bencher: Bencher) {
-        bencher
-            //.counter(ItemsCount::new(1usize))
-            .with_inputs(|| rng().random())
-            .bench_local_values(|a| rne::single::mul(a, a));
+            .bench_local_values(|a| rne::mono::sqr(a));
     }
 
     #[divan::bench]
