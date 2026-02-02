@@ -166,24 +166,15 @@ pub fn smult_noinit(s: u64, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 
     let v23 = Simd::from_array([v[2] as f64, v[3] as f64]);
     let p_hi = fma(s, v23, Simd::splat(C1));
-    let p_lo_0 = fma(s, v23, Simd::splat(C2) - p_hi);
-    t[2] += p_hi.to_bits().cast();
-    t[3] += p_lo_0.to_bits().cast();
+    let p_lo = fma(s, v23, Simd::splat(C2) - p_hi);
+    t[3] += p_hi.to_bits().cast();
+    t[2] += p_lo.to_bits().cast();
 
-    let p_hi_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C1));
-    let p_lo_2 = fma(s, Simd::splat(v[2] as f64), Simd::splat(C2) - p_hi_2);
-    t[3] += p_hi_2.to_bits().cast();
-    t[2] += p_lo_2.to_bits().cast();
-
-    let p_hi_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C1));
-    let p_lo_3 = fma(s, Simd::splat(v[3] as f64), Simd::splat(C2) - p_hi_3);
-    t[4] += p_hi_3.to_bits().cast();
-    t[3] += p_lo_3.to_bits().cast();
-
-    let p_hi_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C1));
-    let p_lo_4 = fma(s, Simd::splat(v[4] as f64), Simd::splat(C2) - p_hi_4);
-    t[5] += p_hi_4.to_bits().cast();
-    t[4] += p_lo_4.to_bits().cast();
+    let v45 = Simd::from_array([v[4] as f64, 0.]);
+    let p_hi = fma(s, v45, Simd::splat(C1));
+    let p_lo = fma(s, v45, Simd::splat(C2) - p_hi);
+    t[5] += Simd::from_array([p_hi[0].to_bits() as i64, 0]);
+    t[4] += Simd::from_array([p_lo[0].to_bits() as i64, 0]);
 
     t
 }
@@ -225,7 +216,7 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
 
     });
 
-    let mut t: [i64; 10] = [0; 10];
+    let mut t: [i64; 4] = [0; 4];
 
     seq!( i in 0..2 {
         let s = i * 2;
@@ -243,33 +234,39 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     // Lift carry into SIMD to prevent extraction
     ts[4] += Simd::from_array([t[3] >> 51, 0]);
 
-    let r0 = smult_noinit_simd(Simd::splat(t[0] as u64 & MASK51), RHO_4);
-    let r1 = smult_noinit_simd(Simd::splat(t[1] as u64 & MASK51), RHO_3);
-    let r2 = smult_noinit_simd(Simd::splat(t[2] as u64 & MASK51), RHO_2);
-    let r3 = smult_noinit_simd(Simd::splat(t[3] as u64 & MASK51), RHO_1);
+    let r0 = smult_noinit(t[0] as u64 & MASK51, RHO_4);
+    let r1 = smult_noinit(t[1] as u64 & MASK51, RHO_3);
+    let r2 = smult_noinit(t[2] as u64 & MASK51, RHO_2);
+    let r3 = smult_noinit(t[3] as u64 & MASK51, RHO_1);
 
-    seq!( i in 2..4 {
-        let s = i * 2;
-        ts[s] += simd_swizzle!(Simd::splat(0), ts[s + 1], [0, 2]);
-        ts[s + 2] += simd_swizzle!(Simd::splat(0), ts[s + 1], [3, 0]);
+    let mut ss = [ts[4], ts[5], ts[6], ts[7], ts[8], ts[9]];
+
+    seq!( i in 0..6 {
+        ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
     });
-    ts[9 - 1] += simd_swizzle!(Simd::splat(0), ts[9], [0, 2]);
 
+    seq!( i in 0..2 {
+        let s = i * 2;
+        ss[s] += simd_swizzle!(Simd::splat(0), ss[s + 1], [0, 2]);
+        ss[s + 2] += simd_swizzle!(Simd::splat(0), ss[s + 1], [3, 0]);
+    });
+    ss[5 - 1] += simd_swizzle!(Simd::splat(0), ss[5], [0, 2]);
     // After this point only the even ts matter
 
-    seq!(i in 2..5 {
+    let mut t = [0; 6];
+    seq!(i in 0..3 {
         let s = i * 2;
-        t[s] = ts[s][0];
-        t[s + 1] = ts[s][1];
+        t[s] = ss[s][0];
+        t[s + 1] = ss[s][1];
     });
 
     let s = [
-        r0[0] + r1[0] + r2[0] + r3[0] + Simd::splat(t[4]),
-        r0[1] + r1[1] + r2[1] + r3[1] + Simd::splat(t[5]),
-        r0[2] + r1[2] + r2[2] + r3[2] + Simd::splat(t[6]),
-        r0[3] + r1[3] + r2[3] + r3[3] + Simd::splat(t[7]),
-        r0[4] + r1[4] + r2[4] + r3[4] + Simd::splat(t[8]),
-        r0[5] + r1[5] + r2[5] + r3[5] + Simd::splat(t[9]),
+        Simd::splat(t[0]),
+        Simd::splat(t[1]),
+        Simd::splat(t[2]),
+        Simd::splat(t[3]),
+        Simd::splat(t[4]),
+        Simd::splat(t[5]),
     ];
 
     let m = (s[0].cast() * Simd::splat(U51_NP0)).bitand(Simd::splat(MASK51));
