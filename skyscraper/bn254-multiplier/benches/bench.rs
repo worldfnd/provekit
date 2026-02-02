@@ -7,7 +7,7 @@ use {
 
 // #[divan::bench_group]
 mod mul {
-    use super::*;
+    use {super::*, bn254_multiplier::rne};
 
     #[divan::bench]
     fn scalar_mul(bencher: Bencher) {
@@ -29,6 +29,14 @@ mod mul {
                 )
             })
             .bench_local_values(|(a, b)| a * b);
+    }
+
+    #[divan::bench]
+    fn single_b51(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(1usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|(a, b)| rne::single::simd_mul(a, b));
     }
 
     #[divan::bench]
