@@ -187,8 +187,8 @@ pub fn smult_noinit(s: u64, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
     let v45 = Simd::from_array([v[4] as f64, 0.]);
     let p_hi = fma(s, v45, Simd::splat(C1));
     let p_lo = fma(s, v45, Simd::splat(C2) - p_hi);
-    t[5] += Simd::from_array([p_hi[0].to_bits() as i64, 0]);
-    t[4] += Simd::from_array([p_lo[0].to_bits() as i64, 0]);
+    t[5] += p_hi.to_bits().cast();
+    t[4] += p_lo.to_bits().cast();
 
     t
 }
@@ -220,7 +220,7 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
     ts[2] = Simd::from_array([make_initial(3, 2), make_initial(4, 3)]);
     ts[4] = Simd::from_array([make_initial(10, 4), make_initial(10, 10)]);
     ts[6] = Simd::from_array([make_initial(9, 10), make_initial(8, 9)]);
-    ts[8] = Simd::from_array([make_initial(7, 8), make_initial(1, 7)]);
+    ts[8] = Simd::from_array([make_initial(7, 8), make_initial(6, 7)]);
 
     // Offset multiplication to have less intermediate data
     seq!(i in 0..5{
@@ -281,14 +281,15 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
         ss[i] += mp[i];
     });
 
+    // Get rid of redundant SIMD form
     seq!( i in 0..2 {
         let s = i * 2;
         ss[s] += simd_swizzle!(Simd::splat(0), ss[s + 1], [0, 2]);
         ss[s + 2] += simd_swizzle!(Simd::splat(0), ss[s + 1], [3, 0]);
     });
     ss[5 - 1] += simd_swizzle!(Simd::splat(0), ss[5], [0, 2]);
-    // After this point only the even ts matter
 
+    // Move to redundant scalar form
     let mut s: [i64; 6] = [0; 6];
     seq!(i in 0..3 {
         let k = i * 2;
