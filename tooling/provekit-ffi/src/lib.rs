@@ -25,6 +25,7 @@
 
 pub mod ffi;
 mod ffi_allocator;
+pub mod mmap_allocator;
 pub mod types;
 pub mod utils;
 

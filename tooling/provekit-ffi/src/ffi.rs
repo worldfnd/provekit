@@ -169,3 +169,74 @@ pub extern "C" fn pk_init() -> c_int {
     // For now, we'll keep it simple and just return success
     PKError::Success.into()
 }
+
+/// Configure the mmap-based memory allocator.
+///
+/// MUST be called before pk_init() and before any allocations occur.
+///
+/// # Arguments
+///
+/// * `ram_limit_bytes` - Maximum RAM to use before swapping to file (must be > 0)
+/// * `use_file_backed` - Whether to use file-backed mmap when over RAM limit
+/// * `swap_file_path` - Path to swap directory (NULL = use system temp dir)
+///
+/// # Returns
+///
+/// Returns `PKError::Success` or `PKError::InvalidInput` if ram_limit_bytes is 0.
+///
+/// # Safety
+///
+/// The caller must ensure that `swap_file_path` is either NULL or a valid
+/// null-terminated C string.
+#[no_mangle]
+pub unsafe extern "C" fn pk_configure_memory(
+    ram_limit_bytes: usize,
+    use_file_backed: bool,
+    swap_file_path: *const c_char,
+) -> c_int {
+    if ram_limit_bytes == 0 {
+        return PKError::InvalidInput.into();
+    }
+
+    if crate::mmap_allocator::configure_allocator(ram_limit_bytes, use_file_backed, swap_file_path) {
+        PKError::Success.into()
+    } else {
+        PKError::InvalidInput.into()
+    }
+}
+
+/// Get current memory statistics.
+///
+/// # Arguments
+///
+/// * `ram_used` - Output: current RAM usage in bytes (can be NULL)
+/// * `swap_used` - Output: current swap usage in bytes (can be NULL)
+/// * `peak_ram` - Output: peak RAM usage in bytes (can be NULL)
+///
+/// # Returns
+///
+/// Returns `PKError::Success`.
+///
+/// # Safety
+///
+/// The caller must ensure that all non-NULL pointers are valid.
+#[no_mangle]
+pub unsafe extern "C" fn pk_get_memory_stats(
+    ram_used: *mut usize,
+    swap_used: *mut usize,
+    peak_ram: *mut usize,
+) -> c_int {
+    let (ram, swap, peak) = crate::mmap_allocator::get_stats();
+
+    if !ram_used.is_null() {
+        *ram_used = ram;
+    }
+    if !swap_used.is_null() {
+        *swap_used = swap;
+    }
+    if !peak_ram.is_null() {
+        *peak_ram = peak;
+    }
+
+    PKError::Success.into()
+}

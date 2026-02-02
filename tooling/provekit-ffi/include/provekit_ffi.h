@@ -80,6 +80,27 @@ extern "C"
     void pk_set_allocator(void *(*_Nullable alloc_fn)(size_t size, size_t align),
                           void (*_Nullable dealloc_fn)(void *ptr, size_t size, size_t align));
 
+    /// Configure the mmap-based memory allocator (MUST be called before pk_init).
+    ///
+    /// This configures the pure Rust mmap allocator with RAM limits and swap settings.
+    /// Call this before pk_init() to use the mmap allocator instead of callbacks.
+    ///
+    /// @param ram_limit_bytes Maximum RAM before using swap (must be > 0)
+    /// @param use_file_backed Whether to use file-backed mmap for swap
+    /// @param swap_file_path Directory for swap files (NULL = system temp)
+    /// @return PK_SUCCESS or PK_INVALID_INPUT
+    int pk_configure_memory(size_t ram_limit_bytes, bool use_file_backed, const char *_Nullable swap_file_path);
+
+    /// Get current memory statistics.
+    ///
+    /// Returns statistics about current RAM and swap usage from the mmap allocator.
+    ///
+    /// @param ram_used Output pointer for current RAM usage (can be NULL)
+    /// @param swap_used Output pointer for current swap usage (can be NULL)
+    /// @param peak_ram Output pointer for peak RAM usage (can be NULL)
+    /// @return PK_SUCCESS
+    int pk_get_memory_stats(size_t *_Nullable ram_used, size_t *_Nullable swap_used, size_t *_Nullable peak_ram);
+
 #ifdef __cplusplus
 }
 #endif

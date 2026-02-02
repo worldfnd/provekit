@@ -26,6 +26,10 @@ serde.workspace = true
 serde_json.workspace = true
 postcard.workspace = true
 tracing.workspace = true
+parking_lot = "0.12"
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+libc = "0.2"
 
 [lints]
 workspace = true
