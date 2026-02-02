@@ -1,17 +1,21 @@
 //! SIMD utilities for RNE Montgomery multiplication.
 
 use {
-    crate::rne::constants::{C1, C2, C3, MASK51, U51_P},
+    crate::rne::{
+        constants::{C1, C2, C3, MASK51},
+        U51_P,
+    },
     core::{
-        array,
         ops::BitAnd,
         simd::{
-            cmp::SimdPartialEq,
             num::{SimdFloat, SimdInt, SimdUint},
             Simd,
         },
     },
-    std::simd::{LaneCount, SupportedLaneCount},
+    std::{
+        array,
+        simd::{cmp::SimdPartialEq, LaneCount, SupportedLaneCount},
+    },
 };
 #[inline(always)]
 /// On WASM there is no single specialised instruction to cast an integer to a

@@ -105,9 +105,6 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     (v[0], v[1])
 }
 
-/// Move redundant carries from lower limbs to the higher limbs such that all
-/// limbs except the last one is 51 bits. The most significant limb can be
-/// larger than 51 bits as the input can be bigger 2^255-1.
 #[inline(always)]
 fn redundant_carry<const N: usize, const L: usize>(t: [Simd<i64, L>; N]) -> [Simd<u64, L>; N]
 where
@@ -122,6 +119,23 @@ where
     }
 
     res[N - 1] = (t[N - 1] + borrow).cast();
+    res
+}
+
+/// Move redundant carries from lower limbs to the higher limbs such that all
+/// limbs except the last one is 51 bits. The most significant limb can be
+/// larger than 51 bits as the input can be bigger 2^255-1.
+#[inline(always)]
+fn redundant_carry_scalar<const N: usize>(t: [i64; N]) -> [u64; N] {
+    let mut borrow = 0;
+    let mut res = [0; N];
+    for i in 0..t.len() - 1 {
+        let tmp = t[i] + borrow;
+        res[i] = (tmp as u64) & MASK51;
+        borrow = tmp >> 51;
+    }
+
+    res[N - 1] = (t[N - 1] + borrow) as u64;
     res
 }
 
@@ -179,10 +193,25 @@ pub fn smult_noinit(s: u64, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
     t
 }
 
+#[inline(always)]
+pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
+    // To reduce Check whether the least significant bit is set
+    let mask = -(a[0] & 1);
+
+    seq!( i in 0..5 {
+        a[i] += U51_P[i] as i64 & mask;
+    });
+
+    // Check that final result is even
+    debug_assert!(a[0] & 1 == 0);
+
+    a
+}
+
 /// Two parallel Montgomery multiplications: `(v0_a*v0_b, v1_a*v1_b)`.
 /// input must fit in 2^255-1; no runtime checking
 #[inline(always)]
-pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
+pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
     let v0_a = u256_to_u255(v0_a);
     let v0_b = u256_to_u255(v0_b);
 
@@ -268,21 +297,26 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     });
 
     s[1] += s[0] >> 51;
-    let s = [
-        Simd::splat(s[1]),
-        Simd::splat(s[2]),
-        Simd::splat(s[3]),
-        Simd::splat(s[4]),
-        Simd::splat(s[5]),
-    ];
+    let s = [s[1], s[2], s[3], s[4], s[5]];
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
-    let reduced = reduce_ct_simd(s);
-    let reduced = redundant_carry(reduced);
-    let u256_result = u255_to_u256_shr_1_simd(reduced);
-    let v = transpose_simd_to_u256(u256_result);
-    (v[0], v[1])
+    let reduced = reduce_ct(s);
+    let reduced = redundant_carry_scalar(reduced);
+    let u256_result = u255_to_u256_shr_1(reduced);
+    u256_result
+}
+
+/// Convert 5×51-bit to 4×64-bit with simultaneous division by 2.
+#[inline(always)]
+pub fn u255_to_u256_shr_1(limbs: [u64; 5]) -> [u64; 4] {
+    let [l0, l1, l2, l3, l4] = limbs;
+    [
+        (l0 >> 1) | (l1 << 50),
+        (l1 >> 14) | (l2 << 37),
+        (l2 >> 27) | (l3 << 24),
+        (l3 >> 40) | (l4 << 11),
+    ]
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -309,7 +343,7 @@ mod tests {
                 let b: [Simd<u64,1>;_] = b.map(Simd::splat);
                 let a = u255_to_u256_simd(a).map(|x|x[0]);
                 let b = u255_to_u256_simd(b).map(|x|x[0]);
-                let (ab, _bc) = simd_mul(a, b);
+                let ab = simd_mul(a, b);
                 let ab_ref = ark_ff_reference(a, b);
                 let ab = Fr::new(BigInt(ab));
                 prop_assert_eq!(ab_ref, ab, "mismatch: l = {:X}, b = {:X}", ab_ref.into_bigint(), ab.into_bigint());
