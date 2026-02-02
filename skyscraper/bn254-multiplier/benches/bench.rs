@@ -150,6 +150,14 @@ mod sqr {
     }
 
     #[divan::bench]
+    fn single_sqr_b51(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(1usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|a| rne::single::simd_sqr(a));
+    }
+
+    #[divan::bench]
     fn ark_ff(bencher: Bencher) {
         use {ark_bn254::Fr, ark_ff::BigInt};
         bencher
