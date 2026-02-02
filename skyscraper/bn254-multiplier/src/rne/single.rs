@@ -245,6 +245,13 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
         ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
     });
 
+    let m = (ss[0][0] as u64).wrapping_mul(U51_NP0) & MASK51;
+    let mp = smult_noinit(m, U51_P);
+
+    seq!( i in 0..6 {
+        ss[i] += mp[i];
+    });
+
     seq!( i in 0..2 {
         let s = i * 2;
         ss[s] += simd_swizzle!(Simd::splat(0), ss[s + 1], [0, 2]);
@@ -253,32 +260,25 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     ss[5 - 1] += simd_swizzle!(Simd::splat(0), ss[5], [0, 2]);
     // After this point only the even ts matter
 
-    let mut t = [0; 6];
+    let mut s: [i64; 6] = [0; 6];
     seq!(i in 0..3 {
-        let s = i * 2;
-        t[s] = ss[s][0];
-        t[s + 1] = ss[s][1];
+        let k = i * 2;
+        s[k] = ss[k][0];
+        s[k + 1] = ss[k][1];
     });
 
+    s[1] += s[0] >> 51;
     let s = [
-        Simd::splat(t[0]),
-        Simd::splat(t[1]),
-        Simd::splat(t[2]),
-        Simd::splat(t[3]),
-        Simd::splat(t[4]),
-        Simd::splat(t[5]),
+        Simd::splat(s[1]),
+        Simd::splat(s[2]),
+        Simd::splat(s[3]),
+        Simd::splat(s[4]),
+        Simd::splat(s[5]),
     ];
-
-    let m = (s[0].cast() * Simd::splat(U51_NP0)).bitand(Simd::splat(MASK51));
-    let mp = smult_noinit_simd(m, U51_P);
-
-    let mut addi = addv_simd(s, mp);
-    addi[1] += addi[0] >> 51;
-    let addi = [addi[1], addi[2], addi[3], addi[4], addi[5]];
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
-    let reduced = reduce_ct_simd(addi);
+    let reduced = reduce_ct_simd(s);
     let reduced = redundant_carry(reduced);
     let u256_result = u255_to_u256_shr_1_simd(reduced);
     let v = transpose_simd_to_u256(u256_result);
