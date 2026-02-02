@@ -51,10 +51,11 @@ fn diagonal() -> [usize; 12] {
         println!();
     }
 
-    // scalar doubling
-    // needs to chop off the 1 in 01 and the 8 in 89 and feed it back into 12 and 78
-    // respectively.
-    for i in 1..=8 {
+    // Since there is no data of the diagionals yet it is safe to double them. This
+    // means that t[8][1] = t[9] needs to be included.
+    // t[0][1] is not touched by the diagonalisation so no need to include t[0]
+
+    for i in 1..=9 {
         t[i] += t[i];
     }
 

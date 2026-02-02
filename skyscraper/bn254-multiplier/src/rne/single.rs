@@ -236,12 +236,6 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
         }
     });
 
-    ts[1] += simd_swizzle!(Simd::splat(0), ts[0], [3, 0]);
-    ts[0] = ts[0].bitand(Simd::from_array([-1, 0]));
-
-    ts[9] += simd_swizzle!(Simd::splat(0), ts[8], [3, 0]);
-    ts[8] = ts[8].bitand(Simd::from_array([-1, 0]));
-
     seq!( i in 1..=8 {
         ts[i] += ts[i];
     });
@@ -272,7 +266,7 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
     ts[2] += Simd::from_array([make_initial(3, 2), make_initial(4, 3)]);
     ts[4] += Simd::from_array([make_initial(10, 4), make_initial(9, 10)]);
     ts[6] += Simd::from_array([make_initial(10, 9), make_initial(7, 10)]);
-    ts[8] += Simd::from_array([make_initial(8, 7), make_initial(5, 7)]);
+    ts[8] += Simd::from_array([make_initial(8, 7), make_initial(5, 8)]);
 
     let mut t: [i64; 4] = [0; 4];
 
