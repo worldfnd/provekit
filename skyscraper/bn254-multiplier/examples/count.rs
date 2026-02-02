@@ -54,9 +54,9 @@ fn diagonal() -> [usize; 12] {
     // scalar doubling
     // needs to chop off the 1 in 01 and the 8 in 89 and feed it back into 12 and 78
     // respectively.
-    // for i in 1..=8 {
-    //     t[i] += t[i];
-    // }
+    for i in 1..=8 {
+        t[i] += t[i];
+    }
 
     for i in (0..4).step_by(2) {
         t[2 * (i + 1) + 1] += HI;
