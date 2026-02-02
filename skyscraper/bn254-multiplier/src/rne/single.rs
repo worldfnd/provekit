@@ -195,19 +195,12 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u255(v0_a);
     let v0_b = u256_to_u255(v0_b);
 
-    let mut t: [i64; 10] = [0; 10];
-    t[0] = make_initial(1, 0);
-    t[9] = make_initial(1, 7);
-    t[1] = make_initial(2, 1);
-    t[8] = make_initial(7, 8);
-    t[2] = make_initial(3, 2);
-    t[7] = make_initial(8, 9);
-    t[3] = make_initial(4, 3);
-    t[6] = make_initial(9, 10);
-    t[4] = make_initial(10, 4);
-    t[5] = make_initial(10, 10);
-
     let mut ts = [Simd::splat(0); 10];
+    ts[0] = Simd::from_array([make_initial(1, 0), make_initial(2, 1)]);
+    ts[2] = Simd::from_array([make_initial(3, 2), make_initial(4, 3)]);
+    ts[4] = Simd::from_array([make_initial(10, 4), make_initial(10, 10)]);
+    ts[6] = Simd::from_array([make_initial(9, 10), make_initial(8, 9)]);
+    ts[8] = Simd::from_array([make_initial(7, 8), make_initial(1, 7)]);
 
     // Offset multiplication to have less intermediate data
     seq!(i in 0..5{
@@ -232,27 +225,43 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
 
     });
 
-    for s in (1..9).step_by(2) {
-        ts[s - 1] += simd_swizzle!(Simd::splat(0), ts[s], [0, 2]);
-        ts[s + 1] += simd_swizzle!(Simd::splat(0), ts[s], [3, 0]);
-    }
-    ts[9 - 1] += simd_swizzle!(Simd::splat(0), ts[9], [0, 2]);
+    let mut t: [i64; 10] = [0; 10];
 
-    for s in (0..10).step_by(2) {
-        t[s] = t[s].wrapping_add(ts[s][0]);
-        t[s + 1] = t[s + 1].wrapping_add(ts[s][1]);
-    }
+    seq!( i in 0..2 {
+        let s = i * 2;
+        ts[s] += simd_swizzle!(Simd::splat(0), ts[s + 1], [0, 2]);
+        ts[s + 2] += simd_swizzle!(Simd::splat(0), ts[s + 1], [3, 0]);
+        t[s] = ts[s][0];
+        t[s + 1] = ts[s][1];
+    });
 
     // sign extend redundant carries
     t[1] += t[0] >> 51;
     t[2] += t[1] >> 51;
     t[3] += t[2] >> 51;
-    t[4] += t[3] >> 51;
+
+    // Lift carry into SIMD to prevent extraction
+    ts[4] += Simd::from_array([t[3] >> 51, 0]);
 
     let r0 = smult_noinit_simd(Simd::splat(t[0] as u64 & MASK51), RHO_4);
     let r1 = smult_noinit_simd(Simd::splat(t[1] as u64 & MASK51), RHO_3);
     let r2 = smult_noinit_simd(Simd::splat(t[2] as u64 & MASK51), RHO_2);
     let r3 = smult_noinit_simd(Simd::splat(t[3] as u64 & MASK51), RHO_1);
+
+    seq!( i in 2..4 {
+        let s = i * 2;
+        ts[s] += simd_swizzle!(Simd::splat(0), ts[s + 1], [0, 2]);
+        ts[s + 2] += simd_swizzle!(Simd::splat(0), ts[s + 1], [3, 0]);
+    });
+    ts[9 - 1] += simd_swizzle!(Simd::splat(0), ts[9], [0, 2]);
+
+    // After this point only the even ts matter
+
+    seq!(i in 2..5 {
+        let s = i * 2;
+        t[s] = ts[s][0];
+        t[s + 1] = ts[s][1];
+    });
 
     let s = [
         r0[0] + r1[0] + r2[0] + r3[0] + Simd::splat(t[4]),
