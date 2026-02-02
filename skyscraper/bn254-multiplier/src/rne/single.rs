@@ -1,7 +1,4 @@
 //! Portable SIMD Montgomery multiplication and squaring.
-//!
-//! Processes two independent field multiplications in parallel using 2-lane
-//! SIMD.
 
 use {
     crate::rne::{
@@ -10,17 +7,14 @@ use {
     },
     core::simd::{num::SimdFloat, Simd},
     seq_macro::seq,
-    std::{
-        ops::BitAnd,
-        simd::{num::SimdUint, simd_swizzle},
-    },
+    std::simd::{num::SimdUint, simd_swizzle},
 };
 
 /// Move redundant carries from lower limbs to the higher limbs such that all
 /// limbs except the last one is 51 bits. The most significant limb can be
 /// larger than 51 bits as the input can be bigger 2^255-1.
 #[inline(always)]
-fn redundant_carry_scalar<const N: usize>(t: [i64; N]) -> [u64; N] {
+fn redundant_carry<const N: usize>(t: [i64; N]) -> [u64; N] {
     let mut borrow = 0;
     let mut res = [0; N];
     for i in 0..t.len() - 1 {
@@ -89,7 +83,7 @@ pub fn smult_noinit(s: u64, v: [u64; 5]) -> [Simd<i64, 2>; 6] {
 
 #[inline(always)]
 pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
-    // To reduce Check whether the least significant bit is set
+    // When input is odd add P to prepare for division
     let mask = -(a[0] & 1);
 
     seq!( i in 0..5 {
@@ -102,12 +96,12 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
     a
 }
 
-/// Two parallel Montgomery multiplications: `(v0_a*v0_b, v1_a*v1_b)`.
+/// Montgomery multiplications: `(v0_a*v0_b, v1_a*v1_b)`.
 /// input must fit in 2^255-1; no runtime checking
 #[inline(always)]
-pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
-    let v0_a = u256_to_u255(v0_a);
-    let v0_b = u256_to_u255(v0_b);
+pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+    let a = u256_to_u255(a);
+    let b = u256_to_u255(b);
 
     let mut ts = [Simd::splat(0); 10];
     ts[0] = Simd::from_array([make_initial(1, 0), make_initial(2, 1)]);
@@ -116,22 +110,21 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
     ts[6] = Simd::from_array([make_initial(9, 10), make_initial(8, 9)]);
     ts[8] = Simd::from_array([make_initial(7, 8), make_initial(6, 7)]);
 
-    // Offset multiplication to have less intermediate data
     seq!(i in 0..5{
-        let ai: Simd<f64, 2> = i2f(Simd::splat(v0_a[i]));
-        let b01: Simd<f64, 2> = i2f(Simd::from_array([v0_b[0], v0_b[1]]));
+        let ai: Simd<f64, 2> = i2f(Simd::splat(a[i]));
+        let b01: Simd<f64, 2> = i2f(Simd::from_array([b[0], b[1]]));
         let p_hi = fma(ai, b01, Simd::splat(C1));
         let p_lo = fma(ai, b01, Simd::splat(C2) - p_hi);
         ts[i+1] += p_hi.to_bits().cast();
         ts[i+0] += p_lo.to_bits().cast();
 
-        let b23: Simd<f64, 2> = i2f(Simd::from_array([v0_b[2], v0_b[3]]));
+        let b23: Simd<f64, 2> = i2f(Simd::from_array([b[2], b[3]]));
         let p_hi = fma(ai, b23, Simd::splat(C1));
         let p_lo = fma(ai, b23, Simd::splat(C2) - p_hi);
         ts[i+3] += p_hi.to_bits().cast();
         ts[i+2] += p_lo.to_bits().cast();
 
-        let b4 = Simd::from_array([i2f_scalar(v0_b[4]),0.]);
+        let b4 = Simd::from_array([i2f_scalar(b[4]),0.]);
         let p_hi = fma(ai, b4, Simd::splat(C1));
         let p_lo = fma(ai, b4, Simd::splat(C2) - p_hi);
         ts[i + 5] += p_hi.to_bits().cast();
@@ -141,12 +134,14 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
 
     let mut t: [i64; 4] = [0; 4];
 
+    // Swizzle the words that are reduced. Delay the rest of the swizzling until
+    // after the reduction.
     seq!( i in 0..2 {
-        let s = i * 2;
-        ts[s] += simd_swizzle!(Simd::splat(0), ts[s + 1], [0, 2]);
-        ts[s + 2] += simd_swizzle!(Simd::splat(0), ts[s + 1], [3, 0]);
-        t[s] = ts[s][0];
-        t[s + 1] = ts[s][1];
+        let k = i * 2;
+        ts[k] += simd_swizzle!(Simd::splat(0), ts[k + 1], [0, 2]);
+        ts[k + 2] += simd_swizzle!(Simd::splat(0), ts[k + 1], [3, 0]);
+        t[k] = ts[k][0];
+        t[k + 1] = ts[k][1];
     });
 
     // sign extend redundant carries
@@ -197,7 +192,7 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> [u64; 4] {
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
     let reduced = reduce_ct(s);
-    let reduced = redundant_carry_scalar(reduced);
+    let reduced = redundant_carry(reduced);
     let u256_result = u255_to_u256_shr_1(reduced);
     u256_result
 }
@@ -214,11 +209,12 @@ pub fn u255_to_u256_shr_1(limbs: [u64; 5]) -> [u64; 4] {
     ]
 }
 
-/// Two parallel Montgomery multiplications: `(v0_a*v0_b, v1_a*v1_b)`.
-/// input must fit in 2^255-1; no runtime checking
+/// Montgomery squaring: `(va*v0_b, v1_a*v1_b)`.
+/// input must fit in 2^255-1; no runtime checking. Output lives in Montgomery
+/// space R=256.
 #[inline(always)]
-pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
-    simd_mul(v0_a, v0_a)
+pub fn sqr(v0_a: [u64; 4]) -> [u64; 4] {
+    mul(v0_a, v0_a)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -226,13 +222,10 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 mod tests {
     use {
         super::*,
-        crate::{rne::simd_utils::u255_to_u256_simd, test_utils::ark_ff_reference},
+        crate::test_utils::{ark_ff_reference, limbs5_51},
         ark_bn254::Fr,
         ark_ff::{BigInt, PrimeField},
-        proptest::{
-            prelude::{prop, Strategy},
-            prop_assert_eq, proptest,
-        },
+        proptest::{prop_assert_eq, proptest},
     };
 
     #[test]
@@ -241,11 +234,9 @@ mod tests {
                 a in limbs5_51(),
                 b in limbs5_51(),
             )| {
-                let a: [Simd<u64,1>;_] = a.map(Simd::splat);
-                let b: [Simd<u64,1>;_] = b.map(Simd::splat);
-                let a = u255_to_u256_simd(a).map(|x|x[0]);
-                let b = u255_to_u256_simd(b).map(|x|x[0]);
-                let ab = simd_mul(a, b);
+                let a = u255_to_u256(a);
+                let b = u255_to_u256(b);
+                let ab = mul(a, b);
                 let ab_ref = ark_ff_reference(a, b);
                 let ab = Fr::new(BigInt(ab));
                 prop_assert_eq!(ab_ref, ab, "mismatch: l = {:X}, b = {:X}", ab_ref.into_bigint(), ab.into_bigint());
@@ -257,19 +248,19 @@ mod tests {
         proptest!(|(
                 a in limbs5_51(),
             )| {
-                let a: [Simd<u64,1>;_] = a.map(Simd::splat);
-                let a = u255_to_u256_simd(a).map(|x|x[0]);
-                let a2 = simd_mul(a, a);
-                let b2 = simd_sqr(a);
-                prop_assert_eq!(a2, b2);
+                let a = u255_to_u256(a);
+                prop_assert_eq!(mul(a,a), sqr(a));
         })
     }
 
-    fn limb51() -> impl Strategy<Value = u64> {
-        0u64..(1u64 << 51)
-    }
-
-    fn limbs5_51() -> impl Strategy<Value = [u64; 5]> {
-        prop::array::uniform5(limb51())
+    #[inline(always)]
+    pub fn u255_to_u256(limbs: [u64; 5]) -> [u64; 4] {
+        let [l0, l1, l2, l3, l4] = limbs;
+        [
+            l0 | (l1 << 51),
+            (l1 >> 13) | (l2 << 38),
+            (l2 >> 26) | (l3 << 25),
+            (l3 >> 39) | (l4 << 12),
+        ]
     }
 }

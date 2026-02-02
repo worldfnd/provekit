@@ -36,7 +36,7 @@ mod mul {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|(a, b)| rne::single::simd_mul(a, b));
+            .bench_local_values(|(a, b)| rne::single::mul(a, b));
     }
 
     #[divan::bench]
@@ -154,7 +154,7 @@ mod sqr {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|a| rne::single::simd_sqr(a));
+            .bench_local_values(|a| rne::single::sqr(a));
     }
 
     #[divan::bench]
@@ -162,7 +162,7 @@ mod sqr {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|a| rne::single::simd_mul(a, a));
+            .bench_local_values(|a| rne::single::mul(a, a));
     }
 
     #[divan::bench]

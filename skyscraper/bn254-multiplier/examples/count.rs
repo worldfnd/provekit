@@ -1,6 +1,6 @@
 use bn254_multiplier::rne::{
     make_initial,
-    single::{simd_mul, simd_sqr},
+    single::{mul, sqr},
 };
 
 const LO: usize = 1;
@@ -13,7 +13,7 @@ fn main() {
     }
 
     let a = [0, 0, 0, 0];
-    let res = simd_sqr(a);
+    let res = sqr(a);
     for (i, k) in res.iter().enumerate() {
         println!("res[{i}]: {:x}", k)
     }
@@ -33,7 +33,7 @@ fn main() {
     }
 
     let a = [0, 0, 0, 0];
-    let res = simd_mul(a, a);
+    let res = mul(a, a);
     for (i, k) in res.iter().enumerate() {
         println!("res[{i}]: {:x}", k)
     }

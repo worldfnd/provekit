@@ -6,7 +6,7 @@ use {
     ark_ff::{BigInt, Field},
     proptest::{
         collection,
-        prelude::{any, Strategy},
+        prelude::{any, prop, Strategy},
         proptest,
     },
 };
@@ -80,4 +80,12 @@ fn test_max_multiprecision_strategy() {
             "value[0] exceeds max[0] when higher limbs are equal"
         );
     });
+}
+
+pub fn limb51() -> impl Strategy<Value = u64> {
+    0u64..(1u64 << 51)
+}
+
+pub fn limbs5_51() -> impl Strategy<Value = [u64; 5]> {
+    prop::array::uniform5(limb51())
 }
