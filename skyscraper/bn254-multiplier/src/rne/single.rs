@@ -223,7 +223,7 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     let mut ts = [Simd::splat(0); 10];
 
-    for i in 0..5 {
+    seq!( i in 0..5 {
         let ai: Simd<f64, 2> = i2f(Simd::splat(v0_a[i]));
         for j in ((i + 1)..5).step_by(2) {
             let l = v0_b[j];
@@ -234,7 +234,7 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
             ts[i + j + 1] += p_hi.to_bits().cast();
             ts[i + j] += p_lo.to_bits().cast();
         }
-    }
+    });
 
     ts[1] += simd_swizzle!(Simd::splat(0), ts[0], [3, 0]);
     ts[0] = ts[0].bitand(Simd::from_array([-1, 0]));
@@ -242,23 +242,24 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
     ts[9] += simd_swizzle!(Simd::splat(0), ts[8], [3, 0]);
     ts[8] = ts[8].bitand(Simd::from_array([-1, 0]));
 
-    for i in 1..=8 {
-        ts[i] += ts[i]
-    }
+    seq!( i in 1..=8 {
+        ts[i] += ts[i];
+    });
 
     // Diagonal
-    for i in (0..4).step_by(2) {
-        let ai: Simd<f64, 2> = i2f(Simd::from_array([v0_a[i], v0_a[i + 1]]));
+    seq!( i in 0..2 {
+        let k = i * 2;
+        let ai: Simd<f64, 2> = i2f(Simd::from_array([v0_a[k], v0_a[k + 1]]));
         let p_hi = fma(ai, ai, Simd::splat(C1));
         let p_lo = fma(ai, ai, Simd::splat(C2) - p_hi);
         let l_mask = Simd::from_array([0xffffffffffffffff_u64, 0]);
         let r_mask = Simd::from_array([0, 0xffffffffffffffff_u64]);
-        ts[2 * (i + 1)] += p_hi.to_bits().bitand(r_mask).cast();
-        ts[2 * (i + 1) - 1] += p_lo.to_bits().bitand(r_mask).cast();
+        ts[2 * (k + 1)] += p_hi.to_bits().bitand(r_mask).cast();
+        ts[2 * (k + 1) - 1] += p_lo.to_bits().bitand(r_mask).cast();
 
-        ts[2 * i + 1] += p_hi.to_bits().bitand(l_mask).cast();
-        ts[2 * i] += p_lo.to_bits().bitand(l_mask).cast();
-    }
+        ts[2 * k + 1] += p_hi.to_bits().bitand(l_mask).cast();
+        ts[2 * k] += p_lo.to_bits().bitand(l_mask).cast();
+    });
 
     let ai: Simd<f64, 2> = i2f(Simd::from_array([v0_a[4], 0]));
     let p_hi = fma(ai, ai, Simd::splat(C1));
@@ -283,10 +284,6 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
         t[s + 1] = ts[s][1];
     });
 
-    for (i, k) in t.iter().enumerate() {
-        println!("t[{i}]: {k:x}")
-    }
-
     // sign extend redundant carries
     t[1] += t[0] >> 51;
     t[2] += t[1] >> 51;
@@ -305,8 +302,6 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
     seq!( i in 0..6 {
         ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
     });
-
-    println!("ss[0][0]: {:x}", ss[0][0]);
 
     let m = (ss[0][0] as u64).wrapping_mul(U51_NP0) & MASK51;
     let mp = smult_noinit(m, U51_P);
@@ -333,9 +328,6 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     s[1] += s[0] >> 51;
     let s = [s[1], s[2], s[3], s[4], s[5]];
-    for (i, k) in s.iter().enumerate() {
-        println!("s[{i}]: {k:x}")
-    }
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
