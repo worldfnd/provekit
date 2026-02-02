@@ -197,17 +197,17 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
 
     let mut t: [i64; 10] = [0; 10];
     t[0] = make_initial(1, 0);
-    t[9] = make_initial(1, 6);
+    t[9] = make_initial(1, 7);
     t[1] = make_initial(2, 1);
-    t[8] = make_initial(7, 7);
+    t[8] = make_initial(7, 8);
     t[2] = make_initial(3, 2);
-    t[7] = make_initial(8, 8);
+    t[7] = make_initial(8, 9);
     t[3] = make_initial(4, 3);
-    t[6] = make_initial(9, 9);
+    t[6] = make_initial(9, 10);
     t[4] = make_initial(10, 4);
     t[5] = make_initial(10, 10);
 
-    let mut ts = [Simd::splat(0); 9];
+    let mut ts = [Simd::splat(0); 10];
 
     // Offset multiplication to have less intermediate data
     seq!(i in 0..5{
@@ -227,7 +227,7 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
         let b4 = Simd::from_array([i2f_scalar(v0_b[4]),0.]);
         let p_hi = fma(ai, b4, Simd::splat(C1));
         let p_lo = fma(ai, b4, Simd::splat(C2) - p_hi);
-        t[i + 5] = t[i + 5].wrapping_add(p_hi[0].to_bits() as i64);
+        ts[i + 5] += p_hi.to_bits().cast();
         ts[i + 4] += p_lo.to_bits().cast();
 
     });
@@ -236,6 +236,7 @@ pub fn simd_mul(v0_a: [u64; 4], v0_b: [u64; 4]) -> ([u64; 4], [u64; 4]) {
         ts[s - 1] += simd_swizzle!(Simd::splat(0), ts[s], [0, 2]);
         ts[s + 1] += simd_swizzle!(Simd::splat(0), ts[s], [3, 0]);
     }
+    ts[9 - 1] += simd_swizzle!(Simd::splat(0), ts[9], [0, 2]);
 
     for s in (0..10).step_by(2) {
         t[s] = t[s].wrapping_add(ts[s][0]);
