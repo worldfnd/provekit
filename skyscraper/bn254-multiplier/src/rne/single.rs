@@ -10,7 +10,10 @@ use {
     },
     core::simd::{num::SimdFloat, Simd},
     seq_macro::seq,
-    std::simd::{num::SimdUint, simd_swizzle},
+    std::{
+        ops::BitAnd,
+        simd::{num::SimdUint, simd_swizzle},
+    },
 };
 
 /// Move redundant carries from lower limbs to the higher limbs such that all
@@ -220,34 +223,44 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     let mut ts = [Simd::splat(0); 10];
 
-    // Offset multiplication to have less intermediate data
-    seq!(i in 0..5{
+    for i in 0..5 {
         let ai: Simd<f64, 2> = i2f(Simd::splat(v0_a[i]));
-        let b01: Simd<f64, 2> = i2f(Simd::from_array([v0_b[0], v0_b[1]]));
-        let p_hi = fma(ai, b01, Simd::splat(C1));
-        let p_lo = fma(ai, b01, Simd::splat(C2) - p_hi);
-        ts[i+1] += p_hi.to_bits().cast();
-        ts[i+0] += p_lo.to_bits().cast();
+        for j in ((i + 1)..5).step_by(2) {
+            let l = v0_b[j];
+            let r = if j + 1 < 5 { v0_b[j + 1] } else { 0 };
+            let b01: Simd<f64, 2> = i2f(Simd::from_array([l, r]));
+            let p_hi = fma(ai, b01, Simd::splat(C1));
+            let p_lo = fma(ai, b01, Simd::splat(C2) - p_hi);
+            ts[i + j + 1] += p_hi.to_bits().cast();
+            ts[i + j] += p_lo.to_bits().cast();
+        }
+    }
 
-        let b23: Simd<f64, 2> = i2f(Simd::from_array([v0_b[2], v0_b[3]]));
-        let p_hi = fma(ai, b23, Simd::splat(C1));
-        let p_lo = fma(ai, b23, Simd::splat(C2) - p_hi);
-        ts[i+3] += p_hi.to_bits().cast();
-        ts[i+2] += p_lo.to_bits().cast();
+    for i in (0..4).step_by(2) {
+        let ai: Simd<f64, 2> = i2f(Simd::from_array([v0_a[i], v0_a[i + 1]]));
+        let p_hi = fma(ai, ai, Simd::splat(C1));
+        let p_lo = fma(ai, ai, Simd::splat(C2) - p_hi);
+        let l_mask = Simd::from_array([0xffffffffffffffff_u64, 0]);
+        let r_mask = Simd::from_array([0, 0xffffffffffffffff_u64]);
+        ts[2 * (i + 1)] += p_hi.to_bits().bitand(r_mask).cast();
+        ts[2 * (i + 1) - 1] += p_lo.to_bits().bitand(r_mask).cast();
 
-        let b4 = Simd::from_array([i2f_scalar(v0_b[4]),0.]);
-        let p_hi = fma(ai, b4, Simd::splat(C1));
-        let p_lo = fma(ai, b4, Simd::splat(C2) - p_hi);
-        ts[i + 5] += p_hi.to_bits().cast();
-        ts[i + 4] += p_lo.to_bits().cast();
+        ts[2 * i + 1] += p_hi.to_bits().bitand(l_mask).cast();
+        ts[2 * i] += p_lo.to_bits().bitand(l_mask).cast();
+    }
 
-    });
+    let ai: Simd<f64, 2> = i2f(Simd::from_array([v0_a[4], 0]));
+    let p_hi = fma(ai, ai, Simd::splat(C1));
+    let p_lo = fma(ai, ai, Simd::splat(C2) - p_hi);
+    let l_mask = Simd::from_array([0xffffffffffffffff_u64, 0]);
+    ts[2 * 4 + 1] += p_hi.to_bits().bitand(l_mask).cast();
+    ts[2 * 4] += p_lo.to_bits().bitand(l_mask).cast();
 
-    ts[0] += Simd::from_array([make_initial(1, 0), make_initial(2, 1)]);
-    ts[2] += Simd::from_array([make_initial(3, 2), make_initial(4, 3)]);
-    ts[4] += Simd::from_array([make_initial(10, 4), make_initial(10, 10)]);
-    ts[6] += Simd::from_array([make_initial(9, 10), make_initial(8, 9)]);
-    ts[8] += Simd::from_array([make_initial(7, 8), make_initial(6, 7)]);
+    ts[0] += Simd::from_array([make_initial(1, 0), make_initial(1, 1)]);
+    ts[2] += Simd::from_array([make_initial(2, 1), make_initial(2, 2)]);
+    ts[4] += Simd::from_array([make_initial(3, 2), make_initial(2, 3)]);
+    ts[6] += Simd::from_array([make_initial(3, 2), make_initial(1, 3)]);
+    ts[8] += Simd::from_array([make_initial(2, 1), make_initial(0, 2)]);
 
     let mut t: [i64; 4] = [0; 4];
 
@@ -258,6 +271,10 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
         t[s] = ts[s][0];
         t[s + 1] = ts[s][1];
     });
+
+    for (i, k) in t.iter().enumerate() {
+        println!("t[{i}]: {k:x}")
+    }
 
     // sign extend redundant carries
     t[1] += t[0] >> 51;
@@ -274,35 +291,40 @@ pub fn simd_sqr(v0_a: [u64; 4]) -> [u64; 4] {
 
     let mut ss = [ts[4], ts[5], ts[6], ts[7], ts[8], ts[9]];
 
-    seq!( i in 0..6 {
-        ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
-    });
+    // seq!( i in 0..6 {
+    //     ss[i] += r0[i] + r1[i] + r2[i] + r3[i];
+    // });
+
+    println!("ss[0][0]: {:x}", ss[0][0]);
 
     let m = (ss[0][0] as u64).wrapping_mul(U51_NP0) & MASK51;
     let mp = smult_noinit(m, U51_P);
 
-    seq!( i in 0..6 {
-        ss[i] += mp[i];
-    });
+    // seq!( i in 0..6 {
+    //     ss[i] += mp[i];
+    // });
 
     // Get rid of redundant SIMD form
-    seq!( i in 0..2 {
-        let s = i * 2;
-        ss[s] += simd_swizzle!(Simd::splat(0), ss[s + 1], [0, 2]);
-        ss[s + 2] += simd_swizzle!(Simd::splat(0), ss[s + 1], [3, 0]);
-    });
-    ss[5 - 1] += simd_swizzle!(Simd::splat(0), ss[5], [0, 2]);
+    ss[0] += simd_swizzle!(Simd::splat(0), ss[1], [0, 2]);
+    ss[2] += simd_swizzle!(Simd::splat(0), ss[1], [3, 0]);
+    ss[2] += simd_swizzle!(Simd::splat(0), ss[3], [0, 2]);
+    ss[4] += simd_swizzle!(Simd::splat(0), ss[3], [3, 0]);
+    ss[4] += simd_swizzle!(Simd::splat(0), ss[5], [0, 2]);
 
     // Move to redundant scalar form
     let mut s: [i64; 6] = [0; 6];
-    seq!(i in 0..3 {
-        let k = i * 2;
-        s[k] = ss[k][0];
-        s[k + 1] = ss[k][1];
-    });
+    s[0] = ss[0][0];
+    s[0 + 1] = ss[0][1];
+    s[2] = ss[2][0];
+    s[2 + 1] = ss[2][1];
+    s[4] = ss[4][0];
+    s[4 + 1] = ss[4][1];
 
     s[1] += s[0] >> 51;
     let s = [s[1], s[2], s[3], s[4], s[5]];
+    for (i, k) in s.iter().enumerate() {
+        println!("s[{i}]: {k:x}")
+    }
 
     // 1 bit reduction to go from R^-255 to R^-256. reduce_ct does the preparation
     // and the final shift is done as part of the conversion back to u256
