@@ -284,18 +284,19 @@ impl WitnessIndexRemapper {
                 self.remap_const_or_witness(lh),
                 self.remap_const_or_witness(rh),
             ),
-            WitnessBuilder::CombinedTableEntryInverse(data) => {
-                WitnessBuilder::CombinedTableEntryInverse(
-                    crate::witness::CombinedTableEntryInverseData {
-                        idx:          self.remap(data.idx),
-                        sz_challenge: self.remap(data.sz_challenge),
-                        rs_challenge: self.remap(data.rs_challenge),
-                        rs_sqrd:      self.remap(data.rs_sqrd),
-                        rs_cubed:     self.remap(data.rs_cubed),
-                        lhs:          data.lhs,
-                        rhs:          data.rhs,
-                        and_out:      data.and_out,
-                        xor_out:      data.xor_out,
+            WitnessBuilder::CombinedTableEntryQuotient(data) => {
+                WitnessBuilder::CombinedTableEntryQuotient(
+                    crate::witness::CombinedTableEntryQuotientData {
+                        idx:                  self.remap(data.idx),
+                        sz_challenge:         self.remap(data.sz_challenge),
+                        rs_challenge:         self.remap(data.rs_challenge),
+                        rs_sqrd:              self.remap(data.rs_sqrd),
+                        rs_cubed:             self.remap(data.rs_cubed),
+                        lhs:                  data.lhs,
+                        rhs:                  data.rhs,
+                        and_out:              data.and_out,
+                        xor_out:              data.xor_out,
+                        multiplicity_witness: self.remap(data.multiplicity_witness),
                     },
                 )
             }

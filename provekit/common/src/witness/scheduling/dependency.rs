@@ -190,12 +190,13 @@ impl DependencyInfo {
                 }
                 v
             }
-            WitnessBuilder::CombinedTableEntryInverse(data) => {
+            WitnessBuilder::CombinedTableEntryQuotient(data) => {
                 vec![
                     data.sz_challenge,
                     data.rs_challenge,
                     data.rs_sqrd,
                     data.rs_cubed,
+                    data.multiplicity_witness,
                 ]
             }
         }
@@ -218,8 +219,10 @@ impl DependencyInfo {
             | WitnessBuilder::BinOpLookupDenominator(idx, ..)
             | WitnessBuilder::CombinedBinOpLookupDenominator(idx, ..)
             | WitnessBuilder::And(idx, ..)
-            | WitnessBuilder::Xor(idx, ..) => vec![*idx],
-            WitnessBuilder::CombinedTableEntryInverse(data) => vec![data.idx],
+            | WitnessBuilder::Xor(idx, ..)
+            | WitnessBuilder::CombinedTableEntryQuotient(
+                crate::witness::CombinedTableEntryQuotientData { idx, .. },
+            ) => vec![*idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()

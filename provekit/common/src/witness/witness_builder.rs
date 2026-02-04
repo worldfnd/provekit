@@ -36,23 +36,25 @@ pub struct ProductLinearTerm(
     #[serde(with = "serde_ark")] pub FieldElement,
 );
 
-/// Data for combined table entry inverse computation.
-/// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
+/// Data for combined table entry quotient computation (single constraint
+/// optimization). Computes: multiplicity / (sz - lhs - rs*rhs - rs²*and_out -
+/// rs³*xor_out)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CombinedTableEntryInverseData {
-    pub idx:          usize,
-    pub sz_challenge: usize,
-    pub rs_challenge: usize,
-    pub rs_sqrd:      usize,
-    pub rs_cubed:     usize,
+pub struct CombinedTableEntryQuotientData {
+    pub idx:                  usize,
+    pub sz_challenge:         usize,
+    pub rs_challenge:         usize,
+    pub rs_sqrd:              usize,
+    pub rs_cubed:             usize,
     #[serde(with = "serde_ark")]
-    pub lhs:          FieldElement,
+    pub lhs:                  FieldElement,
     #[serde(with = "serde_ark")]
-    pub rhs:          FieldElement,
+    pub rhs:                  FieldElement,
     #[serde(with = "serde_ark")]
-    pub and_out:      FieldElement,
+    pub and_out:              FieldElement,
     #[serde(with = "serde_ark")]
-    pub xor_out:      FieldElement,
+    pub xor_out:              FieldElement,
+    pub multiplicity_witness: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -180,10 +182,9 @@ pub enum WitnessBuilder {
     /// Arguments: (result_witness_index, a, b)
     /// Note: only for 32-bit operands
     Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
-    /// Inverse of combined lookup table entry denominator (constant operands).
-    /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
-    /// Used for optimized table entries where we inline the denominator.
-    CombinedTableEntryInverse(CombinedTableEntryInverseData),
+    /// Quotient of multiplicity over combined lookup table entry denominator.
+    /// Computes: multiplicity / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
+    CombinedTableEntryQuotient(CombinedTableEntryQuotientData),
 }
 
 impl WitnessBuilder {

@@ -188,13 +188,21 @@ pub(crate) fn add_combined_binop_constraints(
             (0..1 << BINOP_ATOMIC_BITS).map(move |rhs: u32| (lhs, rhs, lhs & rhs, lhs ^ rhs))
         })
         .map(|(lhs, rhs, and_out, xor_out)| {
-            let inverse =
-                add_table_entry_inverse(r1cs_compiler, &challenges, lhs, rhs, and_out, xor_out);
             let multiplicity_idx =
                 multiplicities_first_witness + (lhs << BINOP_ATOMIC_BITS) as usize + rhs as usize;
-            r1cs_compiler.add_product(multiplicity_idx, inverse)
+            // add_table_entry_quotient directly computes multiplicity/denominator
+            // using a single constraint, returning the quotient witness
+            add_table_entry_quotient(
+                r1cs_compiler,
+                &challenges,
+                lhs,
+                rhs,
+                and_out,
+                xor_out,
+                multiplicity_idx,
+            )
         })
-        .map(|coeff| SumTerm(None, coeff))
+        .map(|quotient| SumTerm(None, quotient))
         .collect();
     let sum_for_table = r1cs_compiler.add_sum(summands_for_table);
 
@@ -206,27 +214,31 @@ pub(crate) fn add_combined_binop_constraints(
     );
 }
 
-fn add_table_entry_inverse(
+/// Computes quotient = multiplicity / (sz - lhs - rs*rhs - rs²*and_out -
+/// rs³*xor_out) Constraint: (γ - encoding) × quotient = multiplicity
+fn add_table_entry_quotient(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     c: &LookupChallenges,
     lhs: u32,
     rhs: u32,
     and_out: u32,
     xor_out: u32,
+    multiplicity_witness: usize,
 ) -> usize {
-    use provekit_common::witness::CombinedTableEntryInverseData;
+    use provekit_common::witness::CombinedTableEntryQuotientData;
 
-    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::CombinedTableEntryInverse(
-        CombinedTableEntryInverseData {
-            idx:          r1cs_compiler.num_witnesses(),
+    let quotient = r1cs_compiler.add_witness_builder(WitnessBuilder::CombinedTableEntryQuotient(
+        CombinedTableEntryQuotientData {
+            idx: r1cs_compiler.num_witnesses(),
             sz_challenge: c.sz,
             rs_challenge: c.rs,
-            rs_sqrd:      c.rs_sqrd,
-            rs_cubed:     c.rs_cubed,
-            lhs:          FieldElement::from(lhs),
-            rhs:          FieldElement::from(rhs),
-            and_out:      FieldElement::from(and_out),
-            xor_out:      FieldElement::from(xor_out),
+            rs_sqrd: c.rs_sqrd,
+            rs_cubed: c.rs_cubed,
+            lhs: FieldElement::from(lhs),
+            rhs: FieldElement::from(rhs),
+            and_out: FieldElement::from(and_out),
+            xor_out: FieldElement::from(xor_out),
+            multiplicity_witness,
         },
     ));
 
@@ -238,11 +250,11 @@ fn add_table_entry_inverse(
             (FieldElement::from(and_out).neg(), c.rs_sqrd),
             (FieldElement::from(xor_out).neg(), c.rs_cubed),
         ],
-        &[(FieldElement::one(), inverse)],
-        &[(FieldElement::one(), r1cs_compiler.witness_one())],
+        &[(FieldElement::one(), quotient)],
+        &[(FieldElement::one(), multiplicity_witness)],
     );
 
-    inverse
+    quotient
 }
 
 fn add_combined_lookup_summand(

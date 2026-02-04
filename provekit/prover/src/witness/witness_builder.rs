@@ -333,9 +333,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*lo] = Some(FieldElement::from(lo_val));
                 witness[*hi] = Some(FieldElement::from(hi_val));
             }
-            WitnessBuilder::CombinedTableEntryInverse(..) => {
+            WitnessBuilder::CombinedTableEntryQuotient(..) => {
                 unreachable!(
-                    "CombinedTableEntryInverse should not be called - handled by batch inversion"
+                    "CombinedTableEntryQuotient should not be called - handled by batch inversion"
                 )
             }
         }
