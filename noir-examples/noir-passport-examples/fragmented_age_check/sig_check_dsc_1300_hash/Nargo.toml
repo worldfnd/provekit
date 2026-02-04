@@ -1,7 +1,0 @@
-[package]
-name = "sig_check_dsc_1300_hash"
-type = "bin"
-compiler_version = ">=1.0.0"
-
-[dependencies]
-partial_sha256 = { path = "../../zkpassport_libs/partial-sha256" }

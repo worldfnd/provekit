@@ -1,33 +1,11 @@
-# t_attest - Attestation Proof
-# Generated inputs matching the full circuit chain from case1 benchmark data
-# Uses values computed from t_add_dsc_720 -> t_add_id_data_720 -> t_add_integrity_commit
-
-# PUBLIC INPUTS
-# Merkle root computed from leaf = Poseidon2(h_dg1, sod_hash) at index 0 with zero siblings
 root = "0x0c06fff742191643d95291f314c286d0475d195ed2c127b5597537042d4cbfe1"
 current_date = "1735689600"  # Jan 1, 2025, 00:00:00 UTC
 service_scope = "0x0000000000000000000000000000000000000000000000000000000000000002"
 service_subscope = "0x0000000000000000000000000000000000000000000000000000000000000003"
-
-# PRIVATE INPUTS
-
-# DG1 - Machine Readable Zone (95 bytes)
-# Same data used in t_add_integrity_commit
-# Birth date at positions 62-67: "070101" = Jan 1, 2007
-# Expiry date at positions 70-75: "320101" = Jan 1, 2032
 dg1 = [60, 60, 60, 60, 60, 60, 60, 65, 85, 83, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 48, 55, 48, 49, 48, 49, 60, 60, 51, 50, 48, 49, 48, 49, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 0, 0]
-# r_dg1 - Random blinding factor (same as used in t_add_integrity_commit)
 r_dg1 = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-
-# sod_hash - Poseidon2(packed_e_content) computed during T_add registration
-# Computed from e_content data in t_add_integrity_commit using pack_be_bytes_into_fields
 sod_hash = "0x0cc892f2a9a18e7ce91ffb1a7e5eb287866b4910839b74bb2cfe9ac924ac9870"
-
-# leaf_index - Position in the Merkle tree (index 0 for our test)
 leaf_index = "0"
-
-# merkle_path - Sibling hashes for a depth-24 tree
-# All zeros since we're at index 0 with a single-leaf tree
 merkle_path = [
     "0x0000000000000000000000000000000000000000000000000000000000000000",
     "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -54,12 +32,6 @@ merkle_path = [
     "0x0000000000000000000000000000000000000000000000000000000000000000",
     "0x0000000000000000000000000000000000000000000000000000000000000000"
 ]
-
-# Age verification parameters
-# Birth date 070101 (Jan 1, 2007) means age ~17-18 in Jan 2025
-min_age_required = "17"  # Proving age >= 17
-max_age_required = "0"   # No upper bound (0 means unlimited)
-
-# nullifier_secret - Optional secret to further salt the nullifier
-# 0 means no additional secret (produces "real, non-salted" nullifier type)
+min_age_required = "17" 
+max_age_required = "0"   
 nullifier_secret = "0x0000000000000000000000000000000000000000000000000000000000000000"
