@@ -55,11 +55,11 @@ pub unsafe extern "C" fn pk_prove_to_file(
             let out_path = c_str_to_str(out_path)?;
 
             let prover: Prover =
-                read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+                read(Path::new(&prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
-            let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
+            let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;
 
-            provekit_common::file::write(&proof, Path::new(out_path))
+            provekit_common::file::write(&proof, Path::new(&out_path))
                 .map_err(|_| PKError::FileWriteError)?;
 
             Ok(())
@@ -104,10 +104,8 @@ pub unsafe extern "C" fn pk_prove_to_json(
     }
 
     catch_panic(PKError::ProofError.into(), || {
-        let out_buf = match out_buf.as_mut() {
-            Some(buf) => buf,
-            None => return PKError::InvalidInput.into(),
-        };
+        // Safety: out_buf is guaranteed non-null by the check above
+        let out_buf = &mut *out_buf;
 
         *out_buf = PKBuf::empty();
 
@@ -116,9 +114,9 @@ pub unsafe extern "C" fn pk_prove_to_json(
             let input_path = c_str_to_str(input_path)?;
 
             let prover: Prover =
-                read(Path::new(prover_path)).map_err(|_| PKError::SchemeReadError)?;
+                read(Path::new(&prover_path)).map_err(|_| PKError::SchemeReadError)?;
 
-            let proof = prover.prove(input_path).map_err(|_| PKError::ProofError)?;
+            let proof = prover.prove(&input_path).map_err(|_| PKError::ProofError)?;
 
             let json_string =
                 serde_json::to_string(&proof).map_err(|_| PKError::SerializationError)?;
@@ -150,8 +148,8 @@ pub unsafe extern "C" fn pk_prove_to_json(
 /// - This function is called exactly once for each allocated buffer
 #[no_mangle]
 pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
-    if !buf.ptr.is_null() && buf.len > 0 {
-        drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.len));
+    if !buf.ptr.is_null() && buf.cap > 0 {
+        drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.cap));
     }
 }
 
@@ -176,13 +174,15 @@ pub extern "C" fn pk_init() -> c_int {
 ///
 /// # Arguments
 ///
-/// * `ram_limit_bytes` - Maximum RAM to use before swapping to file (must be > 0)
+/// * `ram_limit_bytes` - Maximum RAM to use before swapping to file (must be >
+///   0)
 /// * `use_file_backed` - Whether to use file-backed mmap when over RAM limit
 /// * `swap_file_path` - Path to swap directory (NULL = use system temp dir)
 ///
 /// # Returns
 ///
-/// Returns `PKError::Success` or `PKError::InvalidInput` if ram_limit_bytes is 0.
+/// Returns `PKError::Success` or `PKError::InvalidInput` if ram_limit_bytes is
+/// 0.
 ///
 /// # Safety
 ///
@@ -198,7 +198,8 @@ pub unsafe extern "C" fn pk_configure_memory(
         return PKError::InvalidInput.into();
     }
 
-    if crate::mmap_allocator::configure_allocator(ram_limit_bytes, use_file_backed, swap_file_path) {
+    if crate::mmap_allocator::configure_allocator(ram_limit_bytes, use_file_backed, swap_file_path)
+    {
         PKError::Success.into()
     } else {
         PKError::InvalidInput.into()

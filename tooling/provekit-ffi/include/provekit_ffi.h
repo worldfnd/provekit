@@ -17,6 +17,8 @@ extern "C"
         uint8_t *ptr;
         /// Length of the data in bytes
         size_t len;
+        /// Capacity of the allocation (required for proper deallocation)
+        size_t cap;
     } PKBuf;
 
     /// Error codes returned by ProveKit functions

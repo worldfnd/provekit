@@ -22,10 +22,7 @@ noirc_abi.workspace = true
 
 # 3rd party
 anyhow.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-postcard.workspace = true
-tracing.workspace = true
 parking_lot = "0.12"
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]

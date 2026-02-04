@@ -10,6 +10,8 @@ pub struct PKBuf {
     pub ptr: *mut u8,
     /// Length of the data in bytes
     pub len: usize,
+    /// Capacity of the allocation (required for proper deallocation)
+    pub cap: usize,
 }
 
 impl PKBuf {
@@ -18,6 +20,7 @@ impl PKBuf {
         Self {
             ptr: ptr::null_mut(),
             len: 0,
+            cap: 0,
         }
     }
 
@@ -25,8 +28,9 @@ impl PKBuf {
     pub fn from_vec(mut v: Vec<u8>) -> Self {
         let ptr = v.as_mut_ptr();
         let len = v.len();
+        let cap = v.capacity();
         std::mem::forget(v); // Transfer ownership to caller
-        Self { ptr, len }
+        Self { ptr, len, cap }
     }
 }
 
