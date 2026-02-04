@@ -7,24 +7,25 @@
 //! - First-fit allocation for speed
 //! - Coalesce on dealloc for smaller free lists
 
-use std::{
-    alloc::{GlobalAlloc, Layout, System},
-    collections::HashMap,
-    ffi::c_char,
-    fs::{self, OpenOptions},
-    os::unix::io::AsRawFd,
-    path::PathBuf,
-    ptr,
-    sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+use {
+    parking_lot::Mutex,
+    std::{
+        alloc::{GlobalAlloc, Layout, System},
+        collections::HashMap,
+        ffi::c_char,
+        fs::{self, OpenOptions},
+        os::unix::io::AsRawFd,
+        path::PathBuf,
+        ptr,
+        sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
 };
-
-use parking_lot::Mutex;
 
 const MIN_SWAP_SIZE: usize = 1024 * 1024;
 const DEFAULT_SWAP_POOL_SIZE: usize = 2 * 1024 * 1024 * 1024;
 
 static CONFIGURED: AtomicBool = AtomicBool::new(false);
-static RAM_LIMIT: AtomicU64 = AtomicU64::new(512 * 1024 * 1024);
+static RAM_LIMIT: AtomicU64 = AtomicU64::new(300 * 1024 * 1024);
 static POOL_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 static CURRENT_RAM_USAGE: AtomicU64 = AtomicU64::new(0);
@@ -41,11 +42,11 @@ pub fn is_configured() -> bool {
 #[derive(Clone, Copy)]
 struct FreeBlock {
     offset: usize,
-    size: usize,
+    size:   usize,
 }
 
 struct PoolState {
-    free_list: Vec<FreeBlock>,
+    free_list:   Vec<FreeBlock>,
     allocations: HashMap<usize, usize>, // offset -> size
 }
 
@@ -114,7 +115,39 @@ pub unsafe fn configure_allocator(
     true
 }
 
+/// Clean up orphaned swap files from previous app runs.
+/// This prevents storage bloat when the app is killed without proper cleanup.
+fn cleanup_orphaned_swap_files() {
+    let temp_dir = std::env::temp_dir();
+    let current_pid = std::process::id();
+
+    // Look for provekit_swap_* directories
+    if let Ok(entries) = fs::read_dir(&temp_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("provekit_swap_") {
+                    // Extract PID from directory name
+                    if let Some(pid_str) = name.strip_prefix("provekit_swap_") {
+                        if let Ok(pid) = pid_str.parse::<u32>() {
+                            // Skip if it's our current process
+                            if pid == current_pid {
+                                continue;
+                            }
+                        }
+                    }
+                    // Remove orphaned directory (best effort)
+                    let _ = fs::remove_dir_all(&path);
+                }
+            }
+        }
+    }
+}
+
 fn init_swap_pool(size: usize, swap_dir: Option<PathBuf>) -> bool {
+    // Clean up any orphaned swap files from previous runs first
+    cleanup_orphaned_swap_files();
+
     let temp_dir = swap_dir.unwrap_or_else(|| {
         std::env::temp_dir().join(format!("provekit_swap_{}", std::process::id()))
     });
@@ -161,7 +194,7 @@ fn init_swap_pool(size: usize, swap_dir: Option<PathBuf>) -> bool {
     {
         let mut state = POOL_STATE.lock();
         *state = Some(PoolState {
-            free_list: vec![FreeBlock { offset: 0, size }],
+            free_list:   vec![FreeBlock { offset: 0, size }],
             allocations: HashMap::with_capacity(4096),
         });
     }
@@ -322,9 +355,10 @@ fn pool_alloc(size: usize, align: usize) -> Option<*mut u8> {
 
     // Add front padding back if any
     if best_padding > 0 {
-        state
-            .free_list
-            .push(FreeBlock { offset: block.offset, size: best_padding });
+        state.free_list.push(FreeBlock {
+            offset: block.offset,
+            size:   best_padding,
+        });
     }
 
     // Add remainder back if any
@@ -332,7 +366,7 @@ fn pool_alloc(size: usize, align: usize) -> Option<*mut u8> {
     if remainder > 0 {
         state.free_list.push(FreeBlock {
             offset: best_aligned_offset + aligned_size,
-            size: remainder,
+            size:   remainder,
         });
     }
 

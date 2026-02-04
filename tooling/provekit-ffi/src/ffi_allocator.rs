@@ -42,12 +42,8 @@ pub unsafe extern "C" fn pk_set_allocator(
     USE_MMAP_ALLOCATOR.store(false, Ordering::Release);
 
     // Store function pointers atomically (transmute fn ptr -> *mut ())
-    let alloc_ptr = alloc_fn
-        .map(|f| f as *mut ())
-        .unwrap_or(ptr::null_mut());
-    let dealloc_ptr = dealloc_fn
-        .map(|f| f as *mut ())
-        .unwrap_or(ptr::null_mut());
+    let alloc_ptr = alloc_fn.map(|f| f as *mut ()).unwrap_or(ptr::null_mut());
+    let dealloc_ptr = dealloc_fn.map(|f| f as *mut ()).unwrap_or(ptr::null_mut());
 
     ALLOC_FN.store(alloc_ptr, Ordering::Release);
     DEALLOC_FN.store(dealloc_ptr, Ordering::Release);
@@ -80,7 +76,7 @@ fn load_dealloc_fn() -> Option<DeallocFn> {
 unsafe impl GlobalAlloc for FfiAllocator {
     #[inline(always)]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // Check if we should use mmap allocator 
+        // Check if we should use mmap allocator
         if USE_MMAP_ALLOCATOR.load(Ordering::Relaxed) {
             return crate::mmap_allocator::MMAP_ALLOCATOR.alloc(layout);
         }
@@ -94,7 +90,7 @@ unsafe impl GlobalAlloc for FfiAllocator {
 
     #[inline(always)]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // Check if we should use mmap allocator 
+        // Check if we should use mmap allocator
         if USE_MMAP_ALLOCATOR.load(Ordering::Relaxed) {
             return crate::mmap_allocator::MMAP_ALLOCATOR.dealloc(ptr, layout);
         }
