@@ -176,6 +176,9 @@ pub fn check_dg1_hash_within_sod(
     // Check zero padding for econtent
     check_zero_padding(econtent, econtent_len);
 
+    // Bounds check: ensure dg1_hash_offset + 32 doesn't exceed econtent_len
+    assert(dg1_hash_offset + 32 <= econtent_len, "dg1_hash_offset out of bounds");
+
     let dg1_hash = sha256_var(dg1, dg1_padded_length);
 
     // The DG1 hash is located at the start of the SOD

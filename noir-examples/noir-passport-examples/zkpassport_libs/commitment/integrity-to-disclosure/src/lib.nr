@@ -7,25 +7,27 @@ use utils::{get_expiry_date_from_mrz, types::SaltedValue};
 
 /*
 ############################################################
-# Circuit C
+# Circuit C - Integrity to Disclosure Commitment
 ############################################################
-# Verifies the integrity of the ePassport data
+# Transitions from integrity verification commitment to disclosure commitment
 ############################################################
 
 # Inputs/Outputs
 ############################################################
-current_date
-comm_in                 `assert comm_in == H(salt, country, signed_attr, sod_sig)`
-salt
-id_data
-private_nullifier       `assert private_nullifier == H(dg1, sod_sig)`
-comm_out                `H(salt, dg1, private_nullifier)`
+comm_in                 `assert comm_in == H(salt_in, country, signed_attr, signed_attr_size, dg1, e_content, private_nullifier)`
+salt_in                 salt used in the integrity commitment
+salted_dg1              salted DG1 data (MRZ)
+expiry_date_salt        salt for expiry date
+signed_attributes       the signed attributes from the passport
+signed_attributes_size  actual size of signed attributes
+e_content               the eContent containing data group hashes
+salted_private_nullifier salted private nullifier value
+comm_out                `H(salted_dg1_hash, salted_expiry_date_hash, salted_private_nullifier_hash)`
 
-# Checks
+# What this proves
 ############################################################
-- Check that passport expiry date <= current date
-- Checks that the dg1 hash is present in e_content
-- Checks that the hash of e_content is present in signed_attr
+- Verifies that comm_in matches the expected hash of integrity data
+- Produces comm_out as a commitment to salted disclosure values
 */
 pub fn commit_to_disclosure<let SA_SIZE: u32, let ECONTENT_SIZE: u32>(
     comm_in: Field,
