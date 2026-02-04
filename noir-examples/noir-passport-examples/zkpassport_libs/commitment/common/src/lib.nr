@@ -258,6 +258,14 @@ pub fn calculate_private_nullifier<let DG1: u32, let ECONTENT: u32, let SIG: u32
     )
 }
 
+pub fn calculate_sod_hash<let ECONTENT_SIZE: u32>(
+    e_content: [u8; ECONTENT_SIZE],
+) -> Field {
+    let packed: [Field; (ECONTENT_SIZE + 30) / 31] =
+        pack_be_bytes_into_fields::<ECONTENT_SIZE, _, 31>(e_content);
+    Poseidon2::hash(packed, (ECONTENT_SIZE + 30) / 31)
+}
+
 pub fn hash_salt_country_signed_attr_dg1_e_content_private_nullifier<let SA: u32, let ECONTENT: u32, let DG1: u32>(
     salt: Field,
     country: str<3>,

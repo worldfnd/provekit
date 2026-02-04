@@ -1,0 +1,10 @@
+[package]
+name = "t_add_id_data_720"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_rsa = { path = "../../zkpassport_libs/sig-check/rsa" }
+utils = { path = "../../zkpassport_libs/utils" }
+data_check_tbs_pubkey = { path = "../../zkpassport_libs/data-check/tbs-pubkey" }
+commitment = { path = "../../zkpassport_libs/commitment/dsc-to-id" }

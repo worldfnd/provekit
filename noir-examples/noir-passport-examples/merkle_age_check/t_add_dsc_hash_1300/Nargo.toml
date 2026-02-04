@@ -1,5 +1,5 @@
 [package]
-name = "t_add_dsc_hash"
+name = "t_add_dsc_hash_1300"
 type = "bin"
 compiler_version = ">=1.0.0"
 

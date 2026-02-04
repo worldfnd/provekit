@@ -22,6 +22,12 @@ fn main(
     exponent: u32,
     salt_out: Field,
 ) -> pub Field {
+    // Validate tbs_certificate_len bounds
+    assert(
+        tbs_certificate_len <= TBS_CERT_SIZE,
+        "tbs_certificate_len must not exceed TBS_CERT_SIZE (1300)"
+    );
+
     let mut chunk1: [u8; CHUNK1_SIZE] = [0; CHUNK1_SIZE];
     for i in 0..CHUNK1_SIZE {
         chunk1[i] = tbs_certificate[i];
@@ -57,7 +63,7 @@ fn main(
     let tbs_hash: SHA256Digest = sha256_finalize(state2, final_block, final_partial_bytes, tbs_certificate_len);
 
     assert(
-        verify_rsa_signature::<512, 0, 1300, 32>(
+        verify_rsa_signature::<512>(
             csc_pubkey,
             dsc_signature,
             csc_pubkey_redc_param,

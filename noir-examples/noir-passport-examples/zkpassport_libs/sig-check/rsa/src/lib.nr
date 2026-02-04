@@ -71,7 +71,8 @@ pub fn verify_signature<let SIG_BYTES: u32, let IS_PSS: u32, let DATA_TO_SIGN_MA
 }
 
 // Part 2 RSA verification - takes pre-computed hash (used in fragmented circuits)
-pub fn verify_rsa_signature<let SIG_BYTES: u32, let IS_PSS: u32, let DATA_TO_SIGN_MAX_LEN: u32, let HASH_BYTE_SIZE: u32>(
+// Note: This function only supports SHA-256 with PKCS#1 v1.5 padding
+pub fn verify_rsa_signature<let SIG_BYTES: u32>(
     pubkey_bytes: [u8; SIG_BYTES],
     sig_bytes: [u8; (((SIG_BYTES * 8) + 7) / 8)],
     redc_param_bytes: [u8; SIG_BYTES + 1],
