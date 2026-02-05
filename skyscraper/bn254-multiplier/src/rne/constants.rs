@@ -5,7 +5,7 @@ use crate::pow_2;
 /// Montgomery reduction constant: `-p⁻¹ mod 2⁵¹`
 pub const U51_NP0: u64 = 0x1f593efffffff;
 
-/// The BN254 scalar field prime in 51-bit limb representation.
+/// BN254 scalar field prime
 pub const U51_P: [u64; 5] = [
     0x1f593f0000001,
     0x10f372e12287c,

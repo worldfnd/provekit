@@ -95,6 +95,9 @@ pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64,
 where
     LaneCount<N>: SupportedLaneCount,
 {
+    debug_assert!(limbs[3][0] & 1 << 63 == 0);
+    debug_assert!(limbs[3][1] & 1 << 63 == 0);
+
     let [l0, l1, l2, l3] = limbs;
     [
         (l0) & Simd::splat(MASK51),

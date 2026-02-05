@@ -21,7 +21,7 @@ use {
 
 /// Two parallel Montgomery squarings: `(v0², v1²)`.
 /// input must fit in 2^255-1; no runtime checking
-#[inline]
+#[inline(always)]
 pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
     let v0_a = u256_to_u255_simd(transpose_u256_to_simd([v0_a, v1_a]));
 
@@ -363,9 +363,10 @@ mod tests {
                 let b: [Simd<u64,1>;_] = b.map(Simd::splat);
                 let a = u255_to_u256_simd(a).map(|x|x[0]);
                 let b = u255_to_u256_simd(b).map(|x|x[0]);
-                let (a2, _b2) = simd_mul(a, a, b, b);
-                let (a2s, _b2s) = simd_sqr(a, b);
+                let (a2, b2) = simd_mul(a, a, b, b);
+                let (a2s, b2s) = simd_sqr(a, b);
                 prop_assert_eq!(a2, a2s);
+                prop_assert_eq!(b2, b2s);
         })
     }
 

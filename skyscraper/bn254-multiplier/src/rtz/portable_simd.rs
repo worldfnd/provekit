@@ -15,7 +15,7 @@ use {
     std::simd::StdFloat,
 };
 
-#[inline]
+#[inline(always)]
 pub fn simd_sqr(
     _rtz: &RoundingGuard<Zero>,
     v0_a: [u64; 4],
@@ -198,7 +198,7 @@ pub fn simd_sqr(
     (v[0], v[1])
 }
 
-#[inline]
+#[inline(always)]
 pub fn simd_mul(
     _rtz: &RoundingGuard<Zero>,
     v0_a: [u64; 4],
@@ -392,7 +392,7 @@ mod tests {
         ark_bn254::Fr,
         ark_ff::BigInt,
         fp_rounding::{with_rounding_mode, Zero},
-        proptest::proptest,
+        proptest::{prop_assert_eq, proptest},
     };
 
     #[test]
@@ -402,17 +402,32 @@ mod tests {
             b in safe_bn254_montgomery_input(),
             c in safe_bn254_montgomery_input(),
         )| {
-            unsafe {
+            let (ab,bc) = unsafe {
                 with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
-
-            let (ab, bc) = simd_mul(&rtz, a, b, b,c);
+                    simd_mul(&rtz, a, b, b,c)
+            })};
             let ab_ref = ark_ff_reference(a, b);
             let bc_ref = ark_ff_reference(b, c);
             let ab = Fr::new(BigInt(ab));
             let bc = Fr::new(BigInt(bc));
-            assert_eq!(ab_ref, ab);
-            assert_eq!(bc_ref, bc);
-                });}
+            prop_assert_eq!(ab_ref, ab);
+            prop_assert_eq!(bc_ref, bc);
         });
+    }
+
+    #[test]
+    fn test_simd_sqr() {
+        proptest!(|(
+                a in safe_bn254_montgomery_input(),
+                b in safe_bn254_montgomery_input(),
+            )| {
+            let (mul,sqr) = unsafe {
+                with_rounding_mode((), |rtz : &fp_rounding::RoundingGuard<Zero>, _| {
+                let mul = simd_mul(&rtz,a, a, b, b);
+                let sqr = simd_sqr(&rtz,a, b);
+                (mul, sqr)
+            })};
+            prop_assert_eq!(mul,sqr)
+        })
     }
 }

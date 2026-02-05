@@ -1,6 +1,10 @@
+/// Constants for 52 bit Montgomery reduction
 use crate::pow_2;
 
+/// Montgomery reduction constant: `-p⁻¹ mod 2^52`
 pub const U52_NP0: u64 = 0x1f593efffffff;
+
+// R^2 with R = 2^260
 pub const U52_R2: [u64; 5] = [
     0x0b852d16da6f5,
     0xc621620cddce3,
@@ -9,6 +13,7 @@ pub const U52_R2: [u64; 5] = [
     0x00281528fa122,
 ];
 
+// bn254 prime
 pub const U52_P: [u64; 5] = [
     0x1f593f0000001,
     0x4879b9709143e,
@@ -17,6 +22,7 @@ pub const U52_P: [u64; 5] = [
     0x030644e72e131,
 ];
 
+// 2 * bn254 prime
 pub const U52_2P: [u64; 5] = [
     0x3eb27e0000002,
     0x90f372e12287c,
@@ -25,16 +31,9 @@ pub const U52_2P: [u64; 5] = [
     0x060c89ce5c263,
 ];
 
-pub const F52_P: [f64; 5] = [
-    0x1f593f0000001_u64 as f64,
-    0x4879b9709143e_u64 as f64,
-    0x181585d2833e8_u64 as f64,
-    0xa029b85045b68_u64 as f64,
-    0x030644e72e131_u64 as f64,
-];
-
 pub const MASK52: u64 = 2_u64.pow(52) - 1;
 
+/// Reduction constants: `RHO_i = 2^(52*i) * 2^256 mod p` in 52-bit limbs.
 pub const RHO_1: [u64; 5] = [
     0x82e644ee4c3d2,
     0xf93893c98b1de,
@@ -67,5 +66,6 @@ pub const RHO_4: [u64; 5] = [
     0x00c6b48afe1b8,
 ];
 
+// Anchor values for multiplication using FMA
 pub const C1: f64 = pow_2(104); // 2.0^104
 pub const C2: f64 = pow_2(104) + pow_2(52); // 2.0^104 + 2.0^52
