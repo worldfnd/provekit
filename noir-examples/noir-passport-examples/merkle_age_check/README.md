@@ -17,9 +17,9 @@ This directory contains two approaches for zkPassport age verification with Merk
 **Used when**: TBS certificate actual length >= 720 bytes (padded to exactly 1300 bytes)
 
 **Circuits**:
-1. [t_add_dsc_hash](t_add_dsc_hash/) - Process first 640 bytes of DSC certificate (SHA256 start)
-2. [t_add_dsc_verify](t_add_dsc_verify/) - Complete SHA256 and verify CSCA signature
-3. [t_add_id_data](t_add_id_data/) - Verify DSC signed passport data (1300-byte TBS)
+1. [t_add_dsc_hash_1300](t_add_dsc_hash_1300/) - Process first 640 bytes of DSC certificate (SHA256 start)
+2. [t_add_dsc_verify_1300](t_add_dsc_verify_1300/) - Complete SHA256 and verify CSCA signature
+3. [t_add_id_data_1300](t_add_id_data_1300/) - Verify DSC signed passport data (1300-byte TBS)
 4. [t_add_integrity_commit](t_add_integrity_commit/) - Verify data integrity and generate Merkle leaf
 5. [t_attest](t_attest/) - Fast attestation proof using Merkle tree membership
 
