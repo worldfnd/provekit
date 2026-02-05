@@ -65,6 +65,8 @@ pub struct R1CSBreakdown {
     pub range_witnesses:   usize,
     /// Total number of range check operations
     pub range_ops_total:   usize,
+    /// Optimal base width chosen for range check decomposition
+    pub range_base_width:  Option<u32>,
 
     /// Direct constraints from SHA256 compression (excluding batched ops)
     pub sha256_direct_constraints: usize,
@@ -809,7 +811,7 @@ impl NoirToR1CSCompiler {
         breakdown.range_ops_total = range_checks.values().map(|v| v.len()).sum();
         let constraints_before_range = self.r1cs.num_constraints();
         let witnesses_before_range = self.num_witnesses();
-        add_range_checks(self, range_checks);
+        breakdown.range_base_width = add_range_checks(self, range_checks);
         breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before_range;
         breakdown.range_witnesses = self.num_witnesses() - witnesses_before_range;
 

@@ -130,9 +130,9 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
 pub(crate) fn add_range_checks(
     r1cs: &mut NoirToR1CSCompiler,
     range_checks: BTreeMap<u32, Vec<usize>>,
-) {
+) -> Option<u32> {
     if range_checks.is_empty() {
-        return;
+        return None;
     }
 
     // Phase 1: Flatten all range checks into individual requests and
@@ -152,7 +152,7 @@ pub(crate) fn add_range_checks(
         .collect();
 
     if collected.is_empty() {
-        return;
+        return None;
     }
 
     // Phase 2: Find the optimal base width that minimizes total constraint
@@ -232,6 +232,8 @@ pub(crate) fn add_range_checks(
                 })
             }
         });
+
+    Some(base_width)
 }
 
 /// Helper function which computes all the terms of the summation for

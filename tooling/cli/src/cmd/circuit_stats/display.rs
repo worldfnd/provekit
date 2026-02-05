@@ -347,6 +347,9 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             breakdown.range_constraints,
             breakdown.range_witnesses
         );
+        if let Some(base_width) = breakdown.range_base_width {
+            println!("│         (optimal base width: {} bits)", base_width);
+        }
         if sha256_count > 0 && breakdown.sha256_range_ops > 0 {
             let per_sha256 = breakdown.sha256_range_ops / sha256_count;
             println!("│         (~{} range checks per SHA256 call)", per_sha256);
