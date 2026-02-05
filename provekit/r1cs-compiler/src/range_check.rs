@@ -17,9 +17,9 @@ use {
 /// Minimum base width to consider during optimization.
 const MIN_BASE_WIDTH: u32 = 2;
 
-/// Maximum base width to consider during optimization. The search also
-/// extends up to the largest bit width present in the collected requests,
-/// covering the "no decomposition" case.
+/// Maximum base width to consider during optimization. Beyond 17 bits
+/// the table side alone (2^18+ entries) always exceeds the cost of
+/// decomposing into smaller digits.
 const MAX_BASE_WIDTH: u32 = 17;
 
 /// A single range check request: a witness that must be in [0, 2^bits).
@@ -91,17 +91,15 @@ fn calculate_constraint_cost(base_width: u32, collected: &[RangeCheckRequest]) -
 /// Finds the base width that minimizes the total R1CS constraint count for
 /// the given set of range check requests.
 ///
-/// Searches widths from [MIN_BASE_WIDTH, max(MAX_BASE_WIDTH, max_bits)].
-/// When `base_width >= max_bits`, no decomposition occurs at all, so the
-/// "no decomposition" scenario is always evaluated.
+/// Searches widths from [MIN_BASE_WIDTH, MAX_BASE_WIDTH]. Base widths
+/// above 17 are never beneficial because the table side alone would
+/// require 2^18+ constraints, which always exceeds the cost of
+/// decomposing into smaller digits.
 fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
-    let max_bits = collected.iter().map(|r| r.bits).max().unwrap_or(8);
-    let search_upper = MAX_BASE_WIDTH.max(max_bits);
-
     let mut min_cost = usize::MAX;
     let mut optimal_width = 8u32;
 
-    for base_width in MIN_BASE_WIDTH..=search_upper {
+    for base_width in MIN_BASE_WIDTH..=MAX_BASE_WIDTH {
         let cost = calculate_constraint_cost(base_width, collected);
         if cost < min_cost {
             min_cost = cost;
@@ -118,10 +116,9 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
 /// Uses dynamic base width optimization: all range check requests are
 /// collected, and the optimal decomposition base width is determined by
 /// minimizing the total R1CS constraint cost. The search evaluates every
-/// base width from [MIN_BASE_WIDTH] up to the maximum bit width seen (so
-/// the "no decomposition" case is always considered). For each candidate,
-/// the cost model picks the cheaper of LogUp and naive for every atomic
-/// bucket.
+/// base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
+/// candidate, the cost model picks the cheaper of LogUp and naive for
+/// every atomic bucket.
 ///
 /// Values with bit widths larger than the chosen base are digitally
 /// decomposed; the resulting digits (and values already ≤ the base) are then
