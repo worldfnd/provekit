@@ -182,7 +182,6 @@ pub enum WitnessBuilder {
     Xor(usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
     /// Inverse of combined lookup table entry denominator (constant operands).
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
-    /// Used for optimized table entries where we inline the denominator.
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
 }
 

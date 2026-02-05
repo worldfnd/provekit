@@ -218,8 +218,10 @@ impl DependencyInfo {
             | WitnessBuilder::BinOpLookupDenominator(idx, ..)
             | WitnessBuilder::CombinedBinOpLookupDenominator(idx, ..)
             | WitnessBuilder::And(idx, ..)
-            | WitnessBuilder::Xor(idx, ..) => vec![*idx],
-            WitnessBuilder::CombinedTableEntryInverse(data) => vec![data.idx],
+            | WitnessBuilder::Xor(idx, ..)
+            | WitnessBuilder::CombinedTableEntryInverse(
+                crate::witness::CombinedTableEntryInverseData { idx, .. },
+            ) => vec![*idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
