@@ -20,6 +20,7 @@ pub use {
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
+    sparse_matrix::DeltaEncodingStats,
     verifier::Verifier,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
     witness::PublicInputs,

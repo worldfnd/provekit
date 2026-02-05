@@ -24,7 +24,7 @@ nargo compile
 Prepare the Noir program (generates prover and verifier files):
 
 ```sh
-cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
+cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
 
 Generate the Noir Proof using the input Toml:
@@ -49,6 +49,12 @@ Analyze circuit statistics and R1CS complexity:
 
 ```sh
 cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
+```
+
+Analyze PKP file size breakdown:
+
+```sh
+cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
 ```
 
 Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
