@@ -1,6 +1,8 @@
 // Partial SHA256 implementation for splitting computation across circuits
 // Based on RFC 6234, uses std::hash::sha256_compression for block processing
 
+mod tests;
+
 use poseidon::poseidon2::Poseidon2;
 use std::hash::sha256_compression;
 
