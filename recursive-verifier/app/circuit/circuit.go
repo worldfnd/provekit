@@ -316,6 +316,7 @@ func verifyCircuit(
 		witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
 	}
 
+	colIndicesA := internedR1CS.A.DecodeColIndices()
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
 		end := len(internedR1CS.A.Values) - 1
@@ -325,12 +326,13 @@ func verifyCircuit(
 		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
 			matrixA[j] = MatrixCell{
 				row:    i,
-				column: int(internedR1CS.A.ColIndices[j]),
+				column: int(colIndicesA[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
 			}
 		}
 	}
 
+	colIndicesB := internedR1CS.B.DecodeColIndices()
 	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
 	for i := range len(internedR1CS.B.RowIndices) {
 		end := len(internedR1CS.B.Values) - 1
@@ -340,12 +342,13 @@ func verifyCircuit(
 		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
 			matrixB[j] = MatrixCell{
 				row:    i,
-				column: int(internedR1CS.B.ColIndices[j]),
+				column: int(colIndicesB[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
 			}
 		}
 	}
 
+	colIndicesC := internedR1CS.C.DecodeColIndices()
 	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
 	for i := range len(internedR1CS.C.RowIndices) {
 		end := len(internedR1CS.C.Values) - 1
@@ -355,7 +358,7 @@ func verifyCircuit(
 		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
 			matrixC[j] = MatrixCell{
 				row:    i,
-				column: int(internedR1CS.C.ColIndices[j]),
+				column: int(colIndicesC[j]),
 				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
 			}
 		}

@@ -24,7 +24,7 @@ nargo compile
 Prepare the Noir program (generates prover and verifier files):
 
 ```sh
-cargo run --release --bin provekit-cli prepare ./target/complete_age_check.json --pkp ./prover.pkp --pkv ./verifier.pkv
+cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
 
 Generate the Noir Proof using the input Toml:
@@ -61,7 +61,7 @@ Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/pr
 
 ```sh
 cd ../../recursive-verifier
-go run .
+go run cmd/cli/main.go --config "path_to_config" --r1cs "path_to_r1cs"
 ```
 
 ### Benchmarking
