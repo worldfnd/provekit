@@ -190,8 +190,6 @@ pub(crate) fn add_combined_binop_constraints(
         .map(|(lhs, rhs, and_out, xor_out)| {
             let multiplicity_idx =
                 multiplicities_first_witness + (lhs << BINOP_ATOMIC_BITS) as usize + rhs as usize;
-            // add_table_entry_quotient directly computes multiplicity/denominator
-            // using a single constraint, returning the quotient witness
             add_table_entry_quotient(
                 r1cs_compiler,
                 &challenges,
@@ -215,7 +213,12 @@ pub(crate) fn add_combined_binop_constraints(
 }
 
 /// Computes quotient = multiplicity / (sz - lhs - rs*rhs - rs²*and_out -
-/// rs³*xor_out) Constraint: (γ - encoding) × quotient = multiplicity
+/// rs³*xor_out) using a single R1CS constraint: denominator × quotient =
+/// multiplicity.
+///
+/// Internally creates an inverse witness (for batch inversion) and a product
+/// witness (inverse × multiplicity), but only emits one constraint instead
+/// of the usual two (inverse constraint + product constraint).
 fn add_table_entry_quotient(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     c: &LookupChallenges,
@@ -225,23 +228,34 @@ fn add_table_entry_quotient(
     xor_out: u32,
     multiplicity_witness: usize,
 ) -> usize {
-    use provekit_common::witness::CombinedTableEntryQuotientData;
+    use provekit_common::witness::CombinedTableEntryInverseData;
 
-    let quotient = r1cs_compiler.add_witness_builder(WitnessBuilder::CombinedTableEntryQuotient(
-        CombinedTableEntryQuotientData {
-            idx: r1cs_compiler.num_witnesses(),
+    // Step 1: Create inverse witness (1/denominator) for batch inversion
+    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::CombinedTableEntryInverse(
+        CombinedTableEntryInverseData {
+            idx:          r1cs_compiler.num_witnesses(),
             sz_challenge: c.sz,
             rs_challenge: c.rs,
-            rs_sqrd: c.rs_sqrd,
-            rs_cubed: c.rs_cubed,
-            lhs: FieldElement::from(lhs),
-            rhs: FieldElement::from(rhs),
-            and_out: FieldElement::from(and_out),
-            xor_out: FieldElement::from(xor_out),
-            multiplicity_witness,
+            rs_sqrd:      c.rs_sqrd,
+            rs_cubed:     c.rs_cubed,
+            lhs:          FieldElement::from(lhs),
+            rhs:          FieldElement::from(rhs),
+            and_out:      FieldElement::from(and_out),
+            xor_out:      FieldElement::from(xor_out),
         },
     ));
 
+    // Step 2: Create product witness (multiplicity * inverse = quotient)
+    // Note: we do NOT call add_product() because that would add a constraint.
+    let quotient = r1cs_compiler.add_witness_builder(WitnessBuilder::Product(
+        r1cs_compiler.num_witnesses(),
+        multiplicity_witness,
+        inverse,
+    ));
+
+    // Step 3: Single constraint: denominator × quotient = multiplicity
+    // This replaces two constraints (denominator × inverse = 1) and
+    // (multiplicity × inverse = quotient).
     r1cs_compiler.r1cs.add_constraint(
         &[
             (FieldElement::one(), c.sz),

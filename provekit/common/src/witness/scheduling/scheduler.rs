@@ -138,12 +138,12 @@ impl<'a> LayerScheduler<'a> {
         match &self.witness_builders[node_idx] {
             WitnessBuilder::Inverse(out_witness, _)
             | WitnessBuilder::LogUpInverse(out_witness, ..)
-            | WitnessBuilder::CombinedTableEntryQuotient(
-                crate::witness::CombinedTableEntryQuotientData {
+            | WitnessBuilder::CombinedTableEntryInverse(
+                crate::witness::CombinedTableEntryInverseData {
                     idx: out_witness, ..
                 },
             ) => {
-                // Defer inverse/quotient for batching
+                // Defer inverse for batching
                 self.pending_inverses.push(node_idx);
                 self.pending_inverse_outputs.insert(*out_witness);
             }

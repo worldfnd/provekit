@@ -66,17 +66,13 @@ impl R1CSSolver for R1CS {
                 LayerType::Inverse => {
                     // Execute inverse batch using Montgomery batch inversion
                     let batch_size = layer.witness_builders.len();
-                    // Tuple: (output_witness_idx, optional_multiplier)
-                    // - None means compute 1/denominator (inverse)
-                    // - Some(m) means compute m/denominator (quotient)
-                    let mut output_witnesses: Vec<(usize, Option<FieldElement>)> =
-                        Vec::with_capacity(batch_size);
+                    let mut output_witnesses = Vec::with_capacity(batch_size);
                     let mut denominators = Vec::with_capacity(batch_size);
 
                     for inverse_builder in &layer.witness_builders {
                         match inverse_builder {
                             WitnessBuilder::Inverse(output_witness, denominator_witness) => {
-                                output_witnesses.push((*output_witness, None));
+                                output_witnesses.push(*output_witness);
                                 let denominator =
                                     witness[*denominator_witness].unwrap_or_else(|| {
                                         panic!(
@@ -92,19 +88,15 @@ impl R1CSSolver for R1CS {
                                 sz_challenge,
                                 provekit_common::witness::WitnessCoefficient(coeff, value_witness),
                             ) => {
-                                output_witnesses.push((*output_witness, None));
+                                output_witnesses.push(*output_witness);
                                 // Compute denominator inline: sz - coeff * value
                                 let sz = witness[*sz_challenge].unwrap();
                                 let value = witness[*value_witness].unwrap();
                                 let denominator = sz - (*coeff * value);
                                 denominators.push(denominator);
                             }
-                            WitnessBuilder::CombinedTableEntryQuotient(data) => {
-                                // Store multiplicity to multiply after batch inversion
-                                // Result will be: multiplicity * (1/denominator) =
-                                // multiplicity/denominator
-                                let multiplicity = witness[data.multiplicity_witness].unwrap();
-                                output_witnesses.push((data.idx, Some(multiplicity)));
+                            WitnessBuilder::CombinedTableEntryInverse(data) => {
+                                output_witnesses.push(data.idx);
                                 // Compute denominator inline:
                                 // sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out
                                 let sz = witness[data.sz_challenge].unwrap();
@@ -121,7 +113,7 @@ impl R1CSSolver for R1CS {
                             _ => {
                                 panic!(
                                     "Invalid builder in inverse batch: expected Inverse, \
-                                     LogUpInverse, or CombinedTableEntryQuotient, got {:?}",
+                                     LogUpInverse, or CombinedTableEntryInverse, got {:?}",
                                     inverse_builder
                                 );
                             }
@@ -130,16 +122,10 @@ impl R1CSSolver for R1CS {
 
                     // Perform batch inversion and write results
                     let inverses = batch_inverse_montgomery(&denominators);
-                    for ((output_witness, multiplier_opt), inverse_value) in
+                    for (output_witness, inverse_value) in
                         output_witnesses.into_iter().zip(inverses)
                     {
-                        // For quotient types: result = multiplicity * inverse
-                        // For inverse types: result = inverse (multiplier is None)
-                        let result = match multiplier_opt {
-                            Some(multiplier) => multiplier * inverse_value,
-                            None => inverse_value,
-                        };
-                        witness[output_witness] = Some(result);
+                        witness[output_witness] = Some(inverse_value);
                     }
                 }
             }
