@@ -8,6 +8,10 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+mavros_compiler = []
+
 [dependencies]
 # Workspace crates
 skyscraper.workspace = true
@@ -41,6 +45,7 @@ tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
+spartan-vm.workspace = true
 
 [lints]
 workspace = true

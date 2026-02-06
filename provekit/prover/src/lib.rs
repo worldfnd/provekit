@@ -9,6 +9,7 @@ use {
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
+    spartan_vm::{api as spartan_api, compiled_artifacts::CompiledArtifacts},
 };
 
 mod r1cs;
@@ -16,12 +17,14 @@ mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
+    #[cfg(not(feature = "mavros_compiler"))]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
     fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 }
 
 impl Prove for Prover {
+    #[cfg(not(feature = "mavros_compiler"))]
     #[instrument(skip_all)]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
         let solver = Bn254BlackBoxSolver::default();
@@ -50,6 +53,7 @@ impl Prove for Prover {
             .witness)
     }
 
+    #[cfg(not(feature = "mavros_compiler"))]
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _expected_return) =
@@ -137,6 +141,85 @@ impl Prove for Prover {
             public_inputs,
             whir_r1cs_proof,
         })
+    }
+
+    #[cfg(feature = "mavros_compiler")]
+    #[instrument(skip_all)]
+    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        // Derive the project directory from the Prover.toml path.
+
+        use provekit_common::utils::convert_spartan_r1cs_to_provekit;
+        let project_path = prover_toml
+            .as_ref()
+            .parent()
+            .context("Could not derive project path from Prover.toml path")?;
+
+        let (driver, _) = spartan_api::compile_to_r1cs(project_path.to_path_buf(), false)?;
+
+        let params = spartan_api::read_prover_inputs(&project_path.to_path_buf(), driver.abi())?;
+
+        let witgen_result = spartan_api::run_witgen_from_binary(
+            &mut self.artifacts.witgen_binary,
+            &self.artifacts.r1cs,
+            &params,
+        );
+
+        let witness_combo: Vec<Vec<FieldElement>> = vec![
+            witgen_result.out_wit_pre_comm.clone(),
+            witgen_result.out_wit_post_comm.clone(),
+        ];
+
+        // Set up transcript
+        let io: IOPattern = self.whir_for_witness.create_io_pattern();
+        let mut merlin = io.to_prover_state();
+        drop(io);
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, &self.r1cs, witgen_result.out_wit_pre_comm.clone(), true)
+            .context("While committing to w1")?;
+
+        // Build commitment list based on whether we have challenges
+        let commitments = if self.whir_for_witness.num_challenges > 0 {
+            use ark_ff::AdditiveGroup;
+            use spongefish::codecs::arkworks_algebra::UnitToField;
+            let mut r = vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
+            merlin
+                .fill_challenge_scalars(&mut r)
+                .expect("Failed to extract challenge scalars from Merlin");
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, &self.r1cs, witgen_result.out_wit_post_comm.clone(), false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            vec![commitment_1]
+        };
+
+        println!("self.program.functions[0].public_inputs(): {:?}", self.program.functions[0].public_inputs());
+        let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::new()
+        };
+
+        #[cfg(test)]
+        assert!(spartan_api::check_witgen(
+            &self.artifacts.r1cs,
+            &witgen_result
+        ));
+
+        let converted_r1cs = convert_spartan_r1cs_to_provekit(&self.artifacts.r1cs);
+
+        let whir_r1cs_proof = self
+            .whir_for_witness
+            .prove(merlin, converted_r1cs, commitments, &public_inputs, &mut self.artifacts)
+            .context("While proving R1CS instance")?;
+
+        Ok(NoirProof { public_inputs: PublicInputs::new(), whir_r1cs_proof })
     }
 }
 

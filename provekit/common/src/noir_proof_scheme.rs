@@ -8,7 +8,11 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+#[cfg(feature = "mavros_compiler")]
+use spartan_vm::compiled_artifacts::CompiledArtifacts;
+
 /// A scheme for proving a Noir program.
+#[cfg(not(feature = "mavros_compiler"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
     pub program:                Program<NoirElement>,
@@ -16,6 +20,15 @@ pub struct NoirProofScheme {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
+}
+
+#[cfg(feature = "mavros_compiler")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoirProofScheme {
+    pub program:                Program<NoirElement>,
+    pub r1cs:                   R1CS,
+    pub whir_for_witness:       WhirR1CSScheme,
+    pub artifacts:              CompiledArtifacts,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

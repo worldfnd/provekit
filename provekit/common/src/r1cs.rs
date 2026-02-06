@@ -1,5 +1,5 @@
 use {
-    crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
+    crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix, interner::InternedFieldElement},
     serde::{Deserialize, Serialize},
 };
 
@@ -100,5 +100,29 @@ impl R1CS {
                 self.interner.intern(coeff),
             );
         }
+    }
+
+    pub fn reserve_constraints(&mut self, num_constraints: usize, total_entries: usize) {
+        let entries_per_matrix = total_entries / 3 + 1;
+        self.a.reserve(num_constraints, entries_per_matrix);
+        self.b.reserve(num_constraints, entries_per_matrix);
+        self.c.reserve(num_constraints, entries_per_matrix);
+    }
+
+    #[inline]
+    pub fn push_constraint(
+        &mut self,
+        a: impl Iterator<Item = (u32, InternedFieldElement)>,
+        b: impl Iterator<Item = (u32, InternedFieldElement)>,
+        c: impl Iterator<Item = (u32, InternedFieldElement)>,
+    ) {
+        self.a.push_row(a);
+        self.b.push_row(b);
+        self.c.push_row(c);
+    }
+
+    #[inline]
+    pub fn intern(&mut self, value: FieldElement) -> InternedFieldElement {
+        self.interner.intern(value)
     }
 }

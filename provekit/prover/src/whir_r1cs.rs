@@ -32,6 +32,8 @@ use {
         },
     },
 };
+#[cfg(feature = "mavros_compiler")]
+use {spartan_vm::compiled_artifacts::CompiledArtifacts};
 
 pub struct WhirR1CSCommitment {
     pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
@@ -49,12 +51,23 @@ pub trait WhirR1CSProver {
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment>;
 
+    #[cfg(not(feature = "mavros_compiler"))]
     fn prove(
         &self,
         merlin: ProverState<SkyscraperSponge, FieldElement>,
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
+    ) -> Result<WhirR1CSProof>;
+
+    #[cfg(feature = "mavros_compiler")]
+    fn prove(
+        &self,
+        merlin: ProverState<SkyscraperSponge, FieldElement>,
+        r1cs: R1CS,
+        commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
+        artifacts: &mut CompiledArtifacts,
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -116,6 +129,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         })
     }
 
+    #[cfg(not(feature = "mavros_compiler"))]
     #[instrument(skip_all)]
     fn prove(
         &self,
@@ -265,6 +279,161 @@ impl WhirR1CSProver for WhirR1CSScheme {
             transcript: merlin.narg_string().to_vec(),
         })
     }
+
+    #[cfg(feature = "mavros_compiler")]
+    #[instrument(skip_all)]
+    fn prove(
+        &self,
+        mut merlin: ProverState<SkyscraperSponge, FieldElement>,
+        r1cs: R1CS,
+        mut commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
+        artifacts: &mut CompiledArtifacts,
+    ) -> Result<WhirR1CSProof> {
+        use provekit_common::utils::sumcheck::calculate_external_row_of_r1cs_matrices_with_ad;
+
+        ensure!(!commitments.is_empty(), "Need at least one commitment");       
+
+        let is_single = commitments.len() == 1;
+
+        // Reconstruct full witness for sumcheck
+        let full_witness: Vec<FieldElement> = if is_single {
+            // Truncate padded witness back to actual R1CS witness size
+            let mut w = mem::take(&mut commitments[0].padded_witness);
+            w.truncate(r1cs.num_witnesses());
+            w
+        } else {
+            let mut w = std::mem::take(&mut commitments[0].padded_witness);
+            w.truncate(self.w1_size);
+            let w2_len = r1cs.num_witnesses() - self.w1_size;
+            w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
+            commitments[1].padded_witness = Vec::new();
+            w
+        };
+
+        // First round: ZK sumcheck to reduce R1CS to weighted evaluation
+        let alpha = run_zk_sumcheck_prover(
+            &r1cs,
+            &full_witness,
+            &mut merlin,
+            self.m_0,
+            &self.whir_for_hiding_spartan,
+        );
+        drop(full_witness);
+
+        // Compute weights from R1CS matrices
+        let alphas = calculate_external_row_of_r1cs_matrices_with_ad(alpha, r1cs, artifacts);
+        let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
+
+        if is_single {
+            // Single commitment path
+            let commitment = commitments.into_iter().next().unwrap();
+            let alphas: [Vec<FieldElement>; 3] = alphas.try_into().unwrap();
+
+            let (mut statement, f_sums, g_sums) = create_combined_statement_over_two_polynomials::<3>(
+                self.m,
+                &commitment.commitment_to_witness,
+                &commitment.masked_polynomial,
+                &commitment.random_polynomial,
+                &alphas,
+            );
+
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums, g_sums))?;
+
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
+                // If there are no public inputs, the hint is unused by the verifier and can be
+                // assigned an arbitrary value.
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement,
+                    &commitment.commitment_to_witness,
+                    &commitment.masked_polynomial,
+                    &commitment.random_polynomial,
+                    public_weight,
+                )
+            };
+
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
+
+            run_zk_whir_pcs_prover(
+                commitment.commitment_to_witness,
+                statement,
+                &self.whir_witness,
+                &mut merlin,
+            );
+        } else {
+            // Dual commitment path
+            let mut commitments = commitments.into_iter();
+            let c1 = commitments.next().unwrap();
+            let c2 = commitments.next().unwrap();
+
+            // Split alphas between w1 and w2
+            let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
+                .into_iter()
+                .map(|mut v| {
+                    let v2 = v.split_off(self.w1_size);
+                    (v, v2)
+                })
+                .unzip();
+
+            let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
+            let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+
+            let (mut statement_1, f_sums_1, g_sums_1) =
+                create_combined_statement_over_two_polynomials::<3>(
+                    self.m,
+                    &c1.commitment_to_witness,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    &alphas_1,
+                );
+            drop(alphas_1);
+
+            let (statement_2, f_sums_2, g_sums_2) =
+                create_combined_statement_over_two_polynomials::<3>(
+                    self.m,
+                    &c2.commitment_to_witness,
+                    &c2.masked_polynomial,
+                    &c2.random_polynomial,
+                    &alphas_2,
+                );
+            drop(alphas_2);
+
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_1, g_sums_1))?;
+            merlin.hint::<(Vec<FieldElement>, Vec<FieldElement>)>(&(f_sums_2, g_sums_2))?;
+
+            let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
+                let public_f_sum = FieldElement::zero();
+                let public_g_sum = FieldElement::zero();
+                (public_f_sum, public_g_sum)
+            } else {
+                update_statement_with_public_weights(
+                    &mut statement_1,
+                    &c1.commitment_to_witness,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    public_weight,
+                )
+            };
+
+            merlin.hint::<(FieldElement, FieldElement)>(&(public_f_sum, public_g_sum))?;
+
+            run_zk_whir_pcs_batch_prover(
+                &[c1.commitment_to_witness, c2.commitment_to_witness],
+                &[statement_1, statement_2],
+                &self.whir_witness,
+                &mut merlin,
+            );
+        }
+
+        Ok(WhirR1CSProof {
+            transcript: merlin.narg_string().to_vec(),
+        })
+    }
+
 }
 
 pub fn compute_blinding_coefficients_for_round(
