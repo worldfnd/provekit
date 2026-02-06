@@ -21,6 +21,7 @@ jobs:
       - name: Replace divan with codspeed-divan-compat
         run: |
           sed -i 's/^divan = .*/divan = { package = "codspeed-divan-compat", version = "3.0.1" }/' Cargo.toml
+          grep -q 'codspeed-divan-compat' Cargo.toml || { echo "ERROR: divan replacement failed"; exit 1; }
 
       - name: Setup Rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v1
