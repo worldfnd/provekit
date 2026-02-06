@@ -2,7 +2,7 @@ package circuit
 
 import (
 	"math/big"
-
+	"fmt"
 	"github.com/consensys/gnark/frontend"
 )
 
@@ -125,4 +125,41 @@ func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []
 	}
 
 	return ans
+}
+
+// geometricTill evaluates the multilinear extension of the geometric vector
+// [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
+// This is O(k) constraints where k = len(foldingRandomness)
+func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
+	k := len(foldingRandomness)
+	if n <= 0 || n >= (1 << k) {
+		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
+	}
+
+	borrow0 := frontend.Variable(1)
+	borrow1 := frontend.Variable(0)
+
+	for i := range k {
+		ri := foldingRandomness[k-1-i]
+		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
+
+		b0 := api.Sub(1, ri)
+		b1 := api.Mul(x, ri)
+
+		if bn == 0 {
+			newBorrow0 := api.Mul(b0, borrow0)
+			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		} else {
+			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
+			newBorrow1 := api.Mul(b1, borrow1)
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		}
+
+		x = api.Mul(x, x)
+	}
+
+	return borrow0
 }

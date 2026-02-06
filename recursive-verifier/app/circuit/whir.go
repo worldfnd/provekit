@@ -283,14 +283,19 @@ func RunZKWhirBatch(
 	}
 	batchGamma := gamma[0]
 
+	// Precompute powers of gamma: [1, γ, γ^2, ..., γ^(numPolynomials-1)]
+	gammaPowers := make([]frontend.Variable, numPolynomials)
+	gammaPowers[0] = frontend.Variable(1)
+	for i := 1; i < numPolynomials; i++ {
+		gammaPowers[i] = api.Mul(gammaPowers[i-1], batchGamma)
+	}
+
 	// Step 5: RLC-combine constraint evaluations: combined[j] = Σᵢ γⁱ·eval[i][j]
 	combinedEvals := make([]frontend.Variable, numConstraints)
 	for j := 0; j < numConstraints; j++ {
 		combined := frontend.Variable(0)
-		gammaPow := frontend.Variable(1)
 		for i := 0; i < numPolynomials; i++ {
-			combined = api.Add(combined, api.Mul(gammaPow, evalMatrix[i][j]))
-			gammaPow = api.Mul(gammaPow, batchGamma)
+			combined = api.Add(combined, api.Mul(gammaPowers[i], evalMatrix[i][j]))
 		}
 		combinedEvals[j] = combined
 	}
@@ -376,10 +381,8 @@ func RunZKWhirBatch(
 		combinedAnswers[q] = make([]frontend.Variable, foldSize)
 		for f := 0; f < foldSize; f++ {
 			combined := frontend.Variable(0)
-			gammaPow := frontend.Variable(1)
 			for i := 0; i < numPolynomials; i++ {
-				combined = api.Add(combined, api.Mul(gammaPow, collapsedAnswers[i][q][f]))
-				gammaPow = api.Mul(gammaPow, batchGamma)
+				combined = api.Add(combined, api.Mul(gammaPowers[i], collapsedAnswers[i][q][f]))
 			}
 			combinedAnswers[q][f] = combined
 		}

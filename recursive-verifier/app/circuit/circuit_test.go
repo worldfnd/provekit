@@ -150,6 +150,7 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	var deferred []Fp256
 	var claimedEvaluations ClaimedEvaluations
 	var claimedEvaluations2 ClaimedEvaluations
+	var publicWeightsEvaluations [2]Fp256
 
 	for _, op := range io.Ops {
 		switch op.Kind {
@@ -247,6 +248,15 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 				if err != nil {
 					return nil, nil, err
 				}
+
+			case "public_weights_evaluations":
+				_, err := arkSerialize.CanonicalDeserializeWithMode(
+					bytes.NewReader(config.Transcript[start:end]),
+					&publicWeightsEvaluations, false, false,
+				)
+				if err != nil {
+					return nil, nil, err
+				}
 			}
 			pointer = end
 
@@ -314,9 +324,17 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 
 	var witnessLinearStatementEvalsSize int
 	if config.NumChallenges > 0 {
-		witnessLinearStatementEvalsSize = 6 // 3 per commitment
+		if !config.PublicInputs.IsEmpty() {
+			witnessLinearStatementEvalsSize = 7
+		} else {
+			witnessLinearStatementEvalsSize = 6
+		}
 	} else {
-		witnessLinearStatementEvalsSize = 3
+		if !config.PublicInputs.IsEmpty() {
+			witnessLinearStatementEvalsSize = 4
+		} else {
+			witnessLinearStatementEvalsSize = 3
+		}
 	}
 
 	// For circuit definition: placeholder values (nil)
@@ -374,6 +392,8 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		MatrixA:                                 matrixA,
 		MatrixB:                                 matrixB,
 		MatrixC:                                 matrixC,
+		PublicInputs:                            PublicInputs{Values: make([]frontend.Variable, len(config.PublicInputs.Values))},
+		PubWitnessEvaluations:                   make([]frontend.Variable, 2),
 	}
 
 	// Build assignment (with actual values)
@@ -408,6 +428,11 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		MatrixA:                                 matrixA,
 		MatrixB:                                 matrixB,
 		MatrixC:                                 matrixC,
+		PublicInputs:                            config.PublicInputs,
+		PubWitnessEvaluations: []frontend.Variable{
+			typeConverters.LimbsToBigIntMod(publicWeightsEvaluations[0].Limbs),
+			typeConverters.LimbsToBigIntMod(publicWeightsEvaluations[1].Limbs),
+		},
 	}
 
 	return circuit, assignment, nil
