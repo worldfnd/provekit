@@ -164,7 +164,7 @@ func benchmarkNaive(b *testing.B, m, n int) {
 
 	// Create witness with dummy values
 	assignment := &NaivePublicWeightCircuit{
-		X:                 1, 
+		X:                 1,
 		FoldingRandomness: make([]frontend.Variable, m),
 		N:                 n,
 		Result:            0,
