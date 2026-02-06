@@ -3,8 +3,8 @@ resolver = "2"
 members = [
   "skyscraper/fp-rounding",
   "skyscraper/hla",
-  "skyscraper/block-multiplier",
-  "skyscraper/block-multiplier-codegen",
+  "skyscraper/bn254-multiplier",
+  "skyscraper/bn254-multiplier-codegen",
   "skyscraper/core",
   "provekit/common",
   "provekit/r1cs-compiler",
@@ -40,6 +40,9 @@ license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
 repository = "https://github.com/worldfnd/ProveKit"
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [workspace.lints.clippy]
 cargo = "warn"
 perf = "warn"
@@ -70,8 +73,8 @@ opt-level = 3
 
 [workspace.dependencies]
 # Workspace members - Skyscraper
-block-multiplier = { path = "skyscraper/block-multiplier" }
-block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
+bn254-multiplier = { path = "skyscraper/bn254-multiplier" }
+bn254-multiplier-codegen = { path = "skyscraper/bn254-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
@@ -94,7 +97,9 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
 chrono = "0.4.41"
-divan = { package = "codspeed-divan-compat", version = "3.0.1" }
+# On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
+# This is a workaround because different package selection based on target does not mix well with workspace dependencies.
+divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
 paste = "1.0.15"

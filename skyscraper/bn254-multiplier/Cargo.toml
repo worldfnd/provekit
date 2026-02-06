@@ -1,5 +1,5 @@
 [package]
-name = "block-multiplier"
+name = "bn254-multiplier"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -24,12 +24,14 @@ ark-ff.workspace = true
 # 3rd party
 divan.workspace = true
 primitive-types.workspace = true
-proptest.workspace = true
 rand.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest.workspace = true
 
 [build-dependencies]
 # Workspace crates
-block-multiplier-codegen.workspace = true
+bn254-multiplier-codegen.workspace = true
 hla.workspace = true
 
 [lints]

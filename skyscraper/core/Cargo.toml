@@ -10,7 +10,7 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
-block-multiplier.workspace = true
+bn254-multiplier.workspace = true
 
 # Cryptography and proof systems
 ark-bn254.workspace = true

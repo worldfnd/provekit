@@ -1,5 +1,5 @@
 use {
-    block_multiplier_codegen::{scalar, simd},
+    bn254_multiplier_codegen::{scalar, simd},
     hla::builder::{build_includable, Interleaving},
 };
 
