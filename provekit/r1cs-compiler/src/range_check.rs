@@ -28,6 +28,21 @@ struct RangeCheckRequest {
     bits:        u32,
 }
 
+/// Determines whether LogUp is cheaper than naive range checking for a bucket
+/// of `num_bits`-wide checks containing `count` witnesses.
+///
+/// LogUp cost: 2^bits (table fused constraints) + count (witness inverse
+/// constraints) + 1 (grand sum check).
+/// Naive cost: (2^bits - 1) constraints per witness.
+///
+/// Returns `true` if LogUp should be used, `false` for naive product checks.
+fn should_use_logup(num_bits: u32, count: usize) -> bool {
+    let table_size = 1usize << num_bits;
+    let logup_cost = table_size.saturating_add(count).saturating_add(1);
+    let naive_cost = count.saturating_mul(table_size - 1);
+    logup_cost < naive_cost
+}
+
 /// Returns the constraint cost for a single atomic bucket of `num_bits`-wide
 /// checks containing `count` witnesses, choosing whichever strategy (LogUp
 /// or naive) is cheaper. Returns `usize::MAX` for impractically large bit
@@ -44,13 +59,13 @@ fn bucket_cost(num_bits: u32, count: usize) -> usize {
         return usize::MAX;
     }
     let table_size = 1usize << num_bits;
-    // LogUp cost: 2^bits (table fused constraints)
-    //           + count  (witness inverse constraints)
-    //           + 1      (grand sum check)
     let logup_cost = table_size.saturating_add(count).saturating_add(1);
-    // Naive cost: (2^bits - 1) constraints per witness
     let naive_cost = count.saturating_mul(table_size - 1);
-    logup_cost.min(naive_cost)
+    if should_use_logup(num_bits, count) {
+        logup_cost
+    } else {
+        naive_cost
+    }
 }
 
 /// Calculates the total R1CS constraint cost for a given `base_width`.
@@ -220,11 +235,7 @@ pub(crate) fn add_range_checks(
                 return;
             }
             let num_bits = num_bits as u32;
-            let count = values_to_lookup.len();
-            let table_size = 1usize << num_bits;
-            let logup_cost = table_size + count + 1;
-            let naive_cost = count.saturating_mul(table_size - 1);
-            if logup_cost < naive_cost {
+            if should_use_logup(num_bits, values_to_lookup.len()) {
                 add_range_check_via_lookup(r1cs, num_bits, &values_to_lookup);
             } else {
                 values_to_lookup.iter().for_each(|value| {
@@ -408,4 +419,37 @@ fn add_range_table_entry_quotient(
     );
 
     quotient
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that bucket_cost returns 0 for edge cases where no work is
+    /// needed.
+    #[test]
+    fn bucket_cost_zero_cases() {
+        assert_eq!(bucket_cost(0, 100), 0);
+        assert_eq!(bucket_cost(5, 0), 0);
+    }
+
+    /// Verifies the overflow guard returns usize::MAX for impractically large
+    /// bit widths (>= usize::BITS - 1, which is 63 on 64-bit systems).
+    #[test]
+    fn bucket_cost_overflow_guard() {
+        assert_eq!(bucket_cost(63, 1), usize::MAX);
+    }
+
+    /// Verifies should_use_logup decision logic matches expected behavior.
+    #[test]
+    fn should_use_logup_decision() {
+        // 1-bit, 1 witness: naive=1, logup=4 → naive wins
+        assert!(!should_use_logup(1, 1));
+        // 8-bit, 5 witnesses: naive=1275, logup=262 → logup wins
+        assert!(should_use_logup(8, 5));
+        // 8-bit, 1 witness: naive=255, logup=258 → naive wins
+        assert!(!should_use_logup(8, 1));
+        // 8-bit, 256 witnesses: naive=65280, logup=513 → logup wins
+        assert!(should_use_logup(8, 256));
+    }
 }
