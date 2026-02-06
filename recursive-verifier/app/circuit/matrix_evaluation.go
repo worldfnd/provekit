@@ -1,8 +1,9 @@
 package circuit
 
 import (
-	"math/big"
 	"fmt"
+	"math/big"
+
 	"github.com/consensys/gnark/frontend"
 )
 
@@ -132,7 +133,7 @@ func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []
 // This is O(k) constraints where k = len(foldingRandomness)
 func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
 	k := len(foldingRandomness)
-	if n <= 0 || n >= (1 << k) {
+	if n <= 0 || n > (1<<k) {
 		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
 	}
 

@@ -11,10 +11,10 @@ import (
 
 // NaivePublicWeightCircuit uses O(2^m) EQ polynomial approach
 type NaivePublicWeightCircuit struct {
-	X                frontend.Variable   // base of geometric sequence
+	X                 frontend.Variable   // base of geometric sequence
 	FoldingRandomness []frontend.Variable // evaluation point (length = m)
-	N                int                 // number of non-zero terms (compile-time constant)
-	Result           frontend.Variable   `gnark:",public"`
+	N                 int                 // number of non-zero terms (compile-time constant)
+	Result            frontend.Variable   `gnark:",public"`
 }
 
 func (c *NaivePublicWeightCircuit) Define(api frontend.API) error {
@@ -48,10 +48,10 @@ func (c *NaivePublicWeightCircuit) Define(api frontend.API) error {
 
 // OptimizedPublicWeightCircuit uses O(m) geometricTill approach
 type OptimizedPublicWeightCircuit struct {
-	X                frontend.Variable   // base of geometric sequence
+	X                 frontend.Variable   // base of geometric sequence
 	FoldingRandomness []frontend.Variable // evaluation point (length = m)
-	N                int                 // number of non-zero terms 
-	Result           frontend.Variable   `gnark:",public"`
+	N                 int                 // number of non-zero terms
+	Result            frontend.Variable   `gnark:",public"`
 }
 
 func (c *OptimizedPublicWeightCircuit) Define(api frontend.API) error {
@@ -60,8 +60,8 @@ func (c *OptimizedPublicWeightCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// TestPublicWeightEquivalence verifies both implementations produce same results
-func TestPublicWeightEquivalence(t *testing.T) {
+// TestPublicWeightConstraintComparison compares constraint counts of both implementations
+func TestPublicWeightConstraintComparison(t *testing.T) {
 	m := 10
 	n := 5
 
@@ -104,8 +104,14 @@ func TestPublicWeightConstraintScaling(t *testing.T) {
 		naiveCircuit := &NaivePublicWeightCircuit{FoldingRandomness: make([]frontend.Variable, tc.m), N: tc.n}
 		optCircuit := &OptimizedPublicWeightCircuit{FoldingRandomness: make([]frontend.Variable, tc.m), N: tc.n}
 
-		naiveCCS, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, naiveCircuit)
-		optCCS, _ := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, optCircuit)
+		naiveCCS, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, naiveCircuit)
+		if err != nil {
+			t.Fatalf("Failed to compile naive circuit for m=%d, n=%d: %v", tc.m, tc.n, err)
+		}
+		optCCS, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, optCircuit)
+		if err != nil {
+			t.Fatalf("Failed to compile optimized circuit for m=%d, n=%d: %v", tc.m, tc.n, err)
+		}
 
 		naiveConstraints := naiveCCS.GetNbConstraints()
 		optConstraints := optCCS.GetNbConstraints()
@@ -140,7 +146,7 @@ func BenchmarkPublicWeightEvaluation(b *testing.B) {
 func benchmarkNaive(b *testing.B, m, n int) {
 	circuit := &NaivePublicWeightCircuit{
 		FoldingRandomness: make([]frontend.Variable, m),
-		N:                n,
+		N:                 n,
 	}
 
 	// Compile circuit
@@ -158,10 +164,10 @@ func benchmarkNaive(b *testing.B, m, n int) {
 
 	// Create witness with dummy values
 	assignment := &NaivePublicWeightCircuit{
-		X:                1, // dummy
+		X:                 1, 
 		FoldingRandomness: make([]frontend.Variable, m),
-		N:                n,
-		Result:           0,
+		N:                 n,
+		Result:            0,
 	}
 	for i := range assignment.FoldingRandomness {
 		assignment.FoldingRandomness[i] = 0
@@ -194,7 +200,7 @@ func benchmarkNaive(b *testing.B, m, n int) {
 func benchmarkOptimized(b *testing.B, m, n int) {
 	circuit := &OptimizedPublicWeightCircuit{
 		FoldingRandomness: make([]frontend.Variable, m),
-		N:                n,
+		N:                 n,
 	}
 
 	// Compile circuit
@@ -212,10 +218,10 @@ func benchmarkOptimized(b *testing.B, m, n int) {
 
 	// Create witness with dummy values
 	assignment := &OptimizedPublicWeightCircuit{
-		X:                1,
+		X:                 1,
 		FoldingRandomness: make([]frontend.Variable, m),
-		N:                n,
-		Result:           1, // same as naive for foldingRandomness=[0,0,...,0], x=1
+		N:                 n,
+		Result:            1, // same as naive for foldingRandomness=[0,0,...,0], x=1
 	}
 	for i := range assignment.FoldingRandomness {
 		assignment.FoldingRandomness[i] = 0
