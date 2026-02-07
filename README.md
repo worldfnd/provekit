@@ -142,14 +142,6 @@ results using built-in Instruments app. Results are interactive.
 cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 
-Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results. This does not require to run binary
-with profiling enabled.
-
-```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
 ## Benchmarking
 
 Run the benchmark suite:
