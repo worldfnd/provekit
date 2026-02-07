@@ -144,7 +144,11 @@ where
 
         // KV args
         for (key, val) in &data.kvs {
-            let _ = write!(&mut buffer, " {key}={val}");
+            if val.len() > 200 {
+                let _ = write!(&mut buffer, " {key}={}…", &val[..200]);
+            } else {
+                let _ = write!(&mut buffer, " {key}={val}");
+            }
         }
 
         // Start-of-span memory stats
