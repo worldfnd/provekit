@@ -100,9 +100,9 @@ tracy
 ```
 2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
    localhost for incoming data.
-3.  Compile `noir-r1cs-profiled` binary.
+3.  Compile `provekit-cli` binary with Tracy support.
 ```sh
-cargo build --release --bin provekit-cli --features profiling
+cargo build --release --bin provekit-cli --features tracy
 ```
 4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
    command must be run against each binary that is being profiled by tracy. This will create directory next to the 
@@ -112,9 +112,14 @@ cargo build --release --bin provekit-cli --features profiling
 ```sh
  dsymutil ../../target/release/provekit-cli
 ```
-5. Now start the application to profile:
+5. Now start the application to profile. CPU only:
 ```sh
-../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+../../target/release/provekit-cli --tracy prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+   With memory tracking (`--tracy-allocations <depth>` where depth is stack frame count, 0 for no stacks).
+   Use `--tracy-keepalive` to keep the process alive so Tracy can finish collecting data:
+```sh
+../../target/release/provekit-cli --tracy --tracy-allocations 0 --tracy-keepalive prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
 6. Go back to tracy tool. You should see that it receives data. App is interactive.
 
