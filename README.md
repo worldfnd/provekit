@@ -138,6 +138,8 @@ samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp
 Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) with instructions to install. It will open
 results using built-in Instruments app. Results are interactive.
 
+> **Note**: Requires a full Xcode installation (not just Command Line Tools) as it depends on `xctrace`.
+
 ```sh
 cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
 ```
