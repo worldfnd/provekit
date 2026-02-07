@@ -76,12 +76,8 @@ hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz
 
 #### Custom built-in profile (Memory usage)
 
-The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
-runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
-
-```sh
-cargo run --release --bin provekit-cli --features profiling prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
+The `provekit-cli` application has written custom memory profiler that prints basic info about memory and time usage when application
+runs. The feature is enabled by default and is called `profiling-allocator`
 
 #### Using tracy (CPU and Memory usage)
 
