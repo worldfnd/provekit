@@ -16,7 +16,8 @@ use {
 const HEADER_SIZE: usize = 20;
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
 
-/// Write a compressed binary file (uses XZ level 9, slower than zstd2 but much smaller).
+/// Write a compressed binary file (uses XZ level 9, slower than zstd2 but much
+/// smaller).
 #[instrument(skip(value))]
 pub fn write_bin<T: Serialize>(
     value: &T,
