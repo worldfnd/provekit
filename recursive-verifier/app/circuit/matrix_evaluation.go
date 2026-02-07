@@ -16,10 +16,16 @@ type SparseMatrix struct {
 
 // DecodeColIndices converts delta-encoded column indices back to absolute indices.
 // Within each row, the first column is absolute, subsequent columns are deltas from the previous.
+// Returns nil if the matrix data is inconsistent (e.g., RowIndices claims more entries than ColDeltas has).
 func (s *SparseMatrix) DecodeColIndices() []uint64 {
 	colIndices := make([]uint64, len(s.ColDeltas))
 	numRows := len(s.RowIndices)
 	totalEntries := len(s.Values)
+
+	// Validate consistency: ColDeltas and Values must have the same length
+	if len(s.ColDeltas) != len(s.Values) {
+		return nil
+	}
 
 	deltaIdx := 0
 	for row := 0; row < numRows; row++ {
@@ -34,6 +40,11 @@ func (s *SparseMatrix) DecodeColIndices() []uint64 {
 			continue
 		}
 
+		// Bounds check before accessing ColDeltas
+		if deltaIdx >= len(s.ColDeltas) {
+			return nil
+		}
+
 		// First column is absolute
 		firstCol := s.ColDeltas[deltaIdx]
 		colIndices[deltaIdx] = firstCol
@@ -42,6 +53,9 @@ func (s *SparseMatrix) DecodeColIndices() []uint64 {
 		// Subsequent columns are cumulative deltas
 		prevCol := firstCol
 		for i := 1; i < rowLen; i++ {
+			if deltaIdx >= len(s.ColDeltas) {
+				return nil
+			}
 			col := prevCol + s.ColDeltas[deltaIdx]
 			colIndices[deltaIdx] = col
 			prevCol = col

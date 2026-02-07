@@ -57,11 +57,11 @@ Analyze PKP file size breakdown:
 cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
 ```
 
-Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
+Recursively verify in a Gnark proof:
 
 ```sh
 cd ../../recursive-verifier
-go run cmd/cli/main.go --config "path_to_config" --r1cs "path_to_r1cs"
+go run cmd/cli/main.go --config ../noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ../noir-examples/poseidon-rounds/r1cs.json
 ```
 
 ### Benchmarking

@@ -87,6 +87,11 @@ fn encode_col_deltas(
             continue;
         }
 
+        debug_assert!(
+            row_cols.windows(2).all(|w| w[0] <= w[1]),
+            "Column indices must be sorted within each row"
+        );
+
         // First column is stored as absolute
         deltas.push(row_cols[0]);
 
