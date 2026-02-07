@@ -127,6 +127,8 @@ impl Prove for Prover {
             )
         };
         drop(witness);
+        drop(self.program);
+        drop(self.witness_generator);
 
         let whir_r1cs_proof = self
             .whir_for_witness
