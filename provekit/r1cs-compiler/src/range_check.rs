@@ -14,89 +14,214 @@ use {
     },
 };
 
-const NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE: usize = 5;
-pub const NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP: u32 = 8;
+/// Minimum base width to consider during optimization.
+const MIN_BASE_WIDTH: u32 = 2;
+
+/// Maximum base width to consider during optimization. Beyond 17 bits
+/// the table side alone (2^18+ entries) always exceeds the cost of
+/// decomposing into smaller digits.
+const MAX_BASE_WIDTH: u32 = 17;
+
+/// A single range check request: a witness that must be in [0, 2^bits).
+struct RangeCheckRequest {
+    witness_idx: usize,
+    bits:        u32,
+}
+
+/// Determines whether LogUp is cheaper than naive range checking for a bucket
+/// of `num_bits`-wide checks containing `count` witnesses.
+///
+/// LogUp cost: 2^bits (table fused constraints) + count (witness inverse
+/// constraints) + 1 (grand sum check).
+/// Naive cost: (2^bits - 1) constraints per witness.
+///
+/// Returns `true` if LogUp should be used, `false` for naive product checks.
+fn should_use_logup(num_bits: u32, count: usize) -> bool {
+    let table_size = 1usize << num_bits;
+    let logup_cost = table_size.saturating_add(count).saturating_add(1);
+    let naive_cost = count.saturating_mul(table_size - 1);
+    logup_cost < naive_cost
+}
+
+/// Returns the constraint cost for a single atomic bucket of `num_bits`-wide
+/// checks containing `count` witnesses, choosing whichever strategy (LogUp
+/// or naive) is cheaper. Returns `usize::MAX` for impractically large bit
+/// widths where the table would overflow.
+fn bucket_cost(num_bits: u32, count: usize) -> usize {
+    if count == 0 || num_bits == 0 {
+        return 0;
+    }
+    // Guard against overflow: a table of 2^num_bits entries is impractical
+    // for large bit widths. usize is at least 32 bits wide, but even
+    // 2^30 entries would be enormous; cap at (usize::BITS - 2) to avoid
+    // overflow in the arithmetic below.
+    if num_bits >= (usize::BITS - 1) {
+        return usize::MAX;
+    }
+    let table_size = 1usize << num_bits;
+    let logup_cost = table_size.saturating_add(count).saturating_add(1);
+    let naive_cost = count.saturating_mul(table_size - 1);
+    if should_use_logup(num_bits, count) {
+        logup_cost
+    } else {
+        naive_cost
+    }
+}
+
+/// Calculates the total R1CS constraint cost for a given `base_width`.
+///
+/// For each request with `bits > base_width`, a digital decomposition is
+/// performed (1 recomposition constraint per witness). The resulting digits
+/// are bucketed by their bit width. Each bucket's cost is the cheaper of
+/// LogUp lookup and naive product checks.
+fn calculate_constraint_cost(base_width: u32, collected: &[RangeCheckRequest]) -> usize {
+    let mut decomposition_constraints: usize = 0;
+    let mut atomic_buckets: BTreeMap<u32, usize> = BTreeMap::new();
+
+    for check in collected {
+        if check.bits <= base_width {
+            // No decomposition needed; goes directly to atomic bucket.
+            *atomic_buckets.entry(check.bits).or_default() += 1;
+        } else {
+            // Decomposition: 1 recomposition constraint per witness.
+            decomposition_constraints += 1;
+
+            let num_full_digits = check.bits / base_width;
+            let remainder = check.bits % base_width;
+
+            *atomic_buckets.entry(base_width).or_default() += num_full_digits as usize;
+            if remainder > 0 {
+                *atomic_buckets.entry(remainder).or_default() += 1;
+            }
+        }
+    }
+
+    let mut total = decomposition_constraints;
+    for (&num_bits, &count) in &atomic_buckets {
+        total = total.saturating_add(bucket_cost(num_bits, count));
+    }
+    total
+}
+
+/// Finds the base width that minimizes the total R1CS constraint count for
+/// the given set of range check requests.
+///
+/// Searches widths from [MIN_BASE_WIDTH, MAX_BASE_WIDTH]. Base widths
+/// above 17 are never beneficial because the table side alone would
+/// require 2^18+ constraints, which always exceeds the cost of
+/// decomposing into smaller digits.
+fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
+    let mut min_cost = usize::MAX;
+    let mut optimal_width = 8u32;
+
+    for base_width in MIN_BASE_WIDTH..=MAX_BASE_WIDTH {
+        let cost = calculate_constraint_cost(base_width, collected);
+        if cost < min_cost {
+            min_cost = cost;
+            optimal_width = base_width;
+        }
+    }
+
+    optimal_width
+}
 
 /// Add witnesses and constraints that ensure that the values of the witness
-/// belong to a range 0..2^k (for some k). If k is larger than
-/// `NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP`, then a digital decomposition is
-/// performed: witnesses are allocated for the digits of the decomposition, a
-/// constraint is added that enforces the correctness of the digital
-/// decomposition, and then the digits themselves are range checked.
-/// `range_checks` is a map from the number of bits k to the vector of witness
-/// indices that are to be constrained within the range [0..2^k].
+/// belong to a range 0..2^k (for some k).
+///
+/// Uses dynamic base width optimization: all range check requests are
+/// collected, and the optimal decomposition base width is determined by
+/// minimizing the total R1CS constraint cost. The search evaluates every
+/// base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
+/// candidate, the cost model picks the cheaper of LogUp and naive for
+/// every atomic bucket.
+///
+/// Values with bit widths larger than the chosen base are digitally
+/// decomposed; the resulting digits (and values already ≤ the base) are then
+/// range checked via LogUp lookup or naive product checks, whichever is
+/// cheaper per bucket.
+///
+/// `range_checks` is a map from the number of bits k to the vector of
+/// witness indices that are to be constrained within the range [0..2^k].
 pub(crate) fn add_range_checks(
     r1cs: &mut NoirToR1CSCompiler,
     range_checks: BTreeMap<u32, Vec<usize>>,
-) {
+) -> Option<u32> {
     if range_checks.is_empty() {
-        return;
+        return None;
     }
 
-    // Do a pass through everything that needs to be range checked,
-    // decomposing each value into digits that are at most
-    // [NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP] and creating a map
-    // `atomic_range_blocks` of each `num_bits` from 1 to the
-    // NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP (inclusive) to the vec of witness
-    // indices that are constrained to that range.
-
-    // Mapping the log of the range size k to the vector of witness indices that
-    // are to be constrained within the range [0..2^k].
-    // The witnesses of all small range op codes are added to this map, along with
-    // witnesses of digits for digital decompositions of larger range checks.
-    let mut atomic_range_checks: Vec<Vec<Vec<usize>>> =
-        vec![vec![vec![]]; NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize + 1];
-
-    range_checks
+    // Phase 1: Flatten all range checks into individual requests and
+    // deduplicate per bit-width group.
+    let collected: Vec<RangeCheckRequest> = range_checks
         .into_iter()
-        .for_each(|(num_bits, values_to_lookup)| {
-            // Deduplicate witnesses - checking the same witness multiple times is redundant
-            let values_to_lookup: Vec<usize> = {
-                let mut seen = HashSet::new();
-                values_to_lookup
-                    .into_iter()
-                    .filter(|v| seen.insert(*v))
-                    .collect()
-            };
+        .flat_map(|(num_bits, values)| {
+            let mut seen = HashSet::new();
+            values
+                .into_iter()
+                .filter(move |v| seen.insert(*v))
+                .map(move |witness_idx| RangeCheckRequest {
+                    witness_idx,
+                    bits: num_bits,
+                })
+        })
+        .collect();
 
-            if num_bits > NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP {
-                let num_big_digits = num_bits / NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
-                let logbase_of_remainder_digit = num_bits % NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP;
-                let mut log_bases =
-                    vec![NUM_BITS_THRESHOLD_FOR_DIGITAL_DECOMP as usize; num_big_digits as usize];
-                if logbase_of_remainder_digit != 0 {
-                    log_bases.push(logbase_of_remainder_digit as usize);
-                }
-                let dd_struct = add_digital_decomposition(r1cs, log_bases, values_to_lookup);
+    if collected.is_empty() {
+        return None;
+    }
 
-                // Add the witness indices for the digits to the atomic range checks
-                dd_struct
-                    .log_bases
-                    .iter()
-                    .enumerate()
-                    .map(|(digit_place, log_base)| {
-                        (
-                            *log_base as u32,
-                            (0..dd_struct.num_witnesses_to_decompose)
-                                .map(|i| dd_struct.get_digit_witness_index(digit_place, i))
-                                .collect::<Vec<_>>(),
-                        )
-                    })
-                    .for_each(|(log_base, digit_witnesses)| {
-                        atomic_range_checks[log_base as usize].push(digit_witnesses);
-                    });
-            } else {
-                atomic_range_checks[num_bits as usize].push(values_to_lookup);
+    // Phase 2: Find the optimal base width that minimizes total constraint
+    // cost.
+    let base_width = get_optimal_base_width(&collected);
+
+    // Phase 3: Decompose values larger than base_width and collect atomic
+    // range check buckets.
+    let max_bucket = base_width as usize + 1;
+    let mut atomic_range_checks: Vec<Vec<Vec<usize>>> = vec![vec![vec![]]; max_bucket];
+
+    // Group collected requests by bit width for batch decomposition.
+    let mut by_bits: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    for req in &collected {
+        by_bits.entry(req.bits).or_default().push(req.witness_idx);
+    }
+
+    for (num_bits, values_to_lookup) in by_bits {
+        if num_bits > base_width {
+            let num_full_digits = num_bits / base_width;
+            let remainder = num_bits % base_width;
+            let mut log_bases = vec![base_width as usize; num_full_digits as usize];
+            if remainder > 0 {
+                log_bases.push(remainder as usize);
             }
-        });
+            let dd_struct = add_digital_decomposition(r1cs, log_bases, values_to_lookup);
 
-    // For each of the atomic range checks, add the range check constraints.
-    // Use logup if the range is large; otherwise use a naive range check.
+            dd_struct
+                .log_bases
+                .iter()
+                .enumerate()
+                .map(|(digit_place, log_base)| {
+                    (
+                        *log_base as u32,
+                        (0..dd_struct.num_witnesses_to_decompose)
+                            .map(|i| dd_struct.get_digit_witness_index(digit_place, i))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .for_each(|(log_base, digit_witnesses)| {
+                    atomic_range_checks[log_base as usize].push(digit_witnesses);
+                });
+        } else {
+            atomic_range_checks[num_bits as usize].push(values_to_lookup);
+        }
+    }
+
+    // Phase 4: For each atomic bucket, add range check constraints.
+    // Choose LogUp or naive based on whichever produces fewer constraints.
     atomic_range_checks
         .iter()
         .enumerate()
         .for_each(|(num_bits, all_values_to_lookup)| {
-            // Deduplicate - digit witnesses from different decompositions might overlap
+            // Deduplicate across digit groups.
             let values_to_lookup: Vec<usize> = {
                 let mut seen = HashSet::new();
                 all_values_to_lookup
@@ -106,14 +231,20 @@ pub(crate) fn add_range_checks(
                     .filter(|v| seen.insert(*v))
                     .collect()
             };
-            if values_to_lookup.len() > NUM_WITNESS_THRESHOLD_FOR_LOOKUP_TABLE {
-                add_range_check_via_lookup(r1cs, num_bits as u32, &values_to_lookup);
+            if values_to_lookup.is_empty() {
+                return;
+            }
+            let num_bits = num_bits as u32;
+            if should_use_logup(num_bits, values_to_lookup.len()) {
+                add_range_check_via_lookup(r1cs, num_bits, &values_to_lookup);
             } else {
                 values_to_lookup.iter().for_each(|value| {
-                    add_naive_range_check(r1cs, num_bits as u32, *value);
+                    add_naive_range_check(r1cs, num_bits, *value);
                 })
             }
         });
+
+    Some(base_width)
 }
 
 /// Helper function which computes all the terms of the summation for
@@ -136,19 +267,20 @@ fn add_range_check_via_lookup(
     let sz_challenge =
         r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
 
-    // Collect table side terms: multiplicity * 1/(X - table_value)
+    // Collect table side terms: multiplicity / (X - table_value)
+    // Uses fused single constraint: (X - table_value) × quotient = multiplicity
+    // instead of two constraints (inverse + product).
     let mut logup_summands: Vec<(FieldElement, usize)> = (0..(1 << num_bits))
         .map(|table_value| {
-            let table_denom = add_lookup_factor(
-                r1cs_compiler,
-                sz_challenge,
-                FieldElement::from(table_value as u64),
-                r1cs_compiler.witness_one(),
-            );
             let multiplicity_witness = multiplicities_first_witness + table_value;
             (
                 FieldElement::one(),
-                r1cs_compiler.add_product(table_denom, multiplicity_witness),
+                add_range_table_entry_quotient(
+                    r1cs_compiler,
+                    sz_challenge,
+                    table_value as u64,
+                    multiplicity_witness,
+                ),
             )
         })
         .collect();
@@ -242,4 +374,82 @@ fn add_naive_range_check(
         ],
         &[(FieldElement::zero(), r1cs_compiler.witness_one())],
     );
+}
+
+/// Computes quotient = multiplicity / (X - table_value) using a single R1CS
+/// constraint: (X - table_value) × quotient = multiplicity.
+///
+/// Internally creates an inverse witness (for batch inversion) and a product
+/// witness (inverse × multiplicity), but only emits one constraint instead
+/// of the usual two (inverse constraint + product constraint).
+fn add_range_table_entry_quotient(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    sz_challenge: usize,
+    table_value: u64,
+    multiplicity_witness: usize,
+) -> usize {
+    // Step 1: Create inverse witness 1/(X - table_value) for batch inversion
+    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::LogUpInverse(
+        r1cs_compiler.num_witnesses(),
+        sz_challenge,
+        WitnessCoefficient(FieldElement::from(table_value), r1cs_compiler.witness_one()),
+    ));
+
+    // Step 2: Create product witness (multiplicity * inverse = quotient)
+    // Note: we do NOT call add_product() because that would add a constraint.
+    let quotient = r1cs_compiler.add_witness_builder(WitnessBuilder::Product(
+        r1cs_compiler.num_witnesses(),
+        multiplicity_witness,
+        inverse,
+    ));
+
+    // Step 3: Single constraint: (X - table_value) × quotient = multiplicity
+    // This replaces two constraints: (X - table_value) × inverse = 1 and
+    // inverse × multiplicity = quotient.
+    r1cs_compiler.r1cs.add_constraint(
+        &[
+            (FieldElement::one(), sz_challenge),
+            (
+                FieldElement::from(table_value).neg(),
+                r1cs_compiler.witness_one(),
+            ),
+        ],
+        &[(FieldElement::one(), quotient)],
+        &[(FieldElement::one(), multiplicity_witness)],
+    );
+
+    quotient
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verifies that bucket_cost returns 0 for edge cases where no work is
+    /// needed.
+    #[test]
+    fn bucket_cost_zero_cases() {
+        assert_eq!(bucket_cost(0, 100), 0);
+        assert_eq!(bucket_cost(5, 0), 0);
+    }
+
+    /// Verifies the overflow guard returns usize::MAX for impractically large
+    /// bit widths (>= usize::BITS - 1, which is 63 on 64-bit systems).
+    #[test]
+    fn bucket_cost_overflow_guard() {
+        assert_eq!(bucket_cost(63, 1), usize::MAX);
+    }
+
+    /// Verifies should_use_logup decision logic matches expected behavior.
+    #[test]
+    fn should_use_logup_decision() {
+        // 1-bit, 1 witness: naive=1, logup=4 → naive wins
+        assert!(!should_use_logup(1, 1));
+        // 8-bit, 5 witnesses: naive=1275, logup=262 → logup wins
+        assert!(should_use_logup(8, 5));
+        // 8-bit, 1 witness: naive=255, logup=258 → naive wins
+        assert!(!should_use_logup(8, 1));
+        // 8-bit, 256 witnesses: naive=65280, logup=513 → logup wins
+        assert!(should_use_logup(8, 256));
+    }
 }
