@@ -44,7 +44,7 @@ jobs:
           go-version: 1.24
 
       - name: Compile Nargo circuits 
-        working-directory: noir-examples/noir-passport-examples/fragmented/merkle_age_check
+        working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Compiling $circuit"
@@ -53,7 +53,7 @@ jobs:
           done
 
       - name: Prepare circuits 
-        working-directory: noir-examples/noir-passport-examples/fragmented/merkle_age_check
+        working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Preparing $circuit"
@@ -64,7 +64,7 @@ jobs:
           done
 
       - name: Generate proofs for all circuits
-        working-directory: noir-examples/noir-passport-examples/fragmented/merkle_age_check
+        working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Proving $circuit"
@@ -76,7 +76,7 @@ jobs:
           done
 
       - name: Generate Gnark inputs 
-        working-directory: noir-examples/noir-passport-examples/fragmented/merkle_age_check
+        working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
         run: |
           cargo run --release --bin provekit-cli generate-gnark-inputs \
             ./benchmark-inputs/t_attest-prover.pkp \
@@ -112,7 +112,7 @@ jobs:
           MONITOR_PID=$!
 
           # Run the main process 
-          ./gnark-verifier --config "../noir-examples/noir-passport-examples/fragmented/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport-examples/fragmented/merkle_age_check/r1cs.json"
+          ./gnark-verifier --config "../noir-examples/noir-passport/fragmented/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/fragmented/merkle_age_check/r1cs.json"
 
           # Stop monitoring
           kill $MONITOR_PID

@@ -5,7 +5,7 @@ on:
 
 env:
   BUCKET_NAME: "provekit"
-  CIRCUIT_DIR: "noir-examples/noir-passport-examples/fragmented/merkle_age_check"
+  CIRCUIT_DIR: "noir-examples/noir-passport/fragmented/merkle_age_check"
   KEYS_NAME: "agecheck"
   CIRCUITS: "t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest"
 
