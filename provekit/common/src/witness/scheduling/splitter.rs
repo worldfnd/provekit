@@ -1,7 +1,7 @@
 use {
     crate::witness::{scheduling::DependencyInfo, WitnessBuilder},
     std::{
-        collections::{HashSet, VecDeque},
+        collections::{HashMap, HashSet, VecDeque},
         fmt,
     },
 };
@@ -162,7 +162,6 @@ impl<'a> WitnessSplitter<'a> {
         let mut w2_set = mandatory_w2;
 
         for idx in free_builders {
-            // Check if any dependency is in w2
             let must_be_w2 = self.deps.reads[idx].iter().any(|&read_witness| {
                 self.deps
                     .witness_producer
@@ -172,7 +171,6 @@ impl<'a> WitnessSplitter<'a> {
 
             let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
 
-            // If free builder writes a public witness, add it to w1_set.
             if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
                     w1_set.insert(idx);
@@ -215,13 +213,30 @@ impl<'a> WitnessSplitter<'a> {
         let mut public_input_builder_indices = Vec::new();
         let mut rest_indices = Vec::new();
 
-        // Sanity Check: Make sure all public inputs and WITNESS_ONE_IDX are in
-        // w1_indices.
-        // Convert to HashSet for O(1) lookups since we're checking many times
         let w1_indices_set = w1_indices.iter().copied().collect::<HashSet<_>>();
-        for &idx in acir_public_inputs_indices_set.iter() {
-            if !w1_indices_set.contains(&(idx as usize)) {
-                return Err(SplitError);
+
+        // Build ACIR index -> builder index map for O(1) lookups (O(B) once)
+        let acir_to_builder: HashMap<u32, usize> = self
+            .witness_builders
+            .iter()
+            .enumerate()
+            .filter_map(|(builder_idx, builder)| {
+                if let WitnessBuilder::Acir(_, acir_idx) = builder {
+                    Some((*acir_idx as u32, builder_idx))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sanity check: all public inputs must have builders in w1 (O(P) lookups)
+        for &acir_idx in acir_public_inputs_indices_set {
+            if acir_idx == 0 {
+                continue;
+            }
+            match acir_to_builder.get(&acir_idx) {
+                Some(&builder_idx) if w1_indices_set.contains(&builder_idx) => {}
+                _ => return Err(SplitError),
             }
         }
 
