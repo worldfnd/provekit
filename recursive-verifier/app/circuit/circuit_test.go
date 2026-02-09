@@ -415,6 +415,9 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 
 func buildMatrix(sparse SparseMatrix, interner Interner) []MatrixCell {
 	colIndices := sparse.DecodeColIndices()
+	if colIndices == nil {
+		panic("failed to decode column indices: inconsistent matrix data")
+	}
 	matrix := make([]MatrixCell, len(sparse.Values))
 	for i := range len(sparse.RowIndices) {
 		end := len(sparse.Values) - 1

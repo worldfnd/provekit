@@ -16,7 +16,7 @@ use {
 const HEADER_SIZE: usize = 20;
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
 
-/// Write a compressed binary file (uses XZ level 9, slower than zstd2 but much
+/// Write a compressed binary file (uses XZ level 9, slower than zstd but much
 /// smaller).
 #[instrument(skip(value))]
 pub fn write_bin<T: Serialize>(
@@ -66,6 +66,7 @@ pub fn write_bin<T: Serialize>(
     Ok(())
 }
 
+/// Read a compressed binary file.
 #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
 pub fn read_bin<T: for<'a> Deserialize<'a>>(
     path: &Path,

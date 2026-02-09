@@ -317,6 +317,9 @@ func verifyCircuit(
 	}
 
 	colIndicesA := internedR1CS.A.DecodeColIndices()
+	if colIndicesA == nil {
+		return fmt.Errorf("failed to decode column indices for matrix A: inconsistent data")
+	}
 	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
 	for i := range len(internedR1CS.A.RowIndices) {
 		end := len(internedR1CS.A.Values) - 1
@@ -333,6 +336,9 @@ func verifyCircuit(
 	}
 
 	colIndicesB := internedR1CS.B.DecodeColIndices()
+	if colIndicesB == nil {
+		return fmt.Errorf("failed to decode column indices for matrix B: inconsistent data")
+	}
 	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
 	for i := range len(internedR1CS.B.RowIndices) {
 		end := len(internedR1CS.B.Values) - 1
@@ -349,6 +355,9 @@ func verifyCircuit(
 	}
 
 	colIndicesC := internedR1CS.C.DecodeColIndices()
+	if colIndicesC == nil {
+		return fmt.Errorf("failed to decode column indices for matrix C: inconsistent data")
+	}
 	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
 	for i := range len(internedR1CS.C.RowIndices) {
 		end := len(internedR1CS.C.Values) - 1
