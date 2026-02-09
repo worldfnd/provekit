@@ -51,11 +51,17 @@ Analyze circuit statistics and R1CS complexity:
 cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
 ```
 
-Recursively verify in a Gnark proof (reads the proof from `../ProveKit/prover/proof`):
+Analyze PKP file size breakdown:
+
+```sh
+cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
+```
+
+Recursively verify in a Gnark proof:
 
 ```sh
 cd ../../recursive-verifier
-go run .
+go run cmd/cli/main.go --config ../noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ../noir-examples/poseidon-rounds/r1cs.json
 ```
 
 ### Benchmarking

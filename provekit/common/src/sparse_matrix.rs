@@ -2,14 +2,54 @@ use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
     rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
-    serde::{Deserialize, Serialize},
+    serde::{
+        de::{SeqAccess, Visitor},
+        ser::SerializeStruct,
+        Deserialize, Deserializer, Serialize, Serializer,
+    },
     std::{
-        fmt::Debug,
+        fmt::{self, Debug},
         ops::{Mul, Range},
     },
 };
-/// A sparse matrix with interned field elements
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+
+#[derive(Debug, Clone, Copy)]
+pub struct DeltaEncodingStats {
+    pub total_entries:  usize,
+    pub absolute_bytes: usize,
+    pub delta_bytes:    usize,
+}
+
+impl DeltaEncodingStats {
+    pub const fn savings_bytes(&self) -> usize {
+        self.absolute_bytes.saturating_sub(self.delta_bytes)
+    }
+
+    pub fn savings_percent(&self) -> f64 {
+        if self.absolute_bytes == 0 {
+            0.0
+        } else {
+            self.savings_bytes() as f64 / self.absolute_bytes as f64 * 100.0
+        }
+    }
+}
+
+const fn varint_size(value: u32) -> usize {
+    match value {
+        0..=0x7f => 1,
+        0x80..=0x3fff => 2,
+        0x4000..=0x1f_ffff => 3,
+        0x20_0000..=0xfff_ffff => 4,
+        _ => 5,
+    }
+}
+
+/// A sparse matrix with interned field elements.
+///
+/// Uses delta encoding for column indices during serialization to reduce size.
+/// Within each row, the first column index is stored as absolute, and
+/// subsequent columns are stored as deltas from the previous column.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SparseMatrix {
     /// The number of rows in the matrix.
     pub num_rows: usize,
@@ -20,11 +60,234 @@ pub struct SparseMatrix {
     // List of indices in `col_indices` such that the column index is the start of a new row.
     new_row_indices: Vec<u32>,
 
-    // List of column indices that have values
+    /// List of column indices that have values (absolute values in memory).
     col_indices: Vec<u32>,
 
-    // List of values
+    /// List of values.
     values: Vec<InternedFieldElement>,
+}
+
+/// Convert absolute column indices to delta-encoded indices per row.
+fn encode_col_deltas(
+    col_indices: &[u32],
+    new_row_indices: &[u32],
+    total_entries: usize,
+) -> Vec<u32> {
+    let mut deltas = Vec::with_capacity(col_indices.len());
+    let num_rows = new_row_indices.len();
+
+    for row in 0..num_rows {
+        let start = new_row_indices[row] as usize;
+        let end = new_row_indices
+            .get(row + 1)
+            .map_or(total_entries, |&v| v as usize);
+
+        let row_cols = &col_indices[start..end];
+        if row_cols.is_empty() {
+            continue;
+        }
+
+        debug_assert!(
+            row_cols.windows(2).all(|w| w[0] <= w[1]),
+            "Column indices must be sorted within each row"
+        );
+
+        // First column is stored as absolute
+        deltas.push(row_cols[0]);
+
+        // Subsequent columns stored as delta from previous
+        for i in 1..row_cols.len() {
+            deltas.push(row_cols[i] - row_cols[i - 1]);
+        }
+    }
+
+    deltas
+}
+
+/// Convert delta-encoded column indices back to absolute indices per row.
+fn decode_col_deltas(deltas: &[u32], new_row_indices: &[u32], total_entries: usize) -> Vec<u32> {
+    let mut col_indices = Vec::with_capacity(deltas.len());
+    let num_rows = new_row_indices.len();
+
+    let mut delta_idx = 0;
+    for row in 0..num_rows {
+        let start = new_row_indices[row] as usize;
+        let end = new_row_indices
+            .get(row + 1)
+            .map_or(total_entries, |&v| v as usize);
+
+        let row_len = end - start;
+        if row_len == 0 {
+            continue;
+        }
+
+        // First column is absolute
+        let first_col = deltas[delta_idx];
+        col_indices.push(first_col);
+        delta_idx += 1;
+
+        // Subsequent columns are cumulative deltas
+        let mut prev_col = first_col;
+        for _ in 1..row_len {
+            let col = prev_col + deltas[delta_idx];
+            col_indices.push(col);
+            prev_col = col;
+            delta_idx += 1;
+        }
+    }
+
+    col_indices
+}
+
+impl Serialize for SparseMatrix {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let col_deltas =
+            encode_col_deltas(&self.col_indices, &self.new_row_indices, self.values.len());
+
+        let mut state = serializer.serialize_struct("SparseMatrix", 5)?;
+        state.serialize_field("num_rows", &self.num_rows)?;
+        state.serialize_field("num_cols", &self.num_cols)?;
+        state.serialize_field("new_row_indices", &self.new_row_indices)?;
+        state.serialize_field("col_deltas", &col_deltas)?;
+        state.serialize_field("values", &self.values)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for SparseMatrix {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            NumRows,
+            NumCols,
+            NewRowIndices,
+            ColDeltas,
+            Values,
+        }
+
+        struct SparseMatrixVisitor;
+
+        impl<'de> Visitor<'de> for SparseMatrixVisitor {
+            type Value = SparseMatrix;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct SparseMatrix")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<SparseMatrix, V::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let num_rows = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
+                let num_cols = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(1, &self))?;
+                let new_row_indices: Vec<u32> = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(2, &self))?;
+                let col_deltas: Vec<u32> = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?;
+                let values: Vec<InternedFieldElement> = seq
+                    .next_element()?
+                    .ok_or_else(|| serde::de::Error::invalid_length(4, &self))?;
+
+                let col_indices = decode_col_deltas(&col_deltas, &new_row_indices, values.len());
+
+                Ok(SparseMatrix {
+                    num_rows,
+                    num_cols,
+                    new_row_indices,
+                    col_indices,
+                    values,
+                })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<SparseMatrix, V::Error>
+            where
+                V: serde::de::MapAccess<'de>,
+            {
+                let mut num_rows = None;
+                let mut num_cols = None;
+                let mut new_row_indices: Option<Vec<u32>> = None;
+                let mut col_deltas: Option<Vec<u32>> = None;
+                let mut values: Option<Vec<InternedFieldElement>> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::NumRows => {
+                            if num_rows.is_some() {
+                                return Err(serde::de::Error::duplicate_field("num_rows"));
+                            }
+                            num_rows = Some(map.next_value()?);
+                        }
+                        Field::NumCols => {
+                            if num_cols.is_some() {
+                                return Err(serde::de::Error::duplicate_field("num_cols"));
+                            }
+                            num_cols = Some(map.next_value()?);
+                        }
+                        Field::NewRowIndices => {
+                            if new_row_indices.is_some() {
+                                return Err(serde::de::Error::duplicate_field("new_row_indices"));
+                            }
+                            new_row_indices = Some(map.next_value()?);
+                        }
+                        Field::ColDeltas => {
+                            if col_deltas.is_some() {
+                                return Err(serde::de::Error::duplicate_field("col_deltas"));
+                            }
+                            col_deltas = Some(map.next_value()?);
+                        }
+                        Field::Values => {
+                            if values.is_some() {
+                                return Err(serde::de::Error::duplicate_field("values"));
+                            }
+                            values = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                let num_rows =
+                    num_rows.ok_or_else(|| serde::de::Error::missing_field("num_rows"))?;
+                let num_cols =
+                    num_cols.ok_or_else(|| serde::de::Error::missing_field("num_cols"))?;
+                let new_row_indices = new_row_indices
+                    .ok_or_else(|| serde::de::Error::missing_field("new_row_indices"))?;
+                let col_deltas =
+                    col_deltas.ok_or_else(|| serde::de::Error::missing_field("col_deltas"))?;
+                let values = values.ok_or_else(|| serde::de::Error::missing_field("values"))?;
+
+                let col_indices = decode_col_deltas(&col_deltas, &new_row_indices, values.len());
+
+                Ok(SparseMatrix {
+                    num_rows,
+                    num_cols,
+                    new_row_indices,
+                    col_indices,
+                    values,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "num_rows",
+            "num_cols",
+            "new_row_indices",
+            "col_deltas",
+            "values",
+        ];
+        deserializer.deserialize_struct("SparseMatrix", FIELDS, SparseMatrixVisitor)
+    }
 }
 
 /// A hydrated sparse matrix with uninterned field elements
@@ -54,6 +317,19 @@ impl SparseMatrix {
 
     pub const fn num_entries(&self) -> usize {
         self.values.len()
+    }
+
+    pub fn delta_encoding_stats(&self) -> DeltaEncodingStats {
+        let deltas = encode_col_deltas(&self.col_indices, &self.new_row_indices, self.values.len());
+
+        let absolute_bytes: usize = self.col_indices.iter().map(|&v| varint_size(v)).sum();
+        let delta_bytes: usize = deltas.iter().map(|&v| varint_size(v)).sum();
+
+        DeltaEncodingStats {
+            total_entries: self.col_indices.len(),
+            absolute_bytes,
+            delta_bytes,
+        }
     }
 
     pub fn grow(&mut self, rows: usize, cols: usize) {
@@ -217,5 +493,205 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
             result[j] += value * self[i];
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_delta_encoding_roundtrip() {
+        let col_indices = vec![3, 15, 100, 5, 50, 200];
+        let new_row_indices = vec![0, 3];
+        let total_entries = 6;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+
+        assert_eq!(col_indices, decoded);
+    }
+
+    #[test]
+    fn test_delta_encoding_values() {
+        let col_indices = vec![3, 15, 100];
+        let new_row_indices = vec![0];
+        let total_entries = 3;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+
+        assert_eq!(deltas, vec![3, 12, 85]);
+    }
+
+    #[test]
+    fn test_delta_encoding_multiple_rows() {
+        let col_indices = vec![0, 10, 20, 5, 15];
+        let new_row_indices = vec![0, 3];
+        let total_entries = 5;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![0, 10, 10, 5, 10]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    #[test]
+    fn test_delta_encoding_empty_row() {
+        let col_indices = vec![5, 10];
+        let new_row_indices = vec![0, 0, 2];
+        let total_entries = 2;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// Single non-zero in the whole matrix: one row, one column.
+    #[test]
+    fn test_delta_encoding_single_entry() {
+        let col_indices = vec![42];
+        let new_row_indices = vec![0];
+        let total_entries = 1;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![42]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// Each row has exactly one column; all deltas are absolute (no within-row
+    /// deltas).
+    #[test]
+    fn test_delta_encoding_single_column_per_row() {
+        let col_indices = vec![0, 5, 100];
+        let new_row_indices = vec![0, 1, 2];
+        let total_entries = 3;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![0, 5, 100]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// Consecutive column indices (deltas of 1).
+    #[test]
+    fn test_delta_encoding_consecutive_columns() {
+        let col_indices = vec![10, 11, 12, 13];
+        let new_row_indices = vec![0];
+        let total_entries = 4;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![10, 1, 1, 1]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// All rows empty: no column indices, only row boundaries.
+    #[test]
+    fn test_delta_encoding_all_rows_empty() {
+        let col_indices: Vec<u32> = vec![];
+        let new_row_indices = vec![0, 0, 0];
+        let total_entries = 0;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert!(deltas.is_empty());
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert!(decoded.is_empty());
+    }
+
+    /// Last row empty; only earlier rows have entries.
+    #[test]
+    fn test_delta_encoding_last_row_empty() {
+        let col_indices = vec![1, 2, 7];
+        let new_row_indices = vec![0, 2, 3];
+        let total_entries = 3;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// Only one row has entries (row 2); rows 0, 1, 3 are empty. Roundtrip
+    /// still works.
+    #[test]
+    fn test_delta_encoding_only_last_row_non_empty() {
+        let col_indices = vec![3, 8];
+        let new_row_indices = vec![0, 0, 0, 2];
+        let total_entries = 2;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![3, 5]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    /// Large column indices; deltas stay small (no u32 overflow in encoding).
+    #[test]
+    fn test_delta_encoding_large_column_indices() {
+        let col_indices = vec![1_000_000, 1_000_001, 2_000_000];
+        let new_row_indices = vec![0];
+        let total_entries = 3;
+
+        let deltas = encode_col_deltas(&col_indices, &new_row_indices, total_entries);
+        assert_eq!(deltas, vec![1_000_000, 1, 999_999]);
+
+        let decoded = decode_col_deltas(&deltas, &new_row_indices, total_entries);
+        assert_eq!(col_indices, decoded);
+    }
+
+    #[test]
+    fn test_sparse_matrix_serde_roundtrip() {
+        let mut interner = Interner::new();
+        let val1 = interner.intern(FieldElement::from(1u64));
+        let val2 = interner.intern(FieldElement::from(2u64));
+        let val3 = interner.intern(FieldElement::from(3u64));
+
+        let mut matrix = SparseMatrix::new(3, 100);
+        matrix.grow(3, 100);
+        matrix.set(0, 5, val1);
+        matrix.set(0, 20, val2);
+        matrix.set(1, 50, val3);
+
+        let serialized = postcard::to_allocvec(&matrix).expect("serialization failed");
+        let deserialized: SparseMatrix =
+            postcard::from_bytes(&serialized).expect("deserialization failed");
+
+        assert_eq!(matrix, deserialized);
+    }
+
+    #[test]
+    fn test_delta_encoding_size_reduction() {
+        let mut interner = Interner::new();
+        let val = interner.intern(FieldElement::from(1u64));
+
+        let mut matrix = SparseMatrix::new(10, 1000);
+        matrix.grow(10, 1000);
+
+        for row in 0..10 {
+            for col_offset in 0..20 {
+                matrix.set(row, row * 50 + col_offset, val);
+            }
+        }
+
+        let serialized = postcard::to_allocvec(&matrix).expect("serialization failed");
+
+        let col_count = matrix.col_indices.len();
+        let naive_col_bytes = col_count * 4;
+        let actual_bytes = serialized.len();
+
+        assert!(
+            actual_bytes < naive_col_bytes,
+            "delta encoding should reduce size: actual {} vs naive col bytes {}",
+            actual_bytes,
+            naive_col_bytes
+        );
     }
 }

@@ -10,8 +10,60 @@ type SparseMatrix struct {
 	Rows       uint64   `json:"num_rows"`
 	Cols       uint64   `json:"num_cols"`
 	RowIndices []uint64 `json:"new_row_indices"`
-	ColIndices []uint64 `json:"col_indices"`
+	ColDeltas  []uint64 `json:"col_deltas"`
 	Values     []uint64 `json:"values"`
+}
+
+// DecodeColIndices converts delta-encoded column indices back to absolute indices.
+// Within each row, the first column is absolute, subsequent columns are deltas from the previous.
+// Returns nil if the matrix data is inconsistent (e.g., RowIndices claims more entries than ColDeltas has).
+func (s *SparseMatrix) DecodeColIndices() []uint64 {
+	colIndices := make([]uint64, len(s.ColDeltas))
+	numRows := len(s.RowIndices)
+	totalEntries := len(s.Values)
+
+	// Validate consistency: ColDeltas and Values must have the same length
+	if len(s.ColDeltas) != len(s.Values) {
+		return nil
+	}
+
+	deltaIdx := 0
+	for row := 0; row < numRows; row++ {
+		start := int(s.RowIndices[row])
+		end := totalEntries
+		if row < numRows-1 {
+			end = int(s.RowIndices[row+1])
+		}
+
+		rowLen := end - start
+		if rowLen == 0 {
+			continue
+		}
+
+		// Bounds check before accessing ColDeltas
+		if deltaIdx >= len(s.ColDeltas) {
+			return nil
+		}
+
+		// First column is absolute
+		firstCol := s.ColDeltas[deltaIdx]
+		colIndices[deltaIdx] = firstCol
+		deltaIdx++
+
+		// Subsequent columns are cumulative deltas
+		prevCol := firstCol
+		for i := 1; i < rowLen; i++ {
+			if deltaIdx >= len(s.ColDeltas) {
+				return nil
+			}
+			col := prevCol + s.ColDeltas[deltaIdx]
+			colIndices[deltaIdx] = col
+			prevCol = col
+			deltaIdx++
+		}
+	}
+
+	return colIndices
 }
 
 type Interner struct {

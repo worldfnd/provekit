@@ -130,7 +130,7 @@ tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
-zstd = "0.13.3"
+xz2 = "0.1.7"
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
