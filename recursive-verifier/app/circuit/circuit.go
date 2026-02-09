@@ -221,8 +221,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// Geometric weights for public inputs
 	if !circuit.PublicInputs.IsEmpty() {
 		publicWeightEval := computePublicWeightEvaluation(
-			api, circuit.PublicInputs, whirFoldingRandomness,
-			circuit.WHIRParamsWitness.MVParamsNumberOfVariables, publicWeightsChallenge[0],
+			api, circuit.PublicInputs, whirFoldingRandomness, publicWeightsChallenge[0],
 		)
 
 		api.AssertIsEqual(publicWeightEval, circuit.WitnessLinearStatementEvaluations[0])
@@ -235,34 +234,9 @@ func computePublicWeightEvaluation(
 	api frontend.API,
 	publicInputs PublicInputs,
 	foldingRandomness []frontend.Variable,
-	m int, // domain size = 2^m
 	x frontend.Variable,
 ) frontend.Variable {
-	// Build public weight vector: [1, x, x^2, ..., x^(n-1), 0, 0, ..., 0] where n = len(publicInputs.Values) and total length = 2^m
-	domainSize := 1 << m
-	publicWeights := make([]frontend.Variable, domainSize)
-
-	for i := 0; i < domainSize; i++ {
-		publicWeights[i] = 0
-	}
-
-	// Set public weights: [1, x, x^2, ..., x^(n-1), 0, 0, ..., 0]
-	currentPower := frontend.Variable(1)
-	for i := 0; i < len(publicInputs.Values); i++ {
-		publicWeights[i] = currentPower
-		currentPower = api.Mul(currentPower, x)
-	}
-
-	// TODO : Replace it with geometric_till algo
-	// Evaluate the multilinear extension of publicWeights at foldingRandomness
-	// Formula: f(r) = Σ_{i=0}^{2^m-1} f[i] * eq_i(r)
-	// where eq_i(r) is the i-th Lagrange basis polynomial
-	eqPolys := calculateEQOverBooleanHypercube(api, foldingRandomness)
-	result := frontend.Variable(0)
-	for i := 0; i < len(publicWeights); i++ {
-		result = api.Add(result, api.Mul(publicWeights[i], eqPolys[i]))
-	}
-	return result
+	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
 }
 
 func verifyCircuit(
