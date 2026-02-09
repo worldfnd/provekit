@@ -5,6 +5,6 @@ authors = ["Theo Madzou", "Michael Elliot"]
 compiler_version = ">=1.0.0"
 
 [dependencies]
-utils = { path = "../../utils" }
+utils = { path = "../../../../utils/utils" }
 common = { path = "../common" }
 

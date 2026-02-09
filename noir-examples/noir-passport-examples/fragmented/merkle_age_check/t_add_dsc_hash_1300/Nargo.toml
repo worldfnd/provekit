@@ -4,4 +4,4 @@ type = "bin"
 compiler_version = ">=1.0.0"
 
 [dependencies]
-partial_sha256 = { path = "../../../partial_sha256" }
+partial_sha256 = { path = "../../../../partial_sha256" }

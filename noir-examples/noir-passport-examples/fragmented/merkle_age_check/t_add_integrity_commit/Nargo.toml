@@ -4,7 +4,7 @@ type = "bin"
 compiler_version = ">=1.0.0"
 
 [dependencies]
-data_check_integrity = { path = "../../zkpassport_libs/data-check/integrity" }
-common = { path = "../../zkpassport_libs/commitment/common" }
-utils = { path = "../../zkpassport_libs/utils" }
+data_check_integrity = { path = "../../utils/data-check/integrity" }
+common = { path = "../../utils/commitment/common" }
+utils = { path = "../../../utils/utils" }
 poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }

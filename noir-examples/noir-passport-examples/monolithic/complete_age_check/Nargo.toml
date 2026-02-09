@@ -4,6 +4,6 @@ type = "bin"
 compiler_version = ">=1.0.0"
 
 [dependencies]
-compare_age = { path = "../zkpassport_libs/compare/age" }
-data_check_expiry = { path = "../zkpassport_libs/data-check/expiry" }
-passport_validity_check = { path = "../passport_validity_check" }
+compare_age = { path = "../../utils/compare/age" }
+data_check_expiry = { path = "../../utils/data-check/expiry" }
+passport_validity_check = { path = "../utils/passport_validity_check" }

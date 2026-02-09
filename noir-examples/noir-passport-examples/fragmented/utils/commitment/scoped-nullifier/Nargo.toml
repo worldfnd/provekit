@@ -5,6 +5,5 @@ authors = ["Theo Madzou", "Michael Elliot"]
 compiler_version = ">=1.0.0"
 
 [dependencies]
-utils = { path = "../../utils" }
-common = { path = "../common" }
+utils = { path = "../../../../utils/utils" }
 poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }

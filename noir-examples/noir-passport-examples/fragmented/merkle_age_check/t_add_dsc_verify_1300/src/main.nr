@@ -2,7 +2,7 @@ use commitment::hash_salt_country_tbs;
 use partial_sha256::{
     SHA256State, sha256_continue, sha256_finalize, verify_sha256_state_and_data_commitment, commit_to_data_chunk,
 };
-use sig_check_rsa::verify_rsa_signature;
+use fragmented_sig_check_rsa::verify_rsa_signature;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;

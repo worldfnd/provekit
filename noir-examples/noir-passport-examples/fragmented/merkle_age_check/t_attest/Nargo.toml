@@ -4,9 +4,9 @@ type = "bin"
 compiler_version = ">=1.0.0"
 
 [dependencies]
-common = { path = "../../zkpassport_libs/commitment/common" }
-compare_age_lib = { path = "../../zkpassport_libs/compare/age" }
-data_check_expiry = { path = "../../zkpassport_libs/data-check/expiry" }
-scoped_nullifier = { path = "../../zkpassport_libs/commitment/scoped-nullifier" }
-utils = { path = "../../zkpassport_libs/utils" }
+common = { path = "../../utils/commitment/common" }
+compare_age_lib = { path = "../../../utils/compare/age" }
+data_check_expiry = { path = "../../../utils/data-check/expiry" }
+scoped_nullifier = { path = "../../utils/commitment/scoped-nullifier" }
+utils = { path = "../../../utils/utils" }
 poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }

@@ -1,5 +1,5 @@
-use common::compute_merkle_root;
-use compare_age_lib::{calculate_param_commitment, compare_age};
+use common::{calculate_param_commitment, compute_merkle_root};
+use compare_age_lib::compare_age;
 use data_check_expiry::check_expiry;
 use poseidon::poseidon2::Poseidon2;
 use scoped_nullifier::compute_nullifier_and_type;
