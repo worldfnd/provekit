@@ -39,3 +39,37 @@ The `t_attest` circuit provides fast, repeatable proofs:
 - Proves Merkle tree membership
 - Verifies age requirements
 - Generates service-scoped nullifiers for Sybil resistance
+
+## Usage
+
+Benchmark inputs have already been generated and are available in the `benchmark-inputs` directory.
+
+Scripts are provided separately for Case 1 (4-circuit chain) and Case 2 (5-circuit chain). Navigate to the scripts directory and run the appropriate sequence:
+
+```bash
+cd scripts
+```
+
+### For Case 1 (TBS < 720 bytes):
+```bash
+# 1. Compile circuits
+./case1/compile.sh
+
+# 2. Prepare proving artifacts
+./case1/prepare.sh
+
+# 3. Generate proofs
+./case1/prove.sh
+```
+
+### For Case 2 (TBS >= 720 bytes):
+```bash
+# 1. Compile circuits
+./case2/compile.sh
+
+# 2. Prepare proving artifacts
+./case2/prepare.sh
+
+# 3. Generate proofs
+./case2/prove.sh
+```
