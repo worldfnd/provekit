@@ -164,7 +164,8 @@ pub enum WitnessBuilder {
     /// occurs in the bin op.
     MultiplicitiesForBinOp(usize, Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>),
     /// U32 addition with carry: computes result = (a + b) % 2^32 and carry = (a
-    /// + b) / 2^32.
+    /// + b) / 2^32. Arguments: (result_witness_index, carry_witness_index, a,
+    ///   b)
     U32Addition(usize, usize, ConstantOrR1CSWitness, ConstantOrR1CSWitness),
     /// Variadic 32-bit addition with carry.
     ///   Computes: result = (sum of inputs) mod 2^32, carry  = floor((sum of
