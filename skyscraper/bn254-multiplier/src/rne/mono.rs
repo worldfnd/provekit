@@ -44,7 +44,7 @@ pub fn u256_to_u255(limbs: [u64; 4]) -> [u64; 5] {
         ((l0 >> 51) | (l1 << 13)) & MASK51,
         ((l1 >> 38) | (l2 << 26)) & MASK51,
         ((l2 >> 25) | (l3 << 39)) & MASK51,
-        l3 >> 12 & MASK51,
+        (l3 >> 12) & MASK51,
     ]
 }
 
@@ -115,7 +115,7 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
 /// Montgomery multiplication for BN254 scalar field.
 ///
 /// Computes `a * b * R^{-256} mod P` where R = 2^256.
-
+///
 /// # Preconditions
 ///
 /// - Both inputs must be < 2^255 (i.e., fit in 5×51-bit limbs)
