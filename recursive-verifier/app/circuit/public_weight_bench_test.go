@@ -60,6 +60,87 @@ func (c *OptimizedPublicWeightCircuit) Define(api frontend.API) error {
 	return nil
 }
 
+type EquivalenceCircuit struct {
+	X                 frontend.Variable
+	FoldingRandomness []frontend.Variable
+	N                 int
+}
+
+func (c *EquivalenceCircuit) Define(api frontend.API) error {
+	m := len(c.FoldingRandomness)
+	domainSize := 1 << m
+
+	// Naive
+	weights := make([]frontend.Variable, domainSize)
+	power := frontend.Variable(1)
+	for i := 0; i < domainSize; i++ {
+		if i < c.N {
+			weights[i] = power
+			power = api.Mul(power, c.X)
+		} else {
+			weights[i] = 0
+		}
+	}
+	eqPolys := calculateEQOverBooleanHypercube(api, c.FoldingRandomness)
+	naiveResult := frontend.Variable(0)
+	for i := 0; i < domainSize; i++ {
+		naiveResult = api.Add(naiveResult, api.Mul(weights[i], eqPolys[i]))
+	}
+
+	// Optimized
+	optResult := geometricTill(api, c.X, c.N, c.FoldingRandomness)
+
+	api.AssertIsEqual(naiveResult, optResult)
+	return nil
+}
+
+// TestGeometricTillCorrectness verifies that naive and optimized implementations produce identical outputs 
+func TestGeometricTillCorrectness(t *testing.T) {
+	testCases := []struct {
+		name string
+		m    int
+		n    int
+		x    int64
+		r    []int64
+	}{
+		{"basic", 4, 5, 3, []int64{2, 7, 4, 1}},
+		{"x=1", 3, 4, 1, []int64{5, 3, 2}},
+		{"n=1", 4, 1, 7, []int64{4, 2, 6, 3}},
+		{"n=2", 4, 2, 5, []int64{3, 8, 1, 6}},
+		{"n=2^k-1", 4, 15, 2, []int64{9, 4, 7, 3}},
+		{"n=2^k", 4, 16, 2, []int64{9, 4, 7, 3}},
+		{"large_x", 3, 5, 123456, []int64{11, 22, 33}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fr := make([]frontend.Variable, tc.m)
+			for i, v := range tc.r {
+				fr[i] = v
+			}
+
+			circuit := &EquivalenceCircuit{FoldingRandomness: make([]frontend.Variable, tc.m), N: tc.n}
+			ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)
+			if err != nil {
+				t.Fatalf("Failed to compile equivalence circuit: %v", err)
+			}
+
+			assignment := &EquivalenceCircuit{X: tc.x, FoldingRandomness: fr, N: tc.n}
+			witness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
+			if err != nil {
+				t.Fatalf("Failed to create witness: %v", err)
+			}
+
+			_, err = ccs.Solve(witness)
+			if err != nil {
+				t.Fatalf("Equivalence check failed (naive != optimized): %v", err)
+			}
+
+			t.Logf("Naive and optimized agree for m=%d, n=%d, x=%d (%d constraints)", tc.m, tc.n, tc.x, ccs.GetNbConstraints())
+		})
+	}
+}
+
 // TestPublicWeightConstraintComparison compares constraint counts of both implementations
 func TestPublicWeightConstraintComparison(t *testing.T) {
 	m := 10
@@ -90,6 +171,10 @@ func TestPublicWeightConstraintScaling(t *testing.T) {
 		m int // domain size = 2^m
 		n int // number of public inputs
 	}{
+		{4, 1},          
+		{4, 2},         
+		{4, 15},         
+		{4, 16},         
 		{8, 10},
 		{10, 10},
 		{12, 100},
