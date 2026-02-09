@@ -1,18 +1,39 @@
 use {
     crate::witness::{scheduling::DependencyInfo, WitnessBuilder},
     std::{
-        collections::{HashSet, VecDeque},
+        collections::{HashMap, HashSet, VecDeque},
         fmt,
     },
 };
 
 /// Error returned when witness splitting validation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SplitError;
+pub enum SplitError {
+    /// No witness builder exists for a public input ACIR index.
+    NoBuilderForPublicInput { acir_idx: u32 },
+    /// A public input's builder was partitioned into w2 instead of w1.
+    PublicInputNotInW1 {
+        acir_idx:    u32,
+        builder_idx: usize,
+    },
+}
 
 impl fmt::Display for SplitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error in splitting witnesses into w1 and w2")
+        match self {
+            Self::NoBuilderForPublicInput { acir_idx } => {
+                write!(f, "no builder for public input ACIR index {acir_idx}")
+            }
+            Self::PublicInputNotInW1 {
+                acir_idx,
+                builder_idx,
+            } => {
+                write!(
+                    f,
+                    "public input ACIR index {acir_idx} (builder {builder_idx}) not in w1"
+                )
+            }
+        }
     }
 }
 
@@ -215,13 +236,38 @@ impl<'a> WitnessSplitter<'a> {
         let mut public_input_builder_indices = Vec::new();
         let mut rest_indices = Vec::new();
 
-        // Sanity Check: Make sure all public inputs and WITNESS_ONE_IDX are in
-        // w1_indices.
-        // Convert to HashSet for O(1) lookups since we're checking many times
         let w1_indices_set = w1_indices.iter().copied().collect::<HashSet<_>>();
-        for &idx in acir_public_inputs_indices_set.iter() {
-            if !w1_indices_set.contains(&(idx as usize)) {
-                return Err(SplitError);
+
+        // Build ACIR index -> builder index map for O(1) lookups (O(B) once)
+        let acir_to_builder: HashMap<u32, usize> = self
+            .witness_builders
+            .iter()
+            .enumerate()
+            .filter_map(|(builder_idx, builder)| {
+                if let WitnessBuilder::Acir(_, acir_idx) = builder {
+                    Some((*acir_idx as u32, builder_idx))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sanity check: all public inputs must have builders in w1 (O(P) lookups)
+        for &acir_idx in acir_public_inputs_indices_set {
+            // ACIR witness 0 is always the constant-one witness, handled
+            // separately via mandatory_w1.insert(0) above — not a regular ACIR witness.
+            if acir_idx == 0 {
+                continue;
+            }
+            match acir_to_builder.get(&acir_idx) {
+                Some(&builder_idx) if w1_indices_set.contains(&builder_idx) => {}
+                Some(&builder_idx) => {
+                    return Err(SplitError::PublicInputNotInW1 {
+                        acir_idx,
+                        builder_idx,
+                    })
+                }
+                None => return Err(SplitError::NoBuilderForPublicInput { acir_idx }),
             }
         }
 
