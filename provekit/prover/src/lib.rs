@@ -164,11 +164,6 @@ impl Prove for Prover {
             &params,
         );
 
-        let witness_combo: Vec<Vec<FieldElement>> = vec![
-            witgen_result.out_wit_pre_comm.clone(),
-            witgen_result.out_wit_post_comm.clone(),
-        ];
-
         // Set up transcript
         let io: IOPattern = self.whir_for_witness.create_io_pattern();
         let mut merlin = io.to_prover_state();
@@ -198,12 +193,13 @@ impl Prove for Prover {
             vec![commitment_1]
         };
 
-        println!("self.program.functions[0].public_inputs(): {:?}", self.program.functions[0].public_inputs());
         let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
         } else {
-            PublicInputs::new()
+            PublicInputs::from_vec(
+                witgen_result.out_wit_pre_comm[1..=num_public_inputs].to_vec()
+            )
         };
 
         #[cfg(test)]
@@ -219,7 +215,7 @@ impl Prove for Prover {
             .prove(merlin, converted_r1cs, commitments, &public_inputs, &mut self.artifacts)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { public_inputs: PublicInputs::new(), whir_r1cs_proof })
+        Ok(NoirProof { public_inputs, whir_r1cs_proof })
     }
 }
 
