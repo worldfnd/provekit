@@ -94,7 +94,7 @@ func (c *EquivalenceCircuit) Define(api frontend.API) error {
 	return nil
 }
 
-// TestGeometricTillCorrectness verifies that naive and optimized implementations produce identical outputs 
+// TestGeometricTillCorrectness verifies that naive and optimized implementations produce identical outputs
 func TestGeometricTillCorrectness(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -171,10 +171,10 @@ func TestPublicWeightConstraintScaling(t *testing.T) {
 		m int // domain size = 2^m
 		n int // number of public inputs
 	}{
-		{4, 1},          
-		{4, 2},         
-		{4, 15},         
-		{4, 16},         
+		{4, 1},
+		{4, 2},
+		{4, 15},
+		{4, 16},
 		{8, 10},
 		{10, 10},
 		{12, 100},
