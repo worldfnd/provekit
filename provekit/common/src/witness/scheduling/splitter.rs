@@ -8,11 +8,32 @@ use {
 
 /// Error returned when witness splitting validation fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SplitError;
+pub enum SplitError {
+    /// No witness builder exists for a public input ACIR index.
+    NoBuilderForPublicInput { acir_idx: u32 },
+    /// A public input's builder was partitioned into w2 instead of w1.
+    PublicInputNotInW1 {
+        acir_idx:    u32,
+        builder_idx: usize,
+    },
+}
 
 impl fmt::Display for SplitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error in splitting witnesses into w1 and w2")
+        match self {
+            Self::NoBuilderForPublicInput { acir_idx } => {
+                write!(f, "no builder for public input ACIR index {acir_idx}")
+            }
+            Self::PublicInputNotInW1 {
+                acir_idx,
+                builder_idx,
+            } => {
+                write!(
+                    f,
+                    "public input ACIR index {acir_idx} (builder {builder_idx}) not in w1"
+                )
+            }
+        }
     }
 }
 
@@ -162,6 +183,7 @@ impl<'a> WitnessSplitter<'a> {
         let mut w2_set = mandatory_w2;
 
         for idx in free_builders {
+            // Check if any dependency is in w2
             let must_be_w2 = self.deps.reads[idx].iter().any(|&read_witness| {
                 self.deps
                     .witness_producer
@@ -171,6 +193,7 @@ impl<'a> WitnessSplitter<'a> {
 
             let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
 
+            // If free builder writes a public witness, add it to w1_set.
             if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
                     w1_set.insert(idx);
@@ -231,12 +254,20 @@ impl<'a> WitnessSplitter<'a> {
 
         // Sanity check: all public inputs must have builders in w1 (O(P) lookups)
         for &acir_idx in acir_public_inputs_indices_set {
+            // ACIR witness 0 is always the constant-one witness, handled
+            // separately via mandatory_w1.insert(0) above — not a regular ACIR witness.
             if acir_idx == 0 {
                 continue;
             }
             match acir_to_builder.get(&acir_idx) {
                 Some(&builder_idx) if w1_indices_set.contains(&builder_idx) => {}
-                _ => return Err(SplitError),
+                Some(&builder_idx) => {
+                    return Err(SplitError::PublicInputNotInW1 {
+                        acir_idx,
+                        builder_idx,
+                    })
+                }
+                None => return Err(SplitError::NoBuilderForPublicInput { acir_idx }),
             }
         }
 
