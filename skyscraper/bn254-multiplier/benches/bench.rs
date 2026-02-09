@@ -7,7 +7,7 @@ use {
 
 // #[divan::bench_group]
 mod mul {
-    use super::*;
+    use {super::*, bn254_multiplier::rne};
 
     #[divan::bench]
     fn scalar_mul(bencher: Bencher) {
@@ -32,12 +32,20 @@ mod mul {
     }
 
     #[divan::bench]
+    fn mono_mul_b51(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(1usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|(a, b)| rne::mono::mul(a, b));
+    }
+
+    #[divan::bench]
     fn simd_mul_51b(bencher: Bencher) {
         bencher
             //.counter(ItemsCount::new(2usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b, c, d)| {
-                bn254_multiplier::rne::portable_simd::simd_mul(a, b, c, d)
+                bn254_multiplier::rne::batched::simd_mul(a, b, c, d)
             });
     }
 
@@ -139,6 +147,14 @@ mod sqr {
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
             .bench_local_values(|(a, b)| rne::simd_sqr(a, b));
+    }
+
+    #[divan::bench]
+    fn mono_sqr_b51(bencher: Bencher) {
+        bencher
+            //.counter(ItemsCount::new(1usize))
+            .with_inputs(|| rng().random())
+            .bench_local_values(|a| rne::mono::sqr(a));
     }
 
     #[divan::bench]

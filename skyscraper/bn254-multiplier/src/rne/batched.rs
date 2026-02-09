@@ -200,13 +200,13 @@ pub fn simd_mul(
 mod tests {
     use {
         super::*,
-        crate::{rne::simd_utils::u255_to_u256_simd, test_utils::ark_ff_reference},
+        crate::{
+            rne::simd_utils::u255_to_u256_simd,
+            test_utils::{ark_ff_reference, limbs5_51},
+        },
         ark_bn254::Fr,
         ark_ff::{BigInt, PrimeField},
-        proptest::{
-            prelude::{prop, Strategy},
-            prop_assert_eq, proptest,
-        },
+        proptest::{prop_assert_eq, proptest},
     };
 
     #[test]
@@ -247,13 +247,5 @@ mod tests {
                 prop_assert_eq!(a2, a2s);
                 prop_assert_eq!(b2, b2s);
         })
-    }
-
-    fn limb51() -> impl Strategy<Value = u64> {
-        0u64..(1u64 << 51)
-    }
-
-    fn limbs5_51() -> impl Strategy<Value = [u64; 5]> {
-        prop::array::uniform5(limb51())
     }
 }
