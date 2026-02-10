@@ -69,11 +69,11 @@ cd tbs_720
 cd tbs_1300
 
 # 1. Compile circuits: Generates compiled artifacts inside merkle_age_check/target/ for all 5 circuits
-./compile.sh
+./compile-circuits.sh
 
 # 2. Prepare proving artifacts: Generates proving keys and verification keys for all 5 circuits, stored in merkle_age_check/benchmark-inputs/
-./prepare.sh
+./prepare-circuits.sh
 
 # 3. Generate proofs: Generates proofs for all 5 circuits using the prepared artifacts and benchmark inputs, stored in merkle_age_check/benchmark-inputs/
-./prove.sh
+./prove-circuits.sh
 ```

@@ -34,15 +34,9 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     // Ensure all bytes beyond data_to_sign_len are zero to prevent them
     // from being used by the prover
     check_zero_padding(data_to_sign, data_to_sign_len);
-    // Calculate the hash of data_to_sign up to data_to_sign_len
-    // sha256_var(data_to_sign, data_to_sign_len as u64)
-
-    // Hash the entire buffer to match the signature created on the fixed-size message
-    // `data_to_sign_len` is still checked above to ensure trailing bytes are zero,
-    let ret =
-        sha256_var(data_to_sign, data_to_sign_len as u64);
-
-    ret
+    // Calculate the hash of data_to_sign up to data_to_sign_len.
+    // Zero-padding is verified above to ensure trailing bytes cannot be manipulated.
+    sha256_var(data_to_sign, data_to_sign_len as u64)
 }
 
 pub fn sha384_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
