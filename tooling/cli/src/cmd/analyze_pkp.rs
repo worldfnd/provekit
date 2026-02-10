@@ -72,16 +72,17 @@ impl Command for Args {
         println!("  Total:                    {:>12} bytes", total_size);
         println!();
 
-        let interner_size = postcard::to_allocvec(&prover.r1cs.interner)
+        let r1cs_full = prover.r1cs.to_r1cs();
+        let interner_size = postcard::to_allocvec(&r1cs_full.interner)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_a_size = postcard::to_allocvec(&prover.r1cs.a)
+        let matrix_a_size = postcard::to_allocvec(&r1cs_full.a)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_b_size = postcard::to_allocvec(&prover.r1cs.b)
+        let matrix_b_size = postcard::to_allocvec(&r1cs_full.b)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_c_size = postcard::to_allocvec(&prover.r1cs.c)
+        let matrix_c_size = postcard::to_allocvec(&r1cs_full.c)
             .map(|v| v.len())
             .unwrap_or(0);
 
@@ -108,9 +109,9 @@ impl Command for Args {
         );
         println!();
 
-        let stats_a = prover.r1cs.a.delta_encoding_stats();
-        let stats_b = prover.r1cs.b.delta_encoding_stats();
-        let stats_c = prover.r1cs.c.delta_encoding_stats();
+        let stats_a = r1cs_full.a.delta_encoding_stats();
+        let stats_b = r1cs_full.b.delta_encoding_stats();
+        let stats_c = r1cs_full.c.delta_encoding_stats();
 
         let total_absolute =
             stats_a.absolute_bytes + stats_b.absolute_bytes + stats_c.absolute_bytes;

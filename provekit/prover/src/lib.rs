@@ -78,6 +78,10 @@ impl Prove for Prover {
             &mut merlin,
         );
 
+        // After first R1CS access, free the compressed blob (~10 MB)
+        // since decompressed matrices are now cached.
+        self.r1cs.free_compressed();
+
         let w1 = witness[..self.whir_for_witness.w1_size]
             .iter()
             .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
@@ -98,12 +102,12 @@ impl Prove for Prover {
                 &mut merlin,
             );
 
+            drop(acir_witness_idx_to_value_map);
+
             let w2 = witness[self.whir_for_witness.w1_size..]
                 .iter()
                 .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
                 .collect::<Result<Vec<_>>>()?;
-
-            drop(acir_witness_idx_to_value_map);
 
             let commitment_2 = self
                 .whir_for_witness

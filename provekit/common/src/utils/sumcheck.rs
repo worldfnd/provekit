@@ -1,7 +1,7 @@
 use {
     crate::{
         utils::{pad_to_power_of_two, unzip_double_array, workload_size},
-        FieldElement, R1CS,
+        FieldElement, LazyR1CS,
     },
     ark_std::{One, Zero},
     rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
@@ -189,7 +189,7 @@ pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldEle
 /// matrix-vector multiplication and returns them
 #[instrument(skip_all)]
 pub fn calculate_witness_bounds(
-    r1cs: &R1CS,
+    r1cs: &LazyR1CS,
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
@@ -216,7 +216,7 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices(
     alpha: Vec<FieldElement>,
-    r1cs: R1CS,
+    r1cs: LazyR1CS,
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
     let eq_alpha = &eq_alpha[..r1cs.num_constraints()];

@@ -14,7 +14,7 @@ use {
             zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
-        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, LazyR1CS, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
     },
     spongefish::{
         codecs::arkworks_algebra::{FieldToUnitSerialize, UnitToField},
@@ -44,7 +44,7 @@ pub trait WhirR1CSProver {
     fn commit(
         &self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: &R1CS,
+        r1cs: &LazyR1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment>;
@@ -52,7 +52,7 @@ pub trait WhirR1CSProver {
     fn prove(
         &self,
         merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
+        r1cs: LazyR1CS,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
@@ -63,7 +63,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn commit(
         &self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: &R1CS,
+        r1cs: &LazyR1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment> {
@@ -120,7 +120,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove(
         &self,
         mut merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
+        r1cs: LazyR1CS,
         mut commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof> {
@@ -405,7 +405,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 
 #[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover(
-    r1cs: &R1CS,
+    r1cs: &LazyR1CS,
     z: &[FieldElement],
     merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
     m_0: usize,

@@ -141,6 +141,7 @@ zerocopy = "0.8.25"
 zeroize = "1.8.1"
 xz2 = "0.1.7"
 
+
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }

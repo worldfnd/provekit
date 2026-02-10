@@ -1,5 +1,6 @@
 pub mod file;
 mod interner;
+pub mod lazy_r1cs;
 mod noir_proof_scheme;
 mod prover;
 mod r1cs;
@@ -17,6 +18,7 @@ use crate::{
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
+    lazy_r1cs::{LazyR1CS, LazyR1CSShell},
     noir_proof_scheme::{NoirProof, NoirProofScheme},
     prover::Prover,
     r1cs::R1CS,
