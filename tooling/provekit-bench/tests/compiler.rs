@@ -82,7 +82,7 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
-#[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
+#[test_case("../../noir-examples/noir-passport-monolithic/monolithic/complete_age_check"; "complete_age_check")]
 fn case(path: &str) {
     test_compiler(path);
 }
