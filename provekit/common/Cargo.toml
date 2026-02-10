@@ -46,6 +46,7 @@ zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
 mavros.workspace = true
+xz2.workspace = true
 
 [lints]
 workspace = true

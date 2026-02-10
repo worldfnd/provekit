@@ -1,4 +1,4 @@
-use {crate::generic, block_multiplier::scalar_sqr as square};
+use {crate::generic, bn254_multiplier::scalar_sqr as square};
 
 pub fn compress_many(messages: &[u8], hashes: &mut [u8]) {
     generic::compress_many(

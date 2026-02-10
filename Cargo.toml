@@ -3,8 +3,8 @@ resolver = "2"
 members = [
   "skyscraper/fp-rounding",
   "skyscraper/hla",
-  "skyscraper/block-multiplier",
-  "skyscraper/block-multiplier-codegen",
+  "skyscraper/bn254-multiplier",
+  "skyscraper/bn254-multiplier-codegen",
   "skyscraper/core",
   "provekit/common",
   "provekit/r1cs-compiler",
@@ -12,6 +12,7 @@ members = [
   "provekit/verifier",
   "tooling/cli",
   "tooling/provekit-bench",
+  "tooling/provekit-ffi",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
   "ntt",
@@ -39,6 +40,9 @@ authors = [
 license = "MIT"
 homepage = "https://github.com/worldfnd/ProveKit"
 repository = "https://github.com/worldfnd/ProveKit"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [workspace.lints.clippy]
 cargo = "warn"
@@ -70,8 +74,8 @@ opt-level = 3
 
 [workspace.dependencies]
 # Workspace members - Skyscraper
-block-multiplier = { path = "skyscraper/block-multiplier" }
-block-multiplier-codegen = { path = "skyscraper/block-multiplier-codegen" }
+bn254-multiplier = { path = "skyscraper/bn254-multiplier" }
+bn254-multiplier-codegen = { path = "skyscraper/bn254-multiplier-codegen" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
@@ -81,6 +85,7 @@ ntt = { path = "ntt" }
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
+provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
@@ -94,7 +99,9 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
 chrono = "0.4.41"
-divan = { package = "codspeed-divan-compat", version = "3.0.1" }
+# On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
+# This is a workaround because different package selection based on target does not mix well with workspace dependencies.
+divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
 paste = "1.0.15"
@@ -125,7 +132,7 @@ tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
-zstd = "0.13.3"
+xz2 = "0.1.7"
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }

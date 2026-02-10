@@ -96,16 +96,21 @@ func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnark
 // rlcBatchedLeaves collapses a wide leaf (length foldSize * batchSize) into foldSize via
 // out[j] = sum_{b=0..batchSize-1} B^b * leaf[b*foldSize + j]
 func rlcBatchedLeaves(api frontend.API, leaves [][]frontend.Variable, foldSize int, batchSize int, B frontend.Variable) [][]frontend.Variable {
+	// Precompute powers of B: [1, B, B^2, ..., B^(batchSize-1)]
+	powers := make([]frontend.Variable, batchSize)
+	powers[0] = frontend.Variable(1)
+	for b := 1; b < batchSize; b++ {
+		powers[b] = api.Mul(powers[b-1], B)
+	}
+
 	collapsed := make([][]frontend.Variable, len(leaves))
 	for i := range leaves {
 		collapsed[i] = make([]frontend.Variable, foldSize)
 		for j := 0; j < foldSize; j++ {
 			sum := frontend.Variable(0)
-			pow := frontend.Variable(1)
 			for b := 0; b < batchSize; b++ {
 				idx := b*foldSize + j
-				sum = api.Add(sum, api.Mul(pow, leaves[i][idx]))
-				pow = api.Mul(pow, B)
+				sum = api.Add(sum, api.Mul(powers[b], leaves[i][idx]))
 			}
 			collapsed[i][j] = sum
 		}

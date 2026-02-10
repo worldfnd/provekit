@@ -1,0 +1,7 @@
+[package]
+name = "t_add_dsc_hash_1300"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+partial_sha256 = { path = "../../../partial_sha256" }

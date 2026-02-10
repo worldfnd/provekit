@@ -1,6 +1,7 @@
 package circuit
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/consensys/gnark/frontend"
@@ -10,8 +11,60 @@ type SparseMatrix struct {
 	Rows       uint64   `json:"num_rows"`
 	Cols       uint64   `json:"num_cols"`
 	RowIndices []uint64 `json:"new_row_indices"`
-	ColIndices []uint64 `json:"col_indices"`
+	ColDeltas  []uint64 `json:"col_deltas"`
 	Values     []uint64 `json:"values"`
+}
+
+// DecodeColIndices converts delta-encoded column indices back to absolute indices.
+// Within each row, the first column is absolute, subsequent columns are deltas from the previous.
+// Returns nil if the matrix data is inconsistent (e.g., RowIndices claims more entries than ColDeltas has).
+func (s *SparseMatrix) DecodeColIndices() []uint64 {
+	colIndices := make([]uint64, len(s.ColDeltas))
+	numRows := len(s.RowIndices)
+	totalEntries := len(s.Values)
+
+	// Validate consistency: ColDeltas and Values must have the same length
+	if len(s.ColDeltas) != len(s.Values) {
+		return nil
+	}
+
+	deltaIdx := 0
+	for row := 0; row < numRows; row++ {
+		start := int(s.RowIndices[row])
+		end := totalEntries
+		if row < numRows-1 {
+			end = int(s.RowIndices[row+1])
+		}
+
+		rowLen := end - start
+		if rowLen == 0 {
+			continue
+		}
+
+		// Bounds check before accessing ColDeltas
+		if deltaIdx >= len(s.ColDeltas) {
+			return nil
+		}
+
+		// First column is absolute
+		firstCol := s.ColDeltas[deltaIdx]
+		colIndices[deltaIdx] = firstCol
+		deltaIdx++
+
+		// Subsequent columns are cumulative deltas
+		prevCol := firstCol
+		for i := 1; i < rowLen; i++ {
+			if deltaIdx >= len(s.ColDeltas) {
+				return nil
+			}
+			col := prevCol + s.ColDeltas[deltaIdx]
+			colIndices[deltaIdx] = col
+			prevCol = col
+			deltaIdx++
+		}
+	}
+
+	return colIndices
 }
 
 type Interner struct {
@@ -125,4 +178,41 @@ func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []
 	}
 
 	return ans
+}
+
+// geometricTill evaluates the multilinear extension of the geometric vector
+// [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
+// This is O(k) constraints where k = len(foldingRandomness)
+func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
+	k := len(foldingRandomness)
+	if n <= 0 || n > (1<<k) {
+		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
+	}
+
+	borrow0 := frontend.Variable(1)
+	borrow1 := frontend.Variable(0)
+
+	for i := range k {
+		ri := foldingRandomness[k-1-i]
+		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
+
+		b0 := api.Sub(1, ri)
+		b1 := api.Mul(x, ri)
+
+		if bn == 0 {
+			newBorrow0 := api.Mul(b0, borrow0)
+			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		} else {
+			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
+			newBorrow1 := api.Mul(b1, borrow1)
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		}
+
+		x = api.Mul(x, x)
+	}
+
+	return borrow0
 }

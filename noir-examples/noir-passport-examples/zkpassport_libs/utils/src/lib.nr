@@ -5,6 +5,7 @@
 */
 pub mod tests;
 pub mod types;
+pub mod constants;
 
 /**
 * The structure of the MRZ is well defined and standardized by the ICAO
@@ -19,6 +20,7 @@ pub mod types;
 
 use types::{
     DG1Data, MRZData, MRZName, MRZDOB, MRZYOB, MRZDocumentNumber, MRZNationality, MRZIssuingCountry,
+    MRZExpiryDate,
 };
 
 // Index for the country of issuance of the passport
@@ -332,6 +334,40 @@ pub fn pack_be_bytes_into_fields<let NBytes: u32, let N: u32, let MAX_FIELD_SIZE
     result
 }
 
+fn pack_le_bytes_into_fields_internal<let BYTES_PER_FIELD: u32, let NUM_BYTES: u32, let NUM_FIELDS: u32>(
+    x: [u8; NUM_BYTES],
+) -> [Field; NUM_FIELDS] {
+    let mut result = [0 as Field; NUM_FIELDS];
+    let mut k = 0;
+    // Pack all fields in little-endian order
+    for field_index in 0..NUM_FIELDS {
+        let remaining_bytes = NUM_BYTES - k;
+        let chunk_size = if remaining_bytes > BYTES_PER_FIELD {
+            BYTES_PER_FIELD
+        } else {
+            remaining_bytes
+        };
+        let mut limb: Field = 0;
+        // Pack bytes in little-endian order (reverse the chunk)
+        for j in 0..chunk_size {
+            limb *= 256;
+            limb += x[k + chunk_size - 1 - j] as Field;
+        }
+        k += chunk_size;
+        std::as_witness(limb);
+        result[field_index] = limb;
+    }
+    result
+}
+
+pub fn pack_le_bytes_into_fields<let BYTES_PER_FIELD: u32, let NUM_BYTES: u32>(
+    x: [u8; NUM_BYTES],
+) -> [Field; (NUM_BYTES + BYTES_PER_FIELD - 1) / BYTES_PER_FIELD] {
+    pack_le_bytes_into_fields_internal::<BYTES_PER_FIELD, NUM_BYTES, (NUM_BYTES + BYTES_PER_FIELD - 1) / BYTES_PER_FIELD>(
+        x,
+    )
+}
+
 pub fn get_mrz_from_dg1(dg1: DG1Data) -> MRZData {
     let mut mrz: MRZData = [0 as u8; 90];
     for i in 0..90 {
@@ -578,6 +614,36 @@ pub fn get_document_number_id_card(mrz: MRZData) -> MRZDocumentNumber {
         mrz,
         ID_CARD_MRZ_DOCUMENT_NUMBER_INDEX,
         ID_CARD_MRZ_DOCUMENT_NUMBER_INDEX + ID_CARD_MRZ_DOCUMENT_NUMBER_LENGTH,
+    )
+}
+
+/// Get the expiry date from the MRZ
+///
+/// Conditionally calls the correct function based on the type of document
+pub fn get_expiry_date_from_mrz(dg1: DG1Data) -> MRZExpiryDate {
+    let mrz = get_mrz_from_dg1(dg1);
+    if is_id_card(dg1) {
+        get_expiry_date_id_card(mrz)
+    } else {
+        get_expiry_date_passport(mrz)
+    }
+}
+
+/// Get the expiry date from the MRZ for a passport
+pub fn get_expiry_date_passport(mrz: MRZData) -> MRZExpiryDate {
+    get_array_slice(
+        mrz,
+        PASSPORT_MRZ_EXPIRY_DATE_INDEX,
+        PASSPORT_MRZ_EXPIRY_DATE_INDEX + 6,
+    )
+}
+
+/// Get the expiry date from the MRZ for an ID card
+pub fn get_expiry_date_id_card(mrz: MRZData) -> MRZExpiryDate {
+    get_array_slice(
+        mrz,
+        ID_CARD_MRZ_EXPIRY_DATE_INDEX,
+        ID_CARD_MRZ_EXPIRY_DATE_INDEX + 6,
     )
 }
 

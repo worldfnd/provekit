@@ -1,7 +1,13 @@
 use sha512::{sha384, sha512};
-use utils::is_id_card;
 use sha256::sha256_var;
-
+use utils::{
+    check_zero_padding,
+    constants::{ID_CARD_DG1_LENGTH, PASSPORT_DG1_LENGTH},
+    find_subarray_index,
+    is_id_card,
+    is_subarray_in_array,
+    types::{DG1Data, EContentData},
+};
 /**
 * Computes the hash of the MRZ (Data Group 1) and checks it is the same as the one
 * provided in the SOD file of the ID and then use it along with the rest of the
@@ -127,4 +133,74 @@ pub fn check_integrity_of_data_sha512(
         // The rest is padding and the signature date, not important to check
         assert(computed_final_hash[i] == signed_attributes[signed_attributes_size - 64 + i]);
     }
+}
+
+pub fn get_dg1_size(dg1: DG1Data) -> u32 {
+    if is_id_card(dg1) {
+        ID_CARD_DG1_LENGTH
+    } else {
+        PASSPORT_DG1_LENGTH
+    }
+}
+
+/**
+* Computes the hash (using SHA2-256) of the first data group (containing the MRZ) and checks it is the same as the one
+* included in eContent at the offset provided (along with the rest of the data group hashes)
+*/
+pub fn check_dg1_sha256(dg1: DG1Data, e_content: EContentData, e_content_size: u32) {
+    check_zero_padding(e_content, e_content_size);
+
+    // For passports we ignore the last padding characters
+    let dg1_size: u64 = get_dg1_size(dg1) as u64;
+
+    // We only need to recompute the hash of the MRZ (or more accurately that of Data Group 1)
+    // within the circuit as this is the only data group we use to build the proof (age, country, etc.)
+    let dg1_hash = sha256_var(dg1, dg1_size);
+
+    // Find the offset of the hash of dg1 in e_content
+    let dg1_offset_in_e_content = find_subarray_index(dg1_hash, e_content);
+    // Check that the hash of dg1 is in the e_content, we use the actual size rather than generic size
+    // of econtent to ignore the padding bytes at the end
+    assert(
+        dg1_offset_in_e_content + dg1_hash.len() <= e_content_size,
+        "Hash of dg1 not found in eContent",
+    );
+}
+pub fn check_dg1_hash_within_sod(
+    dg1: [u8; 95],
+    dg1_padded_length: u64,
+    econtent: [u8; 200],
+    econtent_len: u32,
+    dg1_hash_offset: u32,
+) {
+    // Check zero padding for econtent
+    check_zero_padding(econtent, econtent_len);
+
+    // Bounds check: ensure dg1_hash_offset + 32 doesn't exceed econtent_len
+    assert(dg1_hash_offset + 32 <= econtent_len, "dg1_hash_offset out of bounds");
+
+    let dg1_hash = sha256_var(dg1, dg1_padded_length);
+
+    // The DG1 hash is located at the start of the SOD
+    // (offset is always 0 for DG1)
+    for i in 0..32 {
+        assert(dg1_hash[i] == econtent[dg1_hash_offset + i]);
+    }
+}
+/**
+* Computes the hash (using SHA2-256) of eContent (containing the hashes of the data groups) and checks it is the same as the one
+* included in the signed_attributes, which is the message signed by the Document Signing Certificate (DSC)
+*/
+pub fn check_signed_attributes_sha256<let SA_SIZE: u32>(
+    signed_attributes: [u8; SA_SIZE],
+    e_content: EContentData,
+    e_content_size: u32,
+) {
+    let computed_final_hash = sha256_var(e_content, e_content_size as u64);
+
+    // Check that the computed final hash is in the signed attributes
+    assert(
+        is_subarray_in_array(computed_final_hash, signed_attributes),
+        "Computed final hash not found in signed attributes",
+    );
 }
