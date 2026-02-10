@@ -44,7 +44,7 @@ The `t_attest` circuit provides fast, repeatable proofs:
 
 Benchmark inputs have already been generated and are available in the `benchmark-inputs` directory.
 
-Scripts are provided separately for tbs_700 (4-circuit chain) and tbs_1300 (5-circuit chain). Navigate to the scripts directory and run the appropriate sequence:
+Scripts are provided separately for tbs_720 (4-circuit chain) and tbs_1300 (5-circuit chain). Navigate to the scripts directory and run the appropriate sequence:
 
 ```bash
 cd scripts
