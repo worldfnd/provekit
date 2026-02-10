@@ -45,7 +45,7 @@ jobs:
               with:
                   toolchain: v1.0.0-beta.11
 
-            - name: Compile Nargo circuits 
+            - name: Compile Nargo circuits
               working-directory: ${{ env.CIRCUIT_DIR }}
               run: |
                 for circuit in ${{ env.CIRCUITS }}; do
@@ -77,6 +77,17 @@ jobs:
                   echo "Proved $circuit"
                 done
 
+            - name: Verify proofs for all circuits
+              working-directory: ${{ env.CIRCUIT_DIR }}
+              run: |
+                for circuit in ${{ env.CIRCUITS }}; do
+                  echo "Verifying $circuit"
+                  cargo run --release --bin provekit-cli verify \
+                    ./benchmark-inputs/$circuit-verifier.pkv \
+                    ./benchmark-inputs/$circuit-proof.np
+                  echo "Verified $circuit"
+                done
+
             - name: Generate Gnark inputs (t_attest only)
               working-directory: ${{ env.CIRCUIT_DIR }}
               run: |
@@ -84,7 +95,7 @@ jobs:
                   ./benchmark-inputs/t_attest-prover.pkp \
                   ./benchmark-inputs/t_attest-proof.np
                 
-            - name: Run Gnark verifier 
+            - name: Run Gnark verifier
               working-directory: recursive-verifier
               run: |
                 go run cmd/cli/main.go --config "../${{ env.CIRCUIT_DIR }}/params_for_recursive_verifier" --r1cs "../${{ env.CIRCUIT_DIR }}/r1cs.json" --saveKeys "./keys"
@@ -94,18 +105,17 @@ jobs:
               run: |
                 ls -la ./keys/*.bin || echo "No keys"
 
-            - name: Upload keys to gcp 
+            - name: Upload keys to gcp
               working-directory: recursive-verifier
               run: |
-                # Upload Gnark verifier keys for t_attest
                 PK_FILE=$(ls -t ./keys/pk_*.bin 2>/dev/null | head -1)
                 VK_FILE=$(ls -t ./keys/vk_*.bin 2>/dev/null | head -1)
 
                 if [ -z "$PK_FILE" ] || [ -z "$VK_FILE" ]; then
-                  echo "Error: Could not find Gnark keys"
+                  echo "Error: Could not find keys"
                   exit 1
                 fi
-
+              
                 echo "Found PK file: $PK_FILE"
                 echo "Found VK file: $VK_FILE"
 
@@ -118,7 +128,6 @@ jobs:
                 gsutil cp "$PK_FILE" "gs://${{ env.BUCKET_NAME }}/$ATTEST_PK_NAME"
                 gsutil cp "$VK_FILE" "gs://${{ env.BUCKET_NAME }}/$ATTEST_VK_NAME"
 
-                # Upload Noir prover/verifier keys for all 4 circuits
                 cd "../${{ env.CIRCUIT_DIR }}"
                 for circuit in ${{ env.CIRCUITS }}; do
                   if [ -f "./benchmark-inputs/${circuit}-prover.pkp" ]; then

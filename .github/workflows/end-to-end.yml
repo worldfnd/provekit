@@ -75,7 +75,18 @@ jobs:
             echo "Proved $circuit"
           done
 
-      - name: Generate Gnark inputs 
+      - name: Verify proofs for all circuits
+        working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
+        run: |
+          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
+            echo "Verifying $circuit"
+            cargo run --release --bin provekit-cli verify \
+              ./benchmark-inputs/$circuit-verifier.pkv \
+              ./benchmark-inputs/$circuit-proof.np
+            echo "Verified $circuit"
+          done
+
+      - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport/fragmented/merkle_age_check
         run: |
           cargo run --release --bin provekit-cli generate-gnark-inputs \
