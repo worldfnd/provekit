@@ -29,24 +29,33 @@ struct RangeCheckRequest {
 }
 
 /// Determines whether LogUp is cheaper than naive range checking for a bucket
-/// of `num_bits`-wide checks containing `count` witnesses.
+/// of `num_bits`-wide checks containing `count` witnesses, based on witness
+/// count (memory cost).
 ///
-/// LogUp cost: 2^bits (table fused constraints) + count (witness inverse
-/// constraints) + 1 (grand sum check).
-/// Naive cost: (2^bits - 1) constraints per witness.
+/// LogUp witnesses: table_size (multiplicities) + 2×table_size (inverse +
+/// quotient per table entry) + count (inverse per witness) + 1 (challenge)
+/// = 3×table_size + count + 1.
+/// Naive witnesses: (table_size - 2) intermediate products per witness.
 ///
 /// Returns `true` if LogUp should be used, `false` for naive product checks.
 fn should_use_logup(num_bits: u32, count: usize) -> bool {
     let table_size = 1usize << num_bits;
-    let logup_cost = table_size.saturating_add(count).saturating_add(1);
-    let naive_cost = count.saturating_mul(table_size - 1);
+    // LogUp witnesses: table_size (multiplicities) + 2*table_size
+    // (inverse + quotient per entry) + count (inverse per witness)
+    // + 1 (challenge)
+    let logup_cost = table_size
+        .saturating_mul(3)
+        .saturating_add(count)
+        .saturating_add(1);
+    // Naive witnesses: (table_size - 2) intermediate products per witness
+    let naive_cost = count.saturating_mul(table_size.saturating_sub(2));
     logup_cost < naive_cost
 }
 
-/// Returns the constraint cost for a single atomic bucket of `num_bits`-wide
+/// Returns the witness cost for a single atomic bucket of `num_bits`-wide
 /// checks containing `count` witnesses, choosing whichever strategy (LogUp
-/// or naive) is cheaper. Returns `usize::MAX` for impractically large bit
-/// widths where the table would overflow.
+/// or naive) produces fewer witnesses. Returns `usize::MAX` for
+/// impractically large bit widths where the table would overflow.
 fn bucket_cost(num_bits: u32, count: usize) -> usize {
     if count == 0 || num_bits == 0 {
         return 0;
@@ -59,8 +68,11 @@ fn bucket_cost(num_bits: u32, count: usize) -> usize {
         return usize::MAX;
     }
     let table_size = 1usize << num_bits;
-    let logup_cost = table_size.saturating_add(count).saturating_add(1);
-    let naive_cost = count.saturating_mul(table_size - 1);
+    let logup_cost = table_size
+        .saturating_mul(3)
+        .saturating_add(count)
+        .saturating_add(1);
+    let naive_cost = count.saturating_mul(table_size.saturating_sub(2));
     if should_use_logup(num_bits, count) {
         logup_cost
     } else {
@@ -68,14 +80,15 @@ fn bucket_cost(num_bits: u32, count: usize) -> usize {
     }
 }
 
-/// Calculates the total R1CS constraint cost for a given `base_width`.
+/// Calculates the total witness cost for a given `base_width`.
 ///
 /// For each request with `bits > base_width`, a digital decomposition is
-/// performed (1 recomposition constraint per witness). The resulting digits
-/// are bucketed by their bit width. Each bucket's cost is the cheaper of
-/// LogUp lookup and naive product checks.
-fn calculate_constraint_cost(base_width: u32, collected: &[RangeCheckRequest]) -> usize {
-    let mut decomposition_constraints: usize = 0;
+/// performed, creating `num_digits` digit witnesses per value. The
+/// resulting digits are bucketed by their bit width. Each bucket's cost
+/// is the cheaper of LogUp lookup and naive product checks, measured in
+/// witness count.
+fn calculate_witness_cost(base_width: u32, collected: &[RangeCheckRequest]) -> usize {
+    let mut decomposition_witnesses: usize = 0;
     let mut atomic_buckets: BTreeMap<u32, usize> = BTreeMap::new();
 
     for check in collected {
@@ -83,11 +96,12 @@ fn calculate_constraint_cost(base_width: u32, collected: &[RangeCheckRequest]) -
             // No decomposition needed; goes directly to atomic bucket.
             *atomic_buckets.entry(check.bits).or_default() += 1;
         } else {
-            // Decomposition: 1 recomposition constraint per witness.
-            decomposition_constraints += 1;
-
             let num_full_digits = check.bits / base_width;
             let remainder = check.bits % base_width;
+            let num_digits = num_full_digits as usize + if remainder > 0 { 1 } else { 0 };
+
+            // Decomposition creates num_digits witnesses per value.
+            decomposition_witnesses += num_digits;
 
             *atomic_buckets.entry(base_width).or_default() += num_full_digits as usize;
             if remainder > 0 {
@@ -96,26 +110,26 @@ fn calculate_constraint_cost(base_width: u32, collected: &[RangeCheckRequest]) -
         }
     }
 
-    let mut total = decomposition_constraints;
+    let mut total = decomposition_witnesses;
     for (&num_bits, &count) in &atomic_buckets {
         total = total.saturating_add(bucket_cost(num_bits, count));
     }
     total
 }
 
-/// Finds the base width that minimizes the total R1CS constraint count for
-/// the given set of range check requests.
+/// Finds the base width that minimizes the total witness count for the
+/// given set of range check requests.
 ///
 /// Searches widths from [MIN_BASE_WIDTH, MAX_BASE_WIDTH]. Base widths
 /// above 17 are never beneficial because the table side alone would
-/// require 2^18+ constraints, which always exceeds the cost of
+/// require 2^18+ witnesses, which always exceeds the cost of
 /// decomposing into smaller digits.
 fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
     let mut min_cost = usize::MAX;
     let mut optimal_width = 8u32;
 
     for base_width in MIN_BASE_WIDTH..=MAX_BASE_WIDTH {
-        let cost = calculate_constraint_cost(base_width, collected);
+        let cost = calculate_witness_cost(base_width, collected);
         if cost < min_cost {
             min_cost = cost;
             optimal_width = base_width;
@@ -130,8 +144,8 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
 ///
 /// Uses dynamic base width optimization: all range check requests are
 /// collected, and the optimal decomposition base width is determined by
-/// minimizing the total R1CS constraint cost. The search evaluates every
-/// base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
+/// minimizing the total witness count (memory cost). The search evaluates
+/// every base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
 /// candidate, the cost model picks the cheaper of LogUp and naive for
 /// every atomic bucket.
 ///
@@ -170,8 +184,8 @@ pub(crate) fn add_range_checks(
         return None;
     }
 
-    // Phase 2: Find the optimal base width that minimizes total constraint
-    // cost.
+    // Phase 2: Find the optimal base width that minimizes total witness
+    // count.
     let base_width = get_optimal_base_width(&collected);
 
     // Phase 3: Decompose values larger than base_width and collect atomic
@@ -216,7 +230,7 @@ pub(crate) fn add_range_checks(
     }
 
     // Phase 4: For each atomic bucket, add range check constraints.
-    // Choose LogUp or naive based on whichever produces fewer constraints.
+    // Choose LogUp or naive based on whichever produces fewer witnesses.
     atomic_range_checks
         .iter()
         .enumerate()
@@ -440,16 +454,16 @@ mod tests {
         assert_eq!(bucket_cost(63, 1), usize::MAX);
     }
 
-    /// Verifies should_use_logup decision logic matches expected behavior.
+    /// Verifies should_use_logup witness-based decision logic.
     #[test]
     fn should_use_logup_decision() {
-        // 1-bit, 1 witness: naive=1, logup=4 → naive wins
+        // 1-bit, 1 witness: naive=1×(2-2)=0, logup=3×2+1+1=8 → naive wins
         assert!(!should_use_logup(1, 1));
-        // 8-bit, 5 witnesses: naive=1275, logup=262 → logup wins
+        // 8-bit, 5 witnesses: naive=5×254=1270, logup=3×256+5+1=774 → logup
         assert!(should_use_logup(8, 5));
-        // 8-bit, 1 witness: naive=255, logup=258 → naive wins
+        // 8-bit, 1 witness: naive=1×254=254, logup=3×256+1+1=770 → naive
         assert!(!should_use_logup(8, 1));
-        // 8-bit, 256 witnesses: naive=65280, logup=513 → logup wins
+        // 8-bit, 256 witnesses: naive=256×254=65024, logup=3×256+256+1=1025
         assert!(should_use_logup(8, 256));
     }
 }
