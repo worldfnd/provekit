@@ -33,7 +33,7 @@ use {
     },
 };
 #[cfg(feature = "mavros_compiler")]
-use {spartan_vm::compiled_artifacts::CompiledArtifacts};
+use {mavros::compiled_artifacts::CompiledArtifacts};
 
 pub struct WhirR1CSCommitment {
     pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,

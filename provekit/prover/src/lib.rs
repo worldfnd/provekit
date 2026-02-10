@@ -9,7 +9,7 @@ use {
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
-    spartan_vm::{api as spartan_api, compiled_artifacts::CompiledArtifacts},
+    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
 };
 
 mod r1cs;
@@ -146,19 +146,18 @@ impl Prove for Prover {
     #[cfg(feature = "mavros_compiler")]
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        // Derive the project directory from the Prover.toml path.
+        use provekit_common::utils::convert_mavros_r1cs_to_provekit;
 
-        use provekit_common::utils::convert_spartan_r1cs_to_provekit;
+        // Derive the project directory from the Prover.toml path.
         let project_path = prover_toml
             .as_ref()
             .parent()
             .context("Could not derive project path from Prover.toml path")?;
 
-        let (driver, _) = spartan_api::compile_to_r1cs(project_path.to_path_buf(), false)?;
+        let (driver, _) = mavros_api::compile_to_r1cs(project_path.to_path_buf(), false)?;
+        let params = mavros_api::read_prover_inputs(&project_path.to_path_buf(), driver.abi())?;
 
-        let params = spartan_api::read_prover_inputs(&project_path.to_path_buf(), driver.abi())?;
-
-        let witgen_result = spartan_api::run_witgen_from_binary(
+        let phase1 = mavros_api::run_witgen_phase1(
             &mut self.artifacts.witgen_binary,
             &self.artifacts.r1cs,
             &params,
@@ -169,28 +168,41 @@ impl Prove for Prover {
         let mut merlin = io.to_prover_state();
         drop(io);
 
+        // Commit to w1 (pre-commitment witness).
         let commitment_1 = self
             .whir_for_witness
-            .commit(&mut merlin, &self.r1cs, witgen_result.out_wit_pre_comm.clone(), true)
+            .commit(&mut merlin, &self.r1cs, phase1.out_wit_pre_comm.clone(), true)
             .context("While committing to w1")?;
 
-        // Build commitment list based on whether we have challenges
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
+        let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             use ark_ff::AdditiveGroup;
             use spongefish::codecs::arkworks_algebra::UnitToField;
-            let mut r = vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
+
+            let mut challenges = vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
             merlin
-                .fill_challenge_scalars(&mut r)
+                .fill_challenge_scalars(&mut challenges)
                 .expect("Failed to extract challenge scalars from Merlin");
+
+            let witgen_result = mavros_api::run_witgen_phase2(
+                phase1,
+                &challenges,
+                &self.artifacts.r1cs,
+            );
 
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, &self.r1cs, witgen_result.out_wit_post_comm.clone(), false)
                 .context("While committing to w2")?;
 
-            vec![commitment_1, commitment_2]
+            (vec![commitment_1, commitment_2], witgen_result)
         } else {
-            vec![commitment_1]
+            // No challenges: complete phase 2 with empty challenges.
+            let witgen_result = mavros_api::run_witgen_phase2(
+                phase1,
+                &[],
+                &self.artifacts.r1cs,
+            );
+            (vec![commitment_1], witgen_result)
         };
 
         let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
@@ -203,12 +215,12 @@ impl Prove for Prover {
         };
 
         #[cfg(test)]
-        assert!(spartan_api::check_witgen(
+        assert!(mavros_api::check_witgen(
             &self.artifacts.r1cs,
             &witgen_result
         ));
 
-        let converted_r1cs = convert_spartan_r1cs_to_provekit(&self.artifacts.r1cs);
+        let converted_r1cs = convert_mavros_r1cs_to_provekit(&self.artifacts.r1cs);
 
         let whir_r1cs_proof = self
             .whir_for_witness

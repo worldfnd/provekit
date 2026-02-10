@@ -163,13 +163,13 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     inverses
 }
 
-pub fn convert_spartan_r1cs_to_provekit(
-    spartan_r1cs: &spartan_vm::compiler::r1cs_gen::R1CS,
+pub fn convert_mavros_r1cs_to_provekit(
+    mavros_r1cs: &mavros::compiler::r1cs_gen::R1CS,
 ) -> crate::R1CS {
-    let num_witnesses = spartan_r1cs.witness_layout.size();
-    let num_constraints = spartan_r1cs.constraints.len();
+    let num_witnesses = mavros_r1cs.witness_layout.size();
+    let num_constraints = mavros_r1cs.constraints.len();
 
-    let total_entries: usize = spartan_r1cs
+    let total_entries: usize = mavros_r1cs
         .constraints
         .iter()
         .map(|c| c.a.len() + c.b.len() + c.c.len())
@@ -183,7 +183,7 @@ pub fn convert_spartan_r1cs_to_provekit(
     let mut b_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
     let mut c_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
 
-    for constraint in &spartan_r1cs.constraints {
+    for constraint in &mavros_r1cs.constraints {
         a_buf.clear();
         a_buf.extend(
             constraint

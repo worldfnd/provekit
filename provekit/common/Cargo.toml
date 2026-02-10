@@ -45,7 +45,7 @@ tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
 zstd.workspace = true
-spartan-vm.workspace = true
+mavros.workspace = true
 
 [lints]
 workspace = true

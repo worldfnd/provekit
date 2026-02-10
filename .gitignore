@@ -16,6 +16,7 @@ params_for_recursive_verifier
 params
 artifacts/
 spartan_vm_debug/
+mavros_debug/
 
 # Don't ignore benchmarking artifacts
 !tooling/provekit-bench/benches/*

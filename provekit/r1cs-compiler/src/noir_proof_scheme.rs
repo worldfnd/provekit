@@ -15,7 +15,7 @@ use {
 };
 
 #[cfg(feature = "mavros_compiler")]
-use spartan_vm::api as spartan_api;
+use mavros::api as mavros_api;
 
 pub trait NoirProofSchemeBuilder {
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self>
@@ -133,7 +133,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
 
     #[instrument(skip_all)]
     fn from_program(program: ProgramArtifact, project_path: impl AsRef<Path>) -> Result<Self> {
-        use provekit_common::utils::convert_spartan_r1cs_to_provekit;
+        use provekit_common::utils::convert_mavros_r1cs_to_provekit;
 
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
@@ -150,10 +150,10 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         );
 
         let artifacts =
-            spartan_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
+            mavros_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
 
-        let whir_for_witness = WhirR1CSScheme::new_from_spartan_r1cs(&artifacts.r1cs, artifacts.r1cs.witness_layout.pre_commitment_size(), artifacts.r1cs.witness_layout.challenges_size, false);
-        let r1cs = convert_spartan_r1cs_to_provekit(&artifacts.r1cs);
+        let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(&artifacts.r1cs, artifacts.r1cs.witness_layout.pre_commitment_size(), artifacts.r1cs.witness_layout.challenges_size, false);
+        let r1cs = convert_mavros_r1cs_to_provekit(&artifacts.r1cs);
 
         Ok(Self {
             program: program.bytecode,

@@ -10,7 +10,7 @@ use {
 };
 
 #[cfg(feature = "mavros_compiler")]
-use spartan_vm::compiled_artifacts::CompiledArtifacts;
+use mavros::compiled_artifacts::CompiledArtifacts;
 
 /// A prover for a Noir Proof Scheme
 #[cfg(not(feature = "mavros_compiler"))]

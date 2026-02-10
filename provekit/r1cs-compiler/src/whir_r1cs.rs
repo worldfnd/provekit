@@ -1,6 +1,6 @@
 use {
     provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
-    spartan_vm::compiler::r1cs_gen::R1CS as SpartanR1CS,
+    mavros::compiler::r1cs_gen::R1CS as MavrosR1CS,
     std::sync::Arc,
     whir::{
         ntt::RSDefault,
@@ -27,7 +27,7 @@ pub trait WhirR1CSSchemeBuilder {
     ) -> Self;
 
     #[cfg(feature = "mavros_compiler")]
-    fn new_from_spartan_r1cs(r1cs: &SpartanR1CS, w1_size: usize, num_challenges: usize, has_public_inputs: bool) -> Self;
+    fn new_from_mavros_r1cs(r1cs: &MavrosR1CS, w1_size: usize, num_challenges: usize, has_public_inputs: bool) -> Self;
 
     #[cfg(feature = "mavros_compiler")]
     fn new_from_dimensions(
@@ -104,8 +104,8 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     }
 
     #[cfg(feature = "mavros_compiler")]
-    fn new_from_spartan_r1cs(
-        r1cs: &SpartanR1CS,
+    fn new_from_mavros_r1cs(
+        r1cs: &MavrosR1CS,
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool
