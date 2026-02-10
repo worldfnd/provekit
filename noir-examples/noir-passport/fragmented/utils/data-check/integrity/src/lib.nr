@@ -1,9 +1,5 @@
 use sha256::sha256_var;
-use utils::{
-    check_zero_padding,
-    is_subarray_in_array,
-    types::EContentData,
-};
+use utils::{check_zero_padding, is_subarray_in_array, types::EContentData};
 
 pub fn check_dg1_hash_within_sod(
     dg1: [u8; 95],
@@ -17,6 +13,9 @@ pub fn check_dg1_hash_within_sod(
 
     // Bounds check: ensure dg1_hash_offset + 32 doesn't exceed econtent_len
     assert(dg1_hash_offset + 32 <= econtent_len, "dg1_hash_offset out of bounds");
+
+    // Ensure dg1_padded_length doesn't exceed the actual array size
+    assert(dg1_padded_length <= 95, "dg1_padded_length out of bounds");
 
     let dg1_hash = sha256_var(dg1, dg1_padded_length);
 

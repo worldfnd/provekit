@@ -81,7 +81,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
         passport_validity_contents.dsc_rsa_exponent,
         passport_validity_contents.signed_attributes,
         passport_validity_contents.signed_attributes_size as u32,
-        0
+        0,
     ));
 
     // --- DSC certificate signature check ---
@@ -102,7 +102,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
         passport_validity_contents.csc_rsa_exponent,
         passport_validity_contents.dsc_cert, // This is `data_to_sign`, i.e. the message
         passport_validity_contents.dsc_cert_len,
-        0
+        0,
     ));
 }
 
@@ -118,10 +118,15 @@ pub fn check_integrity_of_sod_within_sod_cert(
     // Check zero padding for signed_attributes
     check_zero_padding(signed_attributes, signed_attributes_size);
 
+    // Bounds check: ensure econtent_hash_offset + 32 doesn't exceed signed_attributes_size
+    assert(
+        econtent_hash_offset + 32 <= signed_attributes_size,
+        "econtent_hash_offset out of bounds",
+    );
+
     // Clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff"
     // That "stuff" is the thing which is actually signed
-    let econtent_hash =
-        sha256_var(econtent, econtent_len as u64);
+    let econtent_hash = sha256_var(econtent, econtent_len as u64);
 
     for i in 0..32 {
         assert(econtent_hash[i] == signed_attributes[econtent_hash_offset + i]);
@@ -139,6 +144,12 @@ pub fn check_dg1_hash_within_sod(
 ) {
     // Check zero padding for econtent
     check_zero_padding(econtent, econtent_len);
+
+    // Bounds check: ensure dg1_hash_offset + 32 doesn't exceed econtent_len
+    assert(dg1_hash_offset + 32 <= econtent_len, "dg1_hash_offset out of bounds");
+
+    // Ensure dg1_padded_length doesn't exceed the actual array size
+    assert(dg1_padded_length <= 95, "dg1_padded_length out of bounds");
 
     let dg1_hash = sha256_var(dg1, dg1_padded_length);
 

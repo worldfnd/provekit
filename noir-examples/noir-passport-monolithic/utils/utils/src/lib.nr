@@ -140,6 +140,7 @@ where
     T: Eq,
     T: Default,
 {
+    assert(len <= N, "check_zero_padding: len exceeds array size");
     for i in 0..N {
         if i >= len {
             assert_eq(padded_array[i], T::default());

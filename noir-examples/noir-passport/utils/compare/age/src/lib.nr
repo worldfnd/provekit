@@ -16,7 +16,7 @@ fn get_birthdate(dg1: [u8; 95], timestamp: u64) -> Date {
             ID_CARD_MRZ_BIRTHDATE_INDEX + 6,
         );
     } else {
-        // Otherwise it's an ID card
+        // Otherwise it's a passport
         birthdate_bytes = get_array_slice(
             mrz,
             PASSPORT_MRZ_BIRTHDATE_INDEX,
