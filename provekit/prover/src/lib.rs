@@ -58,6 +58,11 @@ impl Prove for Prover {
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
         let acir_public_inputs = self.program.functions[0].public_inputs().indices();
 
+        // Drop program and witness generator early — they are no longer needed
+        // and can free significant memory before the commit phase.
+        drop(self.program);
+        drop(self.witness_generator);
+
         // Set up transcript
         let io: IOPattern = self.whir_for_witness.create_io_pattern();
         let mut merlin = io.to_prover_state();
@@ -98,6 +103,8 @@ impl Prove for Prover {
                 .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
                 .collect::<Result<Vec<_>>>()?;
 
+            drop(acir_witness_idx_to_value_map);
+
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, &self.r1cs, w2, false)
@@ -105,9 +112,9 @@ impl Prove for Prover {
 
             vec![commitment_1, commitment_2]
         } else {
+            drop(acir_witness_idx_to_value_map);
             vec![commitment_1]
         };
-        drop(acir_witness_idx_to_value_map);
 
         #[cfg(test)]
         self.r1cs
@@ -127,8 +134,6 @@ impl Prove for Prover {
             )
         };
         drop(witness);
-        drop(self.program);
-        drop(self.witness_generator);
 
         let whir_r1cs_proof = self
             .whir_for_witness
