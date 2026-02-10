@@ -72,7 +72,7 @@ jobs:
                   echo "Proving $circuit"
                   cargo run --release --bin provekit-cli prove \
                     ./benchmark-inputs/$circuit-prover.pkp \
-                    ./benchmark-inputs/case1/$circuit.toml \
+                    ./benchmark-inputs/tbs_720/$circuit.toml \
                     -o ./benchmark-inputs/$circuit-proof.np
                   echo "Proved $circuit"
                 done

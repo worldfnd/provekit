@@ -4,7 +4,7 @@ CIRCUITS=(
     "t_add_integrity_commit"
     "t_attest"
 )  
-LOG_DIR="../../benchmark-inputs/logs/prove/case1"
+LOG_DIR="../../benchmark-inputs/logs/prove/tbs_720"
 mkdir -p "$LOG_DIR"
 
 # Function to strip ANSI escape codes (works on macOS)
@@ -14,6 +14,6 @@ strip_ansi() {
 
 for circuit in "${CIRCUITS[@]}"; do
     echo "Proving $circuit"
-    cargo run --release --bin provekit-cli prove ../../benchmark-inputs/$circuit-prover.pkp ../../benchmark-inputs/case1/"$circuit".toml -o ../../benchmark-inputs/$circuit-proof.np 2>&1 | strip_ansi | tee "$LOG_DIR/$circuit.log"
+    cargo run --release --bin provekit-cli prove ../../benchmark-inputs/$circuit-prover.pkp ../../benchmark-inputs/tbs_720/"$circuit".toml -o ../../benchmark-inputs/$circuit-proof.np 2>&1 | strip_ansi | tee "$LOG_DIR/$circuit.log"
     echo "Proved $circuit"
 done

@@ -1,11 +1,10 @@
 CIRCUITS=(
-    "t_add_dsc_hash_1300"
-    "t_add_dsc_verify_1300"
-    "t_add_id_data_1300"
+    "t_add_dsc_720"
+    "t_add_id_data_720"
     "t_add_integrity_commit"
     "t_attest"
 )  
-LOG_DIR="../../benchmark-inputs/logs/compile/case2"
+LOG_DIR="../../benchmark-inputs/logs/compile/tbs_720"
 mkdir -p "$LOG_DIR"
 
 # Function to strip ANSI escape codes (works on macOS)
