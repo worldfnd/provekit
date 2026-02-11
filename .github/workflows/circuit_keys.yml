@@ -5,9 +5,9 @@ on:
 
 env:
   BUCKET_NAME: "provekit"
-  CIRCUIT_DIR: "noir-examples/noir-passport/merkle_age_check"
+  CIRCUIT_NAME: "complete_age_check"
+  CIRCUIT_DIR: "noir-examples/noir-passport-monolithic/complete_age_check"
   KEYS_NAME: "agecheck"
-  CIRCUITS: "t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest"
 
 
 permissions:
@@ -45,55 +45,17 @@ jobs:
               with:
                   toolchain: v1.0.0-beta.11
 
-            - name: Compile Nargo circuits
+            - name: Compile and execute Nargo circuit
               working-directory: ${{ env.CIRCUIT_DIR }}
               run: |
-                for circuit in ${{ env.CIRCUITS }}; do
-                  echo "Compiling $circuit"
-                  nargo compile --force --print-acir --package "$circuit"
-                  echo "Compiled $circuit"
-                done
+                nargo compile --skip-brillig-constraints-check --force
 
-            - name: Prepare circuits (generate proving artifacts)
+            - name: Generate Gnark inputs
               working-directory: ${{ env.CIRCUIT_DIR }}
               run: |
-                for circuit in ${{ env.CIRCUITS }}; do
-                  echo "Preparing $circuit"
-                  cargo run --release --bin provekit-cli prepare ./target/$circuit.json \
-                    --pkp ./benchmark-inputs/$circuit-prover.pkp \
-                    --pkv ./benchmark-inputs/$circuit-verifier.pkv
-                  echo "Prepared $circuit"
-                done
-
-            - name: Generate proofs for all circuits
-              working-directory: ${{ env.CIRCUIT_DIR }}
-              run: |
-                for circuit in ${{ env.CIRCUITS }}; do
-                  echo "Proving $circuit"
-                  cargo run --release --bin provekit-cli prove \
-                    ./benchmark-inputs/$circuit-prover.pkp \
-                    ./benchmark-inputs/tbs_720/$circuit.toml \
-                    -o ./benchmark-inputs/$circuit-proof.np
-                  echo "Proved $circuit"
-                done
-
-            - name: Verify proofs for all circuits
-              working-directory: ${{ env.CIRCUIT_DIR }}
-              run: |
-                for circuit in ${{ env.CIRCUITS }}; do
-                  echo "Verifying $circuit"
-                  cargo run --release --bin provekit-cli verify \
-                    ./benchmark-inputs/$circuit-verifier.pkv \
-                    ./benchmark-inputs/$circuit-proof.np
-                  echo "Verified $circuit"
-                done
-
-            - name: Generate Gnark inputs (t_attest only)
-              working-directory: ${{ env.CIRCUIT_DIR }}
-              run: |
-                cargo run --release --bin provekit-cli generate-gnark-inputs \
-                  ./benchmark-inputs/t_attest-prover.pkp \
-                  ./benchmark-inputs/t_attest-proof.np
+                cargo run --release --bin provekit-cli prepare ./target/${{ env.CIRCUIT_NAME }}.json -p ./noir-provekit-prover.pkp -v ./noir-provekit-verifier.pkv
+                cargo run --release --bin provekit-cli prove ./noir-provekit-prover.pkp ./Prover.toml -o ./noir-proof.np
+                cargo run --release --bin provekit-cli generate-gnark-inputs ./noir-provekit-prover.pkp ./noir-proof.np
                 
             - name: Run Gnark verifier
               working-directory: recursive-verifier
@@ -119,30 +81,17 @@ jobs:
                 echo "Found PK file: $PK_FILE"
                 echo "Found VK file: $VK_FILE"
 
-                ATTEST_PK_NAME="${{ env.KEYS_NAME }}_t_attest_$(basename "$PK_FILE")"
-                ATTEST_VK_NAME="${{ env.KEYS_NAME }}_t_attest_$(basename "$VK_FILE")"
+                AGE_CHECK_PK_NAME="${{ env.KEYS_NAME }}_$(basename "$PK_FILE")"
+                AGE_CHECK_VK_NAME="${{ env.KEYS_NAME }}_$(basename "$VK_FILE")"
 
-                echo "Uploading PK as: $ATTEST_PK_NAME"
-                echo "Uploading VK as: $ATTEST_VK_NAME"
+                echo "Uploading PK as: $AGE_CHECK_PK_NAME"
+                echo "Uploading VK as: $AGE_CHECK_VK_NAME"
 
-                gsutil cp "$PK_FILE" "gs://${{ env.BUCKET_NAME }}/$ATTEST_PK_NAME"
-                gsutil cp "$VK_FILE" "gs://${{ env.BUCKET_NAME }}/$ATTEST_VK_NAME"
-
-                cd "../${{ env.CIRCUIT_DIR }}"
-                for circuit in ${{ env.CIRCUITS }}; do
-                  if [ -f "./benchmark-inputs/${circuit}-prover.pkp" ]; then
-                    echo "Uploading ${circuit} prover key"
-                    gsutil cp "./benchmark-inputs/${circuit}-prover.pkp" "gs://${{ env.BUCKET_NAME }}/${{ env.KEYS_NAME }}_${circuit}-prover.pkp"
-                  fi
-                  if [ -f "./benchmark-inputs/${circuit}-verifier.pkv" ]; then
-                    echo "Uploading ${circuit} verifier key"
-                    gsutil cp "./benchmark-inputs/${circuit}-verifier.pkv" "gs://${{ env.BUCKET_NAME }}/${{ env.KEYS_NAME }}_${circuit}-verifier.pkv"
-                  fi
-                done
+                gsutil cp "$PK_FILE" "gs://${{ env.BUCKET_NAME }}/$AGE_CHECK_PK_NAME"
+                gsutil cp "$VK_FILE" "gs://${{ env.BUCKET_NAME }}/$AGE_CHECK_VK_NAME"
 
             - name: Cleanup local files 
               working-directory: recursive-verifier
               run: |
                 echo "Cleaning up local keys..."
                 rm -f ./keys/*.bin
-
