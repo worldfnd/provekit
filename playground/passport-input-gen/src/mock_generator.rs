@@ -141,7 +141,8 @@ pub fn generate_fake_sod(
     }
 }
 
-/// Generate a synthetic SOD with a TBS certificate padded to `tbs_actual_len` bytes.
+/// Generate a synthetic SOD with a TBS certificate padded to `tbs_actual_len`
+/// bytes.
 ///
 /// The TBS bytes consist of:
 ///   1. DSC public key in PKCS#1 DER format (~270 bytes)
@@ -304,12 +305,7 @@ mod tests {
 
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
         let sod = generate_fake_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
-        let reader = PassportReader::new(
-            Binary::from_slice(&dg1),
-            sod,
-            true,
-            Some(csca_pub),
-        );
+        let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub));
         assert!(reader.validate().is_ok());
 
         let config = MerkleAge720Config {

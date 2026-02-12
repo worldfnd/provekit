@@ -1,12 +1,14 @@
 //! Noir-compatible commitment functions for passport circuit inputs.
 //!
-//! These functions replicate the commitment computations from the Noir circuits,
-//! allowing the Rust input generator to compute actual values instead of placeholders.
+//! These functions replicate the commitment computations from the Noir
+//! circuits, allowing the Rust input generator to compute actual values instead
+//! of placeholders.
 
-use ark_bn254::Fr;
-use ark_ff::{BigInteger, PrimeField};
-
-use crate::poseidon2::poseidon2_hash;
+use {
+    crate::poseidon2::poseidon2_hash,
+    ark_bn254::Fr,
+    ark_ff::{BigInteger, PrimeField},
+};
 
 /// Parse a 0x-prefixed hex string (e.g. "0x2") into a BN254 field element.
 pub fn parse_hex_to_field(hex_str: &str) -> Fr {
@@ -21,7 +23,8 @@ pub fn parse_hex_to_field(hex_str: &str) -> Fr {
 /// Packing scheme (31 bytes per field, reversed storage order):
 /// - N = (len + 30) / 31  field elements
 /// - First chunk (may be shorter): bytes[0..first_chunk_size] → result[N-1]
-/// - Remaining chunks (31 bytes each): stored in result[N-2], result[N-3], ..., result[0]
+/// - Remaining chunks (31 bytes each): stored in result[N-2], result[N-3], ...,
+///   result[0]
 ///
 /// Each chunk is interpreted as a big-endian integer.
 pub fn pack_be_bytes_into_fields(bytes: &[u8]) -> Vec<Fr> {
@@ -85,10 +88,11 @@ pub fn hash_salt_country_tbs(salt: &str, country: &[u8], tbs_certificate: &[u8])
     poseidon2_hash(&fields)
 }
 
-/// Compute private nullifier: Poseidon2(packed_dg1, packed_e_content, packed_sod_sig).
+/// Compute private nullifier: Poseidon2(packed_dg1, packed_e_content,
+/// packed_sod_sig).
 ///
-/// Matches Noir's `calculate_private_nullifier<DG1_SIZE, ECONTENT_SIZE, SIG_SIZE>()` from
-/// `utils/commitment/common/src/lib.nr:81-109`.
+/// Matches Noir's `calculate_private_nullifier<DG1_SIZE, ECONTENT_SIZE,
+/// SIG_SIZE>()` from `utils/commitment/common/src/lib.nr:81-109`.
 ///
 /// Field layout (20 fields for DG1=95, ECONTENT=200, SIG=256):
 ///   [0..4]   = packed DG1 (95 bytes → 4 fields)
@@ -102,9 +106,11 @@ pub fn calculate_private_nullifier(dg1: &[u8], e_content: &[u8], sod_signature: 
     poseidon2_hash(&fields)
 }
 
-/// Compute circuit 2 commitment: Poseidon2(salt, country, signed_attr, sa_size, dg1, e_content, nullifier).
+/// Compute circuit 2 commitment: Poseidon2(salt, country, signed_attr, sa_size,
+/// dg1, e_content, nullifier).
 ///
-/// Matches Noir's `hash_salt_country_signed_attr_dg1_e_content_private_nullifier<...>()` from
+/// Matches Noir's
+/// `hash_salt_country_signed_attr_dg1_e_content_private_nullifier<...>()` from
 /// `utils/commitment/common/src/lib.nr:119-161`.
 ///
 /// Field layout (22 fields for SA=200, DG1=95, ECONTENT=200):
@@ -150,10 +156,11 @@ pub fn commit_to_data_chunk(salt: &str, data: &[u8]) -> Fr {
     poseidon2_hash(&fields)
 }
 
-/// Commit to SHA256 state + data commitment: Poseidon2(salt, state[0..7], processed_bytes, data_commitment).
+/// Commit to SHA256 state + data commitment: Poseidon2(salt, state[0..7],
+/// processed_bytes, data_commitment).
 ///
-/// Matches Noir's `commit_to_sha256_state_and_data(salt, state, processed_bytes, data_commitment)` from
-/// `partial_sha256/src/lib.nr`.
+/// Matches Noir's `commit_to_sha256_state_and_data(salt, state,
+/// processed_bytes, data_commitment)` from `partial_sha256/src/lib.nr`.
 ///
 /// Field layout (always 11 fields):
 ///   [0]     = salt
@@ -202,13 +209,13 @@ mod tests {
         // 32 bytes → 2 field elements: N = (32+30)/31 = 2
         // first_chunk_size = 32 - 31*(2-1) = 1
         let mut bytes = [0u8; 32];
-        bytes[0] = 0xFF; // First chunk: 1 byte → result[1]
+        bytes[0] = 0xff; // First chunk: 1 byte → result[1]
         for i in 1..32 {
             bytes[i] = i as u8; // Second chunk: 31 bytes → result[0]
         }
         let packed = pack_be_bytes_into_fields(&bytes);
         assert_eq!(packed.len(), 2);
-        assert_eq!(packed[1], Fr::from(0xFFu64)); // Short first chunk
+        assert_eq!(packed[1], Fr::from(0xffu64)); // Short first chunk
     }
 
     #[test]
@@ -223,20 +230,19 @@ mod tests {
     fn test_calculate_sod_hash_known_good() {
         // e_content from both known-good and test TOML files (identical)
         let e_content: [u8; 200] = [
-            54, 197, 174, 86, 62, 194, 237, 211, 184, 91, 92, 169, 195, 149, 233, 156, 60, 80,
-            224, 124, 161, 170, 204, 239, 154, 92, 165, 10, 81, 42, 90, 7, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            54, 197, 174, 86, 62, 194, 237, 211, 184, 91, 92, 169, 195, 149, 233, 156, 60, 80, 224,
+            124, 161, 170, 204, 239, 154, 92, 165, 10, 81, 42, 90, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
         let hash = calculate_sod_hash(&e_content);
         let hash_hex = field_to_hex_string(&hash);
         assert_eq!(
-            hash_hex,
-            "0x0f7f8bb032ad068e1c3b717ec1e7020d3537e20688af7bd7a7ae51df72f368bc",
+            hash_hex, "0x0f7f8bb032ad068e1c3b717ec1e7020d3537e20688af7bd7a7ae51df72f368bc",
             "sod_hash mismatch with known-good value from t_attest.toml"
         );
     }
@@ -259,13 +265,13 @@ mod tests {
     #[test]
     fn test_field_count_sanity() {
         // Verify field counts match Noir's expectations
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 3]).len(), 1);     // country
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 720]).len(), 24);  // tbs_certificate 720
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 3]).len(), 1); // country
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 720]).len(), 24); // tbs_certificate 720
         assert_eq!(pack_be_bytes_into_fields(&[0u8; 1300]).len(), 42); // tbs_certificate 1300
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 640]).len(), 21);  // chunk1
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 95]).len(), 4);    // dg1
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 200]).len(), 7);   // e_content/signed_attr
-        assert_eq!(pack_be_bytes_into_fields(&[0u8; 256]).len(), 9);   // sod_signature
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 640]).len(), 21); // chunk1
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 95]).len(), 4); // dg1
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 200]).len(), 7); // e_content/signed_attr
+        assert_eq!(pack_be_bytes_into_fields(&[0u8; 256]).len(), 9); // sod_signature
     }
 
     #[test]
@@ -276,45 +282,45 @@ mod tests {
         //
         // The dsc_hash circuit computes:
         //   data_comm1 = commit_to_data_chunk("0x1", chunk1)
-        //   comm_out   = commit_to_sha256_state_and_data("0x1", state1, 640, data_comm1)
-        // This comm_out must equal the comm_in in t_add_dsc_verify_1300.toml.
+        //   comm_out   = commit_to_sha256_state_and_data("0x1", state1, 640,
+        // data_comm1) This comm_out must equal the comm_in in
+        // t_add_dsc_verify_1300.toml.
 
         let chunk1: [u8; 640] = [
-            48, 130, 1, 10, 2, 130, 1, 1, 0, 175, 129, 169, 48, 75, 201, 148, 9, 44, 101, 74,
-            102, 208, 170, 80, 87, 167, 158, 254, 182, 81, 253, 14, 124, 113, 45, 48, 144, 36, 5,
-            248, 31, 93, 49, 75, 149, 184, 114, 188, 161, 128, 33, 61, 152, 20, 57, 11, 226, 80,
-            82, 80, 10, 209, 152, 144, 112, 231, 229, 31, 130, 146, 213, 195, 46, 163, 187, 24,
-            68, 79, 56, 124, 205, 49, 44, 70, 146, 221, 223, 68, 147, 89, 27, 16, 80, 111, 178,
-            109, 166, 123, 27, 29, 37, 120, 192, 202, 246, 6, 132, 249, 14, 254, 239, 204, 225,
-            127, 186, 207, 215, 178, 142, 60, 232, 125, 83, 126, 240, 68, 243, 79, 119, 91, 83,
-            101, 115, 122, 64, 30, 91, 221, 154, 108, 225, 93, 137, 17, 211, 26, 118, 192, 139,
-            66, 108, 134, 167, 187, 106, 71, 227, 24, 98, 192, 198, 153, 49, 239, 67, 212, 101,
-            101, 4, 76, 153, 212, 177, 159, 190, 78, 10, 224, 173, 157, 91, 210, 237, 178, 115,
-            123, 245, 116, 202, 34, 222, 78, 153, 81, 155, 248, 151, 112, 213, 128, 252, 173, 11,
-            165, 189, 128, 245, 216, 176, 34, 8, 89, 234, 4, 237, 161, 225, 16, 206, 84, 251,
-            235, 84, 100, 148, 53, 18, 159, 134, 159, 65, 197, 221, 254, 23, 118, 144, 109, 54,
-            163, 163, 137, 13, 21, 182, 72, 183, 104, 190, 89, 8, 248, 244, 38, 62, 248, 56, 97,
-            149, 68, 81, 218, 203, 203, 183, 2, 3, 1, 0, 1, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-            27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-            48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
-            69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+            48, 130, 1, 10, 2, 130, 1, 1, 0, 175, 129, 169, 48, 75, 201, 148, 9, 44, 101, 74, 102,
+            208, 170, 80, 87, 167, 158, 254, 182, 81, 253, 14, 124, 113, 45, 48, 144, 36, 5, 248,
+            31, 93, 49, 75, 149, 184, 114, 188, 161, 128, 33, 61, 152, 20, 57, 11, 226, 80, 82, 80,
+            10, 209, 152, 144, 112, 231, 229, 31, 130, 146, 213, 195, 46, 163, 187, 24, 68, 79, 56,
+            124, 205, 49, 44, 70, 146, 221, 223, 68, 147, 89, 27, 16, 80, 111, 178, 109, 166, 123,
+            27, 29, 37, 120, 192, 202, 246, 6, 132, 249, 14, 254, 239, 204, 225, 127, 186, 207,
+            215, 178, 142, 60, 232, 125, 83, 126, 240, 68, 243, 79, 119, 91, 83, 101, 115, 122, 64,
+            30, 91, 221, 154, 108, 225, 93, 137, 17, 211, 26, 118, 192, 139, 66, 108, 134, 167,
+            187, 106, 71, 227, 24, 98, 192, 198, 153, 49, 239, 67, 212, 101, 101, 4, 76, 153, 212,
+            177, 159, 190, 78, 10, 224, 173, 157, 91, 210, 237, 178, 115, 123, 245, 116, 202, 34,
+            222, 78, 153, 81, 155, 248, 151, 112, 213, 128, 252, 173, 11, 165, 189, 128, 245, 216,
+            176, 34, 8, 89, 234, 4, 237, 161, 225, 16, 206, 84, 251, 235, 84, 100, 148, 53, 18,
+            159, 134, 159, 65, 197, 221, 254, 23, 118, 144, 109, 54, 163, 163, 137, 13, 21, 182,
+            72, 183, 104, 190, 89, 8, 248, 244, 38, 62, 248, 56, 97, 149, 68, 81, 218, 203, 203,
+            183, 2, 3, 1, 0, 1, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+            35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56,
+            57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78,
+            79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
+            100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+            117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133,
+            134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150,
+            151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167,
+            168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184,
+            185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201,
+            202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218,
+            219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235,
+            236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252,
+            253, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+            46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
+            68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
             90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108,
             109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125,
-            126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142,
-            143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
-            160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176,
-            177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193,
-            194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210,
-            211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227,
-            228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244,
-            245, 246, 247, 248, 249, 250, 251, 252, 253, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
-            34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
-            55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
-            76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-            97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
-            114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
-            131, 132, 133, 134,
+            126, 127, 128, 129, 130, 131, 132, 133, 134,
         ];
         let state1: [u32; 8] = [
             3828948639, 4073271942, 433182166, 3811311365, 3566743306, 1923568254, 3109579459,
@@ -326,8 +332,7 @@ mod tests {
         let comm_out_hex = field_to_hex_string(&comm_out);
 
         assert_eq!(
-            comm_out_hex,
-            "0x045433920bc35680c37f22815da747e86bf7974625da04b1f015af21e42446b1",
+            comm_out_hex, "0x045433920bc35680c37f22815da747e86bf7974625da04b1f015af21e42446b1",
             "commit_to_sha256_state_and_data output mismatch with benchmark comm_in"
         );
     }

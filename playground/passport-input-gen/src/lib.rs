@@ -1,9 +1,9 @@
 pub mod commitment;
 pub mod mock_generator;
 pub mod mock_keys;
+mod parser;
 pub mod partial_sha256;
 pub mod poseidon2;
-mod parser;
 
 pub use crate::parser::{binary::Binary, sod::SOD};
 use {
@@ -35,29 +35,29 @@ use {
 /// Commitment values, salts, Merkle tree data, and attestation parameters.
 pub struct MerkleAge720Config {
     /// Salt for circuit 1 commitment (default: "0x2")
-    pub salt_1: String,
+    pub salt_1:           String,
     /// Salt for circuit 2 commitment (default: "0x3")
-    pub salt_2: String,
+    pub salt_2:           String,
     /// Blinding factor for DG1 Poseidon2 commitment
-    pub r_dg1: String,
+    pub r_dg1:            String,
     /// Current date as unix timestamp
-    pub current_date: u64,
+    pub current_date:     u64,
     /// Minimum age to prove
     pub min_age_required: u8,
     /// Maximum age (0 = no upper bound)
     pub max_age_required: u8,
     /// Service scope hash (H(domain_name))
-    pub service_scope: String,
+    pub service_scope:    String,
     /// Service sub-scope hash (H(purpose))
     pub service_subscope: String,
     /// Optional nullifier secret for salting
     pub nullifier_secret: String,
     /// Merkle tree root (from sequencer)
-    pub merkle_root: String,
+    pub merkle_root:      String,
     /// Leaf index in Merkle tree
-    pub leaf_index: String,
+    pub leaf_index:       String,
     /// Merkle path sibling hashes (TREE_DEPTH elements)
-    pub merkle_path: Vec<String>,
+    pub merkle_path:      Vec<String>,
 }
 
 impl Default for MerkleAge720Config {
@@ -65,54 +65,55 @@ impl Default for MerkleAge720Config {
         let zero_field =
             "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
         Self {
-            salt_1: "0x2".to_string(),
-            salt_2: "0x3".to_string(),
-            r_dg1: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            salt_1:           "0x2".to_string(),
+            salt_2:           "0x3".to_string(),
+            r_dg1:            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 .to_string(),
-            current_date: 1735689600, // Jan 1, 2025
+            current_date:     1735689600, // Jan 1, 2025
             min_age_required: 18,
             max_age_required: 0,
-            service_scope: zero_field.clone(),
+            service_scope:    zero_field.clone(),
             service_subscope: zero_field.clone(),
             nullifier_secret: zero_field.clone(),
-            merkle_root: zero_field.clone(),
-            leaf_index: "0".to_string(),
-            merkle_path: vec![zero_field; TREE_DEPTH],
+            merkle_root:      zero_field.clone(),
+            leaf_index:       "0".to_string(),
+            merkle_path:      vec![zero_field; TREE_DEPTH],
         }
     }
 }
 
-/// Application-level parameters for the 5-circuit merkle_age_check TBS-1300 chain.
+/// Application-level parameters for the 5-circuit merkle_age_check TBS-1300
+/// chain.
 ///
 /// The TBS-1300 chain has 3 salts (vs 2 for TBS-720) because DSC verification
 /// is split into two circuits (dsc_hash + dsc_verify).
 pub struct MerkleAge1300Config {
     /// Salt for circuits 1+2 (dsc_hash & dsc_verify input): "0x1"
-    pub salt_0: String,
+    pub salt_0:           String,
     /// Salt for circuit 2 output / circuit 3 input: "0x2"
-    pub salt_1: String,
+    pub salt_1:           String,
     /// Salt for circuit 3 output / circuit 4 input: "0x3"
-    pub salt_2: String,
+    pub salt_2:           String,
     /// Blinding factor for DG1 Poseidon2 commitment
-    pub r_dg1: String,
+    pub r_dg1:            String,
     /// Current date as unix timestamp
-    pub current_date: u64,
+    pub current_date:     u64,
     /// Minimum age to prove
     pub min_age_required: u8,
     /// Maximum age (0 = no upper bound)
     pub max_age_required: u8,
     /// Service scope hash (H(domain_name))
-    pub service_scope: String,
+    pub service_scope:    String,
     /// Service sub-scope hash (H(purpose))
     pub service_subscope: String,
     /// Optional nullifier secret for salting
     pub nullifier_secret: String,
     /// Merkle tree root (from sequencer)
-    pub merkle_root: String,
+    pub merkle_root:      String,
     /// Leaf index in Merkle tree
-    pub leaf_index: String,
+    pub leaf_index:       String,
     /// Merkle path sibling hashes (TREE_DEPTH elements)
-    pub merkle_path: Vec<String>,
+    pub merkle_path:      Vec<String>,
 }
 
 impl Default for MerkleAge1300Config {
@@ -120,20 +121,20 @@ impl Default for MerkleAge1300Config {
         let zero_field =
             "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
         Self {
-            salt_0: "0x1".to_string(),
-            salt_1: "0x2".to_string(),
-            salt_2: "0x3".to_string(),
-            r_dg1: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            salt_0:           "0x1".to_string(),
+            salt_1:           "0x2".to_string(),
+            salt_2:           "0x3".to_string(),
+            r_dg1:            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                 .to_string(),
-            current_date: 1735689600,
+            current_date:     1735689600,
             min_age_required: 18,
             max_age_required: 0,
-            service_scope: zero_field.clone(),
+            service_scope:    zero_field.clone(),
             service_subscope: zero_field.clone(),
             nullifier_secret: zero_field.clone(),
-            merkle_root: zero_field.clone(),
-            leaf_index: "0".to_string(),
-            merkle_path: vec![zero_field; TREE_DEPTH],
+            merkle_root:      zero_field.clone(),
+            leaf_index:       "0".to_string(),
+            merkle_path:      vec![zero_field; TREE_DEPTH],
         }
     }
 }
@@ -147,24 +148,24 @@ impl Default for MerkleAge1300Config {
 pub struct AddDsc720Inputs {
     /// CSCA public key modulus (RSA-4096, 512 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub csc_pubkey: [u8; SIG_BYTES * 2],
+    pub csc_pubkey:            [u8; SIG_BYTES * 2],
     /// Salt for commitment
-    pub salt: String,
+    pub salt:                  String,
     /// 3-character country code from passport
-    pub country: String,
+    pub country:               String,
     /// DSC TBS certificate padded to 720 bytes
     #[serde(serialize_with = "byte_array::serialize")]
-    pub tbs_certificate: [u8; MAX_TBS_SIZE],
+    pub tbs_certificate:       [u8; MAX_TBS_SIZE],
     /// Barrett reduction parameter for CSCA modulus (513 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey_redc_param: [u8; SIG_BYTES * 2 + 1],
     /// CSCA signature over the DSC TBS certificate (512 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub dsc_signature: [u8; SIG_BYTES * 2],
+    pub dsc_signature:         [u8; SIG_BYTES * 2],
     /// RSA exponent (CSCA)
-    pub exponent: u32,
+    pub exponent:              u32,
     /// Actual TBS certificate length before padding
-    pub tbs_certificate_len: u32,
+    pub tbs_certificate_len:   u32,
 }
 
 /// Inputs for t_add_id_data_720: Verify DSC signed passport data (720-byte TBS)
@@ -205,58 +206,59 @@ pub struct AddIdData720Inputs {
     pub e_content: [u8; MAX_ECONTENT_SIZE],
 }
 
-/// Inputs for t_add_integrity_commit: Verify data integrity + generate Merkle leaf
+/// Inputs for t_add_integrity_commit: Verify data integrity + generate Merkle
+/// leaf
 #[derive(serde::Serialize)]
 pub struct AddIntegrityCommitInputs {
     /// Commitment from circuit 2 (placeholder until circuit 2 runs)
-    pub comm_in: String,
+    pub comm_in:                String,
     /// Input salt (must match circuit 2's output salt)
-    pub salt_in: String,
+    pub salt_in:                String,
     /// DG1 Machine Readable Zone data (95 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub dg1: [u8; MAX_DG1_SIZE],
+    pub dg1:                    [u8; MAX_DG1_SIZE],
     /// DG1 padded length for SHA256
-    pub dg1_padded_length: u64,
+    pub dg1_padded_length:      u64,
     /// Offset of DG1 hash within eContent
-    pub dg1_hash_offset: u32,
+    pub dg1_hash_offset:        u32,
     /// Signed attributes from SOD (200 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub signed_attributes: [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
+    pub signed_attributes:      [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
     /// Actual signed attributes size
     pub signed_attributes_size: u32,
     /// eContent hash values (200 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub e_content: [u8; MAX_ECONTENT_SIZE],
+    pub e_content:              [u8; MAX_ECONTENT_SIZE],
     /// Actual eContent length
-    pub e_content_len: u32,
+    pub e_content_len:          u32,
     /// Pre-computed private nullifier (Poseidon2 hash)
-    pub private_nullifier: String,
+    pub private_nullifier:      String,
     /// Blinding factor for DG1 commitment
-    pub r_dg1: String,
+    pub r_dg1:                  String,
 }
 
 /// Inputs for t_attest: Age attestation with Merkle tree membership proof
 #[derive(serde::Serialize)]
 pub struct AttestInputs {
     /// Current Merkle tree root (from sequencer)
-    pub root: String,
+    pub root:             String,
     /// Current date as unix timestamp
-    pub current_date: u64,
+    pub current_date:     u64,
     /// Service scope: H(domain_name)
-    pub service_scope: String,
+    pub service_scope:    String,
     /// Service sub-scope: H(purpose)
     pub service_subscope: String,
     /// DG1 Machine Readable Zone data (95 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub dg1: [u8; MAX_DG1_SIZE],
+    pub dg1:              [u8; MAX_DG1_SIZE],
     /// Blinding factor from registration
-    pub r_dg1: String,
+    pub r_dg1:            String,
     /// SOD hash: Poseidon2(packed_e_content)
-    pub sod_hash: String,
+    pub sod_hash:         String,
     /// Position in Merkle tree
-    pub leaf_index: String,
+    pub leaf_index:       String,
     /// Sibling hashes for Merkle path (TREE_DEPTH elements)
-    pub merkle_path: Vec<String>,
+    pub merkle_path:      Vec<String>,
     /// Minimum age to prove
     pub min_age_required: u8,
     /// Maximum age (0 = no upper bound)
@@ -267,56 +269,59 @@ pub struct AttestInputs {
 
 /// Container for all 4 circuit inputs in the merkle_age_check TBS-720 chain
 pub struct MerkleAge720Inputs {
-    pub add_dsc: AddDsc720Inputs,
-    pub add_id_data: AddIdData720Inputs,
+    pub add_dsc:       AddDsc720Inputs,
+    pub add_id_data:   AddIdData720Inputs,
     pub add_integrity: AddIntegrityCommitInputs,
-    pub attest: AttestInputs,
+    pub attest:        AttestInputs,
 }
 
 // --- TBS-1300 circuit input structs (5-circuit chain) ---
 
-/// Inputs for t_add_dsc_hash_1300: Process first 640 bytes of TBS, output SHA256 state commitment
+/// Inputs for t_add_dsc_hash_1300: Process first 640 bytes of TBS, output
+/// SHA256 state commitment
 #[derive(serde::Serialize)]
 pub struct AddDscHash1300Inputs {
     /// Salt for commitment (shared with dsc_verify)
-    pub salt: String,
+    pub salt:   String,
     /// First 640 bytes of TBS certificate
     #[serde(serialize_with = "byte_array::serialize")]
     pub chunk1: [u8; CHUNK1_SIZE],
 }
 
-/// Inputs for t_add_dsc_verify_1300: Continue SHA256, verify RSA, output country+TBS commitment
+/// Inputs for t_add_dsc_verify_1300: Continue SHA256, verify RSA, output
+/// country+TBS commitment
 #[derive(serde::Serialize)]
 pub struct AddDscVerify1300Inputs {
     /// Commitment from circuit 1 (SHA256 state + data commitment)
-    pub comm_in: String,
+    pub comm_in:               String,
     /// CSCA public key modulus (RSA-4096, 512 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub csc_pubkey: [u8; SIG_BYTES * 2],
+    pub csc_pubkey:            [u8; SIG_BYTES * 2],
     /// Salt (same as dsc_hash's salt)
-    pub salt: String,
+    pub salt:                  String,
     /// 3-character country code
-    pub country: String,
+    pub country:               String,
     /// SHA256 intermediate state from processing chunk1
-    pub state1: [u32; 8],
+    pub state1:                [u32; 8],
     /// Full TBS certificate padded to 1300 bytes
     #[serde(serialize_with = "byte_array::serialize")]
-    pub tbs_certificate: [u8; MAX_TBS_SIZE_1300],
+    pub tbs_certificate:       [u8; MAX_TBS_SIZE_1300],
     /// Actual TBS certificate length before padding
-    pub tbs_certificate_len: u32,
+    pub tbs_certificate_len:   u32,
     /// Barrett reduction parameter for CSCA modulus (513 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey_redc_param: [u8; SIG_BYTES * 2 + 1],
     /// CSCA signature over the DSC TBS certificate (512 bytes)
     #[serde(serialize_with = "byte_array::serialize")]
-    pub dsc_signature: [u8; SIG_BYTES * 2],
+    pub dsc_signature:         [u8; SIG_BYTES * 2],
     /// RSA exponent (CSCA)
-    pub exponent: u32,
+    pub exponent:              u32,
     /// Output salt for this circuit's commitment
-    pub salt_out: String,
+    pub salt_out:              String,
 }
 
-/// Inputs for t_add_id_data_1300: Verify DSC signed passport data (1300-byte TBS)
+/// Inputs for t_add_id_data_1300: Verify DSC signed passport data (1300-byte
+/// TBS)
 #[derive(serde::Serialize)]
 pub struct AddIdData1300Inputs {
     /// Commitment from circuit 2
@@ -356,25 +361,11 @@ pub struct AddIdData1300Inputs {
 
 /// Container for all 5 circuit inputs in the merkle_age_check TBS-1300 chain
 pub struct MerkleAge1300Inputs {
-    pub add_dsc_hash: AddDscHash1300Inputs,
+    pub add_dsc_hash:   AddDscHash1300Inputs,
     pub add_dsc_verify: AddDscVerify1300Inputs,
-    pub add_id_data: AddIdData1300Inputs,
-    pub add_integrity: AddIntegrityCommitInputs,
-    pub attest: AttestInputs,
-}
-
-// --- Runtime TBS variant selection ---
-
-/// Runtime selection of TBS variant
-pub enum TbsVariant {
-    Tbs720,
-    Tbs1300,
-}
-
-/// Unified container for either TBS variant's circuit inputs
-pub enum MerkleAgeInputs {
-    Tbs720(MerkleAge720Inputs),
-    Tbs1300(MerkleAge1300Inputs),
+    pub add_id_data:    AddIdData1300Inputs,
+    pub add_integrity:  AddIntegrityCommitInputs,
+    pub attest:         AttestInputs,
 }
 
 // ============================================================================
@@ -519,7 +510,8 @@ impl PassportReader {
         self.extract_dsc_cert_sized::<MAX_TBS_SIZE>(dsc_modulus)
     }
 
-    /// Extract DSC certificate TBS padded to a generic size N, with actual length and pubkey offset
+    /// Extract DSC certificate TBS padded to a generic size N, with actual
+    /// length and pubkey offset
     fn extract_dsc_cert_sized<const N: usize>(
         &self,
         dsc_modulus: &[u8; SIG_BYTES],
@@ -646,8 +638,9 @@ impl PassportReader {
 
     /// Generate inputs for the 4-circuit merkle_age_check TBS-720 chain.
     ///
-    /// Extracts passport data and distributes it across 4 circuit input structs.
-    /// Commitment values and Merkle data come from the config (placeholders by default).
+    /// Extracts passport data and distributes it across 4 circuit input
+    /// structs. Commitment values and Merkle data come from the config
+    /// (placeholders by default).
     pub fn to_merkle_age_720_inputs(
         &self,
         csca_key_index: usize,
@@ -687,22 +680,17 @@ impl PassportReader {
         // === Compute Poseidon2 commitments ===
 
         // Circuit 1 output: hash(salt_1, country, tbs_cert)
-        let comm_out_1 = commitment::hash_salt_country_tbs(
-            &config.salt_1,
-            country.as_bytes(),
-            &tbs_cert,
-        );
+        let comm_out_1 =
+            commitment::hash_salt_country_tbs(&config.salt_1, country.as_bytes(), &tbs_cert);
         let comm_out_1_hex = commitment::field_to_hex_string(&comm_out_1);
 
         // Private nullifier: hash(dg1, e_content, sod_signature)
-        let private_nullifier = commitment::calculate_private_nullifier(
-            &dg1_padded,
-            &econtent,
-            &sod_signature,
-        );
+        let private_nullifier =
+            commitment::calculate_private_nullifier(&dg1_padded, &econtent, &sod_signature);
         let private_nullifier_hex = commitment::field_to_hex_string(&private_nullifier);
 
-        // Circuit 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content, nullifier)
+        // Circuit 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content,
+        // nullifier)
         let comm_out_2 = commitment::hash_salt_country_sa_dg1_econtent_nullifier(
             &config.salt_2,
             country.as_bytes(),
@@ -748,29 +736,29 @@ impl PassportReader {
         };
 
         let add_integrity = AddIntegrityCommitInputs {
-            comm_in: comm_out_2_hex,
-            salt_in: config.salt_2,
-            dg1: dg1_padded,
-            dg1_padded_length: dg1_len as u64,
-            dg1_hash_offset: dg1_hash_offset as u32,
-            signed_attributes: signed_attrs,
+            comm_in:                comm_out_2_hex,
+            salt_in:                config.salt_2,
+            dg1:                    dg1_padded,
+            dg1_padded_length:      dg1_len as u64,
+            dg1_hash_offset:        dg1_hash_offset as u32,
+            signed_attributes:      signed_attrs,
             signed_attributes_size: signed_attributes_size as u32,
-            e_content: econtent,
-            e_content_len: econtent_len as u32,
-            private_nullifier: private_nullifier_hex,
-            r_dg1: config.r_dg1.clone(),
+            e_content:              econtent,
+            e_content_len:          econtent_len as u32,
+            private_nullifier:      private_nullifier_hex,
+            r_dg1:                  config.r_dg1.clone(),
         };
 
         let attest = AttestInputs {
-            root: config.merkle_root,
-            current_date: config.current_date,
-            service_scope: config.service_scope,
+            root:             config.merkle_root,
+            current_date:     config.current_date,
+            service_scope:    config.service_scope,
             service_subscope: config.service_subscope,
-            dg1: dg1_padded,
-            r_dg1: config.r_dg1,
-            sod_hash: sod_hash_hex,
-            leaf_index: config.leaf_index,
-            merkle_path: config.merkle_path,
+            dg1:              dg1_padded,
+            r_dg1:            config.r_dg1,
+            sod_hash:         sod_hash_hex,
+            leaf_index:       config.leaf_index,
+            merkle_path:      config.merkle_path,
             min_age_required: config.min_age_required,
             max_age_required: config.max_age_required,
             nullifier_secret: config.nullifier_secret,
@@ -786,7 +774,8 @@ impl PassportReader {
 
     /// Generate inputs for the 5-circuit merkle_age_check TBS-1300 chain.
     ///
-    /// Circuit chain: dsc_hash_1300 -> dsc_verify_1300 -> id_data_1300 -> integrity -> attest
+    /// Circuit chain: dsc_hash_1300 -> dsc_verify_1300 -> id_data_1300 ->
+    /// integrity -> attest
     ///
     /// The key difference from TBS-720 is that DSC signature verification
     /// is split into two circuits using partial SHA256. Circuit 1 processes the
@@ -841,7 +830,8 @@ impl PassportReader {
 
         // Circuit 1 (dsc_hash) output:
         //   data_comm1 = commit_to_data_chunk(salt_0, chunk1)
-        //   comm_out_hash = commit_to_sha256_state_and_data(salt_0, state1, 640, data_comm1)
+        //   comm_out_hash = commit_to_sha256_state_and_data(salt_0, state1, 640,
+        // data_comm1)
         let data_comm1 = commitment::commit_to_data_chunk(&config.salt_0, &chunk1);
         let comm_out_hash = commitment::commit_to_sha256_state_and_data(
             &config.salt_0,
@@ -853,19 +843,13 @@ impl PassportReader {
 
         // Circuit 2 (dsc_verify) output:
         //   comm_out_verify = hash_salt_country_tbs(salt_1, country, tbs_cert_1300)
-        let comm_out_verify = commitment::hash_salt_country_tbs(
-            &config.salt_1,
-            country.as_bytes(),
-            &tbs_cert_1300,
-        );
+        let comm_out_verify =
+            commitment::hash_salt_country_tbs(&config.salt_1, country.as_bytes(), &tbs_cert_1300);
         let comm_out_verify_hex = commitment::field_to_hex_string(&comm_out_verify);
 
         // Private nullifier: hash(dg1, e_content, sod_signature)
-        let private_nullifier = commitment::calculate_private_nullifier(
-            &dg1_padded,
-            &econtent,
-            &sod_signature,
-        );
+        let private_nullifier =
+            commitment::calculate_private_nullifier(&dg1_padded, &econtent, &sod_signature);
         let private_nullifier_hex = commitment::field_to_hex_string(&private_nullifier);
 
         // Circuit 3 (id_data) output:
@@ -923,29 +907,29 @@ impl PassportReader {
         };
 
         let add_integrity = AddIntegrityCommitInputs {
-            comm_in: comm_out_id_hex,
-            salt_in: config.salt_2,
-            dg1: dg1_padded,
-            dg1_padded_length: dg1_len as u64,
-            dg1_hash_offset: dg1_hash_offset as u32,
-            signed_attributes: signed_attrs,
+            comm_in:                comm_out_id_hex,
+            salt_in:                config.salt_2,
+            dg1:                    dg1_padded,
+            dg1_padded_length:      dg1_len as u64,
+            dg1_hash_offset:        dg1_hash_offset as u32,
+            signed_attributes:      signed_attrs,
             signed_attributes_size: signed_attributes_size as u32,
-            e_content: econtent,
-            e_content_len: econtent_len as u32,
-            private_nullifier: private_nullifier_hex,
-            r_dg1: config.r_dg1.clone(),
+            e_content:              econtent,
+            e_content_len:          econtent_len as u32,
+            private_nullifier:      private_nullifier_hex,
+            r_dg1:                  config.r_dg1.clone(),
         };
 
         let attest = AttestInputs {
-            root: config.merkle_root,
-            current_date: config.current_date,
-            service_scope: config.service_scope,
+            root:             config.merkle_root,
+            current_date:     config.current_date,
+            service_scope:    config.service_scope,
             service_subscope: config.service_subscope,
-            dg1: dg1_padded,
-            r_dg1: config.r_dg1,
-            sod_hash: sod_hash_hex,
-            leaf_index: config.leaf_index,
-            merkle_path: config.merkle_path,
+            dg1:              dg1_padded,
+            r_dg1:            config.r_dg1,
+            sod_hash:         sod_hash_hex,
+            leaf_index:       config.leaf_index,
+            merkle_path:      config.merkle_path,
             min_age_required: config.min_age_required,
             max_age_required: config.max_age_required,
             nullifier_secret: config.nullifier_secret,
@@ -962,7 +946,8 @@ impl PassportReader {
 }
 
 // ============================================================================
-// Serde helper for large fixed-size arrays (serde only supports [T; N] for N <= 32)
+// Serde helper for large fixed-size arrays (serde only supports [T; N] for N <=
+// 32)
 // ============================================================================
 
 mod byte_array {
@@ -1089,11 +1074,7 @@ impl AddIntegrityCommitInputs {
         );
         let _ = writeln!(out, "e_content = {}", fmt_u8(&self.e_content));
         let _ = writeln!(out, "e_content_len = {}", self.e_content_len);
-        let _ = writeln!(
-            out,
-            "private_nullifier = \"{}\"",
-            self.private_nullifier
-        );
+        let _ = writeln!(out, "private_nullifier = \"{}\"", self.private_nullifier);
         let _ = writeln!(out, "r_dg1 = \"{}\"", self.r_dg1);
         out
     }
@@ -1147,8 +1128,7 @@ impl MerkleAge720Inputs {
             .save_to_toml_file(base.join("t_add_id_data_720.toml"))?;
         self.add_integrity
             .save_to_toml_file(base.join("t_add_integrity_commit.toml"))?;
-        self.attest
-            .save_to_toml_file(base.join("t_attest.toml"))?;
+        self.attest.save_to_toml_file(base.join("t_attest.toml"))?;
         Ok(())
     }
 }
@@ -1247,32 +1227,24 @@ impl MerkleAge1300Inputs {
             .save_to_toml_file(base.join("t_add_id_data_1300.toml"))?;
         self.add_integrity
             .save_to_toml_file(base.join("t_add_integrity_commit.toml"))?;
-        self.attest
-            .save_to_toml_file(base.join("t_attest.toml"))?;
+        self.attest.save_to_toml_file(base.join("t_attest.toml"))?;
         Ok(())
-    }
-}
-
-impl MerkleAgeInputs {
-    /// Save all circuit input TOML files to the given directory (runtime dispatch).
-    pub fn save_all<P: AsRef<Path>>(&self, base_dir: P) -> std::io::Result<()> {
-        match self {
-            MerkleAgeInputs::Tbs720(inputs) => inputs.save_all(base_dir),
-            MerkleAgeInputs::Tbs1300(inputs) => inputs.save_all(base_dir),
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::mock_generator::{
-        dg1_bytes_with_birthdate_expiry_date, generate_fake_sod,
-        generate_fake_sod_with_padded_tbs,
+    use {
+        super::*,
+        crate::{
+            mock_generator::{
+                dg1_bytes_with_birthdate_expiry_date, generate_fake_sod,
+                generate_fake_sod_with_padded_tbs,
+            },
+            mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
+        },
+        rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey},
     };
-    use crate::mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64};
-    use rsa::pkcs8::DecodePrivateKey;
-    use rsa::RsaPrivateKey;
 
     /// End-to-end test: generate mock passport data and verify all
     /// computed commitments match the known-good values from the
@@ -1283,15 +1255,13 @@ mod tests {
         let csca_der = STANDARD
             .decode(MOCK_CSCA_PRIV_KEY_B64)
             .expect("decode CSCA key");
-        let csca_priv =
-            RsaPrivateKey::from_pkcs8_der(&csca_der).expect("parse CSCA key");
+        let csca_priv = RsaPrivateKey::from_pkcs8_der(&csca_der).expect("parse CSCA key");
         let csca_pub = csca_priv.to_public_key();
 
         let dsc_der = STANDARD
             .decode(MOCK_DSC_PRIV_KEY_B64)
             .expect("decode DSC key");
-        let dsc_priv =
-            RsaPrivateKey::from_pkcs8_der(&dsc_der).expect("parse DSC key");
+        let dsc_priv = RsaPrivateKey::from_pkcs8_der(&dsc_der).expect("parse DSC key");
         let dsc_pub = dsc_priv.to_public_key();
 
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
@@ -1340,23 +1310,22 @@ mod tests {
         );
     }
 
-    /// End-to-end test for tbs_1300: generate mock passport data with padded TBS,
-    /// produce all 5 circuit inputs, and verify the commitment chain is self-consistent.
+    /// End-to-end test for tbs_1300: generate mock passport data with padded
+    /// TBS, produce all 5 circuit inputs, and verify the commitment chain
+    /// is self-consistent.
     #[test]
     fn test_1300_commitment_chain_self_consistent() {
         // Generate mock keys
         let csca_der = STANDARD
             .decode(MOCK_CSCA_PRIV_KEY_B64)
             .expect("decode CSCA key");
-        let csca_priv =
-            RsaPrivateKey::from_pkcs8_der(&csca_der).expect("parse CSCA key");
+        let csca_priv = RsaPrivateKey::from_pkcs8_der(&csca_der).expect("parse CSCA key");
         let csca_pub = csca_priv.to_public_key();
 
         let dsc_der = STANDARD
             .decode(MOCK_DSC_PRIV_KEY_B64)
             .expect("decode DSC key");
-        let dsc_priv =
-            RsaPrivateKey::from_pkcs8_der(&dsc_der).expect("parse DSC key");
+        let dsc_priv = RsaPrivateKey::from_pkcs8_der(&dsc_der).expect("parse DSC key");
         let dsc_pub = dsc_priv.to_public_key();
 
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
