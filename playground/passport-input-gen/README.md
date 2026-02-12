@@ -1,110 +1,213 @@
-# Passport Input Generator
+# passport-input-gen
 
-A Rust crate for parsing passport data and generating circuit inputs for Noir Circuits.
+A Rust crate for parsing passport data and generating circuit inputs for the `merkle_age_check` multi-circuit pipeline.
 
 ## Overview
 
-This crate provides functionality to:
+This crate handles the Rust side of the `merkle_age_check` proving pipeline. It:
 
-- Parse passport Machine Readable Zone (MRZ) data from DG1 and SOD
-- Validate passport signatures using DSC and CSCA certificates
-- Generate mock passport data for testing
-- Convert passport data to circuit inputs for Noir zero-knowledge circuits
+- Parses passport Machine Readable Zone (MRZ) data from DG1 and SOD
+- Validates passport signatures against DSC and CSCA certificates
+- Computes Poseidon2 commitment chains across circuits
+- Generates per-circuit input structs for both TBS-720 and TBS-1300 chains
+- Provides two output modes: TOML files (for use with `nargo prove`) or direct proving (no TOML, bypasses file I/O)
+
+## Circuit Pipeline
+
+The `merkle_age_check` circuit splits passport verification into a chain of smaller circuits. The chain depends on the TBS certificate size:
+
+### TBS-720 (4 circuits)
+
+Used when the DSC TBS certificate fits within 720 bytes.
+
+```
+t_add_dsc_720 → t_add_id_data_720 → t_add_integrity_commit → t_attest
+```
+
+| Circuit | Verifies | Output |
+|---------|----------|--------|
+| `t_add_dsc_720` | CSCA signature over DSC TBS cert | `comm_out_1 = Poseidon2(salt, country, tbs_cert)` |
+| `t_add_id_data_720` | DSC signature over SOD signed attrs | `comm_out_2 = Poseidon2(salt, country, signed_attrs, dg1, econtent, nullifier)` |
+| `t_add_integrity_commit` | DG1 hash inside eContent | Merkle leaf = `Poseidon2(hDG1, sod_hash)` |
+| `t_attest` | Merkle membership proof | `(param_commitment, scoped_nullifier)` |
+
+### TBS-1300 (5 circuits)
+
+Used when the DSC TBS certificate exceeds 720 bytes (padded to 1300). DSC verification is split into two circuits using partial SHA256.
+
+```
+t_add_dsc_hash_1300 → t_add_dsc_verify_1300 → t_add_id_data_1300 → t_add_integrity_commit → t_attest
+```
+
+| Circuit | Role |
+|---------|------|
+| `t_add_dsc_hash_1300` | SHA256 of first 640 bytes of TBS cert, outputs intermediate state |
+| `t_add_dsc_verify_1300` | Continues SHA256, verifies CSCA RSA signature |
+| `t_add_id_data_1300` | Same as 720 variant but with 1300-byte TBS |
+| `t_add_integrity_commit` | Shared with TBS-720 chain |
+| `t_attest` | Shared with TBS-720 chain |
+
+The expensive registration circuits (`t_add_*`) run once. The fast `t_attest` circuit (Poseidon-only, no RSA) runs repeatedly for each attestation against a Merkle tree root.
+
+## Library API
 
 ### `PassportReader`
 
-Main structure for reading and validating passport data.
-
-**Structure:**
+Wraps DG1 + SOD data and produces per-circuit input structs.
 
 ```rust
-pub struct PassportReader {
-    dg1:         Binary,                // DG1 (Machine Readable Zone) data
-    sod:         SOD,                   // Security Object Document
-    mockdata:    bool,                  // Flag indicating mock vs real passport data
-    csca_pubkey: Option<RsaPublicKey>,  // Optional CSCA public key for mock data
-}
-```
-
-**Key Behavior:**
-
-- When `mockdata: false`: The reader searches for existing CSCA keys from a predefined set. Currently supports USA CSCA keys loaded from the system. The `validate()` method iterates through all available USA CSCA keys to find one that successfully validates the passport signature.
-
-- When `mockdata: true`: The reader uses the provided `csca_pubkey` for validation. This is useful for testing with synthetic passport data generated using mock keys.
-
-**Methods:**
-
-- `validate() -> Result<usize, PassportError>` - Validates the passport signatures and returns the CSCA key index used. For mock data, always returns index 0. For real data, returns the index of the USA CSCA key that successfully validated the passport.
-- `to_circuit_inputs(current_date: u64, min_age_required: u8, max_age_required: u8, csca_key_index: usize) -> Result<CircuitInputs, PassportError>` - Converts passport data to circuit inputs
-
-#### `CircuitInputs`
-
-Contains all necessary inputs for Noir circuits.
-
-**Methods:**
-
-- `to_toml_string() -> String` - Converts circuit inputs to TOML format string
-- `save_to_toml_file<P: AsRef<Path>>(path: P) -> std::io::Result<()>` - Saves circuit inputs to a TOML file
-
-### Mock Data Generation
-
-#### `mock_generator` module
-
-**Functions:**
-
-- `dg1_bytes_with_birthdate_expiry_date(birthdate: &[u8; 6], expiry: &[u8; 6]) -> Vec<u8>` - Generates fake DG1 data with specified birth and expiry dates (format: YYMMDD)
-- `generate_fake_sod(dg1: &[u8], dsc_priv: &RsaPrivateKey, dsc_pub: &RsaPublicKey, csca_priv: &RsaPrivateKey, _csca_pub: &RsaPublicKey) -> SOD` - Creates a synthetic SOD structure for testing
-
-#### `mock_keys` module
-
-**Constants:**
-
-- `MOCK_CSCA_PRIV_KEY_B64: &str` - Base64-encoded mock CSCA private key for testing
-- `MOCK_DSC_PRIV_KEY_B64: &str` - Base64-encoded mock DSC private key for testing
-
-## Usage Example
-
-```rust
-use passport_input_gen::{PassportReader, mock_generator, mock_keys};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use rsa::{RsaPrivateKey, pkcs8::DecodePrivateKey};
-
-// Load mock keys
-let csca_der = STANDARD.decode(mock_keys::MOCK_CSCA_PRIV_KEY_B64)?;
-let csca_priv = RsaPrivateKey::from_pkcs8_der(&csca_der)?;
-let csca_pub = csca_priv.to_public_key();
-
-let dsc_der = STANDARD.decode(mock_keys::MOCK_DSC_PRIV_KEY_B64)?;
-let dsc_priv = RsaPrivateKey::from_pkcs8_der(&dsc_der)?;
-let dsc_pub = dsc_priv.to_public_key();
-
-// Generate mock passport data
-let dg1 = mock_generator::dg1_bytes_with_birthdate_expiry_date(b"900101", b"300101");
-let sod = mock_generator::generate_fake_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
-
-// Create passport reader
-let reader = PassportReader {
-    dg1: Binary::from_slice(&dg1),
-    sod,
-    mockdata: true,
-    csca_pubkey: Some(csca_pub),
+use passport_input_gen::{
+    Binary, PassportReader,
+    MerkleAge720Config, MerkleAge1300Config,
 };
 
-// Validate passport
-let csca_index = reader.validate()?;
+// Construct from parsed passport data
+let reader = PassportReader::new(
+    Binary::from_slice(&dg1_bytes),
+    sod,
+    false,          // mockdata = false for real passports
+    None,           // csca_pubkey = None (will look up from embedded CSCA set)
+);
 
-// Generate circuit inputs
-let current_timestamp = chrono::Utc::now().timestamp() as u64;
-let inputs = reader.to_circuit_inputs(current_timestamp, 18, 70, csca_index)?;
+// Validate signatures; returns CSCA key index used
+let csca_idx = reader.validate()?;
 
-// Export to TOML
-inputs.save_to_toml_file("circuit_inputs.toml")?;
+// Generate TBS-720 circuit inputs
+let config = MerkleAge720Config {
+    current_date: 1735689600,
+    min_age_required: 18,
+    ..Default::default()
+};
+let inputs = reader.to_merkle_age_720_inputs(csca_idx, config)?;
+
+// Generate TBS-1300 circuit inputs
+let config = MerkleAge1300Config {
+    current_date: 1735689600,
+    min_age_required: 18,
+    ..Default::default()
+};
+let inputs = reader.to_merkle_age_1300_inputs(csca_idx, config)?;
+```
+
+### Config structs
+
+Both `MerkleAge720Config` and `MerkleAge1300Config` hold application-level parameters not extracted from the passport itself:
+
+| Field | Description |
+|-------|-------------|
+| `salt_1`, `salt_2` (720) / `salt_0`, `salt_1`, `salt_2` (1300) | Commitment salts chained across circuits |
+| `r_dg1` | Blinding factor for DG1 Poseidon2 commitment |
+| `current_date` | Unix timestamp used for age/expiry checks |
+| `min_age_required` / `max_age_required` | Age range to prove (0 = no upper bound) |
+| `merkle_root` | Current Merkle tree root (from sequencer) |
+| `leaf_index` | Leaf index in the Merkle tree |
+| `merkle_path` | Sibling hashes for the Merkle membership proof |
+| `service_scope` / `service_subscope` | H(domain) and H(purpose) for scoped nullifiers |
+| `nullifier_secret` | Optional secret for nullifier salting |
+
+Default values are mock/placeholder values suitable for testing. In production, `merkle_root`, `leaf_index`, `merkle_path`, and the scope fields are provided by the sequencer.
+
+### Output: TOML files
+
+Save all per-circuit inputs as TOML files for use with `nargo prove`:
+
+```rust
+// TBS-720: writes t_add_dsc_720.toml, t_add_id_data_720.toml,
+//          t_add_integrity_commit.toml, t_attest.toml
+inputs.save_all("path/to/output/dir")?;
+```
+
+### Output: Direct proving (no TOML)
+
+Convert inputs directly to a proof without writing TOML to disk. Inputs are serialized to JSON, parsed against the circuit ABI, and passed to `provekit-prover`:
+
+```rust
+use provekit_prover::Prove;
+use noirc_abi::input_parser::Format;
+
+let json = serde_json::to_string(&inputs.add_dsc)?;
+let input_map = Format::Json.parse(&json, prover.witness_generator.abi())?;
+let proof = prover.prove(input_map)?;
+```
+
+## CLI
+
+The `passport_cli` binary provides an interactive interface for both modes.
+
+```
+cargo run --bin passport_cli
+```
+
+You will be prompted to select:
+
+1. **TBS variant** — `1` for TBS-720, `2` for TBS-1300
+2. **Mode** — `1` to generate TOML files, `2` to generate proofs directly
+
+### TOML mode
+
+Generates all Prover.toml files under:
+
+```
+noir-examples/noir-passport/merkle_age_check/benchmark-inputs/
+  tbs_720/test/
+    t_add_dsc_720.toml
+    t_add_id_data_720.toml
+    t_add_integrity_commit.toml
+    t_attest.toml
+  tbs_1300/test/
+    t_add_dsc_hash_1300.toml
+    t_add_dsc_verify_1300.toml
+    t_add_id_data_1300.toml
+    t_add_integrity_commit.toml
+    t_attest.toml
+```
+
+### Prove mode
+
+Loads `.pkp` prover keys from the benchmark-inputs directory, generates proofs for all `t_add_*` circuits (excluding `t_attest`), and writes `.np` proof files alongside the prover keys.
+
+The CLI includes tracing-based performance profiling. Span durations, memory usage, and allocation counts are printed to stderr during proving.
+
+## Mock data
+
+The `mock_generator` module generates synthetic passport data for testing:
+
+```rust
+use passport_input_gen::mock_generator::{
+    dg1_bytes_with_birthdate_expiry_date,
+    generate_fake_sod,              // TBS-720: actual TBS ~400 bytes
+    generate_fake_sod_with_padded_tbs, // TBS-1300: pads TBS to given size
+};
+
+// DOB: Jan 1, 2007 / Expiry: Jan 1, 2032
+let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
+
+// TBS-720 SOD
+let sod = generate_fake_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
+
+// TBS-1300 SOD (pads TBS to 850 bytes)
+let sod = generate_fake_sod_with_padded_tbs(
+    &dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub, 850
+);
+```
+
+Mock RSA key pairs are embedded in `mock_keys`:
+
+```rust
+use passport_input_gen::mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64};
+// MOCK_CSCA_PRIV_KEY_B64: RSA-4096 (CSCA)
+// MOCK_DSC_PRIV_KEY_B64:  RSA-2048 (DSC)
 ```
 
 ## Testing
 
-The crate includes tests for mock data generation and validation. Run tests with:
-
 ```bash
-cargo test
+cargo test -p passport-input-gen
 ```
+
+Tests verify:
+- Commitment chain correctness for TBS-720 (against known-good values from verified TOML files)
+- Commitment chain self-consistency for TBS-1300
+- SOD parsing for real passport data fixtures
+- Partial SHA256 intermediate state computation
+- Poseidon2 hash outputs
