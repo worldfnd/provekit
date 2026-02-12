@@ -21,4 +21,6 @@ noir-bignum-paramgen = "0.1.5"
 thiserror = "2.0.16"
 signature = "2.2"
 lazy_static = "1.5.0"
+ark-bn254 = { version = "0.5.0", default-features = false, features = ["scalar_field"] }
+ark-ff = { version = "0.5", features = ["std"] }
 
