@@ -1,7 +1,7 @@
 use {
     crate::witness::{
         ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-        WitnessCoefficient, BINOP_ATOMIC_BITS,
+        WitnessCoefficient,
     },
     std::collections::HashMap,
 };
@@ -161,7 +161,7 @@ impl DependencyInfo {
                     ConstantOrR1CSWitness::Constant(_) => None,
                 })
                 .collect(),
-            WitnessBuilder::MultiplicitiesForBinOp(_, pairs) => {
+            WitnessBuilder::MultiplicitiesForBinOp(_, _, pairs) => {
                 let mut v = Vec::with_capacity(pairs.len() * 2);
                 for (lhs, rhs) in pairs {
                     for c in [lhs, rhs] {
@@ -198,6 +198,28 @@ impl DependencyInfo {
                     data.rs_cubed,
                 ]
             }
+            WitnessBuilder::ChunkDecompose { packed, .. } => vec![*packed],
+            WitnessBuilder::SpreadWitness(_, input) => vec![*input],
+            WitnessBuilder::SpreadBitExtract { spread_sum, .. } => vec![*spread_sum],
+            WitnessBuilder::MultiplicitiesForSpread(_, _, queries) => queries
+                .iter()
+                .filter_map(|c| match c {
+                    ConstantOrR1CSWitness::Witness(w) => Some(*w),
+                    ConstantOrR1CSWitness::Constant(_) => None,
+                })
+                .collect(),
+            WitnessBuilder::SpreadLookupDenominator(_, sz, rs, input, spread_output) => {
+                let mut v = vec![*sz, *rs];
+                for c in [input, spread_output] {
+                    if let ConstantOrR1CSWitness::Witness(w) = c {
+                        v.push(*w);
+                    }
+                }
+                v
+            }
+            WitnessBuilder::SpreadTableEntryInverse { sz, rs, .. } => {
+                vec![*sz, *rs]
+            }
         }
     }
 
@@ -221,7 +243,10 @@ impl DependencyInfo {
             | WitnessBuilder::Xor(idx, ..)
             | WitnessBuilder::CombinedTableEntryInverse(
                 crate::witness::CombinedTableEntryInverseData { idx, .. },
-            ) => vec![*idx],
+            )
+            | WitnessBuilder::SpreadWitness(idx, ..)
+            | WitnessBuilder::SpreadLookupDenominator(idx, ..)
+            | WitnessBuilder::SpreadTableEntryInverse { idx, .. } => vec![*idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
@@ -232,8 +257,22 @@ impl DependencyInfo {
             WitnessBuilder::SpiceWitnesses(sw) => {
                 (sw.first_witness_idx..sw.first_witness_idx + sw.num_witnesses).collect()
             }
-            WitnessBuilder::MultiplicitiesForBinOp(start, ..) => {
-                let n = (2usize).pow(2 * (BINOP_ATOMIC_BITS as u32));
+            WitnessBuilder::MultiplicitiesForBinOp(start, atomic_bits, ..) => {
+                let n = 2usize.pow(2 * *atomic_bits);
+                (*start..*start + n).collect()
+            }
+            WitnessBuilder::ChunkDecompose {
+                output_start,
+                chunk_bits,
+                ..
+            } => (*output_start..*output_start + chunk_bits.len()).collect(),
+            WitnessBuilder::SpreadBitExtract {
+                output_start,
+                chunk_bits,
+                ..
+            } => (*output_start..*output_start + chunk_bits.len()).collect(),
+            WitnessBuilder::MultiplicitiesForSpread(start, num_bits, _) => {
+                let n = 1usize << *num_bits;
                 (*start..*start + n).collect()
             }
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {

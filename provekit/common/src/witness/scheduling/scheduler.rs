@@ -142,7 +142,10 @@ impl<'a> LayerScheduler<'a> {
                 crate::witness::CombinedTableEntryInverseData {
                     idx: out_witness, ..
                 },
-            ) => {
+            )
+            | WitnessBuilder::SpreadTableEntryInverse {
+                idx: out_witness, ..
+            } => {
                 // Defer inverse for batching
                 self.pending_inverses.push(node_idx);
                 self.pending_inverse_outputs.insert(*out_witness);

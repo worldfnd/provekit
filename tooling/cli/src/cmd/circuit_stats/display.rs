@@ -334,6 +334,9 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             breakdown.binop_constraints,
             breakdown.binop_witnesses
         );
+        if let Some(width) = breakdown.binop_atomic_width {
+            println!("│         (optimal atomic width: {} bits)", width);
+        }
     }
 
     if range_count > 0 || breakdown.range_constraints > 0 || breakdown.range_witnesses > 0 {
@@ -364,62 +367,13 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     println!("└{}", SUBSECTION);
 
     if sha256_count > 0 {
-        let sha256_direct = breakdown.sha256_direct_constraints;
-        let sha256_direct_w = breakdown.sha256_direct_witnesses;
+        let per_sha256 = breakdown.sha256_direct_constraints / sha256_count;
+        let per_sha256_w = breakdown.sha256_direct_witnesses / sha256_count;
 
-        // Combined binop attribution for SHA256
-        let total_binop_ops = breakdown.and_ops_total + breakdown.xor_ops_total;
-        let sha256_binop_ops = breakdown.sha256_and_ops + breakdown.sha256_xor_ops;
-        let sha256_binop_constraints = if total_binop_ops > 0 {
-            (breakdown.binop_constraints * sha256_binop_ops) / total_binop_ops
-        } else {
-            0
-        };
-        let sha256_binop_witnesses = if total_binop_ops > 0 {
-            (breakdown.binop_witnesses * sha256_binop_ops) / total_binop_ops
-        } else {
-            0
-        };
-
-        let sha256_range_constraints = if breakdown.range_ops_total > 0 {
-            (breakdown.range_constraints * breakdown.sha256_range_ops) / breakdown.range_ops_total
-        } else {
-            0
-        };
-        let sha256_range_witnesses = if breakdown.range_ops_total > 0 {
-            (breakdown.range_witnesses * breakdown.sha256_range_ops) / breakdown.range_ops_total
-        } else {
-            0
-        };
-
-        let sha256_batched_constraints = sha256_binop_constraints + sha256_range_constraints;
-        let sha256_batched_witnesses = sha256_binop_witnesses + sha256_range_witnesses;
-
-        let sha256_total_constraints = sha256_direct + sha256_batched_constraints;
-        let sha256_total_witnesses = sha256_direct_w + sha256_batched_witnesses;
-        let per_sha256 = sha256_total_constraints / sha256_count;
-        let per_sha256_w = sha256_total_witnesses / sha256_count;
-
-        println!("\n┌─ SHA256 Total Cost Summary");
-        println!(
-            "│  Direct:              {:>8} constraints {:>8} witnesses",
-            sha256_direct, sha256_direct_w
-        );
-        println!(
-            "│  Batched (BINOP):     {:>8} constraints {:>8} witnesses ({}/{} ops)",
-            sha256_binop_constraints, sha256_binop_witnesses, sha256_binop_ops, total_binop_ops
-        );
-        println!(
-            "│  Batched (RANGE):     {:>8} constraints {:>8} witnesses ({}/{} ops)",
-            sha256_range_constraints,
-            sha256_range_witnesses,
-            breakdown.sha256_range_ops,
-            breakdown.range_ops_total
-        );
-        println!("│  ─────────────────────────────────────────────────────────────");
+        println!("\n┌─ SHA256 Cost Summary (spread-based)");
         println!(
             "│  Total SHA256:        {:>8} constraints {:>8} witnesses ({} calls)",
-            sha256_total_constraints, sha256_total_witnesses, sha256_count
+            breakdown.sha256_direct_constraints, breakdown.sha256_direct_witnesses, sha256_count
         );
         println!(
             "│  Per compression:     {:>8} constraints {:>8} witnesses",

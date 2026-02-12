@@ -8,7 +8,7 @@ use {
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-            WitnessCoefficient, BINOP_ATOMIC_BITS,
+            WitnessCoefficient,
         },
         FieldElement, NoirElement,
     },
@@ -202,8 +202,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             + witness[*rs_cubed].unwrap() * xor_out),
                 );
             }
-            WitnessBuilder::MultiplicitiesForBinOp(witness_idx, operands) => {
-                let mut multiplicities = vec![0u32; 2usize.pow(2 * BINOP_ATOMIC_BITS as u32)];
+            WitnessBuilder::MultiplicitiesForBinOp(witness_idx, atomic_bits, operands) => {
+                let mut multiplicities = vec![0u32; 2usize.pow(2 * *atomic_bits)];
                 for (lhs, rhs) in operands {
                     let lhs = match lhs {
                         ConstantOrR1CSWitness::Constant(c) => *c,
@@ -217,8 +217,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             witness[*witness_idx].unwrap()
                         }
                     };
-                    let index =
-                        (lhs.into_bigint().0[0] << BINOP_ATOMIC_BITS) + rhs.into_bigint().0[0];
+                    let index = (lhs.into_bigint().0[0] << *atomic_bits) + rhs.into_bigint().0[0];
                     multiplicities[index as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -338,6 +337,93 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     "CombinedTableEntryInverse should not be called - handled by batch inversion"
                 )
             }
+            WitnessBuilder::ChunkDecompose {
+                output_start,
+                packed,
+                chunk_bits,
+            } => {
+                let packed_val = witness[*packed].unwrap().into_bigint().0[0];
+                let mut offset = 0u32;
+                for (i, &bits) in chunk_bits.iter().enumerate() {
+                    let mask = (1u64 << bits) - 1;
+                    let chunk_val = (packed_val >> offset) & mask;
+                    witness[output_start + i] = Some(FieldElement::from(chunk_val));
+                    offset += bits;
+                }
+            }
+            WitnessBuilder::SpreadWitness(output_idx, input_idx) => {
+                let input_val = witness[*input_idx].unwrap().into_bigint().0[0];
+                let spread = compute_spread(input_val);
+                witness[*output_idx] = Some(FieldElement::from(spread));
+            }
+            WitnessBuilder::SpreadBitExtract {
+                output_start,
+                chunk_bits,
+                spread_sum,
+                extract_even,
+            } => {
+                let sum_val = witness[*spread_sum].unwrap().into_bigint().0[0];
+                // Extract even or odd bits from the spread sum
+                let bit_offset = if *extract_even { 0 } else { 1 };
+                let total_bits: u32 = chunk_bits.iter().sum();
+                let mut extracted = 0u64;
+                for i in 0..total_bits {
+                    extracted |= ((sum_val >> (2 * i + bit_offset)) & 1) << i;
+                }
+                // Decompose extracted value into chunks
+                let mut offset = 0u32;
+                for (i, &bits) in chunk_bits.iter().enumerate() {
+                    let mask = (1u64 << bits) - 1;
+                    let chunk_val = (extracted >> offset) & mask;
+                    witness[output_start + i] = Some(FieldElement::from(chunk_val));
+                    offset += bits;
+                }
+            }
+            WitnessBuilder::MultiplicitiesForSpread(first_idx, num_bits, queries) => {
+                let table_size = 1usize << *num_bits;
+                let mut multiplicities = vec![0u32; table_size];
+                for query in queries {
+                    let val = match query {
+                        ConstantOrR1CSWitness::Constant(c) => c.into_bigint().0[0],
+                        ConstantOrR1CSWitness::Witness(w) => {
+                            witness[*w].unwrap().into_bigint().0[0]
+                        }
+                    };
+                    multiplicities[val as usize] += 1;
+                }
+                for (i, count) in multiplicities.iter().enumerate() {
+                    witness[first_idx + i] = Some(FieldElement::from(*count));
+                }
+            }
+            WitnessBuilder::SpreadLookupDenominator(idx, sz, rs, input, spread_output) => {
+                let sz_val = witness[*sz].unwrap();
+                let rs_val = witness[*rs].unwrap();
+                let input_val = match input {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(w) => witness[*w].unwrap(),
+                };
+                let spread_val = match spread_output {
+                    ConstantOrR1CSWitness::Constant(c) => *c,
+                    ConstantOrR1CSWitness::Witness(w) => witness[*w].unwrap(),
+                };
+                // sz - (input + rs * spread_output)
+                witness[*idx] = Some(sz_val - (input_val + rs_val * spread_val));
+            }
+            WitnessBuilder::SpreadTableEntryInverse { .. } => {
+                unreachable!(
+                    "SpreadTableEntryInverse should not be called - handled by batch inversion"
+                )
+            }
         }
     }
+}
+
+/// Computes spread(val): interleave bits of val with zeros.
+/// E.g., 0b1011 → 0b01_00_01_01
+fn compute_spread(val: u64) -> u64 {
+    let mut result = 0u64;
+    for i in 0..32 {
+        result |= ((val >> i) & 1) << (2 * i);
+    }
+    result
 }

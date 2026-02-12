@@ -1,5 +1,3 @@
-#[cfg(test)]
-use anyhow::{ensure, Result};
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
@@ -23,7 +21,7 @@ pub trait R1CSSolver {
     );
 
     #[cfg(test)]
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()>;
 }
 
 impl R1CSSolver for R1CS {
@@ -110,10 +108,25 @@ impl R1CSSolver for R1CS {
                                     - (rs_cubed * data.xor_out);
                                 denominators.push(denominator);
                             }
+                            WitnessBuilder::SpreadTableEntryInverse {
+                                idx,
+                                sz,
+                                rs,
+                                input_val,
+                                spread_val,
+                            } => {
+                                output_witnesses.push(*idx);
+                                // Compute denominator: sz - input_val - rs * spread_val
+                                let sz_val = witness[*sz].unwrap();
+                                let rs_val = witness[*rs].unwrap();
+                                let denominator = sz_val - *input_val - (rs_val * *spread_val);
+                                denominators.push(denominator);
+                            }
                             _ => {
                                 panic!(
                                     "Invalid builder in inverse batch: expected Inverse, \
-                                     LogUpInverse, or CombinedTableEntryInverse, got {:?}",
+                                     LogUpInverse, CombinedTableEntryInverse, or \
+                                     SpreadTableEntryInverse, got {:?}",
                                     inverse_builder
                                 );
                             }
@@ -136,7 +149,9 @@ impl R1CSSolver for R1CS {
     // R1CS Matrices.
     #[cfg(test)]
     #[instrument(skip_all, fields(size = witness.len()))]
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()> {
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()> {
+        use anyhow::ensure;
+
         ensure!(
             witness.len() == self.num_witnesses(),
             "Witness size does not match"
@@ -146,13 +161,13 @@ impl R1CSSolver for R1CS {
         let a = self.a() * witness;
         let b = self.b() * witness;
         let c = self.c() * witness;
-        for (row, ((a, b), c)) in a
+        for (row, ((a_val, b_val), c_val)) in a
             .into_iter()
             .zip(b.into_iter())
             .zip(c.into_iter())
             .enumerate()
         {
-            ensure!(a * b == c, "Constraint {row} failed");
+            ensure!(a_val * b_val == c_val, "Constraint {row} failed");
         }
         Ok(())
     }

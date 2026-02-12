@@ -1,12 +1,19 @@
 use {
-    crate::{noir_to_r1cs::NoirToR1CSCompiler, uints::U8},
+    crate::{
+        digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
+        noir_to_r1cs::NoirToR1CSCompiler,
+        uints::U8,
+    },
     ark_ff::PrimeField,
     ark_std::One,
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS},
+        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::{collections::BTreeMap, ops::Neg},
+    std::{
+        collections::{BTreeMap, BTreeSet, HashMap},
+        ops::Neg,
+    },
 };
 
 #[derive(Clone, Debug, Copy)]
@@ -28,6 +35,61 @@ type PairMapEntry = (
     ConstantOrR1CSWitness,
     ConstantOrR1CSWitness,
 );
+/// Calculates the total witness cost for a given atomic bit-width `w`.
+///
+/// The formula accounts for:
+/// - Table: 3 witnesses per entry (multiplicity + inverse + quotient) with
+///   2^(2w) entries.
+/// - Per digit-pair query: 4 witnesses (denominator + rs²·and product
+///   + rs³·xor product + inverse).
+/// - Decomposition: when w < 8, each byte-level op requires decomposing 4 byte
+///   witnesses (lhs, rhs, and_out, xor_out) into ceil(8/w) digits.
+/// - Complementary: worst case one per op (missing AND or XOR).
+/// - Overhead: 4 challenges (sz, rs, rs², rs³) + 2 grand sum witnesses.
+fn calculate_binop_witness_cost(w: u32, n: usize) -> usize {
+    debug_assert!(w >= 2 && w <= 8, "width must be in [2, 8]");
+    let d = 8u32.div_ceil(w) as usize;
+    let table = 3 * (1usize << (2 * w));
+    let queries = 4 * n * d;
+    let decomp = if w < 8 { 4 * n * d } else { 0 };
+    let complementary = n;
+    let overhead = 6;
+    table + queries + decomp + complementary + overhead
+}
+
+/// Finds the atomic bit-width in [2, 8] that minimizes the total
+/// witness count for `n` byte-level binop pairs.
+fn get_optimal_binop_width(n: usize) -> u32 {
+    (2u32..=8)
+        .into_iter()
+        .min_by_key(|&w| calculate_binop_witness_cost(w, n))
+        .unwrap()
+}
+
+/// Extracts the digit value of a `ConstantOrR1CSWitness` at a given
+/// digit position, using compile-time extraction for constants and
+/// the digital decomposition witness for variables.
+fn cow_to_digit(
+    cow: ConstantOrR1CSWitness,
+    digit_i: usize,
+    atomic_bits: u32,
+    dd: &provekit_common::witness::DigitalDecompositionWitnesses,
+    witness_to_offset: &HashMap<usize, usize>,
+) -> ConstantOrR1CSWitness {
+    match cow {
+        ConstantOrR1CSWitness::Constant(c) => {
+            let val = c.into_bigint().0[0];
+            let digit =
+                (val >> (digit_i as u64 * atomic_bits as u64)) & ((1u64 << atomic_bits) - 1);
+            ConstantOrR1CSWitness::Constant(FieldElement::from(digit))
+        }
+        ConstantOrR1CSWitness::Witness(w) => {
+            let offset = witness_to_offset[&w];
+            ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(digit_i, offset))
+        }
+    }
+}
+
 /// Allocate a witness for a byte-level binary operation (AND / XOR).
 /// This path performs the operation directly at the byte level,
 /// without any digital decomposition.
@@ -69,20 +131,24 @@ pub(crate) fn add_byte_binop(
 
 /// Add combined AND/XOR lookup constraints using a single table.
 ///
-/// This saves one entire lookup table (~196,608 constraints) compared to
-/// having separate AND and XOR tables.
+/// Uses dynamic bit-width optimization: searches widths in {2, 4, 8}
+/// to minimize total witness count. When the optimal width is less than
+/// 8, byte-level operands are decomposed into smaller digits via
+/// `add_digital_decomposition`.
 ///
 /// Table encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
 ///
 /// For each AND operation, we compute the complementary XOR output.
 /// For each XOR operation, we compute the complementary AND output.
+///
+/// Returns the chosen atomic bit-width, or `None` if no ops were provided.
 pub(crate) fn add_combined_binop_constraints(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     and_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     xor_ops: Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-) {
+) -> Option<u32> {
     if and_ops.is_empty() && xor_ops.is_empty() {
-        return;
+        return None;
     }
 
     // For combined table, each operation needs both AND and XOR outputs.
@@ -112,7 +178,18 @@ pub(crate) fn add_combined_binop_constraints(
         let key = (operand_key(lhs), operand_key(rhs));
         pair_map
             .entry(key)
-            .and_modify(|e| e.0 = Some(*and_out))
+            .and_modify(|e| {
+                if let Some(existing) = e.0 {
+                    // Duplicate AND for same inputs — constrain
+                    // equality so the earlier result stays sound.
+                    r1cs_compiler.r1cs.add_constraint(
+                        &[(FieldElement::one(), existing)],
+                        &[(FieldElement::one(), r1cs_compiler.witness_one())],
+                        &[(FieldElement::one(), *and_out)],
+                    );
+                }
+                e.0 = Some(*and_out);
+            })
             .or_insert((Some(*and_out), None, *lhs, *rhs));
     }
 
@@ -120,7 +197,18 @@ pub(crate) fn add_combined_binop_constraints(
         let key = (operand_key(lhs), operand_key(rhs));
         pair_map
             .entry(key)
-            .and_modify(|e| e.1 = Some(*xor_out))
+            .and_modify(|e| {
+                if let Some(existing) = e.1 {
+                    // Duplicate XOR for same inputs — constrain
+                    // equality so the earlier result stays sound.
+                    r1cs_compiler.r1cs.add_constraint(
+                        &[(FieldElement::one(), existing)],
+                        &[(FieldElement::one(), r1cs_compiler.witness_one())],
+                        &[(FieldElement::one(), *xor_out)],
+                    );
+                }
+                e.1 = Some(*xor_out);
+            })
             .or_insert((None, Some(*xor_out), *lhs, *rhs));
     }
 
@@ -144,13 +232,79 @@ pub(crate) fn add_combined_binop_constraints(
         combined_ops_atomic.push((lhs, rhs, and_out, xor_out));
     }
 
-    // Build multiplicities for the combined table
-    let multiplicities_wb = WitnessBuilder::MultiplicitiesForBinOp(
-        r1cs_compiler.num_witnesses(),
+    // Choose optimal atomic bit-width based on witness cost model.
+    let atomic_bits = get_optimal_binop_width(combined_ops_atomic.len());
+
+    // Build lookup operations: either byte-level (w=8) or digit-level (w<8).
+    let lookup_ops: Vec<(
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+    )> = if atomic_bits == 8 {
+        // No decomposition needed — use byte-level ops directly.
         combined_ops_atomic
             .iter()
-            .map(|(lh, rh, ..)| (*lh, *rh))
-            .collect(),
+            .map(|(lhs, rhs, and_out, xor_out)| {
+                (
+                    *lhs,
+                    *rhs,
+                    ConstantOrR1CSWitness::Witness(*and_out),
+                    ConstantOrR1CSWitness::Witness(*xor_out),
+                )
+            })
+            .collect()
+    } else {
+        // Decompose byte-level operands into w-bit digits.
+        let d = 8u32.div_ceil(atomic_bits) as usize;
+        let log_bases = vec![atomic_bits as usize; d];
+
+        // Collect all unique witness byte indices that need decomposition.
+        let mut witness_set: BTreeSet<usize> = BTreeSet::new();
+        for (lhs, rhs, and_out, xor_out) in &combined_ops_atomic {
+            if let ConstantOrR1CSWitness::Witness(w) = lhs {
+                witness_set.insert(*w);
+            }
+            if let ConstantOrR1CSWitness::Witness(w) = rhs {
+                witness_set.insert(*w);
+            }
+            witness_set.insert(*and_out);
+            witness_set.insert(*xor_out);
+        }
+        let witness_bytes: Vec<usize> = witness_set.into_iter().collect();
+        let witness_to_offset: HashMap<usize, usize> = witness_bytes
+            .iter()
+            .enumerate()
+            .map(|(i, &w)| (w, i))
+            .collect();
+
+        // Create digit witnesses + recomposition constraints.
+        // Range checks are provided by the table lookup itself.
+        let dd = add_digital_decomposition(r1cs_compiler, log_bases, witness_bytes);
+
+        // Build digit-level lookup operations.
+        let mut digit_ops = Vec::with_capacity(combined_ops_atomic.len() * d);
+        for (lhs, rhs, and_out, xor_out) in &combined_ops_atomic {
+            for digit_i in 0..d {
+                let lhs_digit = cow_to_digit(*lhs, digit_i, atomic_bits, &dd, &witness_to_offset);
+                let rhs_digit = cow_to_digit(*rhs, digit_i, atomic_bits, &dd, &witness_to_offset);
+                let and_digit = ConstantOrR1CSWitness::Witness(
+                    dd.get_digit_witness_index(digit_i, witness_to_offset[and_out]),
+                );
+                let xor_digit = ConstantOrR1CSWitness::Witness(
+                    dd.get_digit_witness_index(digit_i, witness_to_offset[xor_out]),
+                );
+                digit_ops.push((lhs_digit, rhs_digit, and_digit, xor_digit));
+            }
+        }
+        digit_ops
+    };
+
+    // Build multiplicities for the combined table (2^(2*atomic_bits) entries).
+    let multiplicities_wb = WitnessBuilder::MultiplicitiesForBinOp(
+        r1cs_compiler.num_witnesses(),
+        atomic_bits,
+        lookup_ops.iter().map(|(lh, rh, ..)| (*lh, *rh)).collect(),
     );
     let multiplicities_first_witness = r1cs_compiler.add_witness_builder(multiplicities_wb);
 
@@ -167,29 +321,20 @@ pub(crate) fn add_combined_binop_constraints(
         rs_cubed,
     };
 
-    let summands_for_ops = combined_ops_atomic
+    let summands_for_ops = lookup_ops
         .into_iter()
         .map(|(lhs, rhs, and_out, xor_out)| {
-            add_combined_lookup_summand(
-                r1cs_compiler,
-                &challenges,
-                lhs,
-                rhs,
-                ConstantOrR1CSWitness::Witness(and_out),
-                ConstantOrR1CSWitness::Witness(xor_out),
-            )
+            add_combined_lookup_summand(r1cs_compiler, &challenges, lhs, rhs, and_out, xor_out)
         })
         .map(|coeff| SumTerm(None, coeff))
         .collect();
     let sum_for_ops = r1cs_compiler.add_sum(summands_for_ops);
 
-    let summands_for_table = (0..1 << BINOP_ATOMIC_BITS)
-        .flat_map(|lhs: u32| {
-            (0..1 << BINOP_ATOMIC_BITS).map(move |rhs: u32| (lhs, rhs, lhs & rhs, lhs ^ rhs))
-        })
+    let summands_for_table = (0..1u32 << atomic_bits)
+        .flat_map(|lhs| (0..1u32 << atomic_bits).map(move |rhs| (lhs, rhs, lhs & rhs, lhs ^ rhs)))
         .map(|(lhs, rhs, and_out, xor_out)| {
             let multiplicity_idx =
-                multiplicities_first_witness + (lhs << BINOP_ATOMIC_BITS) as usize + rhs as usize;
+                multiplicities_first_witness + ((lhs << atomic_bits) as usize) + rhs as usize;
             add_table_entry_quotient(
                 r1cs_compiler,
                 &challenges,
@@ -210,6 +355,8 @@ pub(crate) fn add_combined_binop_constraints(
         &[(FieldElement::one(), sum_for_ops)],
         &[(FieldElement::one(), sum_for_table)],
     );
+
+    Some(atomic_bits)
 }
 
 /// Computes quotient = multiplicity / (sz - lhs - rs*rhs - rs²*and_out -
