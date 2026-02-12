@@ -9,28 +9,36 @@
 mod profiling_alloc;
 mod span_stats;
 
-use anyhow::{Context, Result};
-use noirc_abi::input_parser::Format;
-use passport_input_gen::{
-    mock_generator::{dg1_bytes_with_birthdate_expiry_date, generate_fake_sod,
-                     generate_fake_sod_with_padded_tbs},
-    mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
-    Binary, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config, MerkleAge720Inputs,
-    PassportReader,
+use {
+    anyhow::{Context, Result},
+    noirc_abi::input_parser::Format,
+    passport_input_gen::{
+        mock_generator::{
+            dg1_bytes_with_birthdate_expiry_date, generate_fake_sod,
+            generate_fake_sod_with_padded_tbs,
+        },
+        mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
+        Binary, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config, MerkleAge720Inputs,
+        PassportReader,
+    },
+    profiling_alloc::ProfilingAllocator,
+    provekit_prover::Prove,
+    span_stats::SpanStats,
+    tracing::instrument,
+    tracing_subscriber::{layer::SubscriberExt, Registry},
 };
-use profiling_alloc::ProfilingAllocator;
-use provekit_prover::Prove;
-use span_stats::SpanStats;
-use tracing_subscriber::{layer::SubscriberExt, Registry};
-use tracing::instrument;
 
 #[global_allocator]
 static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey, RsaPublicKey};
-use std::io::{self, Write as _};
-use std::path::{Path, PathBuf};
+use {
+    base64::{engine::general_purpose::STANDARD, Engine as _},
+    rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey, RsaPublicKey},
+    std::{
+        io::{self, Write as _},
+        path::{Path, PathBuf},
+    },
+};
 
 // ============================================================================
 // Runtime prompts
@@ -118,12 +126,7 @@ fn generate_720_inputs(
     let sod = generate_fake_sod(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub);
     println!("  SOD generated (mock)");
 
-    let reader = PassportReader::new(
-        Binary::from_slice(&dg1),
-        sod,
-        true,
-        Some(csca_pub.clone()),
-    );
+    let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
     let csca_idx = reader.validate().context("Passport validation failed")?;
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
@@ -156,12 +159,7 @@ fn generate_1300_inputs(
     let sod = generate_fake_sod_with_padded_tbs(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub, 850);
     println!("  SOD generated (mock, padded TBS = 850 bytes)");
 
-    let reader = PassportReader::new(
-        Binary::from_slice(&dg1),
-        sod,
-        true,
-        Some(csca_pub.clone()),
-    );
+    let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
     let csca_idx = reader.validate().context("Passport validation failed")?;
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
@@ -193,12 +191,17 @@ fn prove_circuit<T: serde::Serialize>(
     pkp_path: &Path,
     proof_path: &Path,
 ) -> Result<()> {
-    println!("\n  [{circuit_name}] Loading prover from: {}", pkp_path.display());
+    println!(
+        "\n  [{circuit_name}] Loading prover from: {}",
+        pkp_path.display()
+    );
     let prover: provekit_common::Prover = provekit_common::file::read(pkp_path)
         .with_context(|| format!("Reading prover key for {circuit_name}"))?;
 
     let (num_constraints, num_witnesses) = prover.size();
-    println!("  [{circuit_name}] Scheme size: {num_constraints} constraints, {num_witnesses} witnesses");
+    println!(
+        "  [{circuit_name}] Scheme size: {num_constraints} constraints, {num_witnesses} witnesses"
+    );
 
     println!("  [{circuit_name}] Converting inputs -> JSON -> InputMap...");
     let json = serde_json::to_string(inputs)
@@ -212,12 +215,15 @@ fn prove_circuit<T: serde::Serialize>(
         .prove(input_map)
         .with_context(|| format!("Proving {circuit_name}"))?;
 
-    println!("  [{circuit_name}] Writing proof to: {}", proof_path.display());
+    println!(
+        "  [{circuit_name}] Writing proof to: {}",
+        proof_path.display()
+    );
     provekit_common::file::write(&proof, proof_path)
         .with_context(|| format!("Writing proof for {circuit_name}"))?;
 
     println!("  [{circuit_name}] Done.");
-    
+
     Ok(())
 }
 
@@ -287,7 +293,9 @@ fn prove_1300(inputs: &MerkleAge1300Inputs, benchmark_dir: &Path) -> Result<()> 
 // ============================================================================
 
 fn save_720_toml(inputs: &MerkleAge720Inputs, base_dir: &Path) -> Result<()> {
-    inputs.save_all(base_dir).context("Failed to write TOML files")?;
+    inputs
+        .save_all(base_dir)
+        .context("Failed to write TOML files")?;
     println!("\n  Written:");
     println!("    {}/t_add_dsc_720.toml", base_dir.display());
     println!("    {}/t_add_id_data_720.toml", base_dir.display());
@@ -297,7 +305,9 @@ fn save_720_toml(inputs: &MerkleAge720Inputs, base_dir: &Path) -> Result<()> {
 }
 
 fn save_1300_toml(inputs: &MerkleAge1300Inputs, base_dir: &Path) -> Result<()> {
-    inputs.save_all(base_dir).context("Failed to write TOML files")?;
+    inputs
+        .save_all(base_dir)
+        .context("Failed to write TOML files")?;
     println!("\n  Written:");
     println!("    {}/t_add_dsc_hash_1300.toml", base_dir.display());
     println!("    {}/t_add_dsc_verify_1300.toml", base_dir.display());
@@ -313,39 +323,91 @@ fn save_1300_toml(inputs: &MerkleAge1300Inputs, base_dir: &Path) -> Result<()> {
 
 fn print_720_summary(inputs: &MerkleAge720Inputs) {
     println!("\n  Summary:");
-    println!("    TBS certificate len: {}", inputs.add_dsc.tbs_certificate_len);
-    println!("    DSC pubkey offset:   {}", inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert);
-    println!("    DG1 hash offset:     {}", inputs.add_integrity.dg1_hash_offset);
+    println!(
+        "    TBS certificate len: {}",
+        inputs.add_dsc.tbs_certificate_len
+    );
+    println!(
+        "    DSC pubkey offset:   {}",
+        inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert
+    );
+    println!(
+        "    DG1 hash offset:     {}",
+        inputs.add_integrity.dg1_hash_offset
+    );
     println!("    Country:             \"{}\"", inputs.add_dsc.country);
-    println!("    Salt chain:          {} -> {}", inputs.add_dsc.salt, inputs.add_id_data.salt_out);
+    println!(
+        "    Salt chain:          {} -> {}",
+        inputs.add_dsc.salt, inputs.add_id_data.salt_out
+    );
     println!();
     println!("  Computed commitments (Poseidon2):");
-    println!("    comm_out_1 (dsc->id_data):      {}", inputs.add_id_data.comm_in);
-    println!("    private_nullifier:               {}", inputs.add_integrity.private_nullifier);
-    println!("    comm_out_2 (id_data->integrity): {}", inputs.add_integrity.comm_in);
-    println!("    sod_hash:                        {}", inputs.attest.sod_hash);
+    println!(
+        "    comm_out_1 (dsc->id_data):      {}",
+        inputs.add_id_data.comm_in
+    );
+    println!(
+        "    private_nullifier:               {}",
+        inputs.add_integrity.private_nullifier
+    );
+    println!(
+        "    comm_out_2 (id_data->integrity): {}",
+        inputs.add_integrity.comm_in
+    );
+    println!(
+        "    sod_hash:                        {}",
+        inputs.attest.sod_hash
+    );
 }
 
 fn print_1300_summary(inputs: &MerkleAge1300Inputs) {
     println!("\n  Summary:");
-    println!("    TBS certificate len: {}", inputs.add_dsc_verify.tbs_certificate_len);
-    println!("    SHA256 state1:       {:?}", inputs.add_dsc_verify.state1);
-    println!("    DSC pubkey offset:   {}", inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert);
-    println!("    DG1 hash offset:     {}", inputs.add_integrity.dg1_hash_offset);
-    println!("    Country:             \"{}\"", inputs.add_dsc_verify.country);
+    println!(
+        "    TBS certificate len: {}",
+        inputs.add_dsc_verify.tbs_certificate_len
+    );
+    println!(
+        "    SHA256 state1:       {:?}",
+        inputs.add_dsc_verify.state1
+    );
+    println!(
+        "    DSC pubkey offset:   {}",
+        inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert
+    );
+    println!(
+        "    DG1 hash offset:     {}",
+        inputs.add_integrity.dg1_hash_offset
+    );
+    println!(
+        "    Country:             \"{}\"",
+        inputs.add_dsc_verify.country
+    );
     println!(
         "    Salt chain:          {} -> {} -> {}",
-        inputs.add_dsc_hash.salt,
-        inputs.add_dsc_verify.salt_out,
-        inputs.add_id_data.salt_out,
+        inputs.add_dsc_hash.salt, inputs.add_dsc_verify.salt_out, inputs.add_id_data.salt_out,
     );
     println!();
     println!("  Computed commitments (Poseidon2):");
-    println!("    comm_out_hash (dsc_hash->dsc_verify):  {}", inputs.add_dsc_verify.comm_in);
-    println!("    comm_out_verify (dsc_verify->id_data): {}", inputs.add_id_data.comm_in);
-    println!("    comm_out_id (id_data->integrity):      {}", inputs.add_integrity.comm_in);
-    println!("    private_nullifier:                      {}", inputs.add_integrity.private_nullifier);
-    println!("    sod_hash:                               {}", inputs.attest.sod_hash);
+    println!(
+        "    comm_out_hash (dsc_hash->dsc_verify):  {}",
+        inputs.add_dsc_verify.comm_in
+    );
+    println!(
+        "    comm_out_verify (dsc_verify->id_data): {}",
+        inputs.add_id_data.comm_in
+    );
+    println!(
+        "    comm_out_id (id_data->integrity):      {}",
+        inputs.add_integrity.comm_in
+    );
+    println!(
+        "    private_nullifier:                      {}",
+        inputs.add_integrity.private_nullifier
+    );
+    println!(
+        "    sod_hash:                               {}",
+        inputs.attest.sod_hash
+    );
 }
 
 // ============================================================================

@@ -4,8 +4,10 @@
 //! MDS matrices as Noir's Poseidon2. It implements a sponge construction with
 //! width=4, rate=3, capacity=1 over BN254's scalar field.
 
-use ark_bn254::Fr;
-use ark_ff::{Field, PrimeField};
+use {
+    ark_bn254::Fr,
+    ark_ff::{Field, PrimeField},
+};
 
 // ============================================================================
 // Constants for t=4 (width-4 permutation)
@@ -287,8 +289,7 @@ mod tests {
         // From Noir test: Poseidon2::hash([1], 1)
         let inputs = [Fr::from(1u64)];
         let result = poseidon2_hash(&inputs);
-        let expected =
-            fe("0x168758332d5b3e2d13be8048c8011b454590e06c44bce7f702f09103eef5a373");
+        let expected = fe("0x168758332d5b3e2d13be8048c8011b454590e06c44bce7f702f09103eef5a373");
         assert_eq!(result, expected, "Poseidon2::hash([1], 1) mismatch");
     }
 
@@ -298,15 +299,19 @@ mod tests {
         let e = fe("0x168758332d5b3e2d13be8048c8011b454590e06c44bce7f702f09103eef5a373");
         let inputs = [e, e];
         let result = poseidon2_hash(&inputs);
-        let expected =
-            fe("0x113d8ff59c2e15d711241797c380264e39dc1b9e00f2713e707d8d7773b6d912");
+        let expected = fe("0x113d8ff59c2e15d711241797c380264e39dc1b9e00f2713e707d8d7773b6d912");
         assert_eq!(result, expected, "Poseidon2::hash([e, e], 2) mismatch");
     }
 
     #[test]
     fn test_poseidon2_hash_four_elements() {
         // Verify 4-element hash (fills the rate exactly once)
-        let inputs = [Fr::from(1u64), Fr::from(2u64), Fr::from(3u64), Fr::from(4u64)];
+        let inputs = [
+            Fr::from(1u64),
+            Fr::from(2u64),
+            Fr::from(3u64),
+            Fr::from(4u64),
+        ];
         let result = poseidon2_hash(&inputs);
         // Just verify it doesn't panic and produces a non-zero result
         assert_ne!(result, Fr::from(0u64));

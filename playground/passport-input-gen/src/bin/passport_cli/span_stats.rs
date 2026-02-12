@@ -1,6 +1,6 @@
 //! Using `tracing` spans to print performance statistics for the program.
-use crate::ALLOCATOR;
 use {
+    crate::ALLOCATOR,
     provekit_common::utils::human,
     std::{
         cmp::max,
@@ -39,7 +39,7 @@ impl Data {
             depth,
             time: Instant::now(),
 
-            memory:      ALLOCATOR.current(),
+            memory: ALLOCATOR.current(),
             allocations: ALLOCATOR.count(),
             peak_memory: ALLOCATOR.current(),
 
