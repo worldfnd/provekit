@@ -10,7 +10,7 @@ use {
 pub fn read_prover_inputs(
     root: &Path,
     abi: &noirc_abi::Abi,
-) -> Result<Vec<InputValueOrdered>, anyhow::Error> {
+) -> Result<BTreeMap<String, InputValue>, anyhow::Error> {
     let file_path = root.join("Prover.toml");
     let ext = file_path
         .extension()
@@ -22,10 +22,9 @@ pub fn read_prover_inputs(
     };
 
     let inputs_src = fs::read_to_string(&file_path)?;
-    let inputs = format.parse(&inputs_src, abi).unwrap();
-    let ordered_params = ordered_params_from_btreemap(abi, &inputs);
+    let inputs: BTreeMap<String, InputValue> = format.parse(&inputs_src, abi).unwrap();
 
-    Ok(ordered_params)
+    Ok(inputs)
 }
 
 pub fn ordered_params_from_btreemap(

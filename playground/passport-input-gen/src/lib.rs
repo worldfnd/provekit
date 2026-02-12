@@ -143,18 +143,23 @@ impl Default for MerkleAge1300Config {
 // ============================================================================
 
 /// Inputs for t_add_dsc_720: Verify CSCA signed DSC certificate (720-byte TBS)
+#[derive(serde::Serialize)]
 pub struct AddDsc720Inputs {
     /// CSCA public key modulus (RSA-4096, 512 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey: [u8; SIG_BYTES * 2],
     /// Salt for commitment
     pub salt: String,
     /// 3-character country code from passport
     pub country: String,
     /// DSC TBS certificate padded to 720 bytes
+    #[serde(serialize_with = "byte_array::serialize")]
     pub tbs_certificate: [u8; MAX_TBS_SIZE],
     /// Barrett reduction parameter for CSCA modulus (513 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey_redc_param: [u8; SIG_BYTES * 2 + 1],
     /// CSCA signature over the DSC TBS certificate (512 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_signature: [u8; SIG_BYTES * 2],
     /// RSA exponent (CSCA)
     pub exponent: u32,
@@ -163,6 +168,7 @@ pub struct AddDsc720Inputs {
 }
 
 /// Inputs for t_add_id_data_720: Verify DSC signed passport data (720-byte TBS)
+#[derive(serde::Serialize)]
 pub struct AddIdData720Inputs {
     /// Commitment from circuit 1 (placeholder until circuit 1 runs)
     pub comm_in: String,
@@ -171,44 +177,55 @@ pub struct AddIdData720Inputs {
     /// Output salt for this circuit's commitment
     pub salt_out: String,
     /// DG1 Machine Readable Zone data (95 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dg1: [u8; MAX_DG1_SIZE],
     /// DSC public key modulus (RSA-2048, 256 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_pubkey: [u8; SIG_BYTES],
     /// Barrett reduction parameter for DSC modulus (257 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_pubkey_redc_param: [u8; SIG_BYTES + 1],
     /// Byte offset of DSC pubkey within TBS certificate
     pub dsc_pubkey_offset_in_dsc_cert: u32,
     /// DSC signature over signed_attributes (256 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub sod_signature: [u8; SIG_BYTES],
     /// DSC TBS certificate padded to 720 bytes
+    #[serde(serialize_with = "byte_array::serialize")]
     pub tbs_certificate: [u8; MAX_TBS_SIZE],
     /// Signed attributes from SOD (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub signed_attributes: [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
     /// Actual signed attributes size
     pub signed_attributes_size: u64,
     /// RSA exponent (DSC)
     pub exponent: u32,
     /// eContent hash values (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub e_content: [u8; MAX_ECONTENT_SIZE],
 }
 
 /// Inputs for t_add_integrity_commit: Verify data integrity + generate Merkle leaf
+#[derive(serde::Serialize)]
 pub struct AddIntegrityCommitInputs {
     /// Commitment from circuit 2 (placeholder until circuit 2 runs)
     pub comm_in: String,
     /// Input salt (must match circuit 2's output salt)
     pub salt_in: String,
     /// DG1 Machine Readable Zone data (95 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dg1: [u8; MAX_DG1_SIZE],
     /// DG1 padded length for SHA256
     pub dg1_padded_length: u64,
     /// Offset of DG1 hash within eContent
     pub dg1_hash_offset: u32,
     /// Signed attributes from SOD (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub signed_attributes: [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
     /// Actual signed attributes size
     pub signed_attributes_size: u32,
     /// eContent hash values (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub e_content: [u8; MAX_ECONTENT_SIZE],
     /// Actual eContent length
     pub e_content_len: u32,
@@ -219,6 +236,7 @@ pub struct AddIntegrityCommitInputs {
 }
 
 /// Inputs for t_attest: Age attestation with Merkle tree membership proof
+#[derive(serde::Serialize)]
 pub struct AttestInputs {
     /// Current Merkle tree root (from sequencer)
     pub root: String,
@@ -229,6 +247,7 @@ pub struct AttestInputs {
     /// Service sub-scope: H(purpose)
     pub service_subscope: String,
     /// DG1 Machine Readable Zone data (95 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dg1: [u8; MAX_DG1_SIZE],
     /// Blinding factor from registration
     pub r_dg1: String,
@@ -257,18 +276,22 @@ pub struct MerkleAge720Inputs {
 // --- TBS-1300 circuit input structs (5-circuit chain) ---
 
 /// Inputs for t_add_dsc_hash_1300: Process first 640 bytes of TBS, output SHA256 state commitment
+#[derive(serde::Serialize)]
 pub struct AddDscHash1300Inputs {
     /// Salt for commitment (shared with dsc_verify)
     pub salt: String,
     /// First 640 bytes of TBS certificate
+    #[serde(serialize_with = "byte_array::serialize")]
     pub chunk1: [u8; CHUNK1_SIZE],
 }
 
 /// Inputs for t_add_dsc_verify_1300: Continue SHA256, verify RSA, output country+TBS commitment
+#[derive(serde::Serialize)]
 pub struct AddDscVerify1300Inputs {
     /// Commitment from circuit 1 (SHA256 state + data commitment)
     pub comm_in: String,
     /// CSCA public key modulus (RSA-4096, 512 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey: [u8; SIG_BYTES * 2],
     /// Salt (same as dsc_hash's salt)
     pub salt: String,
@@ -277,12 +300,15 @@ pub struct AddDscVerify1300Inputs {
     /// SHA256 intermediate state from processing chunk1
     pub state1: [u32; 8],
     /// Full TBS certificate padded to 1300 bytes
+    #[serde(serialize_with = "byte_array::serialize")]
     pub tbs_certificate: [u8; MAX_TBS_SIZE_1300],
     /// Actual TBS certificate length before padding
     pub tbs_certificate_len: u32,
     /// Barrett reduction parameter for CSCA modulus (513 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub csc_pubkey_redc_param: [u8; SIG_BYTES * 2 + 1],
     /// CSCA signature over the DSC TBS certificate (512 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_signature: [u8; SIG_BYTES * 2],
     /// RSA exponent (CSCA)
     pub exponent: u32,
@@ -291,6 +317,7 @@ pub struct AddDscVerify1300Inputs {
 }
 
 /// Inputs for t_add_id_data_1300: Verify DSC signed passport data (1300-byte TBS)
+#[derive(serde::Serialize)]
 pub struct AddIdData1300Inputs {
     /// Commitment from circuit 2
     pub comm_in: String,
@@ -299,24 +326,31 @@ pub struct AddIdData1300Inputs {
     /// Output salt for this circuit's commitment
     pub salt_out: String,
     /// DG1 Machine Readable Zone data (95 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dg1: [u8; MAX_DG1_SIZE],
     /// DSC public key modulus (RSA-2048, 256 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_pubkey: [u8; SIG_BYTES],
     /// Barrett reduction parameter for DSC modulus (257 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub dsc_pubkey_redc_param: [u8; SIG_BYTES + 1],
     /// Byte offset of DSC pubkey within TBS certificate
     pub dsc_pubkey_offset_in_dsc_cert: u32,
     /// DSC signature over signed_attributes (256 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub sod_signature: [u8; SIG_BYTES],
     /// DSC TBS certificate padded to 1300 bytes
+    #[serde(serialize_with = "byte_array::serialize")]
     pub tbs_certificate: [u8; MAX_TBS_SIZE_1300],
     /// Signed attributes from SOD (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub signed_attributes: [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
     /// Actual signed attributes size
     pub signed_attributes_size: u64,
     /// RSA exponent (DSC)
     pub exponent: u32,
     /// eContent hash values (200 bytes)
+    #[serde(serialize_with = "byte_array::serialize")]
     pub e_content: [u8; MAX_ECONTENT_SIZE],
 }
 
@@ -924,6 +958,21 @@ impl PassportReader {
             add_integrity,
             attest,
         })
+    }
+}
+
+// ============================================================================
+// Serde helper for large fixed-size arrays (serde only supports [T; N] for N <= 32)
+// ============================================================================
+
+mod byte_array {
+    use serde::{Serialize, Serializer};
+
+    pub fn serialize<S: Serializer, const N: usize>(
+        arr: &[u8; N],
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        arr.as_slice().serialize(s)
     }
 }
 
