@@ -451,7 +451,6 @@ impl SparseMatrix {
             self.values.push(value);
         }
     }
-
 }
 
 impl HydratedSparseMatrix<'_> {

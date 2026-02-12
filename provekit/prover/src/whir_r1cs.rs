@@ -1,3 +1,5 @@
+#[cfg(feature = "mavros_compiler")]
+use mavros::compiled_artifacts::CompiledArtifacts;
 use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
@@ -32,8 +34,6 @@ use {
         },
     },
 };
-#[cfg(feature = "mavros_compiler")]
-use {mavros::compiled_artifacts::CompiledArtifacts};
 
 pub struct WhirR1CSCommitment {
     pub commitment_to_witness: Witness<FieldElement, SkyscraperMerkleConfig>,
@@ -292,7 +292,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     ) -> Result<WhirR1CSProof> {
         use provekit_common::utils::sumcheck::calculate_external_row_of_r1cs_matrices_with_ad;
 
-        ensure!(!commitments.is_empty(), "Need at least one commitment");       
+        ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let is_single = commitments.len() == 1;
 
@@ -433,7 +433,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             transcript: merlin.narg_string().to_vec(),
         })
     }
-
 }
 
 pub fn compute_blinding_coefficients_for_round(

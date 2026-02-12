@@ -4,11 +4,11 @@ use {
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
+    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
     tracing::instrument,
-    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in

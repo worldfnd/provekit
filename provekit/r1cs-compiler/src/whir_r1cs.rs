@@ -1,6 +1,6 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     mavros::compiler::r1cs_gen::R1CS as MavrosR1CS,
+    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     std::sync::Arc,
     whir::{
         ntt::RSDefault,
@@ -27,7 +27,12 @@ pub trait WhirR1CSSchemeBuilder {
     ) -> Self;
 
     #[cfg(feature = "mavros_compiler")]
-    fn new_from_mavros_r1cs(r1cs: &MavrosR1CS, w1_size: usize, num_challenges: usize, has_public_inputs: bool) -> Self;
+    fn new_from_mavros_r1cs(
+        r1cs: &MavrosR1CS,
+        w1_size: usize,
+        num_challenges: usize,
+        has_public_inputs: bool,
+    ) -> Self;
 
     #[cfg(feature = "mavros_compiler")]
     fn new_from_dimensions(
@@ -79,7 +84,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         }
     }
 
-    
     fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
@@ -108,13 +112,20 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         r1cs: &MavrosR1CS,
         w1_size: usize,
         num_challenges: usize,
-        has_public_inputs: bool
+        has_public_inputs: bool,
     ) -> Self {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
 
-        Self::new_from_dimensions(num_witnesses, num_constraints, a_num_entries, w1_size, num_challenges, has_public_inputs)
+        Self::new_from_dimensions(
+            num_witnesses,
+            num_constraints,
+            a_num_entries,
+            w1_size,
+            num_challenges,
+            has_public_inputs,
+        )
     }
 
     #[cfg(feature = "mavros_compiler")]

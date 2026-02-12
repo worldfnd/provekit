@@ -27,9 +27,11 @@ impl Command for Args {
         let r1cs_size = postcard::to_allocvec(&prover.r1cs)
             .map(|v| v.len())
             .unwrap_or(0);
+        #[cfg(not(feature = "mavros_compiler"))]
         let split_witness_builders_size = postcard::to_allocvec(&prover.split_witness_builders)
             .map(|v| v.len())
             .unwrap_or(0);
+        #[cfg(not(feature = "mavros_compiler"))]
         let witness_generator_size = postcard::to_allocvec(&prover.witness_generator)
             .map(|v| v.len())
             .unwrap_or(0);
@@ -53,16 +55,20 @@ impl Command for Args {
             r1cs_size,
             r1cs_size as f64 / total_size as f64 * 100.0
         );
-        println!(
-            "  SplitWitnessBuilders:     {:>12} bytes ({:>5.1}%)",
-            split_witness_builders_size,
-            split_witness_builders_size as f64 / total_size as f64 * 100.0
-        );
-        println!(
-            "  NoirWitnessGenerator:     {:>12} bytes ({:>5.1}%)",
-            witness_generator_size,
-            witness_generator_size as f64 / total_size as f64 * 100.0
-        );
+
+        #[cfg(not(feature = "mavros_compiler"))]
+        {
+            println!(
+                "  SplitWitnessBuilders:     {:>12} bytes ({:>5.1}%)",
+                split_witness_builders_size,
+                split_witness_builders_size as f64 / total_size as f64 * 100.0
+            );
+            println!(
+                "  NoirWitnessGenerator:     {:>12} bytes ({:>5.1}%)",
+                witness_generator_size,
+                witness_generator_size as f64 / total_size as f64 * 100.0
+            );
+        }
         println!(
             "  WhirR1CSScheme:           {:>12} bytes ({:>5.1}%)",
             whir_for_witness_size,
@@ -144,26 +150,28 @@ impl Command for Args {
         );
         println!();
 
-        let w1_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w1_layers)
-            .map(|v| v.len())
-            .unwrap_or(0);
-        let w2_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w2_layers)
-            .map(|v| v.len())
-            .unwrap_or(0);
+        #[cfg(not(feature = "mavros_compiler"))]
+        {
+            let w1_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w1_layers)
+                .map(|v| v.len())
+                .unwrap_or(0);
+            let w2_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w2_layers)
+                .map(|v| v.len())
+                .unwrap_or(0);
 
-        println!("SplitWitnessBuilders breakdown:");
-        println!(
-            "  W1 Layers:                {:>12} bytes ({:>5.1}% of SWB)",
-            w1_layers_size,
-            w1_layers_size as f64 / split_witness_builders_size as f64 * 100.0
-        );
-        println!(
-            "  W2 Layers:                {:>12} bytes ({:>5.1}% of SWB)",
-            w2_layers_size,
-            w2_layers_size as f64 / split_witness_builders_size as f64 * 100.0
-        );
-        println!();
-
+            println!("SplitWitnessBuilders breakdown:");
+            println!(
+                "  W1 Layers:                {:>12} bytes ({:>5.1}% of SWB)",
+                w1_layers_size,
+                w1_layers_size as f64 / split_witness_builders_size as f64 * 100.0
+            );
+            println!(
+                "  W2 Layers:                {:>12} bytes ({:>5.1}% of SWB)",
+                w2_layers_size,
+                w2_layers_size as f64 / split_witness_builders_size as f64 * 100.0
+            );
+            println!();
+        }
         println!("Circuit statistics:");
         println!(
             "  Constraints:              {:>12}",

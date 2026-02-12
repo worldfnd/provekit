@@ -3,15 +3,16 @@ use {
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
+    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
-    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
 };
 
+pub mod input_utils;
 mod r1cs;
 mod whir_r1cs;
 mod witness;
@@ -154,8 +155,10 @@ impl Prove for Prover {
             .parent()
             .context("Could not derive project path from Prover.toml path")?;
 
-        let (driver, _) = mavros_api::compile_to_r1cs(project_path.to_path_buf(), false)?;
-        let params = mavros_api::read_prover_inputs(&project_path.to_path_buf(), driver.abi())?;
+        // let (driver, _) = mavros_api::compile_to_r1cs(project_path.to_path_buf(),
+        // false)?;
+        let params =
+            crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
 
         let phase1 = mavros_api::run_witgen_phase1(
             &mut self.artifacts.witgen_binary,
@@ -171,37 +174,40 @@ impl Prove for Prover {
         // Commit to w1 (pre-commitment witness).
         let commitment_1 = self
             .whir_for_witness
-            .commit(&mut merlin, &self.r1cs, phase1.out_wit_pre_comm.clone(), true)
+            .commit(
+                &mut merlin,
+                &self.r1cs,
+                phase1.out_wit_pre_comm.clone(),
+                true,
+            )
             .context("While committing to w1")?;
 
         let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
-            use ark_ff::AdditiveGroup;
-            use spongefish::codecs::arkworks_algebra::UnitToField;
+            use {ark_ff::AdditiveGroup, spongefish::codecs::arkworks_algebra::UnitToField};
 
-            let mut challenges = vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
+            let mut challenges =
+                vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
             merlin
                 .fill_challenge_scalars(&mut challenges)
                 .expect("Failed to extract challenge scalars from Merlin");
 
-            let witgen_result = mavros_api::run_witgen_phase2(
-                phase1,
-                &challenges,
-                &self.artifacts.r1cs,
-            );
+            let witgen_result =
+                mavros_api::run_witgen_phase2(phase1, &challenges, &self.artifacts.r1cs);
 
             let commitment_2 = self
                 .whir_for_witness
-                .commit(&mut merlin, &self.r1cs, witgen_result.out_wit_post_comm.clone(), false)
+                .commit(
+                    &mut merlin,
+                    &self.r1cs,
+                    witgen_result.out_wit_post_comm.clone(),
+                    false,
+                )
                 .context("While committing to w2")?;
 
             (vec![commitment_1, commitment_2], witgen_result)
         } else {
             // No challenges: complete phase 2 with empty challenges.
-            let witgen_result = mavros_api::run_witgen_phase2(
-                phase1,
-                &[],
-                &self.artifacts.r1cs,
-            );
+            let witgen_result = mavros_api::run_witgen_phase2(phase1, &[], &self.artifacts.r1cs);
             (vec![commitment_1], witgen_result)
         };
 
@@ -209,9 +215,7 @@ impl Prove for Prover {
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
         } else {
-            PublicInputs::from_vec(
-                witgen_result.out_wit_pre_comm[1..=num_public_inputs].to_vec()
-            )
+            PublicInputs::from_vec(witgen_result.out_wit_pre_comm[1..=num_public_inputs].to_vec())
         };
 
         #[cfg(test)]
@@ -224,10 +228,19 @@ impl Prove for Prover {
 
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(merlin, converted_r1cs, commitments, &public_inputs, &mut self.artifacts)
+            .prove(
+                merlin,
+                converted_r1cs,
+                commitments,
+                &public_inputs,
+                &mut self.artifacts,
+            )
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof { public_inputs, whir_r1cs_proof })
+        Ok(NoirProof {
+            public_inputs,
+            whir_r1cs_proof,
+        })
     }
 }
 

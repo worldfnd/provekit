@@ -1,5 +1,7 @@
 use {
-    crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix, interner::InternedFieldElement},
+    crate::{
+        interner::InternedFieldElement, FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
+    },
     serde::{Deserialize, Serialize},
 };
 
