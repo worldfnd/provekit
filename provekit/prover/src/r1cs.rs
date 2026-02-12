@@ -69,8 +69,7 @@ impl R1CSSolver for R1CS {
                     // Optional post-multiply: for quotient builders,
                     // result = inverse * multiplicity instead of bare
                     // inverse.
-                    let mut multipliers: Vec<Option<usize>> =
-                        Vec::with_capacity(batch_size);
+                    let mut multipliers: Vec<Option<usize>> = Vec::with_capacity(batch_size);
 
                     for inverse_builder in &layer.witness_builders {
                         match inverse_builder {
@@ -146,10 +145,7 @@ impl R1CSSolver for R1CS {
                     // Perform batch inversion and write results
                     let inverses = batch_inverse_montgomery(&denominators);
                     for ((output_witness, inverse_value), multiplier) in
-                        output_witnesses
-                            .into_iter()
-                            .zip(inverses)
-                            .zip(multipliers)
+                        output_witnesses.into_iter().zip(inverses).zip(multipliers)
                     {
                         witness[output_witness] = Some(match multiplier {
                             Some(m) => inverse_value * witness[m].unwrap(),

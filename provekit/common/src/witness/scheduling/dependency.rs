@@ -218,7 +218,10 @@ impl DependencyInfo {
                 v
             }
             WitnessBuilder::SpreadTableQuotient {
-                sz, rs, multiplicity, ..
+                sz,
+                rs,
+                multiplicity,
+                ..
             } => {
                 vec![*sz, *rs, *multiplicity]
             }

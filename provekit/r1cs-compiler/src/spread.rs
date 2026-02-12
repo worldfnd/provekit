@@ -166,12 +166,10 @@ pub(crate) fn decompose_to_spread_word(
 
     // Step 3: Single flat recomposition constraint:
     // packed = Σ sub_i * 2^(cumulative_bit_offset_i)
-    let mut recomp_terms: Vec<(FieldElement, usize)> =
-        Vec::with_capacity(flat_bits.len());
+    let mut recomp_terms: Vec<(FieldElement, usize)> = Vec::with_capacity(flat_bits.len());
     let mut bit_offset: u32 = 0;
     for (i, &bits) in flat_bits.iter().enumerate() {
-        recomp_terms
-            .push((FieldElement::from(1u64 << bit_offset), sub_start + i));
+        recomp_terms.push((FieldElement::from(1u64 << bit_offset), sub_start + i));
         bit_offset += bits;
     }
     compiler.r1cs.add_constraint(
@@ -186,8 +184,7 @@ pub(crate) fn decompose_to_spread_word(
     let mut flat_idx = 0usize;
     for ci in 0..num_chunks {
         let n_subs = chunk_sub_counts[ci];
-        let sub_bits_slice =
-            &flat_bits[flat_idx..flat_idx + n_subs];
+        let sub_bits_slice = &flat_bits[flat_idx..flat_idx + n_subs];
 
         let mut sub_values = Vec::with_capacity(n_subs);
         let mut sub_spreads = Vec::with_capacity(n_subs);
@@ -529,15 +526,14 @@ pub(crate) fn add_spread_table_constraints(
             let multiplicity_idx = mult_first + x as usize;
 
             // Quotient = multiplicity / (sz - x - rs * spread(x))
-            let quotient =
-                compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
-                    idx: compiler.num_witnesses(),
-                    sz,
-                    rs,
-                    input_val: FieldElement::from(x),
-                    spread_val: FieldElement::from(spread_x),
-                    multiplicity: multiplicity_idx,
-                });
+            let quotient = compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
+                idx: compiler.num_witnesses(),
+                sz,
+                rs,
+                input_val: FieldElement::from(x),
+                spread_val: FieldElement::from(spread_x),
+                multiplicity: multiplicity_idx,
+            });
 
             // Single constraint: denominator × quotient = multiplicity
             // denominator = sz - x - rs * spread(x)
