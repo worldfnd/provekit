@@ -226,16 +226,17 @@ pub enum WitnessBuilder {
         ConstantOrR1CSWitness,
         ConstantOrR1CSWitness,
     ),
-    /// Table-side LogUp inverse for spread table.
-    /// Computes: 1 / (sz - input_val - rs * spread_val)
-    SpreadTableEntryInverse {
-        idx:        usize,
-        sz:         usize,
-        rs:         usize,
+    /// Table-side LogUp quotient for spread table.
+    /// Computes: multiplicity / (sz - input_val - rs * spread_val)
+    SpreadTableQuotient {
+        idx:           usize,
+        sz:            usize,
+        rs:            usize,
         #[serde(with = "serde_ark")]
-        input_val:  FieldElement,
+        input_val:     FieldElement,
         #[serde(with = "serde_ark")]
-        spread_val: FieldElement,
+        spread_val:    FieldElement,
+        multiplicity:  usize,
     },
 }
 

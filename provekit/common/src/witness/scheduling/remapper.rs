@@ -338,18 +338,20 @@ impl WitnessIndexRemapper {
                     self.remap_const_or_witness(spread_output),
                 )
             }
-            WitnessBuilder::SpreadTableEntryInverse {
+            WitnessBuilder::SpreadTableQuotient {
                 idx,
                 sz,
                 rs,
                 input_val,
                 spread_val,
-            } => WitnessBuilder::SpreadTableEntryInverse {
-                idx:        self.remap(*idx),
-                sz:         self.remap(*sz),
-                rs:         self.remap(*rs),
-                input_val:  *input_val,
-                spread_val: *spread_val,
+                multiplicity,
+            } => WitnessBuilder::SpreadTableQuotient {
+                idx:          self.remap(*idx),
+                sz:           self.remap(*sz),
+                rs:           self.remap(*rs),
+                input_val:    *input_val,
+                spread_val:   *spread_val,
+                multiplicity: self.remap(*multiplicity),
             },
         }
     }

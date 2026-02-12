@@ -143,7 +143,7 @@ impl<'a> LayerScheduler<'a> {
                     idx: out_witness, ..
                 },
             )
-            | WitnessBuilder::SpreadTableEntryInverse {
+            | WitnessBuilder::SpreadTableQuotient {
                 idx: out_witness, ..
             } => {
                 // Defer inverse for batching

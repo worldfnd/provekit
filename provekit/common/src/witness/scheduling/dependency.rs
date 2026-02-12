@@ -217,8 +217,10 @@ impl DependencyInfo {
                 }
                 v
             }
-            WitnessBuilder::SpreadTableEntryInverse { sz, rs, .. } => {
-                vec![*sz, *rs]
+            WitnessBuilder::SpreadTableQuotient {
+                sz, rs, multiplicity, ..
+            } => {
+                vec![*sz, *rs, *multiplicity]
             }
         }
     }
@@ -246,7 +248,7 @@ impl DependencyInfo {
             )
             | WitnessBuilder::SpreadWitness(idx, ..)
             | WitnessBuilder::SpreadLookupDenominator(idx, ..)
-            | WitnessBuilder::SpreadTableEntryInverse { idx, .. } => vec![*idx],
+            | WitnessBuilder::SpreadTableQuotient { idx, .. } => vec![*idx],
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()

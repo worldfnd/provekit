@@ -143,20 +143,36 @@ pub(crate) fn decompose_to_spread_word(
 ) -> SpreadWord {
     let num_chunks = chunk_spec.len();
 
-    // Step 1: Create chunk value witnesses via ChunkDecompose
-    let chunk_start = compiler.num_witnesses();
+    // Step 1: Build flat sub-chunk list and track chunk boundaries.
+    // For chunk_spec [2,11,9,10] this produces flat_bits [2, 8,3, 8,1, 8,2]
+    // and chunk_sub_counts [1, 2, 2, 2] (how many sub-chunks per original
+    // chunk).
+    let mut flat_bits: Vec<u32> = Vec::new();
+    let mut chunk_sub_counts: Vec<usize> = Vec::with_capacity(num_chunks);
+    for &bits in chunk_spec {
+        let subs = subchunks(bits);
+        chunk_sub_counts.push(subs.len());
+        flat_bits.extend(subs);
+    }
+
+    // Step 2: Single ChunkDecompose producing all sub-chunks directly
+    // from the packed value.
+    let sub_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::ChunkDecompose {
-        output_start: chunk_start,
+        output_start: sub_start,
         packed,
-        chunk_bits: chunk_spec.to_vec(),
+        chunk_bits: flat_bits.clone(),
     });
 
-    // Step 2: Add recomposition constraint: packed = Σ chunk_i * 2^offset
-    let mut recomp_terms: Vec<(FieldElement, usize)> = Vec::new();
+    // Step 3: Single flat recomposition constraint:
+    // packed = Σ sub_i * 2^(cumulative_bit_offset_i)
+    let mut recomp_terms: Vec<(FieldElement, usize)> =
+        Vec::with_capacity(flat_bits.len());
     let mut bit_offset: u32 = 0;
-    for i in 0..num_chunks {
-        recomp_terms.push((FieldElement::from(1u64 << bit_offset), chunk_start + i));
-        bit_offset += chunk_spec[i];
+    for (i, &bits) in flat_bits.iter().enumerate() {
+        recomp_terms
+            .push((FieldElement::from(1u64 << bit_offset), sub_start + i));
+        bit_offset += bits;
     }
     compiler.r1cs.add_constraint(
         &recomp_terms,
@@ -164,75 +180,38 @@ pub(crate) fn decompose_to_spread_word(
         &[(FieldElement::ONE, packed)],
     );
 
-    // Step 3: For each chunk, handle sub-decomposition and spread
+    // Step 4: Spread each sub-chunk, range-check narrow ones, and group
+    // back into SpreadChunks by original chunk boundaries.
     let mut chunks = Vec::with_capacity(num_chunks);
-    for i in 0..num_chunks {
-        let chunk_val_idx = chunk_start + i;
-        let chunk_bits = chunk_spec[i];
-        let subs = subchunks(chunk_bits);
+    let mut flat_idx = 0usize;
+    for ci in 0..num_chunks {
+        let n_subs = chunk_sub_counts[ci];
+        let sub_bits_slice =
+            &flat_bits[flat_idx..flat_idx + n_subs];
 
-        if subs.len() == 1 {
-            // Chunk fits in spread table directly
-            let spread_idx = add_spread_witness(compiler, accum, chunk_val_idx);
-
-            // range check to [0, 2^chunk_bits - 1]
-            if chunk_bits < SPREAD_TABLE_BITS {
+        let mut sub_values = Vec::with_capacity(n_subs);
+        let mut sub_spreads = Vec::with_capacity(n_subs);
+        for j in 0..n_subs {
+            let val_idx = sub_start + flat_idx + j;
+            let spread_idx = add_spread_witness(compiler, accum, val_idx);
+            if sub_bits_slice[j] < SPREAD_TABLE_BITS {
                 accum
                     .range_checks
-                    .entry(chunk_bits)
+                    .entry(sub_bits_slice[j])
                     .or_default()
-                    .push(chunk_val_idx);
+                    .push(val_idx);
             }
-            chunks.push(SpreadChunk {
-                total_bits:  chunk_bits,
-                sub_values:  vec![chunk_val_idx],
-                sub_spreads: vec![spread_idx],
-                sub_bits:    subs,
-            });
-        } else {
-            // Sub-decompose the chunk
-            let sub_start = compiler.num_witnesses();
-            compiler.add_witness_builder(WitnessBuilder::ChunkDecompose {
-                output_start: sub_start,
-                packed:       chunk_val_idx,
-                chunk_bits:   subs.clone(),
-            });
-
-            // Recomposition constraint: chunk_val = Σ sub_j * 2^sub_offset
-            let mut sub_recomp: Vec<(FieldElement, usize)> = Vec::new();
-            let mut sub_offset: u32 = 0;
-            for (j, &sub_bits) in subs.iter().enumerate() {
-                sub_recomp.push((FieldElement::from(1u64 << sub_offset), sub_start + j));
-                sub_offset += sub_bits;
-            }
-            compiler.r1cs.add_constraint(
-                &sub_recomp,
-                &[(FieldElement::ONE, compiler.witness_one())],
-                &[(FieldElement::ONE, chunk_val_idx)],
-            );
-
-            // Spread each sub-chunk and range-check narrow ones
-            let mut sub_spreads = Vec::with_capacity(subs.len());
-            for j in 0..subs.len() {
-                let spread_idx = add_spread_witness(compiler, accum, sub_start + j);
-                if subs[j] < SPREAD_TABLE_BITS {
-                    accum
-                        .range_checks
-                        .entry(subs[j])
-                        .or_default()
-                        .push(sub_start + j);
-                }
-                sub_spreads.push(spread_idx);
-            }
-
-            let sub_values: Vec<usize> = (sub_start..sub_start + subs.len()).collect();
-            chunks.push(SpreadChunk {
-                total_bits: chunk_bits,
-                sub_values,
-                sub_spreads,
-                sub_bits: subs,
-            });
+            sub_values.push(val_idx);
+            sub_spreads.push(spread_idx);
         }
+
+        chunks.push(SpreadChunk {
+            total_bits: chunk_spec[ci],
+            sub_values,
+            sub_spreads,
+            sub_bits: sub_bits_slice.to_vec(),
+        });
+        flat_idx += n_subs;
     }
 
     SpreadWord { packed, chunks }
@@ -549,21 +528,16 @@ pub(crate) fn add_spread_table_constraints(
             let spread_x = compute_spread(x as u64);
             let multiplicity_idx = mult_first + x as usize;
 
-            // Inverse: 1/(sz - x - rs * spread(x))
-            let inverse = compiler.add_witness_builder(WitnessBuilder::SpreadTableEntryInverse {
-                idx: compiler.num_witnesses(),
-                sz,
-                rs,
-                input_val: FieldElement::from(x),
-                spread_val: FieldElement::from(spread_x),
-            });
-
-            // Quotient = multiplicity * inverse
-            let quotient = compiler.add_witness_builder(WitnessBuilder::Product(
-                compiler.num_witnesses(),
-                multiplicity_idx,
-                inverse,
-            ));
+            // Quotient = multiplicity / (sz - x - rs * spread(x))
+            let quotient =
+                compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
+                    idx: compiler.num_witnesses(),
+                    sz,
+                    rs,
+                    input_val: FieldElement::from(x),
+                    spread_val: FieldElement::from(spread_x),
+                    multiplicity: multiplicity_idx,
+                });
 
             // Single constraint: denominator × quotient = multiplicity
             // denominator = sz - x - rs * spread(x)

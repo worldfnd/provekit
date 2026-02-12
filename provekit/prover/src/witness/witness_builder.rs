@@ -409,9 +409,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 // sz - (input + rs * spread_output)
                 witness[*idx] = Some(sz_val - (input_val + rs_val * spread_val));
             }
-            WitnessBuilder::SpreadTableEntryInverse { .. } => {
+            WitnessBuilder::SpreadTableQuotient { .. } => {
                 unreachable!(
-                    "SpreadTableEntryInverse should not be called - handled by batch inversion"
+                    "SpreadTableQuotient should not be called - handled by batch inversion"
                 )
             }
         }
