@@ -50,7 +50,7 @@ impl Command for Args {
 
         // Generate the proof
         let proof = prover
-            .prove(&self.input_path)
+            .prove_with_toml(&self.input_path)
             .context("While proving Noir program statement")?;
 
         // Verify the proof (not in release build)
