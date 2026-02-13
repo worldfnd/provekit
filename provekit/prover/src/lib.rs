@@ -3,15 +3,16 @@ use {
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
-    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
+    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
     std::path::Path,
     tracing::instrument,
 };
 
+#[cfg(feature = "mavros_compiler")]
 pub mod input_utils;
 mod r1cs;
 mod whir_r1cs;
