@@ -751,8 +751,7 @@ impl PassportReader {
 
         // Compute merkle_root if using default zero sentinel
         let merkle_root = {
-            let zero =
-                "0x0000000000000000000000000000000000000000000000000000000000000000";
+            let zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
             if config.merkle_root == zero {
                 let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
                 let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
@@ -942,8 +941,7 @@ impl PassportReader {
 
         // Compute merkle_root if using default zero sentinel
         let merkle_root = {
-            let zero =
-                "0x0000000000000000000000000000000000000000000000000000000000000000";
+            let zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
             if config.merkle_root == zero {
                 let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
                 let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
