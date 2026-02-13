@@ -28,15 +28,24 @@ use {
 };
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/// Zero BN254 field element as a 0x-prefixed hex string (used as sentinel /
+/// default for Merkle fields).
+pub const ZERO_FIELD: &str =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
-/// Application-level parameters that are not extracted from passport data.
-/// Commitment values, salts, Merkle tree data, and attestation parameters.
-pub struct MerkleAge720Config {
-    /// Salt for circuit 1 commitment (default: "0x2")
+/// Shared application-level parameters for all merkle_age_check circuit chains.
+/// Contains commitment salts, Merkle tree data, and attestation parameters.
+pub struct MerkleAgeBaseConfig {
+    /// Salt for the penultimate commitment stage
     pub salt_1:           String,
-    /// Salt for circuit 2 commitment (default: "0x3")
+    /// Salt for the final commitment stage
     pub salt_2:           String,
     /// Blinding factor for DG1 Poseidon2 commitment
     pub r_dg1:            String,
@@ -60,10 +69,8 @@ pub struct MerkleAge720Config {
     pub merkle_path:      Vec<String>,
 }
 
-impl Default for MerkleAge720Config {
+impl Default for MerkleAgeBaseConfig {
     fn default() -> Self {
-        let zero_field =
-            "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
         Self {
             salt_1:           "0x2".to_string(),
             salt_2:           "0x3".to_string(),
@@ -72,12 +79,70 @@ impl Default for MerkleAge720Config {
             current_date:     1735689600, // Jan 1, 2025
             min_age_required: 18,
             max_age_required: 0,
-            service_scope:    zero_field.clone(),
-            service_subscope: zero_field.clone(),
-            nullifier_secret: zero_field.clone(),
-            merkle_root:      zero_field.clone(),
+            service_scope:    ZERO_FIELD.to_string(),
+            service_subscope: ZERO_FIELD.to_string(),
+            nullifier_secret: ZERO_FIELD.to_string(),
+            merkle_root:      ZERO_FIELD.to_string(),
             leaf_index:       "0".to_string(),
-            merkle_path:      vec![zero_field; TREE_DEPTH],
+            merkle_path:      vec![ZERO_FIELD.to_string(); TREE_DEPTH],
+        }
+    }
+}
+
+impl MerkleAgeBaseConfig {
+    /// Build AttestInputs from the shared config and passport data, computing
+    /// the merkle root if the sentinel zero value is present.
+    fn build_attest(
+        self,
+        dg1_padded: &[u8; MAX_DG1_SIZE],
+        computed_sod_hash: ark_bn254::Fr,
+        sod_hash_hex: String,
+    ) -> AttestInputs {
+        let merkle_root = {
+            if self.merkle_root == ZERO_FIELD {
+                let h_dg1 = commitment::calculate_h_dg1(&self.r_dg1, dg1_padded);
+                let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
+                let leaf_idx: u64 = self.leaf_index.parse().unwrap_or(0);
+                let path_fields: Vec<ark_bn254::Fr> = self
+                    .merkle_path
+                    .iter()
+                    .map(|s| commitment::parse_hex_to_field(s))
+                    .collect();
+                let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
+                commitment::field_to_hex_string(&root)
+            } else {
+                self.merkle_root
+            }
+        };
+
+        AttestInputs {
+            root:             merkle_root,
+            current_date:     self.current_date,
+            service_scope:    self.service_scope,
+            service_subscope: self.service_subscope,
+            dg1:              *dg1_padded,
+            r_dg1:            self.r_dg1,
+            sod_hash:         sod_hash_hex,
+            leaf_index:       self.leaf_index,
+            merkle_path:      self.merkle_path,
+            min_age_required: self.min_age_required,
+            max_age_required: self.max_age_required,
+            nullifier_secret: self.nullifier_secret,
+        }
+    }
+}
+
+/// Application-level parameters for the 4-circuit merkle_age_check TBS-720
+/// chain.
+pub struct MerkleAge720Config {
+    /// Shared configuration fields
+    pub base: MerkleAgeBaseConfig,
+}
+
+impl Default for MerkleAge720Config {
+    fn default() -> Self {
+        Self {
+            base: MerkleAgeBaseConfig::default(),
         }
     }
 }
@@ -89,52 +154,16 @@ impl Default for MerkleAge720Config {
 /// is split into two circuits (dsc_hash + dsc_verify).
 pub struct MerkleAge1300Config {
     /// Salt for circuits 1+2 (dsc_hash & dsc_verify input): "0x1"
-    pub salt_0:           String,
-    /// Salt for circuit 2 output / circuit 3 input: "0x2"
-    pub salt_1:           String,
-    /// Salt for circuit 3 output / circuit 4 input: "0x3"
-    pub salt_2:           String,
-    /// Blinding factor for DG1 Poseidon2 commitment
-    pub r_dg1:            String,
-    /// Current date as unix timestamp
-    pub current_date:     u64,
-    /// Minimum age to prove
-    pub min_age_required: u8,
-    /// Maximum age (0 = no upper bound)
-    pub max_age_required: u8,
-    /// Service scope hash (H(domain_name))
-    pub service_scope:    String,
-    /// Service sub-scope hash (H(purpose))
-    pub service_subscope: String,
-    /// Optional nullifier secret for salting
-    pub nullifier_secret: String,
-    /// Merkle tree root (from sequencer)
-    pub merkle_root:      String,
-    /// Leaf index in Merkle tree
-    pub leaf_index:       String,
-    /// Merkle path sibling hashes (TREE_DEPTH elements)
-    pub merkle_path:      Vec<String>,
+    pub salt_0: String,
+    /// Shared configuration fields
+    pub base:   MerkleAgeBaseConfig,
 }
 
 impl Default for MerkleAge1300Config {
     fn default() -> Self {
-        let zero_field =
-            "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
         Self {
-            salt_0:           "0x1".to_string(),
-            salt_1:           "0x2".to_string(),
-            salt_2:           "0x3".to_string(),
-            r_dg1:            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-                .to_string(),
-            current_date:     1735689600,
-            min_age_required: 18,
-            max_age_required: 0,
-            service_scope:    zero_field.clone(),
-            service_subscope: zero_field.clone(),
-            nullifier_secret: zero_field.clone(),
-            merkle_root:      zero_field.clone(),
-            leaf_index:       "0".to_string(),
-            merkle_path:      vec![zero_field; TREE_DEPTH],
+            salt_0: "0x1".to_string(),
+            base:   MerkleAgeBaseConfig::default(),
         }
     }
 }
@@ -369,6 +398,35 @@ pub struct MerkleAge1300Inputs {
 }
 
 // ============================================================================
+// Extracted passport data (shared between 720/1300 paths)
+// ============================================================================
+
+/// Common passport data extracted from DG1 + SOD, shared by both the 720 and
+/// 1300 circuit pipelines.
+struct PassportData {
+    dg1_padded:             [u8; MAX_DG1_SIZE],
+    dg1_len:                usize,
+    signed_attrs:           [u8; MAX_SIGNED_ATTRIBUTES_SIZE],
+    signed_attributes_size: usize,
+    econtent:               [u8; MAX_ECONTENT_SIZE],
+    econtent_len:           usize,
+    dsc_modulus:            [u8; SIG_BYTES],
+    dsc_exponent:           u32,
+    dsc_barrett:            [u8; SIG_BYTES + 1],
+    sod_signature:          [u8; SIG_BYTES],
+    csca_modulus:           [u8; SIG_BYTES * 2],
+    csca_exponent:          u32,
+    csca_barrett:           [u8; SIG_BYTES * 2 + 1],
+    csca_signature:         [u8; SIG_BYTES * 2],
+    country:                String,
+    dg1_hash_offset:        usize,
+    private_nullifier:      ark_bn254::Fr,
+    private_nullifier_hex:  String,
+    computed_sod_hash:      ark_bn254::Fr,
+    sod_hash_hex:           String,
+}
+
+// ============================================================================
 // PassportReader
 // ============================================================================
 
@@ -438,44 +496,17 @@ impl PassportReader {
         Ok((modulus, exponent, barrett, signature))
     }
 
-    /// Extract CSCA public key, exponent, Barrett mu, and certificate signature
-    fn extract_csca(
-        &self,
-        idx: usize,
-    ) -> Result<
-        (
-            [u8; SIG_BYTES * 2],
-            u32,
-            [u8; SIG_BYTES * 2 + 1],
-            [u8; SIG_BYTES * 2],
-        ),
-        PassportError,
-    > {
-        let csca_keys = load_csca_public_keys().map_err(|_| PassportError::FailedToLoadCscaKeys)?;
-        let usa_csca = csca_keys.get("USA").ok_or(PassportError::NoUsaCsca)?;
+    /// Decode a base64-encoded CSCA public key from DER format
+    fn decode_csca_pubkey(b64: &str) -> Result<RsaPublicKey, PassportError> {
         let der = STANDARD
-            .decode(usa_csca[idx].public_key.as_bytes())
+            .decode(b64.as_bytes())
             .map_err(|e| PassportError::Base64DecodingFailed(e.to_string()))?;
-        let pubkey = RsaPublicKey::from_public_key_der(&der)
-            .map_err(|_| PassportError::CscaPublicKeyInvalid)?;
-
-        let modulus =
-            to_fixed_array::<{ SIG_BYTES * 2 }>(&pubkey.n().to_bytes_be(), "CSCA modulus")?;
-        let exponent = to_u32(pubkey.e().to_bytes_be())?;
-        let barrett = to_fixed_array::<{ SIG_BYTES * 2 + 1 }>(
-            &compute_barrett_reduction_parameter(&BigUint::from_bytes_be(&modulus)).to_bytes_be(),
-            "CSCA Barrett",
-        )?;
-        let signature = to_fixed_array::<{ SIG_BYTES * 2 }>(
-            self.sod.certificate.signature.as_bytes(),
-            "CSCA signature",
-        )?;
-
-        Ok((modulus, exponent, barrett, signature))
+        RsaPublicKey::from_public_key_der(&der).map_err(|_| PassportError::CscaPublicKeyInvalid)
     }
 
-    /// Extract CSCA data from an in-memory public key (used for mock data)
-    fn extract_csca_from_pubkey(
+    /// Extract CSCA modulus, exponent, Barrett mu, and certificate signature
+    /// from a given public key
+    fn extract_csca_fields(
         &self,
         pubkey: &RsaPublicKey,
     ) -> Result<
@@ -500,6 +531,41 @@ impl PassportReader {
         )?;
 
         Ok((modulus, exponent, barrett, signature))
+    }
+
+    /// Extract CSCA public key, exponent, Barrett mu, and certificate signature
+    fn extract_csca(
+        &self,
+        idx: usize,
+    ) -> Result<
+        (
+            [u8; SIG_BYTES * 2],
+            u32,
+            [u8; SIG_BYTES * 2 + 1],
+            [u8; SIG_BYTES * 2],
+        ),
+        PassportError,
+    > {
+        let csca_keys = load_csca_public_keys().map_err(|_| PassportError::FailedToLoadCscaKeys)?;
+        let usa_csca = csca_keys.get("USA").ok_or(PassportError::NoUsaCsca)?;
+        let pubkey = Self::decode_csca_pubkey(&usa_csca[idx].public_key)?;
+        self.extract_csca_fields(&pubkey)
+    }
+
+    /// Extract CSCA data from an in-memory public key (used for mock data)
+    fn extract_csca_from_pubkey(
+        &self,
+        pubkey: &RsaPublicKey,
+    ) -> Result<
+        (
+            [u8; SIG_BYTES * 2],
+            u32,
+            [u8; SIG_BYTES * 2 + 1],
+            [u8; SIG_BYTES * 2],
+        ),
+        PassportError,
+    > {
+        self.extract_csca_fields(pubkey)
     }
 
     /// Extract DSC certificate TBS (padded to 720 + actual len + pubkey offset)
@@ -531,6 +597,66 @@ impl PassportReader {
         } else {
             "<<<".to_string()
         }
+    }
+
+    /// Extract all common passport data fields needed by both the 720 and 1300
+    /// circuit pipelines. This consolidates the repeated extraction preamble.
+    fn extract_passport_data(
+        &self,
+        csca_key_index: usize,
+    ) -> Result<PassportData, PassportError> {
+        let dg1_padded = fit::<MAX_DG1_SIZE>(self.dg1.as_bytes())?;
+        let dg1_len = self.dg1.len();
+
+        let (signed_attrs, signed_attributes_size) = self.extract_signed_attrs()?;
+        let (econtent, econtent_len, econtent_bytes) = self.extract_econtent()?;
+
+        let (dsc_modulus, dsc_exponent, dsc_barrett, sod_signature) = self.extract_dsc()?;
+
+        let (csca_modulus, csca_exponent, csca_barrett, csca_signature) = if self.mockdata {
+            let key = self
+                .csca_pubkey
+                .as_ref()
+                .ok_or(PassportError::MissingCscaMockKey)?;
+            self.extract_csca_from_pubkey(key)?
+        } else {
+            self.extract_csca(csca_key_index)?
+        };
+
+        let dg1_hash = Sha256::digest(self.dg1.as_bytes());
+        let dg1_hash_offset = find_offset(econtent_bytes, dg1_hash.as_slice(), "DG1 hash")?;
+
+        let country = self.extract_country();
+
+        let private_nullifier =
+            commitment::calculate_private_nullifier(&dg1_padded, &econtent, &sod_signature);
+        let private_nullifier_hex = commitment::field_to_hex_string(&private_nullifier);
+
+        let computed_sod_hash = commitment::calculate_sod_hash(&econtent);
+        let sod_hash_hex = commitment::field_to_hex_string(&computed_sod_hash);
+
+        Ok(PassportData {
+            dg1_padded,
+            dg1_len,
+            signed_attrs,
+            signed_attributes_size,
+            econtent,
+            econtent_len,
+            dsc_modulus,
+            dsc_exponent,
+            dsc_barrett,
+            sod_signature,
+            csca_modulus,
+            csca_exponent,
+            csca_barrett,
+            csca_signature,
+            country,
+            dg1_hash_offset,
+            private_nullifier,
+            private_nullifier_hex,
+            computed_sod_hash,
+            sod_hash_hex,
+        })
     }
 
     /// Validate DG1, eContent, and signatures against DSC + CSCA
@@ -617,11 +743,7 @@ impl PassportReader {
         let usa_csca = all_csca.get("USA").ok_or(PassportError::NoUsaCsca)?;
 
         for (i, csca) in usa_csca.iter().enumerate() {
-            let der = STANDARD
-                .decode(csca.public_key.as_bytes())
-                .map_err(|e| PassportError::Base64DecodingFailed(e.to_string()))?;
-            let csca_pubkey = RsaPublicKey::from_public_key_der(&der)
-                .map_err(|_| PassportError::CscaPublicKeyInvalid)?;
+            let csca_pubkey = Self::decode_csca_pubkey(&csca.public_key)?;
             if csca_pubkey
                 .verify(
                     Pkcs1v15Sign::new::<Sha256>(),
@@ -646,142 +768,82 @@ impl PassportReader {
         csca_key_index: usize,
         config: MerkleAge720Config,
     ) -> Result<MerkleAge720Inputs, PassportError> {
-        // === Extract passport data ===
-        let dg1_padded = fit::<MAX_DG1_SIZE>(self.dg1.as_bytes())?;
-        let dg1_len = self.dg1.len();
+        let pd = self.extract_passport_data(csca_key_index)?;
 
-        let (signed_attrs, signed_attributes_size) = self.extract_signed_attrs()?;
-        let (econtent, econtent_len, econtent_bytes) = self.extract_econtent()?;
-
-        // DSC: pubkey (256), exponent, barrett (257), SOD signature (256)
-        let (dsc_modulus, dsc_exponent, dsc_barrett, sod_signature) = self.extract_dsc()?;
-
-        // CSCA: pubkey (512), exponent, barrett (513), cert signature (512)
-        let (csca_modulus, csca_exponent, csca_barrett, csca_signature) = if self.mockdata {
-            let key = self
-                .csca_pubkey
-                .as_ref()
-                .ok_or(PassportError::MissingCscaMockKey)?;
-            self.extract_csca_from_pubkey(key)?
-        } else {
-            self.extract_csca(csca_key_index)?
-        };
-
-        // Offsets
-        let dg1_hash = Sha256::digest(self.dg1.as_bytes());
-        let dg1_hash_offset = find_offset(econtent_bytes, dg1_hash.as_slice(), "DG1 hash")?;
-
-        // DSC certificate TBS
-        let (tbs_cert, tbs_cert_len, dsc_pubkey_offset) = self.extract_dsc_cert(&dsc_modulus)?;
-
-        // Country from DG1
-        let country = self.extract_country();
+        // DSC certificate TBS (720-byte path)
+        let (tbs_cert, tbs_cert_len, dsc_pubkey_offset) =
+            self.extract_dsc_cert(&pd.dsc_modulus)?;
 
         // === Compute Poseidon2 commitments ===
 
         // Circuit 1 output: hash(salt_1, country, tbs_cert)
-        let comm_out_1 =
-            commitment::hash_salt_country_tbs(&config.salt_1, country.as_bytes(), &tbs_cert);
+        let comm_out_1 = commitment::hash_salt_country_tbs(
+            &config.base.salt_1,
+            pd.country.as_bytes(),
+            &tbs_cert,
+        );
         let comm_out_1_hex = commitment::field_to_hex_string(&comm_out_1);
-
-        // Private nullifier: hash(dg1, e_content, sod_signature)
-        let private_nullifier =
-            commitment::calculate_private_nullifier(&dg1_padded, &econtent, &sod_signature);
-        let private_nullifier_hex = commitment::field_to_hex_string(&private_nullifier);
 
         // Circuit 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content,
         // nullifier)
         let comm_out_2 = commitment::hash_salt_country_sa_dg1_econtent_nullifier(
-            &config.salt_2,
-            country.as_bytes(),
-            &signed_attrs,
-            signed_attributes_size as u64,
-            &dg1_padded,
-            &econtent,
-            private_nullifier,
+            &config.base.salt_2,
+            pd.country.as_bytes(),
+            &pd.signed_attrs,
+            pd.signed_attributes_size as u64,
+            &pd.dg1_padded,
+            &pd.econtent,
+            pd.private_nullifier,
         );
         let comm_out_2_hex = commitment::field_to_hex_string(&comm_out_2);
-
-        // SOD hash: hash(packed_e_content)
-        let computed_sod_hash = commitment::calculate_sod_hash(&econtent);
-        let sod_hash_hex = commitment::field_to_hex_string(&computed_sod_hash);
 
         // === Build circuit input structs ===
 
         let add_dsc = AddDsc720Inputs {
-            csc_pubkey: csca_modulus,
-            salt: config.salt_1.clone(),
-            country,
+            csc_pubkey: pd.csca_modulus,
+            salt: config.base.salt_1.clone(),
+            country: pd.country,
             tbs_certificate: tbs_cert,
-            csc_pubkey_redc_param: csca_barrett,
-            dsc_signature: csca_signature,
-            exponent: csca_exponent,
+            csc_pubkey_redc_param: pd.csca_barrett,
+            dsc_signature: pd.csca_signature,
+            exponent: pd.csca_exponent,
             tbs_certificate_len: tbs_cert_len as u32,
         };
 
         let add_id_data = AddIdData720Inputs {
             comm_in: comm_out_1_hex,
-            salt_in: config.salt_1,
-            salt_out: config.salt_2.clone(),
-            dg1: dg1_padded,
-            dsc_pubkey: dsc_modulus,
-            dsc_pubkey_redc_param: dsc_barrett,
+            salt_in: config.base.salt_1.clone(),
+            salt_out: config.base.salt_2.clone(),
+            dg1: pd.dg1_padded,
+            dsc_pubkey: pd.dsc_modulus,
+            dsc_pubkey_redc_param: pd.dsc_barrett,
             dsc_pubkey_offset_in_dsc_cert: dsc_pubkey_offset as u32,
-            sod_signature,
+            sod_signature: pd.sod_signature,
             tbs_certificate: tbs_cert,
-            signed_attributes: signed_attrs,
-            signed_attributes_size: signed_attributes_size as u64,
-            exponent: dsc_exponent,
-            e_content: econtent,
+            signed_attributes: pd.signed_attrs,
+            signed_attributes_size: pd.signed_attributes_size as u64,
+            exponent: pd.dsc_exponent,
+            e_content: pd.econtent,
         };
 
         let add_integrity = AddIntegrityCommitInputs {
             comm_in:                comm_out_2_hex,
-            salt_in:                config.salt_2,
-            dg1:                    dg1_padded,
-            dg1_padded_length:      dg1_len as u64,
-            dg1_hash_offset:        dg1_hash_offset as u32,
-            signed_attributes:      signed_attrs,
-            signed_attributes_size: signed_attributes_size as u32,
-            e_content:              econtent,
-            e_content_len:          econtent_len as u32,
-            private_nullifier:      private_nullifier_hex,
-            r_dg1:                  config.r_dg1.clone(),
+            salt_in:                config.base.salt_2.clone(),
+            dg1:                    pd.dg1_padded,
+            dg1_padded_length:      pd.dg1_len as u64,
+            dg1_hash_offset:        pd.dg1_hash_offset as u32,
+            signed_attributes:      pd.signed_attrs,
+            signed_attributes_size: pd.signed_attributes_size as u32,
+            e_content:              pd.econtent,
+            e_content_len:          pd.econtent_len as u32,
+            private_nullifier:      pd.private_nullifier_hex,
+            r_dg1:                  config.base.r_dg1.clone(),
         };
 
-        // Compute merkle_root if using default zero sentinel
-        let merkle_root = {
-            let zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
-            if config.merkle_root == zero {
-                let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
-                let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
-                let leaf_idx: u64 = config.leaf_index.parse().unwrap_or(0);
-                let path_fields: Vec<ark_bn254::Fr> = config
-                    .merkle_path
-                    .iter()
-                    .map(|s| commitment::parse_hex_to_field(s))
-                    .collect();
-                let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
-                commitment::field_to_hex_string(&root)
-            } else {
-                config.merkle_root
-            }
-        };
-
-        let attest = AttestInputs {
-            root:             merkle_root,
-            current_date:     config.current_date,
-            service_scope:    config.service_scope,
-            service_subscope: config.service_subscope,
-            dg1:              dg1_padded,
-            r_dg1:            config.r_dg1,
-            sod_hash:         sod_hash_hex,
-            leaf_index:       config.leaf_index,
-            merkle_path:      config.merkle_path,
-            min_age_required: config.min_age_required,
-            max_age_required: config.max_age_required,
-            nullifier_secret: config.nullifier_secret,
-        };
+        let attest =
+            config
+                .base
+                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex);
 
         Ok(MerkleAge720Inputs {
             add_dsc,
@@ -806,34 +868,11 @@ impl PassportReader {
         csca_key_index: usize,
         config: MerkleAge1300Config,
     ) -> Result<MerkleAge1300Inputs, PassportError> {
-        // === Extract passport data (same as 720) ===
-        let dg1_padded = fit::<MAX_DG1_SIZE>(self.dg1.as_bytes())?;
-        let dg1_len = self.dg1.len();
-
-        let (signed_attrs, signed_attributes_size) = self.extract_signed_attrs()?;
-        let (econtent, econtent_len, econtent_bytes) = self.extract_econtent()?;
-
-        // DSC: pubkey (256), exponent, barrett (257), SOD signature (256)
-        let (dsc_modulus, dsc_exponent, dsc_barrett, sod_signature) = self.extract_dsc()?;
-
-        // CSCA: pubkey (512), exponent, barrett (513), cert signature (512)
-        let (csca_modulus, csca_exponent, csca_barrett, csca_signature) = if self.mockdata {
-            let key = self
-                .csca_pubkey
-                .as_ref()
-                .ok_or(PassportError::MissingCscaMockKey)?;
-            self.extract_csca_from_pubkey(key)?
-        } else {
-            self.extract_csca(csca_key_index)?
-        };
-
-        // Offsets
-        let dg1_hash = Sha256::digest(self.dg1.as_bytes());
-        let dg1_hash_offset = find_offset(econtent_bytes, dg1_hash.as_slice(), "DG1 hash")?;
+        let pd = self.extract_passport_data(csca_key_index)?;
 
         // DSC certificate TBS at 1300-byte size
         let (tbs_cert_1300, tbs_cert_len, dsc_pubkey_offset) =
-            self.extract_dsc_cert_sized::<MAX_TBS_SIZE_1300>(&dsc_modulus)?;
+            self.extract_dsc_cert_sized::<MAX_TBS_SIZE_1300>(&pd.dsc_modulus)?;
 
         // chunk1: first 640 bytes of TBS
         let mut chunk1 = [0u8; CHUNK1_SIZE];
@@ -841,9 +880,6 @@ impl PassportReader {
 
         // Partial SHA256: compute intermediate state
         let state1 = partial_sha256::sha256_start(&chunk1);
-
-        // Country from DG1
-        let country = self.extract_country();
 
         // === Compute Poseidon2 commitments for 5-circuit chain ===
 
@@ -862,31 +898,25 @@ impl PassportReader {
 
         // Circuit 2 (dsc_verify) output:
         //   comm_out_verify = hash_salt_country_tbs(salt_1, country, tbs_cert_1300)
-        let comm_out_verify =
-            commitment::hash_salt_country_tbs(&config.salt_1, country.as_bytes(), &tbs_cert_1300);
+        let comm_out_verify = commitment::hash_salt_country_tbs(
+            &config.base.salt_1,
+            pd.country.as_bytes(),
+            &tbs_cert_1300,
+        );
         let comm_out_verify_hex = commitment::field_to_hex_string(&comm_out_verify);
-
-        // Private nullifier: hash(dg1, e_content, sod_signature)
-        let private_nullifier =
-            commitment::calculate_private_nullifier(&dg1_padded, &econtent, &sod_signature);
-        let private_nullifier_hex = commitment::field_to_hex_string(&private_nullifier);
 
         // Circuit 3 (id_data) output:
         //   comm_out_id = hash_salt_country_sa_dg1_econtent_nullifier(salt_2, ...)
         let comm_out_id = commitment::hash_salt_country_sa_dg1_econtent_nullifier(
-            &config.salt_2,
-            country.as_bytes(),
-            &signed_attrs,
-            signed_attributes_size as u64,
-            &dg1_padded,
-            &econtent,
-            private_nullifier,
+            &config.base.salt_2,
+            pd.country.as_bytes(),
+            &pd.signed_attrs,
+            pd.signed_attributes_size as u64,
+            &pd.dg1_padded,
+            &pd.econtent,
+            pd.private_nullifier,
         );
         let comm_out_id_hex = commitment::field_to_hex_string(&comm_out_id);
-
-        // SOD hash: hash(packed_e_content)
-        let computed_sod_hash = commitment::calculate_sod_hash(&econtent);
-        let sod_hash_hex = commitment::field_to_hex_string(&computed_sod_hash);
 
         // === Build 5 circuit input structs ===
 
@@ -897,81 +927,52 @@ impl PassportReader {
 
         let add_dsc_verify = AddDscVerify1300Inputs {
             comm_in: comm_out_hash_hex,
-            csc_pubkey: csca_modulus,
+            csc_pubkey: pd.csca_modulus,
             salt: config.salt_0,
-            country,
+            country: pd.country,
             state1,
             tbs_certificate: tbs_cert_1300,
             tbs_certificate_len: tbs_cert_len as u32,
-            csc_pubkey_redc_param: csca_barrett,
-            dsc_signature: csca_signature,
-            exponent: csca_exponent,
-            salt_out: config.salt_1.clone(),
+            csc_pubkey_redc_param: pd.csca_barrett,
+            dsc_signature: pd.csca_signature,
+            exponent: pd.csca_exponent,
+            salt_out: config.base.salt_1.clone(),
         };
 
         let add_id_data = AddIdData1300Inputs {
             comm_in: comm_out_verify_hex,
-            salt_in: config.salt_1,
-            salt_out: config.salt_2.clone(),
-            dg1: dg1_padded,
-            dsc_pubkey: dsc_modulus,
-            dsc_pubkey_redc_param: dsc_barrett,
+            salt_in: config.base.salt_1.clone(),
+            salt_out: config.base.salt_2.clone(),
+            dg1: pd.dg1_padded,
+            dsc_pubkey: pd.dsc_modulus,
+            dsc_pubkey_redc_param: pd.dsc_barrett,
             dsc_pubkey_offset_in_dsc_cert: dsc_pubkey_offset as u32,
-            sod_signature,
+            sod_signature: pd.sod_signature,
             tbs_certificate: tbs_cert_1300,
-            signed_attributes: signed_attrs,
-            signed_attributes_size: signed_attributes_size as u64,
-            exponent: dsc_exponent,
-            e_content: econtent,
+            signed_attributes: pd.signed_attrs,
+            signed_attributes_size: pd.signed_attributes_size as u64,
+            exponent: pd.dsc_exponent,
+            e_content: pd.econtent,
         };
 
         let add_integrity = AddIntegrityCommitInputs {
             comm_in:                comm_out_id_hex,
-            salt_in:                config.salt_2,
-            dg1:                    dg1_padded,
-            dg1_padded_length:      dg1_len as u64,
-            dg1_hash_offset:        dg1_hash_offset as u32,
-            signed_attributes:      signed_attrs,
-            signed_attributes_size: signed_attributes_size as u32,
-            e_content:              econtent,
-            e_content_len:          econtent_len as u32,
-            private_nullifier:      private_nullifier_hex,
-            r_dg1:                  config.r_dg1.clone(),
+            salt_in:                config.base.salt_2.clone(),
+            dg1:                    pd.dg1_padded,
+            dg1_padded_length:      pd.dg1_len as u64,
+            dg1_hash_offset:        pd.dg1_hash_offset as u32,
+            signed_attributes:      pd.signed_attrs,
+            signed_attributes_size: pd.signed_attributes_size as u32,
+            e_content:              pd.econtent,
+            e_content_len:          pd.econtent_len as u32,
+            private_nullifier:      pd.private_nullifier_hex,
+            r_dg1:                  config.base.r_dg1.clone(),
         };
 
-        // Compute merkle_root if using default zero sentinel
-        let merkle_root = {
-            let zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
-            if config.merkle_root == zero {
-                let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
-                let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
-                let leaf_idx: u64 = config.leaf_index.parse().unwrap_or(0);
-                let path_fields: Vec<ark_bn254::Fr> = config
-                    .merkle_path
-                    .iter()
-                    .map(|s| commitment::parse_hex_to_field(s))
-                    .collect();
-                let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
-                commitment::field_to_hex_string(&root)
-            } else {
-                config.merkle_root
-            }
-        };
-
-        let attest = AttestInputs {
-            root:             merkle_root,
-            current_date:     config.current_date,
-            service_scope:    config.service_scope,
-            service_subscope: config.service_subscope,
-            dg1:              dg1_padded,
-            r_dg1:            config.r_dg1,
-            sod_hash:         sod_hash_hex,
-            leaf_index:       config.leaf_index,
-            merkle_path:      config.merkle_path,
-            min_age_required: config.min_age_required,
-            max_age_required: config.max_age_required,
-            nullifier_secret: config.nullifier_secret,
-        };
+        let attest =
+            config
+                .base
+                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex);
 
         Ok(MerkleAge1300Inputs {
             add_dsc_hash,
@@ -1000,22 +1001,32 @@ mod byte_array {
 }
 
 // ============================================================================
-// TOML serialization helpers
+// TOML serialization trait and helpers
 // ============================================================================
 
-/// Format a byte slice as a TOML array: [1, 2, 3, ...]
-fn fmt_u8(arr: &[u8]) -> String {
-    format!(
-        "[{}]",
-        arr.iter()
-            .map(|b| b.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    )
+/// Trait for circuit input types that can be serialized to TOML format.
+pub trait SaveToml {
+    /// Serialize this circuit input to a Noir-compatible TOML string.
+    fn to_toml_string(&self) -> String;
+
+    /// Write the TOML serialization to a file.
+    fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
+        std::fs::write(path, self.to_toml_string())
+    }
 }
 
-/// Format a u32 slice as a TOML array: [1, 2, 3, ...]
-fn fmt_u32(arr: &[u32]) -> String {
+/// Trait for circuit input container types (720/1300) that hold all circuit
+/// inputs for a proving pipeline.
+pub trait CircuitInputSet {
+    /// Return the list of circuit file names (without extension).
+    fn circuit_names(&self) -> Vec<&str>;
+
+    /// Save all circuit input TOML files to the given directory.
+    fn save_all(&self, base_dir: &Path) -> std::io::Result<()>;
+}
+
+/// Format a numeric slice as a TOML array: [1, 2, 3, ...]
+fn fmt_array<T: std::fmt::Display>(arr: &[T]) -> String {
     format!(
         "[{}]",
         arr.iter()
@@ -1029,53 +1040,49 @@ fn fmt_u32(arr: &[u32]) -> String {
 // TOML serialization for each circuit
 // ============================================================================
 
-impl AddDsc720Inputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddDsc720Inputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
-        let _ = writeln!(out, "csc_pubkey = {}", fmt_u8(&self.csc_pubkey));
+        let _ = writeln!(out, "csc_pubkey = {}", fmt_array(&self.csc_pubkey));
         let _ = writeln!(out, "salt = \"{}\"", self.salt);
         let _ = writeln!(out, "country = \"{}\"", self.country);
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_u8(&self.tbs_certificate));
+        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
         let _ = writeln!(
             out,
             "csc_pubkey_redc_param = {}",
-            fmt_u8(&self.csc_pubkey_redc_param)
+            fmt_array(&self.csc_pubkey_redc_param)
         );
-        let _ = writeln!(out, "dsc_signature = {}", fmt_u8(&self.dsc_signature));
+        let _ = writeln!(out, "dsc_signature = {}", fmt_array(&self.dsc_signature));
         let _ = writeln!(out, "exponent = {}", self.exponent);
         let _ = writeln!(out, "tbs_certificate_len = {}", self.tbs_certificate_len);
         out
     }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
-    }
 }
 
-impl AddIdData720Inputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddIdData720Inputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"{}\"", self.comm_in);
         let _ = writeln!(out, "salt_in = \"{}\"", self.salt_in);
         let _ = writeln!(out, "salt_out = \"{}\"", self.salt_out);
-        let _ = writeln!(out, "dg1 = {}", fmt_u8(&self.dg1));
-        let _ = writeln!(out, "dsc_pubkey = {}", fmt_u8(&self.dsc_pubkey));
+        let _ = writeln!(out, "dg1 = {}", fmt_array(&self.dg1));
+        let _ = writeln!(out, "dsc_pubkey = {}", fmt_array(&self.dsc_pubkey));
         let _ = writeln!(
             out,
             "dsc_pubkey_redc_param = {}",
-            fmt_u8(&self.dsc_pubkey_redc_param)
+            fmt_array(&self.dsc_pubkey_redc_param)
         );
         let _ = writeln!(
             out,
             "dsc_pubkey_offset_in_dsc_cert = {}",
             self.dsc_pubkey_offset_in_dsc_cert
         );
-        let _ = writeln!(out, "sod_signature = {}", fmt_u8(&self.sod_signature));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_u8(&self.tbs_certificate));
+        let _ = writeln!(out, "sod_signature = {}", fmt_array(&self.sod_signature));
+        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
         let _ = writeln!(
             out,
             "signed_attributes = {}",
-            fmt_u8(&self.signed_attributes)
+            fmt_array(&self.signed_attributes)
         );
         let _ = writeln!(
             out,
@@ -1083,53 +1090,45 @@ impl AddIdData720Inputs {
             self.signed_attributes_size
         );
         let _ = writeln!(out, "exponent = {}", self.exponent);
-        let _ = writeln!(out, "e_content = {}", fmt_u8(&self.e_content));
+        let _ = writeln!(out, "e_content = {}", fmt_array(&self.e_content));
         out
-    }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
     }
 }
 
-impl AddIntegrityCommitInputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddIntegrityCommitInputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"{}\"", self.comm_in);
         let _ = writeln!(out, "salt_in = \"{}\"", self.salt_in);
-        let _ = writeln!(out, "dg1 = {}", fmt_u8(&self.dg1));
+        let _ = writeln!(out, "dg1 = {}", fmt_array(&self.dg1));
         let _ = writeln!(out, "dg1_padded_length = {}", self.dg1_padded_length);
         let _ = writeln!(out, "dg1_hash_offset = {}", self.dg1_hash_offset);
         let _ = writeln!(
             out,
             "signed_attributes = {}",
-            fmt_u8(&self.signed_attributes)
+            fmt_array(&self.signed_attributes)
         );
         let _ = writeln!(
             out,
             "signed_attributes_size = {}",
             self.signed_attributes_size
         );
-        let _ = writeln!(out, "e_content = {}", fmt_u8(&self.e_content));
+        let _ = writeln!(out, "e_content = {}", fmt_array(&self.e_content));
         let _ = writeln!(out, "e_content_len = {}", self.e_content_len);
         let _ = writeln!(out, "private_nullifier = \"{}\"", self.private_nullifier);
         let _ = writeln!(out, "r_dg1 = \"{}\"", self.r_dg1);
         out
     }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
-    }
 }
 
-impl AttestInputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AttestInputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "root = \"{}\"", self.root);
         let _ = writeln!(out, "current_date = \"{}\"", self.current_date);
         let _ = writeln!(out, "service_scope = \"{}\"", self.service_scope);
         let _ = writeln!(out, "service_subscope = \"{}\"", self.service_subscope);
-        let _ = writeln!(out, "dg1 = {}", fmt_u8(&self.dg1));
+        let _ = writeln!(out, "dg1 = {}", fmt_array(&self.dg1));
         let _ = writeln!(out, "r_dg1 = \"{}\"", self.r_dg1);
         let _ = writeln!(out, "sod_hash = \"{}\"", self.sod_hash);
         let _ = writeln!(out, "leaf_index = \"{}\"", self.leaf_index);
@@ -1149,16 +1148,20 @@ impl AttestInputs {
         let _ = writeln!(out, "nullifier_secret = \"{}\"", self.nullifier_secret);
         out
     }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
-    }
 }
 
-impl MerkleAge720Inputs {
-    /// Save all 4 circuit input TOML files to the given directory.
-    pub fn save_all<P: AsRef<Path>>(&self, base_dir: P) -> std::io::Result<()> {
-        let base = base_dir.as_ref();
+impl CircuitInputSet for MerkleAge720Inputs {
+    fn circuit_names(&self) -> Vec<&str> {
+        vec![
+            "t_add_dsc_720",
+            "t_add_id_data_720",
+            "t_add_integrity_commit",
+            "t_attest",
+        ]
+    }
+
+    fn save_all(&self, base_dir: &Path) -> std::io::Result<()> {
+        let base = base_dir;
         std::fs::create_dir_all(base)?;
         self.add_dsc
             .save_to_toml_file(base.join("t_add_dsc_720.toml"))?;
@@ -1173,69 +1176,61 @@ impl MerkleAge720Inputs {
 
 // --- TBS-1300 TOML serialization ---
 
-impl AddDscHash1300Inputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddDscHash1300Inputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "salt = \"{}\"", self.salt);
-        let _ = writeln!(out, "chunk1 = {}", fmt_u8(&self.chunk1));
+        let _ = writeln!(out, "chunk1 = {}", fmt_array(&self.chunk1));
         out
-    }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
     }
 }
 
-impl AddDscVerify1300Inputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddDscVerify1300Inputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"{}\"", self.comm_in);
-        let _ = writeln!(out, "csc_pubkey = {}", fmt_u8(&self.csc_pubkey));
+        let _ = writeln!(out, "csc_pubkey = {}", fmt_array(&self.csc_pubkey));
         let _ = writeln!(out, "salt = \"{}\"", self.salt);
         let _ = writeln!(out, "country = \"{}\"", self.country);
-        let _ = writeln!(out, "state1 = {}", fmt_u32(&self.state1));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_u8(&self.tbs_certificate));
+        let _ = writeln!(out, "state1 = {}", fmt_array(&self.state1));
+        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
         let _ = writeln!(out, "tbs_certificate_len = {}", self.tbs_certificate_len);
         let _ = writeln!(
             out,
             "csc_pubkey_redc_param = {}",
-            fmt_u8(&self.csc_pubkey_redc_param)
+            fmt_array(&self.csc_pubkey_redc_param)
         );
-        let _ = writeln!(out, "dsc_signature = {}", fmt_u8(&self.dsc_signature));
+        let _ = writeln!(out, "dsc_signature = {}", fmt_array(&self.dsc_signature));
         let _ = writeln!(out, "exponent = {}", self.exponent);
         let _ = writeln!(out, "salt_out = \"{}\"", self.salt_out);
         out
     }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
-    }
 }
 
-impl AddIdData1300Inputs {
-    pub fn to_toml_string(&self) -> String {
+impl SaveToml for AddIdData1300Inputs {
+    fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"{}\"", self.comm_in);
         let _ = writeln!(out, "salt_in = \"{}\"", self.salt_in);
         let _ = writeln!(out, "salt_out = \"{}\"", self.salt_out);
-        let _ = writeln!(out, "dg1 = {}", fmt_u8(&self.dg1));
-        let _ = writeln!(out, "dsc_pubkey = {}", fmt_u8(&self.dsc_pubkey));
+        let _ = writeln!(out, "dg1 = {}", fmt_array(&self.dg1));
+        let _ = writeln!(out, "dsc_pubkey = {}", fmt_array(&self.dsc_pubkey));
         let _ = writeln!(
             out,
             "dsc_pubkey_redc_param = {}",
-            fmt_u8(&self.dsc_pubkey_redc_param)
+            fmt_array(&self.dsc_pubkey_redc_param)
         );
         let _ = writeln!(
             out,
             "dsc_pubkey_offset_in_dsc_cert = {}",
             self.dsc_pubkey_offset_in_dsc_cert
         );
-        let _ = writeln!(out, "sod_signature = {}", fmt_u8(&self.sod_signature));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_u8(&self.tbs_certificate));
+        let _ = writeln!(out, "sod_signature = {}", fmt_array(&self.sod_signature));
+        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
         let _ = writeln!(
             out,
             "signed_attributes = {}",
-            fmt_u8(&self.signed_attributes)
+            fmt_array(&self.signed_attributes)
         );
         let _ = writeln!(
             out,
@@ -1243,19 +1238,24 @@ impl AddIdData1300Inputs {
             self.signed_attributes_size
         );
         let _ = writeln!(out, "exponent = {}", self.exponent);
-        let _ = writeln!(out, "e_content = {}", fmt_u8(&self.e_content));
+        let _ = writeln!(out, "e_content = {}", fmt_array(&self.e_content));
         out
-    }
-
-    pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
-        std::fs::write(path, self.to_toml_string())
     }
 }
 
-impl MerkleAge1300Inputs {
-    /// Save all 5 circuit input TOML files to the given directory.
-    pub fn save_all<P: AsRef<Path>>(&self, base_dir: P) -> std::io::Result<()> {
-        let base = base_dir.as_ref();
+impl CircuitInputSet for MerkleAge1300Inputs {
+    fn circuit_names(&self) -> Vec<&str> {
+        vec![
+            "t_add_dsc_hash_1300",
+            "t_add_dsc_verify_1300",
+            "t_add_id_data_1300",
+            "t_add_integrity_commit",
+            "t_attest",
+        ]
+    }
+
+    fn save_all(&self, base_dir: &Path) -> std::io::Result<()> {
+        let base = base_dir;
         std::fs::create_dir_all(base)?;
         self.add_dsc_hash
             .save_to_toml_file(base.join("t_add_dsc_hash_1300.toml"))?;
@@ -1309,10 +1309,12 @@ mod tests {
         let csca_idx = reader.validate().expect("validation failed");
 
         let config = MerkleAge720Config {
-            current_date: 1735689600,
-            min_age_required: 18,
-            max_age_required: 0,
-            ..Default::default()
+            base: MerkleAgeBaseConfig {
+                current_date: 1735689600,
+                min_age_required: 18,
+                max_age_required: 0,
+                ..Default::default()
+            },
         };
 
         let inputs = reader
@@ -1375,9 +1377,12 @@ mod tests {
         let csca_idx = reader.validate().expect("validation failed");
 
         let config = MerkleAge1300Config {
-            current_date: 1735689600,
-            min_age_required: 17,
-            max_age_required: 0,
+            base: MerkleAgeBaseConfig {
+                current_date: 1735689600,
+                min_age_required: 17,
+                max_age_required: 0,
+                ..Default::default()
+            },
             ..Default::default()
         };
 
