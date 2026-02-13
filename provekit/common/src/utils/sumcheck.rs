@@ -1,10 +1,11 @@
+#[cfg(feature = "mavros_compiler")]
+use mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts};
 use {
     crate::{
         utils::{pad_to_power_of_two, unzip_double_array, workload_size},
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
-    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
@@ -228,6 +229,7 @@ pub fn calculate_external_row_of_r1cs_matrices(
     [a, b, c]
 }
 
+#[cfg(feature = "mavros_compiler")]
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices_with_ad(
     alpha: Vec<FieldElement>,

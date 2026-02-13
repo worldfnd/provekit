@@ -3,7 +3,6 @@ use {
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
-    mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts},
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
@@ -14,6 +13,9 @@ use {
 
 #[cfg(feature = "mavros_compiler")]
 pub mod input_utils;
+#[cfg(feature = "mavros_compiler")]
+use mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts};
+
 mod r1cs;
 mod whir_r1cs;
 mod witness;

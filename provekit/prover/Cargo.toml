@@ -10,7 +10,7 @@ repository.workspace = true
 
 [features]
 default = []
-mavros_compiler = []
+mavros_compiler = ["dep:mavros", "provekit-common/mavros_compiler"]
 
 [dependencies]
 # Workspace crates
@@ -35,7 +35,7 @@ anyhow.workspace = true
 rand.workspace = true
 rayon.workspace = true
 tracing.workspace = true
-mavros.workspace = true
+mavros = { workspace = true, optional = true }
 
 [lints]
 workspace = true

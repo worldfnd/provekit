@@ -163,6 +163,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     inverses
 }
 
+#[cfg(feature = "mavros_compiler")]
 pub fn convert_mavros_r1cs_to_provekit(
     mavros_r1cs: &mavros::compiler::r1cs_gen::R1CS,
 ) -> crate::R1CS {

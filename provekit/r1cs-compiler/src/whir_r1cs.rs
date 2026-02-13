@@ -1,5 +1,6 @@
+#[cfg(feature = "mavros_compiler")]
+use mavros::compiler::r1cs_gen::R1CS as MavrosR1CS;
 use {
-    mavros::compiler::r1cs_gen::R1CS as MavrosR1CS,
     provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     std::sync::Arc,
     whir::{
