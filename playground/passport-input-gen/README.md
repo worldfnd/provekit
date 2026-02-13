@@ -1,4 +1,4 @@
-# passport-input-gen
+# Passport Input Generator
 
 A Rust crate for parsing passport data and generating circuit inputs for the `merkle_age_check` multi-circuit pipeline.
 
@@ -135,7 +135,7 @@ let proof = prover.prove(input_map)?;
 The `passport_cli` binary provides an interactive interface for both modes.
 
 ```
-cargo run --bin passport_cli
+cargo run --release --bin passport_cli
 ```
 
 You will be prompted to select:
