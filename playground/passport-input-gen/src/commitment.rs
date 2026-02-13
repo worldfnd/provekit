@@ -379,8 +379,9 @@ mod tests {
 
     #[test]
     fn test_compute_merkle_root_empty_tree() {
-        // Compute merkle root for leaf_index=0, merkle_path=all zeros (first leaf in empty tree).
-        // This exercises the full chain: h_dg1 -> leaf -> merkle_root.
+        // Compute merkle root for leaf_index=0, merkle_path=all zeros (first leaf in
+        // empty tree). This exercises the full chain: h_dg1 -> leaf ->
+        // merkle_root.
         let r_dg1 = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
         let dg1 = [0u8; 95]; // placeholder DG1
 
