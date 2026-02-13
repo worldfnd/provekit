@@ -49,6 +49,46 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     verifier.verify(&proof).expect("Verifying proof");
 }
 
+fn test_mavros_compiler(test_case_path: impl AsRef<Path>) {
+    let test_case_path = test_case_path.as_ref();
+
+    let result = std::panic::catch_unwind(|| {
+        compile_workspace(test_case_path).expect("Compiling workspace");
+
+        let nargo_toml_path = test_case_path.join("Nargo.toml");
+        let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
+        let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
+
+        let package_name = nargo_toml.package.name;
+        let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+        let witness_file_path = test_case_path.join("Prover.toml");
+
+        let schema = NoirProofScheme::from_file(&circuit_path.canonicalize().unwrap())
+            .expect("Reading proof scheme");
+        let prover = Prover::from_noir_proof_scheme(schema.clone());
+        let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
+
+        let proof = prover
+            .prove(&witness_file_path)
+            .expect("While proving Noir program statement");
+
+        verifier.verify(&proof).expect("Verifying proof");
+    });
+
+    match result {
+        Ok(_) => eprintln!("✓ Test passed"),
+        Err(e) => {
+            if let Some(msg) = e.downcast_ref::<&str>() {
+                eprintln!("✗ Test failed with panic: {}", msg);
+            } else if let Some(msg) = e.downcast_ref::<String>() {
+                eprintln!("✗ Test failed with panic: {}", msg);
+            } else {
+                eprintln!("✗ Test failed with unknown panic");
+            }
+        }
+    }
+}
+
 pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> {
     let workspace_path = workspace_path.as_ref();
     let workspace_path = if workspace_path.ends_with("Nargo.toml") {
@@ -84,5 +124,12 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
 #[test_case("../../noir-examples/noir-passport-examples/complete_age_check"; "complete_age_check")]
 fn case(path: &str) {
-    test_compiler(path);
+    #[cfg(feature = "mavros_compiler")]
+    {
+        test_mavros_compiler(path);
+    }
+    #[cfg(not(feature = "mavros_compiler"))]
+    {
+        test_compiler(path);
+    }
 }
