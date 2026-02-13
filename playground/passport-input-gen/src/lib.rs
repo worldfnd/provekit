@@ -33,8 +33,7 @@ use {
 
 /// Zero BN254 field element as a 0x-prefixed hex string (used as sentinel /
 /// default for Merkle fields).
-pub const ZERO_FIELD: &str =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
+pub const ZERO_FIELD: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 // ============================================================================
 // Configuration
@@ -601,10 +600,7 @@ impl PassportReader {
 
     /// Extract all common passport data fields needed by both the 720 and 1300
     /// circuit pipelines. This consolidates the repeated extraction preamble.
-    fn extract_passport_data(
-        &self,
-        csca_key_index: usize,
-    ) -> Result<PassportData, PassportError> {
+    fn extract_passport_data(&self, csca_key_index: usize) -> Result<PassportData, PassportError> {
         let dg1_padded = fit::<MAX_DG1_SIZE>(self.dg1.as_bytes())?;
         let dg1_len = self.dg1.len();
 
@@ -771,8 +767,7 @@ impl PassportReader {
         let pd = self.extract_passport_data(csca_key_index)?;
 
         // DSC certificate TBS (720-byte path)
-        let (tbs_cert, tbs_cert_len, dsc_pubkey_offset) =
-            self.extract_dsc_cert(&pd.dsc_modulus)?;
+        let (tbs_cert, tbs_cert_len, dsc_pubkey_offset) = self.extract_dsc_cert(&pd.dsc_modulus)?;
 
         // === Compute Poseidon2 commitments ===
 
@@ -800,14 +795,14 @@ impl PassportReader {
         // === Build circuit input structs ===
 
         let add_dsc = AddDsc720Inputs {
-            csc_pubkey: pd.csca_modulus,
-            salt: config.base.salt_1.clone(),
-            country: pd.country,
-            tbs_certificate: tbs_cert,
+            csc_pubkey:            pd.csca_modulus,
+            salt:                  config.base.salt_1.clone(),
+            country:               pd.country,
+            tbs_certificate:       tbs_cert,
             csc_pubkey_redc_param: pd.csca_barrett,
-            dsc_signature: pd.csca_signature,
-            exponent: pd.csca_exponent,
-            tbs_certificate_len: tbs_cert_len as u32,
+            dsc_signature:         pd.csca_signature,
+            exponent:              pd.csca_exponent,
+            tbs_certificate_len:   tbs_cert_len as u32,
         };
 
         let add_id_data = AddIdData720Inputs {
@@ -1046,7 +1041,11 @@ impl SaveToml for AddDsc720Inputs {
         let _ = writeln!(out, "csc_pubkey = {}", fmt_array(&self.csc_pubkey));
         let _ = writeln!(out, "salt = \"{}\"", self.salt);
         let _ = writeln!(out, "country = \"{}\"", self.country);
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
+        let _ = writeln!(
+            out,
+            "tbs_certificate = {}",
+            fmt_array(&self.tbs_certificate)
+        );
         let _ = writeln!(
             out,
             "csc_pubkey_redc_param = {}",
@@ -1078,7 +1077,11 @@ impl SaveToml for AddIdData720Inputs {
             self.dsc_pubkey_offset_in_dsc_cert
         );
         let _ = writeln!(out, "sod_signature = {}", fmt_array(&self.sod_signature));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
+        let _ = writeln!(
+            out,
+            "tbs_certificate = {}",
+            fmt_array(&self.tbs_certificate)
+        );
         let _ = writeln!(
             out,
             "signed_attributes = {}",
@@ -1193,7 +1196,11 @@ impl SaveToml for AddDscVerify1300Inputs {
         let _ = writeln!(out, "salt = \"{}\"", self.salt);
         let _ = writeln!(out, "country = \"{}\"", self.country);
         let _ = writeln!(out, "state1 = {}", fmt_array(&self.state1));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
+        let _ = writeln!(
+            out,
+            "tbs_certificate = {}",
+            fmt_array(&self.tbs_certificate)
+        );
         let _ = writeln!(out, "tbs_certificate_len = {}", self.tbs_certificate_len);
         let _ = writeln!(
             out,
@@ -1226,7 +1233,11 @@ impl SaveToml for AddIdData1300Inputs {
             self.dsc_pubkey_offset_in_dsc_cert
         );
         let _ = writeln!(out, "sod_signature = {}", fmt_array(&self.sod_signature));
-        let _ = writeln!(out, "tbs_certificate = {}", fmt_array(&self.tbs_certificate));
+        let _ = writeln!(
+            out,
+            "tbs_certificate = {}",
+            fmt_array(&self.tbs_certificate)
+        );
         let _ = writeln!(
             out,
             "signed_attributes = {}",
