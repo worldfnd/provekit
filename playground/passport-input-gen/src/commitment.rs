@@ -183,6 +183,46 @@ pub fn commit_to_sha256_state_and_data(
     poseidon2_hash(&fields)
 }
 
+/// Compute h_dg1: Poseidon2([r_dg1, packed_dg1[0..4]]).
+///
+/// Matches Noir's `Poseidon2::hash([r_dg1].concat(packed_dg1), 5)` from
+/// `t_attest/src/main.nr` and `t_add_integrity_commit/src/main.nr`.
+pub fn calculate_h_dg1(r_dg1: &str, dg1: &[u8]) -> Fr {
+    let mut fields = Vec::with_capacity(5);
+    fields.push(parse_hex_to_field(r_dg1));
+    fields.extend(pack_be_bytes_into_fields(dg1));
+    poseidon2_hash(&fields)
+}
+
+/// Compute Merkle leaf: Poseidon2([h_dg1, sod_hash]).
+///
+/// Matches Noir's `Poseidon2::hash([h_dg1, sod_hash], 2)` from
+/// `t_attest/src/main.nr` and `t_add_integrity_commit/src/main.nr`.
+pub fn calculate_leaf(h_dg1: Fr, sod_hash: Fr) -> Fr {
+    poseidon2_hash(&[h_dg1, sod_hash])
+}
+
+/// Compute Merkle root from leaf, index, and sibling path.
+///
+/// Translates Noir's `compute_merkle_root<N>(leaf, index, hash_path)` from
+/// `zkpassport_libs/commitment/common/src/lib.nr:315-328`.
+///
+/// Binary Merkle tree with Poseidon2 hashing. Bit `i` of `leaf_index` (LE)
+/// determines whether `current` is the left or right child at level `i`.
+pub fn compute_merkle_root(leaf: Fr, leaf_index: u64, merkle_path: &[Fr]) -> Fr {
+    let mut current = leaf;
+    for (i, sibling) in merkle_path.iter().enumerate() {
+        let bit = (leaf_index >> i) & 1;
+        let (left, right) = if bit == 0 {
+            (current, *sibling)
+        } else {
+            (*sibling, current)
+        };
+        current = poseidon2_hash(&[left, right]);
+    }
+    current
+}
+
 /// Convert a BN254 field element to a 0x-prefixed hex string (64 hex chars).
 pub fn field_to_hex_string(f: &Fr) -> String {
     let bytes = f.into_bigint().to_bytes_be();
@@ -335,5 +375,30 @@ mod tests {
             comm_out_hex, "0x045433920bc35680c37f22815da747e86bf7974625da04b1f015af21e42446b1",
             "commit_to_sha256_state_and_data output mismatch with benchmark comm_in"
         );
+    }
+
+    #[test]
+    fn test_compute_merkle_root_empty_tree() {
+        // Compute merkle root for leaf_index=0, merkle_path=all zeros (first leaf in empty tree).
+        // This exercises the full chain: h_dg1 -> leaf -> merkle_root.
+        let r_dg1 = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        let dg1 = [0u8; 95]; // placeholder DG1
+
+        let e_content: [u8; 200] = [0u8; 200]; // placeholder eContent
+        let sod_hash = calculate_sod_hash(&e_content);
+
+        let h_dg1 = calculate_h_dg1(r_dg1, &dg1);
+        let leaf = calculate_leaf(h_dg1, sod_hash);
+
+        // leaf_index=0, all-zero path (24 levels)
+        let merkle_path = vec![Fr::from(0u64); 24];
+        let root = compute_merkle_root(leaf, 0, &merkle_path);
+
+        // The root should be deterministic and non-zero
+        assert_ne!(root, Fr::from(0u64), "merkle root should not be zero");
+
+        // Verify consistency: computing the same root again gives the same value
+        let root2 = compute_merkle_root(leaf, 0, &merkle_path);
+        assert_eq!(root, root2, "merkle root should be deterministic");
     }
 }

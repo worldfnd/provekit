@@ -749,8 +749,28 @@ impl PassportReader {
             r_dg1:                  config.r_dg1.clone(),
         };
 
+        // Compute merkle_root if using default zero sentinel
+        let merkle_root = {
+            let zero =
+                "0x0000000000000000000000000000000000000000000000000000000000000000";
+            if config.merkle_root == zero {
+                let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
+                let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
+                let leaf_idx: u64 = config.leaf_index.parse().unwrap_or(0);
+                let path_fields: Vec<ark_bn254::Fr> = config
+                    .merkle_path
+                    .iter()
+                    .map(|s| commitment::parse_hex_to_field(s))
+                    .collect();
+                let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
+                commitment::field_to_hex_string(&root)
+            } else {
+                config.merkle_root
+            }
+        };
+
         let attest = AttestInputs {
-            root:             config.merkle_root,
+            root:             merkle_root,
             current_date:     config.current_date,
             service_scope:    config.service_scope,
             service_subscope: config.service_subscope,
@@ -920,8 +940,28 @@ impl PassportReader {
             r_dg1:                  config.r_dg1.clone(),
         };
 
+        // Compute merkle_root if using default zero sentinel
+        let merkle_root = {
+            let zero =
+                "0x0000000000000000000000000000000000000000000000000000000000000000";
+            if config.merkle_root == zero {
+                let h_dg1 = commitment::calculate_h_dg1(&config.r_dg1, &dg1_padded);
+                let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
+                let leaf_idx: u64 = config.leaf_index.parse().unwrap_or(0);
+                let path_fields: Vec<ark_bn254::Fr> = config
+                    .merkle_path
+                    .iter()
+                    .map(|s| commitment::parse_hex_to_field(s))
+                    .collect();
+                let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
+                commitment::field_to_hex_string(&root)
+            } else {
+                config.merkle_root
+            }
+        };
+
         let attest = AttestInputs {
-            root:             config.merkle_root,
+            root:             merkle_root,
             current_date:     config.current_date,
             service_scope:    config.service_scope,
             service_subscope: config.service_subscope,

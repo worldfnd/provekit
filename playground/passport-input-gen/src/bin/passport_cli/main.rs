@@ -4,7 +4,7 @@
 ///   - TBS variant: 720 or 1300
 ///   - Mode: Generate TOML files  or  Generate proofs directly (no TOML)
 ///
-/// Prove mode generates proofs for all t_add_* circuits (excluding t_attest)
+/// Prove mode generates proofs for all circuits (including t_attest)
 /// using the JSON -> InputMap -> prover.prove() pipeline.
 mod profiling_alloc;
 mod span_stats;
@@ -228,7 +228,7 @@ fn prove_circuit<T: serde::Serialize>(
 }
 
 fn prove_720(inputs: &MerkleAge720Inputs, benchmark_dir: &Path) -> Result<()> {
-    println!("\n  Proving TBS-720 chain (3 circuits, excluding t_attest)...");
+    println!("\n  Proving TBS-720 chain (4 circuits)...");
 
     prove_circuit(
         "t_add_dsc_720",
@@ -251,11 +251,18 @@ fn prove_720(inputs: &MerkleAge720Inputs, benchmark_dir: &Path) -> Result<()> {
         &benchmark_dir.join("t_add_integrity_commit-proof.np"),
     )?;
 
+    prove_circuit(
+        "t_attest",
+        &inputs.attest,
+        &benchmark_dir.join("t_attest-prover.pkp"),
+        &benchmark_dir.join("t_attest-proof.np"),
+    )?;
+
     Ok(())
 }
 
 fn prove_1300(inputs: &MerkleAge1300Inputs, benchmark_dir: &Path) -> Result<()> {
-    println!("\n  Proving TBS-1300 chain (4 circuits, excluding t_attest)...");
+    println!("\n  Proving TBS-1300 chain (5 circuits)...");
 
     prove_circuit(
         "t_add_dsc_hash_1300",
@@ -283,6 +290,13 @@ fn prove_1300(inputs: &MerkleAge1300Inputs, benchmark_dir: &Path) -> Result<()> 
         &inputs.add_integrity,
         &benchmark_dir.join("t_add_integrity_commit-prover.pkp"),
         &benchmark_dir.join("t_add_integrity_commit-proof.np"),
+    )?;
+
+    prove_circuit(
+        "t_attest",
+        &inputs.attest,
+        &benchmark_dir.join("t_attest-prover.pkp"),
+        &benchmark_dir.join("t_attest-proof.np"),
     )?;
 
     Ok(())
