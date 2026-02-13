@@ -1,5 +1,5 @@
 use {
-    crate::{skyscraper::SkyscraperSponge, FieldElement},
+    crate::FieldElement,
     ark_crypto_primitives::{
         crh::{CRHScheme, TwoToOneCRHScheme},
         merkle_tree::{Config, IdentityDigestConverter},
@@ -8,12 +8,6 @@ use {
     ark_ff::{BigInt, PrimeField},
     rand08::Rng,
     serde::{Deserialize, Serialize},
-    spongefish::{
-        codecs::arkworks_algebra::{
-            FieldDomainSeparator, FieldToUnitDeserialize, FieldToUnitSerialize,
-        },
-        DomainSeparator, ProofResult, ProverState, VerifierState,
-    },
     std::borrow::Borrow,
 };
 
@@ -83,29 +77,4 @@ impl Config for SkyscraperMerkleConfig {
     type InnerDigest = FieldElement;
     type LeafHash = SkyscraperCRH;
     type TwoToOneHash = SkyscraperTwoToOne;
-}
-
-impl whir::whir::domainsep::DigestDomainSeparator<SkyscraperMerkleConfig>
-    for DomainSeparator<SkyscraperSponge, FieldElement>
-{
-    fn add_digest(self, label: &str) -> Self {
-        <Self as FieldDomainSeparator<FieldElement>>::add_scalars(self, 1, label)
-    }
-}
-
-impl whir::whir::utils::DigestToUnitSerialize<SkyscraperMerkleConfig>
-    for ProverState<SkyscraperSponge, FieldElement>
-{
-    fn add_digest(&mut self, digest: FieldElement) -> ProofResult<()> {
-        self.add_scalars(&[digest])
-    }
-}
-
-impl whir::whir::utils::DigestToUnitDeserialize<SkyscraperMerkleConfig>
-    for VerifierState<'_, SkyscraperSponge, FieldElement>
-{
-    fn read_digest(&mut self) -> ProofResult<FieldElement> {
-        let [r] = self.next_scalars()?;
-        Ok(r)
-    }
 }

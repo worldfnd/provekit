@@ -5,7 +5,6 @@ use {
     },
     ark_std::{One, Zero},
     rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
-    spongefish::codecs::arkworks_algebra::FieldDomainSeparator,
     std::array,
     tracing::instrument,
 };
@@ -100,54 +99,6 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
             result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
         }
         result
-    }
-}
-
-/// Trait which is used to add sumcheck functionality fo `IOPattern`
-pub trait SumcheckIOPattern {
-    /// Prover sends coefficients of the cubic sumcheck polynomial and the
-    /// verifier sends randomness for the next sumcheck round
-    fn add_sumcheck_polynomials(self, num_vars: usize) -> Self;
-
-    /// Verifier sends the randomness on which the supposed 0-polynomial is
-    /// evaluated
-    fn add_rand(self, num_rand: usize) -> Self;
-
-    fn add_zk_sumcheck_polynomials(self, num_vars: usize) -> Self;
-
-    /// Prover sends the hash of the public inputs
-    /// Verifier sends randomness to construct weights
-    fn add_public_inputs(self) -> Self;
-}
-
-impl<IOPattern> SumcheckIOPattern for IOPattern
-where
-    IOPattern: FieldDomainSeparator<FieldElement>,
-{
-    fn add_zk_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
-        self = self.add_scalars(1, "Sum of G over boolean hypercube");
-        self = self.challenge_scalars(1, "Rho");
-        self = self.add_sumcheck_polynomials(num_vars);
-        self = self.add_scalars(2, "Polynomial sums");
-        self
-    }
-
-    fn add_sumcheck_polynomials(mut self, num_vars: usize) -> Self {
-        for _ in 0..num_vars {
-            self = self.add_scalars(4, "Sumcheck Polynomials");
-            self = self.challenge_scalars(1, "Sumcheck Random");
-        }
-        self
-    }
-
-    fn add_public_inputs(mut self) -> Self {
-        self = self.add_scalars(1, "Public Inputs Hash");
-        self = self.challenge_scalars(1, "Public Weights Vector Random");
-        self
-    }
-
-    fn add_rand(self, num_rand: usize) -> Self {
-        self.challenge_scalars(num_rand, "rand")
     }
 }
 

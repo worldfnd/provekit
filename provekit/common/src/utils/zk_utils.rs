@@ -2,7 +2,7 @@ use {
     crate::FieldElement,
     ark_ff::{Field, UniformRand},
     rayon::prelude::*,
-    whir::poly_utils::evals::EvaluationsList,
+    whir::algebra::polynomials::EvaluationsList,
 };
 
 pub fn create_masked_polynomial(

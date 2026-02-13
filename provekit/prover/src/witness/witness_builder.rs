@@ -12,7 +12,7 @@ use {
         },
         FieldElement, NoirElement,
     },
-    spongefish::{codecs::arkworks_algebra::UnitToField, ProverState},
+    whir::transcript::{ProverState, VerifierMessage},
 };
 
 pub trait WitnessBuilderSolver {
@@ -20,7 +20,7 @@ pub trait WitnessBuilderSolver {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<SkyscraperSponge>,
     );
 }
 
@@ -29,7 +29,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<SkyscraperSponge>,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
@@ -93,9 +93,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 }
             }
             WitnessBuilder::Challenge(witness_idx) => {
-                let mut one = [FieldElement::zero(); 1];
-                let _ = transcript.fill_challenge_scalars(&mut one);
-                witness[*witness_idx] = Some(one[0]);
+                let challenge: FieldElement = transcript.verifier_message();
+                witness[*witness_idx] = Some(challenge);
             }
             WitnessBuilder::LogUpDenominator(
                 witness_idx,

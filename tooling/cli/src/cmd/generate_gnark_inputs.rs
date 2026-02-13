@@ -55,8 +55,7 @@ impl Command for Args {
         write_gnark_parameters_to_file(
             &prover.whir_for_witness.whir_witness,
             &prover.whir_for_witness.whir_for_hiding_spartan,
-            &proof.whir_r1cs_proof.transcript,
-            &prover.whir_for_witness.create_io_pattern(),
+            &proof.whir_r1cs_proof,
             prover.whir_for_witness.m_0,
             prover.whir_for_witness.m,
             prover.whir_for_witness.a_num_terms,

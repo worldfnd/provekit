@@ -30,6 +30,8 @@ async fn main() -> anyhow::Result<()> {
     // Initialize structured logging
     init_tracing();
 
+    provekit_common::register_ntt();
+
     let config = Config::from_env();
     let app_state = AppState::new(config.clone());
 

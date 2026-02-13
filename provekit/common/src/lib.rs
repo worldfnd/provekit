@@ -21,9 +21,29 @@ pub use {
     prover::Prover,
     r1cs::R1CS,
     verifier::Verifier,
-    whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
+    whir_r1cs::{
+        WhirConfig, WhirDomainSeparator, WhirProof, WhirProverState, WhirR1CSProof, WhirR1CSScheme,
+    },
     witness::PublicInputs,
 };
+
+/// Register the NTT implementation for `ark_bn254::Fr` in whir's global
+/// type-map.
+///
+/// Whir's NTT registry is keyed by `TypeId` and pre-registers its own field
+/// types, but not `ark_bn254::Fr`. This must be called once before any
+/// prove/verify operations.
+///
+/// Idempotent — safe to call multiple times.
+pub fn register_ntt() {
+    use std::sync::{Arc, Once};
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
+            Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
+        whir::algebra::ntt::NTT.insert(ntt);
+    });
+}
 
 #[cfg(test)]
 mod tests {}

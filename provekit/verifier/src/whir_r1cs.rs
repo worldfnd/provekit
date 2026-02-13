@@ -3,27 +3,19 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         skyscraper::SkyscraperSponge,
-        utils::{
-            sumcheck::{
-                calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
-            },
-            zk_utils::geometric_till,
+        utils::sumcheck::{
+            calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
         },
         FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
-    spongefish::{
-        codecs::arkworks_algebra::{FieldToUnitDeserialize, UnitToField},
-        VerifierState,
-    },
     tracing::instrument,
     whir::{
-        poly_utils::{evals::EvaluationsList, multilinear::MultilinearPoint},
-        whir::{
-            committer::{reader::ParsedCommitment, CommitmentReader},
-            statement::{Statement, Weights},
-            utils::HintDeserialize,
-            verifier::Verifier,
+        algebra::{
+            polynomials::{EvaluationsList, MultilinearPoint},
+            Weights,
         },
+        protocols::whir::Commitment,
+        transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
     },
 };
 
@@ -44,24 +36,35 @@ pub trait WhirR1CSVerifier {
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
-    #[allow(unused)]
     fn verify(
         &self,
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
-        let io = self.create_io_pattern();
-        let mut arthur = io.to_verifier_state(&proof.transcript);
+        let ds = self.create_domain_separator().instance(&Empty);
+        let whir_proof = Proof {
+            narg_string: proof.narg_string.clone(),
+            hints: proof.hints.clone(),
+            #[cfg(debug_assertions)]
+            pattern: vec![],
+        };
+        let mut arthur = VerifierState::new(&ds, &whir_proof, SkyscraperSponge::default());
 
-        let commitment_reader = CommitmentReader::new(&self.whir_witness);
-        let parsed_commitment_1 = commitment_reader.parse_commitment(&mut arthur)?;
+        let commitment_1 = self
+            .whir_witness
+            .receive_commitment(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         // Parse second commitment only if we have challenges
-        let parsed_commitment_2 = if self.num_challenges > 0 {
-            let mut _logup_challenges = vec![FieldElement::zero(); self.num_challenges];
-            arthur.fill_challenge_scalars(&mut _logup_challenges)?;
-            Some(commitment_reader.parse_commitment(&mut arthur)?)
+        let commitment_2 = if self.num_challenges > 0 {
+            let _logup_challenges: Vec<FieldElement> =
+                arthur.verifier_message_vec(self.num_challenges);
+            Some(
+                self.whir_witness
+                    .receive_commitment(&mut arthur)
+                    .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
+            )
         } else {
             None
         };
@@ -72,17 +75,17 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .context("while verifying sumcheck")?;
 
         // Verify public inputs hash
-        let mut public_inputs_hash_buf = [FieldElement::zero()];
-        arthur.fill_next_scalars(&mut public_inputs_hash_buf)?;
+        let public_inputs_hash_buf: FieldElement = arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
         let expected_public_inputs_hash = public_inputs.hash();
         ensure!(
-            public_inputs_hash_buf[0] == expected_public_inputs_hash,
+            public_inputs_hash_buf == expected_public_inputs_hash,
             "Public inputs hash mismatch: expected {:?}, got {:?}",
             expected_public_inputs_hash,
-            public_inputs_hash_buf[0]
+            public_inputs_hash_buf
         );
-        let mut public_weights_vector_random_buf = [FieldElement::zero()];
-        arthur.fill_challenge_scalars(&mut public_weights_vector_random_buf)?;
+        let public_weights_vector_random: FieldElement = arthur.verifier_message();
 
         // Read hints and verify WHIR proof
         let (
@@ -91,86 +94,124 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             cz_at_alpha,
             whir_folding_randomness,
             deferred_evals,
-            public_weights_challenge,
-        ) = if let Some(parsed_commitment_2) = parsed_commitment_2 {
-            // Dual commitment mode
-            let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
-            let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+            _public_weights_challenge,
+        ) = if let Some(commitment_2) = commitment_2 {
+            // Dual commitment mode: read same-commitment and cross-evaluation hints
+            let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("Failed to read sums_1 hint"))?;
+            let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("Failed to read sums_2 hint"))?;
+            let cross_12: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("Failed to read cross_12 hint"))?;
+            let cross_21: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("Failed to read cross_21 hint"))?;
 
-            let whir_sums_1: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums_1.0.try_into().unwrap(), sums_1.1.try_into().unwrap());
-            let whir_sums_2: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums_2.0.try_into().unwrap(), sums_2.1.try_into().unwrap());
+            let f_sums_1: [FieldElement; 3] = sums_1.0.try_into().unwrap();
+            let g_sums_1: [FieldElement; 3] = sums_1.1.try_into().unwrap();
+            let f_sums_2: [FieldElement; 3] = sums_2.0.try_into().unwrap();
+            let g_sums_2: [FieldElement; 3] = sums_2.1.try_into().unwrap();
+            let cross_f_12: [FieldElement; 3] = cross_12.0.try_into().unwrap();
+            let cross_g_12: [FieldElement; 3] = cross_12.1.try_into().unwrap();
+            let cross_f_21: [FieldElement; 3] = cross_21.0.try_into().unwrap();
+            let cross_g_21: [FieldElement; 3] = cross_21.1.try_into().unwrap();
 
-            let mut statement_1 = prepare_statement_for_witness_verifier::<3>(
+            // Build weights and evaluations with full 4-polynomial layout per weight
+            // weights_1 evaluations: [f1, g1, cross_f12, cross_g12] per weight
+            let (mut weights_1, mut evaluations_1) = prepare_weights_and_evaluations_dual::<3>(
                 self.m,
-                &parsed_commitment_1,
-                &whir_sums_1,
+                &f_sums_1,
+                &g_sums_1,
+                &cross_f_12,
+                &cross_g_12,
             );
-            let statement_2 = prepare_statement_for_witness_verifier::<3>(
+            // weights_2 evaluations: [cross_f21, cross_g21, f2, g2] per weight
+            let (weights_2, evaluations_2) = prepare_weights_and_evaluations_dual::<3>(
                 self.m,
-                &parsed_commitment_2,
-                &whir_sums_2,
+                &cross_f_21,
+                &cross_g_21,
+                &f_sums_2,
+                &g_sums_2,
             );
 
-            let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
-                .hint()
-                .context("failed to read WHIR public weights query answer")?;
+            let public_hint: (FieldElement, FieldElement, FieldElement, FieldElement) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("failed to read WHIR public weights query answer"))?;
 
             if !public_inputs.is_empty() {
-                update_statement_for_witness_verifier(
+                update_weights_and_evaluations_dual(
                     self.m,
-                    &mut statement_1,
-                    &parsed_commitment_1,
-                    whir_public_weights_query_answer,
+                    &mut weights_1,
+                    &mut evaluations_1,
+                    public_hint,
+                    public_inputs.len(),
+                    public_weights_vector_random,
                 );
             }
 
-            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_batch_verifier(
+            let mut all_weights = weights_1;
+            all_weights.extend(weights_2);
+
+            let mut all_evaluations = evaluations_1;
+            all_evaluations.extend(evaluations_2);
+
+            let weight_refs: Vec<&Weights<FieldElement>> = all_weights.iter().collect();
+            let commitment_refs: Vec<&Commitment<FieldElement>> =
+                vec![&commitment_1, &commitment_2];
+
+            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
                 &mut arthur,
                 &self.whir_witness,
-                &[parsed_commitment_1, parsed_commitment_2],
-                &[statement_1, statement_2],
+                &commitment_refs,
+                &weight_refs,
+                &all_evaluations,
             )
             .context("while verifying WHIR batch proof")?;
 
             (
-                whir_sums_1.0[0] + whir_sums_2.0[0],
-                whir_sums_1.0[1] + whir_sums_2.0[1],
-                whir_sums_1.0[2] + whir_sums_2.0[2],
+                f_sums_1[0] + f_sums_2[0],
+                f_sums_1[1] + f_sums_2[1],
+                f_sums_1[2] + f_sums_2[2],
                 whir_folding_randomness.0.to_vec(),
                 deferred_evals,
-                public_weights_vector_random_buf[0],
+                public_weights_vector_random,
             )
         } else {
             // Single commitment mode
-            let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur.hint()?;
+            let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("Failed to read sums hint"))?;
             let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
                 (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
 
-            let mut statement = prepare_statement_for_witness_verifier::<3>(
-                self.m,
-                &parsed_commitment_1,
-                &whir_sums,
-            );
+            let (mut weights, mut evaluations) =
+                prepare_weights_and_evaluations::<3>(self.m, &whir_sums);
 
             let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
-                .hint()
-                .context("failed to read WHIR public weights query answer")?;
+                .prover_hint_ark()
+                .map_err(|_| anyhow::anyhow!("failed to read WHIR public weights query answer"))?;
             if !public_inputs.is_empty() {
-                update_statement_for_witness_verifier(
+                update_weights_and_evaluations(
                     self.m,
-                    &mut statement,
-                    &parsed_commitment_1,
+                    &mut weights,
+                    &mut evaluations,
                     whir_public_weights_query_answer,
+                    public_inputs.len(),
+                    public_weights_vector_random,
                 );
             }
 
+            let weight_refs: Vec<&Weights<FieldElement>> = weights.iter().collect();
+
             let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
                 &mut arthur,
-                &parsed_commitment_1,
                 &self.whir_witness,
-                &statement,
+                &[&commitment_1],
+                &weight_refs,
+                &evaluations,
             )
             .context("while verifying WHIR proof")?;
 
@@ -180,7 +221,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 whir_sums.0[2],
                 whir_folding_randomness.0.to_vec(),
                 deferred_evals,
-                public_weights_vector_random_buf[0],
+                public_weights_vector_random,
             )
         };
 
@@ -195,8 +236,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        // Check deferred linear and geometric constraints
-        let offset = if public_inputs.is_empty() { 0 } else { 1 };
+        // Check deferred linear constraints.
+        // The public weight is Geometric (non-deferred), so it's not in the deferred
+        // list.
+        let offset = 0;
 
         // Linear deferred
         if self.num_challenges > 0 {
@@ -239,108 +282,209 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             }
         }
 
-        // Geometric deferred
-        if !public_inputs.is_empty() && deferred_evals.len() > 0 {
-            let public_weight_eval = compute_public_weight_evaluation(
-                public_inputs,
-                &whir_folding_randomness,
-                public_weights_challenge,
-            );
-            ensure!(
-                public_weight_eval == deferred_evals[0],
-                "Public weight evaluation does not match deferred value"
-            );
-        }
-
         Ok(())
     }
 }
 
-fn prepare_statement_for_witness_verifier<const N: usize>(
+/// Build weights and evaluations for the verifier, mirroring the prover's
+/// `create_weights_and_evaluations_for_two_polynomials`.
+///
+/// Each weight is a linear constraint with a zero-filled evaluation list (the
+/// verifier doesn't know the polynomial, so the weight itself is deferred).
+/// The claimed evaluations come from the prover's hints: f_sums and g_sums
+/// interleaved as [f_sum_i, g_sum_i] for each constraint.
+fn prepare_weights_and_evaluations<const N: usize>(
     m: usize,
-    parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
     whir_query_answer_sums: &([FieldElement; N], [FieldElement; N]),
-) -> Statement<FieldElement> {
-    let mut statement_verifier = Statement::<FieldElement>::new(m);
-    for i in 0..whir_query_answer_sums.0.len() {
-        let claimed_sum = whir_query_answer_sums.0[i]
-            + whir_query_answer_sums.1[i] * parsed_commitment.batching_randomness;
-        statement_verifier.add_constraint(
-            Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); 1 << m])),
-            claimed_sum,
-        );
+) -> (Vec<Weights<FieldElement>>, Vec<FieldElement>) {
+    let cfg_nv = m + 1; // whir_witness uses m+1 variables (matching prover's cfg_nv)
+    let final_len = 1usize << cfg_nv;
+
+    let mut weights = Vec::with_capacity(N);
+    let mut evaluations = Vec::with_capacity(N * 2);
+
+    for i in 0..N {
+        let weight = Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); final_len]));
+        weights.push(weight);
+
+        // Each weight evaluates against 2 polynomials (masked + random) → 2 evaluations
+        // per weight
+        evaluations.push(whir_query_answer_sums.0[i]); // f_sum (masked polynomial)
+        evaluations.push(whir_query_answer_sums.1[i]); // g_sum (random
+                                                       // polynomial)
     }
-    statement_verifier
+
+    (weights, evaluations)
 }
 
-fn update_statement_for_witness_verifier(
+/// Add a public weight constraint at the front, mirroring the prover's
+/// `compute_public_weight_evaluations` which inserts at position 0.
+///
+/// The weight must be `Weights::geometric` to match the prover (not
+/// `Weights::linear`), because `Geometric` is non-deferred and the verifier
+/// computes its value itself.
+fn update_weights_and_evaluations(
     m: usize,
-    statement_verifier: &mut Statement<FieldElement>,
-    parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
+    weights: &mut Vec<Weights<FieldElement>>,
+    evaluations: &mut Vec<FieldElement>,
     whir_public_weights_query_answer: (FieldElement, FieldElement),
+    public_inputs_len: usize,
+    x: FieldElement,
 ) {
-    let (public_f_sum, public_g_sum) = whir_public_weights_query_answer;
-    let public_weight = Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); 1 << m]));
-    statement_verifier.add_constraint_in_front(
-        public_weight,
-        public_f_sum + public_g_sum * parsed_commitment.batching_randomness,
+    let domain_size = 1usize << m;
+    let mut public_weight_evals = vec![FieldElement::zero(); domain_size];
+    let mut current_pow = FieldElement::one();
+    for slot in public_weight_evals.iter_mut().take(public_inputs_len) {
+        *slot = current_pow;
+        current_pow *= x;
+    }
+    let public_weight = Weights::geometric(
+        x,
+        public_inputs_len,
+        EvaluationsList::new(public_weight_evals),
     );
+    let (public_f_sum, public_g_sum) = whir_public_weights_query_answer;
+    weights.insert(0, public_weight);
+    evaluations.insert(0, public_g_sum);
+    evaluations.insert(0, public_f_sum);
+}
+
+/// Build weights and evaluations for the dual-commitment verifier path.
+///
+/// Each weight produces 4 evaluations (one per polynomial across both
+/// commitments): [eval_c1_masked, eval_c1_random, eval_c2_masked,
+/// eval_c2_random]. This matches whir's row-major evaluation matrix layout.
+fn prepare_weights_and_evaluations_dual<const N: usize>(
+    m: usize,
+    evals_c1_masked: &[FieldElement; N],
+    evals_c1_random: &[FieldElement; N],
+    evals_c2_masked: &[FieldElement; N],
+    evals_c2_random: &[FieldElement; N],
+) -> (Vec<Weights<FieldElement>>, Vec<FieldElement>) {
+    let cfg_nv = m + 1;
+    let final_len = 1usize << cfg_nv;
+
+    let mut weights = Vec::with_capacity(N);
+    let mut evaluations = Vec::with_capacity(N * 4);
+
+    for i in 0..N {
+        let weight = Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); final_len]));
+        weights.push(weight);
+
+        evaluations.push(evals_c1_masked[i]);
+        evaluations.push(evals_c1_random[i]);
+        evaluations.push(evals_c2_masked[i]);
+        evaluations.push(evals_c2_random[i]);
+    }
+
+    (weights, evaluations)
+}
+
+/// Add a public weight for dual-commitment at the front, with 4 evaluations.
+/// Must use `Weights::geometric` to match the prover's non-deferred weight
+/// type.
+fn update_weights_and_evaluations_dual(
+    m: usize,
+    weights: &mut Vec<Weights<FieldElement>>,
+    evaluations: &mut Vec<FieldElement>,
+    public_hint: (FieldElement, FieldElement, FieldElement, FieldElement),
+    public_inputs_len: usize,
+    x: FieldElement,
+) {
+    let domain_size = 1usize << m;
+    let mut public_weight_evals = vec![FieldElement::zero(); domain_size];
+    let mut current_pow = FieldElement::one();
+    for slot in public_weight_evals.iter_mut().take(public_inputs_len) {
+        *slot = current_pow;
+        current_pow *= x;
+    }
+    let public_weight = Weights::geometric(
+        x,
+        public_inputs_len,
+        EvaluationsList::new(public_weight_evals),
+    );
+    let (f1, g1, f2, g2) = public_hint;
+    weights.insert(0, public_weight);
+    evaluations.insert(0, g2);
+    evaluations.insert(0, f2);
+    evaluations.insert(0, g1);
+    evaluations.insert(0, f1);
 }
 
 #[instrument(skip_all)]
 pub fn run_sumcheck_verifier(
-    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
+    arthur: &mut VerifierState<'_, SkyscraperSponge>,
     m_0: usize,
     whir_for_spartan_blinding_config: &WhirConfig,
 ) -> Result<DataFromSumcheckVerifier> {
-    let mut r = vec![FieldElement::zero(); m_0];
-    let _ = arthur.fill_challenge_scalars(&mut r);
+    let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
 
-    let commitment_reader = CommitmentReader::new(whir_for_spartan_blinding_config);
-    let parsed_commitment = commitment_reader.parse_commitment(arthur)?;
+    let commitment = whir_for_spartan_blinding_config
+        .receive_commitment(arthur)
+        .map_err(|_| anyhow::anyhow!("Failed to parse spartan blinding commitment"))?;
 
-    let mut sum_g_buf = [FieldElement::zero()];
-    arthur.fill_next_scalars(&mut sum_g_buf)?;
+    let sum_g: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("Failed to read sum_g"))?;
 
-    let mut rho_buf = [FieldElement::zero()];
-    arthur.fill_challenge_scalars(&mut rho_buf)?;
-    let rho = rho_buf[0];
+    let rho: FieldElement = arthur.verifier_message();
 
-    let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_buf[0];
+    let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g;
 
     let mut alpha = vec![FieldElement::zero(); m_0];
 
     for item in alpha.iter_mut().take(m_0) {
-        let mut hhat_i = [FieldElement::zero(); 4];
-        let mut alpha_i = [FieldElement::zero(); 1];
-        let _ = arthur.fill_next_scalars(&mut hhat_i);
-        let _ = arthur.fill_challenge_scalars(&mut alpha_i);
-        *item = alpha_i[0];
+        let hhat_i: [FieldElement; 4] = [
+            arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
+            arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
+            arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
+            arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
+        ];
+        let alpha_i: FieldElement = arthur.verifier_message();
+        *item = alpha_i;
         let hhat_i_at_zero = eval_cubic_poly(hhat_i, FieldElement::zero());
         let hhat_i_at_one = eval_cubic_poly(hhat_i, FieldElement::one());
         ensure!(
             saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
             "Sumcheck equality assertion failed"
         );
-        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i[0]);
+        saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i);
     }
 
-    let mut values_of_polynomial_sums = [FieldElement::zero(); 2];
-    let _ = arthur.fill_next_scalars(&mut values_of_polynomial_sums);
+    let values_of_polynomial_sums: [FieldElement; 2] = [
+        arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("Failed to read polynomial sum"))?,
+        arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("Failed to read polynomial sum"))?,
+    ];
 
-    let statement_verifier = prepare_statement_for_witness_verifier::<1>(
-        whir_for_spartan_blinding_config.mv_parameters.num_variables,
-        &parsed_commitment,
+    let blinding_nv = whir_for_spartan_blinding_config.initial_num_variables();
+
+    let (blinding_weights, blinding_evaluations) = prepare_weights_and_evaluations::<1>(
+        blinding_nv - 1, // m parameter (cfg_nv = m+1)
         &([values_of_polynomial_sums[0]], [
             values_of_polynomial_sums[1]
         ]),
     );
 
+    let blinding_weight_refs: Vec<&Weights<FieldElement>> = blinding_weights.iter().collect();
+
     run_whir_pcs_verifier(
         arthur,
-        &parsed_commitment,
         whir_for_spartan_blinding_config,
-        &statement_verifier,
+        &[&commitment],
+        &blinding_weight_refs,
+        &blinding_evaluations,
     )
     .context("while verifying WHIR")?;
 
@@ -355,29 +499,16 @@ pub fn run_sumcheck_verifier(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_verifier(
-    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
-    parsed_commitment: &ParsedCommitment<FieldElement, FieldElement>,
+    arthur: &mut VerifierState<'_, SkyscraperSponge>,
     params: &WhirConfig,
-    statement_verifier: &Statement<FieldElement>,
+    commitments: &[&Commitment<FieldElement>],
+    weights: &[&Weights<FieldElement>],
+    evaluations: &[FieldElement],
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
-    let verifier = Verifier::new(params);
-    let (folding_randomness, deferred) = verifier
-        .verify(arthur, parsed_commitment, statement_verifier)
-        .context("while verifying WHIR")?;
-    Ok((folding_randomness, deferred))
-}
-
-#[instrument(skip_all)]
-pub fn run_whir_pcs_batch_verifier(
-    arthur: &mut VerifierState<SkyscraperSponge, FieldElement>,
-    params: &WhirConfig,
-    parsed_commitments: &[ParsedCommitment<FieldElement, FieldElement>],
-    statements: &[Statement<FieldElement>],
-) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
-    let verifier = Verifier::new(params);
-    let (folding_randomness, deferred) = verifier
-        .verify_batch(arthur, parsed_commitments, statements)
-        .context("while verifying batch WHIR")?;
+    let (folding_randomness, deferred) =
+        params
+            .verify(arthur, commitments, weights, evaluations)
+            .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
     Ok((folding_randomness, deferred))
 }
 
@@ -445,12 +576,4 @@ fn evaluate_r1cs_matrix_extension_batch(
     }
 
     ans
-}
-
-fn compute_public_weight_evaluation(
-    public_inputs: &PublicInputs,
-    folding_randomness: &[FieldElement],
-    x: FieldElement,
-) -> FieldElement {
-    geometric_till(x, public_inputs.len(), folding_randomness)
 }

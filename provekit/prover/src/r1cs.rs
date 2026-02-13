@@ -9,8 +9,8 @@ use {
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, R1CS,
     },
-    spongefish::ProverState,
     tracing::instrument,
+    whir::transcript::ProverState,
 };
 
 pub trait R1CSSolver {
@@ -19,7 +19,7 @@ pub trait R1CSSolver {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<SkyscraperSponge>,
     );
 
     #[cfg(test)]
@@ -53,14 +53,14 @@ impl R1CSSolver for R1CS {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<SkyscraperSponge>,
     ) {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, witness, transcript);
+                        builder.solve(acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {

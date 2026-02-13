@@ -46,6 +46,8 @@ fn main() -> Result<()> {
 
     subscriber::set_global_default(subscriber)?;
 
+    provekit_common::register_ntt();
+
     // Run CLI command
     let res = args.run();
 
