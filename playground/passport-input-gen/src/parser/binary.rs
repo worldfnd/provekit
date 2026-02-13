@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose, Engine as _};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Binary {
     pub data: Vec<u8>,
 }
@@ -45,18 +45,28 @@ impl Binary {
         format!("0x{}", hex::encode(&self.data))
     }
 
-    pub fn equals(&self, other: &Binary) -> bool {
-        self.data.eq(&other.data)
-    }
-
     pub fn from_hex(hex_str: &str) -> Result<Self, hex::FromHexError> {
         let data = hex::decode(hex_str)?;
         Ok(Binary::new(data))
     }
 }
 
-impl PartialEq for Binary {
-    fn eq(&self, other: &Self) -> bool {
-        self.data == other.data
+impl From<Vec<u8>> for Binary {
+    fn from(data: Vec<u8>) -> Self {
+        Binary { data }
+    }
+}
+
+impl From<&[u8]> for Binary {
+    fn from(data: &[u8]) -> Self {
+        Binary {
+            data: data.to_vec(),
+        }
+    }
+}
+
+impl AsRef<[u8]> for Binary {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
     }
 }

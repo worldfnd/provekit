@@ -35,7 +35,7 @@ pub fn oid_to_string(oid: &rasn::types::ObjectIdentifier) -> String {
 }
 
 pub fn strip_length_prefix(binary: &Binary) -> Binary {
-    if binary.slice(0, 2).equals(&Binary::new(vec![119, 130])) {
+    if binary.slice(0, 2) == Binary::new(vec![119, 130]) {
         binary.slice(4, binary.len())
     } else {
         binary.clone()

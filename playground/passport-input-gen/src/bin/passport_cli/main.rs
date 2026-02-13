@@ -18,8 +18,8 @@ use {
             generate_fake_sod_with_padded_tbs,
         },
         mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
-        Binary, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config, MerkleAge720Inputs,
-        PassportReader,
+        Binary, CircuitInputSet, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config,
+        MerkleAge720Inputs, MerkleAgeBaseConfig, PassportReader,
     },
     profiling_alloc::ProfilingAllocator,
     provekit_prover::Prove,
@@ -131,10 +131,12 @@ fn generate_720_inputs(
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
     let config = MerkleAge720Config {
-        current_date: 1735689600, // Jan 1, 2025 00:00:00 UTC
-        min_age_required: 18,
-        max_age_required: 0,
-        ..Default::default()
+        base: MerkleAgeBaseConfig {
+            current_date: 1735689600, // Jan 1, 2025 00:00:00 UTC
+            min_age_required: 18,
+            max_age_required: 0,
+            ..Default::default()
+        },
     };
 
     let inputs = reader
@@ -164,9 +166,12 @@ fn generate_1300_inputs(
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
     let config = MerkleAge1300Config {
-        current_date: 1735689600,
-        min_age_required: 17,
-        max_age_required: 0,
+        base: MerkleAgeBaseConfig {
+            current_date: 1735689600,
+            min_age_required: 17,
+            max_age_required: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
@@ -306,28 +311,14 @@ fn prove_1300(inputs: &MerkleAge1300Inputs, benchmark_dir: &Path) -> Result<()> 
 // TOML output helpers
 // ============================================================================
 
-fn save_720_toml(inputs: &MerkleAge720Inputs, base_dir: &Path) -> Result<()> {
+fn save_toml(inputs: &dyn CircuitInputSet, base_dir: &Path) -> Result<()> {
     inputs
         .save_all(base_dir)
         .context("Failed to write TOML files")?;
     println!("\n  Written:");
-    println!("    {}/t_add_dsc_720.toml", base_dir.display());
-    println!("    {}/t_add_id_data_720.toml", base_dir.display());
-    println!("    {}/t_add_integrity_commit.toml", base_dir.display());
-    println!("    {}/t_attest.toml", base_dir.display());
-    Ok(())
-}
-
-fn save_1300_toml(inputs: &MerkleAge1300Inputs, base_dir: &Path) -> Result<()> {
-    inputs
-        .save_all(base_dir)
-        .context("Failed to write TOML files")?;
-    println!("\n  Written:");
-    println!("    {}/t_add_dsc_hash_1300.toml", base_dir.display());
-    println!("    {}/t_add_dsc_verify_1300.toml", base_dir.display());
-    println!("    {}/t_add_id_data_1300.toml", base_dir.display());
-    println!("    {}/t_add_integrity_commit.toml", base_dir.display());
-    println!("    {}/t_attest.toml", base_dir.display());
+    for name in inputs.circuit_names() {
+        println!("    {}/{name}.toml", base_dir.display());
+    }
     Ok(())
 }
 
@@ -454,7 +445,7 @@ fn main() -> Result<()> {
         (TbsChoice::Tbs720, Mode::Toml) => {
             let inputs = generate_720_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
             let toml_dir = benchmark_dir.join("tbs_720/test");
-            save_720_toml(&inputs, &toml_dir)?;
+            save_toml(&inputs, &toml_dir)?;
             print_720_summary(&inputs);
         }
         (TbsChoice::Tbs720, Mode::Prove) => {
@@ -466,7 +457,7 @@ fn main() -> Result<()> {
         (TbsChoice::Tbs1300, Mode::Toml) => {
             let inputs = generate_1300_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
             let toml_dir = benchmark_dir.join("tbs_1300/test");
-            save_1300_toml(&inputs, &toml_dir)?;
+            save_toml(&inputs, &toml_dir)?;
             print_1300_summary(&inputs);
         }
         (TbsChoice::Tbs1300, Mode::Prove) => {

@@ -5,6 +5,7 @@
 //! width=4, rate=3, capacity=1 over BN254's scalar field.
 
 use {
+    crate::commitment::parse_hex_to_field as fe,
     ark_bn254::Fr,
     ark_ff::{Field, PrimeField},
 };
@@ -16,12 +17,6 @@ use {
 
 const NUM_PARTIAL_ROUNDS: usize = 56;
 const RATE: usize = 3;
-
-fn fe(hex: &str) -> Fr {
-    let s = hex.strip_prefix("0x").unwrap_or(hex);
-    let bytes = hex::decode(s).expect("invalid hex constant");
-    Fr::from_be_bytes_mod_order(&bytes)
-}
 
 fn load_diag() -> [Fr; 4] {
     [
@@ -189,8 +184,32 @@ fn sbox(x: &mut Fr) {
 }
 
 // ============================================================================
+// Lazily initialized constants (parsed once, reused across all permutations)
+// ============================================================================
+
+use std::sync::LazyLock;
+
+static RC_FULL1: LazyLock<[[Fr; 4]; 4]> = LazyLock::new(load_rc_full1);
+static RC_FULL2: LazyLock<[[Fr; 4]; 4]> = LazyLock::new(load_rc_full2);
+static RC_PARTIAL: LazyLock<[Fr; 56]> = LazyLock::new(load_rc_partial);
+static DIAG: LazyLock<[Fr; 4]> = LazyLock::new(load_diag);
+
+// ============================================================================
 // Poseidon2 permutation (t=4)
 // ============================================================================
+
+/// Apply 4 full rounds: add round constants, S-box all lanes, external MDS.
+fn full_rounds(state: &mut [Fr; 4], rc: &[[Fr; 4]; 4]) {
+    for r in 0..4 {
+        for i in 0..4 {
+            state[i] += rc[r][i];
+        }
+        for i in 0..4 {
+            sbox(&mut state[i]);
+        }
+        external_mds(state);
+    }
+}
 
 /// Poseidon2 permutation for t=4 (BN254).
 ///
@@ -198,42 +217,21 @@ fn sbox(x: &mut Fr) {
 ///                         → [RC(lane0) + S-box(lane0) → int_MDS] × 56 partial
 ///                         → [RC + S-box → ext_MDS] × 4 full
 pub fn poseidon2_permutation(state: &mut [Fr; 4]) {
-    let rc_full1 = load_rc_full1();
-    let rc_full2 = load_rc_full2();
-    let rc_partial = load_rc_partial();
-    let diag = load_diag();
-
     // Initial external MDS
     external_mds(state);
 
     // First 4 full rounds
-    for r in 0..4 {
-        for i in 0..4 {
-            state[i] += rc_full1[r][i];
-        }
-        for i in 0..4 {
-            sbox(&mut state[i]);
-        }
-        external_mds(state);
-    }
+    full_rounds(state, &RC_FULL1);
 
     // 56 partial rounds
     for r in 0..NUM_PARTIAL_ROUNDS {
-        state[0] += rc_partial[r];
+        state[0] += RC_PARTIAL[r];
         sbox(&mut state[0]);
-        internal_mds(state, &diag);
+        internal_mds(state, &DIAG);
     }
 
     // Final 4 full rounds
-    for r in 0..4 {
-        for i in 0..4 {
-            state[i] += rc_full2[r][i];
-        }
-        for i in 0..4 {
-            sbox(&mut state[i]);
-        }
-        external_mds(state);
-    }
+    full_rounds(state, &RC_FULL2);
 }
 
 // ============================================================================
