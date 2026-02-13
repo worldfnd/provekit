@@ -64,6 +64,12 @@ opt-level = 3
 codegen-units = 1
 lto = "fat"
 
+# Fast release builds for development iteration: cargo build --profile release-fast
+[profile.release-fast]
+inherits = "release"
+codegen-units = 16
+lto = "thin"
+
 # Doing light optimizations helps test performance more than it hurts build time.
 [profile.test]
 opt-level = 2
@@ -120,6 +126,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.9"
 test-case = "3.3.1"
+tikv-jemallocator = "0.6"
 toml = "0.8.8"
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = "0.7.13"
@@ -158,4 +165,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "246dae281476ecd135be3ff76f4a5f485ea57791" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "246dae281476ecd135be3ff76f4a5f485ea57791", features = ["tracing"] }

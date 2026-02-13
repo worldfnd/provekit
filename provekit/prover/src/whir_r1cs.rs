@@ -17,7 +17,7 @@ use {
         FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     std::mem,
-    tracing::{info, instrument},
+    tracing::{debug, instrument},
     whir::{
         algebra::{
             polynomials::{CoefficientList, EvaluationsList, MultilinearPoint},
@@ -690,7 +690,7 @@ pub fn run_zk_whir_pcs_prover(
     params: &WhirConfig,
     merlin: &mut ProverState<SkyscraperSponge>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
-    info!("WHIR Parameters: {params}");
+    debug!("WHIR Parameters: {params}");
 
     let (randomness, deferred) = params.prove(merlin, polynomials, witnesses, weights, evaluations);
 

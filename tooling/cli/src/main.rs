@@ -13,7 +13,7 @@ use {
     anyhow::Result,
     span_stats::SpanStats,
     tracing::subscriber,
-    tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
+    tracing_subscriber::{self, filter::LevelFilter, layer::SubscriberExt as _, Layer, Registry},
 };
 
 #[cfg(feature = "profiling-allocator")]
@@ -22,7 +22,7 @@ static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
 fn main() -> Result<()> {
     let args = argh::from_env::<cmd::Args>();
-    let subscriber = Registry::default().with(SpanStats);
+    let subscriber = Registry::default().with(SpanStats.with_filter(LevelFilter::INFO));
 
     #[cfg(feature = "tracy")]
     let subscriber = {
