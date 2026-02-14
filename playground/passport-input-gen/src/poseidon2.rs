@@ -5,10 +5,13 @@
 //! width=4, rate=3, capacity=1 over BN254's scalar field.
 
 use {
-    crate::commitment::parse_hex_to_field as fe,
     ark_bn254::Fr,
     ark_ff::{Field, PrimeField},
 };
+
+fn fe(s: &str) -> Fr {
+    crate::commitment::parse_hex_to_field(s).expect("invalid Poseidon2 constant")
+}
 
 // ============================================================================
 // Constants for t=4 (width-4 permutation)

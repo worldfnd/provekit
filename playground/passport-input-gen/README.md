@@ -58,7 +58,7 @@ Wraps DG1 + SOD data and produces per-circuit input structs.
 ```rust
 use passport_input_gen::{
     Binary, PassportReader,
-    MerkleAge720Config, MerkleAge1300Config,
+    MerkleAge720Config, MerkleAge1300Config, MerkleAgeBaseConfig,
 };
 
 // Construct from parsed passport data
@@ -74,16 +74,21 @@ let csca_idx = reader.validate()?;
 
 // Generate TBS-720 circuit inputs
 let config = MerkleAge720Config {
-    current_date: 1735689600,
-    min_age_required: 18,
-    ..Default::default()
+    base: MerkleAgeBaseConfig {
+        current_date: 1735689600,
+        min_age_required: 18,
+        ..Default::default()
+    },
 };
 let inputs = reader.to_merkle_age_720_inputs(csca_idx, config)?;
 
 // Generate TBS-1300 circuit inputs
 let config = MerkleAge1300Config {
-    current_date: 1735689600,
-    min_age_required: 18,
+    base: MerkleAgeBaseConfig {
+        current_date: 1735689600,
+        min_age_required: 18,
+        ..Default::default()
+    },
     ..Default::default()
 };
 let inputs = reader.to_merkle_age_1300_inputs(csca_idx, config)?;
@@ -112,9 +117,11 @@ Default values are mock/placeholder values suitable for testing. In production, 
 Save all per-circuit inputs as TOML files for use with `nargo prove`:
 
 ```rust
+use std::path::Path;
+
 // TBS-720: writes t_add_dsc_720.toml, t_add_id_data_720.toml,
 //          t_add_integrity_commit.toml, t_attest.toml
-inputs.save_all("path/to/output/dir")?;
+inputs.save_all(Path::new("path/to/output/dir"))?;
 ```
 
 ### Output: Direct proving (no TOML)
@@ -164,7 +171,7 @@ noir-examples/noir-passport/merkle_age_check/benchmark-inputs/
 
 ### Prove mode
 
-Loads `.pkp` prover keys from the benchmark-inputs directory, generates proofs for all `t_add_*` circuits (excluding `t_attest`), and writes `.np` proof files alongside the prover keys.
+Loads `.pkp` prover keys from the benchmark-inputs directory, generates proofs for all circuits in the chain (including `t_attest`), and writes `.np` proof files alongside the prover keys.
 
 The CLI includes tracing-based performance profiling. Span durations, memory usage, and allocation counts are printed to stderr during proving.
 

@@ -217,4 +217,11 @@ pub enum PassportError {
     InvalidDate(String),
     #[error("Unsupported digest algorithm: {0}")]
     UnsupportedDigestAlgorithm(String),
+    #[error("Invalid hex field '{field}': {source}")]
+    InvalidHexField {
+        field:  String,
+        source: hex::FromHexError,
+    },
+    #[error("Invalid leaf_index '{value}': must be a non-negative integer")]
+    InvalidLeafIndex { value: String },
 }
