@@ -313,7 +313,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let proof = merlin.proof();
         Ok(WhirR1CSProof {
             narg_string: proof.narg_string,
-            hints:       proof.hints,
+            hints: proof.hints,
+            #[cfg(debug_assertions)]
+            pattern: proof.pattern,
         })
     }
 }

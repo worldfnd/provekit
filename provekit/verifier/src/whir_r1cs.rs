@@ -47,7 +47,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             narg_string: proof.narg_string.clone(),
             hints: proof.hints.clone(),
             #[cfg(debug_assertions)]
-            pattern: vec![],
+            pattern: proof.pattern.clone(),
         };
         let mut arthur = VerifierState::new(&ds, &whir_proof, SkyscraperSponge::default());
 

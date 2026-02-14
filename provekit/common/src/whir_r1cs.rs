@@ -1,3 +1,5 @@
+#[cfg(debug_assertions)]
+use whir::transcript::Interaction;
 use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
@@ -44,6 +46,12 @@ pub struct WhirR1CSProof {
     pub narg_string: Vec<u8>,
     #[serde(with = "serde_hex")]
     pub hints:       Vec<u8>,
+
+    /// Transcript interaction pattern for debug-mode validation.
+    /// Populated by the prover; absent from serialized proofs on disk.
+    #[cfg(debug_assertions)]
+    #[serde(default, skip_serializing)]
+    pub pattern: Vec<Interaction>,
 }
 
 // TODO: Implement Debug for WhirConfig and derive.

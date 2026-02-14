@@ -24,6 +24,7 @@ struct NargoTomlPackage {
 }
 
 fn test_compiler(test_case_path: impl AsRef<Path>) {
+    provekit_common::register_ntt();
     let test_case_path = test_case_path.as_ref();
 
     compile_workspace(test_case_path).expect("Compiling workspace");
