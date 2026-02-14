@@ -96,17 +96,22 @@ impl MerkleAgeBaseConfig {
         dg1_padded: &[u8; MAX_DG1_SIZE],
         computed_sod_hash: ark_bn254::Fr,
         sod_hash_hex: String,
-    ) -> AttestInputs {
+    ) -> Result<AttestInputs, PassportError> {
         let merkle_root = {
             if self.merkle_root == ZERO_FIELD {
-                let h_dg1 = commitment::calculate_h_dg1(&self.r_dg1, dg1_padded);
+                let h_dg1 = commitment::calculate_h_dg1(&self.r_dg1, dg1_padded)?;
                 let leaf = commitment::calculate_leaf(h_dg1, computed_sod_hash);
-                let leaf_idx: u64 = self.leaf_index.parse().unwrap_or(0);
+                let leaf_idx: u64 =
+                    self.leaf_index
+                        .parse()
+                        .map_err(|_| PassportError::InvalidLeafIndex {
+                            value: self.leaf_index.clone(),
+                        })?;
                 let path_fields: Vec<ark_bn254::Fr> = self
                     .merkle_path
                     .iter()
                     .map(|s| commitment::parse_hex_to_field(s))
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
                 let root = commitment::compute_merkle_root(leaf, leaf_idx, &path_fields);
                 commitment::field_to_hex_string(&root)
             } else {
@@ -114,7 +119,7 @@ impl MerkleAgeBaseConfig {
             }
         };
 
-        AttestInputs {
+        Ok(AttestInputs {
             root:             merkle_root,
             current_date:     self.current_date,
             service_scope:    self.service_scope,
@@ -127,7 +132,7 @@ impl MerkleAgeBaseConfig {
             min_age_required: self.min_age_required,
             max_age_required: self.max_age_required,
             nullifier_secret: self.nullifier_secret,
-        }
+        })
     }
 }
 
@@ -776,7 +781,7 @@ impl PassportReader {
             &config.base.salt_1,
             pd.country.as_bytes(),
             &tbs_cert,
-        );
+        )?;
         let comm_out_1_hex = commitment::field_to_hex_string(&comm_out_1);
 
         // Circuit 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content,
@@ -789,7 +794,7 @@ impl PassportReader {
             &pd.dg1_padded,
             &pd.econtent,
             pd.private_nullifier,
-        );
+        )?;
         let comm_out_2_hex = commitment::field_to_hex_string(&comm_out_2);
 
         // === Build circuit input structs ===
@@ -838,7 +843,7 @@ impl PassportReader {
         let attest =
             config
                 .base
-                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex);
+                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex)?;
 
         Ok(MerkleAge720Inputs {
             add_dsc,
@@ -882,13 +887,13 @@ impl PassportReader {
         //   data_comm1 = commit_to_data_chunk(salt_0, chunk1)
         //   comm_out_hash = commit_to_sha256_state_and_data(salt_0, state1, 640,
         // data_comm1)
-        let data_comm1 = commitment::commit_to_data_chunk(&config.salt_0, &chunk1);
+        let data_comm1 = commitment::commit_to_data_chunk(&config.salt_0, &chunk1)?;
         let comm_out_hash = commitment::commit_to_sha256_state_and_data(
             &config.salt_0,
             &state1,
             CHUNK1_SIZE as u32,
             data_comm1,
-        );
+        )?;
         let comm_out_hash_hex = commitment::field_to_hex_string(&comm_out_hash);
 
         // Circuit 2 (dsc_verify) output:
@@ -897,7 +902,7 @@ impl PassportReader {
             &config.base.salt_1,
             pd.country.as_bytes(),
             &tbs_cert_1300,
-        );
+        )?;
         let comm_out_verify_hex = commitment::field_to_hex_string(&comm_out_verify);
 
         // Circuit 3 (id_data) output:
@@ -910,7 +915,7 @@ impl PassportReader {
             &pd.dg1_padded,
             &pd.econtent,
             pd.private_nullifier,
-        );
+        )?;
         let comm_out_id_hex = commitment::field_to_hex_string(&comm_out_id);
 
         // === Build 5 circuit input structs ===
@@ -967,7 +972,7 @@ impl PassportReader {
         let attest =
             config
                 .base
-                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex);
+                .build_attest(&pd.dg1_padded, pd.computed_sod_hash, pd.sod_hash_hex)?;
 
         Ok(MerkleAge1300Inputs {
             add_dsc_hash,
@@ -1408,14 +1413,16 @@ mod tests {
         let data_comm1 = commitment::commit_to_data_chunk(
             &inputs.add_dsc_hash.salt,
             &inputs.add_dsc_hash.chunk1,
-        );
+        )
+        .unwrap();
         let state1 = partial_sha256::sha256_start(&inputs.add_dsc_hash.chunk1);
         let comm_out_hash = commitment::commit_to_sha256_state_and_data(
             &inputs.add_dsc_hash.salt,
             &state1,
             CHUNK1_SIZE as u32,
             data_comm1,
-        );
+        )
+        .unwrap();
         assert_eq!(
             commitment::field_to_hex_string(&comm_out_hash),
             inputs.add_dsc_verify.comm_in,
@@ -1428,7 +1435,8 @@ mod tests {
             &inputs.add_dsc_verify.salt_out,
             country_bytes,
             &inputs.add_dsc_verify.tbs_certificate,
-        );
+        )
+        .unwrap();
         assert_eq!(
             commitment::field_to_hex_string(&comm_out_verify),
             inputs.add_id_data.comm_in,
@@ -1455,7 +1463,8 @@ mod tests {
             &inputs.add_id_data.dg1,
             &inputs.add_id_data.e_content,
             private_nullifier,
-        );
+        )
+        .unwrap();
         assert_eq!(
             commitment::field_to_hex_string(&comm_out_id),
             inputs.add_integrity.comm_in,

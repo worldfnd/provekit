@@ -5,16 +5,20 @@
 //! of placeholders.
 
 use {
-    crate::poseidon2::poseidon2_hash,
+    crate::{parser::types::PassportError, poseidon2::poseidon2_hash},
     ark_bn254::Fr,
     ark_ff::{BigInteger, PrimeField},
 };
 
 /// Parse a 0x-prefixed hex string (e.g. "0x2") into a BN254 field element.
-pub fn parse_hex_to_field(hex_str: &str) -> Fr {
+pub fn parse_hex_to_field(hex_str: &str) -> Result<Fr, PassportError> {
     let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
     let padded = format!("{:0>64}", stripped);
-    Fr::from_be_bytes_mod_order(&hex::decode(padded).expect("invalid hex"))
+    let bytes = hex::decode(&padded).map_err(|e| PassportError::InvalidHexField {
+        field:  hex_str.to_string(),
+        source: e,
+    })?;
+    Ok(Fr::from_be_bytes_mod_order(&bytes))
 }
 
 /// Pack big-endian bytes into BN254 field elements, matching Noir's
@@ -80,12 +84,16 @@ pub fn calculate_sod_hash(e_content: &[u8]) -> Fr {
 ///   [0]     = salt
 ///   [1]     = packed country (3 bytes → 1 field)
 ///   [2..26] = packed TBS certificate (720 bytes → 24 fields)
-pub fn hash_salt_country_tbs(salt: &str, country: &[u8], tbs_certificate: &[u8]) -> Fr {
+pub fn hash_salt_country_tbs(
+    salt: &str,
+    country: &[u8],
+    tbs_certificate: &[u8],
+) -> Result<Fr, PassportError> {
     let mut fields = Vec::new();
-    fields.push(parse_hex_to_field(salt));
+    fields.push(parse_hex_to_field(salt)?);
     fields.extend(pack_be_bytes_into_fields(country));
     fields.extend(pack_be_bytes_into_fields(tbs_certificate));
-    poseidon2_hash(&fields)
+    Ok(poseidon2_hash(&fields))
 }
 
 /// Compute private nullifier: Poseidon2(packed_dg1, packed_e_content,
@@ -129,16 +137,16 @@ pub fn hash_salt_country_sa_dg1_econtent_nullifier(
     dg1: &[u8],
     e_content: &[u8],
     private_nullifier: Fr,
-) -> Fr {
+) -> Result<Fr, PassportError> {
     let mut fields = Vec::new();
-    fields.push(parse_hex_to_field(salt));
+    fields.push(parse_hex_to_field(salt)?);
     fields.extend(pack_be_bytes_into_fields(country));
     fields.extend(pack_be_bytes_into_fields(signed_attr));
     fields.push(Fr::from(signed_attr_size));
     fields.extend(pack_be_bytes_into_fields(dg1));
     fields.extend(pack_be_bytes_into_fields(e_content));
     fields.push(private_nullifier);
-    poseidon2_hash(&fields)
+    Ok(poseidon2_hash(&fields))
 }
 
 /// Commit to a data chunk: Poseidon2(salt, packed_data).
@@ -149,11 +157,11 @@ pub fn hash_salt_country_sa_dg1_econtent_nullifier(
 /// Field layout for CHUNK1_SIZE=640:
 ///   [0]      = salt
 ///   [1..22]  = pack_be_bytes_into_fields(data) (640 bytes → 21 fields)
-pub fn commit_to_data_chunk(salt: &str, data: &[u8]) -> Fr {
+pub fn commit_to_data_chunk(salt: &str, data: &[u8]) -> Result<Fr, PassportError> {
     let mut fields = Vec::new();
-    fields.push(parse_hex_to_field(salt));
+    fields.push(parse_hex_to_field(salt)?);
     fields.extend(pack_be_bytes_into_fields(data));
-    poseidon2_hash(&fields)
+    Ok(poseidon2_hash(&fields))
 }
 
 /// Commit to SHA256 state + data commitment: Poseidon2(salt, state[0..7],
@@ -172,26 +180,26 @@ pub fn commit_to_sha256_state_and_data(
     state: &[u32; 8],
     processed_bytes: u32,
     data_commitment: Fr,
-) -> Fr {
+) -> Result<Fr, PassportError> {
     let mut fields = Vec::with_capacity(11);
-    fields.push(parse_hex_to_field(salt));
+    fields.push(parse_hex_to_field(salt)?);
     for &s in state.iter() {
         fields.push(Fr::from(s as u64));
     }
     fields.push(Fr::from(processed_bytes as u64));
     fields.push(data_commitment);
-    poseidon2_hash(&fields)
+    Ok(poseidon2_hash(&fields))
 }
 
 /// Compute h_dg1: Poseidon2([r_dg1, packed_dg1[0..4]]).
 ///
 /// Matches Noir's `Poseidon2::hash([r_dg1].concat(packed_dg1), 5)` from
 /// `t_attest/src/main.nr` and `t_add_integrity_commit/src/main.nr`.
-pub fn calculate_h_dg1(r_dg1: &str, dg1: &[u8]) -> Fr {
+pub fn calculate_h_dg1(r_dg1: &str, dg1: &[u8]) -> Result<Fr, PassportError> {
     let mut fields = Vec::with_capacity(5);
-    fields.push(parse_hex_to_field(r_dg1));
+    fields.push(parse_hex_to_field(r_dg1)?);
     fields.extend(pack_be_bytes_into_fields(dg1));
-    poseidon2_hash(&fields)
+    Ok(poseidon2_hash(&fields))
 }
 
 /// Compute Merkle leaf: Poseidon2([h_dg1, sod_hash]).
@@ -290,14 +298,14 @@ mod tests {
     #[test]
     fn test_parse_hex_to_field_small() {
         // "0x2" should parse to Fr(2)
-        assert_eq!(parse_hex_to_field("0x2"), Fr::from(2u64));
-        assert_eq!(parse_hex_to_field("0x3"), Fr::from(3u64));
+        assert_eq!(parse_hex_to_field("0x2").unwrap(), Fr::from(2u64));
+        assert_eq!(parse_hex_to_field("0x3").unwrap(), Fr::from(3u64));
     }
 
     #[test]
     fn test_parse_hex_to_field_roundtrip() {
         let hex = "0x0f7f8bb032ad068e1c3b717ec1e7020d3537e20688af7bd7a7ae51df72f368bc";
-        let f = parse_hex_to_field(hex);
+        let f = parse_hex_to_field(hex).unwrap();
         let back = field_to_hex_string(&f);
         assert_eq!(back, hex);
     }
@@ -367,8 +375,8 @@ mod tests {
             1110735471,
         ];
 
-        let data_comm1 = commit_to_data_chunk("0x1", &chunk1);
-        let comm_out = commit_to_sha256_state_and_data("0x1", &state1, 640, data_comm1);
+        let data_comm1 = commit_to_data_chunk("0x1", &chunk1).unwrap();
+        let comm_out = commit_to_sha256_state_and_data("0x1", &state1, 640, data_comm1).unwrap();
         let comm_out_hex = field_to_hex_string(&comm_out);
 
         assert_eq!(
@@ -388,7 +396,7 @@ mod tests {
         let e_content: [u8; 200] = [0u8; 200]; // placeholder eContent
         let sod_hash = calculate_sod_hash(&e_content);
 
-        let h_dg1 = calculate_h_dg1(r_dg1, &dg1);
+        let h_dg1 = calculate_h_dg1(r_dg1, &dg1).unwrap();
         let leaf = calculate_leaf(h_dg1, sod_hash);
 
         // leaf_index=0, all-zero path (24 levels)
