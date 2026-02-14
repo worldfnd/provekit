@@ -1,5 +1,7 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{
+        skyscraper::SKYSCRAPER, utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS,
+    },
     whir::parameters::{
         default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
     },
@@ -70,7 +72,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             soundness_type: SoundnessType::ConjectureList,
             starting_log_inv_rate: 1,
             batch_size,
-            hash_id: whir::hash::BLAKE3,
+            hash_id: SKYSCRAPER,
         };
         WhirConfig::new(mv_params, &whir_params)
     }

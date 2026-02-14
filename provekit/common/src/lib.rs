@@ -27,13 +27,14 @@ pub use {
     witness::PublicInputs,
 };
 
-/// Register the NTT implementation for `ark_bn254::Fr` in whir's global
-/// type-map.
+/// Register provekit's custom implementations in whir's global registries.
 ///
-/// Whir's NTT registry is keyed by `TypeId` and pre-registers its own field
-/// types, but not `ark_bn254::Fr`. This must be called once before any
-/// prove/verify operations.
+/// This registers:
+/// - The NTT implementation for `ark_bn254::Fr` (whir only pre-registers its
+///   own field types).
+/// - The Skyscraper hash engine for Merkle tree hashing and proof-of-work.
 ///
+/// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.
 pub fn register_ntt() {
     use std::sync::{Arc, Once};
@@ -42,6 +43,10 @@ pub fn register_ntt() {
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
             Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
         whir::algebra::ntt::NTT.insert(ntt);
+
+        let skyscraper: Arc<dyn whir::hash::HashEngine> =
+            Arc::new(skyscraper::SkyscraperHashEngine);
+        whir::hash::ENGINES.register(skyscraper);
     });
 }
 
