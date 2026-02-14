@@ -11,8 +11,8 @@ use {
     tracing::instrument,
     whir::{
         algebra::{
-            polynomials::{EvaluationsList, MultilinearPoint},
-            Weights,
+            polynomials::MultilinearPoint,
+            weights::{Covector, Weights},
         },
         protocols::whir::Commitment,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
@@ -158,7 +158,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let mut all_evaluations = evaluations_1;
             all_evaluations.extend(evaluations_2);
 
-            let weight_refs: Vec<&Weights<FieldElement>> = all_weights.iter().collect();
+            let weight_refs: Vec<&dyn Weights<FieldElement>> = all_weights
+                .iter()
+                .map(|w| w as &dyn Weights<FieldElement>)
+                .collect();
             let commitment_refs: Vec<&Commitment<FieldElement>> =
                 vec![&commitment_1, &commitment_2];
 
@@ -204,7 +207,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 );
             }
 
-            let weight_refs: Vec<&Weights<FieldElement>> = weights.iter().collect();
+            let weight_refs: Vec<&dyn Weights<FieldElement>> = weights
+                .iter()
+                .map(|w| w as &dyn Weights<FieldElement>)
+                .collect();
 
             let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
                 &mut arthur,
@@ -296,7 +302,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 fn prepare_weights_and_evaluations<const N: usize>(
     m: usize,
     whir_query_answer_sums: &([FieldElement; N], [FieldElement; N]),
-) -> (Vec<Weights<FieldElement>>, Vec<FieldElement>) {
+) -> (Vec<Covector<FieldElement>>, Vec<FieldElement>) {
     let cfg_nv = m + 1; // whir_witness uses m+1 variables (matching prover's cfg_nv)
     let final_len = 1usize << cfg_nv;
 
@@ -304,7 +310,7 @@ fn prepare_weights_and_evaluations<const N: usize>(
     let mut evaluations = Vec::with_capacity(N * 2);
 
     for i in 0..N {
-        let weight = Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); final_len]));
+        let weight = Covector::new(vec![FieldElement::zero(); final_len]);
         weights.push(weight);
 
         // Each weight evaluates against 2 polynomials (masked + random) → 2 evaluations
@@ -325,7 +331,7 @@ fn prepare_weights_and_evaluations<const N: usize>(
 /// computes its value itself.
 fn update_weights_and_evaluations(
     m: usize,
-    weights: &mut Vec<Weights<FieldElement>>,
+    weights: &mut Vec<Covector<FieldElement>>,
     evaluations: &mut Vec<FieldElement>,
     whir_public_weights_query_answer: (FieldElement, FieldElement),
     public_inputs_len: usize,
@@ -338,11 +344,8 @@ fn update_weights_and_evaluations(
         *slot = current_pow;
         current_pow *= x;
     }
-    let public_weight = Weights::geometric(
-        x,
-        public_inputs_len,
-        EvaluationsList::new(public_weight_evals),
-    );
+    let mut public_weight = Covector::new(public_weight_evals);
+    public_weight.deferred = false;
     let (public_f_sum, public_g_sum) = whir_public_weights_query_answer;
     weights.insert(0, public_weight);
     evaluations.insert(0, public_g_sum);
@@ -360,7 +363,7 @@ fn prepare_weights_and_evaluations_dual<const N: usize>(
     evals_c1_random: &[FieldElement; N],
     evals_c2_masked: &[FieldElement; N],
     evals_c2_random: &[FieldElement; N],
-) -> (Vec<Weights<FieldElement>>, Vec<FieldElement>) {
+) -> (Vec<Covector<FieldElement>>, Vec<FieldElement>) {
     let cfg_nv = m + 1;
     let final_len = 1usize << cfg_nv;
 
@@ -368,7 +371,7 @@ fn prepare_weights_and_evaluations_dual<const N: usize>(
     let mut evaluations = Vec::with_capacity(N * 4);
 
     for i in 0..N {
-        let weight = Weights::linear(EvaluationsList::new(vec![FieldElement::zero(); final_len]));
+        let weight = Covector::new(vec![FieldElement::zero(); final_len]);
         weights.push(weight);
 
         evaluations.push(evals_c1_masked[i]);
@@ -385,7 +388,7 @@ fn prepare_weights_and_evaluations_dual<const N: usize>(
 /// type.
 fn update_weights_and_evaluations_dual(
     m: usize,
-    weights: &mut Vec<Weights<FieldElement>>,
+    weights: &mut Vec<Covector<FieldElement>>,
     evaluations: &mut Vec<FieldElement>,
     public_hint: (FieldElement, FieldElement, FieldElement, FieldElement),
     public_inputs_len: usize,
@@ -398,11 +401,8 @@ fn update_weights_and_evaluations_dual(
         *slot = current_pow;
         current_pow *= x;
     }
-    let public_weight = Weights::geometric(
-        x,
-        public_inputs_len,
-        EvaluationsList::new(public_weight_evals),
-    );
+    let mut public_weight = Covector::new(public_weight_evals);
+    public_weight.deferred = false;
     let (f1, g1, f2, g2) = public_hint;
     weights.insert(0, public_weight);
     evaluations.insert(0, g2);
@@ -477,7 +477,10 @@ pub fn run_sumcheck_verifier(
         ]),
     );
 
-    let blinding_weight_refs: Vec<&Weights<FieldElement>> = blinding_weights.iter().collect();
+    let blinding_weight_refs: Vec<&dyn Weights<FieldElement>> = blinding_weights
+        .iter()
+        .map(|w| w as &dyn Weights<FieldElement>)
+        .collect();
 
     run_whir_pcs_verifier(
         arthur,
@@ -502,7 +505,7 @@ pub fn run_whir_pcs_verifier(
     arthur: &mut VerifierState<'_, SkyscraperSponge>,
     params: &WhirConfig,
     commitments: &[&Commitment<FieldElement>],
-    weights: &[&Weights<FieldElement>],
+    weights: &[&dyn Weights<FieldElement>],
     evaluations: &[FieldElement],
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let (folding_randomness, deferred) =

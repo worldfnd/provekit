@@ -20,13 +20,31 @@ use {
     tracing::{debug, instrument},
     whir::{
         algebra::{
+            dot,
+            embedding::Basefield,
+            ntt::wavelet_transform,
             polynomials::{CoefficientList, EvaluationsList, MultilinearPoint},
-            Weights,
+            weights::{Covector, Evaluate},
         },
         protocols::whir::Witness,
         transcript::{ProverState, VerifierMessage},
     },
 };
+
+/// Transform coefficients to evaluation form once, reusable across multiple
+/// weight dot products. Avoids the per-call clone+transform inside
+/// `Covector::evaluate`.
+fn coeffs_to_evals(poly: &CoefficientList<FieldElement>) -> Vec<FieldElement> {
+    let mut evals = poly.coeffs().to_vec();
+    wavelet_transform(&mut evals);
+    evals
+}
+
+/// Dot product of a covector's weight vector against pre-transformed
+/// evaluations.
+fn covector_dot(w: &Covector<FieldElement>, evals: &[FieldElement]) -> FieldElement {
+    dot(&w.vector, evals)
+}
 
 pub struct WhirR1CSCommitment {
     pub commitment_to_witness:   Witness<FieldElement>,
@@ -185,7 +203,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &commitment.random_polynomial_coeff,
             );
 
-            let weight_refs: Vec<&Weights<FieldElement>> = weights.iter().collect();
+            let weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = weights
+                .iter()
+                .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+                .collect();
 
             run_zk_whir_pcs_prover(
                 &[&commitment.commitment_to_witness],
@@ -237,21 +258,25 @@ impl WhirR1CSProver for WhirR1CSScheme {
             // Compute cross-evaluations: weights_1 on c2's polynomials and
             // weights_2 on c1's polynomials. Whir's prove() expects evaluations
             // for ALL (weight, polynomial) pairs in row-major order.
+            let c1m_evals = coeffs_to_evals(&c1.masked_polynomial_coeff);
+            let c1r_evals = coeffs_to_evals(&c1.random_polynomial_coeff);
+            let c2m_evals = coeffs_to_evals(&c2.masked_polynomial_coeff);
+            let c2r_evals = coeffs_to_evals(&c2.random_polynomial_coeff);
             let cross_f_12: Vec<FieldElement> = weights_1
                 .iter()
-                .map(|w| w.evaluate(&c2.masked_polynomial_coeff))
+                .map(|w| covector_dot(w, &c2m_evals))
                 .collect();
             let cross_g_12: Vec<FieldElement> = weights_1
                 .iter()
-                .map(|w| w.evaluate(&c2.random_polynomial_coeff))
+                .map(|w| covector_dot(w, &c2r_evals))
                 .collect();
             let cross_f_21: Vec<FieldElement> = weights_2
                 .iter()
-                .map(|w| w.evaluate(&c1.masked_polynomial_coeff))
+                .map(|w| covector_dot(w, &c1m_evals))
                 .collect();
             let cross_g_21: Vec<FieldElement> = weights_2
                 .iter()
-                .map(|w| w.evaluate(&c1.random_polynomial_coeff))
+                .map(|w| covector_dot(w, &c1r_evals))
                 .collect();
 
             merlin.prover_hint_ark(&(f_sums_1.clone(), g_sums_1.clone()));
@@ -293,12 +318,17 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &c2.random_polynomial_coeff,
             ];
 
+            let poly_evals: Vec<Vec<FieldElement>> =
+                all_polys.iter().map(|p| coeffs_to_evals(p)).collect();
             let evaluations: Vec<FieldElement> = all_weights
                 .iter()
-                .flat_map(|w| all_polys.iter().map(|p| w.evaluate(p)))
+                .flat_map(|w| poly_evals.iter().map(|pe| covector_dot(w, pe)))
                 .collect();
 
-            let weight_refs: Vec<&Weights<FieldElement>> = all_weights.iter().collect();
+            let weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = all_weights
+                .iter()
+                .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+                .collect();
 
             run_zk_whir_pcs_prover(
                 &[&c1.commitment_to_witness, &c2.commitment_to_witness],
@@ -604,7 +634,10 @@ pub fn run_zk_sumcheck_prover(
         &blindings_blind_polynomial,
     );
 
-    let blinding_weight_refs: Vec<&Weights<FieldElement>> = blinding_weights.iter().collect();
+    let blinding_weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = blinding_weights
+        .iter()
+        .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+        .collect();
 
     let (_sums, _deferred) = run_zk_whir_pcs_prover(
         &[&commitment_to_blinding_polynomial],
@@ -635,13 +668,16 @@ fn create_weights_and_evaluations_for_two_polynomials<const N: usize>(
     g_polynomial: &CoefficientList<FieldElement>,
     alphas: &[Vec<FieldElement>; N],
 ) -> (
-    Vec<Weights<FieldElement>>,
+    Vec<Covector<FieldElement>>,
     Vec<FieldElement>,
     Vec<FieldElement>,
 ) {
     let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
     let base_len = 1usize << base_nv;
     let final_len = 1usize << cfg_nv;
+
+    let f_evals = coeffs_to_evals(f_polynomial);
+    let g_evals = coeffs_to_evals(g_polynomial);
 
     let mut weights = Vec::with_capacity(N);
     let mut f_sums = Vec::with_capacity(N);
@@ -658,28 +694,31 @@ fn create_weights_and_evaluations_for_two_polynomials<const N: usize>(
         }
         w_full.resize(final_len, FieldElement::zero());
 
-        let weight = Weights::linear(EvaluationsList::new(w_full));
-        let f = weight.evaluate(f_polynomial);
-        let g = weight.evaluate(g_polynomial);
+        let weight = Covector::new(w_full);
+        f_sums.push(covector_dot(&weight, &f_evals));
+        g_sums.push(covector_dot(&weight, &g_evals));
 
         weights.push(weight);
-        f_sums.push(f);
-        g_sums.push(g);
     }
 
     (weights, f_sums, g_sums)
 }
 
-/// Compute evaluations for the single-commitment case:
-/// for each weight, [eval_on_masked, eval_on_random].
 fn compute_evaluations_single(
-    weights: &[Weights<FieldElement>],
+    weights: &[Covector<FieldElement>],
     masked_poly: &CoefficientList<FieldElement>,
     random_poly: &CoefficientList<FieldElement>,
 ) -> Vec<FieldElement> {
+    let masked_evals = coeffs_to_evals(masked_poly);
+    let random_evals = coeffs_to_evals(random_poly);
     weights
         .iter()
-        .flat_map(|w| [w.evaluate(masked_poly), w.evaluate(random_poly)])
+        .flat_map(|w| {
+            [
+                covector_dot(w, &masked_evals),
+                covector_dot(w, &random_evals),
+            ]
+        })
         .collect()
 }
 
@@ -687,7 +726,7 @@ fn compute_evaluations_single(
 pub fn run_zk_whir_pcs_prover(
     witnesses: &[&Witness<FieldElement>],
     polynomials: &[&CoefficientList<FieldElement>],
-    weights: &[&Weights<FieldElement>],
+    weights: &[&dyn Evaluate<Basefield<FieldElement>>],
     evaluations: &[FieldElement],
     params: &WhirConfig,
     merlin: &mut ProverState<SkyscraperSponge>,
@@ -700,29 +739,35 @@ pub fn run_zk_whir_pcs_prover(
 }
 
 fn compute_public_weight_evaluations(
-    weights: &mut Vec<Weights<FieldElement>>,
+    weights: &mut Vec<Covector<FieldElement>>,
     f_polynomial: &CoefficientList<FieldElement>,
     g_polynomial: &CoefficientList<FieldElement>,
-    public_weights: Weights<FieldElement>,
+    public_weights: Covector<FieldElement>,
 ) -> (FieldElement, FieldElement) {
-    let f = public_weights.evaluate(f_polynomial);
-    let g = public_weights.evaluate(g_polynomial);
+    let f_evals = coeffs_to_evals(f_polynomial);
+    let g_evals = coeffs_to_evals(g_polynomial);
+    let f = covector_dot(&public_weights, &f_evals);
+    let g = covector_dot(&public_weights, &g_evals);
     weights.insert(0, public_weights);
     (f, g)
 }
 
 fn compute_public_weight_evaluations_dual(
-    weights_1: &mut Vec<Weights<FieldElement>>,
+    weights_1: &mut Vec<Covector<FieldElement>>,
     c1_masked: &CoefficientList<FieldElement>,
     c1_random: &CoefficientList<FieldElement>,
     c2_masked: &CoefficientList<FieldElement>,
     c2_random: &CoefficientList<FieldElement>,
-    public_weights: Weights<FieldElement>,
+    public_weights: Covector<FieldElement>,
 ) -> (FieldElement, FieldElement, FieldElement, FieldElement) {
-    let f1 = public_weights.evaluate(c1_masked);
-    let g1 = public_weights.evaluate(c1_random);
-    let f2 = public_weights.evaluate(c2_masked);
-    let g2 = public_weights.evaluate(c2_random);
+    let c1m = coeffs_to_evals(c1_masked);
+    let c1r = coeffs_to_evals(c1_random);
+    let c2m = coeffs_to_evals(c2_masked);
+    let c2r = coeffs_to_evals(c2_random);
+    let f1 = covector_dot(&public_weights, &c1m);
+    let g1 = covector_dot(&public_weights, &c1r);
+    let f2 = covector_dot(&public_weights, &c2m);
+    let g2 = covector_dot(&public_weights, &c2r);
     weights_1.insert(0, public_weights);
     (f1, g1, f2, g2)
 }
@@ -731,7 +776,7 @@ fn get_public_weights(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<SkyscraperSponge>,
     m: usize,
-) -> Weights<FieldElement> {
+) -> Covector<FieldElement> {
     let public_inputs_hash = public_inputs.hash();
     merlin.prover_message(&public_inputs_hash);
 
@@ -746,5 +791,7 @@ fn get_public_weights(
         current_pow *= x;
     }
 
-    Weights::geometric(x, public_inputs.len(), EvaluationsList::new(public_weights))
+    let mut covector = Covector::new(public_weights);
+    covector.deferred = false;
+    covector
 }
