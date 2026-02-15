@@ -1,0 +1,9 @@
+[package]
+name = "commitment_common"
+type = "lib"
+authors = ["Theo Madzou"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+utils = { path = "../../utils" }
+poseidon = { tag = "v0.1.1", git = "https://github.com/noir-lang/poseidon" }

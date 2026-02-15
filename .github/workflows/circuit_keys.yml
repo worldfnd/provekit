@@ -6,7 +6,7 @@ on:
 env:
   BUCKET_NAME: "provekit"
   CIRCUIT_NAME: "complete_age_check"
-  CIRCUIT_DIR: "noir-examples/noir-passport-examples/complete_age_check"
+  CIRCUIT_DIR: "noir-examples/noir-passport-monolithic/complete_age_check"
   KEYS_NAME: "agecheck"
 
 
@@ -95,4 +95,3 @@ jobs:
               run: |
                 echo "Cleaning up local keys..."
                 rm -f ./keys/*.bin
-
