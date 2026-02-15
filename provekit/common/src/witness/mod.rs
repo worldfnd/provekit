@@ -34,8 +34,6 @@ pub const WITNESS_ONE_IDX: usize = 0;
 
 /// Compute spread(val): interleave bits of val with zeros.
 /// E.g., `0b1011` → `0b01_00_01_01`.
-/// Used by both the compiler (to build table entries) and the prover
-/// (to solve SpreadWitness builders).
 pub fn compute_spread(val: u64) -> u64 {
     let mut result = 0u64;
     for i in 0..32 {
