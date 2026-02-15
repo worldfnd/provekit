@@ -8,7 +8,7 @@ use {
             SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
         },
     },
-    ark_ff::Field,
+    ark_ff::{Field, PrimeField},
     provekit_common::{witness::ConstantOrR1CSWitness, FieldElement},
     std::collections::BTreeMap,
 };
@@ -205,6 +205,11 @@ pub(crate) fn add_sha256_compression(
         Vec<usize>,
     )>,
 ) -> BTreeMap<u32, Vec<usize>> {
+    assert!(
+        FieldElement::MODULUS_BIT_SIZE > 64,
+        "Spread trick requires p >> 2^64; unsound for small fields like M31"
+    );
+
     if inputs_and_outputs.is_empty() {
         return BTreeMap::new();
     }

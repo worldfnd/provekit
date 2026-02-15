@@ -2,7 +2,7 @@ use {
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{Field, Zero},
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
+        witness::{compute_spread, ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,
     },
     std::{
@@ -23,15 +23,6 @@ const SPREAD_TABLE_BITS: u32 = 8;
 
 /// spread(0xFFFFFFFF) = 0x5555555555555555
 const SPREAD_ALL_ONES: u64 = 0x5555_5555_5555_5555;
-
-/// Pure function: compute spread(val) — interleave bits with zeros.
-pub(crate) fn compute_spread(val: u64) -> u64 {
-    let mut result = 0u64;
-    for i in 0..32 {
-        result |= ((val >> i) & 1) << (2 * i);
-    }
-    result
-}
 
 /// Split a chunk into sub-chunks of ≤ SPREAD_TABLE_BITS.
 fn subchunks(bits: u32) -> Vec<u32> {

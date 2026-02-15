@@ -11,6 +11,6 @@ fn main() {
     ];
 
     let digest = sha256_var(bytes, 32);
-   // let r = sha256_var(digest, 32);
-   // assert(digest == result);
+ 
+   assert(digest == result);
 }

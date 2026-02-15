@@ -7,8 +7,8 @@ use {
         skyscraper::SkyscraperSponge,
         utils::noir_to_native,
         witness::{
-            ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-            WitnessCoefficient,
+            compute_spread, ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm,
+            WitnessBuilder, WitnessCoefficient,
         },
         FieldElement, NoirElement,
     },
@@ -416,14 +416,4 @@ impl WitnessBuilderSolver for WitnessBuilder {
             }
         }
     }
-}
-
-/// Computes spread(val): interleave bits of val with zeros.
-/// E.g., 0b1011 → 0b01_00_01_01
-fn compute_spread(val: u64) -> u64 {
-    let mut result = 0u64;
-    for i in 0..32 {
-        result |= ((val >> i) & 1) << (2 * i);
-    }
-    result
 }
