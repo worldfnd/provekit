@@ -5,9 +5,59 @@ use std::{
 #[cfg(feature = "tracy")]
 use {std::sync::atomic::AtomicBool, tracing_tracy::client::sys as tracy_sys};
 
+/// Minimum allocation size (bytes) to trigger prefault. Smaller allocations skip madvise.
+const PREFAULT_THRESHOLD: usize = 128 * 1024;
+
+/// Pre-fault and optionally advise the kernel for large allocations on Linux.
+/// Reduces concurrent anonymous page faults when many threads touch new memory.
+/// `ptr` must be a valid allocation of at least `size` bytes.
+#[cfg(target_os = "linux")]
+unsafe fn prefault(ptr: *mut u8, size: usize) {
+    if size < PREFAULT_THRESHOLD || ptr.is_null() {
+        return;
+    }
+
+    let page = {
+        static PAGE_SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        *PAGE_SIZE.get_or_init(|| {
+            let p = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+            usize::try_from(p).ok().filter(|v| *v > 0).unwrap_or(4096)
+        })
+    };
+    let mask = page - 1; // page is always a power of two on Linux
+
+    let start = ptr as usize;
+    let end = match start.checked_add(size) {
+        Some(e) => e,
+        None => return,
+    };
+
+    // Round start up and end down so we only touch pages fully inside [ptr, ptr+size).
+    let safe_start = match start.checked_add(mask) {
+        Some(s) => s & !mask,
+        None => return,
+    };
+    let safe_end = end & !mask;
+
+    if safe_start >= safe_end {
+        return;
+    }
+
+    let aligned_ptr = safe_start as *mut libc::c_void;
+    let aligned_size = safe_end - safe_start;
+
+    let _ = libc::madvise(aligned_ptr, aligned_size, libc::MADV_HUGEPAGE);
+    let _ = libc::madvise(aligned_ptr, aligned_size, libc::MADV_POPULATE_WRITE);
+}
+
+#[cfg(not(target_os = "linux"))]
+unsafe fn prefault(_ptr: *mut u8, _size: usize) {}
+
 #[cfg(feature = "jemalloc")]
 static BACKING: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-#[cfg(not(feature = "jemalloc"))]
+#[cfg(all(not(feature = "jemalloc"), feature = "mimalloc"))]
+static BACKING: mimalloc::MiMalloc = mimalloc::MiMalloc;
+#[cfg(all(not(feature = "jemalloc"), not(feature = "mimalloc")))]
 static BACKING: std::alloc::System = std::alloc::System;
 
 /// Custom allocator that keeps track of statistics to see program memory
@@ -129,6 +179,7 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
         self.max.fetch_max(current, Ordering::SeqCst);
         self.count.fetch_add(1, Ordering::SeqCst);
         self.tracy_alloc(size, ptr);
+        prefault(ptr, size);
         ptr
     }
 
@@ -148,6 +199,7 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
         self.max.fetch_max(current, Ordering::SeqCst);
         self.count.fetch_add(1, Ordering::SeqCst);
         self.tracy_alloc(size, ptr);
+        prefault(ptr, size);
         ptr
     }
 
@@ -168,6 +220,7 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
                 .fetch_sub(old_size - new_size, Ordering::SeqCst);
         }
         self.tracy_alloc(new_size, ptr);
+        prefault(ptr, new_size);
         ptr
     }
 }

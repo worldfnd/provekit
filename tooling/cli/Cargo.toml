@@ -26,6 +26,8 @@ base64.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+libc = "0.2"
+mimalloc = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -38,4 +40,5 @@ workspace = true
 default = ["profiling-allocator", "jemalloc"]
 profiling-allocator = []
 jemalloc = ["profiling-allocator", "dep:tikv-jemallocator"]
+mimalloc = ["profiling-allocator", "dep:mimalloc"]
 tracy = ["dep:tracing-tracy"]
