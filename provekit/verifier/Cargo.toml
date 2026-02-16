@@ -14,7 +14,6 @@ provekit-common.workspace = true
 
 # Cryptography and proof systems
 ark-std.workspace = true
-spongefish.workspace = true
 whir.workspace = true
 
 # 3rd party

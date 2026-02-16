@@ -13,7 +13,7 @@ use {
     anyhow::Result,
     span_stats::SpanStats,
     tracing::subscriber,
-    tracing_subscriber::{self, layer::SubscriberExt as _, Registry},
+    tracing_subscriber::{self, filter::LevelFilter, layer::SubscriberExt as _, Layer, Registry},
 };
 
 #[cfg(feature = "profiling-allocator")]
@@ -22,7 +22,13 @@ static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
 fn main() -> Result<()> {
     let args = argh::from_env::<cmd::Args>();
-    let subscriber = Registry::default().with(SpanStats);
+    // Debug builds: track ALL spans for detailed profiling.
+    // Release builds: only INFO+ to reduce overhead.
+    #[cfg(debug_assertions)]
+    let level = LevelFilter::TRACE;
+    #[cfg(not(debug_assertions))]
+    let level = LevelFilter::INFO;
+    let subscriber = Registry::default().with(SpanStats.with_filter(level));
 
     #[cfg(feature = "tracy")]
     let subscriber = {

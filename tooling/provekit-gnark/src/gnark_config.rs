@@ -1,116 +1,141 @@
 use {
     ark_poly::EvaluationDomain,
-    provekit_common::{IOPattern, PublicInputs, WhirConfig},
+    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
+    whir::algebra::domain::Domain,
 };
 
+/// Configuration for the Gnark recursive verifier.
 #[derive(Debug, Serialize, Deserialize)]
-/// Configuration for Gnark
 pub struct GnarkConfig {
-    /// WHIR parameters for witness
-    pub whir_config_witness:        WHIRConfigGnark,
-    /// WHIR parameters for hiding spartan
+    /// WHIR parameters for witness commitment.
+    pub whir_config_witness: WHIRConfigGnark,
+    /// WHIR parameters for hiding Spartan.
     pub whir_config_hiding_spartan: WHIRConfigGnark,
-    /// log of number of constraints in R1CS
-    pub log_num_constraints:        usize,
-    /// log of number of variables in R1CS
-    pub log_num_variables:          usize,
-    /// log of number of non-zero terms matrix A
-    pub log_a_num_terms:            usize,
-    /// nimue input output pattern
-    pub io_pattern:                 String,
-    /// transcript in byte form
-    pub transcript:                 Vec<u8>,
-    /// length of the transcript
-    pub transcript_len:             usize,
-    /// number of logup challenges (0 = single commitment mode)
-    pub num_challenges:             usize,
-    /// size of w1
-    pub w1_size:                    usize,
-    /// public inputs
-    pub public_inputs:              PublicInputs,
+    /// log₂ of number of constraints in R1CS.
+    pub log_num_constraints: usize,
+    /// log₂ of number of variables in R1CS.
+    pub log_num_variables: usize,
+    /// log₂ of number of non-zero terms in matrix A.
+    pub log_a_num_terms: usize,
+    /// Spongefish NARG string (transcript interaction pattern).
+    pub narg_string: Vec<u8>,
+    /// Explicit length for Go deserialisation.
+    pub narg_string_len: usize,
+    /// Prover hints (serialised transcript data).
+    pub hints: Vec<u8>,
+    /// Explicit length for Go deserialisation.
+    pub hints_len: usize,
+    /// Number of LogUp challenges (0 = single commitment mode).
+    pub num_challenges: usize,
+    /// Size of w1 partition.
+    pub w1_size: usize,
+    /// Public inputs to the circuit.
+    pub public_inputs: PublicInputs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-
 pub struct WHIRConfigGnark {
-    /// number of rounds
+    /// Number of WHIR rounds.
     pub n_rounds:               usize,
-    /// rate
+    /// Reed-Solomon rate (log₂ of inverse rate).
     pub rate:                   usize,
-    /// number of variables
+    /// Number of variables in the multilinear polynomial.
     pub n_vars:                 usize,
-    /// folding factor
+    /// Folding factor per round.
     pub folding_factor:         Vec<usize>,
-    /// out of domain samples
+    /// Out-of-domain samples per round.
     pub ood_samples:            Vec<usize>,
-    /// number of queries
+    /// Number of queries per round.
     pub num_queries:            Vec<usize>,
-    /// proof of work bits
+    /// Proof-of-work bits per round.
     pub pow_bits:               Vec<i32>,
-    /// final queries
+    /// Final round query count.
     pub final_queries:          usize,
-    /// final proof of work bits
+    /// Final round proof-of-work bits.
     pub final_pow_bits:         i32,
-    /// final folding proof of work bits
+    /// Final folding proof-of-work bits.
     pub final_folding_pow_bits: i32,
-    /// domain generator string
+    /// Domain generator as a string.
     pub domain_generator:       String,
-    /// batch size
+    /// Batch size (number of polynomials committed together).
     pub batch_size:             usize,
 }
 
 impl WHIRConfigGnark {
     pub fn new(whir_params: &WhirConfig) -> Self {
+        let n_rounds = whir_params.n_rounds();
+        let n_vars = whir_params.initial_num_variables();
+        let rate = whir_params.initial_committer.expansion.ilog2() as usize;
+
+        // Folding factor: initial round uses initial_sumcheck.num_rounds,
+        // subsequent rounds use round_configs[i].sumcheck.num_rounds
+        let mut folding_factor = Vec::with_capacity(n_rounds + 1);
+        folding_factor.push(whir_params.initial_sumcheck.num_rounds);
+        for rc in &whir_params.round_configs {
+            folding_factor.push(rc.sumcheck.num_rounds);
+        }
+
+        let ood_samples: Vec<usize> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.irs_committer.out_domain_samples)
+            .collect();
+
+        let num_queries: Vec<usize> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.irs_committer.in_domain_samples)
+            .collect();
+
+        let pow_bits: Vec<i32> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| {
+                f64::from(whir::protocols::proof_of_work::difficulty(rc.pow.threshold)) as i32
+            })
+            .collect();
+
+        let final_queries = whir_params.final_in_domain_samples();
+        let final_pow_bits = f64::from(whir::protocols::proof_of_work::difficulty(
+            whir_params.final_pow.threshold,
+        )) as i32;
+        let final_folding_pow_bits = f64::from(whir::protocols::proof_of_work::difficulty(
+            whir_params.final_sumcheck.round_pow.threshold,
+        )) as i32;
+
+        // Reconstruct the starting domain to get its generator
+        let domain = Domain::<FieldElement>::new(1 << n_vars, rate)
+            .expect("Should have found an appropriate domain");
+        let domain_generator = format!("{}", domain.backing_domain.group_gen());
+
+        let batch_size = whir_params.initial_committer.num_polynomials;
+
         WHIRConfigGnark {
-            n_rounds:               whir_params
-                .folding_factor
-                .compute_number_of_rounds(whir_params.mv_parameters.num_variables)
-                .0,
-            rate:                   whir_params.starting_log_inv_rate,
-            n_vars:                 whir_params.mv_parameters.num_variables,
-            folding_factor:         (0..(whir_params
-                .folding_factor
-                .compute_number_of_rounds(whir_params.mv_parameters.num_variables)
-                .0))
-                .map(|round| whir_params.folding_factor.at_round(round))
-                .collect(),
-            ood_samples:            whir_params
-                .round_parameters
-                .iter()
-                .map(|x| x.ood_samples)
-                .collect(),
-            num_queries:            whir_params
-                .round_parameters
-                .iter()
-                .map(|x| x.num_queries)
-                .collect(),
-            pow_bits:               whir_params
-                .round_parameters
-                .iter()
-                .map(|x| x.pow_bits as i32)
-                .collect(),
-            final_queries:          whir_params.final_queries,
-            final_pow_bits:         whir_params.final_pow_bits as i32,
-            final_folding_pow_bits: whir_params.final_folding_pow_bits as i32,
-            domain_generator:       format!(
-                "{}",
-                whir_params.starting_domain.backing_domain.group_gen()
-            ),
-            batch_size:             whir_params.batch_size,
+            n_rounds,
+            rate,
+            n_vars,
+            folding_factor,
+            ood_samples,
+            num_queries,
+            pow_bits,
+            final_queries,
+            final_pow_bits,
+            final_folding_pow_bits,
+            domain_generator,
+            batch_size,
         }
     }
 }
 
-/// Writes config used for Gnark circuit to a file
+/// Build the Gnark recursive verifier configuration.
 #[instrument(skip_all)]
 pub fn gnark_parameters(
     whir_params_witness: &WhirConfig,
     whir_params_hiding_spartan: &WhirConfig,
-    transcript: &[u8],
-    io: &IOPattern,
+    proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
     a_num_terms: usize,
@@ -124,22 +149,22 @@ pub fn gnark_parameters(
         log_num_constraints: m_0,
         log_num_variables: m,
         log_a_num_terms: a_num_terms,
-        io_pattern: String::from_utf8(io.as_bytes().to_vec()).unwrap(),
-        transcript: transcript.to_vec(),
-        transcript_len: transcript.to_vec().len(),
+        narg_string: proof.narg_string.clone(),
+        narg_string_len: proof.narg_string.len(),
+        hints: proof.hints.clone(),
+        hints_len: proof.hints.len(),
         num_challenges,
         w1_size,
         public_inputs: public_inputs.clone(),
     }
 }
 
-/// Writes config used for Gnark circuit to a file
+/// Serialize the Gnark configuration to a JSON file.
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
     whir_params_witness: &WhirConfig,
     whir_params_hiding_spartan: &WhirConfig,
-    transcript: &[u8],
-    io: &IOPattern,
+    proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
     a_num_terms: usize,
@@ -151,8 +176,7 @@ pub fn write_gnark_parameters_to_file(
     let gnark_config = gnark_parameters(
         whir_params_witness,
         whir_params_hiding_spartan,
-        transcript,
-        io,
+        proof,
         m_0,
         m,
         a_num_terms,

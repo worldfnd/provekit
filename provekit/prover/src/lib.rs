@@ -6,9 +6,12 @@ use {
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
-    provekit_common::{FieldElement, IOPattern, NoirElement, NoirProof, Prover, PublicInputs},
+    provekit_common::{
+        FieldElement, NoirElement, NoirProof, Prover, PublicInputs, TranscriptSponge,
+    },
     std::path::Path,
     tracing::instrument,
+    whir::transcript::{codecs::Empty, ProverState},
 };
 
 mod r1cs;
@@ -52,6 +55,8 @@ impl Prove for Prover {
 
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
         let (input_map, _expected_return) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
@@ -59,9 +64,11 @@ impl Prove for Prover {
         let acir_public_inputs = self.program.functions[0].public_inputs().indices();
 
         // Set up transcript
-        let io: IOPattern = self.whir_for_witness.create_io_pattern();
-        let mut merlin = io.to_prover_state();
-        drop(io);
+        let ds = self
+            .whir_for_witness
+            .create_domain_separator()
+            .instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
 

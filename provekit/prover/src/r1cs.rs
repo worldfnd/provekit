@@ -2,13 +2,12 @@ use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, NoirElement, R1CS,
+        FieldElement, NoirElement, TranscriptSponge, R1CS,
     },
-    spongefish::ProverState,
     tracing::instrument,
+    whir::transcript::ProverState,
 };
 
 pub trait R1CSSolver {
@@ -17,7 +16,7 @@ pub trait R1CSSolver {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<TranscriptSponge>,
     );
 
     #[cfg(test)]
@@ -51,14 +50,14 @@ impl R1CSSolver for R1CS {
         witness: &mut Vec<Option<FieldElement>>,
         plan: LayeredWitnessBuilders,
         acir_map: &WitnessMap<NoirElement>,
-        transcript: &mut ProverState<SkyscraperSponge, FieldElement>,
+        transcript: &mut ProverState<TranscriptSponge>,
     ) {
         for layer in &plan.layers {
             match layer.typ {
                 LayerType::Other => {
                     // Execute regular operations
                     for builder in &layer.witness_builders {
-                        builder.solve(&acir_map, witness, transcript);
+                        builder.solve(acir_map, witness, transcript);
                     }
                 }
                 LayerType::Inverse => {
