@@ -289,10 +289,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 /// The claimed evaluations come from the prover's hints: f_sums and g_sums
 /// interleaved as [f_sum_i, g_sum_i] for each constraint.
 fn prepare_weights_and_evaluations<const N: usize>(
-    m: usize,
+    cfg_nv: usize,
     whir_query_answer_sums: &([FieldElement; N], [FieldElement; N]),
 ) -> (Vec<Covector<FieldElement>>, Vec<FieldElement>) {
-    let cfg_nv = m + 1; // whir_witness uses m+1 variables (matching prover's cfg_nv)
     let final_len = 1usize << cfg_nv;
 
     let mut weights = Vec::with_capacity(N);
@@ -347,13 +346,12 @@ fn update_weights_and_evaluations(
 /// commitments): [eval_c1_masked, eval_c1_random, eval_c2_masked,
 /// eval_c2_random]. This matches whir's row-major evaluation matrix layout.
 fn prepare_weights_and_evaluations_dual<const N: usize>(
-    m: usize,
+    cfg_nv: usize,
     evals_c1_masked: &[FieldElement; N],
     evals_c1_random: &[FieldElement; N],
     evals_c2_masked: &[FieldElement; N],
     evals_c2_random: &[FieldElement; N],
 ) -> (Vec<Covector<FieldElement>>, Vec<FieldElement>) {
-    let cfg_nv = m + 1;
     let final_len = 1usize << cfg_nv;
 
     let mut weights = Vec::with_capacity(N);
@@ -460,7 +458,7 @@ pub fn run_sumcheck_verifier(
     let blinding_nv = whir_for_spartan_blinding_config.initial_num_variables();
 
     let (blinding_weights, blinding_evaluations) = prepare_weights_and_evaluations::<1>(
-        blinding_nv - 1, // m parameter (cfg_nv = m+1)
+        blinding_nv,
         &([values_of_polynomial_sums[0]], [
             values_of_polynomial_sums[1]
         ]),

@@ -130,6 +130,7 @@ impl WHIRConfigGnark {
     }
 }
 
+/// Build the Gnark recursive verifier configuration.
 #[instrument(skip_all)]
 pub fn gnark_parameters(
     whir_params_witness: &WhirConfig,
@@ -158,6 +159,7 @@ pub fn gnark_parameters(
     }
 }
 
+/// Serialize the Gnark configuration to a JSON file.
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
     whir_params_witness: &WhirConfig,

@@ -69,7 +69,7 @@ impl HashEngine for SkyscraperHashEngine {
         // for SIMD throughput. Equivalent to main's SkyscraperCRH::evaluate:
         //   elements.reduce(compress)
         // Processes in fixed-size groups to avoid heap allocation.
-        const GROUP: usize = 48; // 4 * WIDTH_LCM; fits in 3 KiB on stack
+        const GROUP: usize = 4 * skyscraper::WIDTH_LCM; // fits in 3 KiB on stack
         let chunks_per_msg = size / 32;
         let mut pair_buf = [0u8; GROUP * 64];
 
