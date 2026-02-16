@@ -52,21 +52,23 @@ pub struct R1CSBreakdown {
     pub memory_ram_witnesses:   usize,
 
     /// Constraints for combined AND/XOR binop operations
-    pub binop_constraints: usize,
+    pub binop_constraints:  usize,
     /// Witnesses for combined binop operations
-    pub binop_witnesses:   usize,
+    pub binop_witnesses:    usize,
     /// Total number of AND operations
-    pub and_ops_total:     usize,
+    pub and_ops_total:      usize,
     /// Total number of XOR operations
-    pub xor_ops_total:     usize,
+    pub xor_ops_total:      usize,
+    /// Optimal atomic width chosen for binop lookup table
+    pub binop_atomic_width: Option<u32>,
     /// Constraints for batched range checks
-    pub range_constraints: usize,
+    pub range_constraints:  usize,
     /// Witnesses for range checks
-    pub range_witnesses:   usize,
+    pub range_witnesses:    usize,
     /// Total number of range check operations
-    pub range_ops_total:   usize,
+    pub range_ops_total:    usize,
     /// Optimal base width chosen for range check decomposition
-    pub range_base_width:  Option<u32>,
+    pub range_base_width:   Option<u32>,
 
     /// Direct constraints from SHA256 compression (excluding batched ops)
     pub sha256_direct_constraints: usize,
@@ -770,36 +772,30 @@ impl NoirToR1CSCompiler {
         breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;
         breakdown.memory_ram_witnesses = self.num_witnesses() - witnesses_before_ram;
 
-        // Track SHA256's contribution to batched operations
-        let and_ops_before = and_ops.len();
-        let xor_ops_before = xor_ops.len();
-        let range_ops_before: usize = range_checks.values().map(|v| v.len()).sum();
+        // SHA256 compression uses spread-based operations internally
+        // (no contribution to batched AND/XOR/range ops)
         let constraints_before_sha256 = self.r1cs.num_constraints();
         let witnesses_before_sha256 = self.num_witnesses();
 
-        // For the SHA256 compression operations, add the appropriate constraints.
-        // SHA256 uses byte-level ops, so pass the byte-level vectors.
-        add_sha256_compression(
-            self,
-            &mut and_ops,
-            &mut xor_ops,
-            &mut range_checks,
-            sha256_compression_ops,
-        );
+        let sha256_range_checks = add_sha256_compression(self, sha256_compression_ops);
 
         breakdown.sha256_direct_constraints =
             self.r1cs.num_constraints() - constraints_before_sha256;
         breakdown.sha256_direct_witnesses = self.num_witnesses() - witnesses_before_sha256;
-        breakdown.sha256_and_ops = and_ops.len() - and_ops_before;
-        breakdown.sha256_xor_ops = xor_ops.len() - xor_ops_before;
-        breakdown.sha256_range_ops =
-            range_checks.values().map(|v| v.len()).sum::<usize>() - range_ops_before;
+        breakdown.sha256_and_ops = 0;
+        breakdown.sha256_xor_ops = 0;
+        breakdown.sha256_range_ops = sha256_range_checks.values().map(|v| v.len()).sum();
+
+        // Merge spread sub-chunk range checks into global range checks
+        for (bits, witnesses) in sha256_range_checks {
+            range_checks.entry(bits).or_default().extend(witnesses);
+        }
 
         breakdown.and_ops_total = and_ops.len();
         breakdown.xor_ops_total = xor_ops.len();
         let constraints_before_binop = self.r1cs.num_constraints();
         let witnesses_before_binop = self.num_witnesses();
-        add_combined_binop_constraints(self, and_ops, xor_ops);
+        breakdown.binop_atomic_width = add_combined_binop_constraints(self, and_ops, xor_ops);
         breakdown.binop_constraints = self.r1cs.num_constraints() - constraints_before_binop;
         breakdown.binop_witnesses = self.num_witnesses() - witnesses_before_binop;
         let constraints_before_poseidon = self.r1cs.num_constraints();

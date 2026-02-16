@@ -254,7 +254,7 @@ impl WitnessIndexRemapper {
                 self.remap_const_or_witness(and_out),
                 self.remap_const_or_witness(xor_out),
             ),
-            WitnessBuilder::MultiplicitiesForBinOp(start, pairs) => {
+            WitnessBuilder::MultiplicitiesForBinOp(start, atomic_bits, pairs) => {
                 let new_pairs = pairs
                     .iter()
                     .map(|(lhs, rhs)| {
@@ -264,7 +264,7 @@ impl WitnessIndexRemapper {
                         )
                     })
                     .collect();
-                WitnessBuilder::MultiplicitiesForBinOp(self.remap(*start), new_pairs)
+                WitnessBuilder::MultiplicitiesForBinOp(self.remap(*start), *atomic_bits, new_pairs)
             }
             WitnessBuilder::U32Addition(result_idx, carry_idx, a, b) => {
                 WitnessBuilder::U32Addition(
@@ -299,6 +299,60 @@ impl WitnessIndexRemapper {
                     },
                 )
             }
+            WitnessBuilder::ChunkDecompose {
+                output_start,
+                packed,
+                chunk_bits,
+            } => WitnessBuilder::ChunkDecompose {
+                output_start: self.remap(*output_start),
+                packed:       self.remap(*packed),
+                chunk_bits:   chunk_bits.clone(),
+            },
+            WitnessBuilder::SpreadWitness(output, input) => {
+                WitnessBuilder::SpreadWitness(self.remap(*output), self.remap(*input))
+            }
+            WitnessBuilder::SpreadBitExtract {
+                output_start,
+                chunk_bits,
+                spread_sum,
+                extract_even,
+            } => WitnessBuilder::SpreadBitExtract {
+                output_start: self.remap(*output_start),
+                chunk_bits:   chunk_bits.clone(),
+                spread_sum:   self.remap(*spread_sum),
+                extract_even: *extract_even,
+            },
+            WitnessBuilder::MultiplicitiesForSpread(start, num_bits, queries) => {
+                let new_queries = queries
+                    .iter()
+                    .map(|c| self.remap_const_or_witness(c))
+                    .collect();
+                WitnessBuilder::MultiplicitiesForSpread(self.remap(*start), *num_bits, new_queries)
+            }
+            WitnessBuilder::SpreadLookupDenominator(idx, sz, rs, input, spread_output) => {
+                WitnessBuilder::SpreadLookupDenominator(
+                    self.remap(*idx),
+                    self.remap(*sz),
+                    self.remap(*rs),
+                    self.remap_const_or_witness(input),
+                    self.remap_const_or_witness(spread_output),
+                )
+            }
+            WitnessBuilder::SpreadTableQuotient {
+                idx,
+                sz,
+                rs,
+                input_val,
+                spread_val,
+                multiplicity,
+            } => WitnessBuilder::SpreadTableQuotient {
+                idx:          self.remap(*idx),
+                sz:           self.remap(*sz),
+                rs:           self.remap(*rs),
+                input_val:    *input_val,
+                spread_val:   *spread_val,
+                multiplicity: self.remap(*multiplicity),
+            },
         }
     }
 

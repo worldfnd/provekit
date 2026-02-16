@@ -2,7 +2,6 @@ use {
     crate::{
         utils::{serde_ark, serde_ark_option},
         witness::{
-            binops::BINOP_ATOMIC_BITS,
             digits::DigitalDecompositionWitnesses,
             ram::SpiceWitnesses,
             scheduling::{
@@ -162,7 +161,13 @@ pub enum WitnessBuilder {
     ),
     /// Witness values for the number of times that each pair of input values
     /// occurs in the bin op.
-    MultiplicitiesForBinOp(usize, Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>),
+    /// Arguments: (first_witness_idx, atomic_bits, pairs)
+    /// The table has 2^(2*atomic_bits) entries.
+    MultiplicitiesForBinOp(
+        usize,
+        u32,
+        Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>,
+    ),
     /// U32 addition with carry: computes result = (a + b) % 2^32 and carry = (a
     /// + b) / 2^32. Arguments: (result_witness_index, carry_witness_index, a,
     ///   b)
@@ -184,6 +189,55 @@ pub enum WitnessBuilder {
     /// Inverse of combined lookup table entry denominator (constant operands).
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
+    /// Decomposes a packed value into chunks of specified bit-widths.
+    /// Given packed value and chunk_bits = [b0, b1, ..., bn]:
+    ///   packed = c0 + c1 * 2^b0 + c2 * 2^(b0+b1) + ...
+    /// Writes chunk values to output_start..output_start+chunk_bits.len()
+    ChunkDecompose {
+        output_start: usize,
+        packed:       usize,
+        chunk_bits:   Vec<u32>,
+    },
+    /// Computes spread(input): interleave bits with zeros.
+    /// Output: 0 b_{n-1} 0 b_{n-2} ... 0 b_1 0 b_0
+    /// (witness index of output, witness index of input)
+    SpreadWitness(usize, usize),
+    /// Extracts even or odd bits from a spread sum, decomposed into
+    /// byte-sized chunks. Even bits = XOR result, Odd bits = MAJ/AND
+    /// result. (output_start, chunk_bits, spread_sum, extract_even)
+    SpreadBitExtract {
+        output_start: usize,
+        chunk_bits:   Vec<u32>,
+        spread_sum:   usize,
+        extract_even: bool,
+    },
+    /// Spread table multiplicities: counts how many times each input
+    /// value appears in the query set.
+    /// (first_witness_idx, num_bits, query_input_values)
+    /// Table size = 2^num_bits.
+    MultiplicitiesForSpread(usize, u32, Vec<ConstantOrR1CSWitness>),
+    /// Query-side LogUp denominator for spread table.
+    /// Computes: sz - (input + rs * spread_output)
+    /// (idx, sz, rs, input, spread_output)
+    SpreadLookupDenominator(
+        usize,
+        usize,
+        usize,
+        ConstantOrR1CSWitness,
+        ConstantOrR1CSWitness,
+    ),
+    /// Table-side LogUp quotient for spread table.
+    /// Computes: multiplicity / (sz - input_val - rs * spread_val)
+    SpreadTableQuotient {
+        idx:          usize,
+        sz:           usize,
+        rs:           usize,
+        #[serde(with = "serde_ark")]
+        input_val:    FieldElement,
+        #[serde(with = "serde_ark")]
+        spread_val:   FieldElement,
+        multiplicity: usize,
+    },
 }
 
 impl WitnessBuilder {
@@ -196,10 +250,15 @@ impl WitnessBuilder {
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
                 spice_witnesses_struct.num_witnesses
             }
-            WitnessBuilder::MultiplicitiesForBinOp(..) => 2usize.pow(2 * BINOP_ATOMIC_BITS as u32),
+            WitnessBuilder::MultiplicitiesForBinOp(_, atomic_bits, ..) => {
+                2usize.pow(2 * *atomic_bits)
+            }
             WitnessBuilder::U32Addition(..) => 2,
             WitnessBuilder::U32AdditionMulti(..) => 2,
             WitnessBuilder::BytePartition { .. } => 2,
+            WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
+            WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
+            WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
 
             _ => 1,
         }

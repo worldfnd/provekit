@@ -1,5 +1,3 @@
-#[cfg(test)]
-use anyhow::{ensure, Result};
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
@@ -23,7 +21,7 @@ pub trait R1CSSolver {
     );
 
     #[cfg(test)]
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()>;
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()>;
 }
 
 impl R1CSSolver for R1CS {
@@ -68,6 +66,10 @@ impl R1CSSolver for R1CS {
                     let batch_size = layer.witness_builders.len();
                     let mut output_witnesses = Vec::with_capacity(batch_size);
                     let mut denominators = Vec::with_capacity(batch_size);
+                    // Optional post-multiply: for quotient builders,
+                    // result = inverse * multiplicity instead of bare
+                    // inverse.
+                    let mut multipliers: Vec<Option<usize>> = Vec::with_capacity(batch_size);
 
                     for inverse_builder in &layer.witness_builders {
                         match inverse_builder {
@@ -82,6 +84,7 @@ impl R1CSSolver for R1CS {
                                         )
                                     });
                                 denominators.push(denominator);
+                                multipliers.push(None);
                             }
                             WitnessBuilder::LogUpInverse(
                                 output_witness,
@@ -94,6 +97,7 @@ impl R1CSSolver for R1CS {
                                 let value = witness[*value_witness].unwrap();
                                 let denominator = sz - (*coeff * value);
                                 denominators.push(denominator);
+                                multipliers.push(None);
                             }
                             WitnessBuilder::CombinedTableEntryInverse(data) => {
                                 output_witnesses.push(data.idx);
@@ -109,11 +113,29 @@ impl R1CSSolver for R1CS {
                                     - (rs_sqrd * data.and_out)
                                     - (rs_cubed * data.xor_out);
                                 denominators.push(denominator);
+                                multipliers.push(None);
+                            }
+                            WitnessBuilder::SpreadTableQuotient {
+                                idx,
+                                sz,
+                                rs,
+                                input_val,
+                                spread_val,
+                                multiplicity,
+                            } => {
+                                output_witnesses.push(*idx);
+                                // Compute denominator: sz - input_val - rs * spread_val
+                                let sz_val = witness[*sz].unwrap();
+                                let rs_val = witness[*rs].unwrap();
+                                let denominator = sz_val - *input_val - (rs_val * *spread_val);
+                                denominators.push(denominator);
+                                multipliers.push(Some(*multiplicity));
                             }
                             _ => {
                                 panic!(
                                     "Invalid builder in inverse batch: expected Inverse, \
-                                     LogUpInverse, or CombinedTableEntryInverse, got {:?}",
+                                     LogUpInverse, CombinedTableEntryInverse, or \
+                                     SpreadTableQuotient, got {:?}",
                                     inverse_builder
                                 );
                             }
@@ -122,10 +144,13 @@ impl R1CSSolver for R1CS {
 
                     // Perform batch inversion and write results
                     let inverses = batch_inverse_montgomery(&denominators);
-                    for (output_witness, inverse_value) in
-                        output_witnesses.into_iter().zip(inverses)
+                    for ((output_witness, inverse_value), multiplier) in
+                        output_witnesses.into_iter().zip(inverses).zip(multipliers)
                     {
-                        witness[output_witness] = Some(inverse_value);
+                        witness[output_witness] = Some(match multiplier {
+                            Some(m) => inverse_value * witness[m].unwrap(),
+                            None => inverse_value,
+                        });
                     }
                 }
             }
@@ -136,7 +161,9 @@ impl R1CSSolver for R1CS {
     // R1CS Matrices.
     #[cfg(test)]
     #[instrument(skip_all, fields(size = witness.len()))]
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> Result<()> {
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()> {
+        use anyhow::ensure;
+
         ensure!(
             witness.len() == self.num_witnesses(),
             "Witness size does not match"
@@ -146,13 +173,13 @@ impl R1CSSolver for R1CS {
         let a = self.a() * witness;
         let b = self.b() * witness;
         let c = self.c() * witness;
-        for (row, ((a, b), c)) in a
+        for (row, ((a_val, b_val), c_val)) in a
             .into_iter()
             .zip(b.into_iter())
             .zip(c.into_iter())
             .enumerate()
         {
-            ensure!(a * b == c, "Constraint {row} failed");
+            ensure!(a_val * b_val == c_val, "Constraint {row} failed");
         }
         Ok(())
     }
