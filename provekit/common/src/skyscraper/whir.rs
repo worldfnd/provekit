@@ -49,6 +49,9 @@ impl HashEngine for SkyscraperHashEngine {
             input.len()
         );
 
+        // SAFETY: `output` is `&mut [[u8; 32]]` with `count` elements, so it occupies
+        // exactly `count * 32` contiguous bytes. We reinterpret as a flat `&mut [u8]`
+        // to interface with `compress_many` which operates on byte slices.
         let out_bytes =
             unsafe { std::slice::from_raw_parts_mut(output.as_mut_ptr().cast::<u8>(), count * 32) };
 

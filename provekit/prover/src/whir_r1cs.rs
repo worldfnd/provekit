@@ -11,7 +11,10 @@ use {
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
                 sumcheck_fold_map_reduce,
             },
-            zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
+            zk_utils::{
+                coeffs_to_evals, covector_dot, create_masked_polynomial,
+                generate_random_multilinear_polynomial,
+            },
             HALF,
         },
         FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
@@ -20,9 +23,7 @@ use {
     tracing::{debug, instrument},
     whir::{
         algebra::{
-            dot,
             embedding::Basefield,
-            ntt::wavelet_transform,
             polynomials::{CoefficientList, EvaluationsList, MultilinearPoint},
             weights::{Covector, Evaluate},
         },
@@ -30,21 +31,6 @@ use {
         transcript::{ProverState, VerifierMessage},
     },
 };
-
-/// Transform coefficients to evaluation form once, reusable across multiple
-/// weight dot products. Avoids the per-call clone+transform inside
-/// `Covector::evaluate`.
-fn coeffs_to_evals(poly: &CoefficientList<FieldElement>) -> Vec<FieldElement> {
-    let mut evals = poly.coeffs().to_vec();
-    wavelet_transform(&mut evals);
-    evals
-}
-
-/// Dot product of a covector's weight vector against pre-transformed
-/// evaluations.
-fn covector_dot(w: &Covector<FieldElement>, evals: &[FieldElement]) -> FieldElement {
-    dot(&w.vector, evals)
-}
 
 pub struct WhirR1CSCommitment {
     pub commitment_to_witness:   Witness<FieldElement>,
@@ -184,6 +170,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             merlin.prover_hint_ark(&(f_sums, g_sums));
 
             let (public_f_sum, public_g_sum) = if public_inputs.is_empty() {
+                // If there are no public inputs, the hint is unused by the verifier
+                // and can be assigned an arbitrary value.
                 (FieldElement::zero(), FieldElement::zero())
             } else {
                 compute_public_weight_evaluations(
@@ -279,10 +267,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 .map(|w| covector_dot(w, &c1r_evals))
                 .collect();
 
-            merlin.prover_hint_ark(&(f_sums_1.clone(), g_sums_1.clone()));
-            merlin.prover_hint_ark(&(f_sums_2.clone(), g_sums_2.clone()));
-            merlin.prover_hint_ark(&(cross_f_12.clone(), cross_g_12.clone()));
-            merlin.prover_hint_ark(&(cross_f_21.clone(), cross_g_21.clone()));
+            merlin.prover_hint_ark(&(f_sums_1, g_sums_1));
+            merlin.prover_hint_ark(&(f_sums_2, g_sums_2));
+            merlin.prover_hint_ark(&(cross_f_12, cross_g_12));
+            merlin.prover_hint_ark(&(cross_f_21, cross_g_21));
 
             let (public_f1, public_g1, public_f2, public_g2) = if public_inputs.is_empty() {
                 (
@@ -310,16 +298,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             // Build evaluations: for each weight, evaluate on all 4 polynomials
             // (c1_masked, c1_random, c2_masked, c2_random)
-            // This is row-major: evaluations[w_idx * 4 + p_idx]
-            let all_polys: Vec<&CoefficientList<FieldElement>> = vec![
-                &c1.masked_polynomial_coeff,
-                &c1.random_polynomial_coeff,
-                &c2.masked_polynomial_coeff,
-                &c2.random_polynomial_coeff,
-            ];
-
-            let poly_evals: Vec<Vec<FieldElement>> =
-                all_polys.iter().map(|p| coeffs_to_evals(p)).collect();
+            // Row-major: evaluations[w_idx * 4 + p_idx]
+            let poly_evals = vec![c1m_evals, c1r_evals, c2m_evals, c2r_evals];
             let evaluations: Vec<FieldElement> = all_weights
                 .iter()
                 .flat_map(|w| poly_evals.iter().map(|pe| covector_dot(w, pe)))
@@ -332,7 +312,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             run_zk_whir_pcs_prover(
                 &[&c1.commitment_to_witness, &c2.commitment_to_witness],
-                &all_polys,
+                &[
+                    &c1.masked_polynomial_coeff,
+                    &c1.random_polynomial_coeff,
+                    &c2.masked_polynomial_coeff,
+                    &c2.random_polynomial_coeff,
+                ],
                 &weight_refs,
                 &evaluations,
                 &self.whir_witness,

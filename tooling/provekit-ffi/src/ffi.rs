@@ -163,6 +163,7 @@ pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
 /// Returns `PKError::Success` on success.
 #[no_mangle]
 pub extern "C" fn pk_init() -> c_int {
+    // TODO: Initialize tracing/logging for FFI consumers.
     provekit_common::register_ntt();
     PKError::Success.into()
 }

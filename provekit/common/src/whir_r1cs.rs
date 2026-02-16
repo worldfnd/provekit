@@ -3,7 +3,6 @@ use whir::transcript::Interaction;
 use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
-    std::fmt::{Debug, Formatter},
     whir::{protocols::whir::Config as GenericWhirConfig, transcript},
 };
 
@@ -18,7 +17,7 @@ pub type WhirProverState = transcript::ProverState;
 /// Type alias for the whir proof.
 pub type WhirProof = transcript::Proof;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
     pub m: usize,
     pub w1_size: usize,
@@ -32,9 +31,6 @@ pub struct WhirR1CSScheme {
 
 impl WhirR1CSScheme {
     /// Create a domain separator for the provekit outer protocol.
-    ///
-    /// The whir transcript derives its IO pattern from the config hash,
-    /// so we create a domain separator from the scheme config.
     pub fn create_domain_separator(&self) -> WhirDomainSeparator {
         transcript::DomainSeparator::protocol(self)
     }
@@ -52,15 +48,4 @@ pub struct WhirR1CSProof {
     #[cfg(debug_assertions)]
     #[serde(default, skip_serializing)]
     pub pattern: Vec<Interaction>,
-}
-
-// TODO: Implement Debug for WhirConfig and derive.
-impl Debug for WhirR1CSScheme {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WhirR1CSScheme")
-            .field("m", &self.m)
-            .field("w1_size", &self.w1_size)
-            .field("m_0", &self.m_0)
-            .finish()
-    }
 }

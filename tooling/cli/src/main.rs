@@ -22,7 +22,13 @@ static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
 fn main() -> Result<()> {
     let args = argh::from_env::<cmd::Args>();
-    let subscriber = Registry::default().with(SpanStats.with_filter(LevelFilter::INFO));
+    // Debug builds: track ALL spans for detailed profiling.
+    // Release builds: only INFO+ to reduce overhead.
+    #[cfg(debug_assertions)]
+    let level = LevelFilter::TRACE;
+    #[cfg(not(debug_assertions))]
+    let level = LevelFilter::INFO;
+    let subscriber = Registry::default().with(SpanStats.with_filter(level));
 
     #[cfg(feature = "tracy")]
     let subscriber = {
@@ -45,8 +51,6 @@ fn main() -> Result<()> {
     };
 
     subscriber::set_global_default(subscriber)?;
-
-    provekit_common::register_ntt();
 
     // Run CLI command
     let res = args.run();

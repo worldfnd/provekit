@@ -55,6 +55,8 @@ impl Prove for Prover {
 
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
         let (input_map, _expected_return) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 

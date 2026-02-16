@@ -88,148 +88,142 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let public_weights_vector_random: FieldElement = arthur.verifier_message();
 
         // Read hints and verify WHIR proof
-        let (
-            az_at_alpha,
-            bz_at_alpha,
-            cz_at_alpha,
-            whir_folding_randomness,
-            deferred_evals,
-            _public_weights_challenge,
-        ) = if let Some(commitment_2) = commitment_2 {
-            // Dual commitment mode: read same-commitment and cross-evaluation hints
-            let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read sums_1 hint"))?;
-            let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read sums_2 hint"))?;
-            let cross_12: (Vec<FieldElement>, Vec<FieldElement>) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read cross_12 hint"))?;
-            let cross_21: (Vec<FieldElement>, Vec<FieldElement>) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read cross_21 hint"))?;
+        let (az_at_alpha, bz_at_alpha, cz_at_alpha, whir_folding_randomness, deferred_evals) =
+            if let Some(commitment_2) = commitment_2 {
+                // Dual commitment mode: read same-commitment and cross-evaluation hints
+                let sums_1: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read sums_1 hint"))?;
+                let sums_2: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read sums_2 hint"))?;
+                let cross_12: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read cross_12 hint"))?;
+                let cross_21: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read cross_21 hint"))?;
 
-            let f_sums_1: [FieldElement; 3] = sums_1.0.try_into().unwrap();
-            let g_sums_1: [FieldElement; 3] = sums_1.1.try_into().unwrap();
-            let f_sums_2: [FieldElement; 3] = sums_2.0.try_into().unwrap();
-            let g_sums_2: [FieldElement; 3] = sums_2.1.try_into().unwrap();
-            let cross_f_12: [FieldElement; 3] = cross_12.0.try_into().unwrap();
-            let cross_g_12: [FieldElement; 3] = cross_12.1.try_into().unwrap();
-            let cross_f_21: [FieldElement; 3] = cross_21.0.try_into().unwrap();
-            let cross_g_21: [FieldElement; 3] = cross_21.1.try_into().unwrap();
+                let f_sums_1: [FieldElement; 3] = sums_1.0.try_into().unwrap();
+                let g_sums_1: [FieldElement; 3] = sums_1.1.try_into().unwrap();
+                let f_sums_2: [FieldElement; 3] = sums_2.0.try_into().unwrap();
+                let g_sums_2: [FieldElement; 3] = sums_2.1.try_into().unwrap();
+                let cross_f_12: [FieldElement; 3] = cross_12.0.try_into().unwrap();
+                let cross_g_12: [FieldElement; 3] = cross_12.1.try_into().unwrap();
+                let cross_f_21: [FieldElement; 3] = cross_21.0.try_into().unwrap();
+                let cross_g_21: [FieldElement; 3] = cross_21.1.try_into().unwrap();
 
-            // Build weights and evaluations with full 4-polynomial layout per weight
-            // weights_1 evaluations: [f1, g1, cross_f12, cross_g12] per weight
-            let (mut weights_1, mut evaluations_1) = prepare_weights_and_evaluations_dual::<3>(
-                self.m,
-                &f_sums_1,
-                &g_sums_1,
-                &cross_f_12,
-                &cross_g_12,
-            );
-            // weights_2 evaluations: [cross_f21, cross_g21, f2, g2] per weight
-            let (weights_2, evaluations_2) = prepare_weights_and_evaluations_dual::<3>(
-                self.m,
-                &cross_f_21,
-                &cross_g_21,
-                &f_sums_2,
-                &g_sums_2,
-            );
-
-            let public_hint: (FieldElement, FieldElement, FieldElement, FieldElement) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("failed to read WHIR public weights query answer"))?;
-
-            if !public_inputs.is_empty() {
-                update_weights_and_evaluations_dual(
+                // Build weights and evaluations with full 4-polynomial layout per weight
+                // weights_1 evaluations: [f1, g1, cross_f12, cross_g12] per weight
+                let (mut weights_1, mut evaluations_1) = prepare_weights_and_evaluations_dual::<3>(
                     self.m,
-                    &mut weights_1,
-                    &mut evaluations_1,
-                    public_hint,
-                    public_inputs.len(),
-                    public_weights_vector_random,
+                    &f_sums_1,
+                    &g_sums_1,
+                    &cross_f_12,
+                    &cross_g_12,
                 );
-            }
-
-            let mut all_weights = weights_1;
-            all_weights.extend(weights_2);
-
-            let mut all_evaluations = evaluations_1;
-            all_evaluations.extend(evaluations_2);
-
-            let weight_refs: Vec<&dyn Weights<FieldElement>> = all_weights
-                .iter()
-                .map(|w| w as &dyn Weights<FieldElement>)
-                .collect();
-            let commitment_refs: Vec<&Commitment<FieldElement>> =
-                vec![&commitment_1, &commitment_2];
-
-            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
-                &mut arthur,
-                &self.whir_witness,
-                &commitment_refs,
-                &weight_refs,
-                &all_evaluations,
-            )
-            .context("while verifying WHIR batch proof")?;
-
-            (
-                f_sums_1[0] + f_sums_2[0],
-                f_sums_1[1] + f_sums_2[1],
-                f_sums_1[2] + f_sums_2[2],
-                whir_folding_randomness.0.to_vec(),
-                deferred_evals,
-                public_weights_vector_random,
-            )
-        } else {
-            // Single commitment mode
-            let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read sums hint"))?;
-            let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
-                (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
-
-            let (mut weights, mut evaluations) =
-                prepare_weights_and_evaluations::<3>(self.m, &whir_sums);
-
-            let whir_public_weights_query_answer: (FieldElement, FieldElement) = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("failed to read WHIR public weights query answer"))?;
-            if !public_inputs.is_empty() {
-                update_weights_and_evaluations(
+                // weights_2 evaluations: [cross_f21, cross_g21, f2, g2] per weight
+                let (weights_2, evaluations_2) = prepare_weights_and_evaluations_dual::<3>(
                     self.m,
-                    &mut weights,
-                    &mut evaluations,
-                    whir_public_weights_query_answer,
-                    public_inputs.len(),
-                    public_weights_vector_random,
+                    &cross_f_21,
+                    &cross_g_21,
+                    &f_sums_2,
+                    &g_sums_2,
                 );
-            }
 
-            let weight_refs: Vec<&dyn Weights<FieldElement>> = weights
-                .iter()
-                .map(|w| w as &dyn Weights<FieldElement>)
-                .collect();
+                let public_hint: (FieldElement, FieldElement, FieldElement, FieldElement) =
+                    arthur.prover_hint_ark().map_err(|_| {
+                        anyhow::anyhow!("failed to read WHIR public weights query answer")
+                    })?;
 
-            let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
-                &mut arthur,
-                &self.whir_witness,
-                &[&commitment_1],
-                &weight_refs,
-                &evaluations,
-            )
-            .context("while verifying WHIR proof")?;
+                if !public_inputs.is_empty() {
+                    update_weights_and_evaluations_dual(
+                        self.m,
+                        &mut weights_1,
+                        &mut evaluations_1,
+                        public_hint,
+                        public_inputs.len(),
+                        public_weights_vector_random,
+                    );
+                }
 
-            (
-                whir_sums.0[0],
-                whir_sums.0[1],
-                whir_sums.0[2],
-                whir_folding_randomness.0.to_vec(),
-                deferred_evals,
-                public_weights_vector_random,
-            )
-        };
+                let mut all_weights = weights_1;
+                all_weights.extend(weights_2);
+
+                let mut all_evaluations = evaluations_1;
+                all_evaluations.extend(evaluations_2);
+
+                let weight_refs: Vec<&dyn Weights<FieldElement>> = all_weights
+                    .iter()
+                    .map(|w| w as &dyn Weights<FieldElement>)
+                    .collect();
+                let commitment_refs: Vec<&Commitment<FieldElement>> =
+                    vec![&commitment_1, &commitment_2];
+
+                let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
+                    &mut arthur,
+                    &self.whir_witness,
+                    &commitment_refs,
+                    &weight_refs,
+                    &all_evaluations,
+                )
+                .context("while verifying WHIR batch proof")?;
+
+                (
+                    f_sums_1[0] + f_sums_2[0],
+                    f_sums_1[1] + f_sums_2[1],
+                    f_sums_1[2] + f_sums_2[2],
+                    whir_folding_randomness.0.to_vec(),
+                    deferred_evals,
+                )
+            } else {
+                // Single commitment mode
+                let sums: (Vec<FieldElement>, Vec<FieldElement>) = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read sums hint"))?;
+                let whir_sums: ([FieldElement; 3], [FieldElement; 3]) =
+                    (sums.0.try_into().unwrap(), sums.1.try_into().unwrap());
+
+                let (mut weights, mut evaluations) =
+                    prepare_weights_and_evaluations::<3>(self.m, &whir_sums);
+
+                let whir_public_weights_query_answer: (FieldElement, FieldElement) =
+                    arthur.prover_hint_ark().map_err(|_| {
+                        anyhow::anyhow!("failed to read WHIR public weights query answer")
+                    })?;
+                if !public_inputs.is_empty() {
+                    update_weights_and_evaluations(
+                        self.m,
+                        &mut weights,
+                        &mut evaluations,
+                        whir_public_weights_query_answer,
+                        public_inputs.len(),
+                        public_weights_vector_random,
+                    );
+                }
+
+                let weight_refs: Vec<&dyn Weights<FieldElement>> = weights
+                    .iter()
+                    .map(|w| w as &dyn Weights<FieldElement>)
+                    .collect();
+
+                let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
+                    &mut arthur,
+                    &self.whir_witness,
+                    &[&commitment_1],
+                    &weight_refs,
+                    &evaluations,
+                )
+                .context("while verifying WHIR proof")?;
+
+                (
+                    whir_sums.0[0],
+                    whir_sums.0[1],
+                    whir_sums.0[2],
+                    whir_folding_randomness.0.to_vec(),
+                    deferred_evals,
+                )
+            };
 
         // Check the Spartan sumcheck relation
         ensure!(
@@ -243,14 +237,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         );
 
         // Check deferred linear constraints.
-        // The public weight is Geometric (non-deferred), so it's not in the deferred
-        // list.
-        let offset = 0;
-
-        // Linear deferred
         if self.num_challenges > 0 {
             assert!(
-                deferred_evals.len() == offset + 6,
+                deferred_evals.len() == 6,
                 "Deferred evals length does not match"
             );
 
@@ -262,14 +251,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             );
             for i in 0..6 {
                 ensure!(
-                    matrix_extension_evals[i] == deferred_evals[offset + i],
+                    matrix_extension_evals[i] == deferred_evals[i],
                     "Matrix extension evaluation {} does not match deferred value",
                     i
                 );
             }
         } else {
             assert!(
-                deferred_evals.len() == offset + 3,
+                deferred_evals.len() == 3,
                 "Deferred evals length does not match"
             );
 
@@ -281,7 +270,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
             for i in 0..3 {
                 ensure!(
-                    matrix_extension_evals[i] == deferred_evals[offset + i],
+                    matrix_extension_evals[i] == deferred_evals[i],
                     "Matrix extension evaluation {} does not match deferred value",
                     i
                 );
