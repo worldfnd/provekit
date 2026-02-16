@@ -35,7 +35,7 @@ tracing-tracy = { workspace = true, optional = true, features = ["default", "sam
 workspace = true
 
 [features]
-default = ["profiling-allocator", "jemalloc"]
+default = ["profiling-allocator"]
 profiling-allocator = []
 jemalloc = ["profiling-allocator", "dep:tikv-jemallocator"]
 tracy = ["dep:tracing-tracy"]
