@@ -7,7 +7,7 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{
-        skyscraper::SkyscraperSponge, FieldElement, NoirElement, NoirProof, Prover, PublicInputs,
+        FieldElement, NoirElement, NoirProof, Prover, PublicInputs, TranscriptSponge,
     },
     std::path::Path,
     tracing::instrument,
@@ -68,7 +68,7 @@ impl Prove for Prover {
             .whir_for_witness
             .create_domain_separator()
             .instance(&Empty);
-        let mut merlin = ProverState::new(&ds, SkyscraperSponge::default());
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
 

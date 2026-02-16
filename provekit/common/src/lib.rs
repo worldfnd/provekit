@@ -27,12 +27,10 @@ pub use {
     witness::PublicInputs,
 };
 
+/// SHA-256 based transcript sponge for Fiat-Shamir.
+pub type TranscriptSponge = spongefish::instantiations::SHA256;
+
 /// Register provekit's custom implementations in whir's global registries.
-///
-/// This registers:
-/// - The NTT implementation for `ark_bn254::Fr` (whir only pre-registers its
-///   own field types).
-/// - The Skyscraper hash engine for Merkle tree hashing and proof-of-work.
 ///
 /// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.

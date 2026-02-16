@@ -2,11 +2,11 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::SkyscraperSponge,
         utils::sumcheck::{
             calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
         },
-        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, PublicInputs, TranscriptSponge, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+        R1CS,
     },
     tracing::instrument,
     whir::{
@@ -49,7 +49,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             #[cfg(debug_assertions)]
             pattern: proof.pattern.clone(),
         };
-        let mut arthur = VerifierState::new(&ds, &whir_proof, SkyscraperSponge::default());
+        let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
 
         let commitment_1 = self
             .whir_witness
@@ -402,7 +402,7 @@ fn update_weights_and_evaluations_dual(
 
 #[instrument(skip_all)]
 pub fn run_sumcheck_verifier(
-    arthur: &mut VerifierState<'_, SkyscraperSponge>,
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
     m_0: usize,
     whir_for_spartan_blinding_config: &WhirConfig,
 ) -> Result<DataFromSumcheckVerifier> {
@@ -491,7 +491,7 @@ pub fn run_sumcheck_verifier(
 
 #[instrument(skip_all)]
 pub fn run_whir_pcs_verifier(
-    arthur: &mut VerifierState<'_, SkyscraperSponge>,
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
     params: &WhirConfig,
     commitments: &[&Commitment<FieldElement>],
     weights: &[&dyn Weights<FieldElement>],

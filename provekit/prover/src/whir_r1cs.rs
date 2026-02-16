@@ -3,7 +3,6 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
-        skyscraper::SkyscraperSponge,
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -17,7 +16,8 @@ use {
             },
             HALF,
         },
-        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, PublicInputs, TranscriptSponge, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+        R1CS,
     },
     std::mem,
     tracing::{debug, instrument},
@@ -42,7 +42,7 @@ pub struct WhirR1CSCommitment {
 pub trait WhirR1CSProver {
     fn commit(
         &self,
-        merlin: &mut ProverState<SkyscraperSponge>,
+        merlin: &mut ProverState<TranscriptSponge>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
@@ -50,7 +50,7 @@ pub trait WhirR1CSProver {
 
     fn prove(
         &self,
-        merlin: ProverState<SkyscraperSponge>,
+        merlin: ProverState<TranscriptSponge>,
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
@@ -61,7 +61,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn commit(
         &self,
-        merlin: &mut ProverState<SkyscraperSponge>,
+        merlin: &mut ProverState<TranscriptSponge>,
         r1cs: &R1CS,
         witness: Vec<FieldElement>,
         is_w1: bool,
@@ -118,7 +118,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn prove(
         &self,
-        mut merlin: ProverState<SkyscraperSponge>,
+        mut merlin: ProverState<TranscriptSponge>,
         r1cs: R1CS,
         mut commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
@@ -415,7 +415,7 @@ pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
     witness: EvaluationsList<FieldElement>,
-    merlin: &mut ProverState<SkyscraperSponge>,
+    merlin: &mut ProverState<TranscriptSponge>,
 ) -> (
     Witness<FieldElement>,
     CoefficientList<FieldElement>,
@@ -475,7 +475,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
     z: &[FieldElement],
-    merlin: &mut ProverState<SkyscraperSponge>,
+    merlin: &mut ProverState<TranscriptSponge>,
     m_0: usize,
     whir_for_blinding_of_spartan_config: &WhirConfig,
 ) -> Vec<FieldElement> {
@@ -714,7 +714,7 @@ pub fn run_zk_whir_pcs_prover(
     weights: &[&dyn Evaluate<Basefield<FieldElement>>],
     evaluations: &[FieldElement],
     params: &WhirConfig,
-    merlin: &mut ProverState<SkyscraperSponge>,
+    merlin: &mut ProverState<TranscriptSponge>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     debug!("WHIR Parameters: {params}");
 
@@ -759,7 +759,7 @@ fn compute_public_weight_evaluations_dual(
 
 fn get_public_weights(
     public_inputs: &PublicInputs,
-    merlin: &mut ProverState<SkyscraperSponge>,
+    merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
 ) -> Covector<FieldElement> {
     let public_inputs_hash = public_inputs.hash();

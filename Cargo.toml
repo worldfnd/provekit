@@ -162,7 +162,7 @@ ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-  "ark-ff",
+  "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "3056565b90931c28f725f6655d954bd8f17eaaf6", features = ["tracing"] }

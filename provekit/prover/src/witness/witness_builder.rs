@@ -4,13 +4,12 @@ use {
     ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
-        skyscraper::SkyscraperSponge,
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
             WitnessCoefficient, BINOP_ATOMIC_BITS,
         },
-        FieldElement, NoirElement,
+        FieldElement, NoirElement, TranscriptSponge,
     },
     whir::transcript::{ProverState, VerifierMessage},
 };
@@ -20,7 +19,7 @@ pub trait WitnessBuilderSolver {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge>,
+        transcript: &mut ProverState<TranscriptSponge>,
     );
 }
 
@@ -29,7 +28,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
         &self,
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
-        transcript: &mut ProverState<SkyscraperSponge>,
+        transcript: &mut ProverState<TranscriptSponge>,
     ) {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
