@@ -139,20 +139,41 @@ let proof = prover.prove(input_map)?;
 
 ## CLI
 
-The `passport_cli` binary provides an interactive interface for both modes.
+The `passport_cli` binary is a non-interactive CLI tool.
 
 ```
-cargo run --release --bin passport_cli
+cargo run --release --bin passport_cli -- --tbs <720|1300> --mode <toml|prove> [OPTIONS]
 ```
 
-You will be prompted to select:
+### CLI flags
 
-1. **TBS variant** — `1` for TBS-720, `2` for TBS-1300
-2. **Mode** — `1` to generate TOML files, `2` to generate proofs directly
+| Flag | Description |
+|------|-------------|
+| `--tbs <720\|1300>` | TBS variant (required) |
+| `--mode <toml\|prove>` | Mode (required) |
+| `--output-dir <PATH>` | Output directory for TOML files or proof files, relative to current dir. Defaults to `benchmark-inputs/tbs_{720,1300}/test` |
+| `--save-logs` | Save per-circuit log files during prove mode |
+| `--log-dir <PATH>` | Directory for log files, relative to current dir. Default: `noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test` |
+
+### Examples
+
+```bash
+# Generate TBS-720 TOML files to the default directory
+cargo run --release --bin passport_cli -- --tbs 720 --mode toml
+
+# Generate TBS-720 TOML files to a custom directory
+cargo run --release --bin passport_cli -- --tbs 720 --mode toml --output-dir my-inputs/tbs_720
+
+# Generate TBS-1300 proofs with per-circuit logs saved to default log dir
+cargo run --release --bin passport_cli -- --tbs 1300 --mode prove --save-logs
+
+# Generate TBS-720 proofs with logs saved to a custom directory
+cargo run --release --bin passport_cli -- --tbs 720 --mode prove --save-logs --log-dir my-logs/tbs_720
+```
 
 ### TOML mode
 
-Generates all Prover.toml files under:
+Generates all Prover.toml files under the output directory (default shown below):
 
 ```
 noir-examples/noir-passport/merkle_age_check/benchmark-inputs/
@@ -169,11 +190,15 @@ noir-examples/noir-passport/merkle_age_check/benchmark-inputs/
     t_attest.toml
 ```
 
+Use `--output-dir` to write TOML files to a different directory.
+
 ### Prove mode
 
 Loads `.pkp` prover keys from the benchmark-inputs directory, generates proofs for all circuits in the chain (including `t_attest`), and writes `.np` proof files alongside the prover keys.
 
 The CLI includes tracing-based performance profiling. Span durations, memory usage, and allocation counts are printed to stderr during proving.
+
+When `--save-logs` is passed, a separate log file is created per circuit (e.g. `t_add_dsc_720.log`). ANSI escape codes are stripped from the log files. The default log directory is `noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test`; use `--log-dir` to override.
 
 ## Mock data
 

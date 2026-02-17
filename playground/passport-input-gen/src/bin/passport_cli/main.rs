@@ -11,6 +11,7 @@ mod span_stats;
 
 use {
     anyhow::{Context, Result},
+    argh::FromArgs,
     noirc_abi::input_parser::Format,
     passport_input_gen::{
         mock_generator::{
@@ -35,59 +36,107 @@ use {
     base64::{engine::general_purpose::STANDARD, Engine as _},
     rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey, RsaPublicKey},
     std::{
-        io::{self, Write as _},
+        fs::File,
+        io::{BufWriter, Write as _},
         path::{Path, PathBuf},
+        sync::Mutex,
     },
 };
 
 // ============================================================================
-// Runtime prompts
+// Global log sink for tee-ing output to per-circuit log files
 // ============================================================================
 
-fn prompt(question: &str) -> String {
-    print!("{}", question);
-    io::stdout().flush().unwrap();
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().to_string()
+lazy_static::lazy_static! {
+    pub(crate) static ref LOG_SINK: Mutex<Option<BufWriter<File>>> = Mutex::new(None);
 }
 
-enum TbsChoice {
-    Tbs720,
-    Tbs1300,
+/// Strip ANSI escape sequences (e.g. `\x1b[0m`, `\x1b[1;32m`) from a string.
+pub(crate) fn strip_ansi(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                // skip until we hit an ASCII letter (the final byte of the sequence)
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+        result.push(c);
+    }
+    result
 }
 
-enum Mode {
-    Toml,
-    Prove,
-}
-
-fn prompt_tbs_variant() -> TbsChoice {
-    println!("Select TBS case:");
-    println!("  1) TBS-720  (3 add circuits)");
-    println!("  2) TBS-1300 (4 add circuits)");
-    loop {
-        let answer = prompt("> ");
-        match answer.as_str() {
-            "1" | "720" => return TbsChoice::Tbs720,
-            "2" | "1300" => return TbsChoice::Tbs1300,
-            _ => println!("  Invalid choice. Enter 1 or 2."),
+/// Write a message to the global LOG_SINK (if active), stripping ANSI codes.
+pub(crate) fn tee_write_log(msg: &str) {
+    if let Ok(mut guard) = LOG_SINK.lock() {
+        if let Some(ref mut writer) = *guard {
+            let stripped = strip_ansi(msg);
+            let _ = writeln!(writer, "{}", stripped);
         }
     }
 }
 
-fn prompt_mode() -> Mode {
-    println!("\nSelect mode:");
-    println!("  1) Generate TOML files");
-    println!("  2) Generate proofs (direct, no TOML)");
-    loop {
-        let answer = prompt("> ");
-        match answer.as_str() {
-            "1" | "toml" => return Mode::Toml,
-            "2" | "prove" => return Mode::Prove,
-            _ => println!("  Invalid choice. Enter 1 or 2."),
+/// Open a log file and set it as the active LOG_SINK.
+fn set_log_file(path: &Path) -> Result<()> {
+    let file = File::create(path)
+        .with_context(|| format!("Creating log file: {}", path.display()))?;
+    let mut guard = LOG_SINK.lock().map_err(|e| anyhow::anyhow!("LOG_SINK lock: {e}"))?;
+    *guard = Some(BufWriter::new(file));
+    Ok(())
+}
+
+/// Flush and close the current LOG_SINK.
+fn close_log_file() {
+    if let Ok(mut guard) = LOG_SINK.lock() {
+        if let Some(ref mut writer) = *guard {
+            let _ = writer.flush();
         }
+        *guard = None;
     }
+}
+
+/// Like `println!` but also writes ANSI-stripped output to LOG_SINK if active.
+macro_rules! tee_println {
+    ($($arg:tt)*) => {{
+        let msg = format!($($arg)*);
+        println!("{}", msg);
+        $crate::tee_write_log(&msg);
+    }};
+}
+
+// ============================================================================
+// CLI arguments
+// ============================================================================
+
+/// Passport Input Generator & Prover CLI
+#[derive(FromArgs)]
+struct Args {
+    /// tbs variant: 720 or 1300
+    #[argh(option)]
+    tbs: u16,
+
+    /// mode: "toml" or "prove"
+    #[argh(option)]
+    mode: String,
+
+    /// output directory for TOML files (default: benchmark-inputs/tbs_{N}/test)
+    #[argh(option)]
+    output_dir: Option<String>,
+
+    /// save per-circuit log files during prove mode
+    #[argh(switch)]
+    save_logs: bool,
+
+    /// directory for log files (default: .../benchmark-inputs/logs/test)
+    #[argh(option)]
+    log_dir: Option<String>,
 }
 
 // ============================================================================
@@ -196,7 +245,7 @@ fn prove_circuit<T: serde::Serialize>(
     pkp_path: &Path,
     proof_path: &Path,
 ) -> Result<()> {
-    println!(
+    tee_println!(
         "\n  [{circuit_name}] Loading prover from: {}",
         pkp_path.display()
     );
@@ -204,106 +253,84 @@ fn prove_circuit<T: serde::Serialize>(
         .with_context(|| format!("Reading prover key for {circuit_name}"))?;
 
     let (num_constraints, num_witnesses) = prover.size();
-    println!(
+    tee_println!(
         "  [{circuit_name}] Scheme size: {num_constraints} constraints, {num_witnesses} witnesses"
     );
 
-    println!("  [{circuit_name}] Converting inputs -> JSON -> InputMap...");
+    tee_println!("  [{circuit_name}] Converting inputs -> JSON -> InputMap...");
     let json = serde_json::to_string(inputs)
         .with_context(|| format!("Serializing {circuit_name} inputs to JSON"))?;
     let input_map = Format::Json
         .parse(&json, prover.witness_generator.abi())
         .map_err(|e| anyhow::anyhow!("ABI parse error for {circuit_name}: {e}"))?;
 
-    println!("  [{circuit_name}] Generating proof...");
+    tee_println!("  [{circuit_name}] Generating proof...");
     let proof = prover
         .prove(input_map)
         .with_context(|| format!("Proving {circuit_name}"))?;
 
-    println!(
+    tee_println!(
         "  [{circuit_name}] Writing proof to: {}",
         proof_path.display()
     );
     provekit_common::file::write(&proof, proof_path)
         .with_context(|| format!("Writing proof for {circuit_name}"))?;
 
-    println!("  [{circuit_name}] Done.");
+    tee_println!("  [{circuit_name}] Done.");
 
     Ok(())
 }
 
-fn prove_720(inputs: &MerkleAge720Inputs, benchmark_dir: &Path) -> Result<()> {
+macro_rules! prove_circuits {
+    ($pkp_dir:expr, $output_dir:expr, $log_dir:expr, $( ($name:expr, $input:expr) ),+ $(,)?) => {
+        $(
+            if let Some(dir) = $log_dir {
+                set_log_file(&dir.join(format!("{}.log", $name)))?;
+            }
+            let result = prove_circuit(
+                $name,
+                $input,
+                &$pkp_dir.join(format!("{}-prover.pkp", $name)),
+                &$output_dir.join(format!("{}-proof.np", $name)),
+            );
+            if $log_dir.is_some() {
+                close_log_file();
+            }
+            result?;
+        )+
+    };
+}
+
+fn prove_720(
+    inputs: &MerkleAge720Inputs,
+    pkp_dir: &Path,
+    output_dir: &Path,
+    log_dir: Option<&Path>,
+) -> Result<()> {
     println!("\n  Proving TBS-720 chain (4 circuits)...");
-
-    prove_circuit(
-        "t_add_dsc_720",
-        &inputs.add_dsc,
-        &benchmark_dir.join("t_add_dsc_720-prover.pkp"),
-        &benchmark_dir.join("t_add_dsc_720-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_add_id_data_720",
-        &inputs.add_id_data,
-        &benchmark_dir.join("t_add_id_data_720-prover.pkp"),
-        &benchmark_dir.join("t_add_id_data_720-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_add_integrity_commit",
-        &inputs.add_integrity,
-        &benchmark_dir.join("t_add_integrity_commit-prover.pkp"),
-        &benchmark_dir.join("t_add_integrity_commit-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_attest",
-        &inputs.attest,
-        &benchmark_dir.join("t_attest-prover.pkp"),
-        &benchmark_dir.join("t_attest-proof.np"),
-    )?;
-
+    prove_circuits!(pkp_dir, output_dir, log_dir,
+        ("t_add_dsc_720", &inputs.add_dsc),
+        ("t_add_id_data_720", &inputs.add_id_data),
+        ("t_add_integrity_commit", &inputs.add_integrity),
+        ("t_attest", &inputs.attest),
+    );
     Ok(())
 }
 
-fn prove_1300(inputs: &MerkleAge1300Inputs, benchmark_dir: &Path) -> Result<()> {
+fn prove_1300(
+    inputs: &MerkleAge1300Inputs,
+    pkp_dir: &Path,
+    output_dir: &Path,
+    log_dir: Option<&Path>,
+) -> Result<()> {
     println!("\n  Proving TBS-1300 chain (5 circuits)...");
-
-    prove_circuit(
-        "t_add_dsc_hash_1300",
-        &inputs.add_dsc_hash,
-        &benchmark_dir.join("t_add_dsc_hash_1300-prover.pkp"),
-        &benchmark_dir.join("t_add_dsc_hash_1300-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_add_dsc_verify_1300",
-        &inputs.add_dsc_verify,
-        &benchmark_dir.join("t_add_dsc_verify_1300-prover.pkp"),
-        &benchmark_dir.join("t_add_dsc_verify_1300-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_add_id_data_1300",
-        &inputs.add_id_data,
-        &benchmark_dir.join("t_add_id_data_1300-prover.pkp"),
-        &benchmark_dir.join("t_add_id_data_1300-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_add_integrity_commit",
-        &inputs.add_integrity,
-        &benchmark_dir.join("t_add_integrity_commit-prover.pkp"),
-        &benchmark_dir.join("t_add_integrity_commit-proof.np"),
-    )?;
-
-    prove_circuit(
-        "t_attest",
-        &inputs.attest,
-        &benchmark_dir.join("t_attest-prover.pkp"),
-        &benchmark_dir.join("t_attest-proof.np"),
-    )?;
-
+    prove_circuits!(pkp_dir, output_dir, log_dir,
+        ("t_add_dsc_hash_1300", &inputs.add_dsc_hash),
+        ("t_add_dsc_verify_1300", &inputs.add_dsc_verify),
+        ("t_add_id_data_1300", &inputs.add_id_data),
+        ("t_add_integrity_commit", &inputs.add_integrity),
+        ("t_attest", &inputs.attest),
+    );
     Ok(())
 }
 
@@ -420,6 +447,8 @@ fn print_1300_summary(inputs: &MerkleAge1300Inputs) {
 // ============================================================================
 
 fn main() -> Result<()> {
+    let args: Args = argh::from_env();
+
     // Initialize logging/tracing with SpanStats for detailed performance metrics
     let subscriber = Registry::default().with(SpanStats);
     let _ = tracing::subscriber::set_global_default(subscriber);
@@ -428,8 +457,19 @@ fn main() -> Result<()> {
     println!("  Passport Input Generator & Prover CLI");
     println!("================================================================\n");
 
-    let tbs = prompt_tbs_variant();
-    let mode = prompt_mode();
+    let is_720 = match args.tbs {
+        720 => true,
+        1300 => false,
+        other => anyhow::bail!("Invalid --tbs value: {other}. Must be 720 or 1300."),
+    };
+
+    let is_toml = match args.mode.as_str() {
+        "toml" => true,
+        "prove" => false,
+        other => {
+            anyhow::bail!("Invalid --mode value: \"{other}\". Must be \"toml\" or \"prove\".")
+        }
+    };
 
     // Load mock RSA key pairs
     println!("\nStep 1: Loading mock RSA key pairs...");
@@ -441,29 +481,53 @@ fn main() -> Result<()> {
     let benchmark_dir: PathBuf =
         cwd.join("noir-examples/noir-passport/merkle_age_check/benchmark-inputs");
 
-    match (tbs, mode) {
-        (TbsChoice::Tbs720, Mode::Toml) => {
+    // Resolve log directory for prove mode
+    let log_dir = if args.save_logs {
+        let dir = match args.log_dir {
+            Some(d) => cwd.join(d),
+            None => cwd.join(
+                "noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test",
+            ),
+        };
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("Creating log directory: {}", dir.display()))?;
+        println!("  Logs will be saved to: {}", dir.display());
+        Some(dir)
+    } else {
+        None
+    };
+
+    // Resolve output directory: --output-dir overrides, else default per TBS variant
+    let tbs_subdir = if is_720 { "tbs_720" } else { "tbs_1300" };
+    let output_dir = match args.output_dir {
+        Some(d) => cwd.join(d),
+        None => benchmark_dir.join(format!("{tbs_subdir}/test")),
+    };
+    std::fs::create_dir_all(&output_dir)
+        .with_context(|| format!("Creating output directory: {}", output_dir.display()))?;
+    println!("  Output directory: {}", output_dir.display());
+
+    match (is_720, is_toml) {
+        (true, true) => {
             let inputs = generate_720_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            let toml_dir = benchmark_dir.join("tbs_720/test");
-            save_toml(&inputs, &toml_dir)?;
+            save_toml(&inputs, &output_dir)?;
             print_720_summary(&inputs);
         }
-        (TbsChoice::Tbs720, Mode::Prove) => {
+        (true, false) => {
             let inputs = generate_720_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
             print_720_summary(&inputs);
-            prove_720(&inputs, &benchmark_dir)?;
+            prove_720(&inputs, &benchmark_dir, &output_dir, log_dir.as_deref())?;
             println!("\n  All TBS-720 proofs generated successfully.");
         }
-        (TbsChoice::Tbs1300, Mode::Toml) => {
+        (false, true) => {
             let inputs = generate_1300_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            let toml_dir = benchmark_dir.join("tbs_1300/test");
-            save_toml(&inputs, &toml_dir)?;
+            save_toml(&inputs, &output_dir)?;
             print_1300_summary(&inputs);
         }
-        (TbsChoice::Tbs1300, Mode::Prove) => {
+        (false, false) => {
             let inputs = generate_1300_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
             print_1300_summary(&inputs);
-            prove_1300(&inputs, &benchmark_dir)?;
+            prove_1300(&inputs, &benchmark_dir, &output_dir, log_dir.as_deref())?;
             println!("\n  All TBS-1300 proofs generated successfully.");
         }
     }
