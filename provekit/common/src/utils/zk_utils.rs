@@ -6,7 +6,7 @@ use {
         dot,
         ntt::wavelet_transform,
         polynomials::{CoefficientList, EvaluationsList},
-        weights::Covector,
+        linear_form::Covector,
     },
 };
 

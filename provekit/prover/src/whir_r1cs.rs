@@ -23,9 +23,8 @@ use {
     tracing::{debug, instrument},
     whir::{
         algebra::{
-            embedding::Basefield,
+            linear_form::{Covector, LinearForm},
             polynomials::{CoefficientList, EvaluationsList, MultilinearPoint},
-            weights::{Covector, Evaluate},
         },
         protocols::whir::Witness,
         transcript::{ProverState, VerifierMessage},
@@ -191,9 +190,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &commitment.random_polynomial_coeff,
             );
 
-            let weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = weights
+            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
                 .iter()
-                .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+                .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
 
             run_zk_whir_pcs_prover(
@@ -305,9 +304,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 .flat_map(|w| poly_evals.iter().map(|pe| covector_dot(w, pe)))
                 .collect();
 
-            let weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = all_weights
+            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = all_weights
                 .iter()
-                .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+                .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
 
             run_zk_whir_pcs_prover(
@@ -619,9 +618,9 @@ pub fn run_zk_sumcheck_prover(
         &blindings_blind_polynomial,
     );
 
-    let blinding_weight_refs: Vec<&dyn Evaluate<Basefield<FieldElement>>> = blinding_weights
+    let blinding_weight_refs: Vec<&dyn LinearForm<FieldElement>> = blinding_weights
         .iter()
-        .map(|w| w as &dyn Evaluate<Basefield<FieldElement>>)
+        .map(|w| w as &dyn LinearForm<FieldElement>)
         .collect();
 
     let (_sums, _deferred) = run_zk_whir_pcs_prover(
@@ -711,14 +710,15 @@ fn compute_evaluations_single(
 pub fn run_zk_whir_pcs_prover(
     witnesses: &[&Witness<FieldElement>],
     polynomials: &[&CoefficientList<FieldElement>],
-    weights: &[&dyn Evaluate<Basefield<FieldElement>>],
+    linear_forms: &[&dyn LinearForm<FieldElement>],
     evaluations: &[FieldElement],
     params: &WhirConfig,
     merlin: &mut ProverState<TranscriptSponge>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     debug!("WHIR Parameters: {params}");
 
-    let (randomness, deferred) = params.prove(merlin, polynomials, witnesses, weights, evaluations);
+    let (randomness, deferred) =
+        params.prove(merlin, polynomials, witnesses, linear_forms, evaluations);
 
     (randomness, deferred)
 }
