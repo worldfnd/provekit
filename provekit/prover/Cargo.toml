@@ -28,6 +28,7 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+postcard.workspace = true
 rand.workspace = true
 rayon.workspace = true
 tracing.workspace = true

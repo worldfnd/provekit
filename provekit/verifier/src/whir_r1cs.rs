@@ -12,7 +12,7 @@ use {
     whir::{
         algebra::{
             linear_form::{Covector, LinearForm},
-            polynomials::MultilinearPoint,
+            MultilinearPoint,
         },
         protocols::whir::Commitment,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},

@@ -10,39 +10,93 @@ use {
                 calculate_external_row_of_r1cs_matrices, calculate_witness_bounds, eval_cubic_poly,
                 sumcheck_fold_map_reduce,
             },
-            zk_utils::{
-                coeffs_to_evals, covector_dot, create_masked_polynomial,
-                generate_random_multilinear_polynomial,
-            },
+            zk_utils::{create_masked_polynomial, generate_random_multilinear_polynomial},
             HALF,
         },
         FieldElement, PublicInputs, TranscriptSponge, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
         R1CS,
     },
-    std::mem,
     tracing::{debug, instrument},
     whir::{
-        algebra::{
-            linear_form::{Covector, LinearForm},
-            polynomials::{CoefficientList, EvaluationsList, MultilinearPoint},
-        },
+        algebra::{dot, linear_form::LinearForm, multilinear_extend, MultilinearPoint},
         protocols::whir::Witness,
         transcript::{ProverState, VerifierMessage},
     },
 };
 
 pub struct WhirR1CSCommitment {
-    pub commitment_to_witness:   Witness<FieldElement>,
-    pub masked_polynomial_coeff: CoefficientList<FieldElement>,
-    pub random_polynomial_coeff: CoefficientList<FieldElement>,
-    pub padded_witness:          Vec<FieldElement>,
+    pub commitment_to_witness: Witness<FieldElement>,
+    pub masked_polynomial:     Vec<FieldElement>,
+    pub random_polynomial:     Vec<FieldElement>,
+}
+
+/// A covector that stores only a power-of-two prefix, with the rest
+/// implicitly zero-padded to `logical_size`. Saves memory when the
+/// covector is known to be zero beyond the prefix (e.g. R1CS alpha
+/// weights that are zero-padded from 2^(m-1) to 2^m).
+///
+/// Implements [`LinearForm`] so it can be passed directly to whir's
+/// `prove()` in place of a full-length `Covector`.
+struct PrefixCovector {
+    /// The non-zero prefix. Length must be a power of two.
+    vector:       Vec<FieldElement>,
+    /// The full logical domain size (also a power of two, ≥ vector.len()).
+    logical_size: usize,
+    deferred:     bool,
+}
+
+impl PrefixCovector {
+    /// Create a prefix covector with `deferred = true` (the default for
+    /// R1CS alpha weights whose MLE the caller verifies externally).
+    fn new(vector: Vec<FieldElement>, logical_size: usize) -> Self {
+        debug_assert!(vector.len().is_power_of_two());
+        debug_assert!(logical_size.is_power_of_two());
+        debug_assert!(logical_size >= vector.len());
+        Self {
+            vector,
+            logical_size,
+            deferred: true,
+        }
+    }
+}
+
+impl LinearForm<FieldElement> for PrefixCovector {
+    fn size(&self) -> usize {
+        self.logical_size
+    }
+
+    fn deferred(&self) -> bool {
+        self.deferred
+    }
+
+    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+        let k = self.vector.len().trailing_zeros() as usize;
+        let prefix_mle = multilinear_extend(&self.vector, &point[..k]);
+        // Elements at indices ≥ 2^k are zero, so only the prefix
+        // contributes. Each extra variable beyond k adds a (1 − pⱼ)
+        // factor because those indices have bit j = 0.
+        let tail_factor: FieldElement =
+            point[k..].iter().map(|p| FieldElement::one() - p).product();
+        prefix_mle * tail_factor
+    }
+
+    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+        // Only the prefix is non-zero; the rest contributes += 0.
+        for (acc, val) in accumulator[..self.vector.len()]
+            .iter_mut()
+            .zip(&self.vector)
+        {
+            *acc += scalar * *val;
+        }
+    }
 }
 
 pub trait WhirR1CSProver {
     fn commit(
         &self,
         merlin: &mut ProverState<TranscriptSponge>,
-        r1cs: &R1CS,
+        num_witnesses: usize,
+        num_constraints: usize,
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment>;
@@ -52,6 +106,7 @@ pub trait WhirR1CSProver {
         merlin: ProverState<TranscriptSponge>,
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
+        full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
 }
@@ -61,14 +116,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn commit(
         &self,
         merlin: &mut ProverState<TranscriptSponge>,
-        r1cs: &R1CS,
+        num_witnesses: usize,
+        num_constraints: usize,
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment> {
         let witness_size = if is_w1 {
             self.w1_size
         } else {
-            r1cs.num_witnesses() - self.w1_size
+            num_witnesses - self.w1_size
         };
 
         ensure!(
@@ -80,7 +136,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
-            r1cs.num_constraints() <= 1 << self.m_0,
+            num_constraints <= 1 << self.m_0,
             "R1CS constraints exceed scheme capacity"
         );
 
@@ -96,21 +152,13 @@ impl WhirR1CSProver for WhirR1CSScheme {
             padded_witness.resize(target_len, FieldElement::zero());
         }
 
-        let witness_polynomial_evals = EvaluationsList::new(padded_witness.clone());
-
-        let (commitment_to_witness, masked_polynomial_coeff, random_polynomial_coeff) =
-            batch_commit_to_polynomial(
-                self.m,
-                &self.whir_witness,
-                witness_polynomial_evals,
-                merlin,
-            );
+        let (commitment_to_witness, masked_polynomial, random_polynomial) =
+            batch_commit_to_polynomial(self.m, &self.whir_witness, padded_witness, merlin);
 
         Ok(WhirR1CSCommitment {
             commitment_to_witness,
-            masked_polynomial_coeff,
-            random_polynomial_coeff,
-            padded_witness,
+            masked_polynomial,
+            random_polynomial,
         })
     }
 
@@ -119,27 +167,13 @@ impl WhirR1CSProver for WhirR1CSScheme {
         &self,
         mut merlin: ProverState<TranscriptSponge>,
         r1cs: R1CS,
-        mut commitments: Vec<WhirR1CSCommitment>,
+        commitments: Vec<WhirR1CSCommitment>,
+        full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let is_single = commitments.len() == 1;
-
-        // Reconstruct full witness for sumcheck
-        let full_witness: Vec<FieldElement> = if is_single {
-            // Truncate padded witness back to actual R1CS witness size
-            let mut w = mem::take(&mut commitments[0].padded_witness);
-            w.truncate(r1cs.num_witnesses());
-            w
-        } else {
-            let mut w = std::mem::take(&mut commitments[0].padded_witness);
-            w.truncate(self.w1_size);
-            let w2_len = r1cs.num_witnesses() - self.w1_size;
-            w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
-            commitments[1].padded_witness = Vec::new();
-            w
-        };
 
         // First round: ZK sumcheck to reduce R1CS to weighted evaluation
         let alpha = run_zk_sumcheck_prover(
@@ -161,9 +195,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let (mut weights, f_sums, g_sums) =
                 create_weights_and_evaluations_for_two_polynomials::<3>(
                     self.m,
-                    &commitment.masked_polynomial_coeff,
-                    &commitment.random_polynomial_coeff,
-                    &alphas,
+                    &commitment.masked_polynomial,
+                    &commitment.random_polynomial,
+                    alphas,
                 );
 
             merlin.prover_hint_ark(&(f_sums, g_sums));
@@ -175,8 +209,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             } else {
                 compute_public_weight_evaluations(
                     &mut weights,
-                    &commitment.masked_polynomial_coeff,
-                    &commitment.random_polynomial_coeff,
+                    &commitment.masked_polynomial,
+                    &commitment.random_polynomial,
                     public_weight,
                 )
             };
@@ -186,23 +220,18 @@ impl WhirR1CSProver for WhirR1CSScheme {
             // Build evaluations: for each weight, eval on masked + eval on random
             let evaluations = compute_evaluations_single(
                 &weights,
-                &commitment.masked_polynomial_coeff,
-                &commitment.random_polynomial_coeff,
+                &commitment.masked_polynomial,
+                &commitment.random_polynomial,
             );
 
-            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
-                .collect();
-
             run_zk_whir_pcs_prover(
-                &[&commitment.commitment_to_witness],
-                &[
-                    &commitment.masked_polynomial_coeff,
-                    &commitment.random_polynomial_coeff,
-                ],
-                &weight_refs,
-                &evaluations,
+                vec![commitment.commitment_to_witness],
+                vec![commitment.masked_polynomial, commitment.random_polynomial],
+                weights
+                    .into_iter()
+                    .map(|w| vec![Box::new(w) as Box<dyn LinearForm<FieldElement>>])
+                    .collect(),
+                evaluations,
                 &self.whir_witness,
                 &mut merlin,
             );
@@ -227,43 +256,49 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let (mut weights_1, f_sums_1, g_sums_1) =
                 create_weights_and_evaluations_for_two_polynomials::<3>(
                     self.m,
-                    &c1.masked_polynomial_coeff,
-                    &c1.random_polynomial_coeff,
-                    &alphas_1,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    alphas_1,
                 );
-            drop(alphas_1);
 
             let (weights_2, f_sums_2, g_sums_2) =
                 create_weights_and_evaluations_for_two_polynomials::<3>(
                     self.m,
-                    &c2.masked_polynomial_coeff,
-                    &c2.random_polynomial_coeff,
-                    &alphas_2,
+                    &c2.masked_polynomial,
+                    &c2.random_polynomial,
+                    alphas_2,
                 );
-            drop(alphas_2);
 
             // Compute cross-evaluations: weights_1 on c2's polynomials and
             // weights_2 on c1's polynomials. Whir's prove() expects evaluations
             // for ALL (weight, polynomial) pairs in row-major order.
-            let c1m_evals = coeffs_to_evals(&c1.masked_polynomial_coeff);
-            let c1r_evals = coeffs_to_evals(&c1.random_polynomial_coeff);
-            let c2m_evals = coeffs_to_evals(&c2.masked_polynomial_coeff);
-            let c2r_evals = coeffs_to_evals(&c2.random_polynomial_coeff);
             let cross_f_12: Vec<FieldElement> = weights_1
                 .iter()
-                .map(|w| covector_dot(w, &c2m_evals))
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c2.masked_polynomial[..n])
+                })
                 .collect();
             let cross_g_12: Vec<FieldElement> = weights_1
                 .iter()
-                .map(|w| covector_dot(w, &c2r_evals))
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c2.random_polynomial[..n])
+                })
                 .collect();
             let cross_f_21: Vec<FieldElement> = weights_2
                 .iter()
-                .map(|w| covector_dot(w, &c1m_evals))
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c1.masked_polynomial[..n])
+                })
                 .collect();
             let cross_g_21: Vec<FieldElement> = weights_2
                 .iter()
-                .map(|w| covector_dot(w, &c1r_evals))
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c1.random_polynomial[..n])
+                })
                 .collect();
 
             merlin.prover_hint_ark(&(f_sums_1, g_sums_1));
@@ -281,10 +316,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
             } else {
                 compute_public_weight_evaluations_dual(
                     &mut weights_1,
-                    &c1.masked_polynomial_coeff,
-                    &c1.random_polynomial_coeff,
-                    &c2.masked_polynomial_coeff,
-                    &c2.random_polynomial_coeff,
+                    &c1.masked_polynomial,
+                    &c1.random_polynomial,
+                    &c2.masked_polynomial,
+                    &c2.random_polynomial,
                     public_weight,
                 )
             };
@@ -298,27 +333,32 @@ impl WhirR1CSProver for WhirR1CSScheme {
             // Build evaluations: for each weight, evaluate on all 4 polynomials
             // (c1_masked, c1_random, c2_masked, c2_random)
             // Row-major: evaluations[w_idx * 4 + p_idx]
-            let poly_evals = vec![c1m_evals, c1r_evals, c2m_evals, c2r_evals];
             let evaluations: Vec<FieldElement> = all_weights
                 .iter()
-                .flat_map(|w| poly_evals.iter().map(|pe| covector_dot(w, pe)))
-                .collect();
-
-            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = all_weights
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
+                .flat_map(|w| {
+                    let n = w.vector.len();
+                    [
+                        dot(&w.vector, &c1.masked_polynomial[..n]),
+                        dot(&w.vector, &c1.random_polynomial[..n]),
+                        dot(&w.vector, &c2.masked_polynomial[..n]),
+                        dot(&w.vector, &c2.random_polynomial[..n]),
+                    ]
+                })
                 .collect();
 
             run_zk_whir_pcs_prover(
-                &[&c1.commitment_to_witness, &c2.commitment_to_witness],
-                &[
-                    &c1.masked_polynomial_coeff,
-                    &c1.random_polynomial_coeff,
-                    &c2.masked_polynomial_coeff,
-                    &c2.random_polynomial_coeff,
+                vec![c1.commitment_to_witness, c2.commitment_to_witness],
+                vec![
+                    c1.masked_polynomial,
+                    c1.random_polynomial,
+                    c2.masked_polynomial,
+                    c2.random_polynomial,
                 ],
-                &weight_refs,
-                &evaluations,
+                all_weights
+                    .into_iter()
+                    .map(|w| vec![Box::new(w) as Box<dyn LinearForm<FieldElement>>])
+                    .collect(),
+                evaluations,
                 &self.whir_witness,
                 &mut merlin,
             );
@@ -413,30 +453,19 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
 pub fn batch_commit_to_polynomial(
     m: usize,
     whir_config: &WhirConfig,
-    witness: EvaluationsList<FieldElement>,
+    witness: Vec<FieldElement>,
     merlin: &mut ProverState<TranscriptSponge>,
-) -> (
-    Witness<FieldElement>,
-    CoefficientList<FieldElement>,
-    CoefficientList<FieldElement>,
-) {
-    let mask = generate_random_multilinear_polynomial(witness.num_variables());
-    let masked_polynomial_coeff = create_masked_polynomial(witness, &mask).to_coeffs();
+) -> (Witness<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
+    let num_variables = witness.len().trailing_zeros() as usize;
+    let mask = generate_random_multilinear_polynomial(num_variables);
+    let masked_polynomial = create_masked_polynomial(witness, &mask);
     drop(mask);
 
-    let random_polynomial_coeff =
-        EvaluationsList::new(generate_random_multilinear_polynomial(m)).to_coeffs();
+    let random_polynomial = generate_random_multilinear_polynomial(m);
 
-    let witness_new = whir_config.commit(merlin, &[
-        &masked_polynomial_coeff,
-        &random_polynomial_coeff,
-    ]);
+    let witness_new = whir_config.commit(merlin, &[&masked_polynomial, &random_polynomial]);
 
-    (
-        witness_new,
-        masked_polynomial_coeff,
-        random_polynomial_coeff,
-    )
+    (witness_new, masked_polynomial, random_polynomial)
 }
 
 fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 4]> {
@@ -511,13 +540,12 @@ pub fn run_zk_sumcheck_prover(
         flat.resize(target_b, FieldElement::zero());
     }
 
-    let blinding_polynomial_for_committing = EvaluationsList::new(flat);
-    let blinding_polynomial_variables = blinding_polynomial_for_committing.num_variables();
+    let blinding_polynomial_variables = flat.len().trailing_zeros() as usize;
     let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
         batch_commit_to_polynomial(
             blinding_polynomial_variables + 1,
             whir_for_blinding_of_spartan_config,
-            blinding_polynomial_for_committing,
+            flat,
             merlin,
         );
 
@@ -606,7 +634,7 @@ pub fn run_zk_sumcheck_prover(
             blinding_polynomial_variables + 1,
             &blindings_mask_polynomial,
             &blindings_blind_polynomial,
-            &[expand_powers(alpha.as_slice())],
+            [expand_powers(alpha.as_slice())],
         );
 
     merlin.prover_message(&blinding_mask_polynomial_sum[0]);
@@ -618,16 +646,14 @@ pub fn run_zk_sumcheck_prover(
         &blindings_blind_polynomial,
     );
 
-    let blinding_weight_refs: Vec<&dyn LinearForm<FieldElement>> = blinding_weights
-        .iter()
-        .map(|w| w as &dyn LinearForm<FieldElement>)
-        .collect();
-
     let (_sums, _deferred) = run_zk_whir_pcs_prover(
-        &[&commitment_to_blinding_polynomial],
-        &[&blindings_mask_polynomial, &blindings_blind_polynomial],
-        &blinding_weight_refs,
-        &blinding_evaluations,
+        vec![commitment_to_blinding_polynomial],
+        vec![blindings_mask_polynomial, blindings_blind_polynomial],
+        blinding_weights
+            .into_iter()
+            .map(|w| vec![Box::new(w) as Box<dyn LinearForm<FieldElement>>])
+            .collect(),
+        blinding_evaluations,
         whir_for_blinding_of_spartan_config,
         merlin,
     );
@@ -648,59 +674,46 @@ fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
 
 fn create_weights_and_evaluations_for_two_polynomials<const N: usize>(
     cfg_nv: usize,
-    f_polynomial: &CoefficientList<FieldElement>,
-    g_polynomial: &CoefficientList<FieldElement>,
-    alphas: &[Vec<FieldElement>; N],
-) -> (
-    Vec<Covector<FieldElement>>,
-    Vec<FieldElement>,
-    Vec<FieldElement>,
-) {
+    f_polynomial: &[FieldElement],
+    g_polynomial: &[FieldElement],
+    alphas: [Vec<FieldElement>; N],
+) -> (Vec<PrefixCovector>, Vec<FieldElement>, Vec<FieldElement>) {
     let base_nv = cfg_nv.checked_sub(1).expect("cfg_nv >= 1");
     let base_len = 1usize << base_nv;
     let final_len = 1usize << cfg_nv;
-
-    let f_evals = coeffs_to_evals(f_polynomial);
-    let g_evals = coeffs_to_evals(g_polynomial);
 
     let mut weights = Vec::with_capacity(N);
     let mut f_sums = Vec::with_capacity(N);
     let mut g_sums = Vec::with_capacity(N);
 
-    for w in alphas.iter() {
-        let mut w_full = Vec::with_capacity(final_len);
-        w_full.extend_from_slice(w);
-
-        if w_full.len() < base_len {
-            w_full.resize(base_len, FieldElement::zero());
+    for mut w in alphas {
+        if w.len() < base_len {
+            w.resize(base_len, FieldElement::zero());
         } else {
-            assert_eq!(w_full.len(), base_len);
+            assert_eq!(w.len(), base_len);
         }
-        w_full.resize(final_len, FieldElement::zero());
 
-        let weight = Covector::new(w_full);
-        f_sums.push(covector_dot(&weight, &f_evals));
-        g_sums.push(covector_dot(&weight, &g_evals));
+        f_sums.push(dot(&w, &f_polynomial[..base_len]));
+        g_sums.push(dot(&w, &g_polynomial[..base_len]));
 
-        weights.push(weight);
+        weights.push(PrefixCovector::new(w, final_len));
     }
 
     (weights, f_sums, g_sums)
 }
 
 fn compute_evaluations_single(
-    weights: &[Covector<FieldElement>],
-    masked_poly: &CoefficientList<FieldElement>,
-    random_poly: &CoefficientList<FieldElement>,
+    weights: &[PrefixCovector],
+    masked_poly: &[FieldElement],
+    random_poly: &[FieldElement],
 ) -> Vec<FieldElement> {
-    let masked_evals = coeffs_to_evals(masked_poly);
-    let random_evals = coeffs_to_evals(random_poly);
     weights
         .iter()
         .flat_map(|w| {
+            let n = w.vector.len();
             [
-                covector_dot(w, &masked_evals),
-                covector_dot(w, &random_evals),
+                dot(&w.vector, &masked_poly[..n]),
+                dot(&w.vector, &random_poly[..n]),
             ]
         })
         .collect()
@@ -708,51 +721,47 @@ fn compute_evaluations_single(
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_prover(
-    witnesses: &[&Witness<FieldElement>],
-    polynomials: &[&CoefficientList<FieldElement>],
-    linear_forms: &[&dyn LinearForm<FieldElement>],
-    evaluations: &[FieldElement],
+    witnesses: Vec<Witness<FieldElement>>,
+    vectors: Vec<Vec<FieldElement>>,
+    linear_forms: Vec<Vec<Box<dyn LinearForm<FieldElement>>>>,
+    evaluations: Vec<FieldElement>,
     params: &WhirConfig,
     merlin: &mut ProverState<TranscriptSponge>,
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     debug!("WHIR Parameters: {params}");
 
     let (randomness, deferred) =
-        params.prove(merlin, polynomials, witnesses, linear_forms, evaluations);
+        params.prove(merlin, vectors, witnesses, linear_forms, evaluations);
 
     (randomness, deferred)
 }
 
 fn compute_public_weight_evaluations(
-    weights: &mut Vec<Covector<FieldElement>>,
-    f_polynomial: &CoefficientList<FieldElement>,
-    g_polynomial: &CoefficientList<FieldElement>,
-    public_weights: Covector<FieldElement>,
+    weights: &mut Vec<PrefixCovector>,
+    f_polynomial: &[FieldElement],
+    g_polynomial: &[FieldElement],
+    public_weights: PrefixCovector,
 ) -> (FieldElement, FieldElement) {
-    let f_evals = coeffs_to_evals(f_polynomial);
-    let g_evals = coeffs_to_evals(g_polynomial);
-    let f = covector_dot(&public_weights, &f_evals);
-    let g = covector_dot(&public_weights, &g_evals);
+    let n = public_weights.vector.len();
+    let f = dot(&public_weights.vector, &f_polynomial[..n]);
+    let g = dot(&public_weights.vector, &g_polynomial[..n]);
     weights.insert(0, public_weights);
     (f, g)
 }
 
 fn compute_public_weight_evaluations_dual(
-    weights_1: &mut Vec<Covector<FieldElement>>,
-    c1_masked: &CoefficientList<FieldElement>,
-    c1_random: &CoefficientList<FieldElement>,
-    c2_masked: &CoefficientList<FieldElement>,
-    c2_random: &CoefficientList<FieldElement>,
-    public_weights: Covector<FieldElement>,
+    weights_1: &mut Vec<PrefixCovector>,
+    c1_masked: &[FieldElement],
+    c1_random: &[FieldElement],
+    c2_masked: &[FieldElement],
+    c2_random: &[FieldElement],
+    public_weights: PrefixCovector,
 ) -> (FieldElement, FieldElement, FieldElement, FieldElement) {
-    let c1m = coeffs_to_evals(c1_masked);
-    let c1r = coeffs_to_evals(c1_random);
-    let c2m = coeffs_to_evals(c2_masked);
-    let c2r = coeffs_to_evals(c2_random);
-    let f1 = covector_dot(&public_weights, &c1m);
-    let g1 = covector_dot(&public_weights, &c1r);
-    let f2 = covector_dot(&public_weights, &c2m);
-    let g2 = covector_dot(&public_weights, &c2r);
+    let n = public_weights.vector.len();
+    let f1 = dot(&public_weights.vector, &c1_masked[..n]);
+    let g1 = dot(&public_weights.vector, &c1_random[..n]);
+    let f2 = dot(&public_weights.vector, &c2_masked[..n]);
+    let g2 = dot(&public_weights.vector, &c2_random[..n]);
     weights_1.insert(0, public_weights);
     (f1, g1, f2, g2)
 }
@@ -761,14 +770,17 @@ fn get_public_weights(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
-) -> Covector<FieldElement> {
+) -> PrefixCovector {
     let public_inputs_hash = public_inputs.hash();
     merlin.prover_message(&public_inputs_hash);
 
     let x: FieldElement = merlin.verifier_message();
 
     let domain_size = 1 << m;
-    let mut public_weights = vec![FieldElement::zero(); domain_size];
+    // Only allocate the non-zero prefix: public_inputs.len() entries are non-zero,
+    // PrefixCovector zero-pads the rest via logical_size.
+    let prefix_len = public_inputs.len().next_power_of_two().max(2);
+    let mut public_weights = vec![FieldElement::zero(); prefix_len];
 
     let mut current_pow = FieldElement::one();
     for slot in public_weights.iter_mut().take(public_inputs.len()) {
@@ -776,7 +788,9 @@ fn get_public_weights(
         current_pow *= x;
     }
 
-    let mut covector = Covector::new(public_weights);
-    covector.deferred = false;
-    covector
+    PrefixCovector {
+        vector:       public_weights,
+        logical_size: domain_size,
+        deferred:     false,
+    }
 }
