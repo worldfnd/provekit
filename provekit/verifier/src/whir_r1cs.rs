@@ -11,8 +11,8 @@ use {
     tracing::instrument,
     whir::{
         algebra::{
-            polynomials::MultilinearPoint,
             linear_form::{Covector, LinearForm},
+            polynomials::MultilinearPoint,
         },
         protocols::whir::Commitment,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},

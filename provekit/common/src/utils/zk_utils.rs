@@ -4,9 +4,9 @@ use {
     rayon::prelude::*,
     whir::algebra::{
         dot,
+        linear_form::Covector,
         ntt::wavelet_transform,
         polynomials::{CoefficientList, EvaluationsList},
-        linear_form::Covector,
     },
 };
 
