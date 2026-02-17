@@ -59,7 +59,7 @@ pub(crate) fn strip_ansi(s: &str) -> String {
         if c == '\x1b' {
             if chars.peek() == Some(&'[') {
                 chars.next(); // consume '['
-                // skip until we hit an ASCII letter (the final byte of the sequence)
+                              // skip until we hit an ASCII letter (the final byte of the sequence)
                 for c in chars.by_ref() {
                     if c.is_ascii_alphabetic() {
                         break;
@@ -85,9 +85,11 @@ pub(crate) fn tee_write_log(msg: &str) {
 
 /// Open a log file and set it as the active LOG_SINK.
 fn set_log_file(path: &Path) -> Result<()> {
-    let file = File::create(path)
-        .with_context(|| format!("Creating log file: {}", path.display()))?;
-    let mut guard = LOG_SINK.lock().map_err(|e| anyhow::anyhow!("LOG_SINK lock: {e}"))?;
+    let file =
+        File::create(path).with_context(|| format!("Creating log file: {}", path.display()))?;
+    let mut guard = LOG_SINK
+        .lock()
+        .map_err(|e| anyhow::anyhow!("LOG_SINK lock: {e}"))?;
     *guard = Some(BufWriter::new(file));
     Ok(())
 }
@@ -308,7 +310,10 @@ fn prove_720(
     log_dir: Option<&Path>,
 ) -> Result<()> {
     println!("\n  Proving TBS-720 chain (4 circuits)...");
-    prove_circuits!(pkp_dir, output_dir, log_dir,
+    prove_circuits!(
+        pkp_dir,
+        output_dir,
+        log_dir,
         ("t_add_dsc_720", &inputs.add_dsc),
         ("t_add_id_data_720", &inputs.add_id_data),
         ("t_add_integrity_commit", &inputs.add_integrity),
@@ -324,7 +329,10 @@ fn prove_1300(
     log_dir: Option<&Path>,
 ) -> Result<()> {
     println!("\n  Proving TBS-1300 chain (5 circuits)...");
-    prove_circuits!(pkp_dir, output_dir, log_dir,
+    prove_circuits!(
+        pkp_dir,
+        output_dir,
+        log_dir,
         ("t_add_dsc_hash_1300", &inputs.add_dsc_hash),
         ("t_add_dsc_verify_1300", &inputs.add_dsc_verify),
         ("t_add_id_data_1300", &inputs.add_id_data),
@@ -485,9 +493,9 @@ fn main() -> Result<()> {
     let log_dir = if args.save_logs {
         let dir = match args.log_dir {
             Some(d) => cwd.join(d),
-            None => cwd.join(
-                "noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test",
-            ),
+            None => {
+                cwd.join("noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test")
+            }
         };
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("Creating log directory: {}", dir.display()))?;
@@ -497,7 +505,8 @@ fn main() -> Result<()> {
         None
     };
 
-    // Resolve output directory: --output-dir overrides, else default per TBS variant
+    // Resolve output directory: --output-dir overrides, else default per TBS
+    // variant
     let tbs_subdir = if is_720 { "tbs_720" } else { "tbs_1300" };
     let output_dir = match args.output_dir {
         Some(d) => cwd.join(d),
