@@ -202,26 +202,46 @@ When `--save-logs` is passed, a separate log file is created per circuit (e.g. `
 
 ## Mock data
 
-The `mock_generator` module generates synthetic passport data for testing:
+The `mock_generator` module generates synthetic passport data for testing. All internal structures (eContent, SignedAttributes, TBS certificate) use proper DER-encoded ASN.1, matching the encoding that real passport chips produce.
 
 ```rust
 use passport_input_gen::mock_generator::{
     dg1_bytes_with_birthdate_expiry_date,
-    generate_fake_sod,              // TBS-720: actual TBS ~400 bytes
-    generate_fake_sod_with_padded_tbs, // TBS-1300: pads TBS to given size
+    generate_sod,              // TBS-720: DER-encoded TBS that fits within 720 bytes
+    generate_sod_with_padded_tbs, // TBS-1300: extends TBS with a padding extension
 };
 
 // DOB: Jan 1, 2007 / Expiry: Jan 1, 2032
 let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
 
 // TBS-720 SOD
-let sod = generate_fake_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
+let sod = generate_sod(&dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub);
 
-// TBS-1300 SOD (pads TBS to 850 bytes)
-let sod = generate_fake_sod_with_padded_tbs(
+// TBS-1300 SOD (extends TBS to ~850 bytes via a padding extension)
+let sod = generate_sod_with_padded_tbs(
     &dg1, &dsc_priv, &dsc_pub, &csca_priv, &csca_pub, 850
 );
 ```
+
+### DG1 (MRZ)
+
+`dg1_bytes_with_birthdate_expiry_date` builds a 95-byte DG1 with:
+
+- A 5-byte ASN.1 tag prefix (`0x61 0x5B 0x5F 0x1F 0x58`)
+- A 90-byte TD3 MRZ containing realistic fields (document type `P<`, country `UTO`, name `DOE<<JOHN<MOCK`, document number `L898902C3`)
+- Correct ICAO 9303 check digits for the document number, date of birth, expiry, and composite fields
+
+### SOD internal structures
+
+| Component | Encoding |
+|-----------|----------|
+| eContent | DER-encoded `LDSSecurityObject` (ICAO OID `2.23.136.1.1.1`) with SHA-256 hashes for DG1 and a dummy DG2 |
+| SignedAttributes | DER-encoded `SET OF Attribute` containing `contentType` and `messageDigest` |
+| TBS Certificate | DER-encoded `TBSCertificate` (X.509 v3) with `basicConstraints`, `keyUsage`, and `subjectKeyIdentifier` extensions |
+
+For the TBS-1300 path, `generate_sod_with_padded_tbs` adds an opaque X.509 extension to inflate the TBS to the target size rather than appending raw filler bytes.
+
+### Mock keys
 
 Mock RSA key pairs are embedded in `mock_keys`:
 
@@ -238,8 +258,11 @@ cargo test -p passport-input-gen
 ```
 
 Tests verify:
-- Commitment chain correctness for TBS-720 (against known-good values from verified TOML files)
-- Commitment chain self-consistency for TBS-1300
+- Commitment chain self-consistency for both TBS-720 and TBS-1300 (each commitment is re-computed independently and compared to the library output)
+- DG1 structure: correct ASN.1 header, MRZ field positions, ICAO check digits
+- DER validity of eContent (`LDSSecurityObject`), SignedAttributes (`SET OF Attribute`), and TBS certificate
+- Full roundtrip hash chain: DG1 hash in eContent, eContent hash in SignedAttributes, DSC signature verification, CSCA signature verification, and byte-offset findability of hashes and the DSC modulus
+- Padded TBS reaching target length while remaining valid
 - SOD parsing for real passport data fixtures
 - Partial SHA256 intermediate state computation
 - Poseidon2 hash outputs
