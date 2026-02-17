@@ -12,7 +12,7 @@ use {
     whir::{
         algebra::{
             polynomials::MultilinearPoint,
-            weights::{Covector, Weights},
+            linear_form::{Covector, LinearForm},
         },
         protocols::whir::Commitment,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
@@ -153,9 +153,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 let mut all_evaluations = evaluations_1;
                 all_evaluations.extend(evaluations_2);
 
-                let weight_refs: Vec<&dyn Weights<FieldElement>> = all_weights
+                let weight_refs: Vec<&dyn LinearForm<FieldElement>> = all_weights
                     .iter()
-                    .map(|w| w as &dyn Weights<FieldElement>)
+                    .map(|w| w as &dyn LinearForm<FieldElement>)
                     .collect();
                 let commitment_refs: Vec<&Commitment<FieldElement>> =
                     vec![&commitment_1, &commitment_2];
@@ -202,9 +202,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     );
                 }
 
-                let weight_refs: Vec<&dyn Weights<FieldElement>> = weights
+                let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
                     .iter()
-                    .map(|w| w as &dyn Weights<FieldElement>)
+                    .map(|w| w as &dyn LinearForm<FieldElement>)
                     .collect();
 
                 let (whir_folding_randomness, deferred_evals) = run_whir_pcs_verifier(
@@ -464,9 +464,9 @@ pub fn run_sumcheck_verifier(
         ]),
     );
 
-    let blinding_weight_refs: Vec<&dyn Weights<FieldElement>> = blinding_weights
+    let blinding_weight_refs: Vec<&dyn LinearForm<FieldElement>> = blinding_weights
         .iter()
-        .map(|w| w as &dyn Weights<FieldElement>)
+        .map(|w| w as &dyn LinearForm<FieldElement>)
         .collect();
 
     run_whir_pcs_verifier(
@@ -492,7 +492,7 @@ pub fn run_whir_pcs_verifier(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     params: &WhirConfig,
     commitments: &[&Commitment<FieldElement>],
-    weights: &[&dyn Weights<FieldElement>],
+    weights: &[&dyn LinearForm<FieldElement>],
     evaluations: &[FieldElement],
 ) -> Result<(MultilinearPoint<FieldElement>, Vec<FieldElement>)> {
     let (folding_randomness, deferred) =
