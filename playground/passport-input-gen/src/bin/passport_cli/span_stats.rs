@@ -141,6 +141,7 @@ where
         );
 
         eprintln!("{buffer}");
+        crate::tee_write_log(&buffer);
     }
 
     fn on_event(&self, event: &tracing::Event<'_>, ctx: Context<'_, S>) {
@@ -187,6 +188,7 @@ where
         event.record(&mut visitor);
 
         eprintln!("{buffer}");
+        crate::tee_write_log(&buffer);
     }
 
     fn on_close(&self, id: Id, ctx: Context<S>) {
@@ -241,5 +243,6 @@ where
         );
 
         eprintln!("{buffer}");
+        crate::tee_write_log(&buffer);
     }
 }
