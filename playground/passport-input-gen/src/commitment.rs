@@ -26,9 +26,9 @@ pub fn parse_hex_to_field(hex_str: &str) -> Result<Fr, PassportError> {
 ///
 /// Packing scheme (31 bytes per field, reversed storage order):
 /// - N = (len + 30) / 31  field elements
-/// - First chunk (may be shorter): bytes[0..first_chunk_size] → result[N-1]
-/// - Remaining chunks (31 bytes each): stored in result[N-2], result[N-3], ...,
-///   result[0]
+/// - First chunk (may be shorter): `bytes[0..first_chunk_size]` → `result[N-1]`
+/// - Remaining chunks (31 bytes each): stored in `result[N-2]`, `result[N-3]`,
+///   ..., `result[0]`
 ///
 /// Each chunk is interpreted as a big-endian integer.
 pub fn pack_be_bytes_into_fields(bytes: &[u8]) -> Vec<Fr> {
@@ -81,9 +81,9 @@ pub fn calculate_sod_hash(e_content: &[u8]) -> Fr {
 /// `utils/commitment/common/src/lib.nr:46-65`.
 ///
 /// Field layout (26 fields for TBS_MAX_SIZE=720):
-///   [0]     = salt
-///   [1]     = packed country (3 bytes → 1 field)
-///   [2..26] = packed TBS certificate (720 bytes → 24 fields)
+///   `[0]`     = salt
+///   `[1]`     = packed country (3 bytes → 1 field)
+///   `[2..26]` = packed TBS certificate (720 bytes → 24 fields)
 pub fn hash_salt_country_tbs(
     salt: &str,
     country: &[u8],
@@ -122,13 +122,13 @@ pub fn calculate_private_nullifier(dg1: &[u8], e_content: &[u8], sod_signature: 
 /// `utils/commitment/common/src/lib.nr:119-161`.
 ///
 /// Field layout (22 fields for SA=200, DG1=95, ECONTENT=200):
-///   [0]      = salt
-///   [1]      = packed country (3 bytes → 1 field)
-///   [2..9]   = packed signed_attributes (200 bytes → 7 fields)
-///   [9]      = signed_attr_size as field
-///   [10..14] = packed DG1 (95 bytes → 4 fields)
-///   [14..21] = packed eContent (200 bytes → 7 fields)
-///   [21]     = private_nullifier
+///   `[0]`      = salt
+///   `[1]`      = packed country (3 bytes → 1 field)
+///   `[2..9]`   = packed signed_attributes (200 bytes → 7 fields)
+///   `[9]`      = signed_attr_size as field
+///   `[10..14]` = packed DG1 (95 bytes → 4 fields)
+///   `[14..21]` = packed eContent (200 bytes → 7 fields)
+///   `[21]`     = private_nullifier
 pub fn hash_salt_country_sa_dg1_econtent_nullifier(
     salt: &str,
     country: &[u8],
@@ -155,8 +155,8 @@ pub fn hash_salt_country_sa_dg1_econtent_nullifier(
 /// `partial_sha256/src/lib.nr`.
 ///
 /// Field layout for CHUNK1_SIZE=640:
-///   [0]      = salt
-///   [1..22]  = pack_be_bytes_into_fields(data) (640 bytes → 21 fields)
+///   `[0]`      = salt
+///   `[1..22]`  = pack_be_bytes_into_fields(data) (640 bytes → 21 fields)
 pub fn commit_to_data_chunk(salt: &str, data: &[u8]) -> Result<Fr, PassportError> {
     let mut fields = Vec::new();
     fields.push(parse_hex_to_field(salt)?);
@@ -171,10 +171,10 @@ pub fn commit_to_data_chunk(salt: &str, data: &[u8]) -> Result<Fr, PassportError
 /// processed_bytes, data_commitment)` from `partial_sha256/src/lib.nr`.
 ///
 /// Field layout (always 11 fields):
-///   [0]     = salt
-///   [1..9]  = state[0], state[1], ..., state[7]  (each u32 → Field)
-///   [9]     = processed_bytes as Field
-///   [10]    = data_commitment
+///   `[0]`     = salt
+///   `[1..9]`  = `state[0]`, `state[1]`, ..., `state[7]`  (each u32 → Field)
+///   `[9]`     = processed_bytes as Field
+///   `[10]`    = data_commitment
 pub fn commit_to_sha256_state_and_data(
     salt: &str,
     state: &[u32; 8],
