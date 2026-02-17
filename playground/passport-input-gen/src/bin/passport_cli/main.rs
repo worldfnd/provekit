@@ -15,8 +15,7 @@ use {
     noirc_abi::input_parser::Format,
     passport_input_gen::{
         mock_generator::{
-            dg1_bytes_with_birthdate_expiry_date, generate_fake_sod,
-            generate_fake_sod_with_padded_tbs,
+            dg1_bytes_with_birthdate_expiry_date, generate_sod, generate_sod_with_padded_tbs,
         },
         mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
         Binary, CircuitInputSet, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config,
@@ -174,7 +173,7 @@ fn generate_720_inputs(
     let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
     println!("  DG1: {} bytes (DOB: 070101, Expiry: 320101)", dg1.len());
 
-    let sod = generate_fake_sod(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub);
+    let sod = generate_sod(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub);
     println!("  SOD generated (mock)");
 
     let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
@@ -209,7 +208,7 @@ fn generate_1300_inputs(
     let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
     println!("  DG1: {} bytes (DOB: 070101, Expiry: 320101)", dg1.len());
 
-    let sod = generate_fake_sod_with_padded_tbs(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub, 850);
+    let sod = generate_sod_with_padded_tbs(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub, 850);
     println!("  SOD generated (mock, padded TBS = 850 bytes)");
 
     let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
