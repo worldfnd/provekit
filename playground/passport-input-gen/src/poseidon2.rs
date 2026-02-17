@@ -154,7 +154,7 @@ fn load_rc_partial() -> [Fr; NUM_PARTIAL_ROUNDS] {
 // ============================================================================
 
 /// External MDS for t=4: M_E * state
-/// Matrix: [[5,7,1,3],[4,6,1,1],[1,3,5,7],[1,1,4,6]]
+/// Matrix: `[[5,7,1,3],[4,6,1,1],[1,3,5,7],[1,1,4,6]]`
 fn external_mds(state: &mut [Fr; 4]) {
     let [s0, s1, s2, s3] = *state;
     let f1 = Fr::from(1u64);
@@ -170,7 +170,7 @@ fn external_mds(state: &mut [Fr; 4]) {
     state[3] = f1 * s0 + f1 * s1 + f4 * s2 + f6 * s3;
 }
 
-/// Internal MDS for t=4: out[i] = diag[i] * x[i] + sum(x)
+/// Internal MDS for t=4: `out[i] = diag[i] * x[i] + sum(x)`
 fn internal_mds(state: &mut [Fr; 4], diag: &[Fr; 4]) {
     let sum: Fr = state.iter().sum();
     for i in 0..4 {
@@ -244,7 +244,7 @@ pub fn poseidon2_permutation(state: &mut [Fr; 4]) {
 /// Poseidon2 sponge hash matching Noir's `Poseidon2::hash(inputs, len)`.
 ///
 /// Sponge parameters: width=4, rate=3, capacity=1.
-/// IV = message_length * 2^64, placed in state[3] (capacity lane).
+/// IV = message_length * 2^64, placed in `state[3]` (capacity lane).
 pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
     let msg_len = inputs.len();
     let two_pow_64 = Fr::from(1u64 << 32) * Fr::from(1u64 << 32);
