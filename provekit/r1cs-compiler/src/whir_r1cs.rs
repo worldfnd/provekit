@@ -1,14 +1,11 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, WhirZkConfig, R1CS},
     whir::parameters::{
         default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
 
-// Minimum log2 of the WHIR evaluation domain (lower bound for m).
 const MIN_WHIR_NUM_VARIABLES: usize = 12;
-// Minimum number of variables in the sumcheck’s multilinear polynomial (lower
-// bound for m_0).
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
@@ -18,8 +15,6 @@ pub trait WhirR1CSSchemeBuilder {
         num_challenges: usize,
         has_public_inputs: bool,
     ) -> Self;
-
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
@@ -43,35 +38,48 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         let m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
+        let (whir_witness_blinded, whir_witness_blinding) = new_whir_zk_config_for_size(m_raw, 1);
+        let (whir_spartan_blinded, whir_spartan_blinding) =
+            new_whir_zk_config_for_size(next_power_of_two(4 * m_0), 1);
+
         Self {
-            m: m_raw + 1,
+            m: m_raw,
             w1_size,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
-            whir_witness: Self::new_whir_config_for_size(m_raw + 1, 2),
-            whir_for_hiding_spartan: Self::new_whir_config_for_size(
-                next_power_of_two(4 * m_0) + 1,
-                2,
-            ),
             has_public_inputs,
+            whir_witness_blinded,
+            whir_witness_blinding,
+            whir_spartan_blinded,
+            whir_spartan_blinding,
         }
     }
+}
 
-    fn new_whir_config_for_size(num_variables: usize, batch_size: usize) -> WhirConfig {
-        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
+fn new_whir_zk_config_for_size(
+    num_variables: usize,
+    num_polynomials: usize,
+) -> (WhirConfig, WhirConfig) {
+    let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
-        let mv_params = MultivariateParameters::new(nv);
-        let whir_params = ProtocolParameters {
-            initial_statement: true,
-            security_level: 128,
-            pow_bits: default_max_pow(nv, 1),
-            folding_factor: FoldingFactor::Constant(4),
-            soundness_type: SoundnessType::ConjectureList,
-            starting_log_inv_rate: 1,
-            batch_size,
-            hash_id: whir::hash::SHA2,
-        };
-        WhirConfig::new(mv_params, &whir_params)
-    }
+    let mv_params = MultivariateParameters::new(nv);
+    let whir_params = ProtocolParameters {
+        initial_statement:     true,
+        security_level:        128,
+        pow_bits:              default_max_pow(nv, 1),
+        folding_factor:        FoldingFactor::Constant(4),
+        soundness_type:        SoundnessType::ConjectureList,
+        starting_log_inv_rate: 1,
+        batch_size:            1,
+        hash_id:               whir::hash::SHA2,
+    };
+
+    let zk_config = WhirZkConfig::new(
+        mv_params,
+        &whir_params,
+        FoldingFactor::Constant(1),
+        num_polynomials,
+    );
+    (zk_config.blinded_commitment, zk_config.blinding_commitment)
 }

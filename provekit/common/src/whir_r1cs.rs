@@ -3,10 +3,14 @@ use whir::transcript::Interaction;
 use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
-    whir::{protocols::whir::Config as GenericWhirConfig, transcript},
+    whir::{
+        protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
+        transcript,
+    },
 };
 
 pub type WhirConfig = GenericWhirConfig<FieldElement>;
+pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 pub type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
@@ -17,20 +21,39 @@ pub type WhirProverState = transcript::ProverState;
 /// Type alias for the whir proof.
 pub type WhirProof = transcript::Proof;
 
+/// `whir_zk::Config` only derives `Serialize` (not `Deserialize`), so we store
+/// the two inner `whir::Config` fields separately for PKP/PKV serde
+/// round-tripping and reconstruct `whir_zk::Config` on-the-fly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
-    pub m: usize,
-    pub w1_size: usize,
-    pub m_0: usize,
-    pub a_num_terms: usize,
-    pub num_challenges: usize,
+    pub m:                 usize,
+    pub w1_size:           usize,
+    pub m_0:               usize,
+    pub a_num_terms:       usize,
+    pub num_challenges:    usize,
     pub has_public_inputs: bool,
-    pub whir_witness: WhirConfig,
-    pub whir_for_hiding_spartan: WhirConfig,
+
+    pub whir_witness_blinded:  WhirConfig,
+    pub whir_witness_blinding: WhirConfig,
+    pub whir_spartan_blinded:  WhirConfig,
+    pub whir_spartan_blinding: WhirConfig,
 }
 
 impl WhirR1CSScheme {
-    /// Create a domain separator for the provekit outer protocol.
+    pub fn whir_zk_witness(&self) -> WhirZkConfig {
+        WhirZkConfig {
+            blinded_commitment:  self.whir_witness_blinded.clone(),
+            blinding_commitment: self.whir_witness_blinding.clone(),
+        }
+    }
+
+    pub fn whir_zk_spartan(&self) -> WhirZkConfig {
+        WhirZkConfig {
+            blinded_commitment:  self.whir_spartan_blinded.clone(),
+            blinding_commitment: self.whir_spartan_blinding.clone(),
+        }
+    }
+
     pub fn create_domain_separator(&self) -> WhirDomainSeparator {
         transcript::DomainSeparator::protocol(self)
     }

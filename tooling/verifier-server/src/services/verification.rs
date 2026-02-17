@@ -88,8 +88,8 @@ impl VerificationService {
             .ok_or_else(|| AppError::Internal("WHIR scheme not found in verifier".to_string()))?;
 
         write_gnark_parameters_to_file(
-            &whir_scheme.whir_witness,
-            &whir_scheme.whir_for_hiding_spartan,
+            &whir_scheme.whir_witness_blinded,
+            &whir_scheme.whir_spartan_blinded,
             &proof.whir_r1cs_proof,
             whir_scheme.m_0,
             whir_scheme.m,

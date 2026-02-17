@@ -23,6 +23,7 @@ pub use {
     verifier::Verifier,
     whir_r1cs::{
         WhirConfig, WhirDomainSeparator, WhirProof, WhirProverState, WhirR1CSProof, WhirR1CSScheme,
+        WhirZkConfig,
     },
     witness::PublicInputs,
 };
