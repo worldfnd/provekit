@@ -118,7 +118,7 @@ impl SpreadAccumulator {
     pub fn new(table_bits: u32) -> Self {
         Self {
             table_bits,
-            lookups:      Vec::new(),
+            lookups: Vec::new(),
             spread_cache: HashMap::new(),
             range_checks: BTreeMap::new(),
         }
@@ -385,10 +385,7 @@ pub(crate) fn spread_not_terms(
 
 /// Reconstruct spread from chunk-level spreads. Returns SumTerms with
 /// coefficients based on the actual chunk bit-widths.
-pub(crate) fn spread_from_chunk_spreads(
-    chunk_bits: &[u32],
-    spreads: &[usize],
-) -> Vec<SumTerm> {
+pub(crate) fn spread_from_chunk_spreads(chunk_bits: &[u32], spreads: &[usize]) -> Vec<SumTerm> {
     assert_eq!(chunk_bits.len(), spreads.len());
     let mut terms = Vec::with_capacity(spreads.len());
     let mut bit_offset = 0u32;
@@ -612,12 +609,10 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
     // --- Per compression ---
 
     // Initial decompositions: 16 inputs + 2 byte + 3 Σ₀ + 3 Σ₁
-    let mut inline = 18 * decomp(&BYTE_CHUNKS)
-        + 3 * decomp(&SIGMA0_CHUNKS)
-        + 3 * decomp(&SIGMA1_CHUNKS);
-    let mut lookups = 18 * decomp_l(&BYTE_CHUNKS)
-        + 3 * decomp_l(&SIGMA0_CHUNKS)
-        + 3 * decomp_l(&SIGMA1_CHUNKS);
+    let mut inline =
+        18 * decomp(&BYTE_CHUNKS) + 3 * decomp(&SIGMA0_CHUNKS) + 3 * decomp(&SIGMA1_CHUNKS);
+    let mut lookups =
+        18 * decomp_l(&BYTE_CHUNKS) + 3 * decomp_l(&SIGMA0_CHUNKS) + 3 * decomp_l(&SIGMA1_CHUNKS);
 
     // Message schedule (48 rounds): σ₀ + σ₁ + addition(BYTE)
     let msg_inline = (decomp(&SMALL_SIGMA0_CHUNKS) + sd + pk)
@@ -636,12 +631,8 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
         + (sd + pk)             // Maj
         + add(&SIGMA1_CHUNKS)   // new_e
         + add(&SIGMA0_CHUNKS); // new_a
-    let comp_lookups = sd_l
-        + 3 * sd_l
-        + sd_l
-        + sd_l
-        + add_l(&SIGMA1_CHUNKS)
-        + add_l(&SIGMA0_CHUNKS);
+    let comp_lookups =
+        sd_l + 3 * sd_l + sd_l + sd_l + add_l(&SIGMA1_CHUNKS) + add_l(&SIGMA0_CHUNKS);
     inline += 64 * comp_inline;
     lookups += 64 * comp_lookups;
 

@@ -380,11 +380,7 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
             per_sha256, per_sha256_w
         );
         if let Some(w) = breakdown.spread_table_bits {
-            println!(
-                "│  Spread table width:  {} bits ({} entries)",
-                w,
-                1u32 << w
-            );
+            println!("│  Spread table width:  {} bits ({} entries)", w, 1u32 << w);
         }
         println!("└{}", SUBSECTION);
     }
