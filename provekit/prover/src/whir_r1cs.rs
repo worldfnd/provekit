@@ -19,14 +19,19 @@ use {
     std::{any::Any, borrow::Cow},
     tracing::{debug, instrument},
     whir::{
-        algebra::{dot, linear_form::LinearForm, multilinear_extend, MultilinearPoint},
+        algebra::{
+            dot, embedding::Basefield, linear_form::LinearForm, multilinear_extend,
+            MultilinearPoint,
+        },
         protocols::whir::Witness,
         transcript::{ProverState, VerifierMessage},
     },
 };
 
+type WhirWitness = Witness<FieldElement, Basefield<FieldElement>>;
+
 pub struct WhirR1CSCommitment {
-    pub commitment_to_witness: Witness<FieldElement>,
+    pub commitment_to_witness: WhirWitness,
     pub masked_polynomial:     Vec<FieldElement>,
     pub random_polynomial:     Vec<FieldElement>,
 }
@@ -463,7 +468,7 @@ pub fn batch_commit_to_polynomial(
     whir_config: &WhirConfig,
     witness: Vec<FieldElement>,
     merlin: &mut ProverState<TranscriptSponge>,
-) -> (Witness<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
+) -> (WhirWitness, Vec<FieldElement>, Vec<FieldElement>) {
     let num_variables = witness.len().trailing_zeros() as usize;
     let mask = generate_random_multilinear_polynomial(num_variables);
     let masked_polynomial = create_masked_polynomial(witness, &mask);
@@ -729,7 +734,7 @@ fn compute_evaluations_single(
 
 #[instrument(skip_all)]
 pub fn run_zk_whir_pcs_prover(
-    witnesses: Vec<Witness<FieldElement>>,
+    witnesses: Vec<WhirWitness>,
     vectors: Vec<Vec<FieldElement>>,
     linear_forms: Vec<Vec<Box<dyn LinearForm<FieldElement>>>>,
     evaluations: Vec<FieldElement>,
@@ -741,8 +746,7 @@ pub fn run_zk_whir_pcs_prover(
     let flat_linear_forms: Vec<Box<dyn LinearForm<FieldElement>>> =
         linear_forms.into_iter().flatten().collect();
     let cow_vectors: Vec<Cow<'_, [FieldElement]>> = vectors.into_iter().map(Cow::Owned).collect();
-    let cow_witnesses: Vec<Cow<'_, Witness<FieldElement>>> =
-        witnesses.into_iter().map(Cow::Owned).collect();
+    let cow_witnesses: Vec<Cow<'_, WhirWitness>> = witnesses.into_iter().map(Cow::Owned).collect();
     let (randomness, deferred) = params.prove(
         merlin,
         cow_vectors,
