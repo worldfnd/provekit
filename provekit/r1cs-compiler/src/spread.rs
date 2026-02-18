@@ -18,9 +18,6 @@ pub(crate) const SMALL_SIGMA0_CHUNKS: [u32; 4] = [3, 4, 11, 14];
 pub(crate) const SMALL_SIGMA1_CHUNKS: [u32; 4] = [10, 7, 2, 13];
 pub(crate) const BYTE_CHUNKS: [u32; 4] = [8, 8, 8, 8];
 
-/// spread(0xFFFFFFFF) = 0x5555555555555555
-const SPREAD_ALL_ONES: u64 = 0x5555_5555_5555_5555;
-
 /// Split a chunk into sub-chunks of ≤ `w` bits.
 fn subchunks(bits: u32, w: u32) -> Vec<u32> {
     if bits <= w {
@@ -228,14 +225,12 @@ fn add_spread_witness(
 
 /// Result of a 2-way or 3-way spread decomposition.
 pub(crate) struct SpreadDecompResult {
-    /// Even-bit (XOR) chunk values and spreads
-    pub even_values:  Vec<usize>,
-    pub even_spreads: Vec<usize>,
-    /// Odd-bit (AND/MAJ) chunk values and spreads
-    pub odd_values:   Vec<usize>,
-    pub odd_spreads:  Vec<usize>,
+    /// Even-bit (XOR) chunk values
+    pub even_values: Vec<usize>,
+    /// Odd-bit (AND/MAJ) chunk values
+    pub odd_values:  Vec<usize>,
     /// Bit widths of the extraction chunks (subchunks(32, w))
-    pub chunk_bits:   Vec<u32>,
+    pub chunk_bits:  Vec<u32>,
 }
 
 /// Decompose a spread sum into even (XOR) and odd (AND/MAJ) chunk
@@ -330,9 +325,7 @@ pub(crate) fn spread_decompose(
 
     SpreadDecompResult {
         even_values,
-        even_spreads,
         odd_values,
-        odd_spreads,
         chunk_bits: extract_chunks,
     }
 }
@@ -361,42 +354,6 @@ pub(crate) fn pack_chunks(
         &[(FieldElement::ONE, packed_idx)],
     );
     packed_idx
-}
-
-/// Build spread terms for NOT(x): spread(NOT x) = 0x5555...5555 -
-/// spread(x). Returns SumTerms representing spread(NOT x).
-pub(crate) fn spread_not_terms(
-    compiler: &NoirToR1CSCompiler,
-    spread_terms: &[SumTerm],
-) -> Vec<SumTerm> {
-    let mut result = Vec::with_capacity(spread_terms.len() + 1);
-    // Add constant: 0x5555555555555555 * witness_one
-    result.push(SumTerm(
-        Some(FieldElement::from(SPREAD_ALL_ONES)),
-        compiler.witness_one(),
-    ));
-    // Negate each spread term
-    for SumTerm(coeff, idx) in spread_terms {
-        let neg_coeff = coeff.unwrap_or(FieldElement::ONE).neg();
-        result.push(SumTerm(Some(neg_coeff), *idx));
-    }
-    result
-}
-
-/// Reconstruct spread from chunk-level spreads. Returns SumTerms with
-/// coefficients based on the actual chunk bit-widths.
-pub(crate) fn spread_from_chunk_spreads(chunk_bits: &[u32], spreads: &[usize]) -> Vec<SumTerm> {
-    assert_eq!(chunk_bits.len(), spreads.len());
-    let mut terms = Vec::with_capacity(spreads.len());
-    let mut bit_offset = 0u32;
-    for (&s, &bits) in spreads.iter().zip(chunk_bits) {
-        terms.push(SumTerm(
-            Some(FieldElement::from(1u64 << (2 * bit_offset))),
-            s,
-        ));
-        bit_offset += bits;
-    }
-    terms
 }
 
 /// U32 addition with spread-based range checking.
@@ -626,13 +583,13 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
 
     // Compression (64 rounds): Σ₁ + Ch + Σ₀ + Maj + 2 additions
     let comp_inline = (sd + pk) // Σ₁
-        + (3 * sd + pk)         // Ch (3 spread_decompose)
+        + (2 * sd + 2 * pk + 1) // Ch (2 spread_decompose + algebraic)
         + (sd + pk)             // Σ₀
         + (sd + pk)             // Maj
         + add(&SIGMA1_CHUNKS)   // new_e
         + add(&SIGMA0_CHUNKS); // new_a
     let comp_lookups =
-        sd_l + 3 * sd_l + sd_l + sd_l + add_l(&SIGMA1_CHUNKS) + add_l(&SIGMA0_CHUNKS);
+        sd_l + 2 * sd_l + sd_l + sd_l + add_l(&SIGMA1_CHUNKS) + add_l(&SIGMA0_CHUNKS);
     inline += 64 * comp_inline;
     lookups += 64 * comp_lookups;
 

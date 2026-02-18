@@ -3,14 +3,16 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
         spread::{
             add_spread_table_constraints, add_u32_addition_spread, decompose_to_spread_word,
-            pack_chunks, spread_decompose, spread_from_chunk_spreads, spread_not_terms,
-            SpreadAccumulator, SpreadWord, BYTE_CHUNKS, SIGMA0_CHUNKS, SIGMA1_CHUNKS,
-            SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
+            pack_chunks, spread_decompose, SpreadAccumulator, SpreadWord, BYTE_CHUNKS,
+            SIGMA0_CHUNKS, SIGMA1_CHUNKS, SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
         },
     },
     ark_ff::{Field, PrimeField},
-    provekit_common::{witness::ConstantOrR1CSWitness, FieldElement},
-    std::collections::BTreeMap,
+    provekit_common::{
+        witness::{ConstantOrR1CSWitness, SumTerm},
+        FieldElement,
+    },
+    std::{collections::BTreeMap, ops::Neg},
 };
 
 /// SHA256 round constants K[0..63]
@@ -98,11 +100,13 @@ fn add_cap_sigma0_spread(
 }
 
 /// Ch(e,f,g) = (e & f) ^ (NOT_e & g)
-/// Uses NOT trick: spread(NOT_e) = 0x5555...5555 - spread(e)
-/// Three 2-way decompositions:
+/// Algebraic identity: Ch = (e & f) + g - (e & g)
+/// Proof: ~e&g = g - (e&g) bitwise (no borrows since e&g ≤ g), and
+/// (e&f) and (~e&g) are disjoint, so their XOR = their sum (no carries).
+/// Two 2-way decompositions + one linear constraint:
 ///   1. spread(e) + spread(f) → extract e&f (odd bits)
-///   2. spread(NOT_e) + spread(g) → extract NOT_e & g (odd bits)
-///   3. spread(e&f) + spread(NOT_e & g) → extract Ch (even bits)
+///   2. spread(e) + spread(g) → extract e&g (odd bits)
+///   3. Ch = (e&f) + g - (e&g) (algebraic, no spread_decompose needed)
 fn add_ch_spread(
     compiler: &mut NoirToR1CSCompiler,
     accum: &mut SpreadAccumulator,
@@ -111,32 +115,29 @@ fn add_ch_spread(
     g: &SpreadWord,
 ) -> usize {
     // Step 1: spread(e) + spread(f) → e&f in odd bits
-    let e_terms = e.spread_identity();
-    let f_terms = f.spread_identity();
     let mut ef_sum = Vec::new();
-    ef_sum.extend(e_terms.clone());
-    ef_sum.extend(f_terms);
+    ef_sum.extend(e.spread_identity());
+    ef_sum.extend(f.spread_identity());
     let ef_decomp = spread_decompose(compiler, accum, ef_sum);
 
-    // Step 2: spread(NOT_e) + spread(g) → NOT_e & g in odd bits
-    let not_e_terms = spread_not_terms(compiler, &e_terms);
-    let g_terms = g.spread_identity();
-    let mut neg_sum = Vec::new();
-    neg_sum.extend(not_e_terms);
-    neg_sum.extend(g_terms);
-    let neg_decomp = spread_decompose(compiler, accum, neg_sum);
+    // Step 2: spread(e) + spread(g) → e&g in odd bits
+    let mut eg_sum = Vec::new();
+    eg_sum.extend(e.spread_identity());
+    eg_sum.extend(g.spread_identity());
+    let eg_decomp = spread_decompose(compiler, accum, eg_sum);
 
-    // Step 3: spread(e&f) + spread(NOT_e & g) → Ch in even bits
-    // Since (e&f) and (NOT_e & g) are bitwise disjoint, their sum
-    // equals spread(Ch).
-    let ef_and_terms = spread_from_chunk_spreads(&ef_decomp.chunk_bits, &ef_decomp.odd_spreads);
-    let neg_and_terms = spread_from_chunk_spreads(&neg_decomp.chunk_bits, &neg_decomp.odd_spreads);
-    let mut ch_sum = Vec::new();
-    ch_sum.extend(ef_and_terms);
-    ch_sum.extend(neg_and_terms);
-    let ch_decomp = spread_decompose(compiler, accum, ch_sum);
+    // Pack e&f and e&g from odd bits
+    let ef_and_packed = pack_chunks(compiler, &ef_decomp.chunk_bits, &ef_decomp.odd_values);
+    let eg_and_packed = pack_chunks(compiler, &eg_decomp.chunk_bits, &eg_decomp.odd_values);
 
-    pack_chunks(compiler, &ch_decomp.chunk_bits, &ch_decomp.even_values)
+    // Step 3: Ch = (e&f) + g - (e&g) via linear constraint
+    let ch_packed = compiler.add_sum(vec![
+        SumTerm(Some(FieldElement::ONE), ef_and_packed),
+        SumTerm(Some(FieldElement::ONE), g.packed),
+        SumTerm(Some(FieldElement::ONE.neg()), eg_and_packed),
+    ]);
+
+    ch_packed
 }
 
 /// Maj(a,b,c): 3-way majority via spread
