@@ -730,8 +730,9 @@ pub fn run_zk_whir_pcs_prover(
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     debug!("WHIR Parameters: {params}");
 
+    let flat_linear_forms = linear_forms.into_iter().flatten().collect();
     let (randomness, deferred) =
-        params.prove(merlin, vectors, witnesses, linear_forms, evaluations);
+        params.prove(merlin, vectors, witnesses, flat_linear_forms, evaluations);
 
     (randomness, deferred)
 }
