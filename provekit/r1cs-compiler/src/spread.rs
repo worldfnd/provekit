@@ -18,20 +18,17 @@ pub(crate) const SMALL_SIGMA0_CHUNKS: [u32; 4] = [3, 4, 11, 14];
 pub(crate) const SMALL_SIGMA1_CHUNKS: [u32; 4] = [10, 7, 2, 13];
 pub(crate) const BYTE_CHUNKS: [u32; 4] = [8, 8, 8, 8];
 
-/// Max sub-chunk bit width for spread table
-const SPREAD_TABLE_BITS: u32 = 8;
-
 /// spread(0xFFFFFFFF) = 0x5555555555555555
 const SPREAD_ALL_ONES: u64 = 0x5555_5555_5555_5555;
 
-/// Split a chunk into sub-chunks of ≤ SPREAD_TABLE_BITS.
-fn subchunks(bits: u32) -> Vec<u32> {
-    if bits <= SPREAD_TABLE_BITS {
+/// Split a chunk into sub-chunks of ≤ `w` bits.
+fn subchunks(bits: u32, w: u32) -> Vec<u32> {
+    if bits <= w {
         vec![bits]
     } else {
-        let mut v = vec![SPREAD_TABLE_BITS; (bits / SPREAD_TABLE_BITS) as usize];
-        if bits % SPREAD_TABLE_BITS > 0 {
-            v.push(bits % SPREAD_TABLE_BITS);
+        let mut v = vec![w; (bits / w) as usize];
+        if bits % w > 0 {
+            v.push(bits % w);
         }
         v
     }
@@ -105,18 +102,22 @@ impl SpreadWord {
 /// Accumulates spread table lookups for batched LogUp constraint
 /// generation.
 pub(crate) struct SpreadAccumulator {
+    /// Spread table width in bits (table has 2^table_bits entries)
+    pub table_bits:   u32,
     /// (input_value, spread_output) pairs for LogUp queries
     pub lookups:      Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness)>,
     /// Cache: witness_idx → spread_witness_idx
     pub spread_cache: HashMap<usize, usize>,
-    /// Sub-chunks with < SPREAD_TABLE_BITS that need range checking
-    /// via the normal range check system. Maps bit_width → witness indices.
+    /// Sub-chunks with < table_bits that need range checking
+    /// via the normal range check system. Maps bit_width → witness
+    /// indices.
     pub range_checks: BTreeMap<u32, Vec<usize>>,
 }
 
 impl SpreadAccumulator {
-    pub fn new() -> Self {
+    pub fn new(table_bits: u32) -> Self {
         Self {
+            table_bits,
             lookups:      Vec::new(),
             spread_cache: HashMap::new(),
             range_checks: BTreeMap::new(),
@@ -133,15 +134,15 @@ pub(crate) fn decompose_to_spread_word(
     chunk_spec: &[u32],
 ) -> SpreadWord {
     let num_chunks = chunk_spec.len();
+    let w = accum.table_bits;
 
     // Step 1: Build flat sub-chunk list and track chunk boundaries.
-    // For chunk_spec [2,11,9,10] this produces flat_bits [2, 8,3, 8,1, 8,2]
-    // and chunk_sub_counts [1, 2, 2, 2] (how many sub-chunks per original
-    // chunk).
+    // For chunk_spec [2,11,9,10] with w=8 this produces
+    // flat_bits [2, 8,3, 8,1, 8,2] and chunk_sub_counts [1, 2, 2, 2].
     let mut flat_bits: Vec<u32> = Vec::new();
     let mut chunk_sub_counts: Vec<usize> = Vec::with_capacity(num_chunks);
     for &bits in chunk_spec {
-        let subs = subchunks(bits);
+        let subs = subchunks(bits, w);
         chunk_sub_counts.push(subs.len());
         flat_bits.extend(subs);
     }
@@ -182,7 +183,7 @@ pub(crate) fn decompose_to_spread_word(
         for j in 0..n_subs {
             let val_idx = sub_start + flat_idx + j;
             let spread_idx = add_spread_witness(compiler, accum, val_idx);
-            if sub_bits_slice[j] < SPREAD_TABLE_BITS {
+            if sub_bits_slice[j] < w {
                 accum
                     .range_checks
                     .entry(sub_bits_slice[j])
@@ -227,25 +228,30 @@ fn add_spread_witness(
 
 /// Result of a 2-way or 3-way spread decomposition.
 pub(crate) struct SpreadDecompResult {
-    /// Even-bit (XOR) byte values and spreads
+    /// Even-bit (XOR) chunk values and spreads
     pub even_values:  Vec<usize>,
     pub even_spreads: Vec<usize>,
-    /// Odd-bit (AND/MAJ) byte values and spreads
+    /// Odd-bit (AND/MAJ) chunk values and spreads
     pub odd_values:   Vec<usize>,
     pub odd_spreads:  Vec<usize>,
+    /// Bit widths of the extraction chunks (subchunks(32, w))
+    pub chunk_bits:   Vec<u32>,
 }
 
-/// Decompose a spread sum into even (XOR) and odd (AND/MAJ) byte
-/// components. SpreadBitExtract extracts even/odd bytes from the sum.
+/// Decompose a spread sum into even (XOR) and odd (AND/MAJ) chunk
+/// components. SpreadBitExtract extracts even/odd chunks from the sum.
 ///
 /// Single merged constraint:
-/// Σ(coeff_i × input_spread_i) = 2·Σ(spread(odd_i)·4^(8i))
-///                              + Σ(spread(even_i)·4^(8i))
+/// Σ(coeff_i × input_spread_i) = 2·Σ(spread(odd_i)·4^offset_i)
+///                              + Σ(spread(even_i)·4^offset_i)
 pub(crate) fn spread_decompose(
     compiler: &mut NoirToR1CSCompiler,
     accum: &mut SpreadAccumulator,
     sum_terms: Vec<SumTerm>,
 ) -> SpreadDecompResult {
+    let extract_chunks = subchunks(32, accum.table_bits);
+    let n_chunks = extract_chunks.len();
+
     // Create sum witness (used by SpreadBitExtract solver, not
     // directly constrained — the merged constraint below ties input
     // spread terms directly to the even/odd reconstruction).
@@ -262,46 +268,61 @@ pub(crate) fn spread_decompose(
         .map(|(idx, coeff)| (coeff, idx))
         .collect();
 
-    let byte_chunks = vec![8u32; 4];
-
-    // Extract even bits (XOR) into 4 bytes
+    // Extract even bits (XOR) into chunks
     let even_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: even_start,
-        chunk_bits:   byte_chunks.clone(),
+        chunk_bits:   extract_chunks.clone(),
         spread_sum:   sum_idx,
         extract_even: true,
     });
 
-    // Extract odd bits (AND/MAJ) into 4 bytes
+    // Extract odd bits (AND/MAJ) into chunks
     let odd_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: odd_start,
-        chunk_bits:   byte_chunks,
+        chunk_bits:   extract_chunks.clone(),
         spread_sum:   sum_idx,
         extract_even: false,
     });
 
-    // Spread each extracted byte and add lookups
-    let mut even_spreads = Vec::with_capacity(4);
-    let mut odd_spreads = Vec::with_capacity(4);
-    for i in 0..4 {
-        even_spreads.push(add_spread_witness(compiler, accum, even_start + i));
-        odd_spreads.push(add_spread_witness(compiler, accum, odd_start + i));
+    // Spread each extracted chunk and add lookups
+    let mut even_spreads = Vec::with_capacity(n_chunks);
+    let mut odd_spreads = Vec::with_capacity(n_chunks);
+    for i in 0..n_chunks {
+        let even_val = even_start + i;
+        let odd_val = odd_start + i;
+        even_spreads.push(add_spread_witness(compiler, accum, even_val));
+        odd_spreads.push(add_spread_witness(compiler, accum, odd_val));
+        // Range-check narrow remainder chunks
+        if extract_chunks[i] < accum.table_bits {
+            accum
+                .range_checks
+                .entry(extract_chunks[i])
+                .or_default()
+                .push(even_val);
+            accum
+                .range_checks
+                .entry(extract_chunks[i])
+                .or_default()
+                .push(odd_val);
+        }
     }
 
-    let even_values: Vec<usize> = (even_start..even_start + 4).collect();
-    let odd_values: Vec<usize> = (odd_start..odd_start + 4).collect();
+    let even_values: Vec<usize> = (even_start..even_start + n_chunks).collect();
+    let odd_values: Vec<usize> = (odd_start..odd_start + n_chunks).collect();
 
     // Single constraint (input terms = even/odd reconstruction):
-    // Σ(coeff_i × input_spread_i) = 2·Σ(spread(odd_i)·4^(8i))
-    //                              + Σ(spread(even_i)·4^(8i))
+    // Σ(coeff_i × input_spread_i) = 2·Σ(spread(odd_i)·4^offset_i)
+    //                              + Σ(spread(even_i)·4^offset_i)
     let two = FieldElement::from(2u64);
-    let mut cz: Vec<(FieldElement, usize)> = Vec::with_capacity(8);
-    for i in 0..4 {
-        let base = FieldElement::from(1u64 << (16 * i)); // 4^(8i) = 2^(16i)
+    let mut cz: Vec<(FieldElement, usize)> = Vec::with_capacity(2 * n_chunks);
+    let mut bit_offset = 0u32;
+    for (i, &bits) in extract_chunks.iter().enumerate() {
+        let base = FieldElement::from(1u64 << (2 * bit_offset));
         cz.push((two * base, odd_spreads[i]));
         cz.push((base, even_spreads[i]));
+        bit_offset += bits;
     }
     compiler
         .r1cs
@@ -312,20 +333,26 @@ pub(crate) fn spread_decompose(
         even_spreads,
         odd_values,
         odd_spreads,
+        chunk_bits: extract_chunks,
     }
 }
 
-/// Pack 4 byte witnesses into a u32 field element with constraint.
-pub(crate) fn pack_bytes(compiler: &mut NoirToR1CSCompiler, bytes: &[usize]) -> usize {
-    assert_eq!(bytes.len(), 4);
+/// Pack chunk witnesses into a u32 field element with constraint.
+/// `chunk_bits` specifies the bit-width of each chunk (must sum to 32).
+pub(crate) fn pack_chunks(
+    compiler: &mut NoirToR1CSCompiler,
+    chunk_bits: &[u32],
+    values: &[usize],
+) -> usize {
+    assert_eq!(chunk_bits.len(), values.len());
     let packed_idx = compiler.num_witnesses();
-    let mut terms = Vec::with_capacity(4);
-    let mut constraint_terms = Vec::with_capacity(4);
+    let mut terms = Vec::with_capacity(values.len());
+    let mut constraint_terms = Vec::with_capacity(values.len());
     let mut multiplier = FieldElement::ONE;
-    for &byte_idx in bytes {
-        terms.push(SumTerm(Some(multiplier), byte_idx));
-        constraint_terms.push((multiplier, byte_idx));
-        multiplier *= FieldElement::from(256u64);
+    for (i, &val_idx) in values.iter().enumerate() {
+        terms.push(SumTerm(Some(multiplier), val_idx));
+        constraint_terms.push((multiplier, val_idx));
+        multiplier *= FieldElement::from(1u64 << chunk_bits[i]);
     }
     compiler.add_witness_builder(WitnessBuilder::Sum(packed_idx, terms));
     compiler.r1cs.add_constraint(
@@ -356,15 +383,23 @@ pub(crate) fn spread_not_terms(
     result
 }
 
-/// Reconstruct spread from byte-level spreads (e.g., after a
-/// decomposition). Returns SumTerms.
-pub(crate) fn spread_from_byte_spreads(spreads: &[usize]) -> Vec<SumTerm> {
-    assert_eq!(spreads.len(), 4);
-    spreads
-        .iter()
-        .enumerate()
-        .map(|(i, &s)| SumTerm(Some(FieldElement::from(1u64 << (16 * i))), s))
-        .collect()
+/// Reconstruct spread from chunk-level spreads. Returns SumTerms with
+/// coefficients based on the actual chunk bit-widths.
+pub(crate) fn spread_from_chunk_spreads(
+    chunk_bits: &[u32],
+    spreads: &[usize],
+) -> Vec<SumTerm> {
+    assert_eq!(chunk_bits.len(), spreads.len());
+    let mut terms = Vec::with_capacity(spreads.len());
+    let mut bit_offset = 0u32;
+    for (&s, &bits) in spreads.iter().zip(chunk_bits) {
+        terms.push(SumTerm(
+            Some(FieldElement::from(1u64 << (2 * bit_offset))),
+            s,
+        ));
+        bit_offset += bits;
+    }
+    terms
 }
 
 /// U32 addition with spread-based range checking.
@@ -445,7 +480,7 @@ pub(crate) fn add_spread_table_constraints(
         return range_checks;
     }
 
-    let table_size = 1u32 << SPREAD_TABLE_BITS;
+    let table_size = 1u32 << accum.table_bits;
 
     // Multiplicities: count how many times each input value is queried
     let mult_first = compiler.num_witnesses();
@@ -453,7 +488,7 @@ pub(crate) fn add_spread_table_constraints(
         accum.lookups.iter().map(|(input, _)| *input).collect();
     compiler.add_witness_builder(WitnessBuilder::MultiplicitiesForSpread(
         mult_first,
-        SPREAD_TABLE_BITS,
+        accum.table_bits,
         query_inputs,
     ));
 
@@ -552,4 +587,79 @@ pub(crate) fn add_spread_table_constraints(
     );
 
     range_checks
+}
+
+/// Estimate total witness cost for spread-based SHA256 at width `w`.
+///
+/// Accounts for: table cost (2×2^w + 4), inline witnesses per
+/// compression, and 3 LogUp witnesses per lookup query.
+pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
+    let sc = |bits: u32| bits.div_ceil(w) as usize;
+    let m_spec = |spec: &[u32]| -> usize { spec.iter().map(|&b| sc(b)).sum() };
+    let n_sd = sc(32); // chunks per spread_decompose
+
+    // Inline witnesses per operation type
+    let decomp = |spec: &[u32]| 2 * m_spec(spec); // decompose_to_spread_word
+    let sd = 1 + 4 * n_sd; // spread_decompose
+    let pk = 1usize; // pack_chunks
+    let add = |spec: &[u32]| 3 + 2 * m_spec(spec); // add_u32_addition_spread
+
+    // Lookup entries per operation type
+    let decomp_l = |spec: &[u32]| m_spec(spec);
+    let sd_l = 2 * n_sd;
+    let add_l = |spec: &[u32]| 1 + m_spec(spec);
+
+    // --- Per compression ---
+
+    // Initial decompositions: 16 inputs + 2 byte + 3 Σ₀ + 3 Σ₁
+    let mut inline = 18 * decomp(&BYTE_CHUNKS)
+        + 3 * decomp(&SIGMA0_CHUNKS)
+        + 3 * decomp(&SIGMA1_CHUNKS);
+    let mut lookups = 18 * decomp_l(&BYTE_CHUNKS)
+        + 3 * decomp_l(&SIGMA0_CHUNKS)
+        + 3 * decomp_l(&SIGMA1_CHUNKS);
+
+    // Message schedule (48 rounds): σ₀ + σ₁ + addition(BYTE)
+    let msg_inline = (decomp(&SMALL_SIGMA0_CHUNKS) + sd + pk)
+        + (decomp(&SMALL_SIGMA1_CHUNKS) + sd + pk)
+        + add(&BYTE_CHUNKS);
+    let msg_lookups = (decomp_l(&SMALL_SIGMA0_CHUNKS) + sd_l)
+        + (decomp_l(&SMALL_SIGMA1_CHUNKS) + sd_l)
+        + add_l(&BYTE_CHUNKS);
+    inline += 48 * msg_inline;
+    lookups += 48 * msg_lookups;
+
+    // Compression (64 rounds): Σ₁ + Ch + Σ₀ + Maj + 2 additions
+    let comp_inline = (sd + pk) // Σ₁
+        + (3 * sd + pk)         // Ch (3 spread_decompose)
+        + (sd + pk)             // Σ₀
+        + (sd + pk)             // Maj
+        + add(&SIGMA1_CHUNKS)   // new_e
+        + add(&SIGMA0_CHUNKS); // new_a
+    let comp_lookups = sd_l
+        + 3 * sd_l
+        + sd_l
+        + sd_l
+        + add_l(&SIGMA1_CHUNKS)
+        + add_l(&SIGMA0_CHUNKS);
+    inline += 64 * comp_inline;
+    lookups += 64 * comp_lookups;
+
+    // Final hash (8 additions)
+    inline += 8 * add(&BYTE_CHUNKS);
+    lookups += 8 * add_l(&BYTE_CHUNKS);
+
+    // Table: 2×2^w multiplicities + 2 challenges + 2 sums
+    let table = 2 * (1usize << w) + 4;
+
+    // Total: table + n_sha × (inline + 3 × lookups)
+    table + n_sha * (inline + 3 * lookups)
+}
+
+/// Find the spread table width in [2, 20] minimizing total witness
+/// count for `n_sha` SHA256 compression calls.
+pub(crate) fn get_optimal_spread_width(n_sha: usize) -> u32 {
+    (2u32..=20)
+        .min_by_key(|&w| calculate_spread_witness_cost(w, n_sha))
+        .unwrap()
 }

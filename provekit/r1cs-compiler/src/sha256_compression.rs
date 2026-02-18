@@ -3,7 +3,7 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
         spread::{
             add_spread_table_constraints, add_u32_addition_spread, decompose_to_spread_word,
-            pack_bytes, spread_decompose, spread_from_byte_spreads, spread_not_terms,
+            pack_chunks, spread_decompose, spread_from_chunk_spreads, spread_not_terms,
             SpreadAccumulator, SpreadWord, BYTE_CHUNKS, SIGMA0_CHUNKS, SIGMA1_CHUNKS,
             SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
         },
@@ -41,7 +41,7 @@ fn add_small_sigma0(
     sum_terms.extend(word.spread_terms_for_shift(1)); // SHR3
 
     let result = spread_decompose(compiler, accum, sum_terms);
-    pack_bytes(compiler, &result.even_values)
+    pack_chunks(compiler, &result.chunk_bits, &result.even_values)
 }
 
 /// σ₁(x) = ROTR¹⁷(x) ⊕ ROTR¹⁹(x) ⊕ SHR¹⁰(x)
@@ -60,7 +60,7 @@ fn add_small_sigma1(
     sum_terms.extend(word.spread_terms_for_shift(1)); // SHR10
 
     let result = spread_decompose(compiler, accum, sum_terms);
-    pack_bytes(compiler, &result.even_values)
+    pack_chunks(compiler, &result.chunk_bits, &result.even_values)
 }
 
 /// Σ₁(e) = ROTR⁶(e) ⊕ ROTR¹¹(e) ⊕ ROTR²⁵(e)
@@ -77,7 +77,7 @@ fn add_cap_sigma1_spread(
     sum_terms.extend(e.spread_terms_for_rotation(3)); // ROTR25
 
     let result = spread_decompose(compiler, accum, sum_terms);
-    pack_bytes(compiler, &result.even_values)
+    pack_chunks(compiler, &result.chunk_bits, &result.even_values)
 }
 
 /// Σ₀(a) = ROTR²(a) ⊕ ROTR¹³(a) ⊕ ROTR²²(a)
@@ -94,7 +94,7 @@ fn add_cap_sigma0_spread(
     sum_terms.extend(a.spread_terms_for_rotation(3)); // ROTR22
 
     let result = spread_decompose(compiler, accum, sum_terms);
-    pack_bytes(compiler, &result.even_values)
+    pack_chunks(compiler, &result.chunk_bits, &result.even_values)
 }
 
 /// Ch(e,f,g) = (e & f) ^ (NOT_e & g)
@@ -129,14 +129,14 @@ fn add_ch_spread(
     // Step 3: spread(e&f) + spread(NOT_e & g) → Ch in even bits
     // Since (e&f) and (NOT_e & g) are bitwise disjoint, their sum
     // equals spread(Ch).
-    let ef_and_terms = spread_from_byte_spreads(&ef_decomp.odd_spreads);
-    let neg_and_terms = spread_from_byte_spreads(&neg_decomp.odd_spreads);
+    let ef_and_terms = spread_from_chunk_spreads(&ef_decomp.chunk_bits, &ef_decomp.odd_spreads);
+    let neg_and_terms = spread_from_chunk_spreads(&neg_decomp.chunk_bits, &neg_decomp.odd_spreads);
     let mut ch_sum = Vec::new();
     ch_sum.extend(ef_and_terms);
     ch_sum.extend(neg_and_terms);
     let ch_decomp = spread_decompose(compiler, accum, ch_sum);
 
-    pack_bytes(compiler, &ch_decomp.even_values)
+    pack_chunks(compiler, &ch_decomp.chunk_bits, &ch_decomp.even_values)
 }
 
 /// Maj(a,b,c): 3-way majority via spread
@@ -155,7 +155,7 @@ fn add_maj_spread(
     sum_terms.extend(c.spread_identity());
 
     let result = spread_decompose(compiler, accum, sum_terms);
-    pack_bytes(compiler, &result.odd_values)
+    pack_chunks(compiler, &result.chunk_bits, &result.odd_values)
 }
 
 /// Message schedule expansion with spread.
@@ -194,7 +194,7 @@ fn add_message_schedule_spread(
 /// SHA256 compression function using the spread trick.
 /// - ROTR is zero-cost chunk permutation
 /// - AND/XOR computed via spread addition + bit extraction
-/// - Single 8-bit spread table (256 entries × 3 = 768 witnesses)
+/// - Dynamic-width spread table (width chosen by cost model)
 /// - Working variable caching: b,c reuse a-type chunks from previous rounds;
 ///   f,g reuse e-type chunks
 pub(crate) fn add_sha256_compression(
@@ -204,6 +204,7 @@ pub(crate) fn add_sha256_compression(
         Vec<ConstantOrR1CSWitness>,
         Vec<usize>,
     )>,
+    spread_table_bits: u32,
 ) -> BTreeMap<u32, Vec<usize>> {
     assert!(
         FieldElement::MODULUS_BIT_SIZE > 64,
@@ -215,7 +216,7 @@ pub(crate) fn add_sha256_compression(
     }
 
     // Single shared accumulator across ALL SHA256 compressions
-    let mut accum = SpreadAccumulator::new();
+    let mut accum = SpreadAccumulator::new(spread_table_bits);
 
     for (inputs, hash_values, outputs) in inputs_and_outputs {
         assert_eq!(
