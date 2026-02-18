@@ -16,6 +16,7 @@ use {
         FieldElement, PublicInputs, TranscriptSponge, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
         R1CS,
     },
+    std::{any::Any, borrow::Cow},
     tracing::{debug, instrument},
     whir::{
         algebra::{dot, linear_form::LinearForm, multilinear_extend, MultilinearPoint},
@@ -71,13 +72,16 @@ impl LinearForm<FieldElement> for PrefixCovector {
 
     fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
         let k = self.vector.len().trailing_zeros() as usize;
-        let prefix_mle = multilinear_extend(&self.vector, &point[..k]);
-        // Elements at indices ≥ 2^k are zero, so only the prefix
-        // contributes. Each extra variable beyond k adds a (1 − pⱼ)
-        // factor because those indices have bit j = 0.
-        let tail_factor: FieldElement =
-            point[k..].iter().map(|p| FieldElement::one() - p).product();
-        prefix_mle * tail_factor
+        // The prefix occupies indices 0..2^k (the lower half of each
+        // successive doubling). In whir's big-endian variable ordering,
+        // the first variable selects the upper/lower half of the array.
+        // So the r = len - k leading variables must all be 0 for the
+        // prefix region, contributing a factor of ∏(1 − pⱼ) for j < r.
+        let r = point.len() - k;
+        let head_factor: FieldElement =
+            point[..r].iter().map(|p| FieldElement::one() - p).product();
+        let prefix_mle = multilinear_extend(&self.vector, &point[r..]);
+        head_factor * prefix_mle
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
@@ -88,6 +92,10 @@ impl LinearForm<FieldElement> for PrefixCovector {
         {
             *acc += scalar * *val;
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -730,9 +738,18 @@ pub fn run_zk_whir_pcs_prover(
 ) -> (MultilinearPoint<FieldElement>, Vec<FieldElement>) {
     debug!("WHIR Parameters: {params}");
 
-    let flat_linear_forms = linear_forms.into_iter().flatten().collect();
-    let (randomness, deferred) =
-        params.prove(merlin, vectors, witnesses, flat_linear_forms, evaluations);
+    let flat_linear_forms: Vec<Box<dyn LinearForm<FieldElement>>> =
+        linear_forms.into_iter().flatten().collect();
+    let cow_vectors: Vec<Cow<'_, [FieldElement]>> = vectors.into_iter().map(Cow::Owned).collect();
+    let cow_witnesses: Vec<Cow<'_, Witness<FieldElement>>> =
+        witnesses.into_iter().map(Cow::Owned).collect();
+    let (randomness, deferred) = params.prove(
+        merlin,
+        cow_vectors,
+        cow_witnesses,
+        flat_linear_forms,
+        Cow::Owned(evaluations),
+    );
 
     (randomness, deferred)
 }

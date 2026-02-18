@@ -1,10 +1,9 @@
 use {
-    ark_poly::EvaluationDomain,
+    ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
     provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
-    whir::algebra::domain::Domain,
 };
 
 /// Configuration for the Gnark recursive verifier.
@@ -107,11 +106,11 @@ impl WHIRConfigGnark {
         )) as i32;
 
         // Reconstruct the starting domain to get its generator
-        let domain = Domain::<FieldElement>::new(1 << n_vars, rate)
+        let domain = GeneralEvaluationDomain::<FieldElement>::new((1 << n_vars) << rate)
             .expect("Should have found an appropriate domain");
-        let domain_generator = format!("{}", domain.backing_domain.group_gen());
+        let domain_generator = format!("{}", domain.group_gen());
 
-        let batch_size = whir_params.initial_committer.num_polynomials;
+        let batch_size = whir_params.initial_committer.num_vectors;
 
         WHIRConfigGnark {
             n_rounds,
