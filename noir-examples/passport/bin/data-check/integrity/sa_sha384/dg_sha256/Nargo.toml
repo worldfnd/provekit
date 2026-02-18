@@ -1,0 +1,10 @@
+[package]
+name = "data_check_integrity_sa_sha384_dg_sha256"
+type = "bin"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+data_check_integrity = { path = "../../../../../lib/data-check/integrity" }
+commitment = { path = "../../../../../lib/commitment/integrity-to-leaf" }
+utils = { path = "../../../../../lib/utils" }

@@ -1,0 +1,10 @@
+[package]
+name = "sig_check_dsc_tbs_1000_rsa_pkcs_2048_sha1"
+type = "bin"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_rsa = { path = "../../../../../../../../lib/sig-check/rsa" }
+utils = { path = "../../../../../../../../lib/utils" }
+commitment = { path = "../../../../../../../../lib/commitment/csc-to-dsc" }

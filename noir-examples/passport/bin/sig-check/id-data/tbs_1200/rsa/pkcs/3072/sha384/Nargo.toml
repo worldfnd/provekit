@@ -1,0 +1,11 @@
+[package]
+name = "sig_check_id_data_tbs_1200_rsa_pkcs_3072_sha384"
+type = "bin"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_rsa = { path = "../../../../../../../../lib/sig-check/rsa" }
+utils = { path = "../../../../../../../../lib/utils" }
+data_check_tbs_pubkey = { path = "../../../../../../../../lib/data-check/tbs-pubkey" }
+commitment = { path = "../../../../../../../../lib/commitment/dsc-to-id" }

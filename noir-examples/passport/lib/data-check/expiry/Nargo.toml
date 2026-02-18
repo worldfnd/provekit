@@ -1,0 +1,9 @@
+[package]
+name = "data_check_expiry_lib"
+type = "lib"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+date = { tag = "v0.5.6", git = "https://github.com/madztheo/noir-date.git" }
+utils = { path = "../../utils" }

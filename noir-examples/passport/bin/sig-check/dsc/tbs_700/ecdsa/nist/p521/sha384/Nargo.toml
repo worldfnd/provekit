@@ -1,0 +1,11 @@
+[package]
+name = "sig_check_dsc_tbs_700_ecdsa_nist_p521_sha384"
+type = "bin"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_ecdsa = { path = "../../../../../../../../lib/sig-check/ecdsa" }
+utils = { path = "../../../../../../../../lib/utils" }
+commitment = { path = "../../../../../../../../lib/commitment/csc-to-dsc" }
+sig_check_common = { path = "../../../../../../../../lib/sig-check/common" }
