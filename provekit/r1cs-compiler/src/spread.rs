@@ -604,10 +604,21 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
     table + n_sha * (inline + 3 * lookups)
 }
 
-/// Find the spread table width in [2, 20] minimizing total witness
+/// Find the spread table width in [3, 20] minimizing total witness
 /// count for `n_sha` SHA256 compression calls.
 pub(crate) fn get_optimal_spread_width(n_sha: usize) -> u32 {
-    (2u32..=20)
+    (3u32..=20)
         .min_by_key(|&w| calculate_spread_witness_cost(w, n_sha))
         .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_optimal_spread_width() {
+        assert_eq!(get_optimal_spread_width(1), 11);
+        assert_eq!(get_optimal_spread_width(35), 16);
+    }
 }
