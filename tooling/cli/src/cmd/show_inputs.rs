@@ -1,6 +1,6 @@
 use {
     super::Command,
-    anyhow::{Context, Result},
+    anyhow::{ensure, Context, Result},
     argh::FromArgs,
     ark_ff::{BigInteger, PrimeField},
     noirc_abi::AbiVisibility,
@@ -47,6 +47,13 @@ impl Command for Args {
                 continue;
             }
             let field_count = param.typ.field_count() as usize;
+            ensure!(
+                idx + field_count <= values.len(),
+                "ABI expects more public inputs than the proof contains (need index {}, proof has \
+                 {})",
+                idx + field_count - 1,
+                values.len()
+            );
             if field_count == 1 {
                 print_value(&param.name, &values[idx], self.hex);
                 idx += 1;
@@ -63,8 +70,15 @@ impl Command for Args {
         }
 
         if let Some(ret) = &abi.return_type {
-            if matches!(ret.visibility, AbiVisibility::Public) && idx < values.len() {
+            if matches!(ret.visibility, AbiVisibility::Public) {
                 let field_count = ret.abi_type.field_count() as usize;
+                ensure!(
+                    idx + field_count <= values.len(),
+                    "ABI expects more public inputs than the proof contains (need index {}, proof \
+                     has {})",
+                    idx + field_count - 1,
+                    values.len()
+                );
                 if field_count == 1 {
                     print_value("return", &values[idx], self.hex);
                 } else {
