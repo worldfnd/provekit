@@ -165,7 +165,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
 
 #[cfg(feature = "mavros_compiler")]
 pub fn convert_mavros_r1cs_to_provekit(
-    mavros_r1cs: &mavros::compiler::r1cs_gen::R1CS,
+    mavros_r1cs: &mavros_artifacts::R1CS,
 ) -> crate::R1CS {
     let num_witnesses = mavros_r1cs.witness_layout.size();
     let num_constraints = mavros_r1cs.constraints.len();

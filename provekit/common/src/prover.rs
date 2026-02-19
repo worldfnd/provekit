@@ -1,15 +1,19 @@
 #[cfg(feature = "mavros_compiler")]
-use mavros::compiled_artifacts::CompiledArtifacts;
+use {mavros_artifacts::{ConstraintsLayout, WitnessLayout}, noirc_abi::Abi};
 use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
+    },
+    serde::{Deserialize, Serialize},
+};
+#[cfg(not(feature = "mavros_compiler"))]
+use {
+    acir::circuit::Program,
+    crate::{
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         NoirElement, R1CS,
     },
-    acir::circuit::Program,
-    noirc_abi::Abi,
-    serde::{Deserialize, Serialize},
 };
 
 /// A prover for a Noir Proof Scheme
@@ -26,12 +30,14 @@ pub struct Prover {
 #[cfg(feature = "mavros_compiler")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prover {
-    pub program:          Program<NoirElement>,
     #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:              Abi,
-    pub r1cs:             R1CS,
-    pub whir_for_witness: WhirR1CSScheme,
-    pub artifacts:        CompiledArtifacts,
+    pub abi:                Abi,
+    pub num_public_inputs:  usize,
+    pub whir_for_witness:   WhirR1CSScheme,
+    pub witgen_binary:      Vec<u64>,
+    pub ad_binary:          Vec<u64>,
+    pub constraints_layout:   ConstraintsLayout,
+    pub witness_layout: WitnessLayout,
 }
 
 impl Prover {
@@ -48,11 +54,13 @@ impl Prover {
     #[cfg(feature = "mavros_compiler")]
     pub fn from_noir_proof_scheme(noir_proof_scheme: NoirProofScheme) -> Self {
         Self {
-            program:          noir_proof_scheme.program,
-            abi:              noir_proof_scheme.abi,
-            r1cs:             noir_proof_scheme.r1cs,
-            whir_for_witness: noir_proof_scheme.whir_for_witness,
-            artifacts:        noir_proof_scheme.artifacts,
+            abi:                noir_proof_scheme.abi,
+            num_public_inputs:  noir_proof_scheme.num_public_inputs,
+            whir_for_witness:   noir_proof_scheme.whir_for_witness,
+            witgen_binary:      noir_proof_scheme.witgen_binary,
+            ad_binary:          noir_proof_scheme.ad_binary,
+            constraints_layout:    noir_proof_scheme.constraints_layout,
+            witness_layout: noir_proof_scheme.witness_layout,
         }
     }
 
@@ -64,8 +72,8 @@ impl Prover {
     #[cfg(feature = "mavros_compiler")]
     pub const fn size(&self) -> (usize, usize) {
         (
-            self.artifacts.r1cs.constraints.len(),
-            self.artifacts.r1cs.witness_layout.algebraic_size,
+            self.constraints_layout.algebraic_size,
+            self.witness_layout.algebraic_size,
         )
     }
 }

@@ -14,7 +14,7 @@ use {
 #[cfg(feature = "mavros_compiler")]
 pub mod input_utils;
 #[cfg(feature = "mavros_compiler")]
-use mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts};
+use mavros_vm::{interpreter as mavros_interpreter};
 
 mod r1cs;
 mod whir_r1cs;
@@ -150,22 +150,19 @@ impl Prove for Prover {
     #[cfg(feature = "mavros_compiler")]
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        use provekit_common::utils::convert_mavros_r1cs_to_provekit;
-
         // Derive the project directory from the Prover.toml path.
         let project_path = prover_toml
             .as_ref()
             .parent()
             .context("Could not derive project path from Prover.toml path")?;
 
-        // let (driver, _) = mavros_api::compile_to_r1cs(project_path.to_path_buf(),
-        // false)?;
         let params =
             crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
 
-        let phase1 = mavros_api::run_witgen_phase1(
-            &mut self.artifacts.witgen_binary,
-            &self.artifacts.r1cs,
+        let phase1 = mavros_interpreter::run_phase1(
+            &mut self.witgen_binary,
+            self.witness_layout,
+            self.constraints_layout,
             &params,
         );
 
@@ -179,7 +176,8 @@ impl Prove for Prover {
             .whir_for_witness
             .commit(
                 &mut merlin,
-                &self.r1cs,
+                self.witness_layout.size(),
+                self.constraints_layout.algebraic_size,
                 phase1.out_wit_pre_comm.clone(),
                 true,
             )
@@ -189,19 +187,20 @@ impl Prove for Prover {
             use {ark_ff::AdditiveGroup, spongefish::codecs::arkworks_algebra::UnitToField};
 
             let mut challenges =
-                vec![FieldElement::ZERO; self.artifacts.r1cs.witness_layout.challenges_size];
+                vec![FieldElement::ZERO; self.witness_layout.challenges_size];
             merlin
                 .fill_challenge_scalars(&mut challenges)
                 .expect("Failed to extract challenge scalars from Merlin");
 
             let witgen_result =
-                mavros_api::run_witgen_phase2(phase1, &challenges, &self.artifacts.r1cs);
+                mavros_interpreter::run_phase2(phase1.clone(), &challenges, self.witness_layout, self.constraints_layout);
 
             let commitment_2 = self
                 .whir_for_witness
                 .commit(
                     &mut merlin,
-                    &self.r1cs,
+                    self.witness_layout.size(),
+                    self.constraints_layout.algebraic_size,
                     witgen_result.out_wit_post_comm.clone(),
                     false,
                 )
@@ -210,33 +209,27 @@ impl Prove for Prover {
             (vec![commitment_1, commitment_2], witgen_result)
         } else {
             // No challenges: complete phase 2 with empty challenges.
-            let witgen_result = mavros_api::run_witgen_phase2(phase1, &[], &self.artifacts.r1cs);
+            let witgen_result = mavros_interpreter::run_phase2(phase1.clone(), &[], self.witness_layout, self.constraints_layout);
             (vec![commitment_1], witgen_result)
         };
 
-        let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
+        let num_public_inputs = self.num_public_inputs;
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
         } else {
             PublicInputs::from_vec(witgen_result.out_wit_pre_comm[1..=num_public_inputs].to_vec())
         };
 
-        #[cfg(test)]
-        assert!(mavros_api::check_witgen(
-            &self.artifacts.r1cs,
-            &witgen_result
-        ));
-
-        let converted_r1cs = convert_mavros_r1cs_to_provekit(&self.artifacts.r1cs);
-
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove(
                 merlin,
-                converted_r1cs,
+                phase1,
                 commitments,
                 &public_inputs,
-                &mut self.artifacts,
+                self.witness_layout,
+                self.constraints_layout,
+                &self.ad_binary,
             )
             .context("While proving R1CS instance")?;
 

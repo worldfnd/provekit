@@ -10,7 +10,7 @@ repository.workspace = true
 
 [features]
 default = []
-mavros_compiler = ["dep:mavros"]
+mavros_compiler = ["dep:mavros-vm", "dep:mavros-artifacts"]
 
 [dependencies]
 # Workspace crates
@@ -44,7 +44,8 @@ serde_json.workspace = true
 tracing.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
-mavros = { workspace = true, optional = true }
+mavros-vm = { workspace = true, optional = true }
+mavros-artifacts = { workspace = true, optional = true }
 xz2.workspace = true
 
 [lints]

@@ -1,5 +1,8 @@
+
 #[cfg(feature = "mavros_compiler")]
-use mavros::compiled_artifacts::CompiledArtifacts;
+use mavros_artifacts::{ConstraintsLayout, WitnessLayout};
+#[cfg(feature = "mavros_compiler")]
+use mavros_vm::interpreter::Phase1Result;
 use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
@@ -43,10 +46,21 @@ pub struct WhirR1CSCommitment {
 }
 
 pub trait WhirR1CSProver {
+    #[cfg(not(feature = "mavros_compiler"))]
     fn commit(
         &self,
         merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
         r1cs: &R1CS,
+        witness: Vec<FieldElement>,
+        is_w1: bool,
+    ) -> Result<WhirR1CSCommitment>;
+
+    #[cfg(feature = "mavros_compiler")]
+    fn commit(
+        &self,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        num_witnesses: usize,
+        num_constraints: usize,
         witness: Vec<FieldElement>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment>;
@@ -64,14 +78,18 @@ pub trait WhirR1CSProver {
     fn prove(
         &self,
         merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
+        phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
-        artifacts: &mut CompiledArtifacts,
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+        ad_binary: &[u64],
     ) -> Result<WhirR1CSProof>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
+
+    #[cfg(not(feature = "mavros_compiler"))]
     #[instrument(skip_all)]
     fn commit(
         &self,
@@ -96,6 +114,65 @@ impl WhirR1CSProver for WhirR1CSScheme {
         );
         ensure!(
             r1cs.num_constraints() <= 1 << self.m_0,
+            "R1CS constraints exceed scheme capacity"
+        );
+
+        // log2(domain) for WHIR witness evaluations.
+        let whir_num_vars = self.whir_witness.mv_parameters.num_variables;
+
+        // Expected evaluation length = 2^(log2(domain) - 1).
+        let target_len = 1usize << (whir_num_vars - 1);
+
+        // Pad witness to power-of-two, then extend to target_len with zeros.
+        let mut padded_witness = pad_to_power_of_two(witness);
+        if padded_witness.len() < target_len {
+            padded_witness.resize(target_len, FieldElement::zero());
+        }
+
+        let witness_polynomial_evals = EvaluationsList::new(padded_witness.clone());
+
+        let (commitment_to_witness, masked_polynomial, random_polynomial) =
+            batch_commit_to_polynomial(
+                self.m,
+                &self.whir_witness,
+                witness_polynomial_evals,
+                merlin,
+            );
+
+        Ok(WhirR1CSCommitment {
+            commitment_to_witness,
+            masked_polynomial,
+            random_polynomial,
+            padded_witness,
+        })
+    }
+
+    #[cfg(feature = "mavros_compiler")]
+    #[instrument(skip_all)]
+    fn commit(
+        &self,
+        merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+        num_witnesses: usize,
+        num_constraints: usize,
+        witness: Vec<FieldElement>,
+        is_w1: bool,
+    ) -> Result<WhirR1CSCommitment> {
+        let witness_size = if is_w1 {
+            self.w1_size
+        } else {
+            num_witnesses - self.w1_size
+        };
+
+        ensure!(
+            witness.len() == witness_size,
+            "Unexpected witness length for R1CS instance"
+        );
+        ensure!(
+            witness_size <= 1 << self.m,
+            "R1CS witness length exceeds scheme capacity"
+        );
+        ensure!(
+            num_constraints <= 1 << self.m_0,
             "R1CS constraints exceed scheme capacity"
         );
 
@@ -285,10 +362,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove(
         &self,
         mut merlin: ProverState<SkyscraperSponge, FieldElement>,
-        r1cs: R1CS,
+        phase1: Phase1Result,
         mut commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
-        artifacts: &mut CompiledArtifacts,
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+        ad_binary: &[u64],
     ) -> Result<WhirR1CSProof> {
         use provekit_common::utils::sumcheck::calculate_external_row_of_r1cs_matrices_with_ad;
 
@@ -300,12 +379,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let full_witness: Vec<FieldElement> = if is_single {
             // Truncate padded witness back to actual R1CS witness size
             let mut w = mem::take(&mut commitments[0].padded_witness);
-            w.truncate(r1cs.num_witnesses());
+            w.truncate(witness_layout.size());
             w
         } else {
             let mut w = std::mem::take(&mut commitments[0].padded_witness);
             w.truncate(self.w1_size);
-            let w2_len = r1cs.num_witnesses() - self.w1_size;
+            let w2_len = witness_layout.size() - self.w1_size;
             w.extend_from_slice(&commitments[1].padded_witness[..w2_len]);
             commitments[1].padded_witness = Vec::new();
             w
@@ -313,7 +392,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         // First round: ZK sumcheck to reduce R1CS to weighted evaluation
         let alpha = run_zk_sumcheck_prover(
-            &r1cs,
+            phase1.out_a,
+            phase1.out_b,
+            phase1.out_c,
             &full_witness,
             &mut merlin,
             self.m_0,
@@ -322,7 +403,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         drop(full_witness);
 
         // Compute weights from R1CS matrices
-        let alphas = calculate_external_row_of_r1cs_matrices_with_ad(alpha, r1cs, artifacts);
+        let alphas = calculate_external_row_of_r1cs_matrices_with_ad(alpha, witness_layout, constraints_layout, &ad_binary);
         let public_weight = get_public_weights(public_inputs, &mut merlin, self.m);
 
         if is_single {
@@ -574,6 +655,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
     }
 }
 
+#[cfg(not(feature = "mavros_compiler"))]
 #[instrument(skip_all)]
 pub fn run_zk_sumcheck_prover(
     r1cs: &R1CS,
@@ -592,6 +674,171 @@ pub fn run_zk_sumcheck_prover(
         || calculate_witness_bounds(r1cs, z),
         || calculate_evaluations_over_boolean_hypercube_for_eq(r),
     );
+
+    // Ensure each vector has length ≥2 and is a power of two.
+    pad_to_pow2_len_min2(&mut a);
+    pad_to_pow2_len_min2(&mut b);
+    pad_to_pow2_len_min2(&mut c);
+    pad_to_pow2_len_min2(&mut eq);
+
+    let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
+
+    let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
+
+    // Spartan blinding: m = log2(domain), target_len = 2^(m-1).
+    let blinding_num_vars = whir_for_blinding_of_spartan_config
+        .mv_parameters
+        .num_variables;
+    let target_b = 1usize << (blinding_num_vars - 1);
+
+    //  Flatten and pad to exactly 1 << blinding_num_vars - 1
+    let mut flat = blinding_polynomial
+        .iter()
+        .flatten()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if flat.len() < target_b {
+        flat.resize(target_b, FieldElement::zero());
+    }
+
+    let blinding_polynomial_for_committing = EvaluationsList::new(flat);
+    let blinding_polynomial_variables = blinding_polynomial_for_committing.num_variables();
+    let (commitment_to_blinding_polynomial, blindings_mask_polynomial, blindings_blind_polynomial) =
+        batch_commit_to_polynomial(
+            blinding_polynomial_variables + 1,
+            whir_for_blinding_of_spartan_config,
+            blinding_polynomial_for_committing,
+            merlin,
+        );
+
+    let sum_g_reduce = sum_over_hypercube(&blinding_polynomial);
+
+    let _ = merlin.add_scalars(&[sum_g_reduce]);
+
+    let mut rho_buf = [FieldElement::zero()];
+    let _ = merlin.fill_challenge_scalars(&mut rho_buf);
+    let rho = rho_buf[0];
+
+    // Instead of proving that sum of F over the boolean hypercube is 0, we prove
+    // that sum of F + rho * G over the boolean hypercube is rho * Sum G.
+    let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
+
+    let mut fold = None;
+
+    for idx in 0..m_0 {
+        // Here hhat_i_at_x represents hhat_i(x). hhat_i(x) is the qubic sumcheck
+        // polynomial sent by the prover.
+        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
+            sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
+                let f0 = eq.0 * (a.0 * b.0 - c.0);
+                let f_em1 = (eq.0 + eq.0 - eq.1)
+                    * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
+                let f_inf = (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
+
+                [f0, f_em1, f_inf]
+            });
+        if fold.is_some() {
+            a.truncate(a.len() / 2);
+            b.truncate(b.len() / 2);
+            c.truncate(c.len() / 2);
+            eq.truncate(eq.len() / 2);
+        }
+
+        let g_poly = compute_blinding_coefficients_for_round(
+            blinding_polynomial.as_slice(),
+            idx,
+            alpha.as_slice(),
+        );
+
+        let mut combined_hhat_i_coeffs = [FieldElement::zero(); 4];
+
+        combined_hhat_i_coeffs[0] = hhat_i_at_0 + rho * g_poly[0];
+
+        let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
+        let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
+
+        combined_hhat_i_coeffs[2] = HALF
+            * (saved_val_for_sumcheck_equality_assertion + combined_at_em1
+                - combined_hhat_i_coeffs[0]
+                - combined_hhat_i_coeffs[0]
+                - combined_hhat_i_coeffs[0]);
+
+        combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
+
+        combined_hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[3]
+            - combined_hhat_i_coeffs[2];
+
+        assert_eq!(
+            saved_val_for_sumcheck_equality_assertion,
+            combined_hhat_i_coeffs[0]
+                + combined_hhat_i_coeffs[0]
+                + combined_hhat_i_coeffs[1]
+                + combined_hhat_i_coeffs[2]
+                + combined_hhat_i_coeffs[3]
+        );
+
+        let _ = merlin.add_scalars(&combined_hhat_i_coeffs[..]);
+        let mut alpha_i_wrapped_in_vector = [FieldElement::zero()];
+        let _ = merlin.fill_challenge_scalars(&mut alpha_i_wrapped_in_vector);
+        let alpha_i = alpha_i_wrapped_in_vector[0];
+        alpha.push(alpha_i);
+
+        fold = Some(alpha_i);
+
+        saved_val_for_sumcheck_equality_assertion =
+            eval_cubic_poly(combined_hhat_i_coeffs, alpha_i);
+    }
+    drop((a, b, c, eq));
+
+    let (statement, blinding_mask_polynomial_sum, blinding_blind_polynomial_sum) =
+        create_combined_statement_over_two_polynomials::<1>(
+            blinding_polynomial_variables + 1,
+            &commitment_to_blinding_polynomial,
+            &blindings_mask_polynomial,
+            &blindings_blind_polynomial,
+            &[expand_powers(alpha.as_slice())],
+        );
+
+    let _ = merlin.add_scalars(&[
+        blinding_mask_polynomial_sum[0],
+        blinding_blind_polynomial_sum[0],
+    ]);
+
+    let (_sums, _deferred) = run_zk_whir_pcs_prover(
+        commitment_to_blinding_polynomial,
+        statement,
+        &whir_for_blinding_of_spartan_config,
+        merlin,
+    );
+
+    alpha
+}
+
+#[cfg(feature = "mavros_compiler")]
+#[instrument(skip_all)]
+pub fn run_zk_sumcheck_prover(
+    out_a: Vec<FieldElement>,
+    out_b: Vec<FieldElement>,
+    out_c: Vec<FieldElement>,
+    z: &[FieldElement],
+    merlin: &mut ProverState<SkyscraperSponge, FieldElement>,
+    m_0: usize,
+    whir_for_blinding_of_spartan_config: &WhirConfig,
+) -> Vec<FieldElement> {
+    // r is the combination randomness from the 2nd item of the interaction phase
+    let mut r = vec![FieldElement::zero(); m_0];
+    merlin
+        .fill_challenge_scalars(&mut r)
+        .expect("Failed to extract challenge scalars from Merlin");
+    // let a = sum_fhat_1, b = sum_fhat_2, c = sum_fhat_3 for brevity
+    let mut a = out_a;
+    let mut b = out_b;
+    let mut c = out_c;
+    let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(r);
 
     // Ensure each vector has length ≥2 and is a power of two.
     pad_to_pow2_len_min2(&mut a);

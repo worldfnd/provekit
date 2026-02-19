@@ -1,5 +1,7 @@
 #[cfg(feature = "mavros_compiler")]
-use mavros::{api as mavros_api, compiled_artifacts::CompiledArtifacts};
+use mavros_artifacts::{WitnessLayout, ConstraintsLayout};
+#[cfg(feature = "mavros_compiler")]
+use mavros_vm::interpreter as mavros_interpreter;
 use {
     crate::{
         utils::{pad_to_power_of_two, unzip_double_array, workload_size},
@@ -233,14 +235,15 @@ pub fn calculate_external_row_of_r1cs_matrices(
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices_with_ad(
     alpha: Vec<FieldElement>,
-    r1cs: R1CS,
-    artifacts: &mut CompiledArtifacts,
+    witness_layout: WitnessLayout,
+    constraints_layout: ConstraintsLayout,
+    ad_binary: &[u64],
 ) -> [Vec<FieldElement>; 3] {
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
-    let eq_alpha = &eq_alpha[..r1cs.num_constraints()];
+    let eq_alpha = &eq_alpha[..constraints_layout.algebraic_size];
 
     let (ad_a, ad_b, ad_c, _ad_instrumenter) =
-        mavros_api::run_ad_from_binary(&mut artifacts.ad_binary, &artifacts.r1cs, &eq_alpha);
+    mavros_interpreter::run_ad(ad_binary, &eq_alpha, witness_layout, constraints_layout);
 
     [ad_a, ad_b, ad_c]
 }

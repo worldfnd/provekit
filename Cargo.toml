@@ -97,6 +97,7 @@ anyhow = "1.0.93"
 argh = "0.1.12"
 axum = "0.8.4"
 base64 = "0.22.1"
+bincode = "1.3"
 bytes = "1.10.1"
 chrono = "0.4.41"
 # On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
@@ -154,7 +155,8 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-mavros = { git = "https://github.com/reilabs/mavros", branch = "split_main", default-features = false }
+mavros-vm = { path = "../spartan-vm/vm" }
+mavros-artifacts = { path = "../spartan-vm/mavros-artifacts" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "arkworks-algebra",
 ], rev = "ecb4f08373ed930175585c856517efdb1851fb47" }

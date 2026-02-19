@@ -1,5 +1,5 @@
 use {
-    mavros::{api::ApiError, vm::interpreter::InputValueOrdered},
+    mavros_artifacts::InputValueOrdered,
     noirc_abi::{
         input_parser::{Format, InputValue},
         AbiType, MAIN_RETURN_NAME,
@@ -10,7 +10,7 @@ use {
 pub fn read_prover_inputs(
     root: &Path,
     abi: &noirc_abi::Abi,
-) -> Result<Vec<InputValueOrdered>, ApiError> {
+) -> Result<Vec<InputValueOrdered>, anyhow::Error> {
     let file_path = root.join("Prover.toml");
     let ext = file_path
         .extension()
@@ -18,10 +18,10 @@ pub fn read_prover_inputs(
         .unwrap_or_default();
 
     let Some(format) = Format::from_ext(ext) else {
-        return Err(ApiError::UnsupportedInputExt(ext.to_string()));
+        return Err(anyhow::anyhow!("Unsupported input extension: {}", ext));
     };
 
-    let inputs_src = fs::read_to_string(&file_path).map_err(ApiError::Io)?;
+    let inputs_src = fs::read_to_string(&file_path)?;
     let inputs = format.parse(&inputs_src, abi).unwrap();
     let ordered_params = ordered_params_from_btreemap(abi, &inputs);
 

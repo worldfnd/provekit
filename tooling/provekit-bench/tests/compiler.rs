@@ -36,9 +36,10 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let package_name = nargo_toml.package.name;
 
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+    let r1cs_path = test_case_path.join(format!("target/r1cs.json"));
     let witness_file_path = test_case_path.join("Prover.toml");
 
-    let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+    let schema = NoirProofScheme::from_file(&circuit_path, &r1cs_path).expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -60,10 +61,12 @@ fn test_mavros_compiler(test_case_path: impl AsRef<Path>) {
         let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
 
         let package_name = nargo_toml.package.name;
-        let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+        let target_dir = test_case_path.join("target");
+        let basic_path = target_dir.join("basic.json");
+        let r1cs_path = target_dir.join("r1cs.json");
         let witness_file_path = test_case_path.join("Prover.toml");
 
-        let schema = NoirProofScheme::from_file(&circuit_path.canonicalize().unwrap())
+        let schema = NoirProofScheme::from_file(&basic_path, &r1cs_path)
             .expect("Reading proof scheme");
         let prover = Prover::from_noir_proof_scheme(schema.clone());
         let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());

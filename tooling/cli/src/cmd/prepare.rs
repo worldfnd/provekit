@@ -12,9 +12,15 @@ use {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prepare")]
 pub struct Args {
-    /// path to the compiled Noir program
+    /// path to the compiled Noir program (non-mavros) or basic artifacts JSON
+    /// (mavros)
     #[argh(positional)]
     program_path: PathBuf,
+
+    /// path to the R1CS JSON (mavros only)
+    #[cfg(feature = "mavros_compiler")]
+    #[argh(positional)]
+    r1cs_path: PathBuf,
 
     /// output path for the prepared proof scheme
     #[argh(
@@ -38,7 +44,11 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
+        #[cfg(not(feature = "mavros_compiler"))]
         let scheme = NoirProofScheme::from_file(&self.program_path)
+            .context("while compiling Noir program")?;
+        #[cfg(feature = "mavros_compiler")]
+        let scheme = NoirProofScheme::from_file(&self.program_path, &self.r1cs_path)
             .context("while compiling Noir program")?;
         write(
             &Prover::from_noir_proof_scheme(scheme.clone()),

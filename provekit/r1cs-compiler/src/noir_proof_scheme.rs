@@ -1,23 +1,40 @@
-#[cfg(feature = "mavros_compiler")]
-use mavros::api as mavros_api;
 use {
-    crate::{
-        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
-        witness_generator::NoirWitnessGeneratorBuilder,
-    },
-    anyhow::{ensure, Context as _, Result},
+    crate::whir_r1cs::WhirR1CSSchemeBuilder,
+    anyhow::{Context as _, Result},
+    provekit_common::{NoirProofScheme, WhirR1CSScheme},
+    std::{fs::File, path::Path},
+    tracing::{info, instrument},
+};
+#[cfg(not(feature = "mavros_compiler"))]
+use {
+    crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
+    anyhow::ensure,
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
         utils::PrintAbi,
         witness::{NoirWitnessGenerator, WitnessBuilder},
-        NoirProofScheme, WhirR1CSScheme,
     },
-    std::{collections::HashSet, fs::File, path::Path},
-    tracing::{info, instrument},
+    std::collections::HashSet,
+};
+#[cfg(feature = "mavros_compiler")]
+use {
+    mavros_artifacts::R1CS as MavrosR1CS,
+    noirc_abi::Abi,
+    provekit_common::utils::convert_mavros_r1cs_to_provekit,
+    serde::Deserialize,
 };
 
 pub trait NoirProofSchemeBuilder {
+    #[cfg(not(feature = "mavros_compiler"))]
     fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self>
+    where
+        Self: Sized;
+
+    #[cfg(feature = "mavros_compiler")]
+    fn from_file(
+        basic_path: impl AsRef<Path> + std::fmt::Debug,
+        r1cs_path: impl AsRef<Path> + std::fmt::Debug,
+    ) -> Result<Self>
     where
         Self: Sized;
 
@@ -25,11 +42,14 @@ pub trait NoirProofSchemeBuilder {
     fn from_program(program: ProgramArtifact) -> Result<Self>
     where
         Self: Sized;
+}
 
-    #[cfg(feature = "mavros_compiler")]
-    fn from_program(program: ProgramArtifact, project_path: impl AsRef<Path>) -> Result<Self>
-    where
-        Self: Sized;
+#[cfg(feature = "mavros_compiler")]
+#[derive(Deserialize)]
+struct BasicArtifacts {
+    abi:            noirc_abi::Abi,
+    ad_binary:      Vec<u64>,
+    witgen_binary:  Vec<u64>,
 }
 
 #[cfg(not(feature = "mavros_compiler"))]
@@ -116,55 +136,53 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
 
 #[cfg(feature = "mavros_compiler")]
 impl NoirProofSchemeBuilder for NoirProofScheme {
-    #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
-    fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
-        let path = path.as_ref();
-        let file = File::open(path).context("while opening Noir program")?;
-        let program = serde_json::from_reader(file).context("while reading Noir program")?;
-
-        let project_path = path
-            .parent()
-            .and_then(|p| p.parent())
-            .context("Could not derive project path from JSON file path")?;
-
-        Self::from_program(program, project_path)
-    }
-
     #[instrument(skip_all)]
-    fn from_program(program: ProgramArtifact, project_path: impl AsRef<Path>) -> Result<Self> {
-        use provekit_common::utils::convert_mavros_r1cs_to_provekit;
+    fn from_file(
+        basic_path: impl AsRef<Path> + std::fmt::Debug,
+        r1cs_path: impl AsRef<Path> + std::fmt::Debug,
+    ) -> Result<Self> {
+        info!("Reading basic artifacts from {:?}", basic_path);
+        let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
+        let basic: BasicArtifacts =
+            serde_json::from_reader(basic_file).context("while reading basic artifacts")?;
+        let abi = basic.abi;
 
-        info!("Program noir version: {}", program.noir_version);
-        info!("Program entry point: fn main{};", PrintAbi(&program.abi));
-        ensure!(
-            program.bytecode.functions.len() == 1,
-            "Program must have one entry point."
-        );
+        info!("Reading R1CS from {:?}", r1cs_path);
+        let r1cs_bytes = std::fs::read(r1cs_path.as_ref()).context("while reading R1CS file")?;
+        let mavros_r1cs: MavrosR1CS =
+            bincode::deserialize(&r1cs_bytes).context("while deserializing R1CS from bincode")?;
 
-        let main = &program.bytecode.functions[0];
         info!(
-            "ACIR: {} witnesses, {} opcodes.",
-            main.current_witness_index,
-            main.opcodes.len()
+            "R1CS: {} constraints, witness layout: algebraic={}, challenges={}",
+            mavros_r1cs.constraints.len(),
+            mavros_r1cs.witness_layout.algebraic_size,
+            mavros_r1cs.witness_layout.challenges_size,
         );
-
-        let artifacts =
-            mavros_api::compile_to_artifacts(project_path.as_ref().to_path_buf(), false)?;
 
         let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
-            &artifacts.r1cs,
-            artifacts.r1cs.witness_layout.pre_commitment_size(),
-            artifacts.r1cs.witness_layout.challenges_size,
+            &mavros_r1cs,
+            mavros_r1cs.witness_layout.pre_commitment_size(),
+            mavros_r1cs.witness_layout.challenges_size,
             false,
         );
-        let r1cs = convert_mavros_r1cs_to_provekit(&artifacts.r1cs);
+        let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
+
+        let num_public_inputs: usize = abi
+            .parameters
+            .iter()
+            .filter(|p| p.is_public())
+            .map(|p| p.typ.field_count() as usize)
+            .sum();
 
         Ok(Self {
-            program: program.bytecode,
-            abi: program.abi,
+            abi,
+            num_public_inputs,
             whir_for_witness,
-            artifacts,
+            witgen_binary: basic.witgen_binary,
+            ad_binary: basic.ad_binary,
             r1cs,
+            constraints_layout: mavros_r1cs.constraints_layout,
+            witness_layout: mavros_r1cs.witness_layout,
         })
     }
 }

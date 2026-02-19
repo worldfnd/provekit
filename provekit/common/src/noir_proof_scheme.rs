@@ -1,14 +1,19 @@
 #[cfg(feature = "mavros_compiler")]
-use mavros::compiled_artifacts::CompiledArtifacts;
+use {mavros_artifacts::{ConstraintsLayout, WitnessLayout}, noirc_abi::Abi};
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
-        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement, PublicInputs, R1CS,
+        PublicInputs, R1CS,
     },
-    acir::circuit::Program,
-    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
+};
+#[cfg(not(feature = "mavros_compiler"))]
+use {
+    acir::circuit::Program,
+    crate::{
+        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
+        NoirElement,
+    },
 };
 
 /// A scheme for proving a Noir program.
@@ -25,12 +30,15 @@ pub struct NoirProofScheme {
 #[cfg(feature = "mavros_compiler")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProofScheme {
-    pub program:          Program<NoirElement>,
     #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:              Abi,
-    pub r1cs:             R1CS,
-    pub whir_for_witness: WhirR1CSScheme,
-    pub artifacts:        CompiledArtifacts,
+    pub abi:                Abi,
+    pub num_public_inputs:  usize,
+    pub r1cs:               R1CS,
+    pub whir_for_witness:   WhirR1CSScheme,
+    pub witgen_binary:      Vec<u64>,
+    pub ad_binary:          Vec<u64>,
+    pub constraints_layout:    ConstraintsLayout,
+    pub witness_layout: WitnessLayout,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
