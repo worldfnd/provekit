@@ -237,8 +237,8 @@ mod tests {
         // Verify sod_hash is deterministic and non-zero (700-byte econtent)
         let mut e_content = [0u8; 700];
         e_content[0..32].copy_from_slice(&[
-            54, 197, 174, 86, 62, 194, 237, 211, 184, 91, 92, 169, 195, 149, 233, 156, 60, 80,
-            224, 124, 161, 170, 204, 239, 154, 92, 165, 10, 81, 42, 90, 7,
+            54, 197, 174, 86, 62, 194, 237, 211, 184, 91, 92, 169, 195, 149, 233, 156, 60, 80, 224,
+            124, 161, 170, 204, 239, 154, 92, 165, 10, 81, 42, 90, 7,
         ]);
         let hash1 = calculate_sod_hash(&e_content);
         let hash2 = calculate_sod_hash(&e_content);

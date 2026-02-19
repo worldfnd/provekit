@@ -133,6 +133,17 @@ impl DigestAlgorithm {
             Self::SHA512 => "sha512",
         }
     }
+
+    /// Hash output length in bytes.
+    pub fn hash_output_len(&self) -> u32 {
+        match self {
+            Self::SHA1 => 20,
+            Self::SHA224 => 28,
+            Self::SHA256 => 32,
+            Self::SHA384 => 48,
+            Self::SHA512 => 64,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

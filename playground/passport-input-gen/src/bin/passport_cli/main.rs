@@ -249,8 +249,14 @@ fn generate_inputs(
 ) -> Result<PassportCircuitInputs> {
     println!("\n--- Generating inputs for variant ---");
     println!("  TBS size: {}", variant.tbs_size);
-    println!("  CSCA: RSA-{} {}", variant.csca_key_bits, variant.csca_padding);
-    println!("  DSC:  RSA-{} {}", variant.dsc_key_bits, variant.dsc_padding);
+    println!(
+        "  CSCA: RSA-{} {}",
+        variant.csca_key_bits, variant.csca_padding
+    );
+    println!(
+        "  DSC:  RSA-{} {}",
+        variant.dsc_key_bits, variant.dsc_padding
+    );
     println!(
         "  Hash: SA={} DG={}",
         variant.sa_hash.circuit_path(),
@@ -281,7 +287,7 @@ fn generate_inputs(
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
     let config = AttestConfig {
-        current_date:     1735689600, // Jan 1, 2025 00:00:00 UTC
+        current_date: 1735689600, // Jan 1, 2025 00:00:00 UTC
         min_age_required: 18,
         max_age_required: 0,
         ..Default::default()
@@ -410,7 +416,10 @@ fn print_summary(inputs: &PassportCircuitInputs) {
         "    TBS certificate len: {}",
         inputs.dsc_sig_check.tbs_certificate.len()
     );
-    println!("    Country:             \"{}\"", inputs.dsc_sig_check.country);
+    println!(
+        "    Country:             \"{}\"",
+        inputs.dsc_sig_check.country
+    );
     println!(
         "    CSCA key:            RSA-{} {}",
         inputs.variant.csca_key_bits, inputs.variant.csca_padding
@@ -440,7 +449,7 @@ fn print_summary(inputs: &PassportCircuitInputs) {
     );
     println!(
         "    private_nullifier:               {}",
-        inputs.integrity.salted_private_nullifier_value
+        inputs.integrity.salted_private_nullifier.value
     );
 }
 

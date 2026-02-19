@@ -385,7 +385,8 @@ pub fn dg1_bytes_with_birthdate_expiry_date(birthdate: &[u8; 6], expiry: &[u8; 6
 /// Build a DER-encoded LDSSecurityObject containing the hash of DG1
 /// (using the specified digest algorithm) and a dummy DG2 hash.
 fn build_econtent_bytes(dg1: &[u8], dg_hash: &DigestAlgorithm) -> Vec<u8> {
-    let dg1_hash = hash_bytes(dg_hash, dg1);
+    let dg1_len = crate::effective_dg1_len(dg1);
+    let dg1_hash = hash_bytes(dg_hash, &dg1[..dg1_len]);
     let hash_len = dg1_hash.len();
 
     let lds_security_object = LDSSecurityObject {
@@ -540,10 +541,7 @@ fn build_dsc_extensions(dsc_pub: &RsaPublicKey) -> rasn_pkix::Extensions {
 }
 
 /// Build a DER-encoded rasn_pkix::TbsCertificate for a DSC signed by CSCA.
-fn build_tbs_certificate_bytes(
-    dsc_pub: &RsaPublicKey,
-    sig_algo_oid: &ObjectIdentifier,
-) -> Vec<u8> {
+fn build_tbs_certificate_bytes(dsc_pub: &RsaPublicKey, sig_algo_oid: &ObjectIdentifier) -> Vec<u8> {
     use rasn_pkix::{
         SubjectPublicKeyInfo as RasnSpki, TbsCertificate as RasnTbs, Validity, Version,
     };
@@ -613,13 +611,11 @@ fn build_sod_from_tbs(
     // --- eContent: DER-encoded LDSSecurityObject ---
     let econtent_bytes = build_econtent_bytes(dg1, &config.dg_hash);
 
-    let dg1_hash = hash_bytes(&config.dg_hash, dg1);
+    let dg1_len = crate::effective_dg1_len(dg1);
+    let dg1_hash = hash_bytes(&config.dg_hash, &dg1[..dg1_len]);
     let mut dg_map = HashMap::new();
     dg_map.insert(1u32, Binary::from_slice(&dg1_hash));
-    dg_map.insert(
-        2u32,
-        Binary::from_slice(&vec![0x01u8; dg1_hash.len()]),
-    );
+    dg_map.insert(2u32, Binary::from_slice(&vec![0x01u8; dg1_hash.len()]));
     let data_group_hashes = DataGroupHashValues { values: dg_map };
     let econtent = EContent {
         version:                0,
@@ -646,7 +642,12 @@ fn build_sod_from_tbs(
     };
 
     // --- Sign SignedAttributes with DSC private key ---
-    let dsc_signature = rsa_sign(dsc_priv, &signed_attr_bytes, &config.dsc_padding, &config.sa_hash);
+    let dsc_signature = rsa_sign(
+        dsc_priv,
+        &signed_attr_bytes,
+        &config.dsc_padding,
+        &config.sa_hash,
+    );
 
     let dsc_sig_algo_name = sig_algo_name(&config.sa_hash, &config.dsc_padding);
     let signer_info = SignerInfo {
@@ -1011,8 +1012,9 @@ mod tests {
         assert_eq!(parsed.version, Integer::from(0));
         assert_eq!(parsed.data_group_hash_values.len(), 2);
 
-        // DG1 hash should match
-        let expected_hash = Sha256::digest(&dg1);
+        // DG1 hash should match (only effective_dg1_len bytes are hashed)
+        let dg1_len = crate::effective_dg1_len(&dg1);
+        let expected_hash = Sha256::digest(&dg1[..dg1_len]);
         let dg1_entry = parsed
             .data_group_hash_values
             .iter()
@@ -1030,7 +1032,8 @@ mod tests {
 
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
         let econtent_bytes = build_econtent_bytes(&dg1, &DigestAlgorithm::SHA256);
-        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
+        let signed_attrs_bytes =
+            build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
 
         // Should be parseable as BTreeSet<Attribute>
         let parsed: BTreeSet<Attribute> =
@@ -1128,7 +1131,8 @@ mod tests {
         let econtent_bytes = build_econtent_bytes(&dg1, &DigestAlgorithm::SHA256);
         assert!(econtent_bytes.len() <= MAX_ECONTENT_SIZE);
 
-        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
+        let signed_attrs_bytes =
+            build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
         assert!(signed_attrs_bytes.len() <= MAX_SIGNED_ATTRIBUTES_SIZE);
 
         let dsc_priv = load_dsc_mock_private_key();
@@ -1154,8 +1158,9 @@ mod tests {
         let parsed_lds: LDSSecurityObject =
             rasn::der::decode(econtent_bytes).expect("eContent should parse as LDSSecurityObject");
 
-        // 2. DG1 hash in LDSSecurityObject matches SHA-256(dg1)
-        let dg1_hash = Sha256::digest(&dg1);
+        // 2. DG1 hash in LDSSecurityObject matches SHA-256(dg1[..effective_len])
+        let dg1_len = crate::effective_dg1_len(&dg1);
+        let dg1_hash = Sha256::digest(&dg1[..dg1_len]);
         let dg1_entry = parsed_lds
             .data_group_hash_values
             .iter()

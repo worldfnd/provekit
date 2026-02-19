@@ -11,10 +11,7 @@ use {
             DigestAlgorithm, PassportError, RsaKeyBits, RsaPadding, SignatureAlgorithmName,
             MAX_DG1_SIZE, MAX_ECONTENT_SIZE, MAX_SIGNED_ATTRIBUTES_SIZE, TBS_SIZES, TREE_DEPTH,
         },
-        utils::{
-            fit, load_csca_public_keys, to_u32, ASN1_HEADER_LEN,
-            ASN1_OCTET_STRING_TAG,
-        },
+        utils::{fit, load_csca_public_keys, to_u32, ASN1_HEADER_LEN, ASN1_OCTET_STRING_TAG},
     },
     base64::{engine::general_purpose::STANDARD, Engine as _},
     noir_bignum_paramgen::compute_barrett_reduction_parameter,
@@ -22,7 +19,8 @@ use {
         pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey, traits::PublicKeyParts, BigUint,
         Pkcs1v15Sign, Pss, RsaPublicKey,
     },
-    sha2::{Digest, Sha256},
+    sha1::Sha1,
+    sha2::{Digest, Sha224, Sha256, Sha384, Sha512},
     std::{fmt::Write as _, path::Path},
 };
 
@@ -32,6 +30,78 @@ use {
 
 /// Zero BN254 field element as a 0x-prefixed hex string.
 pub const ZERO_FIELD: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+/// Determine the effective DG1 length, mirroring the Noir circuit's
+/// `get_dg1_size` / `is_id_card` logic.  Passports use 93 bytes; ID cards
+/// use the full 95 bytes.  The distinction is that ID-card DG1 data has
+/// non-zero bytes at positions 93 and 94.
+pub fn effective_dg1_len(dg1: &[u8]) -> usize {
+    if dg1.len() >= 95 && dg1[93] != 0 && dg1[94] != 0 {
+        95
+    } else {
+        93
+    }
+}
+
+// ============================================================================
+// Hash dispatch helpers
+// ============================================================================
+
+/// Hash `data` using the specified digest algorithm.
+fn hash_bytes(algo: &DigestAlgorithm, data: &[u8]) -> Vec<u8> {
+    match algo {
+        DigestAlgorithm::SHA1 => Sha1::digest(data).to_vec(),
+        DigestAlgorithm::SHA224 => Sha224::digest(data).to_vec(),
+        DigestAlgorithm::SHA256 => Sha256::digest(data).to_vec(),
+        DigestAlgorithm::SHA384 => Sha384::digest(data).to_vec(),
+        DigestAlgorithm::SHA512 => Sha512::digest(data).to_vec(),
+    }
+}
+
+/// Extract the digest algorithm implied by an RSA signature algorithm OID name.
+/// Returns `None` for algorithm-agnostic OIDs (plain `RsaEncryption`,
+/// `RsassaPss`).
+fn digest_from_sig_algo_name(name: &SignatureAlgorithmName) -> Option<DigestAlgorithm> {
+    match name {
+        SignatureAlgorithmName::Sha1WithRsaSignature => Some(DigestAlgorithm::SHA1),
+        SignatureAlgorithmName::Sha256WithRsaEncryption => Some(DigestAlgorithm::SHA256),
+        SignatureAlgorithmName::Sha384WithRsaEncryption => Some(DigestAlgorithm::SHA384),
+        SignatureAlgorithmName::Sha512WithRsaEncryption => Some(DigestAlgorithm::SHA512),
+        _ => None,
+    }
+}
+
+/// Verify an RSA PKCS#1 v1.5 signature with the given digest algorithm.
+fn rsa_verify_pkcs1(
+    key: &RsaPublicKey,
+    digest: &[u8],
+    sig: &[u8],
+    algo: &DigestAlgorithm,
+) -> rsa::Result<()> {
+    match algo {
+        DigestAlgorithm::SHA1 => key.verify(Pkcs1v15Sign::new::<Sha1>(), digest, sig),
+        DigestAlgorithm::SHA224 => key.verify(Pkcs1v15Sign::new::<Sha224>(), digest, sig),
+        DigestAlgorithm::SHA256 => key.verify(Pkcs1v15Sign::new::<Sha256>(), digest, sig),
+        DigestAlgorithm::SHA384 => key.verify(Pkcs1v15Sign::new::<Sha384>(), digest, sig),
+        DigestAlgorithm::SHA512 => key.verify(Pkcs1v15Sign::new::<Sha512>(), digest, sig),
+    }
+}
+
+/// Verify an RSA-PSS signature with the given digest algorithm.
+fn rsa_verify_pss(
+    key: &RsaPublicKey,
+    digest: &[u8],
+    sig: &[u8],
+    algo: &DigestAlgorithm,
+) -> rsa::Result<()> {
+    match algo {
+        DigestAlgorithm::SHA1 => key.verify(Pss::new::<Sha1>(), digest, sig),
+        DigestAlgorithm::SHA224 => key.verify(Pss::new::<Sha224>(), digest, sig),
+        DigestAlgorithm::SHA256 => key.verify(Pss::new::<Sha256>(), digest, sig),
+        DigestAlgorithm::SHA384 => key.verify(Pss::new::<Sha384>(), digest, sig),
+        DigestAlgorithm::SHA512 => key.verify(Pss::new::<Sha512>(), digest, sig),
+    }
+}
 
 // ============================================================================
 // Helpers for variable-size byte arrays
@@ -134,7 +204,7 @@ impl CircuitVariant {
                 self.tbs_size, dsc_pad, dsc_key, sa_hash
             ),
             format!("data_check/integrity/sa_{}/dg_{}", sa_hash, dg_hash),
-            "merkle-attest/age/standard".to_string(),
+            "merkle_attest/age/standard".to_string(),
         ]
     }
 
@@ -210,6 +280,8 @@ pub struct DscSigCheckInputs {
     pub csc_pubkey_redc_param: Vec<u8>,
     pub dsc_signature:         Vec<u8>,
     pub exponent:              u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_salt_len:          Option<u32>,
 }
 
 /// Stage 2: sig-check/id-data — DSC→SOD signature verification
@@ -226,40 +298,54 @@ pub struct IdDataSigCheckInputs {
     pub signed_attributes:     Vec<u8>,
     pub exponent:              u32,
     pub e_content:             Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pss_salt_len:          Option<u32>,
+}
+
+/// Noir SaltedValue<[u8; N]> — nested struct for ABI-compatible JSON output.
+#[derive(serde::Serialize)]
+pub struct SaltedByteArray {
+    pub salt:  String,
+    pub value: Vec<u8>,
+    pub hash:  String,
+}
+
+/// Noir SaltedValue<Field> — nested struct for ABI-compatible JSON output.
+#[derive(serde::Serialize)]
+pub struct SaltedFieldValue {
+    pub salt:  String,
+    pub value: String,
+    pub hash:  String,
 }
 
 /// Stage 3: data-check/integrity — DG1 integrity + Merkle leaf
 #[derive(serde::Serialize)]
 pub struct IntegrityInputs {
-    pub comm_in:                        String,
-    pub salt_in:                        String,
-    pub salted_dg1_salt:                String,
-    pub salted_dg1_value:               Vec<u8>,
-    pub salted_dg1_hash:                String,
-    pub r_dg1:                          String,
-    pub signed_attributes:              Vec<u8>,
-    pub e_content:                      Vec<u8>,
-    pub salted_private_nullifier_salt:  String,
-    pub salted_private_nullifier_value: String,
-    pub salted_private_nullifier_hash:  String,
+    pub comm_in:                  String,
+    pub salt_in:                  String,
+    pub salted_dg1:               SaltedByteArray,
+    pub r_dg1:                    String,
+    pub signed_attributes:        Vec<u8>,
+    pub e_content:                Vec<u8>,
+    pub salted_private_nullifier: SaltedFieldValue,
 }
 
 /// Stage 4: merkle-attest/age/standard — Age attestation with Merkle proof
 #[derive(serde::Serialize)]
 pub struct AttestInputs {
-    pub root:             String,
-    pub current_date:     u64,
-    pub min_age_required: u8,
-    pub max_age_required: u8,
-    pub service_scope:    String,
-    pub service_subscope: String,
-    pub dg1:              Vec<u8>,
-    pub e_content:        Vec<u8>,
-    pub r_dg1:            String,
+    pub root:              String,
+    pub current_date:      u64,
+    pub min_age_required:  u8,
+    pub max_age_required:  u8,
+    pub service_scope:     String,
+    pub service_subscope:  String,
+    pub dg1:               Vec<u8>,
+    pub e_content:         Vec<u8>,
+    pub r_dg1:             String,
     pub private_nullifier: String,
-    pub nullifier_secret: String,
-    pub leaf_index:       String,
-    pub merkle_path:      Vec<String>,
+    pub nullifier_secret:  String,
+    pub leaf_index:        String,
+    pub merkle_path:       Vec<String>,
 }
 
 /// Container for all 4 circuit inputs in the passport pipeline.
@@ -276,22 +362,22 @@ pub struct PassportCircuitInputs {
 // ============================================================================
 
 struct PassportData {
-    dg1_padded:            Vec<u8>,
-    signed_attrs:          Vec<u8>,
+    dg1_padded:             Vec<u8>,
+    signed_attrs:           Vec<u8>,
     signed_attributes_size: usize,
-    econtent:              Vec<u8>,
-    dsc_modulus:           Vec<u8>,
-    dsc_exponent:          u32,
-    dsc_barrett:           Vec<u8>,
-    sod_signature:         Vec<u8>,
-    csca_modulus:          Vec<u8>,
-    csca_exponent:         u32,
-    csca_barrett:          Vec<u8>,
-    csca_signature:        Vec<u8>,
-    country:               String,
-    private_nullifier:     ark_bn254::Fr,
-    private_nullifier_hex: String,
-    computed_sod_hash:     ark_bn254::Fr,
+    econtent:               Vec<u8>,
+    dsc_modulus:            Vec<u8>,
+    dsc_exponent:           u32,
+    dsc_barrett:            Vec<u8>,
+    sod_signature:          Vec<u8>,
+    csca_modulus:           Vec<u8>,
+    csca_exponent:          u32,
+    csca_barrett:           Vec<u8>,
+    csca_signature:         Vec<u8>,
+    country:                String,
+    private_nullifier:      ark_bn254::Fr,
+    private_nullifier_hex:  String,
+    computed_sod_hash:      ark_bn254::Fr,
 }
 
 // ============================================================================
@@ -333,7 +419,8 @@ impl PassportReader {
         Ok((padded, econtent_bytes))
     }
 
-    /// Extract RSA key data (modulus, exponent, Barrett param, signature) as Vec<u8>.
+    /// Extract RSA key data (modulus, exponent, Barrett param, signature) as
+    /// Vec<u8>.
     fn extract_rsa_key_data(
         pubkey: &RsaPublicKey,
         signature: &[u8],
@@ -353,7 +440,11 @@ impl PassportReader {
             expected_key_bytes + 1,
             &format!("{} Barrett", name),
         )?;
-        let sig = fit_vec_leading(signature, expected_key_bytes, &format!("{} signature", name))?;
+        let sig = fit_vec_leading(
+            signature,
+            expected_key_bytes,
+            &format!("{} signature", name),
+        )?;
         Ok((modulus, exponent, barrett, sig))
     }
 
@@ -406,10 +497,7 @@ impl PassportReader {
     }
 
     /// Extract DSC certificate TBS padded to tbs_size
-    fn extract_dsc_cert_padded(
-        &self,
-        tbs_size: usize,
-    ) -> Result<(Vec<u8>, usize), PassportError> {
+    fn extract_dsc_cert_padded(&self, tbs_size: usize) -> Result<(Vec<u8>, usize), PassportError> {
         let tbs_bytes = self.sod.certificate.tbs.bytes.as_bytes();
         let cert_len = tbs_bytes.len();
         let padded = fit_vec_trailing(tbs_bytes, tbs_size, "TBS certificate")?;
@@ -426,10 +514,17 @@ impl PassportReader {
         }
     }
 
-    /// Validate DG1, eContent, and signatures against DSC + CSCA
+    /// Validate DG1, eContent, and signatures against DSC + CSCA.
+    ///
+    /// Hash algorithms are read from the SOD rather than hardcoded, so this
+    /// works for SHA-1 / SHA-224 / SHA-256 / SHA-384 / SHA-512 variants.
     pub fn validate(&self) -> Result<usize, PassportError> {
-        // 1. Check DG1 hash inside eContent
-        let dg1_hash = Sha256::digest(self.dg1.as_bytes());
+        let dg_hash = &self.sod.encap_content_info.e_content.hash_algorithm;
+        let sa_hash = &self.sod.signer_info.digest_algorithm;
+
+        // 1. Check DG1 hash inside eContent (uses dg_hash)
+        let dg1_len = effective_dg1_len(self.dg1.as_bytes());
+        let dg1_hash = hash_bytes(dg_hash, &self.dg1.as_bytes()[..dg1_len]);
         let dg1_from_econtent = self
             .sod
             .encap_content_info
@@ -444,8 +539,11 @@ impl PassportReader {
             return Err(PassportError::Dg1HashMismatch);
         }
 
-        // 2. Check hash(eContent) inside SignedAttributes
-        let econtent_hash = Sha256::digest(self.sod.encap_content_info.e_content.bytes.as_bytes());
+        // 2. Check hash(eContent) inside SignedAttributes (uses sa_hash)
+        let econtent_hash = hash_bytes(
+            sa_hash,
+            self.sod.encap_content_info.e_content.bytes.as_bytes(),
+        );
         let mut msg_digest = self.sod.signer_info.signed_attrs.message_digest.as_bytes();
 
         if msg_digest.len() > ASN1_HEADER_LEN && msg_digest[0] == ASN1_OCTET_STRING_TAG {
@@ -456,8 +554,9 @@ impl PassportReader {
             return Err(PassportError::EcontentHashMismatch);
         }
 
-        // 3. Verify SignedAttributes signature with DSC
-        let signed_attr_hash = Sha256::digest(self.sod.signer_info.signed_attrs.bytes.as_bytes());
+        // 3. Verify SignedAttributes signature with DSC (uses sa_hash)
+        let signed_attr_hash =
+            hash_bytes(sa_hash, self.sod.signer_info.signed_attrs.bytes.as_bytes());
         let dsc_pubkey_bytes = self
             .sod
             .certificate
@@ -471,17 +570,16 @@ impl PassportReader {
         let dsc_signature = self.sod.signer_info.signature.as_bytes();
 
         let verify_result = match &self.sod.signer_info.signature_algorithm.name {
-            SignatureAlgorithmName::Sha256WithRsaEncryption
-            | SignatureAlgorithmName::RsaEncryption => dsc_pubkey.verify(
-                Pkcs1v15Sign::new::<Sha256>(),
-                signed_attr_hash.as_slice(),
-                dsc_signature,
-            ),
-            SignatureAlgorithmName::RsassaPss => dsc_pubkey.verify(
-                Pss::new::<Sha256>(),
-                signed_attr_hash.as_slice(),
-                dsc_signature,
-            ),
+            SignatureAlgorithmName::Sha1WithRsaSignature
+            | SignatureAlgorithmName::Sha256WithRsaEncryption
+            | SignatureAlgorithmName::Sha384WithRsaEncryption
+            | SignatureAlgorithmName::Sha512WithRsaEncryption
+            | SignatureAlgorithmName::RsaEncryption => {
+                rsa_verify_pkcs1(&dsc_pubkey, &signed_attr_hash, dsc_signature, sa_hash)
+            }
+            SignatureAlgorithmName::RsassaPss => {
+                rsa_verify_pss(&dsc_pubkey, &signed_attr_hash, dsc_signature, sa_hash)
+            }
             unsupported => {
                 return Err(PassportError::UnsupportedSignatureAlgorithm(format!(
                     "{:?}",
@@ -491,18 +589,28 @@ impl PassportReader {
         };
         verify_result.map_err(|_| PassportError::DscSignatureInvalid)?;
 
-        // 4. Verify DSC certificate signature with CSCA
+        // 4. Verify DSC certificate signature with CSCA.
+        // The hash for TBS verification is derived from the certificate's
+        // outer signature algorithm; fall back to sa_hash when the OID is
+        // algorithm-agnostic (e.g. plain RsaEncryption or RSASSA-PSS).
+        let cert_sig_name = &self.sod.certificate.signature_algorithm.name;
+        let cert_hash = digest_from_sig_algo_name(cert_sig_name).unwrap_or(sa_hash.clone());
+
         let tbs_bytes = self.sod.certificate.tbs.bytes.as_bytes();
-        let tbs_digest = Sha256::digest(tbs_bytes);
+        let tbs_digest = hash_bytes(&cert_hash, tbs_bytes);
         let csca_signature = self.sod.certificate.signature.as_bytes();
 
+        let verify_csca = |key: &RsaPublicKey| -> rsa::Result<()> {
+            match cert_sig_name {
+                SignatureAlgorithmName::RsassaPss => {
+                    rsa_verify_pss(key, &tbs_digest, csca_signature, &cert_hash)
+                }
+                _ => rsa_verify_pkcs1(key, &tbs_digest, csca_signature, &cert_hash),
+            }
+        };
+
         if let Some(key) = &self.csca_pubkey {
-            key.verify(
-                Pkcs1v15Sign::new::<Sha256>(),
-                tbs_digest.as_slice(),
-                csca_signature,
-            )
-            .map_err(|_| PassportError::CscaSignatureInvalid)?;
+            verify_csca(key).map_err(|_| PassportError::CscaSignatureInvalid)?;
             return Ok(0);
         }
 
@@ -511,14 +619,7 @@ impl PassportReader {
 
         for (i, csca) in usa_csca.iter().enumerate() {
             let csca_pubkey = Self::decode_csca_pubkey(&csca.public_key)?;
-            if csca_pubkey
-                .verify(
-                    Pkcs1v15Sign::new::<Sha256>(),
-                    tbs_digest.as_slice(),
-                    csca_signature,
-                )
-                .is_ok()
-            {
+            if verify_csca(&csca_pubkey).is_ok() {
                 return Ok(i);
             }
         }
@@ -598,14 +699,12 @@ impl PassportReader {
         // === Compute Poseidon2 commitments ===
 
         // Stage 1 output: hash(salt_1, country, tbs_cert)
-        let comm_out_1 = commitment::hash_salt_country_tbs(
-            &config.salt_1,
-            pd.country.as_bytes(),
-            &tbs_cert,
-        )?;
+        let comm_out_1 =
+            commitment::hash_salt_country_tbs(&config.salt_1, pd.country.as_bytes(), &tbs_cert)?;
         let comm_out_1_hex = commitment::field_to_hex_string(&comm_out_1);
 
-        // Stage 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content, nullifier)
+        // Stage 2 output: hash(salt_2, country, signed_attr, sa_size, dg1, e_content,
+        // nullifier)
         let comm_out_2 = commitment::hash_salt_country_sa_dg1_econtent_nullifier(
             &config.salt_2,
             pd.country.as_bytes(),
@@ -643,6 +742,16 @@ impl PassportReader {
 
         // === Build circuit input structs ===
 
+        let csca_pss_salt = match variant.csca_padding {
+            RsaPadding::Pss => Some(variant.sa_hash.hash_output_len()),
+            RsaPadding::Pkcs1 => None,
+        };
+
+        let dsc_pss_salt = match variant.dsc_padding {
+            RsaPadding::Pss => Some(variant.sa_hash.hash_output_len()),
+            RsaPadding::Pkcs1 => None,
+        };
+
         let dsc_sig_check = DscSigCheckInputs {
             salt:                  config.salt_1.clone(),
             country:               pd.country.clone(),
@@ -651,6 +760,7 @@ impl PassportReader {
             csc_pubkey_redc_param: pd.csca_barrett,
             dsc_signature:         pd.csca_signature,
             exponent:              pd.csca_exponent,
+            pss_salt_len:          csca_pss_salt,
         };
 
         let id_data_sig_check = IdDataSigCheckInputs {
@@ -665,20 +775,25 @@ impl PassportReader {
             signed_attributes:     pd.signed_attrs.clone(),
             exponent:              pd.dsc_exponent,
             e_content:             pd.econtent.clone(),
+            pss_salt_len:          dsc_pss_salt,
         };
 
         let integrity = IntegrityInputs {
-            comm_in:                        comm_out_2_hex,
-            salt_in:                        config.salt_2.clone(),
-            salted_dg1_salt:                "0x1".to_string(),
-            salted_dg1_value:               pd.dg1_padded.clone(),
-            salted_dg1_hash:                "0x0".to_string(),
-            r_dg1:                          config.r_dg1.clone(),
-            signed_attributes:              pd.signed_attrs,
-            e_content:                      pd.econtent.clone(),
-            salted_private_nullifier_salt:  "0x1".to_string(),
-            salted_private_nullifier_value: pd.private_nullifier_hex.clone(),
-            salted_private_nullifier_hash:  "0x0".to_string(),
+            comm_in:                  comm_out_2_hex,
+            salt_in:                  config.salt_2.clone(),
+            salted_dg1:               SaltedByteArray {
+                salt:  "0x1".to_string(),
+                value: pd.dg1_padded.clone(),
+                hash:  "0x0".to_string(),
+            },
+            r_dg1:                    config.r_dg1.clone(),
+            signed_attributes:        pd.signed_attrs,
+            e_content:                pd.econtent.clone(),
+            salted_private_nullifier: SaltedFieldValue {
+                salt:  "0x1".to_string(),
+                value: pd.private_nullifier_hex.clone(),
+                hash:  "0x0".to_string(),
+            },
         };
 
         let attest = AttestInputs {
@@ -755,6 +870,9 @@ impl SaveToml for DscSigCheckInputs {
         );
         let _ = writeln!(out, "dsc_signature = {}", fmt_array(&self.dsc_signature));
         let _ = writeln!(out, "exponent = {}", self.exponent);
+        if let Some(salt_len) = self.pss_salt_len {
+            let _ = writeln!(out, "pss_salt_len = {}", salt_len);
+        }
         out
     }
 }
@@ -785,6 +903,9 @@ impl SaveToml for IdDataSigCheckInputs {
         );
         let _ = writeln!(out, "exponent = {}", self.exponent);
         let _ = writeln!(out, "e_content = {}", fmt_array(&self.e_content));
+        if let Some(salt_len) = self.pss_salt_len {
+            let _ = writeln!(out, "pss_salt_len = {}", salt_len);
+        }
         out
     }
 }
@@ -792,15 +913,10 @@ impl SaveToml for IdDataSigCheckInputs {
 impl SaveToml for IntegrityInputs {
     fn to_toml_string(&self) -> String {
         let mut out = String::new();
+        // All top-level keys must precede [table] headers in TOML,
+        // otherwise they get absorbed into the preceding table.
         let _ = writeln!(out, "comm_in = \"{}\"", self.comm_in);
         let _ = writeln!(out, "salt_in = \"{}\"", self.salt_in);
-        // SaltedValue<DG1Data> as TOML table
-        let _ = writeln!(out);
-        let _ = writeln!(out, "[salted_dg1]");
-        let _ = writeln!(out, "salt = \"{}\"", self.salted_dg1_salt);
-        let _ = writeln!(out, "value = {}", fmt_array(&self.salted_dg1_value));
-        let _ = writeln!(out, "hash = \"{}\"", self.salted_dg1_hash);
-        let _ = writeln!(out);
         let _ = writeln!(out, "r_dg1 = \"{}\"", self.r_dg1);
         let _ = writeln!(
             out,
@@ -808,24 +924,16 @@ impl SaveToml for IntegrityInputs {
             fmt_array(&self.signed_attributes)
         );
         let _ = writeln!(out, "e_content = {}", fmt_array(&self.e_content));
-        // SaltedValue<Field> as TOML table
+        let _ = writeln!(out);
+        let _ = writeln!(out, "[salted_dg1]");
+        let _ = writeln!(out, "salt = \"{}\"", self.salted_dg1.salt);
+        let _ = writeln!(out, "value = {}", fmt_array(&self.salted_dg1.value));
+        let _ = writeln!(out, "hash = \"{}\"", self.salted_dg1.hash);
         let _ = writeln!(out);
         let _ = writeln!(out, "[salted_private_nullifier]");
-        let _ = writeln!(
-            out,
-            "salt = \"{}\"",
-            self.salted_private_nullifier_salt
-        );
-        let _ = writeln!(
-            out,
-            "value = \"{}\"",
-            self.salted_private_nullifier_value
-        );
-        let _ = writeln!(
-            out,
-            "hash = \"{}\"",
-            self.salted_private_nullifier_hash
-        );
+        let _ = writeln!(out, "salt = \"{}\"", self.salted_private_nullifier.salt);
+        let _ = writeln!(out, "value = \"{}\"", self.salted_private_nullifier.value);
+        let _ = writeln!(out, "hash = \"{}\"", self.salted_private_nullifier.hash);
         out
     }
 }
@@ -884,9 +992,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            mock_generator::{
-                dg1_bytes_with_birthdate_expiry_date, generate_sod,
-            },
+            mock_generator::{dg1_bytes_with_birthdate_expiry_date, generate_sod},
             mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
         },
         rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey},
@@ -916,7 +1022,7 @@ mod tests {
 
         let variant = CircuitVariant::default();
         let config = AttestConfig {
-            current_date:     1735689600,
+            current_date: 1735689600,
             min_age_required: 18,
             max_age_required: 0,
             ..Default::default()
@@ -950,16 +1056,20 @@ mod tests {
         );
         assert_eq!(
             commitment::field_to_hex_string(&private_nullifier),
-            inputs.integrity.salted_private_nullifier_value,
+            inputs.integrity.salted_private_nullifier.value,
             "private_nullifier mismatch"
         );
 
-        // Stage 2 output: hash(salt_2, country, signed_attrs, sa_size, dg1, econtent, nullifier) → Stage 3 comm_in
+        // Stage 2 output: hash(salt_2, country, signed_attrs, sa_size, dg1, econtent,
+        // nullifier) → Stage 3 comm_in
         let comm_out_2 = commitment::hash_salt_country_sa_dg1_econtent_nullifier(
             &inputs.id_data_sig_check.salt_out,
             country_bytes,
             &inputs.id_data_sig_check.signed_attributes,
-            inputs.id_data_sig_check.signed_attributes.iter()
+            inputs
+                .id_data_sig_check
+                .signed_attributes
+                .iter()
                 .position(|&b| {
                     // Find the end of the DER-encoded data by parsing ASN.1 header
                     false
@@ -1000,11 +1110,11 @@ mod tests {
 
         // Verify shared fields between circuits are consistent
         assert_eq!(
-            inputs.integrity.salted_dg1_value, inputs.id_data_sig_check.dg1,
+            inputs.integrity.salted_dg1.value, inputs.id_data_sig_check.dg1,
             "dg1 should be the same in id_data and integrity"
         );
         assert_eq!(
-            inputs.attest.dg1, inputs.integrity.salted_dg1_value,
+            inputs.attest.dg1, inputs.integrity.salted_dg1.value,
             "dg1 should be the same in integrity and attest"
         );
         assert_eq!(
@@ -1014,8 +1124,7 @@ mod tests {
 
         // Verify nullifier is non-trivial
         assert_ne!(
-            inputs.integrity.salted_private_nullifier_value,
-            ZERO_FIELD,
+            inputs.integrity.salted_private_nullifier.value, ZERO_FIELD,
             "nullifier should be non-trivial"
         );
     }
