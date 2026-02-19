@@ -3,10 +3,15 @@ use whir::transcript::Interaction;
 use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
-    whir::{protocols::whir::Config as GenericWhirConfig, transcript},
+    whir::{
+        protocols::whir::Config as GenericWhirConfig,
+        protocols::whir_zk::Config as GenericWhirZkConfig,
+        transcript,
+    },
 };
 
 pub type WhirConfig = GenericWhirConfig<FieldElement>;
+pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 pub type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
@@ -25,8 +30,8 @@ pub struct WhirR1CSScheme {
     pub a_num_terms: usize,
     pub num_challenges: usize,
     pub has_public_inputs: bool,
-    pub whir_witness: WhirConfig,
-    pub whir_for_hiding_spartan: WhirConfig,
+    pub whir_witness: WhirZkConfig,
+    pub whir_for_hiding_spartan: WhirZkConfig,
 }
 
 impl WhirR1CSScheme {

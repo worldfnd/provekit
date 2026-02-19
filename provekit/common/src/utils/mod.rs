@@ -6,7 +6,7 @@ pub mod serde_ark_vec;
 pub mod serde_hex;
 pub mod serde_jsonify;
 pub mod sumcheck;
-pub mod zk_utils;
+
 
 pub use self::print_abi::PrintAbi;
 use {
