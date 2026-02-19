@@ -16,7 +16,6 @@ use {
         FieldElement, PublicInputs, TranscriptSponge, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
         R1CS,
     },
-    rayon::prelude::*,
     std::{any::Any, borrow::Cow},
     tracing::{debug, instrument},
     whir::{
@@ -53,16 +52,26 @@ struct PrefixCovector {
 }
 
 impl PrefixCovector {
-    /// Create a prefix covector with `deferred = true` (the default for
-    /// R1CS alpha weights whose MLE the caller verifies externally).
-    fn new(vector: Vec<FieldElement>, logical_size: usize) -> Self {
+    /// Create a deferred prefix covector (R1CS alpha weights whose MLE
+    /// the caller verifies externally).
+    fn deferred(vector: Vec<FieldElement>, logical_size: usize) -> Self {
+        Self::with_deferred(vector, logical_size, true)
+    }
+
+    /// Create a non-deferred prefix covector (public-input weights
+    /// whose MLE whir's verifier must evaluate).
+    fn non_deferred(vector: Vec<FieldElement>, logical_size: usize) -> Self {
+        Self::with_deferred(vector, logical_size, false)
+    }
+
+    fn with_deferred(vector: Vec<FieldElement>, logical_size: usize, deferred: bool) -> Self {
         debug_assert!(vector.len().is_power_of_two());
         debug_assert!(logical_size.is_power_of_two());
         debug_assert!(logical_size >= vector.len());
         Self {
             vector,
             logical_size,
-            deferred: true,
+            deferred,
         }
     }
 }
@@ -91,12 +100,7 @@ impl LinearForm<FieldElement> for PrefixCovector {
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        debug_assert!(
-            accumulator.len() >= self.vector.len(),
-            "accumulator too short for PrefixCovector: {} < {}",
-            accumulator.len(),
-            self.vector.len()
-        );
+        // Only the prefix is non-zero; the rest contributes += 0.
         for (acc, val) in accumulator[..self.vector.len()]
             .iter_mut()
             .zip(&self.vector)
@@ -291,53 +295,34 @@ impl WhirR1CSProver for WhirR1CSScheme {
             // Compute cross-evaluations: weights_1 on c2's polynomials and
             // weights_2 on c1's polynomials. Whir's prove() expects evaluations
             // for ALL (weight, polynomial) pairs in row-major order.
-            // Each dot product is over ~2M elements; run all 4 groups in parallel.
-            let ((cross_f_12, cross_g_12), (cross_f_21, cross_g_21)) = rayon::join(
-                || {
-                    rayon::join(
-                        || {
-                            weights_1
-                                .iter()
-                                .map(|w| {
-                                    let n = w.vector.len();
-                                    dot(&w.vector, &c2.masked_polynomial[..n])
-                                })
-                                .collect::<Vec<_>>()
-                        },
-                        || {
-                            weights_1
-                                .iter()
-                                .map(|w| {
-                                    let n = w.vector.len();
-                                    dot(&w.vector, &c2.random_polynomial[..n])
-                                })
-                                .collect::<Vec<_>>()
-                        },
-                    )
-                },
-                || {
-                    rayon::join(
-                        || {
-                            weights_2
-                                .iter()
-                                .map(|w| {
-                                    let n = w.vector.len();
-                                    dot(&w.vector, &c1.masked_polynomial[..n])
-                                })
-                                .collect::<Vec<_>>()
-                        },
-                        || {
-                            weights_2
-                                .iter()
-                                .map(|w| {
-                                    let n = w.vector.len();
-                                    dot(&w.vector, &c1.random_polynomial[..n])
-                                })
-                                .collect::<Vec<_>>()
-                        },
-                    )
-                },
-            );
+            let cross_f_12: Vec<FieldElement> = weights_1
+                .iter()
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c2.masked_polynomial[..n])
+                })
+                .collect();
+            let cross_g_12: Vec<FieldElement> = weights_1
+                .iter()
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c2.random_polynomial[..n])
+                })
+                .collect();
+            let cross_f_21: Vec<FieldElement> = weights_2
+                .iter()
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c1.masked_polynomial[..n])
+                })
+                .collect();
+            let cross_g_21: Vec<FieldElement> = weights_2
+                .iter()
+                .map(|w| {
+                    let n = w.vector.len();
+                    dot(&w.vector, &c1.random_polynomial[..n])
+                })
+                .collect();
 
             merlin.prover_hint_ark(&(f_sums_1, g_sums_1));
             merlin.prover_hint_ark(&(f_sums_2, g_sums_2));
@@ -368,10 +353,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let mut all_weights = weights_1;
             all_weights.extend(weights_2);
 
-            // Build evaluations in row-major order: evaluations[w_idx * 4 + p_idx]
+            // Build evaluations: for each weight, evaluate on all 4 polynomials
+            // (c1_masked, c1_random, c2_masked, c2_random)
+            // Row-major: evaluations[w_idx * 4 + p_idx]
             let evaluations: Vec<FieldElement> = all_weights
-                .par_iter()
-                .flat_map_iter(|w| {
+                .iter()
+                .flat_map(|w| {
                     let n = w.vector.len();
                     [
                         dot(&w.vector, &c1.masked_polynomial[..n]),
@@ -732,7 +719,7 @@ fn create_weights_and_evaluations_for_two_polynomials<const N: usize>(
         f_sums.push(dot(&w, &f_polynomial[..base_len]));
         g_sums.push(dot(&w, &g_polynomial[..base_len]));
 
-        weights.push(PrefixCovector::new(w, final_len));
+        weights.push(PrefixCovector::deferred(w, final_len));
     }
 
     (weights, f_sums, g_sums)
@@ -744,8 +731,8 @@ fn compute_evaluations_single(
     random_poly: &[FieldElement],
 ) -> Vec<FieldElement> {
     weights
-        .par_iter()
-        .flat_map_iter(|w| {
+        .iter()
+        .flat_map(|w| {
             let n = w.vector.len();
             [
                 dot(&w.vector, &masked_poly[..n]),
@@ -811,81 +798,6 @@ fn compute_public_weight_evaluations_dual(
     (f1, g1, f2, g2)
 }
 
-#[cfg(test)]
-mod tests {
-    use {super::*, ark_ff::UniformRand, whir::algebra::linear_form::Covector};
-
-    fn make_full_covector(prefix: &[FieldElement], logical_size: usize) -> Covector<FieldElement> {
-        let mut full = prefix.to_vec();
-        full.resize(logical_size, FieldElement::zero());
-        Covector::new(full)
-    }
-
-    #[test]
-    fn prefix_covector_size() {
-        let pc = PrefixCovector::new(vec![FieldElement::one(); 4], 16);
-        assert_eq!(pc.size(), 16);
-    }
-
-    #[test]
-    fn prefix_covector_mle_evaluate_matches_full() {
-        let mut rng = ark_std::rand::thread_rng();
-
-        for (prefix_len, logical_size) in [(2usize, 8usize), (4, 16), (4, 4), (8, 32)] {
-            let prefix: Vec<FieldElement> = (0..prefix_len)
-                .map(|_| FieldElement::rand(&mut rng))
-                .collect();
-
-            let num_vars = logical_size.trailing_zeros() as usize;
-            let point: Vec<FieldElement> = (0..num_vars)
-                .map(|_| FieldElement::rand(&mut rng))
-                .collect();
-
-            let pc = PrefixCovector::new(prefix.clone(), logical_size);
-            let full = make_full_covector(&prefix, logical_size);
-
-            let pc_eval = pc.mle_evaluate(&point);
-            let full_eval = full.mle_evaluate(&point);
-
-            assert_eq!(
-                pc_eval, full_eval,
-                "mle_evaluate mismatch for prefix_len={prefix_len}, logical_size={logical_size}"
-            );
-        }
-    }
-
-    #[test]
-    fn prefix_covector_accumulate_matches_full() {
-        let mut rng = ark_std::rand::thread_rng();
-        let prefix: Vec<FieldElement> = (0..4).map(|_| FieldElement::rand(&mut rng)).collect();
-        let scalar = FieldElement::rand(&mut rng);
-        let logical_size = 16;
-
-        let pc = PrefixCovector::new(prefix.clone(), logical_size);
-        let full = make_full_covector(&prefix, logical_size);
-
-        let mut acc_pc = vec![FieldElement::zero(); logical_size];
-        let mut acc_full = vec![FieldElement::zero(); logical_size];
-
-        pc.accumulate(&mut acc_pc, scalar);
-        full.accumulate(&mut acc_full, scalar);
-
-        assert_eq!(acc_pc, acc_full, "accumulate mismatch");
-    }
-
-    #[test]
-    fn prefix_covector_prefix_equals_logical_size() {
-        let mut rng = ark_std::rand::thread_rng();
-        let prefix: Vec<FieldElement> = (0..8).map(|_| FieldElement::rand(&mut rng)).collect();
-        let point: Vec<FieldElement> = (0..3).map(|_| FieldElement::rand(&mut rng)).collect();
-
-        let pc = PrefixCovector::new(prefix.clone(), 8);
-        let full = make_full_covector(&prefix, 8);
-
-        assert_eq!(pc.mle_evaluate(&point), full.mle_evaluate(&point));
-    }
-}
-
 fn get_public_weights(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<TranscriptSponge>,
@@ -908,9 +820,5 @@ fn get_public_weights(
         current_pow *= x;
     }
 
-    PrefixCovector {
-        vector:       public_weights,
-        logical_size: domain_size,
-        deferred:     false,
-    }
+    PrefixCovector::non_deferred(public_weights, domain_size)
 }

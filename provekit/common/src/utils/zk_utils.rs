@@ -1,13 +1,12 @@
 use {crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*};
 
 pub fn create_masked_polynomial(
-    original: Vec<FieldElement>,
+    mut original: Vec<FieldElement>,
     mask: &[FieldElement],
 ) -> Vec<FieldElement> {
-    let mut combined = Vec::with_capacity(original.len() + mask.len());
-    combined.extend_from_slice(&original);
-    combined.extend_from_slice(mask);
-    combined
+    original.reserve(mask.len());
+    original.extend_from_slice(mask);
+    original
 }
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {

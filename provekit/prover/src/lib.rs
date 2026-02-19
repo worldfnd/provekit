@@ -1,3 +1,5 @@
+#[cfg(test)]
+use crate::r1cs::R1CSSolver;
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -68,7 +70,7 @@ impl Prove for Prover {
         drop(self.program);
         drop(self.witness_generator);
 
-        // R1CS matrices are only needed at sumcheck; compress to save ~96 MB during
+        // R1CS matrices are only needed at sumcheck; compress to free memory during
         // commits.
         let compressed_r1cs = CompressedR1CS::compress(self.r1cs);
         let num_witnesses = compressed_r1cs.num_witnesses();
@@ -96,6 +98,8 @@ impl Prove for Prover {
             );
         }
 
+        // Compress w2 layers to free memory during w1 commit (only when
+        // challenges exist; otherwise just drop them).
         let has_challenges = self.whir_for_witness.num_challenges > 0;
         let compressed_w2_layers = if has_challenges {
             Some(CompressedLayers::compress(
@@ -161,11 +165,8 @@ impl Prove for Prover {
         let r1cs = compressed_r1cs.decompress();
 
         #[cfg(test)]
-        crate::r1cs::test_witness_satisfaction(
-            &r1cs,
-            &witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>(),
-        )
-        .context("While verifying R1CS instance")?;
+        r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+            .context("While verifying R1CS instance")?;
 
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
@@ -180,8 +181,9 @@ impl Prove for Prover {
 
         let full_witness: Vec<FieldElement> = witness
             .into_iter()
-            .map(|w| w.expect("All witnesses must be solved before proving"))
-            .collect();
+            .enumerate()
+            .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
+            .collect::<Result<Vec<_>>>()?;
 
         let whir_r1cs_proof = self
             .whir_for_witness
