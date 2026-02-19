@@ -5,7 +5,7 @@ use {
         sod::SOD,
         types::{
             DataGroupHash, DataGroupHashValues, DigestAlgorithm, EContent, EncapContentInfo,
-            LDSSecurityObject, SignatureAlgorithm, SignatureAlgorithmName, SignedAttrs,
+            LDSSecurityObject, RsaPadding, SignatureAlgorithm, SignatureAlgorithmName, SignedAttrs,
             SignerIdentifier, SignerInfo, MAX_DG1_SIZE, MAX_ECONTENT_SIZE,
             MAX_SIGNED_ATTRIBUTES_SIZE,
         },
@@ -18,21 +18,167 @@ use {
     rasn_pkix::AlgorithmIdentifier,
     rsa::{
         pkcs1::EncodeRsaPublicKey,
-        pkcs1v15::SigningKey,
-        signature::{SignatureEncoding, Signer},
+        pkcs1v15::SigningKey as Pkcs1SigningKey,
+        pss::SigningKey as PssSigningKey,
+        signature::{RandomizedSigner, SignatureEncoding, Signer},
         RsaPrivateKey, RsaPublicKey,
     },
-    sha2::{Digest, Sha256},
+    sha1::Sha1,
+    sha2::{Digest, Sha224, Sha256, Sha384, Sha512},
     std::collections::{BTreeSet, HashMap},
 };
+
+// ============================================================================
+// Mock configuration
+// ============================================================================
+
+/// Configuration for mock SOD generation, controlling hash algorithms and
+/// RSA padding scheme.
+pub struct MockConfig {
+    /// Hash algorithm used for DG1 digest in eContent
+    pub dg_hash:     DigestAlgorithm,
+    /// Hash algorithm used for signed_attributes digest
+    pub sa_hash:     DigestAlgorithm,
+    /// RSA padding scheme for DSC→SOD signature
+    pub dsc_padding: RsaPadding,
+    /// RSA padding scheme for CSCA→DSC signature (TBS signing)
+    pub csc_padding: RsaPadding,
+}
+
+impl Default for MockConfig {
+    fn default() -> Self {
+        Self {
+            dg_hash:     DigestAlgorithm::SHA256,
+            sa_hash:     DigestAlgorithm::SHA256,
+            dsc_padding: RsaPadding::Pkcs1,
+            csc_padding: RsaPadding::Pkcs1,
+        }
+    }
+}
+
+// ============================================================================
+// Hash dispatch helper
+// ============================================================================
+
+/// Hash bytes using the specified digest algorithm, returning the digest as a
+/// Vec<u8>.
+fn hash_bytes(algo: &DigestAlgorithm, data: &[u8]) -> Vec<u8> {
+    match algo {
+        DigestAlgorithm::SHA1 => Sha1::digest(data).to_vec(),
+        DigestAlgorithm::SHA224 => Sha224::digest(data).to_vec(),
+        DigestAlgorithm::SHA256 => Sha256::digest(data).to_vec(),
+        DigestAlgorithm::SHA384 => Sha384::digest(data).to_vec(),
+        DigestAlgorithm::SHA512 => Sha512::digest(data).to_vec(),
+    }
+}
+
+/// Sign data using the specified RSA padding scheme and SHA-256 as the hash
+/// algorithm (the signature algorithm for TBS/signedAttrs signing).
+fn rsa_sign(
+    priv_key: &RsaPrivateKey,
+    data: &[u8],
+    padding: &RsaPadding,
+    hash_algo: &DigestAlgorithm,
+) -> Vec<u8> {
+    // We dispatch on both padding and hash algorithm.
+    // For simplicity, we use SHA-256 for PSS salt hash since that's most common.
+    match (padding, hash_algo) {
+        (RsaPadding::Pkcs1, DigestAlgorithm::SHA1) => {
+            let signer = Pkcs1SigningKey::<Sha1>::new(priv_key.clone());
+            signer.sign(data).to_bytes().into()
+        }
+        (RsaPadding::Pkcs1, DigestAlgorithm::SHA224) => {
+            let signer = Pkcs1SigningKey::<Sha224>::new(priv_key.clone());
+            signer.sign(data).to_bytes().into()
+        }
+        (RsaPadding::Pkcs1, DigestAlgorithm::SHA256) => {
+            let signer = Pkcs1SigningKey::<Sha256>::new(priv_key.clone());
+            signer.sign(data).to_bytes().into()
+        }
+        (RsaPadding::Pkcs1, DigestAlgorithm::SHA384) => {
+            let signer = Pkcs1SigningKey::<Sha384>::new(priv_key.clone());
+            signer.sign(data).to_bytes().into()
+        }
+        (RsaPadding::Pkcs1, DigestAlgorithm::SHA512) => {
+            let signer = Pkcs1SigningKey::<Sha512>::new(priv_key.clone());
+            signer.sign(data).to_bytes().into()
+        }
+        (RsaPadding::Pss, DigestAlgorithm::SHA1) => {
+            let signer = PssSigningKey::<Sha1>::new(priv_key.clone());
+            let mut rng = rsa::rand_core::OsRng;
+            signer.sign_with_rng(&mut rng, data).to_bytes().into()
+        }
+        (RsaPadding::Pss, DigestAlgorithm::SHA224) => {
+            let signer = PssSigningKey::<Sha224>::new(priv_key.clone());
+            let mut rng = rsa::rand_core::OsRng;
+            signer.sign_with_rng(&mut rng, data).to_bytes().into()
+        }
+        (RsaPadding::Pss, DigestAlgorithm::SHA256) => {
+            let signer = PssSigningKey::<Sha256>::new(priv_key.clone());
+            let mut rng = rsa::rand_core::OsRng;
+            signer.sign_with_rng(&mut rng, data).to_bytes().into()
+        }
+        (RsaPadding::Pss, DigestAlgorithm::SHA384) => {
+            let signer = PssSigningKey::<Sha384>::new(priv_key.clone());
+            let mut rng = rsa::rand_core::OsRng;
+            signer.sign_with_rng(&mut rng, data).to_bytes().into()
+        }
+        (RsaPadding::Pss, DigestAlgorithm::SHA512) => {
+            let signer = PssSigningKey::<Sha512>::new(priv_key.clone());
+            let mut rng = rsa::rand_core::OsRng;
+            signer.sign_with_rng(&mut rng, data).to_bytes().into()
+        }
+    }
+}
 
 // ============================================================================
 // Well-known OIDs
 // ============================================================================
 
+/// SHA-1: 1.3.14.3.2.26
+fn oid_sha1() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 3, 14, 3, 2, 26].into())
+}
+
+/// SHA-224: 2.16.840.1.101.3.4.2.4
+fn oid_sha224() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![2, 16, 840, 1, 101, 3, 4, 2, 4].into())
+}
+
 /// SHA-256: 2.16.840.1.101.3.4.2.1
 fn oid_sha256() -> ObjectIdentifier {
     ObjectIdentifier::new_unchecked(vec![2, 16, 840, 1, 101, 3, 4, 2, 1].into())
+}
+
+/// SHA-384: 2.16.840.1.101.3.4.2.2
+fn oid_sha384() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![2, 16, 840, 1, 101, 3, 4, 2, 2].into())
+}
+
+/// SHA-512: 2.16.840.1.101.3.4.2.3
+fn oid_sha512() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![2, 16, 840, 1, 101, 3, 4, 2, 3].into())
+}
+
+/// Return the OID for a given digest algorithm.
+fn oid_for_digest(algo: &DigestAlgorithm) -> ObjectIdentifier {
+    match algo {
+        DigestAlgorithm::SHA1 => oid_sha1(),
+        DigestAlgorithm::SHA224 => oid_sha224(),
+        DigestAlgorithm::SHA256 => oid_sha256(),
+        DigestAlgorithm::SHA384 => oid_sha384(),
+        DigestAlgorithm::SHA512 => oid_sha512(),
+    }
+}
+
+/// sha1WithRSAEncryption: 1.2.840.113549.1.1.5
+fn oid_sha1_with_rsa() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 5].into())
+}
+
+/// sha224WithRSAEncryption: 1.2.840.113549.1.1.14
+fn oid_sha224_with_rsa() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 14].into())
 }
 
 /// sha256WithRSAEncryption: 1.2.840.113549.1.1.11
@@ -40,9 +186,53 @@ fn oid_sha256_with_rsa() -> ObjectIdentifier {
     ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 11].into())
 }
 
+/// sha384WithRSAEncryption: 1.2.840.113549.1.1.12
+fn oid_sha384_with_rsa() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 12].into())
+}
+
+/// sha512WithRSAEncryption: 1.2.840.113549.1.1.13
+fn oid_sha512_with_rsa() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 13].into())
+}
+
+/// RSASSA-PSS: 1.2.840.113549.1.1.10
+fn oid_rsassa_pss() -> ObjectIdentifier {
+    ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 10].into())
+}
+
 /// rsaEncryption: 1.2.840.113549.1.1.1
 fn oid_rsa_encryption() -> ObjectIdentifier {
     ObjectIdentifier::new_unchecked(vec![1, 2, 840, 113549, 1, 1, 1].into())
+}
+
+/// Return the signature algorithm OID for a given hash + padding combination.
+fn oid_for_sig_algo(hash: &DigestAlgorithm, padding: &RsaPadding) -> ObjectIdentifier {
+    match padding {
+        RsaPadding::Pss => oid_rsassa_pss(),
+        RsaPadding::Pkcs1 => match hash {
+            DigestAlgorithm::SHA1 => oid_sha1_with_rsa(),
+            DigestAlgorithm::SHA224 => oid_sha224_with_rsa(),
+            DigestAlgorithm::SHA256 => oid_sha256_with_rsa(),
+            DigestAlgorithm::SHA384 => oid_sha384_with_rsa(),
+            DigestAlgorithm::SHA512 => oid_sha512_with_rsa(),
+        },
+    }
+}
+
+/// Return the `SignatureAlgorithmName` for a given hash + padding combination.
+fn sig_algo_name(hash: &DigestAlgorithm, padding: &RsaPadding) -> SignatureAlgorithmName {
+    match padding {
+        RsaPadding::Pss => SignatureAlgorithmName::RsassaPss,
+        RsaPadding::Pkcs1 => match hash {
+            DigestAlgorithm::SHA1 => SignatureAlgorithmName::Sha1WithRsaSignature,
+            DigestAlgorithm::SHA224 | DigestAlgorithm::SHA256 => {
+                SignatureAlgorithmName::Sha256WithRsaEncryption
+            }
+            DigestAlgorithm::SHA384 => SignatureAlgorithmName::Sha384WithRsaEncryption,
+            DigestAlgorithm::SHA512 => SignatureAlgorithmName::Sha512WithRsaEncryption,
+        },
+    }
 }
 
 /// mRTDSignatureData (id-ldsSecurityObject): 2.23.136.1.1.1
@@ -192,26 +382,26 @@ pub fn dg1_bytes_with_birthdate_expiry_date(birthdate: &[u8; 6], expiry: &[u8; 6
 // eContent builder (DER-encoded LDSSecurityObject)
 // ============================================================================
 
-/// Build a DER-encoded LDSSecurityObject containing the SHA-256 hash of DG1
-/// and a dummy DG2 hash, and return both the encoded bytes and the raw DG1
-/// hash.
-fn build_econtent_bytes(dg1: &[u8]) -> Vec<u8> {
-    let dg1_hash = Sha256::digest(dg1);
+/// Build a DER-encoded LDSSecurityObject containing the hash of DG1
+/// (using the specified digest algorithm) and a dummy DG2 hash.
+fn build_econtent_bytes(dg1: &[u8], dg_hash: &DigestAlgorithm) -> Vec<u8> {
+    let dg1_hash = hash_bytes(dg_hash, dg1);
+    let hash_len = dg1_hash.len();
 
     let lds_security_object = LDSSecurityObject {
         version:                Integer::from(0),
         hash_algorithm:         AlgorithmIdentifier {
-            algorithm:  oid_sha256(),
+            algorithm:  oid_for_digest(dg_hash),
             parameters: None,
         },
         data_group_hash_values: vec![
             DataGroupHash {
                 data_group_number:     Integer::from(1),
-                data_group_hash_value: OctetString::from(dg1_hash.to_vec()),
+                data_group_hash_value: OctetString::from(dg1_hash),
             },
             DataGroupHash {
                 data_group_number:     Integer::from(2),
-                data_group_hash_value: OctetString::from(vec![0x01u8; 32]),
+                data_group_hash_value: OctetString::from(vec![0x01u8; hash_len]),
             },
         ]
         .into(),
@@ -236,8 +426,8 @@ fn build_econtent_bytes(dg1: &[u8]) -> Vec<u8> {
 /// Build a DER-encoded SET OF Attribute containing contentType and
 /// messageDigest, matching the reconstruction logic in
 /// `SOD::parse_signed_attrs`.
-fn build_signed_attrs_bytes(econtent_bytes: &[u8]) -> Vec<u8> {
-    let econtent_hash = Sha256::digest(econtent_bytes);
+fn build_signed_attrs_bytes(econtent_bytes: &[u8], sa_hash: &DigestAlgorithm) -> Vec<u8> {
+    let econtent_hash = hash_bytes(sa_hash, econtent_bytes);
 
     // contentType attribute: OID -> mRTDSignatureData
     let content_type_value = der::encode(&oid_mrtd_signature_data()).expect("encode mRTD OID");
@@ -350,7 +540,10 @@ fn build_dsc_extensions(dsc_pub: &RsaPublicKey) -> rasn_pkix::Extensions {
 }
 
 /// Build a DER-encoded rasn_pkix::TbsCertificate for a DSC signed by CSCA.
-fn build_tbs_certificate_bytes(dsc_pub: &RsaPublicKey) -> Vec<u8> {
+fn build_tbs_certificate_bytes(
+    dsc_pub: &RsaPublicKey,
+    sig_algo_oid: &ObjectIdentifier,
+) -> Vec<u8> {
     use rasn_pkix::{
         SubjectPublicKeyInfo as RasnSpki, TbsCertificate as RasnTbs, Validity, Version,
     };
@@ -387,7 +580,7 @@ fn build_tbs_certificate_bytes(dsc_pub: &RsaPublicKey) -> Vec<u8> {
         version: Version::V3,
         serial_number: Integer::from(2),
         signature: AlgorithmIdentifier {
-            algorithm:  oid_sha256_with_rsa(),
+            algorithm:  sig_algo_oid.clone(),
             parameters: Some(Any::new(null_params)),
         },
         issuer: build_dn("Mock CSCA", "UT", "Mock Passport Authority"),
@@ -415,18 +608,22 @@ fn build_sod_from_tbs(
     dsc_pub: &RsaPublicKey,
     csca_priv: &RsaPrivateKey,
     tbs_bytes: Vec<u8>,
+    config: &MockConfig,
 ) -> SOD {
     // --- eContent: DER-encoded LDSSecurityObject ---
-    let econtent_bytes = build_econtent_bytes(dg1);
+    let econtent_bytes = build_econtent_bytes(dg1, &config.dg_hash);
 
-    let dg1_hash = Sha256::digest(dg1);
+    let dg1_hash = hash_bytes(&config.dg_hash, dg1);
     let mut dg_map = HashMap::new();
     dg_map.insert(1u32, Binary::from_slice(&dg1_hash));
-    dg_map.insert(2u32, Binary::from_slice(&vec![0x01u8; 32]));
+    dg_map.insert(
+        2u32,
+        Binary::from_slice(&vec![0x01u8; dg1_hash.len()]),
+    );
     let data_group_hashes = DataGroupHashValues { values: dg_map };
     let econtent = EContent {
         version:                0,
-        hash_algorithm:         DigestAlgorithm::SHA256,
+        hash_algorithm:         config.dg_hash.clone(),
         data_group_hash_values: data_group_hashes,
         bytes:                  Binary::from_slice(&econtent_bytes),
     };
@@ -436,29 +633,28 @@ fn build_sod_from_tbs(
     };
 
     // --- SignedAttributes: DER-encoded SET OF Attribute ---
-    let signed_attr_bytes = build_signed_attrs_bytes(&econtent_bytes);
+    let signed_attr_bytes = build_signed_attrs_bytes(&econtent_bytes, &config.sa_hash);
 
-    let econtent_hash = Sha256::digest(&econtent_bytes);
+    let econtent_hash = hash_bytes(&config.sa_hash, &econtent_bytes);
     let signed_attrs = SignedAttrs {
         content_type:   "mRTDSignatureData".to_string(),
         message_digest: Binary::from_slice(
-            // Store the raw messageDigest value (OCTET STRING DER of the hash)
-            &der::encode(&OctetString::from(econtent_hash.to_vec())).expect("encode digest"),
+            &der::encode(&OctetString::from(econtent_hash)).expect("encode digest"),
         ),
         signing_time:   None,
         bytes:          Binary::from_slice(&signed_attr_bytes),
     };
 
     // --- Sign SignedAttributes with DSC private key ---
-    let dsc_signer = SigningKey::<Sha256>::new(dsc_priv.clone());
-    let dsc_signature = dsc_signer.sign(&signed_attr_bytes).to_bytes();
+    let dsc_signature = rsa_sign(dsc_priv, &signed_attr_bytes, &config.dsc_padding, &config.sa_hash);
 
+    let dsc_sig_algo_name = sig_algo_name(&config.sa_hash, &config.dsc_padding);
     let signer_info = SignerInfo {
         version: 1,
         signed_attrs,
-        digest_algorithm: DigestAlgorithm::SHA256,
+        digest_algorithm: config.sa_hash.clone(),
         signature_algorithm: SignatureAlgorithm {
-            name:       SignatureAlgorithmName::Sha256WithRsaEncryption,
+            name:       dsc_sig_algo_name,
             parameters: None,
         },
         signature: Binary::from_slice(&dsc_signature),
@@ -472,15 +668,15 @@ fn build_sod_from_tbs(
     let dsc_pub_der = dsc_pub.to_pkcs1_der().expect("pkcs1 der").to_vec();
 
     // CSCA signs the DER-encoded TBS bytes
-    let csca_signer = SigningKey::<Sha256>::new(csca_priv.clone());
-    let csca_signature = csca_signer.sign(&tbs_bytes).to_bytes();
+    let csca_signature = rsa_sign(csca_priv, &tbs_bytes, &config.csc_padding, &config.sa_hash);
 
+    let csc_sig_algo_name = sig_algo_name(&config.sa_hash, &config.csc_padding);
     let dsc_cert = DSC {
         tbs:                 TbsCertificate {
             version:                 2, // v3
             serial_number:           Binary::from_slice(&[2]),
             signature_algorithm:     SignatureAlgorithm {
-                name:       SignatureAlgorithmName::Sha256WithRsaEncryption,
+                name:       csc_sig_algo_name.clone(),
                 parameters: None,
             },
             issuer:                  "countryName=UT, organizationName=Mock Passport Authority, \
@@ -512,7 +708,7 @@ fn build_sod_from_tbs(
             bytes:                   Binary::from_slice(&tbs_bytes),
         },
         signature_algorithm: SignatureAlgorithm {
-            name:       SignatureAlgorithmName::Sha256WithRsaEncryption,
+            name:       csc_sig_algo_name,
             parameters: None,
         },
         signature:           Binary::from_slice(&csca_signature),
@@ -520,7 +716,7 @@ fn build_sod_from_tbs(
 
     SOD {
         version: 3,
-        digest_algorithms: vec![DigestAlgorithm::SHA256],
+        digest_algorithms: vec![config.sa_hash.clone()],
         encap_content_info,
         signer_info,
         certificate: dsc_cert,
@@ -530,12 +726,7 @@ fn build_sod_from_tbs(
 
 /// Generate a synthetic SOD with proper DER-encoded internal structures.
 ///
-/// The SOD contains:
-///   - eContent: DER-encoded LDSSecurityObject with DG1 + DG2 hashes
-///   - SignedAttributes: DER-encoded CMS Attribute SET (contentType +
-///     messageDigest)
-///   - TBS Certificate: DER-encoded X.509 TBSCertificate with extensions
-///   - All proper RSA signatures (DSC signs signedAttrs, CSCA signs TBS)
+/// Uses the default `MockConfig` (SHA-256, PKCS1).
 pub fn generate_sod(
     dg1: &[u8],
     dsc_priv: &RsaPrivateKey,
@@ -543,8 +734,20 @@ pub fn generate_sod(
     csca_priv: &RsaPrivateKey,
     _csca_pub: &RsaPublicKey,
 ) -> SOD {
-    let tbs_bytes = build_tbs_certificate_bytes(dsc_pub);
-    build_sod_from_tbs(dg1, dsc_priv, dsc_pub, csca_priv, tbs_bytes)
+    generate_sod_with_config(dg1, dsc_priv, dsc_pub, csca_priv, &MockConfig::default())
+}
+
+/// Generate a synthetic SOD with the specified mock configuration.
+pub fn generate_sod_with_config(
+    dg1: &[u8],
+    dsc_priv: &RsaPrivateKey,
+    dsc_pub: &RsaPublicKey,
+    csca_priv: &RsaPrivateKey,
+    config: &MockConfig,
+) -> SOD {
+    let sig_algo_oid = oid_for_sig_algo(&config.sa_hash, &config.csc_padding);
+    let tbs_bytes = build_tbs_certificate_bytes(dsc_pub, &sig_algo_oid);
+    build_sod_from_tbs(dg1, dsc_priv, dsc_pub, csca_priv, tbs_bytes, config)
 }
 
 /// Generate a synthetic SOD with a TBS certificate padded to
@@ -561,22 +764,45 @@ pub fn generate_sod_with_padded_tbs(
     _csca_pub: &RsaPublicKey,
     tbs_actual_len: usize,
 ) -> SOD {
-    let base_tbs = build_tbs_certificate_bytes(dsc_pub);
+    generate_sod_with_padded_tbs_and_config(
+        dg1,
+        dsc_priv,
+        dsc_pub,
+        csca_priv,
+        tbs_actual_len,
+        &MockConfig::default(),
+    )
+}
+
+/// Generate a synthetic SOD with a TBS certificate padded to
+/// `tbs_actual_len` bytes, using the specified mock configuration.
+pub fn generate_sod_with_padded_tbs_and_config(
+    dg1: &[u8],
+    dsc_priv: &RsaPrivateKey,
+    dsc_pub: &RsaPublicKey,
+    csca_priv: &RsaPrivateKey,
+    tbs_actual_len: usize,
+    config: &MockConfig,
+) -> SOD {
+    let sig_algo_oid = oid_for_sig_algo(&config.sa_hash, &config.csc_padding);
+    let base_tbs = build_tbs_certificate_bytes(dsc_pub, &sig_algo_oid);
 
     let tbs_bytes = if base_tbs.len() >= tbs_actual_len {
         base_tbs
     } else {
-        // Rebuild with a padding extension to hit the target length.
-        // We compute how many extra bytes we need and add a dummy extension.
-        build_padded_tbs_certificate_bytes(dsc_pub, tbs_actual_len)
+        build_padded_tbs_certificate_bytes(dsc_pub, tbs_actual_len, &sig_algo_oid)
     };
 
-    build_sod_from_tbs(dg1, dsc_priv, dsc_pub, csca_priv, tbs_bytes)
+    build_sod_from_tbs(dg1, dsc_priv, dsc_pub, csca_priv, tbs_bytes, config)
 }
 
 /// Build a TBS certificate with an extra padding extension to reach the target
 /// size.
-fn build_padded_tbs_certificate_bytes(dsc_pub: &RsaPublicKey, target_len: usize) -> Vec<u8> {
+fn build_padded_tbs_certificate_bytes(
+    dsc_pub: &RsaPublicKey,
+    target_len: usize,
+    sig_algo_oid: &ObjectIdentifier,
+) -> Vec<u8> {
     use rasn_pkix::{
         Extension, SubjectPublicKeyInfo as RasnSpki, TbsCertificate as RasnTbs, Validity, Version,
     };
@@ -608,7 +834,7 @@ fn build_padded_tbs_certificate_bytes(dsc_pub: &RsaPublicKey, target_len: usize)
         version:                 Version::V3,
         serial_number:           Integer::from(2),
         signature:               AlgorithmIdentifier {
-            algorithm:  oid_sha256_with_rsa(),
+            algorithm:  sig_algo_oid.clone(),
             parameters: Some(Any::new(null_params.clone())),
         },
         issuer:                  build_dn("Mock CSCA", "UT", "Mock Passport Authority"),
@@ -635,7 +861,7 @@ fn build_padded_tbs_certificate_bytes(dsc_pub: &RsaPublicKey, target_len: usize)
             version:                 Version::V3,
             serial_number:           Integer::from(2),
             signature:               AlgorithmIdentifier {
-                algorithm:  oid_sha256_with_rsa(),
+                algorithm:  sig_algo_oid.clone(),
                 parameters: Some(Any::new(null_params.clone())),
             },
             issuer:                  build_dn("Mock CSCA", "UT", "Mock Passport Authority"),
@@ -701,7 +927,7 @@ mod tests {
         super::*,
         crate::{
             mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
-            PassportReader, SaveToml,
+            AttestConfig, CircuitVariant, PassportReader, SaveToml,
         },
         base64::{engine::general_purpose::STANDARD, Engine as _},
         rsa::pkcs8::DecodePrivateKey,
@@ -723,7 +949,7 @@ mod tests {
 
     #[test]
     fn test_generate_and_validate_sod() {
-        use crate::{MerkleAge720Config, MerkleAgeBaseConfig};
+        use crate::parser::types::{RsaKeyBits, RsaPadding};
 
         let csca_priv = load_csca_mock_private_key();
         let csca_pub = csca_priv.to_public_key();
@@ -736,24 +962,26 @@ mod tests {
         let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub));
         let csca_idx = reader.validate().expect("validation failed");
 
-        let config = MerkleAge720Config {
-            base: MerkleAgeBaseConfig {
-                current_date: 1735689600,
-                min_age_required: 18,
-                max_age_required: 0,
-                ..Default::default()
-            },
+        let variant = CircuitVariant {
+            tbs_size:      700,
+            csca_key_bits: RsaKeyBits::Rsa4096,
+            dsc_key_bits:  RsaKeyBits::Rsa2048,
+            csca_padding:  RsaPadding::Pkcs1,
+            dsc_padding:   RsaPadding::Pkcs1,
+            sa_hash:       DigestAlgorithm::SHA256,
+            dg_hash:       DigestAlgorithm::SHA256,
         };
+        let config = AttestConfig::default();
 
         let inputs = reader
-            .to_merkle_age_720_inputs(csca_idx, config)
-            .expect("to merkle age 720 inputs");
+            .to_passport_inputs(csca_idx, &variant, config)
+            .expect("to passport inputs");
 
         // Verify the inputs can be saved (exercises TOML serialization)
         inputs
-            .add_dsc
+            .dsc_sig_check
             .save_to_toml_file("/dev/null")
-            .expect("save add_dsc toml");
+            .expect("save dsc_sig_check toml");
     }
 
     #[test]
@@ -775,7 +1003,7 @@ mod tests {
     #[test]
     fn test_econtent_is_valid_der() {
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
-        let econtent_bytes = build_econtent_bytes(&dg1);
+        let econtent_bytes = build_econtent_bytes(&dg1, &DigestAlgorithm::SHA256);
 
         // Should be parseable as LDSSecurityObject
         let parsed: LDSSecurityObject =
@@ -801,8 +1029,8 @@ mod tests {
         use crate::parser::utils::oid_to_string;
 
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
-        let econtent_bytes = build_econtent_bytes(&dg1);
-        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes);
+        let econtent_bytes = build_econtent_bytes(&dg1, &DigestAlgorithm::SHA256);
+        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
 
         // Should be parseable as BTreeSet<Attribute>
         let parsed: BTreeSet<Attribute> =
@@ -827,7 +1055,7 @@ mod tests {
     fn test_tbs_certificate_is_valid_der() {
         let dsc_priv = load_dsc_mock_private_key();
         let dsc_pub = dsc_priv.to_public_key();
-        let tbs_bytes = build_tbs_certificate_bytes(&dsc_pub);
+        let tbs_bytes = build_tbs_certificate_bytes(&dsc_pub, &oid_sha256_with_rsa());
 
         // Should be parseable by x509-parser (needs to be wrapped in a
         // Certificate for full parsing, but the raw bytes should at least
@@ -897,15 +1125,15 @@ mod tests {
     fn test_size_constraints() {
         let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
 
-        let econtent_bytes = build_econtent_bytes(&dg1);
+        let econtent_bytes = build_econtent_bytes(&dg1, &DigestAlgorithm::SHA256);
         assert!(econtent_bytes.len() <= MAX_ECONTENT_SIZE);
 
-        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes);
+        let signed_attrs_bytes = build_signed_attrs_bytes(&econtent_bytes, &DigestAlgorithm::SHA256);
         assert!(signed_attrs_bytes.len() <= MAX_SIGNED_ATTRIBUTES_SIZE);
 
         let dsc_priv = load_dsc_mock_private_key();
         let dsc_pub = dsc_priv.to_public_key();
-        let tbs_bytes = build_tbs_certificate_bytes(&dsc_pub);
+        let tbs_bytes = build_tbs_certificate_bytes(&dsc_pub, &oid_sha256_with_rsa());
         assert!(tbs_bytes.len() <= 720);
     }
 

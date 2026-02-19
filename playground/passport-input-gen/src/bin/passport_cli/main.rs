@@ -1,11 +1,11 @@
 /// Unified CLI for passport-input-gen.
 ///
 /// Runtime selection of:
-///   - TBS variant: 720 or 1300
+///   - Circuit variant: TBS size, key sizes, padding, hash algorithms
 ///   - Mode: Generate TOML files  or  Generate proofs directly (no TOML)
 ///
-/// Prove mode generates proofs for all circuits (including t_attest)
-/// using the JSON -> InputMap -> prover.prove() pipeline.
+/// Prove mode generates proofs for all 4 circuits using the
+/// JSON -> InputMap -> prover.prove() pipeline.
 mod profiling_alloc;
 mod span_stats;
 
@@ -15,11 +15,13 @@ use {
     noirc_abi::input_parser::Format,
     passport_input_gen::{
         mock_generator::{
-            dg1_bytes_with_birthdate_expiry_date, generate_sod, generate_sod_with_padded_tbs,
+            dg1_bytes_with_birthdate_expiry_date, generate_sod_with_padded_tbs_and_config,
+            MockConfig,
         },
         mock_keys::{MOCK_CSCA_PRIV_KEY_B64, MOCK_DSC_PRIV_KEY_B64},
-        Binary, CircuitInputSet, MerkleAge1300Config, MerkleAge1300Inputs, MerkleAge720Config,
-        MerkleAge720Inputs, MerkleAgeBaseConfig, PassportReader,
+        parser::types::{DigestAlgorithm, RsaKeyBits, RsaPadding},
+        AttestConfig, Binary, CircuitInputSet, CircuitVariant, PassportCircuitInputs,
+        PassportReader,
     },
     profiling_alloc::ProfilingAllocator,
     provekit_prover::Prove,
@@ -37,7 +39,7 @@ use {
     std::{
         fs::File,
         io::{BufWriter, Write as _},
-        path::{Path, PathBuf},
+        path::Path,
         sync::Mutex,
     },
 };
@@ -119,15 +121,40 @@ macro_rules! tee_println {
 /// Passport Input Generator & Prover CLI
 #[derive(FromArgs)]
 struct Args {
-    /// tbs variant: 720 or 1300
-    #[argh(option)]
-    tbs: u16,
+    /// TBS size: 700, 1000, 1200, or 1600 (default: 700)
+    #[argh(option, default = "700")]
+    tbs_size: usize,
+
+    /// CSCA key size in bits: 1024, 2048, 3072, 4096, 6144 (default: 4096)
+    #[argh(option, default = "String::from(\"4096\")")]
+    csca_key_bits: String,
+
+    /// DSC key size in bits: 1024, 2048, 3072, 4096 (default: 2048)
+    #[argh(option, default = "String::from(\"2048\")")]
+    dsc_key_bits: String,
+
+    /// CSCA padding: pkcs or pss (default: pkcs)
+    #[argh(option, default = "String::from(\"pkcs\")")]
+    csca_padding: String,
+
+    /// DSC padding: pkcs or pss (default: pkcs)
+    #[argh(option, default = "String::from(\"pkcs\")")]
+    dsc_padding: String,
+
+    /// signed-attributes hash: sha1, sha224, sha256, sha384, sha512 (default:
+    /// sha256)
+    #[argh(option, default = "String::from(\"sha256\")")]
+    sa_hash: String,
+
+    /// DG hash: sha1, sha224, sha256, sha384, sha512 (default: sha256)
+    #[argh(option, default = "String::from(\"sha256\")")]
+    dg_hash: String,
 
     /// mode: "toml" or "prove"
     #[argh(option)]
     mode: String,
 
-    /// output directory for TOML files (default: benchmark-inputs/tbs_{N}/test)
+    /// output directory for TOML files (default: auto-derived from variant)
     #[argh(option)]
     output_dir: Option<String>,
 
@@ -135,13 +162,63 @@ struct Args {
     #[argh(switch)]
     save_logs: bool,
 
-    /// directory for log files (default: .../benchmark-inputs/logs/test)
+    /// directory for log files (default: output_dir/logs)
     #[argh(option)]
     log_dir: Option<String>,
 }
 
+impl Args {
+    /// Build a `CircuitVariant` from CLI arguments.
+    fn to_circuit_variant(&self) -> Result<CircuitVariant> {
+        let csca_key_bits = RsaKeyBits::from_str(&self.csca_key_bits)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --csca-key-bits: {}", self.csca_key_bits))?;
+        let dsc_key_bits = RsaKeyBits::from_str(&self.dsc_key_bits)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --dsc-key-bits: {}", self.dsc_key_bits))?;
+        let csca_padding = RsaPadding::from_str(&self.csca_padding)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --csca-padding: {}", self.csca_padding))?;
+        let dsc_padding = RsaPadding::from_str(&self.dsc_padding)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --dsc-padding: {}", self.dsc_padding))?;
+        let sa_hash = DigestAlgorithm::from_name(&self.sa_hash)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --sa-hash: {}", self.sa_hash))?;
+        let dg_hash = DigestAlgorithm::from_name(&self.dg_hash)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --dg-hash: {}", self.dg_hash))?;
+
+        let variant = CircuitVariant {
+            tbs_size: self.tbs_size,
+            csca_key_bits,
+            dsc_key_bits,
+            csca_padding,
+            dsc_padding,
+            sa_hash,
+            dg_hash,
+        };
+        variant
+            .validate()
+            .map_err(|e| anyhow::anyhow!("Invalid circuit variant: {e}"))?;
+        Ok(variant)
+    }
+
+    /// Build a `MockConfig` from CLI arguments.
+    fn to_mock_config(&self) -> Result<MockConfig> {
+        let dg_hash = DigestAlgorithm::from_name(&self.dg_hash)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --dg-hash: {}", self.dg_hash))?;
+        let sa_hash = DigestAlgorithm::from_name(&self.sa_hash)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --sa-hash: {}", self.sa_hash))?;
+        let dsc_padding = RsaPadding::from_str(&self.dsc_padding)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --dsc-padding: {}", self.dsc_padding))?;
+        let csc_padding = RsaPadding::from_str(&self.csca_padding)
+            .ok_or_else(|| anyhow::anyhow!("Invalid --csca-padding: {}", self.csca_padding))?;
+        Ok(MockConfig {
+            dg_hash,
+            sa_hash,
+            dsc_padding,
+            csc_padding,
+        })
+    }
+}
+
 // ============================================================================
-// Mock data helpers (consolidated from old generate_720/1300_inputs binaries)
+// Mock data helpers
 // ============================================================================
 
 fn load_mock_keys() -> (RsaPrivateKey, RsaPublicKey, RsaPrivateKey, RsaPublicKey) {
@@ -162,73 +239,58 @@ fn load_mock_keys() -> (RsaPrivateKey, RsaPublicKey, RsaPrivateKey, RsaPublicKey
     (csca_priv, csca_pub, dsc_priv, dsc_pub)
 }
 
-fn generate_720_inputs(
+fn generate_inputs(
     csca_priv: &RsaPrivateKey,
     csca_pub: &RsaPublicKey,
     dsc_priv: &RsaPrivateKey,
     dsc_pub: &RsaPublicKey,
-) -> Result<MerkleAge720Inputs> {
-    println!("\n--- Generating TBS-720 inputs ---");
+    variant: &CircuitVariant,
+    mock_config: &MockConfig,
+) -> Result<PassportCircuitInputs> {
+    println!("\n--- Generating inputs for variant ---");
+    println!("  TBS size: {}", variant.tbs_size);
+    println!("  CSCA: RSA-{} {}", variant.csca_key_bits, variant.csca_padding);
+    println!("  DSC:  RSA-{} {}", variant.dsc_key_bits, variant.dsc_padding);
+    println!(
+        "  Hash: SA={} DG={}",
+        variant.sa_hash.circuit_path(),
+        variant.dg_hash.circuit_path()
+    );
 
     let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
     println!("  DG1: {} bytes (DOB: 070101, Expiry: 320101)", dg1.len());
 
-    let sod = generate_sod(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub);
-    println!("  SOD generated (mock)");
+    // Generate SOD with TBS padded to a realistic size for the target TBS
+    // circuit. Use ~80% of tbs_size as actual TBS length.
+    let tbs_actual_len = (variant.tbs_size * 4) / 5;
+    let sod = generate_sod_with_padded_tbs_and_config(
+        &dg1,
+        dsc_priv,
+        dsc_pub,
+        csca_priv,
+        tbs_actual_len,
+        mock_config,
+    );
+    println!(
+        "  SOD generated (mock, padded TBS = {} bytes)",
+        sod.certificate.tbs.bytes.len()
+    );
 
     let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
     let csca_idx = reader.validate().context("Passport validation failed")?;
     println!("  Validation passed (CSCA key index: {})", csca_idx);
 
-    let config = MerkleAge720Config {
-        base: MerkleAgeBaseConfig {
-            current_date: 1735689600, // Jan 1, 2025 00:00:00 UTC
-            min_age_required: 18,
-            max_age_required: 0,
-            ..Default::default()
-        },
-    };
-
-    let inputs = reader
-        .to_merkle_age_720_inputs(csca_idx, config)
-        .context("Failed to generate 720 circuit inputs")?;
-    println!("  Circuit inputs generated for 4 circuits");
-
-    Ok(inputs)
-}
-
-fn generate_1300_inputs(
-    csca_priv: &RsaPrivateKey,
-    csca_pub: &RsaPublicKey,
-    dsc_priv: &RsaPrivateKey,
-    dsc_pub: &RsaPublicKey,
-) -> Result<MerkleAge1300Inputs> {
-    println!("\n--- Generating TBS-1300 inputs ---");
-
-    let dg1 = dg1_bytes_with_birthdate_expiry_date(b"070101", b"320101");
-    println!("  DG1: {} bytes (DOB: 070101, Expiry: 320101)", dg1.len());
-
-    let sod = generate_sod_with_padded_tbs(&dg1, dsc_priv, dsc_pub, csca_priv, csca_pub, 850);
-    println!("  SOD generated (mock, padded TBS = 850 bytes)");
-
-    let reader = PassportReader::new(Binary::from_slice(&dg1), sod, true, Some(csca_pub.clone()));
-    let csca_idx = reader.validate().context("Passport validation failed")?;
-    println!("  Validation passed (CSCA key index: {})", csca_idx);
-
-    let config = MerkleAge1300Config {
-        base: MerkleAgeBaseConfig {
-            current_date: 1735689600,
-            min_age_required: 17,
-            max_age_required: 0,
-            ..Default::default()
-        },
+    let config = AttestConfig {
+        current_date:     1735689600, // Jan 1, 2025 00:00:00 UTC
+        min_age_required: 18,
+        max_age_required: 0,
         ..Default::default()
     };
 
     let inputs = reader
-        .to_merkle_age_1300_inputs(csca_idx, config)
-        .context("Failed to generate 1300 circuit inputs")?;
-    println!("  Circuit inputs generated for 5 circuits");
+        .to_passport_inputs(csca_idx, variant, config)
+        .context("Failed to generate circuit inputs")?;
+    println!("  Circuit inputs generated for 4 circuits");
 
     Ok(inputs)
 }
@@ -302,41 +364,22 @@ macro_rules! prove_circuits {
     };
 }
 
-fn prove_720(
-    inputs: &MerkleAge720Inputs,
+fn prove_all(
+    inputs: &PassportCircuitInputs,
     pkp_dir: &Path,
     output_dir: &Path,
     log_dir: Option<&Path>,
 ) -> Result<()> {
-    println!("\n  Proving TBS-720 chain (4 circuits)...");
+    let names = inputs.variant.circuit_names();
+    println!("\n  Proving 4-stage pipeline...");
     prove_circuits!(
         pkp_dir,
         output_dir,
         log_dir,
-        ("t_add_dsc_720", &inputs.add_dsc),
-        ("t_add_id_data_720", &inputs.add_id_data),
-        ("t_add_integrity_commit", &inputs.add_integrity),
-        ("t_attest", &inputs.attest),
-    );
-    Ok(())
-}
-
-fn prove_1300(
-    inputs: &MerkleAge1300Inputs,
-    pkp_dir: &Path,
-    output_dir: &Path,
-    log_dir: Option<&Path>,
-) -> Result<()> {
-    println!("\n  Proving TBS-1300 chain (5 circuits)...");
-    prove_circuits!(
-        pkp_dir,
-        output_dir,
-        log_dir,
-        ("t_add_dsc_hash_1300", &inputs.add_dsc_hash),
-        ("t_add_dsc_verify_1300", &inputs.add_dsc_verify),
-        ("t_add_id_data_1300", &inputs.add_id_data),
-        ("t_add_integrity_commit", &inputs.add_integrity),
-        ("t_attest", &inputs.attest),
+        (&names[0], &inputs.dsc_sig_check),
+        (&names[1], &inputs.id_data_sig_check),
+        (&names[2], &inputs.integrity),
+        (&names[3], &inputs.attest),
     );
     Ok(())
 }
@@ -357,95 +400,47 @@ fn save_toml(inputs: &dyn CircuitInputSet, base_dir: &Path) -> Result<()> {
 }
 
 // ============================================================================
-// Summary printers
+// Summary printer
 // ============================================================================
 
-fn print_720_summary(inputs: &MerkleAge720Inputs) {
+fn print_summary(inputs: &PassportCircuitInputs) {
+    let names = inputs.variant.circuit_names();
     println!("\n  Summary:");
     println!(
         "    TBS certificate len: {}",
-        inputs.add_dsc.tbs_certificate_len
+        inputs.dsc_sig_check.tbs_certificate.len()
+    );
+    println!("    Country:             \"{}\"", inputs.dsc_sig_check.country);
+    println!(
+        "    CSCA key:            RSA-{} {}",
+        inputs.variant.csca_key_bits, inputs.variant.csca_padding
     );
     println!(
-        "    DSC pubkey offset:   {}",
-        inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert
+        "    DSC key:             RSA-{} {}",
+        inputs.variant.dsc_key_bits, inputs.variant.dsc_padding
     );
-    println!(
-        "    DG1 hash offset:     {}",
-        inputs.add_integrity.dg1_hash_offset
-    );
-    println!("    Country:             \"{}\"", inputs.add_dsc.country);
     println!(
         "    Salt chain:          {} -> {}",
-        inputs.add_dsc.salt, inputs.add_id_data.salt_out
+        inputs.dsc_sig_check.salt, inputs.id_data_sig_check.salt_out
     );
+    println!();
+    println!("  Circuits:");
+    for name in &names {
+        println!("    {}", name);
+    }
     println!();
     println!("  Computed commitments (Poseidon2):");
     println!(
         "    comm_out_1 (dsc->id_data):      {}",
-        inputs.add_id_data.comm_in
-    );
-    println!(
-        "    private_nullifier:               {}",
-        inputs.add_integrity.private_nullifier
+        inputs.id_data_sig_check.comm_in
     );
     println!(
         "    comm_out_2 (id_data->integrity): {}",
-        inputs.add_integrity.comm_in
+        inputs.integrity.comm_in
     );
     println!(
-        "    sod_hash:                        {}",
-        inputs.attest.sod_hash
-    );
-}
-
-fn print_1300_summary(inputs: &MerkleAge1300Inputs) {
-    println!("\n  Summary:");
-    println!(
-        "    TBS certificate len: {}",
-        inputs.add_dsc_verify.tbs_certificate_len
-    );
-    println!(
-        "    SHA256 state1:       {:?}",
-        inputs.add_dsc_verify.state1
-    );
-    println!(
-        "    DSC pubkey offset:   {}",
-        inputs.add_id_data.dsc_pubkey_offset_in_dsc_cert
-    );
-    println!(
-        "    DG1 hash offset:     {}",
-        inputs.add_integrity.dg1_hash_offset
-    );
-    println!(
-        "    Country:             \"{}\"",
-        inputs.add_dsc_verify.country
-    );
-    println!(
-        "    Salt chain:          {} -> {} -> {}",
-        inputs.add_dsc_hash.salt, inputs.add_dsc_verify.salt_out, inputs.add_id_data.salt_out,
-    );
-    println!();
-    println!("  Computed commitments (Poseidon2):");
-    println!(
-        "    comm_out_hash (dsc_hash->dsc_verify):  {}",
-        inputs.add_dsc_verify.comm_in
-    );
-    println!(
-        "    comm_out_verify (dsc_verify->id_data): {}",
-        inputs.add_id_data.comm_in
-    );
-    println!(
-        "    comm_out_id (id_data->integrity):      {}",
-        inputs.add_integrity.comm_in
-    );
-    println!(
-        "    private_nullifier:                      {}",
-        inputs.add_integrity.private_nullifier
-    );
-    println!(
-        "    sod_hash:                               {}",
-        inputs.attest.sod_hash
+        "    private_nullifier:               {}",
+        inputs.integrity.salted_private_nullifier_value
     );
 }
 
@@ -464,11 +459,8 @@ fn main() -> Result<()> {
     println!("  Passport Input Generator & Prover CLI");
     println!("================================================================\n");
 
-    let is_720 = match args.tbs {
-        720 => true,
-        1300 => false,
-        other => anyhow::bail!("Invalid --tbs value: {other}. Must be 720 or 1300."),
-    };
+    let variant = args.to_circuit_variant()?;
+    let mock_config = args.to_mock_config()?;
 
     let is_toml = match args.mode.as_str() {
         "toml" => true,
@@ -485,16 +477,12 @@ fn main() -> Result<()> {
     println!("  DSC key loaded (RSA-2048)");
 
     let cwd = std::env::current_dir().context("Failed to get current working directory")?;
-    let benchmark_dir: PathBuf =
-        cwd.join("noir-examples/noir-passport/merkle_age_check/benchmark-inputs");
 
     // Resolve log directory for prove mode
     let log_dir = if args.save_logs {
         let dir = match args.log_dir {
             Some(d) => cwd.join(d),
-            None => {
-                cwd.join("noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/test")
-            }
+            None => cwd.join("benchmark-inputs/logs"),
         };
         std::fs::create_dir_all(&dir)
             .with_context(|| format!("Creating log directory: {}", dir.display()))?;
@@ -504,40 +492,39 @@ fn main() -> Result<()> {
         None
     };
 
-    // Resolve output directory: --output-dir overrides, else default per TBS
-    // variant
-    let tbs_subdir = if is_720 { "tbs_720" } else { "tbs_1300" };
+    // Resolve output directory
     let output_dir = match args.output_dir {
         Some(d) => cwd.join(d),
-        None => benchmark_dir.join(format!("{tbs_subdir}/test")),
+        None => cwd.join(format!(
+            "noir-examples/passport/bin/generated-inputs/tbs_{}/rsa/{}/{}/sa_{}/dg_{}",
+            variant.tbs_size,
+            variant.csca_padding.circuit_path(),
+            variant.csca_key_bits,
+            variant.sa_hash.circuit_path(),
+            variant.dg_hash.circuit_path(),
+        )),
     };
     std::fs::create_dir_all(&output_dir)
         .with_context(|| format!("Creating output directory: {}", output_dir.display()))?;
     println!("  Output directory: {}", output_dir.display());
 
-    match (is_720, is_toml) {
-        (true, true) => {
-            let inputs = generate_720_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            save_toml(&inputs, &output_dir)?;
-            print_720_summary(&inputs);
-        }
-        (true, false) => {
-            let inputs = generate_720_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            print_720_summary(&inputs);
-            prove_720(&inputs, &benchmark_dir, &output_dir, log_dir.as_deref())?;
-            println!("\n  All TBS-720 proofs generated successfully.");
-        }
-        (false, true) => {
-            let inputs = generate_1300_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            save_toml(&inputs, &output_dir)?;
-            print_1300_summary(&inputs);
-        }
-        (false, false) => {
-            let inputs = generate_1300_inputs(&csca_priv, &csca_pub, &dsc_priv, &dsc_pub)?;
-            print_1300_summary(&inputs);
-            prove_1300(&inputs, &benchmark_dir, &output_dir, log_dir.as_deref())?;
-            println!("\n  All TBS-1300 proofs generated successfully.");
-        }
+    // Generate inputs
+    let inputs = generate_inputs(
+        &csca_priv,
+        &csca_pub,
+        &dsc_priv,
+        &dsc_pub,
+        &variant,
+        &mock_config,
+    )?;
+    print_summary(&inputs);
+
+    if is_toml {
+        save_toml(&inputs, &output_dir)?;
+    } else {
+        let pkp_dir = cwd.join("noir-examples/passport/benchmark-inputs/prepare");
+        prove_all(&inputs, &pkp_dir, &output_dir, log_dir.as_deref())?;
+        println!("\n  All proofs generated successfully.");
     }
 
     println!("\n================================================================");

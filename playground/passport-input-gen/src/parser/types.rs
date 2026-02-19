@@ -10,14 +10,97 @@ use {
     thiserror::Error,
 };
 
-pub const MAX_SIGNED_ATTRIBUTES_SIZE: usize = 200;
+pub const MAX_SIGNED_ATTRIBUTES_SIZE: usize = 220;
 pub const MAX_DG1_SIZE: usize = 95;
-pub const SIG_BYTES: usize = 256;
-pub const MAX_ECONTENT_SIZE: usize = 200;
-pub const MAX_TBS_SIZE: usize = 720;
-pub const MAX_TBS_SIZE_1300: usize = 1300;
-pub const CHUNK1_SIZE: usize = 640;
+pub const MAX_ECONTENT_SIZE: usize = 700;
 pub const TREE_DEPTH: usize = 24;
+
+/// Valid TBS certificate sizes for the new passport/ circuits.
+pub const TBS_SIZES: [usize; 4] = [700, 1000, 1200, 1600];
+
+/// RSA key sizes supported by the new passport/ circuits (CSCA and DSC).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RsaKeyBits {
+    Rsa1024,
+    Rsa2048,
+    Rsa3072,
+    Rsa4096,
+    Rsa6144,
+}
+
+impl RsaKeyBits {
+    /// Key size in bytes (modulus length).
+    pub fn byte_len(self) -> usize {
+        match self {
+            Self::Rsa1024 => 128,
+            Self::Rsa2048 => 256,
+            Self::Rsa3072 => 384,
+            Self::Rsa4096 => 512,
+            Self::Rsa6144 => 768,
+        }
+    }
+
+    /// Key size in bits.
+    pub fn bit_len(self) -> usize {
+        match self {
+            Self::Rsa1024 => 1024,
+            Self::Rsa2048 => 2048,
+            Self::Rsa3072 => 3072,
+            Self::Rsa4096 => 4096,
+            Self::Rsa6144 => 6144,
+        }
+    }
+
+    /// Parse from a string like "1024", "2048", etc.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "1024" => Some(Self::Rsa1024),
+            "2048" => Some(Self::Rsa2048),
+            "3072" => Some(Self::Rsa3072),
+            "4096" => Some(Self::Rsa4096),
+            "6144" => Some(Self::Rsa6144),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for RsaKeyBits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.bit_len())
+    }
+}
+
+/// RSA padding scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RsaPadding {
+    Pkcs1,
+    Pss,
+}
+
+impl RsaPadding {
+    /// Circuit path segment for this padding scheme.
+    pub fn circuit_path(self) -> &'static str {
+        match self {
+            Self::Pkcs1 => "pkcs",
+            Self::Pss => "pss",
+        }
+    }
+
+    /// Parse from a string like "pkcs", "pss".
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "pkcs" | "pkcs1" => Some(Self::Pkcs1),
+            "pss" => Some(Self::Pss),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for RsaPadding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.circuit_path())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum DigestAlgorithm {
@@ -37,6 +120,17 @@ impl DigestAlgorithm {
             "SHA384" | "SHA-384" => Some(Self::SHA384),
             "SHA512" | "SHA-512" => Some(Self::SHA512),
             _ => None,
+        }
+    }
+
+    /// Circuit path segment for this digest algorithm (e.g. "sha256").
+    pub fn circuit_path(&self) -> &'static str {
+        match self {
+            Self::SHA1 => "sha1",
+            Self::SHA224 => "sha224",
+            Self::SHA256 => "sha256",
+            Self::SHA384 => "sha384",
+            Self::SHA512 => "sha512",
         }
     }
 }
