@@ -3,8 +3,8 @@ use {
     anyhow::{ensure, Context, Result},
     argh::FromArgs,
     ark_ff::{BigInteger, PrimeField},
-    noirc_abi::AbiVisibility,
-    provekit_common::{file::read, NoirProof, Verifier},
+    noirc_abi::{AbiType, AbiVisibility, Sign},
+    provekit_common::{file::read, FieldElement, NoirProof, Verifier},
     std::path::PathBuf,
     tracing::instrument,
 };
@@ -54,19 +54,7 @@ impl Command for Args {
                 idx + field_count - 1,
                 values.len()
             );
-            if field_count == 1 {
-                print_value(&param.name, &values[idx], self.hex);
-                idx += 1;
-            } else {
-                println!("  {}: [", param.name);
-                for i in 0..field_count {
-                    print!("    [{}] ", i);
-                    print_field_value(&values[idx], self.hex);
-                    println!();
-                    idx += 1;
-                }
-                println!("  ]");
-            }
+            idx = print_typed_value(&param.name, &param.typ, values, idx, 1, self.hex);
         }
 
         if let Some(ret) = &abi.return_type {
@@ -79,17 +67,7 @@ impl Command for Args {
                     idx + field_count - 1,
                     values.len()
                 );
-                if field_count == 1 {
-                    print_value("return", &values[idx], self.hex);
-                } else {
-                    println!("  return: [");
-                    for i in 0..field_count {
-                        print!("    [{}] ", i);
-                        print_field_value(&values[idx + i], self.hex);
-                        println!();
-                    }
-                    println!("  ]");
-                }
+                print_typed_value("return", &ret.abi_type, values, idx, 1, self.hex);
             }
         }
 
@@ -97,13 +75,129 @@ impl Command for Args {
     }
 }
 
-fn print_value(name: &str, value: &provekit_common::FieldElement, hex: bool) {
-    print!("  {}: ", name);
-    print_field_value(value, hex);
-    println!();
+fn format_type(typ: &AbiType) -> String {
+    match typ {
+        AbiType::Field => "Field".to_string(),
+        AbiType::Boolean => "bool".to_string(),
+        AbiType::Integer { sign, width } => match sign {
+            Sign::Signed => format!("i{}", width),
+            Sign::Unsigned => format!("u{}", width),
+        },
+        AbiType::String { length } => format!("str<{}>", length),
+        AbiType::Array { length, typ } => format!("[{}; {}]", format_type(typ), length),
+        AbiType::Tuple { fields } => {
+            let field_types: Vec<_> = fields.iter().map(format_type).collect();
+            format!("({})", field_types.join(", "))
+        }
+        AbiType::Struct { path, .. } => path.to_string(),
+    }
 }
 
-fn print_field_value(value: &provekit_common::FieldElement, hex: bool) {
+fn print_typed_value(
+    name: &str,
+    typ: &AbiType,
+    values: &[FieldElement],
+    idx: usize,
+    indent: usize,
+    hex: bool,
+) -> usize {
+    let indent_str = "  ".repeat(indent);
+
+    match typ {
+        AbiType::Field => {
+            print!("{}{}: ", indent_str, name);
+            print_field_value(&values[idx], hex);
+            println!();
+            idx + 1
+        }
+        AbiType::Boolean => {
+            let val = values[idx].into_bigint();
+            let bool_val = !val.is_zero();
+            println!("{}{}: {}", indent_str, name, bool_val);
+            idx + 1
+        }
+        AbiType::Integer { sign, width } => {
+            print!("{}{} ({}): ", indent_str, name, format_type(typ));
+            let val = values[idx].into_bigint();
+            if matches!(sign, Sign::Signed) && *width <= 64 {
+                let bytes = val.to_bytes_be();
+                let unsigned: u64 = bytes
+                    .iter()
+                    .rev()
+                    .take(8)
+                    .enumerate()
+                    .map(|(i, &b)| (b as u64) << (i * 8))
+                    .sum();
+                let signed = unsigned as i64;
+                print!("{}", signed);
+            } else {
+                print_field_value(&values[idx], hex);
+            }
+            println!();
+            idx + 1
+        }
+        AbiType::String { length } => {
+            let len = *length as usize;
+            let chars: String = values[idx..idx + len]
+                .iter()
+                .filter_map(|v| {
+                    let bytes = v.into_bigint().to_bytes_be();
+                    bytes.last().copied().filter(|&b| b != 0).map(char::from)
+                })
+                .collect();
+            println!("{}{} (str<{}>): \"{}\"", indent_str, name, len, chars);
+            idx + len
+        }
+        AbiType::Array {
+            length,
+            typ: elem_typ,
+        } => {
+            let len = *length as usize;
+            println!(
+                "{}{} ([{}; {}]):",
+                indent_str,
+                name,
+                format_type(elem_typ),
+                len
+            );
+            let mut current_idx = idx;
+            for i in 0..len {
+                let elem_name = format!("[{}]", i);
+                current_idx =
+                    print_typed_value(&elem_name, elem_typ, values, current_idx, indent + 1, hex);
+            }
+            current_idx
+        }
+        AbiType::Tuple { fields } => {
+            println!("{}{} ({}):", indent_str, name, format_type(typ));
+            let mut current_idx = idx;
+            for (i, field_typ) in fields.iter().enumerate() {
+                let field_name = format!(".{}", i);
+                current_idx =
+                    print_typed_value(&field_name, field_typ, values, current_idx, indent + 1, hex);
+            }
+            current_idx
+        }
+        AbiType::Struct { path, fields } => {
+            println!("{}{} ({}):", indent_str, name, path);
+            let mut current_idx = idx;
+            for (field_name, field_typ) in fields {
+                let prefixed_name = format!(".{}", field_name);
+                current_idx = print_typed_value(
+                    &prefixed_name,
+                    field_typ,
+                    values,
+                    current_idx,
+                    indent + 1,
+                    hex,
+                );
+            }
+            current_idx
+        }
+    }
+}
+
+fn print_field_value(value: &FieldElement, hex: bool) {
     if hex {
         let bytes = value.into_bigint().to_bytes_be();
         print!("0x{}", hex::encode(bytes));
