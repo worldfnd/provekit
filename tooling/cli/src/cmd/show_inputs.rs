@@ -118,18 +118,9 @@ fn print_typed_value(
         }
         AbiType::Integer { sign, width } => {
             print!("{}{} ({}): ", indent_str, name, format_type(typ));
-            let val = values[idx].into_bigint();
             if matches!(sign, Sign::Signed) && *width <= 64 {
-                let bytes = val.to_bytes_be();
-                let unsigned: u64 = bytes
-                    .iter()
-                    .rev()
-                    .take(8)
-                    .enumerate()
-                    .map(|(i, &b)| (b as u64) << (i * 8))
-                    .sum();
-                let signed = unsigned as i64;
-                print!("{}", signed);
+                let unsigned = field_to_u64(&values[idx]);
+                print!("{}", signed_integer_value(unsigned, *width));
             } else {
                 print_field_value(&values[idx], hex);
             }
@@ -197,11 +188,90 @@ fn print_typed_value(
     }
 }
 
+fn field_to_u64(value: &FieldElement) -> u64 {
+    let bytes = value.into_bigint().to_bytes_be();
+    bytes
+        .iter()
+        .rev()
+        .take(8)
+        .enumerate()
+        .map(|(i, &b)| (b as u64) << (i * 8))
+        .sum()
+}
+
+fn signed_integer_value(unsigned: u64, width: u32) -> i128 {
+    let max_positive = (1u64 << (width - 1)) - 1;
+    if unsigned > max_positive {
+        unsigned as i128 - (1i128 << width)
+    } else {
+        unsigned as i128
+    }
+}
+
 fn print_field_value(value: &FieldElement, hex: bool) {
     if hex {
         let bytes = value.into_bigint().to_bytes_be();
         print!("0x{}", hex::encode(bytes));
     } else {
         print!("{}", value.into_bigint());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn field_to_u64_roundtrips() {
+        assert_eq!(field_to_u64(&FieldElement::from(0u64)), 0);
+        assert_eq!(field_to_u64(&FieldElement::from(1u64)), 1);
+        assert_eq!(field_to_u64(&FieldElement::from(255u64)), 255);
+        assert_eq!(field_to_u64(&FieldElement::from(u64::MAX)), u64::MAX);
+    }
+
+    #[test]
+    fn signed_i8_negative_one() {
+        // Noir encodes i8(-1) as 2^8 - 1 = 255
+        assert_eq!(signed_integer_value(255, 8), -1);
+    }
+
+    #[test]
+    fn signed_i8_min() {
+        // Noir encodes i8(-128) as 2^8 - 128 = 128
+        assert_eq!(signed_integer_value(128, 8), -128);
+    }
+
+    #[test]
+    fn signed_i8_max_positive() {
+        assert_eq!(signed_integer_value(127, 8), 127);
+    }
+
+    #[test]
+    fn signed_i8_zero() {
+        assert_eq!(signed_integer_value(0, 8), 0);
+    }
+
+    #[test]
+    fn signed_i16_negative_one() {
+        // Noir encodes i16(-1) as 2^16 - 1 = 65535
+        assert_eq!(signed_integer_value(65535, 16), -1);
+    }
+
+    #[test]
+    fn signed_i32_negative_one() {
+        // Noir encodes i32(-1) as 2^32 - 1 = 4294967295
+        assert_eq!(signed_integer_value(4294967295, 32), -1);
+    }
+
+    #[test]
+    fn signed_i64_negative_one() {
+        // Noir encodes i64(-1) as 2^64 - 1 = u64::MAX
+        assert_eq!(signed_integer_value(u64::MAX, 64), -1);
+    }
+
+    #[test]
+    fn signed_i32_negative_42() {
+        // Noir encodes i32(-42) as 2^32 - 42 = 4294967254
+        assert_eq!(signed_integer_value(4294967254, 32), -42);
     }
 }
