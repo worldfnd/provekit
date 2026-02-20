@@ -196,6 +196,3 @@ impl Prove for Prover {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {}

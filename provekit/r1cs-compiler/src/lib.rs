@@ -16,6 +16,3 @@ pub use {
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
     whir_r1cs::WhirR1CSSchemeBuilder,
 };
-
-#[cfg(test)]
-mod tests {}

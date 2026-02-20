@@ -1,14 +1,14 @@
 use {
-    provekit_common::{utils::next_power_of_two, WhirZkConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
     whir::parameters::{
         default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
 
 // Minimum log2 of the WHIR evaluation domain (lower bound for m).
-// zkWHIR 2.0's blinding polynomial requires num_blinding_vars < num_witness_vars.
-// At 128-bit security with folding factor 4, the blinding needs ~12 variables,
-// so the witness must have at least 14 (with margin).
+// zkWHIR 2.0's blinding polynomial requires num_blinding_vars <
+// num_witness_vars. At 128-bit security with folding factor 4, the blinding
+// needs ~12 variables, so the witness must have at least 14 (with margin).
 const MIN_WHIR_NUM_VARIABLES: usize = 14;
 // Minimum number of variables in the sumcheck's multilinear polynomial (lower
 // bound for m_0).
@@ -69,14 +69,14 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
 
         let mv_params = MultivariateParameters::new(nv);
         let whir_params = ProtocolParameters {
-            initial_statement: true,
-            security_level: 128,
-            pow_bits: default_max_pow(nv, 1),
-            folding_factor: FoldingFactor::Constant(4),
-            soundness_type: SoundnessType::ConjectureList,
+            initial_statement:     true,
+            security_level:        128,
+            pow_bits:              default_max_pow(nv, 1),
+            folding_factor:        FoldingFactor::Constant(4),
+            soundness_type:        SoundnessType::ConjectureList,
             starting_log_inv_rate: 1,
-            batch_size: 1,
-            hash_id: whir::hash::SHA2,
+            batch_size:            1,
+            hash_id:               whir::hash::SHA2,
         };
         WhirZkConfig::new(
             mv_params,

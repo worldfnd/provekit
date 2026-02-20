@@ -42,7 +42,7 @@ tracing-tracy = { workspace = true, optional = true, features = [
 workspace = true
 
 [features]
-default = ["jemalloc"]
+default = []
 profiling-allocator = []
 jemalloc = ["dep:tikv-jemallocator"]
 tracy = ["dep:tracing-tracy"]

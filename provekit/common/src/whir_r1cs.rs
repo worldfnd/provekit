@@ -4,8 +4,7 @@ use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
     whir::{
-        protocols::whir::Config as GenericWhirConfig,
-        protocols::whir_zk::Config as GenericWhirZkConfig,
+        protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
         transcript,
     },
 };

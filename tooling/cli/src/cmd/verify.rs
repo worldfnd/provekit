@@ -8,7 +8,7 @@ use {
     tracing::instrument,
 };
 
-/// Prove a prepared Noir program
+/// Verify a Noir proof
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "verify")]
 pub struct Args {
