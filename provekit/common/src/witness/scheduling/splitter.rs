@@ -284,9 +284,19 @@ impl<'a> WitnessSplitter<'a> {
             rest_indices.push(builder_idx);
         }
 
+        // Sort public input builders by ACIR index to guarantee the proof's
+        // public inputs appear in ABI parameter order. Without this, HashSet
+        // iteration order (random per process) would produce non-deterministic
+        // public input ordering across different `prepare` invocations.
+        public_input_builder_indices.sort_unstable_by_key(|&builder_idx| {
+            match &self.witness_builders[builder_idx] {
+                WitnessBuilder::Acir(_, acir_idx) => *acir_idx as u32,
+                _ => u32::MAX,
+            }
+        });
         rest_indices.sort_unstable();
 
-        // Reorder: 0 first, then public inputs, then rest
+        // Reorder: 0 first, then public inputs (in ACIR index order), then rest
         let mut new_w1_indices = vec![0];
         new_w1_indices.extend(public_input_builder_indices);
         new_w1_indices.extend(rest_indices);

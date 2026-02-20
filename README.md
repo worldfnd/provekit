@@ -57,6 +57,12 @@ Analyze PKP file size breakdown:
 cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
 ```
 
+Show public inputs with variable names:
+
+```sh
+cargo run --release --bin provekit-cli show-inputs ./verifier.pkv ./proof.np
+```
+
 Recursively verify in a Gnark proof:
 
 ```sh

@@ -18,11 +18,14 @@ provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true
+noirc_abi.workspace = true
 
 # 3rd party
 anyhow.workspace = true
 argh.workspace = true
+ark-ff.workspace = true
 base64.workspace = true
+hex.workspace = true
 postcard.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -39,7 +39,7 @@ impl FileFormat for Prover {
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
-    const VERSION: (u16, u16) = (1, 1);
+    const VERSION: (u16, u16) = (1, 2);
 }
 
 impl FileFormat for NoirProof {

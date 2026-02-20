@@ -44,3 +44,6 @@ Cargo.lock
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 circuit_stats_examples/
+
+# logs for passport circuit benchmarks
+noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/
