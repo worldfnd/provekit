@@ -3,7 +3,9 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{build_prefix_covectors, expand_powers, make_public_weight},
-        utils::sumcheck::{calculate_eq, calculate_external_row_of_r1cs_matrices, eval_cubic_poly},
+        utils::sumcheck::{
+            calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
+        },
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, WhirZkConfig, R1CS,
     },
@@ -61,12 +63,15 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             None
         };
 
-        // Sumcheck verification (common to both paths)
-        let data_from_sumcheck_verifier =
-            run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan)
-                .context("while verifying sumcheck")?;
+        // Overlap: transpose R1CS matrices while running sumcheck verification.
+        // Transpose depends only on the R1CS structure, not on proof data.
+        let (transposed, sumcheck_result) = rayon::join(
+            || transpose_r1cs_matrices(r1cs),
+            || run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan),
+        );
+        let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
+        let (at, bt, ct) = transposed;
 
-        // Verify public inputs hash
         let public_inputs_hash_buf: FieldElement = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
@@ -79,9 +84,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         );
         let x: FieldElement = arthur.verifier_message();
 
-        // Reconstruct alpha weight vectors from R1CS matrices
-        let alphas =
-            calculate_external_row_of_r1cs_matrices(&data_from_sumcheck_verifier.alpha, r1cs);
+        let alphas = multiply_transposed_by_eq_alpha(
+            &at,
+            &bt,
+            &ct,
+            &data_from_sumcheck_verifier.alpha,
+            r1cs,
+        );
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if commitment_2.is_some() {
             // Dual commitment mode

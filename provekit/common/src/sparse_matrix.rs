@@ -1,7 +1,10 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
-    rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+    rayon::{
+        iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+        slice::ParallelSliceMut,
+    },
     serde::{
         de::{SeqAccess, Visitor},
         ser::SerializeStruct,
@@ -415,7 +418,7 @@ impl SparseMatrix {
             }
         }
 
-        entries.sort_unstable_by_key(|&(new_row, new_col, _)| (new_row, new_col));
+        entries.par_sort_unstable_by_key(|&(new_row, new_col, _)| (new_row, new_col));
 
         let mut new_row_indices = Vec::with_capacity(self.num_cols);
         let mut col_indices = Vec::with_capacity(nnz);

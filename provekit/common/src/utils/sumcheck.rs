@@ -1,5 +1,6 @@
 use {
     crate::{
+        sparse_matrix::SparseMatrix,
         utils::{unzip_double_array, workload_size},
         FieldElement, R1CS,
     },
@@ -184,31 +185,31 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
         })
 }
 
-/// Calculates a random row of R1CS matrix extension. Made possible due to
-/// sparseness.
+/// Transpose all three R1CS matrices in parallel.
 ///
-/// Computes `eq(alpha, ·) * [A, B, C]` using transposed matrices for
-/// parallel right-multiplication instead of sequential left-multiplication.
+/// This depends only on the R1CS structure (from the verifier key), not on any
+/// proof-specific data, so it can run concurrently with sumcheck verification.
 #[instrument(skip_all)]
-pub fn calculate_external_row_of_r1cs_matrices(
+pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
+    let ((at, bt), ct) = rayon::join(
+        || rayon::join(|| r1cs.a.transpose(), || r1cs.b.transpose()),
+        || r1cs.c.transpose(),
+    );
+    (at, bt, ct)
+}
+
+/// Multiply pre-transposed R1CS matrices by eq(alpha, ·) to compute the
+/// external row.
+#[instrument(skip_all)]
+pub fn multiply_transposed_by_eq_alpha(
+    at: &SparseMatrix,
+    bt: &SparseMatrix,
+    ct: &SparseMatrix,
     alpha: &[FieldElement],
     r1cs: &R1CS,
 ) -> [Vec<FieldElement>; 3] {
-    let ((at, bt), (ct, eq_alpha)) = rayon::join(
-        || rayon::join(|| r1cs.a.transpose(), || r1cs.b.transpose()),
-        || {
-            rayon::join(
-                || r1cs.c.transpose(),
-                || {
-                    calculate_evaluations_over_boolean_hypercube_for_eq(
-                        alpha,
-                        r1cs.num_constraints(),
-                    )
-                },
-            )
-        },
-    );
-
+    let eq_alpha =
+        calculate_evaluations_over_boolean_hypercube_for_eq(alpha, r1cs.num_constraints());
     let interner = &r1cs.interner;
     let ((a, b), c) = rayon::join(
         || {
@@ -220,4 +221,18 @@ pub fn calculate_external_row_of_r1cs_matrices(
         || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
     [a, b, c]
+}
+
+/// Calculates a random row of R1CS matrix extension. Made possible due to
+/// sparseness.
+///
+/// Computes `eq(alpha, ·) * [A, B, C]` using transposed matrices for
+/// parallel right-multiplication instead of sequential left-multiplication.
+#[instrument(skip_all)]
+pub fn calculate_external_row_of_r1cs_matrices(
+    alpha: &[FieldElement],
+    r1cs: &R1CS,
+) -> [Vec<FieldElement>; 3] {
+    let (at, bt, ct) = transpose_r1cs_matrices(r1cs);
+    multiply_transposed_by_eq_alpha(&at, &bt, &ct, alpha, r1cs)
 }
