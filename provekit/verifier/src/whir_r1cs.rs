@@ -92,10 +92,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             r1cs,
         );
 
-        let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if commitment_2.is_some() {
-            // Dual commitment mode
-            let commitment_2 = commitment_2.unwrap();
-
+        let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
             let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
                 .into_iter()
                 .map(|mut v| {
@@ -181,7 +178,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
 
             // Build non-deferred weights from reconstructed alpha vectors
-            let mut weights = build_prefix_covectors(self.m, alphas.try_into().unwrap());
+            let mut weights = build_prefix_covectors(self.m, alphas);
 
             // Insert public weight at front if needed
             if !public_inputs.is_empty() {
