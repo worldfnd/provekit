@@ -12,6 +12,7 @@ mod span_stats;
 use {
     anyhow::{Context, Result},
     argh::FromArgs,
+    base64::{engine::general_purpose::STANDARD, Engine as _},
     noirc_abi::input_parser::Format,
     passport_input_gen::{
         mock_generator::{
@@ -25,24 +26,20 @@ use {
     },
     profiling_alloc::ProfilingAllocator,
     provekit_prover::Prove,
-    span_stats::SpanStats,
-    tracing::instrument,
-    tracing_subscriber::{layer::SubscriberExt, Registry},
-};
-
-#[global_allocator]
-static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
-
-use {
-    base64::{engine::general_purpose::STANDARD, Engine as _},
     rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey, RsaPublicKey},
+    span_stats::SpanStats,
     std::{
         fs::File,
         io::{BufWriter, Write as _},
         path::Path,
         sync::Mutex,
     },
+    tracing::instrument,
+    tracing_subscriber::{layer::SubscriberExt, Registry},
 };
+
+#[global_allocator]
+static ALLOCATOR: ProfilingAllocator = ProfilingAllocator::new();
 
 // ============================================================================
 // Global log sink for tee-ing output to per-circuit log files
@@ -221,7 +218,7 @@ impl Args {
 // Mock data helpers
 // ============================================================================
 
-fn load_mock_keys() -> (RsaPrivateKey, RsaPublicKey, RsaPrivateKey, RsaPublicKey) {
+fn load_mock_keys() -> Result<(RsaPrivateKey, RsaPublicKey, RsaPrivateKey, RsaPublicKey)> {
     let csca_der = STANDARD
         .decode(MOCK_CSCA_PRIV_KEY_B64)
         .expect("Failed to decode CSCA private key");
@@ -236,7 +233,7 @@ fn load_mock_keys() -> (RsaPrivateKey, RsaPublicKey, RsaPrivateKey, RsaPublicKey
         RsaPrivateKey::from_pkcs8_der(&dsc_der).expect("Failed to parse DSC private key");
     let dsc_pub = dsc_priv.to_public_key();
 
-    (csca_priv, csca_pub, dsc_priv, dsc_pub)
+    Ok((csca_priv, csca_pub, dsc_priv, dsc_pub))
 }
 
 fn generate_inputs(
@@ -481,7 +478,7 @@ fn main() -> Result<()> {
 
     // Load mock RSA key pairs
     println!("\nStep 1: Loading mock RSA key pairs...");
-    let (csca_priv, csca_pub, dsc_priv, dsc_pub) = load_mock_keys();
+    let (csca_priv, csca_pub, dsc_priv, dsc_pub) = load_mock_keys().unwrap();
     println!("  CSCA key loaded (RSA-4096)");
     println!("  DSC key loaded (RSA-2048)");
 

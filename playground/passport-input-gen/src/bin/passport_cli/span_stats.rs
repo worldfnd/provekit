@@ -1,3 +1,4 @@
+// Uses the same profiling implementation as tooling/cli/src/span_stats.rs/
 //! Using `tracing` spans to print performance statistics for the program.
 use {
     crate::ALLOCATOR,

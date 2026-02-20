@@ -13,6 +13,8 @@ use {
 /// Parse a 0x-prefixed hex string (e.g. "0x2") into a BN254 field element.
 pub fn parse_hex_to_field(hex_str: &str) -> Result<Fr, PassportError> {
     let stripped = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+    // Padding to 64 hex chars (32 bytes) is specific to BN254 field element size.
+    // This assumes the curve is BN254, which has 254-bit field elements.
     let padded = format!("{:0>64}", stripped);
     let bytes = hex::decode(&padded).map_err(|e| PassportError::InvalidHexField {
         field:  hex_str.to_string(),
@@ -36,6 +38,8 @@ pub fn pack_be_bytes_into_fields(bytes: &[u8]) -> Vec<Fr> {
     if n_bytes == 0 {
         return vec![];
     }
+    // Packing scheme is designed for BN254 curve (field size = 31 bytes per
+    // element).
     let n = (n_bytes + 30) / 31;
     let mut result = vec![Fr::from(0u64); n];
 

@@ -1,3 +1,5 @@
+// Uses the same profiling implementation as tooling/cli/src/profiling_alloc.rs/
+
 use std::{
     alloc::{GlobalAlloc, Layout, System as SystemAlloc},
     sync::atomic::{AtomicUsize, Ordering},
