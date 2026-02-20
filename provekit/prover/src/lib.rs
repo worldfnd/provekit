@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::r1cs::R1CSSolver;
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -98,8 +96,15 @@ impl Prove for Prover {
             );
         }
 
-        let compressed_w2_layers =
-            CompressedLayers::compress(self.split_witness_builders.w2_layers);
+        let has_challenges = self.whir_for_witness.num_challenges > 0;
+        let compressed_w2_layers = if has_challenges {
+            Some(CompressedLayers::compress(
+                self.split_witness_builders.w2_layers,
+            ))
+        } else {
+            drop(self.split_witness_builders.w2_layers);
+            None
+        };
 
         debug!(
             witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
@@ -120,8 +125,8 @@ impl Prove for Prover {
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
             .context("While committing to w1")?;
 
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
-            let w2_layers = compressed_w2_layers.decompress();
+        let commitments = if has_challenges {
+            let w2_layers = compressed_w2_layers.unwrap().decompress();
             {
                 let _s = info_span!("solve_w2").entered();
                 crate::r1cs::solve_witness_vec(
@@ -156,8 +161,11 @@ impl Prove for Prover {
         let r1cs = compressed_r1cs.decompress();
 
         #[cfg(test)]
-        r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
-            .context("While verifying R1CS instance")?;
+        crate::r1cs::test_witness_satisfaction(
+            &r1cs,
+            &witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>(),
+        )
+        .context("While verifying R1CS instance")?;
 
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()

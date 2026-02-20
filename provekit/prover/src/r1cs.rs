@@ -61,11 +61,6 @@ impl CompressedR1CS {
     }
 }
 
-#[cfg(test)]
-pub trait R1CSSolver {
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()>;
-}
-
 /// Solves the R1CS witness vector using layered execution with batch
 /// inversion.
 ///
@@ -88,7 +83,7 @@ pub trait R1CSSolver {
 /// This indicates a bug in the layer scheduling algorithm.
 #[instrument(skip_all)]
 pub fn solve_witness_vec(
-    witness: &mut Vec<Option<FieldElement>>,
+    witness: &mut [Option<FieldElement>],
     plan: LayeredWitnessBuilders,
     acir_map: &WitnessMap<NoirElement>,
     transcript: &mut ProverState<TranscriptSponge>,
@@ -196,30 +191,25 @@ pub fn solve_witness_vec(
 }
 
 #[cfg(test)]
-impl R1CSSolver for R1CS {
-    // Tests R1CS Witness satisfaction given the constraints provided by the
-    // R1CS Matrices.
-    #[instrument(skip_all, fields(size = witness.len()))]
-    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()> {
-        use anyhow::ensure;
+#[instrument(skip_all, fields(size = witness.len()))]
+pub fn test_witness_satisfaction(r1cs: &R1CS, witness: &[FieldElement]) -> anyhow::Result<()> {
+    use anyhow::ensure;
 
-        ensure!(
-            witness.len() == self.num_witnesses(),
-            "Witness size does not match"
-        );
+    ensure!(
+        witness.len() == r1cs.num_witnesses(),
+        "Witness size does not match"
+    );
 
-        // Verify
-        let a = self.a() * witness;
-        let b = self.b() * witness;
-        let c = self.c() * witness;
-        for (row, ((a_val, b_val), c_val)) in a
-            .into_iter()
-            .zip(b.into_iter())
-            .zip(c.into_iter())
-            .enumerate()
-        {
-            ensure!(a_val * b_val == c_val, "Constraint {row} failed");
-        }
-        Ok(())
+    let a = r1cs.a() * witness;
+    let b = r1cs.b() * witness;
+    let c = r1cs.c() * witness;
+    for (row, ((a_val, b_val), c_val)) in a
+        .into_iter()
+        .zip(b.into_iter())
+        .zip(c.into_iter())
+        .enumerate()
+    {
+        ensure!(a_val * b_val == c_val, "Constraint {row} failed");
     }
+    Ok(())
 }
