@@ -100,8 +100,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     (v, v2)
                 })
                 .unzip();
-            let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
-            let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+            let alphas_1: [Vec<FieldElement>; 3] = alphas_1
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 1"))?;
+            let alphas_2: [Vec<FieldElement>; 3] = alphas_2
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 2"))?;
 
             // Read evaluation hints
             let evals_1: Vec<FieldElement> = arthur
@@ -110,8 +114,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let evals_2: Vec<FieldElement> = arthur
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read evals_2 hint"))?;
-            let evals_1: [FieldElement; 3] = evals_1.try_into().unwrap();
-            let evals_2: [FieldElement; 3] = evals_2.try_into().unwrap();
+            let evals_1: [FieldElement; 3] = evals_1
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 1"))?;
+            let evals_2: [FieldElement; 3] = evals_2
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 2"))?;
 
             // Read public weight hints
             let public_1: FieldElement = arthur
@@ -171,7 +179,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let evals: Vec<FieldElement> = arthur
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read evals hint"))?;
-            let evals: [FieldElement; 3] = evals.try_into().unwrap();
+            let evals: [FieldElement; 3] = evals
+                .try_into()
+                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values"))?;
 
             let public_eval: FieldElement = arthur
                 .prover_hint_ark()
