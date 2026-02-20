@@ -64,6 +64,12 @@ opt-level = 3
 codegen-units = 1
 lto = "fat"
 
+# Fast release builds for development iteration: cargo build --profile release-fast
+[profile.release-fast]
+inherits = "release"
+codegen-units = 16
+lto = "thin"
+
 # Doing light optimizations helps test performance more than it hurts build time.
 [profile.test]
 opt-level = 2
@@ -121,6 +127,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.9"
 test-case = "3.3.1"
+tikv-jemallocator = "0.6"
 toml = "0.8.8"
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = "0.7.13"
@@ -158,7 +165,7 @@ ark-std = { version = "0.5", features = ["std"] }
 mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
 mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-  "arkworks-algebra",
-], rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "ecb4f08373ed930175585c856517efdb1851fb47" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", features = ["tracing"], rev = "cf1599b56ff50e09142ebe6d2e2fbd86875c9986" }
+  "ark-ff", "sha2",
+], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "ec295ced976c3dc2277a20e1048f928dbfd03bbd", features = ["tracing"] }

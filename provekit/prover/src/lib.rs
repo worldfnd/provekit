@@ -8,11 +8,12 @@ use {
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
     noirc_abi::InputMap,
     provekit_common::{
-        FieldElement, IOPattern, MavrosProver, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs,
+        FieldElement, MavrosProver, NoirElement, NoirProof, NoirProver, Prover, PublicInputs,
+        TranscriptSponge,
     },
     std::path::Path,
     tracing::instrument,
+    whir::transcript::{codecs::Empty, ProverState, VerifierMessage},
 };
 
 pub mod input_utils;
@@ -58,6 +59,8 @@ fn generate_noir_witness(
 impl Prove for NoirProver {
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
         let (input_map, _expected_return) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
@@ -65,9 +68,11 @@ impl Prove for NoirProver {
         let acir_public_inputs = self.program.functions[0].public_inputs().indices();
 
         // Set up transcript
-        let io: IOPattern = self.whir_for_witness.create_io_pattern();
-        let mut merlin = io.to_prover_state();
-        drop(io);
+        let ds = self
+            .whir_for_witness
+            .create_domain_separator()
+            .instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
 
@@ -149,6 +154,8 @@ impl Prove for NoirProver {
 impl Prove for MavrosProver {
     #[instrument(skip_all)]
     fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
         let project_path = prover_toml
             .as_ref()
             .parent()
@@ -164,12 +171,12 @@ impl Prove for MavrosProver {
             &params,
         );
 
-        // Set up transcript
-        let io: IOPattern = self.whir_for_witness.create_io_pattern();
-        let mut merlin = io.to_prover_state();
-        drop(io);
+        let ds = self
+            .whir_for_witness
+            .create_domain_separator()
+            .instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
-        // Commit to w1 (pre-commitment witness).
         let commitment_1 = self
             .whir_for_witness
             .commit(
@@ -182,12 +189,9 @@ impl Prove for MavrosProver {
             .context("While committing to w1")?;
 
         let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
-            use {ark_ff::AdditiveGroup, spongefish::codecs::arkworks_algebra::UnitToField};
-
-            let mut challenges = vec![FieldElement::ZERO; self.witness_layout.challenges_size];
-            merlin
-                .fill_challenge_scalars(&mut challenges)
-                .expect("Failed to extract challenge scalars from Merlin");
+            let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
+                .map(|_| merlin.verifier_message())
+                .collect();
 
             let witgen_result = mavros_interpreter::run_phase2(
                 phase1.clone(),

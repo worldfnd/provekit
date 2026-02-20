@@ -1,21 +1,23 @@
+#[cfg(debug_assertions)]
+use whir::transcript::Interaction;
 use {
-    crate::{
-        skyscraper::{SkyscraperMerkleConfig, SkyscraperPoW, SkyscraperSponge},
-        utils::{serde_hex, sumcheck::SumcheckIOPattern},
-        witness::WitnessIOPattern,
-        FieldElement,
-    },
+    crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
-    spongefish::DomainSeparator,
-    std::fmt::{Debug, Formatter},
-    tracing::instrument,
-    whir::whir::{domainsep::WhirDomainSeparator, parameters::WhirConfig as GenericWhirConfig},
+    whir::{protocols::whir::Config as GenericWhirConfig, transcript},
 };
 
-pub type WhirConfig = GenericWhirConfig<FieldElement, SkyscraperMerkleConfig, SkyscraperPoW>;
-pub type IOPattern = DomainSeparator<SkyscraperSponge, FieldElement>;
+pub type WhirConfig = GenericWhirConfig<FieldElement>;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+/// Type alias for the whir domain separator used in provekit's outer protocol.
+pub type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
+
+/// Type alias for the whir prover transcript state.
+pub type WhirProverState = transcript::ProverState;
+
+/// Type alias for the whir proof.
+pub type WhirProof = transcript::Proof;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
     pub m: usize,
     pub w1_size: usize,
@@ -28,63 +30,22 @@ pub struct WhirR1CSScheme {
 }
 
 impl WhirR1CSScheme {
-    #[instrument(skip_all)]
-    pub fn create_io_pattern(&self) -> IOPattern {
-        let mut io = IOPattern::new("🌪️");
-
-        if self.num_challenges > 0 {
-            // Compute total constraints: OOD + statement
-            // OOD: 2 witnesses × committment_ood_samples each
-            // Statement: statement_1 has 3 constraints + 1 public weights constraint = 4,
-            // statement_2 has 3 constraints = 3, total = 7
-            let num_witnesses = 2;
-            let num_ood_constraints = num_witnesses * self.whir_witness.committment_ood_samples;
-            let num_statement_constraints = if self.has_public_inputs { 7 } else { 6 };
-            let num_constraints_total = num_ood_constraints + num_statement_constraints;
-
-            io = io
-                .commit_statement(&self.whir_witness) // C1
-                .add_logup_challenges(self.num_challenges)
-                .commit_statement(&self.whir_witness) // C2
-                .add_rand(self.m_0)
-                .commit_statement(&self.whir_for_hiding_spartan)
-                .add_zk_sumcheck_polynomials(self.m_0)
-                .add_whir_proof(&self.whir_for_hiding_spartan)
-                .add_public_inputs()
-                .hint("claimed_evaluations_1")
-                .hint("claimed_evaluations_2")
-                .hint("public_weights_evaluations")
-                .add_whir_batch_proof(&self.whir_witness, num_witnesses, num_constraints_total);
-        } else {
-            io = io
-                .commit_statement(&self.whir_witness)
-                .add_rand(self.m_0)
-                .commit_statement(&self.whir_for_hiding_spartan)
-                .add_zk_sumcheck_polynomials(self.m_0)
-                .add_whir_proof(&self.whir_for_hiding_spartan)
-                .add_public_inputs()
-                .hint("claimed_evaluations")
-                .hint("public_weights_evaluations")
-                .add_whir_proof(&self.whir_witness);
-        }
-
-        io
+    /// Create a domain separator for the provekit outer protocol.
+    pub fn create_domain_separator(&self) -> WhirDomainSeparator {
+        transcript::DomainSeparator::protocol(self)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
     #[serde(with = "serde_hex")]
-    pub transcript: Vec<u8>,
-}
+    pub narg_string: Vec<u8>,
+    #[serde(with = "serde_hex")]
+    pub hints:       Vec<u8>,
 
-// TODO: Implement Debug for WhirConfig and derive.
-impl Debug for WhirR1CSScheme {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WhirR1CSScheme")
-            .field("m", &self.m)
-            .field("w1_size", &self.w1_size)
-            .field("m_0", &self.m_0)
-            .finish()
-    }
+    /// Transcript interaction pattern for debug-mode validation.
+    /// Populated by the prover; absent from serialized proofs on disk.
+    #[cfg(debug_assertions)]
+    #[serde(default, skip_serializing)]
+    pub pattern: Vec<Interaction>,
 }

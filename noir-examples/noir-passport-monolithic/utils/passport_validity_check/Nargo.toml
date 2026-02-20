@@ -1,0 +1,10 @@
+[package]
+name = "passport_validity_check"
+type = "lib"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+sig_check_rsa = { path = "../sig-check/rsa" }
+utils = { path = "../utils" }
+data_check_tbs_pubkey = { path = "../data-check/tbs-pubkey" }
+sha256 = { tag = "v0.2.1", git = "https://github.com/noir-lang/sha256" }

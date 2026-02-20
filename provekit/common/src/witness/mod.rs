@@ -4,16 +4,13 @@ mod ram;
 mod scheduling;
 mod witness_builder;
 mod witness_generator;
-mod witness_io_pattern;
 
 use {
     crate::{
-        skyscraper::SkyscraperCRH,
         utils::{serde_ark, serde_ark_vec},
         FieldElement,
     },
-    ark_crypto_primitives::crh::CRHScheme,
-    ark_ff::One,
+    ark_ff::{BigInt, One, PrimeField},
     serde::{Deserialize, Serialize},
 };
 pub use {
@@ -26,11 +23,20 @@ pub use {
         WitnessCoefficient,
     },
     witness_generator::NoirWitnessGenerator,
-    witness_io_pattern::WitnessIOPattern,
 };
 
 /// The index of the constant 1 witness in the R1CS instance
 pub const WITNESS_ONE_IDX: usize = 0;
+
+/// Compute spread(val): interleave bits of val with zeros.
+/// E.g., `0b1011` → `0b01_00_01_01`.
+pub fn compute_spread(val: u64) -> u64 {
+    let mut result = 0u64;
+    for i in 0..32 {
+        result |= ((val >> i) & 1) << (2 * i);
+    }
+    result
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ConstantOrR1CSWitness {
@@ -68,15 +74,15 @@ impl PublicInputs {
     }
 
     pub fn hash(&self) -> FieldElement {
+        fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+            let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
+            FieldElement::new(BigInt(out))
+        }
+
         match self.0.len() {
             0 => FieldElement::from(0u64),
-            1 => {
-                // For single element, hash it with zero to ensure it gets properly hashed
-                let padded = vec![self.0[0], FieldElement::from(0u64)];
-                SkyscraperCRH::evaluate(&(), &padded[..]).expect("hash should succeed")
-            }
-            _ => SkyscraperCRH::evaluate(&(), &self.0[..])
-                .expect("hash should succeed for multiple inputs"),
+            1 => compress(self.0[0], FieldElement::from(0u64)),
+            _ => self.0.iter().copied().reduce(compress).unwrap(),
         }
     }
 }

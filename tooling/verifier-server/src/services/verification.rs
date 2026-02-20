@@ -90,8 +90,7 @@ impl VerificationService {
         write_gnark_parameters_to_file(
             &whir_scheme.whir_witness,
             &whir_scheme.whir_for_hiding_spartan,
-            &proof.whir_r1cs_proof.transcript,
-            &whir_scheme.create_io_pattern(),
+            &proof.whir_r1cs_proof,
             whir_scheme.m_0,
             whir_scheme.m,
             whir_scheme.a_num_terms,

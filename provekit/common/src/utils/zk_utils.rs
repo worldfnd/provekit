@@ -1,9 +1,28 @@
 use {
     crate::FieldElement,
-    ark_ff::{Field, UniformRand},
+    ark_ff::UniformRand,
     rayon::prelude::*,
-    whir::poly_utils::evals::EvaluationsList,
+    whir::algebra::{
+        dot,
+        linear_form::Covector,
+        ntt::wavelet_transform,
+        polynomials::{CoefficientList, EvaluationsList},
+    },
 };
+
+/// Transform coefficients to evaluation form. Avoids the per-call
+/// clone+transform inside `Covector::evaluate`.
+pub fn coeffs_to_evals(poly: &CoefficientList<FieldElement>) -> Vec<FieldElement> {
+    let mut evals = poly.coeffs().to_vec();
+    wavelet_transform(&mut evals);
+    evals
+}
+
+/// Dot product of a covector's weight vector against pre-transformed
+/// evaluations.
+pub fn covector_dot(w: &Covector<FieldElement>, evals: &[FieldElement]) -> FieldElement {
+    dot(&w.vector, evals)
+}
 
 pub fn create_masked_polynomial(
     original: EvaluationsList<FieldElement>,
@@ -38,29 +57,4 @@ pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldEleme
     }
 
     elements
-}
-
-/// Evaluates the mle of a polynomial from evaluations in a geometric
-/// progression.
-///
-/// The evaluation list is of the form [1,a,a^2,a^3,...,a^{n-1},0,...,0]
-/// a is the base of the geometric progression.
-/// n is the number of non-zero terms in the progression.
-pub fn geometric_till<F: Field>(mut a: F, n: usize, x: &[F]) -> F {
-    let k = x.len();
-    assert!(n > 0 && n < (1 << k));
-    let mut borrow_0 = F::one();
-    let mut borrow_1 = F::zero();
-    for (i, &xi) in x.iter().rev().enumerate() {
-        let bn = ((n - 1) >> i) & 1;
-        let b0 = F::one() - xi;
-        let b1 = a * xi;
-        (borrow_0, borrow_1) = if bn == 0 {
-            (b0 * borrow_0, (b0 + b1) * borrow_1 + b1 * borrow_0)
-        } else {
-            ((b0 + b1) * borrow_0 + b0 * borrow_1, b1 * borrow_1)
-        };
-        a = a.square();
-    }
-    borrow_0
 }

@@ -1,5 +1,5 @@
 #![allow(dead_code)] // Remove once RSFr is used for WHIR
-use {ark_bn254::Fr, ark_ff::AdditiveGroup, ntt::ntt_nr, whir::ntt::ReedSolomon};
+use {ark_bn254::Fr, ark_ff::AdditiveGroup, ntt::ntt_nr, whir::algebra::ntt::ReedSolomon};
 
 pub struct RSFr;
 impl ReedSolomon<Fr> for RSFr {
@@ -7,29 +7,28 @@ impl ReedSolomon<Fr> for RSFr {
         &self,
         interleaved_coeffs: &[Fr],
         expansion: usize,
-        fold_factor: usize,
+        interleaving_depth: usize,
     ) -> Vec<Fr> {
         debug_assert!(expansion > 0);
-        interleaved_rs_encode(interleaved_coeffs, expansion, fold_factor)
+        interleaved_rs_encode(interleaved_coeffs, expansion, interleaving_depth)
     }
 }
 
 fn interleaved_rs_encode(
     interleaved_coeffs: &[Fr],
     expansion: usize,
-    fold_factor: usize,
+    interleaving_depth: usize,
 ) -> Vec<Fr> {
-    let fold_factor_exp = 2usize.pow(fold_factor as u32);
     let expanded_size = interleaved_coeffs.len() * expansion;
 
-    debug_assert_eq!(expanded_size % fold_factor_exp, 0);
+    debug_assert_eq!(expanded_size % interleaving_depth, 0);
 
-    // 1. Create zero-padded message of appropriate size
     let mut result = vec![Fr::ZERO; expanded_size];
     result[..interleaved_coeffs.len()].copy_from_slice(interleaved_coeffs);
 
-    let mut ntt = ntt::NTT::new(result, fold_factor_exp)
-        .expect("interleaved_coeffs.len() * expansion / 2^fold_factor needs to be a power of two.");
+    let mut ntt = ntt::NTT::new(result, interleaving_depth).expect(
+        "interleaved_coeffs.len() * expansion / interleaving_depth needs to be a power of two.",
+    );
 
     ntt_nr(&mut ntt);
 

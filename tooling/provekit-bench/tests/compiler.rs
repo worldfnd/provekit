@@ -62,7 +62,7 @@ fn test_mavros_compiler(test_case_path: impl AsRef<Path>) {
         let _package_name = nargo_toml.package.name;
         let target_dir = test_case_path.join("target");
         let basic_path = target_dir.join("basic.json");
-        let r1cs_path = target_dir.join("r1cs.json");
+        let r1cs_path = target_dir.join("r1cs.bin");
         let witness_file_path = test_case_path.join("Prover.toml");
 
         let schema =
@@ -122,7 +122,7 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/complete_age_check"; "complete_age_check")]
+#[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
 fn case_noir(path: &str) {
     test_noir_compiler(path);
 }
@@ -139,7 +139,7 @@ fn case_noir(path: &str) {
 #[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/complete_age_check"; "complete_age_check")]
+#[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
 fn case_mavros(path: &str) {
     test_mavros_compiler(path);
 }

@@ -1,13 +1,8 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
-    std::sync::Arc,
-    whir::{
-        ntt::RSDefault,
-        parameters::{
-            default_max_pow, DeduplicationStrategy, FoldingFactor, MerkleProofStrategy,
-            MultivariateParameters, ProtocolParameters, SoundnessType,
-        },
+    whir::parameters::{
+        default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
     },
 };
 
@@ -86,18 +81,12 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             security_level: 128,
             pow_bits: default_max_pow(nv, 1),
             folding_factor: FoldingFactor::Constant(4),
-            leaf_hash_params: (),
-            two_to_one_params: (),
             soundness_type: SoundnessType::ConjectureList,
-            _pow_parameters: Default::default(),
             starting_log_inv_rate: 1,
             batch_size,
-            deduplication_strategy: DeduplicationStrategy::Disabled,
-            merkle_proof_strategy: MerkleProofStrategy::Uncompressed,
+            hash_id: whir::hash::SHA2,
         };
-        let reed_solomon = Arc::new(RSDefault);
-        let basefield_reed_solomon = reed_solomon.clone();
-        WhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
+        WhirConfig::new(mv_params, &whir_params)
     }
 
     fn new_from_mavros_r1cs(

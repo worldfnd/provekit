@@ -8,6 +8,24 @@ use {
     tracing::instrument,
 };
 
+#[derive(PartialEq, Eq, Debug)]
+enum Compiler {
+    Noir,
+    Mavros,
+}
+
+impl argh::FromArgValue for Compiler {
+    fn from_arg_value(value: &str) -> std::result::Result<Self, String> {
+        match value {
+            "noir" => Ok(Compiler::Noir),
+            "mavros" => Ok(Compiler::Mavros),
+            other => Err(format!(
+                "Unknown compiler: {other}. Use \"noir\" or \"mavros\"."
+            )),
+        }
+    }
+}
+
 /// Prepare a Noir program for proving
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prepare")]
@@ -22,8 +40,8 @@ pub struct Args {
     r1cs_path: Option<PathBuf>,
 
     /// compiler backend to use: "noir" (default) or "mavros"
-    #[argh(option, long = "compiler", default = "String::from(\"noir\")")]
-    compiler: String,
+    #[argh(option, long = "compiler", default = "Compiler::Noir")]
+    compiler: Compiler,
 
     /// output path for the prepared proof scheme
     #[argh(
@@ -47,10 +65,10 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let scheme = match self.compiler.as_str() {
-            "noir" => NoirCompiler::from_file(&self.program_path)
+        let scheme = match self.compiler {
+            Compiler::Noir => NoirCompiler::from_file(&self.program_path)
                 .context("while compiling Noir program")?,
-            "mavros" => {
+            Compiler::Mavros => {
                 let r1cs_path = self
                     .r1cs_path
                     .as_ref()
@@ -58,7 +76,6 @@ impl Command for Args {
                 MavrosCompiler::compile(&self.program_path, r1cs_path)
                     .context("while compiling with Mavros")?
             }
-            other => anyhow::bail!("Unknown compiler: {other}. Use \"noir\" or \"mavros\"."),
         };
 
         write(
