@@ -46,7 +46,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
         .prove(&witness_file_path)
         .expect("While proving Noir program statement");
 
-    verifier.verify(&proof).expect("Verifying proof");
+    verifier.verify(proof).expect("Verifying proof");
 }
 
 pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> {

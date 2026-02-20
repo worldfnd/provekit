@@ -399,6 +399,47 @@ impl SparseMatrix {
         start..end
     }
 
+    /// Transpose the matrix, swapping rows and columns.
+    ///
+    /// Returns a new `SparseMatrix` where entry (i, j) in the original
+    /// becomes (j, i) in the result. The interned values are preserved
+    /// and remain valid for the same `Interner`.
+    pub fn transpose(&self) -> SparseMatrix {
+        let nnz = self.values.len();
+
+        let mut entries: Vec<(u32, u32, InternedFieldElement)> = Vec::with_capacity(nnz);
+        for row in 0..self.num_rows {
+            let range = self.row_range(row);
+            for i in range {
+                entries.push((self.col_indices[i], row as u32, self.values[i]));
+            }
+        }
+
+        entries.sort_unstable_by_key(|&(new_row, new_col, _)| (new_row, new_col));
+
+        let mut new_row_indices = Vec::with_capacity(self.num_cols);
+        let mut col_indices = Vec::with_capacity(nnz);
+        let mut values = Vec::with_capacity(nnz);
+
+        let mut entry_idx = 0;
+        for row in 0..self.num_cols {
+            new_row_indices.push(entry_idx as u32);
+            while entry_idx < entries.len() && entries[entry_idx].0 == row as u32 {
+                col_indices.push(entries[entry_idx].1);
+                values.push(entries[entry_idx].2);
+                entry_idx += 1;
+            }
+        }
+
+        SparseMatrix {
+            num_rows: self.num_cols,
+            num_cols: self.num_rows,
+            new_row_indices,
+            col_indices,
+            values,
+        }
+    }
+
     /// Remap column indices using provided mapping function - in-place and
     /// parallel
     pub fn remap_columns<F>(&mut self, remap_fn: F)
@@ -479,12 +520,10 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     }
 }
 
-/// Left multiplication by vector.
+/// Left multiplication by vector (sequential scatter pattern).
 ///
-/// Internal parallelism is deliberately avoided: each accumulator would
-/// require a `num_cols`-sized vector (~38 MB for typical R1CS), making
-/// fold-reduce prohibitively expensive. The three call sites already
-/// run in parallel via `rayon::join`.
+/// The primary call site (`calculate_external_row_of_r1cs_matrices`)
+/// now uses transpose + parallel right-multiply instead.
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 

@@ -53,18 +53,18 @@ impl Command for Args {
             .prove(&self.input_path)
             .context("While proving Noir program statement")?;
 
-        // Verify the proof (not in release build)
+        // Store the proof to file
+        write(&proof, &self.proof_path).context("while writing proof")?;
+
+        // Verify the proof (test-only; runs after write so we can move `proof`)
         #[cfg(test)]
         {
             let mut verifier: Verifier =
                 read(&self.verifier_path).context("while reading Provekit Verifier")?;
             verifier
-                .verify(&proof)
+                .verify(proof)
                 .context("While verifying Noir proof")?;
         }
-
-        // Store the proof to file
-        write(&proof, &self.proof_path).context("while writing proof")?;
 
         Ok(())
     }

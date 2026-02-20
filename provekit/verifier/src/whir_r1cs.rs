@@ -21,28 +21,24 @@ pub struct DataFromSumcheckVerifier {
 }
 
 pub trait WhirR1CSVerifier {
-    fn verify(
-        &self,
-        proof: &WhirR1CSProof,
-        public_inputs: &PublicInputs,
-        r1cs: &R1CS,
-    ) -> Result<()>;
+    fn verify(&self, proof: WhirR1CSProof, public_inputs: &PublicInputs, r1cs: &R1CS)
+        -> Result<()>;
 }
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn verify(
         &self,
-        proof: &WhirR1CSProof,
+        proof: WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
         let ds = self.create_domain_separator().instance(&Empty);
         let whir_proof = Proof {
-            narg_string: proof.narg_string.clone(),
-            hints: proof.hints.clone(),
+            narg_string: proof.narg_string,
+            hints: proof.hints,
             #[cfg(debug_assertions)]
-            pattern: proof.pattern.clone(),
+            pattern: proof.pattern,
         };
         let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
 
@@ -84,10 +80,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let x: FieldElement = arthur.verifier_message();
 
         // Reconstruct alpha weight vectors from R1CS matrices
-        let alphas = calculate_external_row_of_r1cs_matrices(
-            data_from_sumcheck_verifier.alpha.clone(),
-            r1cs.clone(),
-        );
+        let alphas =
+            calculate_external_row_of_r1cs_matrices(&data_from_sumcheck_verifier.alpha, r1cs);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if commitment_2.is_some() {
             // Dual commitment mode

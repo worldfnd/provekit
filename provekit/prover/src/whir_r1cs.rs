@@ -123,7 +123,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         drop(full_witness);
 
         // Compute weights from R1CS matrices
-        let alphas = calculate_external_row_of_r1cs_matrices(alpha, r1cs);
+        let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
         let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, self.m);
 
         if is_single {
@@ -373,7 +373,7 @@ pub fn run_zk_sumcheck_prover(
     let r: Vec<FieldElement> = merlin.verifier_message_vec(m_0);
     let ((mut a, mut b, mut c), mut eq) = rayon::join(
         || calculate_witness_bounds(r1cs, z),
-        || calculate_evaluations_over_boolean_hypercube_for_eq(r),
+        || calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len()),
     );
 
     // Ensure each vector has length >= 2 and is a power of two.
