@@ -1,5 +1,8 @@
 use {
-    crate::{r1cs::R1CSSolver, whir_r1cs::WhirR1CSProver},
+    crate::{
+        r1cs::{CompressedLayers, CompressedR1CS},
+        whir_r1cs::WhirR1CSProver,
+    },
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     bn254_blackbox_solver::Bn254BlackBoxSolver,
@@ -9,8 +12,8 @@ use {
     provekit_common::{
         FieldElement, NoirElement, NoirProof, Prover, PublicInputs, TranscriptSponge,
     },
-    std::path::Path,
-    tracing::instrument,
+    std::{mem::size_of, path::Path},
+    tracing::{debug, info_span, instrument},
     whir::transcript::{codecs::Empty, ProverState},
 };
 
@@ -61,7 +64,15 @@ impl Prove for Prover {
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
         let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
-        let acir_public_inputs = self.program.functions[0].public_inputs().indices();
+        let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
+        drop(self.program);
+        drop(self.witness_generator);
+
+        // R1CS matrices are only needed at sumcheck; compress to save ~96 MB during
+        // commits.
+        let compressed_r1cs = CompressedR1CS::compress(self.r1cs);
+        let num_witnesses = compressed_r1cs.num_witnesses();
+        let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript
         let ds = self
@@ -70,59 +81,92 @@ impl Prove for Prover {
             .instance(&Empty);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
-        let mut witness: Vec<Option<FieldElement>> = vec![None; self.r1cs.num_witnesses()];
+        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
 
-        // Solve w1 (or all witnesses if no challenges)
-        self.r1cs.solve_witness_vec(
-            &mut witness,
-            self.split_witness_builders.w1_layers,
-            &acir_witness_idx_to_value_map,
-            &mut merlin,
-        );
-
-        let w1 = witness[..self.whir_for_witness.w1_size]
-            .iter()
-            .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
-            .collect::<Result<Vec<_>>>()?;
-
-        let commitment_1 = self
-            .whir_for_witness
-            .commit(&mut merlin, &self.r1cs, w1, true)
-            .context("While committing to w1")?;
-
-        // Build commitment list based on whether we have challenges
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
-            // Solve w2
-            self.r1cs.solve_witness_vec(
+        // Solve w1 (or all witnesses if no challenges).
+        // Outer span captures memory AFTER w1_layers parameter is freed
+        // (parameter drop happens before outer span close).
+        {
+            let _s = info_span!("solve_w1").entered();
+            crate::r1cs::solve_witness_vec(
                 &mut witness,
-                self.split_witness_builders.w2_layers,
+                self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
                 &mut merlin,
             );
+        }
 
-            let w2 = witness[self.whir_for_witness.w1_size..]
+        let has_challenges = self.whir_for_witness.num_challenges > 0;
+        let compressed_w2_layers = if has_challenges {
+            Some(CompressedLayers::compress(
+                self.split_witness_builders.w2_layers,
+            ))
+        } else {
+            drop(self.split_witness_builders.w2_layers);
+            None
+        };
+
+        debug!(
+            witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
+            compressed_r1cs_blob_bytes = compressed_r1cs.blob_len(),
+            "component sizes after solve_w1"
+        );
+
+        let w1 = {
+            let _s = info_span!("allocate_w1").entered();
+            witness[..self.whir_for_witness.w1_size]
                 .iter()
-                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
-                .collect::<Result<Vec<_>>>()?;
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+                .collect::<Result<Vec<_>>>()?
+        };
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
+            .context("While committing to w1")?;
+
+        let commitments = if has_challenges {
+            let w2_layers = compressed_w2_layers.unwrap().decompress();
+            {
+                let _s = info_span!("solve_w2").entered();
+                crate::r1cs::solve_witness_vec(
+                    &mut witness,
+                    w2_layers,
+                    &acir_witness_idx_to_value_map,
+                    &mut merlin,
+                );
+            }
+            drop(acir_witness_idx_to_value_map);
+
+            let w2 = {
+                let _s = info_span!("allocate_w2").entered();
+                witness[self.whir_for_witness.w1_size..]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                    .collect::<Result<Vec<_>>>()?
+            };
 
             let commitment_2 = self
                 .whir_for_witness
-                .commit(&mut merlin, &self.r1cs, w2, false)
+                .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
                 .context("While committing to w2")?;
 
             vec![commitment_1, commitment_2]
         } else {
+            drop(acir_witness_idx_to_value_map);
             vec![commitment_1]
         };
-        drop(acir_witness_idx_to_value_map);
+
+        // Decompress R1CS for the sumcheck and matrix operations.
+        let r1cs = compressed_r1cs.decompress();
 
         #[cfg(test)]
-        self.r1cs
-            .test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
-            .context("While verifying R1CS instance")?;
+        crate::r1cs::test_witness_satisfaction(
+            &r1cs,
+            &witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>(),
+        )
+        .context("While verifying R1CS instance")?;
 
-        // Gather public inputs from witness
-        let num_public_inputs = acir_public_inputs.len();
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
         } else {
@@ -133,11 +177,15 @@ impl Prove for Prover {
                     .collect::<Result<Vec<FieldElement>>>()?,
             )
         };
-        drop(witness);
+
+        let full_witness: Vec<FieldElement> = witness
+            .into_iter()
+            .map(|w| w.expect("All witnesses must be solved before proving"))
+            .collect();
 
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove(merlin, self.r1cs, commitments, &public_inputs)
+            .prove(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof {

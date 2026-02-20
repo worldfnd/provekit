@@ -1,37 +1,13 @@
-use {
-    crate::FieldElement,
-    ark_ff::UniformRand,
-    rayon::prelude::*,
-    whir::algebra::{
-        dot,
-        linear_form::Covector,
-        ntt::wavelet_transform,
-        polynomials::{CoefficientList, EvaluationsList},
-    },
-};
-
-/// Transform coefficients to evaluation form. Avoids the per-call
-/// clone+transform inside `Covector::evaluate`.
-pub fn coeffs_to_evals(poly: &CoefficientList<FieldElement>) -> Vec<FieldElement> {
-    let mut evals = poly.coeffs().to_vec();
-    wavelet_transform(&mut evals);
-    evals
-}
-
-/// Dot product of a covector's weight vector against pre-transformed
-/// evaluations.
-pub fn covector_dot(w: &Covector<FieldElement>, evals: &[FieldElement]) -> FieldElement {
-    dot(&w.vector, evals)
-}
+use {crate::FieldElement, ark_ff::UniformRand, rayon::prelude::*};
 
 pub fn create_masked_polynomial(
-    original: EvaluationsList<FieldElement>,
+    original: Vec<FieldElement>,
     mask: &[FieldElement],
-) -> EvaluationsList<FieldElement> {
-    let mut combined = Vec::with_capacity(original.num_evals() * 2);
-    combined.extend_from_slice(original.evals());
+) -> Vec<FieldElement> {
+    let mut combined = Vec::with_capacity(original.len() + mask.len());
+    combined.extend_from_slice(&original);
     combined.extend_from_slice(mask);
-    EvaluationsList::new(combined)
+    combined
 }
 
 pub fn generate_random_multilinear_polynomial(num_vars: usize) -> Vec<FieldElement> {
