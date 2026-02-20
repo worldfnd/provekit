@@ -215,7 +215,7 @@ fn generate_1300_inputs(
     let config = MerkleAge1300Config {
         base: MerkleAgeBaseConfig {
             current_date: 1735689600,
-            min_age_required: 17,
+            min_age_required: 18,
             max_age_required: 0,
             ..Default::default()
         },

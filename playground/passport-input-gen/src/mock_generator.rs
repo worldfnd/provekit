@@ -658,9 +658,13 @@ fn build_padded_tbs_certificate_bytes(dsc_pub: &RsaPublicKey, target_len: usize)
     // Use a private-use OID for the padding extension: 1.3.6.1.4.1.99999.1
     let padding_oid = ObjectIdentifier::new_unchecked(vec![1, 3, 6, 1, 4, 1, 99999, 1].into());
 
-    // Iterative approach: add padding, encode, check length, adjust
+    // Use a small, bounded number of iterations to converge on the target length.
+    // DER encoding can cause non-linear changes in size due to length fields, so we
+    // iteratively adjust the padding. Five iterations is
+    // enough to converge in nearly all cases.
+    const PADDING_ADJUSTMENT_ATTEMPTS: usize = 5;
     let mut padding_size = target_len.saturating_sub(base_len);
-    for _ in 0..5 {
+    for _ in 0..PADDING_ADJUSTMENT_ATTEMPTS {
         let padding_data = vec![0x42u8; padding_size];
         let padding_ext = Extension {
             extn_id:    padding_oid.clone(),

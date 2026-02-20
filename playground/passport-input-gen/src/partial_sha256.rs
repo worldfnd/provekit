@@ -17,12 +17,13 @@ pub const SHA256_IV: [u32; 8] = [
 /// `partial_sha256/src/lib.nr`. It runs the SHA256 compression function over
 /// each 64-byte block without finalization (no padding or length encoding),
 /// returning the raw `[u32; 8]` state.
-pub fn sha256_start(msg: &[u8]) -> [u32; 8] {
-    assert!(
-        msg.len() % 64 == 0,
-        "Message size must be a multiple of 64 bytes, got {}",
-        msg.len()
-    );
+pub fn sha256_start(msg: &[u8]) -> Result<[u32; 8], String> {
+    if msg.len() % 64 != 0 {
+        return Err(format!(
+            "Message size must be a multiple of 64 bytes, got {}",
+            msg.len()
+        ));
+    }
 
     let mut state = SHA256_IV;
 
@@ -31,7 +32,7 @@ pub fn sha256_start(msg: &[u8]) -> [u32; 8] {
         sha2::compress256(&mut state, &[*block]);
     }
 
-    state
+    Ok(state)
 }
 
 #[cfg(test)]
@@ -42,16 +43,17 @@ mod tests {
     fn test_sha256_start_single_block() {
         // 64 bytes of 0x61 ('a')
         let msg = [0x61u8; 64];
-        let state = sha256_start(&msg);
+        let state = sha256_start(&msg).expect("valid input");
         // Should differ from IV after processing
         assert_ne!(state, SHA256_IV);
     }
 
     #[test]
-    #[should_panic(expected = "multiple of 64")]
     fn test_sha256_start_invalid_size() {
         let msg = [0u8; 63];
-        sha256_start(&msg);
+        let result = sha256_start(&msg);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("multiple of 64"));
     }
 
     #[test]
@@ -93,7 +95,7 @@ mod tests {
             109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125,
             126, 127, 128, 129, 130, 131, 132, 133, 134,
         ];
-        let state = sha256_start(&chunk1);
+        let state = sha256_start(&chunk1).expect("valid input");
         assert_eq!(
             state,
             [
