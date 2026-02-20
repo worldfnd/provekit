@@ -9,7 +9,6 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-/// A prover for a Noir Proof Scheme
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prover {
     pub program:                Program<NoirElement>,
@@ -20,16 +19,26 @@ pub struct Prover {
 }
 
 impl Prover {
-    pub fn from_noir_proof_scheme(noir_proof_scheme: NoirProofScheme) -> Self {
+    #[must_use]
+    pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
+        let NoirProofScheme {
+            program,
+            r1cs,
+            split_witness_builders,
+            witness_generator,
+            whir_for_witness,
+        } = scheme;
+
         Self {
-            program:                noir_proof_scheme.program,
-            r1cs:                   noir_proof_scheme.r1cs,
-            split_witness_builders: noir_proof_scheme.split_witness_builders,
-            witness_generator:      noir_proof_scheme.witness_generator,
-            whir_for_witness:       noir_proof_scheme.whir_for_witness,
+            program,
+            r1cs,
+            split_witness_builders,
+            witness_generator,
+            whir_for_witness,
         }
     }
 
+    #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
     }
