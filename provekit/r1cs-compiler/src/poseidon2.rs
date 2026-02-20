@@ -1,12 +1,12 @@
 /// Implementation inspired by the Circom Poseidon2 templates: [https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom](https://github.com/TaceoLabs/nullifier-oracle-service/tree/main/circom/poseidon2/poseidon2_constants.circom)
 use {
-    super::constants::{
-        amount_partial_rounds, load_diag, load_rc_full1, load_rc_full2, load_rc_partial,
-    },
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::Field,
     ark_std::One,
     ark_std::Zero,
+    poseidon2::constants::{
+        amount_partial_rounds, load_diag, load_rc_full1, load_rc_full2, load_rc_partial,
+    },
     provekit_common::{
         witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,

@@ -3,7 +3,6 @@ pub mod mock_generator;
 pub mod mock_keys;
 mod parser;
 pub mod partial_sha256;
-pub mod poseidon2;
 
 pub use crate::parser::{binary::Binary, sod::SOD};
 use {

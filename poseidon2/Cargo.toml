@@ -1,0 +1,19 @@
+[package]
+name = "poseidon2"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Poseidon2 hash function for BN254"
+
+[lints]
+workspace = true
+
+[dependencies]
+ark-bn254.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
+hex.workspace = true

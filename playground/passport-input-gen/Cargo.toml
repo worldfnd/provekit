@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 # Workspace dependencies
+poseidon2.workspace = true
 anyhow.workspace = true
 ark-bn254.workspace = true
 ark-ff.workspace = true

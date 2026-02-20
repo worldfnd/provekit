@@ -5,9 +5,10 @@
 //! of placeholders.
 
 use {
-    crate::{parser::types::PassportError, poseidon2::poseidon2_hash},
+    crate::parser::types::PassportError,
     ark_bn254::Fr,
     ark_ff::{BigInteger, PrimeField},
+    poseidon2::poseidon2_hash,
 };
 
 /// Parse a 0x-prefixed hex string (e.g. "0x2") into a BN254 field element.

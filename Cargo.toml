@@ -16,6 +16,7 @@ members = [
   "tooling/provekit-gnark",
   "tooling/verifier-server",
   "ntt",
+  "poseidon2",
   "playground/passport-input-gen",
 ]
 
@@ -86,6 +87,7 @@ fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
 ntt = { path = "ntt" }
+poseidon2 = { path = "poseidon2" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
