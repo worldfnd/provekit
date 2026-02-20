@@ -1,9 +1,6 @@
-#[cfg(feature = "mavros_compiler")]
-use mavros_artifacts::R1CS as MavrosR1CS;
-#[cfg(not(feature = "mavros_compiler"))]
-use provekit_common::R1CS;
 use {
-    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme},
+    mavros_artifacts::R1CS as MavrosR1CS,
+    provekit_common::{utils::next_power_of_two, WhirConfig, WhirR1CSScheme, R1CS},
     std::sync::Arc,
     whir::{
         ntt::RSDefault,
@@ -14,14 +11,10 @@ use {
     },
 };
 
-// Minimum log2 of the WHIR evaluation domain (lower bound for m).
 const MIN_WHIR_NUM_VARIABLES: usize = 12;
-// Minimum number of variables in the sumcheck’s multilinear polynomial (lower
-// bound for m_0).
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
-    #[cfg(not(feature = "mavros_compiler"))]
     fn new_for_r1cs(
         r1cs: &R1CS,
         w1_size: usize,
@@ -29,7 +22,6 @@ pub trait WhirR1CSSchemeBuilder {
         has_public_inputs: bool,
     ) -> Self;
 
-    #[cfg(feature = "mavros_compiler")]
     fn new_from_mavros_r1cs(
         r1cs: &MavrosR1CS,
         w1_size: usize,
@@ -37,7 +29,6 @@ pub trait WhirR1CSSchemeBuilder {
         has_public_inputs: bool,
     ) -> Self;
 
-    #[cfg(feature = "mavros_compiler")]
     fn new_from_dimensions(
         num_witnesses: usize,
         num_constraints: usize,
@@ -51,7 +42,6 @@ pub trait WhirR1CSSchemeBuilder {
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
-    #[cfg(not(feature = "mavros_compiler"))]
     fn new_for_r1cs(
         r1cs: &R1CS,
         w1_size: usize,
@@ -110,7 +100,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         WhirConfig::new(reed_solomon, basefield_reed_solomon, mv_params, whir_params)
     }
 
-    #[cfg(feature = "mavros_compiler")]
     fn new_from_mavros_r1cs(
         r1cs: &MavrosR1CS,
         w1_size: usize,
@@ -131,7 +120,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         )
     }
 
-    #[cfg(feature = "mavros_compiler")]
     fn new_from_dimensions(
         num_witnesses: usize,
         num_constraints: usize,
@@ -140,19 +128,12 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         num_challenges: usize,
         has_public_inputs: bool,
     ) -> Self {
-        // m_raw is equal to ceiling(log(number of variables in constraint system)). It
-        // is equal to the log of the width of the matrices.
         let m_raw = next_power_of_two(num_witnesses);
-
-        // m0_raw is equal to ceiling(log(number_of_constraints)). It is equal to the
-        // number of variables in the multilinear polynomial we are running our sumcheck
-        // on.
         let m0_raw = next_power_of_two(num_constraints);
 
         let m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        // Whir parameters
         Self {
             m: m + 1,
             m_0,

@@ -1,61 +1,26 @@
 use {
-    crate::whir_r1cs::WhirR1CSSchemeBuilder,
-    anyhow::{Context as _, Result},
-    provekit_common::{NoirProofScheme, WhirR1CSScheme},
-    std::{fs::File, path::Path},
-    tracing::{info, instrument},
-};
-#[cfg(not(feature = "mavros_compiler"))]
-use {
-    crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
-    anyhow::ensure,
+    crate::{
+        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
+        witness_generator::NoirWitnessGeneratorBuilder,
+    },
+    anyhow::{ensure, Context as _, Result},
+    mavros_artifacts::R1CS as MavrosR1CS,
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
-        utils::PrintAbi,
+        utils::{convert_mavros_r1cs_to_provekit, PrintAbi},
         witness::{NoirWitnessGenerator, WitnessBuilder},
+        MavrosSchemeData, NoirProofScheme, NoirSchemeData, WhirR1CSScheme,
     },
-    std::collections::HashSet,
-};
-#[cfg(feature = "mavros_compiler")]
-use {
-    mavros_artifacts::R1CS as MavrosR1CS,
-    noirc_abi::Abi,
-    provekit_common::utils::convert_mavros_r1cs_to_provekit,
     serde::Deserialize,
+    std::{collections::HashSet, fs::File, path::Path},
+    tracing::{info, instrument},
 };
 
-pub trait NoirProofSchemeBuilder {
-    #[cfg(not(feature = "mavros_compiler"))]
-    fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self>
-    where
-        Self: Sized;
+pub struct NoirCompiler;
 
-    #[cfg(feature = "mavros_compiler")]
-    fn from_file(
-        basic_path: impl AsRef<Path> + std::fmt::Debug,
-        r1cs_path: impl AsRef<Path> + std::fmt::Debug,
-    ) -> Result<Self>
-    where
-        Self: Sized;
-
-    #[cfg(not(feature = "mavros_compiler"))]
-    fn from_program(program: ProgramArtifact) -> Result<Self>
-    where
-        Self: Sized;
-}
-
-#[cfg(feature = "mavros_compiler")]
-#[derive(Deserialize)]
-struct BasicArtifacts {
-    abi:            noirc_abi::Abi,
-    ad_binary:      Vec<u64>,
-    witgen_binary:  Vec<u64>,
-}
-
-#[cfg(not(feature = "mavros_compiler"))]
-impl NoirProofSchemeBuilder for NoirProofScheme {
+impl NoirCompiler {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
-    fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<Self> {
+    pub fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<NoirProofScheme> {
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
@@ -63,7 +28,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
     }
 
     #[instrument(skip_all)]
-    fn from_program(program: ProgramArtifact) -> Result<Self> {
+    pub fn from_program(program: ProgramArtifact) -> Result<NoirProofScheme> {
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(
@@ -71,7 +36,6 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             "Program must have one entry point."
         );
 
-        // Extract bits from Program Artifact.
         let main = &program.bytecode.functions[0];
         info!(
             "ACIR: {} witnesses, {} opcodes.",
@@ -79,7 +43,6 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             main.opcodes.len()
         );
 
-        // Compile to R1CS schemes
         let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
@@ -90,12 +53,10 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             r1cs.c.num_entries()
         );
 
-        // Extract ACIR public input indices set
         let acir_public_inputs_indices_set: HashSet<u32> =
             main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
-        // Split witness builders and remap indices for sound challenge generation
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
             WitnessBuilder::split_and_prepare_layers(
                 &witness_builders,
@@ -109,14 +70,12 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             remapped_r1cs.num_witnesses() - split_witness_builders.w1_size
         );
 
-        // Configure witness generator with remapped witness map
         let witness_generator = NoirWitnessGenerator::new(
             &program,
             remapped_witness_map,
             remapped_r1cs.num_witnesses(),
         );
 
-        // Configure Whir for full witness
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
             &remapped_r1cs,
             split_witness_builders.w1_size,
@@ -124,23 +83,31 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             has_public_inputs,
         );
 
-        Ok(Self {
+        Ok(NoirProofScheme::Noir(NoirSchemeData {
             program: program.bytecode,
             r1cs: remapped_r1cs,
             split_witness_builders,
             witness_generator,
             whir_for_witness,
-        })
+        }))
     }
 }
 
-#[cfg(feature = "mavros_compiler")]
-impl NoirProofSchemeBuilder for NoirProofScheme {
+#[derive(Deserialize)]
+struct BasicArtifacts {
+    abi:           noirc_abi::Abi,
+    ad_binary:     Vec<u64>,
+    witgen_binary: Vec<u64>,
+}
+
+pub struct MavrosCompiler;
+
+impl MavrosCompiler {
     #[instrument(skip_all)]
-    fn from_file(
+    pub fn compile(
         basic_path: impl AsRef<Path> + std::fmt::Debug,
         r1cs_path: impl AsRef<Path> + std::fmt::Debug,
-    ) -> Result<Self> {
+    ) -> Result<NoirProofScheme> {
         info!("Reading basic artifacts from {:?}", basic_path);
         let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
         let basic: BasicArtifacts =
@@ -174,7 +141,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             .map(|p| p.typ.field_count() as usize)
             .sum();
 
-        Ok(Self {
+        Ok(NoirProofScheme::Mavros(MavrosSchemeData {
             abi,
             num_public_inputs,
             whir_for_witness,
@@ -183,14 +150,14 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             r1cs,
             constraints_layout: mavros_r1cs.constraints_layout,
             witness_layout: mavros_r1cs.witness_layout,
-        })
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use {
-        crate::NoirProofSchemeBuilder,
+        crate::NoirCompiler,
         ark_std::One,
         provekit_common::{
             witness::{ConstantTerm, SumTerm, WitnessBuilder},
@@ -205,27 +172,28 @@ mod tests {
     where
         T: std::fmt::Debug + PartialEq + Serialize + for<'a> Deserialize<'a>,
     {
-        // Test JSON
         let json = serde_json::to_string(value).unwrap();
         let deserialized = serde_json::from_str(&json).unwrap();
         assert_eq!(value, &deserialized);
 
-        // Test Postcard
         let bin = postcard::to_allocvec(value).unwrap();
         let deserialized = postcard::from_bytes(&bin).unwrap();
         assert_eq!(value, &deserialized);
     }
 
-    #[cfg(not(feature = "mavros_compiler"))]
     #[test]
     fn test_noir_proof_scheme_serde() {
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
-        let proof_schema = NoirProofScheme::from_file(path).unwrap();
+        let proof_scheme = NoirCompiler::from_file(path).unwrap();
 
-        test_serde(&proof_schema.r1cs);
-        test_serde(&proof_schema.split_witness_builders);
-        test_serde(&proof_schema.witness_generator);
-        test_serde(&proof_schema.whir_for_witness);
+        if let NoirProofScheme::Noir(d) = &proof_scheme {
+            test_serde(&d.r1cs);
+            test_serde(&d.split_witness_builders);
+            test_serde(&d.witness_generator);
+            test_serde(&d.whir_for_witness);
+        } else {
+            panic!("Expected Noir variant");
+        }
     }
 
     #[test]

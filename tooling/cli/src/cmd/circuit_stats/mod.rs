@@ -1,4 +1,7 @@
-//! Analyze ACIR circuit statistics and R1CS complexity.
+//! Analyze ACIR circuit statistics and R1CS complexity (Noir only).
+//!
+//! This command is not supported for Mavros — it operates on Noir ACIR
+//! circuit artifacts.
 //!
 //! # Example
 //!
@@ -29,7 +32,8 @@ use {
 #[argh(
     subcommand,
     name = "circuit_stats",
-    description = "analyze ACIR circuit statistics and R1CS complexity"
+    description = "analyze ACIR circuit statistics and R1CS complexity (Noir only, not supported \
+                   for Mavros)"
 )]
 pub struct Args {
     #[argh(positional, description = "path to the ACIR circuit file (.json)")]

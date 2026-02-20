@@ -11,7 +11,7 @@ mod whir_r1cs;
 mod witness_generator;
 
 pub use {
-    noir_proof_scheme::NoirProofSchemeBuilder,
+    noir_proof_scheme::{MavrosCompiler, NoirCompiler},
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
     whir_r1cs::WhirR1CSSchemeBuilder,
 };

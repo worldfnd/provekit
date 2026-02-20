@@ -38,8 +38,3 @@ harness = false
 
 [features]
 default = []
-mavros_compiler = [
-    "provekit-common/mavros_compiler",
-    "provekit-prover/mavros_compiler",
-    "provekit-r1cs-compiler/mavros_compiler",
-]

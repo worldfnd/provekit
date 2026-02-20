@@ -1,25 +1,17 @@
-#[cfg(feature = "mavros_compiler")]
-use {mavros_artifacts::{ConstraintsLayout, WitnessLayout}, noirc_abi::Abi};
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
-        PublicInputs, R1CS,
+        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
+        NoirElement, PublicInputs, R1CS,
     },
+    acir::circuit::Program,
+    mavros_vm::{ConstraintsLayout, WitnessLayout},
+    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
-#[cfg(not(feature = "mavros_compiler"))]
-use {
-    acir::circuit::Program,
-    crate::{
-        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement,
-    },
-};
 
-/// A scheme for proving a Noir program.
-#[cfg(not(feature = "mavros_compiler"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NoirProofScheme {
+pub struct NoirSchemeData {
     pub program:                Program<NoirElement>,
     pub r1cs:                   R1CS,
     pub split_witness_builders: SplitWitnessBuilders,
@@ -27,9 +19,8 @@ pub struct NoirProofScheme {
     pub whir_for_witness:       WhirR1CSScheme,
 }
 
-#[cfg(feature = "mavros_compiler")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NoirProofScheme {
+pub struct MavrosSchemeData {
     #[serde(with = "crate::utils::serde_jsonify")]
     pub abi:                Abi,
     pub num_public_inputs:  usize,
@@ -37,8 +28,14 @@ pub struct NoirProofScheme {
     pub whir_for_witness:   WhirR1CSScheme,
     pub witgen_binary:      Vec<u64>,
     pub ad_binary:          Vec<u64>,
-    pub constraints_layout:    ConstraintsLayout,
-    pub witness_layout: WitnessLayout,
+    pub constraints_layout: ConstraintsLayout,
+    pub witness_layout:     WitnessLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum NoirProofScheme {
+    Noir(NoirSchemeData),
+    Mavros(MavrosSchemeData),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,7 +46,24 @@ pub struct NoirProof {
 
 impl NoirProofScheme {
     #[must_use]
-    pub const fn size(&self) -> (usize, usize) {
-        (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    pub fn r1cs(&self) -> &R1CS {
+        match self {
+            NoirProofScheme::Noir(d) => &d.r1cs,
+            NoirProofScheme::Mavros(d) => &d.r1cs,
+        }
+    }
+
+    #[must_use]
+    pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
+        match self {
+            NoirProofScheme::Noir(d) => &d.whir_for_witness,
+            NoirProofScheme::Mavros(d) => &d.whir_for_witness,
+        }
+    }
+
+    #[must_use]
+    pub fn size(&self) -> (usize, usize) {
+        let r1cs = self.r1cs();
+        (r1cs.num_constraints(), r1cs.num_witnesses())
     }
 }

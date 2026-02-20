@@ -37,4 +37,3 @@ workspace = true
 default = ["profiling-allocator"]
 profiling-allocator = []
 tracy = ["dep:tracing-tracy"]
-mavros_compiler = []

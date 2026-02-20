@@ -17,8 +17,8 @@ use crate::{
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
-    noir_proof_scheme::{NoirProof, NoirProofScheme},
-    prover::Prover,
+    noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
+    prover::{MavrosProver, NoirProver, Prover},
     r1cs::R1CS,
     verifier::Verifier,
     whir_r1cs::{IOPattern, WhirConfig, WhirR1CSProof, WhirR1CSScheme},

@@ -11,10 +11,16 @@ pub struct Verifier {
 }
 
 impl Verifier {
-    pub fn from_noir_proof_scheme(noir_proof_scheme: NoirProofScheme) -> Self {
-        Self {
-            r1cs:             noir_proof_scheme.r1cs,
-            whir_for_witness: Some(noir_proof_scheme.whir_for_witness),
+    pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
+        match scheme {
+            NoirProofScheme::Noir(d) => Self {
+                r1cs:             d.r1cs,
+                whir_for_witness: Some(d.whir_for_witness),
+            },
+            NoirProofScheme::Mavros(d) => Self {
+                r1cs:             d.r1cs,
+                whir_for_witness: Some(d.whir_for_witness),
+            },
         }
     }
 }

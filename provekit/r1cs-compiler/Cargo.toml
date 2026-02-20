@@ -10,7 +10,6 @@ repository.workspace = true
 
 [features]
 default = []
-mavros_compiler = ["dep:mavros-artifacts", "provekit-common/mavros_compiler"]
 
 [dependencies]
 # Workspace crates
@@ -35,7 +34,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 bincode.workspace = true
-mavros-artifacts = { workspace = true, optional = true }
+mavros-artifacts.workspace = true
 
 [lints]
 workspace = true

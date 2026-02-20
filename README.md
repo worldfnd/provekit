@@ -42,7 +42,7 @@ cargo run --release --bin provekit-cli verify ./verifier.pkv ./proof.np
 Generate inputs for Gnark circuit:
 
 ```sh
-cargo run --release --bin provekit-cli generate-gnark-inputs ./prover.pkp ./proof.np
+cargo run --release --bin provekit-cli generate-gnark-inputs ./verifier.pkv ./proof.np
 ```
 
 Analyze circuit statistics and R1CS complexity:
@@ -63,6 +63,132 @@ Recursively verify in a Gnark proof:
 cd ../../recursive-verifier
 go run cmd/cli/main.go --config ../noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ../noir-examples/poseidon-rounds/r1cs.json
 ```
+
+### Benchmarking
+
+Benchmark against Barretenberg:
+
+> _Note_: You can install Barretenberg from [here](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md).
+
+> _Note_: You can install [hyperfine](https://github.com/sharkdp/hyperfine) using brew on OSX: `brew install hyperfine`.
+
+```sh
+cd noir-examples/poseidon-rounds
+cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
+hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml'
+```
+
+### Profiling
+
+#### Custom built-in profile (Memory usage)
+
+The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
+runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
+
+```sh
+cargo run --release --bin provekit-cli --features profiling prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+
+#### Using tracy (CPU and Memory usage)
+
+Tracy tool [website](https://github.com/wolfpld/tracy). To install tracy tool on OSX use brew: `brew install tracy`.
+
+> **Important**: integration is done with `Tracy Profiler 0.11.1`. It is newest version available from brew. Newer
+> version may require updating dependencies as tracy is using its own protocol between app and tracy tool that changes
+> with each major version.
+
+TLDR; Tracy is an interactive tool to profile application. There is integration plugin for rust that works with
+standard tracing annotation. For now it is integrated into `provekit-cli` binary only. Collecting profiling data requires
+tracy to run during application profiling. You may noticed that it makes application to run much longer but mostly
+due to data transfer between the application and the tracy running along.
+
+Usage:
+
+1. Start tracy from command line
+```sh
+tracy
+```
+2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
+   localhost for incoming data.
+3.  Compile `noir-r1cs-profiled` binary.
+```sh
+cargo build --release --bin provekit-cli --features profiling
+```
+4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
+   command must be run against each binary that is being profiled by tracy. This will create directory next to the 
+   binary provided with `.dSYM` suffix (ex. `../../target/profiled-cli.dSYM`). Directory will contain the
+   debug symbols and paths extracted with different format that is compatible with tracy tool. It must be rerun after
+   each changes made to `provekit-cli` app.
+```sh
+ dsymutil ../../target/release/provekit-cli
+```
+5. Now start the application to profile:
+```sh
+../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+6. Go back to tracy tool. You should see that it receives data. App is interactive.
+
+#### Using samply (CPU usage)
+
+Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
+
+```sh
+samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+
+#### Using instruments (Memory usage) - OSX only
+
+Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) with instructions to install. It will open
+results using built-in Instruments app. Results are interactive.
+
+```sh
+cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+
+Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
+open a webpage with interactive app to view results. This does not require to run binary
+with profiling enabled.
+
+```sh
+samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+
+## Demo instructions for Mavros
+
+> _NOTE:_ The example below is being run for single example `poseidon-rounds`. You can use different example to run same commands.
+
+Compile the Noir circuit:
+
+mavros bin is a prerequisite. You should follow the build instructions in the Mavros repository at 
+
+https://github.com/reilabs/mavros
+
+
+```sh
+cd noir-examples/poseidon-rounds
+mavros compile
+```
+
+Prepare the Noir program (generates prover and verifier files):
+
+```sh
+cargo run --release --bin provekit-cli prepare --compiler mavros ./target/basic.json --r1cs ./target/r1cs.bin --pkp ./prover.pkp --pkv ./verifier.pkv
+```
+
+Generate the Noir Proof using the input Toml:
+
+```sh
+cargo run --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
+```
+
+Verify the Noir Proof:
+
+```sh
+cargo run --release --bin provekit-cli verify ./verifier.pkv ./proof.np
+```
+
 
 ### Benchmarking
 
