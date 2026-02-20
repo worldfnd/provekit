@@ -2,15 +2,14 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        utils::sumcheck::{
-            calculate_eq, calculate_external_row_of_r1cs_matrices, eval_cubic_poly,
-        },
-        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig,
-        R1CS,
+        prefix_covector::{build_prefix_covectors, expand_powers, make_public_weight},
+        utils::sumcheck::{calculate_eq, calculate_external_row_of_r1cs_matrices, eval_cubic_poly},
+        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        WhirR1CSScheme, WhirZkConfig, R1CS,
     },
     tracing::instrument,
     whir::{
-        algebra::{linear_form::LinearForm, multilinear_extend},
+        algebra::linear_form::LinearForm,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
     },
 };
@@ -19,55 +18,6 @@ pub struct DataFromSumcheckVerifier {
     r:                 Vec<FieldElement>,
     alpha:             Vec<FieldElement>,
     last_sumcheck_val: FieldElement,
-}
-
-/// A covector that stores only a power-of-two prefix, with the rest
-/// implicitly zero-padded to `logical_size`. Verifier-side equivalent of
-/// the prover's `PrefixCovector`. Non-deferred so that whir_zk::verify
-/// can call `mle_evaluate()` to verify evaluations directly.
-struct PrefixCovector {
-    vector:       Vec<FieldElement>,
-    logical_size: usize,
-}
-
-impl PrefixCovector {
-    fn new(vector: Vec<FieldElement>, logical_size: usize) -> Self {
-        debug_assert!(vector.len().is_power_of_two());
-        debug_assert!(logical_size.is_power_of_two());
-        debug_assert!(logical_size >= vector.len());
-        Self {
-            vector,
-            logical_size,
-        }
-    }
-}
-
-impl LinearForm<FieldElement> for PrefixCovector {
-    fn size(&self) -> usize {
-        self.logical_size
-    }
-
-    fn deferred(&self) -> bool {
-        false
-    }
-
-    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
-        let k = self.vector.len().trailing_zeros() as usize;
-        let r = point.len() - k;
-        let head_factor: FieldElement =
-            point[..r].iter().map(|p| FieldElement::one() - p).product();
-        let prefix_mle = multilinear_extend(&self.vector, &point[r..]);
-        head_factor * prefix_mle
-    }
-
-    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        for (acc, val) in accumulator[..self.vector.len()]
-            .iter_mut()
-            .zip(&self.vector)
-        {
-            *acc += scalar * *val;
-        }
-    }
 }
 
 pub trait WhirR1CSVerifier {
@@ -172,8 +122,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .map_err(|_| anyhow::anyhow!("Failed to read public_2 hint"))?;
 
             // Build non-deferred weights for c1 from alphas_1
-            let mut weights_1 = build_weights(self.m, alphas_1);
-            let mut weights_2 = build_weights(self.m, alphas_2);
+            let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
+            let mut weights_2 = build_prefix_covectors(self.m, alphas_2);
 
             // Insert public weight at front if needed
             if !public_inputs.is_empty() {
@@ -228,7 +178,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
 
             // Build non-deferred weights from reconstructed alpha vectors
-            let mut weights = build_weights(self.m, alphas.try_into().unwrap());
+            let mut weights = build_prefix_covectors(self.m, alphas.try_into().unwrap());
 
             // Insert public weight at front if needed
             if !public_inputs.is_empty() {
@@ -267,48 +217,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         Ok(())
     }
-}
-
-/// Build non-deferred PrefixCovector weights from alpha vectors.
-fn build_weights<const N: usize>(
-    m: usize,
-    alphas: [Vec<FieldElement>; N],
-) -> Vec<PrefixCovector> {
-    let domain_size = 1usize << m;
-    alphas
-        .into_iter()
-        .map(|mut w| {
-            let base_len = w.len().next_power_of_two().max(2);
-            w.resize(base_len, FieldElement::zero());
-            PrefixCovector::new(w, domain_size)
-        })
-        .collect()
-}
-
-/// Create a public weight PrefixCovector from randomness `x`.
-fn make_public_weight(x: FieldElement, public_inputs_len: usize, m: usize) -> PrefixCovector {
-    let domain_size = 1 << m;
-    let prefix_len = public_inputs_len.next_power_of_two().max(2);
-    let mut public_weights = vec![FieldElement::zero(); prefix_len];
-
-    let mut current_pow = FieldElement::one();
-    for slot in public_weights.iter_mut().take(public_inputs_len) {
-        *slot = current_pow;
-        current_pow *= x;
-    }
-
-    PrefixCovector::new(public_weights, domain_size)
-}
-
-fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = Vec::with_capacity(values.len() * 4);
-    for &value in values {
-        result.push(FieldElement::one());
-        result.push(value);
-        result.push(value * value);
-        result.push(value * value * value);
-    }
-    result
 }
 
 #[instrument(skip_all)]

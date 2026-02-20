@@ -3,6 +3,10 @@ use {
     ark_ff::UniformRand,
     ark_std::{One, Zero},
     provekit_common::{
+        prefix_covector::{
+            build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
+            make_public_weight,
+        },
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -12,12 +16,12 @@ use {
             },
             HALF,
         },
-        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig,
-        R1CS,
+        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        WhirR1CSScheme, WhirZkConfig, R1CS,
     },
     tracing::instrument,
     whir::{
-        algebra::{dot, linear_form::LinearForm, multilinear_extend},
+        algebra::{dot, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{ProverState, VerifierMessage},
     },
@@ -26,62 +30,6 @@ use {
 pub struct WhirR1CSCommitment {
     pub witness:    WhirZkWitness<FieldElement>,
     pub polynomial: Vec<FieldElement>,
-}
-
-/// A covector that stores only a power-of-two prefix, with the rest
-/// implicitly zero-padded to `logical_size`. Saves memory when the
-/// covector is known to be zero beyond the prefix (e.g. R1CS alpha
-/// weights that are zero-padded from witness_size to 2^m).
-///
-/// Implements [`LinearForm`] so it can be passed directly to whir's
-/// `prove()` in place of a full-length `Covector`.
-struct PrefixCovector {
-    /// The non-zero prefix. Length must be a power of two.
-    vector:       Vec<FieldElement>,
-    /// The full logical domain size (also a power of two, >= vector.len()).
-    logical_size: usize,
-    deferred:     bool,
-}
-
-impl PrefixCovector {
-    fn non_deferred(vector: Vec<FieldElement>, logical_size: usize) -> Self {
-        debug_assert!(vector.len().is_power_of_two());
-        debug_assert!(logical_size.is_power_of_two());
-        debug_assert!(logical_size >= vector.len());
-        Self {
-            vector,
-            logical_size,
-            deferred: false,
-        }
-    }
-}
-
-impl LinearForm<FieldElement> for PrefixCovector {
-    fn size(&self) -> usize {
-        self.logical_size
-    }
-
-    fn deferred(&self) -> bool {
-        self.deferred
-    }
-
-    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
-        let k = self.vector.len().trailing_zeros() as usize;
-        let r = point.len() - k;
-        let head_factor: FieldElement =
-            point[..r].iter().map(|p| FieldElement::one() - p).product();
-        let prefix_mle = multilinear_extend(&self.vector, &point[r..]);
-        head_factor * prefix_mle
-    }
-
-    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        for (acc, val) in accumulator[..self.vector.len()]
-            .iter_mut()
-            .zip(&self.vector)
-        {
-            *acc += scalar * *val;
-        }
-    }
 }
 
 pub trait WhirR1CSProver {
@@ -540,7 +488,7 @@ pub fn run_zk_sumcheck_prover(
     let blinding_eval = dot(&weight_vec, &flat[..weight_vec.len()]);
     merlin.prover_message(&blinding_eval);
 
-    let covector = PrefixCovector::non_deferred(weight_vec, weight_domain_size);
+    let covector = PrefixCovector::new(weight_vec, weight_domain_size);
     let weight_refs: Vec<&dyn LinearForm<FieldElement>> =
         vec![&covector as &dyn LinearForm<FieldElement>];
     whir_for_blinding_of_spartan_config.prove(merlin, &[&flat], blinding_witness, &weight_refs, &[
@@ -550,68 +498,6 @@ pub fn run_zk_sumcheck_prover(
     alpha
 }
 
-fn expand_powers(values: &[FieldElement]) -> Vec<FieldElement> {
-    let mut result = Vec::with_capacity(values.len() * 4);
-    for &value in values {
-        result.push(FieldElement::one());
-        result.push(value);
-        result.push(value * value);
-        result.push(value * value * value);
-    }
-    result
-}
-
-/// Compute dot products of alpha vectors against a polynomial without
-/// allocating PrefixCovector weights.  Used to write transcript hints
-/// before deferring weight construction (saves memory in dual-commit).
-fn compute_alpha_evals<const N: usize>(
-    polynomial: &[FieldElement],
-    alphas: &[Vec<FieldElement>; N],
-) -> Vec<FieldElement> {
-    alphas
-        .iter()
-        .map(|w| {
-            w.iter()
-                .zip(&polynomial[..w.len()])
-                .map(|(a, b)| *a * *b)
-                .sum()
-        })
-        .collect()
-}
-
-/// Build PrefixCovectors from alpha vectors, consuming the alphas.
-fn build_prefix_covectors<const N: usize>(
-    m: usize,
-    alphas: [Vec<FieldElement>; N],
-) -> Vec<PrefixCovector> {
-    let domain_size = 1usize << m;
-    alphas
-        .into_iter()
-        .map(|mut w| {
-            let base_len = w.len().next_power_of_two().max(2);
-            w.resize(base_len, FieldElement::zero());
-            PrefixCovector::non_deferred(w, domain_size)
-        })
-        .collect()
-}
-
-/// Compute the public weight evaluation ⟨[1, x, x², …], poly⟩ without
-/// allocating a PrefixCovector.
-fn compute_public_eval(
-    x: FieldElement,
-    public_inputs_len: usize,
-    polynomial: &[FieldElement],
-) -> FieldElement {
-    let mut eval = FieldElement::zero();
-    let mut x_pow = FieldElement::one();
-    for &p in polynomial.iter().take(public_inputs_len) {
-        eval += x_pow * p;
-        x_pow *= x;
-    }
-    eval
-}
-
-/// Create weights and compute evaluations for a single polynomial.
 fn create_weights_and_evaluations<const N: usize>(
     m: usize,
     polynomial: &[FieldElement],
@@ -627,7 +513,7 @@ fn create_weights_and_evaluations<const N: usize>(
         w.resize(base_len, FieldElement::zero());
 
         evals.push(dot(&w, &polynomial[..base_len]));
-        weights.push(PrefixCovector::non_deferred(w, domain_size));
+        weights.push(PrefixCovector::new(w, domain_size));
     }
 
     (weights, evals)
@@ -640,7 +526,7 @@ fn compute_evaluations(
 ) -> Vec<FieldElement> {
     weights
         .iter()
-        .map(|w| dot(&w.vector, &polynomial[..w.vector.len()]))
+        .map(|w| dot(w.vector(), &polynomial[..w.vector().len()]))
         .collect()
 }
 
@@ -649,14 +535,12 @@ fn compute_public_weight_evaluation(
     polynomial: &[FieldElement],
     public_weights: PrefixCovector,
 ) -> FieldElement {
-    let n = public_weights.vector.len();
-    let eval = dot(&public_weights.vector, &polynomial[..n]);
+    let n = public_weights.vector().len();
+    let eval = dot(public_weights.vector(), &polynomial[..n]);
     weights.insert(0, public_weights);
     eval
 }
 
-/// Interact with the transcript for public input verification and return
-/// the public weight randomness `x` along with the first weight instance.
 fn get_public_weights(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<TranscriptSponge>,
@@ -668,19 +552,4 @@ fn get_public_weights(
     let x: FieldElement = merlin.verifier_message();
 
     (x, make_public_weight(x, public_inputs.len(), m))
-}
-
-/// Create a public weight PrefixCovector from randomness `x`.
-fn make_public_weight(x: FieldElement, public_inputs_len: usize, m: usize) -> PrefixCovector {
-    let domain_size = 1 << m;
-    let prefix_len = public_inputs_len.next_power_of_two().max(2);
-    let mut public_weights = vec![FieldElement::zero(); prefix_len];
-
-    let mut current_pow = FieldElement::one();
-    for slot in public_weights.iter_mut().take(public_inputs_len) {
-        *slot = current_pow;
-        current_pow *= x;
-    }
-
-    PrefixCovector::non_deferred(public_weights, domain_size)
 }
