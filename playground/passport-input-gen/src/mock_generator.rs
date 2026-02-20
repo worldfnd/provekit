@@ -130,6 +130,9 @@ fn compute_check_digit(data: &[u8]) -> u8 {
 /// optional The final two bytes (positions 88,89) are the composite check digit
 /// and a filler.
 pub fn dg1_bytes_with_birthdate_expiry_date(birthdate: &[u8; 6], expiry: &[u8; 6]) -> Vec<u8> {
+    // check valid yymmdd format
+    debug_assert!(birthdate.iter().all(|b| b.is_ascii_digit()));
+
     // ASN.1 tag prefix for DG1: Tag 0x61, Length 0x5B, then 0x5F 0x1F 0x58
     let header: [u8; 5] = [0x61, 0x5b, 0x5f, 0x1f, 0x58];
 

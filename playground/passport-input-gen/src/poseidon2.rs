@@ -4,10 +4,7 @@
 //! MDS matrices as Noir's Poseidon2. It implements a sponge construction with
 //! width=4, rate=3, capacity=1 over BN254's scalar field.
 
-use {
-    ark_bn254::Fr,
-    ark_ff::{Field, PrimeField},
-};
+use {ark_bn254::Fr, ark_ff::Field};
 
 fn fe(s: &str) -> Fr {
     crate::commitment::parse_hex_to_field(s).expect("invalid Poseidon2 constant")
@@ -157,12 +154,7 @@ fn load_rc_partial() -> [Fr; NUM_PARTIAL_ROUNDS] {
 /// Matrix: `[[5,7,1,3],[4,6,1,1],[1,3,5,7],[1,1,4,6]]`
 fn external_mds(state: &mut [Fr; 4]) {
     let [s0, s1, s2, s3] = *state;
-    let f1 = Fr::from(1u64);
-    let f3 = Fr::from(3u64);
-    let f4 = Fr::from(4u64);
-    let f5 = Fr::from(5u64);
-    let f6 = Fr::from(6u64);
-    let f7 = Fr::from(7u64);
+    let (f1, f3, f4, f5, f6, f7) = (*FR_ONE, *FR_THREE, *FR_FOUR, *FR_FIVE, *FR_SIX, *FR_SEVEN);
 
     state[0] = f5 * s0 + f7 * s1 + f1 * s2 + f3 * s3;
     state[1] = f4 * s0 + f6 * s1 + f1 * s2 + f1 * s3;
@@ -196,6 +188,16 @@ static RC_FULL1: LazyLock<[[Fr; 4]; 4]> = LazyLock::new(load_rc_full1);
 static RC_FULL2: LazyLock<[[Fr; 4]; 4]> = LazyLock::new(load_rc_full2);
 static RC_PARTIAL: LazyLock<[Fr; 56]> = LazyLock::new(load_rc_partial);
 static DIAG: LazyLock<[Fr; 4]> = LazyLock::new(load_diag);
+
+/// Small field-element constants used by external_mds and the sponge.
+static FR_ZERO: LazyLock<Fr> = LazyLock::new(|| Fr::from(0u64));
+static FR_ONE: LazyLock<Fr> = LazyLock::new(|| Fr::from(1u64));
+static FR_THREE: LazyLock<Fr> = LazyLock::new(|| Fr::from(3u64));
+static FR_FOUR: LazyLock<Fr> = LazyLock::new(|| Fr::from(4u64));
+static FR_FIVE: LazyLock<Fr> = LazyLock::new(|| Fr::from(5u64));
+static FR_SIX: LazyLock<Fr> = LazyLock::new(|| Fr::from(6u64));
+static FR_SEVEN: LazyLock<Fr> = LazyLock::new(|| Fr::from(7u64));
+static TWO_POW_64: LazyLock<Fr> = LazyLock::new(|| Fr::from(1u64 << 32) * Fr::from(1u64 << 32));
 
 // ============================================================================
 // Poseidon2 permutation (t=4)
@@ -247,11 +249,11 @@ pub fn poseidon2_permutation(state: &mut [Fr; 4]) {
 /// IV = message_length * 2^64, placed in `state[3]` (capacity lane).
 pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
     let msg_len = inputs.len();
-    let two_pow_64 = Fr::from(1u64 << 32) * Fr::from(1u64 << 32);
-    let iv = Fr::from(msg_len as u64) * two_pow_64;
+    let iv = Fr::from(msg_len as u64) * *TWO_POW_64;
+    let zero = *FR_ZERO;
 
-    let mut state: [Fr; 4] = [Fr::from(0u64), Fr::from(0u64), Fr::from(0u64), iv];
-    let mut cache: [Fr; RATE] = [Fr::from(0u64); RATE];
+    let mut state: [Fr; 4] = [zero, zero, zero, iv];
+    let mut cache: [Fr; RATE] = [zero; RATE];
     let mut cache_size: usize = 0;
 
     for &input in inputs {
@@ -260,7 +262,7 @@ pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
             for i in 0..RATE {
                 state[i] += cache[i];
             }
-            cache = [Fr::from(0u64); RATE];
+            cache = [zero; RATE];
             cache_size = 0;
             poseidon2_permutation(&mut state);
         }
