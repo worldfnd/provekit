@@ -1,7 +1,7 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
-    rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
+    rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
     serde::{
         de::{SeqAccess, Visitor},
         ser::SerializeStruct,
@@ -458,8 +458,7 @@ impl HydratedSparseMatrix<'_> {
     }
 }
 
-/// Right multiplication by vector
-// OPT: Paralelize
+/// Right multiplication by vector (parallel over rows).
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     type Output = Vec<FieldElement>;
 
@@ -469,16 +468,23 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
-        for ((i, j), value) in self.iter() {
-            result[i] += value * rhs[j];
-        }
-        result
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|row| {
+                self.iter_row(row)
+                    .map(|(col, value)| value * rhs[col])
+                    .fold(FieldElement::zero(), |acc, x| acc + x)
+            })
+            .collect()
     }
 }
 
-/// Left multiplication by vector
-// OPT: Paralelize
+/// Left multiplication by vector.
+///
+/// Internal parallelism is deliberately avoided: each accumulator would
+/// require a `num_cols`-sized vector (~38 MB for typical R1CS), making
+/// fold-reduce prohibitively expensive. The three call sites already
+/// run in parallel via `rayon::join`.
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 

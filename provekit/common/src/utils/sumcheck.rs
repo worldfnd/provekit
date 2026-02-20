@@ -1,10 +1,9 @@
 use {
     crate::{
-        utils::{pad_to_power_of_two, unzip_double_array, workload_size},
+        utils::{unzip_double_array, workload_size},
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
-    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     std::array,
     tracing::instrument,
 };
@@ -144,13 +143,17 @@ pub fn calculate_witness_bounds(
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
-    // Derive C from R1CS relation (faster than matrix multiplication)
-    let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
-    (
-        pad_to_power_of_two(a),
-        pad_to_power_of_two(b),
-        pad_to_power_of_two(c),
-    )
+
+    let target_len = a.len().next_power_of_two();
+    let mut c = Vec::with_capacity(target_len);
+    c.extend(a.iter().zip(b.iter()).map(|(a, b)| *a * *b));
+    c.resize(target_len, FieldElement::zero());
+
+    let mut a = a;
+    let mut b = b;
+    a.resize(target_len, FieldElement::zero());
+    b.resize(target_len, FieldElement::zero());
+    (a, b, c)
 }
 
 /// Calculates eq(r, alpha)
