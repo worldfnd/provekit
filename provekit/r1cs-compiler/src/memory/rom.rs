@@ -67,17 +67,16 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
         .zip(0..memory_length)
         .enumerate()
         .map(|(addr, (value, access_count_idx_offset))| {
-            let denominator = add_indexed_lookup_factor(
+            let multiplicity =
+                access_counts_first_witness + access_count_idx_offset;
+            add_indexed_table_entry_quotient(
                 r1cs_compiler,
                 rs_challenge,
                 sz_challenge,
                 FieldElement::from(addr as u64),
                 r1cs_compiler.witness_one(),
                 *value,
-            );
-            r1cs_compiler.add_product(
-                access_counts_first_witness + access_count_idx_offset,
-                denominator,
+                multiplicity,
             )
         })
         .map(|coeff| SumTerm(None, coeff))
@@ -90,6 +89,65 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
         &[(FieldElement::one(), sum_for_reads)],
         &[(FieldElement::one(), sum_for_table)],
     );
+}
+
+/// Fused table-entry quotient for ROM LogUp.
+///
+/// Computes quotient = multiplicity / denominator using 2 R1CS constraints
+/// instead of the 3 that `add_indexed_lookup_factor` + `add_product` would
+/// need:
+///   Constraint 1: rs × value = sz − index·index_witness − denominator
+///   Constraint 2: denominator × quotient = multiplicity   (fused)
+fn add_indexed_table_entry_quotient(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    rs_challenge: usize,
+    sz_challenge: usize,
+    index: FieldElement,
+    index_witness: usize,
+    value: usize,
+    multiplicity_witness: usize,
+) -> usize {
+    // Create denominator witness
+    let wb = WitnessBuilder::IndexedLogUpDenominator(
+        r1cs_compiler.num_witnesses(),
+        sz_challenge,
+        WitnessCoefficient(index, index_witness),
+        rs_challenge,
+        value,
+    );
+    let denominator = r1cs_compiler.add_witness_builder(wb);
+    // Constraint 1: rs × value = −denom + sz − index·index_witness
+    r1cs_compiler.r1cs.add_constraint(
+        &[(FieldElement::one(), rs_challenge)],
+        &[(FieldElement::one(), value)],
+        &[
+            (FieldElement::one().neg(), denominator),
+            (FieldElement::one(), sz_challenge),
+            (index.neg(), index_witness),
+        ],
+    );
+
+    // Inverse witness (needed by solver for batch inversion, not constrained)
+    let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::Inverse(
+        r1cs_compiler.num_witnesses(),
+        denominator,
+    ));
+
+    // Quotient = multiplicity × inverse (computed by solver)
+    let quotient = r1cs_compiler.add_witness_builder(WitnessBuilder::Product(
+        r1cs_compiler.num_witnesses(),
+        multiplicity_witness,
+        inverse,
+    ));
+
+    // Constraint 2 (fused): denominator × quotient = multiplicity
+    r1cs_compiler.r1cs.add_constraint(
+        &[(FieldElement::one(), denominator)],
+        &[(FieldElement::one(), quotient)],
+        &[(FieldElement::one(), multiplicity_witness)],
+    );
+
+    quotient
 }
 
 // Helper function for adding a new lookup factor to the R1CS instance.

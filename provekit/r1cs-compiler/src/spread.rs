@@ -559,93 +559,87 @@ pub(crate) fn add_spread_table_constraints(
     let rs = compiler.add_witness_builder(WitnessBuilder::Challenge(compiler.num_witnesses()));
 
     // Query-side: for each lookup, compute 1/(sz - input - rs*spread)
-    let query_summands: Vec<SumTerm> = accum
-        .lookups
-        .iter()
-        .map(|(input, spread_output)| {
-            // Denominator witness (solver helper, not constrained
-            // in R1CS — the merged constraint below ties
-            // sz - input - rs*spread directly to the inverse).
-            let denom = compiler.add_witness_builder(WitnessBuilder::SpreadLookupDenominator(
-                compiler.num_witnesses(),
-                sz,
-                rs,
-                *input,
-                *spread_output,
-            ));
+    let mut logup_summands: Vec<(FieldElement, usize)> = Vec::new();
 
-            // Build A-vector: sz - input - rs*spread
-            let (input_coeff, input_idx) = input.to_tuple();
-            let mut az: Vec<(FieldElement, usize)> =
-                vec![(FieldElement::ONE, sz), (input_coeff.neg(), input_idx)];
-            match spread_output {
-                ConstantOrR1CSWitness::Constant(val) => {
-                    az.push((val.neg(), rs));
-                }
-                ConstantOrR1CSWitness::Witness(w) => {
-                    let prod = compiler.add_product(rs, *w);
-                    az.push((FieldElement::ONE.neg(), prod));
-                }
+    for (input, spread_output) in &accum.lookups {
+        // Denominator witness (solver helper, not constrained
+        // in R1CS — the merged constraint below ties
+        // sz - input - rs*spread directly to the inverse).
+        let denom = compiler.add_witness_builder(WitnessBuilder::SpreadLookupDenominator(
+            compiler.num_witnesses(),
+            sz,
+            rs,
+            *input,
+            *spread_output,
+        ));
+
+        // Build A-vector: sz - input - rs*spread
+        let (input_coeff, input_idx) = input.to_tuple();
+        let mut az: Vec<(FieldElement, usize)> =
+            vec![(FieldElement::ONE, sz), (input_coeff.neg(), input_idx)];
+        match spread_output {
+            ConstantOrR1CSWitness::Constant(val) => {
+                az.push((val.neg(), rs));
             }
+            ConstantOrR1CSWitness::Witness(w) => {
+                let prod = compiler.add_product(rs, *w);
+                az.push((FieldElement::ONE.neg(), prod));
+            }
+        }
 
-            // Inverse of denominator
-            let inverse = compiler
-                .add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
+        // Inverse of denominator
+        let inverse = compiler
+            .add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
 
-            // Single merged constraint:
-            // (sz - input - rs*spread) × inverse = 1
-            compiler
-                .r1cs
-                .add_constraint(&az, &[(FieldElement::ONE, inverse)], &[(
-                    FieldElement::ONE,
-                    compiler.witness_one(),
-                )]);
+        // Single merged constraint:
+        // (sz - input - rs*spread) × inverse = 1
+        compiler
+            .r1cs
+            .add_constraint(&az, &[(FieldElement::ONE, inverse)], &[(
+                FieldElement::ONE,
+                compiler.witness_one(),
+            )]);
 
-            SumTerm(None, inverse)
-        })
-        .collect();
-
-    let sum_for_queries = compiler.add_sum(query_summands);
+        // Query-side terms enter with negative coefficient
+        logup_summands.push((FieldElement::ONE.neg(), inverse));
+    }
 
     // Table-side: for each entry, compute multiplicity / denominator
-    let table_summands: Vec<SumTerm> = (0..table_size)
-        .map(|x| {
-            let spread_x = compute_spread(x as u64);
-            let multiplicity_idx = mult_first + x as usize;
+    for x in 0..table_size {
+        let spread_x = compute_spread(x as u64);
+        let multiplicity_idx = mult_first + x as usize;
 
-            // Quotient = multiplicity / (sz - x - rs * spread(x))
-            let quotient = compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
-                idx: compiler.num_witnesses(),
-                sz,
-                rs,
-                input_val: FieldElement::from(x),
-                spread_val: FieldElement::from(spread_x),
-                multiplicity: multiplicity_idx,
-            });
+        // Quotient = multiplicity / (sz - x - rs * spread(x))
+        let quotient = compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
+            idx: compiler.num_witnesses(),
+            sz,
+            rs,
+            input_val: FieldElement::from(x),
+            spread_val: FieldElement::from(spread_x),
+            multiplicity: multiplicity_idx,
+        });
 
-            // Single constraint: denominator × quotient = multiplicity
-            // denominator = sz - x - rs * spread(x)
-            compiler.r1cs.add_constraint(
-                &[
-                    (FieldElement::ONE, sz),
-                    (FieldElement::from(x).neg(), compiler.witness_one()),
-                    (FieldElement::from(spread_x).neg(), rs),
-                ],
-                &[(FieldElement::ONE, quotient)],
-                &[(FieldElement::ONE, multiplicity_idx)],
-            );
+        // Single constraint: denominator × quotient = multiplicity
+        // denominator = sz - x - rs * spread(x)
+        compiler.r1cs.add_constraint(
+            &[
+                (FieldElement::ONE, sz),
+                (FieldElement::from(x).neg(), compiler.witness_one()),
+                (FieldElement::from(spread_x).neg(), rs),
+            ],
+            &[(FieldElement::ONE, quotient)],
+            &[(FieldElement::ONE, multiplicity_idx)],
+        );
 
-            SumTerm(None, quotient)
-        })
-        .collect();
+        // Table-side terms enter with positive coefficient
+        logup_summands.push((FieldElement::ONE, quotient));
+    }
 
-    let sum_for_table = compiler.add_sum(table_summands);
-
-    // Grand sum equality: Σ query inverses = Σ table quotients
+    // Fused multiset equality: (Σ table_quotients − Σ query_inverses) × 1 = 0
     compiler.r1cs.add_constraint(
+        &logup_summands,
         &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, sum_for_queries)],
-        &[(FieldElement::ONE, sum_for_table)],
+        &[(FieldElement::zero(), compiler.witness_one())],
     );
 
     range_checks
@@ -705,8 +699,8 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
     inline += 8 * add(&BYTE_CHUNKS);
     lookups += 8 * add_l(&BYTE_CHUNKS);
 
-    // Table: 2×2^w multiplicities + 2 challenges + 2 sums
-    let table = 2 * (1usize << w) + 4;
+    // Table: 2×2^w (multiplicities + quotients) + 2 challenges
+    let table = 2 * (1usize << w) + 2;
 
     // Total: table + n_sha × (inline + 3 × lookups)
     table + n_sha * (inline + 3 * lookups)
