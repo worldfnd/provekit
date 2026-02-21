@@ -214,7 +214,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             (evals[0], evals[1], evals[2])
         };
 
-        // Check the Spartan sumcheck relation
+        // zkWHIR 2.0: deferred linear constraint check is subsumed by
+        // verify() since PrefixCovector weights are non-deferred.
         ensure!(
             data_from_sumcheck_verifier.last_sumcheck_val
                 == (az_at_alpha * bz_at_alpha - cz_at_alpha)
@@ -252,7 +253,7 @@ pub fn run_sumcheck_verifier(
 
     let mut alpha = vec![FieldElement::zero(); m_0];
 
-    for item in alpha.iter_mut().take(m_0) {
+    for item in &mut alpha {
         let hhat_i: [FieldElement; 4] = [
             arthur
                 .prover_message()

@@ -419,6 +419,12 @@ impl SparseMatrix {
         }
 
         entries.par_sort_unstable_by_key(|&(new_row, new_col, _)| (new_row, new_col));
+        debug_assert!(
+            entries
+                .windows(2)
+                .all(|w| (w[0].0, w[0].1) != (w[1].0, w[1].1)),
+            "Duplicate (row, col) entries in sparse matrix transpose"
+        );
 
         let mut new_row_indices = Vec::with_capacity(self.num_cols);
         let mut col_indices = Vec::with_capacity(nnz);

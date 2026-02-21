@@ -28,8 +28,6 @@ where
 {
     if deserializer.is_human_readable() {
         let encoded: String = <String>::deserialize(deserializer)?;
-        // Auto-detect: hex strings only contain [0-9a-fA-F], base64 contains
-        // uppercase letters, '+', '/', and '=' padding that hex never uses.
         if encoded.len() % 2 == 0 && encoded.bytes().all(|b| b.is_ascii_hexdigit()) {
             hex::decode(&encoded).map_err(D::Error::custom)
         } else {

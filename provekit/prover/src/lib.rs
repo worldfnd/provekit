@@ -72,7 +72,8 @@ impl Prove for Prover {
 
         // R1CS matrices are only needed at sumcheck; compress to free memory during
         // commits.
-        let compressed_r1cs = CompressedR1CS::compress(self.r1cs);
+        let compressed_r1cs =
+            CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
         let num_witnesses = compressed_r1cs.num_witnesses();
         let num_constraints = compressed_r1cs.num_constraints();
 
@@ -102,9 +103,10 @@ impl Prove for Prover {
         // challenges exist; otherwise just drop them).
         let has_challenges = self.whir_for_witness.num_challenges > 0;
         let compressed_w2_layers = if has_challenges {
-            Some(CompressedLayers::compress(
-                self.split_witness_builders.w2_layers,
-            ))
+            Some(
+                CompressedLayers::compress(self.split_witness_builders.w2_layers)
+                    .context("While compressing w2 layers")?,
+            )
         } else {
             drop(self.split_witness_builders.w2_layers);
             None
@@ -130,7 +132,10 @@ impl Prove for Prover {
             .context("While committing to w1")?;
 
         let commitments = if has_challenges {
-            let w2_layers = compressed_w2_layers.unwrap().decompress();
+            let w2_layers = compressed_w2_layers
+                .unwrap()
+                .decompress()
+                .context("While decompressing w2 layers")?;
             {
                 let _s = info_span!("solve_w2").entered();
                 crate::r1cs::solve_witness_vec(
@@ -162,7 +167,9 @@ impl Prove for Prover {
         };
 
         // Decompress R1CS for the sumcheck and matrix operations.
-        let r1cs = compressed_r1cs.decompress();
+        let r1cs = compressed_r1cs
+            .decompress()
+            .context("While decompressing R1CS")?;
 
         #[cfg(test)]
         r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())

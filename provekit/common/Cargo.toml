@@ -38,9 +38,9 @@ ruint.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+xz2.workspace = true
 zerocopy.workspace = true
 zeroize.workspace = true
-xz2.workspace = true
 zstd.workspace = true
 
 [lints]

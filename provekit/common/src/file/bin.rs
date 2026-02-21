@@ -91,35 +91,44 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
         "Incompatible format minor version"
     );
 
-    let mut compressed = Vec::new();
-    file.read_to_end(&mut compressed)
-        .context("while reading compressed data")?;
-
-    let uncompressed = decompress_auto(&compressed)?;
+    let uncompressed = decompress_stream(&mut file)?;
 
     postcard::from_bytes(&uncompressed).context("while decoding from postcard")
 }
 
-/// Auto-detect and decompress data based on magic bytes.
-fn decompress_auto(data: &[u8]) -> Result<Vec<u8>> {
-    if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
-        let mut decoder = zstd::Decoder::new(data).context("while initializing zstd decoder")?;
-        let mut out = Vec::new();
+/// Peek at the first bytes to detect compression format, then
+/// stream-decompress.
+fn decompress_stream(reader: &mut BufReader<File>) -> Result<Vec<u8>> {
+    use std::io::BufRead;
+
+    let buf = reader
+        .fill_buf()
+        .context("while peeking compression magic")?;
+    ensure!(
+        buf.len() >= 6,
+        "File too small to detect compression format"
+    );
+
+    let is_zstd = buf[..4] == ZSTD_MAGIC;
+    let is_xz = buf[..6] == XZ_MAGIC;
+
+    let mut out = Vec::new();
+    if is_zstd {
+        let mut decoder = zstd::Decoder::new(reader).context("while initializing zstd decoder")?;
         decoder
             .read_to_end(&mut out)
             .context("while decompressing zstd data")?;
-        Ok(out)
-    } else if data.len() >= 6 && data[..6] == XZ_MAGIC {
-        let mut decoder = xz2::read::XzDecoder::new(data);
-        let mut out = Vec::new();
+    } else if is_xz {
+        let mut decoder = xz2::read::XzDecoder::new(reader);
         decoder
             .read_to_end(&mut out)
             .context("while decompressing XZ data")?;
-        Ok(out)
     } else {
         anyhow::bail!(
             "Unknown compression format (first bytes: {:02X?})",
-            &data[..data.len().min(6)]
+            &buf[..buf.len().min(6)]
         );
     }
+
+    Ok(out)
 }

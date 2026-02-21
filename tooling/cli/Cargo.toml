@@ -20,14 +20,16 @@ provekit-verifier.workspace = true
 acir.workspace = true
 noirc_abi.workspace = true
 
+# Cryptography and proof systems
+ark-ff.workspace = true
+
 # 3rd party
 anyhow.workspace = true
 argh.workspace = true
-rayon.workspace = true
-ark-ff.workspace = true
 base64.workspace = true
 hex.workspace = true
 postcard.workspace = true
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tikv-jemallocator = { workspace = true, optional = true }

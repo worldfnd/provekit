@@ -30,7 +30,11 @@ impl PrefixCovector {
     pub fn new(vector: Vec<FieldElement>, logical_size: usize) -> Self {
         debug_assert!(vector.len().is_power_of_two());
         debug_assert!(logical_size.is_power_of_two());
-        debug_assert!(logical_size >= vector.len());
+        assert!(
+            logical_size >= vector.len(),
+            "PrefixCovector: logical_size ({logical_size}) must be >= vector.len() ({})",
+            vector.len()
+        );
         Self {
             vector,
             logical_size,

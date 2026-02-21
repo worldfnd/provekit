@@ -1,6 +1,7 @@
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
+    anyhow::{Context, Result},
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
@@ -31,36 +32,32 @@ pub struct CompressedLayers {
 }
 
 impl CompressedLayers {
-    #[must_use]
-    pub fn compress(layers: LayeredWitnessBuilders) -> Self {
-        let blob =
-            postcard::to_allocvec(&layers).expect("LayeredWitnessBuilders serialization failed");
-        Self { blob }
+    pub fn compress(layers: LayeredWitnessBuilders) -> Result<Self> {
+        let blob = postcard::to_allocvec(&layers)
+            .context("LayeredWitnessBuilders serialization failed")?;
+        Ok(Self { blob })
     }
 
-    #[must_use]
-    pub fn decompress(self) -> LayeredWitnessBuilders {
-        postcard::from_bytes(&self.blob).expect("LayeredWitnessBuilders deserialization failed")
+    pub fn decompress(self) -> Result<LayeredWitnessBuilders> {
+        postcard::from_bytes(&self.blob).context("LayeredWitnessBuilders deserialization failed")
     }
 }
 
 impl CompressedR1CS {
-    #[must_use]
-    pub fn compress(r1cs: R1CS) -> Self {
+    pub fn compress(r1cs: R1CS) -> Result<Self> {
         let num_constraints = r1cs.num_constraints();
         let num_witnesses = r1cs.num_witnesses();
-        let blob = postcard::to_allocvec(&r1cs).expect("R1CS serialization failed");
+        let blob = postcard::to_allocvec(&r1cs).context("R1CS serialization failed")?;
         drop(r1cs);
-        Self {
+        Ok(Self {
             num_constraints,
             num_witnesses,
             blob,
-        }
+        })
     }
 
-    #[must_use]
-    pub fn decompress(self) -> R1CS {
-        postcard::from_bytes(&self.blob).expect("R1CS deserialization failed")
+    pub fn decompress(self) -> Result<R1CS> {
+        postcard::from_bytes(&self.blob).context("R1CS deserialization failed")
     }
 
     pub const fn num_constraints(&self) -> usize {
