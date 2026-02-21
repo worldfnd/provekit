@@ -2,9 +2,10 @@ use {
     crate::{
         noir_to_r1cs::NoirToR1CSCompiler,
         spread::{
-            add_spread_table_constraints, add_u32_addition_spread, decompose_to_spread_word,
-            pack_chunks, spread_decompose, SpreadAccumulator, SpreadWord, BYTE_CHUNKS,
-            SIGMA0_CHUNKS, SIGMA1_CHUNKS, SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
+            add_spread_table_constraints, add_u32_addition_spread,
+            decompose_constant_to_spread_word, decompose_to_spread_word, pack_chunks,
+            spread_decompose, SpreadAccumulator, SpreadWord, BYTE_CHUNKS, SIGMA0_CHUNKS,
+            SIGMA1_CHUNKS, SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
         },
     },
     ark_ff::{Field, PrimeField},
@@ -236,14 +237,28 @@ pub(crate) fn add_sha256_compression(
             "SHA256 produces exactly 8 output u32 words"
         );
 
-        // Extract packed witness indices
+        // Extract packed witness indices, pinning constants.
+        let w_one = r1cs_compiler.witness_one();
         let input_packed: [usize; 16] = inputs
             .iter()
             .map(|input| match input {
                 ConstantOrR1CSWitness::Witness(idx) => *idx,
-                ConstantOrR1CSWitness::Constant(_) => {
-                    panic!("Input constants not yet supported")
+                ConstantOrR1CSWitness::Constant(val) => r1cs_compiler
+                    .add_sum(vec![SumTerm(Some(*val), w_one)]),
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        // Track which hash values are constants for optimized
+        // decomposition (no spread-table lookups needed).
+        let hash_constant_u32: [Option<u32>; 8] = hash_values
+            .iter()
+            .map(|hv| match hv {
+                ConstantOrR1CSWitness::Constant(val) => {
+                    Some(val.into_bigint().0[0] as u32)
                 }
+                ConstantOrR1CSWitness::Witness(_) => None,
             })
             .collect::<Vec<_>>()
             .try_into()
@@ -253,19 +268,25 @@ pub(crate) fn add_sha256_compression(
             .iter()
             .map(|hv| match hv {
                 ConstantOrR1CSWitness::Witness(idx) => *idx,
-                ConstantOrR1CSWitness::Constant(_) => {
-                    panic!("Hash value constants not yet supported")
-                }
+                ConstantOrR1CSWitness::Constant(val) => r1cs_compiler
+                    .add_sum(vec![SumTerm(Some(*val), w_one)]),
             })
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
-        // Range-check all 16 input words via byte decomposition.
-        // The spread table lookups implicitly prove each byte ∈ [0,256),
-        // and the recomposition constraint proves packed ∈ [0, 2^32).
-        for &p in &input_packed {
-            decompose_to_spread_word(r1cs_compiler, &mut accum, p, &BYTE_CHUNKS);
+        // Range-check input words via byte decomposition.
+        // Skip constants — known to be valid u32 at compile time.
+        for (input, &packed) in inputs.iter().zip(input_packed.iter())
+        {
+            if matches!(input, ConstantOrR1CSWitness::Witness(_)) {
+                decompose_to_spread_word(
+                    r1cs_compiler,
+                    &mut accum,
+                    packed,
+                    &BYTE_CHUNKS,
+                );
+            }
         }
 
         // Decompose initial hash values into chunk patterns needed for
@@ -274,20 +295,39 @@ pub(crate) fn add_sha256_compression(
         //   H[3]    → byte [8,8,8,8]     (only used in addition)
         //   H[4..6] → e-type [6,5,14,7]  (for Σ₁, Ch)
         //   H[7]    → byte [8,8,8,8]     (only used in addition)
-        let a0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[0], &SIGMA0_CHUNKS);
-        let b0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[1], &SIGMA0_CHUNKS);
-        let c0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[2], &SIGMA0_CHUNKS);
-        let d0 = decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[3], &BYTE_CHUNKS);
-        let e0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[4], &SIGMA1_CHUNKS);
-        let f0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[5], &SIGMA1_CHUNKS);
-        let g0 =
-            decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[6], &SIGMA1_CHUNKS);
-        let h0 = decompose_to_spread_word(r1cs_compiler, &mut accum, hash_packed[7], &BYTE_CHUNKS);
+        // Constants use pinned spread witnesses instead of lookups.
+        let a0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[0],
+            hash_constant_u32[0], &SIGMA0_CHUNKS,
+        );
+        let b0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[1],
+            hash_constant_u32[1], &SIGMA0_CHUNKS,
+        );
+        let c0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[2],
+            hash_constant_u32[2], &SIGMA0_CHUNKS,
+        );
+        let d0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[3],
+            hash_constant_u32[3], &BYTE_CHUNKS,
+        );
+        let e0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[4],
+            hash_constant_u32[4], &SIGMA1_CHUNKS,
+        );
+        let f0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[5],
+            hash_constant_u32[5], &SIGMA1_CHUNKS,
+        );
+        let g0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[6],
+            hash_constant_u32[6], &SIGMA1_CHUNKS,
+        );
+        let h0 = decompose_maybe_constant(
+            r1cs_compiler, &mut accum, hash_packed[7],
+            hash_constant_u32[7], &BYTE_CHUNKS,
+        );
 
         // Message schedule expansion
         let w = add_message_schedule_spread(r1cs_compiler, &mut accum, &input_packed);
@@ -387,4 +427,27 @@ pub(crate) fn add_sha256_compression(
 
     // Build spread table LogUp constraints once for ALL compressions
     add_spread_table_constraints(r1cs_compiler, accum)
+}
+
+/// Route hash-value decomposition through the constant-optimized path
+/// when the value is known at compile time, falling back to the
+/// standard spread-table-backed decomposition otherwise.
+fn decompose_maybe_constant(
+    compiler: &mut NoirToR1CSCompiler,
+    accum: &mut SpreadAccumulator,
+    packed: usize,
+    constant_u32: Option<u32>,
+    chunk_spec: &[u32],
+) -> SpreadWord {
+    if let Some(val) = constant_u32 {
+        decompose_constant_to_spread_word(
+            compiler,
+            packed,
+            val,
+            chunk_spec,
+            accum.table_bits,
+        )
+    } else {
+        decompose_to_spread_word(compiler, accum, packed, chunk_spec)
+    }
 }

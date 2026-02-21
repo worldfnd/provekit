@@ -421,6 +421,114 @@ pub(crate) fn add_u32_addition_spread(
     decompose_to_spread_word(compiler, accum, result_witness, output_chunks)
 }
 
+/// Decompose a compile-time constant u32 into a [SpreadWord] without
+/// spread table lookups or range checks.
+///
+/// Chunk values and their spreads are pre-computed; spread witnesses
+/// are pinned via direct equality constraints (`spread_w = spread(c)`).
+/// Sub-chunk value witnesses are assigned by the solver but NOT
+/// constrained (they are unused in downstream R1CS—only spread
+/// witnesses appear in spread_decompose constraints).
+///
+/// Soundness: each spread witness is individually pinned to a specific
+/// constant baked into the constraint system. The verifier checks the
+/// pinning constraints; the prover cannot deviate.
+pub(crate) fn decompose_constant_to_spread_word(
+    compiler: &mut NoirToR1CSCompiler,
+    packed_witness: usize,
+    constant_value: u32,
+    chunk_spec: &[u32],
+    table_bits: u32,
+) -> SpreadWord {
+    let w = table_bits;
+    let w_one = compiler.witness_one();
+    let num_chunks = chunk_spec.len();
+
+    // Build flat sub-chunk bit widths.
+    let mut flat_bits: Vec<u32> = Vec::new();
+    let mut chunk_sub_counts: Vec<usize> =
+        Vec::with_capacity(num_chunks);
+    for &bits in chunk_spec {
+        let subs = subchunks(bits, w);
+        chunk_sub_counts.push(subs.len());
+        flat_bits.extend(subs);
+    }
+
+    // Pre-compute all sub-chunk values at compile time.
+    let mut flat_values: Vec<u64> =
+        Vec::with_capacity(flat_bits.len());
+    let mut remaining = constant_value as u64;
+    for &bits in &flat_bits {
+        let mask = (1u64 << bits) - 1;
+        flat_values.push(remaining & mask);
+        remaining >>= bits;
+    }
+
+    // Verify decomposition round-trips at circuit-compilation time.
+    // Catches any bug in subchunks() or mask/shift logic immediately.
+    let mut recomposed: u64 = 0;
+    let mut shift = 0u32;
+    for (i, &bits) in flat_bits.iter().enumerate() {
+        recomposed += flat_values[i] << shift;
+        shift += bits;
+    }
+    assert_eq!(
+        recomposed, constant_value as u64,
+        "constant spread decomposition mismatch: \
+         {constant_value:#x} decomposed to {recomposed:#x}"
+    );
+
+    // Pin packed_witness = constant_value in R1CS. Makes this function
+    // self-contained: even if the caller forgets to constrain
+    // packed_witness, the prover cannot set it to an arbitrary value.
+    compiler.r1cs.add_constraint(
+        &[(FieldElement::from(constant_value as u64), w_one)],
+        &[(FieldElement::ONE, w_one)],
+        &[(FieldElement::ONE, packed_witness)],
+    );
+
+    // Build SpreadChunks with pinned spread witnesses.
+    // No ChunkDecompose needed — sub_values are never read by any
+    // downstream R1CS constraint (only sub_spreads are used in
+    // spread_decompose). We still populate sub_values with the
+    // spread witness indices as placeholders to satisfy the struct.
+    let mut chunks = Vec::with_capacity(num_chunks);
+    let mut flat_idx = 0usize;
+
+    for ci in 0..num_chunks {
+        let n_subs = chunk_sub_counts[ci];
+        let sub_bits_slice = &flat_bits[flat_idx..flat_idx + n_subs];
+        let mut sub_spreads = Vec::with_capacity(n_subs);
+
+        for j in 0..n_subs {
+            let spread_val = compute_spread(flat_values[flat_idx + j]);
+
+            // Spread witness pinned to known constant.
+            // Replaces the spread table lookup that would normally
+            // prove the (input, spread) pair membership.
+            let spread_idx = compiler.add_sum(vec![SumTerm(
+                Some(FieldElement::from(spread_val)),
+                w_one,
+            )]);
+
+            sub_spreads.push(spread_idx);
+        }
+
+        chunks.push(SpreadChunk {
+            total_bits: chunk_spec[ci],
+            sub_values: sub_spreads.clone(),
+            sub_spreads,
+            sub_bits: sub_bits_slice.to_vec(),
+        });
+        flat_idx += n_subs;
+    }
+
+    SpreadWord {
+        packed: packed_witness,
+        chunks,
+    }
+}
+
 /// Build the complete spread table LogUp constraints.
 /// Creates challenges, multiplicities, table-side inverses/quotients,
 /// query-side inverses, and the grand sum equality constraint.
