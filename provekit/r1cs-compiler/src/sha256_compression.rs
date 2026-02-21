@@ -243,8 +243,9 @@ pub(crate) fn add_sha256_compression(
             .iter()
             .map(|input| match input {
                 ConstantOrR1CSWitness::Witness(idx) => *idx,
-                ConstantOrR1CSWitness::Constant(val) => r1cs_compiler
-                    .add_sum(vec![SumTerm(Some(*val), w_one)]),
+                ConstantOrR1CSWitness::Constant(val) => {
+                    r1cs_compiler.add_sum(vec![SumTerm(Some(*val), w_one)])
+                }
             })
             .collect::<Vec<_>>()
             .try_into()
@@ -255,9 +256,7 @@ pub(crate) fn add_sha256_compression(
         let hash_constant_u32: [Option<u32>; 8] = hash_values
             .iter()
             .map(|hv| match hv {
-                ConstantOrR1CSWitness::Constant(val) => {
-                    Some(val.into_bigint().0[0] as u32)
-                }
+                ConstantOrR1CSWitness::Constant(val) => Some(val.into_bigint().0[0] as u32),
                 ConstantOrR1CSWitness::Witness(_) => None,
             })
             .collect::<Vec<_>>()
@@ -268,8 +267,9 @@ pub(crate) fn add_sha256_compression(
             .iter()
             .map(|hv| match hv {
                 ConstantOrR1CSWitness::Witness(idx) => *idx,
-                ConstantOrR1CSWitness::Constant(val) => r1cs_compiler
-                    .add_sum(vec![SumTerm(Some(*val), w_one)]),
+                ConstantOrR1CSWitness::Constant(val) => {
+                    r1cs_compiler.add_sum(vec![SumTerm(Some(*val), w_one)])
+                }
             })
             .collect::<Vec<_>>()
             .try_into()
@@ -277,15 +277,9 @@ pub(crate) fn add_sha256_compression(
 
         // Range-check input words via byte decomposition.
         // Skip constants — known to be valid u32 at compile time.
-        for (input, &packed) in inputs.iter().zip(input_packed.iter())
-        {
+        for (input, &packed) in inputs.iter().zip(input_packed.iter()) {
             if matches!(input, ConstantOrR1CSWitness::Witness(_)) {
-                decompose_to_spread_word(
-                    r1cs_compiler,
-                    &mut accum,
-                    packed,
-                    &BYTE_CHUNKS,
-                );
+                decompose_to_spread_word(r1cs_compiler, &mut accum, packed, &BYTE_CHUNKS);
             }
         }
 
@@ -297,36 +291,60 @@ pub(crate) fn add_sha256_compression(
         //   H[7]    → byte [8,8,8,8]     (only used in addition)
         // Constants use pinned spread witnesses instead of lookups.
         let a0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[0],
-            hash_constant_u32[0], &SIGMA0_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[0],
+            hash_constant_u32[0],
+            &SIGMA0_CHUNKS,
         );
         let b0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[1],
-            hash_constant_u32[1], &SIGMA0_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[1],
+            hash_constant_u32[1],
+            &SIGMA0_CHUNKS,
         );
         let c0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[2],
-            hash_constant_u32[2], &SIGMA0_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[2],
+            hash_constant_u32[2],
+            &SIGMA0_CHUNKS,
         );
         let d0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[3],
-            hash_constant_u32[3], &BYTE_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[3],
+            hash_constant_u32[3],
+            &BYTE_CHUNKS,
         );
         let e0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[4],
-            hash_constant_u32[4], &SIGMA1_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[4],
+            hash_constant_u32[4],
+            &SIGMA1_CHUNKS,
         );
         let f0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[5],
-            hash_constant_u32[5], &SIGMA1_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[5],
+            hash_constant_u32[5],
+            &SIGMA1_CHUNKS,
         );
         let g0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[6],
-            hash_constant_u32[6], &SIGMA1_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[6],
+            hash_constant_u32[6],
+            &SIGMA1_CHUNKS,
         );
         let h0 = decompose_maybe_constant(
-            r1cs_compiler, &mut accum, hash_packed[7],
-            hash_constant_u32[7], &BYTE_CHUNKS,
+            r1cs_compiler,
+            &mut accum,
+            hash_packed[7],
+            hash_constant_u32[7],
+            &BYTE_CHUNKS,
         );
 
         // Message schedule expansion
@@ -440,13 +458,7 @@ fn decompose_maybe_constant(
     chunk_spec: &[u32],
 ) -> SpreadWord {
     if let Some(val) = constant_u32 {
-        decompose_constant_to_spread_word(
-            compiler,
-            packed,
-            val,
-            chunk_spec,
-            accum.table_bits,
-        )
+        decompose_constant_to_spread_word(compiler, packed, val, chunk_spec, accum.table_bits)
     } else {
         decompose_to_spread_word(compiler, accum, packed, chunk_spec)
     }

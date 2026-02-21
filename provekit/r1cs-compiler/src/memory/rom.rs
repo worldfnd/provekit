@@ -67,8 +67,7 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
         .zip(0..memory_length)
         .enumerate()
         .map(|(addr, (value, access_count_idx_offset))| {
-            let multiplicity =
-                access_counts_first_witness + access_count_idx_offset;
+            let multiplicity = access_counts_first_witness + access_count_idx_offset;
             add_indexed_table_entry_quotient(
                 r1cs_compiler,
                 rs_challenge,

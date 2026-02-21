@@ -446,8 +446,7 @@ pub(crate) fn decompose_constant_to_spread_word(
 
     // Build flat sub-chunk bit widths.
     let mut flat_bits: Vec<u32> = Vec::new();
-    let mut chunk_sub_counts: Vec<usize> =
-        Vec::with_capacity(num_chunks);
+    let mut chunk_sub_counts: Vec<usize> = Vec::with_capacity(num_chunks);
     for &bits in chunk_spec {
         let subs = subchunks(bits, w);
         chunk_sub_counts.push(subs.len());
@@ -455,8 +454,7 @@ pub(crate) fn decompose_constant_to_spread_word(
     }
 
     // Pre-compute all sub-chunk values at compile time.
-    let mut flat_values: Vec<u64> =
-        Vec::with_capacity(flat_bits.len());
+    let mut flat_values: Vec<u64> = Vec::with_capacity(flat_bits.len());
     let mut remaining = constant_value as u64;
     for &bits in &flat_bits {
         let mask = (1u64 << bits) - 1;
@@ -474,8 +472,7 @@ pub(crate) fn decompose_constant_to_spread_word(
     }
     assert_eq!(
         recomposed, constant_value as u64,
-        "constant spread decomposition mismatch: \
-         {constant_value:#x} decomposed to {recomposed:#x}"
+        "constant spread decomposition mismatch: {constant_value:#x} decomposed to {recomposed:#x}"
     );
 
     // Pin packed_witness = constant_value in R1CS. Makes this function
@@ -506,10 +503,8 @@ pub(crate) fn decompose_constant_to_spread_word(
             // Spread witness pinned to known constant.
             // Replaces the spread table lookup that would normally
             // prove the (input, spread) pair membership.
-            let spread_idx = compiler.add_sum(vec![SumTerm(
-                Some(FieldElement::from(spread_val)),
-                w_one,
-            )]);
+            let spread_idx =
+                compiler.add_sum(vec![SumTerm(Some(FieldElement::from(spread_val)), w_one)]);
 
             sub_spreads.push(spread_idx);
         }
@@ -588,8 +583,8 @@ pub(crate) fn add_spread_table_constraints(
         }
 
         // Inverse of denominator
-        let inverse = compiler
-            .add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
+        let inverse =
+            compiler.add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
 
         // Single merged constraint:
         // (sz - input - rs*spread) × inverse = 1
