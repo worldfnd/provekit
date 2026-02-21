@@ -19,6 +19,7 @@ use {
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, WhirZkConfig, R1CS,
     },
+    std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
@@ -132,29 +133,26 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             merlin.prover_hint_ark(&evals);
 
-            let public_eval = if public_inputs.is_empty() {
-                FieldElement::zero()
-            } else {
-                compute_public_weight_evaluation(
+            if !public_inputs.is_empty() {
+                let public_eval = compute_public_weight_evaluation(
                     &mut weights,
                     &commitment.polynomial,
                     public_weight,
-                )
-            };
-
-            merlin.prover_hint_ark(&public_eval);
+                );
+                merlin.prover_hint_ark(&public_eval);
+            }
 
             let evaluations = compute_evaluations(&weights, &commitment.polynomial);
 
-            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
+            let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+                .into_iter()
+                .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
             self.whir_witness.prove(
                 &mut merlin,
-                &[&commitment.polynomial],
+                &[Cow::Borrowed(&commitment.polynomial)],
                 commitment.witness,
-                &weight_refs,
+                &boxed_weights,
                 &evaluations,
             );
         } else {
@@ -185,16 +183,14 @@ impl WhirR1CSProver for WhirR1CSScheme {
             merlin.prover_hint_ark(&evals_1);
             merlin.prover_hint_ark(&evals_2);
 
-            let (public_1, public_2) = if !public_inputs.is_empty() {
+            // Public inputs live exclusively in w1 (c1); no public weight
+            // check is needed for c2.
+            let public_1 = if !public_inputs.is_empty() {
                 let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
-                let p2 = compute_public_eval(x, public_inputs.len(), &c2.polynomial);
                 merlin.prover_hint_ark(&p1);
-                merlin.prover_hint_ark(&p2);
-                (Some(p1), Some(p2))
+                Some(p1)
             } else {
-                merlin.prover_hint_ark(&FieldElement::zero());
-                merlin.prover_hint_ark(&FieldElement::zero());
-                (None, None)
+                None
             };
 
             // Phase 2 — prove c1, then drop all c1 data.
@@ -211,12 +207,17 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 }
                 evaluations.extend_from_slice(&evals_1);
 
-                let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
-                    .iter()
-                    .map(|w| w as &dyn LinearForm<FieldElement>)
+                let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+                    .into_iter()
+                    .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                     .collect();
-                self.whir_witness
-                    .prove(&mut merlin, &[&p1], w1, &weight_refs, &evaluations);
+                self.whir_witness.prove(
+                    &mut merlin,
+                    &[Cow::Borrowed(&p1)],
+                    w1,
+                    &boxed_weights,
+                    &evaluations,
+                );
             }
             drop(p1);
 
@@ -226,20 +227,20 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 polynomial: p2,
             } = c2;
             {
-                let mut weights = build_prefix_covectors(self.m, alphas_2);
-                let mut evaluations: Vec<FieldElement> = Vec::new();
-                if let Some(pe) = public_2 {
-                    weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                    evaluations.push(pe);
-                }
-                evaluations.extend_from_slice(&evals_2);
+                let weights = build_prefix_covectors(self.m, alphas_2);
+                let evaluations: Vec<FieldElement> = evals_2;
 
-                let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
-                    .iter()
-                    .map(|w| w as &dyn LinearForm<FieldElement>)
+                let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+                    .into_iter()
+                    .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                     .collect();
-                self.whir_witness
-                    .prove(&mut merlin, &[&p2], w2, &weight_refs, &evaluations);
+                self.whir_witness.prove(
+                    &mut merlin,
+                    &[Cow::Borrowed(&p2)],
+                    w2,
+                    &boxed_weights,
+                    &evaluations,
+                );
             }
         }
 
@@ -352,7 +353,7 @@ pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
 
     let target = match min.checked_next_power_of_two() {
         Some(p2) => p2,
-        None => min,
+        None => min, // fallback: can't grow to power-of-two, keep `min`
     };
 
     if v.len() < target {
@@ -387,7 +388,7 @@ pub fn run_zk_sumcheck_prover(
     let spartan_num_vars = whir_for_blinding_of_spartan_config.num_witness_variables();
     let target_b = 1usize << spartan_num_vars;
 
-    let mut flat: Vec<FieldElement> = blinding_polynomial.iter().flatten().cloned().collect();
+    let mut flat: Vec<_> = blinding_polynomial.iter().flatten().cloned().collect();
 
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());
@@ -473,7 +474,7 @@ pub fn run_zk_sumcheck_prover(
     }
     drop((a, b, c, eq));
 
-    let mut weight_vec = expand_powers(alpha.as_slice());
+    let mut weight_vec = expand_powers::<4>(alpha.as_slice());
     let weight_domain_size = 1usize << spartan_num_vars;
     if weight_vec.len() < weight_domain_size {
         weight_vec.resize(weight_domain_size, FieldElement::zero());
@@ -483,11 +484,15 @@ pub fn run_zk_sumcheck_prover(
     merlin.prover_message(&blinding_eval);
 
     let covector = PrefixCovector::new(weight_vec, weight_domain_size);
-    let weight_refs: Vec<&dyn LinearForm<FieldElement>> =
-        vec![&covector as &dyn LinearForm<FieldElement>];
-    whir_for_blinding_of_spartan_config.prove(merlin, &[&flat], blinding_witness, &weight_refs, &[
-        blinding_eval,
-    ]);
+    let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> =
+        vec![Box::new(covector) as Box<dyn LinearForm<FieldElement>>];
+    whir_for_blinding_of_spartan_config.prove(
+        merlin,
+        &[Cow::Borrowed(&flat)],
+        blinding_witness,
+        &boxed_weights,
+        &[blinding_eval],
+    );
 
     alpha
 }

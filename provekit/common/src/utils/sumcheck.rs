@@ -102,6 +102,9 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
+// TODO: Add unit tests for calculate_evaluations_over_boolean_hypercube_for_eq,
+// eval_eq, calculate_eq, and the transposed matrix multiplication helpers.
+
 /// List of evaluations for eq(r, x) over the boolean hypercube, truncated to
 /// `num_entries` elements. When `num_entries < 2^r.len()`, avoids allocating
 /// the full hypercube.

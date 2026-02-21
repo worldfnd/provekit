@@ -63,7 +63,7 @@ fn verify_poseidon_1000(bencher: Bencher) {
     let mut verifier: Verifier = read(&proof_verifier_path).unwrap();
     let proof_path = crate_dir.join("noir-proof.np");
     let proof: NoirProof = read(&proof_path).unwrap();
-    bencher.bench_local(|| black_box(&mut verifier).verify(black_box(proof.clone())));
+    bencher.bench_local(|| black_box(&mut verifier).verify(black_box(&proof)));
 }
 
 fn main() {

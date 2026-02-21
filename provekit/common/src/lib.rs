@@ -33,6 +33,10 @@ pub use {
 /// SHA-256 based transcript sponge for Fiat-Shamir.
 pub type TranscriptSponge = spongefish::instantiations::SHA256;
 
+/// Register provekit's custom implementations in whir's global registries.
+///
+/// Must be called once before any prove/verify operations.
+/// Idempotent — safe to call multiple times.
 pub fn register_ntt() {
     use std::sync::{Arc, Once};
     static INIT: Once = Once::new();

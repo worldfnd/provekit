@@ -5,6 +5,7 @@ use {
     },
 };
 
+// Minimum log2 of the WHIR evaluation domain (lower bound for m).
 const MIN_WHIR_NUM_VARIABLES: usize = 14;
 // Minimum number of variables in the sumcheck's multilinear polynomial (lower
 // bound for m_0).

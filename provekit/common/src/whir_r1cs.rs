@@ -9,6 +9,8 @@ use {
     },
 };
 
+// TODO: Remove WhirConfig once the gnark recursive verifier is updated to use
+// WhirZkConfig.
 pub type WhirConfig = GenericWhirConfig<FieldElement>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 

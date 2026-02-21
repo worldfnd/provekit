@@ -62,7 +62,7 @@ impl Command for Args {
             let mut verifier: Verifier =
                 read(&self.verifier_path).context("while reading Provekit Verifier")?;
             verifier
-                .verify(proof)
+                .verify(&proof)
                 .context("While verifying Noir proof")?;
         }
 

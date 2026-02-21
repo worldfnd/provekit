@@ -34,7 +34,7 @@ impl Command for Args {
 
         // Verify the proof
         verifier
-            .verify(proof)
+            .verify(&proof)
             .context("While verifying Noir proof")?;
 
         Ok(())

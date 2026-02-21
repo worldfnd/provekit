@@ -23,24 +23,28 @@ pub struct DataFromSumcheckVerifier {
 }
 
 pub trait WhirR1CSVerifier {
-    fn verify(&self, proof: WhirR1CSProof, public_inputs: &PublicInputs, r1cs: &R1CS)
-        -> Result<()>;
+    fn verify(
+        &self,
+        proof: &WhirR1CSProof,
+        public_inputs: &PublicInputs,
+        r1cs: &R1CS,
+    ) -> Result<()>;
 }
 
 impl WhirR1CSVerifier for WhirR1CSScheme {
     #[instrument(skip_all)]
     fn verify(
         &self,
-        proof: WhirR1CSProof,
+        proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
         let ds = self.create_domain_separator().instance(&Empty);
         let whir_proof = Proof {
-            narg_string: proof.narg_string,
-            hints: proof.hints,
+            narg_string: proof.narg_string.clone(),
+            hints: proof.hints.clone(),
             #[cfg(debug_assertions)]
-            pattern: proof.pattern,
+            pattern: proof.pattern.clone(),
         };
         let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
 
@@ -118,31 +122,20 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 2"))?;
 
-            let public_1: FieldElement = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
-            let public_2: FieldElement = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read public_2 hint"))?;
-
             let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
-            let mut weights_2 = build_prefix_covectors(self.m, alphas_2);
+            let weights_2 = build_prefix_covectors(self.m, alphas_2);
 
-            if !public_inputs.is_empty() {
-                weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                weights_2.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-            }
-
+            // Public inputs live exclusively in w1 (c1).
             let evaluations_1 = if !public_inputs.is_empty() {
+                let public_1: FieldElement = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
+                weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
                 evals_1.to_vec()
             };
-            let evaluations_2 = if !public_inputs.is_empty() {
-                vec![public_2, evals_2[0], evals_2[1], evals_2[2]]
-            } else {
-                evals_2.to_vec()
-            };
+            let evaluations_2 = evals_2.to_vec();
 
             let weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
                 .iter()
@@ -173,17 +166,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values"))?;
 
-            let public_eval: FieldElement = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
-
             let mut weights = build_prefix_covectors(self.m, alphas);
 
-            if !public_inputs.is_empty() {
-                weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-            }
-
             let evaluations = if !public_inputs.is_empty() {
+                let public_eval: FieldElement = arthur
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
+                weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
                 evals.to_vec()
@@ -270,7 +259,7 @@ pub fn run_sumcheck_verifier(
 
     let spartan_num_vars = whir_for_spartan_blinding_config.num_witness_variables();
     let weight_domain_size = 1usize << spartan_num_vars;
-    let mut weight_vec = expand_powers(&alpha);
+    let mut weight_vec = expand_powers::<4>(&alpha);
     if weight_vec.len() < weight_domain_size {
         weight_vec.resize(weight_domain_size, FieldElement::zero());
     }
