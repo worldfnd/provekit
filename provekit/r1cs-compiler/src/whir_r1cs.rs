@@ -5,10 +5,6 @@ use {
     },
 };
 
-// Minimum log2 of the WHIR evaluation domain (lower bound for m).
-// zkWHIR 2.0's blinding polynomial requires num_blinding_vars <
-// num_witness_vars. At 128-bit security with folding factor 4, the blinding
-// needs ~12 variables, so the witness must have at least 14 (with margin).
 const MIN_WHIR_NUM_VARIABLES: usize = 14;
 // Minimum number of variables in the sumcheck's multilinear polynomial (lower
 // bound for m_0).
@@ -46,9 +42,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         let m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        // With zkWHIR 2.0 the witness polynomial stays μ-variate (no extra variable).
-        // Always use num_polynomials=1 per commit call. For dual-commit (logup),
-        // we call commit/prove/verify separately for each polynomial.
         Self {
             m: m_raw,
             w1_size,

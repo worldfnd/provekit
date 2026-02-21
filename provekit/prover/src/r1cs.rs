@@ -220,7 +220,6 @@ impl R1CSSolver for R1CS {
             "Witness size does not match"
         );
 
-        // Verify
         let a = self.a() * witness;
         let b = self.b() * witness;
         let c = self.c() * witness;

@@ -44,13 +44,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         };
         let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
 
-        // Receive first commitment (always present)
         let commitment_1 = self
             .whir_witness
             .receive_commitments(&mut arthur, 1)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
-        // Parse second commitment only if we have challenges (dual commit)
         let commitment_2 = if self.num_challenges > 0 {
             let _logup_challenges: Vec<FieldElement> =
                 arthur.verifier_message_vec(self.num_challenges);
@@ -107,7 +105,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 2"))?;
 
-            // Read evaluation hints
             let evals_1: Vec<FieldElement> = arthur
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read evals_1 hint"))?;
@@ -121,7 +118,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 2"))?;
 
-            // Read public weight hints
             let public_1: FieldElement = arthur
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
@@ -129,17 +125,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read public_2 hint"))?;
 
-            // Build non-deferred weights for c1 from alphas_1
             let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
             let mut weights_2 = build_prefix_covectors(self.m, alphas_2);
 
-            // Insert public weight at front if needed
             if !public_inputs.is_empty() {
                 weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 weights_2.insert(0, make_public_weight(x, public_inputs.len(), self.m));
             }
 
-            // Build evaluations for c1: [public_1, evals_1[0], evals_1[1], evals_1[2]]
             let evaluations_1 = if !public_inputs.is_empty() {
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
@@ -151,7 +144,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_2.to_vec()
             };
 
-            // Verify c1
             let weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
@@ -160,7 +152,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
-            // Verify c2
             let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
@@ -175,7 +166,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_1[2] + evals_2[2],
             )
         } else {
-            // Single commitment mode
             let evals: Vec<FieldElement> = arthur
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read evals hint"))?;
@@ -187,15 +177,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .prover_hint_ark()
                 .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
 
-            // Build non-deferred weights from reconstructed alpha vectors
             let mut weights = build_prefix_covectors(self.m, alphas);
 
-            // Insert public weight at front if needed
             if !public_inputs.is_empty() {
                 weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
             }
 
-            // Build evaluations
             let evaluations = if !public_inputs.is_empty() {
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
@@ -214,8 +201,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             (evals[0], evals[1], evals[2])
         };
 
-        // zkWHIR 2.0: deferred linear constraint check is subsumed by
-        // verify() since PrefixCovector weights are non-deferred.
         ensure!(
             data_from_sumcheck_verifier.last_sumcheck_val
                 == (az_at_alpha * bz_at_alpha - cz_at_alpha)
@@ -238,7 +223,6 @@ pub fn run_sumcheck_verifier(
 ) -> Result<DataFromSumcheckVerifier> {
     let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
 
-    // zkWHIR 2.0: receive blinding commitment
     let blinding_commitment = whir_for_spartan_blinding_config
         .receive_commitments(arthur, 1)
         .map_err(|_| anyhow::anyhow!("Failed to parse spartan blinding commitment"))?;
@@ -284,7 +268,6 @@ pub fn run_sumcheck_verifier(
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;
 
-    // Build the spartan blinding weight (expand_powers of alpha)
     let spartan_num_vars = whir_for_spartan_blinding_config.num_witness_variables();
     let weight_domain_size = 1usize << spartan_num_vars;
     let mut weight_vec = expand_powers(&alpha);
@@ -296,7 +279,6 @@ pub fn run_sumcheck_verifier(
     let blinding_weight_refs: Vec<&dyn LinearForm<FieldElement>> =
         vec![&blinding_weight as &dyn LinearForm<FieldElement>];
 
-    // zkWHIR 2.0: verify the blinding polynomial commitment
     whir_for_spartan_blinding_config
         .verify(
             arthur,

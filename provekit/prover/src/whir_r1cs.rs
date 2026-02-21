@@ -90,7 +90,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             padded_witness.resize(target_len, FieldElement::zero());
         }
 
-        // zkWHIR 2.0: commit handles masking/blinding internally.
         let zk_witness = self.whir_witness.commit(merlin, &[&padded_witness]);
 
         Ok(WhirR1CSCommitment {
@@ -376,7 +375,6 @@ pub fn run_zk_sumcheck_prover(
         || calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len()),
     );
 
-    // Ensure each vector has length >= 2 and is a power of two.
     pad_to_pow2_len_min2(&mut a);
     pad_to_pow2_len_min2(&mut b);
     pad_to_pow2_len_min2(&mut c);
@@ -386,18 +384,15 @@ pub fn run_zk_sumcheck_prover(
 
     let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
 
-    // zkWHIR 2.0: the config tells us the number of witness variables.
     let spartan_num_vars = whir_for_blinding_of_spartan_config.num_witness_variables();
     let target_b = 1usize << spartan_num_vars;
 
-    // Flatten cubic blinding coefficients and pad to target size.
     let mut flat: Vec<FieldElement> = blinding_polynomial.iter().flatten().cloned().collect();
 
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());
     }
 
-    // zkWHIR 2.0 commit: handles masking/blinding internally.
     let blinding_witness = whir_for_blinding_of_spartan_config.commit(merlin, &[&flat]);
 
     let sum_g_reduce = sum_over_hypercube(&blinding_polynomial);
@@ -478,7 +473,6 @@ pub fn run_zk_sumcheck_prover(
     }
     drop((a, b, c, eq));
 
-    // Build weight for the blinding polynomial evaluation.
     let mut weight_vec = expand_powers(alpha.as_slice());
     let weight_domain_size = 1usize << spartan_num_vars;
     if weight_vec.len() < weight_domain_size {
