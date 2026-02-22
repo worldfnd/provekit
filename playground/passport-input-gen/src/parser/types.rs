@@ -224,4 +224,6 @@ pub enum PassportError {
     },
     #[error("Invalid leaf_index '{value}': must be a non-negative integer")]
     InvalidLeafIndex { value: String },
+    #[error("SHA256 computation error: {0}")]
+    Sha256Error(String),
 }

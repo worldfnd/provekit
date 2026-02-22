@@ -878,7 +878,7 @@ impl PassportReader {
         chunk1.copy_from_slice(&tbs_cert_1300[..CHUNK1_SIZE]);
 
         // Partial SHA256: compute intermediate state
-        let state1 = partial_sha256::sha256_start(&chunk1).unwrap();
+        let state1 = partial_sha256::sha256_start(&chunk1).map_err(PassportError::Sha256Error)?;
 
         // === Compute Poseidon2 commitments for 5-circuit chain ===
 
