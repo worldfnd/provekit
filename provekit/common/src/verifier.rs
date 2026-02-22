@@ -15,11 +15,12 @@ pub struct Verifier {
 }
 
 impl Verifier {
-    pub fn from_noir_proof_scheme(noir_proof_scheme: NoirProofScheme) -> Self {
+    #[must_use]
+    pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
         Self {
-            r1cs:             noir_proof_scheme.r1cs,
-            whir_for_witness: Some(noir_proof_scheme.whir_for_witness),
-            abi:              noir_proof_scheme.witness_generator.abi.clone(),
+            r1cs:             scheme.r1cs,
+            whir_for_witness: Some(scheme.whir_for_witness),
+            abi:              scheme.witness_generator.abi.clone(),
         }
     }
 }

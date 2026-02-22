@@ -1,6 +1,7 @@
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
+    anyhow::{Context, Result},
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
@@ -10,42 +11,53 @@ use {
     whir::transcript::ProverState,
 };
 
+/// Serialized R1CS matrices held as a compact postcard blob.
+///
+/// The R1CS is only needed during the sumcheck phase. Compressing it
+/// into a serialized blob frees that memory during the commit phase,
+/// then decompresses when the sumcheck begins.
 pub struct CompressedR1CS {
     num_constraints: usize,
     num_witnesses:   usize,
     blob:            Vec<u8>,
 }
 
+/// Serialized witness builder layers held as a compact postcard blob.
+///
+/// Same strategy as [`CompressedR1CS`]: the w2 layers are not needed
+/// until challenge-dependent witness solving, so we compress them to
+/// free memory during the w1 commit.
 pub struct CompressedLayers {
     blob: Vec<u8>,
 }
 
 impl CompressedLayers {
-    pub fn compress(layers: LayeredWitnessBuilders) -> Self {
-        let blob =
-            postcard::to_allocvec(&layers).expect("LayeredWitnessBuilders serialization failed");
-        drop(layers);
-        Self { blob }
+    pub fn compress(layers: LayeredWitnessBuilders) -> Result<Self> {
+        let blob = postcard::to_allocvec(&layers)
+            .context("LayeredWitnessBuilders serialization failed")?;
+        Ok(Self { blob })
     }
 
-    pub fn decompress(self) -> LayeredWitnessBuilders {
-        postcard::from_bytes(&self.blob).expect("LayeredWitnessBuilders deserialization failed")
+    pub fn decompress(self) -> Result<LayeredWitnessBuilders> {
+        postcard::from_bytes(&self.blob).context("LayeredWitnessBuilders deserialization failed")
     }
 }
 
 impl CompressedR1CS {
-    pub fn compress(r1cs: R1CS) -> Self {
-        let meta = Self {
-            num_constraints: r1cs.num_constraints(),
-            num_witnesses:   r1cs.num_witnesses(),
-            blob:            postcard::to_allocvec(&r1cs).expect("R1CS serialization failed"),
-        };
+    pub fn compress(r1cs: R1CS) -> Result<Self> {
+        let num_constraints = r1cs.num_constraints();
+        let num_witnesses = r1cs.num_witnesses();
+        let blob = postcard::to_allocvec(&r1cs).context("R1CS serialization failed")?;
         drop(r1cs);
-        meta
+        Ok(Self {
+            num_constraints,
+            num_witnesses,
+            blob,
+        })
     }
 
-    pub fn decompress(self) -> R1CS {
-        postcard::from_bytes(&self.blob).expect("R1CS deserialization failed")
+    pub fn decompress(self) -> Result<R1CS> {
+        postcard::from_bytes(&self.blob).context("R1CS deserialization failed")
     }
 
     pub const fn num_constraints(&self) -> usize {
@@ -59,6 +71,11 @@ impl CompressedR1CS {
     pub fn blob_len(&self) -> usize {
         self.blob.len()
     }
+}
+
+#[cfg(test)]
+pub trait R1CSSolver {
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()>;
 }
 
 /// Solves the R1CS witness vector using layered execution with batch
@@ -83,7 +100,7 @@ impl CompressedR1CS {
 /// This indicates a bug in the layer scheduling algorithm.
 #[instrument(skip_all)]
 pub fn solve_witness_vec(
-    witness: &mut [Option<FieldElement>],
+    witness: &mut Vec<Option<FieldElement>>,
     plan: LayeredWitnessBuilders,
     acir_map: &WitnessMap<NoirElement>,
     transcript: &mut ProverState<TranscriptSponge>,
@@ -191,25 +208,29 @@ pub fn solve_witness_vec(
 }
 
 #[cfg(test)]
-#[instrument(skip_all, fields(size = witness.len()))]
-pub fn test_witness_satisfaction(r1cs: &R1CS, witness: &[FieldElement]) -> anyhow::Result<()> {
-    use anyhow::ensure;
+impl R1CSSolver for R1CS {
+    // Tests R1CS Witness satisfaction given the constraints provided by the
+    // R1CS Matrices.
+    #[instrument(skip_all, fields(size = witness.len()))]
+    fn test_witness_satisfaction(&self, witness: &[FieldElement]) -> anyhow::Result<()> {
+        use anyhow::ensure;
 
-    ensure!(
-        witness.len() == r1cs.num_witnesses(),
-        "Witness size does not match"
-    );
+        ensure!(
+            witness.len() == self.num_witnesses(),
+            "Witness size does not match"
+        );
 
-    let a = r1cs.a() * witness;
-    let b = r1cs.b() * witness;
-    let c = r1cs.c() * witness;
-    for (row, ((a_val, b_val), c_val)) in a
-        .into_iter()
-        .zip(b.into_iter())
-        .zip(c.into_iter())
-        .enumerate()
-    {
-        ensure!(a_val * b_val == c_val, "Constraint {row} failed");
+        let a = self.a() * witness;
+        let b = self.b() * witness;
+        let c = self.c() * witness;
+        for (row, ((a_val, b_val), c_val)) in a
+            .into_iter()
+            .zip(b.into_iter())
+            .zip(c.into_iter())
+            .enumerate()
+        {
+            ensure!(a_val * b_val == c_val, "Constraint {row} failed");
+        }
+        Ok(())
     }
-    Ok(())
 }

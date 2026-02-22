@@ -1,17 +1,16 @@
 use {
     crate::{
-        utils::{pad_to_power_of_two, unzip_double_array, workload_size},
+        sparse_matrix::SparseMatrix,
+        utils::{unzip_double_array, workload_size},
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
-    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     std::array,
     tracing::instrument,
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
-// TODO: Figure out a way to also half the mles on folding
 pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
     mles: [&mut [FieldElement]; N],
     fold: Option<FieldElement>,
@@ -102,29 +101,51 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-/// List of evaluations for eq(r, x) over the boolean hypercube
+// TODO: Add unit tests for calculate_evaluations_over_boolean_hypercube_for_eq,
+// eval_eq, calculate_eq, and the transposed matrix multiplication helpers.
+
+/// List of evaluations for eq(r, x) over the boolean hypercube, truncated to
+/// `num_entries` elements. When `num_entries < 2^r.len()`, avoids allocating
+/// the full hypercube.
 #[instrument(skip_all)]
 pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
-    r: Vec<FieldElement>,
+    r: &[FieldElement],
+    num_entries: usize,
 ) -> Vec<FieldElement> {
-    let mut result = vec![FieldElement::zero(); 1 << r.len()];
-    eval_eq(&r, &mut result, FieldElement::one());
+    let full_size = 1usize << r.len();
+    debug_assert!(num_entries <= full_size);
+    let mut result = vec![FieldElement::zero(); num_entries];
+    eval_eq(r, &mut result, FieldElement::one(), full_size);
     result
 }
 
-/// Evaluates the equality polynomial recursively.
-fn eval_eq(eval: &[FieldElement], out: &mut [FieldElement], scalar: FieldElement) {
-    debug_assert_eq!(out.len(), 1 << eval.len());
-    let size = out.len();
+/// Evaluates the equality polynomial recursively. `subtree_size` tracks the
+/// logical size of this recursion level so that truncated output buffers are
+/// split correctly.
+fn eval_eq(
+    eval: &[FieldElement],
+    out: &mut [FieldElement],
+    scalar: FieldElement,
+    subtree_size: usize,
+) {
+    debug_assert!(out.len() <= subtree_size);
     if let Some((&x, tail)) = eval.split_first() {
-        let (o0, o1) = out.split_at_mut(out.len() / 2);
+        let half = subtree_size / 2;
+        let left_len = out.len().min(half);
+        let right_len = out.len().saturating_sub(half);
+        let (o0, o1) = out.split_at_mut(left_len);
         let s1 = scalar * x;
         let s0 = scalar - s1;
-        if size > workload_size::<FieldElement>() {
-            rayon::join(|| eval_eq(tail, o0, s0), || eval_eq(tail, o1, s1));
+        if right_len == 0 {
+            eval_eq(tail, o0, s0, half);
+        } else if subtree_size > workload_size::<FieldElement>() {
+            rayon::join(
+                || eval_eq(tail, o0, s0, half),
+                || eval_eq(tail, o1, s1, half),
+            );
         } else {
-            eval_eq(tail, o0, s0);
-            eval_eq(tail, o1, s1);
+            eval_eq(tail, o0, s0, half);
+            eval_eq(tail, o1, s1, half);
         }
     } else {
         out[0] += scalar;
@@ -144,13 +165,17 @@ pub fn calculate_witness_bounds(
     witness: &[FieldElement],
 ) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
-    // Derive C from R1CS relation (faster than matrix multiplication)
-    let c = a.par_iter().zip(b.par_iter()).map(|(a, b)| a * b).collect();
-    (
-        pad_to_power_of_two(a),
-        pad_to_power_of_two(b),
-        pad_to_power_of_two(c),
-    )
+
+    let target_len = a.len().next_power_of_two();
+    let mut c = Vec::with_capacity(target_len);
+    c.extend(a.iter().zip(b.iter()).map(|(a, b)| *a * *b));
+    c.resize(target_len, FieldElement::zero());
+
+    let mut a = a;
+    let mut b = b;
+    a.resize(target_len, FieldElement::zero());
+    b.resize(target_len, FieldElement::zero());
+    (a, b, c)
 }
 
 /// Calculates eq(r, alpha)
@@ -162,18 +187,54 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
         })
 }
 
-/// Calculates a random row of R1CS matrix extension. Made possible due to
-/// sparseness.
+/// Transpose all three R1CS matrices in parallel.
+///
+/// This depends only on the R1CS structure (from the verifier key), not on any
+/// proof-specific data, so it can run concurrently with sumcheck verification.
 #[instrument(skip_all)]
-pub fn calculate_external_row_of_r1cs_matrices(
-    alpha: Vec<FieldElement>,
-    r1cs: R1CS,
+pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
+    let ((at, bt), ct) = rayon::join(
+        || rayon::join(|| r1cs.a.transpose(), || r1cs.b.transpose()),
+        || r1cs.c.transpose(),
+    );
+    (at, bt, ct)
+}
+
+/// Multiply pre-transposed R1CS matrices by eq(alpha, ·) to compute the
+/// external row.
+#[instrument(skip_all)]
+pub fn multiply_transposed_by_eq_alpha(
+    at: &SparseMatrix,
+    bt: &SparseMatrix,
+    ct: &SparseMatrix,
+    alpha: &[FieldElement],
+    r1cs: &R1CS,
 ) -> [Vec<FieldElement>; 3] {
-    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha);
-    let eq_alpha = &eq_alpha[..r1cs.num_constraints()];
+    let eq_alpha =
+        calculate_evaluations_over_boolean_hypercube_for_eq(alpha, r1cs.num_constraints());
+    let interner = &r1cs.interner;
     let ((a, b), c) = rayon::join(
-        || rayon::join(|| eq_alpha * r1cs.a(), || eq_alpha * r1cs.b()),
-        || eq_alpha * r1cs.c(),
+        || {
+            rayon::join(
+                || at.hydrate(interner) * eq_alpha.as_slice(),
+                || bt.hydrate(interner) * eq_alpha.as_slice(),
+            )
+        },
+        || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
     [a, b, c]
+}
+
+/// Calculates a random row of R1CS matrix extension. Made possible due to
+/// sparseness.
+///
+/// Computes `eq(alpha, ·) * [A, B, C]` using transposed matrices for
+/// parallel right-multiplication instead of sequential left-multiplication.
+#[instrument(skip_all)]
+pub fn calculate_external_row_of_r1cs_matrices(
+    alpha: &[FieldElement],
+    r1cs: &R1CS,
+) -> [Vec<FieldElement>; 3] {
+    let (at, bt, ct) = transpose_r1cs_matrices(r1cs);
+    multiply_transposed_by_eq_alpha(&at, &bt, &ct, alpha, r1cs)
 }

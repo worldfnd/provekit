@@ -1,7 +1,10 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
     ark_std::Zero,
-    rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
+    rayon::{
+        iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+        slice::ParallelSliceMut,
+    },
     serde::{
         de::{SeqAccess, Visitor},
         ser::SerializeStruct,
@@ -399,6 +402,53 @@ impl SparseMatrix {
         start..end
     }
 
+    /// Transpose the matrix, swapping rows and columns.
+    ///
+    /// Returns a new `SparseMatrix` where entry (i, j) in the original
+    /// becomes (j, i) in the result. The interned values are preserved
+    /// and remain valid for the same `Interner`.
+    pub fn transpose(&self) -> SparseMatrix {
+        let nnz = self.values.len();
+
+        let mut entries: Vec<(u32, u32, InternedFieldElement)> = Vec::with_capacity(nnz);
+        for row in 0..self.num_rows {
+            let range = self.row_range(row);
+            for i in range {
+                entries.push((self.col_indices[i], row as u32, self.values[i]));
+            }
+        }
+
+        entries.par_sort_unstable_by_key(|&(new_row, new_col, _)| (new_row, new_col));
+        debug_assert!(
+            entries
+                .windows(2)
+                .all(|w| (w[0].0, w[0].1) != (w[1].0, w[1].1)),
+            "Duplicate (row, col) entries in sparse matrix transpose"
+        );
+
+        let mut new_row_indices = Vec::with_capacity(self.num_cols);
+        let mut col_indices = Vec::with_capacity(nnz);
+        let mut values = Vec::with_capacity(nnz);
+
+        let mut entry_idx = 0;
+        for row in 0..self.num_cols {
+            new_row_indices.push(entry_idx as u32);
+            while entry_idx < entries.len() && entries[entry_idx].0 == row as u32 {
+                col_indices.push(entries[entry_idx].1);
+                values.push(entries[entry_idx].2);
+                entry_idx += 1;
+            }
+        }
+
+        SparseMatrix {
+            num_rows: self.num_cols,
+            num_cols: self.num_rows,
+            new_row_indices,
+            col_indices,
+            values,
+        }
+    }
+
     /// Remap column indices using provided mapping function - in-place and
     /// parallel
     pub fn remap_columns<F>(&mut self, remap_fn: F)
@@ -458,8 +508,7 @@ impl HydratedSparseMatrix<'_> {
     }
 }
 
-/// Right multiplication by vector
-// OPT: Paralelize
+/// Right multiplication by vector (parallel over rows).
 impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
     type Output = Vec<FieldElement>;
 
@@ -469,16 +518,21 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             rhs.len(),
             "Vector length does not match number of columns."
         );
-        let mut result = vec![FieldElement::zero(); self.matrix.num_rows];
-        for ((i, j), value) in self.iter() {
-            result[i] += value * rhs[j];
-        }
-        result
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|row| {
+                self.iter_row(row)
+                    .map(|(col, value)| value * rhs[col])
+                    .fold(FieldElement::zero(), |acc, x| acc + x)
+            })
+            .collect()
     }
 }
 
-/// Left multiplication by vector
-// OPT: Paralelize
+/// Left multiplication by vector (sequential scatter pattern).
+///
+/// The primary call site (`calculate_external_row_of_r1cs_matrices`)
+/// now uses transpose + parallel right-multiply instead.
 impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
     type Output = Vec<FieldElement>;
 

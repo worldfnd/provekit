@@ -5,7 +5,7 @@ mod json;
 
 use {
     self::{
-        bin::{read_bin, write_bin},
+        bin::{read_bin, write_bin, Compression},
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
@@ -22,30 +22,35 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const FORMAT: [u8; 8];
     const EXTENSION: &'static str;
     const VERSION: (u16, u16);
+    const COMPRESSION: Compression;
 }
 
 impl FileFormat for NoirProofScheme {
     const FORMAT: [u8; 8] = *b"NrProScm";
     const EXTENSION: &'static str = "nps";
     const VERSION: (u16, u16) = (1, 1);
+    const COMPRESSION: Compression = Compression::Zstd;
 }
 
 impl FileFormat for Prover {
     const FORMAT: [u8; 8] = *b"PrvKitPr";
     const EXTENSION: &'static str = "pkp";
     const VERSION: (u16, u16) = (1, 1);
+    const COMPRESSION: Compression = Compression::Xz;
 }
 
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
     const VERSION: (u16, u16) = (1, 2);
+    const COMPRESSION: Compression = Compression::Zstd;
 }
 
 impl FileFormat for NoirProof {
     const FORMAT: [u8; 8] = *b"NPSProof";
     const EXTENSION: &'static str = "np";
     const VERSION: (u16, u16) = (1, 0);
+    const COMPRESSION: Compression = Compression::Zstd;
 }
 
 /// Write a file with format determined from extension.
@@ -53,7 +58,9 @@ impl FileFormat for NoirProof {
 pub fn write<T: FileFormat>(value: &T, path: &Path) -> Result<()> {
     match path.extension().and_then(OsStr::to_str) {
         Some("json") => write_json(value, path),
-        Some(ext) if ext == T::EXTENSION => write_bin(value, path, T::FORMAT, T::VERSION),
+        Some(ext) if ext == T::EXTENSION => {
+            write_bin(value, path, T::FORMAT, T::VERSION, T::COMPRESSION)
+        }
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",
             T::EXTENSION

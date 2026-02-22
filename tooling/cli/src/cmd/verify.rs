@@ -2,13 +2,13 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, Verifier},
+    provekit_common::{file::read, NoirProof, Verifier},
     provekit_verifier::Verify,
     std::path::PathBuf,
     tracing::instrument,
 };
 
-/// Prove a prepared Noir program
+/// Verify a Noir proof
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "verify")]
 pub struct Args {
@@ -24,12 +24,13 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let mut verifier: Verifier =
-            read(&self.verifier_path).context("while reading Provekit Verifier")?;
-
-        // Read the proof
-        let proof = read(&self.proof_path).context("while reading proof")?;
+        // Load verifier and proof in parallel (independent I/O + decompression)
+        let (verifier, proof) = rayon::join(
+            || read::<Verifier>(&self.verifier_path).context("while reading Provekit Verifier"),
+            || read::<NoirProof>(&self.proof_path).context("while reading proof"),
+        );
+        let mut verifier = verifier?;
+        let proof = proof?;
 
         // Verify the proof
         verifier

@@ -137,9 +137,10 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
+xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
-xz2 = "0.1.7"
+zstd = "0.13"
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
@@ -165,4 +166,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "ed7002a07567afb8665677190711152d14be5f2e", features = ["tracing"] }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "9ee88851516287b47a33f305719f48bb35fde110", features = ["tracing"] }
