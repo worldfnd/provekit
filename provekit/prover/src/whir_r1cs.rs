@@ -388,7 +388,7 @@ pub fn run_zk_sumcheck_prover(
     let spartan_num_vars = whir_for_blinding_of_spartan_config.num_witness_variables();
     let target_b = 1usize << spartan_num_vars;
 
-    let mut flat: Vec<_> = blinding_polynomial.iter().flatten().cloned().collect();
+    let mut flat: Vec<FieldElement> = blinding_polynomial.iter().flatten().cloned().collect();
 
     if flat.len() < target_b {
         flat.resize(target_b, FieldElement::zero());

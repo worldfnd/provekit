@@ -11,7 +11,6 @@ use {
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
-// TODO: Figure out a way to also half the mles on folding
 pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
     mles: [&mut [FieldElement]; N],
     fold: Option<FieldElement>,

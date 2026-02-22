@@ -21,19 +21,39 @@ const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 /// XZ magic number: `FD 37 7A 58 5A 00`.
 const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 
-/// Write a compressed binary file using zstd (fast compress and decompress).
+/// Compression algorithm for binary file output.
+#[derive(Debug, Clone, Copy)]
+pub enum Compression {
+    Zstd,
+    Xz,
+}
+
+/// Write a compressed binary file.
 #[instrument(skip(value))]
 pub fn write_bin<T: Serialize>(
     value: &T,
     path: &Path,
     format: [u8; 8],
     (major, minor): (u16, u16),
+    compression: Compression,
 ) -> Result<()> {
     let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
     let uncompressed = postcard_data.len();
 
-    let compressed_data =
-        zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?;
+    let compressed_data = match compression {
+        Compression::Zstd => {
+            zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?
+        }
+        Compression::Xz => {
+            let mut buf = Vec::new();
+            let mut encoder = xz2::write::XzEncoder::new(&mut buf, 6);
+            encoder
+                .write_all(&postcard_data)
+                .context("while compressing with xz")?;
+            encoder.finish().context("while finishing xz stream")?;
+            buf
+        }
+    };
 
     let mut file = File::create(path).context("while creating output file")?;
 
