@@ -477,7 +477,7 @@ fn main() -> Result<()> {
 
     // Load mock RSA key pairs
     println!("\nStep 1: Loading mock RSA key pairs...");
-    let (csca_priv, csca_pub, dsc_priv, dsc_pub) = load_mock_keys().unwrap();
+    let (csca_priv, csca_pub, dsc_priv, dsc_pub) = load_mock_keys()?;
     println!("  CSCA key loaded (RSA-4096)");
     println!("  DSC key loaded (RSA-2048)");
 
