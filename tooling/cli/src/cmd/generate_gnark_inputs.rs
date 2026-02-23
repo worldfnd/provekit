@@ -53,8 +53,8 @@ impl Command for Args {
             .context("verifier is missing whir_for_witness config")?;
 
         write_gnark_parameters_to_file(
-            &wfw.whir_witness,
-            &wfw.whir_for_hiding_spartan,
+            &wfw.whir_witness.blinded_commitment,
+            &wfw.whir_for_hiding_spartan.blinded_commitment,
             &proof.whir_r1cs_proof,
             wfw.m_0,
             wfw.m,

@@ -45,6 +45,7 @@ pub enum ConstantOrR1CSWitness {
 }
 
 impl ConstantOrR1CSWitness {
+    #[must_use]
     pub fn to_tuple(&self) -> (FieldElement, usize) {
         match self {
             ConstantOrR1CSWitness::Constant(c) => (*c, WITNESS_ONE_IDX),
@@ -57,22 +58,27 @@ impl ConstantOrR1CSWitness {
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
 impl PublicInputs {
+    #[must_use]
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
+    #[must_use]
     pub fn from_vec(vec: Vec<FieldElement>) -> Self {
         Self(vec)
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    #[must_use]
     pub fn hash(&self) -> FieldElement {
         fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
             let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);

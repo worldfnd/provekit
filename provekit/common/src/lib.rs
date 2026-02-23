@@ -1,6 +1,7 @@
 pub mod file;
 mod interner;
 mod noir_proof_scheme;
+pub mod prefix_covector;
 mod prover;
 mod r1cs;
 pub mod skyscraper;
@@ -19,10 +20,12 @@ pub use {
     ark_bn254::Fr as FieldElement,
     noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
     prover::{MavrosProver, NoirProver, Prover},
+    prefix_covector::PrefixCovector,
     r1cs::R1CS,
     verifier::Verifier,
     whir_r1cs::{
         WhirConfig, WhirDomainSeparator, WhirProof, WhirProverState, WhirR1CSProof, WhirR1CSScheme,
+        WhirZkConfig,
     },
     witness::PublicInputs,
 };
@@ -47,6 +50,3 @@ pub fn register_ntt() {
         whir::hash::ENGINES.register(skyscraper);
     });
 }
-
-#[cfg(test)]
-mod tests {}
