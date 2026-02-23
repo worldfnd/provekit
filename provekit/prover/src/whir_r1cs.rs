@@ -158,6 +158,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let domain_size = 1usize << self.m;
 
         if is_single {
+            // Single commitment path
             let commitment = commitments.into_iter().next().unwrap();
             let (mut weights, evals) =
                 create_weights_and_evaluations::<3>(self.m, &commitment.polynomial, alphas);
@@ -193,6 +194,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &evaluations,
             );
         } else {
+            // Dual commitment path
             let mut commitments = commitments.into_iter();
             let c1 = commitments.next().unwrap();
             let c2 = commitments.next().unwrap();
@@ -408,6 +410,7 @@ pub fn run_zk_sumcheck_prover(
 
     let rho: FieldElement = merlin.verifier_message();
 
+    // Prove that sum of F + ρ·G over the boolean hypercube equals ρ·Σ(G).
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
 
     let mut fold = None;
