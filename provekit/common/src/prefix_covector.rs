@@ -87,6 +87,14 @@ impl LinearForm<FieldElement> for PrefixCovector {
             *acc += scalar * *val;
         }
     }
+
+    fn fold_periodic(&self, mask_size: usize) -> Vec<FieldElement> {
+        let mut folded = vec![FieldElement::zero(); mask_size];
+        for (i, &v) in self.vector.iter().enumerate() {
+            folded[i % mask_size] += v;
+        }
+        folded
+    }
 }
 
 /// Expand each field element into `[1, x, x², …, x^{D-1}]`.

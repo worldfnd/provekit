@@ -19,7 +19,6 @@ use {
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, WhirZkConfig, R1CS,
     },
-    std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
@@ -127,22 +126,26 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, self.m);
 
         if is_single {
-            let commitment = commitments.into_iter().next().unwrap();
+            let WhirR1CSCommitment {
+                witness,
+                polynomial,
+            } = commitments.into_iter().next().unwrap();
             let (mut weights, evals) =
-                create_weights_and_evaluations::<3>(self.m, &commitment.polynomial, alphas);
+                create_weights_and_evaluations::<3>(self.m, &polynomial, alphas);
 
             merlin.prover_hint_ark(&evals);
 
             if !public_inputs.is_empty() {
                 let public_eval = compute_public_weight_evaluation(
                     &mut weights,
-                    &commitment.polynomial,
+                    &polynomial,
                     public_weight,
                 );
                 merlin.prover_hint_ark(&public_eval);
             }
 
-            let evaluations = compute_evaluations(&weights, &commitment.polynomial);
+            let evaluations = compute_evaluations(&weights, &polynomial);
+            drop(polynomial);
 
             let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
@@ -150,8 +153,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 .collect();
             self.whir_witness.prove(
                 &mut merlin,
-                &[Cow::Borrowed(&commitment.polynomial)],
-                commitment.witness,
+                1,
+                witness,
                 &boxed_weights,
                 &evaluations,
             );
@@ -198,6 +201,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 witness: w1,
                 polynomial: p1,
             } = c1;
+            drop(p1);
             {
                 let mut weights = build_prefix_covectors(self.m, alphas_1);
                 let mut evaluations: Vec<FieldElement> = Vec::new();
@@ -213,19 +217,19 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     .collect();
                 self.whir_witness.prove(
                     &mut merlin,
-                    &[Cow::Borrowed(&p1)],
+                    1,
                     w1,
                     &boxed_weights,
                     &evaluations,
                 );
             }
-            drop(p1);
 
             // Phase 3 — prove c2.
             let WhirR1CSCommitment {
                 witness: w2,
                 polynomial: p2,
             } = c2;
+            drop(p2);
             {
                 let weights = build_prefix_covectors(self.m, alphas_2);
                 let evaluations: Vec<FieldElement> = evals_2;
@@ -236,7 +240,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     .collect();
                 self.whir_witness.prove(
                     &mut merlin,
-                    &[Cow::Borrowed(&p2)],
+                    1,
                     w2,
                     &boxed_weights,
                     &evaluations,
@@ -488,7 +492,7 @@ pub fn run_zk_sumcheck_prover(
         vec![Box::new(covector) as Box<dyn LinearForm<FieldElement>>];
     whir_for_blinding_of_spartan_config.prove(
         merlin,
-        &[Cow::Borrowed(&flat)],
+        1,
         blinding_witness,
         &boxed_weights,
         &[blinding_eval],

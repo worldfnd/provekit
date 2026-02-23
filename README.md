@@ -26,7 +26,8 @@ Prepare the Noir program (generates prover and verifier files):
 ```sh
 cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
-
+// cargo run --release --bin provekit-cli prepare ./noir-examples/noir-passport-monolithic/complete_age_check/target/complete_age_check.json --pkp ./prover.pkp --pkv ./verifier.pkv
+// cargo run --release --bin provekit-cli prove ./prover.pkp ./noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml -o ./proof.np
 Generate the Noir Proof using the input Toml:
 
 ```sh

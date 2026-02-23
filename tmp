@@ -1,0 +1,11 @@
+Without WHIR optimised
+
+│ │ ├─╯ prove: 543 ms duration, 413 MB peak memory, 47.7 MB local, 239 MB current, 158k allocations
+│ ├─╯ prove: 1.39 s duration, 637 MB peak memory, 183 MB local, 82.8 MB current, 416k allocations
+├─╯ prove: 1.88 s duration, 637 MB peak memory, 205 MB local, 9.60 MB current, 1.43M allocations
+
+With WHIR optimised
+
+│ │ ├─╯ prove: 484 ms duration, 370 MB peak memory, 38.1 MB local, 206 MB current, 157k allocations
+│ ├─╯ prove: 1.28 s duration, 633 MB peak memory, 180 MB local, 82.8 MB current, 420k allocations
+├─╯ prove: 1.78 s duration, 633 MB peak memory, 201 MB local, 9.65 MB current, 1.44M allocations
