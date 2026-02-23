@@ -200,7 +200,9 @@ impl DependencyInfo {
             }
             WitnessBuilder::ChunkDecompose { packed, .. } => vec![*packed],
             WitnessBuilder::SpreadWitness(_, input) => vec![*input],
-            WitnessBuilder::SpreadBitExtract { spread_sum, .. } => vec![*spread_sum],
+            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => {
+                sum_terms.iter().map(|SumTerm(_, idx)| *idx).collect()
+            }
             WitnessBuilder::MultiplicitiesForSpread(_, _, queries) => queries
                 .iter()
                 .filter_map(|c| match c {

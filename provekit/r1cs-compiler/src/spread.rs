@@ -247,11 +247,6 @@ pub(crate) fn spread_decompose(
     let extract_chunks = subchunks(32, accum.table_bits);
     let n_chunks = extract_chunks.len();
 
-    // Create sum witness (used by SpreadBitExtract solver, not
-    // directly constrained — the merged constraint below ties input
-    // spread terms directly to the even/odd reconstruction).
-    let sum_idx = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(sum_idx, sum_terms.clone()));
     // Combine coefficients for duplicate witness indices,
     // since R1CS set() overwrites rather than adds.
     let mut combined: HashMap<usize, FieldElement> = HashMap::new();
@@ -263,12 +258,14 @@ pub(crate) fn spread_decompose(
         .map(|(idx, coeff)| (coeff, idx))
         .collect();
 
-    // Extract even bits (XOR) into chunks
+    // Extract even bits (XOR) into chunks.
+    // The sum is computed inline by the solver from sum_terms,
+    // avoiding a phantom witness that would inflate the witness vector.
     let even_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: even_start,
         chunk_bits:   extract_chunks.clone(),
-        spread_sum:   sum_idx,
+        sum_terms:    sum_terms.clone(),
         extract_even: true,
     });
 
@@ -276,8 +273,8 @@ pub(crate) fn spread_decompose(
     let odd_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: odd_start,
-        chunk_bits:   extract_chunks.clone(),
-        spread_sum:   sum_idx,
+        chunk_bits: extract_chunks.clone(),
+        sum_terms,
         extract_even: false,
     });
 

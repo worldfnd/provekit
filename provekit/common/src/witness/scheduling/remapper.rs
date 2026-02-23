@@ -314,12 +314,15 @@ impl WitnessIndexRemapper {
             WitnessBuilder::SpreadBitExtract {
                 output_start,
                 chunk_bits,
-                spread_sum,
+                sum_terms,
                 extract_even,
             } => WitnessBuilder::SpreadBitExtract {
                 output_start: self.remap(*output_start),
                 chunk_bits:   chunk_bits.clone(),
-                spread_sum:   self.remap(*spread_sum),
+                sum_terms:    sum_terms
+                    .iter()
+                    .map(|SumTerm(coeff, idx)| SumTerm(*coeff, self.remap(*idx)))
+                    .collect(),
                 extract_even: *extract_even,
             },
             WitnessBuilder::MultiplicitiesForSpread(start, num_bits, queries) => {

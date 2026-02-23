@@ -357,10 +357,22 @@ impl WitnessBuilderSolver for WitnessBuilder {
             WitnessBuilder::SpreadBitExtract {
                 output_start,
                 chunk_bits,
-                spread_sum,
+                sum_terms,
                 extract_even,
             } => {
-                let sum_val = witness[*spread_sum].unwrap().into_bigint().0[0];
+                // Compute the spread sum inline from terms (no phantom witness needed)
+                let sum_fe: FieldElement = sum_terms
+                    .iter()
+                    .map(|SumTerm(coeff, idx)| {
+                        let v = witness[*idx].unwrap();
+                        if let Some(c) = coeff {
+                            *c * v
+                        } else {
+                            v
+                        }
+                    })
+                    .fold(FieldElement::zero(), |acc, x| acc + x);
+                let sum_val = sum_fe.into_bigint().0[0];
                 // Extract even or odd bits from the spread sum
                 let bit_offset = if *extract_even { 0 } else { 1 };
                 let total_bits: u32 = chunk_bits.iter().sum();

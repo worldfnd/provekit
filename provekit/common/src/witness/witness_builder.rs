@@ -204,11 +204,12 @@ pub enum WitnessBuilder {
     SpreadWitness(usize, usize),
     /// Extracts even or odd bits from a spread sum, decomposed into
     /// byte-sized chunks. Even bits = XOR result, Odd bits = MAJ/AND
-    /// result. (output_start, chunk_bits, spread_sum, extract_even)
+    /// result. The sum is computed inline from the provided terms,
+    /// avoiding a separate witness allocation.
     SpreadBitExtract {
         output_start: usize,
         chunk_bits:   Vec<u32>,
-        spread_sum:   usize,
+        sum_terms:    Vec<SumTerm>,
         extract_even: bool,
     },
     /// Spread table multiplicities: counts how many times each input
