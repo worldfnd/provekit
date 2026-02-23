@@ -6,33 +6,19 @@ use {
     tracing::instrument,
 };
 
-/// Configuration for the Gnark recursive verifier.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GnarkConfig {
-    /// WHIR parameters for witness commitment.
     pub whir_config_witness: WHIRConfigGnark,
-    /// WHIR parameters for hiding Spartan.
-    pub whir_config_hiding_spartan: WHIRConfigGnark,
-    /// log₂ of number of constraints in R1CS.
     pub log_num_constraints: usize,
-    /// log₂ of number of variables in R1CS.
-    pub log_num_variables: usize,
-    /// log₂ of number of non-zero terms in matrix A.
-    pub log_a_num_terms: usize,
-    /// Spongefish NARG string (transcript interaction pattern).
-    pub narg_string: Vec<u8>,
-    /// Explicit length for Go deserialisation.
-    pub narg_string_len: usize,
-    /// Prover hints (serialised transcript data).
-    pub hints: Vec<u8>,
-    /// Explicit length for Go deserialisation.
-    pub hints_len: usize,
-    /// Number of LogUp challenges (0 = single commitment mode).
-    pub num_challenges: usize,
-    /// Size of w1 partition.
-    pub w1_size: usize,
-    /// Public inputs to the circuit.
-    pub public_inputs: PublicInputs,
+    pub log_num_variables:   usize,
+    pub log_a_num_terms:     usize,
+    pub narg_string:         Vec<u8>,
+    pub narg_string_len:     usize,
+    pub hints:               Vec<u8>,
+    pub hints_len:           usize,
+    pub num_challenges:      usize,
+    pub w1_size:             usize,
+    pub public_inputs:       PublicInputs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -129,11 +115,9 @@ impl WHIRConfigGnark {
     }
 }
 
-/// Build the Gnark recursive verifier configuration.
 #[instrument(skip_all)]
 pub fn gnark_parameters(
     whir_params_witness: &WhirConfig,
-    whir_params_hiding_spartan: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -144,7 +128,6 @@ pub fn gnark_parameters(
 ) -> GnarkConfig {
     GnarkConfig {
         whir_config_witness: WHIRConfigGnark::new(whir_params_witness),
-        whir_config_hiding_spartan: WHIRConfigGnark::new(whir_params_hiding_spartan),
         log_num_constraints: m_0,
         log_num_variables: m,
         log_a_num_terms: a_num_terms,
@@ -158,11 +141,9 @@ pub fn gnark_parameters(
     }
 }
 
-/// Serialize the Gnark configuration to a JSON file.
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
     whir_params_witness: &WhirConfig,
-    whir_params_hiding_spartan: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -174,7 +155,6 @@ pub fn write_gnark_parameters_to_file(
 ) {
     let gnark_config = gnark_parameters(
         whir_params_witness,
-        whir_params_hiding_spartan,
         proof,
         m_0,
         m,

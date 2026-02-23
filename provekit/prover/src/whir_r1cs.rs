@@ -5,7 +5,7 @@ use {
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
-            make_public_weight,
+            make_public_weight, OffsetCovector,
         },
         utils::{
             pad_to_power_of_two,
@@ -17,7 +17,7 @@ use {
             HALF,
         },
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, WhirZkConfig, R1CS,
+        WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     tracing::instrument,
@@ -28,9 +28,15 @@ use {
     },
 };
 
+pub struct BlindingState {
+    pub polynomial: Vec<[FieldElement; 4]>,
+    pub offset:     usize,
+}
+
 pub struct WhirR1CSCommitment {
     pub witness:    WhirZkWitness<FieldElement>,
     pub polynomial: Vec<FieldElement>,
+    pub blinding:   Option<BlindingState>,
 }
 
 pub trait WhirR1CSProver {
@@ -85,17 +91,33 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let num_vars = self.whir_witness.num_witness_variables();
         let target_len = 1usize << num_vars;
 
-        // Pad witness to power-of-two, then extend to target_len with zeros.
         let mut padded_witness = pad_to_power_of_two(witness);
         if padded_witness.len() < target_len {
             padded_witness.resize(target_len, FieldElement::zero());
         }
 
+        let blinding = if is_w1 {
+            let g = generate_blinding_univariates(self.m_0);
+            let offset = witness_size;
+            for (i, coeffs) in g.iter().enumerate() {
+                for (j, &c) in coeffs.iter().enumerate() {
+                    padded_witness[offset + i * 4 + j] = c;
+                }
+            }
+            Some(BlindingState {
+                polynomial: g,
+                offset,
+            })
+        } else {
+            None
+        };
+
         let zk_witness = self.whir_witness.commit(merlin, &[&padded_witness]);
 
         Ok(WhirR1CSCommitment {
-            witness:    zk_witness,
+            witness: zk_witness,
             polynomial: padded_witness,
+            blinding,
         })
     }
 
@@ -112,19 +134,28 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let is_single = commitments.len() == 1;
 
-        // First round: ZK sumcheck to reduce R1CS to weighted evaluation
-        let alpha = run_zk_sumcheck_prover(
+        let blinding = commitments[0]
+            .blinding
+            .as_ref()
+            .expect("c1 must carry blinding state");
+
+        let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             &r1cs,
             &full_witness,
             &mut merlin,
             self.m_0,
-            &self.whir_for_hiding_spartan,
+            &blinding.polynomial,
+            &commitments[0].polynomial,
+            blinding.offset,
         );
         drop(full_witness);
 
-        // Compute weights from R1CS matrices
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
         let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, self.m);
+
+        let blinding_offset = blinding.offset;
+        let blinding_weights = expand_powers::<4>(&alpha);
+        let domain_size = 1usize << self.m;
 
         if is_single {
             let commitment = commitments.into_iter().next().unwrap();
@@ -142,12 +173,18 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 merlin.prover_hint_ark(&public_eval);
             }
 
-            let evaluations = compute_evaluations(&weights, &commitment.polynomial);
+            let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
+            evaluations.push(blinding_eval);
 
-            let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+            let blinding_covector =
+                OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
+
+            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
                 .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
+            boxed_weights.push(Box::new(blinding_covector));
+
             self.whir_witness.prove(
                 &mut merlin,
                 &[Cow::Borrowed(&commitment.polynomial)],
@@ -156,14 +193,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 &evaluations,
             );
         } else {
-            // Dual commitment path: separate prove per polynomial.
-            // Structured to minimise peak memory — c1 data (polynomial +
-            // witness + weights) is freed before c2's prove begins.
             let mut commitments = commitments.into_iter();
             let c1 = commitments.next().unwrap();
             let c2 = commitments.next().unwrap();
 
-            // Split alphas between w1 and w2
             let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
                 .into_iter()
                 .map(|mut v| {
@@ -175,16 +208,11 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
             let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
 
-            // Phase 1 — compute all transcript hints (cheap dot products,
-            // no PrefixCovector allocation).  Both polynomials must be
-            // accessible here but we defer weight construction.
             let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
             let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
             merlin.prover_hint_ark(&evals_1);
             merlin.prover_hint_ark(&evals_2);
 
-            // Public inputs live exclusively in w1 (c1); no public weight
-            // check is needed for c2.
             let public_1 = if !public_inputs.is_empty() {
                 let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
                 merlin.prover_hint_ark(&p1);
@@ -193,10 +221,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
-            // Phase 2 — prove c1, then drop all c1 data.
             let WhirR1CSCommitment {
                 witness: w1,
                 polynomial: p1,
+                ..
             } = c1;
             {
                 let mut weights = build_prefix_covectors(self.m, alphas_1);
@@ -206,11 +234,17 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     evaluations.push(pe);
                 }
                 evaluations.extend_from_slice(&evals_1);
+                evaluations.push(blinding_eval);
 
-                let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+                let blinding_covector =
+                    OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
+
+                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                     .into_iter()
                     .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                     .collect();
+                boxed_weights.push(Box::new(blinding_covector));
+
                 self.whir_witness.prove(
                     &mut merlin,
                     &[Cow::Borrowed(&p1)],
@@ -221,10 +255,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
             }
             drop(p1);
 
-            // Phase 3 — prove c2.
             let WhirR1CSCommitment {
                 witness: w2,
                 polynomial: p2,
+                ..
             } = c2;
             {
                 let weights = build_prefix_covectors(self.m, alphas_2);
@@ -330,32 +364,16 @@ pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
         + eval_cubic_poly(polynomial_coefficient, FieldElement::one())
 }
 
-fn generate_blinding_spartan_univariate_polys(m_0: usize) -> Vec<[FieldElement; 4]> {
+fn generate_blinding_univariates(m_0: usize) -> Vec<[FieldElement; 4]> {
     let mut rng = ark_std::rand::thread_rng();
-    let mut g_univariates = Vec::with_capacity(m_0);
-
-    for _ in 0..m_0 {
-        let coeffs: [FieldElement; 4] = [
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-            FieldElement::rand(&mut rng),
-        ];
-        g_univariates.push(coeffs);
-    }
-    g_univariates
+    (0..m_0)
+        .map(|_| std::array::from_fn(|_| FieldElement::rand(&mut rng)))
+        .collect()
 }
 
-/// Pads `v` with zeros so that `len >= 2` and `len` is a power of two.
 #[inline]
 pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
-    let min = v.len().max(2);
-
-    let target = match min.checked_next_power_of_two() {
-        Some(p2) => p2,
-        None => min, // fallback: can't grow to power-of-two, keep `min`
-    };
-
+    let target = v.len().max(2).next_power_of_two();
     if v.len() < target {
         v.resize(target, FieldElement::zero());
     }
@@ -367,9 +385,10 @@ pub fn run_zk_sumcheck_prover(
     z: &[FieldElement],
     merlin: &mut ProverState<TranscriptSponge>,
     m_0: usize,
-    whir_for_blinding_of_spartan_config: &WhirZkConfig,
-) -> Vec<FieldElement> {
-    // r is the combination randomness from the 2nd item of the interaction phase
+    blinding_polynomial: &[[FieldElement; 4]],
+    w1_polynomial: &[FieldElement],
+    blinding_offset: usize,
+) -> (Vec<FieldElement>, FieldElement) {
     let r: Vec<FieldElement> = merlin.verifier_message_vec(m_0);
     let ((mut a, mut b, mut c), mut eq) = rayon::join(
         || calculate_witness_bounds(r1cs, z),
@@ -383,27 +402,12 @@ pub fn run_zk_sumcheck_prover(
 
     let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
 
-    let blinding_polynomial = generate_blinding_spartan_univariate_polys(m_0);
-
-    let spartan_num_vars = whir_for_blinding_of_spartan_config.num_witness_variables();
-    let target_b = 1usize << spartan_num_vars;
-
-    let mut flat: Vec<FieldElement> = blinding_polynomial.iter().flatten().cloned().collect();
-
-    if flat.len() < target_b {
-        flat.resize(target_b, FieldElement::zero());
-    }
-
-    let blinding_witness = whir_for_blinding_of_spartan_config.commit(merlin, &[&flat]);
-
-    let sum_g_reduce = sum_over_hypercube(&blinding_polynomial);
+    let sum_g_reduce = sum_over_hypercube(blinding_polynomial);
 
     merlin.prover_message(&sum_g_reduce);
 
     let rho: FieldElement = merlin.verifier_message();
 
-    // Instead of proving that sum of F over the boolean hypercube is 0, we prove
-    // that sum of F + rho * G over the boolean hypercube is rho * Sum G.
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
 
     let mut fold = None;
@@ -425,11 +429,8 @@ pub fn run_zk_sumcheck_prover(
             eq.truncate(eq.len() / 2);
         }
 
-        let g_poly = compute_blinding_coefficients_for_round(
-            blinding_polynomial.as_slice(),
-            idx,
-            alpha.as_slice(),
-        );
+        let g_poly =
+            compute_blinding_coefficients_for_round(blinding_polynomial, idx, alpha.as_slice());
 
         let mut combined_hhat_i_coeffs = [FieldElement::zero(); 4];
 
@@ -474,27 +475,14 @@ pub fn run_zk_sumcheck_prover(
     }
     drop((a, b, c, eq));
 
-    let mut weight_vec = expand_powers::<4>(alpha.as_slice());
-    let weight_domain_size = 1usize << spartan_num_vars;
-    if weight_vec.len() < weight_domain_size {
-        weight_vec.resize(weight_domain_size, FieldElement::zero());
-    }
-
-    let blinding_eval = dot(&weight_vec, &flat[..weight_vec.len()]);
+    let weight_vec = expand_powers::<4>(alpha.as_slice());
+    let blinding_eval = dot(
+        &weight_vec,
+        &w1_polynomial[blinding_offset..blinding_offset + weight_vec.len()],
+    );
     merlin.prover_message(&blinding_eval);
 
-    let covector = PrefixCovector::new(weight_vec, weight_domain_size);
-    let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> =
-        vec![Box::new(covector) as Box<dyn LinearForm<FieldElement>>];
-    whir_for_blinding_of_spartan_config.prove(
-        merlin,
-        &[Cow::Borrowed(&flat)],
-        blinding_witness,
-        &boxed_weights,
-        &[blinding_eval],
-    );
-
-    alpha
+    (alpha, blinding_eval)
 }
 
 fn create_weights_and_evaluations<const N: usize>(
@@ -518,7 +506,6 @@ fn create_weights_and_evaluations<const N: usize>(
     (weights, evals)
 }
 
-/// Compute evaluations of weights against a single polynomial.
 fn compute_evaluations(
     weights: &[PrefixCovector],
     polynomial: &[FieldElement],

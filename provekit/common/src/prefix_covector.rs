@@ -89,6 +89,73 @@ impl LinearForm<FieldElement> for PrefixCovector {
     }
 }
 
+/// A covector that is zero everywhere except at positions
+/// `[offset .. offset + weights.len())` within a `domain_size`-length domain.
+pub struct OffsetCovector {
+    weights:     Vec<FieldElement>,
+    offset:      usize,
+    domain_size: usize,
+}
+
+impl OffsetCovector {
+    #[must_use]
+    pub fn new(weights: Vec<FieldElement>, offset: usize, domain_size: usize) -> Self {
+        debug_assert!(domain_size.is_power_of_two());
+        assert!(
+            offset + weights.len() <= domain_size,
+            "OffsetCovector: offset ({offset}) + weights.len() ({}) exceeds domain_size \
+             ({domain_size})",
+            weights.len()
+        );
+        Self {
+            weights,
+            offset,
+            domain_size,
+        }
+    }
+}
+
+impl LinearForm<FieldElement> for OffsetCovector {
+    fn size(&self) -> usize {
+        self.domain_size
+    }
+
+    fn deferred(&self) -> bool {
+        false
+    }
+
+    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+        let n = point.len();
+        let mut result = FieldElement::zero();
+        for (i, &w) in self.weights.iter().enumerate() {
+            if w.is_zero() {
+                continue;
+            }
+            let idx = self.offset + i;
+            // point[0] = MSB, matching whir's multilinear_extend convention
+            let mut basis = FieldElement::one();
+            for (k, pk) in point.iter().enumerate() {
+                if (idx >> (n - 1 - k)) & 1 == 1 {
+                    basis *= pk;
+                } else {
+                    basis *= FieldElement::one() - pk;
+                }
+            }
+            result += w * basis;
+        }
+        result
+    }
+
+    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+        for (acc, &w) in accumulator[self.offset..self.offset + self.weights.len()]
+            .iter_mut()
+            .zip(&self.weights)
+        {
+            *acc += scalar * w;
+        }
+    }
+}
+
 /// Expand each field element into `[1, x, x², …, x^{D-1}]`.
 ///
 /// Used to build weight vectors for the spartan blinding polynomial
