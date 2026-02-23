@@ -162,10 +162,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             &self.whir_for_hiding_spartan,
         );
 
-        let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(
-            &alpha,
-            1 << alpha.len(),
-        );
+        let eq_alpha =
+            calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
             ad_binary,
             &eq_alpha[..constraints_layout.algebraic_size],

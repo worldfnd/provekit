@@ -19,8 +19,8 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
-    prover::{MavrosProver, NoirProver, Prover},
     prefix_covector::PrefixCovector,
+    prover::{MavrosProver, NoirProver, Prover},
     r1cs::R1CS,
     verifier::Verifier,
     whir_r1cs::{
