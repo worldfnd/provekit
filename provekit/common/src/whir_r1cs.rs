@@ -9,8 +9,6 @@ use {
     },
 };
 
-// TODO: Remove WhirConfig once the gnark recursive verifier is updated to use
-// WhirZkConfig.
 pub type WhirConfig = GenericWhirConfig<FieldElement>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
@@ -25,14 +23,13 @@ pub type WhirProof = transcript::Proof;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
-    pub m: usize,
-    pub w1_size: usize,
-    pub m_0: usize,
-    pub a_num_terms: usize,
-    pub num_challenges: usize,
+    pub m:                 usize,
+    pub w1_size:           usize,
+    pub m_0:               usize,
+    pub a_num_terms:       usize,
+    pub num_challenges:    usize,
     pub has_public_inputs: bool,
-    pub whir_witness: WhirZkConfig,
-    pub whir_for_hiding_spartan: WhirZkConfig,
+    pub whir_witness:      WhirZkConfig,
 }
 
 impl WhirR1CSScheme {

@@ -5,10 +5,7 @@ use {
     },
 };
 
-// Minimum log2 of the WHIR evaluation domain (lower bound for m).
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
-// Minimum number of variables in the sumcheck's multilinear polynomial (lower
-// bound for m_0).
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
@@ -40,8 +37,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(r1cs.num_constraints());
 
-        let m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
+        let mut m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
+
+        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
+        if (1usize << m_raw) - w1_size < 4 * m_0 {
+            m_raw += 1;
+        }
 
         Self {
             m: m_raw,
@@ -50,10 +52,6 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1),
-            whir_for_hiding_spartan: Self::new_whir_zk_config_for_size(
-                next_power_of_two(4 * m_0),
-                1,
-            ),
             has_public_inputs,
         }
     }
