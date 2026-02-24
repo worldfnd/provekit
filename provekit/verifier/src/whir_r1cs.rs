@@ -2,12 +2,13 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
-        prefix_covector::{build_prefix_covectors, expand_powers, make_public_weight},
+        prefix_covector::{
+            build_prefix_covectors, expand_powers, make_public_weight, OffsetCovector,
+        },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         },
-        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, WhirZkConfig, R1CS,
+        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     tracing::instrument,
     whir::{
@@ -17,9 +18,10 @@ use {
 };
 
 pub struct DataFromSumcheckVerifier {
-    r:                 Vec<FieldElement>,
-    alpha:             Vec<FieldElement>,
-    last_sumcheck_val: FieldElement,
+    r:             Vec<FieldElement>,
+    alpha:         Vec<FieldElement>,
+    blinding_eval: FieldElement,
+    f_at_alpha:    FieldElement,
 }
 
 pub trait WhirR1CSVerifier {
@@ -65,11 +67,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             None
         };
 
-        // Overlap: transpose R1CS matrices while running sumcheck verification.
-        // Transpose depends only on the R1CS structure, not on proof data.
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
-            || run_sumcheck_verifier(&mut arthur, self.m_0, &self.whir_for_hiding_spartan),
+            || run_sumcheck_verifier(&mut arthur, self.m_0),
         );
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
@@ -93,6 +93,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             &data_from_sumcheck_verifier.alpha,
             r1cs,
         );
+
+        let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
+        let blinding_weights = expand_powers::<4>(&data_from_sumcheck_verifier.alpha);
+        let domain_size = 1usize << self.m;
+        let blinding_covector = OffsetCovector::new(blinding_weights, self.w1_size, domain_size);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
             let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
@@ -125,8 +130,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
             let weights_2 = build_prefix_covectors(self.m, alphas_2);
 
-            // Public inputs live exclusively in w1 (c1).
-            let evaluations_1 = if !public_inputs.is_empty() {
+            let mut evaluations_1 = if !public_inputs.is_empty() {
                 let public_1: FieldElement = arthur
                     .prover_hint_ark()
                     .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
@@ -135,12 +139,15 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             } else {
                 evals_1.to_vec()
             };
+            evaluations_1.push(blinding_eval);
             let evaluations_2 = evals_2.to_vec();
 
-            let weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
+            let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
+
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
@@ -168,7 +175,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
             let mut weights = build_prefix_covectors(self.m, alphas);
 
-            let evaluations = if !public_inputs.is_empty() {
+            let mut evaluations = if !public_inputs.is_empty() {
                 let public_eval: FieldElement = arthur
                     .prover_hint_ark()
                     .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
@@ -177,11 +184,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             } else {
                 evals.to_vec()
             };
+            evaluations.push(blinding_eval);
 
-            let weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
+            let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
@@ -191,7 +200,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         };
 
         ensure!(
-            data_from_sumcheck_verifier.last_sumcheck_val
+            data_from_sumcheck_verifier.f_at_alpha
                 == (az_at_alpha * bz_at_alpha - cz_at_alpha)
                     * calculate_eq(
                         &data_from_sumcheck_verifier.r,
@@ -208,13 +217,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 pub fn run_sumcheck_verifier(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     m_0: usize,
-    whir_for_spartan_blinding_config: &WhirZkConfig,
 ) -> Result<DataFromSumcheckVerifier> {
     let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
-
-    let blinding_commitment = whir_for_spartan_blinding_config
-        .receive_commitments(arthur, 1)
-        .map_err(|_| anyhow::anyhow!("Failed to parse spartan blinding commitment"))?;
 
     let sum_g: FieldElement = arthur
         .prover_message()
@@ -252,36 +256,16 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i);
     }
 
-    // Read blinding polynomial evaluation hint (single value, not a pair).
     let blinding_eval: FieldElement = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;
-
-    let spartan_num_vars = whir_for_spartan_blinding_config.num_witness_variables();
-    let weight_domain_size = 1usize << spartan_num_vars;
-    let mut weight_vec = expand_powers::<4>(&alpha);
-    if weight_vec.len() < weight_domain_size {
-        weight_vec.resize(weight_domain_size, FieldElement::zero());
-    }
-    let blinding_weight = PrefixCovector::new(weight_vec, weight_domain_size);
-
-    let blinding_weight_refs: Vec<&dyn LinearForm<FieldElement>> =
-        vec![&blinding_weight as &dyn LinearForm<FieldElement>];
-
-    whir_for_spartan_blinding_config
-        .verify(
-            arthur,
-            &blinding_weight_refs,
-            &[blinding_eval],
-            &blinding_commitment,
-        )
-        .map_err(|_| anyhow::anyhow!("WHIR blinding verification failed"))?;
 
     let f_at_alpha = saved_val_for_sumcheck_equality_assertion - rho * blinding_eval;
 
     Ok(DataFromSumcheckVerifier {
         r,
         alpha,
-        last_sumcheck_val: f_at_alpha,
+        blinding_eval,
+        f_at_alpha,
     })
 }
