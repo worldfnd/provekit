@@ -117,11 +117,30 @@ impl ProfilingAllocator {
     }
 }
 
+/// Pre-fault memory pages so the OS commits physical memory upfront rather than
+/// lazily on first access. Writes a zero byte at the start of each page to
+/// trigger a write fault, which forces a private physical page allocation on
+/// Linux (read faults only map the shared zero page).
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+unsafe fn prefault(ptr: *mut u8, size: usize) {
+    if ptr.is_null() || size == 0 {
+        return;
+    }
+    const PAGE_SIZE: usize = 4096;
+    let mut offset = 0;
+    while offset < size {
+        core::ptr::write_volatile(ptr.add(offset), 0);
+        offset += PAGE_SIZE;
+    }
+}
+
 #[allow(unsafe_code)]
 unsafe impl GlobalAlloc for ProfilingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let ptr = BACKING.alloc(layout);
         let size = layout.size();
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        prefault(ptr, size);
         let current = self
             .current
             .fetch_add(size, Ordering::SeqCst)
@@ -141,6 +160,8 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let ptr = BACKING.alloc_zeroed(layout);
         let size = layout.size();
+        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        prefault(ptr, size);
         let current = self
             .current
             .fetch_add(size, Ordering::SeqCst)
@@ -156,6 +177,8 @@ unsafe impl GlobalAlloc for ProfilingAllocator {
         let ptr = BACKING.realloc(ptr, old_layout, new_size);
         let old_size = old_layout.size();
         if new_size > old_size {
+            #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+            prefault(ptr.add(old_size), new_size - old_size);
             let diff = new_size - old_size;
             let current = self
                 .current
