@@ -66,10 +66,6 @@ impl LinearForm<FieldElement> for PrefixCovector {
         self.domain_size
     }
 
-    fn deferred(&self) -> bool {
-        false
-    }
-
     fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
         let k = self.vector.len().trailing_zeros() as usize;
         let r = point.len() - k;
@@ -118,10 +114,6 @@ impl OffsetCovector {
 impl LinearForm<FieldElement> for OffsetCovector {
     fn size(&self) -> usize {
         self.domain_size
-    }
-
-    fn deferred(&self) -> bool {
-        false
     }
 
     fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
@@ -430,12 +422,6 @@ mod tests {
     fn size_returns_domain_size() {
         let covector = OffsetCovector::new(vec![fe(1)], 3, 16);
         assert_eq!(covector.size(), 16);
-    }
-
-    #[test]
-    fn deferred_returns_false() {
-        let covector = OffsetCovector::new(vec![fe(1)], 0, 4);
-        assert!(!covector.deferred());
     }
 
     #[test]
