@@ -95,7 +95,7 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
 /// Table-side LogUp factor: computes quotient = multiplicity / denominator.
 /// See `add_indexed_lookup_factor` for the query-side counterpart (returns
 /// inverse instead of quotient).
-/// Uses 2 R1CS constraints that
+/// Uses 2 R1CS constraints instead of the 3 that
 /// `add_indexed_lookup_factor` + `add_product` would need:
 ///   Constraint 1: rs × value = sz − index·index_witness − denominator
 ///   Constraint 2: denominator × quotient = multiplicity   (fused)
