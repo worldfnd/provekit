@@ -1,18 +1,8 @@
 pub const U64_NP0: u64 = 0xc2e1f593efffffff;
 
-pub const U64_P: [u64; 4] = [
-    0x43e1f593f0000001,
-    0x2833e84879b97091,
-    0xb85045b68181585d,
-    0x30644e72e131a029,
-];
+pub const U64_P: [u64; 4] = U64_P_MULTIPLES[1];
 
-pub const U64_2P: [u64; 4] = [
-    0x87c3eb27e0000002,
-    0x5067d090f372e122,
-    0x70a08b6d0302b0ba,
-    0x60c89ce5c2634053,
-];
+pub const U64_2P: [u64; 4] = U64_P_MULTIPLES[2];
 
 /// Lookup table: `U64_P_MULTIPLES[k]` = `k * P` for k in 0..=5.
 /// Index 0 is all-zeros; use as `x - U64_P_MULTIPLES[k]` to subtract k copies

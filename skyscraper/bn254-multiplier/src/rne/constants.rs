@@ -6,13 +6,7 @@ use crate::pow_2;
 pub const U51_NP0: u64 = 0x1f593efffffff;
 
 /// BN254 scalar field prime
-pub const U51_P: [u64; 5] = [
-    0x1f593f0000001,
-    0x10f372e12287c,
-    0x6056174a0cfa1,
-    0x014dc2822db40,
-    0x30644e72e131a,
-];
+pub const U51_P: [u64; 5] = U51_P_MULTIPLES[1];
 
 /// Lookup table: `U51_P_MULTIPLES[k]` = `k * P` for k in 0..=5, in 51-bit
 /// limbs.
