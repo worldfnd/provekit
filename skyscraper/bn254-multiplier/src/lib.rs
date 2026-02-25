@@ -33,3 +33,105 @@ const fn pow_2(n: u32) -> f64 {
     let exp = (n as u64 + 1023) << 52;
     f64::from_bits(exp)
 }
+
+/// Precomputed magic constants for fast approximate floor division by the
+/// BN254 prime P, following Warren's "Hacker's Delight" (integer division by
+/// constants). Guarantees `div_p(val) ≤ ⌊val / P⌋` for all inputs within the
+/// declared bit range.
+pub struct MulShift {
+    mul:   u64,
+    shift: u32,
+}
+
+impl MulShift {
+    /// Computes magic multiplication and shift constants for approximate floor
+    /// division by P, such that `div_p(val) ≤ ⌊val / P⌋` for all `val` within
+    /// `max_bit_size` bits. `precision` controls how many of the top bits of
+    /// `val` are used — higher precision yields a tighter approximation.
+    pub const fn new(max_bit_size: u32, precision: u32) -> Self {
+        // Generate magic numbers for division by bn254's prime for a range of top-bit
+        // widths.
+
+        // Based on Warren's "Hacker's Delight" (integer
+        // division by constants) to find a magic multiplier for each bit-width.
+
+        // Returns a list of tuples (w, m_bits, sub, shift, m) where:
+        //- w: number of top bits of the value
+        //- m_bits: number of bits in the magic multiplier
+        //- sub: whether the "subtract and shift" variant is used (m exceeded 2^w,
+        //  so we store m - 2^w and compensate at runtime)
+        //- shift: the number of bits to right-shift the product (called 's' in Warren)
+        //- m: the magic multiplier
+        use crate::constants::U64_P;
+
+        let d = (U64_P[3] >> (max_bit_size - 192 - precision)) + 1; // d = divisor = ceil(p / 2^(max_bit_size-w))
+        let nc = 2_u64.pow(precision) - 1 - (2_u64.pow(precision) % d); // nc = largest value s.t. nc mod d == d-1
+        let mut s = precision; // start at precision; s < precision values are skipped
+        let m;
+        loop {
+            // s = shift exponent
+            if 2_u64.pow(s) > nc * (d - 1 - (2_u64.pow(s) - 1) % d) {
+                m = (2_u64.pow(s) + d - 1 - (2_u64.pow(s) - 1) % d) / d; // m = magic multiplier
+                break;
+            }
+            s += 1;
+            assert!(s < 64, "no magic multiplier found");
+        }
+
+        MulShift { mul: m, shift: s }
+    }
+
+    #[inline(always)]
+    /// Returns an under-approximation of ⌊val / P⌋ (result ≤ true quotient).
+    /// `val` must fit within the `max_bit_size` passed to [`MulShift::new`].
+    pub const fn div_p(&self, val: u64) -> u64 {
+        // assumes systems can handle multiplication by 64 bits without performance
+        // penalty.
+        (val * self.mul) >> self.shift
+    }
+}
+
+/// Approximate floor division by P using the upper 6 bits of `x`.
+/// `x` must be the upper limb of a u256 in 64-bit radix.
+///
+/// Returns a value ≤ ⌊x / P⌋. This is the most precise
+/// approximation achievable without multiplication on ARM64 and x86.
+///
+/// Tradeoff: due the limited range of this division [0,4] (instead of [0,5] for
+/// u256) will to a larger value after subtraction reduction.
+/// subtraction reduction output: [0, 1+ε] with ε < 0.3.
+pub fn div_p_6b(x: u64) -> u64 {
+    let upper_bits = x >> (64 - 6);
+    // const to force compile time evaluation
+    const MULSHIFT: MulShift = MulShift::new(256, 6);
+    MULSHIFT.div_p(upper_bits)
+}
+
+/// Approximate floor division by P using the upper 32 bits of `x`.
+/// `x` must be the upper limb of a u256 in 64-bit radix.
+///
+/// Returns a value ≤ ⌊x / P⌋. This is the most precise
+/// approximation achievable with a 32bx32b->64b multiplier.
+pub fn div_p_32b(x: u64) -> u64 {
+    let upper_bits = x >> (64 - 32);
+    // const to force compile time evaluation
+    const MULSHIFT: MulShift = MulShift::new(256, 32);
+    MULSHIFT.div_p(upper_bits)
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::div_p_32b;
+
+    #[inline(never)]
+    fn div32(x: u64) -> u32 {
+        // cast to not create the 64bit magic number
+        return (x >> 32) as u32 / 0x30644e73 as u32;
+    }
+
+    #[kani::proof]
+    fn div_p_32b_matches_div32() {
+        let x: u64 = kani::any();
+        assert_eq!(div_p_32b(x), div32(x) as u64);
+    }
+}
