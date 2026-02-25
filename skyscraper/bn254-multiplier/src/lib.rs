@@ -121,7 +121,13 @@ pub fn div_p_32b(x: u64) -> u64 {
 
 #[cfg(kani)]
 mod proofs {
-    use super::{constants::U64_P, div_p_32b};
+    use {
+        super::{
+            constants::{U64_2P, U64_P},
+            div_p_32b, div_p_6b, MulShift,
+        },
+        crate::constants::U64_P_MULTIPLES,
+    };
 
     /// Compute q * P as (4-limb little-endian result, overflow carry).
     fn mul_small_by_p(q: u64) -> ([u64; 4], u64) {
@@ -147,13 +153,23 @@ mod proofs {
     }
 
     /// For every 64-bit x, div_p_32b(x) * P ≤ x * 2^192.
+    /// TODO: encode tighter bounds
     #[kani::proof]
     fn div_p_32b_underapprox() {
         let x: u64 = kani::any();
         let q = div_p_32b(x);
 
-        let (q_times_p, carry) = mul_small_by_p(q);
-        assert_eq!(carry, 0);
-        assert!(le256(q_times_p, [0, 0, 0, x]));
+        let r = U64_P_MULTIPLES[q as usize][3];
+        assert!(le256([0, 0, 0, x - r], U64_2P));
+    }
+
+    #[kani::proof]
+    // TODO tighter bounds
+    fn div_p_6b_underapprox() {
+        let x: u64 = kani::any();
+        let q = div_p_6b(x);
+
+        let r = U64_P_MULTIPLES[q as usize][3];
+        assert!(le256([0, 0, 0, x - r], U64_2P));
     }
 }
