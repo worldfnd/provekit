@@ -1,8 +1,6 @@
 use {
     provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
-    whir::parameters::{
-        default_max_pow, FoldingFactor, MultivariateParameters, ProtocolParameters, SoundnessType,
-    },
+    whir::parameters::ProtocolParameters,
 };
 
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
@@ -59,22 +57,66 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     fn new_whir_zk_config_for_size(num_variables: usize, num_polynomials: usize) -> WhirZkConfig {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
-        let mv_params = MultivariateParameters::new(nv);
+        // Parameters tuned for 128-bit security under the Johnson bound (the old
+        // ConjectureList soundness was disproven). Rate=2 balances query count vs
+        // codeword size; ff=3 keeps blinding polynomials small; pow_bits=10 shifts
+        // security budget toward algebraic hardness (118 bits) with light PoW per
+        // round, which is faster than the default ~18-bit grinding.
         let whir_params = ProtocolParameters {
-            initial_statement:     true,
-            security_level:        128,
-            pow_bits:              default_max_pow(nv, 1),
-            folding_factor:        FoldingFactor::Constant(4),
-            soundness_type:        SoundnessType::ConjectureList,
-            starting_log_inv_rate: 1,
-            batch_size:            1,
-            hash_id:               whir::hash::SHA2,
+            unique_decoding:        false,
+            security_level:         128,
+            pow_bits:               10,
+            initial_folding_factor: 3,
+            folding_factor:         3,
+            starting_log_inv_rate:  2,
+            batch_size:             1,
+            hash_id:                whir::hash::SHA2,
         };
-        WhirZkConfig::new(
-            mv_params,
-            &whir_params,
-            FoldingFactor::Constant(1),
-            num_polynomials,
-        )
+        WhirZkConfig::new(1 << nv, &whir_params, num_polynomials)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_security_level() {
+        let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, 1);
+        let sec_blinded = config
+            .blinded_commitment
+            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+        let sec_blinding = config
+            .blinding_commitment
+            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+        assert!(
+            sec_blinded >= 128.0,
+            "Blinded commitment security {sec_blinded:.2} < 128 bits"
+        );
+        assert!(
+            sec_blinding >= 128.0,
+            "Blinding commitment security {sec_blinding:.2} < 128 bits"
+        );
+    }
+
+    #[test]
+    fn verify_security_level_min_variables() {
+        let config = WhirR1CSScheme::new_whir_zk_config_for_size(MIN_WHIR_NUM_VARIABLES, 1);
+        let sec_blinded = config
+            .blinded_commitment
+            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+        let sec_blinding = config
+            .blinding_commitment
+            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+        assert!(
+            sec_blinded >= 128.0,
+            "Blinded commitment security {sec_blinded:.2} < 128 bits at nv={}",
+            MIN_WHIR_NUM_VARIABLES
+        );
+        assert!(
+            sec_blinding >= 128.0,
+            "Blinding commitment security {sec_blinding:.2} < 128 bits at nv={}",
+            MIN_WHIR_NUM_VARIABLES
+        );
     }
 }
