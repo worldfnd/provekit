@@ -100,6 +100,7 @@ impl MulShift {
 /// Tradeoff: due the limited range of this division [0,4] (instead of [0,5] for
 /// u256) will to a larger value after subtraction reduction.
 /// subtraction reduction output: [0, 1+ε] with ε < 0.3.
+#[inline(always)]
 pub fn div_p_6b(x: u64) -> u64 {
     let upper_bits = x >> (64 - 6);
     // const to force compile time evaluation
@@ -112,11 +113,25 @@ pub fn div_p_6b(x: u64) -> u64 {
 ///
 /// Returns a value ≤ ⌊x / P⌋. This is the most precise
 /// approximation achievable with a 32bx32b->64b multiplier.
+#[inline(always)]
 pub fn div_p_32b(x: u64) -> u64 {
     let upper_bits = x >> (64 - 32);
     // const to force compile time evaluation
     const MULSHIFT: MulShift = MulShift::new(256, 32);
     MULSHIFT.div_p(upper_bits)
+}
+
+/// Subtracts an approximate multiple of P from `x` using `div_p` on the high
+/// limb.
+///
+/// The result is not fully reduced; the output range depends on the precision
+/// of the supplied `div_p` — see [`div_p_6b`] and [`div_p_32b`].
+#[inline(always)]
+pub fn subtraction_reduce<F: Fn(u64) -> u64>(div_p: F, x: [u64; 4]) -> [u64; 4] {
+    // No clamping as the max value of x can't go passed 5. Which is the maximum of
+    // the table.
+    let q = div_p(x[3]) as usize;
+    utils::sub(x, constants::U64_P_MULTIPLES[q])
 }
 
 #[cfg(kani)]
@@ -129,19 +144,6 @@ mod proofs {
         crate::constants::U64_P_MULTIPLES,
     };
 
-    /// Compute q * P as (4-limb little-endian result, overflow carry).
-    fn mul_small_by_p(q: u64) -> ([u64; 4], u64) {
-        let q = q as u128;
-        let t0 = q * U64_P[0] as u128;
-        let t1 = q * U64_P[1] as u128 + (t0 >> 64);
-        let t2 = q * U64_P[2] as u128 + (t1 >> 64);
-        let t3 = q * U64_P[3] as u128 + (t2 >> 64);
-        (
-            [t0 as u64, t1 as u64, t2 as u64, t3 as u64],
-            (t3 >> 64) as u64,
-        )
-    }
-
     /// Lexicographic ≤ on little-endian 256-bit integers.
     fn le256(a: [u64; 4], b: [u64; 4]) -> bool {
         for i in (0..4).rev() {
@@ -152,14 +154,14 @@ mod proofs {
         true
     }
 
-    /// For every 64-bit x, div_p_32b(x) * P ≤ x * 2^192.
-    /// TODO: encode tighter bounds
+    /// TODO: tighter bounds
     #[kani::proof]
     fn div_p_32b_underapprox() {
         let x: u64 = kani::any();
         let q = div_p_32b(x);
 
         let r = U64_P_MULTIPLES[q as usize][3];
+        assert!(x - r >= 0);
         assert!(le256([0, 0, 0, x - r], U64_2P));
     }
 
@@ -170,6 +172,7 @@ mod proofs {
         let q = div_p_6b(x);
 
         let r = U64_P_MULTIPLES[q as usize][3];
+        assert!(x - r >= 0);
         assert!(le256([0, 0, 0, x - r], U64_2P));
     }
 }
