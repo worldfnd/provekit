@@ -92,9 +92,11 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
 
 /// Fused table-entry quotient for ROM LogUp.
 ///
-/// Computes quotient = multiplicity / denominator using 2 R1CS constraints
-/// instead of the 3 that `add_indexed_lookup_factor` + `add_product` would
-/// need:
+/// Table-side LogUp factor: computes quotient = multiplicity / denominator.
+/// See `add_indexed_lookup_factor` for the query-side counterpart (returns
+/// inverse instead of quotient).
+/// Uses 2 R1CS constraints that
+/// `add_indexed_lookup_factor` + `add_product` would need:
 ///   Constraint 1: rs × value = sz − index·index_witness − denominator
 ///   Constraint 2: denominator × quotient = multiplicity   (fused)
 fn add_indexed_table_entry_quotient(
@@ -149,7 +151,10 @@ fn add_indexed_table_entry_quotient(
     quotient
 }
 
-// Helper function for adding a new lookup factor to the R1CS instance.
+// Query-side LogUp factor: computes 1 / denominator and returns the inverse.
+// See `add_indexed_table_entry_quotient` for the table-side counterpart
+// (returns multiplicity / denominator).
+//
 // Adds a new witness `denominator` and constrains it to represent
 //    `denominator - (sz_challenge - (index_coeff * index + rs_challenge *
 // value)) == 0`, where `sz_challenge`, `index`, `rs_challenge` and `value` are

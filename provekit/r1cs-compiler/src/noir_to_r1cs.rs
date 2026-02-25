@@ -136,7 +136,7 @@ pub fn noir_to_r1cs_with_breakdown(
 }
 
 impl NoirToR1CSCompiler {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut r1cs = R1CS::new();
         // Grow the matrices to account for the constant one witness.
         r1cs.add_witnesses(1);
@@ -792,8 +792,16 @@ impl NoirToR1CSCompiler {
         let witnesses_before_sha256 = self.num_witnesses();
 
         let n_sha = sha256_compression_ops.len();
+        let n_const_hash = sha256_compression_ops
+            .iter()
+            .filter(|(_, hash_values, _)| {
+                hash_values
+                    .iter()
+                    .all(|hv| matches!(hv, ConstantOrR1CSWitness::Constant(_)))
+            })
+            .count();
         let spread_w = if n_sha > 0 {
-            Some(get_optimal_spread_width(n_sha))
+            Some(get_optimal_spread_width(n_sha, n_const_hash))
         } else {
             None
         };
