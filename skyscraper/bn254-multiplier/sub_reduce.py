@@ -1,5 +1,7 @@
 """Sub-reduction strategies for bn254 modular arithmetic."""
 
+import argparse
+
 p = 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001
 
 
@@ -55,7 +57,7 @@ def shift_sum():
     )
 
 
-def warren_magic():
+def warren_magic(max_bit_size, apply_sub: bool = False):
     """
     Generate magic numbers for division by bn254's prime for a range of top-bit widths.
 
@@ -63,7 +65,7 @@ def warren_magic():
     division by constants) to find a magic multiplier for each bit-width.
 
     Returns a list of tuples (w, m_bits, sub, shift, m) where:
-    - w: number of bits of the dividend (top bits of the value)
+    - w: number of top bits of the value
     - m_bits: number of bits in the magic multiplier
     - sub: whether the "subtract and shift" variant is used (m exceeded 2^w,
       so we store m - 2^w and compensate at runtime)
@@ -72,8 +74,8 @@ def warren_magic():
     """
     res = list()
     for w in range(0, 65):
-        d = (p >> (256 - w)) + 1  # d = divisor = ceil(p / 2^(256-w))
-        nc = 2**w - 1 - (2**w % d)  # nc = largest value s.t. nc mod d != d-1
+        d = (p >> (max_bit_size - w)) + 1  # d = divisor = ceil(p / 2^(max_bit_size-w))
+        nc = 2**w - 1 - (2**w % d)  # nc = largest value s.t. nc mod d == d-1
         for s in range(0, 128):  # s = shift exponent
             if 2**s > nc * (d - 1 - (2**s - 1) % d):
                 if s < w:
@@ -83,8 +85,8 @@ def warren_magic():
 
                 # "Subtract and shift" variant: when m >= 2^w it won't fit in w bits,
                 # so subtract 2^w and compensate at runtime.
-                # Comment out if the register can hold more bits than w.
-                if m >= 2**w:
+                # Skip this part via apply_sub if the register can hold more bits than w.
+                if apply_sub and m >= 2**w:
                     sub = True
                     m = m - 2**w
                 res.append(
@@ -101,10 +103,24 @@ def warren_magic():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Sub-reduction strategies for bn254.")
+    parser.add_argument(
+        "--sub",
+        action="store_true",
+        help="Apply the 'subtract and shift' variant when m >= 2^w.",
+    )
+    args = parser.parse_args()
+
     print("shift sum")
     shift_sum()
 
     print("\n warren")
     print(f"{'w':>3} {'m_bits':>6} {'sub':>5} {'shift':>5} {'m':>20}")
-    for w, m_bits, sub, shift, m in warren_magic():
-        print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {m:>20}")
+    for w, m_bits, sub, shift, m in warren_magic(257, apply_sub=args.sub):
+        print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")
+
+    for w, m_bits, sub, shift, m in warren_magic(256, apply_sub=args.sub):
+        print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")
+
+    for w, m_bits, sub, shift, m in warren_magic(255, apply_sub=args.sub):
+        print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")
