@@ -101,6 +101,10 @@ pub(crate) struct NoirToR1CSCompiler {
     /// Maps indices of ACIR witnesses to indices of R1CS witnesses
     acir_to_r1cs_witness_map: BTreeMap<usize, usize>,
 
+    /// Cache for deduplicating product witnesses: (min(a,b), max(a,b)) →
+    /// product witness index
+    product_cache: std::collections::HashMap<(usize, usize), usize>,
+
     /// The ACIR witness indices of the initial values of the memory blocks
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
@@ -132,7 +136,7 @@ pub fn noir_to_r1cs_with_breakdown(
 }
 
 impl NoirToR1CSCompiler {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut r1cs = R1CS::new();
         // Grow the matrices to account for the constant one witness.
         r1cs.add_witnesses(1);
@@ -148,6 +152,7 @@ impl NoirToR1CSCompiler {
                 FieldElement::one(),
             ))],
             acir_to_r1cs_witness_map: BTreeMap::new(),
+            product_cache: std::collections::HashMap::new(),
             initial_memories: BTreeMap::new(),
         }
     }
@@ -227,8 +232,13 @@ impl NoirToR1CSCompiler {
     }
 
     /// Add a new witness representing the product of two existing witnesses,
-    /// and add an R1CS constraint enforcing this.
+    /// and add an R1CS constraint enforcing this. Returns a cached witness
+    /// index if the same (a, b) pair was already computed.
     pub(crate) fn add_product(&mut self, operand_a: usize, operand_b: usize) -> usize {
+        let key = (operand_a.min(operand_b), operand_a.max(operand_b));
+        if let Some(&cached) = self.product_cache.get(&key) {
+            return cached;
+        }
         let product = self.add_witness_builder(WitnessBuilder::Product(
             self.num_witnesses(),
             operand_a,
@@ -239,6 +249,7 @@ impl NoirToR1CSCompiler {
             &[(FieldElement::one(), operand_b)],
             &[(FieldElement::one(), product)],
         );
+        self.product_cache.insert(key, product);
         product
     }
 
@@ -662,8 +673,16 @@ impl NoirToR1CSCompiler {
         let witnesses_before_sha256 = self.num_witnesses();
 
         let n_sha = sha256_compression_ops.len();
+        let n_const_hash = sha256_compression_ops
+            .iter()
+            .filter(|(_, hash_values, _)| {
+                hash_values
+                    .iter()
+                    .all(|hv| matches!(hv, ConstantOrR1CSWitness::Constant(_)))
+            })
+            .count();
         let spread_w = if n_sha > 0 {
-            Some(get_optimal_spread_width(n_sha))
+            Some(get_optimal_spread_width(n_sha, n_const_hash))
         } else {
             None
         };

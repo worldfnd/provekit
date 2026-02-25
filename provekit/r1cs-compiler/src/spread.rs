@@ -247,11 +247,6 @@ pub(crate) fn spread_decompose(
     let extract_chunks = subchunks(32, accum.table_bits);
     let n_chunks = extract_chunks.len();
 
-    // Create sum witness (used by SpreadBitExtract solver, not
-    // directly constrained — the merged constraint below ties input
-    // spread terms directly to the even/odd reconstruction).
-    let sum_idx = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(sum_idx, sum_terms.clone()));
     // Combine coefficients for duplicate witness indices,
     // since R1CS set() overwrites rather than adds.
     let mut combined: HashMap<usize, FieldElement> = HashMap::new();
@@ -263,12 +258,14 @@ pub(crate) fn spread_decompose(
         .map(|(idx, coeff)| (coeff, idx))
         .collect();
 
-    // Extract even bits (XOR) into chunks
+    // Extract even bits (XOR) into chunks.
+    // The sum is computed inline by the solver from sum_terms,
+    // avoiding a phantom witness that would inflate the witness vector.
     let even_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: even_start,
         chunk_bits:   extract_chunks.clone(),
-        spread_sum:   sum_idx,
+        sum_terms:    sum_terms.clone(),
         extract_even: true,
     });
 
@@ -276,8 +273,8 @@ pub(crate) fn spread_decompose(
     let odd_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
         output_start: odd_start,
-        chunk_bits:   extract_chunks.clone(),
-        spread_sum:   sum_idx,
+        chunk_bits: extract_chunks.clone(),
+        sum_terms,
         extract_even: false,
     });
 
@@ -421,6 +418,108 @@ pub(crate) fn add_u32_addition_spread(
     decompose_to_spread_word(compiler, accum, result_witness, output_chunks)
 }
 
+/// Decompose a compile-time constant u32 into a [SpreadWord] without
+/// spread table lookups or range checks.
+///
+/// Chunk values and their spreads are pre-computed; spread witnesses
+/// are pinned via direct equality constraints (`spread_w = spread(c)`).
+/// Sub-chunk value witnesses are assigned by the solver but NOT
+/// constrained (they are unused in downstream R1CS—only spread
+/// witnesses appear in spread_decompose constraints).
+///
+/// Soundness: each spread witness is individually pinned to a specific
+/// constant baked into the constraint system. The verifier checks the
+/// pinning constraints; the prover cannot deviate.
+pub(crate) fn decompose_constant_to_spread_word(
+    compiler: &mut NoirToR1CSCompiler,
+    packed_witness: usize,
+    constant_value: u32,
+    chunk_spec: &[u32],
+    table_bits: u32,
+) -> SpreadWord {
+    let w = table_bits;
+    let w_one = compiler.witness_one();
+    let num_chunks = chunk_spec.len();
+
+    // Build flat sub-chunk bit widths.
+    let mut flat_bits: Vec<u32> = Vec::new();
+    let mut chunk_sub_counts: Vec<usize> = Vec::with_capacity(num_chunks);
+    for &bits in chunk_spec {
+        let subs = subchunks(bits, w);
+        chunk_sub_counts.push(subs.len());
+        flat_bits.extend(subs);
+    }
+
+    // Pre-compute all sub-chunk values at compile time.
+    let mut flat_values: Vec<u64> = Vec::with_capacity(flat_bits.len());
+    let mut remaining = constant_value as u64;
+    for &bits in &flat_bits {
+        let mask = (1u64 << bits) - 1;
+        flat_values.push(remaining & mask);
+        remaining >>= bits;
+    }
+
+    // Verify decomposition round-trips at circuit-compilation time.
+    // Catches any bug in subchunks() or mask/shift logic immediately.
+    let mut recomposed: u64 = 0;
+    let mut shift = 0u32;
+    for (i, &bits) in flat_bits.iter().enumerate() {
+        recomposed += flat_values[i] << shift;
+        shift += bits;
+    }
+    assert_eq!(
+        recomposed, constant_value as u64,
+        "constant spread decomposition mismatch: {constant_value:#x} decomposed to {recomposed:#x}"
+    );
+
+    // Note: packed_witness is already constrained by the caller's add_sum.
+    // Each sub-spread witness below is also pinned via add_sum to the
+    // known constant spread value, so no additional R1CS constraint or
+    // spread table lookup is needed for soundness.
+
+    // Build SpreadChunks with pinned spread witnesses.
+    // No ChunkDecompose needed — sub_values are never read by any
+    // downstream R1CS constraint (only sub_spreads are used in
+    // spread_decompose). We still populate sub_values with the
+    // spread witness indices as placeholders to satisfy the struct.
+    let mut chunks = Vec::with_capacity(num_chunks);
+    let mut flat_idx = 0usize;
+
+    for ci in 0..num_chunks {
+        let n_subs = chunk_sub_counts[ci];
+        let sub_bits_slice = &flat_bits[flat_idx..flat_idx + n_subs];
+        let mut sub_spreads = Vec::with_capacity(n_subs);
+
+        for j in 0..n_subs {
+            let spread_val = compute_spread(flat_values[flat_idx + j]);
+
+            // Spread witness pinned to known constant.
+            // Replaces the spread table lookup that would normally
+            // prove the (input, spread) pair membership.
+            let spread_idx =
+                compiler.add_sum(vec![SumTerm(Some(FieldElement::from(spread_val)), w_one)]);
+
+            sub_spreads.push(spread_idx);
+        }
+
+        chunks.push(SpreadChunk {
+            total_bits: chunk_spec[ci],
+            // NB: sub_values normally holds chunk-value witness indices, but the constant
+            // path doesn't create separate chunk-value witnesses. Set to spread indices
+            // instead; this field is currently unused so the mismatch is harmless.
+            sub_values: sub_spreads.clone(),
+            sub_spreads,
+            sub_bits: sub_bits_slice.to_vec(),
+        });
+        flat_idx += n_subs;
+    }
+
+    SpreadWord {
+        packed: packed_witness,
+        chunks,
+    }
+}
+
 /// Build the complete spread table LogUp constraints.
 /// Creates challenges, multiplicities, table-side inverses/quotients,
 /// query-side inverses, and the grand sum equality constraint.
@@ -451,93 +550,87 @@ pub(crate) fn add_spread_table_constraints(
     let rs = compiler.add_witness_builder(WitnessBuilder::Challenge(compiler.num_witnesses()));
 
     // Query-side: for each lookup, compute 1/(sz - input - rs*spread)
-    let query_summands: Vec<SumTerm> = accum
-        .lookups
-        .iter()
-        .map(|(input, spread_output)| {
-            // Denominator witness (solver helper, not constrained
-            // in R1CS — the merged constraint below ties
-            // sz - input - rs*spread directly to the inverse).
-            let denom = compiler.add_witness_builder(WitnessBuilder::SpreadLookupDenominator(
-                compiler.num_witnesses(),
-                sz,
-                rs,
-                *input,
-                *spread_output,
-            ));
+    let mut logup_summands: Vec<(FieldElement, usize)> = Vec::new();
 
-            // Build A-vector: sz - input - rs*spread
-            let (input_coeff, input_idx) = input.to_tuple();
-            let mut az: Vec<(FieldElement, usize)> =
-                vec![(FieldElement::ONE, sz), (input_coeff.neg(), input_idx)];
-            match spread_output {
-                ConstantOrR1CSWitness::Constant(val) => {
-                    az.push((val.neg(), rs));
-                }
-                ConstantOrR1CSWitness::Witness(w) => {
-                    let prod = compiler.add_product(rs, *w);
-                    az.push((FieldElement::ONE.neg(), prod));
-                }
+    for (input, spread_output) in &accum.lookups {
+        // Denominator witness (solver helper, not constrained
+        // in R1CS — the merged constraint below ties
+        // sz - input - rs*spread directly to the inverse).
+        let denom = compiler.add_witness_builder(WitnessBuilder::SpreadLookupDenominator(
+            compiler.num_witnesses(),
+            sz,
+            rs,
+            *input,
+            *spread_output,
+        ));
+
+        // Build A-vector: sz - input - rs*spread
+        let (input_coeff, input_idx) = input.to_tuple();
+        let mut az: Vec<(FieldElement, usize)> =
+            vec![(FieldElement::ONE, sz), (input_coeff.neg(), input_idx)];
+        match spread_output {
+            ConstantOrR1CSWitness::Constant(val) => {
+                az.push((val.neg(), rs));
             }
+            ConstantOrR1CSWitness::Witness(w) => {
+                let prod = compiler.add_product(rs, *w);
+                az.push((FieldElement::ONE.neg(), prod));
+            }
+        }
 
-            // Inverse of denominator
-            let inverse = compiler
-                .add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
+        // Inverse of denominator
+        let inverse =
+            compiler.add_witness_builder(WitnessBuilder::Inverse(compiler.num_witnesses(), denom));
 
-            // Single merged constraint:
-            // (sz - input - rs*spread) × inverse = 1
-            compiler
-                .r1cs
-                .add_constraint(&az, &[(FieldElement::ONE, inverse)], &[(
-                    FieldElement::ONE,
-                    compiler.witness_one(),
-                )]);
+        // Single merged constraint:
+        // (sz - input - rs*spread) × inverse = 1
+        compiler
+            .r1cs
+            .add_constraint(&az, &[(FieldElement::ONE, inverse)], &[(
+                FieldElement::ONE,
+                compiler.witness_one(),
+            )]);
 
-            SumTerm(None, inverse)
-        })
-        .collect();
-
-    let sum_for_queries = compiler.add_sum(query_summands);
+        // Query-side terms enter with negative coefficient
+        logup_summands.push((FieldElement::ONE.neg(), inverse));
+    }
 
     // Table-side: for each entry, compute multiplicity / denominator
-    let table_summands: Vec<SumTerm> = (0..table_size)
-        .map(|x| {
-            let spread_x = compute_spread(x as u64);
-            let multiplicity_idx = mult_first + x as usize;
+    for x in 0..table_size {
+        let spread_x = compute_spread(x as u64);
+        let multiplicity_idx = mult_first + x as usize;
 
-            // Quotient = multiplicity / (sz - x - rs * spread(x))
-            let quotient = compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
-                idx: compiler.num_witnesses(),
-                sz,
-                rs,
-                input_val: FieldElement::from(x),
-                spread_val: FieldElement::from(spread_x),
-                multiplicity: multiplicity_idx,
-            });
+        // Quotient = multiplicity / (sz - x - rs * spread(x))
+        let quotient = compiler.add_witness_builder(WitnessBuilder::SpreadTableQuotient {
+            idx: compiler.num_witnesses(),
+            sz,
+            rs,
+            input_val: FieldElement::from(x),
+            spread_val: FieldElement::from(spread_x),
+            multiplicity: multiplicity_idx,
+        });
 
-            // Single constraint: denominator × quotient = multiplicity
-            // denominator = sz - x - rs * spread(x)
-            compiler.r1cs.add_constraint(
-                &[
-                    (FieldElement::ONE, sz),
-                    (FieldElement::from(x).neg(), compiler.witness_one()),
-                    (FieldElement::from(spread_x).neg(), rs),
-                ],
-                &[(FieldElement::ONE, quotient)],
-                &[(FieldElement::ONE, multiplicity_idx)],
-            );
+        // Single constraint: denominator × quotient = multiplicity
+        // denominator = sz - x - rs * spread(x)
+        compiler.r1cs.add_constraint(
+            &[
+                (FieldElement::ONE, sz),
+                (FieldElement::from(x).neg(), compiler.witness_one()),
+                (FieldElement::from(spread_x).neg(), rs),
+            ],
+            &[(FieldElement::ONE, quotient)],
+            &[(FieldElement::ONE, multiplicity_idx)],
+        );
 
-            SumTerm(None, quotient)
-        })
-        .collect();
+        // Table-side terms enter with positive coefficient
+        logup_summands.push((FieldElement::ONE, quotient));
+    }
 
-    let sum_for_table = compiler.add_sum(table_summands);
-
-    // Grand sum equality: Σ query inverses = Σ table quotients
+    // Fused multiset equality: (Σ table_quotients − Σ query_inverses) × 1 = 0
     compiler.r1cs.add_constraint(
+        &logup_summands,
         &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, sum_for_queries)],
-        &[(FieldElement::ONE, sum_for_table)],
+        &[(FieldElement::zero(), compiler.witness_one())],
     );
 
     range_checks
@@ -545,16 +638,21 @@ pub(crate) fn add_spread_table_constraints(
 
 /// Estimate total witness cost for spread-based SHA256 at width `w`.
 ///
-/// Accounts for: table cost (2×2^w + 4), inline witnesses per
+/// Accounts for: table cost (2×2^w + 2), inline witnesses per
 /// compression, and 3 LogUp witnesses per lookup query.
-pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
+///
+/// `n_const_hash` compressions have constant initial hash values
+/// (SHA256 IV), which use pinned spread witnesses instead of table
+/// lookups — saving both inline witnesses and lookup overhead.
+pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize, n_const_hash: usize) -> usize {
     let sc = |bits: u32| bits.div_ceil(w) as usize;
     let m_spec = |spec: &[u32]| -> usize { spec.iter().map(|&b| sc(b)).sum() };
     let n_sd = sc(32); // chunks per spread_decompose
 
     // Inline witnesses per operation type
     let decomp = |spec: &[u32]| 2 * m_spec(spec); // decompose_to_spread_word
-    let sd = 1 + 4 * n_sd; // spread_decompose
+    let decomp_const = |spec: &[u32]| m_spec(spec); // decompose_constant (spreads only)
+    let sd = 4 * n_sd; // spread_decompose
     let pk = 1usize; // pack_chunks
     let add = |spec: &[u32]| 3 + 2 * m_spec(spec); // add_u32_addition_spread
 
@@ -563,13 +661,26 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
     let sd_l = 2 * n_sd;
     let add_l = |spec: &[u32]| 1 + m_spec(spec);
 
-    // --- Per compression ---
+    // --- Initial decompositions (non-constant hash path) ---
+    // 16 inputs (always non-constant) + 8 hash values (non-constant)
+    let init_inline = 16 * decomp(&BYTE_CHUNKS)
+        + 2 * decomp(&BYTE_CHUNKS)
+        + 3 * decomp(&SIGMA0_CHUNKS)
+        + 3 * decomp(&SIGMA1_CHUNKS);
+    let init_lookups = 16 * decomp_l(&BYTE_CHUNKS)
+        + 2 * decomp_l(&BYTE_CHUNKS)
+        + 3 * decomp_l(&SIGMA0_CHUNKS)
+        + 3 * decomp_l(&SIGMA1_CHUNKS);
 
-    // Initial decompositions: 16 inputs + 2 byte + 3 Σ₀ + 3 Σ₁
-    let mut inline =
-        18 * decomp(&BYTE_CHUNKS) + 3 * decomp(&SIGMA0_CHUNKS) + 3 * decomp(&SIGMA1_CHUNKS);
-    let mut lookups =
-        18 * decomp_l(&BYTE_CHUNKS) + 3 * decomp_l(&SIGMA0_CHUNKS) + 3 * decomp_l(&SIGMA1_CHUNKS);
+    // --- Initial decompositions (constant hash path) ---
+    // 16 inputs (normal) + 8 hash values (constant: spreads only, no lookups)
+    let init_const_inline = 16 * decomp(&BYTE_CHUNKS)
+        + 2 * decomp_const(&BYTE_CHUNKS)
+        + 3 * decomp_const(&SIGMA0_CHUNKS)
+        + 3 * decomp_const(&SIGMA1_CHUNKS);
+    let init_const_lookups = 16 * decomp_l(&BYTE_CHUNKS);
+
+    // --- Shared per-compression cost (independent of hash constness) ---
 
     // Message schedule (48 rounds): σ₀ + σ₁ + addition(BYTE)
     let msg_inline = (decomp(&SMALL_SIGMA0_CHUNKS) + sd + pk)
@@ -578,8 +689,6 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
     let msg_lookups = (decomp_l(&SMALL_SIGMA0_CHUNKS) + sd_l)
         + (decomp_l(&SMALL_SIGMA1_CHUNKS) + sd_l)
         + add_l(&BYTE_CHUNKS);
-    inline += 48 * msg_inline;
-    lookups += 48 * msg_lookups;
 
     // Compression (64 rounds): Σ₁ + Ch + Σ₀ + Maj + 2 additions
     let comp_inline = (sd + pk) // Σ₁
@@ -590,35 +699,126 @@ pub(crate) fn calculate_spread_witness_cost(w: u32, n_sha: usize) -> usize {
         + add(&SIGMA0_CHUNKS); // new_a
     let comp_lookups =
         sd_l + 2 * sd_l + sd_l + sd_l + add_l(&SIGMA1_CHUNKS) + add_l(&SIGMA0_CHUNKS);
-    inline += 64 * comp_inline;
-    lookups += 64 * comp_lookups;
 
     // Final hash (8 additions)
-    inline += 8 * add(&BYTE_CHUNKS);
-    lookups += 8 * add_l(&BYTE_CHUNKS);
+    let final_inline = 8 * add(&BYTE_CHUNKS);
+    let final_lookups = 8 * add_l(&BYTE_CHUNKS);
 
-    // Table: 2×2^w multiplicities + 2 challenges + 2 sums
-    let table = 2 * (1usize << w) + 4;
+    let shared_inline = 48 * msg_inline + 64 * comp_inline + final_inline;
+    let shared_lookups = 48 * msg_lookups + 64 * comp_lookups + final_lookups;
 
-    // Total: table + n_sha × (inline + 3 × lookups)
-    table + n_sha * (inline + 3 * lookups)
+    // Non-constant and constant-hash compressions
+    let n_normal = n_sha - n_const_hash;
+    let normal_cost =
+        n_normal * ((init_inline + shared_inline) + 3 * (init_lookups + shared_lookups));
+    let const_cost = n_const_hash
+        * ((init_const_inline + shared_inline) + 3 * (init_const_lookups + shared_lookups));
+
+    // Table: 2×2^w (multiplicities + quotients) + 2 challenges
+    let table = 2 * (1usize << w) + 2;
+
+    table + normal_cost + const_cost
 }
 
 /// Find the spread table width in [3, 20] minimizing total witness
-/// count for `n_sha` SHA256 compression calls.
-pub(crate) fn get_optimal_spread_width(n_sha: usize) -> u32 {
+/// count for `n_sha` SHA256 compressions, of which `n_const_hash`
+/// have constant initial hash values.
+pub(crate) fn get_optimal_spread_width(n_sha: usize, n_const_hash: usize) -> u32 {
     (3u32..=20)
-        .min_by_key(|&w| calculate_spread_witness_cost(w, n_sha))
+        .min_by_key(|&w| calculate_spread_witness_cost(w, n_sha, n_const_hash))
         .unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*, crate::noir_to_r1cs::NoirToR1CSCompiler, provekit_common::witness::compute_spread,
+    };
 
     #[test]
     fn test_optimal_spread_width() {
-        assert_eq!(get_optimal_spread_width(1), 11);
-        assert_eq!(get_optimal_spread_width(35), 16);
+        // n_const_hash=0 for backward-compatible worst-case estimate
+        assert_eq!(get_optimal_spread_width(1, 0), 11);
+        assert_eq!(get_optimal_spread_width(35, 0), 16);
+    }
+
+    #[test]
+    fn constant_decomp_pins_correct_spread_values() {
+        // Core soundness property: each sub-spread witness is pinned
+        // to compute_spread(sub_chunk_value) via add_sum.
+        let value: u32 = 0xcafe_babe;
+        let mut compiler = NoirToR1CSCompiler::new();
+        let w_one = compiler.witness_one();
+        let packed = compiler.add_sum(vec![SumTerm(Some(FieldElement::from(value as u64)), w_one)]);
+
+        let sw = decompose_constant_to_spread_word(&mut compiler, packed, value, &BYTE_CHUNKS, 8);
+
+        let bytes = value.to_le_bytes();
+        for (i, chunk) in sw.chunks.iter().enumerate() {
+            let spread_idx = chunk.sub_spreads[0];
+            match &compiler.witness_builders[spread_idx] {
+                WitnessBuilder::Sum(idx, terms) => {
+                    assert_eq!(*idx, spread_idx);
+                    assert_eq!(terms.len(), 1);
+                    let expected = compute_spread(bytes[i] as u64);
+                    assert_eq!(
+                        terms[0].0.unwrap(),
+                        FieldElement::from(expected),
+                        "chunk {i}: spread mismatch for byte {:#04x}",
+                        bytes[i],
+                    );
+                }
+                other => panic!("chunk {i}: expected Sum, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn constant_decomp_multi_sub_chunk() {
+        // SIGMA0_CHUNKS = [2, 11, 9, 10] at w=8 exercises multi-sub-chunk
+        // decomposition: the 11-bit chunk splits into [8, 3] sub-chunks,
+        // 9-bit into [8, 1], 10-bit into [8, 2].
+        let value: u32 = 0xa5a5_a5a5;
+        let mut compiler = NoirToR1CSCompiler::new();
+        let w_one = compiler.witness_one();
+        let packed = compiler.add_sum(vec![SumTerm(Some(FieldElement::from(value as u64)), w_one)]);
+
+        let sw = decompose_constant_to_spread_word(
+            &mut compiler,
+            packed,
+            value,
+            &SIGMA0_CHUNKS, // [2, 11, 9, 10]
+            8,
+        );
+
+        // Verify chunk structure
+        assert_eq!(sw.chunks[0].sub_bits, vec![2]);
+        assert_eq!(sw.chunks[1].sub_bits, vec![8, 3]);
+        assert_eq!(sw.chunks[2].sub_bits, vec![8, 1]);
+        assert_eq!(sw.chunks[3].sub_bits, vec![8, 2]);
+
+        // Extract expected sub-chunk values by shifting through the constant
+        let mut remaining = value as u64;
+        for chunk in &sw.chunks {
+            for (j, &bits) in chunk.sub_bits.iter().enumerate() {
+                let mask = (1u64 << bits) - 1;
+                let sub_val = remaining & mask;
+                remaining >>= bits;
+
+                let spread_idx = chunk.sub_spreads[j];
+                match &compiler.witness_builders[spread_idx] {
+                    WitnessBuilder::Sum(_, terms) => {
+                        let expected = compute_spread(sub_val);
+                        assert_eq!(
+                            terms[0].0.unwrap(),
+                            FieldElement::from(expected),
+                            "sub-chunk value {sub_val:#x} ({bits} bits): spread mismatch",
+                        );
+                    }
+                    other => panic!("expected Sum, got {other:?}"),
+                }
+            }
+        }
+        assert_eq!(remaining, 0, "all 32 bits should be consumed");
     }
 }
