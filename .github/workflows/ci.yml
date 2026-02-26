@@ -7,6 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 # When a new job is pushed on a PR, cancel the old one.
 concurrency:
@@ -31,7 +32,21 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
       - run: cargo build --all-targets --all-features --verbose
-      - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
+      - name: System diagnostics
+        run: |
+          echo 'Memory:' && free -h
+          echo 'CPU:' && nproc
+          echo 'Ulimits:' && ulimit -a
+      - name: Test failing cases (isolated, single-threaded)
+        run: |
+          echo '::group::small_sha (single-threaded)'
+          cargo test --no-fail-fast --all-features --verbose -p provekit-bench --test compiler -- case::_noir_examples_noir_r1cs_test_programs_small_sha_expects --test-threads=1 --nocapture 2>&1 || true
+          echo '::endgroup::'
+          echo '::group::complete_age_check (single-threaded)'
+          cargo test --no-fail-fast --all-features --verbose -p provekit-bench --test compiler -- case::complete_age_check --test-threads=1 --nocapture 2>&1 || true
+          echo '::endgroup::'
+      - name: Full test suite
+        run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
       - run: cargo test --doc --all-features --verbose
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
