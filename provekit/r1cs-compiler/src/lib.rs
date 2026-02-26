@@ -1,6 +1,7 @@
 mod binops;
 mod digits;
 mod memory;
+mod msm;
 mod noir_proof_scheme;
 mod noir_to_r1cs;
 mod poseidon2;

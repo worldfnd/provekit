@@ -78,7 +78,9 @@ impl DependencyInfo {
             WitnessBuilder::Sum(_, ops) => ops.iter().map(|SumTerm(_, idx)| *idx).collect(),
             WitnessBuilder::Product(_, a, b) => vec![*a, *b],
             WitnessBuilder::MultiplicitiesForRange(_, _, values) => values.clone(),
-            WitnessBuilder::Inverse(_, x) => vec![*x],
+            WitnessBuilder::Inverse(_, x)
+            | WitnessBuilder::ModularInverse(_, x, _)
+            | WitnessBuilder::IntegerQuotient(_, x, _) => vec![*x],
             WitnessBuilder::IndexedLogUpDenominator(
                 _,
                 sz,
@@ -240,6 +242,8 @@ impl DependencyInfo {
             | WitnessBuilder::Challenge(idx)
             | WitnessBuilder::IndexedLogUpDenominator(idx, ..)
             | WitnessBuilder::Inverse(idx, _)
+            | WitnessBuilder::ModularInverse(idx, ..)
+            | WitnessBuilder::IntegerQuotient(idx, ..)
             | WitnessBuilder::ProductLinearOperation(idx, ..)
             | WitnessBuilder::LogUpDenominator(idx, ..)
             | WitnessBuilder::LogUpInverse(idx, ..)

@@ -65,6 +65,24 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     "Inverse/LogUpInverse should not be called - handled by batch inversion"
                 )
             }
+            WitnessBuilder::ModularInverse(witness_idx, operand_idx, modulus) => {
+                let a = witness[*operand_idx].unwrap();
+                let a_limbs = a.into_bigint().0;
+                let m_limbs = modulus.into_bigint().0;
+                // Fermat's little theorem: a^{-1} = a^{m-2} mod m
+                let exp = crate::witness::bigint_mod::sub_u64(&m_limbs, 2);
+                let result_limbs = crate::witness::bigint_mod::mod_pow(&a_limbs, &exp, &m_limbs);
+                witness[*witness_idx] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(result_limbs)).unwrap());
+            }
+            WitnessBuilder::IntegerQuotient(witness_idx, dividend_idx, divisor) => {
+                let dividend = witness[*dividend_idx].unwrap();
+                let d_limbs = dividend.into_bigint().0;
+                let m_limbs = divisor.into_bigint().0;
+                let (quotient, _remainder) = crate::witness::bigint_mod::divmod(&d_limbs, &m_limbs);
+                witness[*witness_idx] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(quotient)).unwrap());
+            }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,
                 sz_challenge,

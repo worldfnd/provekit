@@ -16,6 +16,7 @@ use {
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
+        BlackBoxFunc,
     },
     anyhow::{bail, Result},
     ark_ff::PrimeField,
@@ -627,6 +628,11 @@ impl NoirToR1CSCompiler {
                             output_witnesses,
                         ));
                     }
+                    BlackBoxFuncCall::MultiScalarMul {
+                        points,
+                        scalars,
+                        outputs,
+                    } => {}
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
                     }

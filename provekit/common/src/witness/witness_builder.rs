@@ -88,6 +88,18 @@ pub enum WitnessBuilder {
     /// The inverse of the value at a specified witness index
     /// (witness index, operand witness index)
     Inverse(usize, usize),
+    /// The modular inverse of the value at a specified witness index, modulo
+    /// a given prime modulus. Computes a^{-1} mod m using Fermat's little
+    /// theorem (a^{m-2} mod m). Unlike Inverse (BN254 field inverse), this
+    /// operates as integer modular arithmetic.
+    /// (witness index, operand witness index, modulus)
+    ModularInverse(usize, usize, #[serde(with = "serde_ark")] FieldElement),
+    /// The integer quotient floor(dividend / divisor). Used by reduce_mod to
+    /// compute k = floor(v / m) so that v = k*m + result with 0 <= result < m.
+    /// Unlike field multiplication by the inverse, this performs true integer
+    /// division on the BigInteger representation.
+    /// (witness index, dividend witness index, divisor constant)
+    IntegerQuotient(usize, usize, #[serde(with = "serde_ark")] FieldElement),
     /// Products with linear operations on the witness indices.
     /// Fields are ProductLinearOperation(witness_idx, (index, a, b), (index, c,
     /// d)) such that we wish to compute (ax + b) * (cx + d).

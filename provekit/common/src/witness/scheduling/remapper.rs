@@ -115,6 +115,12 @@ impl WitnessIndexRemapper {
             WitnessBuilder::Inverse(idx, operand) => {
                 WitnessBuilder::Inverse(self.remap(*idx), self.remap(*operand))
             }
+            WitnessBuilder::ModularInverse(idx, operand, modulus) => {
+                WitnessBuilder::ModularInverse(self.remap(*idx), self.remap(*operand), *modulus)
+            }
+            WitnessBuilder::IntegerQuotient(idx, dividend, divisor) => {
+                WitnessBuilder::IntegerQuotient(self.remap(*idx), self.remap(*dividend), *divisor)
+            }
             WitnessBuilder::ProductLinearOperation(
                 idx,
                 ProductLinearTerm(x, a, b),
