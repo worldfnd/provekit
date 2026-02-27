@@ -4,12 +4,13 @@ use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
     whir::{
+        algebra::embedding::Identity,
         protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
         transcript,
     },
 };
 
-pub type WhirConfig = GenericWhirConfig<FieldElement>;
+pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.

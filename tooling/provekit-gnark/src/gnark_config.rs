@@ -53,7 +53,10 @@ impl WHIRConfigGnark {
     pub fn new(whir_params: &WhirConfig) -> Self {
         let n_rounds = whir_params.n_rounds();
         let n_vars = whir_params.initial_num_variables();
-        let rate = whir_params.initial_committer.expansion.ilog2() as usize;
+        let message_length = whir_params.initial_committer.vector_size
+            / whir_params.initial_committer.interleaving_depth;
+        let rate =
+            (whir_params.initial_committer.codeword_length / message_length).ilog2() as usize;
 
         // Folding factor: initial round uses initial_sumcheck.num_rounds,
         // subsequent rounds use round_configs[i].sumcheck.num_rounds
@@ -83,7 +86,14 @@ impl WHIRConfigGnark {
             })
             .collect();
 
-        let final_queries = whir_params.final_in_domain_samples();
+        // If there are no folding rounds, fall back to the initial commitment's
+        // in-domain samples.
+        let final_queries = whir_params
+            .round_configs
+            .last()
+            .map_or(whir_params.initial_committer.in_domain_samples, |rc| {
+                rc.irs_committer.in_domain_samples
+            });
         let final_pow_bits = f64::from(whir::protocols::proof_of_work::difficulty(
             whir_params.final_pow.threshold,
         )) as i32;

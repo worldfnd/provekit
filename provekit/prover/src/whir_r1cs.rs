@@ -280,12 +280,12 @@ fn prove_from_alphas(
             .collect();
         boxed_weights.push(Box::new(blinding_covector));
 
-        scheme.whir_witness.prove(
+        let _ = scheme.whir_witness.prove(
             &mut merlin,
-            &[Cow::Borrowed(&commitment.polynomial)],
+            vec![Cow::Borrowed(commitment.polynomial.as_slice())],
             commitment.witness,
-            &boxed_weights,
-            &evaluations,
+            boxed_weights,
+            Cow::Borrowed(&evaluations),
         );
     } else {
         // Dual commitment path
@@ -341,12 +341,12 @@ fn prove_from_alphas(
                 .collect();
             boxed_weights.push(Box::new(blinding_covector));
 
-            scheme.whir_witness.prove(
+            let _ = scheme.whir_witness.prove(
                 &mut merlin,
-                &[Cow::Borrowed(&p1)],
+                vec![Cow::Borrowed(p1.as_slice())],
                 w1,
-                &boxed_weights,
-                &evaluations,
+                boxed_weights,
+                Cow::Borrowed(&evaluations),
             );
         }
         drop(p1);
@@ -364,12 +364,12 @@ fn prove_from_alphas(
                 .into_iter()
                 .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
-            scheme.whir_witness.prove(
+            let _ = scheme.whir_witness.prove(
                 &mut merlin,
-                &[Cow::Borrowed(&p2)],
+                vec![Cow::Borrowed(p2.as_slice())],
                 w2,
-                &boxed_weights,
-                &evaluations,
+                boxed_weights,
+                Cow::Borrowed(&evaluations),
             );
         }
     }
