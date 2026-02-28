@@ -221,6 +221,60 @@ impl WitnessIndexRemapper {
                         .collect(),
                 )
             }
+            WitnessBuilder::MulModHint {
+                output_start,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                modulus,
+            } => WitnessBuilder::MulModHint {
+                output_start: self.remap(*output_start),
+                a_lo:         self.remap(*a_lo),
+                a_hi:         self.remap(*a_hi),
+                b_lo:         self.remap(*b_lo),
+                b_hi:         self.remap(*b_hi),
+                modulus:      *modulus,
+            },
+            WitnessBuilder::WideModularInverse {
+                output_start,
+                a_lo,
+                a_hi,
+                modulus,
+            } => WitnessBuilder::WideModularInverse {
+                output_start: self.remap(*output_start),
+                a_lo:         self.remap(*a_lo),
+                a_hi:         self.remap(*a_hi),
+                modulus:      *modulus,
+            },
+            WitnessBuilder::WideAddQuotient {
+                output,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                modulus,
+            } => WitnessBuilder::WideAddQuotient {
+                output:  self.remap(*output),
+                a_lo:    self.remap(*a_lo),
+                a_hi:    self.remap(*a_hi),
+                b_lo:    self.remap(*b_lo),
+                b_hi:    self.remap(*b_hi),
+                modulus: *modulus,
+            },
+            WitnessBuilder::WideSubBorrow {
+                output,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+            } => WitnessBuilder::WideSubBorrow {
+                output: self.remap(*output),
+                a_lo:   self.remap(*a_lo),
+                a_hi:   self.remap(*a_hi),
+                b_lo:   self.remap(*b_lo),
+                b_hi:   self.remap(*b_hi),
+            },
             WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
                 lo: self.remap(*lo),
                 hi: self.remap(*hi),

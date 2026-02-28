@@ -154,6 +154,28 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::MulModHint {
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                ..
+            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
+            WitnessBuilder::WideModularInverse { a_lo, a_hi, .. } => vec![*a_lo, *a_hi],
+            WitnessBuilder::WideAddQuotient {
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                ..
+            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
+            WitnessBuilder::WideSubBorrow {
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                ..
+            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
             WitnessBuilder::BytePartition { x, .. } => vec![*x],
 
             WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
@@ -286,6 +308,14 @@ impl DependencyInfo {
                 let n = 1usize << *num_bits;
                 (*start..*start + n).collect()
             }
+            WitnessBuilder::MulModHint { output_start, .. } => {
+                (*output_start..*output_start + 20).collect()
+            }
+            WitnessBuilder::WideModularInverse { output_start, .. } => {
+                (*output_start..*output_start + 2).collect()
+            }
+            WitnessBuilder::WideAddQuotient { output, .. } => vec![*output],
+            WitnessBuilder::WideSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {
                 vec![*result_idx, *carry_idx]
             }

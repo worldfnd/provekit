@@ -337,6 +337,200 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     lh_val.into_bigint() ^ rh_val.into_bigint(),
                 ));
             }
+            WitnessBuilder::MulModHint {
+                output_start,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                modulus,
+            } => {
+                use crate::witness::bigint_mod::{
+                    compute_carries_86, decompose_128, decompose_86, divmod_wide, widening_mul,
+                    CARRY_OFFSET,
+                };
+
+                // Read inputs: a and b as 128-bit limb pairs
+                let a_lo_fe = witness[*a_lo].unwrap();
+                let a_hi_fe = witness[*a_hi].unwrap();
+                let b_lo_fe = witness[*b_lo].unwrap();
+                let b_hi_fe = witness[*b_hi].unwrap();
+
+                // Reconstruct a, b as [u64; 4]
+                let a_lo_limbs = a_lo_fe.into_bigint().0;
+                let a_hi_limbs = a_hi_fe.into_bigint().0;
+                let a_val = [a_lo_limbs[0], a_lo_limbs[1], a_hi_limbs[0], a_hi_limbs[1]];
+
+                let b_lo_limbs = b_lo_fe.into_bigint().0;
+                let b_hi_limbs = b_hi_fe.into_bigint().0;
+                let b_val = [b_lo_limbs[0], b_lo_limbs[1], b_hi_limbs[0], b_hi_limbs[1]];
+
+                // Compute product and divmod
+                let product = widening_mul(&a_val, &b_val);
+                let (q_val, r_val) = divmod_wide(&product, modulus);
+
+                // Decompose into 128-bit limbs
+                let (q_lo, q_hi) = decompose_128(&q_val);
+                let (r_lo, r_hi) = decompose_128(&r_val);
+
+                // Decompose into 86-bit limbs
+                let (a86_0, a86_1, a86_2) = decompose_86(&a_val);
+                let (b86_0, b86_1, b86_2) = decompose_86(&b_val);
+                let (q86_0, q86_1, q86_2) = decompose_86(&q_val);
+                let (r86_0, r86_1, r86_2) = decompose_86(&r_val);
+
+                // Compute carries
+                let carries = compute_carries_86(
+                    [a86_0, a86_1, a86_2],
+                    [b86_0, b86_1, b86_2],
+                    {
+                        let (p0, p1, p2) = decompose_86(modulus);
+                        [p0, p1, p2]
+                    },
+                    [q86_0, q86_1, q86_2],
+                    [r86_0, r86_1, r86_2],
+                );
+
+                // Helper: convert u128 to FieldElement
+                let u128_to_fe = |val: u128| -> FieldElement {
+                    FieldElement::from_bigint(ark_ff::BigInt([
+                        val as u64,
+                        (val >> 64) as u64,
+                        0,
+                        0,
+                    ]))
+                    .unwrap()
+                };
+
+                // Write outputs: [0..2) q_lo, q_hi
+                witness[*output_start] = Some(u128_to_fe(q_lo));
+                witness[*output_start + 1] = Some(u128_to_fe(q_hi));
+                // [2..4) r_lo, r_hi
+                witness[*output_start + 2] = Some(u128_to_fe(r_lo));
+                witness[*output_start + 3] = Some(u128_to_fe(r_hi));
+                // [4..7) a_86 limbs
+                witness[*output_start + 4] = Some(u128_to_fe(a86_0));
+                witness[*output_start + 5] = Some(u128_to_fe(a86_1));
+                witness[*output_start + 6] = Some(u128_to_fe(a86_2));
+                // [7..10) b_86 limbs
+                witness[*output_start + 7] = Some(u128_to_fe(b86_0));
+                witness[*output_start + 8] = Some(u128_to_fe(b86_1));
+                witness[*output_start + 9] = Some(u128_to_fe(b86_2));
+                // [10..13) q_86 limbs
+                witness[*output_start + 10] = Some(u128_to_fe(q86_0));
+                witness[*output_start + 11] = Some(u128_to_fe(q86_1));
+                witness[*output_start + 12] = Some(u128_to_fe(q86_2));
+                // [13..16) r_86 limbs
+                witness[*output_start + 13] = Some(u128_to_fe(r86_0));
+                witness[*output_start + 14] = Some(u128_to_fe(r86_1));
+                witness[*output_start + 15] = Some(u128_to_fe(r86_2));
+                // [16..20) carries (unsigned-offset)
+                for i in 0..4 {
+                    let c_unsigned = (carries[i] + CARRY_OFFSET as i128) as u128;
+                    witness[*output_start + 16 + i] = Some(u128_to_fe(c_unsigned));
+                }
+            }
+            WitnessBuilder::WideModularInverse {
+                output_start,
+                a_lo,
+                a_hi,
+                modulus,
+            } => {
+                use crate::witness::bigint_mod::{decompose_128, mod_pow, sub_u64};
+
+                // Read input a as 128-bit limb pair
+                let a_lo_fe = witness[*a_lo].unwrap();
+                let a_hi_fe = witness[*a_hi].unwrap();
+
+                let a_lo_limbs = a_lo_fe.into_bigint().0;
+                let a_hi_limbs = a_hi_fe.into_bigint().0;
+                let a_val = [a_lo_limbs[0], a_lo_limbs[1], a_hi_limbs[0], a_hi_limbs[1]];
+
+                // Compute inverse: a^{p-2} mod p (Fermat's little theorem)
+                let exp = sub_u64(modulus, 2);
+                let inv = mod_pow(&a_val, &exp, modulus);
+
+                // Decompose into 128-bit limbs
+                let (inv_lo, inv_hi) = decompose_128(&inv);
+
+                let u128_to_fe = |val: u128| -> FieldElement {
+                    FieldElement::from_bigint(ark_ff::BigInt([
+                        val as u64,
+                        (val >> 64) as u64,
+                        0,
+                        0,
+                    ]))
+                    .unwrap()
+                };
+
+                witness[*output_start] = Some(u128_to_fe(inv_lo));
+                witness[*output_start + 1] = Some(u128_to_fe(inv_hi));
+            }
+            WitnessBuilder::WideAddQuotient {
+                output,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+                modulus,
+            } => {
+                use crate::witness::bigint_mod::{add_4limb, cmp_4limb};
+
+                let a_lo_fe = witness[*a_lo].unwrap();
+                let a_hi_fe = witness[*a_hi].unwrap();
+                let b_lo_fe = witness[*b_lo].unwrap();
+                let b_hi_fe = witness[*b_hi].unwrap();
+
+                let a_lo_limbs = a_lo_fe.into_bigint().0;
+                let a_hi_limbs = a_hi_fe.into_bigint().0;
+                let a_val = [a_lo_limbs[0], a_lo_limbs[1], a_hi_limbs[0], a_hi_limbs[1]];
+
+                let b_lo_limbs = b_lo_fe.into_bigint().0;
+                let b_hi_limbs = b_hi_fe.into_bigint().0;
+                let b_val = [b_lo_limbs[0], b_lo_limbs[1], b_hi_limbs[0], b_hi_limbs[1]];
+
+                let sum = add_4limb(&a_val, &b_val);
+                // q = 1 if sum >= p, else 0
+                let q = if sum[4] > 0 {
+                    // sum > 2^256 > any 256-bit modulus
+                    1u64
+                } else {
+                    let sum4 = [sum[0], sum[1], sum[2], sum[3]];
+                    if cmp_4limb(&sum4, modulus) != std::cmp::Ordering::Less {
+                        1u64
+                    } else {
+                        0u64
+                    }
+                };
+
+                witness[*output] = Some(FieldElement::from(q));
+            }
+            WitnessBuilder::WideSubBorrow {
+                output,
+                a_lo,
+                a_hi,
+                b_lo,
+                b_hi,
+            } => {
+                use crate::witness::bigint_mod::cmp_4limb;
+
+                let a_lo_limbs = witness[*a_lo].unwrap().into_bigint().0;
+                let a_hi_limbs = witness[*a_hi].unwrap().into_bigint().0;
+                let a_val = [a_lo_limbs[0], a_lo_limbs[1], a_hi_limbs[0], a_hi_limbs[1]];
+
+                let b_lo_limbs = witness[*b_lo].unwrap().into_bigint().0;
+                let b_hi_limbs = witness[*b_hi].unwrap().into_bigint().0;
+                let b_val = [b_lo_limbs[0], b_lo_limbs[1], b_hi_limbs[0], b_hi_limbs[1]];
+
+                // q = 1 if a < b (need to add p to make result non-negative)
+                let q = if cmp_4limb(&a_val, &b_val) == std::cmp::Ordering::Less {
+                    1u64
+                } else {
+                    0u64
+                };
+
+                witness[*output] = Some(FieldElement::from(q));
+            }
             WitnessBuilder::BytePartition { lo, hi, x, k } => {
                 let x_val = witness[*x].unwrap().into_bigint().0[0];
                 debug_assert!(x_val < 256, "BytePartition input must be 8-bit");

@@ -1,5 +1,5 @@
 use {
-    crate::{msm::curve::CurveParams, noir_to_r1cs::NoirToR1CSCompiler},
+    crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{AdditiveGroup, BigInteger, Field, PrimeField},
     provekit_common::{
         witness::{SumTerm, WitnessBuilder},
@@ -9,7 +9,7 @@ use {
 };
 
 /// Reduce the value to given modulus
-pub fn reduce_mod(
+pub fn reduce_mod_p(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     value: usize,
     modulus: FieldElement,
@@ -65,8 +65,30 @@ pub fn reduce_mod(
     result
 }
 
-/// a * b mod m
-pub fn compute_field_mul(
+/// a + b mod p
+pub fn add_mod_p(
+    r1cs_compiler: &mut NoirToR1CSCompiler,
+    a: usize,
+    b: usize,
+    modulus: FieldElement,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+) -> usize {
+    let a_add_b = r1cs_compiler.num_witnesses();
+    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(a_add_b, vec![
+        SumTerm(Some(FieldElement::ONE), a),
+        SumTerm(Some(FieldElement::ONE), b),
+    ]));
+    // constraint: a + b = a_add_b
+    r1cs_compiler.r1cs.add_constraint(
+        &[(FieldElement::ONE, a), (FieldElement::ONE, b)],
+        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
+        &[(FieldElement::ONE, a_add_b)],
+    );
+    reduce_mod_p(r1cs_compiler, a_add_b, modulus, range_checks)
+}
+
+/// a * b mod p
+pub fn mul_mod_p(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     a: usize,
     b: usize,
@@ -82,11 +104,11 @@ pub fn compute_field_mul(
             FieldElement::ONE,
             a_mul_b,
         )]);
-    reduce_mod(r1cs_compiler, a_mul_b, modulus, range_checks)
+    reduce_mod_p(r1cs_compiler, a_mul_b, modulus, range_checks)
 }
 
-/// (a - b) mod m
-pub fn compute_field_sub(
+/// (a - b) mod p
+pub fn sub_mod_p(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     a: usize,
     b: usize,
@@ -104,16 +126,11 @@ pub fn compute_field_sub(
         &[(FieldElement::ONE, a), (-FieldElement::ONE, b)],
         &[(FieldElement::ONE, a_sub_b)],
     );
-    reduce_mod(r1cs_compiler, a_sub_b, modulus, range_checks)
+    reduce_mod_p(r1cs_compiler, a_sub_b, modulus, range_checks)
 }
 
-/// a^(-1) mod m
-///
-/// CRITICAL: secp256r1's field_modulus_p (~2^256) > BN254 scalar field
-/// (~2^254). Coordinates and the modulus do not fit in a single
-/// FieldElement. Either use multi-limb representation or target a
-/// curve that fits (e.g. Grumpkin, BabyJubJub).
-pub fn compute_field_inv(
+/// a^(-1) mod p
+pub fn inv_mod_p(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     a: usize,
     modulus: FieldElement,
@@ -127,17 +144,8 @@ pub fn compute_field_inv(
 
     // Verifying a * a_inv mod m = 1
     // -----------------------------------------------------------
-    // computing a * a_inv
-    let product_raw = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Product(product_raw, a, a_inv));
-    // constraint: a * a_inv = product_raw
-    r1cs_compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, a)], &[(FieldElement::ONE, a_inv)], &[
-            (FieldElement::ONE, product_raw),
-        ]);
-    // reducing a * a_inv mod m — should give 1 if a_inv is correct
-    let reduced = reduce_mod(r1cs_compiler, product_raw, modulus, range_checks);
+    // computing a * a_inv mod m
+    let reduced = mul_mod_p(r1cs_compiler, a, a_inv, modulus, range_checks);
 
     // constraint: reduced = 1
     // (reduced - 1) * 1 = 0
@@ -158,111 +166,6 @@ pub fn compute_field_inv(
         .push(a_inv);
 
     a_inv
-}
-
-/// Point doubling on y^2 = x^3 + ax + b (mod p) using affine lambda formula.
-///
-/// Given P = (x1, y1), computes 2P = (x3, y3):
-///   lambda = (3 * x1^2 + a) / (2 * y1)   (mod p)
-///   x3     = lambda^2 - 2 * x1            (mod p)
-///   y3     = lambda * (x1 - x3) - y1      (mod p)
-///
-/// Edge case — y1 = 0 (point of order 2):
-///   When y1 = 0, the denominator 2*y1 = 0 and the inverse does not exist.
-///   The result should be the point at infinity (identity element).
-///   This function does NOT handle that case — the constraint system will
-///   be unsatisfiable if y1 = 0 (compute_field_inv will fail to verify
-///   0 * inv = 1 mod p). The caller must check y1 = 0 using
-///   compute_is_zero and conditionally select the point-at-infinity
-///   result before calling this function.
-pub fn point_double(
-    r1cs_compiler: &mut NoirToR1CSCompiler,
-    x1: usize,
-    y1: usize,
-    curve_params: &CurveParams,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> (usize, usize) {
-    let p = curve_params.field_modulus_p;
-
-    // Computing numerator = 3 * x1^2 + a  (mod p)
-    // -----------------------------------------------------------
-    // computing x1^2 mod p
-    let x1_sq = compute_field_mul(r1cs_compiler, x1, x1, p, range_checks);
-    // computing 3 * x1_sq + a
-    let a_witness = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Constant(
-        provekit_common::witness::ConstantTerm(a_witness, curve_params.curve_a),
-    ));
-    let num_raw = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(num_raw, vec![
-        SumTerm(Some(FieldElement::from(3u64)), x1_sq),
-        SumTerm(Some(FieldElement::ONE), a_witness),
-    ]));
-    // constraint: 1 * (3 * x1_sq + a) = num_raw
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[
-            (FieldElement::from(3u64), x1_sq),
-            (FieldElement::ONE, a_witness),
-        ],
-        &[(FieldElement::ONE, num_raw)],
-    );
-    let numerator = reduce_mod(r1cs_compiler, num_raw, p, range_checks);
-
-    // Computing denominator = 2 * y1  (mod p)
-    // -----------------------------------------------------------
-    // computing 2 * y1
-    let denom_raw = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(denom_raw, vec![SumTerm(
-        Some(FieldElement::from(2u64)),
-        y1,
-    )]));
-    // constraint: 1 * (2 * y1) = denom_raw
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[(FieldElement::from(2u64), y1)],
-        &[(FieldElement::ONE, denom_raw)],
-    );
-    let denominator = reduce_mod(r1cs_compiler, denom_raw, p, range_checks);
-
-    // Computing lambda = numerator * denominator^(-1)  (mod p)
-    // -----------------------------------------------------------
-    // computing denominator^(-1) mod p
-    let denom_inv = compute_field_inv(r1cs_compiler, denominator, p, range_checks);
-    // computing lambda = numerator * denom_inv mod p
-    let lambda = compute_field_mul(r1cs_compiler, numerator, denom_inv, p, range_checks);
-
-    // Computing x3 = lambda^2 - 2 * x1  (mod p)
-    // -----------------------------------------------------------
-    // computing lambda^2 mod p
-    let lambda_sq = compute_field_mul(r1cs_compiler, lambda, lambda, p, range_checks);
-    // computing lambda^2 - 2 * x1
-    let x3_raw = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Sum(x3_raw, vec![
-        SumTerm(Some(FieldElement::ONE), lambda_sq),
-        SumTerm(Some(-FieldElement::from(2u64)), x1),
-    ]));
-    // constraint: 1 * (lambda^2 - 2 * x1) = x3_raw
-    r1cs_compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, r1cs_compiler.witness_one())],
-        &[
-            (FieldElement::ONE, lambda_sq),
-            (-FieldElement::from(2u64), x1),
-        ],
-        &[(FieldElement::ONE, x3_raw)],
-    );
-    let x3 = reduce_mod(r1cs_compiler, x3_raw, p, range_checks);
-
-    // Computing y3 = lambda * (x1 - x3) - y1  (mod p)
-    // -----------------------------------------------------------
-    // computing x1 - x3 mod p
-    let x1_minus_x3 = compute_field_sub(r1cs_compiler, x1, x3, p, range_checks);
-    // computing lambda * (x1 - x3) mod p
-    let lambda_dx = compute_field_mul(r1cs_compiler, lambda, x1_minus_x3, p, range_checks);
-    // computing lambda * (x1 - x3) - y1 mod p
-    let y3 = compute_field_sub(r1cs_compiler, lambda_dx, y1, p, range_checks);
-
-    (x3, y3)
 }
 
 /// checks if value is zero or not

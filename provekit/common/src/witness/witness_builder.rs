@@ -201,6 +201,63 @@ pub enum WitnessBuilder {
     /// Inverse of combined lookup table entry denominator (constant operands).
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
+    /// Prover hint for multi-limb modular multiplication: (a * b) mod p.
+    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
+    /// and a constant 256-bit modulus p, computes quotient q, remainder r,
+    /// their 86-bit decompositions, and carry witnesses.
+    ///
+    /// Outputs 20 witnesses starting at output_start:
+    ///   [0..2)   q_lo, q_hi (quotient in 128-bit limbs)
+    ///   [2..4)   r_lo, r_hi (remainder in 128-bit limbs)
+    ///   [4..7)   a_86_0, a_86_1, a_86_2 (a in 86-bit limbs)
+    ///   [7..10)  b_86_0, b_86_1, b_86_2 (b in 86-bit limbs)
+    ///   [10..13) q_86_0, q_86_1, q_86_2 (q in 86-bit limbs)
+    ///   [13..16) r_86_0, r_86_1, r_86_2 (r in 86-bit limbs)
+    ///   [16..20) c0, c1, c2, c3 (carry witnesses, unsigned-offset)
+    MulModHint {
+        output_start: usize,
+        a_lo:         usize,
+        a_hi:         usize,
+        b_lo:         usize,
+        b_hi:         usize,
+        modulus:      [u64; 4],
+    },
+    /// Prover hint for wide modular inverse: a^{-1} mod p.
+    /// Given input a = (a_lo, a_hi) as 128-bit limbs and constant modulus p,
+    /// computes the inverse via Fermat's little theorem (a^{p-2} mod p).
+    ///
+    /// Outputs 2 witnesses at output_start: inv_lo, inv_hi (128-bit limbs).
+    WideModularInverse {
+        output_start: usize,
+        a_lo:         usize,
+        a_hi:         usize,
+        modulus:      [u64; 4],
+    },
+    /// Prover hint for wide addition quotient: q = floor((a + b) / p).
+    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
+    /// and a constant 256-bit modulus p, computes q ∈ {0, 1}.
+    ///
+    /// Outputs 1 witness at output: q.
+    WideAddQuotient {
+        output:  usize,
+        a_lo:    usize,
+        a_hi:    usize,
+        b_lo:    usize,
+        b_hi:    usize,
+        modulus: [u64; 4],
+    },
+    /// Prover hint for wide subtraction borrow: q = (a < b) ? 1 : 0.
+    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
+    /// computes q ∈ {0, 1} indicating whether a borrow (adding p) is needed.
+    ///
+    /// Outputs 1 witness at output: q.
+    WideSubBorrow {
+        output: usize,
+        a_lo:   usize,
+        a_hi:   usize,
+        b_lo:   usize,
+        b_hi:   usize,
+    },
     /// Decomposes a packed value into chunks of specified bit-widths.
     /// Given packed value and chunk_bits = [b0, b1, ..., bn]:
     ///   packed = c0 + c1 * 2^b0 + c2 * 2^(b0+b1) + ...
@@ -272,6 +329,8 @@ impl WitnessBuilder {
             WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
+            WitnessBuilder::MulModHint { .. } => 20,
+            WitnessBuilder::WideModularInverse { .. } => 2,
 
             _ => 1,
         }
