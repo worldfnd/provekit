@@ -123,8 +123,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         let m_raw = next_power_of_two(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let mut m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
+
+        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
+        if (1usize << m) - w1_size < 4 * m_0 {
+            m += 1;
+        }
 
         Self {
             m,

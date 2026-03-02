@@ -5,6 +5,7 @@ use {
     },
     anyhow::{ensure, Context as _, Result},
     mavros_artifacts::R1CS as MavrosR1CS,
+    noirc_abi::AbiVisibility,
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
         utils::{convert_mavros_r1cs_to_provekit, PrintAbi},
@@ -126,20 +127,27 @@ impl MavrosCompiler {
             mavros_r1cs.witness_layout.challenges_size,
         );
 
-        let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
-            &mavros_r1cs,
-            mavros_r1cs.witness_layout.pre_commitment_size(),
-            mavros_r1cs.witness_layout.challenges_size,
-            false,
-        );
-        let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
-
-        let num_public_inputs: usize = abi
+        let mut num_public_inputs: usize = abi
             .parameters
             .iter()
             .filter(|p| p.is_public())
             .map(|p| p.typ.field_count() as usize)
             .sum();
+
+        let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
+            &mavros_r1cs,
+            mavros_r1cs.witness_layout.pre_commitment_size(),
+            mavros_r1cs.witness_layout.challenges_size,
+            num_public_inputs > 0,
+        );
+
+        let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
+
+        if let Some(ret) = &abi.return_type {
+            if matches!(ret.visibility, AbiVisibility::Public) {
+                num_public_inputs += ret.abi_type.field_count() as usize;
+            }
+        }
 
         Ok(NoirProofScheme::Mavros(MavrosSchemeData {
             abi,
