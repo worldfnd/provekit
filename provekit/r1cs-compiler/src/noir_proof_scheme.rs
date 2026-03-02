@@ -134,6 +134,12 @@ impl MavrosCompiler {
             .map(|p| p.typ.field_count() as usize)
             .sum();
 
+        if let Some(ret) = &abi.return_type {
+            if matches!(ret.visibility, AbiVisibility::Public) {
+                num_public_inputs += ret.abi_type.field_count() as usize;
+            }
+        }
+
         let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
             &mavros_r1cs,
             mavros_r1cs.witness_layout.pre_commitment_size(),
@@ -142,12 +148,6 @@ impl MavrosCompiler {
         );
 
         let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
-
-        if let Some(ret) = &abi.return_type {
-            if matches!(ret.visibility, AbiVisibility::Public) {
-                num_public_inputs += ret.abi_type.field_count() as usize;
-            }
-        }
 
         Ok(NoirProofScheme::Mavros(MavrosSchemeData {
             abi,
