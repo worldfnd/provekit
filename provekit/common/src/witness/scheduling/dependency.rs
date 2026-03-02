@@ -79,6 +79,7 @@ impl DependencyInfo {
             WitnessBuilder::Product(_, a, b) => vec![*a, *b],
             WitnessBuilder::MultiplicitiesForRange(_, _, values) => values.clone(),
             WitnessBuilder::Inverse(_, x)
+            | WitnessBuilder::SafeInverse(_, x)
             | WitnessBuilder::ModularInverse(_, x, _)
             | WitnessBuilder::IntegerQuotient(_, x, _) => vec![*x],
             WitnessBuilder::IndexedLogUpDenominator(
@@ -154,28 +155,34 @@ impl DependencyInfo {
                 }
                 v
             }
-            WitnessBuilder::MulModHint {
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
+            WitnessBuilder::MultiLimbMulModHint {
+                a_limbs,
+                b_limbs,
                 ..
-            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
-            WitnessBuilder::WideModularInverse { a_lo, a_hi, .. } => vec![*a_lo, *a_hi],
-            WitnessBuilder::WideAddQuotient {
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
+            WitnessBuilder::MultiLimbModularInverse { a_limbs, .. } => a_limbs.clone(),
+            WitnessBuilder::MultiLimbAddQuotient {
+                a_limbs,
+                b_limbs,
                 ..
-            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
-            WitnessBuilder::WideSubBorrow {
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
+            WitnessBuilder::MultiLimbSubBorrow {
+                a_limbs,
+                b_limbs,
                 ..
-            } => vec![*a_lo, *a_hi, *b_lo, *b_hi],
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
             WitnessBuilder::BytePartition { x, .. } => vec![*x],
 
             WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
@@ -264,6 +271,7 @@ impl DependencyInfo {
             | WitnessBuilder::Challenge(idx)
             | WitnessBuilder::IndexedLogUpDenominator(idx, ..)
             | WitnessBuilder::Inverse(idx, _)
+            | WitnessBuilder::SafeInverse(idx, _)
             | WitnessBuilder::ModularInverse(idx, ..)
             | WitnessBuilder::IntegerQuotient(idx, ..)
             | WitnessBuilder::ProductLinearOperation(idx, ..)
@@ -308,14 +316,21 @@ impl DependencyInfo {
                 let n = 1usize << *num_bits;
                 (*start..*start + n).collect()
             }
-            WitnessBuilder::MulModHint { output_start, .. } => {
-                (*output_start..*output_start + 20).collect()
+            WitnessBuilder::MultiLimbMulModHint {
+                output_start,
+                num_limbs,
+                ..
+            } => {
+                let count = (4 * *num_limbs - 2) as usize;
+                (*output_start..*output_start + count).collect()
             }
-            WitnessBuilder::WideModularInverse { output_start, .. } => {
-                (*output_start..*output_start + 2).collect()
-            }
-            WitnessBuilder::WideAddQuotient { output, .. } => vec![*output],
-            WitnessBuilder::WideSubBorrow { output, .. } => vec![*output],
+            WitnessBuilder::MultiLimbModularInverse {
+                output_start,
+                num_limbs,
+                ..
+            } => (*output_start..*output_start + *num_limbs as usize).collect(),
+            WitnessBuilder::MultiLimbAddQuotient { output, .. } => vec![*output],
+            WitnessBuilder::MultiLimbSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {
                 vec![*result_idx, *carry_idx]
             }

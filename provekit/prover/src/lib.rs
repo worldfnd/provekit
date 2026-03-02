@@ -195,6 +195,58 @@ impl Prove for NoirProver {
             .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
             .collect::<Result<Vec<_>>>()?;
 
+        // DEBUG: Check R1CS constraint satisfaction with ALL witnesses solved
+        {
+            use ark_ff::Zero;
+            let debug_r1cs = r1cs.clone();
+            let interner = &debug_r1cs.interner;
+            let ha = debug_r1cs.a.hydrate(interner);
+            let hb = debug_r1cs.b.hydrate(interner);
+            let hc = debug_r1cs.c.hydrate(interner);
+            let mut fail_count = 0usize;
+            for row in 0..debug_r1cs.num_constraints() {
+                let eval = |hm: &provekit_common::sparse_matrix::HydratedSparseMatrix, r: usize| -> FieldElement {
+                    let mut sum = FieldElement::zero();
+                    for (col, coeff) in hm.iter_row(r) {
+                        sum += coeff * full_witness[col];
+                    }
+                    sum
+                };
+                let a_val = eval(&ha, row);
+                let b_val = eval(&hb, row);
+                let c_val = eval(&hc, row);
+                if a_val * b_val != c_val {
+                    if fail_count < 10 {
+                        eprintln!(
+                            "CONSTRAINT {} FAILED: A={:?} B={:?} C={:?} A*B={:?}",
+                            row, a_val, b_val, c_val, a_val * b_val
+                        );
+                        eprint!("  A terms:");
+                        for (col, coeff) in ha.iter_row(row) {
+                            eprint!(" w{}={:?}*{:?}", col, full_witness[col], coeff);
+                        }
+                        eprintln!();
+                        eprint!("  B terms:");
+                        for (col, coeff) in hb.iter_row(row) {
+                            eprint!(" w{}={:?}*{:?}", col, full_witness[col], coeff);
+                        }
+                        eprintln!();
+                        eprint!("  C terms:");
+                        for (col, coeff) in hc.iter_row(row) {
+                            eprint!(" w{}={:?}*{:?}", col, full_witness[col], coeff);
+                        }
+                        eprintln!();
+                    }
+                    fail_count += 1;
+                }
+            }
+            if fail_count > 0 {
+                eprintln!("TOTAL FAILING CONSTRAINTS: {fail_count} / {}", debug_r1cs.num_constraints());
+            } else {
+                eprintln!("ALL {} CONSTRAINTS SATISFIED", debug_r1cs.num_constraints());
+            }
+        }
+
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)

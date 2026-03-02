@@ -1,9 +1,6 @@
 use {
-    crate::noir_to_r1cs::NoirToR1CSCompiler,
-    provekit_common::{
-        witness::{ConstantTerm, WitnessBuilder},
-        FieldElement,
-    },
+    ark_ff::{BigInteger, PrimeField},
+    provekit_common::FieldElement,
 };
 
 pub struct CurveParams {
@@ -15,38 +12,91 @@ pub struct CurveParams {
 }
 
 impl CurveParams {
-    pub fn p_lo_fe(&self) -> FieldElement {
-        decompose_128(self.field_modulus_p).0
+    /// Decompose the field modulus p into `num_limbs` limbs of `limb_bits` width each.
+    pub fn p_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.field_modulus_p, limb_bits, num_limbs)
     }
-    pub fn p_hi_fe(&self) -> FieldElement {
-        decompose_128(self.field_modulus_p).1
+
+    /// Decompose (p - 1) into `num_limbs` limbs of `limb_bits` width each.
+    pub fn p_minus_1_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        let p_minus_1 = sub_one_u64_4(&self.field_modulus_p);
+        decompose_to_limbs(&p_minus_1, limb_bits, num_limbs)
     }
-    pub fn p_86_limbs(&self) -> [FieldElement; 3] {
-        let mask_86: u128 = (1u128 << 86) - 1;
-        let lo128 = self.field_modulus_p[0] as u128 | ((self.field_modulus_p[1] as u128) << 64);
-        let hi128 = self.field_modulus_p[2] as u128 | ((self.field_modulus_p[3] as u128) << 64);
-        let l0 = lo128 & mask_86;
-        // l1 spans bits [86..172): 42 bits from lo128, 44 bits from hi128
-        let l1 = ((lo128 >> 86) | (hi128 << 42)) & mask_86;
-        // l2 = bits [172..256): 84 bits from hi128
-        let l2 = hi128 >> 44;
-        [
-            FieldElement::from(l0),
-            FieldElement::from(l1),
-            FieldElement::from(l2),
-        ]
+
+    /// Decompose the curve parameter `a` into `num_limbs` limbs of `limb_bits` width.
+    pub fn curve_a_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.curve_a, limb_bits, num_limbs)
     }
+
+    /// Number of bits in the field modulus.
+    pub fn modulus_bits(&self) -> u32 {
+        if self.is_native_field() {
+            // p mod p = 0 as a field element, so we use the constant directly.
+            FieldElement::MODULUS_BIT_SIZE
+        } else {
+            let fe = curve_native_point_fe(&self.field_modulus_p);
+            fe.into_bigint().num_bits()
+        }
+    }
+
+    /// Returns true if the curve's base field modulus equals the native BN254
+    /// scalar field modulus.
+    pub fn is_native_field(&self) -> bool {
+        let native_mod = FieldElement::MODULUS;
+        self.field_modulus_p == native_mod.0
+    }
+
+    /// Convert modulus to a native field element (only valid when p < native modulus).
     pub fn p_native_fe(&self) -> FieldElement {
         curve_native_point_fe(&self.field_modulus_p)
     }
 }
 
-/// Splits a 256-bit value ([u64; 4]) into two 128-bit field elements (lo, hi).
-fn decompose_128(val: [u64; 4]) -> (FieldElement, FieldElement) {
-    (
-        FieldElement::from((val[0] as u128) | ((val[1] as u128) << 64)),
-        FieldElement::from((val[2] as u128) | ((val[3] as u128) << 64)),
-    )
+/// Decompose a 256-bit value into `num_limbs` limbs of `limb_bits` width each,
+/// returned as FieldElements.
+fn decompose_to_limbs(val: &[u64; 4], limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+    let mask: u128 = if limb_bits >= 128 {
+        u128::MAX
+    } else {
+        (1u128 << limb_bits) - 1
+    };
+    let mut result = vec![FieldElement::from(0u64); num_limbs];
+    let mut remaining = *val;
+    for item in result.iter_mut() {
+        let lo = remaining[0] as u128 | ((remaining[1] as u128) << 64);
+        *item = FieldElement::from(lo & mask);
+        // Shift remaining right by limb_bits
+        if limb_bits >= 256 {
+            remaining = [0; 4];
+        } else {
+            let mut shifted = [0u64; 4];
+            let word_shift = (limb_bits / 64) as usize;
+            let bit_shift = limb_bits % 64;
+            for i in 0..4 {
+                if i + word_shift < 4 {
+                    shifted[i] = remaining[i + word_shift] >> bit_shift;
+                    if bit_shift > 0 && i + word_shift + 1 < 4 {
+                        shifted[i] |= remaining[i + word_shift + 1] << (64 - bit_shift);
+                    }
+                }
+            }
+            remaining = shifted;
+        }
+    }
+    result
+}
+
+/// Subtract 1 from a [u64; 4] value.
+fn sub_one_u64_4(val: &[u64; 4]) -> [u64; 4] {
+    let mut result = *val;
+    for limb in result.iter_mut() {
+        if *limb > 0 {
+            *limb -= 1;
+            return result;
+        }
+        *limb = u64::MAX; // borrow
+    }
+    result
 }
 
 /// Converts a 256-bit value ([u64; 4]) into a single native field element.
@@ -54,21 +104,46 @@ pub fn curve_native_point_fe(val: &[u64; 4]) -> FieldElement {
     FieldElement::from_sign_and_limbs(true, val)
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Limb2 {
-    pub lo: usize,
-    pub hi: usize,
-}
-
-pub fn limb2_constant(r1cs_compiler: &mut NoirToR1CSCompiler, value: [u64; 4]) -> Limb2 {
-    let (lo, hi) = decompose_128(value);
-    let lo_idx = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(lo_idx, lo)));
-    let hi_idx = r1cs_compiler.num_witnesses();
-    r1cs_compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(hi_idx, hi)));
-    Limb2 {
-        lo: lo_idx,
-        hi: hi_idx,
+/// Grumpkin curve parameters.
+///
+/// Grumpkin is a cycle-companion curve for BN254: its base field is the BN254
+/// scalar field, and its order is the BN254 base field order.
+///
+/// Equation: y² = x³ − 17  (a = 0, b = −17 mod p)
+pub fn grumpkin_params() -> CurveParams {
+    CurveParams {
+        // BN254 scalar field modulus
+        field_modulus_p: [
+            0x43e1f593f0000001_u64,
+            0x2833e84879b97091_u64,
+            0xb85045b68181585d_u64,
+            0x30644e72e131a029_u64,
+        ],
+        // BN254 base field modulus
+        curve_order_n: [
+            0x3c208c16d87cfd47_u64,
+            0x97816a916871ca8d_u64,
+            0xb85045b68181585d_u64,
+            0x30644e72e131a029_u64,
+        ],
+        curve_a: [0; 4],
+        // b = −17 mod p
+        curve_b: [
+            0x43e1f593effffff0_u64,
+            0x2833e84879b97091_u64,
+            0xb85045b68181585d_u64,
+            0x30644e72e131a029_u64,
+        ],
+        // Generator G = (1, sqrt(−16) mod p)
+        generator: (
+            [1, 0, 0, 0],
+            [
+                0x833fc48d823f272c_u64,
+                0x2d270d45f1181294_u64,
+                0xcf135e7506a45d63_u64,
+                0x0000000000000002_u64,
+            ],
+        ),
     }
 }
 

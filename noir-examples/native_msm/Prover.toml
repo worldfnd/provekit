@@ -1,0 +1,5 @@
+# MSM: result = s1 * G + s2 * G = 1*G + 2*G = 3*G
+scalar1_lo = "1"
+scalar1_hi = "0"
+scalar2_lo = "2"
+scalar2_hi = "0"

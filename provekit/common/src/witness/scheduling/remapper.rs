@@ -115,6 +115,9 @@ impl WitnessIndexRemapper {
             WitnessBuilder::Inverse(idx, operand) => {
                 WitnessBuilder::Inverse(self.remap(*idx), self.remap(*operand))
             }
+            WitnessBuilder::SafeInverse(idx, operand) => {
+                WitnessBuilder::SafeInverse(self.remap(*idx), self.remap(*operand))
+            }
             WitnessBuilder::ModularInverse(idx, operand, modulus) => {
                 WitnessBuilder::ModularInverse(self.remap(*idx), self.remap(*operand), *modulus)
             }
@@ -221,59 +224,63 @@ impl WitnessIndexRemapper {
                         .collect(),
                 )
             }
-            WitnessBuilder::MulModHint {
+            WitnessBuilder::MultiLimbMulModHint {
                 output_start,
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
+                a_limbs,
+                b_limbs,
                 modulus,
-            } => WitnessBuilder::MulModHint {
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbMulModHint {
                 output_start: self.remap(*output_start),
-                a_lo:         self.remap(*a_lo),
-                a_hi:         self.remap(*a_hi),
-                b_lo:         self.remap(*b_lo),
-                b_hi:         self.remap(*b_hi),
+                a_limbs:      a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:      b_limbs.iter().map(|&w| self.remap(w)).collect(),
                 modulus:      *modulus,
+                limb_bits:    *limb_bits,
+                num_limbs:    *num_limbs,
             },
-            WitnessBuilder::WideModularInverse {
+            WitnessBuilder::MultiLimbModularInverse {
                 output_start,
-                a_lo,
-                a_hi,
+                a_limbs,
                 modulus,
-            } => WitnessBuilder::WideModularInverse {
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbModularInverse {
                 output_start: self.remap(*output_start),
-                a_lo:         self.remap(*a_lo),
-                a_hi:         self.remap(*a_hi),
+                a_limbs:      a_limbs.iter().map(|&w| self.remap(w)).collect(),
                 modulus:      *modulus,
+                limb_bits:    *limb_bits,
+                num_limbs:    *num_limbs,
             },
-            WitnessBuilder::WideAddQuotient {
+            WitnessBuilder::MultiLimbAddQuotient {
                 output,
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
+                a_limbs,
+                b_limbs,
                 modulus,
-            } => WitnessBuilder::WideAddQuotient {
-                output:  self.remap(*output),
-                a_lo:    self.remap(*a_lo),
-                a_hi:    self.remap(*a_hi),
-                b_lo:    self.remap(*b_lo),
-                b_hi:    self.remap(*b_hi),
-                modulus: *modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbAddQuotient {
+                output:    self.remap(*output),
+                a_limbs:   a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:   b_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:   *modulus,
+                limb_bits: *limb_bits,
+                num_limbs: *num_limbs,
             },
-            WitnessBuilder::WideSubBorrow {
+            WitnessBuilder::MultiLimbSubBorrow {
                 output,
-                a_lo,
-                a_hi,
-                b_lo,
-                b_hi,
-            } => WitnessBuilder::WideSubBorrow {
-                output: self.remap(*output),
-                a_lo:   self.remap(*a_lo),
-                a_hi:   self.remap(*a_hi),
-                b_lo:   self.remap(*b_lo),
-                b_hi:   self.remap(*b_hi),
+                a_limbs,
+                b_limbs,
+                modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbSubBorrow {
+                output:    self.remap(*output),
+                a_limbs:   a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:   b_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:   *modulus,
+                limb_bits: *limb_bits,
+                num_limbs: *num_limbs,
             },
             WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
                 lo: self.remap(*lo),

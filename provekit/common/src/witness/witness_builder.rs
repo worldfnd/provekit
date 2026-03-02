@@ -88,6 +88,11 @@ pub enum WitnessBuilder {
     /// The inverse of the value at a specified witness index
     /// (witness index, operand witness index)
     Inverse(usize, usize),
+    /// Safe inverse: like Inverse but handles zero by outputting 0.
+    /// Used by compute_is_zero where the input may be zero. Solved in the
+    /// Other layer (not batch-inverted), so zero inputs don't poison the batch.
+    /// (witness index, operand witness index)
+    SafeInverse(usize, usize),
     /// The modular inverse of the value at a specified witness index, modulo
     /// a given prime modulus. Computes a^{-1} mod m using Fermat's little
     /// theorem (a^{m-2} mod m). Unlike Inverse (BN254 field inverse), this
@@ -202,61 +207,59 @@ pub enum WitnessBuilder {
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
     /// Prover hint for multi-limb modular multiplication: (a * b) mod p.
-    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
+    /// Given inputs a and b as N-limb vectors (each limb `limb_bits` wide),
     /// and a constant 256-bit modulus p, computes quotient q, remainder r,
-    /// their 86-bit decompositions, and carry witnesses.
+    /// and carry witnesses for schoolbook column verification.
     ///
-    /// Outputs 20 witnesses starting at output_start:
-    ///   [0..2)   q_lo, q_hi (quotient in 128-bit limbs)
-    ///   [2..4)   r_lo, r_hi (remainder in 128-bit limbs)
-    ///   [4..7)   a_86_0, a_86_1, a_86_2 (a in 86-bit limbs)
-    ///   [7..10)  b_86_0, b_86_1, b_86_2 (b in 86-bit limbs)
-    ///   [10..13) q_86_0, q_86_1, q_86_2 (q in 86-bit limbs)
-    ///   [13..16) r_86_0, r_86_1, r_86_2 (r in 86-bit limbs)
-    ///   [16..20) c0, c1, c2, c3 (carry witnesses, unsigned-offset)
-    MulModHint {
+    /// Outputs (4*num_limbs - 2) witnesses starting at output_start:
+    ///   [0..N)        q limbs (quotient)
+    ///   [N..2N)       r limbs (remainder) — OUTPUT
+    ///   [2N..4N-2)    carry witnesses (unsigned-offset)
+    MultiLimbMulModHint {
         output_start: usize,
-        a_lo:         usize,
-        a_hi:         usize,
-        b_lo:         usize,
-        b_hi:         usize,
+        a_limbs:      Vec<usize>,
+        b_limbs:      Vec<usize>,
         modulus:      [u64; 4],
+        limb_bits:    u32,
+        num_limbs:    u32,
     },
-    /// Prover hint for wide modular inverse: a^{-1} mod p.
-    /// Given input a = (a_lo, a_hi) as 128-bit limbs and constant modulus p,
+    /// Prover hint for multi-limb modular inverse: a^{-1} mod p.
+    /// Given input a as N-limb vector and constant modulus p,
     /// computes the inverse via Fermat's little theorem (a^{p-2} mod p).
     ///
-    /// Outputs 2 witnesses at output_start: inv_lo, inv_hi (128-bit limbs).
-    WideModularInverse {
+    /// Outputs num_limbs witnesses at output_start: inv limbs.
+    MultiLimbModularInverse {
         output_start: usize,
-        a_lo:         usize,
-        a_hi:         usize,
+        a_limbs:      Vec<usize>,
         modulus:      [u64; 4],
+        limb_bits:    u32,
+        num_limbs:    u32,
     },
-    /// Prover hint for wide addition quotient: q = floor((a + b) / p).
-    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
-    /// and a constant 256-bit modulus p, computes q ∈ {0, 1}.
+    /// Prover hint for multi-limb addition quotient: q = floor((a + b) / p).
+    /// Given inputs a and b as N-limb vectors, and a constant modulus p,
+    /// computes q ∈ {0, 1}.
     ///
     /// Outputs 1 witness at output: q.
-    WideAddQuotient {
-        output:  usize,
-        a_lo:    usize,
-        a_hi:    usize,
-        b_lo:    usize,
-        b_hi:    usize,
-        modulus: [u64; 4],
+    MultiLimbAddQuotient {
+        output:    usize,
+        a_limbs:   Vec<usize>,
+        b_limbs:   Vec<usize>,
+        modulus:   [u64; 4],
+        limb_bits: u32,
+        num_limbs: u32,
     },
-    /// Prover hint for wide subtraction borrow: q = (a < b) ? 1 : 0.
-    /// Given inputs a = (a_lo, a_hi) and b = (b_lo, b_hi) as 128-bit limbs,
+    /// Prover hint for multi-limb subtraction borrow: q = (a < b) ? 1 : 0.
+    /// Given inputs a and b as N-limb vectors, and a constant modulus p,
     /// computes q ∈ {0, 1} indicating whether a borrow (adding p) is needed.
     ///
     /// Outputs 1 witness at output: q.
-    WideSubBorrow {
-        output: usize,
-        a_lo:   usize,
-        a_hi:   usize,
-        b_lo:   usize,
-        b_hi:   usize,
+    MultiLimbSubBorrow {
+        output:    usize,
+        a_limbs:   Vec<usize>,
+        b_limbs:   Vec<usize>,
+        modulus:   [u64; 4],
+        limb_bits: u32,
+        num_limbs: u32,
     },
     /// Decomposes a packed value into chunks of specified bit-widths.
     /// Given packed value and chunk_bits = [b0, b1, ..., bn]:
@@ -329,8 +332,10 @@ impl WitnessBuilder {
             WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
-            WitnessBuilder::MulModHint { .. } => 20,
-            WitnessBuilder::WideModularInverse { .. } => 2,
+            WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => {
+                (4 * *num_limbs - 2) as usize
+            }
+            WitnessBuilder::MultiLimbModularInverse { num_limbs, .. } => *num_limbs as usize,
 
             _ => 1,
         }

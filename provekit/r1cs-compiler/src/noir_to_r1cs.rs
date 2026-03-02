@@ -3,6 +3,7 @@ use {
         binops::add_combined_binop_constraints,
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
+        msm::add_msm,
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -16,7 +17,6 @@ use {
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
-        BlackBoxFunc,
     },
     anyhow::{bail, Result},
     ark_ff::PrimeField,
@@ -89,6 +89,11 @@ pub struct R1CSBreakdown {
     pub poseidon2_constraints: usize,
     /// Witnesses from Poseidon2 permutation
     pub poseidon2_witnesses:   usize,
+
+    /// Constraints from multi-scalar multiplication
+    pub msm_constraints: usize,
+    /// Witnesses from multi-scalar multiplication
+    pub msm_witnesses:   usize,
 }
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
@@ -458,6 +463,7 @@ impl NoirToR1CSCompiler {
         let mut xor_ops = vec![];
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
+        let mut msm_ops = vec![];
 
         let mut breakdown = R1CSBreakdown::default();
 
@@ -632,7 +638,20 @@ impl NoirToR1CSCompiler {
                         points,
                         scalars,
                         outputs,
-                    } => {}
+                    } => {
+                        let point_wits: Vec<ConstantOrR1CSWitness> = points
+                            .iter()
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .collect();
+                        let scalar_wits: Vec<ConstantOrR1CSWitness> = scalars
+                            .iter()
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .collect();
+                        let out_x = self.fetch_r1cs_witness_index(outputs.0);
+                        let out_y = self.fetch_r1cs_witness_index(outputs.1);
+                        let out_inf = self.fetch_r1cs_witness_index(outputs.2);
+                        msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
+                    }
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
                     }
@@ -723,6 +742,22 @@ impl NoirToR1CSCompiler {
         add_poseidon2_permutation(self, poseidon2_ops);
         breakdown.poseidon2_constraints = self.r1cs.num_constraints() - constraints_before_poseidon;
         breakdown.poseidon2_witnesses = self.num_witnesses() - witnesses_before_poseidon;
+
+        let constraints_before_msm = self.r1cs.num_constraints();
+        let witnesses_before_msm = self.num_witnesses();
+        // Cost model: pick optimal (limb_bits, window_size) for MSM
+        let curve = crate::msm::curve::grumpkin_params();
+        let native_bits = FieldElement::MODULUS_BIT_SIZE;
+        let curve_bits = curve.modulus_bits();
+        let (msm_limb_bits, msm_window_size) = if !msm_ops.is_empty() {
+            let n_points: usize = msm_ops.iter().map(|(pts, _, _)| pts.len() / 3).sum();
+            crate::msm::cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, 256)
+        } else {
+            (native_bits, 4)
+        };
+        add_msm(self, msm_ops, msm_limb_bits, msm_window_size, &mut range_checks, &curve);
+        breakdown.msm_constraints = self.r1cs.num_constraints() - constraints_before_msm;
+        breakdown.msm_witnesses = self.num_witnesses() - witnesses_before_msm;
 
         breakdown.range_ops_total = range_checks.values().map(|v| v.len()).sum();
         let constraints_before_range = self.r1cs.num_constraints();
