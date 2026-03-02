@@ -5,6 +5,7 @@ use {
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
+    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     std::array,
     tracing::instrument,
 };
@@ -223,18 +224,4 @@ pub fn multiply_transposed_by_eq_alpha(
         || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
     [a, b, c]
-}
-
-/// Calculates a random row of R1CS matrix extension. Made possible due to
-/// sparseness.
-///
-/// Computes `eq(alpha, ·) * [A, B, C]` using transposed matrices for
-/// parallel right-multiplication instead of sequential left-multiplication.
-#[instrument(skip_all)]
-pub fn calculate_external_row_of_r1cs_matrices(
-    alpha: &[FieldElement],
-    r1cs: &R1CS,
-) -> [Vec<FieldElement>; 3] {
-    let (at, bt, ct) = transpose_r1cs_matrices(r1cs);
-    multiply_transposed_by_eq_alpha(&at, &bt, &ct, alpha, r1cs)
 }

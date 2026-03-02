@@ -90,7 +90,7 @@ jobs:
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           cargo run --release --bin provekit-cli generate-gnark-inputs \
-            ./benchmark-inputs/t_attest-prover.pkp \
+            ./benchmark-inputs/t_attest-verifier.pkv \
             ./benchmark-inputs/t_attest-proof.np
           
       - name: Run Gnark verifier 

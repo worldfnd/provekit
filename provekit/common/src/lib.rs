@@ -18,9 +18,9 @@ use crate::{
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
-    noir_proof_scheme::{NoirProof, NoirProofScheme},
+    noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
-    prover::Prover,
+    prover::{MavrosProver, NoirProver, Prover},
     r1cs::R1CS,
     verifier::Verifier,
     whir_r1cs::{

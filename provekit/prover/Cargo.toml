@@ -8,6 +8,9 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
@@ -32,6 +35,8 @@ postcard.workspace = true
 rand.workspace = true
 rayon.workspace = true
 tracing.workspace = true
+mavros-vm.workspace = true
+mavros-artifacts.workspace = true
 
 [lints]
 workspace = true

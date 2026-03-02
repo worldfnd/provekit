@@ -4,9 +4,9 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{NoirProofScheme, Prover, Verifier},
+    provekit_common::{Prover, Verifier},
     provekit_prover::Prove,
-    provekit_r1cs_compiler::NoirProofSchemeBuilder,
+    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_verifier::Verify,
     serde::Deserialize,
     std::path::Path,
@@ -23,7 +23,7 @@ struct NargoTomlPackage {
     name: String,
 }
 
-fn test_compiler(test_case_path: impl AsRef<Path>) {
+fn test_noir_compiler(test_case_path: impl AsRef<Path>) {
     let test_case_path = test_case_path.as_ref();
 
     compile_workspace(test_case_path).expect("Compiling workspace");
@@ -38,7 +38,7 @@ fn test_compiler(test_case_path: impl AsRef<Path>) {
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
     let witness_file_path = test_case_path.join("Prover.toml");
 
-    let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+    let schema = NoirCompiler::from_file(&circuit_path).expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -57,8 +57,6 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
         workspace_path.join("Nargo.toml")
     };
 
-    // `resolve_workspace_from_toml` calls .normalize() under the hood which messes
-    // up path resolution
     let workspace_path = workspace_path.canonicalize()?;
 
     let workspace =
@@ -83,6 +81,6 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
 #[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
-fn case(path: &str) {
-    test_compiler(path);
+fn case_noir(path: &str) {
+    test_noir_compiler(path);
 }

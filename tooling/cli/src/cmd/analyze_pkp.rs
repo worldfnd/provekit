@@ -7,7 +7,7 @@ use {
     tracing::instrument,
 };
 
-/// Analyze the size breakdown of a PKP file
+/// Analyze the size breakdown of a PKP file (Noir only)
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "analyze-pkp")]
 pub struct Args {
@@ -21,23 +21,25 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         let prover: Prover = read(&self.pkp_path).context("while reading PKP file")?;
 
-        let program_size = postcard::to_allocvec(&prover.program)
+        let Prover::Noir(p) = prover else {
+            anyhow::bail!("analyze-pkp is not currently supported for Mavros compiler");
+        };
+
+        let program_size = postcard::to_allocvec(&p.program)
             .map(|v| v.len())
             .unwrap_or(0);
-        let r1cs_size = postcard::to_allocvec(&prover.r1cs)
+        let r1cs_size = postcard::to_allocvec(&p.r1cs).map(|v| v.len()).unwrap_or(0);
+        let split_witness_builders_size = postcard::to_allocvec(&p.split_witness_builders)
             .map(|v| v.len())
             .unwrap_or(0);
-        let split_witness_builders_size = postcard::to_allocvec(&prover.split_witness_builders)
+        let witness_generator_size = postcard::to_allocvec(&p.witness_generator)
             .map(|v| v.len())
             .unwrap_or(0);
-        let witness_generator_size = postcard::to_allocvec(&prover.witness_generator)
-            .map(|v| v.len())
-            .unwrap_or(0);
-        let whir_for_witness_size = postcard::to_allocvec(&prover.whir_for_witness)
+        let whir_for_witness_size = postcard::to_allocvec(&p.whir_for_witness)
             .map(|v| v.len())
             .unwrap_or(0);
 
-        let total_size = postcard::to_allocvec(&prover).map(|v| v.len()).unwrap_or(0);
+        let total_size = postcard::to_allocvec(&p).map(|v| v.len()).unwrap_or(0);
 
         println!("PKP Size Analysis:");
         println!("==================");
@@ -72,16 +74,16 @@ impl Command for Args {
         println!("  Total:                    {:>12} bytes", total_size);
         println!();
 
-        let interner_size = postcard::to_allocvec(&prover.r1cs.interner)
+        let interner_size = postcard::to_allocvec(&p.r1cs.interner)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_a_size = postcard::to_allocvec(&prover.r1cs.a)
+        let matrix_a_size = postcard::to_allocvec(&p.r1cs.a)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_b_size = postcard::to_allocvec(&prover.r1cs.b)
+        let matrix_b_size = postcard::to_allocvec(&p.r1cs.b)
             .map(|v| v.len())
             .unwrap_or(0);
-        let matrix_c_size = postcard::to_allocvec(&prover.r1cs.c)
+        let matrix_c_size = postcard::to_allocvec(&p.r1cs.c)
             .map(|v| v.len())
             .unwrap_or(0);
 
@@ -108,9 +110,9 @@ impl Command for Args {
         );
         println!();
 
-        let stats_a = prover.r1cs.a.delta_encoding_stats();
-        let stats_b = prover.r1cs.b.delta_encoding_stats();
-        let stats_c = prover.r1cs.c.delta_encoding_stats();
+        let stats_a = p.r1cs.a.delta_encoding_stats();
+        let stats_b = p.r1cs.b.delta_encoding_stats();
+        let stats_c = p.r1cs.c.delta_encoding_stats();
 
         let total_absolute =
             stats_a.absolute_bytes + stats_b.absolute_bytes + stats_c.absolute_bytes;
@@ -144,10 +146,10 @@ impl Command for Args {
         );
         println!();
 
-        let w1_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w1_layers)
+        let w1_layers_size = postcard::to_allocvec(&p.split_witness_builders.w1_layers)
             .map(|v| v.len())
             .unwrap_or(0);
-        let w2_layers_size = postcard::to_allocvec(&prover.split_witness_builders.w2_layers)
+        let w2_layers_size = postcard::to_allocvec(&p.split_witness_builders.w2_layers)
             .map(|v| v.len())
             .unwrap_or(0);
 
@@ -167,19 +169,16 @@ impl Command for Args {
         println!("Circuit statistics:");
         println!(
             "  Constraints:              {:>12}",
-            prover.r1cs.num_constraints()
+            p.r1cs.num_constraints()
         );
-        println!(
-            "  Witnesses:                {:>12}",
-            prover.r1cs.num_witnesses()
-        );
+        println!("  Witnesses:                {:>12}", p.r1cs.num_witnesses());
         println!(
             "  Public inputs:            {:>12}",
-            prover.r1cs.num_public_inputs
+            p.r1cs.num_public_inputs
         );
         println!();
 
-        let bytes_per_constraint = total_size as f64 / prover.r1cs.num_constraints() as f64;
+        let bytes_per_constraint = total_size as f64 / p.r1cs.num_constraints() as f64;
         println!(
             "Efficiency: {:.2} bytes/constraint (uncompressed)",
             bytes_per_constraint
