@@ -3,7 +3,7 @@
 use {
     super::{memory::describe_block_type, stats_collector::CircuitStats},
     acir::{circuit::Circuit, FieldElement},
-    provekit_common::R1CS,
+    provekit_common::{optimize::OptimizationStats, R1CS},
     provekit_r1cs_compiler::R1CSBreakdown,
     std::collections::HashMap,
 };
@@ -439,5 +439,67 @@ fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
         r1cs.b.num_entries(),
         r1cs.c.num_entries()
     );
+    println!();
+}
+
+pub(super) fn print_ge_optimization(
+    original_r1cs: &R1CS,
+    optimized_r1cs: &R1CS,
+    stats: &OptimizationStats,
+) {
+    println!("\n╔═══════════════════════════════════════════════════════════════╗");
+    println!("║           Gaussian Elimination Optimization                   ║");
+    println!("╚═══════════════════════════════════════════════════════════════╝");
+
+    println!("\n┌─ Before Optimization");
+    println!(
+        "│  Constraints:  {:>8}  (2^{:.2})",
+        original_r1cs.num_constraints(),
+        (original_r1cs.num_constraints() as f64).log2()
+    );
+    println!(
+        "│  Witnesses:    {:>8}  (2^{:.2})",
+        original_r1cs.num_witnesses(),
+        (original_r1cs.num_witnesses() as f64).log2()
+    );
+    println!("│  A entries:    {:>8}", original_r1cs.a.num_entries());
+    println!("│  B entries:    {:>8}", original_r1cs.b.num_entries());
+    println!("│  C entries:    {:>8}", original_r1cs.c.num_entries());
+    println!("└{}", SUBSECTION);
+
+    println!("\n┌─ After Optimization");
+    println!(
+        "│  Constraints:  {:>8}  (2^{:.2})",
+        optimized_r1cs.num_constraints(),
+        (optimized_r1cs.num_constraints() as f64).log2()
+    );
+    println!(
+        "│  Witnesses:    {:>8}  (2^{:.2})",
+        optimized_r1cs.num_witnesses(),
+        (optimized_r1cs.num_witnesses() as f64).log2()
+    );
+    println!("│  A entries:    {:>8}", optimized_r1cs.a.num_entries());
+    println!("│  B entries:    {:>8}", optimized_r1cs.b.num_entries());
+    println!("│  C entries:    {:>8}", optimized_r1cs.c.num_entries());
+    println!("└{}", SUBSECTION);
+
+    println!("\n{}", SEPARATOR);
+    println!(
+        "ELIMINATED:          {:>8}  linear constraints substituted",
+        stats.eliminated
+    );
+    println!(
+        "CONSTRAINT REDUCTION: {:>7.2}%  ({} -> {})",
+        stats.constraint_reduction_percent(),
+        stats.constraints_before,
+        stats.constraints_after
+    );
+    println!(
+        "WITNESS REDUCTION:    {:>7.2}%  ({} -> {})",
+        stats.witness_reduction_percent(),
+        stats.witnesses_before,
+        stats.witnesses_after
+    );
+    println!("{}", SEPARATOR);
     println!();
 }

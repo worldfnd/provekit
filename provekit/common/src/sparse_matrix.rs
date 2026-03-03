@@ -390,7 +390,7 @@ impl SparseMatrix {
         })
     }
 
-    fn row_range(&self, row: usize) -> Range<usize> {
+    pub fn row_range(&self, row: usize) -> Range<usize> {
         let start = *self
             .new_row_indices
             .get(row)
@@ -500,6 +500,91 @@ impl SparseMatrix {
             self.col_indices.push(col);
             self.values.push(value);
         }
+    }
+
+    /// Check if a row has exactly one entry and it's at the given column.
+    pub fn row_is_single_entry_at_col(&self, row: usize, col: usize) -> bool {
+        let range = self.row_range(row);
+        range.len() == 1 && self.col_indices[range.start] == col as u32
+    }
+
+    /// Check if a row has no entries.
+    pub fn row_is_empty(&self, row: usize) -> bool {
+        self.row_range(row).is_empty()
+    }
+
+    /// Get the value at (row, col), or None if not present.
+    pub fn get(&self, row: usize, col: usize) -> Option<InternedFieldElement> {
+        let range = self.row_range(row);
+        let cols = &self.col_indices[range.clone()];
+        match cols.binary_search(&(col as u32)) {
+            Ok(i) => Some(self.values[range.start + i]),
+            Err(_) => None,
+        }
+    }
+
+    /// Get all (col, value) entries for a row as a Vec.
+    pub fn get_row_entries(&self, row: usize) -> Vec<(usize, InternedFieldElement)> {
+        self.iter_row(row).collect()
+    }
+
+    /// Replace a row's entries entirely. The new entries must be sorted by
+    /// column.
+    pub fn replace_row(&mut self, row: usize, entries: &[(usize, InternedFieldElement)]) {
+        let range = self.row_range(row);
+        let old_len = range.len();
+        let new_len = entries.len();
+
+        let new_cols: Vec<u32> = entries.iter().map(|(c, _)| *c as u32).collect();
+        let new_vals: Vec<InternedFieldElement> = entries.iter().map(|(_, v)| *v).collect();
+
+        self.col_indices.splice(range.clone(), new_cols);
+        self.values.splice(range.clone(), new_vals);
+
+        let diff = new_len as i64 - old_len as i64;
+        if diff != 0 {
+            for index in &mut self.new_row_indices[row + 1..] {
+                *index = (*index as i64 + diff) as u32;
+            }
+        }
+    }
+
+    /// Remove rows at the given sorted indices. Returns a new matrix.
+    pub fn remove_rows(&self, rows_to_remove: &[usize]) -> SparseMatrix {
+        let remove_set: std::collections::HashSet<usize> = rows_to_remove.iter().copied().collect();
+        let new_num_rows = self.num_rows - rows_to_remove.len();
+
+        let mut new_row_indices = Vec::with_capacity(new_num_rows);
+        let mut new_col_indices = Vec::new();
+        let mut new_values = Vec::new();
+
+        for row in 0..self.num_rows {
+            if remove_set.contains(&row) {
+                continue;
+            }
+            new_row_indices.push(new_col_indices.len() as u32);
+            let range = self.row_range(row);
+            new_col_indices.extend_from_slice(&self.col_indices[range.clone()]);
+            new_values.extend_from_slice(&self.values[range]);
+        }
+
+        SparseMatrix {
+            num_rows: new_num_rows,
+            num_cols: self.num_cols,
+            new_row_indices,
+            col_indices: new_col_indices,
+            values: new_values,
+        }
+    }
+
+    /// Count how many rows reference each column. Returns a Vec of length
+    /// num_cols.
+    pub fn column_occurrence_count(&self) -> Vec<usize> {
+        let mut counts = vec![0usize; self.num_cols];
+        for &col in &self.col_indices {
+            counts[col as usize] += 1;
+        }
+        counts
     }
 }
 

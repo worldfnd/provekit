@@ -2,6 +2,7 @@ pub mod file;
 pub mod hash_config;
 mod interner;
 mod noir_proof_scheme;
+pub mod optimize;
 pub mod prefix_covector;
 mod prover;
 mod r1cs;
