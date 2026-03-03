@@ -1,6 +1,6 @@
 use {
     super::BufExt as _,
-    crate::utils::human,
+    crate::{utils::human, HashConfig},
     anyhow::{ensure, Context as _, Result},
     bytes::{Buf, BufMut as _, Bytes, BytesMut},
     serde::{Deserialize, Serialize},
@@ -12,8 +12,13 @@ use {
     tracing::{info, instrument},
 };
 
-const HEADER_SIZE: usize = 20;
+/// Header layout: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1) =
+/// 21 bytes
+const HEADER_SIZE: usize = 21;
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
+/// Byte offset where hash config is stored: MAGIC(8) + FORMAT(8) + MAJOR(2) +
+/// MINOR(2) = 20
+const HASH_CONFIG_OFFSET: usize = 20;
 
 /// Zstd magic number: `28 B5 2F FD`.
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
@@ -36,6 +41,7 @@ pub fn write_bin<T: Serialize>(
     format: [u8; 8],
     (major, minor): (u16, u16),
     compression: Compression,
+    hash_config: Option<HashConfig>,
 ) -> Result<()> {
     let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
     let uncompressed = postcard_data.len();
@@ -57,11 +63,14 @@ pub fn write_bin<T: Serialize>(
 
     let mut file = File::create(path).context("while creating output file")?;
 
+    // Write header: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1)
     let mut header = BytesMut::with_capacity(HEADER_SIZE);
     header.put(MAGIC_BYTES);
     header.put(&format[..]);
     header.put_u16_le(major);
     header.put_u16_le(minor);
+    header.put_u8(hash_config.map(|c| c.to_byte()).unwrap_or(0xff));
+
     file.write_all(&header).context("while writing header")?;
 
     file.write_all(&compressed_data)
@@ -82,6 +91,40 @@ pub fn write_bin<T: Serialize>(
         human(compressed as f64)
     );
     Ok(())
+}
+
+/// Read just the hash_config from the file header (byte 20).
+#[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
+pub fn read_hash_config(
+    path: &Path,
+    format: [u8; 8],
+    (major, minor): (u16, u16),
+) -> Result<HashConfig> {
+    let mut file = File::open(path).context("while opening input file")?;
+
+    // Read header
+    let mut buffer = [0; HEADER_SIZE];
+    file.read_exact(&mut buffer)
+        .context("while reading header")?;
+    let mut header = Bytes::from_owner(buffer);
+
+    ensure!(
+        header.get_bytes::<8>() == MAGIC_BYTES,
+        "Invalid magic bytes"
+    );
+    ensure!(header.get_bytes::<8>() == format, "Invalid format");
+
+    let file_major = header.get_u16_le();
+    let file_minor = header.get_u16_le();
+
+    ensure!(file_major == major, "Incompatible format major version");
+    ensure!(file_minor >= minor, "Incompatible format minor version");
+
+    // Read hash_config at HASH_CONFIG_OFFSET (byte 20)
+    debug_assert_eq!(header.remaining(), HEADER_SIZE - HASH_CONFIG_OFFSET);
+    let hash_config_byte = header.get_u8();
+    HashConfig::from_byte(hash_config_byte)
+        .with_context(|| format!("Invalid hash config byte: 0x{:02X}", hash_config_byte))
 }
 
 /// Read a compressed binary file, auto-detecting zstd or XZ compression.
@@ -110,6 +153,9 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
         header.get_u16_le() >= minor,
         "Incompatible format minor version"
     );
+
+    // Skip hash_config byte (can be read separately via read_hash_config if needed)
+    let _hash_config_byte = header.get_u8();
 
     let uncompressed = decompress_stream(&mut file)?;
 

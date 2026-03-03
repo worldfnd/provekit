@@ -25,7 +25,7 @@ impl NoirCompiler {
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
-        Self::from_program(program)
+        Self::from_program(program, hash_config)
     }
 
     #[instrument(skip_all)]
@@ -82,6 +82,7 @@ impl NoirCompiler {
             split_witness_builders.w1_size,
             num_challenges,
             has_public_inputs,
+            hash_config.engine_id(),
         );
 
         Ok(NoirProofScheme::Noir(NoirSchemeData {

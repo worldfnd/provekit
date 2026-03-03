@@ -8,7 +8,8 @@ use {
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         },
-        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, HashConfig, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme,
+        R1CS,
     },
     tracing::instrument,
     whir::{
@@ -30,6 +31,7 @@ pub trait WhirR1CSVerifier {
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
+        hash_config: HashConfig,
     ) -> Result<()>;
 }
 
@@ -40,6 +42,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
+        hash_config: HashConfig,
     ) -> Result<()> {
         let ds = self.create_domain_separator().instance(&Empty);
         let whir_proof = Proof {
@@ -48,7 +51,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             #[cfg(debug_assertions)]
             pattern: proof.pattern.clone(),
         };
-        let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
+        let mut arthur =
+            VerifierState::new(&ds, &whir_proof, TranscriptSponge::from_config(hash_config));
 
         let commitment_1 = self
             .whir_witness

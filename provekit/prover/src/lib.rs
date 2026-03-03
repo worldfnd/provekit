@@ -81,12 +81,12 @@ impl Prove for NoirProver {
         let num_witnesses = compressed_r1cs.num_witnesses();
         let num_constraints = compressed_r1cs.num_constraints();
 
-        // Set up transcript
+        // Set up transcript with sponge selected by hash_config.
         let ds = self
             .whir_for_witness
             .create_domain_separator()
             .instance(&Empty);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
 

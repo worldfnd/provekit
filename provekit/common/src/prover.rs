@@ -3,7 +3,7 @@ use {
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement, R1CS,
+        HashConfig, NoirElement, R1CS,
     },
     acir::circuit::Program,
     mavros_vm::{ConstraintsLayout, WitnessLayout},
