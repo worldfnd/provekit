@@ -31,6 +31,8 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
+        env:
+          RUSTFLAGS: "-C debug-assertions=yes"
       - run: cargo build --all-targets --all-features --verbose
       - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
       - run: cargo test --doc --all-features --verbose
