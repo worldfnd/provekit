@@ -152,3 +152,95 @@ fn decompress_stream(reader: &mut BufReader<File>) -> Result<Vec<u8>> {
 
     Ok(out)
 }
+
+pub fn read_bin_from_bytes<T: for<'a> Deserialize<'a>>(
+    bytes: &[u8],
+    format: [u8; 8],
+    (major, minor): (u16, u16),
+) -> Result<T> {
+    ensure!(bytes.len() >= HEADER_SIZE, "Input too small for header");
+
+    let mut header = Bytes::copy_from_slice(&bytes[..HEADER_SIZE]);
+    ensure!(
+        header.get_bytes::<8>() == MAGIC_BYTES,
+        "Invalid magic bytes"
+    );
+    ensure!(header.get_bytes::<8>() == format, "Invalid format");
+    ensure!(
+        header.get_u16_le() == major,
+        "Incompatible format major version"
+    );
+    ensure!(
+        header.get_u16_le() >= minor,
+        "Incompatible format minor version"
+    );
+
+    let compressed_data = &bytes[HEADER_SIZE..];
+    let uncompressed = decompress_bytes(compressed_data)?;
+
+    postcard::from_bytes(&uncompressed).context("while decoding from postcard")
+}
+
+pub fn write_bin_to_bytes<T: Serialize>(
+    value: &T,
+    format: [u8; 8],
+    (major, minor): (u16, u16),
+    compression: Compression,
+) -> Result<Vec<u8>> {
+    let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
+
+    let compressed_data = match compression {
+        Compression::Zstd => {
+            zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?
+        }
+        Compression::Xz => {
+            let mut buf = Vec::new();
+            let mut encoder = xz2::write::XzEncoder::new(&mut buf, 6);
+            encoder
+                .write_all(&postcard_data)
+                .context("while compressing with xz")?;
+            encoder.finish().context("while finishing xz stream")?;
+            buf
+        }
+    };
+
+    let mut result = BytesMut::with_capacity(HEADER_SIZE + compressed_data.len());
+    result.put(MAGIC_BYTES);
+    result.put(&format[..]);
+    result.put_u16_le(major);
+    result.put_u16_le(minor);
+    result.put(&compressed_data[..]);
+
+    Ok(result.to_vec())
+}
+
+fn decompress_bytes(data: &[u8]) -> Result<Vec<u8>> {
+    use std::io::Read;
+
+    ensure!(data.len() >= 6, "Data too small to detect compression format");
+
+    let is_zstd = data[..4] == ZSTD_MAGIC;
+    let is_xz = data[..6] == XZ_MAGIC;
+
+    let mut out = Vec::new();
+    if is_zstd {
+        // Use streaming decompression (more reliable than bulk)
+        let mut decoder = zstd::Decoder::new(std::io::Cursor::new(data))
+            .context("while initializing zstd decoder")?;
+        decoder
+            .read_to_end(&mut out)
+            .context("while decompressing zstd data")?;
+    } else if is_xz {
+        let mut decoder = xz2::read::XzDecoder::new(data);
+        decoder
+            .read_to_end(&mut out)
+            .context("while decompressing XZ data")?;
+    } else {
+        anyhow::bail!(
+            "Unknown compression format (first bytes: {:02X?})",
+            &data[..data.len().min(6)]
+        )
+    }
+
+    Ok(out)
+}

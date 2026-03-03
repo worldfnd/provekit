@@ -1,0 +1,4 @@
+module ProveKitFFI {
+    header "provekit_ffi.h"
+    export *
+}

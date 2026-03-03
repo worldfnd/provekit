@@ -12,17 +12,16 @@ repository.workspace = true
 crate-type = ["staticlib"]
 
 [dependencies]
-# Workspace crates
 provekit-common.workspace = true
 provekit-prover.workspace = true
+provekit-verifier.workspace = true
 
-# Noir language
 acir.workspace = true
 noirc_abi.workspace = true
 
-# 3rd party
 anyhow.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 parking_lot = "0.12"
 
 [target.'cfg(unix)'.dependencies]

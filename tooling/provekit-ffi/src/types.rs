@@ -38,22 +38,17 @@ impl PKBuf {
 #[repr(C)]
 #[derive(Debug)]
 pub enum PKError {
-    /// Success
-    Success            = 0,
-    /// Invalid input parameters (null pointers, etc.)
-    InvalidInput       = 1,
-    /// Failed to read scheme file
-    SchemeReadError    = 2,
-    /// Failed to read witness/input file
-    WitnessReadError   = 3,
-    /// Failed to generate proof
-    ProofError         = 4,
-    /// Failed to serialize output
-    SerializationError = 5,
-    /// UTF-8 conversion error
-    Utf8Error          = 6,
-    /// File write error
-    FileWriteError     = 7,
+    Success              = 0,
+    InvalidInput         = 1,
+    SchemeReadError      = 2,
+    WitnessReadError     = 3,
+    ProofError           = 4,
+    SerializationError   = 5,
+    Utf8Error            = 6,
+    FileWriteError       = 7,
+    VerificationFailed   = 8,
+    VerifierConsumed     = 9,
+    DeserializationError = 10,
 }
 
 impl From<PKError> for c_int {

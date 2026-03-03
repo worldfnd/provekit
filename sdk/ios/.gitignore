@@ -1,0 +1,24 @@
+# Build artifacts
+ProveKitSDK/.build/
+ProveKitSDK/ProveKitFFI.xcframework/
+
+# Xcode
+*.xcodeproj/
+!Examples/**/*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# Test fixtures (binary files - regenerate with build script)
+ProveKitSDK/Tests/ProveKitSDKTests/Fixtures/*.pkp
+ProveKitSDK/Tests/ProveKitSDKTests/Fixtures/*.pkv
+ProveKitSDK/Tests/ProveKitSDKTests/Fixtures/*.np

@@ -25,9 +25,9 @@
 
 pub mod ffi;
 mod ffi_allocator;
+pub mod handles;
 pub mod mmap_allocator;
 pub mod types;
 pub mod utils;
 
-// Re-export public types and functions for convenience
-pub use {ffi::*, types::*};
+pub use {ffi::*, handles::*, types::*};

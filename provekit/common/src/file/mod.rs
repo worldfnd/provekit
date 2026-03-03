@@ -5,7 +5,7 @@ mod json;
 
 use {
     self::{
-        bin::{read_bin, write_bin, Compression},
+        bin::{read_bin, read_bin_from_bytes, write_bin, write_bin_to_bytes, Compression},
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
@@ -79,4 +79,12 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
             T::EXTENSION
         )),
     }
+}
+
+pub fn read_from_bytes<T: FileFormat>(bytes: &[u8]) -> Result<T> {
+    read_bin_from_bytes(bytes, T::FORMAT, T::VERSION)
+}
+
+pub fn write_to_bytes<T: FileFormat>(value: &T) -> Result<Vec<u8>> {
+    write_bin_to_bytes(value, T::FORMAT, T::VERSION, T::COMPRESSION)
 }
