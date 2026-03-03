@@ -21,6 +21,11 @@ jobs:
   end-to-end:
     name: End-to-end tests
     runs-on: [self-hosted, Linux, ARM64, provekit-build]
+    env:
+      # Override config.toml rustflags to disable debug-assertions for release builds.
+      # This prevents whir's debug-only pattern field from causing runtime assertions.
+      # Keep opt-level=2 to work around LLVM miscompilation bug (issue #304).
+      RUSTFLAGS: "-C opt-level=2"
     steps:
       - uses: actions/checkout@v4
 
