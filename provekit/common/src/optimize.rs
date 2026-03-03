@@ -9,7 +9,7 @@
 //!   5. Remove eliminated constraints
 
 use {
-    crate::{FieldElement, InternedFieldElement, SparseMatrix, R1CS},
+    crate::{witness::WitnessBuilder, FieldElement, InternedFieldElement, SparseMatrix, R1CS},
     ark_ff::Field,
     ark_std::{One, Zero},
     std::collections::{HashMap, HashSet},
@@ -28,10 +28,12 @@ struct Substitution {
 
 /// Statistics from the optimization pass.
 pub struct OptimizationStats {
-    pub constraints_before: usize,
-    pub constraints_after:  usize,
-    pub eliminated:         usize,
-    pub eliminated_columns: HashSet<usize>,
+    pub constraints_before:  usize,
+    pub constraints_after:   usize,
+    pub witnesses_before:    usize,
+    pub witnesses_after:     usize,
+    pub eliminated:          usize,
+    pub eliminated_columns:  HashSet<usize>,
 }
 
 impl OptimizationStats {
@@ -42,6 +44,13 @@ impl OptimizationStats {
         (self.constraints_before - self.constraints_after) as f64 / self.constraints_before as f64
             * 100.0
     }
+
+    pub fn witness_reduction_percent(&self) -> f64 {
+        if self.witnesses_before == 0 {
+            return 0.0;
+        }
+        (self.witnesses_before - self.witnesses_after) as f64 / self.witnesses_before as f64 * 100.0
+    }
 }
 
 /// Run the Gaussian elimination optimization on an R1CS instance.
@@ -51,8 +60,12 @@ impl OptimizationStats {
 /// eliminated rows.
 ///
 /// Column 0 (constant one) is never chosen as a pivot.
-pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
+pub fn optimize_r1cs(
+    r1cs: &mut R1CS,
+    _witness_builders: &mut [WitnessBuilder],
+) -> OptimizationStats {
     let constraints_before = r1cs.num_constraints();
+    let witnesses_before = r1cs.num_witnesses();
 
     // Column 0 is the constant-one column and must not be eliminated.
     let mut forbidden: HashSet<usize> = HashSet::new();
@@ -86,7 +99,7 @@ pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
     let mut sub_map_phase2: HashMap<usize, usize> = HashMap::new();
 
     for &row in &linear_rows {
-        // Extract the combined linear expression (const * A/B - C) for this constraint
+          // Extract the combined linear expression (const * A/B - C) for this constraint
         let expr = r1cs.extract_linear_expression(row);
         if expr.is_empty() {
             continue;
@@ -157,10 +170,11 @@ pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
             .map(|(col, val)| (val, col))
             .collect();
 
-        // Approximate decrement: occurrence_counts was built from raw A+B+C
+   // Approximate decrement: occurrence_counts was built from raw A+B+C
         // entries, but we decrement once per column in the combined expression.
         // A column appearing in multiple matrices is undercounted here. Only
         // affects pivot-selection heuristic quality, not correctness.
+
         for (_, col) in &expr {
             if occurrence_counts[*col] > 0 {
                 occurrence_counts[*col] -= 1;
@@ -183,6 +197,8 @@ pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
         return OptimizationStats {
             constraints_before,
             constraints_after: constraints_before,
+            witnesses_before,
+            witnesses_after: witnesses_before,
             eliminated: 0,
             eliminated_columns: HashSet::new(),
         };
@@ -261,7 +277,8 @@ pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
     }
 
     // Phase 4: Remove eliminated constraint rows
-    r1cs.remove_constraints(&eliminated_rows);
+  r1cs.remove_constraints(&eliminated_rows);
+
 
     // Note: We do NOT modify witness builders. The witnesses are still
     // computed by their original builders. GE only removes redundant
@@ -270,9 +287,15 @@ pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
+    // witnesses_after = witnesses_before since we don't actually remove columns,
+    // just make some witnesses derived. The column count doesn't change.
+    let witnesses_after = witnesses_before;
+
     let stats = OptimizationStats {
         constraints_before,
         constraints_after,
+        witnesses_before,
+        witnesses_after,
         eliminated,
         eliminated_columns: eliminated_cols,
     };
@@ -442,7 +465,7 @@ mod tests {
 
         assert_eq!(r1cs.num_constraints(), 2);
 
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
 
         // Constraint 0 should be eliminated (it's linear)
         assert_eq!(stats.constraints_after, 1);
@@ -485,7 +508,7 @@ mod tests {
         assert_r1cs_satisfied(&r1cs, &witness);
 
         assert_eq!(r1cs.num_constraints(), 3);
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
 
         assert_eq!(stats.eliminated, 2);
         assert_eq!(stats.constraints_after, 1);
@@ -528,7 +551,7 @@ mod tests {
         assert_r1cs_satisfied(&r1cs, &witness);
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
 
         assert_eq!(stats.eliminated, 4);
         assert_eq!(stats.constraints_after, 1);
@@ -574,7 +597,7 @@ mod tests {
         assert_r1cs_satisfied(&r1cs, &witness);
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
 
         assert_eq!(stats.eliminated, 2);
         assert_eq!(stats.constraints_after, 3);
@@ -614,7 +637,7 @@ mod tests {
 
         assert_r1cs_satisfied(&r1cs, &witness);
 
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
         assert_eq!(stats.eliminated, 2);
         assert_no_dangling_pivots(&r1cs, &stats);
         assert_r1cs_satisfied(&r1cs, &witness);
@@ -675,7 +698,7 @@ mod tests {
 
         assert_r1cs_satisfied(&r1cs, &witness);
 
-        let stats = optimize_r1cs(&mut r1cs);
+        let stats = optimize_r1cs(&mut r1cs, &mut []);
 
         // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
         // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.
