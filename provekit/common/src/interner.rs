@@ -39,4 +39,13 @@ impl Interner {
     pub fn get(&self, el: InternedFieldElement) -> Option<FieldElement> {
         self.values.get(el.0).copied()
     }
+
+    /// Look up a value without inserting. Returns the InternedFieldElement if
+    /// found.
+    pub fn get_or_none(&self, value: FieldElement) -> Option<InternedFieldElement> {
+        self.values
+            .iter()
+            .position(|v| *v == value)
+            .map(InternedFieldElement)
+    }
 }
