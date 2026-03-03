@@ -809,7 +809,7 @@ mod tests {
 
     fn test_fixtures_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../noir-examples/basic")
+            .join("../../noir-examples/basic-2")
     }
 
     fn prover_path() -> PathBuf {
