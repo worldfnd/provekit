@@ -67,28 +67,28 @@ impl MaybeHashAware for NoirProofScheme {
 impl FileFormat for NoirProofScheme {
     const FORMAT: [u8; 8] = *b"NrProScm";
     const EXTENSION: &'static str = "nps";
-    const VERSION: (u16, u16) = (1, 1);
+    const VERSION: (u16, u16) = (1, 2);
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
 impl FileFormat for Prover {
     const FORMAT: [u8; 8] = *b"PrvKitPr";
     const EXTENSION: &'static str = "pkp";
-    const VERSION: (u16, u16) = (1, 1);
+    const VERSION: (u16, u16) = (1, 2);
     const COMPRESSION: Compression = Compression::Xz;
 }
 
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
-    const VERSION: (u16, u16) = (1, 2);
+    const VERSION: (u16, u16) = (1, 3);
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
 impl FileFormat for NoirProof {
     const FORMAT: [u8; 8] = *b"NPSProof";
     const EXTENSION: &'static str = "np";
-    const VERSION: (u16, u16) = (1, 0);
+    const VERSION: (u16, u16) = (1, 1);
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
