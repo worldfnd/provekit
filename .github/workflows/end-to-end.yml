@@ -27,12 +27,14 @@ jobs:
       - name: Setup Rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly-2025-04-05
+          channel: nightly-2025-10-20
           cache-base: main
           components: rustfmt, clippy
 
+      - name: Clean stale artifacts
+        run: cargo clean
       - name: Build all Rust targets
-        run: cargo build --all-targets --all-features --verbose
+        run: cargo build --all-targets --all-features --release --verbose
 
       - uses: noir-lang/noirup@v0.1.2
         with:
@@ -51,6 +53,12 @@ jobs:
             nargo compile --force --print-acir --package "$circuit"
             echo "Compiled $circuit"
           done
+
+      - name: Clean stale benchmark artifacts
+        working-directory: noir-examples/noir-passport/merkle_age_check
+        run: |
+          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np
+          echo "Cleaned stale benchmark artifacts"
 
       - name: Prepare circuits 
         working-directory: noir-examples/noir-passport/merkle_age_check
@@ -93,37 +101,39 @@ jobs:
             ./benchmark-inputs/t_attest-verifier.pkv \
             ./benchmark-inputs/t_attest-proof.np
           
-      - name: Run Gnark verifier 
-        working-directory: recursive-verifier
-        run: |
-          go build -o gnark-verifier cmd/cli/main.go
 
-          # Set up cleanup trap
-          cleanup() {
-            if [ ! -z "$MONITOR_PID" ]; then
-              kill $MONITOR_PID 2>/dev/null || true
-            fi
-          }
-          trap cleanup EXIT
+      # Disabled gnark, check https://github.com/worldfnd/provekit/issues/302
+      # - name: Run Gnark verifier 
+      #   working-directory: recursive-verifier
+      #   run: |
+      #     go build -o gnark-verifier cmd/cli/main.go
 
-          # Start monitoring in background
-          (
-            while true; do
-              echo "=== $(date) ==="
-              echo "Memory:"
-              free -h
-              echo "Disk:"
-              df -h
-              echo "Processes:"
-              ps aux --sort=-%mem | head -5
-              echo "=================="
-              sleep 10  # Check every 10 seconds
-            done
-          ) &
-          MONITOR_PID=$!
+      #     # Set up cleanup trap
+      #     cleanup() {
+      #       if [ ! -z "$MONITOR_PID" ]; then
+      #         kill $MONITOR_PID 2>/dev/null || true
+      #       fi
+      #     }
+      #     trap cleanup EXIT
 
-          # Run the main process 
-          ./gnark-verifier --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json"
+      #     # Start monitoring in background
+      #     (
+      #       while true; do
+      #         echo "=== $(date) ==="
+      #         echo "Memory:"
+      #         free -h
+      #         echo "Disk:"
+      #         df -h
+      #         echo "Processes:"
+      #         ps aux --sort=-%mem | head -5
+      #         echo "=================="
+      #         sleep 10  # Check every 10 seconds
+      #       done
+      #     ) &
+      #     MONITOR_PID=$!
 
-          # Stop monitoring
-          kill $MONITOR_PID
+      #     # Run the main process 
+      #     ./gnark-verifier --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json"
+
+      #     # Stop monitoring
+      #     kill $MONITOR_PID

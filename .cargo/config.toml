@@ -8,3 +8,9 @@ rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
 [target.wasm32-wasip1]
 runner = "wasmtime run --dir . "
 rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
+
+# LLVM miscompilation workaround for Linux aarch64.
+# Bug requires: opt-level=3 + codegen-units=1 + 256-bit field arithmetic + generics
+# See: https://github.com/worldfnd/provekit/issues/304
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "opt-level=2"]

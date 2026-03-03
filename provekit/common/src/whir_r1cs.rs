@@ -50,6 +50,6 @@ pub struct WhirR1CSProof {
     /// Transcript interaction pattern for debug-mode validation.
     /// Populated by the prover; absent from serialized proofs on disk.
     #[cfg(debug_assertions)]
-    #[serde(default, skip_serializing)]
+    #[serde(skip)]
     pub pattern: Vec<Interaction>,
 }
