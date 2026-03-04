@@ -54,10 +54,7 @@ pub fn reduce_mod_p(
     );
 
     let modulus_bits = modulus.into_bigint().num_bits();
-    range_checks
-        .entry(modulus_bits)
-        .or_default()
-        .push(result);
+    range_checks.entry(modulus_bits).or_default().push(result);
 
     result
 }
@@ -169,13 +166,10 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
     ));
 
     let is_zero = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(
-        is_zero,
-        vec![
-            SumTerm(Some(FieldElement::ONE), compiler.witness_one()),
-            SumTerm(Some(-FieldElement::ONE), value_mul_value_inv),
-        ],
-    ));
+    compiler.add_witness_builder(WitnessBuilder::Sum(is_zero, vec![
+        SumTerm(Some(FieldElement::ONE), compiler.witness_one()),
+        SumTerm(Some(-FieldElement::ONE), value_mul_value_inv),
+    ]));
 
     // v × v^(-1) = 1 - is_zero
     compiler.r1cs.add_constraint(
@@ -223,43 +217,47 @@ pub fn add_mod_p_multi(
     // Witness: q = floor((a + b) / p) ∈ {0, 1}
     let q = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
-        output:    q,
-        a_limbs:   a.as_slice().to_vec(),
-        b_limbs:   b.as_slice().to_vec(),
-        modulus:   *modulus_raw,
+        output: q,
+        a_limbs: a.as_slice().to_vec(),
+        b_limbs: b.as_slice().to_vec(),
+        modulus: *modulus_raw,
         limb_bits,
         num_limbs: n as u32,
     });
     // q is boolean
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, q)],
-        &[(FieldElement::ONE, q)],
-        &[(FieldElement::ONE, q)],
-    );
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, q)], &[(FieldElement::ONE, q)], &[(
+            FieldElement::ONE,
+            q,
+        )]);
 
     let mut r = Limbs::new(n);
     let mut carry_prev: Option<usize> = None;
 
     for i in 0..n {
         // v_offset = a[i] + b[i] + 2^W - q*p[i] + carry_{i-1}
+        // When carry_prev exists, combine w1 terms to avoid duplicate column
+        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+        let w1_coeff = if carry_prev.is_some() {
+            two_pow_w - FieldElement::ONE
+        } else {
+            two_pow_w
+        };
         let mut terms = vec![
             SumTerm(None, a[i]),
             SumTerm(None, b[i]),
-            SumTerm(Some(two_pow_w), w1),
+            SumTerm(Some(w1_coeff), w1),
             SumTerm(Some(-p_limbs[i]), q),
         ];
         if let Some(carry) = carry_prev {
             terms.push(SumTerm(None, carry));
-            // Compensate for previous 2^W offset
-            terms.push(SumTerm(Some(-FieldElement::ONE), w1));
         }
         let v_offset = compiler.add_sum(terms);
 
         // carry = floor(v_offset / 2^W)
         let carry = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
-            carry, v_offset, two_pow_w,
-        ));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(carry, v_offset, two_pow_w));
         // r[i] = v_offset - carry * 2^W
         r[i] = compiler.add_sum(vec![
             SumTerm(None, v_offset),
@@ -268,7 +266,14 @@ pub fn add_mod_p_multi(
         carry_prev = Some(carry);
     }
 
-    less_than_p_check_multi(compiler, range_checks, r, p_minus_1_limbs, two_pow_w, limb_bits);
+    less_than_p_check_multi(
+        compiler,
+        range_checks,
+        r,
+        p_minus_1_limbs,
+        two_pow_w,
+        limb_bits,
+    );
 
     r
 }
@@ -292,41 +297,46 @@ pub fn sub_mod_p_multi(
     // Witness: q = (a < b) ? 1 : 0
     let q = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
-        output:    q,
-        a_limbs:   a.as_slice().to_vec(),
-        b_limbs:   b.as_slice().to_vec(),
-        modulus:   *modulus_raw,
+        output: q,
+        a_limbs: a.as_slice().to_vec(),
+        b_limbs: b.as_slice().to_vec(),
+        modulus: *modulus_raw,
         limb_bits,
         num_limbs: n as u32,
     });
     // q is boolean
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, q)],
-        &[(FieldElement::ONE, q)],
-        &[(FieldElement::ONE, q)],
-    );
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, q)], &[(FieldElement::ONE, q)], &[(
+            FieldElement::ONE,
+            q,
+        )]);
 
     let mut r = Limbs::new(n);
     let mut carry_prev: Option<usize> = None;
 
     for i in 0..n {
         // v_offset = a[i] - b[i] + q*p[i] + 2^W + carry_{i-1}
+        // When carry_prev exists, combine w1 terms to avoid duplicate column
+        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+        let w1_coeff = if carry_prev.is_some() {
+            two_pow_w - FieldElement::ONE
+        } else {
+            two_pow_w
+        };
         let mut terms = vec![
             SumTerm(None, a[i]),
             SumTerm(Some(-FieldElement::ONE), b[i]),
             SumTerm(Some(p_limbs[i]), q),
-            SumTerm(Some(two_pow_w), w1),
+            SumTerm(Some(w1_coeff), w1),
         ];
         if let Some(carry) = carry_prev {
             terms.push(SumTerm(None, carry));
-            terms.push(SumTerm(Some(-FieldElement::ONE), w1));
         }
         let v_offset = compiler.add_sum(terms);
 
         let carry = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
-            carry, v_offset, two_pow_w,
-        ));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(carry, v_offset, two_pow_w));
         r[i] = compiler.add_sum(vec![
             SumTerm(None, v_offset),
             SumTerm(Some(-two_pow_w), carry),
@@ -334,7 +344,14 @@ pub fn sub_mod_p_multi(
         carry_prev = Some(carry);
     }
 
-    less_than_p_check_multi(compiler, range_checks, r, p_minus_1_limbs, two_pow_w, limb_bits);
+    less_than_p_check_multi(
+        compiler,
+        range_checks,
+        r,
+        p_minus_1_limbs,
+        two_pow_w,
+        limb_bits,
+    );
 
     r
 }
@@ -367,9 +384,8 @@ pub fn mul_mod_p_multi(
         let max_bits = 2 * limb_bits + ceil_log2_n + 3;
         assert!(
             max_bits < FieldElement::MODULUS_BIT_SIZE,
-            "Schoolbook column equation overflow: limb_bits={limb_bits}, n={n} limbs \
-             requires {max_bits} bits, but native field is only {} bits. \
-             Use smaller limb_bits.",
+            "Schoolbook column equation overflow: limb_bits={limb_bits}, n={n} limbs requires \
+             {max_bits} bits, but native field is only {} bits. Use smaller limb_bits.",
             FieldElement::MODULUS_BIT_SIZE,
         );
     }
@@ -382,18 +398,19 @@ pub fn mul_mod_p_multi(
     let carry_offset_fe = FieldElement::from(2u64).pow([carry_offset_bits as u64]);
     // offset_w = carry_offset * 2^limb_bits
     let offset_w = FieldElement::from(2u64).pow([(carry_offset_bits + limb_bits) as u64]);
-    // offset_w_minus_carry = offset_w - carry_offset = carry_offset * (2^limb_bits - 1)
+    // offset_w_minus_carry = offset_w - carry_offset = carry_offset * (2^limb_bits
+    // - 1)
     let offset_w_minus_carry = offset_w - carry_offset_fe;
 
     // Step 1: Allocate hint witnesses (q limbs, r limbs, carries)
     let os = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::MultiLimbMulModHint {
         output_start: os,
-        a_limbs:      a.as_slice().to_vec(),
-        b_limbs:      b.as_slice().to_vec(),
-        modulus:      *modulus_raw,
+        a_limbs: a.as_slice().to_vec(),
+        b_limbs: b.as_slice().to_vec(),
+        modulus: *modulus_raw,
         limb_bits,
-        num_limbs:    n as u32,
+        num_limbs: n as u32,
     });
 
     // q[0..n), r[n..2n), carries[2n..4n-2)
@@ -459,7 +476,14 @@ pub fn mul_mod_p_multi(
     for (i, &ri) in r_indices.iter().enumerate() {
         r_limbs[i] = ri;
     }
-    less_than_p_check_multi(compiler, range_checks, r_limbs, p_minus_1_limbs, two_pow_w, limb_bits);
+    less_than_p_check_multi(
+        compiler,
+        range_checks,
+        r_limbs,
+        p_minus_1_limbs,
+        two_pow_w,
+        limb_bits,
+    );
 
     // Step 5: Range checks for q limbs and carries
     for i in 0..n {
@@ -475,7 +499,8 @@ pub fn mul_mod_p_multi(
 }
 
 /// a^(-1) mod p for multi-limb values.
-/// Uses MultiLimbModularInverse hint, verifies via mul_mod_p(a, inv) = [1, 0, ..., 0].
+/// Uses MultiLimbModularInverse hint, verifies via mul_mod_p(a, inv) = [1, 0,
+/// ..., 0].
 pub fn inv_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -493,14 +518,15 @@ pub fn inv_mod_p_multi(
     let inv_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::MultiLimbModularInverse {
         output_start: inv_start,
-        a_limbs:      a.as_slice().to_vec(),
-        modulus:      *modulus_raw,
+        a_limbs: a.as_slice().to_vec(),
+        modulus: *modulus_raw,
         limb_bits,
-        num_limbs:    n as u32,
+        num_limbs: n as u32,
     });
     let mut inv = Limbs::new(n);
     for i in 0..n {
         inv[i] = inv_start + i;
+        range_checks.entry(limb_bits).or_default().push(inv[i]);
     }
 
     // Verify: a * inv mod p = [1, 0, ..., 0]
@@ -535,7 +561,8 @@ pub fn inv_mod_p_multi(
 }
 
 /// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.
-/// Uses borrow propagation: d[i] = (p-1)[i] - r[i] + borrow_in - borrow_out * 2^W
+/// Uses borrow propagation: d[i] = (p-1)[i] - r[i] + borrow_in - borrow_out *
+/// 2^W
 fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -547,25 +574,27 @@ fn less_than_p_check_multi(
     let n = r.len();
     let w1 = compiler.witness_one();
     let mut borrow_prev: Option<usize> = None;
-
     for i in 0..n {
         // v_diff = (p-1)[i] + 2^W - r[i] + borrow_prev
-        let p_minus_1_plus_offset = p_minus_1_limbs[i] + two_pow_w;
+        // When borrow_prev exists, combine w1 terms to avoid duplicate column
+        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+        let w1_coeff = if borrow_prev.is_some() {
+            p_minus_1_limbs[i] + two_pow_w - FieldElement::ONE
+        } else {
+            p_minus_1_limbs[i] + two_pow_w
+        };
         let mut terms = vec![
-            SumTerm(Some(p_minus_1_plus_offset), w1),
+            SumTerm(Some(w1_coeff), w1),
             SumTerm(Some(-FieldElement::ONE), r[i]),
         ];
         if let Some(borrow) = borrow_prev {
             terms.push(SumTerm(None, borrow));
-            terms.push(SumTerm(Some(-FieldElement::ONE), w1));
         }
         let v_diff = compiler.add_sum(terms);
 
         // borrow = floor(v_diff / 2^W)
         let borrow = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
-            borrow, v_diff, two_pow_w,
-        ));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v_diff, two_pow_w));
         // d[i] = v_diff - borrow * 2^W
         let d_i = compiler.add_sum(vec![
             SumTerm(None, v_diff),
@@ -579,13 +608,15 @@ fn less_than_p_check_multi(
         borrow_prev = Some(borrow);
     }
 
-    // Constrain final borrow = 0: if borrow_out != 0, then r > p-1 (i.e. r >= p),
-    // which would mean the result is not properly reduced.
+    // Constrain final carry = 1: the 2^W offset at each limb propagates
+    // a carry of 1 through the chain. For valid r < p, the final carry
+    // must be exactly 1.  If r >= p, the carry chain underflows and the
+    // final carry is 0.
     if let Some(final_borrow) = borrow_prev {
         compiler.r1cs.add_constraint(
             &[(FieldElement::ONE, compiler.witness_one())],
             &[(FieldElement::ONE, final_borrow)],
-            &[(FieldElement::ZERO, compiler.witness_one())],
+            &[(FieldElement::ONE, compiler.witness_one())],
         );
     }
 }

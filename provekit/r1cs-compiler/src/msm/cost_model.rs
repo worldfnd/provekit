@@ -1,7 +1,8 @@
 //! Analytical cost model for MSM parameter optimization.
 //!
 //! Follows the SHA256 pattern (`spread.rs:get_optimal_spread_width`):
-//! pure analytical estimator → exhaustive search → pick optimal (limb_bits, window_size).
+//! pure analytical estimator → exhaustive search → pick optimal (limb_bits,
+//! window_size).
 
 /// Type of field operation for cost estimation.
 #[derive(Clone, Copy)]
@@ -12,104 +13,74 @@ pub enum FieldOpType {
     Inv,
 }
 
-/// Count field ops in scalar_mul for given parameters.
-/// Traces through ec_points::scalar_mul logic analytically.
+/// Count field ops in scalar_mul_glv for given parameters.
 ///
-/// Returns (n_add, n_sub, n_mul, n_inv) per single scalar multiplication.
-fn count_scalar_mul_field_ops(scalar_bits: usize, window_size: usize) -> (usize, usize, usize, usize) {
+/// The GLV approach does interleaved two-point scalar mul with half-width scalars.
+/// Per window: w shared doubles + 2 table lookups + 2 point_adds + 2 is_zero + 2 point_selects
+/// Plus: 2 table builds, on-curve check, scalar relation overhead.
+fn count_glv_field_ops(
+    scalar_bits: usize, // half_bits = ceil(order_bits / 2)
+    window_size: usize,
+) -> (usize, usize, usize, usize) {
     let w = window_size;
     let table_size = 1 << w;
     let num_windows = (scalar_bits + w - 1) / w;
 
-    // Build point table: T[0]=P (free), T[1]=P (free), T[2]=2P (1 double),
-    // T[3..table_size] = point_add each
+    let double_ops = (4usize, 2usize, 5usize, 1usize);
+    let add_ops = (2usize, 2usize, 3usize, 1usize);
+    let select_ops_per_point = (2usize, 2usize, 2usize, 0usize);
+
+    // Two tables (one for P, one for R)
     let table_doubles = if table_size > 2 { 1 } else { 0 };
     let table_adds = if table_size > 2 { table_size - 3 } else { 0 };
 
-    // point_double costs: 5 mul, 4 add, 2 sub, 1 inv
-    let double_ops = (4usize, 2usize, 5usize, 1usize); // (add, sub, mul, inv)
-    // point_add costs: 2 add, 2 sub, 3 mul, 1 inv
-    let add_ops = (2usize, 2usize, 3usize, 1usize);
+    let mut total_add = 2 * (table_doubles * double_ops.0 + table_adds * add_ops.0);
+    let mut total_sub = 2 * (table_doubles * double_ops.1 + table_adds * add_ops.1);
+    let mut total_mul = 2 * (table_doubles * double_ops.2 + table_adds * add_ops.2);
+    let mut total_inv = 2 * (table_doubles * double_ops.3 + table_adds * add_ops.3);
 
-    // Table construction
-    let mut total_add = table_doubles * double_ops.0 + table_adds * add_ops.0;
-    let mut total_sub = table_doubles * double_ops.1 + table_adds * add_ops.1;
-    let mut total_mul = table_doubles * double_ops.2 + table_adds * add_ops.2;
-    let mut total_inv = table_doubles * double_ops.3 + table_adds * add_ops.3;
+    for win_idx in (0..num_windows).rev() {
+        let bit_start = win_idx * w;
+        let bit_end = std::cmp::min(bit_start + w, scalar_bits);
+        let actual_w = bit_end - bit_start;
+        let actual_selects = (1 << actual_w) - 1;
 
-    // Table lookups: each uses (2^w - 1) point_selects
-    // point_select = 2 selects = 2 * (3 witnesses: diff, flag*diff, out) per coordinate
-    // But select is not a field op — it's cheaper (just `select` calls)
-    // We count it as 2 selects per point_select = 2 sub + 2 mul per select
-    // Actually select = flag*(on_true - on_false) + on_false: 1 sub, 1 mul, 1 add per elem
-    // Per point (x,y): 2 sub, 2 mul, 2 add for select
-    let selects_per_lookup = table_size - 1; // 2^w - 1 point_selects
-    let select_ops_per_point = (2usize, 2usize, 2usize, 0usize); // (add, sub, mul, inv)
-
-    // MSB window: 1 table lookup (possibly smaller table)
-    let msb_bits = scalar_bits - (num_windows - 1) * w;
-    let msb_table_size = 1 << msb_bits;
-    let msb_selects = msb_table_size - 1;
-    total_add += msb_selects * select_ops_per_point.0;
-    total_sub += msb_selects * select_ops_per_point.1;
-    total_mul += msb_selects * select_ops_per_point.2;
-
-    // Remaining windows: for each of (num_windows - 1) windows:
-    //   - w doublings
-    //   - 1 pack_bits (cheap)
-    //   - 1 is_zero (1 inv + some adds)
-    //   - 1 table lookup
-    //   - 1 sub (for denom)
-    //   - 1 elem_is_zero
-    //   - 1 point_double (for x_eq case)
-    //   - 1 safe_point_add (like point_add but with select on denom)
-    //   - 2 point_selects (x_eq and digit_is_zero)
-    let remaining = if num_windows > 1 { num_windows - 1 } else { 0 };
-
-    for _ in 0..remaining {
-        // w doublings
+        // w shared doublings
         total_add += w * double_ops.0;
         total_sub += w * double_ops.1;
         total_mul += w * double_ops.2;
         total_inv += w * double_ops.3;
 
-        // table lookup
-        total_add += selects_per_lookup * select_ops_per_point.0;
-        total_sub += selects_per_lookup * select_ops_per_point.1;
-        total_mul += selects_per_lookup * select_ops_per_point.2;
+        // Two table lookups + two point_adds + two is_zeros + two point_selects
+        for _ in 0..2 {
+            total_add += actual_selects * select_ops_per_point.0;
+            total_sub += actual_selects * select_ops_per_point.1;
+            total_mul += actual_selects * select_ops_per_point.2;
 
-        // denom = sub(looked_up.x, acc.x)
-        total_sub += 1;
+            total_add += add_ops.0;
+            total_sub += add_ops.1;
+            total_mul += add_ops.2;
+            total_inv += add_ops.3;
 
-        // elem_is_zero(denom) = is_zero per limb + products
-        // For N limbs: N * (1 inv + some arith) + (N-1) products
-        // Simplified: 1 inv + 3 witnesses
-        total_inv += 1;
-        total_add += 1;
-        total_mul += 1;
+            total_inv += 1; // is_zero
+            total_add += 1;
+            total_mul += 1;
 
-        // point_double for x_eq case
-        total_add += double_ops.0;
-        total_sub += double_ops.1;
-        total_mul += double_ops.2;
-        total_inv += double_ops.3;
-
-        // safe_point_add: like point_add + 1 select on denom
-        total_add += add_ops.0 + select_ops_per_point.0 / 2; // 1 select
-        total_sub += add_ops.1 + select_ops_per_point.1 / 2;
-        total_mul += add_ops.2 + select_ops_per_point.2 / 2;
-        total_inv += add_ops.3;
-
-        // 2 point_selects
-        total_add += 2 * select_ops_per_point.0;
-        total_sub += 2 * select_ops_per_point.1;
-        total_mul += 2 * select_ops_per_point.2;
-
-        // is_zero(digit)
-        total_inv += 1;
-        total_add += 1;
-        total_mul += 1;
+            total_add += select_ops_per_point.0;
+            total_sub += select_ops_per_point.1;
+            total_mul += select_ops_per_point.2;
+        }
     }
+
+    // On-curve checks for P and R: each needs 1 mul (y^2), 2 mul (x^2, x^3), 1 mul (a*x), 2 add
+    total_mul += 8;
+    total_add += 4;
+
+    // Conditional y-negation: 2 sub + 2 select (for P.y and R.y)
+    total_sub += 2;
+    total_add += 2 * select_ops_per_point.0;
+    total_sub += 2 * select_ops_per_point.1;
+    total_mul += 2 * select_ops_per_point.2;
 
     (total_add, total_sub, total_mul, total_inv)
 }
@@ -119,18 +90,18 @@ fn witnesses_per_op(num_limbs: usize, op: FieldOpType, is_native: bool) -> usize
     if is_native {
         // Native: no range checks, just standard R1CS witnesses
         match op {
-            FieldOpType::Add => 1,  // sum witness
-            FieldOpType::Sub => 1,  // sum witness
-            FieldOpType::Mul => 1,  // product witness
-            FieldOpType::Inv => 1,  // inverse witness
+            FieldOpType::Add => 1, // sum witness
+            FieldOpType::Sub => 1, // sum witness
+            FieldOpType::Mul => 1, // product witness
+            FieldOpType::Inv => 1, // inverse witness
         }
     } else if num_limbs == 1 {
         // Single-limb non-native: reduce_mod_p pattern
         match op {
-            FieldOpType::Add => 5,  // a+b, m const, k, k*m, result
-            FieldOpType::Sub => 5,  // same
-            FieldOpType::Mul => 5,  // a*b, m const, k, k*m, result
-            FieldOpType::Inv => 7,  // a_inv + mul_mod_p(5) + range_check
+            FieldOpType::Add => 5, // a+b, m const, k, k*m, result
+            FieldOpType::Sub => 5, // same
+            FieldOpType::Mul => 5, // a*b, m const, k, k*m, result
+            FieldOpType::Inv => 7, // a_inv + mul_mod_p(5) + range_check
         }
     } else {
         // Multi-limb: N-limb operations
@@ -162,41 +133,53 @@ pub fn calculate_msm_witness_cost(
         ((curve_modulus_bits as usize) + (limb_bits as usize) - 1) / (limb_bits as usize)
     };
 
-    let (n_add, n_sub, n_mul, n_inv) = count_scalar_mul_field_ops(scalar_bits, window_size);
-
     let wit_add = witnesses_per_op(num_limbs, FieldOpType::Add, is_native);
     let wit_sub = witnesses_per_op(num_limbs, FieldOpType::Sub, is_native);
     let wit_mul = witnesses_per_op(num_limbs, FieldOpType::Mul, is_native);
     let wit_inv = witnesses_per_op(num_limbs, FieldOpType::Inv, is_native);
 
-    let per_scalarmul = n_add * wit_add + n_sub * wit_sub + n_mul * wit_mul + n_inv * wit_inv;
+    // FakeGLV path for ALL points: half-width interleaved scalar mul
+    let half_bits = (scalar_bits + 1) / 2;
+    let (n_add, n_sub, n_mul, n_inv) = count_glv_field_ops(half_bits, window_size);
+    let glv_scalarmul = n_add * wit_add + n_sub * wit_sub + n_mul * wit_mul + n_inv * wit_inv;
 
-    // Scalar decomposition: 256 bits (bit witnesses + digital decomposition overhead)
-    let scalar_decomp = 256 + 10;
+    // Per-point overhead: scalar decomposition (2 × half_bits for s1, s2) +
+    // scalar relation (~150 witnesses) + FakeGLVHint (4 witnesses)
+    let scalar_decomp = 2 * half_bits + 10;
+    let scalar_relation = 150;
+    let glv_hint = 4;
+
+    // EcScalarMulHint: 2 witnesses per point (only for n_points > 1)
+    let ec_hint = if n_points > 1 { 2 } else { 0 };
+
+    let per_point = glv_scalarmul + scalar_decomp + scalar_relation + glv_hint + ec_hint;
 
     // Point accumulation: (n_points - 1) point_adds
-    let accum_per_point = if n_points > 1 {
+    let accum = if n_points > 1 {
         let accum_adds = n_points - 1;
-        accum_adds * (witnesses_per_op(num_limbs, FieldOpType::Add, is_native) * 2
-            + witnesses_per_op(num_limbs, FieldOpType::Sub, is_native) * 2
-            + witnesses_per_op(num_limbs, FieldOpType::Mul, is_native) * 3
-            + witnesses_per_op(num_limbs, FieldOpType::Inv, is_native))
+        accum_adds
+            * (witnesses_per_op(num_limbs, FieldOpType::Add, is_native) * 2
+                + witnesses_per_op(num_limbs, FieldOpType::Sub, is_native) * 2
+                + witnesses_per_op(num_limbs, FieldOpType::Mul, is_native) * 3
+                + witnesses_per_op(num_limbs, FieldOpType::Inv, is_native))
     } else {
         0
     };
 
-    n_points * (per_scalarmul + scalar_decomp) + accum_per_point
+    n_points * per_point + accum
 }
 
 /// Check whether schoolbook column equation values fit in the native field.
 ///
-/// In `mul_mod_p_multi`, the schoolbook multiplication verifies `a·b = p·q + r` via
-/// column equations that include product sums, carry offsets, and outgoing carries.
-/// Both sides of each column equation must evaluate to less than the native field
-/// modulus as **integers** — if they overflow, the field's modular reduction makes
-/// `LHS ≡ RHS (mod p)` weaker than `LHS = RHS`, breaking soundness.
+/// In `mul_mod_p_multi`, the schoolbook multiplication verifies `a·b = p·q + r`
+/// via column equations that include product sums, carry offsets, and outgoing
+/// carries. Both sides of each column equation must evaluate to less than the
+/// native field modulus as **integers** — if they overflow, the field's modular
+/// reduction makes `LHS ≡ RHS (mod p)` weaker than `LHS = RHS`, breaking
+/// soundness.
 ///
-/// The maximum integer value across either side of any column equation is bounded by:
+/// The maximum integer value across either side of any column equation is
+/// bounded by:
 ///
 ///   `2^(2W + ceil(log2(N)) + 3)`
 ///
@@ -205,8 +188,8 @@ pub fn calculate_msm_witness_cost(
 /// - The carry offset `2^(2W + ceil(log2(N)) + 1)` (dominant term)
 /// - Outgoing carry term `2^W * offset_carry` on the RHS
 ///
-/// Since the native field modulus satisfies `p >= 2^(native_field_bits - 1)`, the
-/// conservative soundness condition is:
+/// Since the native field modulus satisfies `p >= 2^(native_field_bits - 1)`,
+/// the conservative soundness condition is:
 ///
 ///   `2 * limb_bits + ceil(log2(num_limbs)) + 3 < native_field_bits`
 pub fn column_equation_fits_native_field(
@@ -259,8 +242,8 @@ pub fn get_optimal_msm_params(
     }
 
     // Upper bound on search: even with N=2 (best case), we need
-    // 2*lb + ceil(log2(2)) + 3 < native_field_bits => lb < (native_field_bits - 4) / 2.
-    // The per-candidate soundness check below is the actual gate.
+    // 2*lb + ceil(log2(2)) + 3 < native_field_bits => lb < (native_field_bits - 4)
+    // / 2. The per-candidate soundness check below is the actual gate.
     let max_limb_bits = (native_field_bits.saturating_sub(4)) / 2;
     let mut best_cost = usize::MAX;
     let mut best_limb_bits = max_limb_bits.min(86);
@@ -268,8 +251,7 @@ pub fn get_optimal_msm_params(
 
     // Search space
     for lb in (8..=max_limb_bits).step_by(2) {
-        let num_limbs =
-            ((curve_modulus_bits as usize) + (lb as usize) - 1) / (lb as usize);
+        let num_limbs = ((curve_modulus_bits as usize) + (lb as usize) - 1) / (lb as usize);
         if !column_equation_fits_native_field(native_field_bits, lb, num_limbs) {
             continue;
         }
@@ -327,15 +309,6 @@ mod tests {
             "optimizer selected unsound limb_bits={limb_bits} (N={num_limbs})"
         );
         assert!(window_size >= 2 && window_size <= 8);
-    }
-
-    #[test]
-    fn test_count_field_ops_sanity() {
-        let (add, sub, mul, inv) = count_scalar_mul_field_ops(256, 4);
-        assert!(add > 0);
-        assert!(sub > 0);
-        assert!(mul > 0);
-        assert!(inv > 0);
     }
 
     #[test]

@@ -449,8 +449,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     for i in 0..n {
                         let j = k as isize - i as isize;
                         if j >= 0 && (j as usize) < n {
-                            ab_sum +=
-                                a_limbs_vals[i] as i128 * b_limbs_vals[j as usize] as i128;
+                            ab_sum += a_limbs_vals[i] as i128 * b_limbs_vals[j as usize] as i128;
                         }
                     }
                     // Sum p[i]*q[j] for i+j=k
@@ -458,8 +457,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     for i in 0..n {
                         let j = k as isize - i as isize;
                         if j >= 0 && (j as usize) < n {
-                            pq_sum +=
-                                p_limbs_vals[i] as i128 * q_limbs_vals[j as usize] as i128;
+                            pq_sum += p_limbs_vals[i] as i128 * q_limbs_vals[j as usize] as i128;
                         }
                     }
                     let r_k = if k < n { r_limbs_vals[k] as i128 } else { 0 };
@@ -662,6 +660,66 @@ impl WitnessBuilderSolver for WitnessBuilder {
 
                 witness[*lo] = Some(FieldElement::from(lo_val));
                 witness[*hi] = Some(FieldElement::from(hi_val));
+            }
+            WitnessBuilder::FakeGLVHint {
+                output_start,
+                s_lo,
+                s_hi,
+                curve_order,
+            } => {
+                // Reconstruct s = s_lo + s_hi * 2^128
+                let s_lo_val = witness[*s_lo].unwrap().into_bigint().0;
+                let s_hi_val = witness[*s_hi].unwrap().into_bigint().0;
+                let s_val: [u64; 4] = [
+                    s_lo_val[0],
+                    s_lo_val[1],
+                    s_hi_val[0],
+                    s_hi_val[1],
+                ];
+
+                let (val1, val2, neg1, neg2) =
+                    crate::witness::bigint_mod::half_gcd(&s_val, curve_order);
+
+                witness[*output_start] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(val1)).unwrap());
+                witness[*output_start + 1] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(val2)).unwrap());
+                witness[*output_start + 2] =
+                    Some(FieldElement::from(neg1 as u64));
+                witness[*output_start + 3] =
+                    Some(FieldElement::from(neg2 as u64));
+            }
+            WitnessBuilder::EcScalarMulHint {
+                output_start,
+                px,
+                py,
+                s_lo,
+                s_hi,
+                curve_a,
+                field_modulus_p,
+            } => {
+                // Reconstruct scalar s = s_lo + s_hi * 2^128
+                let s_lo_val = witness[*s_lo].unwrap().into_bigint().0;
+                let s_hi_val = witness[*s_hi].unwrap().into_bigint().0;
+                let scalar: [u64; 4] = [s_lo_val[0], s_lo_val[1], s_hi_val[0], s_hi_val[1]];
+
+                // Reconstruct point P
+                let px_val = witness[*px].unwrap().into_bigint().0;
+                let py_val = witness[*py].unwrap().into_bigint().0;
+
+                // Compute R = [s]P
+                let (rx, ry) = crate::witness::bigint_mod::ec_scalar_mul(
+                    &px_val,
+                    &py_val,
+                    &scalar,
+                    curve_a,
+                    field_modulus_p,
+                );
+
+                witness[*output_start] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(rx)).unwrap());
+                witness[*output_start + 1] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(ry)).unwrap());
             }
             WitnessBuilder::CombinedTableEntryInverse(..) => {
                 unreachable!(

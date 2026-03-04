@@ -100,43 +100,6 @@ pub fn point_select<F: FieldOps>(
     (x, y)
 }
 
-/// Point addition with safe denominator for the `x1 = x2` edge case.
-///
-/// When `x_eq = 1`, the denominator `(x2 - x1)` is zero and cannot be
-/// inverted. This function replaces it with 1, producing a satisfiable
-/// but meaningless result. The caller MUST discard this result via
-/// `point_select` when `x_eq = 1`.
-///
-/// The `denom` parameter is the precomputed `x2 - x1`.
-fn safe_point_add<F: FieldOps>(
-    ops: &mut F,
-    x1: F::Elem,
-    y1: F::Elem,
-    x2: F::Elem,
-    y2: F::Elem,
-    denom: F::Elem,
-    x_eq: usize,
-) -> (F::Elem, F::Elem) {
-    let numerator = ops.sub(y2, y1);
-
-    // When x_eq=1 (denom=0), substitute with 1 to keep inv satisfiable
-    let one = ops.constant_one();
-    let safe_denom = ops.select(x_eq, denom, one);
-
-    let denom_inv = ops.inv(safe_denom);
-    let lambda = ops.mul(numerator, denom_inv);
-
-    let lambda_sq = ops.mul(lambda, lambda);
-    let x1_plus_x2 = ops.add(x1, x2);
-    let x3 = ops.sub(lambda_sq, x1_plus_x2);
-
-    let x1_minus_x3 = ops.sub(x1, x3);
-    let lambda_dx = ops.mul(lambda, x1_minus_x3);
-    let y3 = ops.sub(lambda_dx, y1);
-
-    (x3, y3)
-}
-
 /// Builds a point table for windowed scalar multiplication.
 ///
 /// T[0] = P (dummy entry, used when window digit = 0)
@@ -161,7 +124,8 @@ fn build_point_table<F: FieldOps>(
     table
 }
 
-/// Selects T[d] from a point table using bit witnesses, where `d = Σ bits[i] * 2^i`.
+/// Selects T[d] from a point table using bit witnesses, where `d = Σ bits[i] *
+/// 2^i`.
 ///
 /// Uses a binary tree of `point_select`s: processes bits from MSB to LSB,
 /// halving the candidate set at each level. Total: `(2^w - 1)` point selects
@@ -185,100 +149,103 @@ fn table_lookup<F: FieldOps>(
     current[0]
 }
 
-/// Windowed scalar multiplication: computes `[scalar] * P`.
+/// Interleaved two-point scalar multiplication for FakeGLV.
 ///
-/// Takes pre-decomposed scalar bits (LSB first, `scalar_bits[0]` is the
-/// least significant bit) and a window size `w`. Precomputes a table of
-/// `2^w` point multiples and processes the scalar in `w`-bit windows from
-/// MSB to LSB.
+/// Computes `[s1]P + [s2]R` using shared doublings, where s1 and s2 are
+/// half-width scalars (typically ~128-bit for 256-bit curves). The
+/// accumulator starts at an offset point and the caller checks equality
+/// with the accumulated offset to verify the constraint `[s1]P + [s2]R = O`.
 ///
-/// Handles two edge cases:
-/// 1. **MSB window digit = 0**: The accumulator is initialized from T[0]
-///    (a dummy copy of P). An `acc_is_identity` flag tracks that no real
-///    point has been accumulated yet. When the first non-zero window digit
-///    is encountered, the looked-up point becomes the new accumulator.
-/// 2. **x-coordinate collision** (`acc.x == looked_up.x`): Uses
-///    `point_double` instead of `point_add`, with `safe_point_add`
-///    guarding the zero denominator.
+/// Structure per window (from MSB to LSB):
+///   1. `w` shared doublings on accumulator
+///   2. Table lookup in T_P[d1] for s1's window digit
+///   3. point_add(acc, T_P[d1]) + is_zero(d1) + point_select
+///   4. Table lookup in T_R[d2] for s2's window digit
+///   5. point_add(acc, T_R[d2]) + is_zero(d2) + point_select
 ///
-/// The inverse-point case (`acc = -looked_up`, result is infinity) cannot
-/// be represented in affine coordinates and remains unsupported — this has
-/// negligible probability (~2^{-256}) for random scalars.
-pub fn scalar_mul<F: FieldOps>(
+/// Returns the final accumulator (x, y).
+pub fn scalar_mul_glv<F: FieldOps>(
     ops: &mut F,
+    // Point P (table 1)
     px: F::Elem,
     py: F::Elem,
-    scalar_bits: &[usize],
+    s1_bits: &[usize], // 128 bit witnesses for |s1|
+    // Point R (table 2) — the claimed output
+    rx: F::Elem,
+    ry: F::Elem,
+    s2_bits: &[usize], // 128 bit witnesses for |s2|
+    // Shared parameters
     window_size: usize,
+    offset_x: F::Elem,
+    offset_y: F::Elem,
 ) -> (F::Elem, F::Elem) {
-    let n = scalar_bits.len();
+    let n1 = s1_bits.len();
+    let n2 = s2_bits.len();
+    assert_eq!(n1, n2, "s1 and s2 must have the same number of bits");
+    let n = n1;
     let w = window_size;
     let table_size = 1 << w;
 
-    // Build point table: T[i] = [i]P, with T[0] = P as dummy
-    let table = build_point_table(ops, px, py, table_size);
+    // Build point tables: T_P[i] = [i]P, T_R[i] = [i]R
+    let table_p = build_point_table(ops, px, py, table_size);
+    let table_r = build_point_table(ops, rx, ry, table_size);
 
-    // Number of windows (ceiling division)
     let num_windows = (n + w - 1) / w;
 
-    // Process MSB window first (may be shorter than w bits if n % w != 0)
-    let msb_start = (num_windows - 1) * w;
-    let msb_bits = &scalar_bits[msb_start..n];
-    let msb_table = &table[..1 << msb_bits.len()];
-    let mut acc = table_lookup(ops, msb_table, msb_bits);
+    // Initialize accumulator with the offset point
+    let mut acc = (offset_x, offset_y);
 
-    // Track whether acc represents the identity (no real point yet).
-    // When MSB digit = 0, T[0] = P is loaded as a dummy — we must not
-    // double or add it until the first non-zero window digit appears.
-    let msb_digit = ops.pack_bits(msb_bits);
-    let mut acc_is_identity = ops.is_zero(msb_digit);
+    // Process all windows from MSB down to LSB
+    for i in (0..num_windows).rev() {
+        let bit_start = i * w;
+        let bit_end = std::cmp::min(bit_start + w, n);
+        let actual_w = bit_end - bit_start;
 
-    // Process remaining windows from MSB-1 down to LSB
-    for i in (0..num_windows - 1).rev() {
-        // w doublings — only meaningful when acc is a real point.
-        // When acc_is_identity=1, the doubling result is garbage but will
-        // be discarded by the point_select below.
+        // w shared doublings on the accumulator
         let mut doubled_acc = acc;
         for _ in 0..w {
             doubled_acc = point_double(ops, doubled_acc.0, doubled_acc.1);
         }
-        // If acc is identity, keep dummy; otherwise use doubled result
-        acc = point_select(ops, acc_is_identity, doubled_acc, acc);
 
-        // Table lookup for this window's digit
-        let window_bits = &scalar_bits[i * w..(i + 1) * w];
-        let digit = ops.pack_bits(window_bits);
-        let digit_is_zero = ops.is_zero(digit);
-
-        let looked_up = table_lookup(ops, &table, window_bits);
-
-        // Detect x-coordinate collision: acc.x == looked_up.x
-        let denom = ops.sub(looked_up.0, acc.0);
-        let x_eq = ops.elem_is_zero(denom);
-
-        // point_double handles the acc == looked_up case (same point)
-        let doubled = point_double(ops, acc.0, acc.1);
-
-        // Safe point_add (substitutes denominator when x_eq=1)
-        let added = safe_point_add(
-            ops, acc.0, acc.1, looked_up.0, looked_up.1, denom, x_eq,
+        // --- Process P's window digit (s1) ---
+        let s1_window_bits = &s1_bits[bit_start..bit_end];
+        let lookup_table_p = if actual_w < w {
+            &table_p[..1 << actual_w]
+        } else {
+            &table_p[..]
+        };
+        let looked_up_p = table_lookup(ops, lookup_table_p, s1_window_bits);
+        let added_p = point_add(
+            ops,
+            doubled_acc.0,
+            doubled_acc.1,
+            looked_up_p.0,
+            looked_up_p.1,
         );
+        let digit_p = ops.pack_bits(s1_window_bits);
+        let digit_p_is_zero = ops.is_zero(digit_p);
+        let after_p = point_select(ops, digit_p_is_zero, added_p, doubled_acc);
 
-        // x_eq=0 => use add result, x_eq=1 => use double result
-        let combined = point_select(ops, x_eq, added, doubled);
-
-        // Four cases based on (acc_is_identity, digit_is_zero):
-        //   (0, 0) => combined      — normal add/double
-        //   (0, 1) => acc           — keep accumulator
-        //   (1, 0) => looked_up     — first real point
-        //   (1, 1) => acc           — still identity
-        let normal_result = point_select(ops, digit_is_zero, combined, acc);
-        let identity_result = point_select(ops, digit_is_zero, looked_up, acc);
-        acc = point_select(ops, acc_is_identity, normal_result, identity_result);
-
-        // Update: acc is identity only if it was identity AND digit is zero
-        acc_is_identity = ops.bool_and(acc_is_identity, digit_is_zero);
+        // --- Process R's window digit (s2) ---
+        let s2_window_bits = &s2_bits[bit_start..bit_end];
+        let lookup_table_r = if actual_w < w {
+            &table_r[..1 << actual_w]
+        } else {
+            &table_r[..]
+        };
+        let looked_up_r = table_lookup(ops, lookup_table_r, s2_window_bits);
+        let added_r = point_add(
+            ops,
+            after_p.0,
+            after_p.1,
+            looked_up_r.0,
+            looked_up_r.1,
+        );
+        let digit_r = ops.pack_bits(s2_window_bits);
+        let digit_r_is_zero = ops.is_zero(digit_r);
+        acc = point_select(ops, digit_r_is_zero, added_r, after_p);
     }
 
     acc
 }
+

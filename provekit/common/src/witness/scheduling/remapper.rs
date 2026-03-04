@@ -366,6 +366,34 @@ impl WitnessIndexRemapper {
                     },
                 )
             }
+            WitnessBuilder::FakeGLVHint {
+                output_start,
+                s_lo,
+                s_hi,
+                curve_order,
+            } => WitnessBuilder::FakeGLVHint {
+                output_start: self.remap(*output_start),
+                s_lo:         self.remap(*s_lo),
+                s_hi:         self.remap(*s_hi),
+                curve_order:  *curve_order,
+            },
+            WitnessBuilder::EcScalarMulHint {
+                output_start,
+                px,
+                py,
+                s_lo,
+                s_hi,
+                curve_a,
+                field_modulus_p,
+            } => WitnessBuilder::EcScalarMulHint {
+                output_start:    self.remap(*output_start),
+                px:              self.remap(*px),
+                py:              self.remap(*py),
+                s_lo:            self.remap(*s_lo),
+                s_hi:            self.remap(*s_hi),
+                curve_a:         *curve_a,
+                field_modulus_p: *field_modulus_p,
+            },
             WitnessBuilder::ChunkDecompose {
                 output_start,
                 packed,

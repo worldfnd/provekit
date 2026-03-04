@@ -217,9 +217,317 @@ pub fn add_4limb(a: &[u64; 4], b: &[u64; 4]) -> [u64; 5] {
     result
 }
 
-/// Offset added to signed carries to make them non-negative for range checking.
-/// Carries are bounded by |c| < 2^88, so adding 2^88 ensures c_unsigned >= 0.
-pub const CARRY_OFFSET: u128 = 1u128 << 88;
+/// Add two 4-limb numbers in-place: a += b. Returns the carry-out.
+pub fn add_4limb_inplace(a: &mut [u64; 4], b: &[u64; 4]) -> u64 {
+    let mut carry = 0u64;
+    for i in 0..4 {
+        let (s1, c1) = a[i].overflowing_add(b[i]);
+        let (s2, c2) = s1.overflowing_add(carry);
+        a[i] = s2;
+        carry = (c1 as u64) + (c2 as u64);
+    }
+    carry
+}
+
+/// Subtract b from a in-place, returning true if a >= b (no underflow).
+/// If a < b, the result is a += 2^256 - b (wrapping subtraction) and returns false.
+pub fn sub_4limb_checked(a: &mut [u64; 4], b: &[u64; 4]) -> bool {
+    let mut borrow = 0u64;
+    for i in 0..4 {
+        let (d1, b1) = a[i].overflowing_sub(b[i]);
+        let (d2, b2) = d1.overflowing_sub(borrow);
+        a[i] = d2;
+        borrow = (b1 as u64) + (b2 as u64);
+    }
+    borrow == 0
+}
+
+/// Returns true if val == 0.
+pub fn is_zero(val: &[u64; 4]) -> bool {
+    val[0] == 0 && val[1] == 0 && val[2] == 0 && val[3] == 0
+}
+
+/// Compute the number of bits needed for the half-GCD sub-scalars.
+/// Returns `ceil(order_bits / 2)` where `order_bits` is the bit length of `n`.
+pub fn half_gcd_bits(n: &[u64; 4]) -> u32 {
+    let mut order_bits = 0u32;
+    for i in (0..4).rev() {
+        if n[i] != 0 {
+            order_bits = (i as u32) * 64 + (64 - n[i].leading_zeros());
+            break;
+        }
+    }
+    (order_bits + 1) / 2
+}
+
+/// Build the threshold value `2^half_bits` as a `[u64; 4]`.
+fn build_threshold(half_bits: u32) -> [u64; 4] {
+    assert!(half_bits <= 255, "half_bits must be <= 255");
+    let mut threshold = [0u64; 4];
+    let word = (half_bits / 64) as usize;
+    let bit = half_bits % 64;
+    threshold[word] = 1u64 << bit;
+    threshold
+}
+
+/// Half-GCD scalar decomposition for FakeGLV.
+///
+/// Given scalar `s` and curve order `n`, finds `(|s1|, |s2|, neg1, neg2)` such that:
+///   `(-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)`
+///
+/// Uses the extended GCD on `(n, s)`, stopping when the remainder drops below
+/// `2^half_bits` where `half_bits = ceil(order_bits / 2)`.
+/// Returns `(val1, val2, neg1, neg2)` where both fit in `half_bits` bits.
+pub fn half_gcd(
+    s: &[u64; 4],
+    n: &[u64; 4],
+) -> ([u64; 4], [u64; 4], bool, bool) {
+    // Extended GCD on (n, s):
+    // We track: r_{i} = r_{i-2} - q_i * r_{i-1}
+    //           t_{i} = t_{i-2} - q_i * t_{i-1}
+    // Starting: r_0 = n, r_1 = s, t_0 = 0, t_1 = 1
+    //
+    // We want: t_i * s ≡ r_i (mod n) [up to sign]
+    // More precisely: t_i * s ≡ (-1)^{i+1} * r_i (mod n)
+    //
+    // The relation we verify is: sign_r * |r_i| + sign_t * |t_i| * s ≡ 0 (mod n)
+
+    // Threshold: 2^half_bits where half_bits = ceil(order_bits / 2)
+    let half_bits = half_gcd_bits(n);
+    let threshold = build_threshold(half_bits);
+
+    // r_prev = n, r_curr = s
+    let mut r_prev = *n;
+    let mut r_curr = *s;
+
+    // t_prev = 0, t_curr = 1
+    let mut t_prev = [0u64; 4];
+    let mut t_curr = [1u64, 0, 0, 0];
+
+    // Track sign of t: t_prev_neg=false (t_0=0, positive), t_curr_neg=false (t_1=1, positive)
+    let mut t_prev_neg = false;
+    let mut t_curr_neg = false;
+
+    let mut iteration = 0u32;
+
+    loop {
+        // Check if r_curr < threshold
+        if cmp_4limb(&r_curr, &threshold) == std::cmp::Ordering::Less {
+            break;
+        }
+
+        if is_zero(&r_curr) {
+            break;
+        }
+
+        // q = r_prev / r_curr, new_r = r_prev % r_curr
+        let (q, new_r) = divmod(&r_prev, &r_curr);
+
+        // new_t = t_prev + q * t_curr (in terms of absolute values and signs)
+        // Since the GCD recurrence is: t_{i} = t_{i-2} - q_i * t_{i-1}
+        // In terms of absolute values with sign tracking:
+        // If t_prev and q*t_curr have the same sign → subtract magnitudes
+        // If they have different signs → add magnitudes
+        // But actually: new_t = |t_prev| +/- q * |t_curr|, with sign flips each iteration.
+        //
+        // The standard extended GCD recurrence gives:
+        //   t_i = t_{i-2} - q_i * t_{i-1}
+        // We track magnitudes and sign bits separately.
+
+        // Compute q * t_curr
+        let qt = mul_mod_no_reduce(&q, &t_curr);
+
+        // new_t magnitude and sign:
+        // In the standard recurrence: new_t_val = t_prev_val - q * t_curr_val
+        // where t_prev_val = (-1)^t_prev_neg * |t_prev|, etc.
+        //
+        // But it's simpler to just track: alternating signs.
+        // In the half-GCD: t values alternate in sign. So:
+        // new_t = t_prev + q * t_curr (absolute addition since signs alternate)
+        let mut new_t = qt;
+        add_4limb_inplace(&mut new_t, &t_prev);
+        let new_t_neg = !t_curr_neg;
+
+        r_prev = r_curr;
+        r_curr = new_r;
+        t_prev = t_curr;
+        t_prev_neg = t_curr_neg;
+        t_curr = new_t;
+        t_curr_neg = new_t_neg;
+        iteration += 1;
+    }
+
+    // At this point: r_curr < 2^half_bits and t_curr < ~2^half_bits (half-GCD property)
+    // The relation is: (-1)^(iteration) * r_curr + t_curr * s ≡ 0 (mod n)
+    // Or equivalently: r_curr ≡ (-1)^(iteration+1) * t_curr * s (mod n)
+
+    let val1 = r_curr;  // |s1| = |r_i|
+    let val2 = t_curr;  // |s2| = |t_i|
+
+    // Determine signs:
+    // We need: neg1 * val1 + neg2 * val2 * s ≡ 0 (mod n)
+    // From the extended GCD: r_i = (-1)^i * (... some relation with t_i * s mod n)
+    // The exact sign relationship:
+    // t_i * s ≡ (-1)^(i+1) * r_i (mod n)
+    // So: (-1)^(i+1) * r_i + t_i * s ≡ 0 (mod n)
+    //
+    // If iteration is even: (-1)^(even+1) = -1, so: -r_i + t_i * s ≡ 0
+    //   → neg1=true (negate r_i), neg2=t_curr_neg
+    // If iteration is odd: (-1)^(odd+1) = 1, so: r_i + t_i * s ≡ 0
+    //   → neg1=false, neg2=t_curr_neg
+
+    let neg1 = iteration % 2 == 0;  // negate val1 when iteration is even
+    let neg2 = t_curr_neg;
+
+    (val1, val2, neg1, neg2)
+}
+
+/// Multiply two 4-limb values without modular reduction.
+/// Returns the lower 4 limbs (ignoring overflow beyond 256 bits).
+/// Used internally by half_gcd for q * t_curr where the result is known to fit.
+fn mul_mod_no_reduce(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    let wide = widening_mul(a, b);
+    [wide[0], wide[1], wide[2], wide[3]]
+}
+
+// ---------------------------------------------------------------------------
+// Modular arithmetic helpers for EC operations (prover-side)
+// ---------------------------------------------------------------------------
+
+/// Modular addition: (a + b) mod p.
+pub fn mod_add(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
+    let sum = add_4limb(a, b);
+    let sum4 = [sum[0], sum[1], sum[2], sum[3]];
+    if sum[4] > 0 || cmp_4limb(&sum4, p) != std::cmp::Ordering::Less {
+        // sum >= p, subtract p
+        let mut result = sum4;
+        sub_4limb_inplace(&mut result, p);
+        result
+    } else {
+        sum4
+    }
+}
+
+/// Modular subtraction: (a - b) mod p.
+pub fn mod_sub(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
+    let mut result = *a;
+    let no_borrow = sub_4limb_checked(&mut result, b);
+    if no_borrow {
+        result
+    } else {
+        // a < b, add p to get (a - b + p)
+        add_4limb_inplace(&mut result, p);
+        result
+    }
+}
+
+/// Modular inverse: a^{p-2} mod p (Fermat's little theorem).
+pub fn mod_inverse(a: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
+    let exp = sub_u64(p, 2);
+    mod_pow(a, &exp, p)
+}
+
+/// EC point doubling in affine coordinates on y^2 = x^3 + ax + b.
+/// Returns (x3, y3) = 2*(px, py).
+pub fn ec_point_double(
+    px: &[u64; 4],
+    py: &[u64; 4],
+    a: &[u64; 4],
+    p: &[u64; 4],
+) -> ([u64; 4], [u64; 4]) {
+    // lambda = (3*x^2 + a) / (2*y)
+    let x_sq = mul_mod(px, px, p);
+    let two_x_sq = mod_add(&x_sq, &x_sq, p);
+    let three_x_sq = mod_add(&two_x_sq, &x_sq, p);
+    let numerator = mod_add(&three_x_sq, a, p);
+    let two_y = mod_add(py, py, p);
+    let denom_inv = mod_inverse(&two_y, p);
+    let lambda = mul_mod(&numerator, &denom_inv, p);
+
+    // x3 = lambda^2 - 2*x
+    let lambda_sq = mul_mod(&lambda, &lambda, p);
+    let two_x = mod_add(px, px, p);
+    let x3 = mod_sub(&lambda_sq, &two_x, p);
+
+    // y3 = lambda * (x - x3) - y
+    let x_minus_x3 = mod_sub(px, &x3, p);
+    let lambda_dx = mul_mod(&lambda, &x_minus_x3, p);
+    let y3 = mod_sub(&lambda_dx, py, p);
+
+    (x3, y3)
+}
+
+/// EC point addition in affine coordinates on y^2 = x^3 + ax + b.
+/// Returns (x3, y3) = (p1x, p1y) + (p2x, p2y). Requires p1x != p2x.
+pub fn ec_point_add(
+    p1x: &[u64; 4],
+    p1y: &[u64; 4],
+    p2x: &[u64; 4],
+    p2y: &[u64; 4],
+    p: &[u64; 4],
+) -> ([u64; 4], [u64; 4]) {
+    // lambda = (y2 - y1) / (x2 - x1)
+    let numerator = mod_sub(p2y, p1y, p);
+    let denominator = mod_sub(p2x, p1x, p);
+    let denom_inv = mod_inverse(&denominator, p);
+    let lambda = mul_mod(&numerator, &denom_inv, p);
+
+    // x3 = lambda^2 - x1 - x2
+    let lambda_sq = mul_mod(&lambda, &lambda, p);
+    let x1_plus_x2 = mod_add(p1x, p2x, p);
+    let x3 = mod_sub(&lambda_sq, &x1_plus_x2, p);
+
+    // y3 = lambda * (x1 - x3) - y1
+    let x1_minus_x3 = mod_sub(p1x, &x3, p);
+    let lambda_dx = mul_mod(&lambda, &x1_minus_x3, p);
+    let y3 = mod_sub(&lambda_dx, p1y, p);
+
+    (x3, y3)
+}
+
+/// EC scalar multiplication via double-and-add: returns [scalar]*P.
+pub fn ec_scalar_mul(
+    px: &[u64; 4],
+    py: &[u64; 4],
+    scalar: &[u64; 4],
+    a: &[u64; 4],
+    p: &[u64; 4],
+) -> ([u64; 4], [u64; 4]) {
+    // Find highest set bit in scalar
+    let mut highest_bit = 0;
+    for i in (0..4).rev() {
+        if scalar[i] != 0 {
+            highest_bit = i * 64 + (64 - scalar[i].leading_zeros() as usize);
+            break;
+        }
+    }
+    if highest_bit == 0 {
+        // scalar == 0 → point at infinity (not representable in affine)
+        panic!("ec_scalar_mul: scalar is zero");
+    }
+
+    // Start from the MSB-1 and double-and-add
+    let mut rx = *px;
+    let mut ry = *py;
+
+    for bit_pos in (0..highest_bit - 1).rev() {
+        // Double
+        let (dx, dy) = ec_point_double(&rx, &ry, a, p);
+        rx = dx;
+        ry = dy;
+
+        // Add if bit is set
+        let limb_idx = bit_pos / 64;
+        let bit_idx = bit_pos % 64;
+        if (scalar[limb_idx] >> bit_idx) & 1 == 1 {
+            let (ax, ay) = ec_point_add(&rx, &ry, px, py, p);
+            rx = ax;
+            ry = ay;
+        }
+    }
+
+    (rx, ry)
+}
 
 /// Integer division of a 512-bit dividend by a 256-bit divisor.
 /// Returns (quotient, remainder) where both fit in 256 bits.
@@ -847,5 +1155,83 @@ mod tests {
             compute_carries_86([a0, a1, a2], [b0, b1, b2], [p0, p1, p2], [q0, q1, q2], [
                 r0, r1, r2,
             ]);
+    }
+
+    #[test]
+    fn test_half_gcd_small() {
+        // s = 42, n = 101
+        let s = [42, 0, 0, 0];
+        let n = [101, 0, 0, 0];
+        let (val1, val2, neg1, neg2) = half_gcd(&s, &n);
+
+        // Verify: (-1)^neg1 * val1 + (-1)^neg2 * val2 * s ≡ 0 (mod n)
+        let sign1: i128 = if neg1 { -1 } else { 1 };
+        let sign2: i128 = if neg2 { -1 } else { 1 };
+        let v1 = val1[0] as i128;
+        let v2 = val2[0] as i128;
+        let s_val = s[0] as i128;
+        let n_val = n[0] as i128;
+        let lhs = ((sign1 * v1 + sign2 * v2 * s_val) % n_val + n_val) % n_val;
+        assert_eq!(lhs, 0, "half_gcd relation failed for small values");
+    }
+
+    #[test]
+    fn test_half_gcd_grumpkin_order() {
+        // Grumpkin curve order (BN254 base field order)
+        let n = [
+            0x3c208c16d87cfd47_u64,
+            0x97816a916871ca8d_u64,
+            0xb85045b68181585d_u64,
+            0x30644e72e131a029_u64,
+        ];
+        // Some scalar
+        let s = [
+            0x123456789abcdef0_u64,
+            0xfedcba9876543210_u64,
+            0x1111111111111111_u64,
+            0x2222222222222222_u64,
+        ];
+
+        let (val1, val2, neg1, neg2) = half_gcd(&s, &n);
+
+        // val1 and val2 should be < 2^128
+        assert_eq!(val1[2], 0, "val1 should be < 2^128");
+        assert_eq!(val1[3], 0, "val1 should be < 2^128");
+        assert_eq!(val2[2], 0, "val2 should be < 2^128");
+        assert_eq!(val2[3], 0, "val2 should be < 2^128");
+
+        // Verify: (-1)^neg1 * val1 + (-1)^neg2 * val2 * s ≡ 0 (mod n)
+        // Use big integer arithmetic
+        let term2_full = widening_mul(&val2, &s);
+        let (_, term2_mod_n) = divmod_wide(&term2_full, &n);
+
+        // Compute: sign1 * val1 + sign2 * term2_mod_n (mod n)
+        let effective1 = if neg1 {
+            // n - val1
+            let mut result = n;
+            sub_4limb_checked(&mut result, &val1);
+            result
+        } else {
+            val1
+        };
+        let effective2 = if neg2 {
+            let mut result = n;
+            sub_4limb_checked(&mut result, &term2_mod_n);
+            result
+        } else {
+            term2_mod_n
+        };
+
+        let sum = add_4limb(&effective1, &effective2);
+        let sum4 = [sum[0], sum[1], sum[2], sum[3]];
+        // sum might be >= n, so reduce
+        let (_, remainder) = if sum[4] > 0 {
+            // Sum overflows 256 bits, need wide divmod
+            let wide = [sum[0], sum[1], sum[2], sum[3], sum[4], 0, 0, 0];
+            divmod_wide(&wide, &n)
+        } else {
+            divmod(&sum4, &n)
+        };
+        assert_eq!(remainder, [0, 0, 0, 0], "half_gcd relation failed for Grumpkin order");
     }
 }

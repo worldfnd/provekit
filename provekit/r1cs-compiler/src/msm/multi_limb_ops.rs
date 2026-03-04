@@ -1,14 +1,11 @@
-//! `MultiLimbOps` — unified FieldOps implementation parameterized by runtime limb count.
+//! `MultiLimbOps` — unified FieldOps implementation parameterized by runtime
+//! limb count.
 //!
 //! Uses `Limbs` (a fixed-capacity Copy type) as `FieldOps::Elem`, enabling
 //! arbitrary limb counts without const generics or dispatch macros.
 
 use {
-    super::{
-        multi_limb_arith,
-        Limbs,
-        FieldOps,
-    },
+    super::{multi_limb_arith, FieldOps, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{AdditiveGroup, Field},
     provekit_common::{
@@ -20,18 +17,18 @@ use {
 
 /// Parameters for multi-limb field arithmetic.
 pub struct MultiLimbParams {
-    pub num_limbs:          usize,
-    pub limb_bits:          u32,
-    pub p_limbs:            Vec<FieldElement>,
-    pub p_minus_1_limbs:    Vec<FieldElement>,
-    pub two_pow_w:          FieldElement,
-    pub modulus_raw:        [u64; 4],
-    pub curve_a_limbs:      Vec<FieldElement>,
-    pub modulus_bits:       u32,
+    pub num_limbs:       usize,
+    pub limb_bits:       u32,
+    pub p_limbs:         Vec<FieldElement>,
+    pub p_minus_1_limbs: Vec<FieldElement>,
+    pub two_pow_w:       FieldElement,
+    pub modulus_raw:     [u64; 4],
+    pub curve_a_limbs:   Vec<FieldElement>,
+    pub modulus_bits:    u32,
     /// p = native field → skip mod reduction
-    pub is_native:          bool,
+    pub is_native:       bool,
     /// For N=1 non-native: the modulus as a single FieldElement
-    pub modulus_fe:         Option<FieldElement>,
+    pub modulus_fe:      Option<FieldElement>,
 }
 
 /// Unified field operations struct parameterized by runtime limb count.
@@ -66,20 +63,21 @@ impl FieldOps for MultiLimbOps<'_> {
             // term with coefficient 2 to avoid duplicate column indices in
             // the R1CS sparse matrix (set overwrites on duplicate (row,col)).
             let r = if a[0] == b[0] {
-                self.compiler.add_sum(vec![
-                    SumTerm(Some(FieldElement::from(2u64)), a[0]),
-                ])
+                self.compiler
+                    .add_sum(vec![SumTerm(Some(FieldElement::from(2u64)), a[0])])
             } else {
-                self.compiler.add_sum(vec![
-                    SumTerm(None, a[0]),
-                    SumTerm(None, b[0]),
-                ])
+                self.compiler
+                    .add_sum(vec![SumTerm(None, a[0]), SumTerm(None, b[0])])
             };
             Limbs::single(r)
         } else if self.is_non_native_single() {
             let modulus = self.params.modulus_fe.unwrap();
             let r = multi_limb_arith::add_mod_p_single(
-                self.compiler, a[0], b[0], modulus, self.range_checks,
+                self.compiler,
+                a[0],
+                b[0],
+                modulus,
+                self.range_checks,
             );
             Limbs::single(r)
         } else {
@@ -104,9 +102,8 @@ impl FieldOps for MultiLimbOps<'_> {
             // When both operands are the same witness, a - a = 0. Use a
             // single zero-coefficient term to avoid duplicate column indices.
             let r = if a[0] == b[0] {
-                self.compiler.add_sum(vec![
-                    SumTerm(Some(FieldElement::ZERO), a[0]),
-                ])
+                self.compiler
+                    .add_sum(vec![SumTerm(Some(FieldElement::ZERO), a[0])])
             } else {
                 self.compiler.add_sum(vec![
                     SumTerm(None, a[0]),
@@ -117,7 +114,11 @@ impl FieldOps for MultiLimbOps<'_> {
         } else if self.is_non_native_single() {
             let modulus = self.params.modulus_fe.unwrap();
             let r = multi_limb_arith::sub_mod_p_single(
-                self.compiler, a[0], b[0], modulus, self.range_checks,
+                self.compiler,
+                a[0],
+                b[0],
+                modulus,
+                self.range_checks,
             );
             Limbs::single(r)
         } else {
@@ -144,7 +145,11 @@ impl FieldOps for MultiLimbOps<'_> {
         } else if self.is_non_native_single() {
             let modulus = self.params.modulus_fe.unwrap();
             let r = multi_limb_arith::mul_mod_p_single(
-                self.compiler, a[0], b[0], modulus, self.range_checks,
+                self.compiler,
+                a[0],
+                b[0],
+                modulus,
+                self.range_checks,
             );
             Limbs::single(r)
         } else {
@@ -177,9 +182,8 @@ impl FieldOps for MultiLimbOps<'_> {
             Limbs::single(a_inv)
         } else if self.is_non_native_single() {
             let modulus = self.params.modulus_fe.unwrap();
-            let r = multi_limb_arith::inv_mod_p_single(
-                self.compiler, a[0], modulus, self.range_checks,
-            );
+            let r =
+                multi_limb_arith::inv_mod_p_single(self.compiler, a[0], modulus, self.range_checks);
             Limbs::single(r)
         } else {
             multi_limb_arith::inv_mod_p_multi(
@@ -210,12 +214,7 @@ impl FieldOps for MultiLimbOps<'_> {
         out
     }
 
-    fn select(
-        &mut self,
-        flag: usize,
-        on_false: Limbs,
-        on_true: Limbs,
-    ) -> Limbs {
+    fn select(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
         super::constrain_boolean(self.compiler, flag);
         let n = self.n();
         let mut out = Limbs::new(n);
@@ -233,43 +232,21 @@ impl FieldOps for MultiLimbOps<'_> {
         super::pack_bits_helper(self.compiler, bits)
     }
 
-    fn elem_is_zero(&mut self, value: Limbs) -> usize {
+    fn constant_limbs(&mut self, limbs: &[FieldElement]) -> Limbs {
         let n = self.n();
-        if n == 1 {
-            multi_limb_arith::compute_is_zero(self.compiler, value[0])
-        } else {
-            // Check each limb is zero and AND the results together
-            let mut result = multi_limb_arith::compute_is_zero(self.compiler, value[0]);
-            for i in 1..n {
-                let limb_zero = multi_limb_arith::compute_is_zero(self.compiler, value[i]);
-                result = self.compiler.add_product(result, limb_zero);
-            }
-            result
-        }
-    }
-
-    fn constant_one(&mut self) -> Limbs {
-        let n = self.n();
+        assert_eq!(
+            limbs.len(),
+            n,
+            "constant_limbs: expected {n} limbs, got {}",
+            limbs.len()
+        );
         let mut out = Limbs::new(n);
-        // limb[0] = 1
-        let w0 = self.compiler.num_witnesses();
-        self.compiler
-            .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w0, FieldElement::ONE)));
-        out[0] = w0;
-        // limb[1..n] = 0
-        for i in 1..n {
+        for i in 0..n {
             let w = self.compiler.num_witnesses();
             self.compiler
-                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(
-                    w,
-                    FieldElement::ZERO,
-                )));
+                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, limbs[i])));
             out[i] = w;
         }
         out
-    }
-
-    fn bool_and(&mut self, a: usize, b: usize) -> usize {
-        self.compiler.add_product(a, b)
     }
 }

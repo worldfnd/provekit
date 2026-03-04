@@ -156,9 +156,7 @@ impl DependencyInfo {
                 v
             }
             WitnessBuilder::MultiLimbMulModHint {
-                a_limbs,
-                b_limbs,
-                ..
+                a_limbs, b_limbs, ..
             } => {
                 let mut v = a_limbs.clone();
                 v.extend(b_limbs);
@@ -166,18 +164,14 @@ impl DependencyInfo {
             }
             WitnessBuilder::MultiLimbModularInverse { a_limbs, .. } => a_limbs.clone(),
             WitnessBuilder::MultiLimbAddQuotient {
-                a_limbs,
-                b_limbs,
-                ..
+                a_limbs, b_limbs, ..
             } => {
                 let mut v = a_limbs.clone();
                 v.extend(b_limbs);
                 v
             }
             WitnessBuilder::MultiLimbSubBorrow {
-                a_limbs,
-                b_limbs,
-                ..
+                a_limbs, b_limbs, ..
             } => {
                 let mut v = a_limbs.clone();
                 v.extend(b_limbs);
@@ -229,6 +223,10 @@ impl DependencyInfo {
                     data.rs_cubed,
                 ]
             }
+            WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
+            WitnessBuilder::EcScalarMulHint {
+                px, py, s_lo, s_hi, ..
+            } => vec![*px, *py, *s_lo, *s_hi],
             WitnessBuilder::ChunkDecompose { packed, .. } => vec![*packed],
             WitnessBuilder::SpreadWitness(_, input) => vec![*input],
             WitnessBuilder::SpreadBitExtract { sum_terms, .. } => {
@@ -329,6 +327,12 @@ impl DependencyInfo {
                 num_limbs,
                 ..
             } => (*output_start..*output_start + *num_limbs as usize).collect(),
+            WitnessBuilder::FakeGLVHint {
+                output_start, ..
+            } => (*output_start..*output_start + 4).collect(),
+            WitnessBuilder::EcScalarMulHint {
+                output_start, ..
+            } => (*output_start..*output_start + 2).collect(),
             WitnessBuilder::MultiLimbAddQuotient { output, .. } => vec![*output],
             WitnessBuilder::MultiLimbSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {

@@ -205,7 +205,9 @@ impl Prove for NoirProver {
             let hc = debug_r1cs.c.hydrate(interner);
             let mut fail_count = 0usize;
             for row in 0..debug_r1cs.num_constraints() {
-                let eval = |hm: &provekit_common::sparse_matrix::HydratedSparseMatrix, r: usize| -> FieldElement {
+                let eval = |hm: &provekit_common::sparse_matrix::HydratedSparseMatrix,
+                            r: usize|
+                 -> FieldElement {
                     let mut sum = FieldElement::zero();
                     for (col, coeff) in hm.iter_row(r) {
                         sum += coeff * full_witness[col];
@@ -219,7 +221,11 @@ impl Prove for NoirProver {
                     if fail_count < 10 {
                         eprintln!(
                             "CONSTRAINT {} FAILED: A={:?} B={:?} C={:?} A*B={:?}",
-                            row, a_val, b_val, c_val, a_val * b_val
+                            row,
+                            a_val,
+                            b_val,
+                            c_val,
+                            a_val * b_val
                         );
                         eprint!("  A terms:");
                         for (col, coeff) in ha.iter_row(row) {
@@ -241,7 +247,10 @@ impl Prove for NoirProver {
                 }
             }
             if fail_count > 0 {
-                eprintln!("TOTAL FAILING CONSTRAINTS: {fail_count} / {}", debug_r1cs.num_constraints());
+                eprintln!(
+                    "TOTAL FAILING CONSTRAINTS: {fail_count} / {}",
+                    debug_r1cs.num_constraints()
+                );
             } else {
                 eprintln!("ALL {} CONSTRAINTS SATISFIED", debug_r1cs.num_constraints());
             }

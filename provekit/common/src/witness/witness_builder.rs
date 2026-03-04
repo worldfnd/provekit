@@ -270,6 +270,37 @@ pub enum WitnessBuilder {
         packed:       usize,
         chunk_bits:   Vec<u32>,
     },
+    /// Prover hint for FakeGLV scalar decomposition.
+    /// Given scalar s (from s_lo + s_hi * 2^128) and curve order n,
+    /// computes half_gcd(s, n) → (|s1|, |s2|, neg1, neg2) such that:
+    ///   (-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)
+    ///
+    /// Outputs 4 witnesses starting at output_start:
+    ///   [0] |s1| (128-bit field element)
+    ///   [1] |s2| (128-bit field element)
+    ///   [2] neg1 (boolean: 0 or 1)
+    ///   [3] neg2 (boolean: 0 or 1)
+    FakeGLVHint {
+        output_start: usize,
+        s_lo:         usize,
+        s_hi:         usize,
+        curve_order:  [u64; 4],
+    },
+    /// Prover hint for EC scalar multiplication: computes R = [s]P.
+    /// Given point P = (px, py) and scalar s = s_lo + s_hi * 2^128,
+    /// computes R = [s]P on the curve with parameter `curve_a` and
+    /// field modulus `field_modulus_p`.
+    ///
+    /// Outputs 2 witnesses at output_start: R_x, R_y.
+    EcScalarMulHint {
+        output_start:    usize,
+        px:              usize,
+        py:              usize,
+        s_lo:            usize,
+        s_hi:            usize,
+        curve_a:         [u64; 4],
+        field_modulus_p: [u64; 4],
+    },
     /// Computes spread(input): interleave bits with zeros.
     /// Output: 0 b_{n-1} 0 b_{n-2} ... 0 b_1 0 b_0
     /// (witness index of output, witness index of input)
@@ -332,10 +363,10 @@ impl WitnessBuilder {
             WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
-            WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => {
-                (4 * *num_limbs - 2) as usize
-            }
+            WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => (4 * *num_limbs - 2) as usize,
             WitnessBuilder::MultiLimbModularInverse { num_limbs, .. } => *num_limbs as usize,
+            WitnessBuilder::FakeGLVHint { .. } => 4,
+            WitnessBuilder::EcScalarMulHint { .. } => 2,
 
             _ => 1,
         }
