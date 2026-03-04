@@ -1,11 +1,10 @@
 use {
     super::Command,
-    std::str::FromStr,
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::write, HashConfig, Prover, Verifier},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    std::path::PathBuf,
+    std::{path::PathBuf, str::FromStr},
     tracing::instrument,
 };
 
