@@ -214,8 +214,11 @@ impl FieldOps for MultiLimbOps<'_> {
         out
     }
 
-    fn select(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
+    fn constrain_flag(&mut self, flag: usize) {
         super::constrain_boolean(self.compiler, flag);
+    }
+
+    fn select_unchecked(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
         let n = self.n();
         let mut out = Limbs::new(n);
         for i in 0..n {

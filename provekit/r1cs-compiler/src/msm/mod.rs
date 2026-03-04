@@ -139,9 +139,24 @@ pub trait FieldOps {
     fn inv(&mut self, a: Self::Elem) -> Self::Elem;
     fn curve_a(&mut self) -> Self::Elem;
 
+    /// Constrains `flag` to be boolean (`flag * flag = flag`).
+    fn constrain_flag(&mut self, flag: usize);
+
+    /// Conditional select without boolean constraint on `flag`.
+    /// Caller must ensure `flag` is already constrained boolean.
+    fn select_unchecked(
+        &mut self,
+        flag: usize,
+        on_false: Self::Elem,
+        on_true: Self::Elem,
+    ) -> Self::Elem;
+
     /// Conditional select: returns `on_true` if `flag` is 1, `on_false` if
     /// `flag` is 0. Constrains `flag` to be boolean (`flag * flag = flag`).
-    fn select(&mut self, flag: usize, on_false: Self::Elem, on_true: Self::Elem) -> Self::Elem;
+    fn select(&mut self, flag: usize, on_false: Self::Elem, on_true: Self::Elem) -> Self::Elem {
+        self.constrain_flag(flag);
+        self.select_unchecked(flag, on_false, on_true)
+    }
 
     /// Checks if a BN254 native witness value is zero.
     /// Returns a boolean witness: 1 if zero, 0 if non-zero.
@@ -844,11 +859,13 @@ fn verify_scalar_relation(
     let zero = ops.constant_limbs(&zero_limbs_vals);
     let neg_product = ops.sub(zero, product);
     // Select: if neg2=1, use neg_product; else use product
-    let effective_product = ops.select(neg2_witness, product, neg_product);
+    // neg2 already constrained boolean in verify_point_fakeglv
+    let effective_product = ops.select_unchecked(neg2_witness, product, neg_product);
 
     // If neg1 is set: neg_s1 = n - s1 (mod n), i.e. 0 - s1
     let neg_s1 = ops.sub(zero, s1_limbs);
-    let effective_s1 = ops.select(neg1_witness, s1_limbs, neg_s1);
+    // neg1 already constrained boolean in verify_point_fakeglv
+    let effective_s1 = ops.select_unchecked(neg1_witness, s1_limbs, neg_s1);
 
     // Sum: effective_s1 + effective_product (mod n) should be 0
     let sum = ops.add(effective_s1, effective_product);

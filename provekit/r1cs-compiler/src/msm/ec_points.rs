@@ -100,6 +100,19 @@ pub fn point_select<F: FieldOps>(
     (x, y)
 }
 
+/// Conditional point select without boolean constraint on `flag`.
+/// Caller must ensure `flag` is already constrained boolean.
+fn point_select_unchecked<F: FieldOps>(
+    ops: &mut F,
+    flag: usize,
+    on_false: (F::Elem, F::Elem),
+    on_true: (F::Elem, F::Elem),
+) -> (F::Elem, F::Elem) {
+    let x = ops.select_unchecked(flag, on_false.0, on_true.0);
+    let y = ops.select_unchecked(flag, on_false.1, on_true.1);
+    (x, y)
+}
+
 /// Builds a point table for windowed scalar multiplication.
 ///
 /// T[0] = P (dummy entry, used when window digit = 0)
@@ -130,6 +143,9 @@ fn build_point_table<F: FieldOps>(
 /// Uses a binary tree of `point_select`s: processes bits from MSB to LSB,
 /// halving the candidate set at each level. Total: `(2^w - 1)` point selects
 /// for a table of `2^w` entries.
+///
+/// Each bit is constrained boolean exactly once, then all subsequent selects
+/// on that bit use the unchecked variant.
 fn table_lookup<F: FieldOps>(
     ops: &mut F,
     table: &[(F::Elem, F::Elem)],
@@ -139,10 +155,11 @@ fn table_lookup<F: FieldOps>(
     let mut current: Vec<(F::Elem, F::Elem)> = table.to_vec();
     // Process bits from MSB to LSB
     for &bit in bits.iter().rev() {
+        ops.constrain_flag(bit); // constrain boolean once per bit
         let half = current.len() / 2;
         let mut next = Vec::with_capacity(half);
         for i in 0..half {
-            next.push(point_select(ops, bit, current[i], current[i + half]));
+            next.push(point_select_unchecked(ops, bit, current[i], current[i + half]));
         }
         current = next;
     }
@@ -224,7 +241,8 @@ pub fn scalar_mul_glv<F: FieldOps>(
         );
         let digit_p = ops.pack_bits(s1_window_bits);
         let digit_p_is_zero = ops.is_zero(digit_p);
-        let after_p = point_select(ops, digit_p_is_zero, added_p, doubled_acc);
+        // is_zero already constrains its output boolean; skip redundant check
+        let after_p = point_select_unchecked(ops, digit_p_is_zero, added_p, doubled_acc);
 
         // --- Process R's window digit (s2) ---
         let s2_window_bits = &s2_bits[bit_start..bit_end];
@@ -243,7 +261,8 @@ pub fn scalar_mul_glv<F: FieldOps>(
         );
         let digit_r = ops.pack_bits(s2_window_bits);
         let digit_r_is_zero = ops.is_zero(digit_r);
-        acc = point_select(ops, digit_r_is_zero, added_r, after_p);
+        // is_zero already constrains its output boolean; skip redundant check
+        acc = point_select_unchecked(ops, digit_r_is_zero, added_r, after_p);
     }
 
     acc
