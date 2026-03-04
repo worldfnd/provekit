@@ -232,7 +232,7 @@ impl Prove for MavrosProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&Empty);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         let commitment_1 = self
             .whir_for_witness

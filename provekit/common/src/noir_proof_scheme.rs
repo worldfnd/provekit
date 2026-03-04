@@ -41,25 +41,6 @@ pub enum NoirProofScheme {
     Mavros(MavrosSchemeData),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MavrosSchemeData {
-    #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:                Abi,
-    pub num_public_inputs:  usize,
-    pub r1cs:               R1CS,
-    pub whir_for_witness:   WhirR1CSScheme,
-    pub witgen_binary:      Vec<u64>,
-    pub ad_binary:          Vec<u64>,
-    pub constraints_layout: ConstraintsLayout,
-    pub witness_layout:     WitnessLayout,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NoirProofScheme {
-    Noir(NoirSchemeData),
-    Mavros(MavrosSchemeData),
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
     pub public_inputs:   PublicInputs,

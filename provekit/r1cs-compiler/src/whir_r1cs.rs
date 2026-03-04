@@ -21,6 +21,7 @@ pub trait WhirR1CSSchemeBuilder {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self;
 
     fn new_from_dimensions(
@@ -30,9 +31,14 @@ pub trait WhirR1CSSchemeBuilder {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self;
 
-    fn new_whir_zk_config_for_size(num_variables: usize, num_polynomials: usize) -> WhirZkConfig;
+    fn new_whir_zk_config_for_size(
+        num_variables: usize,
+        num_polynomials: usize,
+        hash_id: EngineId,
+    ) -> WhirZkConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
@@ -103,6 +109,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
@@ -115,6 +122,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             w1_size,
             num_challenges,
             has_public_inputs,
+            hash_id,
         )
     }
 
@@ -125,6 +133,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self {
         let m_raw = next_power_of_two(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
@@ -141,7 +150,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1),
+            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_id),
             w1_size,
             num_challenges,
             has_public_inputs,

@@ -13,6 +13,7 @@ use {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProver {
+    pub hash_config:            HashConfig,
     pub program:                Program<NoirElement>,
     pub r1cs:                   R1CS,
     pub split_witness_builders: SplitWitnessBuilders,
@@ -30,6 +31,8 @@ pub struct MavrosProver {
     pub ad_binary:          Vec<u64>,
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
+    #[serde(default)]
+    pub hash_config:        HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +45,7 @@ impl Prover {
     pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
         match scheme {
             NoirProofScheme::Noir(d) => Prover::Noir(NoirProver {
+                hash_config:            d.hash_config,
                 program:                d.program,
                 r1cs:                   d.r1cs,
                 split_witness_builders: d.split_witness_builders,
@@ -56,6 +60,7 @@ impl Prover {
                 ad_binary:          d.ad_binary,
                 constraints_layout: d.constraints_layout,
                 witness_layout:     d.witness_layout,
+                hash_config:        d.hash_config,
             }),
         }
     }

@@ -6,7 +6,7 @@
 //! per proof for Fiat-Shamir challenges, not in a tight inner loop.
 
 use {
-    crate::{hash_config::HashConfig, skyscraper::SkyscraperSponge},
+    crate::{skyscraper::SkyscraperSponge, HashConfig},
     spongefish::{instantiations, DuplexSpongeInterface},
 };
 

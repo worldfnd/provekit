@@ -23,11 +23,13 @@ impl Verifier {
                 r1cs:             d.r1cs,
                 whir_for_witness: Some(d.whir_for_witness),
                 abi:              d.witness_generator.abi.clone(),
+                hash_config:      d.hash_config,
             },
             NoirProofScheme::Mavros(d) => Self {
                 r1cs:             d.r1cs,
                 whir_for_witness: Some(d.whir_for_witness),
                 abi:              d.abi.clone(),
+                hash_config:      d.hash_config,
             },
         }
     }
