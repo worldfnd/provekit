@@ -258,8 +258,12 @@ fn prove_circuit<T: serde::Serialize>(
     tee_println!("  [{circuit_name}] Converting inputs -> JSON -> InputMap...");
     let json = serde_json::to_string(inputs)
         .with_context(|| format!("Serializing {circuit_name} inputs to JSON"))?;
+    let abi = match &prover {
+        provekit_common::Prover::Noir(p) => p.witness_generator.abi(),
+        provekit_common::Prover::Mavros(p) => &p.abi,
+    };
     let input_map = Format::Json
-        .parse(&json, prover.witness_generator.abi())
+        .parse(&json, abi)
         .map_err(|e| anyhow::anyhow!("ABI parse error for {circuit_name}: {e}"))?;
 
     tee_println!("  [{circuit_name}] Generating proof...");
