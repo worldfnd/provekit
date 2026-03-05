@@ -208,7 +208,7 @@ impl Prove for NoirProver {
 
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        let (input_map,_return_value)  =
+        let (input_map, _return_value) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
         self.prove(input_map)
     }
@@ -313,7 +313,7 @@ impl Prove for MavrosProver {
 
         let input_map =
             crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
-        self.prove(input_map)            
+        self.prove(input_map)
     }
 }
 
