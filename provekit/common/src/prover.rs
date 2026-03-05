@@ -31,7 +31,6 @@ pub struct MavrosProver {
     pub ad_binary:          Vec<u64>,
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
-    #[serde(default)]
     pub hash_config:        HashConfig,
 }
 

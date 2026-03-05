@@ -8,6 +8,7 @@
 use {
     crate::{skyscraper::SkyscraperSponge, HashConfig},
     spongefish::{instantiations, DuplexSpongeInterface},
+    std::fmt,
 };
 
 /// Fiat-Shamir transcript sponge, selected at runtime by [`HashConfig`].
@@ -20,6 +21,17 @@ pub enum TranscriptSponge {
     Blake3(instantiations::Blake3),
     Keccak(instantiations::Keccak),
     Skyscraper(SkyscraperSponge),
+}
+
+impl fmt::Debug for TranscriptSponge {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sha256(_) => f.debug_tuple("Sha256").finish(),
+            Self::Blake3(_) => f.debug_tuple("Blake3").finish(),
+            Self::Keccak(_) => f.debug_tuple("Keccak").finish(),
+            Self::Skyscraper(_) => f.debug_tuple("Skyscraper").finish(),
+        }
+    }
 }
 
 impl TranscriptSponge {
