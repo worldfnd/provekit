@@ -23,6 +23,42 @@ pub trait WitnessBuilderSolver {
     );
 }
 
+/// Resolve a ConstantOrR1CSWitness to its FieldElement value.
+fn resolve(witness: &[Option<FieldElement>], v: &ConstantOrR1CSWitness) -> FieldElement {
+    match v {
+        ConstantOrR1CSWitness::Constant(c) => *c,
+        ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
+    }
+}
+
+/// Convert a u128 value to a FieldElement.
+fn u128_to_fe(val: u128) -> FieldElement {
+    FieldElement::from_bigint(ark_ff::BigInt([val as u64, (val >> 64) as u64, 0, 0])).unwrap()
+}
+
+/// Read witness limbs and reconstruct as [u64; 4].
+fn read_witness_limbs(
+    witness: &[Option<FieldElement>],
+    indices: &[usize],
+    limb_bits: u32,
+) -> [u64; 4] {
+    let limb_values: Vec<u128> = indices
+        .iter()
+        .map(|&idx| {
+            let bigint = witness[idx].unwrap().into_bigint().0;
+            bigint[0] as u128 | ((bigint[1] as u128) << 64)
+        })
+        .collect();
+    crate::bigint_mod::reconstruct_from_u128_limbs(&limb_values, limb_bits)
+}
+
+/// Write u128 limb values as FieldElement witnesses starting at `start`.
+fn write_limbs(witness: &mut [Option<FieldElement>], start: usize, vals: &[u128]) {
+    for (i, &val) in vals.iter().enumerate() {
+        witness[start + i] = Some(u128_to_fe(val));
+    }
+}
+
 impl WitnessBuilderSolver for WitnessBuilder {
     fn solve(
         &self,
@@ -171,18 +207,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 rhs,
                 output,
             ) => {
-                let lhs = match lhs {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let rhs = match rhs {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let output = match output {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
+                let lhs = resolve(witness, lhs);
+                let rhs = resolve(witness, rhs);
+                let output = resolve(witness, output);
                 witness[*witness_idx] = Some(
                     witness[*sz_challenge].unwrap()
                         - (lhs
@@ -201,22 +228,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 and_output,
                 xor_output,
             ) => {
-                let lhs = match lhs {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let rhs = match rhs {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let and_out = match and_output {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let xor_out = match xor_output {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
+                let lhs = resolve(witness, lhs);
+                let rhs = resolve(witness, rhs);
+                let and_out = resolve(witness, and_output);
+                let xor_out = resolve(witness, xor_output);
                 // Encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
                 witness[*witness_idx] = Some(
                     witness[*sz_challenge].unwrap()
@@ -229,18 +244,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
             WitnessBuilder::MultiplicitiesForBinOp(witness_idx, atomic_bits, operands) => {
                 let mut multiplicities = vec![0u32; 2usize.pow(2 * *atomic_bits)];
                 for (lhs, rhs) in operands {
-                    let lhs = match lhs {
-                        ConstantOrR1CSWitness::Constant(c) => *c,
-                        ConstantOrR1CSWitness::Witness(witness_idx) => {
-                            witness[*witness_idx].unwrap()
-                        }
-                    };
-                    let rhs = match rhs {
-                        ConstantOrR1CSWitness::Constant(c) => *c,
-                        ConstantOrR1CSWitness::Witness(witness_idx) => {
-                            witness[*witness_idx].unwrap()
-                        }
-                    };
+                    let lhs = resolve(witness, lhs);
+                    let rhs = resolve(witness, rhs);
                     let index = (lhs.into_bigint().0[0] << *atomic_bits) + rhs.into_bigint().0[0];
                     multiplicities[index as usize] += 1;
                 }
@@ -249,14 +254,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 }
             }
             WitnessBuilder::U32Addition(result_witness_idx, carry_witness_idx, a, b) => {
-                let a_val = match a {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
-                };
-                let b_val = match b {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
-                };
+                let a_val = resolve(witness, a);
+                let b_val = resolve(witness, b);
                 assert!(
                     a_val.into_bigint().num_bits() <= 32,
                     "a_val must be less than or equal to 32 bits, got {}",
@@ -284,12 +283,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 // Sum all inputs as u64 to handle overflow.
                 let mut sum: u64 = 0;
                 for input in inputs {
-                    let val = match input {
-                        ConstantOrR1CSWitness::Constant(c) => c.into_bigint().0[0],
-                        ConstantOrR1CSWitness::Witness(idx) => {
-                            witness[*idx].unwrap().into_bigint().0[0]
-                        }
-                    };
+                    let val = resolve(witness, input).into_bigint().0[0];
                     assert!(val < (1u64 << 32), "input must be 32-bit");
                     sum += val;
                 }
@@ -300,14 +294,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*carry_witness_idx] = Some(FieldElement::from(quotient));
             }
             WitnessBuilder::And(result_witness_idx, lh, rh) => {
-                let lh_val = match lh {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let rh_val = match rh {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
+                let lh_val = resolve(witness, lh);
+                let rh_val = resolve(witness, rh);
                 assert!(
                     lh_val.into_bigint().num_bits() <= 32,
                     "lh_val must be less than or equal to 32 bits, got {}",
@@ -323,14 +311,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 ));
             }
             WitnessBuilder::Xor(result_witness_idx, lh, rh) => {
-                let lh_val = match lh {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
-                let rh_val = match rh {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(witness_idx) => witness[*witness_idx].unwrap(),
-                };
+                let lh_val = resolve(witness, lh);
+                let rh_val = resolve(witness, rh);
                 assert!(
                     lh_val.into_bigint().num_bits() <= 32,
                     "lh_val must be less than or equal to 32 bits, got {}",
@@ -353,148 +335,33 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 num_limbs,
             } => {
-                use crate::bigint_mod::{divmod_wide, widening_mul};
+                use crate::bigint_mod::{
+                    compute_mul_mod_carries, decompose_to_u128_limbs, divmod_wide, widening_mul,
+                };
                 let n = *num_limbs as usize;
                 let w = *limb_bits;
-                let limb_mask: u128 = if w >= 128 {
-                    u128::MAX
-                } else {
-                    (1u128 << w) - 1
-                };
 
-                // Reconstruct a, b as [u64; 4] from N limbs
-                let reconstruct = |limbs: &[usize]| -> [u64; 4] {
-                    let mut val = [0u64; 4];
-                    let mut bit_offset = 0u32;
-                    for &limb_idx in limbs.iter() {
-                        let limb_val = witness[limb_idx].unwrap().into_bigint().0;
-                        let limb_u128 = limb_val[0] as u128 | ((limb_val[1] as u128) << 64);
-                        // Place into val at bit_offset
-                        let word_start = (bit_offset / 64) as usize;
-                        let bit_within = bit_offset % 64;
-                        if word_start < 4 {
-                            val[word_start] |= (limb_u128 as u64) << bit_within;
-                            if word_start + 1 < 4 {
-                                val[word_start + 1] |= (limb_u128 >> (64 - bit_within)) as u64;
-                            }
-                            if word_start + 2 < 4 && bit_within > 0 {
-                                let upper = limb_u128 >> (128 - bit_within);
-                                if upper > 0 {
-                                    val[word_start + 2] |= upper as u64;
-                                }
-                            }
-                        }
-                        bit_offset += w;
-                    }
-                    val
-                };
+                let a_val = read_witness_limbs(witness, a_limbs, w);
+                let b_val = read_witness_limbs(witness, b_limbs, w);
 
-                let a_val = reconstruct(a_limbs);
-                let b_val = reconstruct(b_limbs);
-
-                // Compute product and divmod
                 let product = widening_mul(&a_val, &b_val);
                 let (q_val, r_val) = divmod_wide(&product, modulus);
 
-                // Decompose a [u64;4] into N limbs of limb_bits width.
-                let decompose_n_from_u64 = |val: &[u64; 4]| -> Vec<u128> {
-                    let mut limbs = Vec::with_capacity(n);
-                    let mut remaining = *val;
-                    for _ in 0..n {
-                        let lo = remaining[0] as u128 | ((remaining[1] as u128) << 64);
-                        limbs.push(lo & limb_mask);
-                        // Shift right by w bits
-                        if w >= 256 {
-                            remaining = [0; 4];
-                        } else {
-                            let mut shifted = [0u64; 4];
-                            let word_shift = (w / 64) as usize;
-                            let bit_shift = w % 64;
-                            for i in 0..4 {
-                                if i + word_shift < 4 {
-                                    shifted[i] = remaining[i + word_shift] >> bit_shift;
-                                    if bit_shift > 0 && i + word_shift + 1 < 4 {
-                                        shifted[i] |=
-                                            remaining[i + word_shift + 1] << (64 - bit_shift);
-                                    }
-                                }
-                            }
-                            remaining = shifted;
-                        }
-                    }
-                    limbs
-                };
+                let q_limbs_vals = decompose_to_u128_limbs(&q_val, n, w);
+                let r_limbs_vals = decompose_to_u128_limbs(&r_val, n, w);
 
-                let q_limbs_vals = decompose_n_from_u64(&q_val);
-                let r_limbs_vals = decompose_n_from_u64(&r_val);
+                let carries = compute_mul_mod_carries(
+                    &decompose_to_u128_limbs(&a_val, n, w),
+                    &decompose_to_u128_limbs(&b_val, n, w),
+                    &decompose_to_u128_limbs(modulus, n, w),
+                    &q_limbs_vals,
+                    &r_limbs_vals,
+                    w,
+                );
 
-                // Compute carries for schoolbook verification:
-                // a·b = p·q + r in base W = 2^limb_bits
-                // For each column k (0..2N-2):
-                //   lhs_k = Σ_{i+j=k} a[i]*b[j] + carry_{k-1}
-                //   rhs_k = Σ_{i+j=k} p[i]*q[j] + r[k] + carry_k * W
-                let p_limbs_vals = decompose_n_from_u64(modulus);
-                let a_limbs_vals = decompose_n_from_u64(&a_val);
-                let b_limbs_vals = decompose_n_from_u64(&b_val);
-
-                let w_val = 1u128 << w;
-                let num_carries = 2 * n - 2;
-                let carry_offset = 1u128 << (w + ((n as f64).log2().ceil() as u32) + 1);
-                let mut carries = Vec::with_capacity(num_carries);
-                let mut running: i128 = 0;
-
-                for k in 0..(2 * n - 1) {
-                    // Sum a[i]*b[j] for i+j=k
-                    let mut ab_sum: i128 = 0;
-                    for i in 0..n {
-                        let j = k as isize - i as isize;
-                        if j >= 0 && (j as usize) < n {
-                            ab_sum += a_limbs_vals[i] as i128 * b_limbs_vals[j as usize] as i128;
-                        }
-                    }
-                    // Sum p[i]*q[j] for i+j=k
-                    let mut pq_sum: i128 = 0;
-                    for i in 0..n {
-                        let j = k as isize - i as isize;
-                        if j >= 0 && (j as usize) < n {
-                            pq_sum += p_limbs_vals[i] as i128 * q_limbs_vals[j as usize] as i128;
-                        }
-                    }
-                    let r_k = if k < n { r_limbs_vals[k] as i128 } else { 0 };
-
-                    // column: ab_sum + carry_prev = pq_sum + r_k + carry_next * W
-                    // carry_next = (ab_sum + carry_prev - pq_sum - r_k) / W
-                    running += ab_sum - pq_sum - r_k;
-                    if k < 2 * n - 2 {
-                        let carry = running / w_val as i128;
-                        carries.push(carry);
-                        running -= carry * w_val as i128;
-                    }
-                }
-
-                let u128_to_fe = |val: u128| -> FieldElement {
-                    FieldElement::from_bigint(ark_ff::BigInt([
-                        val as u64,
-                        (val >> 64) as u64,
-                        0,
-                        0,
-                    ]))
-                    .unwrap()
-                };
-
-                // Write q limbs
-                for i in 0..n {
-                    witness[*output_start + i] = Some(u128_to_fe(q_limbs_vals[i]));
-                }
-                // Write r limbs
-                for i in 0..n {
-                    witness[*output_start + n + i] = Some(u128_to_fe(r_limbs_vals[i]));
-                }
-                // Write carries (unsigned-offset)
-                for i in 0..num_carries {
-                    let c_unsigned = (carries[i] + carry_offset as i128) as u128;
-                    witness[*output_start + 2 * n + i] = Some(u128_to_fe(c_unsigned));
-                }
+                write_limbs(witness, *output_start, &q_limbs_vals);
+                write_limbs(witness, *output_start + n, &r_limbs_vals);
+                write_limbs(witness, *output_start + 2 * n, &carries);
             }
             WitnessBuilder::MultiLimbModularInverse {
                 output_start,
@@ -503,64 +370,14 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 num_limbs,
             } => {
-                use crate::bigint_mod::{mod_pow, sub_u64};
+                use crate::bigint_mod::{decompose_to_u128_limbs, mod_pow, sub_u64};
                 let n = *num_limbs as usize;
                 let w = *limb_bits;
-                let limb_mask: u128 = if w >= 128 {
-                    u128::MAX
-                } else {
-                    (1u128 << w) - 1
-                };
 
-                // Reconstruct a as [u64; 4] from N limbs
-                let mut a_val = [0u64; 4];
-                let mut bit_offset = 0u32;
-                for &limb_idx in a_limbs.iter() {
-                    let limb_val = witness[limb_idx].unwrap().into_bigint().0;
-                    let limb_u128 = limb_val[0] as u128 | ((limb_val[1] as u128) << 64);
-                    let word_start = (bit_offset / 64) as usize;
-                    let bit_within = bit_offset % 64;
-                    if word_start < 4 {
-                        a_val[word_start] |= (limb_u128 as u64) << bit_within;
-                        if word_start + 1 < 4 {
-                            a_val[word_start + 1] |= (limb_u128 >> (64 - bit_within)) as u64;
-                        }
-                    }
-                    bit_offset += w;
-                }
-
-                // Compute inverse: a^{p-2} mod p
+                let a_val = read_witness_limbs(witness, a_limbs, w);
                 let exp = sub_u64(modulus, 2);
                 let inv = mod_pow(&a_val, &exp, modulus);
-
-                // Decompose into N limbs
-                let mut remaining = inv;
-                let u128_to_fe = |val: u128| -> FieldElement {
-                    FieldElement::from_bigint(ark_ff::BigInt([
-                        val as u64,
-                        (val >> 64) as u64,
-                        0,
-                        0,
-                    ]))
-                    .unwrap()
-                };
-                for i in 0..n {
-                    let lo = remaining[0] as u128 | ((remaining[1] as u128) << 64);
-                    witness[*output_start + i] = Some(u128_to_fe(lo & limb_mask));
-                    // Shift right by w bits
-                    let mut shifted = [0u64; 4];
-                    let word_shift = (w / 64) as usize;
-                    let bit_shift = w % 64;
-                    for j in 0..4 {
-                        if j + word_shift < 4 {
-                            shifted[j] = remaining[j + word_shift] >> bit_shift;
-                            if bit_shift > 0 && j + word_shift + 1 < 4 {
-                                shifted[j] |= remaining[j + word_shift + 1] << (64 - bit_shift);
-                            }
-                        }
-                    }
-                    remaining = shifted;
-                }
+                write_limbs(witness, *output_start, &decompose_to_u128_limbs(&inv, n, w));
             }
             WitnessBuilder::MultiLimbAddQuotient {
                 output,
@@ -573,28 +390,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 use crate::bigint_mod::{add_4limb, cmp_4limb};
                 let w = *limb_bits;
 
-                // Reconstruct from N limbs
-                let reconstruct = |limbs: &[usize]| -> [u64; 4] {
-                    let mut val = [0u64; 4];
-                    let mut bit_offset = 0u32;
-                    for &limb_idx in limbs.iter() {
-                        let limb_val = witness[limb_idx].unwrap().into_bigint().0;
-                        let limb_u128 = limb_val[0] as u128 | ((limb_val[1] as u128) << 64);
-                        let word_start = (bit_offset / 64) as usize;
-                        let bit_within = bit_offset % 64;
-                        if word_start < 4 {
-                            val[word_start] |= (limb_u128 as u64) << bit_within;
-                            if word_start + 1 < 4 {
-                                val[word_start + 1] |= (limb_u128 >> (64 - bit_within)) as u64;
-                            }
-                        }
-                        bit_offset += w;
-                    }
-                    val
-                };
-
-                let a_val = reconstruct(a_limbs);
-                let b_val = reconstruct(b_limbs);
+                let a_val = read_witness_limbs(witness, a_limbs, w);
+                let b_val = read_witness_limbs(witness, b_limbs, w);
 
                 let sum = add_4limb(&a_val, &b_val);
                 let q = if sum[4] > 0 {
@@ -620,27 +417,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 use crate::bigint_mod::cmp_4limb;
                 let w = *limb_bits;
 
-                let reconstruct = |limbs: &[usize]| -> [u64; 4] {
-                    let mut val = [0u64; 4];
-                    let mut bit_offset = 0u32;
-                    for &limb_idx in limbs.iter() {
-                        let limb_val = witness[limb_idx].unwrap().into_bigint().0;
-                        let limb_u128 = limb_val[0] as u128 | ((limb_val[1] as u128) << 64);
-                        let word_start = (bit_offset / 64) as usize;
-                        let bit_within = bit_offset % 64;
-                        if word_start < 4 {
-                            val[word_start] |= (limb_u128 as u64) << bit_within;
-                            if word_start + 1 < 4 {
-                                val[word_start + 1] |= (limb_u128 >> (64 - bit_within)) as u64;
-                            }
-                        }
-                        bit_offset += w;
-                    }
-                    val
-                };
-
-                let a_val = reconstruct(a_limbs);
-                let b_val = reconstruct(b_limbs);
+                let a_val = read_witness_limbs(witness, a_limbs, w);
+                let b_val = read_witness_limbs(witness, b_limbs, w);
 
                 let q = if cmp_4limb(&a_val, &b_val) == std::cmp::Ordering::Less {
                     1u64
@@ -776,12 +554,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let table_size = 1usize << *num_bits;
                 let mut multiplicities = vec![0u32; table_size];
                 for query in queries {
-                    let val = match query {
-                        ConstantOrR1CSWitness::Constant(c) => c.into_bigint().0[0],
-                        ConstantOrR1CSWitness::Witness(w) => {
-                            witness[*w].unwrap().into_bigint().0[0]
-                        }
-                    };
+                    let val = resolve(witness, query).into_bigint().0[0];
                     multiplicities[val as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -791,14 +564,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
             WitnessBuilder::SpreadLookupDenominator(idx, sz, rs, input, spread_output) => {
                 let sz_val = witness[*sz].unwrap();
                 let rs_val = witness[*rs].unwrap();
-                let input_val = match input {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(w) => witness[*w].unwrap(),
-                };
-                let spread_val = match spread_output {
-                    ConstantOrR1CSWitness::Constant(c) => *c,
-                    ConstantOrR1CSWitness::Witness(w) => witness[*w].unwrap(),
-                };
+                let input_val = resolve(witness, input);
+                let spread_val = resolve(witness, spread_output);
                 // sz - (input + rs * spread_output)
                 witness[*idx] = Some(sz_val - (input_val + rs_val * spread_val));
             }

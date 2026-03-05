@@ -248,6 +248,149 @@ pub fn is_zero(val: &[u64; 4]) -> bool {
     val[0] == 0 && val[1] == 0 && val[2] == 0 && val[3] == 0
 }
 
+/// Compute the bit mask for a limb of the given width.
+pub fn limb_mask(limb_bits: u32) -> u128 {
+    if limb_bits >= 128 {
+        u128::MAX
+    } else {
+        (1u128 << limb_bits) - 1
+    }
+}
+
+/// Right-shift a 4-limb (256-bit) value by `bits` positions.
+pub fn shr_256(val: &[u64; 4], bits: u32) -> [u64; 4] {
+    if bits >= 256 {
+        return [0; 4];
+    }
+    let mut shifted = [0u64; 4];
+    let word_shift = (bits / 64) as usize;
+    let bit_shift = bits % 64;
+    for i in 0..4 {
+        if i + word_shift < 4 {
+            shifted[i] = val[i + word_shift] >> bit_shift;
+            if bit_shift > 0 && i + word_shift + 1 < 4 {
+                shifted[i] |= val[i + word_shift + 1] << (64 - bit_shift);
+            }
+        }
+    }
+    shifted
+}
+
+/// Decompose a 256-bit value into `num_limbs` limbs of `limb_bits` width.
+/// Returns u128 limb values (each < 2^limb_bits).
+pub fn decompose_to_u128_limbs(val: &[u64; 4], num_limbs: usize, limb_bits: u32) -> Vec<u128> {
+    let mask = limb_mask(limb_bits);
+    let mut limbs = Vec::with_capacity(num_limbs);
+    let mut remaining = *val;
+    for _ in 0..num_limbs {
+        let lo = remaining[0] as u128 | ((remaining[1] as u128) << 64);
+        limbs.push(lo & mask);
+        remaining = shr_256(&remaining, limb_bits);
+    }
+    limbs
+}
+
+/// Reconstruct a 256-bit value from u128 limb values packed at `limb_bits`
+/// boundaries.
+pub fn reconstruct_from_u128_limbs(limb_values: &[u128], limb_bits: u32) -> [u64; 4] {
+    let mut val = [0u64; 4];
+    let mut bit_offset = 0u32;
+    for &limb_u128 in limb_values.iter() {
+        let word_start = (bit_offset / 64) as usize;
+        let bit_within = bit_offset % 64;
+        if word_start < 4 {
+            val[word_start] |= (limb_u128 as u64) << bit_within;
+            if word_start + 1 < 4 {
+                val[word_start + 1] |= (limb_u128 >> (64 - bit_within)) as u64;
+            }
+            if word_start + 2 < 4 && bit_within > 0 {
+                let upper = limb_u128 >> (128 - bit_within);
+                if upper > 0 {
+                    val[word_start + 2] |= upper as u64;
+                }
+            }
+        }
+        bit_offset += limb_bits;
+    }
+    val
+}
+
+/// Compute schoolbook carries for a*b = p*q + r verification in base
+/// 2^limb_bits. Returns unsigned-offset carries ready to be written as
+/// witnesses.
+pub fn compute_mul_mod_carries(
+    a_limbs: &[u128],
+    b_limbs: &[u128],
+    p_limbs: &[u128],
+    q_limbs: &[u128],
+    r_limbs: &[u128],
+    limb_bits: u32,
+) -> Vec<u128> {
+    let n = a_limbs.len();
+    let w = limb_bits;
+    let num_carries = 2 * n - 2;
+    let carry_offset = 1u128 << (w + ((n as f64).log2().ceil() as u32) + 1);
+    let mut carries = Vec::with_capacity(num_carries);
+    let mut carry: i128 = 0;
+
+    for k in 0..(2 * n - 1) {
+        let mut ab_lo: u128 = 0;
+        let mut ab_hi: u64 = 0;
+        for i in 0..n {
+            let j = k as isize - i as isize;
+            if j >= 0 && (j as usize) < n {
+                let prod = a_limbs[i] * b_limbs[j as usize];
+                let (new_lo, ov) = ab_lo.overflowing_add(prod);
+                ab_lo = new_lo;
+                if ov {
+                    ab_hi += 1;
+                }
+            }
+        }
+        let mut pq_lo: u128 = 0;
+        let mut pq_hi: u64 = 0;
+        for i in 0..n {
+            let j = k as isize - i as isize;
+            if j >= 0 && (j as usize) < n {
+                let prod = p_limbs[i] * q_limbs[j as usize];
+                let (new_lo, ov) = pq_lo.overflowing_add(prod);
+                pq_lo = new_lo;
+                if ov {
+                    pq_hi += 1;
+                }
+            }
+        }
+        if k < n {
+            let (new_lo, ov) = pq_lo.overflowing_add(r_limbs[k]);
+            pq_lo = new_lo;
+            if ov {
+                pq_hi += 1;
+            }
+        }
+
+        let diff_lo = ab_lo.wrapping_sub(pq_lo);
+        let borrow = if ab_lo < pq_lo { 1i64 } else { 0 };
+        let diff_hi = ab_hi as i64 - pq_hi as i64 - borrow;
+
+        let carry_lo = carry as u128;
+        let carry_hi: i64 = if carry < 0 { -1 } else { 0 };
+        let (total_lo, ov) = diff_lo.overflowing_add(carry_lo);
+        let total_hi = diff_hi + carry_hi + if ov { 1i64 } else { 0 };
+
+        if k < 2 * n - 2 {
+            debug_assert_eq!(
+                total_lo & ((1u128 << w) - 1),
+                0,
+                "non-zero remainder at column {k}"
+            );
+            carry = total_hi as i128 * (1i128 << (128 - w)) + (total_lo >> w) as i128;
+            carries.push((carry + carry_offset as i128) as u128);
+        }
+    }
+
+    carries
+}
+
 /// Compute the number of bits needed for the half-GCD sub-scalars.
 /// Returns `ceil(order_bits / 2)` where `order_bits` is the bit length of `n`.
 pub fn half_gcd_bits(n: &[u64; 4]) -> u32 {
@@ -358,25 +501,19 @@ pub fn half_gcd(s: &[u64; 4], n: &[u64; 4]) -> ([u64; 4], [u64; 4], bool, bool) 
     }
 
     // At this point: r_curr < 2^half_bits and t_curr < ~2^half_bits (half-GCD
-    // property) The relation is: (-1)^(iteration) * r_curr + t_curr * s ≡ 0
-    // (mod n) Or equivalently: r_curr ≡ (-1)^(iteration+1) * t_curr * s (mod n)
+    // property).
+    //
+    // From the extended GCD identity: t_i * s ≡ r_i (mod n)
+    // Rearranging: -r_i + t_i * s ≡ 0 (mod n)
+    //
+    // The circuit checks: (-1)^neg1 * |r_i| + (-1)^neg2 * |t_i| * s ≡ 0 (mod n)
+    // Since r_i is always non-negative, neg1 must always be true (negate r_i).
+    // neg2 must match the actual sign of t_i so that (-1)^neg2 * |t_i| = t_i.
 
     let val1 = r_curr; // |s1| = |r_i|
     let val2 = t_curr; // |s2| = |t_i|
 
-    // Determine signs:
-    // We need: neg1 * val1 + neg2 * val2 * s ≡ 0 (mod n)
-    // From the extended GCD: r_i = (-1)^i * (... some relation with t_i * s mod n)
-    // The exact sign relationship:
-    // t_i * s ≡ (-1)^(i+1) * r_i (mod n)
-    // So: (-1)^(i+1) * r_i + t_i * s ≡ 0 (mod n)
-    //
-    // If iteration is even: (-1)^(even+1) = -1, so: -r_i + t_i * s ≡ 0
-    //   → neg1=true (negate r_i), neg2=t_curr_neg
-    // If iteration is odd: (-1)^(odd+1) = 1, so: r_i + t_i * s ≡ 0
-    //   → neg1=false, neg2=t_curr_neg
-
-    let neg1 = iteration % 2 == 0; // negate val1 when iteration is even
+    let neg1 = true; // always negate r_i: -r_i + t_i * s ≡ 0 (mod n)
     let neg2 = t_curr_neg;
 
     (val1, val2, neg1, neg2)

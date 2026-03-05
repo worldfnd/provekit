@@ -26,7 +26,8 @@ fn main(
     let result = multi_scalar_mul([g, g], [s1, s2]);
 
     // Prevent dead-code elimination - forces the blackbox to be retained
-    assert(!result.is_infinite);
+    // Using is_infinite as return value ensures the MSM is computed
+    assert(result.is_infinite == (scalar1_lo + scalar1_hi + scalar2_lo + scalar2_hi == 0));
 }
 
 #[test]

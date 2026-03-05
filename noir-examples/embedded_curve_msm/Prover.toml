@@ -1,5 +1,71 @@
-# MSM: result = s1 * G + s2 * G = 1*G + 2*G = 3*G
+# ============================================================
+# MSM test vectors: result = s1 * G + s2 * G
+# Grumpkin curve order n = 21888242871839275222246405745257275088696311157297823662689037894645226208583
+# Uncomment ONE test case at a time to run.
+# ============================================================
+
+# === Test 1: Small scalars (1*G + 2*G = 3*G) ===
 scalar1_lo = "1"
 scalar1_hi = "0"
 scalar2_lo = "2"
 scalar2_hi = "0"
+
+# === Test 2: All-zero scalars (0*G + 0*G = point at infinity) ===
+# scalar1_lo = "0"
+# scalar1_hi = "0"
+# scalar2_lo = "0"
+# scalar2_hi = "0"
+
+# === Test 3: One zero, one non-zero (0*G + 5*G = 5*G) ===
+# scalar1_lo = "0"
+# scalar1_hi = "0"
+# scalar2_lo = "5"
+# scalar2_hi = "0"
+
+# === Test 4: Large lo, small hi (diff ≠ 2^128) ===
+# scalar1_lo = "64323764613183177041862057485226039389"
+# scalar1_hi = "1"
+# scalar2_lo = "99999999999999999999999999999999999999"
+# scalar2_hi = "3"
+
+# === Test 5: Small lo, large hi ===
+# scalar1_lo = "1"
+# scalar1_hi = "64323764613183177041862057485226039389"
+# scalar2_lo = "2"
+# scalar2_hi = "64323764613183177041862057485226039389"
+
+# === Test 6: Near-max scalars (n-10 and n-20) ===
+# scalar1_lo = "201385395114098847380338600778089168189"
+# scalar1_hi = "64323764613183177041862057485226039389"
+# scalar2_lo = "201385395114098847380338600778089168179"
+# scalar2_hi = "64323764613183177041862057485226039389"
+
+# === Test 7: Powers of 2 (2^100 and 2^200) ===
+# scalar1_lo = "1267650600228229401496703205376"
+# scalar1_hi = "0"
+# scalar2_lo = "0"
+# scalar2_hi = "4722366482869645213696"
+
+# === Test 8: Half curve order (n/2) and 1 ===
+# scalar1_lo = "270833881017518655421856604104928689827"
+# scalar1_hi = "32161882306591588520931028742613019694"
+# scalar2_lo = "1"
+# scalar2_hi = "0"
+
+# === Test 9: Large mixed scalars ===
+# scalar1_lo = "340282366920938463463374607431768211455"
+# scalar1_hi = "0"
+# scalar2_lo = "170141183460469231731687303715884105727"
+# scalar2_hi = "3"
+
+# === Test 10: Both scalars equal, ~2n/3 ===
+# scalar1_lo = "247684385716378719408017269662648849284"
+# scalar1_hi = "42882509742122118027908038323484026259"
+# scalar2_lo = "247684385716378719408017269662648849284"
+# scalar2_hi = "42882509742122118027908038323484026259"
+
+# === Test 11: n - 2, n - 3 (previously failing with [2]G offset) ===
+# scalar1_lo = "201385395114098847380338600778089168197"
+# scalar1_hi = "64323764613183177041862057485226039389"
+# scalar2_lo = "201385395114098847380338600778089168196"
+# scalar2_hi = "64323764613183177041862057485226039389"

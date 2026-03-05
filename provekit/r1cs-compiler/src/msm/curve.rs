@@ -9,9 +9,6 @@ pub struct CurveParams {
     pub curve_a:         [u64; 4],
     pub curve_b:         [u64; 4],
     pub generator:       ([u64; 4], [u64; 4]),
-    /// A known non-identity point on the curve, used as the accumulator offset
-    /// in `scalar_mul_glv`. Must be deterministic and unrelated to typical
-    /// table entries (we use [2]G).
     pub offset_point:    ([u64; 4], [u64; 4]),
 }
 
@@ -275,19 +272,19 @@ pub fn grumpkin_params() -> CurveParams {
             0xcf135e7506a45d63_u64,
             0x0000000000000002_u64,
         ]),
-        // Offset point = [2]G
+        // Offset point = [2^128]G (large offset avoids collisions with small multiples of G)
         offset_point:    (
             [
-                0x6d8bc688cdbffffe_u64,
-                0x19a74caa311e13d4_u64,
-                0xddeb49cdaa36306d_u64,
-                0x06ce1b0827aafa85_u64,
+                0x626578b496650e95_u64,
+                0x8678dcf264df6c01_u64,
+                0xf0b3eb7e6d02aba8_u64,
+                0x223748a4c4edde75_u64,
             ],
             [
-                0x467be7e7a43f80ac_u64,
-                0xc93faf6fa1a788bf_u64,
-                0x909ede0ba2a6855f_u64,
-                0x1c122f81a3a14964_u64,
+                0xb75fb4c26bcd4f35_u64,
+                0x4d4ba4d97d5f99d9_u64,
+                0xccab35fdbf52368a_u64,
+                0x25b41c5f56f8472b_u64,
             ],
         ),
     }
@@ -611,19 +608,19 @@ pub fn secp256r1_params() -> CurveParams {
                 0x4fe342e2fe1a7f9b_u64,
             ],
         ),
-        // Offset point = [2]G
+        // Offset point = [2^128]G (large offset avoids collisions with small multiples of G)
         offset_point:    (
             [
-                0xa60b48fc47669978_u64,
-                0xc08969e277f21b35_u64,
-                0x8a52380304b51ac3_u64,
-                0x7cf27b188d034f7e_u64,
+                0x57c84fc9d789bd85_u64,
+                0xfc35ff7dc297eac3_u64,
+                0xfb982fd588c6766e_u64,
+                0x447d739beedb5e67_u64,
             ],
             [
-                0x9e04b79d227873d1_u64,
-                0xba7dade63ce98229_u64,
-                0x293d9ac69f7430db_u64,
-                0x07775510db8ed040_u64,
+                0x0c7e33c972e25b32_u64,
+                0x3d349b95a7fae500_u64,
+                0xe12e9d953a4aaff7_u64,
+                0x2d4825ab834131ee_u64,
             ],
         ),
     }
