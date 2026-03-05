@@ -108,10 +108,7 @@ pub fn simd_sqr(v0_a: [u64; 4], v1_a: [u64; 4]) -> ([u64; 4], [u64; 4]) {
 /// limbs except the last one is 51 bits. The most significant limb can be
 /// larger than 51 bits as the input can be bigger 2^255-1.
 #[inline(always)]
-fn redundant_carry<const N: usize, const L: usize>(t: [Simd<i64, L>; N]) -> [Simd<u64, L>; N]
-where
-    std::simd::LaneCount<L>: std::simd::SupportedLaneCount,
-{
+fn redundant_carry<const N: usize, const L: usize>(t: [Simd<i64, L>; N]) -> [Simd<u64, L>; N] {
     let mut borrow = Simd::splat(0);
     let mut res = [Simd::splat(0); N];
     for i in 0..t.len() - 1 {
