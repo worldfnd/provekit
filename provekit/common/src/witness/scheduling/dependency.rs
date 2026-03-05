@@ -327,12 +327,12 @@ impl DependencyInfo {
                 num_limbs,
                 ..
             } => (*output_start..*output_start + *num_limbs as usize).collect(),
-            WitnessBuilder::FakeGLVHint {
-                output_start, ..
-            } => (*output_start..*output_start + 4).collect(),
-            WitnessBuilder::EcScalarMulHint {
-                output_start, ..
-            } => (*output_start..*output_start + 2).collect(),
+            WitnessBuilder::FakeGLVHint { output_start, .. } => {
+                (*output_start..*output_start + 4).collect()
+            }
+            WitnessBuilder::EcScalarMulHint { output_start, .. } => {
+                (*output_start..*output_start + 2).collect()
+            }
             WitnessBuilder::MultiLimbAddQuotient { output, .. } => vec![*output],
             WitnessBuilder::MultiLimbSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {

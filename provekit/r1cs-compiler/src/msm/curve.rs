@@ -58,11 +58,6 @@ impl CurveParams {
         curve_native_point_fe(&self.field_modulus_p)
     }
 
-    /// Returns the curve parameter b as a native field element.
-    pub fn curve_b_fe(&self) -> FieldElement {
-        curve_native_point_fe(&self.curve_b)
-    }
-
     /// Decompose the curve order n into `num_limbs` limbs of `limb_bits` width
     /// each.
     pub fn curve_order_n_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
@@ -97,6 +92,11 @@ impl CurveParams {
     /// This determines the bit width of the sub-scalars s1, s2 from half-GCD.
     pub fn glv_half_bits(&self) -> u32 {
         (self.curve_order_bits() + 1) / 2
+    }
+
+    /// Decompose the generator x-coordinate into limbs.
+    pub fn generator_x_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.generator.0, limb_bits, num_limbs)
     }
 
     /// Decompose the offset point x-coordinate into limbs.
@@ -446,28 +446,6 @@ mod u256_arith {
         mod_pow(a, &exp, p)
     }
 
-    /// EC point addition on y^2 = x^3 + ax + b.
-    /// Computes (x1,y1) + (x2,y2). Requires x1 != x2.
-    pub fn ec_point_add(x1: &U256, y1: &U256, x2: &U256, y2: &U256, p: &U256) -> (U256, U256) {
-        // lambda = (y2 - y1) / (x2 - x1)
-        let num = mod_sub(y2, y1, p);
-        let denom = mod_sub(x2, x1, p);
-        let denom_inv = mod_inv(&denom, p);
-        let lambda = mod_mul(&num, &denom_inv, p);
-
-        // x3 = lambda^2 - x1 - x2
-        let lambda_sq = mod_mul(&lambda, &lambda, p);
-        let x1_plus_x2 = mod_add(x1, x2, p);
-        let x3 = mod_sub(&lambda_sq, &x1_plus_x2, p);
-
-        // y3 = lambda * (x1 - x3) - y1
-        let x1_minus_x3 = mod_sub(x1, &x3, p);
-        let lambda_dx = mod_mul(&lambda, &x1_minus_x3, p);
-        let y3 = mod_sub(&lambda_dx, y1, p);
-
-        (x3, y3)
-    }
-
     /// EC point doubling on y^2 = x^3 + ax + b.
     pub fn ec_point_double(x: &U256, y: &U256, a: &U256, p: &U256) -> (U256, U256) {
         // lambda = (3*x^2 + a) / (2*y)
@@ -495,7 +473,7 @@ mod u256_arith {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ark_ff::Field};
+    use super::*;
 
     #[test]
     fn test_offset_point_on_curve_grumpkin() {
@@ -592,6 +570,7 @@ mod tests {
     }
 }
 
+#[allow(dead_code)]
 pub fn secp256r1_params() -> CurveParams {
     CurveParams {
         field_modulus_p: [

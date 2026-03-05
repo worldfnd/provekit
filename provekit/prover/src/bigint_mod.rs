@@ -230,7 +230,8 @@ pub fn add_4limb_inplace(a: &mut [u64; 4], b: &[u64; 4]) -> u64 {
 }
 
 /// Subtract b from a in-place, returning true if a >= b (no underflow).
-/// If a < b, the result is a += 2^256 - b (wrapping subtraction) and returns false.
+/// If a < b, the result is a += 2^256 - b (wrapping subtraction) and returns
+/// false.
 pub fn sub_4limb_checked(a: &mut [u64; 4], b: &[u64; 4]) -> bool {
     let mut borrow = 0u64;
     for i in 0..4 {
@@ -272,16 +273,13 @@ fn build_threshold(half_bits: u32) -> [u64; 4] {
 
 /// Half-GCD scalar decomposition for FakeGLV.
 ///
-/// Given scalar `s` and curve order `n`, finds `(|s1|, |s2|, neg1, neg2)` such that:
-///   `(-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)`
+/// Given scalar `s` and curve order `n`, finds `(|s1|, |s2|, neg1, neg2)` such
+/// that:   `(-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)`
 ///
 /// Uses the extended GCD on `(n, s)`, stopping when the remainder drops below
 /// `2^half_bits` where `half_bits = ceil(order_bits / 2)`.
 /// Returns `(val1, val2, neg1, neg2)` where both fit in `half_bits` bits.
-pub fn half_gcd(
-    s: &[u64; 4],
-    n: &[u64; 4],
-) -> ([u64; 4], [u64; 4], bool, bool) {
+pub fn half_gcd(s: &[u64; 4], n: &[u64; 4]) -> ([u64; 4], [u64; 4], bool, bool) {
     // Extended GCD on (n, s):
     // We track: r_{i} = r_{i-2} - q_i * r_{i-1}
     //           t_{i} = t_{i-2} - q_i * t_{i-1}
@@ -304,7 +302,8 @@ pub fn half_gcd(
     let mut t_prev = [0u64; 4];
     let mut t_curr = [1u64, 0, 0, 0];
 
-    // Track sign of t: t_prev_neg=false (t_0=0, positive), t_curr_neg=false (t_1=1, positive)
+    // Track sign of t: t_prev_neg=false (t_0=0, positive), t_curr_neg=false (t_1=1,
+    // positive)
     let mut t_prev_neg = false;
     let mut t_curr_neg = false;
 
@@ -328,7 +327,8 @@ pub fn half_gcd(
         // In terms of absolute values with sign tracking:
         // If t_prev and q*t_curr have the same sign → subtract magnitudes
         // If they have different signs → add magnitudes
-        // But actually: new_t = |t_prev| +/- q * |t_curr|, with sign flips each iteration.
+        // new_t = |t_prev| +/- q * |t_curr|, with sign flips each
+        // iteration.
         //
         // The standard extended GCD recurrence gives:
         //   t_i = t_{i-2} - q_i * t_{i-1}
@@ -357,12 +357,12 @@ pub fn half_gcd(
         iteration += 1;
     }
 
-    // At this point: r_curr < 2^half_bits and t_curr < ~2^half_bits (half-GCD property)
-    // The relation is: (-1)^(iteration) * r_curr + t_curr * s ≡ 0 (mod n)
-    // Or equivalently: r_curr ≡ (-1)^(iteration+1) * t_curr * s (mod n)
+    // At this point: r_curr < 2^half_bits and t_curr < ~2^half_bits (half-GCD
+    // property) The relation is: (-1)^(iteration) * r_curr + t_curr * s ≡ 0
+    // (mod n) Or equivalently: r_curr ≡ (-1)^(iteration+1) * t_curr * s (mod n)
 
-    let val1 = r_curr;  // |s1| = |r_i|
-    let val2 = t_curr;  // |s2| = |t_i|
+    let val1 = r_curr; // |s1| = |r_i|
+    let val2 = t_curr; // |s2| = |t_i|
 
     // Determine signs:
     // We need: neg1 * val1 + neg2 * val2 * s ≡ 0 (mod n)
@@ -376,7 +376,7 @@ pub fn half_gcd(
     // If iteration is odd: (-1)^(odd+1) = 1, so: r_i + t_i * s ≡ 0
     //   → neg1=false, neg2=t_curr_neg
 
-    let neg1 = iteration % 2 == 0;  // negate val1 when iteration is even
+    let neg1 = iteration % 2 == 0; // negate val1 when iteration is even
     let neg2 = t_curr_neg;
 
     (val1, val2, neg1, neg2)
@@ -579,165 +579,6 @@ pub fn divmod_wide(dividend: &[u64; 8], divisor: &[u64; 4]) -> ([u64; 4], [u64; 
     }
 
     (quotient, remainder)
-}
-
-/// Split a 256-bit value into two 128-bit halves: (lo, hi).
-pub fn decompose_128(val: &[u64; 4]) -> (u128, u128) {
-    let lo = val[0] as u128 | ((val[1] as u128) << 64);
-    let hi = val[2] as u128 | ((val[3] as u128) << 64);
-    (lo, hi)
-}
-
-/// Split a 256-bit value into three 86-bit limbs: (l0, l1, l2).
-/// l0 = bits [0..86), l1 = bits [86..172), l2 = bits [172..256).
-pub fn decompose_86(val: &[u64; 4]) -> (u128, u128, u128) {
-    let mask_86: u128 = (1u128 << 86) - 1;
-    let lo128 = val[0] as u128 | ((val[1] as u128) << 64);
-    let hi128 = val[2] as u128 | ((val[3] as u128) << 64);
-
-    let l0 = lo128 & mask_86;
-    // l1 spans bits [86..172): 42 bits from lo128, 44 bits from hi128
-    let l1 = ((lo128 >> 86) | (hi128 << 42)) & mask_86;
-    // l2 = bits [172..256): 84 bits from hi128
-    let l2 = hi128 >> 44;
-
-    (l0, l1, l2)
-}
-
-/// Compute carry values c0..c3 from the 86-bit schoolbook column equations
-/// for the identity a*b = p*q + r (base W = 2^86).
-///
-/// Column equations:
-///   col0: a0*b0 - p0*q0 - r0 = c0*W
-///   col1: a0*b1 + a1*b0 - p0*q1 - p1*q0 - r1 + c0 = c1*W
-///   col2: a0*b2 + a1*b1 + a2*b0 - p0*q2 - p1*q1 - p2*q0 - r2 + c1 = c2*W
-///   col3: a1*b2 + a2*b1 - p1*q2 - p2*q1 + c2 = c3*W
-///   col4: a2*b2 - p2*q2 + c3 = 0
-pub fn compute_carries_86(
-    a: [u128; 3],
-    b: [u128; 3],
-    p: [u128; 3],
-    q: [u128; 3],
-    r: [u128; 3],
-) -> [i128; 4] {
-    // Helper: convert u128 to [u64; 4]
-    fn to4(v: u128) -> [u64; 4] {
-        [v as u64, (v >> 64) as u64, 0, 0]
-    }
-
-    // Helper: multiply two 86-bit values → [u64; 4] (result < 2^172)
-    fn mul86(x: u128, y: u128) -> [u64; 4] {
-        let w = widening_mul(&to4(x), &to4(y));
-        [w[0], w[1], w[2], w[3]]
-    }
-
-    // Helper: add two [u64; 4] values
-    fn add4(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        let mut r = [0u64; 4];
-        let mut carry = 0u128;
-        for i in 0..4 {
-            let s = a[i] as u128 + b[i] as u128 + carry;
-            r[i] = s as u64;
-            carry = s >> 64;
-        }
-        r
-    }
-
-    // Helper: subtract two [u64; 4] values (assumes a >= b)
-    fn sub4(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
-        let mut r = [0u64; 4];
-        let mut borrow = 0u64;
-        for i in 0..4 {
-            let (d1, b1) = a[i].overflowing_sub(b[i]);
-            let (d2, b2) = d1.overflowing_sub(borrow);
-            r[i] = d2;
-            borrow = b1 as u64 + b2 as u64;
-        }
-        r
-    }
-
-    // Helper: right-shift [u64; 4] by 86 bits (= 64 + 22)
-    fn shr86(a: [u64; 4]) -> [u64; 4] {
-        let s = [a[1], a[2], a[3], 0u64];
-        [
-            (s[0] >> 22) | (s[1] << 42),
-            (s[1] >> 22) | (s[2] << 42),
-            s[2] >> 22,
-            0,
-        ]
-    }
-
-    // Positive column sums (a_i * b_j terms)
-    let pos = [
-        mul86(a[0], b[0]),
-        add4(mul86(a[0], b[1]), mul86(a[1], b[0])),
-        add4(
-            add4(mul86(a[0], b[2]), mul86(a[1], b[1])),
-            mul86(a[2], b[0]),
-        ),
-        add4(mul86(a[1], b[2]), mul86(a[2], b[1])),
-        mul86(a[2], b[2]),
-    ];
-
-    // Negative column sums (p_i * q_j + r_i terms)
-    let neg = [
-        add4(mul86(p[0], q[0]), to4(r[0])),
-        add4(add4(mul86(p[0], q[1]), mul86(p[1], q[0])), to4(r[1])),
-        add4(
-            add4(
-                add4(mul86(p[0], q[2]), mul86(p[1], q[1])),
-                mul86(p[2], q[0]),
-            ),
-            to4(r[2]),
-        ),
-        add4(mul86(p[1], q[2]), mul86(p[2], q[1])),
-        mul86(p[2], q[2]),
-    ];
-
-    let mut carries = [0i128; 4];
-    let mut carry_pos = [0u64; 4];
-    let mut carry_neg = [0u64; 4];
-
-    for col in 0..4 {
-        let total_pos = add4(pos[col], carry_pos);
-        let total_neg = add4(neg[col], carry_neg);
-
-        let (is_neg, diff) = if cmp_4limb(&total_pos, &total_neg) != std::cmp::Ordering::Less {
-            (false, sub4(total_pos, total_neg))
-        } else {
-            (true, sub4(total_neg, total_pos))
-        };
-
-        // Lower 86 bits must be zero (divisibility check)
-        let mask_86 = (1u128 << 86) - 1;
-        let low86 = (diff[0] as u128 | ((diff[1] as u128) << 64)) & mask_86;
-        debug_assert_eq!(low86, 0, "column {} not divisible by W=2^86", col);
-
-        let carry_mag = shr86(diff);
-        debug_assert_eq!(carry_mag[2], 0, "carry overflow in column {}", col);
-        debug_assert_eq!(carry_mag[3], 0, "carry overflow in column {}", col);
-
-        let carry_val = carry_mag[0] as i128 | ((carry_mag[1] as i128) << 64);
-        carries[col] = if is_neg { -carry_val } else { carry_val };
-
-        if is_neg {
-            carry_pos = [0; 4];
-            carry_neg = carry_mag;
-        } else {
-            carry_pos = carry_mag;
-            carry_neg = [0; 4];
-        }
-    }
-
-    // Verify column 4 balances
-    let final_pos = add4(pos[4], carry_pos);
-    let final_neg = add4(neg[4], carry_neg);
-    debug_assert_eq!(
-        final_pos, final_neg,
-        "column 4 should balance: a2*b2 - p2*q2 + c3 = 0"
-    );
-
-    carries
 }
 
 #[cfg(test)]
@@ -1034,130 +875,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decompose_128_roundtrip() {
-        let val = [
-            0x123456789abcdef0,
-            0xfedcba9876543210,
-            0x1111111111111111,
-            0x2222222222222222,
-        ];
-        let (lo, hi) = decompose_128(&val);
-        // Roundtrip
-        assert_eq!(lo as u64, val[0]);
-        assert_eq!((lo >> 64) as u64, val[1]);
-        assert_eq!(hi as u64, val[2]);
-        assert_eq!((hi >> 64) as u64, val[3]);
-    }
-
-    #[test]
-    fn test_decompose_86_roundtrip() {
-        let val = [
-            0x123456789abcdef0,
-            0xfedcba9876543210,
-            0x1111111111111111,
-            0x2222222222222222,
-        ];
-        let (l0, l1, l2) = decompose_86(&val);
-
-        // Each limb should be < 2^86
-        assert!(l0 < (1u128 << 86));
-        assert!(l1 < (1u128 << 86));
-        // l2 has at most 84 bits (256 - 172)
-        assert!(l2 < (1u128 << 84));
-
-        // Roundtrip: l0 + l1 * 2^86 + l2 * 2^172 should equal val
-        // Build from limbs back to [u64; 4]
-        let mut reconstructed = [0u128; 2]; // lo128, hi128
-        reconstructed[0] = l0;
-        // l1 starts at bit 86
-        reconstructed[0] |= (l1 & ((1u128 << 42) - 1)) << 86; // lower 42 bits of l1 into lo128
-        reconstructed[1] = l1 >> 42; // upper 44 bits of l1
-                                     // l2 starts at bit 172 = 128 + 44
-        reconstructed[1] |= l2 << 44;
-
-        assert_eq!(reconstructed[0] as u64, val[0]);
-        assert_eq!((reconstructed[0] >> 64) as u64, val[1]);
-        assert_eq!(reconstructed[1] as u64, val[2]);
-        assert_eq!((reconstructed[1] >> 64) as u64, val[3]);
-    }
-
-    #[test]
-    fn test_decompose_86_secp256r1_p() {
-        // secp256r1 field modulus
-        let p = [0xffffffffffffffff, 0xffffffff, 0x0, 0xffffffff00000001];
-        let (l0, l1, l2) = decompose_86(&p);
-        assert!(l0 < (1u128 << 86));
-        assert!(l1 < (1u128 << 86));
-        assert!(l2 < (1u128 << 84));
-    }
-
-    #[test]
-    fn test_compute_carries_86_simple() {
-        // Test with small values: a=3, b=5, p=7
-        // a*b = 15, 15 / 7 = 2 remainder 1
-        // So q=2, r=1
-        let a_val = [3u64, 0, 0, 0];
-        let b_val = [5, 0, 0, 0];
-        let p_val = [7, 0, 0, 0];
-        let product = widening_mul(&a_val, &b_val);
-        let (q_val, r_val) = divmod_wide(&product, &p_val);
-        assert_eq!(q_val, [2, 0, 0, 0]);
-        assert_eq!(r_val, [1, 0, 0, 0]);
-
-        let (a0, a1, a2) = decompose_86(&a_val);
-        let (b0, b1, b2) = decompose_86(&b_val);
-        let (p0, p1, p2) = decompose_86(&p_val);
-        let (q0, q1, q2) = decompose_86(&q_val);
-        let (r0, r1, r2) = decompose_86(&r_val);
-
-        let carries = compute_carries_86([a0, a1, a2], [b0, b1, b2], [p0, p1, p2], [q0, q1, q2], [
-            r0, r1, r2,
-        ]);
-        // For small values, all carries should be 0
-        assert_eq!(carries, [0, 0, 0, 0]);
-    }
-
-    #[test]
-    fn test_compute_carries_86_secp256r1() {
-        // Test with secp256r1-sized values
-        let p = [0xffffffffffffffff, 0xffffffff, 0x0, 0xffffffff00000001];
-        let a_val = [0x123456789abcdef0, 0xfedcba9876543210, 0x0, 0x0]; // < p
-        let b_val = [0xaabbccddeeff0011, 0x1122334455667788, 0x0, 0x0]; // < p
-
-        let product = widening_mul(&a_val, &b_val);
-        let (q_val, r_val) = divmod_wide(&product, &p);
-
-        // Verify a*b = p*q + r
-        let pq = widening_mul(&p, &q_val);
-        let mut sum = pq;
-        let mut carry = 0u128;
-        for i in 0..4 {
-            let s = sum[i] as u128 + r_val[i] as u128 + carry;
-            sum[i] = s as u64;
-            carry = s >> 64;
-        }
-        for i in 4..8 {
-            let s = sum[i] as u128 + carry;
-            sum[i] = s as u64;
-            carry = s >> 64;
-        }
-        assert_eq!(sum, product);
-
-        // Compute 86-bit decompositions
-        let (a0, a1, a2) = decompose_86(&a_val);
-        let (b0, b1, b2) = decompose_86(&b_val);
-        let (p0, p1, p2) = decompose_86(&p);
-        let (q0, q1, q2) = decompose_86(&q_val);
-        let (r0, r1, r2) = decompose_86(&r_val);
-
-        // This should not panic
-        let _carries =
-            compute_carries_86([a0, a1, a2], [b0, b1, b2], [p0, p1, p2], [q0, q1, q2], [
-                r0, r1, r2,
-            ]);
-    }
-
-    #[test]
     fn test_half_gcd_small() {
         // s = 42, n = 101
         let s = [42, 0, 0, 0];
@@ -1232,6 +949,10 @@ mod tests {
         } else {
             divmod(&sum4, &n)
         };
-        assert_eq!(remainder, [0, 0, 0, 0], "half_gcd relation failed for Grumpkin order");
+        assert_eq!(
+            remainder,
+            [0, 0, 0, 0],
+            "half_gcd relation failed for Grumpkin order"
+        );
     }
 }

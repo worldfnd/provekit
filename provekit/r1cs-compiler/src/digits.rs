@@ -67,8 +67,8 @@ pub(crate) fn add_digital_decomposition(
     // Add the constraints for the digital recomposition
     let mut digit_multipliers = vec![FieldElement::one()];
     for log_base in log_bases[..log_bases.len() - 1].iter() {
-        let multiplier = *digit_multipliers.last().unwrap()
-            * FieldElement::from(2u64).pow([*log_base as u64]);
+        let multiplier =
+            *digit_multipliers.last().unwrap() * FieldElement::from(2u64).pow([*log_base as u64]);
         digit_multipliers.push(multiplier);
     }
     dd_struct

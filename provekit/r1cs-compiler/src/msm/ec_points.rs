@@ -159,7 +159,12 @@ fn table_lookup<F: FieldOps>(
         let half = current.len() / 2;
         let mut next = Vec::with_capacity(half);
         for i in 0..half {
-            next.push(point_select_unchecked(ops, bit, current[i], current[i + half]));
+            next.push(point_select_unchecked(
+                ops,
+                bit,
+                current[i],
+                current[i + half],
+            ));
         }
         current = next;
     }
@@ -202,6 +207,8 @@ pub fn scalar_mul_glv<F: FieldOps>(
     let n = n1;
     let w = window_size;
     let table_size = 1 << w;
+
+    // TODO : implement lazy overflow as used in gnark.
 
     // Build point tables: T_P[i] = [i]P, T_R[i] = [i]R
     let table_p = build_point_table(ops, px, py, table_size);
@@ -252,13 +259,7 @@ pub fn scalar_mul_glv<F: FieldOps>(
             &table_r[..]
         };
         let looked_up_r = table_lookup(ops, lookup_table_r, s2_window_bits);
-        let added_r = point_add(
-            ops,
-            after_p.0,
-            after_p.1,
-            looked_up_r.0,
-            looked_up_r.1,
-        );
+        let added_r = point_add(ops, after_p.0, after_p.1, looked_up_r.0, looked_up_r.1);
         let digit_r = ops.pack_bits(s2_window_bits);
         let digit_r_is_zero = ops.is_zero(digit_r);
         // is_zero already constrains its output boolean; skip redundant check
@@ -267,4 +268,3 @@ pub fn scalar_mul_glv<F: FieldOps>(
 
     acc
 }
-

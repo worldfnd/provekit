@@ -15,9 +15,10 @@ pub enum FieldOpType {
 
 /// Count field ops in scalar_mul_glv for given parameters.
 ///
-/// The GLV approach does interleaved two-point scalar mul with half-width scalars.
-/// Per window: w shared doubles + 2 table lookups + 2 point_adds + 2 is_zero + 2 point_selects
-/// Plus: 2 table builds, on-curve check, scalar relation overhead.
+/// The GLV approach does interleaved two-point scalar mul with half-width
+/// scalars. Per window: w shared doubles + 2 table lookups + 2 point_adds + 2
+/// is_zero + 2 point_selects Plus: 2 table builds, on-curve check, scalar
+/// relation overhead.
 fn count_glv_field_ops(
     scalar_bits: usize, // half_bits = ceil(order_bits / 2)
     window_size: usize,
@@ -72,7 +73,8 @@ fn count_glv_field_ops(
         }
     }
 
-    // On-curve checks for P and R: each needs 1 mul (y^2), 2 mul (x^2, x^3), 1 mul (a*x), 2 add
+    // On-curve checks for P and R: each needs 1 mul (y^2), 2 mul (x^2, x^3), 1 mul
+    // (a*x), 2 add
     total_mul += 8;
     total_add += 4;
 

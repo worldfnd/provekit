@@ -24,7 +24,6 @@ pub struct MultiLimbParams {
     pub two_pow_w:       FieldElement,
     pub modulus_raw:     [u64; 4],
     pub curve_a_limbs:   Vec<FieldElement>,
-    pub modulus_bits:    u32,
     /// p = native field → skip mod reduction
     pub is_native:       bool,
     /// For N=1 non-native: the modulus as a single FieldElement
@@ -32,13 +31,13 @@ pub struct MultiLimbParams {
 }
 
 /// Unified field operations struct parameterized by runtime limb count.
-pub struct MultiLimbOps<'a> {
+pub struct MultiLimbOps<'a, 'p> {
     pub compiler:     &'a mut NoirToR1CSCompiler,
     pub range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-    pub params:       MultiLimbParams,
+    pub params:       &'p MultiLimbParams,
 }
 
-impl MultiLimbOps<'_> {
+impl MultiLimbOps<'_, '_> {
     fn is_native_single(&self) -> bool {
         self.params.num_limbs == 1 && self.params.is_native
     }
@@ -50,9 +49,16 @@ impl MultiLimbOps<'_> {
     fn n(&self) -> usize {
         self.params.num_limbs
     }
+
+    /// Negate a multi-limb value: computes `0 - value (mod p)`.
+    pub fn negate(&mut self, value: Limbs) -> Limbs {
+        let zero_vals = vec![FieldElement::from(0u64); self.params.num_limbs];
+        let zero = self.constant_limbs(&zero_vals);
+        self.sub(zero, value)
+    }
 }
 
-impl FieldOps for MultiLimbOps<'_> {
+impl FieldOps for MultiLimbOps<'_, '_> {
     type Elem = Limbs;
 
     fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {

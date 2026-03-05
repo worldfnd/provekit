@@ -745,24 +745,7 @@ impl NoirToR1CSCompiler {
 
         let constraints_before_msm = self.r1cs.num_constraints();
         let witnesses_before_msm = self.num_witnesses();
-        // Cost model: pick optimal (limb_bits, window_size) for MSM
-        let curve = crate::msm::curve::grumpkin_params();
-        let native_bits = FieldElement::MODULUS_BIT_SIZE;
-        let curve_bits = curve.modulus_bits();
-        let (msm_limb_bits, msm_window_size) = if !msm_ops.is_empty() {
-            let n_points: usize = msm_ops.iter().map(|(pts, ..)| pts.len() / 3).sum();
-            crate::msm::cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, 256)
-        } else {
-            (native_bits, 4)
-        };
-        add_msm(
-            self,
-            msm_ops,
-            msm_limb_bits,
-            msm_window_size,
-            &mut range_checks,
-            &curve,
-        );
+        add_msm(self, msm_ops, &mut range_checks);
         breakdown.msm_constraints = self.r1cs.num_constraints() - constraints_before_msm;
         breakdown.msm_witnesses = self.num_witnesses() - witnesses_before_msm;
 
