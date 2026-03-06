@@ -50,7 +50,7 @@ impl NoirCompiler {
             main.opcodes.len()
         );
 
-        let (mut r1cs, witness_map, mut witness_builders) = noir_to_r1cs(main)?;
+        let (mut r1cs, mut witness_map, mut witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.num_constraints(),
@@ -61,7 +61,11 @@ impl NoirCompiler {
         );
 
         // Gaussian elimination optimization pass
-        let opt_stats = provekit_common::optimize::optimize_r1cs(&mut r1cs, &mut witness_builders);
+        let opt_stats = provekit_common::optimize::optimize_r1cs(
+            &mut r1cs,
+            &mut witness_builders,
+            &mut witness_map,
+        );
         info!(
             "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
              constraint reduction)",
