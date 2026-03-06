@@ -19,17 +19,18 @@ provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true
-noirc_abi.workspace = true
+noirc_abi.workspace = true  # Required for serde support of Abi type in get_circuit()
 
 # 3rd party
 anyhow.workspace = true
 base64.workspace = true
 console_error_panic_hook.workspace = true
-getrandom.workspace = true
+getrandom.workspace = true   # Enable js feature for WASM via feature unification (v0.2)
+getrandom03.workspace = true  # Enable wasm_js feature for WASM via feature unification (v0.3)
 hex.workspace = true
-lzma-rs = "0.3"
+lzma-rs = "0.3"  # Pure-Rust XZ decompressor (native crate xz2 uses C bindings, incompatible with WASM)
 postcard.workspace = true
-ruzstd = "0.8"
+ruzstd = "0.8"  # Pure-Rust Zstd decompressor (native crate zstd uses C bindings, incompatible with WASM)
 serde.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true

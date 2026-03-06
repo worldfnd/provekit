@@ -34,35 +34,47 @@ use {
     },
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
-    provekit_common::{
-        NoirElement, NoirProof, Prover as ProverCore, Verifier as VerifierCore,
-    },
+    provekit_common::{NoirElement, NoirProof, Prover as ProverCore, Verifier as VerifierCore},
     provekit_prover::Prove,
     provekit_verifier::Verify,
     std::collections::BTreeMap,
     wasm_bindgen::prelude::*,
 };
 
-/// Magic bytes for ProveKit binary format
+/// Magic bytes for ProveKit binary format.
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
-/// Format identifier for Prover files (.pkp)
+/// Format identifier for Prover files (.pkp).
 const PROVER_FORMAT: &[u8; 8] = b"PrvKitPr";
-/// Format identifier for Verifier files (.pkv)
+/// Format identifier for Verifier files (.pkv).
 const VERIFIER_FORMAT: &[u8; 8] = b"PrvKitVr";
 /// Header size in bytes: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) +
-/// HASH_CONFIG(1) = 21
+/// HASH_CONFIG(1) = 21.
 const HEADER_SIZE: usize = 21;
+
+/// Expected version for Prover format (must match native `FileFormat for
+/// Prover`).
+const PROVER_VERSION: (u16, u16) = (1, 2);
+/// Expected version for Verifier format (must match native `FileFormat for
+/// Verifier`).
+const VERIFIER_VERSION: (u16, u16) = (1, 3);
 
 /// Zstd magic number for auto-detection.
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+/// XZ magic number for auto-detection.
+const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 
 /// A prover instance for generating zero-knowledge proofs in WebAssembly.
 ///
 /// Wraps the same `Prover` artifact used by the native CLI. Create an
 /// instance by loading a `.pkp` file.
+///
+/// The prover is consumed after generating a proof — calling `proveBytes`
+/// or `proveJs` a second time will return an error. Metadata methods
+/// (`getCircuit`, `getNumConstraints`, `getNumWitnesses`) remain available
+/// until the proof is generated.
 #[wasm_bindgen]
 pub struct Prover {
-    inner: ProverCore,
+    inner: Option<ProverCore>,
 }
 
 #[wasm_bindgen]
@@ -83,31 +95,26 @@ impl Prover {
         let inner = if is_binary {
             parse_binary_prover(prover_data)?
         } else {
-            let first_bytes: Vec<u8> = prover_data.iter().take(20).copied().collect();
             serde_json::from_slice(prover_data).map_err(|err| {
                 JsError::new(&format!(
-                    "Failed to parse prover JSON: {err}. Data length: {}, first 20 bytes: {:?}",
+                    "Failed to parse prover JSON: {err}. Data length: {}, first bytes: {:02X?}",
                     prover_data.len(),
-                    first_bytes
+                    &prover_data[..prover_data.len().min(20)]
                 ))
             })?
         };
-        Ok(Self { inner })
+        Ok(Self { inner: Some(inner) })
     }
 
     /// Generates a proof from a witness map and returns it as JSON bytes.
     ///
     /// The witness map should be a JavaScript Map or object mapping witness
     /// indices to hex-encoded field element strings.
+    ///
+    /// The prover is consumed by this call — subsequent calls will error.
     #[wasm_bindgen(js_name = proveBytes)]
-    pub fn prove_bytes(&self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
-        let witness = parse_witness_map(witness_map)?;
-        let proof = self
-            .inner
-            .clone()
-            .prove_with_witness(witness)
-            .context("Failed to generate proof")
-            .map_err(|err| JsError::new(&err.to_string()))?;
+    pub fn prove_bytes(&mut self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
+        let proof = self.prove_inner(witness_map)?;
         serde_json::to_vec(&proof)
             .map(|bytes| bytes.into_boxed_slice())
             .map_err(|err| JsError::new(&format!("Failed to serialize proof to JSON: {err}")))
@@ -115,15 +122,11 @@ impl Prover {
 
     /// Generates a proof from a witness map and returns it as a JavaScript
     /// object.
+    ///
+    /// The prover is consumed by this call — subsequent calls will error.
     #[wasm_bindgen(js_name = proveJs)]
-    pub fn prove_js(&self, witness_map: JsValue) -> Result<JsValue, JsError> {
-        let witness = parse_witness_map(witness_map)?;
-        let proof = self
-            .inner
-            .clone()
-            .prove_with_witness(witness)
-            .context("Failed to generate proof")
-            .map_err(|err| JsError::new(&err.to_string()))?;
+    pub fn prove_js(&mut self, witness_map: JsValue) -> Result<JsValue, JsError> {
+        let proof = self.prove_inner(witness_map)?;
         serde_wasm_bindgen::to_value(&proof)
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
     }
@@ -141,21 +144,18 @@ impl Prover {
     /// ```
     #[wasm_bindgen(js_name = getCircuit)]
     pub fn get_circuit(&self) -> Result<Box<[u8]>, JsError> {
-        let noir_prover = match &self.inner {
+        let noir_prover = match self.inner_ref()? {
             ProverCore::Noir(p) => p,
             #[allow(unreachable_patterns)]
             _ => return Err(JsError::new("Only Noir provers are supported in WASM")),
         };
 
-        // Serialize Program back to compressed ACIR bytes, then base64-encode
         let program_bytes = Program::<NoirElement>::serialize_program(&noir_prover.program);
         let bytecode_b64 = BASE64.encode(&program_bytes);
 
-        // Serialize ABI to JSON value
         let abi_json = serde_json::to_value(&noir_prover.witness_generator.abi)
             .map_err(|e| JsError::new(&format!("Failed to serialize ABI: {e}")))?;
 
-        // Construct the circuit JSON that noir_js expects
         let circuit = serde_json::json!({
             "abi": abi_json,
             "bytecode": bytecode_b64,
@@ -168,14 +168,34 @@ impl Prover {
 
     /// Returns the number of R1CS constraints in this circuit.
     #[wasm_bindgen(js_name = getNumConstraints)]
-    pub fn get_num_constraints(&self) -> usize {
-        self.inner.size().0
+    pub fn get_num_constraints(&self) -> Result<usize, JsError> {
+        Ok(self.inner_ref()?.size().0)
     }
 
     /// Returns the number of R1CS witnesses in this circuit.
     #[wasm_bindgen(js_name = getNumWitnesses)]
-    pub fn get_num_witnesses(&self) -> usize {
-        self.inner.size().1
+    pub fn get_num_witnesses(&self) -> Result<usize, JsError> {
+        Ok(self.inner_ref()?.size().1)
+    }
+}
+
+impl Prover {
+    fn inner_ref(&self) -> Result<&ProverCore, JsError> {
+        self.inner
+            .as_ref()
+            .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))
+    }
+
+    fn prove_inner(&mut self, witness_map: JsValue) -> Result<NoirProof, JsError> {
+        let witness = parse_witness_map(witness_map)?;
+        let inner = self
+            .inner
+            .take()
+            .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))?;
+        inner
+            .prove_with_witness(witness)
+            .context("Failed to generate proof")
+            .map_err(|err| JsError::new(&format!("{err:#}")))
     }
 }
 
@@ -223,7 +243,7 @@ impl Verifier {
             .map_err(|err| JsError::new(&format!("Failed to parse proof JSON: {err}")))?;
         self.inner
             .verify(&proof)
-            .map_err(|err| JsError::new(&err.to_string()))
+            .map_err(|err| JsError::new(&format!("{err:#}")))
     }
 
     /// Verifies a proof provided as a JavaScript object.
@@ -233,7 +253,7 @@ impl Verifier {
             .map_err(|err| JsError::new(&format!("Failed to parse proof: {err}")))?;
         self.inner
             .verify(&proof)
-            .map_err(|err| JsError::new(&err.to_string()))
+            .map_err(|err| JsError::new(&format!("{err:#}")))
     }
 }
 
@@ -241,59 +261,82 @@ impl Verifier {
 // Binary format parsing
 // ---------------------------------------------------------------------------
 
-/// Auto-detect compression (XZ or Zstd) and decompress.
+/// Validate a binary artifact header and return the payload after the header.
+///
+/// Checks magic bytes, format identifier, and version compatibility
+/// (major must match exactly, minor must be >= expected minimum).
+fn parse_binary_header<'a>(
+    data: &'a [u8],
+    expected_format: &[u8; 8],
+    (expected_major, min_minor): (u16, u16),
+    label: &str,
+) -> Result<&'a [u8], JsError> {
+    if data.len() < HEADER_SIZE {
+        return Err(JsError::new(&format!(
+            "{label} data too short for binary format"
+        )));
+    }
+    if &data[..8] != MAGIC_BYTES {
+        return Err(JsError::new(&format!(
+            "Invalid magic bytes in {label} data"
+        )));
+    }
+    if &data[8..16] != expected_format {
+        return Err(JsError::new(&format!(
+            "Invalid format identifier in {label} data"
+        )));
+    }
+
+    let major = u16::from_le_bytes([data[16], data[17]]);
+    let minor = u16::from_le_bytes([data[18], data[19]]);
+    if major != expected_major {
+        return Err(JsError::new(&format!(
+            "Incompatible {label} format: major version {major}, expected {expected_major}"
+        )));
+    }
+    if minor < min_minor {
+        return Err(JsError::new(&format!(
+            "Incompatible {label} format: minor version {minor}, expected >= {min_minor}"
+        )));
+    }
+
+    Ok(&data[HEADER_SIZE..])
+}
+
+/// Auto-detect compression (Zstd or XZ) and decompress.
 fn decompress(data: &[u8]) -> Result<Vec<u8>, JsError> {
     if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
-        // Zstd compressed
         let mut decoder = ruzstd::decoding::StreamingDecoder::new(std::io::Cursor::new(data))
             .map_err(|e| JsError::new(&format!("Failed to init Zstd decoder: {e}")))?;
-        let mut decompressed = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut decompressed)
+        let mut out = Vec::new();
+        std::io::Read::read_to_end(&mut decoder, &mut out)
             .map_err(|e| JsError::new(&format!("Failed to decompress Zstd data: {e}")))?;
-        Ok(decompressed)
-    } else {
-        // Assume XZ
-        let mut decompressed = Vec::new();
-        lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut decompressed)
+        Ok(out)
+    } else if data.len() >= 6 && data[..6] == XZ_MAGIC {
+        let mut out = Vec::new();
+        lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut out)
             .map_err(|e| JsError::new(&format!("Failed to decompress XZ data: {e}")))?;
-        Ok(decompressed)
+        Ok(out)
+    } else {
+        Err(JsError::new(&format!(
+            "Unknown compression format (first bytes: {:02X?})",
+            &data[..data.len().min(6)]
+        )))
     }
 }
 
 /// Parses a binary prover artifact (.pkp format).
 fn parse_binary_prover(data: &[u8]) -> Result<ProverCore, JsError> {
-    if data.len() < HEADER_SIZE {
-        return Err(JsError::new("Prover data too short for binary format"));
-    }
-    if &data[..8] != MAGIC_BYTES {
-        return Err(JsError::new("Invalid magic bytes in prover data"));
-    }
-    if &data[8..16] != PROVER_FORMAT {
-        return Err(JsError::new(
-            "Invalid format identifier: expected Prover (.pkp) format.",
-        ));
-    }
-
-    let decompressed = decompress(&data[HEADER_SIZE..])?;
+    let payload = parse_binary_header(data, PROVER_FORMAT, PROVER_VERSION, "prover")?;
+    let decompressed = decompress(payload)?;
     postcard::from_bytes(&decompressed)
         .map_err(|err| JsError::new(&format!("Failed to deserialize prover data: {err}")))
 }
 
 /// Parses a binary verifier artifact (.pkv format).
 fn parse_binary_verifier(data: &[u8]) -> Result<VerifierCore, JsError> {
-    if data.len() < HEADER_SIZE {
-        return Err(JsError::new("Verifier data too short for binary format"));
-    }
-    if &data[..8] != MAGIC_BYTES {
-        return Err(JsError::new("Invalid magic bytes in verifier data"));
-    }
-    if &data[8..16] != VERIFIER_FORMAT {
-        return Err(JsError::new(
-            "Invalid format identifier: expected Verifier (.pkv) format.",
-        ));
-    }
-
-    let decompressed = decompress(&data[HEADER_SIZE..])?;
+    let payload = parse_binary_header(data, VERIFIER_FORMAT, VERIFIER_VERSION, "verifier")?;
+    let decompressed = decompress(payload)?;
     postcard::from_bytes(&decompressed)
         .map_err(|err| JsError::new(&format!("Failed to deserialize verifier data: {err}")))
 }

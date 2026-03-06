@@ -13,6 +13,12 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// Noir-specific prover data serialized into `.pkp` files.
+///
+/// Note: fields intentionally mirror [`NoirSchemeData`] today. They are kept
+/// separate because `Prover` is the on-disk format (subject to versioning)
+/// while `NoirSchemeData` is the in-memory compilation output. Mavros variants
+/// already diverge (`MavrosProver` omits `r1cs`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProver {
     pub hash_config:            HashConfig,
@@ -45,6 +51,7 @@ pub enum Prover {
 }
 
 impl Prover {
+    /// Convert a compilation output into the on-disk prover format.
     pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
         match scheme {
             NoirProofScheme::Noir(d) => Prover::Noir(NoirProver {

@@ -4669,8 +4669,10 @@ version = "0.1.0"
 dependencies = [
  "acir",
  "anyhow",
+ "base64",
  "console_error_panic_hook",
  "getrandom 0.2.17",
+ "getrandom 0.3.4",
  "hex",
  "lzma-rs",
  "noirc_abi",
@@ -4679,6 +4681,7 @@ dependencies = [
  "provekit-prover",
  "provekit-verifier",
  "rayon",
+ "ruzstd",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -5416,6 +5419,15 @@ checksum = "bb35a55ab810b5c0fe31606fe9b47d1354e4dc519bec0a102655f78ea2b38057"
 dependencies = [
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "ruzstd"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5ff0cc5e135c8870a775d3320910cd9b564ec036b4dc0b8741629020be63f01"
+dependencies = [
+ "twox-hash",
 ]
 
 [[package]]
@@ -6700,6 +6712,12 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
+
+[[package]]
+name = "twox-hash"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "typenum"

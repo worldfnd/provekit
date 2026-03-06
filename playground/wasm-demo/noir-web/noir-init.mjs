@@ -68,7 +68,7 @@ export async function initNoir() {
   ]);
   
   initialized = true;
-  console.log('Noir WASM modules initialized');
+  initialized = true;
 }
 
 /**

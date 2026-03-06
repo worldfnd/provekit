@@ -52,10 +52,6 @@ target/
 circuit_stats_examples/
 # Node.js
 node_modules/
-
-# Old test directories (root level only)
-/wasm-node-demo/
-
 # wasm packages
 tooling/provekit-wasm/pkg/*
 

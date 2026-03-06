@@ -4,6 +4,7 @@ mod bin;
 mod buf_ext;
 #[cfg(not(target_arch = "wasm32"))]
 mod counting_writer;
+#[cfg(not(target_arch = "wasm32"))]
 mod json;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -55,7 +56,6 @@ impl MaybeHashAware for Verifier {
     }
 }
 
-
 /// Impl for NoirProof (no hash config).
 #[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for NoirProof {
@@ -98,7 +98,6 @@ impl FileFormat for Verifier {
     const VERSION: (u16, u16) = (1, 3);
     const COMPRESSION: Compression = Compression::Zstd;
 }
-
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProof {

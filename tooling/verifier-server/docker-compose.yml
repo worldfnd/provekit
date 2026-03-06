@@ -16,7 +16,7 @@ services:
     volumes:
       # Mount artifacts directory for persistence (optional)
       - ./artifacts:/app/artifacts
-    user: "1001:1001" # Match the appuser UID/GID from Dockerfile
+    user: "1001:1001"  # Match the appuser UID/GID from Dockerfile
     restart: unless-stopped
     healthcheck:
       test:

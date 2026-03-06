@@ -123,8 +123,10 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
 ///
 /// # Performance
 ///
-/// Optimized for WASM with relaxed SIMD. Processes one multiplication at a time
-/// (vs. `simd_mul` which batches two).
+/// On WASM, this ~200-line function is marked `inline(never)` because inlining it
+/// at every call site bloats the code section and increases register pressure on
+/// WASM's virtual stack, hurting overall throughput.
+/// On native targets it remains `inline(always)` for optimal ILP.
 #[cfg_attr(target_arch = "wasm32", inline(never))]
 #[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {

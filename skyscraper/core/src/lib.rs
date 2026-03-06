@@ -26,6 +26,12 @@ pub const WIDTH_LCM: usize = 12;
 
 pub type CompressManyFn = fn(&[u8], &mut [u8]);
 
+/// Platform-optimal batched compression (block4 on aarch64, simple elsewhere).
+#[cfg(target_arch = "aarch64")]
+pub use block4::compress_many;
+#[cfg(not(target_arch = "aarch64"))]
+pub use simple::compress_many;
+
 // TODO: Some autotune method that does a small benchmark on target hardware and
 // finds the optimal implementation. It should also have an enum that can be
 // stored in a file. And the benchmarking should be instrumented.

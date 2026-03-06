@@ -1,9 +1,5 @@
-#[cfg(target_arch = "aarch64")]
-use crate::block4;
-#[cfg(not(target_arch = "aarch64"))]
-use crate::simple;
 use {
-    crate::{arithmetic::less_than, generic, simple::compress, WIDTH_LCM},
+    crate::{arithmetic::less_than, compress_many, generic, simple::compress, WIDTH_LCM},
     ark_ff::Zero,
 };
 
@@ -40,12 +36,8 @@ pub fn solve(challenge: [u64; 4], difficulty: f64) -> u64 {
     }
     let threshold = threshold(difficulty + PROVER_BIAS);
 
-    #[cfg(target_arch = "aarch64")]
     let nonce =
-        generic::solve::<_, { WIDTH_LCM * 10 }>(block4::compress_many, challenge, threshold);
-    #[cfg(not(target_arch = "aarch64"))]
-    let nonce =
-        generic::solve::<_, { WIDTH_LCM * 10 }>(simple::compress_many, challenge, threshold);
+        generic::solve::<_, { WIDTH_LCM * 10 }>(compress_many, challenge, threshold);
     debug_assert!(verify(challenge, difficulty, nonce));
     nonce
 }
