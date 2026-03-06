@@ -14,7 +14,7 @@ use {
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{HashConfig, NoirProof, NoirProofScheme, Prover, Verifier, WasmProver, WasmVerifier},
+    crate::{HashConfig, NoirProof, NoirProofScheme, Prover, Verifier},
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
@@ -47,16 +47,6 @@ impl MaybeHashAware for Prover {
     }
 }
 
-/// Impl for WasmProver (has hash config).
-#[cfg(not(target_arch = "wasm32"))]
-impl MaybeHashAware for WasmProver {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        match self {
-            WasmProver::Noir(p) => Some(p.hash_config),
-        }
-    }
-}
-
 /// Impl for Verifier (has hash config).
 #[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for Verifier {
@@ -65,13 +55,6 @@ impl MaybeHashAware for Verifier {
     }
 }
 
-/// Impl for WasmVerifier (has hash config).
-#[cfg(not(target_arch = "wasm32"))]
-impl MaybeHashAware for WasmVerifier {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        Some(self.hash_config)
-    }
-}
 
 /// Impl for NoirProof (no hash config).
 #[cfg(not(target_arch = "wasm32"))]
@@ -109,14 +92,6 @@ impl FileFormat for Prover {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl FileFormat for WasmProver {
-    const FORMAT: [u8; 8] = *b"PrvKitWP";
-    const EXTENSION: &'static str = "wpkp";
-    const VERSION: (u16, u16) = (1, 0);
-    const COMPRESSION: Compression = Compression::Xz;
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
@@ -124,13 +99,6 @@ impl FileFormat for Verifier {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-impl FileFormat for WasmVerifier {
-    const FORMAT: [u8; 8] = *b"PrvKitWV";
-    const EXTENSION: &'static str = "wpkv";
-    const VERSION: (u16, u16) = (1, 0);
-    const COMPRESSION: Compression = Compression::Xz;
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProof {

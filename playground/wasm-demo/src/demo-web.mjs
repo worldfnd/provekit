@@ -317,7 +317,7 @@ async function runDemo() {
       numWitnesses = prover.getNumWitnesses();
       log(`Circuit: ${numConstraints.toLocaleString()} constraints, ${numWitnesses.toLocaleString()} witnesses`);
 
-      log("Extracting circuit from .wpkp...");
+      log("Extracting circuit from .pkp...");
       const circuitBytes = prover.getCircuit();
       circuitJson = JSON.parse(new TextDecoder().decode(circuitBytes));
       log(`Circuit extracted from prover artifact`);
@@ -360,12 +360,12 @@ async function runDemo() {
       }
       log(`Circuit: ${circuitName}`);
 
-      log("Loading prover (.wpkp) and verifier (.wpkv) artifacts...");
+      log("Loading prover (.pkp) and verifier (.pkv) artifacts...");
       logMemory("Before loading artifacts");
 
       const [proverResponse, verifierResponse] = await Promise.all([
-        fetch(base + "prover.wpkp"),
-        fetch(base + "verifier.wpkv"),
+        fetch(base + "prover.pkp"),
+        fetch(base + "verifier.pkv"),
       ]);
 
       proverBin = await proverResponse.arrayBuffer();
@@ -388,7 +388,7 @@ async function runDemo() {
       numWitnesses = prover.getNumWitnesses();
       log(`Circuit: ${numConstraints.toLocaleString()} constraints, ${numWitnesses.toLocaleString()} witnesses`);
 
-      log("Extracting circuit from .wpkp...");
+      log("Extracting circuit from .pkp...");
       const circuitBytes = prover.getCircuit();
       circuitJson = JSON.parse(new TextDecoder().decode(circuitBytes));
       log(`Circuit extracted from prover artifact`);

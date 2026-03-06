@@ -1,39 +1,42 @@
 //! WebAssembly bindings for ProveKit.
 //!
 //! This module provides browser-compatible WASM bindings for generating and
-//! verifying zero-knowledge proofs using ProveKit. The API accepts `.wpkp`
-//! (WASM ProveKit Prover) and `.wpkv` (WASM ProveKit Verifier) binary
-//! artifacts — self-contained formats that embed the compiled circuit
-//! artifact and strip only the native witness generator.
+//! verifying zero-knowledge proofs using ProveKit. The API accepts the same
+//! `.pkp` / `.pkv` binary artifacts used by the native CLI.
 //!
 //! # Example
 //!
 //! ```javascript
-//! import { generateWitness } from '@noir-lang/noir_js';
 //! import { initPanicHook, initThreadPool, Prover } from "./pkg/provekit_wasm.js";
 //!
 //! // Initialize panic hook and thread pool
 //! initPanicHook();
 //! await initThreadPool(navigator.hardwareConcurrency);
 //!
-//! // Load lightweight WASM prover artifact (.wpkp file)
-//! const proverBin = new Uint8Array(await (await fetch("/prover.wpkp")).arrayBuffer());
+//! // Load prover artifact (.pkp file — same as native CLI uses)
+//! const proverBin = new Uint8Array(await (await fetch("/prover.pkp")).arrayBuffer());
 //! const prover = new Prover(proverBin);
 //!
-//! // Generate witness using Noir's JS library
-//! const witnessStack = await generateWitness(compiledProgram, inputs);
-//! const proof = await prover.proveBytes(witnessStack[witnessStack.length - 1].witness);
+//! // Extract circuit for noir_js witness generation
+//! const circuitJson = JSON.parse(new TextDecoder().decode(prover.getCircuit()));
+//! const noir = new Noir(circuitJson);
+//! const { witness } = await noir.execute(inputs);
+//! const proof = prover.proveBytes(decompressWitness(witness)[0].witness);
 //! ```
 
 // Re-export wasm-bindgen-rayon's thread pool initialization
 pub use wasm_bindgen_rayon::init_thread_pool;
 use {
     acir::{
+        circuit::Program,
         native_types::{Witness, WitnessMap},
         AcirField, FieldElement,
     },
     anyhow::Context,
-    provekit_common::{NoirProof, WasmProver as WasmProverCore, WasmVerifier as WasmVerifierCore},
+    base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
+    provekit_common::{
+        NoirElement, NoirProof, Prover as ProverCore, Verifier as VerifierCore,
+    },
     provekit_prover::Prove,
     provekit_verifier::Verify,
     std::collections::BTreeMap,
@@ -42,52 +45,43 @@ use {
 
 /// Magic bytes for ProveKit binary format
 const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
-/// Format identifier for WASM Prover files (.wpkp)
-const WASM_PROVER_FORMAT: &[u8; 8] = b"PrvKitWP";
-/// Format identifier for WASM Verifier files (.wpkv)
-const WASM_VERIFIER_FORMAT: &[u8; 8] = b"PrvKitWV";
+/// Format identifier for Prover files (.pkp)
+const PROVER_FORMAT: &[u8; 8] = b"PrvKitPr";
+/// Format identifier for Verifier files (.pkv)
+const VERIFIER_FORMAT: &[u8; 8] = b"PrvKitVr";
 /// Header size in bytes: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) +
 /// HASH_CONFIG(1) = 21
 const HEADER_SIZE: usize = 21;
 
+/// Zstd magic number for auto-detection.
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+
 /// A prover instance for generating zero-knowledge proofs in WebAssembly.
 ///
-/// This struct wraps a lightweight ProveKit WASM prover and provides methods
-/// to generate proofs from witness data. Create an instance by loading a
-/// `.wpkp` artifact.
+/// Wraps the same `Prover` artifact used by the native CLI. Create an
+/// instance by loading a `.pkp` file.
 #[wasm_bindgen]
 pub struct Prover {
-    inner: WasmProverCore,
+    inner: ProverCore,
 }
 
 #[wasm_bindgen]
 impl Prover {
-    /// Creates a new prover from a `.wpkp` WASM prover artifact.
+    /// Creates a new prover from a `.pkp` prover artifact.
     ///
-    /// Accepts binary `.wpkp` format (XZ-compressed postcard with header)
-    /// or JSON serialization of a `WasmProver`.
+    /// Accepts binary `.pkp` format (compressed postcard with header)
+    /// or JSON serialization.
     ///
-    /// Generate `.wpkp` artifacts using:
+    /// Generate `.pkp` artifacts using:
     /// ```sh
-    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv --wasm
-    /// # or convert an existing .pkp:
-    /// provekit-cli convert-wasm prover.pkp circuit.json
+    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv
     /// ```
-    ///
-    /// # Arguments
-    ///
-    /// * `prover_data` - A byte slice containing the `.wpkp` artifact
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the data cannot be parsed as a valid WASM prover
-    /// artifact.
     #[wasm_bindgen(constructor)]
     pub fn new(prover_data: &[u8]) -> Result<Prover, JsError> {
         let is_binary = prover_data.len() >= HEADER_SIZE && &prover_data[..8] == MAGIC_BYTES;
 
         let inner = if is_binary {
-            parse_binary_wasm_prover(prover_data)?
+            parse_binary_prover(prover_data)?
         } else {
             let first_bytes: Vec<u8> = prover_data.iter().take(20).copied().collect();
             serde_json::from_slice(prover_data).map_err(|err| {
@@ -103,24 +97,8 @@ impl Prover {
 
     /// Generates a proof from a witness map and returns it as JSON bytes.
     ///
-    /// Use this method after generating the witness using Noir's JavaScript
-    /// library. The witness map should be a JavaScript Map or object
-    /// mapping witness indices to hex-encoded field element strings.
-    ///
-    /// # Arguments
-    ///
-    /// * `witness_map` - JavaScript Map or object: `Map<number, string>` or `{
-    ///   [index: number]: string }` where strings are hex-encoded field
-    ///   elements
-    ///
-    /// # Returns
-    ///
-    /// A `Uint8Array` containing the JSON-encoded proof.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the witness map cannot be parsed or proof generation
-    /// fails.
+    /// The witness map should be a JavaScript Map or object mapping witness
+    /// indices to hex-encoded field element strings.
     #[wasm_bindgen(js_name = proveBytes)]
     pub fn prove_bytes(&self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
         let witness = parse_witness_map(witness_map)?;
@@ -137,19 +115,6 @@ impl Prover {
 
     /// Generates a proof from a witness map and returns it as a JavaScript
     /// object.
-    ///
-    /// Similar to [`proveBytes`](Self::prove_bytes), but returns the proof as a
-    /// structured JavaScript object instead of JSON bytes.
-    ///
-    /// # Arguments
-    ///
-    /// * `witness_map` - JavaScript Map or object mapping witness indices to
-    ///   hex-encoded field element strings
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the witness map cannot be parsed or proof generation
-    /// fails.
     #[wasm_bindgen(js_name = proveJs)]
     pub fn prove_js(&self, witness_map: JsValue) -> Result<JsValue, JsError> {
         let witness = parse_witness_map(witness_map)?;
@@ -163,20 +128,42 @@ impl Prover {
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
     }
 
-    /// Returns the embedded compiled-circuit artifact (the raw bytes of
-    /// the circuit JSON produced by `nargo compile`).
+    /// Returns a circuit JSON suitable for `@noir-lang/noir_js`.
     ///
-    /// Use this to pass the circuit to `@noir-lang/noir_js` for witness
-    /// generation without needing a separate `circuit.json` file:
+    /// Reconstructs `{ "abi": ..., "bytecode": "..." }` from the prover's
+    /// embedded program and ABI so the browser can generate witnesses
+    /// without a separate `circuit.json` file.
     ///
     /// ```js
-    /// const prover = new Prover(wpkpBytes);
+    /// const prover = new Prover(pkpBytes);
     /// const circuitJson = JSON.parse(new TextDecoder().decode(prover.getCircuit()));
     /// const noir = new Noir(circuitJson);
     /// ```
     #[wasm_bindgen(js_name = getCircuit)]
-    pub fn get_circuit(&self) -> Box<[u8]> {
-        self.inner.circuit_artifact().to_vec().into_boxed_slice()
+    pub fn get_circuit(&self) -> Result<Box<[u8]>, JsError> {
+        let noir_prover = match &self.inner {
+            ProverCore::Noir(p) => p,
+            #[allow(unreachable_patterns)]
+            _ => return Err(JsError::new("Only Noir provers are supported in WASM")),
+        };
+
+        // Serialize Program back to compressed ACIR bytes, then base64-encode
+        let program_bytes = Program::<NoirElement>::serialize_program(&noir_prover.program);
+        let bytecode_b64 = BASE64.encode(&program_bytes);
+
+        // Serialize ABI to JSON value
+        let abi_json = serde_json::to_value(&noir_prover.witness_generator.abi)
+            .map_err(|e| JsError::new(&format!("Failed to serialize ABI: {e}")))?;
+
+        // Construct the circuit JSON that noir_js expects
+        let circuit = serde_json::json!({
+            "abi": abi_json,
+            "bytecode": bytecode_b64,
+        });
+
+        serde_json::to_vec(&circuit)
+            .map(|b| b.into_boxed_slice())
+            .map_err(|e| JsError::new(&format!("Failed to serialize circuit JSON: {e}")))
     }
 
     /// Returns the number of R1CS constraints in this circuit.
@@ -201,45 +188,35 @@ pub fn init_panic_hook() {
 
 /// A verifier instance for verifying zero-knowledge proofs in WebAssembly.
 ///
-/// This struct wraps a lightweight ProveKit WASM verifier. Create an instance
-/// by loading a `.wpkv` artifact.
+/// Wraps the same `Verifier` artifact used by the native CLI. Create an
+/// instance by loading a `.pkv` file.
 #[wasm_bindgen]
 pub struct Verifier {
-    inner: WasmVerifierCore,
+    inner: VerifierCore,
 }
 
 #[wasm_bindgen]
 impl Verifier {
-    /// Creates a new verifier from a `.wpkv` WASM verifier artifact.
+    /// Creates a new verifier from a `.pkv` verifier artifact.
     ///
-    /// Generate `.wpkv` artifacts using:
+    /// Generate `.pkv` artifacts using:
     /// ```sh
-    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv --wasm
+    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv
     /// ```
     #[wasm_bindgen(constructor)]
     pub fn new(verifier_data: &[u8]) -> Result<Verifier, JsError> {
-        let is_binary =
-            verifier_data.len() >= HEADER_SIZE && &verifier_data[..8] == MAGIC_BYTES;
+        let is_binary = verifier_data.len() >= HEADER_SIZE && &verifier_data[..8] == MAGIC_BYTES;
 
         let inner = if is_binary {
-            parse_binary_wasm_verifier(verifier_data)?
+            parse_binary_verifier(verifier_data)?
         } else {
-            serde_json::from_slice(verifier_data).map_err(|err| {
-                JsError::new(&format!("Failed to parse verifier JSON: {err}"))
-            })?
+            serde_json::from_slice(verifier_data)
+                .map_err(|err| JsError::new(&format!("Failed to parse verifier JSON: {err}")))?
         };
         Ok(Self { inner })
     }
 
     /// Verifies a proof provided as JSON bytes.
-    ///
-    /// # Arguments
-    ///
-    /// * `proof_json` - A `Uint8Array` containing JSON-encoded proof data
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the proof is invalid or verification fails.
     #[wasm_bindgen(js_name = verifyBytes)]
     pub fn verify_bytes(&mut self, proof_json: &[u8]) -> Result<(), JsError> {
         let proof: NoirProof = serde_json::from_slice(proof_json)
@@ -260,69 +237,72 @@ impl Verifier {
     }
 }
 
-/// Parses a binary WASM prover artifact (.wpkp format).
-///
-/// Header: MAGIC(8) + FORMAT(8) + VERSION(4) + HASH_CONFIG(1), then
-/// XZ-compressed postcard data.
-fn parse_binary_wasm_prover(data: &[u8]) -> Result<WasmProverCore, JsError> {
+// ---------------------------------------------------------------------------
+// Binary format parsing
+// ---------------------------------------------------------------------------
+
+/// Auto-detect compression (XZ or Zstd) and decompress.
+fn decompress(data: &[u8]) -> Result<Vec<u8>, JsError> {
+    if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
+        // Zstd compressed
+        let mut decoder = ruzstd::decoding::StreamingDecoder::new(std::io::Cursor::new(data))
+            .map_err(|e| JsError::new(&format!("Failed to init Zstd decoder: {e}")))?;
+        let mut decompressed = Vec::new();
+        std::io::Read::read_to_end(&mut decoder, &mut decompressed)
+            .map_err(|e| JsError::new(&format!("Failed to decompress Zstd data: {e}")))?;
+        Ok(decompressed)
+    } else {
+        // Assume XZ
+        let mut decompressed = Vec::new();
+        lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut decompressed)
+            .map_err(|e| JsError::new(&format!("Failed to decompress XZ data: {e}")))?;
+        Ok(decompressed)
+    }
+}
+
+/// Parses a binary prover artifact (.pkp format).
+fn parse_binary_prover(data: &[u8]) -> Result<ProverCore, JsError> {
     if data.len() < HEADER_SIZE {
         return Err(JsError::new("Prover data too short for binary format"));
     }
-
     if &data[..8] != MAGIC_BYTES {
         return Err(JsError::new("Invalid magic bytes in prover data"));
     }
-
-    if &data[8..16] != WASM_PROVER_FORMAT {
+    if &data[8..16] != PROVER_FORMAT {
         return Err(JsError::new(
-            "Invalid format identifier: expected WASM Prover (.wpkp) format. Use `provekit-cli \
-             convert-wasm` to convert a .pkp file.",
+            "Invalid format identifier: expected Prover (.pkp) format.",
         ));
     }
 
-    let compressed = &data[HEADER_SIZE..];
-    let mut decompressed = Vec::new();
-    lzma_rs::xz_decompress(&mut std::io::Cursor::new(compressed), &mut decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to decompress XZ prover data: {err}")))?;
-
+    let decompressed = decompress(&data[HEADER_SIZE..])?;
     postcard::from_bytes(&decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to deserialize WASM prover data: {err}")))
+        .map_err(|err| JsError::new(&format!("Failed to deserialize prover data: {err}")))
 }
 
-/// Parses a binary WASM verifier artifact (.wpkv format).
-///
-/// Header: MAGIC(8) + FORMAT(8) + VERSION(4) + HASH_CONFIG(1), then
-/// XZ-compressed postcard data.
-fn parse_binary_wasm_verifier(data: &[u8]) -> Result<WasmVerifierCore, JsError> {
+/// Parses a binary verifier artifact (.pkv format).
+fn parse_binary_verifier(data: &[u8]) -> Result<VerifierCore, JsError> {
     if data.len() < HEADER_SIZE {
         return Err(JsError::new("Verifier data too short for binary format"));
     }
-
     if &data[..8] != MAGIC_BYTES {
         return Err(JsError::new("Invalid magic bytes in verifier data"));
     }
-
-    if &data[8..16] != WASM_VERIFIER_FORMAT {
+    if &data[8..16] != VERIFIER_FORMAT {
         return Err(JsError::new(
-            "Invalid format identifier: expected WASM Verifier (.wpkv) format. Generate with \
-             `provekit-cli prepare ... --wasm`.",
+            "Invalid format identifier: expected Verifier (.pkv) format.",
         ));
     }
 
-    let compressed = &data[HEADER_SIZE..];
-    let mut decompressed = Vec::new();
-    lzma_rs::xz_decompress(&mut std::io::Cursor::new(compressed), &mut decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to decompress XZ verifier data: {err}")))?;
-
+    let decompressed = decompress(&data[HEADER_SIZE..])?;
     postcard::from_bytes(&decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to deserialize WASM verifier data: {err}")))
+        .map_err(|err| JsError::new(&format!("Failed to deserialize verifier data: {err}")))
 }
 
+// ---------------------------------------------------------------------------
+// Witness map parsing
+// ---------------------------------------------------------------------------
+
 /// Parses a JavaScript witness map into the internal format.
-///
-/// The JavaScript witness map can be either:
-/// 1. A Map<number, string> where strings are hex-encoded field elements
-/// 2. A plain JavaScript object { [index: number]: string }
 fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsError> {
     let map: BTreeMap<String, String> =
         serde_wasm_bindgen::from_value(js_value).map_err(|err| {

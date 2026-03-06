@@ -490,30 +490,14 @@ async function prepareCircuit({ name, path: circuitDir }) {
 
   if (
     !run(
-      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3 --wasm`,
+      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
       { cwd: artifactsDir }
     )
   ) {
     process.exit(1);
   }
-  logSuccess("prover.pkp, prover.wpkp, verifier.pkv, and verifier.wpkv created");
+  logSuccess("prover.pkp and verifier.pkv created");
 
-  // Log WASM artifact size comparison
-  const wpkpPath = join(artifactsDir, "prover.wpkp");
-  const wpkvPath = join(artifactsDir, "verifier.wpkv");
-  if (existsSync(wpkpPath) && existsSync(proverBinPath)) {
-    const { statSync } = await import("fs");
-    const pkpSize = statSync(proverBinPath).size;
-    const wpkpSize = statSync(wpkpPath).size;
-    const pkvSize = statSync(verifierBinPath).size;
-    const wpkvSize = existsSync(wpkvPath) ? statSync(wpkvPath).size : 0;
-    const pkpSavings = (((pkpSize - wpkpSize) / pkpSize) * 100).toFixed(1);
-    log(`  .pkp:  ${(pkpSize / 1024 / 1024).toFixed(2)} MB  \u2192  .wpkp: ${(wpkpSize / 1024 / 1024).toFixed(2)} MB (${pkpSavings}% smaller)`, colors.reset);
-    if (wpkvSize > 0) {
-      const pkvSavings = (((pkvSize - wpkvSize) / pkvSize) * 100).toFixed(1);
-      log(`  .pkv:  ${(pkvSize / 1024 / 1024).toFixed(2)} MB  \u2192  .wpkv: ${(wpkvSize / 1024 / 1024).toFixed(2)} MB (${pkvSavings}% smaller)`, colors.reset);
-    }
-  }
 
   // Copy Prover.toml and convert to inputs.json
   logStep(`${name}`, "Preparing inputs...");

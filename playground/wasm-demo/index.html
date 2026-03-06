@@ -673,9 +673,9 @@
         <div class="dropzone" id="dropzone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <h3>Drag & drop circuit files</h3>
-          <p>Required: prover.wpkp, verifier.wpkv, inputs.json</p>
+          <p>Required: prover.pkp, verifier.pkv, inputs.json</p>
           <button class="btn-select" id="btnSelectFiles">Select Files</button>
-          <input type="file" id="fileInput" multiple accept=".json,.wpkp,.wpkv,.toml" style="display:none">
+          <input type="file" id="fileInput" multiple accept=".json,.pkp,.pkv,.toml" style="display:none">
         </div>
       </div>
       
@@ -685,7 +685,7 @@
         <div class="checklist-item pending" id="check-prover">
           <div class="item-left">
             <div class="item-icon">-</div>
-            <span class="item-name">prover.wpkp</span>
+            <span class="item-name">prover.pkp</span>
           </div>
           <div class="item-right" style="font-style: italic;">Waiting...</div>
         </div>
@@ -693,7 +693,7 @@
         <div class="checklist-item pending" id="check-verifier">
           <div class="item-left">
             <div class="item-icon">-</div>
-            <span class="item-name">verifier.wpkv</span>
+            <span class="item-name">verifier.pkv</span>
           </div>
           <div class="item-right" style="font-style: italic;">Waiting...</div>
         </div>
@@ -1043,8 +1043,8 @@
         el.querySelector('.item-right').style.fontStyle = 'italic';
       });
       // Restore default names
-      document.querySelector('#check-prover .item-name').textContent = 'prover.wpkp';
-      document.querySelector('#check-verifier .item-name').textContent = 'verifier.wpkv';
+      document.querySelector('#check-prover .item-name').textContent = 'prover.pkp';
+      document.querySelector('#check-verifier .item-name').textContent = 'verifier.pkv';
       document.querySelector('#check-inputs .item-name').textContent = 'inputs.json / Prover.toml';
       window.customFiles = {};
     }
@@ -1070,10 +1070,10 @@
         logEl.textContent = `File uploaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
         logContainer.appendChild(logEl);
 
-        if (name.endsWith('.wpkp')) {
+        if (name.endsWith('.pkp')) {
           window.customFiles.prover = file;
           updateChecklist('prover', file.name, file.size);
-        } else if (name.endsWith('.wpkv')) {
+        } else if (name.endsWith('.pkv')) {
           window.customFiles.verifier = file;
           updateChecklist('verifier', file.name, file.size);
         } else if (name === 'inputs.json' || name.endsWith('.toml')) {

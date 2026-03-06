@@ -35,26 +35,3 @@ impl Verifier {
         }
     }
 }
-
-/// Lightweight verifier for WASM environments.
-///
-/// Strips [`Abi`] from [`Verifier`] since it is only used for display/ABI
-/// metadata and is not needed for proof verification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WasmVerifier {
-    pub hash_config:      HashConfig,
-    pub r1cs:             R1CS,
-    pub whir_for_witness: Option<WhirR1CSScheme>,
-}
-
-impl WasmVerifier {
-    /// Create a [`WasmVerifier`] from a full [`Verifier`], discarding the
-    /// ABI metadata.
-    pub fn from_verifier(v: Verifier) -> Self {
-        Self {
-            hash_config:      v.hash_config,
-            r1cs:             v.r1cs,
-            whir_for_witness: v.whir_for_witness,
-        }
-    }
-}
