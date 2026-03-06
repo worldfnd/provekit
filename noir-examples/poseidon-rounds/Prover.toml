@@ -1,4 +1,4 @@
-plains = [1, 2, 3, 4]
+plains = [1, 2]
 
 # Value for 100 rounds
 # result = '0x0b50a50fda9459e4eda4b0e9382fcbb5d00c6b387bd6b79b9efb3ff95c2a32b6'
