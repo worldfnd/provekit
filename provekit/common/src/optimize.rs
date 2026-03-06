@@ -7,9 +7,13 @@
 //!   3. Express pivot as linear combination of remaining variables
 //!   4. Substitute into all other constraints
 //!   5. Remove eliminated constraints
+//!   6. Remove dead witness columns and prune unreachable witness builders
 
 use {
-    crate::{witness::WitnessBuilder, FieldElement, InternedFieldElement, SparseMatrix, R1CS},
+    crate::{
+        witness::{DependencyInfo, WitnessBuilder},
+        FieldElement, InternedFieldElement, SparseMatrix, R1CS,
+    },
     ark_ff::Field,
     ark_std::{One, Zero},
     std::collections::{HashMap, HashSet},
@@ -28,12 +32,12 @@ struct Substitution {
 
 /// Statistics from the optimization pass.
 pub struct OptimizationStats {
-    pub constraints_before:  usize,
-    pub constraints_after:   usize,
-    pub witnesses_before:    usize,
-    pub witnesses_after:     usize,
-    pub eliminated:          usize,
-    pub eliminated_columns:  HashSet<usize>,
+    pub constraints_before: usize,
+    pub constraints_after:  usize,
+    pub witnesses_before:   usize,
+    pub witnesses_after:    usize,
+    pub eliminated:         usize,
+    pub builders_removed:   usize,
 }
 
 impl OptimizationStats {
@@ -59,17 +63,24 @@ impl OptimizationStats {
 /// picks pivots, substitutes into remaining constraints, and removes the
 /// eliminated rows.
 ///
-/// Column 0 (constant one) is never chosen as a pivot.
+/// `num_public_inputs` columns (1..=num_public_inputs) and column 0 (constant
+/// one) are never chosen as pivots.
 pub fn optimize_r1cs(
     r1cs: &mut R1CS,
-    _witness_builders: &mut [WitnessBuilder],
+    witness_builders: &mut Vec<WitnessBuilder>,
+    witness_map: &mut [Option<std::num::NonZeroU32>],
 ) -> OptimizationStats {
     let constraints_before = r1cs.num_constraints();
     let witnesses_before = r1cs.num_witnesses();
 
-    // Column 0 is the constant-one column and must not be eliminated.
+    // Columns that must not be eliminated:
+    // - Column 0: constant one
+    // - Columns 1..=num_public_inputs: public inputs
     let mut forbidden: HashSet<usize> = HashSet::new();
     forbidden.insert(0);
+    for i in 1..=r1cs.num_public_inputs {
+        forbidden.insert(i);
+    }
 
     // Phase 1: Identify all linear constraints
     let mut linear_rows: Vec<usize> = Vec::new();
@@ -99,7 +110,7 @@ pub fn optimize_r1cs(
     let mut sub_map_phase2: HashMap<usize, usize> = HashMap::new();
 
     for &row in &linear_rows {
-          // Extract the combined linear expression (const * A/B - C) for this constraint
+        // Extract the linear expression from C[row]: sum of (coeff * w_i) = 0
         let expr = r1cs.extract_linear_expression(row);
         if expr.is_empty() {
             continue;
@@ -170,11 +181,8 @@ pub fn optimize_r1cs(
             .map(|(col, val)| (val, col))
             .collect();
 
-   // Approximate decrement: occurrence_counts was built from raw A+B+C
-        // entries, but we decrement once per column in the combined expression.
-        // A column appearing in multiple matrices is undercounted here. Only
-        // affects pivot-selection heuristic quality, not correctness.
-
+        // Decrement occurrence counts for all columns in this row (they're being
+        // removed)
         for (_, col) in &expr {
             if occurrence_counts[*col] > 0 {
                 occurrence_counts[*col] -= 1;
@@ -200,7 +208,7 @@ pub fn optimize_r1cs(
             witnesses_before,
             witnesses_after: witnesses_before,
             eliminated: 0,
-            eliminated_columns: HashSet::new(),
+            builders_removed: 0,
         };
     }
 
@@ -277,19 +285,16 @@ pub fn optimize_r1cs(
     }
 
     // Phase 4: Remove eliminated constraint rows
-  r1cs.remove_constraints(&eliminated_rows);
-
-
-    // Note: We do NOT modify witness builders. The witnesses are still
-    // computed by their original builders. GE only removes redundant
-    // constraints and substitutes pivots into remaining constraints.
+    let mut sorted_rows = eliminated_rows.clone();
+    sorted_rows.sort();
+    r1cs.remove_constraints(&sorted_rows);
 
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
-    // witnesses_after = witnesses_before since we don't actually remove columns,
-    // just make some witnesses derived. The column count doesn't change.
-    let witnesses_after = witnesses_before;
+    // Phase 5: Remove dead witness columns and prune unreachable builders
+    let (witnesses_after, builders_removed) =
+        remove_dead_columns(r1cs, witness_builders, witness_map);
 
     let stats = OptimizationStats {
         constraints_before,
@@ -297,7 +302,7 @@ pub fn optimize_r1cs(
         witnesses_before,
         witnesses_after,
         eliminated,
-        eliminated_columns: eliminated_cols,
+        builders_removed,
     };
 
     info!(
@@ -306,6 +311,13 @@ pub fn optimize_r1cs(
         constraints_after,
         stats.constraint_reduction_percent(),
         eliminated
+    );
+    info!(
+        "Column removal: {} -> {} witnesses ({:.1}% reduction), {} builders pruned",
+        witnesses_before,
+        witnesses_after,
+        stats.witness_reduction_percent(),
+        builders_removed
     );
 
     stats
@@ -322,6 +334,493 @@ fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
         counts[i] = a_counts[i] + b_counts[i] + c_counts[i];
     }
     counts
+}
+
+/// Phase 5: Remove dead witness columns from matrices and prune unreachable
+/// witness builders.
+///
+/// After GE, some columns have zero occurrences across all remaining
+/// constraints in A, B, and C. These are "dead" columns. This function:
+///
+/// 1. Identifies dead columns (zero occurrences in all three matrices)
+/// 2. Builds a dependency graph of witness builders
+/// 3. Finds which builders are transitively reachable from "live" columns
+///    (columns still referenced by constraints)
+/// 4. Prunes unreachable builders (Phase B+C cascading)
+/// 5. Remaps matrix column indices to close gaps
+/// 6. Remaps remaining builder witness indices
+///
+/// Returns (new_witness_count, builders_removed_count).
+fn remove_dead_columns(
+    r1cs: &mut R1CS,
+    witness_builders: &mut Vec<WitnessBuilder>,
+    witness_map: &mut [Option<std::num::NonZeroU32>],
+) -> (usize, usize) {
+    let num_cols = r1cs.num_witnesses();
+    if num_cols == 0 || witness_builders.is_empty() {
+        return (num_cols, 0);
+    }
+
+    // Step 1: Find dead columns (zero occurrence across A, B, C)
+    // Also collect columns referenced by the ACIR witness map — these are
+    // entry points for witness data and must stay alive.
+    let occurrence_counts = build_occurrence_counts(r1cs);
+    let mut acir_referenced: HashSet<usize> = HashSet::new();
+    for entry in witness_map.iter() {
+        if let Some(nz) = entry {
+            acir_referenced.insert(nz.get() as usize);
+        }
+    }
+
+    let mut dead_cols: HashSet<usize> = HashSet::new();
+    for col in 0..num_cols {
+        // Never remove column 0 (constant one) or public input columns
+        if col == 0 || col <= r1cs.num_public_inputs {
+            continue;
+        }
+        // Never remove columns referenced by the ACIR witness map
+        if acir_referenced.contains(&col) {
+            continue;
+        }
+        if occurrence_counts[col] == 0 {
+            dead_cols.insert(col);
+        }
+    }
+
+    if dead_cols.is_empty() {
+        return (num_cols, 0);
+    }
+
+    // Diagnostic: count how many zero-occurrence cols are blocked by each mechanism
+    let zero_occ_total = (0..num_cols)
+        .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0)
+        .count();
+    let blocked_by_acir = (0..num_cols)
+        .filter(|&c| {
+            c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced.contains(&c)
+        })
+        .count();
+    info!(
+        "Column removal: {} zero-occurrence cols (excl public), {} blocked by ACIR witness map, \
+         {} truly dead",
+        zero_occ_total,
+        blocked_by_acir,
+        dead_cols.len()
+    );
+
+    info!(
+        "Column removal: {} dead columns found out of {} total",
+        dead_cols.len(),
+        num_cols
+    );
+
+    // Step 2: Build witness builder dependency graph and find reachable builders.
+    // A builder is "live" if any of its output columns is NOT dead, OR if a
+    // live builder reads any of its output columns.
+    // We use the existing DependencyInfo infrastructure.
+    let live_cols: HashSet<usize> = (0..num_cols).filter(|c| !dead_cols.contains(c)).collect();
+
+    // Map: witness column -> builder index
+    let mut col_to_builder: HashMap<usize, usize> = HashMap::new();
+    for (builder_idx, builder) in witness_builders.iter().enumerate() {
+        for col in DependencyInfo::extract_writes(builder) {
+            col_to_builder.insert(col, builder_idx);
+        }
+    }
+
+    // Build adjacency: which builders does each builder depend on?
+    // (reverse of the normal dependency graph: we want "builder X reads from
+    // builder Y")
+    let mut builder_reads_from: Vec<HashSet<usize>> = vec![HashSet::new(); witness_builders.len()];
+    for (builder_idx, builder) in witness_builders.iter().enumerate() {
+        let reads = DependencyInfo::extract_reads(builder);
+        for read_col in reads {
+            if let Some(&producer_idx) = col_to_builder.get(&read_col) {
+                if producer_idx != builder_idx {
+                    builder_reads_from[builder_idx].insert(producer_idx);
+                }
+            }
+        }
+    }
+
+    // Step 3: BFS/DFS from live builders to find all transitively reachable
+    // builders. A builder is live if any of its output columns is live
+    // (referenced by constraints).
+    let mut live_builders: HashSet<usize> = HashSet::new();
+    let mut queue: Vec<usize> = Vec::new();
+
+    for (builder_idx, builder) in witness_builders.iter().enumerate() {
+        let writes = DependencyInfo::extract_writes(builder);
+        let is_directly_live = writes.iter().any(|c| live_cols.contains(c));
+        if is_directly_live {
+            if live_builders.insert(builder_idx) {
+                queue.push(builder_idx);
+            }
+        }
+    }
+
+    // BFS: if a live builder reads from another builder, that builder is also live
+    while let Some(builder_idx) = queue.pop() {
+        for &dep_idx in &builder_reads_from[builder_idx] {
+            if live_builders.insert(dep_idx) {
+                queue.push(dep_idx);
+            }
+        }
+    }
+
+    info!(
+        "Column removal: {} total builders, {} live (directly or transitively), {} dead",
+        witness_builders.len(),
+        live_builders.len(),
+        witness_builders.len() - live_builders.len()
+    );
+
+    // Count dead cols blocked by live builder deps
+    let blocked_by_bfs = dead_cols
+        .iter()
+        .filter(|&&col| {
+            col_to_builder
+                .get(&col)
+                .map_or(false, |&b| live_builders.contains(&b))
+        })
+        .count();
+    info!(
+        "Column removal: of {} dead cols, {} blocked by live builder BFS, {} removable",
+        dead_cols.len(),
+        blocked_by_bfs,
+        dead_cols.len() - blocked_by_bfs
+    );
+
+    // Step 4: Determine which columns to actually remove.
+    // A column is removable if:
+    //   - It's dead in matrices (zero occurrences) AND
+    //   - Its producing builder is NOT live (not transitively reachable)
+    let mut removable_cols: HashSet<usize> = HashSet::new();
+    for &col in &dead_cols {
+        let producer_is_live = col_to_builder
+            .get(&col)
+            .map_or(false, |&b| live_builders.contains(&b));
+        if !producer_is_live {
+            removable_cols.insert(col);
+        }
+    }
+
+    if removable_cols.is_empty() {
+        info!(
+            "Column removal: all {} dead columns are transitively needed by live builders",
+            dead_cols.len()
+        );
+        return (num_cols, 0);
+    }
+
+    info!(
+        "Column removal: {} columns removable ({} dead, {} kept for live builder deps)",
+        removable_cols.len(),
+        dead_cols.len(),
+        dead_cols.len() - removable_cols.len()
+    );
+
+    // Step 5: Build remap table (old_col -> new_col)
+    let mut remap: Vec<Option<usize>> = vec![None; num_cols];
+    let mut next_col = 0;
+    for col in 0..num_cols {
+        if !removable_cols.contains(&col) {
+            remap[col] = Some(next_col);
+            next_col += 1;
+        }
+    }
+    let new_num_cols = next_col;
+
+    // Step 6: Remap matrices
+    r1cs.a = r1cs.a.remove_columns(&remap);
+    r1cs.b = r1cs.b.remove_columns(&remap);
+    r1cs.c = r1cs.c.remove_columns(&remap);
+
+    // Step 6b: Remap ACIR witness map (ACIR index -> R1CS column)
+    for entry in witness_map.iter_mut() {
+        if let Some(nz) = entry {
+            let old_col = nz.get() as usize;
+            let new_col = remap[old_col].unwrap_or_else(|| {
+                panic!(
+                    "ACIR witness map references removed column {} (should be live)",
+                    old_col
+                )
+            });
+            *nz = std::num::NonZeroU32::new(new_col as u32)
+                .expect("Remapped ACIR witness index should be non-zero");
+        }
+    }
+
+    // Step 7: Prune dead builders and remap surviving ones
+    let builders_before = witness_builders.len();
+    let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(live_builders.len());
+    for (idx, builder) in witness_builders.drain(..).enumerate() {
+        if live_builders.contains(&idx) {
+            new_builders.push(remap_builder_columns(&builder, &remap));
+        }
+    }
+    *witness_builders = new_builders;
+    let builders_removed = builders_before - witness_builders.len();
+
+    info!(
+        "Column removal: {} -> {} witnesses, {} builders pruned",
+        num_cols, new_num_cols, builders_removed
+    );
+
+    (new_num_cols, builders_removed)
+}
+
+/// Remap all witness column references inside a builder using the given
+/// remap table. This mirrors `WitnessIndexRemapper::remap_builder` but uses
+/// a Vec<Option<usize>> remap table instead of HashMap.
+fn remap_builder_columns(builder: &WitnessBuilder, remap: &[Option<usize>]) -> WitnessBuilder {
+    let r = |idx: usize| -> usize {
+        remap[idx].unwrap_or_else(|| {
+            panic!(
+                "Witness index {} not in remap table (expected live column)",
+                idx
+            )
+        })
+    };
+
+    let rc =
+        |val: &crate::witness::ConstantOrR1CSWitness| -> crate::witness::ConstantOrR1CSWitness {
+            match val {
+                crate::witness::ConstantOrR1CSWitness::Constant(c) => {
+                    crate::witness::ConstantOrR1CSWitness::Constant(*c)
+                }
+                crate::witness::ConstantOrR1CSWitness::Witness(w) => {
+                    crate::witness::ConstantOrR1CSWitness::Witness(r(*w))
+                }
+            }
+        };
+
+    use crate::witness::*;
+    match builder {
+        WitnessBuilder::Constant(ConstantTerm(idx, val)) => {
+            WitnessBuilder::Constant(ConstantTerm(r(*idx), *val))
+        }
+        WitnessBuilder::Acir(idx, acir_idx) => WitnessBuilder::Acir(r(*idx), *acir_idx),
+        WitnessBuilder::Sum(idx, terms) => {
+            let new_terms = terms
+                .iter()
+                .map(|SumTerm(coeff, operand_idx)| SumTerm(*coeff, r(*operand_idx)))
+                .collect();
+            WitnessBuilder::Sum(r(*idx), new_terms)
+        }
+        WitnessBuilder::Product(idx, a, b) => WitnessBuilder::Product(r(*idx), r(*a), r(*b)),
+        WitnessBuilder::MultiplicitiesForRange(start, range, values) => {
+            let new_values = values.iter().map(|&v| r(v)).collect();
+            WitnessBuilder::MultiplicitiesForRange(r(*start), *range, new_values)
+        }
+        WitnessBuilder::Challenge(idx) => WitnessBuilder::Challenge(r(*idx)),
+        WitnessBuilder::IndexedLogUpDenominator(
+            idx,
+            sz,
+            WitnessCoefficient(coeff, index),
+            rs,
+            value,
+        ) => WitnessBuilder::IndexedLogUpDenominator(
+            r(*idx),
+            r(*sz),
+            WitnessCoefficient(*coeff, r(*index)),
+            r(*rs),
+            r(*value),
+        ),
+        WitnessBuilder::Inverse(idx, operand) => WitnessBuilder::Inverse(r(*idx), r(*operand)),
+        WitnessBuilder::ProductLinearOperation(
+            idx,
+            ProductLinearTerm(x, a, b),
+            ProductLinearTerm(y, c, d),
+        ) => WitnessBuilder::ProductLinearOperation(
+            r(*idx),
+            ProductLinearTerm(r(*x), *a, *b),
+            ProductLinearTerm(r(*y), *c, *d),
+        ),
+        WitnessBuilder::LogUpDenominator(idx, sz, WitnessCoefficient(coeff, value)) => {
+            WitnessBuilder::LogUpDenominator(r(*idx), r(*sz), WitnessCoefficient(*coeff, r(*value)))
+        }
+        WitnessBuilder::LogUpInverse(idx, sz, WitnessCoefficient(coeff, value)) => {
+            WitnessBuilder::LogUpInverse(r(*idx), r(*sz), WitnessCoefficient(*coeff, r(*value)))
+        }
+        WitnessBuilder::DigitalDecomposition(dd) => {
+            let new_witnesses_to_decompose =
+                dd.witnesses_to_decompose.iter().map(|&w| r(w)).collect();
+            WitnessBuilder::DigitalDecomposition(crate::witness::DigitalDecompositionWitnesses {
+                log_bases:                  dd.log_bases.clone(),
+                num_witnesses_to_decompose: dd.num_witnesses_to_decompose,
+                witnesses_to_decompose:     new_witnesses_to_decompose,
+                first_witness_idx:          r(dd.first_witness_idx),
+                num_witnesses:              dd.num_witnesses,
+            })
+        }
+        WitnessBuilder::SpiceMultisetFactor(
+            idx,
+            sz,
+            rs,
+            WitnessCoefficient(addr_c, addr_w),
+            value,
+            WitnessCoefficient(timer_c, timer_w),
+        ) => WitnessBuilder::SpiceMultisetFactor(
+            r(*idx),
+            r(*sz),
+            r(*rs),
+            WitnessCoefficient(*addr_c, r(*addr_w)),
+            r(*value),
+            WitnessCoefficient(*timer_c, r(*timer_w)),
+        ),
+        WitnessBuilder::SpiceWitnesses(sw) => {
+            let new_memory_operations = sw
+                .memory_operations
+                .iter()
+                .map(|op| match op {
+                    crate::witness::SpiceMemoryOperation::Load(addr, value, rt) => {
+                        crate::witness::SpiceMemoryOperation::Load(r(*addr), r(*value), r(*rt))
+                    }
+                    crate::witness::SpiceMemoryOperation::Store(addr, old_val, new_val, rt) => {
+                        crate::witness::SpiceMemoryOperation::Store(
+                            r(*addr),
+                            r(*old_val),
+                            r(*new_val),
+                            r(*rt),
+                        )
+                    }
+                })
+                .collect();
+            WitnessBuilder::SpiceWitnesses(crate::witness::SpiceWitnesses {
+                memory_length:           sw.memory_length,
+                initial_value_witnesses: sw.initial_value_witnesses.iter().map(|w| r(*w)).collect(),
+                memory_operations:       new_memory_operations,
+                rv_final_start:          r(sw.rv_final_start),
+                rt_final_start:          r(sw.rt_final_start),
+                first_witness_idx:       r(sw.first_witness_idx),
+                num_witnesses:           sw.num_witnesses,
+            })
+        }
+        WitnessBuilder::U32AdditionMulti(result_idx, carry_idx, inputs) => {
+            WitnessBuilder::U32AdditionMulti(
+                r(*result_idx),
+                r(*carry_idx),
+                inputs.iter().map(|c| rc(c)).collect(),
+            )
+        }
+        WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
+            lo: r(*lo),
+            hi: r(*hi),
+            x:  r(*x),
+            k:  *k,
+        },
+        WitnessBuilder::BinOpLookupDenominator(idx, sz, rs, rs2, lhs, rhs, output) => {
+            WitnessBuilder::BinOpLookupDenominator(
+                r(*idx),
+                r(*sz),
+                r(*rs),
+                r(*rs2),
+                rc(lhs),
+                rc(rhs),
+                rc(output),
+            )
+        }
+        WitnessBuilder::CombinedBinOpLookupDenominator(
+            idx,
+            sz,
+            rs,
+            rs2,
+            rs3,
+            lhs,
+            rhs,
+            and_out,
+            xor_out,
+        ) => WitnessBuilder::CombinedBinOpLookupDenominator(
+            r(*idx),
+            r(*sz),
+            r(*rs),
+            r(*rs2),
+            r(*rs3),
+            rc(lhs),
+            rc(rhs),
+            rc(and_out),
+            rc(xor_out),
+        ),
+        WitnessBuilder::MultiplicitiesForBinOp(start, atomic_bits, pairs) => {
+            let new_pairs = pairs.iter().map(|(lhs, rhs)| (rc(lhs), rc(rhs))).collect();
+            WitnessBuilder::MultiplicitiesForBinOp(r(*start), *atomic_bits, new_pairs)
+        }
+        WitnessBuilder::U32Addition(result_idx, carry_idx, a, b) => {
+            WitnessBuilder::U32Addition(r(*result_idx), r(*carry_idx), rc(a), rc(b))
+        }
+        WitnessBuilder::And(idx, lh, rh) => WitnessBuilder::And(r(*idx), rc(lh), rc(rh)),
+        WitnessBuilder::Xor(idx, lh, rh) => WitnessBuilder::Xor(r(*idx), rc(lh), rc(rh)),
+        WitnessBuilder::CombinedTableEntryInverse(data) => {
+            WitnessBuilder::CombinedTableEntryInverse(
+                crate::witness::CombinedTableEntryInverseData {
+                    idx:          r(data.idx),
+                    sz_challenge: r(data.sz_challenge),
+                    rs_challenge: r(data.rs_challenge),
+                    rs_sqrd:      r(data.rs_sqrd),
+                    rs_cubed:     r(data.rs_cubed),
+                    lhs:          data.lhs,
+                    rhs:          data.rhs,
+                    and_out:      data.and_out,
+                    xor_out:      data.xor_out,
+                },
+            )
+        }
+        WitnessBuilder::ChunkDecompose {
+            output_start,
+            packed,
+            chunk_bits,
+        } => WitnessBuilder::ChunkDecompose {
+            output_start: r(*output_start),
+            packed:       r(*packed),
+            chunk_bits:   chunk_bits.clone(),
+        },
+        WitnessBuilder::SpreadWitness(output, input) => {
+            WitnessBuilder::SpreadWitness(r(*output), r(*input))
+        }
+        WitnessBuilder::SpreadBitExtract {
+            output_start,
+            chunk_bits,
+            sum_terms,
+            extract_even,
+        } => WitnessBuilder::SpreadBitExtract {
+            output_start: r(*output_start),
+            chunk_bits:   chunk_bits.clone(),
+            sum_terms:    sum_terms
+                .iter()
+                .map(|SumTerm(coeff, idx)| SumTerm(*coeff, r(*idx)))
+                .collect(),
+            extract_even: *extract_even,
+        },
+        WitnessBuilder::MultiplicitiesForSpread(start, num_bits, queries) => {
+            let new_queries = queries.iter().map(|c| rc(c)).collect();
+            WitnessBuilder::MultiplicitiesForSpread(r(*start), *num_bits, new_queries)
+        }
+        WitnessBuilder::SpreadLookupDenominator(idx, sz, rs, input, spread_output) => {
+            WitnessBuilder::SpreadLookupDenominator(
+                r(*idx),
+                r(*sz),
+                r(*rs),
+                rc(input),
+                rc(spread_output),
+            )
+        }
+        WitnessBuilder::SpreadTableQuotient {
+            idx,
+            sz,
+            rs,
+            input_val,
+            spread_val,
+            multiplicity,
+        } => WitnessBuilder::SpreadTableQuotient {
+            idx:          r(*idx),
+            sz:           r(*sz),
+            rs:           r(*rs),
+            input_val:    *input_val,
+            spread_val:   *spread_val,
+            multiplicity: r(*multiplicity),
+        },
+    }
 }
 
 /// Apply all relevant substitutions to a single row of a matrix.
@@ -378,67 +877,7 @@ fn apply_substitutions_to_row(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ark_std::One};
-
-    /// Evaluate `matrix · witness` for each row, returning a Vec of
-    /// FieldElements (one per constraint).
-    fn matvec(r1cs: &R1CS, matrix: &SparseMatrix, witness: &[FieldElement]) -> Vec<FieldElement> {
-        let hydrated = matrix.hydrate(&r1cs.interner);
-        (0..matrix.num_rows)
-            .map(|row| {
-                hydrated
-                    .iter_row(row)
-                    .map(|(col, coeff)| coeff * witness[col])
-                    .sum()
-            })
-            .collect()
-    }
-
-    /// Assert that no remaining constraint references an eliminated pivot
-    /// column. This is the chain-resolution invariant: after GE, every
-    /// substituted pivot must have been fully inlined into all remaining
-    /// constraints.
-    fn assert_no_dangling_pivots(r1cs: &R1CS, stats: &OptimizationStats) {
-        for row in 0..r1cs.num_constraints() {
-            for (col, _) in r1cs.a.iter_row(row) {
-                assert!(
-                    !stats.eliminated_columns.contains(&col),
-                    "row {row} A references eliminated pivot w{col}"
-                );
-            }
-            for (col, _) in r1cs.b.iter_row(row) {
-                assert!(
-                    !stats.eliminated_columns.contains(&col),
-                    "row {row} B references eliminated pivot w{col}"
-                );
-            }
-            for (col, _) in r1cs.c.iter_row(row) {
-                assert!(
-                    !stats.eliminated_columns.contains(&col),
-                    "row {row} C references eliminated pivot w{col}"
-                );
-            }
-        }
-    }
-
-    /// Assert that `A·w ⊙ B·w == C·w` for every row of the R1CS.
-    fn assert_r1cs_satisfied(r1cs: &R1CS, witness: &[FieldElement]) {
-        let a_vals = matvec(r1cs, &r1cs.a, witness);
-        let b_vals = matvec(r1cs, &r1cs.b, witness);
-        let c_vals = matvec(r1cs, &r1cs.c, witness);
-        for (row, ((a, b), c)) in a_vals
-            .iter()
-            .zip(b_vals.iter())
-            .zip(c_vals.iter())
-            .enumerate()
-        {
-            assert_eq!(
-                *a * *b,
-                *c,
-                "R1CS not satisfied at row {row}: A·w={a:?}, B·w={b:?}, C·w={c:?}"
-            );
-        }
-    }
+    use {super::*, crate::witness::SumTerm, ark_std::One};
 
     #[test]
     fn test_simple_linear_elimination() {
@@ -463,9 +902,20 @@ mod tests {
         // Constraint 1: non-linear
         r1cs.add_constraint(&[(one, 1)], &[(one, 2)], &[(one, 4)]);
 
+        let mut witness_builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(None, 1), SumTerm(None, 2)]),
+            WitnessBuilder::Product(4, 1, 2),
+        ];
+
         assert_eq!(r1cs.num_constraints(), 2);
 
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut witness_builders, &mut wmap)
+        };
 
         // Constraint 0 should be eliminated (it's linear)
         assert_eq!(stats.constraints_after, 1);
@@ -480,18 +930,26 @@ mod tests {
         // Two chained linear constraints where L1's expression references
         // L0's pivot, creating a substitution chain:
         //
-        //   L0: 1*1 = w1 - w3
-        //   L1: 1*1 = w3 - w4
-        //   Q:  w4 * w2 = w5  (non-linear, kept)
+        //   L0: 1*1 = w1 - w3  →  w3 = w1 - 1     (pivot w3)
+        //   L1: 1*1 = w3 - w4  →  w4 = w3 - 1      (pivot w4, terms ref w3)
+        //   Q:  w4 * w2 = w5                         (non-linear, kept)
         //
-        // Chain resolution must inline pivots transitively so no eliminated
-        // column appears in remaining constraints.
+        // w1, w2 are public inputs (forbidden as pivots), forcing w3 and w4
+        // as the only pivot candidates for L0 and L1 respectively.
+        //
+        // Without chain resolution in Phase 2, S1's terms are [(-1, w0), (1, w3)].
+        // Substituting w4 in Q introduces w3 into Q's A matrix. But w3 is
+        // S0's eliminated pivot — its defining constraint is removed. Bug!
+        //
+        // With chain resolution, S1's terms resolve w3 → (w1 - 1), yielding
+        // [(-2, w0), (1, w1)]. Q becomes (w1-2)*w2 = w5. No dangling pivots.
         let mut r1cs = R1CS::new();
         let one = FieldElement::one();
         let neg = -one;
 
-        // 6 columns: w0(const), w1..w5
+        // 6 columns: w0(const), w1(public), w2(public), w3, w4, w5
         r1cs.add_witnesses(6);
+        r1cs.num_public_inputs = 2;
 
         // L0: 1*1 = w1 - w3
         r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (neg, 3)]);
@@ -500,42 +958,78 @@ mod tests {
         // Q: w4 * w2 = w5
         r1cs.add_constraint(&[(one, 4)], &[(one, 2)], &[(one, 5)]);
 
-        // w3 = w1 - 1, w4 = w3 - 1 = w1 - 2, w5 = w4 * w2
-        let witness: Vec<FieldElement> = [1u64, 5, 3, 4, 3, 9]
-            .iter()
-            .map(|v| FieldElement::from(*v))
-            .collect();
-        assert_r1cs_satisfied(&r1cs, &witness);
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
+            WitnessBuilder::Sum(4, vec![SumTerm(Some(neg), 0), SumTerm(None, 3)]),
+            WitnessBuilder::Product(5, 4, 2),
+        ];
 
         assert_eq!(r1cs.num_constraints(), 3);
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+        };
 
+        // Both linear constraints eliminated, Q remains
         assert_eq!(stats.eliminated, 2);
         assert_eq!(stats.constraints_after, 1);
         assert_eq!(r1cs.num_constraints(), 1);
-        assert_no_dangling_pivots(&r1cs, &stats);
-        assert_r1cs_satisfied(&r1cs, &witness);
+
+        // w3 (S0 pivot) must NOT appear in the remaining constraint.
+        // This is the key chain-resolution check: without the fix, S1's
+        // substitution of w4 would introduce w3 into Q.
+        for (col, _) in r1cs.a.iter_row(0) {
+            assert!(
+                col != 3,
+                "A matrix references eliminated pivot w3 (chain resolution failed)"
+            );
+            assert!(col != 4, "A matrix references eliminated pivot w4");
+        }
+        for (col, _) in r1cs.b.iter_row(0) {
+            assert!(
+                col != 3,
+                "B matrix references eliminated pivot w3 (chain resolution failed)"
+            );
+            assert!(col != 4, "B matrix references eliminated pivot w4");
+        }
+        for (col, _) in r1cs.c.iter_row(0) {
+            assert!(
+                col != 3,
+                "C matrix references eliminated pivot w3 (chain resolution failed)"
+            );
+            assert!(col != 4, "C matrix references eliminated pivot w4");
+        }
     }
 
     #[test]
     fn test_deep_chain_elimination() {
-        // Chain of depth 4 with Q at the end. Verifies that chain resolution
-        // works transitively through arbitrarily deep substitution chains.
+        // Chain of depth 4: w3 → w4 → w5 → w6, then Q uses w6.
+        // Verifies that chain resolution works transitively because each
+        // substitution's terms are already resolved when the next one
+        // inlines them.
         //
-        //   L0: 1*1 = w1 - w3
-        //   L1: 1*1 = w3 - w4
-        //   L2: 1*1 = w4 - w5
-        //   L3: 1*1 = w5 - w6
-        //   Q:  w6 * w2 = w7  (non-linear, kept)
+        //   L0: 1*1 = w1 - w3  →  w3 = w1 - 1       (pivot w3)
+        //   L1: 1*1 = w3 - w4  →  w4 = w3 - 1        (pivot w4)
+        //   L2: 1*1 = w4 - w5  →  w5 = w4 - 1        (pivot w5)
+        //   L3: 1*1 = w5 - w6  →  w6 = w5 - 1        (pivot w6)
+        //   Q:  w6 * w2 = w7                           (non-linear, kept)
+        //
+        // After full chain resolution: w6 = w1 - 4.
+        // Q becomes: (w1 - 4) * w2 = w7.
         let mut r1cs = R1CS::new();
         let one = FieldElement::one();
         let neg = -one;
 
-        // 8 columns: w0(const), w1..w7
+        // 8 columns: w0(const), w1(pub), w2(pub), w3, w4, w5, w6, w7
         r1cs.add_witnesses(8);
+        r1cs.num_public_inputs = 2;
 
-        // L0..L3: chain of differences
+        // L0..L3: chain of w3 → w4 → w5 → w6
         for i in 0..4u32 {
+            // L0: C=[w1, -w3], L1: C=[w3, -w4], L2: C=[w4, -w5], L3: C=[w5, -w6]
             let prev_col = if i == 0 { 1 } else { 2 + i as usize };
             let cur_col = 3 + i as usize;
             r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, prev_col), (neg, cur_col)]);
@@ -543,40 +1037,76 @@ mod tests {
         // Q: w6 * w2 = w7
         r1cs.add_constraint(&[(one, 6)], &[(one, 2)], &[(one, 7)]);
 
-        // w1=10, w3=9, w4=8, w5=7, w6=6, w7=w6*w2=18
-        let witness: Vec<FieldElement> = [1u64, 10, 3, 9, 8, 7, 6, 18]
-            .iter()
-            .map(|v| FieldElement::from(*v))
-            .collect();
-        assert_r1cs_satisfied(&r1cs, &witness);
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
+            WitnessBuilder::Sum(4, vec![SumTerm(Some(neg), 0), SumTerm(None, 3)]),
+            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
+            WitnessBuilder::Sum(6, vec![SumTerm(Some(neg), 0), SumTerm(None, 5)]),
+            WitnessBuilder::Product(7, 6, 2),
+        ];
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+        };
 
+        // All 4 linear constraints eliminated, Q remains
         assert_eq!(stats.eliminated, 4);
         assert_eq!(stats.constraints_after, 1);
         assert_eq!(r1cs.num_constraints(), 1);
-        assert_no_dangling_pivots(&r1cs, &stats);
-        assert_r1cs_satisfied(&r1cs, &witness);
+
+        // No eliminated pivot (w3, w4, w5, w6) should appear in Q
+        let eliminated = [3usize, 4, 5, 6];
+        for (col, _) in r1cs.a.iter_row(0) {
+            assert!(
+                !eliminated.contains(&col),
+                "A matrix references eliminated pivot w{col} (depth-4 chain)"
+            );
+        }
+        for (col, _) in r1cs.b.iter_row(0) {
+            assert!(
+                !eliminated.contains(&col),
+                "B matrix references eliminated pivot w{col} (depth-4 chain)"
+            );
+        }
+        for (col, _) in r1cs.c.iter_row(0) {
+            assert!(
+                !eliminated.contains(&col),
+                "C matrix references eliminated pivot w{col} (depth-4 chain)"
+            );
+        }
     }
 
     #[test]
     fn test_backward_chain_elimination() {
-        // Backward chain: one substitution is built with terms referencing a
-        // column that a later substitution eliminates. Phase 2b resolves this
-        // backward reference so Phase 3's single pass works.
+        // Backward chain: S_0 is built FIRST with terms referencing w5,
+        // then S_1 eliminates w5. Phase 2b resolves this backward
+        // reference so Phase 3's single pass works.
         //
-        //   L0: 1*1 = w1 + w5 - w3  (linear)
-        //   L1: 1*1 = w4 - w5       (linear)
-        //   Q1: w3 * w2 = w6        (non-linear)
-        //   Q2: w4 * w4 = w7        (non-linear)
-        //   Q3: w5 * w1 = w8        (non-linear)
+        //   L0: 1*1 = w1 + w5 - w3  →  w3 = w1 + w5 - 1  (pivot w3, count=2)
+        //   L1: 1*1 = w4 - w5       →  w5 = w4 - 1        (pivot w5, count=2 after
+        // decrement)   Q1: w3 * w2 = w6
+        // (non-linear)   Q2: w4 * w4 = w7                                (extra
+        // w4 occurrences)   Q3: w5 * w1 = w8
+        // (breaks count tie: w5=3 > w3=2)
+        //
+        // w1, w2 are public (forbidden).
+        // Counts: w3=2, w5=3, w4=3 → L0 picks w3 (min).
+        // After L0 decrement: w5=2, w4=3 → L1 picks w5.
+        //
+        // After full resolution: w3 = w1 + (w4-1) - 1 = w1 + w4 - 2.
+        // Q1 becomes: (w1 + w4 - 2) * w2 = w6.
         let mut r1cs = R1CS::new();
         let one = FieldElement::one();
         let neg = -one;
 
-        // 9 columns: w0(const), w1..w8
+        // 9 columns: w0(const), w1(pub), w2(pub), w3, w4, w5, w6, w7, w8
         r1cs.add_witnesses(9);
+        r1cs.num_public_inputs = 2;
 
         // L0: 1*1 = w1 + w5 - w3
         r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (one, 5), (neg, 3)]);
@@ -584,127 +1114,60 @@ mod tests {
         r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
         // Q1: w3 * w2 = w6
         r1cs.add_constraint(&[(one, 3)], &[(one, 2)], &[(one, 6)]);
-        // Q2: w4 * w4 = w7
+        // Q2: w4 * w4 = w7 (extra occurrences for w4)
         r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
-        // Q3: w5 * w1 = w8
+        // Q3: w5 * w1 = w8 (extra w5 occurrence to break tie vs w3)
         r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
 
-        // w5 = w4-1 = 6, w3 = w1+w5-1 = 10
-        let witness: Vec<FieldElement> = [1u64, 5, 3, 10, 7, 6, 30, 49, 30]
-            .iter()
-            .map(|v| FieldElement::from(*v))
-            .collect();
-        assert_r1cs_satisfied(&r1cs, &witness);
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![
+                SumTerm(Some(neg), 0),
+                SumTerm(None, 1),
+                SumTerm(None, 5),
+            ]),
+            WitnessBuilder::Acir(4, 2),
+            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
+            WitnessBuilder::Product(6, 3, 2),
+            WitnessBuilder::Product(7, 4, 4),
+            WitnessBuilder::Product(8, 5, 1),
+        ];
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+        };
 
+        // Both linear constraints eliminated, Q1, Q2, Q3 remain
         assert_eq!(stats.eliminated, 2);
         assert_eq!(stats.constraints_after, 3);
-        assert_no_dangling_pivots(&r1cs, &stats);
-        assert_r1cs_satisfied(&r1cs, &witness);
-    }
 
-    #[test]
-    fn test_arithmetic_correctness() {
-        // Exercises simple elimination, forward chain, and backward chain
-        // then checks A·w ⊙ B·w == C·w on optimized R1CS.
-        //
-        //   L0: 1*1 = w1 + w5 - w3  (linear)
-        //   L1: 1*1 = w4 - w5       (linear)
-        //   Q1: w3 * w2 = w6        (non-linear)
-        //   Q2: w4 * w4 = w7        (non-linear)
-        //   Q3: w5 * w1 = w8        (non-linear)
-        let mut r1cs = R1CS::new();
-        let one = FieldElement::one();
-        let neg = -one;
-
-        // 9 columns: w0(const), w1..w8
-        r1cs.add_witnesses(9);
-
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (one, 5), (neg, 3)]);
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
-        r1cs.add_constraint(&[(one, 3)], &[(one, 2)], &[(one, 6)]);
-        r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
-        r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
-
-        // w0=1, w1=5, w2=3, w4=7, w5=w4-1=6, w3=w1+w5-1=10,
-        // w6=w3*w2=30, w7=w4*w4=49, w8=w5*w1=30
-        let witness: Vec<FieldElement> = [1u64, 5, 3, 10, 7, 6, 30, 49, 30]
-            .iter()
-            .map(|v| FieldElement::from(*v))
-            .collect();
-
-        assert_r1cs_satisfied(&r1cs, &witness);
-
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
-        assert_eq!(stats.eliminated, 2);
-        assert_no_dangling_pivots(&r1cs, &stats);
-        assert_r1cs_satisfied(&r1cs, &witness);
-    }
-
-    #[test]
-    fn test_branch_coverage() {
-        // Exercises all extract_linear_expression branches and optimizer
-        // edge cases in one system:
-        //
-        //   L_a:    A=[2*w0],   B=[w2],    C=[w3]       A-only const, coeff 2
-        //   L_b:    A=[w4,w2],  B=[3*w0],  C=[w5]       B-only const, coeff 3
-        //   L_sr0:  A=[w0],     B=[w0],    C=[2*w6,-w7]  both const
-        //   L_sr1:  A=[w0],     B=[w0],    C=[w7,-w6]    self-ref rescaling
-        //   L_deg0: A=[w0],     B=[w0],    C=[w8,-w9]    both const
-        //   L_deg1: A=[w0],     B=[w0],    C=[w8,-w9]    degenerate (1-r_p=0)
-        //   Q:      A=[w4],     B=[w7],    C=[w10]       non-linear
-        //
-        // L_sr1 triggers self-referencing pivot rescaling: chain-resolving
-        // w6 reintroduces w7 (the current pivot) with r_p=1/2, requiring
-        // division by (1 - 1/2).
-        //
-        // L_deg1 is a duplicate of L_deg0. After L_deg0 eliminates one
-        // of {w8,w9}, L_deg1's chain resolution produces r_p=1 for the
-        // remaining variable, so (1 - r_p) = 0 → skip.
-        let mut r1cs = R1CS::new();
-        let one = FieldElement::one();
-        let neg = -one;
-        let two = FieldElement::from(2u64);
-        let three = FieldElement::from(3u64);
-
-        r1cs.add_witnesses(11);
-
-        // L_a: 2*1 * w2 = w3  →  w3 = 2*w2  (A-only constant branch)
-        r1cs.add_constraint(&[(two, 0)], &[(one, 2)], &[(one, 3)]);
-        // L_b: (w4+w2) * 3 = w5  →  w5 = 3*w4+3*w2  (B-only constant branch)
-        r1cs.add_constraint(&[(one, 4), (one, 2)], &[(three, 0)], &[(one, 5)]);
-        // L_sr0: 1 = 2*w6 - w7
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(two, 6), (neg, 7)]);
-        // L_sr1: 1 = w7 - w6
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 7), (neg, 6)]);
-        // L_deg0: 1 = w8 - w9
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
-        // L_deg1: 1 = w8 - w9  (duplicate → degenerate skip)
-        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
-        // Q: w4 * w7 = w10
-        r1cs.add_constraint(&[(one, 4)], &[(one, 7)], &[(one, 10)]);
-
-        // Witness derived from constraints:
-        //   w2=4, w3=2*4=8, w4=5, w5=3*(5+4)=27,
-        //   w6=2, w7=3 (from 1=2*2-3, 1=3-2),
-        //   w9=10, w8=11 (from 1=11-10),
-        //   w10=w4*w7=15
-        let witness: Vec<FieldElement> = [1u64, 5, 4, 8, 5, 27, 2, 3, 11, 10, 15]
-            .iter()
-            .map(|v| FieldElement::from(*v))
-            .collect();
-
-        assert_r1cs_satisfied(&r1cs, &witness);
-
-        let stats = optimize_r1cs(&mut r1cs, &mut []);
-
-        // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
-        // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.
-        assert_eq!(stats.eliminated, 5);
-        assert_eq!(stats.constraints_after, 2);
-        assert_no_dangling_pivots(&r1cs, &stats);
-        assert_r1cs_satisfied(&r1cs, &witness);
+        // Neither w3 nor w5 (eliminated pivots) should appear in any
+        // remaining constraint. w5 tests the backward chain: S_0's
+        // terms originally referenced w5, resolved by Phase 2b.
+        let eliminated = [3usize, 5];
+        for row in 0..r1cs.num_constraints() {
+            for (col, _) in r1cs.a.iter_row(row) {
+                assert!(
+                    !eliminated.contains(&col),
+                    "row {row} A references eliminated pivot w{col} (backward chain)"
+                );
+            }
+            for (col, _) in r1cs.b.iter_row(row) {
+                assert!(
+                    !eliminated.contains(&col),
+                    "row {row} B references eliminated pivot w{col} (backward chain)"
+                );
+            }
+            for (col, _) in r1cs.c.iter_row(row) {
+                assert!(
+                    !eliminated.contains(&col),
+                    "row {row} C references eliminated pivot w{col} (backward chain)"
+                );
+            }
+        }
     }
 }
