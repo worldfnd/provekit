@@ -186,14 +186,14 @@
       <div class="step-number">1</div>
       <div class="step-content">
         <div class="step-title">Load WASM Modules</div>
-        <div class="step-status" id="step1-status">Waiting...</div>
+        <div class="step-status" id="step1-status"><span class="spinner"></span>Loading...</div>
       </div>
     </div>
 
     <div class="step" id="step2">
       <div class="step-number">2</div>
       <div class="step-content">
-        <div class="step-title">Load Circuit & Prover Artifacts</div>
+        <div class="step-title">Load Circuit & Artifacts</div>
         <div class="step-status" id="step2-status">Waiting...</div>
       </div>
     </div>
@@ -213,10 +213,18 @@
         <div class="step-status" id="step4-status">Waiting...</div>
       </div>
     </div>
+    <div class="step" id="step5">
+      <div class="step-number">5</div>
+      <div class="step-content">
+        <div class="step-title">Verify Proof (ProveKit WASM)</div>
+        <div class="step-status" id="step5-status">Waiting...</div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
-    <button id="runBtn" onclick="runDemo()">Generate Proof</button>
+    <button id="runBtn" onclick="runDemo()" disabled>Generate Proof</button>
+    <button id="verifyBtn" onclick="verifyProof()" disabled style="margin-left: 10px;">Verify Proof</button>
   </div>
 
   <div class="card hidden" id="summaryCard">
@@ -237,6 +245,14 @@
       <div class="summary-item">
         <div class="summary-label">Proof Size</div>
         <div class="summary-value" id="proofSize">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Verification</div>
+        <div class="summary-value" id="verifyTime">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Verify Status</div>
+        <div class="summary-value" id="verifyStatus">-</div>
       </div>
     </div>
   </div>

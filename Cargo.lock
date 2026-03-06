@@ -4677,6 +4677,7 @@ dependencies = [
  "postcard",
  "provekit-common",
  "provekit-prover",
+ "provekit-verifier",
  "rayon",
  "serde",
  "serde-wasm-bindgen",

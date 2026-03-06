@@ -9,7 +9,7 @@
 
 // DOM elements
 const logContainer = document.getElementById("logContainer");
-const runBtn = document.getElementById("runBtn");
+const verifyBtn = document.getElementById("verifyBtn");
 
 // Logging functions
 function log(msg, type = "info") {
@@ -89,25 +89,10 @@ async function loadInputs() {
 let provekit = null;
 let circuitJson = null;
 let proverBin = null;
+let verifierBin = null;
+let lastProofBytes = null;
 
-async function runDemo() {
-  runBtn.disabled = true;
-  logContainer.innerHTML = "";
-
-  // Reset steps
-  for (let i = 1; i <= 4; i++) {
-    updateStep(i, "Waiting...");
-  }
-
-  // Hide previous results
-  document.getElementById("summaryCard").classList.add("hidden");
-  document.getElementById("proofCard").classList.add("hidden");
-
-  let witnessTime = 0;
-  let proofTime = 0;
-  let witnessSize = 0;
-  let proofSize = 0;
-
+async function initWasm() {
   try {
     // Step 1: Load WASM modules
     updateStep(1, '<span class="spinner"></span>Loading...', "running");
@@ -207,8 +192,36 @@ async function runDemo() {
 
     log("noir_js initialized");
     updateStep(1, "Loaded", "success");
+    runBtn.disabled = false;
 
-    // Step 2: Load circuit and prover artifact
+  } catch (error) {
+    log(`Error initializing WASM: ${error.message}`, "error");
+    console.error(error);
+    updateStep(1, "Failed", "error");
+    // Keep button disabled
+  }
+}
+
+async function runDemo() {
+  runBtn.disabled = true;
+  logContainer.innerHTML = "";
+
+  // Reset steps 2-5 (Step 1 is already loaded)
+  for (let i = 2; i <= 5; i++) {
+    updateStep(i, "Waiting...");
+  }
+
+  // Hide previous results
+  document.getElementById("summaryCard").classList.add("hidden");
+  document.getElementById("proofCard").classList.add("hidden");
+
+  let witnessTime = 0;
+  let proofTime = 0;
+  let witnessSize = 0;
+  let proofSize = 0;
+
+  try {
+    // Step 2: Load circuit and artifacts
     updateStep(
       2,
       '<span class="spinner"></span>Loading artifacts...',
@@ -236,14 +249,24 @@ async function runDemo() {
     document.getElementById("circuitName").textContent =
       `Circuit: ${circuitName}`;
 
-    log("Loading prover artifact (this may take a moment)...");
-    logMemory("Before loading prover");
-    const proverResponse = await fetch("artifacts/prover.pkp");
+    log("Loading prover (.wpkp) and verifier (.wpkv) artifacts...");
+    logMemory("Before loading artifacts");
+    
+    const [proverResponse, verifierResponse] = await Promise.all([
+      fetch("artifacts/prover.wpkp"),
+      fetch("artifacts/verifier.wpkv"),
+    ]);
+
     proverBin = await proverResponse.arrayBuffer();
+    verifierBin = await verifierResponse.arrayBuffer();
+
     log(
       `Prover artifact: ${(proverBin.byteLength / 1024 / 1024).toFixed(2)} MB`
     );
-    logMemory("After loading prover", { proverBin });
+    log(
+      `Verifier artifact: ${(verifierBin.byteLength / 1024 / 1024).toFixed(2)} MB`
+    );
+    logMemory("After loading artifacts", { proverBin, verifierBin });
 
     updateStep(2, "Loaded", "success");
 
@@ -332,7 +355,10 @@ async function runDemo() {
 
     updateStep(4, `Done (${(proofTime / 1000).toFixed(2)}s)`, "success");
 
-    // Show results
+    // Store proof for verification
+    lastProofBytes = proofBytes;
+
+    // Show partial results (proof generation done)
     document.getElementById("witnessTime").textContent =
       `${witnessTime.toFixed(0)}ms`;
     document.getElementById("proofTime").textContent =
@@ -352,13 +378,15 @@ async function runDemo() {
     document.getElementById("proofOutput").textContent = truncated;
     document.getElementById("proofCard").classList.remove("hidden");
 
-    log("Proof generated successfully!", "success");
+    // Enable verify button
+    updateStep(5, "Ready — click Verify Proof");
+    verifyBtn.disabled = false;
   } catch (error) {
     log(`Error: ${error.message}`, "error");
     console.error(error);
 
     // Update current step to show error
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 2; i <= 4; i++) {
       const el = document.getElementById(`step${i}-status`);
       if (el && el.classList.contains("running")) {
         updateStep(i, "Failed", "error");
@@ -370,5 +398,46 @@ async function runDemo() {
   }
 }
 
-// Make runDemo available globally
+async function verifyProof() {
+  if (!lastProofBytes || !verifierBin || !provekit) {
+    log("No proof available. Generate a proof first.", "error");
+    return;
+  }
+
+  verifyBtn.disabled = true;
+
+  try {
+    updateStep(5, '<span class="spinner"></span>Verifying...', "running");
+    log("Creating verifier instance...");
+    const verifier = new provekit.Verifier(new Uint8Array(verifierBin));
+    log("Verifying proof...");
+
+    // Allow UI to update
+    await new Promise((r) => setTimeout(r, 50));
+
+    const verifyStart = performance.now();
+    verifier.verifyBytes(lastProofBytes);
+    const verifyTime = performance.now() - verifyStart;
+    log(`Verification time: ${verifyTime.toFixed(0)}ms`);
+    log("Proof verified successfully!", "success");
+    updateStep(5, `Verified ✓ (${verifyTime.toFixed(0)}ms)`, "success");
+
+    document.getElementById("verifyTime").textContent =
+      `${verifyTime.toFixed(0)}ms`;
+    document.getElementById("verifyStatus").textContent = "Success";
+  } catch (error) {
+    log(`Verification error: ${error.message}`, "error");
+    console.error(error);
+    updateStep(5, "Failed", "error");
+    document.getElementById("verifyStatus").textContent = "Failed";
+  } finally {
+    verifyBtn.disabled = false;
+  }
+}
+
+// Initialize WASM on load
+initWasm();
+
+// Make functions available globally
 window.runDemo = runDemo;
+window.verifyProof = verifyProof;

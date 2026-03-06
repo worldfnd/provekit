@@ -2,7 +2,7 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::write, HashConfig, Prover, Verifier},
+    provekit_common::{file::write, HashConfig, Prover, Verifier, WasmProver, WasmVerifier},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     std::{path::PathBuf, str::FromStr},
     tracing::instrument,
@@ -61,6 +61,11 @@ pub struct Args {
     )]
     pkv_path: PathBuf,
 
+    /// also emit lightweight WASM artifacts (.wpkp, .wpkv) alongside the
+    /// .pkp/.pkv — strips witness generator, ACIR program, and ABI metadata
+    #[argh(switch, long = "wasm")]
+    wasm: bool,
+
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
@@ -84,13 +89,24 @@ impl Command for Args {
             }
         };
 
-        write(
-            &Prover::from_noir_proof_scheme(scheme.clone()),
-            &self.pkp_path,
-        )
-        .context("while writing Provekit Prover")?;
-        write(&Verifier::from_noir_proof_scheme(scheme), &self.pkv_path)
+        let prover = Prover::from_noir_proof_scheme(scheme.clone());
+        let verifier = Verifier::from_noir_proof_scheme(scheme);
+
+        write(&prover, &self.pkp_path)
+            .context("while writing Provekit Prover")?;
+        write(&verifier, &self.pkv_path)
             .context("while writing Provekit Verifier")?;
+
+        if self.wasm {
+            let wpkp_path = self.pkp_path.with_extension("wpkp");
+            write(&WasmProver::from_prover(prover), &wpkp_path)
+                .context("while writing WASM Provekit Prover")?;
+
+            let wpkv_path = self.pkv_path.with_extension("wpkv");
+            write(&WasmVerifier::from_verifier(verifier), &wpkv_path)
+                .context("while writing WASM Provekit Verifier")?;
+        }
+
         Ok(())
     }
 }

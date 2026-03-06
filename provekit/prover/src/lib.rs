@@ -11,6 +11,7 @@ use {
     anyhow::{Context, Result},
     provekit_common::{
         FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
+        WasmNoirProver, WasmProver,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -512,6 +513,170 @@ impl Prove for Prover {
             Prover::Noir(p) => p.prove_with_witness(witness),
             #[cfg(not(target_arch = "wasm32"))]
             Prover::Mavros(p) => p.prove_with_witness(witness),
+        }
+    }
+}
+
+impl Prove for WasmNoirProver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn prove(self, _prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        Err(anyhow::anyhow!(
+            "prove() is not available for WasmNoirProver (no witness generator). Use prove_with_witness() instead."
+        ))
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
+        let num_public_inputs = self.num_public_inputs;
+
+        // R1CS matrices are only needed at sumcheck; compress to free memory during
+        // commits.
+        let compressed_r1cs =
+            CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
+        let num_witnesses = compressed_r1cs.num_witnesses();
+        let num_constraints = compressed_r1cs.num_constraints();
+
+        // Set up transcript with sponge selected by hash_config.
+        let ds = self
+            .whir_for_witness
+            .create_domain_separator()
+            .instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+
+        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
+
+        // Solve w1 (or all witnesses if no challenges).
+        {
+            let _s = info_span!("solve_w1").entered();
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w1_layers,
+                &acir_witness_idx_to_value_map,
+                &mut merlin,
+            );
+        }
+
+        // Compress w2 layers to free memory during w1 commit (only when
+        // challenges exist; otherwise just drop them).
+        let has_challenges = self.whir_for_witness.num_challenges > 0;
+        let compressed_w2_layers = if has_challenges {
+            Some(
+                CompressedLayers::compress(self.split_witness_builders.w2_layers)
+                    .context("While compressing w2 layers")?,
+            )
+        } else {
+            drop(self.split_witness_builders.w2_layers);
+            None
+        };
+
+        debug!(
+            witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
+            compressed_r1cs_blob_bytes = compressed_r1cs.blob_len(),
+            "component sizes after solve_w1"
+        );
+
+        let w1 = {
+            let _s = info_span!("allocate_w1").entered();
+            witness[..self.whir_for_witness.w1_size]
+                .iter()
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+                .collect::<Result<Vec<_>>>()?
+        };
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
+            .context("While committing to w1")?;
+
+        let commitments = if has_challenges {
+            let w2_layers = compressed_w2_layers
+                .unwrap()
+                .decompress()
+                .context("While decompressing w2 layers")?;
+            {
+                let _s = info_span!("solve_w2").entered();
+                crate::r1cs::solve_witness_vec(
+                    &mut witness,
+                    w2_layers,
+                    &acir_witness_idx_to_value_map,
+                    &mut merlin,
+                );
+            }
+            drop(acir_witness_idx_to_value_map);
+
+            let w2 = {
+                let _s = info_span!("allocate_w2").entered();
+                witness[self.whir_for_witness.w1_size..]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                    .collect::<Result<Vec<_>>>()?
+            };
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            drop(acir_witness_idx_to_value_map);
+            vec![commitment_1]
+        };
+
+        // Decompress R1CS for the sumcheck and matrix operations.
+        let r1cs = compressed_r1cs
+            .decompress()
+            .context("While decompressing R1CS")?;
+
+        #[cfg(test)]
+        r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+            .context("While verifying R1CS instance")?;
+
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(
+                witness[1..=num_public_inputs]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
+                    .collect::<Result<Vec<FieldElement>>>()?,
+            )
+        };
+
+        let full_witness: Vec<FieldElement> = witness
+            .into_iter()
+            .enumerate()
+            .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
+            .collect::<Result<Vec<_>>>()?;
+
+        let whir_r1cs_proof = self
+            .whir_for_witness
+            .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
+            .context("While proving R1CS instance")?;
+
+        Ok(NoirProof {
+            public_inputs,
+            whir_r1cs_proof,
+        })
+    }
+}
+
+impl Prove for WasmProver {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn prove(self, _prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        Err(anyhow::anyhow!(
+            "prove() is not available for WasmProver (no witness generator). Use prove_with_witness() instead."
+        ))
+    }
+
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        match self {
+            WasmProver::Noir(p) => p.prove_with_witness(witness),
         }
     }
 }

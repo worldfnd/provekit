@@ -491,26 +491,43 @@ async function main() {
 
   // Build native CLI (for verification)
   logStep("4/6", "Building native CLI...");
-  if (!run("cargo build --release --bin provekit-cli", { cwd: ROOT_DIR })) {
+  if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
     process.exit(1);
   }
   logSuccess("Native CLI built");
 
   // Prepare prover/verifier artifacts (binary format)
   logStep("5/6", "Preparing prover/verifier artifacts...");
-  const cliPath = join(ROOT_DIR, "target/release/provekit-cli");
+  const cliPath = join(ROOT_DIR, "target/release-fast/provekit-cli");
   const proverBinPath = join(ARTIFACTS_DIR, "prover.pkp");
   const verifierBinPath = join(ARTIFACTS_DIR, "verifier.pkv");
 
   if (
     !run(
-      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath}`,
+      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3 --wasm`,
       { cwd: ARTIFACTS_DIR }
     )
   ) {
     process.exit(1);
   }
-  logSuccess("prover.pkp and verifier.pkv created");
+  logSuccess("prover.pkp, prover.wpkp, verifier.pkv, and verifier.wpkv created");
+
+  // Log WASM artifact size comparison
+  const wpkpPath = join(ARTIFACTS_DIR, "prover.wpkp");
+  const wpkvPath = join(ARTIFACTS_DIR, "verifier.wpkv");
+  if (existsSync(wpkpPath) && existsSync(proverBinPath)) {
+    const { statSync } = await import("fs");
+    const pkpSize = statSync(proverBinPath).size;
+    const wpkpSize = statSync(wpkpPath).size;
+    const pkvSize = statSync(verifierBinPath).size;
+    const wpkvSize = existsSync(wpkvPath) ? statSync(wpkvPath).size : 0;
+    const pkpSavings = (((pkpSize - wpkpSize) / pkpSize) * 100).toFixed(1);
+    log(`  .pkp:  ${(pkpSize / 1024 / 1024).toFixed(2)} MB  \u2192  .wpkp: ${(wpkpSize / 1024 / 1024).toFixed(2)} MB (${pkpSavings}% smaller)`, colors.reset);
+    if (wpkvSize > 0) {
+      const pkvSavings = (((pkvSize - wpkvSize) / pkvSize) * 100).toFixed(1);
+      log(`  .pkv:  ${(pkvSize / 1024 / 1024).toFixed(2)} MB  \u2192  .wpkv: ${(wpkvSize / 1024 / 1024).toFixed(2)} MB (${pkvSavings}% smaller)`, colors.reset);
+    }
+  }
 
   // Copy Prover.toml and convert to inputs.json
   logStep("6/6", "Preparing inputs...");

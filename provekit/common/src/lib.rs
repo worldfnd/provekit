@@ -24,10 +24,10 @@ pub use {
     hash_config::HashConfig,
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
-    prover::{NoirProver, Prover},
+    prover::{NoirProver, Prover, WasmNoirProver, WasmProver},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
-    verifier::Verifier,
+    verifier::{Verifier, WasmVerifier},
     whir_r1cs::{WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
 };

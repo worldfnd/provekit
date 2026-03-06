@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 # Workspace crates - enable parallel features with wasm-bindgen-rayon
 provekit-common.workspace = true
 provekit-prover = { workspace = true, default-features = false, features = ["parallel"] }
-# provekit-verifier.workspace = true  # TODO: Re-enable after resolving tokio/mio dependency for WASM
+provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true

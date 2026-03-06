@@ -88,3 +88,61 @@ impl Prover {
         }
     }
 }
+
+/// Lightweight prover for WASM environments.
+///
+/// Strips `program` and `witness_generator` from [`NoirProver`] since WASM
+/// delegates witness generation to `@noir-lang/noir_js`. Pre-computes
+/// `num_public_inputs` which is the only value extracted from `program`
+/// before it is dropped in the `prove_with_witness` path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasmNoirProver {
+    pub hash_config:            HashConfig,
+    pub num_public_inputs:      usize,
+    pub r1cs:                   R1CS,
+    pub split_witness_builders: SplitWitnessBuilders,
+    pub whir_for_witness:       WhirR1CSScheme,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WasmProver {
+    Noir(WasmNoirProver),
+}
+
+impl WasmProver {
+    /// Create a [`WasmProver`] from a full [`Prover`], discarding fields
+    /// unnecessary for WASM proof generation.
+    pub fn from_prover(prover: Prover) -> Self {
+        match prover {
+            Prover::Noir(p) => {
+                let num_public_inputs =
+                    p.program.functions[0].public_inputs().indices().len();
+                WasmProver::Noir(WasmNoirProver {
+                    hash_config:            p.hash_config,
+                    num_public_inputs,
+                    r1cs:                   p.r1cs,
+                    split_witness_builders: p.split_witness_builders,
+                    whir_for_witness:       p.whir_for_witness,
+                })
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            Prover::Mavros(_) => {
+                panic!("Mavros prover is not supported in WASM");
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn size(&self) -> (usize, usize) {
+        match self {
+            WasmProver::Noir(p) => (p.r1cs.num_constraints(), p.r1cs.num_witnesses()),
+        }
+    }
+
+    #[must_use]
+    pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
+        match self {
+            WasmProver::Noir(p) => &p.whir_for_witness,
+        }
+    }
+}
