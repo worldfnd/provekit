@@ -489,6 +489,10 @@ pub(super) fn print_ge_optimization(
         stats.eliminated
     );
     println!(
+        "BUILDERS PRUNED:     {:>8}  unreachable witness builders removed",
+        stats.builders_removed
+    );
+    println!(
         "CONSTRAINT REDUCTION: {:>7.2}%  ({} -> {})",
         stats.constraint_reduction_percent(),
         stats.constraints_before,

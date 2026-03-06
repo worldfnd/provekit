@@ -70,7 +70,7 @@ impl DependencyInfo {
     }
 
     /// Extracts the witness indices that a builder reads as inputs.
-    fn extract_reads(wb: &WitnessBuilder) -> Vec<usize> {
+    pub fn extract_reads(wb: &WitnessBuilder) -> Vec<usize> {
         match wb {
             WitnessBuilder::Constant(_)
             | WitnessBuilder::Acir(..)

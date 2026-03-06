@@ -570,6 +570,39 @@ impl SparseMatrix {
         }
     }
 
+    /// Remove columns at the given indices and compact remaining columns.
+    /// Returns a new SparseMatrix with dead columns removed and remaining
+    /// columns renumbered. `cols_to_remove` must be sorted.
+    /// Also takes a remap table (old_col -> Option<new_col>) to apply.
+    pub fn remove_columns(&self, remap: &[Option<usize>]) -> SparseMatrix {
+        let new_num_cols = remap.iter().filter(|r| r.is_some()).count();
+        let mut new_row_indices = Vec::with_capacity(self.num_rows);
+        let mut new_col_indices = Vec::new();
+        let mut new_values = Vec::new();
+
+        for row in 0..self.num_rows {
+            new_row_indices.push(new_col_indices.len() as u32);
+            let range = self.row_range(row);
+            for i in range {
+                let old_col = self.col_indices[i] as usize;
+                if let Some(new_col) = remap[old_col] {
+                    new_col_indices.push(new_col as u32);
+                    new_values.push(self.values[i]);
+                }
+                // Dead columns should have no entries (zero occurrence),
+                // so this branch should never drop data.
+            }
+        }
+
+        SparseMatrix {
+            num_rows: self.num_rows,
+            num_cols: new_num_cols,
+            new_row_indices,
+            col_indices: new_col_indices,
+            values: new_values,
+        }
+    }
+
     /// Count how many rows reference each column. Returns a Vec of length
     /// num_cols.
     pub fn column_occurrence_count(&self) -> Vec<usize> {
