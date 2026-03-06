@@ -21,15 +21,21 @@ pub struct NoirCompiler;
 
 impl NoirCompiler {
     #[instrument(fields(size = path.as_ref().metadata().map(|m| m.len()).ok()))]
-    pub fn from_file(path: impl AsRef<Path> + std::fmt::Debug) -> Result<NoirProofScheme> {
+    pub fn from_file(
+        path: impl AsRef<Path> + std::fmt::Debug,
+        hash_config: provekit_common::HashConfig,
+    ) -> Result<NoirProofScheme> {
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
-        Self::from_program(program)
+        Self::from_program(program, hash_config)
     }
 
     #[instrument(skip_all)]
-    pub fn from_program(program: ProgramArtifact) -> Result<NoirProofScheme> {
+    pub fn from_program(
+        program: ProgramArtifact,
+        hash_config: provekit_common::HashConfig,
+    ) -> Result<NoirProofScheme> {
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(
@@ -82,6 +88,7 @@ impl NoirCompiler {
             split_witness_builders.w1_size,
             num_challenges,
             has_public_inputs,
+            hash_config.engine_id(),
         );
 
         Ok(NoirProofScheme::Noir(NoirSchemeData {
@@ -90,6 +97,7 @@ impl NoirCompiler {
             split_witness_builders,
             witness_generator,
             whir_for_witness,
+            hash_config,
         }))
     }
 }
@@ -108,6 +116,7 @@ impl MavrosCompiler {
     pub fn compile(
         basic_path: impl AsRef<Path> + std::fmt::Debug,
         r1cs_path: impl AsRef<Path> + std::fmt::Debug,
+        hash_config: provekit_common::HashConfig,
     ) -> Result<NoirProofScheme> {
         info!("Reading basic artifacts from {:?}", basic_path);
         let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
@@ -145,6 +154,7 @@ impl MavrosCompiler {
             mavros_r1cs.witness_layout.pre_commitment_size(),
             mavros_r1cs.witness_layout.challenges_size,
             num_public_inputs > 0,
+            hash_config.engine_id(),
         );
 
         let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
@@ -158,6 +168,7 @@ impl MavrosCompiler {
             r1cs,
             constraints_layout: mavros_r1cs.constraints_layout,
             witness_layout: mavros_r1cs.witness_layout,
+            hash_config,
         }))
     }
 }
@@ -192,7 +203,8 @@ mod tests {
     #[test]
     fn test_noir_proof_scheme_serde() {
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
-        let proof_scheme = NoirCompiler::from_file(path).unwrap();
+        let proof_scheme =
+            NoirCompiler::from_file(path, provekit_common::HashConfig::default()).unwrap();
 
         if let NoirProofScheme::Noir(d) = &proof_scheme {
             test_serde(&d.r1cs);

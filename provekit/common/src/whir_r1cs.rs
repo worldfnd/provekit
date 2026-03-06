@@ -1,4 +1,6 @@
 #[cfg(debug_assertions)]
+use std::fmt::Debug;
+#[cfg(debug_assertions)]
 use whir::transcript::Interaction;
 use {
     crate::{utils::serde_hex, FieldElement},
@@ -14,13 +16,7 @@ pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
-pub type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
-
-/// Type alias for the whir prover transcript state.
-pub type WhirProverState = transcript::ProverState;
-
-/// Type alias for the whir proof.
-pub type WhirProof = transcript::Proof;
+type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {

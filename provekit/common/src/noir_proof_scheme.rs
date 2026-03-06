@@ -2,7 +2,7 @@ use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        NoirElement, PublicInputs, R1CS,
+        HashConfig, NoirElement, PublicInputs, R1CS,
     },
     acir::circuit::Program,
     mavros_vm::{ConstraintsLayout, WitnessLayout},
@@ -17,6 +17,7 @@ pub struct NoirSchemeData {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
+    pub hash_config:            HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +31,7 @@ pub struct MavrosSchemeData {
     pub ad_binary:          Vec<u64>,
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
+    pub hash_config:        HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,9 +2,9 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::write, Prover, Verifier},
+    provekit_common::{file::write, HashConfig, Prover, Verifier},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    std::path::PathBuf,
+    std::{path::PathBuf, str::FromStr},
     tracing::instrument,
 };
 
@@ -60,20 +60,26 @@ pub struct Args {
         default = "PathBuf::from(\"noir_proof_scheme.pkv\")"
     )]
     pkv_path: PathBuf,
+
+    /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
+    /// blake3)
+    #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
+    hash: String,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
+        let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow::anyhow!("{}", e))?;
         let scheme = match self.compiler {
-            Compiler::Noir => NoirCompiler::from_file(&self.program_path)
+            Compiler::Noir => NoirCompiler::from_file(&self.program_path, hash_config)
                 .context("while compiling Noir program")?,
             Compiler::Mavros => {
                 let r1cs_path = self
                     .r1cs_path
                     .as_ref()
                     .context("--r1cs is required when using the mavros compiler")?;
-                MavrosCompiler::compile(&self.program_path, r1cs_path)
+                MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config)
                     .context("while compiling with Mavros")?
             }
         };
@@ -82,9 +88,9 @@ impl Command for Args {
             &Prover::from_noir_proof_scheme(scheme.clone()),
             &self.pkp_path,
         )
-        .context("while writing Noir proof scheme")?;
+        .context("while writing Provekit Prover")?;
         write(&Verifier::from_noir_proof_scheme(scheme), &self.pkv_path)
-            .context("while writing Noir proof scheme")?;
+            .context("while writing Provekit Verifier")?;
         Ok(())
     }
 }

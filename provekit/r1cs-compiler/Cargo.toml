@@ -23,6 +23,7 @@ noirc_abi.workspace = true
 noirc_artifacts.workspace = true
 
 # Cryptography and proof systems
+ark-crypto-primitives.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
 whir.workspace = true

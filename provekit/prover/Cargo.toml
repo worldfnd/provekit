@@ -24,9 +24,11 @@ noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems
+ark-crypto-primitives.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
 spongefish.workspace = true
+spongefish-pow.workspace = true
 whir.workspace = true
 
 # 3rd party

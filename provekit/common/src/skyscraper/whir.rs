@@ -19,6 +19,10 @@ pub const SKYSCRAPER: EngineId = EngineId::new([
     0x77, 0xb5, 0x82, 0xb0, 0xb2, 0xdd, 0x42, 0x1c, 0x66, 0x19, 0x13, 0xe6, 0xa5, 0x63, 0xf8, 0xa1,
 ]);
 
+// ============================================================================
+// WHIR 2.0 HashEngine Implementation
+// ============================================================================
+
 #[derive(Clone, Copy, Debug)]
 pub struct SkyscraperHashEngine;
 
@@ -66,8 +70,7 @@ impl HashEngine for SkyscraperHashEngine {
         }
 
         // Leaf hashing: left-fold 32-byte chunks, batched across messages
-        // for SIMD throughput. Equivalent to main's SkyscraperCRH::evaluate:
-        //   elements.reduce(compress)
+        // for SIMD throughput (equivalent to elements.reduce(compress)).
         // Processes in fixed-size groups to avoid heap allocation.
         const GROUP: usize = 4 * skyscraper::WIDTH_LCM; // fits in 3 KiB on stack
         let chunks_per_msg = size / 32;
@@ -96,6 +99,10 @@ impl HashEngine for SkyscraperHashEngine {
         }
     }
 }
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {

@@ -4,7 +4,8 @@ use {
     zerocopy::transmute,
 };
 
-#[derive(Clone, Copy)]
+/// Skyscraper proof of work
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SkyscraperPoW {
     challenge: [u8; 32],
     bits:      f64,

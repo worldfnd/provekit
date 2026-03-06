@@ -1,7 +1,7 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
-    whir::parameters::ProtocolParameters,
+    whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
@@ -13,6 +13,7 @@ pub trait WhirR1CSSchemeBuilder {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self;
 
     fn new_from_mavros_r1cs(
@@ -20,6 +21,7 @@ pub trait WhirR1CSSchemeBuilder {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self;
 
     fn new_from_dimensions(
@@ -29,9 +31,14 @@ pub trait WhirR1CSSchemeBuilder {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self;
 
-    fn new_whir_zk_config_for_size(num_variables: usize, num_polynomials: usize) -> WhirZkConfig;
+    fn new_whir_zk_config_for_size(
+        num_variables: usize,
+        num_polynomials: usize,
+        hash_id: EngineId,
+    ) -> WhirZkConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
@@ -40,6 +47,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self {
         let total_witnesses = r1cs.num_witnesses();
         assert!(
@@ -66,12 +74,16 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1),
+            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
             has_public_inputs,
         }
     }
 
-    fn new_whir_zk_config_for_size(num_variables: usize, num_polynomials: usize) -> WhirZkConfig {
+    fn new_whir_zk_config_for_size(
+        num_variables: usize,
+        num_polynomials: usize,
+        hash_id: EngineId,
+    ) -> WhirZkConfig {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
         // Parameters tuned for 128-bit security under the Johnson bound (the old
@@ -80,14 +92,14 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         // security budget toward algebraic hardness (118 bits) with light PoW per
         // round, which is faster than the default ~18-bit grinding.
         let whir_params = ProtocolParameters {
-            unique_decoding:        false,
-            security_level:         128,
-            pow_bits:               10,
+            unique_decoding: false,
+            security_level: 128,
+            pow_bits: 10,
             initial_folding_factor: 3,
-            folding_factor:         3,
-            starting_log_inv_rate:  2,
-            batch_size:             1,
-            hash_id:                whir::hash::SHA2,
+            folding_factor: 3,
+            starting_log_inv_rate: 2,
+            batch_size: 1,
+            hash_id,
         };
         WhirZkConfig::new(1 << nv, &whir_params, num_polynomials)
     }
@@ -97,6 +109,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
@@ -109,6 +122,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             w1_size,
             num_challenges,
             has_public_inputs,
+            hash_id,
         )
     }
 
@@ -119,6 +133,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         w1_size: usize,
         num_challenges: usize,
         has_public_inputs: bool,
+        hash_id: EngineId,
     ) -> Self {
         let m_raw = next_power_of_two(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
@@ -135,7 +150,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1),
+            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_id),
             w1_size,
             num_challenges,
             has_public_inputs,
@@ -149,7 +164,7 @@ mod tests {
 
     #[test]
     fn verify_security_level() {
-        let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, 1);
+        let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, 1, whir::hash::SHA2);
         let sec_blinded = config
             .blinded_commitment
             .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
@@ -168,7 +183,11 @@ mod tests {
 
     #[test]
     fn verify_security_level_min_variables() {
-        let config = WhirR1CSScheme::new_whir_zk_config_for_size(MIN_WHIR_NUM_VARIABLES, 1);
+        let config = WhirR1CSScheme::new_whir_zk_config_for_size(
+            MIN_WHIR_NUM_VARIABLES,
+            1,
+            whir::hash::SHA2,
+        );
         let sec_blinded = config
             .blinded_commitment
             .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);

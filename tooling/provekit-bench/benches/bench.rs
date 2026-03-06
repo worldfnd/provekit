@@ -60,10 +60,14 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
 fn verify_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_verifier_path = crate_dir.join("noir-provekit-verifier.pkv");
-    let mut verifier: Verifier = read(&proof_verifier_path).unwrap();
     let proof_path = crate_dir.join("noir-proof.np");
     let proof: NoirProof = read(&proof_path).unwrap();
-    bencher.bench_local(|| black_box(&mut verifier).verify(black_box(&proof)));
+
+    bencher.bench_local(|| {
+        // Read a fresh verifier for each iteration (verify consumes internal state)
+        let mut verifier: Verifier = read(&proof_verifier_path).unwrap();
+        black_box(&mut verifier).verify(black_box(&proof))
+    });
 }
 
 fn main() {
