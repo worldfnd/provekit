@@ -3,15 +3,10 @@
  * Setup script for ProveKit WASM browser demo.
  *
  * Usage:
- *   node scripts/setup.mjs [circuit-path]
+ *   node scripts/setup.mjs
  *
- * Arguments:
- *   circuit-path  Path to Noir circuit directory (default: noir-examples/oprf)
- *
- * This script builds all required artifacts:
- * 1. WASM package with thread support (via build-wasm.sh)
- * 2. Noir circuit (via nargo)
- * 3. Prover/Verifier binary artifacts (via provekit-cli)
+ * Builds WASM + CLI once, then prepares both SHA256 and Poseidon circuits
+ * into artifacts/sha256/ and artifacts/poseidon/ respectively.
  */
 
 import { execSync, spawnSync } from "child_process";
@@ -29,22 +24,12 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
-const ARTIFACTS_DIR = join(DEMO_DIR, "artifacts");
 const WASM_PKG_DIR = join(ROOT_DIR, "tooling/provekit-wasm/pkg");
 
-// Parse command line arguments (filter out "--" which npm/pnpm passes)
-const args = process.argv.slice(2).filter((arg) => arg !== "--");
-let circuitPath = args[0];
-
-// Default to oprf if no argument provided
-if (!circuitPath) {
-  circuitPath = join(ROOT_DIR, "noir-examples/oprf");
-} else {
-  // Resolve relative paths
-  circuitPath = resolve(process.cwd(), circuitPath);
-}
-
-const CIRCUIT_DIR = circuitPath;
+const CIRCUITS = [
+  { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
+  { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
+];
 
 // Colors for console output
 const colors = {
@@ -119,6 +104,11 @@ function parseTomlValue(valueStr) {
 
   // String
   if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
+    return valueStr.slice(1, -1);
+  }
+
+  // Single-quoted literal string (TOML literal strings)
+  if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
     return valueStr.slice(1, -1);
   }
 
@@ -334,21 +324,11 @@ function setNestedValue(obj, path, value) {
   current[parts[parts.length - 1]] = value;
 }
 
-async function main() {
+async function buildShared() {
   log("\n🔧 ProveKit WASM Demo Setup\n", colors.bright);
 
-  // Validate circuit directory
-  if (!existsSync(CIRCUIT_DIR)) {
-    logError(`Circuit directory not found: ${CIRCUIT_DIR}`);
-    process.exit(1);
-  }
-
-  const circuitName = getCircuitName(CIRCUIT_DIR);
-  log(`Circuit: ${circuitName}`, colors.bright);
-  log(`Path: ${CIRCUIT_DIR}\n`);
-
   // Check prerequisites
-  logStep("1/6", "Checking prerequisites...");
+  logStep("1/4", "Checking prerequisites...");
 
   if (!checkCommand("nargo", "Noir (nargo)")) {
     log(
@@ -371,19 +351,12 @@ async function main() {
   }
   logSuccess("cargo found");
 
-  // Create artifacts directory
-  if (!existsSync(ARTIFACTS_DIR)) {
-    mkdirSync(ARTIFACTS_DIR, { recursive: true });
-  }
-
   // Build WASM package with thread support (atomics enabled)
-  logStep("2/6", "Building WASM package with thread support...");
+  logStep("2/4", "Building WASM package with thread support...");
 
-  // Use the build-wasm.sh script which enables atomics for wasm-bindgen-rayon
   const buildScript = join(ROOT_DIR, "tooling/provekit-wasm/build-wasm.sh");
   if (existsSync(buildScript)) {
     if (!run(`bash ${buildScript} web`, { cwd: ROOT_DIR })) {
-      // Fallback: try building without thread support
       log(
         "  Warning: Thread-enabled build failed, trying without atomics...",
         colors.yellow
@@ -397,7 +370,6 @@ async function main() {
       }
     }
   } else {
-    // Fallback to wasm-pack if build script doesn't exist
     if (
       !run(`wasm-pack build tooling/provekit-wasm --release --target web`, {
         cwd: ROOT_DIR,
@@ -434,7 +406,6 @@ async function main() {
     if (!existsSync(snippetsDestDir)) {
       mkdirSync(snippetsDestDir, { recursive: true });
     }
-    // Recursively copy snippets
     function copyDirRecursive(src, dest) {
       if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
       for (const entry of readdirSync(src, { withFileTypes: true })) {
@@ -450,8 +421,6 @@ async function main() {
     copyDirRecursive(snippetsDir, snippetsDestDir);
     logSuccess("WASM snippets copied (for thread pool)");
 
-    // Patch workerHelpers.js to fix the import path for browser
-    // The default '../../..' resolves to directory, not the JS file
     function patchWorkerHelpers(dir) {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const fullPath = join(dir, entry.name);
@@ -472,16 +441,40 @@ async function main() {
   }
   logSuccess("WASM package copied to demo/pkg");
 
+  // Build native CLI
+  logStep("3/4", "Building native CLI...");
+  if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
+    process.exit(1);
+  }
+  logSuccess("Native CLI built");
+}
+
+async function prepareCircuit({ name, path: circuitDir }) {
+  const artifactsDir = join(DEMO_DIR, "artifacts", name);
+  if (!existsSync(artifactsDir)) {
+    mkdirSync(artifactsDir, { recursive: true });
+  }
+
+  // Validate circuit directory
+  if (!existsSync(circuitDir)) {
+    logError(`Circuit directory not found: ${circuitDir}`);
+    process.exit(1);
+  }
+
+  const circuitName = getCircuitName(circuitDir);
+  log(`\n📦 Preparing circuit: ${name} (${circuitName})`, colors.bright);
+  log(`   Path: ${circuitDir}`);
+
   // Compile Noir circuit
-  logStep("3/6", `Compiling Noir circuit (${circuitName})...`);
-  if (!run("nargo compile", { cwd: CIRCUIT_DIR })) {
+  logStep(`${name}`, `Compiling Noir circuit (${circuitName})...`);
+  if (!run("nargo compile", { cwd: circuitDir })) {
     process.exit(1);
   }
   logSuccess("Circuit compiled");
 
   // Copy compiled circuit
-  const circuitSrc = join(CIRCUIT_DIR, `target/${circuitName}.json`);
-  const circuitDest = join(ARTIFACTS_DIR, "circuit.json");
+  const circuitSrc = join(circuitDir, `target/${circuitName}.json`);
+  const circuitDest = join(artifactsDir, "circuit.json");
   if (!existsSync(circuitSrc)) {
     logError(`Compiled circuit not found: ${circuitSrc}`);
     process.exit(1);
@@ -489,23 +482,16 @@ async function main() {
   copyFileSync(circuitSrc, circuitDest);
   logSuccess(`Circuit artifact copied (${circuitName}.json -> circuit.json)`);
 
-  // Build native CLI (for verification)
-  logStep("4/6", "Building native CLI...");
-  if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
-    process.exit(1);
-  }
-  logSuccess("Native CLI built");
-
-  // Prepare prover/verifier artifacts (binary format)
-  logStep("5/6", "Preparing prover/verifier artifacts...");
+  // Prepare prover/verifier artifacts
+  logStep(`${name}`, "Preparing prover/verifier artifacts...");
   const cliPath = join(ROOT_DIR, "target/release-fast/provekit-cli");
-  const proverBinPath = join(ARTIFACTS_DIR, "prover.pkp");
-  const verifierBinPath = join(ARTIFACTS_DIR, "verifier.pkv");
+  const proverBinPath = join(artifactsDir, "prover.pkp");
+  const verifierBinPath = join(artifactsDir, "verifier.pkv");
 
   if (
     !run(
       `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3 --wasm`,
-      { cwd: ARTIFACTS_DIR }
+      { cwd: artifactsDir }
     )
   ) {
     process.exit(1);
@@ -513,8 +499,8 @@ async function main() {
   logSuccess("prover.pkp, prover.wpkp, verifier.pkv, and verifier.wpkv created");
 
   // Log WASM artifact size comparison
-  const wpkpPath = join(ARTIFACTS_DIR, "prover.wpkp");
-  const wpkvPath = join(ARTIFACTS_DIR, "verifier.wpkv");
+  const wpkpPath = join(artifactsDir, "prover.wpkp");
+  const wpkvPath = join(artifactsDir, "verifier.wpkv");
   if (existsSync(wpkpPath) && existsSync(proverBinPath)) {
     const { statSync } = await import("fs");
     const pkpSize = statSync(proverBinPath).size;
@@ -530,28 +516,37 @@ async function main() {
   }
 
   // Copy Prover.toml and convert to inputs.json
-  logStep("6/6", "Preparing inputs...");
-  const proverTomlSrc = join(CIRCUIT_DIR, "Prover.toml");
-  const proverTomlDest = join(ARTIFACTS_DIR, "Prover.toml");
+  logStep(`${name}`, "Preparing inputs...");
+  const proverTomlSrc = join(circuitDir, "Prover.toml");
+  const proverTomlDest = join(artifactsDir, "Prover.toml");
   copyFileSync(proverTomlSrc, proverTomlDest);
   logSuccess("Prover.toml copied");
 
   // Convert Prover.toml to inputs.json for browser demo
   const tomlContent = readFileSync(proverTomlSrc, "utf-8");
   const inputs = parseProverToml(tomlContent);
-  const inputsJsonPath = join(ARTIFACTS_DIR, "inputs.json");
+  const inputsJsonPath = join(artifactsDir, "inputs.json");
   writeFileSync(inputsJsonPath, JSON.stringify(inputs, null, 2));
-  logSuccess("inputs.json created (for browser demo)");
+  logSuccess("inputs.json created");
 
-  // Save circuit metadata (name, path) for demo
-  const metadataPath = join(ARTIFACTS_DIR, "metadata.json");
+  // Save circuit metadata
+  const metadataPath = join(artifactsDir, "metadata.json");
   writeFileSync(
     metadataPath,
-    JSON.stringify({ name: circuitName, path: CIRCUIT_DIR }, null, 2)
+    JSON.stringify({ name: circuitName, path: circuitDir }, null, 2)
   );
   logSuccess("metadata.json created");
+}
 
-  log("\n✅ Setup complete!\n", colors.green + colors.bright);
+async function main() {
+  await buildShared();
+
+  logStep("4/4", `Preparing ${CIRCUITS.length} circuits...`);
+  for (const circuit of CIRCUITS) {
+    await prepareCircuit(circuit);
+  }
+
+  log("\n\u2705 Setup complete!\n", colors.green + colors.bright);
   log("Run the demo with:", colors.bright);
   log("  node scripts/serve.mjs    # Start browser demo server");
   log("  # Open http://localhost:8080\n");

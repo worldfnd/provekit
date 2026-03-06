@@ -1,8 +1,8 @@
-use poseidon::poseidon::bn254;
+// use poseidon::poseidon::bn254;
 
-fn main(mut input: Field, out: pub Field) {
-    for i in 0..10000 {
-      input = bn254::hash_1([input]);
+fn main(mut input: [Field; 4]) -> pub [Field; 4] {
+    for _ in 0..10000 {
+        input = std::hash::poseidon2_permutation(input, 4);
     }
-    assert_eq(input, out);
+    input
 }
