@@ -1,0 +1,41 @@
+[package]
+name = "provekit-wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Workspace crates - enable parallel features with wasm-bindgen-rayon
+provekit-common.workspace = true
+provekit-prover = { workspace = true, default-features = false, features = ["parallel"] }
+# provekit-verifier.workspace = true  # TODO: Re-enable after resolving tokio/mio dependency for WASM
+
+# Noir language
+acir.workspace = true
+noirc_abi.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+console_error_panic_hook.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+lzma-rs = "0.3"
+postcard.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+
+# WASM parallelism via Web Workers
+wasm-bindgen-rayon = "1.2"
+rayon.workspace = true
+
+[lints]
+workspace = true

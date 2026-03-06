@@ -1,3 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use mavros_vm::{ConstraintsLayout, WitnessLayout};
+#[cfg(not(target_arch = "wasm32"))]
+use noirc_abi::Abi;
 use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
@@ -6,8 +10,6 @@ use {
         HashConfig, NoirElement, R1CS,
     },
     acir::circuit::Program,
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
-    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
@@ -22,6 +24,7 @@ pub struct NoirProver {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
 pub struct MavrosProver {
     #[serde(with = "crate::utils::serde_jsonify")]
     pub abi:                Abi,
@@ -37,6 +40,7 @@ pub struct MavrosProver {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Prover {
     Noir(NoirProver),
+    #[cfg(not(target_arch = "wasm32"))]
     Mavros(MavrosProver),
 }
 
@@ -51,6 +55,7 @@ impl Prover {
                 witness_generator:      d.witness_generator,
                 whir_for_witness:       d.whir_for_witness,
             }),
+            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => Prover::Mavros(MavrosProver {
                 abi:                d.abi,
                 num_public_inputs:  d.num_public_inputs,
@@ -67,6 +72,7 @@ impl Prover {
     pub fn size(&self) -> (usize, usize) {
         match self {
             Prover::Noir(p) => (p.r1cs.num_constraints(), p.r1cs.num_witnesses()),
+            #[cfg(not(target_arch = "wasm32"))]
             Prover::Mavros(p) => (
                 p.constraints_layout.algebraic_size,
                 p.witness_layout.algebraic_size,
@@ -77,6 +83,7 @@ impl Prover {
     pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
         match self {
             Prover::Noir(p) => &p.whir_for_witness,
+            #[cfg(not(target_arch = "wasm32"))]
             Prover::Mavros(p) => &p.whir_for_witness,
         }
     }

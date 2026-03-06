@@ -9,7 +9,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = []
+default = ["parallel"]
+parallel = []
 
 [dependencies]
 # Workspace crates
@@ -40,11 +41,15 @@ ruint.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-xz2.workspace = true
 zerocopy.workspace = true
+zeroize.workspace = true
+
+# Target-specific dependencies: only on non-WASM targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+zstd.workspace = true
 mavros-vm.workspace = true
 mavros-artifacts.workspace = true
-zstd.workspace = true
+xz2.workspace = true
 
 [lints]
 workspace = true

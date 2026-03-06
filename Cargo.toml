@@ -14,6 +14,7 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-wasm",
   "tooling/verifier-server",
   "ntt",
   "poseidon2",
@@ -60,7 +61,6 @@ missing_docs_in_private_items = { level = "allow", priority = 1 }
 missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
-debug = true      # Generate symbol info for profiling
 opt-level = 3
 codegen-units = 1
 lto = "fat"
@@ -95,10 +95,11 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover" }
+provekit-prover = { path = "provekit/prover", default-features = true }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
 anyhow = "1.0.93"
@@ -146,6 +147,15 @@ xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
+ruzstd = "0.7"  # Pure Rust zstd decoder for WASM compatibility
+
+# WASM-specific dependencies
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }

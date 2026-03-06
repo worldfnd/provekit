@@ -22,14 +22,20 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     hash_config::HashConfig,
-    noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
+    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
-    prover::{MavrosProver, NoirProver, Prover},
+    prover::{NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
     whir_r1cs::{WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use {
+    noir_proof_scheme::MavrosSchemeData,
+    prover::MavrosProver,
 };
 
 /// Register provekit's custom implementations in whir's global registries.

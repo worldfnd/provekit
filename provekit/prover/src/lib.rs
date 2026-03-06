@@ -1,5 +1,7 @@
 #[cfg(test)]
 use crate::r1cs::R1CSSolver;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -7,32 +9,47 @@ use {
     },
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    mavros_vm::interpreter as mavros_interpreter,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
     provekit_common::{
-        FieldElement, MavrosProver, NoirElement, NoirProof, NoirProver, Prover, PublicInputs,
-        TranscriptSponge,
+        FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
-    std::{mem::size_of, path::Path},
+    std::mem::size_of,
     tracing::{debug, info_span, instrument},
-    whir::transcript::{codecs::Empty, ProverState, VerifierMessage},
+    whir::transcript::{codecs::Empty, ProverState},
+};
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+use {
+    bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver,
+    whir::transcript::VerifierMessage,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
 mod r1cs;
 mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+
+    /// Generate a proof from a pre-computed witness map.
+    ///
+    /// This method is WASM-compatible and does not require witness generation
+    /// dependencies. The witness should be generated externally (e.g., using
+    /// @noir-lang/noir_js in the browser).
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
 
 #[instrument(skip_all)]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 fn generate_noir_witness(
     prover: &mut NoirProver,
     input_map: InputMap,
@@ -64,6 +81,7 @@ fn generate_noir_witness(
 }
 
 impl Prove for NoirProver {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
@@ -206,14 +224,163 @@ impl Prove for NoirProver {
         })
     }
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _return_value) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
         self.prove(input_map)
     }
+
+    /// Generate a proof from a pre-computed witness map.
+    ///
+    /// This method is WASM-compatible and does not require witness generation
+    /// dependencies. The witness should be generated externally (e.g., using
+    /// @noir-lang/noir_js in the browser).
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
+        provekit_common::register_ntt();
+
+        let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
+        drop(self.program);
+        drop(self.witness_generator);
+
+        // R1CS matrices are only needed at sumcheck; compress to free memory during
+        // commits.
+        let compressed_r1cs =
+            CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
+        let num_witnesses = compressed_r1cs.num_witnesses();
+        let num_constraints = compressed_r1cs.num_constraints();
+
+        // Set up transcript with sponge selected by hash_config.
+        let ds = self
+            .whir_for_witness
+            .create_domain_separator()
+            .instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+
+        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
+
+        // Solve w1 (or all witnesses if no challenges).
+        {
+            let _s = info_span!("solve_w1").entered();
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w1_layers,
+                &acir_witness_idx_to_value_map,
+                &mut merlin,
+            );
+        }
+
+        // Compress w2 layers to free memory during w1 commit (only when
+        // challenges exist; otherwise just drop them).
+        let has_challenges = self.whir_for_witness.num_challenges > 0;
+        let compressed_w2_layers = if has_challenges {
+            Some(
+                CompressedLayers::compress(self.split_witness_builders.w2_layers)
+                    .context("While compressing w2 layers")?,
+            )
+        } else {
+            drop(self.split_witness_builders.w2_layers);
+            None
+        };
+
+        debug!(
+            witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
+            compressed_r1cs_blob_bytes = compressed_r1cs.blob_len(),
+            "component sizes after solve_w1"
+        );
+
+        let w1 = {
+            let _s = info_span!("allocate_w1").entered();
+            witness[..self.whir_for_witness.w1_size]
+                .iter()
+                .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w1 are missing")))
+                .collect::<Result<Vec<_>>>()?
+        };
+
+        let commitment_1 = self
+            .whir_for_witness
+            .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
+            .context("While committing to w1")?;
+
+        let commitments = if has_challenges {
+            let w2_layers = compressed_w2_layers
+                .unwrap()
+                .decompress()
+                .context("While decompressing w2 layers")?;
+            {
+                let _s = info_span!("solve_w2").entered();
+                crate::r1cs::solve_witness_vec(
+                    &mut witness,
+                    w2_layers,
+                    &acir_witness_idx_to_value_map,
+                    &mut merlin,
+                );
+            }
+            drop(acir_witness_idx_to_value_map);
+
+            let w2 = {
+                let _s = info_span!("allocate_w2").entered();
+                witness[self.whir_for_witness.w1_size..]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
+                    .collect::<Result<Vec<_>>>()?
+            };
+
+            let commitment_2 = self
+                .whir_for_witness
+                .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
+                .context("While committing to w2")?;
+
+            vec![commitment_1, commitment_2]
+        } else {
+            drop(acir_witness_idx_to_value_map);
+            vec![commitment_1]
+        };
+
+        // Decompress R1CS for the sumcheck and matrix operations.
+        let r1cs = compressed_r1cs
+            .decompress()
+            .context("While decompressing R1CS")?;
+
+        #[cfg(test)]
+        r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
+            .context("While verifying R1CS instance")?;
+
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(
+                witness[1..=num_public_inputs]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
+                    .collect::<Result<Vec<FieldElement>>>()?,
+            )
+        };
+
+        let full_witness: Vec<FieldElement> = witness
+            .into_iter()
+            .enumerate()
+            .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
+            .collect::<Result<Vec<_>>>()?;
+
+        let whir_r1cs_proof = self
+            .whir_for_witness
+            .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
+            .context("While proving R1CS instance")?;
+
+        Ok(NoirProof {
+            public_inputs,
+            whir_r1cs_proof,
+        })
+    }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[instrument(skip_all)]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
@@ -315,19 +482,36 @@ impl Prove for MavrosProver {
             crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
         self.prove(input_map)
     }
+
+    fn prove_with_witness(self, _witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        Err(anyhow::anyhow!(
+            "prove_with_witness is not supported for Mavros prover"
+        ))
+    }
 }
 
 impl Prove for Prover {
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
         }
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
+        }
+    }
+
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        match self {
+            Prover::Noir(p) => p.prove_with_witness(witness),
+            #[cfg(not(target_arch = "wasm32"))]
+            Prover::Mavros(p) => p.prove_with_witness(witness),
         }
     }
 }

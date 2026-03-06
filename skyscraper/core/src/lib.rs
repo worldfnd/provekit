@@ -3,6 +3,10 @@
 
 pub mod arithmetic;
 pub mod bar;
+#[cfg(target_arch = "aarch64")]
+pub mod block3;
+#[cfg(target_arch = "aarch64")]
+pub mod block4;
 pub mod constants;
 pub mod generic;
 pub mod pow;
@@ -10,11 +14,6 @@ pub mod reduce;
 pub mod reference;
 pub mod simple;
 pub mod v1;
-
-#[cfg(target_arch = "aarch64")]
-pub mod block3;
-#[cfg(target_arch = "aarch64")]
-pub mod block4;
 
 /// The least common multiple of the implementation widths.
 ///

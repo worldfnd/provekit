@@ -2,8 +2,6 @@ use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
-    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
@@ -28,6 +26,11 @@ use {
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{ProverState, VerifierMessage},
     },
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
+    mavros_vm::interpreter::Phase1Result,
 };
 
 pub struct BlindingState {
@@ -60,6 +63,7 @@ pub trait WhirR1CSProver {
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
@@ -181,6 +185,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         )
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(skip_all)]
     fn prove_mavros(
         &self,

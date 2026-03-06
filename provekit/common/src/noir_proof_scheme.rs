@@ -1,3 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use mavros_vm::{ConstraintsLayout, WitnessLayout};
+#[cfg(not(target_arch = "wasm32"))]
+use noirc_abi::Abi;
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
@@ -5,8 +9,6 @@ use {
         HashConfig, NoirElement, PublicInputs, R1CS,
     },
     acir::circuit::Program,
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
-    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
@@ -21,6 +23,7 @@ pub struct NoirSchemeData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
 pub struct MavrosSchemeData {
     #[serde(with = "crate::utils::serde_jsonify")]
     pub abi:                Abi,
@@ -37,6 +40,7 @@ pub struct MavrosSchemeData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NoirProofScheme {
     Noir(NoirSchemeData),
+    #[cfg(not(target_arch = "wasm32"))]
     Mavros(MavrosSchemeData),
 }
 
@@ -51,6 +55,7 @@ impl NoirProofScheme {
     pub fn r1cs(&self) -> &R1CS {
         match self {
             NoirProofScheme::Noir(d) => &d.r1cs,
+            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => &d.r1cs,
         }
     }
@@ -59,6 +64,7 @@ impl NoirProofScheme {
     pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
         match self {
             NoirProofScheme::Noir(d) => &d.whir_for_witness,
+            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => &d.whir_for_witness,
         }
     }

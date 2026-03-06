@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Generated artifacts (created by setup script)
+artifacts/
+pkg/
+pkg-web/
+
+# Build outputs
+*.wasm
+!src/**/*.wasm
+
+pnpm-lock.yaml

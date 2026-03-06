@@ -25,6 +25,7 @@ impl Verifier {
                 abi:              d.witness_generator.abi.clone(),
                 hash_config:      d.hash_config,
             },
+            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => Self {
                 r1cs:             d.r1cs,
                 whir_for_witness: Some(d.whir_for_witness),

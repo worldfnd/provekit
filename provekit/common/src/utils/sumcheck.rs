@@ -5,7 +5,6 @@ use {
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
-    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     std::array,
     tracing::instrument,
 };
@@ -223,6 +222,7 @@ pub fn multiply_transposed_by_eq_alpha(
         },
         || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
+
     [a, b, c]
 }
 

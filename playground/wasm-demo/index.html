@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProveKit WASM Browser Demo</title>
+  
+  <!-- Import map for @noir-lang packages (using web builds from pnpm store) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@noir-lang/acvm_js": "./node_modules/.pnpm/@noir-lang+acvm_js@1.0.0-beta.11/node_modules/@noir-lang/acvm_js/web/acvm_js.js",
+      "@noir-lang/noirc_abi": "./node_modules/.pnpm/@noir-lang+noirc_abi@1.0.0-beta.11/node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm.js"
+    }
+  }
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 {
+      color: #00d4ff;
+      border-bottom: 2px solid #00d4ff;
+      padding-bottom: 10px;
+    }
+    .subtitle {
+      color: #888;
+      margin-top: -10px;
+      margin-bottom: 20px;
+    }
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #0f3460;
+    }
+    .card h2 {
+      margin-top: 0;
+      color: #00d4ff;
+      font-size: 1.2em;
+    }
+    .step {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #0f3460;
+    }
+    .step:last-child {
+      border-bottom: none;
+    }
+    .step-number {
+      background: #0f3460;
+      color: #00d4ff;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-right: 15px;
+      flex-shrink: 0;
+    }
+    .step-content {
+      flex: 1;
+    }
+    .step-title {
+      font-weight: 500;
+    }
+    .step-status {
+      font-size: 0.85em;
+      color: #888;
+      margin-top: 4px;
+    }
+    .step-status.success {
+      color: #00ff88;
+    }
+    .step-status.error {
+      color: #ff4444;
+    }
+    .step-status.running {
+      color: #ffaa00;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #ffaa00;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    button {
+      background: #00d4ff;
+      color: #1a1a2e;
+      border: none;
+      padding: 12px 24px;
+      font-size: 1em;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover:not(:disabled) {
+      background: #00b8e6;
+    }
+    button:disabled {
+      background: #555;
+      color: #888;
+      cursor: not-allowed;
+    }
+    .summary {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+    .summary-item {
+      background: #0f3460;
+      padding: 15px;
+      border-radius: 6px;
+    }
+    .summary-label {
+      color: #888;
+      font-size: 0.85em;
+      margin-bottom: 5px;
+    }
+    .summary-value {
+      font-size: 1.4em;
+      font-weight: 600;
+      color: #00d4ff;
+    }
+    .log-container {
+      background: #0d1117;
+      border-radius: 6px;
+      padding: 15px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.85em;
+    }
+    .log-line {
+      margin: 4px 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-info { color: #888; }
+    .log-success { color: #00ff88; }
+    .log-error { color: #ff4444; }
+    .log-warn { color: #ffaa00; }
+    .hidden { display: none; }
+    .proof-output {
+      background: #0d1117;
+      border-radius: 6px;
+      padding: 15px;
+      max-height: 150px;
+      overflow: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.75em;
+      word-break: break-all;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h1>ProveKit WASM Browser Demo</h1>
+  <p class="subtitle" id="circuitName">Zero-knowledge proof generation</p>
+
+  <div class="card">
+    <h2>Proof Generation Steps</h2>
+
+    <div class="step" id="step1">
+      <div class="step-number">1</div>
+      <div class="step-content">
+        <div class="step-title">Load WASM Modules</div>
+        <div class="step-status" id="step1-status">Waiting...</div>
+      </div>
+    </div>
+
+    <div class="step" id="step2">
+      <div class="step-number">2</div>
+      <div class="step-content">
+        <div class="step-title">Load Circuit & Prover Artifacts</div>
+        <div class="step-status" id="step2-status">Waiting...</div>
+      </div>
+    </div>
+
+    <div class="step" id="step3">
+      <div class="step-number">3</div>
+      <div class="step-content">
+        <div class="step-title">Generate Witness (noir_js)</div>
+        <div class="step-status" id="step3-status">Waiting...</div>
+      </div>
+    </div>
+
+    <div class="step" id="step4">
+      <div class="step-number">4</div>
+      <div class="step-content">
+        <div class="step-title">Generate Proof (ProveKit WASM, <span id="threadCount">?</span> threads)</div>
+        <div class="step-status" id="step4-status">Waiting...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <button id="runBtn" onclick="runDemo()">Generate Proof</button>
+  </div>
+
+  <div class="card hidden" id="summaryCard">
+    <h2>Results</h2>
+    <div class="summary">
+      <div class="summary-item">
+        <div class="summary-label">Witness Generation</div>
+        <div class="summary-value" id="witnessTime">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Proof Generation</div>
+        <div class="summary-value" id="proofTime">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Witness Size</div>
+        <div class="summary-value" id="witnessSize">-</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Proof Size</div>
+        <div class="summary-value" id="proofSize">-</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="proofCard">
+    <h2>Proof Output (JSON)</h2>
+    <div class="proof-output" id="proofOutput"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div class="log-container" id="logContainer"></div>
+  </div>
+
+  <script type="module">
+    // Import noir_js from local files
+    import { initNoir, Noir, decompressWitness } from './noir-web/noir-init.mjs';
+
+    // Make available globally
+    window.initNoir = initNoir;
+    window.Noir = Noir;
+    window.decompressWitness = decompressWitness;
+  </script>
+
+  <script type="module" src="src/demo-web.mjs"></script>
+</body>
+</html>

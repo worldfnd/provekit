@@ -125,7 +125,8 @@ pub fn reduce_ct(mut a: [i64; 5]) -> [i64; 5] {
 ///
 /// Optimized for WASM with relaxed SIMD. Processes one multiplication at a time
 /// (vs. `simd_mul` which batches two).
-#[inline(always)]
+#[cfg_attr(target_arch = "wasm32", inline(never))]
+#[cfg_attr(not(target_arch = "wasm32"), inline(always))]
 pub fn mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
     // # Algorithm Overview
     // Uses floating-point FMA for fast 51×51-bit multiplications via the

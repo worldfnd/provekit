@@ -1,3 +1,5 @@
+#[cfg(target_arch = "aarch64")]
+use core::arch::aarch64::vcvtq_f64_u64;
 use {
     crate::{
         constants::*,
@@ -12,7 +14,6 @@ use {
         utils::{addv, carrying_mul_add, reduce_ct},
     },
     core::{
-        arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
         simd::{num::SimdFloat, Simd},
     },

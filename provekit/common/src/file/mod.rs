@@ -1,8 +1,12 @@
+#[cfg(not(target_arch = "wasm32"))]
 mod bin;
+#[cfg(not(target_arch = "wasm32"))]
 mod buf_ext;
+#[cfg(not(target_arch = "wasm32"))]
 mod counting_writer;
 mod json;
 
+#[cfg(not(target_arch = "wasm32"))]
 use {
     self::{
         bin::{read_bin, read_hash_config as read_hash_config_bin, write_bin, Compression},
@@ -18,6 +22,7 @@ use {
 };
 
 /// Trait for structures that can be serialized to and deserialized from files.
+#[cfg(not(target_arch = "wasm32"))]
 pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const FORMAT: [u8; 8];
     const EXTENSION: &'static str;
@@ -26,11 +31,13 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
 }
 
 /// Helper trait to optionally extract hash config.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) trait MaybeHashAware {
     fn maybe_hash_config(&self) -> Option<HashConfig>;
 }
 
 /// Impl for Prover (has hash config).
+#[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for Prover {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         match self {
@@ -41,6 +48,7 @@ impl MaybeHashAware for Prover {
 }
 
 /// Impl for Verifier (has hash config).
+#[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for Verifier {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         Some(self.hash_config)
@@ -48,6 +56,7 @@ impl MaybeHashAware for Verifier {
 }
 
 /// Impl for NoirProof (no hash config).
+#[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for NoirProof {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
@@ -55,6 +64,7 @@ impl MaybeHashAware for NoirProof {
 }
 
 /// Impl for NoirProofScheme (has hash config).
+#[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for NoirProofScheme {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         match self {
@@ -64,6 +74,7 @@ impl MaybeHashAware for NoirProofScheme {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProofScheme {
     const FORMAT: [u8; 8] = *b"NrProScm";
     const EXTENSION: &'static str = "nps";
@@ -71,6 +82,7 @@ impl FileFormat for NoirProofScheme {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for Prover {
     const FORMAT: [u8; 8] = *b"PrvKitPr";
     const EXTENSION: &'static str = "pkp";
@@ -78,6 +90,7 @@ impl FileFormat for Prover {
     const COMPRESSION: Compression = Compression::Xz;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = *b"PrvKitVr";
     const EXTENSION: &'static str = "pkv";
@@ -85,6 +98,7 @@ impl FileFormat for Verifier {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProof {
     const FORMAT: [u8; 8] = *b"NPSProof";
     const EXTENSION: &'static str = "np";
@@ -93,6 +107,7 @@ impl FileFormat for NoirProof {
 }
 
 /// Write a file with format determined from extension.
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(private_bounds)]
 #[instrument(skip(value))]
 pub fn write<T: FileFormat + MaybeHashAware>(value: &T, path: &Path) -> Result<()> {
@@ -110,6 +125,7 @@ pub fn write<T: FileFormat + MaybeHashAware>(value: &T, path: &Path) -> Result<(
 
 /// Helper to write binary files with hash_config if T implements
 /// MaybeHashAware.
+#[cfg(not(target_arch = "wasm32"))]
 fn write_bin_with_hash_config<T: FileFormat + MaybeHashAware>(
     value: &T,
     path: &Path,
@@ -122,6 +138,7 @@ fn write_bin_with_hash_config<T: FileFormat + MaybeHashAware>(
 }
 
 /// Read a file with format determined from extension.
+#[cfg(not(target_arch = "wasm32"))]
 #[instrument()]
 pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
     match path.extension().and_then(OsStr::to_str) {
@@ -135,6 +152,7 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
 }
 
 /// Read just the hash configuration from a file.
+#[cfg(not(target_arch = "wasm32"))]
 #[instrument()]
 pub fn read_hash_config<T: FileFormat>(path: &Path) -> Result<HashConfig> {
     match path.extension().and_then(OsStr::to_str) {
