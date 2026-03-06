@@ -1,19 +1,16 @@
 {
   "name": "provekit-wasm-demo",
   "version": "1.0.0",
-  "description": "ProveKit WASM demo for Node.js and browser",
+  "description": "ProveKit WASM browser demo",
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
-    "demo": "node src/demo.mjs",
     "demo:web": "node scripts/serve.mjs",
     "serve": "node scripts/serve.mjs",
     "clean": "rm -rf artifacts pkg pkg-web"
   },
   "dependencies": {
-    "@iarna/toml": "^2.2.5",
     "@noir-lang/noir_js": "1.0.0-beta.11",
-    "@noir-lang/noirc_abi": "1.0.0-beta.11",
-    "toml": "^3.0.0"
+    "@noir-lang/noirc_abi": "1.0.0-beta.11"
   }
 }
