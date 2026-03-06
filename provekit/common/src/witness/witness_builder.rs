@@ -276,19 +276,19 @@ pub enum WitnessBuilder {
     ///   (-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)
     ///
     /// Outputs 4 witnesses starting at output_start:
-    ///   [0] |s1| (128-bit field element)
-    ///   [1] |s2| (128-bit field element)
-    ///   [2] neg1 (boolean: 0 or 1)
-    ///   [3] neg2 (boolean: 0 or 1)
+    ///   \[0\] |s1| (128-bit field element)
+    ///   \[1\] |s2| (128-bit field element)
+    ///   \[2\] neg1 (boolean: 0 or 1)
+    ///   \[3\] neg2 (boolean: 0 or 1)
     FakeGLVHint {
         output_start: usize,
         s_lo:         usize,
         s_hi:         usize,
         curve_order:  [u64; 4],
     },
-    /// Prover hint for EC scalar multiplication: computes R = [s]P.
+    /// Prover hint for EC scalar multiplication: computes R = \[s\]P.
     /// Given point P = (px, py) and scalar s = s_lo + s_hi * 2^128,
-    /// computes R = [s]P on the curve with parameter `curve_a` and
+    /// computes R = \[s\]P on the curve with parameter `curve_a` and
     /// field modulus `field_modulus_p`.
     ///
     /// Outputs 2 witnesses at output_start: R_x, R_y.
