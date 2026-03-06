@@ -91,10 +91,14 @@ impl Prover {
 
 /// Lightweight prover for WASM environments.
 ///
-/// Strips `program` and `witness_generator` from [`NoirProver`] since WASM
-/// delegates witness generation to `@noir-lang/noir_js`. Pre-computes
+/// Strips `witness_generator` from [`NoirProver`] since WASM delegates
+/// witness generation to `@noir-lang/noir_js`. Pre-computes
 /// `num_public_inputs` which is the only value extracted from `program`
 /// before it is dropped in the `prove_with_witness` path.
+///
+/// Embeds the raw compiled-circuit artifact (`circuit_artifact`) so that
+/// the `.wpkp` file is fully self-contained — the browser can extract it
+/// and pass it to `new Noir(circuitJson)` for witness generation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WasmNoirProver {
     pub hash_config:            HashConfig,
@@ -102,6 +106,9 @@ pub struct WasmNoirProver {
     pub r1cs:                   R1CS,
     pub split_witness_builders: SplitWitnessBuilders,
     pub whir_for_witness:       WhirR1CSScheme,
+    /// Raw bytes of the compiled circuit JSON (output of `nargo compile`).
+    /// Passed to `@noir-lang/noir_js` in the browser for witness generation.
+    pub circuit_artifact:       Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,9 +117,9 @@ pub enum WasmProver {
 }
 
 impl WasmProver {
-    /// Create a [`WasmProver`] from a full [`Prover`], discarding fields
-    /// unnecessary for WASM proof generation.
-    pub fn from_prover(prover: Prover) -> Self {
+    /// Create a [`WasmProver`] from a full [`Prover`], embedding the raw
+    /// circuit artifact bytes so the `.wpkp` is self-contained.
+    pub fn from_prover(prover: Prover, circuit_artifact: Vec<u8>) -> Self {
         match prover {
             Prover::Noir(p) => {
                 let num_public_inputs =
@@ -123,6 +130,7 @@ impl WasmProver {
                     r1cs:                   p.r1cs,
                     split_witness_builders: p.split_witness_builders,
                     whir_for_witness:       p.whir_for_witness,
+                    circuit_artifact,
                 })
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -143,6 +151,14 @@ impl WasmProver {
     pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
         match self {
             WasmProver::Noir(p) => &p.whir_for_witness,
+        }
+    }
+
+    /// Returns the embedded compiled-circuit artifact bytes.
+    #[must_use]
+    pub fn circuit_artifact(&self) -> &[u8] {
+        match self {
+            WasmProver::Noir(p) => &p.circuit_artifact,
         }
     }
 }

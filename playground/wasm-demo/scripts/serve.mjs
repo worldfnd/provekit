@@ -73,10 +73,22 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Check if it's a directory and serve index.html
+  // Check if it's a directory
   try {
     const stats = await stat(filePath);
     if (stats.isDirectory()) {
+      // For the pkg/ directory, serve the WASM JS entry point.
+      // wasm-bindgen-rayon workers do `import('../../..')` which resolves to
+      // the pkg/ directory. Browsers can't import directories, so we serve
+      // the main JS module directly.
+      const pkgEntry = join(filePath, "provekit_wasm.js");
+      try {
+        await stat(pkgEntry);
+        await serveFile(res, pkgEntry);
+        return;
+      } catch (_) {
+        // No provekit_wasm.js — fall back to index.html
+      }
       await serveFile(res, join(filePath, "index.html"));
     } else {
       await serveFile(res, filePath);

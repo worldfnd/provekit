@@ -3,8 +3,8 @@
 //! This module provides browser-compatible WASM bindings for generating and
 //! verifying zero-knowledge proofs using ProveKit. The API accepts `.wpkp`
 //! (WASM ProveKit Prover) and `.wpkv` (WASM ProveKit Verifier) binary
-//! artifacts — lightweight formats that strip fields unnecessary for the
-//! browser (ACIR program, witness generator, ABI metadata).
+//! artifacts — self-contained formats that embed the compiled circuit
+//! artifact and strip only the native witness generator.
 //!
 //! # Example
 //!
@@ -71,7 +71,7 @@ impl Prover {
     /// ```sh
     /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv --wasm
     /// # or convert an existing .pkp:
-    /// provekit-cli convert-wasm prover.pkp
+    /// provekit-cli convert-wasm prover.pkp circuit.json
     /// ```
     ///
     /// # Arguments
@@ -161,6 +161,34 @@ impl Prover {
             .map_err(|err| JsError::new(&err.to_string()))?;
         serde_wasm_bindgen::to_value(&proof)
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
+    }
+
+    /// Returns the embedded compiled-circuit artifact (the raw bytes of
+    /// the circuit JSON produced by `nargo compile`).
+    ///
+    /// Use this to pass the circuit to `@noir-lang/noir_js` for witness
+    /// generation without needing a separate `circuit.json` file:
+    ///
+    /// ```js
+    /// const prover = new Prover(wpkpBytes);
+    /// const circuitJson = JSON.parse(new TextDecoder().decode(prover.getCircuit()));
+    /// const noir = new Noir(circuitJson);
+    /// ```
+    #[wasm_bindgen(js_name = getCircuit)]
+    pub fn get_circuit(&self) -> Box<[u8]> {
+        self.inner.circuit_artifact().to_vec().into_boxed_slice()
+    }
+
+    /// Returns the number of R1CS constraints in this circuit.
+    #[wasm_bindgen(js_name = getNumConstraints)]
+    pub fn get_num_constraints(&self) -> usize {
+        self.inner.size().0
+    }
+
+    /// Returns the number of R1CS witnesses in this circuit.
+    #[wasm_bindgen(js_name = getNumWitnesses)]
+    pub fn get_num_witnesses(&self) -> usize {
+        self.inner.size().1
     }
 }
 

@@ -12,7 +12,9 @@
 *.bin
 *.nps
 *.pkp
+*.wpkp
 *.pkv
+*.wpkv
 *.np
 params_for_recursive_verifier
 params

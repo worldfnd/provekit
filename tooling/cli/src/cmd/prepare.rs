@@ -98,8 +98,11 @@ impl Command for Args {
             .context("while writing Provekit Verifier")?;
 
         if self.wasm {
+            let circuit_bytes = std::fs::read(&self.program_path)
+                .context("while reading circuit artifact for WASM embedding")?;
+
             let wpkp_path = self.pkp_path.with_extension("wpkp");
-            write(&WasmProver::from_prover(prover), &wpkp_path)
+            write(&WasmProver::from_prover(prover, circuit_bytes), &wpkp_path)
                 .context("while writing WASM Provekit Prover")?;
 
             let wpkv_path = self.pkv_path.with_extension("wpkv");
