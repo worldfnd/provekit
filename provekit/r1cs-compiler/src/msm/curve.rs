@@ -1,5 +1,5 @@
 use {
-    ark_ff::{BigInteger, Field, PrimeField},
+    ark_ff::{AdditiveGroup, BigInteger, Field, PrimeField},
     provekit_common::FieldElement,
 };
 
@@ -34,11 +34,15 @@ impl CurveParams {
     /// Number of bits in the field modulus.
     pub fn modulus_bits(&self) -> u32 {
         if self.is_native_field() {
-            // p mod p = 0 as a field element, so we use the constant directly.
             FieldElement::MODULUS_BIT_SIZE
         } else {
-            let fe = curve_native_point_fe(&self.field_modulus_p);
-            fe.into_bigint().num_bits()
+            let p = &self.field_modulus_p;
+            for i in (0..4).rev() {
+                if p[i] != 0 {
+                    return (i as u32) * 64 + (64 - p[i].leading_zeros());
+                }
+            }
+            0
         }
     }
 

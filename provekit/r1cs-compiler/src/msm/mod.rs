@@ -321,9 +321,10 @@ pub fn add_msm_with_curve(
 
     let native_bits = FieldElement::MODULUS_BIT_SIZE;
     let curve_bits = curve.modulus_bits();
+    let is_native = curve.is_native_field();
     let n_points: usize = msm_ops.iter().map(|(pts, ..)| pts.len() / 3).sum();
     let (limb_bits, window_size) =
-        cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, 256);
+        cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, 256, is_native);
 
     for (points, scalars, outputs) in msm_ops {
         add_single_msm(
@@ -593,8 +594,12 @@ fn process_single_msm<'a>(
                 params: &params,
             };
             let (cand_x, cand_y) = ec_points::point_add(&mut ops, acc_x, acc_y, rx, ry);
-            let (new_acc_x, new_acc_y) =
-                ec_points::point_select(&mut ops, is_skip, (cand_x, cand_y), (acc_x, acc_y));
+            let (new_acc_x, new_acc_y) = ec_points::point_select_unchecked(
+                &mut ops,
+                is_skip,
+                (cand_x, cand_y),
+                (acc_x, acc_y),
+            );
             acc_x = new_acc_x;
             acc_y = new_acc_y;
             compiler = ops.compiler;

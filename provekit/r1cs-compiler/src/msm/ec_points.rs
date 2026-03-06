@@ -102,7 +102,7 @@ pub fn point_select<F: FieldOps>(
 
 /// Conditional point select without boolean constraint on `flag`.
 /// Caller must ensure `flag` is already constrained boolean.
-fn point_select_unchecked<F: FieldOps>(
+pub fn point_select_unchecked<F: FieldOps>(
     ops: &mut F,
     flag: usize,
     on_false: (F::Elem, F::Elem),
