@@ -196,9 +196,9 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
 
 /// (a + b) mod p for multi-limb values.
 ///
-/// Per limb i: v_i = a[i] + b[i] + 2^W - q*p[i] + carry_{i-1}
+/// Per limb i: v_i = a\[i\] + b\[i\] + 2^W - q*p\[i\] + carry_{i-1}
 ///             carry_i = floor(v_i / 2^W)
-///             r[i] = v_i - carry_i * 2^W
+///             r\[i\] = v_i - carry_i * 2^W
 pub fn add_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -359,8 +359,8 @@ pub fn sub_mod_p_multi(
 /// (a * b) mod p for multi-limb values using schoolbook multiplication.
 ///
 /// Verifies: a·b = p·q + r in base W = 2^limb_bits.
-/// Column k: Σ_{i+j=k} a[i]*b[j] + carry_{k-1} + OFFSET
-///         = Σ_{i+j=k} p[i]*q[j] + r[k] + carry_k * W
+/// Column k: Σ_{i+j=k} a\[i\]*b\[j\] + carry_{k-1} + OFFSET
+///         = Σ_{i+j=k} p\[i\]*q\[j\] + r\[k\] + carry_k * W
 pub fn mul_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -561,8 +561,8 @@ pub fn inv_mod_p_multi(
 }
 
 /// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.
-/// Uses borrow propagation: d[i] = (p-1)[i] - r[i] + borrow_in - borrow_out *
-/// 2^W
+/// Uses borrow propagation: d\[i\] = (p-1)\[i\] - r\[i\] + borrow_in -
+/// borrow_out * 2^W
 fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,

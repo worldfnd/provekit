@@ -115,8 +115,8 @@ fn point_select_unchecked<F: FieldOps>(
 
 /// Builds a point table for windowed scalar multiplication.
 ///
-/// T[0] = P (dummy entry, used when window digit = 0)
-/// T[1] = P, T[2] = 2P, T[i] = T[i-1] + P for i >= 3.
+/// T\[0\] = P (dummy entry, used when window digit = 0)
+/// T\[1\] = P, T\[2\] = 2P, T\[i\] = T\[i-1\] + P for i >= 3.
 fn build_point_table<F: FieldOps>(
     ops: &mut F,
     px: F::Elem,
@@ -137,8 +137,8 @@ fn build_point_table<F: FieldOps>(
     table
 }
 
-/// Selects T[d] from a point table using bit witnesses, where `d = Σ bits[i] *
-/// 2^i`.
+/// Selects T\[d\] from a point table using bit witnesses, where `d = Σ
+/// bits\[i\] * 2^i`.
 ///
 /// Uses a binary tree of `point_select`s: processes bits from MSB to LSB,
 /// halving the candidate set at each level. Total: `(2^w - 1)` point selects
@@ -180,10 +180,10 @@ fn table_lookup<F: FieldOps>(
 ///
 /// Structure per window (from MSB to LSB):
 ///   1. `w` shared doublings on accumulator
-///   2. Table lookup in T_P[d1] for s1's window digit
-///   3. point_add(acc, T_P[d1]) + is_zero(d1) + point_select
-///   4. Table lookup in T_R[d2] for s2's window digit
-///   5. point_add(acc, T_R[d2]) + is_zero(d2) + point_select
+///   2. Table lookup in T_P\[d1\] for s1's window digit
+///   3. point_add(acc, T_P\[d1\]) + is_zero(d1) + point_select
+///   4. Table lookup in T_R\[d2\] for s2's window digit
+///   5. point_add(acc, T_R\[d2\]) + is_zero(d2) + point_select
 ///
 /// Returns the final accumulator (x, y).
 pub fn scalar_mul_glv<F: FieldOps>(

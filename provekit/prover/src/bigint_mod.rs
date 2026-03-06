@@ -622,7 +622,7 @@ pub fn ec_point_add(
     (x3, y3)
 }
 
-/// EC scalar multiplication via double-and-add: returns [scalar]*P.
+/// EC scalar multiplication via double-and-add: returns \[scalar\]*P.
 pub fn ec_scalar_mul(
     px: &[u64; 4],
     py: &[u64; 4],

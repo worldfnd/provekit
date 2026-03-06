@@ -680,10 +680,10 @@ fn decompose_point_to_limbs(
     }
 }
 
-/// FakeGLV verification for a single point: verifies R = [s]P.
+/// FakeGLV verification for a single point: verifies R = \[s\]P.
 ///
 /// Decomposes s via half-GCD into sub-scalars (s1, s2) and verifies
-/// [s1]P + [s2]R = O using interleaved windowed scalar mul with
+/// \[s1\]P + \[s2\]R = O using interleaved windowed scalar mul with
 /// half-width scalars.
 ///
 /// Returns the mutable references back to the caller for continued use.
@@ -853,7 +853,7 @@ fn decompose_witness_to_limbs(
     limbs
 }
 
-/// Recompose limbs back into a single witness: val = Σ limb[i] *
+/// Recompose limbs back into a single witness: val = Σ limb\[i\] *
 /// 2^(i*limb_bits)
 fn recompose_limbs(compiler: &mut NoirToR1CSCompiler, limbs: &[usize], limb_bits: u32) -> usize {
     let terms: Vec<SumTerm> = limbs
