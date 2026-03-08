@@ -493,6 +493,14 @@ pub(super) fn print_ge_optimization(
         stats.builders_removed
     );
     println!(
+        "BUILDERS REWRITTEN:  {:>8}  dependency chains severed via substitution",
+        stats.builders_rewritten
+    );
+    println!(
+        "NEW SUM BUILDERS:    {:>8}  intermediate builders created for non-linear reads",
+        stats.new_sum_builders
+    );
+    println!(
         "CONSTRAINT REDUCTION: {:>7.2}%  ({} -> {})",
         stats.constraint_reduction_percent(),
         stats.constraints_before,
