@@ -9,7 +9,7 @@
 //!   5. Remove eliminated constraints
 
 use {
-    crate::{witness::WitnessBuilder, FieldElement, InternedFieldElement, SparseMatrix, R1CS},
+    crate::{FieldElement, InternedFieldElement, SparseMatrix, R1CS},
     ark_ff::Field,
     ark_std::{One, Zero},
     std::collections::{HashMap, HashSet},
@@ -356,7 +356,7 @@ fn apply_substitutions_to_row(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::witness::SumTerm, ark_std::One};
+    use {super::*, ark_std::One};
 
     /// Evaluate `matrix · witness` for each row, returning a Vec of
     /// FieldElements (one per constraint).
@@ -414,14 +414,6 @@ mod tests {
         // Constraint 1: non-linear
         r1cs.add_constraint(&[(one, 1)], &[(one, 2)], &[(one, 4)]);
 
-        let mut witness_builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
-            WitnessBuilder::Acir(1, 0),
-            WitnessBuilder::Acir(2, 1),
-            WitnessBuilder::Sum(3, vec![SumTerm(None, 1), SumTerm(None, 2)]),
-            WitnessBuilder::Product(4, 1, 2),
-        ];
-
         assert_eq!(r1cs.num_constraints(), 2);
 
         let stats = optimize_r1cs(&mut r1cs);
@@ -466,15 +458,6 @@ mod tests {
         r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 3), (neg, 4)]);
         // Q: w4 * w2 = w5
         r1cs.add_constraint(&[(one, 4)], &[(one, 2)], &[(one, 5)]);
-
-        let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
-            WitnessBuilder::Acir(1, 0),
-            WitnessBuilder::Acir(2, 1),
-            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
-            WitnessBuilder::Sum(4, vec![SumTerm(Some(neg), 0), SumTerm(None, 3)]),
-            WitnessBuilder::Product(5, 4, 2),
-        ];
 
         assert_eq!(r1cs.num_constraints(), 3);
         let stats = optimize_r1cs(&mut r1cs);
@@ -543,17 +526,6 @@ mod tests {
         // Q: w6 * w2 = w7
         r1cs.add_constraint(&[(one, 6)], &[(one, 2)], &[(one, 7)]);
 
-        let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
-            WitnessBuilder::Acir(1, 0),
-            WitnessBuilder::Acir(2, 1),
-            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
-            WitnessBuilder::Sum(4, vec![SumTerm(Some(neg), 0), SumTerm(None, 3)]),
-            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
-            WitnessBuilder::Sum(6, vec![SumTerm(Some(neg), 0), SumTerm(None, 5)]),
-            WitnessBuilder::Product(7, 6, 2),
-        ];
-
         assert_eq!(r1cs.num_constraints(), 5);
         let stats = optimize_r1cs(&mut r1cs);
 
@@ -621,22 +593,6 @@ mod tests {
         r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
         // Q3: w5 * w1 = w8 (extra w5 occurrence to break tie vs w3)
         r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
-
-        let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
-            WitnessBuilder::Acir(1, 0),
-            WitnessBuilder::Acir(2, 1),
-            WitnessBuilder::Sum(3, vec![
-                SumTerm(Some(neg), 0),
-                SumTerm(None, 1),
-                SumTerm(None, 5),
-            ]),
-            WitnessBuilder::Acir(4, 2),
-            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
-            WitnessBuilder::Product(6, 3, 2),
-            WitnessBuilder::Product(7, 4, 4),
-            WitnessBuilder::Product(8, 5, 1),
-        ];
 
         assert_eq!(r1cs.num_constraints(), 5);
         let stats = optimize_r1cs(&mut r1cs);
@@ -707,22 +663,6 @@ mod tests {
 
         assert_r1cs_satisfied(&r1cs, &witness);
 
-        let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
-            WitnessBuilder::Acir(1, 0),
-            WitnessBuilder::Acir(2, 1),
-            WitnessBuilder::Sum(3, vec![
-                SumTerm(Some(neg), 0),
-                SumTerm(None, 1),
-                SumTerm(None, 5),
-            ]),
-            WitnessBuilder::Acir(4, 2),
-            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
-            WitnessBuilder::Product(6, 3, 2),
-            WitnessBuilder::Product(7, 4, 4),
-            WitnessBuilder::Product(8, 5, 1),
-        ];
-
         let stats = optimize_r1cs(&mut r1cs);
         assert_eq!(stats.eliminated, 2);
         assert_r1cs_satisfied(&r1cs, &witness);
@@ -783,16 +723,6 @@ mod tests {
             .collect();
 
         assert_r1cs_satisfied(&r1cs, &witness);
-
-        let mut builders: Vec<WitnessBuilder> = (0..11)
-            .map(|i| {
-                if i == 0 {
-                    WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one))
-                } else {
-                    WitnessBuilder::Acir(i, i - 1)
-                }
-            })
-            .collect();
 
         let stats = optimize_r1cs(&mut r1cs);
 

@@ -50,7 +50,7 @@ impl NoirCompiler {
             main.opcodes.len()
         );
 
-        let (mut r1cs, witness_map, mut witness_builders) = noir_to_r1cs(main)?;
+        let (mut r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.num_constraints(),
