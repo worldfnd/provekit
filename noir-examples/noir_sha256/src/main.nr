@@ -1,16 +1,12 @@
 use sha256::sha256_var;
 
-fn main() {
-    let bytes = [
-        253, 15, 121, 52, 86, 78, 18, 209, 88, 183, 177, 111, 131, 205, 215, 147, 232, 192, 101, 55,
-        109, 129, 230, 104, 73, 104, 23, 12, 52, 30, 149, 217,
-    ];
-    let result = [
-        131, 243, 207, 3, 17, 244, 189, 0, 155, 99, 191, 153, 41, 237, 133, 132, 66, 118, 103, 215,
-        34, 23, 130, 78, 18, 170, 104, 180, 29, 124, 242, 128,
-    ];
+// Change this to control how many SHA256 calls are generated.
+global NUM_SHA_CALLS: u32 = 1;
 
-    let digest = sha256_var(bytes, 32);
- 
-   assert(digest == result);
+fn main(input: [u8; 32], expected: pub [u8; 32]) {
+    let mut data = input;
+    for _ in 0..NUM_SHA_CALLS {
+        data = sha256_var(data, 32);
+    }
+    assert(data == expected);
 }

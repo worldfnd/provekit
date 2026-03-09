@@ -1,0 +1,687 @@
+//! Gaussian elimination optimization pass for R1CS.
+//!
+//! Inspired by Circom's `-O2` substitution-based sparse elimination:
+//!   1. Identify linear constraints (where A or B is constant)
+//!   2. For each linear constraint, pick a pivot variable (fewest occurrences,
+//!      not forbidden)
+//!   3. Express pivot as linear combination of remaining variables
+//!   4. Substitute into all other constraints
+//!   5. Remove eliminated constraints
+
+use {
+    crate::{FieldElement, InternedFieldElement, SparseMatrix, R1CS},
+    ark_ff::Field,
+    ark_std::{One, Zero},
+    std::collections::{HashMap, HashSet},
+    tracing::info,
+};
+
+/// A substitution: pivot_col = sum of (coeff * col) for each entry.
+/// The pivot column does NOT appear in the terms.
+struct Substitution {
+    pivot_col: usize,
+    /// (coefficient, column_index) — the pivot equals the negation of the
+    /// linear expression, so these coefficients already account for the sign
+    /// flip and division by the pivot coefficient.
+    terms:     Vec<(FieldElement, usize)>,
+}
+
+/// Statistics from the optimization pass.
+pub struct OptimizationStats {
+    pub constraints_before: usize,
+    pub constraints_after:  usize,
+    pub eliminated:         usize,
+    pub eliminated_columns: HashSet<usize>,
+}
+
+impl OptimizationStats {
+    pub fn constraint_reduction_percent(&self) -> f64 {
+        if self.constraints_before == 0 {
+            return 0.0;
+        }
+        (self.constraints_before - self.constraints_after) as f64 / self.constraints_before as f64
+            * 100.0
+    }
+}
+
+/// Run the Gaussian elimination optimization on an R1CS instance.
+///
+/// Identifies linear constraints (where at least one of A or B is constant),
+/// picks pivots, substitutes into remaining constraints, and removes the
+/// eliminated rows.
+///
+/// Column 0 (constant one) is never chosen as a pivot.
+pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
+    let constraints_before = r1cs.num_constraints();
+
+    // Column 0 is the constant-one column and must not be eliminated.
+    let mut forbidden: HashSet<usize> = HashSet::new();
+    forbidden.insert(0);
+
+    // Phase 1: Identify all linear constraints
+    let mut linear_rows: Vec<usize> = Vec::new();
+    for row in 0..r1cs.num_constraints() {
+        if r1cs.is_linear_constraint(row) {
+            linear_rows.push(row);
+        }
+    }
+
+    info!(
+        "Gaussian elimination: found {} linear constraints out of {}",
+        linear_rows.len(),
+        constraints_before
+    );
+
+    // Phase 2: For each linear constraint, try to find a pivot and build a
+    // substitution
+    let mut substitutions: Vec<Substitution> = Vec::new();
+    let mut eliminated_rows: Vec<usize> = Vec::new();
+    let mut eliminated_cols: HashSet<usize> = HashSet::new();
+
+    // Build occurrence counts across all three matrices for pivot selection
+    // heuristic
+    let mut occurrence_counts = build_occurrence_counts(r1cs);
+
+    // Also track pivot_col -> substitution index for chain resolution
+    let mut sub_map_phase2: HashMap<usize, usize> = HashMap::new();
+
+    for &row in &linear_rows {
+        // Extract the combined linear expression (const * A/B - C) for this constraint
+        let expr = r1cs.extract_linear_expression(row);
+        if expr.is_empty() {
+            continue;
+        }
+
+        // Pick pivot: non-forbidden, non-already-eliminated, fewest occurrences
+        let pivot = expr
+            .iter()
+            .filter(|(_, col)| !forbidden.contains(col) && !eliminated_cols.contains(col))
+            .min_by_key(|(_, col)| occurrence_counts[*col]);
+
+        let (pivot_coeff, pivot_col) = match pivot {
+            Some(&(coeff, col)) => (coeff, col),
+            None => continue, // All columns forbidden or already eliminated
+        };
+
+        // pivot_coeff * w_pivot + sum(other_coeff_i * w_i) = 0
+        // => w_pivot = -sum(other_coeff_i / pivot_coeff * w_i)
+        let pivot_inv = pivot_coeff.inverse().expect("pivot coefficient is zero");
+
+        let raw_terms: Vec<(FieldElement, usize)> = expr
+            .iter()
+            .filter(|(_, col)| *col != pivot_col)
+            .map(|(coeff, col)| {
+                let new_coeff = -(*coeff) * pivot_inv;
+                (new_coeff, *col)
+            })
+            .collect();
+
+        // Resolve forward chains: if any term references a previously
+        // eliminated pivot, inline that pivot's substitution.
+        let mut resolved: HashMap<usize, FieldElement> = HashMap::new();
+        for (coeff, col) in &raw_terms {
+            if let Some(&prev_idx) = sub_map_phase2.get(col) {
+                // This column is a previously eliminated pivot — inline it
+                for (prev_coeff, prev_col) in &substitutions[prev_idx].terms {
+                    *resolved.entry(*prev_col).or_insert_with(FieldElement::zero) +=
+                        *coeff * prev_coeff;
+                }
+            } else {
+                *resolved.entry(*col).or_insert_with(FieldElement::zero) += *coeff;
+            }
+        }
+
+        // Handle self-reference: chain resolution may reintroduce the
+        // current pivot (happens when a previous substitution's terms
+        // contain it). Algebraically:
+        //   w_p = r_p * w_p + other  =>  (1 - r_p) * w_p = other
+        // If 1 - r_p != 0, rescale. Otherwise this constraint doesn't
+        // actually depend on the pivot — skip.
+        if let Some(self_coeff) = resolved.remove(&pivot_col) {
+            if !self_coeff.is_zero() {
+                let denom = FieldElement::one() - self_coeff;
+                match denom.inverse() {
+                    Some(scale) => {
+                        for v in resolved.values_mut() {
+                            *v *= scale;
+                        }
+                    }
+                    None => continue, // degenerate — skip this elimination
+                }
+            }
+        }
+
+        let terms: Vec<(FieldElement, usize)> = resolved
+            .into_iter()
+            .filter(|(_, v)| !v.is_zero())
+            .map(|(col, val)| (val, col))
+            .collect();
+
+        // Approximate decrement: occurrence_counts was built from raw A+B+C
+        // entries, but we decrement once per column in the combined expression.
+        // A column appearing in multiple matrices is undercounted here. Only
+        // affects pivot-selection heuristic quality, not correctness.
+        for (_, col) in &expr {
+            if occurrence_counts[*col] > 0 {
+                occurrence_counts[*col] -= 1;
+            }
+        }
+
+        let sub_idx = substitutions.len();
+        substitutions.push(Substitution { pivot_col, terms });
+        sub_map_phase2.insert(pivot_col, sub_idx);
+        eliminated_rows.push(row);
+        eliminated_cols.insert(pivot_col);
+    }
+
+    info!(
+        "Gaussian elimination: {} substitutions found",
+        substitutions.len()
+    );
+
+    if substitutions.is_empty() {
+        return OptimizationStats {
+            constraints_before,
+            constraints_after: constraints_before,
+            eliminated: 0,
+            eliminated_columns: HashSet::new(),
+        };
+    }
+
+    // Phase 2b: Resolve backward chains.
+    // Forward chain resolution in Phase 2 ensured each substitution's terms
+    // don't reference *earlier* pivots. But they may still reference *later*
+    // pivots (built after them). Process substitutions in reverse order so
+    // each substitution's terms are fully resolved when inlined by earlier ones.
+    for i in (0..substitutions.len()).rev() {
+        let needs_resolution = substitutions[i]
+            .terms
+            .iter()
+            .any(|(_, col)| sub_map_phase2.contains_key(col) && *col != substitutions[i].pivot_col);
+
+        if !needs_resolution {
+            continue;
+        }
+
+        let mut resolved: HashMap<usize, FieldElement> = HashMap::new();
+        for (coeff, col) in &substitutions[i].terms {
+            if let Some(&later_idx) = sub_map_phase2.get(col) {
+                if later_idx != i {
+                    for (sub_coeff, sub_col) in &substitutions[later_idx].terms {
+                        *resolved.entry(*sub_col).or_insert_with(FieldElement::zero) +=
+                            *coeff * sub_coeff;
+                    }
+                    continue;
+                }
+            }
+            *resolved.entry(*col).or_insert_with(FieldElement::zero) += *coeff;
+        }
+
+        substitutions[i].terms = resolved
+            .into_iter()
+            .filter(|(_, v)| !v.is_zero())
+            .map(|(col, val)| (val, col))
+            .collect();
+    }
+
+    // Phase 3: Apply substitutions to all remaining (non-eliminated) constraints
+    let eliminated_row_set: HashSet<usize> = eliminated_rows.iter().copied().collect();
+
+    // Build a lookup: pivot_col -> substitution index
+    let mut sub_map: HashMap<usize, usize> = HashMap::new();
+    for (idx, sub) in substitutions.iter().enumerate() {
+        sub_map.insert(sub.pivot_col, idx);
+    }
+
+    for row in 0..r1cs.num_constraints() {
+        if eliminated_row_set.contains(&row) {
+            continue;
+        }
+        apply_substitutions_to_row(
+            &mut r1cs.a,
+            row,
+            &substitutions,
+            &sub_map,
+            &mut r1cs.interner,
+        );
+        apply_substitutions_to_row(
+            &mut r1cs.b,
+            row,
+            &substitutions,
+            &sub_map,
+            &mut r1cs.interner,
+        );
+        apply_substitutions_to_row(
+            &mut r1cs.c,
+            row,
+            &substitutions,
+            &sub_map,
+            &mut r1cs.interner,
+        );
+    }
+
+    // Phase 4: Remove eliminated constraint rows
+    r1cs.remove_constraints(&eliminated_rows);
+
+    // Note: We do NOT modify witness builders. The witnesses are still
+    // computed by their original builders. GE only removes redundant
+    // constraints and substitutes pivots into remaining constraints.
+
+    let constraints_after = r1cs.num_constraints();
+    let eliminated = substitutions.len();
+
+    let stats = OptimizationStats {
+        constraints_before,
+        constraints_after,
+        eliminated,
+        eliminated_columns: eliminated_cols,
+    };
+
+    info!(
+        "Gaussian elimination: {} -> {} constraints ({:.1}% reduction), {} substitutions",
+        constraints_before,
+        constraints_after,
+        stats.constraint_reduction_percent(),
+        eliminated
+    );
+
+    stats
+}
+
+/// Build combined occurrence counts across A, B, C matrices.
+fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
+    let num_cols = r1cs.num_witnesses();
+    let mut counts = vec![0usize; num_cols];
+    let a_counts = r1cs.a.column_occurrence_count();
+    let b_counts = r1cs.b.column_occurrence_count();
+    let c_counts = r1cs.c.column_occurrence_count();
+    for i in 0..num_cols {
+        counts[i] = a_counts[i] + b_counts[i] + c_counts[i];
+    }
+    counts
+}
+
+/// Apply all relevant substitutions to a single row of a matrix.
+///
+/// Since Phase 2b resolves backward chains (later pivots referenced by
+/// earlier substitutions), every substitution's terms now reference only
+/// non-pivot columns. A single pass suffices.
+fn apply_substitutions_to_row(
+    matrix: &mut SparseMatrix,
+    row: usize,
+    substitutions: &[Substitution],
+    sub_map: &HashMap<usize, usize>,
+    interner: &mut crate::Interner,
+) {
+    let entries = matrix.get_row_entries(row);
+
+    // Check if any entry references a pivot column
+    let has_pivot = entries.iter().any(|(col, _)| sub_map.contains_key(col));
+    if !has_pivot {
+        return;
+    }
+
+    // Accumulate new row as HashMap<col, FieldElement>
+    let mut new_entries: HashMap<usize, FieldElement> = HashMap::new();
+
+    for (col, interned_val) in &entries {
+        let val = interner.get(*interned_val).expect("interned value missing");
+
+        if let Some(&sub_idx) = sub_map.get(col) {
+            // This column is a pivot — replace with substitution terms
+            let sub = &substitutions[sub_idx];
+            for (sub_coeff, sub_col) in &sub.terms {
+                let contribution = val * sub_coeff;
+                *new_entries
+                    .entry(*sub_col)
+                    .or_insert_with(FieldElement::zero) += contribution;
+            }
+        } else {
+            // Normal column — keep as-is
+            *new_entries.entry(*col).or_insert_with(FieldElement::zero) += val;
+        }
+    }
+
+    // Remove zero entries and sort by column
+    let mut sorted_entries: Vec<(usize, InternedFieldElement)> = new_entries
+        .into_iter()
+        .filter(|(_, v)| !v.is_zero())
+        .map(|(col, val)| (col, interner.intern(val)))
+        .collect();
+    sorted_entries.sort_by_key(|(col, _)| *col);
+
+    matrix.replace_row(row, &sorted_entries);
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, ark_std::One};
+
+    /// Evaluate `matrix · witness` for each row, returning a Vec of
+    /// FieldElements (one per constraint).
+    fn matvec(r1cs: &R1CS, matrix: &SparseMatrix, witness: &[FieldElement]) -> Vec<FieldElement> {
+        let hydrated = matrix.hydrate(&r1cs.interner);
+        (0..matrix.num_rows)
+            .map(|row| {
+                hydrated
+                    .iter_row(row)
+                    .map(|(col, coeff)| coeff * witness[col])
+                    .sum()
+            })
+            .collect()
+    }
+
+    /// Assert that no remaining constraint references an eliminated pivot
+    /// column. This is the chain-resolution invariant: after GE, every
+    /// substituted pivot must have been fully inlined into all remaining
+    /// constraints.
+    fn assert_no_dangling_pivots(r1cs: &R1CS, stats: &OptimizationStats) {
+        for row in 0..r1cs.num_constraints() {
+            for (col, _) in r1cs.a.iter_row(row) {
+                assert!(
+                    !stats.eliminated_columns.contains(&col),
+                    "row {row} A references eliminated pivot w{col}"
+                );
+            }
+            for (col, _) in r1cs.b.iter_row(row) {
+                assert!(
+                    !stats.eliminated_columns.contains(&col),
+                    "row {row} B references eliminated pivot w{col}"
+                );
+            }
+            for (col, _) in r1cs.c.iter_row(row) {
+                assert!(
+                    !stats.eliminated_columns.contains(&col),
+                    "row {row} C references eliminated pivot w{col}"
+                );
+            }
+        }
+    }
+
+    /// Assert that `A·w ⊙ B·w == C·w` for every row of the R1CS.
+    fn assert_r1cs_satisfied(r1cs: &R1CS, witness: &[FieldElement]) {
+        let a_vals = matvec(r1cs, &r1cs.a, witness);
+        let b_vals = matvec(r1cs, &r1cs.b, witness);
+        let c_vals = matvec(r1cs, &r1cs.c, witness);
+        for (row, ((a, b), c)) in a_vals
+            .iter()
+            .zip(b_vals.iter())
+            .zip(c_vals.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                *a * *b,
+                *c,
+                "R1CS not satisfied at row {row}: A·w={a:?}, B·w={b:?}, C·w={c:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_simple_linear_elimination() {
+        // Create a simple R1CS:
+        // Constraint 0: A=[1*w0], B=[1*w0], C=[1*w1 + 1*w2 + (-1)*w3]
+        //   → 1*1 = w1 + w2 - w3, i.e. w1 + w2 - w3 = 0  (linear)
+        // Constraint 1: A=[1*w1], B=[1*w2], C=[1*w4]
+        //   → w1 * w2 = w4  (non-linear, kept)
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg_one = -one;
+
+        // 4 witnesses + constant = 5 columns
+        r1cs.add_witnesses(5);
+
+        // Constraint 0: linear
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[
+            (one, 1),
+            (one, 2),
+            (neg_one, 3),
+        ]);
+        // Constraint 1: non-linear
+        r1cs.add_constraint(&[(one, 1)], &[(one, 2)], &[(one, 4)]);
+
+        assert_eq!(r1cs.num_constraints(), 2);
+
+        let stats = optimize_r1cs(&mut r1cs);
+
+        // Constraint 0 should be eliminated (it's linear)
+        assert_eq!(stats.constraints_after, 1);
+        assert_eq!(stats.eliminated, 1);
+
+        // The remaining constraint should still be valid
+        assert_eq!(r1cs.num_constraints(), 1);
+    }
+
+    #[test]
+    fn test_chained_linear_elimination() {
+        // Two chained linear constraints where L1's expression references
+        // L0's pivot, creating a substitution chain:
+        //
+        //   L0: 1*1 = w1 - w3
+        //   L1: 1*1 = w3 - w4
+        //   Q:  w4 * w2 = w5  (non-linear, kept)
+        //
+        // Chain resolution must inline pivots transitively so no eliminated
+        // column appears in remaining constraints.
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 6 columns: w0(const), w1..w5
+        r1cs.add_witnesses(6);
+
+        // L0: 1*1 = w1 - w3
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (neg, 3)]);
+        // L1: 1*1 = w3 - w4
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 3), (neg, 4)]);
+        // Q: w4 * w2 = w5
+        r1cs.add_constraint(&[(one, 4)], &[(one, 2)], &[(one, 5)]);
+
+        // w3 = w1 - 1, w4 = w3 - 1 = w1 - 2, w5 = w4 * w2
+        let witness: Vec<FieldElement> = [1u64, 5, 3, 4, 3, 9]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        assert_eq!(r1cs.num_constraints(), 3);
+        let stats = optimize_r1cs(&mut r1cs);
+
+        assert_eq!(stats.eliminated, 2);
+        assert_eq!(stats.constraints_after, 1);
+        assert_eq!(r1cs.num_constraints(), 1);
+        assert_no_dangling_pivots(&r1cs, &stats);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+
+    #[test]
+    fn test_deep_chain_elimination() {
+        // Chain of depth 4 with Q at the end. Verifies that chain resolution
+        // works transitively through arbitrarily deep substitution chains.
+        //
+        //   L0: 1*1 = w1 - w3
+        //   L1: 1*1 = w3 - w4
+        //   L2: 1*1 = w4 - w5
+        //   L3: 1*1 = w5 - w6
+        //   Q:  w6 * w2 = w7  (non-linear, kept)
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 8 columns: w0(const), w1..w7
+        r1cs.add_witnesses(8);
+
+        // L0..L3: chain of differences
+        for i in 0..4u32 {
+            let prev_col = if i == 0 { 1 } else { 2 + i as usize };
+            let cur_col = 3 + i as usize;
+            r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, prev_col), (neg, cur_col)]);
+        }
+        // Q: w6 * w2 = w7
+        r1cs.add_constraint(&[(one, 6)], &[(one, 2)], &[(one, 7)]);
+
+        // w1=10, w3=9, w4=8, w5=7, w6=6, w7=w6*w2=18
+        let witness: Vec<FieldElement> = [1u64, 10, 3, 9, 8, 7, 6, 18]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        assert_eq!(r1cs.num_constraints(), 5);
+        let stats = optimize_r1cs(&mut r1cs);
+
+        assert_eq!(stats.eliminated, 4);
+        assert_eq!(stats.constraints_after, 1);
+        assert_eq!(r1cs.num_constraints(), 1);
+        assert_no_dangling_pivots(&r1cs, &stats);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+
+    #[test]
+    fn test_backward_chain_elimination() {
+        // Backward chain: one substitution is built with terms referencing a
+        // column that a later substitution eliminates. Phase 2b resolves this
+        // backward reference so Phase 3's single pass works.
+        //
+        //   L0: 1*1 = w1 + w5 - w3  (linear)
+        //   L1: 1*1 = w4 - w5       (linear)
+        //   Q1: w3 * w2 = w6        (non-linear)
+        //   Q2: w4 * w4 = w7        (non-linear)
+        //   Q3: w5 * w1 = w8        (non-linear)
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 9 columns: w0(const), w1..w8
+        r1cs.add_witnesses(9);
+
+        // L0: 1*1 = w1 + w5 - w3
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (one, 5), (neg, 3)]);
+        // L1: 1*1 = w4 - w5
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
+        // Q1: w3 * w2 = w6
+        r1cs.add_constraint(&[(one, 3)], &[(one, 2)], &[(one, 6)]);
+        // Q2: w4 * w4 = w7
+        r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
+        // Q3: w5 * w1 = w8
+        r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
+
+        // w5 = w4-1 = 6, w3 = w1+w5-1 = 10
+        let witness: Vec<FieldElement> = [1u64, 5, 3, 10, 7, 6, 30, 49, 30]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        assert_eq!(r1cs.num_constraints(), 5);
+        let stats = optimize_r1cs(&mut r1cs);
+
+        assert_eq!(stats.eliminated, 2);
+        assert_eq!(stats.constraints_after, 3);
+        assert_no_dangling_pivots(&r1cs, &stats);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+
+    #[test]
+    fn test_arithmetic_correctness() {
+        // Exercises simple elimination, forward chain, and backward chain
+        // then checks A·w ⊙ B·w == C·w on optimized R1CS.
+        //
+        //   L0: 1*1 = w1 + w5 - w3  (linear)
+        //   L1: 1*1 = w4 - w5       (linear)
+        //   Q1: w3 * w2 = w6        (non-linear)
+        //   Q2: w4 * w4 = w7        (non-linear)
+        //   Q3: w5 * w1 = w8        (non-linear)
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 9 columns: w0(const), w1..w8
+        r1cs.add_witnesses(9);
+
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (one, 5), (neg, 3)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
+        r1cs.add_constraint(&[(one, 3)], &[(one, 2)], &[(one, 6)]);
+        r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
+        r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
+
+        // w0=1, w1=5, w2=3, w4=7, w5=w4-1=6, w3=w1+w5-1=10,
+        // w6=w3*w2=30, w7=w4*w4=49, w8=w5*w1=30
+        let witness: Vec<FieldElement> = [1u64, 5, 3, 10, 7, 6, 30, 49, 30]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        let stats = optimize_r1cs(&mut r1cs);
+        assert_eq!(stats.eliminated, 2);
+        assert_no_dangling_pivots(&r1cs, &stats);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+
+    #[test]
+    fn test_branch_coverage() {
+        // Exercises all extract_linear_expression branches and optimizer
+        // edge cases in one system:
+        //
+        //   L_a:    A=[2*w0],   B=[w2],    C=[w3]       A-only const, coeff 2
+        //   L_b:    A=[w4,w2],  B=[3*w0],  C=[w5]       B-only const, coeff 3
+        //   L_sr0:  A=[w0],     B=[w0],    C=[2*w6,-w7]  both const
+        //   L_sr1:  A=[w0],     B=[w0],    C=[w7,-w6]    self-ref rescaling
+        //   L_deg0: A=[w0],     B=[w0],    C=[w8,-w9]    both const
+        //   L_deg1: A=[w0],     B=[w0],    C=[w8,-w9]    degenerate (1-r_p=0)
+        //   Q:      A=[w4],     B=[w7],    C=[w10]       non-linear
+        //
+        // L_sr1 triggers self-referencing pivot rescaling: chain-resolving
+        // w6 reintroduces w7 (the current pivot) with r_p=1/2, requiring
+        // division by (1 - 1/2).
+        //
+        // L_deg1 is a duplicate of L_deg0. After L_deg0 eliminates one
+        // of {w8,w9}, L_deg1's chain resolution produces r_p=1 for the
+        // remaining variable, so (1 - r_p) = 0 → skip.
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+        let two = FieldElement::from(2u64);
+        let three = FieldElement::from(3u64);
+
+        r1cs.add_witnesses(11);
+
+        // L_a: 2*1 * w2 = w3  →  w3 = 2*w2  (A-only constant branch)
+        r1cs.add_constraint(&[(two, 0)], &[(one, 2)], &[(one, 3)]);
+        // L_b: (w4+w2) * 3 = w5  →  w5 = 3*w4+3*w2  (B-only constant branch)
+        r1cs.add_constraint(&[(one, 4), (one, 2)], &[(three, 0)], &[(one, 5)]);
+        // L_sr0: 1 = 2*w6 - w7
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(two, 6), (neg, 7)]);
+        // L_sr1: 1 = w7 - w6
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 7), (neg, 6)]);
+        // L_deg0: 1 = w8 - w9
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        // L_deg1: 1 = w8 - w9  (duplicate → degenerate skip)
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        // Q: w4 * w7 = w10
+        r1cs.add_constraint(&[(one, 4)], &[(one, 7)], &[(one, 10)]);
+
+        // Witness derived from constraints:
+        //   w2=4, w3=2*4=8, w4=5, w5=3*(5+4)=27,
+        //   w6=2, w7=3 (from 1=2*2-3, 1=3-2),
+        //   w9=10, w8=11 (from 1=11-10),
+        //   w10=w4*w7=15
+        let witness: Vec<FieldElement> = [1u64, 5, 4, 8, 5, 27, 2, 3, 11, 10, 15]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        let stats = optimize_r1cs(&mut r1cs);
+
+        // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
+        // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.
+        assert_eq!(stats.eliminated, 5);
+        assert_eq!(stats.constraints_after, 2);
+        assert_no_dangling_pivots(&r1cs, &stats);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+}
