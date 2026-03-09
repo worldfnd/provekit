@@ -222,15 +222,16 @@ impl R1CS {
             }
         }
 
-        terms
+        let mut result: Vec<_> = terms
             .into_iter()
             .filter(|(_, v)| !v.is_zero())
             .map(|(col, val)| (val, col))
-            .collect()
+            .collect();
+        result.sort_by_key(|(_, col)| *col);
+        result
     }
 
-    /// Remove constraints at the given sorted row indices from all three
-    /// matrices.
+    /// Remove constraints at the given row indices from all three matrices.
     pub fn remove_constraints(&mut self, rows_to_remove: &[usize]) {
         self.a = self.a.remove_rows(rows_to_remove);
         self.b = self.b.remove_rows(rows_to_remove);

@@ -274,15 +274,9 @@ pub fn optimize_r1cs(r1cs: &mut R1CS, _witness_builders: &[WitnessBuilder]) -> O
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
-    // witnesses_after = witnesses_before since we don't actually remove columns,
-    // just make some witnesses derived. The column count doesn't change.
-    let witnesses_after = witnesses_before;
-
     let stats = OptimizationStats {
         constraints_before,
         constraints_after,
-        witnesses_before,
-        witnesses_after,
         eliminated,
     };
 
