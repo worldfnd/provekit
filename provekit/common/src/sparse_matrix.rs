@@ -520,6 +520,10 @@ impl SparseMatrix {
     /// Replace a row's entries entirely. The new entries must be sorted by
     /// column.
     pub fn replace_row(&mut self, row: usize, entries: &[(usize, InternedFieldElement)]) {
+        debug_assert!(
+            entries.windows(2).all(|w| w[0].0 <= w[1].0),
+            "Column indices must be sorted within each row"
+        );
         let range = self.row_range(row);
         let old_len = range.len();
         let new_len = entries.len();
