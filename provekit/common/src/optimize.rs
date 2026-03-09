@@ -381,6 +381,39 @@ fn apply_substitutions_to_row(
 mod tests {
     use {super::*, crate::witness::SumTerm, ark_std::One};
 
+    /// Evaluate `matrix · witness` for each row, returning a Vec of
+    /// FieldElements (one per constraint).
+    fn matvec(r1cs: &R1CS, matrix: &SparseMatrix, witness: &[FieldElement]) -> Vec<FieldElement> {
+        let hydrated = matrix.hydrate(&r1cs.interner);
+        (0..matrix.num_rows)
+            .map(|row| {
+                hydrated
+                    .iter_row(row)
+                    .map(|(col, coeff)| coeff * witness[col])
+                    .sum()
+            })
+            .collect()
+    }
+
+    /// Assert that `A·w ⊙ B·w == C·w` for every row of the R1CS.
+    fn assert_r1cs_satisfied(r1cs: &R1CS, witness: &[FieldElement]) {
+        let a_vals = matvec(r1cs, &r1cs.a, witness);
+        let b_vals = matvec(r1cs, &r1cs.b, witness);
+        let c_vals = matvec(r1cs, &r1cs.c, witness);
+        for (row, ((a, b), c)) in a_vals
+            .iter()
+            .zip(b_vals.iter())
+            .zip(c_vals.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                *a * *b,
+                *c,
+                "R1CS not satisfied at row {row}: A·w={a:?}, B·w={b:?}, C·w={c:?}"
+            );
+        }
+    }
+
     #[test]
     fn test_simple_linear_elimination() {
         // Create a simple R1CS:
@@ -659,5 +692,62 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_arithmetic_correctness() {
+        // Exercises simple elimination, forward chain, and backward chain
+        // then checks A·w ⊙ B·w == C·w on optimized R1CS.
+        //
+        //   L0: 1*1 = w1 + w5 - w3   (linear, pivot w3)
+        //   L1: 1*1 = w4 - w5        (linear, pivot w5)
+        //   Q1: w3 * w2 = w6         (non-linear)
+        //   Q2: w4 * w4 = w7         (non-linear)
+        //   Q3: w5 * w1 = w8         (non-linear)
+        //
+        // L0's terms reference w5 (backward ref to L1's pivot).
+        // After full resolution: w5 = w4-1, w3 = w1+w4-2.
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 9 columns: w0(const), w1(pub), w2(pub), w3..w8
+        r1cs.add_witnesses(9);
+        r1cs.num_public_inputs = 2;
+
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (one, 5), (neg, 3)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
+        r1cs.add_constraint(&[(one, 3)], &[(one, 2)], &[(one, 6)]);
+        r1cs.add_constraint(&[(one, 4)], &[(one, 4)], &[(one, 7)]);
+        r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
+
+        // w0=1, w1=5, w2=3, w4=7, w5=w4-1=6, w3=w1+w5-1=10,
+        // w6=w3*w2=30, w7=w4*w4=49, w8=w5*w1=30
+        let witness: Vec<FieldElement> = [1u64, 5, 3, 10, 7, 6, 30, 49, 30]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![
+                SumTerm(Some(neg), 0),
+                SumTerm(None, 1),
+                SumTerm(None, 5),
+            ]),
+            WitnessBuilder::Acir(4, 2),
+            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
+            WitnessBuilder::Product(6, 3, 2),
+            WitnessBuilder::Product(7, 4, 4),
+            WitnessBuilder::Product(8, 5, 1),
+        ];
+
+        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        assert_eq!(stats.eliminated, 2);
+        assert_r1cs_satisfied(&r1cs, &witness);
     }
 }
