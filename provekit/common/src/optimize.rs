@@ -30,8 +30,6 @@ struct Substitution {
 pub struct OptimizationStats {
     pub constraints_before: usize,
     pub constraints_after:  usize,
-    pub witnesses_before:   usize,
-    pub witnesses_after:    usize,
     pub eliminated:         usize,
 }
 
@@ -43,13 +41,6 @@ impl OptimizationStats {
         (self.constraints_before - self.constraints_after) as f64 / self.constraints_before as f64
             * 100.0
     }
-
-    pub fn witness_reduction_percent(&self) -> f64 {
-        if self.witnesses_before == 0 {
-            return 0.0;
-        }
-        (self.witnesses_before - self.witnesses_after) as f64 / self.witnesses_before as f64 * 100.0
-    }
 }
 
 /// Run the Gaussian elimination optimization on an R1CS instance.
@@ -60,12 +51,8 @@ impl OptimizationStats {
 ///
 /// `num_public_inputs` columns (1..=num_public_inputs) and column 0 (constant
 /// one) are never chosen as pivots.
-pub fn optimize_r1cs(
-    r1cs: &mut R1CS,
-    _witness_builders: &mut [WitnessBuilder],
-) -> OptimizationStats {
+pub fn optimize_r1cs(r1cs: &mut R1CS, _witness_builders: &[WitnessBuilder]) -> OptimizationStats {
     let constraints_before = r1cs.num_constraints();
-    let witnesses_before = r1cs.num_witnesses();
 
     // Columns that must not be eliminated:
     // - Column 0: constant one
@@ -199,8 +186,6 @@ pub fn optimize_r1cs(
         return OptimizationStats {
             constraints_before,
             constraints_after: constraints_before,
-            witnesses_before,
-            witnesses_after: witnesses_before,
             eliminated: 0,
         };
     }
@@ -748,6 +733,81 @@ mod tests {
 
         let stats = optimize_r1cs(&mut r1cs, &mut builders);
         assert_eq!(stats.eliminated, 2);
+        assert_r1cs_satisfied(&r1cs, &witness);
+    }
+
+    #[test]
+    fn test_branch_coverage() {
+        // Exercises all extract_linear_expression branches and optimizer
+        // edge cases in one system:
+        //
+        //   L_a:    A=[2*w0],   B=[w2],    C=[w3]       A-only const, coeff 2
+        //   L_b:    A=[w4,w2],  B=[3*w0],  C=[w5]       B-only const, coeff 3
+        //   L_sr0:  A=[w0],     B=[w0],    C=[2*w6,-w7]  both const
+        //   L_sr1:  A=[w0],     B=[w0],    C=[w7,-w6]    self-ref rescaling
+        //   L_deg0: A=[w0],     B=[w0],    C=[w8,-w9]    both const
+        //   L_deg1: A=[w0],     B=[w0],    C=[w8,-w9]    degenerate (1-r_p=0)
+        //   Q:      A=[w4],     B=[w7],    C=[w10]       non-linear
+        //
+        // L_sr1 triggers self-referencing pivot rescaling: chain-resolving
+        // w6 reintroduces w7 (the current pivot) with r_p=1/2, requiring
+        // division by (1 - 1/2).
+        //
+        // L_deg1 is a duplicate of L_deg0. After L_deg0 eliminates one
+        // of {w8,w9}, L_deg1's chain resolution produces r_p=1 for the
+        // remaining variable, so (1 - r_p) = 0 → skip.
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+        let two = FieldElement::from(2u64);
+        let three = FieldElement::from(3u64);
+
+        r1cs.add_witnesses(11);
+        r1cs.num_public_inputs = 1;
+
+        // L_a: 2*1 * w2 = w3  →  w3 = 2*w2  (A-only constant branch)
+        r1cs.add_constraint(&[(two, 0)], &[(one, 2)], &[(one, 3)]);
+        // L_b: (w4+w2) * 3 = w5  →  w5 = 3*w4+3*w2  (B-only constant branch)
+        r1cs.add_constraint(&[(one, 4), (one, 2)], &[(three, 0)], &[(one, 5)]);
+        // L_sr0: 1 = 2*w6 - w7
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(two, 6), (neg, 7)]);
+        // L_sr1: 1 = w7 - w6
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 7), (neg, 6)]);
+        // L_deg0: 1 = w8 - w9
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        // L_deg1: 1 = w8 - w9  (duplicate → degenerate skip)
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        // Q: w4 * w7 = w10
+        r1cs.add_constraint(&[(one, 4)], &[(one, 7)], &[(one, 10)]);
+
+        // Witness derived from constraints:
+        //   w2=4, w3=2*4=8, w4=5, w5=3*(5+4)=27,
+        //   w6=2, w7=3 (from 1=2*2-3, 1=3-2),
+        //   w9=10, w8=11 (from 1=11-10),
+        //   w10=w4*w7=15
+        let witness: Vec<FieldElement> = [1u64, 5, 4, 8, 5, 27, 2, 3, 11, 10, 15]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        let mut builders: Vec<WitnessBuilder> = (0..11)
+            .map(|i| {
+                if i == 0 {
+                    WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one))
+                } else {
+                    WitnessBuilder::Acir(i, i - 1)
+                }
+            })
+            .collect();
+
+        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+
+        // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
+        // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.
+        assert_eq!(stats.eliminated, 5);
+        assert_eq!(stats.constraints_after, 2);
         assert_r1cs_satisfied(&r1cs, &witness);
     }
 }

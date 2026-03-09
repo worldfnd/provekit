@@ -502,17 +502,6 @@ impl SparseMatrix {
         }
     }
 
-    /// Check if a row has exactly one entry and it's at the given column.
-    pub fn row_is_single_entry_at_col(&self, row: usize, col: usize) -> bool {
-        let range = self.row_range(row);
-        range.len() == 1 && self.col_indices[range.start] == col as u32
-    }
-
-    /// Check if a row has no entries.
-    pub fn row_is_empty(&self, row: usize) -> bool {
-        self.row_range(row).is_empty()
-    }
-
     /// Get the value at (row, col), or None if not present.
     pub fn get(&self, row: usize, col: usize) -> Option<InternedFieldElement> {
         let range = self.row_range(row);
