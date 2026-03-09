@@ -77,33 +77,33 @@ impl MaybeHashAware for NoirProofScheme {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProofScheme {
-    const FORMAT: [u8; 8] = *b"NrProScm";
+    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_SCHEME_FORMAT;
     const EXTENSION: &'static str = "nps";
-    const VERSION: (u16, u16) = (1, 2);
+    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_SCHEME_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for Prover {
-    const FORMAT: [u8; 8] = *b"PrvKitPr";
+    const FORMAT: [u8; 8] = crate::binary_format::PROVER_FORMAT;
     const EXTENSION: &'static str = "pkp";
-    const VERSION: (u16, u16) = (1, 2);
+    const VERSION: (u16, u16) = crate::binary_format::PROVER_VERSION;
     const COMPRESSION: Compression = Compression::Xz;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for Verifier {
-    const FORMAT: [u8; 8] = *b"PrvKitVr";
+    const FORMAT: [u8; 8] = crate::binary_format::VERIFIER_FORMAT;
     const EXTENSION: &'static str = "pkv";
-    const VERSION: (u16, u16) = (1, 3);
+    const VERSION: (u16, u16) = crate::binary_format::VERIFIER_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl FileFormat for NoirProof {
-    const FORMAT: [u8; 8] = *b"NPSProof";
+    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_FORMAT;
     const EXTENSION: &'static str = "np";
-    const VERSION: (u16, u16) = (1, 1);
+    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }
 

@@ -68,7 +68,6 @@ export async function initNoir() {
   ]);
   
   initialized = true;
-  initialized = true;
 }
 
 /**

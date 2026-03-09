@@ -1,3 +1,4 @@
+pub mod binary_format;
 pub mod file;
 pub mod hash_config;
 mod interner;

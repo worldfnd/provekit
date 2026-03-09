@@ -42,9 +42,10 @@ echo ""
 
 # Use cargo directly with nightly toolchain and build-std
 # wasm-pack doesn't handle -Z flags well, so we do it in two steps
+# Note: the nightly version is pinned in rust-toolchain.toml (single source of truth)
 
-# Step 1: Build with cargo (use nightly for build-std support)
-cargo +nightly-2026-03-04 build \
+# Step 1: Build with cargo (nightly resolved via rust-toolchain.toml)
+cargo build \
     --release \
     --target wasm32-unknown-unknown \
     -p provekit-wasm \

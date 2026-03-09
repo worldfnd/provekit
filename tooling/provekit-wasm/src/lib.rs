@@ -34,44 +34,27 @@ use {
     },
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
-    provekit_common::{NoirElement, NoirProof, Prover as ProverCore, Verifier as VerifierCore},
+    provekit_common::{
+        binary_format::{
+            HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT,
+            VERIFIER_VERSION, XZ_MAGIC, ZSTD_MAGIC,
+        },
+        NoirElement, NoirProof, Prover as ProverCore, Verifier as VerifierCore,
+    },
     provekit_prover::Prove,
     provekit_verifier::Verify,
     std::collections::BTreeMap,
     wasm_bindgen::prelude::*,
 };
-
-/// Magic bytes for ProveKit binary format.
-const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
-/// Format identifier for Prover files (.pkp).
-const PROVER_FORMAT: &[u8; 8] = b"PrvKitPr";
-/// Format identifier for Verifier files (.pkv).
-const VERIFIER_FORMAT: &[u8; 8] = b"PrvKitVr";
-/// Header size in bytes: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) +
-/// HASH_CONFIG(1) = 21.
-const HEADER_SIZE: usize = 21;
-
-/// Expected version for Prover format (must match native `FileFormat for
-/// Prover`).
-const PROVER_VERSION: (u16, u16) = (1, 2);
-/// Expected version for Verifier format (must match native `FileFormat for
-/// Verifier`).
-const VERIFIER_VERSION: (u16, u16) = (1, 3);
-
-/// Zstd magic number for auto-detection.
-const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
-/// XZ magic number for auto-detection.
-const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
-
 /// A prover instance for generating zero-knowledge proofs in WebAssembly.
 ///
 /// Wraps the same `Prover` artifact used by the native CLI. Create an
 /// instance by loading a `.pkp` file.
 ///
-/// The prover is consumed after generating a proof — calling `proveBytes`
-/// or `proveJs` a second time will return an error. Metadata methods
-/// (`getCircuit`, `getNumConstraints`, `getNumWitnesses`) remain available
-/// until the proof is generated.
+/// The prover is **consumed** by `proveBytes` / `proveJs` — calling either
+/// a second time will return an error. Metadata methods (`getCircuit`,
+/// `getNumConstraints`, `getNumWitnesses`) are available **before** proof
+/// generation; once a proof is generated they will also error.
 #[wasm_bindgen]
 pub struct Prover {
     inner: Option<ProverCore>,
@@ -327,7 +310,7 @@ fn decompress(data: &[u8]) -> Result<Vec<u8>, JsError> {
 
 /// Parses a binary prover artifact (.pkp format).
 fn parse_binary_prover(data: &[u8]) -> Result<ProverCore, JsError> {
-    let payload = parse_binary_header(data, PROVER_FORMAT, PROVER_VERSION, "prover")?;
+    let payload = parse_binary_header(data, &PROVER_FORMAT, PROVER_VERSION, "prover")?;
     let decompressed = decompress(payload)?;
     postcard::from_bytes(&decompressed)
         .map_err(|err| JsError::new(&format!("Failed to deserialize prover data: {err}")))
@@ -335,7 +318,7 @@ fn parse_binary_prover(data: &[u8]) -> Result<ProverCore, JsError> {
 
 /// Parses a binary verifier artifact (.pkv format).
 fn parse_binary_verifier(data: &[u8]) -> Result<VerifierCore, JsError> {
-    let payload = parse_binary_header(data, VERIFIER_FORMAT, VERIFIER_VERSION, "verifier")?;
+    let payload = parse_binary_header(data, &VERIFIER_FORMAT, VERIFIER_VERSION, "verifier")?;
     let decompressed = decompress(payload)?;
     postcard::from_bytes(&decompressed)
         .map_err(|err| JsError::new(&format!("Failed to deserialize verifier data: {err}")))
@@ -376,6 +359,9 @@ fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsEr
             ))
         })?;
 
+        // `from_be_bytes_reduce` reduces modulo the field order. This is safe
+        // because noir_js always produces valid BN254 field elements as hex
+        // strings — values are already in-range.
         let field_element = FieldElement::from_be_bytes_reduce(&bytes);
 
         witness_map.insert(Witness(index), field_element);

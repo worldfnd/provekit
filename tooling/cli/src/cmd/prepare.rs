@@ -92,8 +92,6 @@ impl Command for Args {
             .context("while writing Provekit Prover")?;
         write(&verifier, &self.pkv_path)
             .context("while writing Provekit Verifier")?;
-
-
         Ok(())
     }
 }
