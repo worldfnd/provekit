@@ -1,8 +1,5 @@
 #[cfg(test)]
 use crate::r1cs::R1CSSolver;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
-use std::mem::size_of;
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -13,6 +10,7 @@ use {
     provekit_common::{
         FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
+    std::mem::size_of,
     tracing::{debug, info_span, instrument},
     whir::transcript::{codecs::Empty, ProverState},
 };
@@ -23,7 +21,7 @@ use {
 };
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver,
+    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
     whir::transcript::VerifierMessage,
 };
 

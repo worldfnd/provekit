@@ -1,6 +1,10 @@
 use {
     super::BufExt as _,
-    crate::{utils::human, HashConfig},
+    crate::{
+        binary_format::{HEADER_SIZE, MAGIC_BYTES, XZ_MAGIC, ZSTD_MAGIC},
+        utils::human,
+        HashConfig,
+    },
     anyhow::{ensure, Context as _, Result},
     bytes::{Buf, BufMut as _, Bytes, BytesMut},
     serde::{Deserialize, Serialize},
@@ -11,8 +15,6 @@ use {
     },
     tracing::{info, instrument},
 };
-
-use crate::binary_format::{HEADER_SIZE, MAGIC_BYTES, XZ_MAGIC, ZSTD_MAGIC};
 
 /// Byte offset where hash config is stored: MAGIC(8) + FORMAT(8) + MAJOR(2) +
 /// MINOR(2) = 20

@@ -1,7 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
-use mavros_vm::{ConstraintsLayout, WitnessLayout};
-#[cfg(not(target_arch = "wasm32"))]
-use noirc_abi::Abi;
+use {
+    mavros_vm::{ConstraintsLayout, WitnessLayout},
+    noirc_abi::Abi,
+};
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},

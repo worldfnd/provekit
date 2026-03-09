@@ -1,7 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
-use mavros_vm::{ConstraintsLayout, WitnessLayout};
-#[cfg(not(target_arch = "wasm32"))]
-use noirc_abi::Abi;
+use {
+    mavros_vm::{ConstraintsLayout, WitnessLayout},
+    noirc_abi::Abi,
+};
 use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
