@@ -1,3 +1,12 @@
+# WASM build:
+#   cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std
+#   wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm
+#   wasm-opt -O3 --enable-simd --enable-threads --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext --fast-math --low-memory-unused -o pkg/provekit_wasm_bg.wasm pkg/provekit_wasm_bg.wasm
+#
+# RUSTFLAGS and linker args are in .cargo/config.toml under [target.wasm32-unknown-unknown].
+# The browser must serve with Cross-Origin-Opener-Policy: same-origin and
+# Cross-Origin-Embedder-Policy: require-corp headers for SharedArrayBuffer.
+
 [package]
 name = "provekit-wasm"
 version = "0.1.0"

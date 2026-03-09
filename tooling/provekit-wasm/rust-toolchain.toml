@@ -1,5 +1,0 @@
-# Nightly toolchain required for wasm-bindgen-rayon (WASM threads support)
-[toolchain]
-channel = "nightly-2026-03-04"
-targets = ["wasm32-unknown-unknown"]
-components = ["rust-src"]

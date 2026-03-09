@@ -1,5 +1,3 @@
-#[cfg(target_arch = "aarch64")]
-use std::arch::aarch64::vcvtq_f64_u64;
 use {
     crate::rtz::{
         constants::*,
@@ -8,11 +6,13 @@ use {
             transpose_u256_to_simd, u256_to_u260_shl2_simd, u260_to_u256_simd,
         },
     },
-    fp_rounding::{RoundingGuard, Zero},
-    std::{
+    core::{
+        arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,
-        simd::{num::SimdFloat, Simd, StdFloat},
+        simd::{num::SimdFloat, Simd},
     },
+    fp_rounding::{RoundingGuard, Zero},
+    std::simd::StdFloat,
 };
 
 #[inline(always)]
