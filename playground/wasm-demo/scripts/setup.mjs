@@ -339,11 +339,11 @@ async function buildShared() {
   }
   logSuccess("nargo found");
 
-  if (!checkCommand("wasm-pack", "wasm-pack")) {
-    log("\nInstall wasm-pack:\n  cargo install wasm-pack");
+  if (!checkCommand("wasm-bindgen", "wasm-bindgen-cli")) {
+    log("\nInstall wasm-bindgen-cli:\n  cargo install wasm-bindgen-cli");
     process.exit(1);
   }
-  logSuccess("wasm-pack found");
+  logSuccess("wasm-bindgen found");
 
   if (!checkCommand("cargo", "Rust (cargo)")) {
     log("\nInstall Rust: https://rustup.rs");
@@ -351,32 +351,24 @@ async function buildShared() {
   }
   logSuccess("cargo found");
 
-  // Build WASM package with thread support (atomics enabled)
+  // Build WASM package with thread support (requires -Z build-std for atomics)
   logStep("2/4", "Building WASM package with thread support...");
 
-  const buildScript = join(ROOT_DIR, "tooling/provekit-wasm/build-wasm.sh");
-  if (existsSync(buildScript)) {
-    if (!run(`bash ${buildScript} web`, { cwd: ROOT_DIR })) {
-      log(
-        "  Warning: Thread-enabled build failed, trying without atomics...",
-        colors.yellow
-      );
-      if (
-        !run(`wasm-pack build tooling/provekit-wasm --release --target web`, {
-          cwd: ROOT_DIR,
-        })
-      ) {
-        process.exit(1);
-      }
-    }
-  } else {
-    if (
-      !run(`wasm-pack build tooling/provekit-wasm --release --target web`, {
-        cwd: ROOT_DIR,
-      })
-    ) {
-      process.exit(1);
-    }
+  // cargo build with -Z build-std to rebuild std with atomics support
+  // RUSTFLAGS for atomics/shared-memory are in .cargo/config.toml
+  if (!run(
+    `cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std`,
+    { cwd: ROOT_DIR }
+  )) {
+    process.exit(1);
+  }
+
+  // Generate JS bindings from the built .wasm
+  if (!run(
+    `wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm`,
+    { cwd: ROOT_DIR }
+  )) {
+    process.exit(1);
   }
   logSuccess("WASM package built");
 

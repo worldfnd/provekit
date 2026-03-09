@@ -273,7 +273,6 @@ impl Prove for MavrosProver {
             )
             .context("While committing to w1")?;
 
-
         let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
                 .map(|_| merlin.verifier_message())

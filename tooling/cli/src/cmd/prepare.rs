@@ -61,7 +61,6 @@ pub struct Args {
     )]
     pkv_path: PathBuf,
 
-
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
@@ -88,10 +87,8 @@ impl Command for Args {
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
 
-        write(&prover, &self.pkp_path)
-            .context("while writing Provekit Prover")?;
-        write(&verifier, &self.pkv_path)
-            .context("while writing Provekit Verifier")?;
+        write(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
+        write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
         Ok(())
     }
 }
