@@ -102,9 +102,6 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-// TODO: Add unit tests for calculate_evaluations_over_boolean_hypercube_for_eq,
-// eval_eq, calculate_eq, and the transposed matrix multiplication helpers.
-
 /// List of evaluations for eq(r, x) over the boolean hypercube, truncated to
 /// `num_entries` elements. When `num_entries < 2^r.len()`, avoids allocating
 /// the full hypercube.
@@ -113,6 +110,9 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
     r: &[FieldElement],
     num_entries: usize,
 ) -> Vec<FieldElement> {
+    if num_entries == 0 {
+        return vec![];
+    }
     let full_size = 1usize << r.len();
     debug_assert!(num_entries <= full_size);
     let mut result = vec![FieldElement::zero(); num_entries];
@@ -224,4 +224,195 @@ pub fn multiply_transposed_by_eq_alpha(
         || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
     [a, b, c]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fe(v: i64) -> FieldElement {
+        if v >= 0 {
+            FieldElement::from(v as u64)
+        } else {
+            FieldElement::from(0u64) - FieldElement::from((-v) as u64)
+        }
+    }
+
+    /// Build a small 3×4 R1CS for matrix tests.
+    ///
+    /// A = [[1, 2, 0, 0],   B = [[0, 1, 0, 0],   C = [[0, 0, 1, 0],
+    ///      [0, 0, 3, 0],        [2, 0, 0, 1],        [0, 1, 0, 3],
+    ///      [1, 0, 0, 1]]        [0, 0, 4, 0]]        [2, 0, 0, 0]]
+    fn make_test_r1cs() -> crate::R1CS {
+        let mut r1cs = crate::R1CS::new();
+        r1cs.add_witnesses(4);
+        r1cs.add_constraint(&[(fe(1), 0), (fe(2), 1)], &[(fe(1), 1)], &[(fe(1), 2)]);
+        r1cs.add_constraint(&[(fe(3), 2)], &[(fe(2), 0), (fe(1), 3)], &[
+            (fe(1), 1),
+            (fe(3), 3),
+        ]);
+        r1cs.add_constraint(&[(fe(1), 0), (fe(1), 3)], &[(fe(4), 2)], &[(fe(2), 0)]);
+        r1cs
+    }
+
+    /// calculate_eq
+
+    #[test]
+    fn test_calculate_eq_non_boolean() {
+        // r = [2,3,4,5], alpha = [6,7,8,9]
+        // eq = 17 × 33 × 53 × 77 = 2,289,441
+        let r = [fe(2), fe(3), fe(4), fe(5)];
+        let alpha = [fe(6), fe(7), fe(8), fe(9)];
+        assert_eq!(calculate_eq(&r, &alpha), fe(2_289_441));
+    }
+
+    #[test]
+    fn test_calculate_eq_boolean_identity() {
+        let r = [fe(0), fe(1), fe(1), fe(0)];
+        assert_eq!(calculate_eq(&r, &[fe(0), fe(1), fe(1), fe(0)]), fe(1));
+        assert_eq!(calculate_eq(&r, &[fe(1), fe(0), fe(0), fe(1)]), fe(0));
+    }
+
+    #[test]
+    fn test_calculate_eq_empty() {
+        assert_eq!(calculate_eq(&[], &[]), fe(1));
+    }
+
+    /// calculate_evaluations_over_boolean_hypercube_for_eq
+
+    #[test]
+    fn test_eq_hypercube_len4() {
+        // r of dimension 4 → 16-entry hypercube.
+        // Cross-validate every entry against calculate_eq.
+        let r = [fe(2), fe(3), fe(4), fe(5)];
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 16);
+        assert_eq!(result.len(), 16);
+        let n = r.len();
+        for (i, val) in result.iter().enumerate() {
+            let point: Vec<FieldElement> = (0..n)
+                .map(|j| fe(((i >> (n - 1 - j)) & 1) as i64))
+                .collect();
+            let expected = calculate_eq(&r, &point);
+            assert_eq!(*val, expected, "mismatch at index {i}");
+        }
+    }
+    #[test]
+    fn test_eq_hypercube_truncated() {
+        let r = [fe(2), fe(3), fe(4), fe(5)];
+        let full = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 16);
+        let truncated = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 10);
+        assert_eq!(truncated.len(), 10);
+        assert_eq!(&full[..10], truncated.as_slice());
+    }
+
+    #[test]
+    fn test_eq_hypercube_empty_r() {
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 1);
+        assert_eq!(result, vec![fe(1)]);
+    }
+
+    #[test]
+    fn test_eq_hypercube_zero_entries() {
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[fe(2), fe(3), fe(5)], 0);
+        assert!(result.is_empty(), "non-empty r, zero entries");
+
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 0);
+        assert!(result.is_empty(), "empty r, zero entries");
+    }
+
+    /// eval_eq
+
+    #[test]
+    fn test_eval_eq_base_case() {
+        // Base case: eval is empty, so out[0] += scalar.
+        let mut out = [fe(7)];
+        eval_eq(&[], &mut out, fe(3), 1);
+        assert_eq!(out[0], fe(10));
+    }
+
+    #[test]
+    fn test_eval_eq_truncated_left_only() {
+        // eval = [2,3,5], out has 1 slot (right_len = 0 each time), subtree_size = 8.
+        // Expected: eq([2,3,5], [0,0,0]) = (1-2)(1-3)(1-5) = (-1)(-2)(-4) = -8
+        let mut out = [FieldElement::zero()];
+        eval_eq(&[fe(2), fe(3), fe(5)], &mut out, FieldElement::one(), 8);
+        assert_eq!(out[0], fe(-8));
+    }
+
+    /// transpose_r1cs_matrices
+
+    #[test]
+    fn test_transpose_r1cs_matrices() {
+        let r1cs = make_test_r1cs();
+        let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
+
+        // Dimensions swapped: 3×4 → 4×3.
+        assert_eq!((at.num_rows, at.num_cols), (4, 3));
+        assert_eq!((bt.num_rows, bt.num_cols), (4, 3));
+        assert_eq!((ct.num_rows, ct.num_cols), (4, 3));
+
+        // Standard basis vectors e_i pick out row i of M and column i of M^T.
+        // Looping over all 3 gives 3×4 = 12 equations, one per entry of each
+        // 3×4 matrix — fully determined coverage.
+        let expected_a_rows = [
+            vec![fe(1), fe(2), fe(0), fe(0)],
+            vec![fe(0), fe(0), fe(3), fe(0)],
+            vec![fe(1), fe(0), fe(0), fe(1)],
+        ];
+        let expected_b_rows = [
+            vec![fe(0), fe(1), fe(0), fe(0)],
+            vec![fe(2), fe(0), fe(0), fe(1)],
+            vec![fe(0), fe(0), fe(4), fe(0)],
+        ];
+        let expected_c_rows = [
+            vec![fe(0), fe(0), fe(1), fe(0)],
+            vec![fe(0), fe(1), fe(0), fe(3)],
+            vec![fe(2), fe(0), fe(0), fe(0)],
+        ];
+
+        // A^T · e_i extracts column i of A^T, which must equal row i of A.
+        // Three basis vectors cover all 12 entries of each 3×4 matrix.
+        for i in 0..r1cs.num_constraints() {
+            let mut e = vec![FieldElement::zero(); r1cs.num_constraints()];
+            e[i] = FieldElement::one();
+
+            assert_eq!(
+                at.hydrate(&r1cs.interner) * e.as_slice(),
+                expected_a_rows[i],
+                "AT col {i}"
+            );
+            assert_eq!(
+                bt.hydrate(&r1cs.interner) * e.as_slice(),
+                expected_b_rows[i],
+                "BT col {i}"
+            );
+            assert_eq!(
+                ct.hydrate(&r1cs.interner) * e.as_slice(),
+                expected_c_rows[i],
+                "CT col {i}"
+            );
+        }
+    }
+
+    /// multiply_transposed_by_eq_alpha
+
+    #[test]
+    fn test_multiply_transposed_by_eq_alpha() {
+        let r1cs = make_test_r1cs();
+        let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
+        // alpha length 2 → full EQ size 4, truncated to 3 constraints.
+        let alpha = [fe(2), fe(3)];
+
+        let expected_a = vec![fe(-2), fe(4), fe(-9), fe(-4)];
+        let expected_b = vec![fe(-6), fe(2), fe(-16), fe(-3)];
+        let expected_c = vec![fe(-8), fe(-3), fe(2), fe(-9)];
+
+        let [actual_a, actual_b, actual_c] =
+            multiply_transposed_by_eq_alpha(&at, &bt, &ct, &alpha, &r1cs);
+
+        assert_eq!(actual_a.len(), r1cs.num_witnesses());
+        assert_eq!(actual_a, expected_a, "A result mismatch");
+        assert_eq!(actual_b, expected_b, "B result mismatch");
+        assert_eq!(actual_c, expected_c, "C result mismatch");
+    }
 }
