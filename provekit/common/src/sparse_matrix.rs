@@ -538,7 +538,7 @@ impl SparseMatrix {
         }
     }
 
-    /// Remove rows at the given sorted indices. Returns a new matrix.
+    /// Remove rows at the given indices. Returns a new matrix.
     pub fn remove_rows(&self, rows_to_remove: &[usize]) -> SparseMatrix {
         let remove_set: std::collections::HashSet<usize> = rows_to_remove.iter().copied().collect();
         let new_num_rows = self.num_rows - rows_to_remove.len();

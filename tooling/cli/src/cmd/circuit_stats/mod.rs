@@ -91,14 +91,14 @@ fn analyze_circuit(program: Program<FieldElement>, path: &Path) -> Result<()> {
 
     display::print_acir_stats(&stats);
 
-    let (r1cs, _witness_map, mut witness_builders, breakdown) =
+    let (r1cs, _witness_map, _witness_builders, breakdown) =
         noir_to_r1cs_with_breakdown(&circuit).context("Failed to compile circuit to R1CS")?;
 
     display::print_r1cs_breakdown(&stats, &circuit, &r1cs, &breakdown);
 
     // Run Gaussian elimination optimization and display results
     let mut optimized_r1cs = r1cs.clone();
-    let opt_stats = optimize_r1cs(&mut optimized_r1cs, &mut witness_builders);
+    let opt_stats = optimize_r1cs(&mut optimized_r1cs);
 
     display::print_ge_optimization(&r1cs, &optimized_r1cs, &opt_stats);
 

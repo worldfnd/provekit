@@ -51,7 +51,7 @@ impl OptimizationStats {
 ///
 /// `num_public_inputs` columns (1..=num_public_inputs) and column 0 (constant
 /// one) are never chosen as pivots.
-pub fn optimize_r1cs(r1cs: &mut R1CS, _witness_builders: &[WitnessBuilder]) -> OptimizationStats {
+pub fn optimize_r1cs(r1cs: &mut R1CS) -> OptimizationStats {
     let constraints_before = r1cs.num_constraints();
 
     // Columns that must not be eliminated:
@@ -263,9 +263,7 @@ pub fn optimize_r1cs(r1cs: &mut R1CS, _witness_builders: &[WitnessBuilder]) -> O
     }
 
     // Phase 4: Remove eliminated constraint rows
-    let mut sorted_rows = eliminated_rows.clone();
-    sorted_rows.sort();
-    r1cs.remove_constraints(&sorted_rows);
+    r1cs.remove_constraints(&eliminated_rows);
 
     // Note: We do NOT modify witness builders. The witnesses are still
     // computed by their original builders. GE only removes redundant
@@ -426,7 +424,7 @@ mod tests {
 
         assert_eq!(r1cs.num_constraints(), 2);
 
-        let stats = optimize_r1cs(&mut r1cs, &mut witness_builders);
+        let stats = optimize_r1cs(&mut r1cs);
 
         // Constraint 0 should be eliminated (it's linear)
         assert_eq!(stats.constraints_after, 1);
@@ -479,7 +477,7 @@ mod tests {
         ];
 
         assert_eq!(r1cs.num_constraints(), 3);
-        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        let stats = optimize_r1cs(&mut r1cs);
 
         // Both linear constraints eliminated, Q remains
         assert_eq!(stats.eliminated, 2);
@@ -557,7 +555,7 @@ mod tests {
         ];
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        let stats = optimize_r1cs(&mut r1cs);
 
         // All 4 linear constraints eliminated, Q remains
         assert_eq!(stats.eliminated, 4);
@@ -641,7 +639,7 @@ mod tests {
         ];
 
         assert_eq!(r1cs.num_constraints(), 5);
-        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        let stats = optimize_r1cs(&mut r1cs);
 
         // Both linear constraints eliminated, Q1, Q2, Q3 remain
         assert_eq!(stats.eliminated, 2);
@@ -725,7 +723,7 @@ mod tests {
             WitnessBuilder::Product(8, 5, 1),
         ];
 
-        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        let stats = optimize_r1cs(&mut r1cs);
         assert_eq!(stats.eliminated, 2);
         assert_r1cs_satisfied(&r1cs, &witness);
     }
@@ -796,7 +794,7 @@ mod tests {
             })
             .collect();
 
-        let stats = optimize_r1cs(&mut r1cs, &mut builders);
+        let stats = optimize_r1cs(&mut r1cs);
 
         // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
         // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.

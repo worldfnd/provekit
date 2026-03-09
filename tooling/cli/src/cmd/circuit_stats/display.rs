@@ -494,12 +494,6 @@ pub(super) fn print_ge_optimization(
         stats.constraints_before,
         stats.constraints_after
     );
-    println!(
-        "WITNESS REDUCTION:    {:>7.2}%  ({} -> {})",
-        stats.witness_reduction_percent(),
-        stats.witnesses_before,
-        stats.witnesses_after
-    );
     println!("{}", SEPARATOR);
     println!();
 }

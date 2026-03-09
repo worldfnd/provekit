@@ -61,12 +61,10 @@ impl NoirCompiler {
         );
 
         // Gaussian elimination optimization pass
-        let opt_stats = provekit_common::optimize::optimize_r1cs(&mut r1cs, &mut witness_builders);
+        let opt_stats = provekit_common::optimize::optimize_r1cs(&mut r1cs);
         info!(
-            "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
-             constraint reduction)",
+            "After GE optimization: {} constraints ({} eliminated, {:.1}% constraint reduction)",
             opt_stats.constraints_after,
-            opt_stats.witnesses_after,
             opt_stats.eliminated,
             opt_stats.constraint_reduction_percent()
         );
