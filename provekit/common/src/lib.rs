@@ -1,6 +1,7 @@
-pub mod binary_format;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod file;
+pub use file::binary_format;
+#[cfg(not(target_arch = "wasm32"))]
+mod mavros;
 pub mod hash_config;
 mod interner;
 mod noir_proof_scheme;
@@ -35,10 +36,7 @@ pub use {
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use {
-    noir_proof_scheme::MavrosSchemeData,
-    prover::MavrosProver,
-};
+pub use mavros::{MavrosProver, MavrosSchemeData};
 
 /// Register provekit's custom implementations in whir's global registries.
 ///

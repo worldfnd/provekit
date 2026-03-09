@@ -1,8 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
-    noirc_abi::Abi,
-};
+use crate::MavrosSchemeData;
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
@@ -21,21 +18,6 @@ pub struct NoirSchemeData {
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
     pub hash_config:            HashConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(not(target_arch = "wasm32"))]
-pub struct MavrosSchemeData {
-    #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:                Abi,
-    pub num_public_inputs:  usize,
-    pub r1cs:               R1CS,
-    pub whir_for_witness:   WhirR1CSScheme,
-    pub witgen_binary:      Vec<u64>,
-    pub ad_binary:          Vec<u64>,
-    pub constraints_layout: ConstraintsLayout,
-    pub witness_layout:     WitnessLayout,
-    pub hash_config:        HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

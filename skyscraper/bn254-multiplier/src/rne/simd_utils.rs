@@ -14,7 +14,7 @@ use {
     },
     std::{
         array,
-        simd::{cmp::SimdPartialEq, Select},
+        simd::{cmp::SimdPartialEq, LaneCount, SupportedLaneCount},
     },
 };
 #[inline(always)]
@@ -24,7 +24,10 @@ use {
 ///
 /// Warning: due to Rust's limitations this can not be a const function.
 /// Therefore check your dependency path as this will not be optimised out.
-pub fn i2f<const N: usize>(a: Simd<u64, N>) -> Simd<f64, N> {
+pub fn i2f<const N: usize>(a: Simd<u64, N>) -> Simd<f64, N>
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     // This function has no target gating as we want to verify this function with
     // kani and proptest on a different platform than wasm
 
@@ -92,7 +95,10 @@ pub fn transpose_simd_to_u256(limbs: [Simd<u64, 2>; 4]) -> [[u64; 4]; 2] {
 /// Convert 4×64-bit to 5×51-bit limb representation.
 /// Input must fit in 255 bits; no runtime checking.
 #[inline(always)]
-pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64, N>; 5] {
+pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64, N>; 5]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     for lane in 0..N {
         debug_assert!(limbs[3][lane] & (1 << 63) == 0);
     }
@@ -109,7 +115,10 @@ pub fn u256_to_u255_simd<const N: usize>(limbs: [Simd<u64, N>; 4]) -> [Simd<u64,
 
 /// Convert 5×51-bit back to 4×64-bit limb representation.
 #[inline(always)]
-pub fn u255_to_u256_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4] {
+pub fn u255_to_u256_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     let [l0, l1, l2, l3, l4] = limbs;
     [
         l0 | (l1 << 51),
@@ -121,7 +130,10 @@ pub fn u255_to_u256_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64,
 
 /// Convert 5×51-bit to 4×64-bit with simultaneous division by 2.
 #[inline(always)]
-pub fn u255_to_u256_shr_1_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4] {
+pub fn u255_to_u256_shr_1_simd<const N: usize>(limbs: [Simd<u64, N>; 5]) -> [Simd<u64, N>; 4]
+where
+    LaneCount<N>: SupportedLaneCount,
+{
     let [l0, l1, l2, l3, l4] = limbs;
     [
         (l0 >> 1) | (l1 << 50),

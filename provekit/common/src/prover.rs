@@ -1,8 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
-    noirc_abi::Abi,
-};
+use crate::MavrosProver;
 use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
@@ -28,20 +25,6 @@ pub struct NoirProver {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg(not(target_arch = "wasm32"))]
-pub struct MavrosProver {
-    #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:                Abi,
-    pub num_public_inputs:  usize,
-    pub whir_for_witness:   WhirR1CSScheme,
-    pub witgen_binary:      Vec<u64>,
-    pub ad_binary:          Vec<u64>,
-    pub constraints_layout: ConstraintsLayout,
-    pub witness_layout:     WitnessLayout,
-    pub hash_config:        HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
