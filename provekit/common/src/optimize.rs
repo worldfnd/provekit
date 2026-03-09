@@ -28,10 +28,10 @@ struct Substitution {
 
 /// Statistics from the optimization pass.
 pub struct OptimizationStats {
-    pub constraints_before:  usize,
-    pub constraints_after:   usize,
-    pub eliminated:          usize,
-    pub eliminated_columns:  HashSet<usize>,
+    pub constraints_before: usize,
+    pub constraints_after:  usize,
+    pub eliminated:         usize,
+    pub eliminated_columns: HashSet<usize>,
 }
 
 impl OptimizationStats {
@@ -371,9 +371,10 @@ mod tests {
             .collect()
     }
 
-    /// Assert that no remaining constraint references an eliminated pivot column.
-    /// This is the chain-resolution invariant: after GE, every substituted pivot
-    /// must have been fully inlined into all remaining constraints.
+    /// Assert that no remaining constraint references an eliminated pivot
+    /// column. This is the chain-resolution invariant: after GE, every
+    /// substituted pivot must have been fully inlined into all remaining
+    /// constraints.
     fn assert_no_dangling_pivots(r1cs: &R1CS, stats: &OptimizationStats) {
         for row in 0..r1cs.num_constraints() {
             for (col, _) in r1cs.a.iter_row(row) {
