@@ -273,12 +273,6 @@ impl Prove for MavrosProver {
             )
             .context("While committing to w1")?;
 
-        // Save sumcheck inputs before run_phase2 consumes phase1.
-        let witness_bounds = [
-            phase1.out_a.clone(),
-            phase1.out_b.clone(),
-            phase1.out_c.clone(),
-        ];
 
         let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
@@ -286,7 +280,7 @@ impl Prove for MavrosProver {
                 .collect();
 
             let witgen_result = mavros_interpreter::run_phase2(
-                phase1,
+                phase1.clone(),
                 &challenges,
                 self.witness_layout,
                 self.constraints_layout,
@@ -306,7 +300,7 @@ impl Prove for MavrosProver {
             (vec![commitment_1, commitment_2], witgen_result)
         } else {
             let witgen_result = mavros_interpreter::run_phase2(
-                phase1,
+                phase1.clone(),
                 &[],
                 self.witness_layout,
                 self.constraints_layout,
@@ -325,7 +319,7 @@ impl Prove for MavrosProver {
             .whir_for_witness
             .prove_mavros(
                 merlin,
-                witness_bounds,
+                phase1,
                 commitments,
                 &public_inputs,
                 self.witness_layout,

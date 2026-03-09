@@ -24,12 +24,11 @@ noirc_abi.workspace = true
 # Cryptography and proof systems
 ark-ff.workspace = true
 ark-std.workspace = true
+spongefish.workspace = true
 whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
-getrandom.workspace = true  # Enable js feature for WASM via feature unification (v0.2)
-getrandom03.workspace = true  # Enable wasm_js feature for WASM via feature unification (v0.3)
 postcard.workspace = true
 tracing.workspace = true
 

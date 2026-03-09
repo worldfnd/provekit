@@ -8,9 +8,6 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
-[features]
-default = []
-
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
