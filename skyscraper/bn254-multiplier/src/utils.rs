@@ -119,13 +119,6 @@ impl MulShift {
         // Based on Warren's "Hacker's Delight" (integer
         // division by constants) to find a magic multiplier for each bit-width.
 
-        // Returns a list of tuples (w, m_bits, sub, shift, m) where:
-        //- w: number of top bits of the value
-        //- m_bits: number of bits in the magic multiplier
-        //- sub: whether the "subtract and shift" variant is used (m exceeded 2^w,
-        //  so we store m - 2^w and compensate at runtime)
-        //- shift: the number of bits to right-shift the product (called 's' in Warren)
-        //- m: the magic multiplier
         use crate::constants::U64_P;
 
         let d = (U64_P[3] >> (max_bit_size - 192 - precision)) + 1; // d = divisor = ceil(p / 2^(max_bit_size-w))
@@ -162,7 +155,7 @@ impl MulShift {
 /// approximation achievable without multiplication on ARM64 and x86.
 ///
 /// Tradeoff: due the limited range of this division [0,4] (instead of [0,5] for
-/// u256) will to a larger value after subtraction reduction.
+/// u256) will lead to a larger value after subtraction reduction.
 /// subtraction reduction output: [0, 1+ε] with ε < 0.3.
 #[inline(always)]
 pub fn div_p_6b(x: u64) -> u64 {
@@ -192,7 +185,7 @@ pub fn div_p_32b(x: u64) -> u64 {
 /// of the supplied `div_p` — see [`div_p_6b`] and [`div_p_32b`].
 #[inline(always)]
 pub fn subtraction_reduce<F: Fn(u64) -> u64>(div_p: F, x: [u64; 4]) -> [u64; 4] {
-    // No clamping as the max value of x can't go passed 5. Which is the maximum of
+    // No clamping as the max value of x can't go past 5. Which is the maximum of
     // the table.
     let q = div_p(x[3]) as usize;
     sub(x, constants::U64_P_MULTIPLES[q])
@@ -201,10 +194,7 @@ pub fn subtraction_reduce<F: Fn(u64) -> u64>(div_p: F, x: [u64; 4]) -> [u64; 4] 
 #[cfg(kani)]
 mod proofs {
     use {
-        super::{
-            constants::{U64_2P, U64_P},
-            div_p_32b, div_p_6b, MulShift,
-        },
+        super::{constants::U64_2P, div_p_32b, div_p_6b},
         crate::constants::U64_P_MULTIPLES,
     };
 
@@ -225,7 +215,7 @@ mod proofs {
         let q = div_p_32b(x);
 
         let r = U64_P_MULTIPLES[q as usize][3];
-        assert!(x - r >= 0);
+        assert!(x >= r);
         assert!(le256([0, 0, 0, x - r], U64_2P));
     }
 
@@ -236,7 +226,7 @@ mod proofs {
         let q = div_p_6b(x);
 
         let r = U64_P_MULTIPLES[q as usize][3];
-        assert!(x - r >= 0);
+        assert!(x >= r);
         assert!(le256([0, 0, 0, x - r], U64_2P));
     }
 }

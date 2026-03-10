@@ -1,5 +1,3 @@
-pub const U64_NP0: u64 = 0xc2e1f593efffffff;
-
 pub const U64_P: [u64; 4] = U64_P_MULTIPLES[1];
 
 pub const U64_2P: [u64; 4] = U64_P_MULTIPLES[2];
