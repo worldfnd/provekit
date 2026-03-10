@@ -83,39 +83,128 @@ async function loadInputs() {
 }
 
 /**
- * Simple TOML parser for Prover.toml files (browser-side).
- * Handles flat key = value, [section] headers, arrays, and strings.
+ * TOML parser for Noir Prover.toml files (browser-side).
+ * Handles inline tables { k = "v" }, arrays of inline tables,
+ * multi-line arrays, dotted keys (a.b.c), and [section] headers.
  */
-function parseSimpleToml(content) {
-  const result = {};
-  let section = null;
-  for (const rawLine of content.split('\n')) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-    const secMatch = line.match(/^\[([^\]]+)\]$/);
-    if (secMatch) {
-      section = secMatch[1];
-      result[section] = result[section] || {};
+
+/** Split string by delimiter, respecting quoted strings and nested {} [] */
+function splitTopLevel(str, delimiter) {
+  const parts = [];
+  let current = '';
+  let inStr = false;
+  let strCh = '';
+  let braces = 0;
+  let brackets = 0;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (inStr) {
+      current += ch;
+      if (ch === strCh && str[i - 1] !== '\\') inStr = false;
       continue;
     }
-    const eqIdx = line.indexOf('=');
+    if (ch === '"' || ch === "'") { inStr = true; strCh = ch; current += ch; continue; }
+    if (ch === '{') braces++;
+    if (ch === '}') braces--;
+    if (ch === '[') brackets++;
+    if (ch === ']') brackets--;
+    if (ch === delimiter && braces === 0 && brackets === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current);
+  return parts;
+}
+
+function parseInlineTable(str) {
+  const inner = str.slice(1, -1).trim();
+  if (!inner) return {};
+  const result = {};
+  for (const pair of splitTopLevel(inner, ',')) {
+    const t = pair.trim();
+    if (!t) continue;
+    const eq = t.indexOf('=');
+    if (eq === -1) continue;
+    result[t.slice(0, eq).trim()] = parseTomlValue(t.slice(eq + 1).trim());
+  }
+  return result;
+}
+
+function parseTomlArray(str) {
+  const inner = str.slice(1, -1).trim();
+  if (!inner) return [];
+  return splitTopLevel(inner, ',')
+    .map(el => el.trim())
+    .filter(el => el.length > 0)
+    .map(el => parseTomlValue(el));
+}
+
+function parseTomlValue(raw) {
+  if (raw.startsWith('{') && raw.endsWith('}')) return parseInlineTable(raw);
+  if (raw.startsWith('[') && raw.endsWith(']')) return parseTomlArray(raw);
+  if ((raw.startsWith('"') && raw.endsWith('"')) ||
+      (raw.startsWith("'") && raw.endsWith("'"))) return raw.slice(1, -1);
+  return raw; // keep as string — noir_js expects string numbers
+}
+
+/** Set a value at a nested dotted path, creating intermediate objects */
+function setNested(obj, path, val) {
+  let cur = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (!(path[i] in cur) || typeof cur[path[i]] !== 'object' ||
+        cur[path[i]] === null || Array.isArray(cur[path[i]])) {
+      cur[path[i]] = {};
+    }
+    cur = cur[path[i]];
+  }
+  cur[path[path.length - 1]] = val;
+}
+
+function parseSimpleToml(content) {
+  // Phase 1: Join multi-line arrays into single logical lines
+  const logicalLines = [];
+  const rawLines = content.split('\n');
+  let buffer = '';
+  let depth = 0;
+  for (const rawLine of rawLines) {
+    const stripped = rawLine.trim();
+    if (!stripped || stripped.startsWith('#')) continue;
+    if (depth > 0) {
+      buffer += ' ' + stripped;
+      for (const ch of stripped) {
+        if (ch === '[') depth++;
+        else if (ch === ']') depth--;
+      }
+      if (depth <= 0) { logicalLines.push(buffer); buffer = ''; depth = 0; }
+      continue;
+    }
+    const eqIdx = stripped.indexOf('=');
+    if (eqIdx !== -1) {
+      const valPart = stripped.slice(eqIdx + 1).trim();
+      let d = 0;
+      for (const ch of valPart) { if (ch === '[') d++; else if (ch === ']') d--; }
+      if (d > 0) { buffer = stripped; depth = d; continue; }
+    }
+    logicalLines.push(stripped);
+  }
+
+  // Phase 2: Parse logical lines into nested object
+  const result = {};
+  let section = null;
+  for (const line of logicalLines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const secMatch = trimmed.match(/^\[([^\]]+)\]$/);
+    if (secMatch) { section = secMatch[1]; continue; }
+    const eqIdx = trimmed.indexOf('=');
     if (eqIdx === -1) continue;
-    const key = line.slice(0, eqIdx).trim();
-    let val = line.slice(eqIdx + 1).trim();
-    if (val.startsWith('[') && val.endsWith(']')) {
-      try { val = JSON.parse(val); } catch { /* keep as string */ }
-    } else if (val.startsWith('"') && val.endsWith('"')) {
-      val = val.slice(1, -1);
-    } else if (val.startsWith("'") && val.endsWith("'")) {
-      val = val.slice(1, -1);
-    } else if (/^\d+$/.test(val)) {
-      val = val; // Keep as string — noir_js expects string numbers
-    }
-    if (section) {
-      result[section][key] = val;
-    } else {
-      result[key] = val;
-    }
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = parseTomlValue(trimmed.slice(eqIdx + 1).trim());
+    const fullPath = section ? [section, ...key.split('.')] : key.split('.');
+    setNested(result, fullPath, val);
   }
   return result;
 }
