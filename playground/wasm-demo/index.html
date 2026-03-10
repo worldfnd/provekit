@@ -623,6 +623,58 @@
       background: #444;
     }
 
+    /* === Mobile Responsiveness === */
+    @media (max-width: 768px) {
+      .container {
+        padding: 0 16px;
+      }
+      .page-header {
+        flex-direction: column;
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+      .header-text h1 {
+        font-size: 2rem;
+      }
+      .circuit-selector-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .circuit-btn {
+        justify-content: center;
+        padding: 10px 8px;
+        font-size: 0.8rem;
+      }
+      .dashboard-layout {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      .custom-config-panel {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      .metrics-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .actions-area {
+        flex-direction: column;
+        gap: 12px;
+      }
+      .terminal-card {
+        height: 400px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .circuit-selector-group {
+        grid-template-columns: 1fr;
+      }
+      .metrics-row {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -877,6 +929,11 @@
             iconElem.innerHTML = ICON_CROSS;
             container.className = 'step-item error';
             statusElem.className = 'step-status error-text';
+         } else if (text.includes('Waiting')) {
+            iconElem.className = 'step-icon';
+            iconElem.innerHTML = i;
+            container.className = 'step-item';
+            statusElem.className = 'step-status';
          }
        }
     });
