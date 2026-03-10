@@ -1,0 +1,33 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const and: (a: any, b: any) => any;
+export const xor: (a: any, b: any) => any;
+export const sha256_compression: (a: number, b: number, c: number, d: number) => [number, number];
+export const blake2s256: (a: number, b: number) => [number, number];
+export const ecdsa_secp256k1_verify: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const ecdsa_secp256r1_verify: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+export const buildInfo: () => any;
+export const compressWitness: (a: any) => [number, number, number, number];
+export const decompressWitness: (a: number, b: number) => [number, number, number];
+export const compressWitnessStack: (a: any) => [number, number, number, number];
+export const decompressWitnessStack: (a: number, b: number) => [number, number, number];
+export const executeCircuit: (a: number, b: number, c: any, d: any) => any;
+export const executeCircuitWithReturnWitness: (a: number, b: number, c: any, d: any) => any;
+export const executeProgram: (a: number, b: number, c: any, d: any) => any;
+export const getReturnWitness: (a: number, b: number, c: any) => [number, number, number];
+export const getPublicParametersWitness: (a: number, b: number, c: any) => [number, number, number];
+export const getPublicWitness: (a: number, b: number, c: any) => [number, number, number];
+export const initLogLevel: (a: number, b: number) => [number, number];
+export const __wbindgen_exn_store: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_export_2: WebAssembly.Table;
+export const __wbindgen_free: (a: number, b: number, c: number) => void;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_export_6: WebAssembly.Table;
+export const __externref_table_dealloc: (a: number) => void;
+export const closure645_externref_shim: (a: number, b: number, c: any) => void;
+export const closure1317_externref_shim: (a: number, b: number, c: any, d: number, e: any) => void;
+export const closure1321_externref_shim: (a: number, b: number, c: any, d: any) => void;
+export const __wbindgen_start: () => void;
