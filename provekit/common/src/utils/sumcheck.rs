@@ -339,6 +339,24 @@ mod tests {
         assert_eq!(out[0], fe(-8));
     }
 
+    #[test]
+    fn test_eval_eq_both_halves() {
+        // r = [2, 3], out has 4 slots → right_len = 2, exercises both-halves path.
+        let mut out = vec![FieldElement::zero(); 4];
+        eval_eq(&[fe(2), fe(3)], &mut out, FieldElement::one(), 4);
+        let expected = calculate_evaluations_over_boolean_hypercube_for_eq(&[fe(2), fe(3)], 4);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn test_eq_hypercube_single_entry() {
+        // num_entries == 1 with non-empty r: only the all-zeros vertex is computed.
+        // eq([2,3], [0,0]) = (1-2)(1-3) = (-1)(-2) = 2
+        let r = [fe(2), fe(3)];
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1);
+        assert_eq!(result, vec![calculate_eq(&r, &[fe(0), fe(0)])]);
+    }
+
     /// transpose_r1cs_matrices
 
     #[test]
