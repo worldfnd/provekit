@@ -354,7 +354,7 @@ pub enum WitnessBuilder {
     ///
     /// Outputs (num_bits + 1) witnesses at output_start:
     ///   [0..num_bits)  b_i sign bits
-    ///   [num_bits]     skew (0 if s is odd, 1 if s is even)
+    ///   \[num_bits\]     skew (0 if s is odd, 1 if s is even)
     SignedBitHint {
         output_start: usize,
         scalar:       usize,

@@ -487,7 +487,7 @@ fn process_single_msm(
     }
 }
 
-/// Single-point MSM: R = [s]P with degenerate-case handling.
+/// Single-point MSM: R = \[s\]P with degenerate-case handling.
 ///
 /// The ACIR output (out_x, out_y) is the result directly. Sanitizes inputs
 /// to handle scalar=0 and point-at-infinity, then verifies via FakeGLV.
@@ -583,7 +583,7 @@ fn process_single_point_msm<'a>(
     constrain_product_zero(compiler, san.is_skip, out_y);
 }
 
-/// Multi-point MSM: computes R_i = [s_i]P_i via hints, verifies each with
+/// Multi-point MSM: computes R_i = \[s_i\]P_i via hints, verifies each with
 /// FakeGLV, then accumulates R_i's with offset-based accumulation and skip
 /// handling.
 ///
