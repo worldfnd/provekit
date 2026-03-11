@@ -139,6 +139,39 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
     optimal_width
 }
 
+/// Estimates total witness cost for resolving range checks without
+/// constructing actual R1CS constraints.
+///
+/// Takes a map of `bit_width → count` (number of witnesses needing that
+/// range check). Uses the same optimal-base-width search and
+/// LogUp-vs-naive cost model as [`add_range_checks`], but operates on
+/// aggregate counts rather than concrete witness indices.
+pub(crate) fn estimate_range_check_cost(checks: &BTreeMap<u32, usize>) -> usize {
+    if checks.is_empty() {
+        return 0;
+    }
+
+    // Create synthetic RangeCheckRequests with unique dummy indices.
+    let mut collected: Vec<RangeCheckRequest> = Vec::new();
+    let mut dummy_idx = 0usize;
+    for (&bits, &count) in checks {
+        for _ in 0..count {
+            collected.push(RangeCheckRequest {
+                witness_idx: dummy_idx,
+                bits,
+            });
+            dummy_idx += 1;
+        }
+    }
+
+    if collected.is_empty() {
+        return 0;
+    }
+
+    let base_width = get_optimal_base_width(&collected);
+    calculate_witness_cost(base_width, &collected)
+}
+
 /// Add witnesses and constraints that ensure that the values of the witness
 /// belong to a range 0..2^k (for some k).
 ///

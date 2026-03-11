@@ -366,6 +366,34 @@ impl WitnessIndexRemapper {
                     },
                 )
             }
+            WitnessBuilder::EcDoubleHint {
+                output_start,
+                px,
+                py,
+                curve_a,
+                field_modulus_p,
+            } => WitnessBuilder::EcDoubleHint {
+                output_start:    self.remap(*output_start),
+                px:              self.remap(*px),
+                py:              self.remap(*py),
+                curve_a:         *curve_a,
+                field_modulus_p: *field_modulus_p,
+            },
+            WitnessBuilder::EcAddHint {
+                output_start,
+                x1,
+                y1,
+                x2,
+                y2,
+                field_modulus_p,
+            } => WitnessBuilder::EcAddHint {
+                output_start:    self.remap(*output_start),
+                x1:              self.remap(*x1),
+                y1:              self.remap(*y1),
+                x2:              self.remap(*x2),
+                y2:              self.remap(*y2),
+                field_modulus_p: *field_modulus_p,
+            },
             WitnessBuilder::FakeGLVHint {
                 output_start,
                 s_lo,
@@ -393,6 +421,31 @@ impl WitnessIndexRemapper {
                 s_hi:            self.remap(*s_hi),
                 curve_a:         *curve_a,
                 field_modulus_p: *field_modulus_p,
+            },
+            WitnessBuilder::SelectWitness {
+                output,
+                flag,
+                on_false,
+                on_true,
+            } => WitnessBuilder::SelectWitness {
+                output:   self.remap(*output),
+                flag:     self.remap(*flag),
+                on_false: self.remap(*on_false),
+                on_true:  self.remap(*on_true),
+            },
+            WitnessBuilder::BooleanOr { output, a, b } => WitnessBuilder::BooleanOr {
+                output: self.remap(*output),
+                a:      self.remap(*a),
+                b:      self.remap(*b),
+            },
+            WitnessBuilder::SignedBitHint {
+                output_start,
+                scalar,
+                num_bits,
+            } => WitnessBuilder::SignedBitHint {
+                output_start: self.remap(*output_start),
+                scalar:       self.remap(*scalar),
+                num_bits:     *num_bits,
             },
             WitnessBuilder::ChunkDecompose {
                 output_start,

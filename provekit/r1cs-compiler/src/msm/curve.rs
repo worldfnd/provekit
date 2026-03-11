@@ -494,7 +494,7 @@ mod tests {
         let y = curve_native_point_fe(&y4);
         let b = curve_native_point_fe(&c.curve_b);
         // Should still be on curve
-        assert_eq!(y * y, x * x * x + b, "[4]G not on Grumpkin");
+        assert_eq!(y * y, x * x * x + b, "[2]*offset not on Grumpkin");
     }
 
     #[test]

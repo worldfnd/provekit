@@ -210,11 +210,15 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         let mut out = Limbs::new(n);
         for i in 0..n {
             let w = self.compiler.num_witnesses();
+            let value = self.params.curve_a_limbs[i];
             self.compiler
-                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(
-                    w,
-                    self.params.curve_a_limbs[i],
-                )));
+                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, value)));
+            // Pin: prevent malicious prover from choosing a different curve_a
+            self.compiler.r1cs.add_constraint(
+                &[(FieldElement::ONE, self.compiler.witness_one())],
+                &[(FieldElement::ONE, w)],
+                &[(value, self.compiler.witness_one())],
+            );
             out[i] = w;
         }
         out
@@ -254,6 +258,12 @@ impl FieldOps for MultiLimbOps<'_, '_> {
             let w = self.compiler.num_witnesses();
             self.compiler
                 .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, limbs[i])));
+            // Pin: prevent malicious prover from altering constant values
+            self.compiler.r1cs.add_constraint(
+                &[(FieldElement::ONE, self.compiler.witness_one())],
+                &[(FieldElement::ONE, w)],
+                &[(limbs[i], self.compiler.witness_one())],
+            );
             out[i] = w;
         }
         out

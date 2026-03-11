@@ -301,6 +301,65 @@ pub enum WitnessBuilder {
         curve_a:         [u64; 4],
         field_modulus_p: [u64; 4],
     },
+    /// Prover hint for EC point doubling on native field.
+    /// Given P = (px, py) and curve parameter `a`, computes:
+    ///   lambda = (3*px^2 + a) / (2*py) mod p
+    ///   x3 = lambda^2 - 2*px mod p
+    ///   y3 = lambda * (px - x3) - py mod p
+    ///
+    /// Outputs 3 witnesses at output_start: lambda, x3, y3.
+    EcDoubleHint {
+        output_start:    usize,
+        px:              usize,
+        py:              usize,
+        curve_a:         [u64; 4],
+        field_modulus_p: [u64; 4],
+    },
+    /// Prover hint for EC point addition on native field.
+    /// Given P1 = (x1, y1) and P2 = (x2, y2), computes:
+    ///   lambda = (y2 - y1) / (x2 - x1) mod p
+    ///   x3 = lambda^2 - x1 - x2 mod p
+    ///   y3 = lambda * (x1 - x3) - y1 mod p
+    ///
+    /// Outputs 3 witnesses at output_start: lambda, x3, y3.
+    EcAddHint {
+        output_start:    usize,
+        x1:              usize,
+        y1:              usize,
+        x2:              usize,
+        y2:              usize,
+        field_modulus_p: [u64; 4],
+    },
+    /// Conditional select: output = on_false + flag * (on_true - on_false).
+    /// When flag=0, output=on_false; when flag=1, output=on_true.
+    /// (output, flag, on_false, on_true)
+    SelectWitness {
+        output:   usize,
+        flag:     usize,
+        on_false: usize,
+        on_true:  usize,
+    },
+    /// Boolean OR: output = a + b - a*b = 1 - (1-a)*(1-b).
+    /// (output, a, b)
+    BooleanOr {
+        output: usize,
+        a:      usize,
+        b:      usize,
+    },
+    /// Signed-bit decomposition hint for wNAF scalar multiplication.
+    /// Given scalar s with num_bits bits, computes sign-bits b_0..b_{n-1}
+    /// and skew ∈ {0,1} such that:
+    ///   s + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+    /// where d_i = 2*b_i - 1 ∈ {-1, +1}.
+    ///
+    /// Outputs (num_bits + 1) witnesses at output_start:
+    ///   [0..num_bits)  b_i sign bits
+    ///   [num_bits]     skew (0 if s is odd, 1 if s is even)
+    SignedBitHint {
+        output_start: usize,
+        scalar:       usize,
+        num_bits:     usize,
+    },
     /// Computes spread(input): interleave bits with zeros.
     /// Output: 0 b_{n-1} 0 b_{n-2} ... 0 b_1 0 b_0
     /// (witness index of output, witness index of input)
@@ -365,6 +424,9 @@ impl WitnessBuilder {
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
             WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => (4 * *num_limbs - 2) as usize,
             WitnessBuilder::MultiLimbModularInverse { num_limbs, .. } => *num_limbs as usize,
+            WitnessBuilder::SignedBitHint { num_bits, .. } => *num_bits + 1,
+            WitnessBuilder::EcDoubleHint { .. } => 3,
+            WitnessBuilder::EcAddHint { .. } => 3,
             WitnessBuilder::FakeGLVHint { .. } => 4,
             WitnessBuilder::EcScalarMulHint { .. } => 2,
 

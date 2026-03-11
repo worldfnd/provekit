@@ -459,6 +459,75 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*output_start + 2] = Some(FieldElement::from(neg1 as u64));
                 witness[*output_start + 3] = Some(FieldElement::from(neg2 as u64));
             }
+            WitnessBuilder::EcDoubleHint {
+                output_start,
+                px,
+                py,
+                curve_a,
+                field_modulus_p,
+            } => {
+                let px_val = witness[*px].unwrap().into_bigint().0;
+                let py_val = witness[*py].unwrap().into_bigint().0;
+
+                // Compute lambda, x3, y3 using bigint_mod helpers
+                use crate::bigint_mod::{mod_add, mod_inverse, mod_sub, mul_mod};
+                let x_sq = mul_mod(&px_val, &px_val, field_modulus_p);
+                let two_x_sq = mod_add(&x_sq, &x_sq, field_modulus_p);
+                let three_x_sq = mod_add(&two_x_sq, &x_sq, field_modulus_p);
+                let numerator = mod_add(&three_x_sq, curve_a, field_modulus_p);
+                let two_y = mod_add(&py_val, &py_val, field_modulus_p);
+                let denom_inv = mod_inverse(&two_y, field_modulus_p);
+                let lambda = mul_mod(&numerator, &denom_inv, field_modulus_p);
+
+                let lambda_sq = mul_mod(&lambda, &lambda, field_modulus_p);
+                let two_x = mod_add(&px_val, &px_val, field_modulus_p);
+                let x3 = mod_sub(&lambda_sq, &two_x, field_modulus_p);
+
+                let x_minus_x3 = mod_sub(&px_val, &x3, field_modulus_p);
+                let lambda_dx = mul_mod(&lambda, &x_minus_x3, field_modulus_p);
+                let y3 = mod_sub(&lambda_dx, &py_val, field_modulus_p);
+
+                witness[*output_start] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(lambda)).unwrap());
+                witness[*output_start + 1] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(x3)).unwrap());
+                witness[*output_start + 2] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(y3)).unwrap());
+            }
+            WitnessBuilder::EcAddHint {
+                output_start,
+                x1,
+                y1,
+                x2,
+                y2,
+                field_modulus_p,
+            } => {
+                let x1_val = witness[*x1].unwrap().into_bigint().0;
+                let y1_val = witness[*y1].unwrap().into_bigint().0;
+                let x2_val = witness[*x2].unwrap().into_bigint().0;
+                let y2_val = witness[*y2].unwrap().into_bigint().0;
+
+                use crate::bigint_mod::{mod_inverse, mod_sub, mul_mod, mod_add};
+                let numerator = mod_sub(&y2_val, &y1_val, field_modulus_p);
+                let denominator = mod_sub(&x2_val, &x1_val, field_modulus_p);
+                let denom_inv = mod_inverse(&denominator, field_modulus_p);
+                let lambda = mul_mod(&numerator, &denom_inv, field_modulus_p);
+
+                let lambda_sq = mul_mod(&lambda, &lambda, field_modulus_p);
+                let x1_plus_x2 = mod_add(&x1_val, &x2_val, field_modulus_p);
+                let x3 = mod_sub(&lambda_sq, &x1_plus_x2, field_modulus_p);
+
+                let x1_minus_x3 = mod_sub(&x1_val, &x3, field_modulus_p);
+                let lambda_dx = mul_mod(&lambda, &x1_minus_x3, field_modulus_p);
+                let y3 = mod_sub(&lambda_dx, &y1_val, field_modulus_p);
+
+                witness[*output_start] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(lambda)).unwrap());
+                witness[*output_start + 1] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(x3)).unwrap());
+                witness[*output_start + 2] =
+                    Some(FieldElement::from_bigint(ark_ff::BigInt(y3)).unwrap());
+            }
             WitnessBuilder::EcScalarMulHint {
                 output_start,
                 px,
@@ -490,6 +559,39 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     Some(FieldElement::from_bigint(ark_ff::BigInt(rx)).unwrap());
                 witness[*output_start + 1] =
                     Some(FieldElement::from_bigint(ark_ff::BigInt(ry)).unwrap());
+            }
+            WitnessBuilder::SelectWitness {
+                output,
+                flag,
+                on_false,
+                on_true,
+            } => {
+                let f = witness[*flag].unwrap();
+                let a = witness[*on_false].unwrap();
+                let b = witness[*on_true].unwrap();
+                witness[*output] = Some(a + f * (b - a));
+            }
+            WitnessBuilder::BooleanOr { output, a, b } => {
+                let a_val = witness[*a].unwrap();
+                let b_val = witness[*b].unwrap();
+                witness[*output] = Some(a_val + b_val - a_val * b_val);
+            }
+            WitnessBuilder::SignedBitHint {
+                output_start,
+                scalar,
+                num_bits,
+            } => {
+                let s_fe = witness[*scalar].unwrap();
+                let s_big = s_fe.into_bigint().0;
+                let s_val: u128 = s_big[0] as u128 | ((s_big[1] as u128) << 64);
+                let n = *num_bits;
+                let skew: u128 = if s_val & 1 == 0 { 1 } else { 0 };
+                let s_adj = s_val + skew;
+                let t = (s_adj + ((1u128 << n) - 1)) / 2;
+                for i in 0..n {
+                    witness[*output_start + i] = Some(FieldElement::from(((t >> i) & 1) as u64));
+                }
+                witness[*output_start + n] = Some(FieldElement::from(skew as u64));
             }
             WitnessBuilder::CombinedTableEntryInverse(..) => {
                 unreachable!(

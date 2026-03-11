@@ -223,10 +223,22 @@ impl DependencyInfo {
                     data.rs_cubed,
                 ]
             }
+            WitnessBuilder::EcDoubleHint { px, py, .. } => vec![*px, *py],
+            WitnessBuilder::EcAddHint {
+                x1, y1, x2, y2, ..
+            } => vec![*x1, *y1, *x2, *y2],
             WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
             WitnessBuilder::EcScalarMulHint {
                 px, py, s_lo, s_hi, ..
             } => vec![*px, *py, *s_lo, *s_hi],
+            WitnessBuilder::SelectWitness {
+                flag,
+                on_false,
+                on_true,
+                ..
+            } => vec![*flag, *on_false, *on_true],
+            WitnessBuilder::BooleanOr { a, b, .. } => vec![*a, *b],
+            WitnessBuilder::SignedBitHint { scalar, .. } => vec![*scalar],
             WitnessBuilder::ChunkDecompose { packed, .. } => vec![*packed],
             WitnessBuilder::SpreadWitness(_, input) => vec![*input],
             WitnessBuilder::SpreadBitExtract { sum_terms, .. } => {
@@ -286,6 +298,13 @@ impl DependencyInfo {
             | WitnessBuilder::SpreadWitness(idx, ..)
             | WitnessBuilder::SpreadLookupDenominator(idx, ..)
             | WitnessBuilder::SpreadTableQuotient { idx, .. } => vec![*idx],
+            WitnessBuilder::SelectWitness { output, .. }
+            | WitnessBuilder::BooleanOr { output, .. } => vec![*output],
+            WitnessBuilder::SignedBitHint {
+                output_start,
+                num_bits,
+                ..
+            } => (*output_start..*output_start + *num_bits + 1).collect(),
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
@@ -327,6 +346,12 @@ impl DependencyInfo {
                 num_limbs,
                 ..
             } => (*output_start..*output_start + *num_limbs as usize).collect(),
+            WitnessBuilder::EcDoubleHint { output_start, .. } => {
+                (*output_start..*output_start + 3).collect()
+            }
+            WitnessBuilder::EcAddHint { output_start, .. } => {
+                (*output_start..*output_start + 3).collect()
+            }
             WitnessBuilder::FakeGLVHint { output_start, .. } => {
                 (*output_start..*output_start + 4).collect()
             }
