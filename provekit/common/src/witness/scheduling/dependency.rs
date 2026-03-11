@@ -224,9 +224,7 @@ impl DependencyInfo {
                 ]
             }
             WitnessBuilder::EcDoubleHint { px, py, .. } => vec![*px, *py],
-            WitnessBuilder::EcAddHint {
-                x1, y1, x2, y2, ..
-            } => vec![*x1, *y1, *x2, *y2],
+            WitnessBuilder::EcAddHint { x1, y1, x2, y2, .. } => vec![*x1, *y1, *x2, *y2],
             WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
             WitnessBuilder::EcScalarMulHint {
                 px, py, s_lo, s_hi, ..

@@ -546,7 +546,12 @@ fn process_single_point_msm<'a>(
     } else {
         // Generic multi-limb path
         let (px, py) = non_native::decompose_point_to_limbs(
-            compiler, san.px, san.py, num_limbs, limb_bits, range_checks,
+            compiler,
+            san.px,
+            san.py,
+            num_limbs,
+            limb_bits,
+            range_checks,
         );
         let (rx, ry) = non_native::decompose_point_to_limbs(
             compiler,

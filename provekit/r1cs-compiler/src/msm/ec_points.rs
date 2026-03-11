@@ -265,8 +265,10 @@ pub fn scalar_mul_glv<F: FieldOps>(
 // Each EC op allocates a hint for (lambda, x3, y3) and verifies via raw
 // R1CS constraints, eliminating expensive field inversions from the circuit.
 
-use super::curve::CurveParams;
-use ark_ff::{Field, PrimeField};
+use {
+    super::curve::CurveParams,
+    ark_ff::{Field, PrimeField},
+};
 
 /// Hint-verified point doubling for native field.
 ///
@@ -287,10 +289,10 @@ pub fn point_double_verified_native(
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::EcDoubleHint {
-        output_start:    hint_start,
+        output_start: hint_start,
         px,
         py,
-        curve_a:         curve.curve_a,
+        curve_a: curve.curve_a,
         field_modulus_p: curve.field_modulus_p,
     });
     let lambda = hint_start;
@@ -305,11 +307,12 @@ pub fn point_double_verified_native(
     let a_fe = FieldElement::from_bigint(ark_ff::BigInt(curve.curve_a)).unwrap();
     let three = FieldElement::from(3u64);
     let two = FieldElement::from(2u64);
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, lambda)],
-        &[(two, py)],
-        &[(three, x_sq), (a_fe, compiler.witness_one())],
-    );
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, lambda)], &[(two, py)], &[
+            (three, x_sq),
+            (a_fe, compiler.witness_one()),
+        ]);
 
     // Constraint: lambda^2 = x3 + 2*px
     compiler.r1cs.add_constraint(
@@ -348,7 +351,7 @@ pub fn point_add_verified_native(
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::EcAddHint {
-        output_start:    hint_start,
+        output_start: hint_start,
         x1,
         y1,
         x2,
@@ -370,7 +373,11 @@ pub fn point_add_verified_native(
     compiler.r1cs.add_constraint(
         &[(FieldElement::ONE, lambda)],
         &[(FieldElement::ONE, lambda)],
-        &[(FieldElement::ONE, x3), (FieldElement::ONE, x1), (FieldElement::ONE, x2)],
+        &[
+            (FieldElement::ONE, x3),
+            (FieldElement::ONE, x1),
+            (FieldElement::ONE, x2),
+        ],
     );
 
     // Constraint: lambda * (x1 - x3) = y3 + y1
@@ -404,14 +411,11 @@ pub fn verify_on_curve_native(
     let b_fe = FieldElement::from_bigint(ark_ff::BigInt(curve.curve_b)).unwrap();
 
     // y * y = x_cu + a*x + b
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, y)],
-        &[(FieldElement::ONE, y)],
-        &[
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, y)], &[(FieldElement::ONE, y)], &[
             (FieldElement::ONE, x_cu),
             (a_fe, x),
             (b_fe, compiler.witness_one()),
-        ],
-    );
+        ]);
 }
-

@@ -6,11 +6,11 @@
 use {
     super::{
         add_constant_witness, constrain_boolean, constrain_equal, constrain_to_constant, curve,
-        ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
-        negate_y_signed_native, sanitize_point_scalar, scalar_relation, select_witness,
+        ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, negate_y_signed_native,
+        sanitize_point_scalar, scalar_relation, select_witness,
     },
-    ark_ff::{AdditiveGroup, Field},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
+    ark_ff::{AdditiveGroup, Field},
     curve::CurveParams,
     provekit_common::{witness::WitnessBuilder, FieldElement},
     std::collections::BTreeMap,

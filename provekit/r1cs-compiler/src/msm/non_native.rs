@@ -6,8 +6,8 @@
 use {
     super::{
         add_constant_witness, constrain_equal, constrain_to_constant, curve, ec_points,
-        emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, sanitize_point_scalar,
-        scalar_relation, select_witness, FieldOps, Limbs,
+        emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, multi_limb_ops,
+        sanitize_point_scalar, scalar_relation, select_witness, FieldOps, Limbs,
     },
     crate::{
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
@@ -16,12 +16,8 @@ use {
     ark_ff::{AdditiveGroup, Field},
     curve::{decompose_to_limbs as decompose_to_limbs_pub, CurveParams},
     multi_limb_ops::{MultiLimbOps, MultiLimbParams},
-    provekit_common::{
-        witness::SumTerm,
-        FieldElement,
-    },
+    provekit_common::{witness::SumTerm, FieldElement},
     std::collections::BTreeMap,
-    super::multi_limb_ops,
 };
 
 /// Build `MultiLimbParams` for a given runtime `num_limbs`.

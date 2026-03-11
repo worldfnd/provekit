@@ -507,7 +507,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let x2_val = witness[*x2].unwrap().into_bigint().0;
                 let y2_val = witness[*y2].unwrap().into_bigint().0;
 
-                use crate::bigint_mod::{mod_inverse, mod_sub, mul_mod, mod_add};
+                use crate::bigint_mod::{mod_add, mod_inverse, mod_sub, mul_mod};
                 let numerator = mod_sub(&y2_val, &y1_val, field_modulus_p);
                 let denominator = mod_sub(&x2_val, &x1_val, field_modulus_p);
                 let denom_inv = mod_inverse(&denominator, field_modulus_p);

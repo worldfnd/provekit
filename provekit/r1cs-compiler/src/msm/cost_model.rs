@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 /// The 256-bit scalar is split into two halves (s_lo, s_hi) because it doesn't
-/// fit in the native field. This constant is used throughout the scalar relation
-/// cost model.
+/// fit in the native field. This constant is used throughout the scalar
+/// relation cost model.
 const SCALAR_HALF_BITS: usize = 128;
 
 /// Type of field operation for cost estimation.
@@ -30,10 +30,9 @@ pub enum FieldOpType {
 /// `num_limbs` witnesses per coordinate (via `select_witness`), not
 /// multi-limb field op witnesses.
 ///
-/// - `n_point_selects`: selects on EcPoint (2 coordinates), from table
-///   lookups and conditional skip after point_add.
-/// - `n_coord_selects`: selects on single Limbs coordinate, from
-///   y-negation.
+/// - `n_point_selects`: selects on EcPoint (2 coordinates), from table lookups
+///   and conditional skip after point_add.
+/// - `n_coord_selects`: selects on single Limbs coordinate, from y-negation.
 /// - `n_is_zero`: `compute_is_zero` calls, each creating exactly 3 native
 ///   witnesses regardless of num_limbs.
 fn count_glv_field_ops(
@@ -121,8 +120,7 @@ fn count_glv_real_field_ops(
     scalar_bits: usize,
     window_size: usize,
 ) -> (usize, usize, usize, usize) {
-    let (n_add, n_sub, n_mul, n_inv, _, _, _) =
-        count_glv_field_ops(scalar_bits, window_size);
+    let (n_add, n_sub, n_mul, n_inv, ..) = count_glv_field_ops(scalar_bits, window_size);
     (n_add, n_sub, n_mul, n_inv)
 }
 
@@ -165,8 +163,7 @@ fn witnesses_per_op(num_limbs: usize, op: FieldOpType, is_native: bool) -> usize
 fn count_scalar_relation_witnesses(native_field_bits: u32, scalar_bits: usize) -> usize {
     let limb_bits = scalar_relation_limb_bits(native_field_bits, scalar_bits);
     let num_limbs = (scalar_bits + limb_bits as usize - 1) / limb_bits as usize;
-    let scalar_half_limbs =
-        (SCALAR_HALF_BITS + limb_bits as usize - 1) / limb_bits as usize;
+    let scalar_half_limbs = (SCALAR_HALF_BITS + limb_bits as usize - 1) / limb_bits as usize;
 
     let wit_add = witnesses_per_op(num_limbs, FieldOpType::Add, false);
     let wit_sub = witnesses_per_op(num_limbs, FieldOpType::Sub, false);
@@ -174,8 +171,7 @@ fn count_scalar_relation_witnesses(native_field_bits: u32, scalar_bits: usize) -
 
     // Scalar decomposition: DD digits for s_lo + s_hi, plus cross-boundary
     // witness when limb boundaries don't align with the 128-bit split
-    let has_cross_boundary =
-        num_limbs > 1 && SCALAR_HALF_BITS % limb_bits as usize != 0;
+    let has_cross_boundary = num_limbs > 1 && SCALAR_HALF_BITS % limb_bits as usize != 0;
     let scalar_decomp = 2 * scalar_half_limbs + has_cross_boundary as usize;
 
     // Half-scalar decomposition: DD digits + zero-pad constants for s1, s2
@@ -240,8 +236,7 @@ fn count_scalar_relation_range_checks(
     let num_limbs = (scalar_bits + limb_bits as usize - 1) / limb_bits as usize;
     let half_bits = (scalar_bits + 1) / 2;
     let half_limbs = (half_bits + limb_bits as usize - 1) / limb_bits as usize;
-    let scalar_half_limbs =
-        (SCALAR_HALF_BITS + limb_bits as usize - 1) / limb_bits as usize;
+    let scalar_half_limbs = (SCALAR_HALF_BITS + limb_bits as usize - 1) / limb_bits as usize;
 
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
 
@@ -264,8 +259,7 @@ fn count_scalar_relation_range_checks(
 /// Accounts for three categories of witnesses:
 /// 1. **Inline witnesses** — field ops, selects, is_zero, hints, DDs
 /// 2. **Range check resolution** — LogUp/naive cost for all range checks
-/// 3. **Per-point overhead** — detect_skip, sanitization, point
-///    decomposition
+/// 3. **Per-point overhead** — detect_skip, sanitization, point decomposition
 pub fn calculate_msm_witness_cost(
     native_field_bits: u32,
     curve_modulus_bits: u32,
@@ -298,14 +292,12 @@ pub fn calculate_msm_witness_cost(
         count_glv_field_ops(half_bits, window_size);
 
     // Field ops: priced at full multi-limb cost
-    let field_op_cost =
-        n_add * wit_add + n_sub * wit_sub + n_mul * wit_mul + n_inv * wit_inv;
+    let field_op_cost = n_add * wit_add + n_sub * wit_sub + n_mul * wit_mul + n_inv * wit_inv;
 
     // Selects: each select_witness creates 1 witness per limb (inlined).
     // Point select = 2 coords × num_limbs × 1.
     // Coord select = 1 coord × num_limbs × 1.
-    let select_cost =
-        n_point_selects * 2 * num_limbs + n_coord_selects * num_limbs;
+    let select_cost = n_point_selects * 2 * num_limbs + n_coord_selects * num_limbs;
 
     // is_zero: 3 fixed native witnesses each (SafeInverse + Product + Sum)
     let is_zero_cost = n_is_zero * 3;
@@ -372,8 +364,7 @@ pub fn calculate_msm_witness_cost(
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
 
     // 1. Range checks from GLV field ops (selects generate 0 range checks)
-    let (rc_n_add, rc_n_sub, rc_n_mul, rc_n_inv) =
-        count_glv_real_field_ops(half_bits, window_size);
+    let (rc_n_add, rc_n_sub, rc_n_mul, rc_n_inv) = count_glv_real_field_ops(half_bits, window_size);
     for &(op, n_ops) in &[
         (FieldOpType::Add, rc_n_add),
         (FieldOpType::Sub, rc_n_sub),
@@ -399,8 +390,8 @@ pub fn calculate_msm_witness_cost(
         *rc_map.entry(*bits).or_default() += n_points * count;
     }
 
-    // 4. Accumulation range checks: n_points point_adds + 1 offset
-    //    subtraction point_add (multi-point only)
+    // 4. Accumulation range checks: n_points point_adds + 1 offset subtraction
+    //    point_add (multi-point only)
     if n_points > 1 {
         let accum_point_adds = n_points + 1; // loop + offset subtraction
         for &(op, n_ops) in &[
@@ -706,13 +697,16 @@ mod tests {
     #[test]
     fn test_scalar_relation_witnesses_small_curve() {
         let sr = count_scalar_relation_witnesses(254, 64);
-        assert!(sr < 100, "64-bit curve scalar_relation={sr} should be < 100");
+        assert!(
+            sr < 100,
+            "64-bit curve scalar_relation={sr} should be < 100"
+        );
     }
 
     #[test]
     fn test_is_zero_cost_independent_of_num_limbs() {
-        let (_, _, _, _, n_is_zero_w4, _, _) = count_glv_field_ops(128, 4);
-        let (_, _, _, _, n_is_zero_w3, _, _) = count_glv_field_ops(128, 3);
+        let (_, _, _, _, n_is_zero_w4, ..) = count_glv_field_ops(128, 4);
+        let (_, _, _, _, n_is_zero_w3, ..) = count_glv_field_ops(128, 3);
         assert!(n_is_zero_w4 > 0);
         assert!(n_is_zero_w3 > 0);
     }

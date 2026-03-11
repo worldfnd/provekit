@@ -150,7 +150,10 @@ fn decompose_scalar_from_halves(
         }
         for (i, &w) in widths.iter().enumerate().take(num_limbs - from_lo) {
             limbs[from_lo + i] = dd_hi.get_digit_witness_index(i, 0);
-            ops.range_checks.entry(w as u32).or_default().push(limbs[from_lo + i]);
+            ops.range_checks
+                .entry(w as u32)
+                .or_default()
+                .push(limbs[from_lo + i]);
         }
         limbs
     } else {
@@ -170,7 +173,10 @@ fn decompose_scalar_from_halves(
 
         for i in 0..lo_full {
             limbs[i] = dd_lo.get_digit_witness_index(i, 0);
-            ops.range_checks.entry(limb_bits).or_default().push(limbs[i]);
+            ops.range_checks
+                .entry(limb_bits)
+                .or_default()
+                .push(limbs[i]);
         }
 
         // Cross-boundary limb: lo_tail bits from s_lo + hi_head bits from s_hi
@@ -181,12 +187,21 @@ fn decompose_scalar_from_halves(
             SumTerm(None, lo_digit),
             SumTerm(Some(shift), hi_digit),
         ]);
-        ops.range_checks.entry(lo_tail as u32).or_default().push(lo_digit);
-        ops.range_checks.entry(hi_head as u32).or_default().push(hi_digit);
+        ops.range_checks
+            .entry(lo_tail as u32)
+            .or_default()
+            .push(lo_digit);
+        ops.range_checks
+            .entry(hi_head as u32)
+            .or_default()
+            .push(hi_digit);
 
         if hi_rest > 0 {
             limbs[lo_full + 1] = dd_hi.get_digit_witness_index(1, 0);
-            ops.range_checks.entry(hi_rest as u32).or_default().push(limbs[lo_full + 1]);
+            ops.range_checks
+                .entry(hi_rest as u32)
+                .or_default()
+                .push(limbs[lo_full + 1]);
         }
 
         limbs
