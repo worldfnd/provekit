@@ -114,7 +114,7 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
         return vec![];
     }
     let full_size = 1usize << r.len();
-    debug_assert!(num_entries <= full_size);
+    assert!(num_entries <= full_size);
     let mut result = vec![FieldElement::zero(); num_entries];
     eval_eq(r, &mut result, FieldElement::one(), full_size);
     result
