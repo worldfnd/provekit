@@ -1,5 +1,5 @@
 use {
-    ark_ff::{AdditiveGroup, BigInteger, Field, PrimeField},
+    ark_ff::{Field, PrimeField},
     provekit_common::FieldElement,
 };
 
@@ -571,7 +571,6 @@ mod tests {
     }
 }
 
-#[allow(dead_code)]
 pub fn secp256r1_params() -> CurveParams {
     CurveParams {
         field_modulus_p: [

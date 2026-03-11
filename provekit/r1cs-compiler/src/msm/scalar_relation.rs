@@ -5,11 +5,12 @@
 
 use {
     super::{
-        constrain_zero, cost_model, curve,
+        cost_model, curve,
         multi_limb_ops::{MultiLimbOps, MultiLimbParams},
-        FieldOps, Limbs,
+        Limbs,
     },
     crate::{
+        constraint_helpers::constrain_zero,
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
@@ -38,40 +39,6 @@ fn limb_widths(total_bits: usize, max_width: u32) -> Vec<usize> {
         .collect()
 }
 
-/// Builds `MultiLimbParams` for scalar relation verification (mod
-/// curve_order_n).
-fn build_scalar_relation_params(
-    num_limbs: usize,
-    limb_bits: u32,
-    curve: &CurveParams,
-) -> MultiLimbParams {
-    // Scalar relation uses curve_order_n as the modulus.
-    // This is always non-native (curve_order_n ≠ BN254 scalar field modulus,
-    // except for Grumpkin where they're very close but still different).
-    let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
-    let n_limbs = curve.curve_order_n_limbs(limb_bits, num_limbs);
-    let n_minus_1_limbs = curve.curve_order_n_minus_1_limbs(limb_bits, num_limbs);
-
-    // For N=1 non-native, we need the modulus as a FieldElement
-    let modulus_fe = if num_limbs == 1 {
-        Some(curve::curve_native_point_fe(&curve.curve_order_n))
-    } else {
-        None
-    };
-
-    MultiLimbParams {
-        num_limbs,
-        limb_bits,
-        p_limbs: n_limbs,
-        p_minus_1_limbs: n_minus_1_limbs,
-        two_pow_w,
-        modulus_raw: curve.curve_order_n,
-        curve_a_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
-        is_native: false,                                         // always non-native
-        modulus_fe,
-    }
-}
-
 /// Verifies the scalar relation: (-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0
 /// (mod n).
 ///
@@ -93,7 +60,7 @@ pub(super) fn verify_scalar_relation(
     let num_limbs = (order_bits + limb_bits as usize - 1) / limb_bits as usize;
     let half_bits = curve.glv_half_bits() as usize;
 
-    let params = build_scalar_relation_params(num_limbs, limb_bits, curve);
+    let params = MultiLimbParams::for_curve_order(num_limbs, limb_bits, curve);
     let mut ops = MultiLimbOps {
         compiler,
         range_checks,

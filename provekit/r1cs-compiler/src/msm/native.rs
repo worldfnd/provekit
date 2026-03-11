@@ -5,11 +5,16 @@
 
 use {
     super::{
-        add_constant_witness, constrain_boolean, constrain_equal, constrain_to_constant, curve,
-        ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, negate_y_signed_native,
-        sanitize_point_scalar, scalar_relation, select_witness,
+        curve, ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
+        negate_y_signed_native, sanitize_point_scalar, scalar_relation,
     },
-    crate::noir_to_r1cs::NoirToR1CSCompiler,
+    crate::{
+        constraint_helpers::{
+            add_constant_witness, constrain_boolean, constrain_equal, constrain_to_constant,
+            select_witness,
+        },
+        noir_to_r1cs::NoirToR1CSCompiler,
+    },
     ark_ff::{AdditiveGroup, Field},
     curve::CurveParams,
     provekit_common::{witness::WitnessBuilder, FieldElement},
@@ -20,7 +25,7 @@ use {
 ///
 /// Holds the inputs needed by `scalar_mul_merged_native_wnaf` to process
 /// one point's P and R branches inside the shared-doubling loop.
-pub(super) struct NativePointData {
+struct NativePointData {
     px:         usize,
     py_eff:     usize,
     neg_py_eff: usize,
@@ -33,95 +38,7 @@ pub(super) struct NativePointData {
     s2_skew:    usize,
 }
 
-/// Native-field FakeGLV verification using hint-verified EC ops.
-///
-/// This path is used when `curve.is_native_field()` and replaces
-/// `verify_point_fakeglv` for significant constraint savings.
-///
-/// Key differences from the generic path:
-/// - EC ops use hint-verified formulas (4W+4C per double vs ~12, 3W+3C per add
-///   vs ~8)
-/// - On-curve checks use raw constraints (2W+3C vs ~6W+6C)
-/// - Still uses binary bit decomposition + windowed scalar mul (same table
-///   structure)
-pub(super) fn verify_point_fakeglv_native(
-    compiler: &mut NoirToR1CSCompiler,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    px: usize,
-    py: usize,
-    rx: usize,
-    ry: usize,
-    s_lo: usize,
-    s_hi: usize,
-    curve: &CurveParams,
-) {
-    // Step 1: On-curve checks for P and R (native)
-    ec_points::verify_on_curve_native(compiler, px, py, curve);
-    ec_points::verify_on_curve_native(compiler, rx, ry, curve);
-
-    // Step 2: FakeGLVHint → |s1|, |s2|, neg1, neg2
-    let (s1_witness, s2_witness, neg1_witness, neg2_witness) =
-        emit_fakeglv_hint(compiler, s_lo, s_hi, curve);
-
-    // Step 3: Signed-bit decomposition
-    let half_bits = curve.glv_half_bits() as usize;
-    let (s1_bits, s1_skew) = decompose_signed_bits(compiler, s1_witness, half_bits);
-    let (s2_bits, s2_skew) = decompose_signed_bits(compiler, s2_witness, half_bits);
-
-    // Step 4: Conditionally negate y-coordinates
-    let (py_effective, neg_py_effective) = negate_y_signed_native(compiler, neg1_witness, py);
-    let (ry_effective, neg_ry_effective) = negate_y_signed_native(compiler, neg2_witness, ry);
-
-    // Step 5: Scalar mul via merged loop (single-point = one-element slice)
-    let point_data = NativePointData {
-        px,
-        py_eff: py_effective,
-        neg_py_eff: neg_py_effective,
-        s1_bits,
-        s1_skew,
-        rx,
-        ry_eff: ry_effective,
-        neg_ry_eff: neg_ry_effective,
-        s2_bits,
-        s2_skew,
-    };
-    let offset_x_fe = curve::curve_native_point_fe(&curve.offset_point.0);
-    let offset_y_fe = curve::curve_native_point_fe(&curve.offset_point.1);
-    let offset_x = add_constant_witness(compiler, offset_x_fe);
-    let offset_y = add_constant_witness(compiler, offset_y_fe);
-
-    let (acc_x, acc_y) =
-        scalar_mul_merged_native_wnaf(compiler, &[point_data], offset_x, offset_y, curve);
-
-    // Step 6: Identity check — acc should equal accumulated offset
-    // (hardcoded into constraint matrix, not a prover-controlled witness)
-    let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(half_bits);
-    constrain_to_constant(
-        compiler,
-        acc_x,
-        curve::curve_native_point_fe(&acc_off_x_raw),
-    );
-    constrain_to_constant(
-        compiler,
-        acc_y,
-        curve::curve_native_point_fe(&acc_off_y_raw),
-    );
-
-    // Step 7: Scalar relation verification (unchanged)
-    scalar_relation::verify_scalar_relation(
-        compiler,
-        range_checks,
-        s_lo,
-        s_hi,
-        s1_witness,
-        s2_witness,
-        neg1_witness,
-        neg2_witness,
-        curve,
-    );
-}
-
-/// Multi-point native-field MSM with merged-loop optimization.
+/// Native-field MSM with merged-loop optimization.
 ///
 /// All points share a single doubling per bit, saving 4*(n-1) constraints
 /// per bit of the half-scalar.
@@ -370,7 +287,7 @@ fn scalar_mul_merged_native_wnaf(
 ///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
 ///
 /// All bits and skew are boolean-constrained.
-pub(super) fn decompose_signed_bits(
+fn decompose_signed_bits(
     compiler: &mut NoirToR1CSCompiler,
     scalar: usize,
     num_bits: usize,

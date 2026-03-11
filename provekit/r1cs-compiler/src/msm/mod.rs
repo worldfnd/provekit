@@ -1,18 +1,24 @@
-pub mod cost_model;
-pub mod curve;
-pub mod ec_points;
-pub mod multi_limb_arith;
-pub mod multi_limb_ops;
+pub(crate) mod cost_model;
+pub(crate) mod curve;
+pub(crate) mod ec_points;
+pub(crate) mod multi_limb_arith;
+pub(crate) mod multi_limb_ops;
 mod native;
 mod non_native;
 mod scalar_relation;
 
 use {
-    crate::{msm::multi_limb_arith::compute_is_zero, noir_to_r1cs::NoirToR1CSCompiler},
-    ark_ff::{AdditiveGroup, Field, PrimeField},
+    crate::{
+        constraint_helpers::{
+            add_constant_witness, compute_boolean_or, constrain_boolean, select_witness,
+        },
+        msm::multi_limb_arith::compute_is_zero,
+        noir_to_r1cs::NoirToR1CSCompiler,
+    },
+    ark_ff::{Field, PrimeField},
     curve::CurveParams,
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder},
+        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,
     },
     std::collections::BTreeMap,
@@ -28,9 +34,9 @@ pub const MAX_LIMBS: usize = 32;
 
 /// A fixed-capacity array of witness indices, indexed by limb position.
 ///
-/// This type is `Copy`, so it can be used as `FieldOps::Elem` without
-/// requiring const generics or dispatch macros. The runtime `len` field
-/// tracks how many limbs are actually in use.
+/// This type is `Copy`, so it can be passed by value without requiring
+/// const generics or dispatch macros. The runtime `len` field tracks how
+/// many limbs are actually in use.
 #[derive(Clone, Copy)]
 pub struct Limbs {
     data: [usize; MAX_LIMBS],
@@ -114,124 +120,8 @@ impl std::ops::IndexMut<usize> for Limbs {
 }
 
 // ---------------------------------------------------------------------------
-// FieldOps trait
+// Private helpers (MSM-specific)
 // ---------------------------------------------------------------------------
-
-pub trait FieldOps {
-    type Elem: Copy;
-
-    fn add(&mut self, a: Self::Elem, b: Self::Elem) -> Self::Elem;
-    fn sub(&mut self, a: Self::Elem, b: Self::Elem) -> Self::Elem;
-    fn mul(&mut self, a: Self::Elem, b: Self::Elem) -> Self::Elem;
-    fn inv(&mut self, a: Self::Elem) -> Self::Elem;
-    fn curve_a(&mut self) -> Self::Elem;
-
-    /// Constrains `flag` to be boolean (`flag * flag = flag`).
-    fn constrain_flag(&mut self, flag: usize);
-
-    /// Conditional select without boolean constraint on `flag`.
-    /// Caller must ensure `flag` is already constrained boolean.
-    fn select_unchecked(
-        &mut self,
-        flag: usize,
-        on_false: Self::Elem,
-        on_true: Self::Elem,
-    ) -> Self::Elem;
-
-    /// Conditional select: returns `on_true` if `flag` is 1, `on_false` if
-    /// `flag` is 0. Constrains `flag` to be boolean (`flag * flag = flag`).
-    fn select(&mut self, flag: usize, on_false: Self::Elem, on_true: Self::Elem) -> Self::Elem {
-        self.constrain_flag(flag);
-        self.select_unchecked(flag, on_false, on_true)
-    }
-
-    /// Checks if a native witness value is zero.
-    /// Returns a boolean witness: 1 if zero, 0 if non-zero.
-    fn is_zero(&mut self, value: usize) -> usize;
-
-    /// Packs bit witnesses into a single digit witness: `d = Σ bits[i] * 2^i`.
-    /// Does NOT constrain bits to be boolean — caller must ensure that.
-    fn pack_bits(&mut self, bits: &[usize]) -> usize;
-
-    /// Returns a constant field element from its limb decomposition.
-    fn constant_limbs(&mut self, limbs: &[FieldElement]) -> Self::Elem;
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/// Constrains `flag` to be boolean: `flag * flag = flag`.
-pub(crate) fn constrain_boolean(compiler: &mut NoirToR1CSCompiler, flag: usize) {
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, flag)],
-        &[(FieldElement::ONE, flag)],
-        &[(FieldElement::ONE, flag)],
-    );
-}
-
-/// Single-witness conditional select: `out = on_false + flag * (on_true -
-/// on_false)`.
-///
-/// Uses a single witness + single R1CS constraint:
-///   flag * (on_true - on_false) = result - on_false
-pub(crate) fn select_witness(
-    compiler: &mut NoirToR1CSCompiler,
-    flag: usize,
-    on_false: usize,
-    on_true: usize,
-) -> usize {
-    // When both branches are the same witness, result is trivially that witness.
-    if on_false == on_true {
-        return on_false;
-    }
-    let result = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::SelectWitness {
-        output: result,
-        flag,
-        on_false,
-        on_true,
-    });
-    // flag * (on_true - on_false) = result - on_false
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, flag)],
-        &[(FieldElement::ONE, on_true), (-FieldElement::ONE, on_false)],
-        &[(FieldElement::ONE, result), (-FieldElement::ONE, on_false)],
-    );
-    result
-}
-
-/// Packs bit witnesses into a digit: `d = Σ bits[i] * 2^i`.
-pub(crate) fn pack_bits_helper(compiler: &mut NoirToR1CSCompiler, bits: &[usize]) -> usize {
-    let terms: Vec<SumTerm> = bits
-        .iter()
-        .enumerate()
-        .map(|(i, &bit)| SumTerm(Some(FieldElement::from(1u128 << i)), bit))
-        .collect();
-    compiler.add_sum(terms)
-}
-
-/// Computes `a OR b` for two boolean witnesses: `1 - (1 - a)(1 - b)`.
-/// Does NOT constrain a or b to be boolean — caller must ensure that.
-///
-/// Uses a single witness + single R1CS constraint:
-///   (1 - a) * (1 - b) = 1 - result
-fn compute_boolean_or(compiler: &mut NoirToR1CSCompiler, a: usize, b: usize) -> usize {
-    let one = compiler.witness_one();
-    let result = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::BooleanOr {
-        output: result,
-        a,
-        b,
-    });
-    // (1 - a) * (1 - b) = 1 - result
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, one), (-FieldElement::ONE, a)],
-        &[(FieldElement::ONE, one), (-FieldElement::ONE, b)],
-        &[(FieldElement::ONE, one), (-FieldElement::ONE, result)],
-    );
-    result
-}
 
 /// Detects whether a point-scalar pair is degenerate (scalar=0 or point at
 /// infinity). Constrains `inf_flag` to boolean. Returns `is_skip` (1 if
@@ -280,16 +170,6 @@ fn sanitize_point_scalar(
         s_hi: select_witness(compiler, is_skip, s_hi, zero),
         is_skip,
     }
-}
-
-/// Constrains `a * b = 0`.
-fn constrain_product_zero(compiler: &mut NoirToR1CSCompiler, a: usize, b: usize) {
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, a)], &[(FieldElement::ONE, b)], &[(
-            FieldElement::ZERO,
-            compiler.witness_one(),
-        )]);
 }
 
 /// Negate a y-coordinate and conditionally select based on a sign flag.
@@ -430,203 +310,31 @@ fn add_single_msm(
         (curve.modulus_bits() as usize + limb_bits as usize - 1) / limb_bits as usize
     };
 
-    process_single_msm(
-        compiler,
-        &point_wits,
-        &scalar_wits,
-        outputs,
-        num_limbs,
-        limb_bits,
-        window_size,
-        range_checks,
-        curve,
-    );
-}
-
-/// Process a full single-MSM with runtime `num_limbs`.
-///
-/// Dispatches to single-point or multi-point path based on the number of
-/// input points.
-fn process_single_msm(
-    compiler: &mut NoirToR1CSCompiler,
-    point_wits: &[usize],
-    scalar_wits: &[usize],
-    outputs: (usize, usize, usize),
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    curve: &CurveParams,
-) {
     let n_points = point_wits.len() / 3;
-    if n_points == 1 {
-        process_single_point_msm(
-            compiler,
-            point_wits,
-            scalar_wits,
-            outputs,
-            num_limbs,
-            limb_bits,
-            window_size,
-            range_checks,
-            curve,
-        );
-    } else {
-        process_multi_point_msm(
-            compiler,
-            point_wits,
-            scalar_wits,
-            outputs,
-            n_points,
-            num_limbs,
-            limb_bits,
-            window_size,
-            range_checks,
-            curve,
-        );
-    }
-}
-
-/// Single-point MSM: R = \[s\]P with degenerate-case handling.
-///
-/// The ACIR output (out_x, out_y) is the result directly. Sanitizes inputs
-/// to handle scalar=0 and point-at-infinity, then verifies via FakeGLV.
-fn process_single_point_msm<'a>(
-    mut compiler: &'a mut NoirToR1CSCompiler,
-    point_wits: &[usize],
-    scalar_wits: &[usize],
-    outputs: (usize, usize, usize),
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
-    range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-    curve: &CurveParams,
-) {
-    let (out_x, out_y, out_inf) = outputs;
-
-    // Allocate constants
-    let one = compiler.witness_one();
-    let gen_x_witness =
-        add_constant_witness(compiler, curve::curve_native_point_fe(&curve.generator.0));
-    let gen_y_witness =
-        add_constant_witness(compiler, curve::curve_native_point_fe(&curve.generator.1));
-    let zero_witness = add_constant_witness(compiler, FieldElement::ZERO);
-
-    // Sanitize inputs: swap in generator G and scalar=1 when degenerate
-    let san = sanitize_point_scalar(
-        compiler,
-        point_wits[0],
-        point_wits[1],
-        scalar_wits[0],
-        scalar_wits[1],
-        point_wits[2],
-        gen_x_witness,
-        gen_y_witness,
-        zero_witness,
-        one,
-    );
-
-    // Sanitize R (output point): when is_skip=1, R must be G (since [1]*G = G)
-    let sanitized_rx = select_witness(compiler, san.is_skip, out_x, gen_x_witness);
-    let sanitized_ry = select_witness(compiler, san.is_skip, out_y, gen_y_witness);
-
-    if curve.is_native_field() {
-        // Native-field optimized path: hint-verified EC + wNAF
-        native::verify_point_fakeglv_native(
-            compiler,
-            range_checks,
-            san.px,
-            san.py,
-            sanitized_rx,
-            sanitized_ry,
-            san.s_lo,
-            san.s_hi,
-            curve,
-        );
-    } else {
-        // Generic multi-limb path
-        let (px, py) = non_native::decompose_point_to_limbs(
-            compiler,
-            san.px,
-            san.py,
-            num_limbs,
-            limb_bits,
-            range_checks,
-        );
-        let (rx, ry) = non_native::decompose_point_to_limbs(
-            compiler,
-            sanitized_rx,
-            sanitized_ry,
-            num_limbs,
-            limb_bits,
-            range_checks,
-        );
-        (compiler, _) = non_native::verify_point_fakeglv(
-            compiler,
-            range_checks,
-            px,
-            py,
-            rx,
-            ry,
-            san.s_lo,
-            san.s_hi,
-            num_limbs,
-            limb_bits,
-            window_size,
-            curve,
-        );
-    }
-
-    // Mask output: when is_skip, output must be (0, 0, 1)
-    constrain_equal(compiler, out_inf, san.is_skip);
-    constrain_product_zero(compiler, san.is_skip, out_x);
-    constrain_product_zero(compiler, san.is_skip, out_y);
-}
-
-/// Multi-point MSM: computes R_i = \[s_i\]P_i via hints, verifies each with
-/// FakeGLV, then accumulates R_i's with offset-based accumulation and skip
-/// handling.
-///
-/// When `curve.is_native_field()`, uses a merged-loop optimization: all
-/// points share a single doubling per bit, saving 4*(n-1) constraints per
-/// bit of the half-scalar (≈512 for 2 points on Grumpkin).
-fn process_multi_point_msm(
-    compiler: &mut NoirToR1CSCompiler,
-    point_wits: &[usize],
-    scalar_wits: &[usize],
-    outputs: (usize, usize, usize),
-    n_points: usize,
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    curve: &CurveParams,
-) {
     if curve.is_native_field() {
         native::process_multi_point_native(
             compiler,
-            point_wits,
-            scalar_wits,
+            &point_wits,
+            &scalar_wits,
             outputs,
             n_points,
             range_checks,
             curve,
         );
-        return;
+    } else {
+        non_native::process_multi_point_non_native(
+            compiler,
+            &point_wits,
+            &scalar_wits,
+            outputs,
+            n_points,
+            num_limbs,
+            limb_bits,
+            window_size,
+            range_checks,
+            curve,
+        );
     }
-
-    non_native::process_multi_point_non_native(
-        compiler,
-        point_wits,
-        scalar_wits,
-        outputs,
-        n_points,
-        num_limbs,
-        limb_bits,
-        window_size,
-        range_checks,
-        curve,
-    );
 }
 
 /// Allocates a FakeGLV hint and returns `(s1, s2, neg1, neg2)` witness indices.
@@ -658,46 +366,110 @@ fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitnes
     }
 }
 
-/// Creates a constant witness with the given value, pinned by an R1CS
-/// constraint so that a malicious prover cannot set it to an arbitrary value.
-fn add_constant_witness(compiler: &mut NoirToR1CSCompiler, value: FieldElement) -> usize {
-    let w = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, value)));
-    // Pin: 1 * w = value * 1 (embeds the constant into the constraint matrix)
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, w)],
-        &[(value, compiler.witness_one())],
-    );
-    w
-}
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::noir_to_r1cs::NoirToR1CSCompiler};
 
-/// Constrains a witness to equal a known constant value.
-/// Uses the constant as an R1CS coefficient — no witness needed for the
-/// expected value. Use this for identity checks where the witness must equal
-/// a compile-time-known value.
-fn constrain_to_constant(compiler: &mut NoirToR1CSCompiler, witness: usize, value: FieldElement) {
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, witness)],
-        &[(value, compiler.witness_one())],
-    );
-}
+    /// Verify that the non-native (SECP256R1) single-point MSM path generates
+    /// constraints without panicking. This does multi-limb arithmetic,
+    /// range checks, and FakeGLV verification — the entire non-native code path
+    /// that has no Noir e2e coverage for now : )
+    #[test]
+    fn test_secp256r1_single_point_msm_generates_constraints() {
+        let mut compiler = NoirToR1CSCompiler::new();
+        let curve = curve::secp256r1_params();
+        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
 
-/// Constrains two witnesses to be equal: `a - b = 0`.
-fn constrain_equal(compiler: &mut NoirToR1CSCompiler, a: usize, b: usize) {
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, a), (-FieldElement::ONE, b)],
-        &[(FieldElement::ZERO, compiler.witness_one())],
-    );
-}
+        // Allocate witness slots for: px, py, inf, s_lo, s_hi, out_x, out_y, out_inf
+        // (witness 0 is the constant-one witness)
+        let base = compiler.num_witnesses();
+        compiler.r1cs.add_witnesses(8);
+        let px = base;
+        let py = base + 1;
+        let inf = base + 2;
+        let s_lo = base + 3;
+        let s_hi = base + 4;
+        let out_x = base + 5;
+        let out_y = base + 6;
+        let out_inf = base + 7;
 
-/// Constrains a witness to be zero: `w = 0`.
-fn constrain_zero(compiler: &mut NoirToR1CSCompiler, w: usize) {
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, w)],
-        &[(FieldElement::ZERO, compiler.witness_one())],
-    );
+        let points = vec![
+            ConstantOrR1CSWitness::Witness(px),
+            ConstantOrR1CSWitness::Witness(py),
+            ConstantOrR1CSWitness::Witness(inf),
+        ];
+        let scalars = vec![
+            ConstantOrR1CSWitness::Witness(s_lo),
+            ConstantOrR1CSWitness::Witness(s_hi),
+        ];
+        let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
+
+        add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
+
+        let n_constraints = compiler.r1cs.num_constraints();
+        let n_witnesses = compiler.num_witnesses();
+
+        assert!(
+            n_constraints > 100,
+            "expected substantial constraints for non-native MSM, got {n_constraints}"
+        );
+        assert!(
+            n_witnesses > 100,
+            "expected substantial witnesses for non-native MSM, got {n_witnesses}"
+        );
+        assert!(
+            !range_checks.is_empty(),
+            "non-native MSM should produce range checks"
+        );
+    }
+
+    /// Verify that the non-native multi-point MSM path (2 points, SECP256R1)
+    /// generates constraints. does the multi-point accumulation and offset
+    /// subtraction logic for the non-native path.
+    #[test]
+    fn test_secp256r1_multi_point_msm_generates_constraints() {
+        let mut compiler = NoirToR1CSCompiler::new();
+        let curve = curve::secp256r1_params();
+        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+
+        // 2 points: px1, py1, inf1, px2, py2, inf2, s1_lo, s1_hi, s2_lo, s2_hi,
+        //           out_x, out_y, out_inf
+        let base = compiler.num_witnesses();
+        compiler.r1cs.add_witnesses(13);
+
+        let points = vec![
+            ConstantOrR1CSWitness::Witness(base),     // px1
+            ConstantOrR1CSWitness::Witness(base + 1), // py1
+            ConstantOrR1CSWitness::Witness(base + 2), // inf1
+            ConstantOrR1CSWitness::Witness(base + 3), // px2
+            ConstantOrR1CSWitness::Witness(base + 4), // py2
+            ConstantOrR1CSWitness::Witness(base + 5), // inf2
+        ];
+        let scalars = vec![
+            ConstantOrR1CSWitness::Witness(base + 6), // s1_lo
+            ConstantOrR1CSWitness::Witness(base + 7), // s1_hi
+            ConstantOrR1CSWitness::Witness(base + 8), // s2_lo
+            ConstantOrR1CSWitness::Witness(base + 9), // s2_hi
+        ];
+        let out_x = base + 10;
+        let out_y = base + 11;
+        let out_inf = base + 12;
+
+        let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
+
+        add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
+
+        let n_constraints = compiler.r1cs.num_constraints();
+        let n_witnesses = compiler.num_witnesses();
+
+        // Multi-point should produce more constraints than single-point
+        assert!(
+            n_constraints > 200,
+            "expected substantial constraints for 2-point non-native MSM, got {n_constraints}"
+        );
+        assert!(
+            n_witnesses > 200,
+            "expected substantial witnesses for 2-point non-native MSM, got {n_witnesses}"
+        );
+    }
 }

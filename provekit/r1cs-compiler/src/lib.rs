@@ -1,4 +1,5 @@
 mod binops;
+mod constraint_helpers;
 mod digits;
 mod memory;
 mod msm;

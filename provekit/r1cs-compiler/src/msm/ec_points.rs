@@ -1,5 +1,5 @@
 use {
-    super::{select_witness, FieldOps},
+    super::{multi_limb_ops::MultiLimbOps, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     provekit_common::{witness::WitnessBuilder, FieldElement},
 };
@@ -19,7 +19,7 @@ use {
 ///   verify 0 * inv = 1 mod p). The caller must check y1 = 0 using
 ///   compute_is_zero and conditionally select the point-at-infinity
 ///   result before calling this function.
-pub fn point_double<F: FieldOps>(ops: &mut F, x1: F::Elem, y1: F::Elem) -> (F::Elem, F::Elem) {
+pub fn point_double(ops: &mut MultiLimbOps, x1: Limbs, y1: Limbs) -> (Limbs, Limbs) {
     let a = ops.curve_a();
 
     // Computing numerator = 3 * x1^2 + a
@@ -63,13 +63,13 @@ pub fn point_double<F: FieldOps>(ops: &mut F, x1: F::Elem, y1: F::Elem) -> (F::E
 ///   This function does NOT handle either case — the constraint system
 ///   will be unsatisfiable if x1 = x2. The caller must detect this
 ///   and branch accordingly.
-pub fn point_add<F: FieldOps>(
-    ops: &mut F,
-    x1: F::Elem,
-    y1: F::Elem,
-    x2: F::Elem,
-    y2: F::Elem,
-) -> (F::Elem, F::Elem) {
+pub fn point_add(
+    ops: &mut MultiLimbOps,
+    x1: Limbs,
+    y1: Limbs,
+    x2: Limbs,
+    y2: Limbs,
+) -> (Limbs, Limbs) {
     // Computing lambda = (y2 - y1) / (x2 - x1)
     let numerator = ops.sub(y2, y1);
     let denominator = ops.sub(x2, x1);
@@ -91,12 +91,12 @@ pub fn point_add<F: FieldOps>(
 
 /// Conditional point select without boolean constraint on `flag`.
 /// Caller must ensure `flag` is already constrained boolean.
-pub fn point_select_unchecked<F: FieldOps>(
-    ops: &mut F,
+pub fn point_select_unchecked(
+    ops: &mut MultiLimbOps,
     flag: usize,
-    on_false: (F::Elem, F::Elem),
-    on_true: (F::Elem, F::Elem),
-) -> (F::Elem, F::Elem) {
+    on_false: (Limbs, Limbs),
+    on_true: (Limbs, Limbs),
+) -> (Limbs, Limbs) {
     let x = ops.select_unchecked(flag, on_false.0, on_true.0);
     let y = ops.select_unchecked(flag, on_false.1, on_true.1);
     (x, y)
@@ -106,12 +106,12 @@ pub fn point_select_unchecked<F: FieldOps>(
 ///
 /// T\[0\] = P (dummy entry, used when window digit = 0)
 /// T\[1\] = P, T\[2\] = 2P, T\[i\] = T\[i-1\] + P for i >= 3.
-fn build_point_table<F: FieldOps>(
-    ops: &mut F,
-    px: F::Elem,
-    py: F::Elem,
+fn build_point_table(
+    ops: &mut MultiLimbOps,
+    px: Limbs,
+    py: Limbs,
     table_size: usize,
-) -> Vec<(F::Elem, F::Elem)> {
+) -> Vec<(Limbs, Limbs)> {
     assert!(table_size >= 2);
     let mut table = Vec::with_capacity(table_size);
     table.push((px, py)); // T[0] = P (dummy)
@@ -135,13 +135,13 @@ fn build_point_table<F: FieldOps>(
 ///
 /// Each bit is constrained boolean exactly once, then all subsequent selects
 /// on that bit use the unchecked variant.
-fn table_lookup<F: FieldOps>(
-    ops: &mut F,
-    table: &[(F::Elem, F::Elem)],
+fn table_lookup(
+    ops: &mut MultiLimbOps,
+    table: &[(Limbs, Limbs)],
     bits: &[usize],
-) -> (F::Elem, F::Elem) {
+) -> (Limbs, Limbs) {
     assert_eq!(table.len(), 1 << bits.len());
-    let mut current: Vec<(F::Elem, F::Elem)> = table.to_vec();
+    let mut current: Vec<(Limbs, Limbs)> = table.to_vec();
     // Process bits from MSB to LSB
     for &bit in bits.iter().rev() {
         ops.constrain_flag(bit); // constrain boolean once per bit
@@ -175,29 +175,27 @@ fn table_lookup<F: FieldOps>(
 ///   5. point_add(acc, T_R\[d2\]) + is_zero(d2) + point_select
 ///
 /// Returns the final accumulator (x, y).
-pub fn scalar_mul_glv<F: FieldOps>(
-    ops: &mut F,
+pub fn scalar_mul_glv(
+    ops: &mut MultiLimbOps,
     // Point P (table 1)
-    px: F::Elem,
-    py: F::Elem,
+    px: Limbs,
+    py: Limbs,
     s1_bits: &[usize], // 128 bit witnesses for |s1|
     // Point R (table 2) — the claimed output
-    rx: F::Elem,
-    ry: F::Elem,
+    rx: Limbs,
+    ry: Limbs,
     s2_bits: &[usize], // 128 bit witnesses for |s2|
     // Shared parameters
     window_size: usize,
-    offset_x: F::Elem,
-    offset_y: F::Elem,
-) -> (F::Elem, F::Elem) {
+    offset_x: Limbs,
+    offset_y: Limbs,
+) -> (Limbs, Limbs) {
     let n1 = s1_bits.len();
     let n2 = s2_bits.len();
     assert_eq!(n1, n2, "s1 and s2 must have the same number of bits");
     let n = n1;
     let w = window_size;
     let table_size = 1 << w;
-
-    // TODO : implement lazy overflow as used in gnark.
 
     // Build point tables: T_P[i] = [i]P, T_R[i] = [i]R
     let table_p = build_point_table(ops, px, py, table_size);

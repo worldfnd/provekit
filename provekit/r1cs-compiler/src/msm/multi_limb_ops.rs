@@ -1,12 +1,14 @@
-//! `MultiLimbOps` — unified FieldOps implementation parameterized by runtime
-//! limb count.
+//! `MultiLimbOps` — field arithmetic parameterized by runtime limb count.
 //!
-//! Uses `Limbs` (a fixed-capacity Copy type) as `FieldOps::Elem`, enabling
-//! arbitrary limb counts without const generics or dispatch macros.
+//! Uses `Limbs` (a fixed-capacity Copy type) as the element representation,
+//! enabling arbitrary limb counts without const generics or dispatch macros.
 
 use {
-    super::{multi_limb_arith, FieldOps, Limbs},
-    crate::noir_to_r1cs::NoirToR1CSCompiler,
+    super::{multi_limb_arith, Limbs},
+    crate::{
+        constraint_helpers::{constrain_boolean, pack_bits_helper, select_witness},
+        noir_to_r1cs::NoirToR1CSCompiler,
+    },
     ark_ff::{AdditiveGroup, Field},
     provekit_common::{
         witness::{ConstantTerm, SumTerm, WitnessBuilder},
@@ -28,6 +30,60 @@ pub struct MultiLimbParams {
     pub is_native:       bool,
     /// For N=1 non-native: the modulus as a single FieldElement
     pub modulus_fe:      Option<FieldElement>,
+}
+
+impl MultiLimbParams {
+    /// Build params for EC field operations (mod field_modulus_p).
+    pub fn for_field_modulus(
+        num_limbs: usize,
+        limb_bits: u32,
+        curve: &super::curve::CurveParams,
+    ) -> Self {
+        let is_native = curve.is_native_field();
+        let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
+        let modulus_fe = if !is_native {
+            Some(curve.p_native_fe())
+        } else {
+            None
+        };
+        Self {
+            num_limbs,
+            limb_bits,
+            p_limbs: curve.p_limbs(limb_bits, num_limbs),
+            p_minus_1_limbs: curve.p_minus_1_limbs(limb_bits, num_limbs),
+            two_pow_w,
+            modulus_raw: curve.field_modulus_p,
+            curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
+            is_native,
+            modulus_fe,
+        }
+    }
+
+    /// Build params for scalar relation verification (mod curve_order_n).
+    pub fn for_curve_order(
+        num_limbs: usize,
+        limb_bits: u32,
+        curve: &super::curve::CurveParams,
+    ) -> Self {
+        let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
+        let modulus_fe = if num_limbs == 1 {
+            Some(super::curve::curve_native_point_fe(&curve.curve_order_n))
+        } else {
+            None
+        };
+        Self {
+            num_limbs,
+            limb_bits,
+            p_limbs: curve.curve_order_n_limbs(limb_bits, num_limbs),
+            p_minus_1_limbs: curve.curve_order_n_minus_1_limbs(limb_bits, num_limbs),
+            two_pow_w,
+            modulus_raw: curve.curve_order_n,
+            curve_a_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
+            is_native: false,                                         /* always non-native for
+                                                                       * scalar relation */
+            modulus_fe,
+        }
+    }
 }
 
 /// Unified field operations struct parameterized by runtime limb count.
@@ -56,12 +112,8 @@ impl MultiLimbOps<'_, '_> {
         let zero = self.constant_limbs(&zero_vals);
         self.sub(zero, value)
     }
-}
 
-impl FieldOps for MultiLimbOps<'_, '_> {
-    type Elem = Limbs;
-
-    fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {
+    pub fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {
         debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
         debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
         if self.is_native_single() {
@@ -101,7 +153,7 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         }
     }
 
-    fn sub(&mut self, a: Limbs, b: Limbs) -> Limbs {
+    pub fn sub(&mut self, a: Limbs, b: Limbs) -> Limbs {
         debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
         debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
         if self.is_native_single() {
@@ -142,7 +194,7 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         }
     }
 
-    fn mul(&mut self, a: Limbs, b: Limbs) -> Limbs {
+    pub fn mul(&mut self, a: Limbs, b: Limbs) -> Limbs {
         debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
         debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
         if self.is_native_single() {
@@ -173,7 +225,7 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         }
     }
 
-    fn inv(&mut self, a: Limbs) -> Limbs {
+    pub fn inv(&mut self, a: Limbs) -> Limbs {
         debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
         if self.is_native_single() {
             let a_inv = self.compiler.num_witnesses();
@@ -205,7 +257,7 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         }
     }
 
-    fn curve_a(&mut self) -> Limbs {
+    pub fn curve_a(&mut self) -> Limbs {
         let n = self.n();
         let mut out = Limbs::new(n);
         for i in 0..n {
@@ -224,28 +276,43 @@ impl FieldOps for MultiLimbOps<'_, '_> {
         out
     }
 
-    fn constrain_flag(&mut self, flag: usize) {
-        super::constrain_boolean(self.compiler, flag);
+    /// Constrains `flag` to be boolean (`flag * flag = flag`).
+    pub fn constrain_flag(&mut self, flag: usize) {
+        constrain_boolean(self.compiler, flag);
     }
 
-    fn select_unchecked(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
+    /// Conditional select without boolean constraint on `flag`.
+    /// Caller must ensure `flag` is already constrained boolean.
+    pub fn select_unchecked(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
         let n = self.n();
         let mut out = Limbs::new(n);
         for i in 0..n {
-            out[i] = super::select_witness(self.compiler, flag, on_false[i], on_true[i]);
+            out[i] = select_witness(self.compiler, flag, on_false[i], on_true[i]);
         }
         out
     }
 
-    fn is_zero(&mut self, value: usize) -> usize {
+    /// Conditional select: returns `on_true` if `flag` is 1, `on_false` if
+    /// `flag` is 0. Constrains `flag` to be boolean.
+    pub fn select(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
+        self.constrain_flag(flag);
+        self.select_unchecked(flag, on_false, on_true)
+    }
+
+    /// Checks if a native witness value is zero.
+    /// Returns a boolean witness: 1 if zero, 0 if non-zero.
+    pub fn is_zero(&mut self, value: usize) -> usize {
         multi_limb_arith::compute_is_zero(self.compiler, value)
     }
 
-    fn pack_bits(&mut self, bits: &[usize]) -> usize {
-        super::pack_bits_helper(self.compiler, bits)
+    /// Packs bit witnesses into a single digit witness: `d = Σ bits[i] * 2^i`.
+    /// Does NOT constrain bits to be boolean — caller must ensure that.
+    pub fn pack_bits(&mut self, bits: &[usize]) -> usize {
+        pack_bits_helper(self.compiler, bits)
     }
 
-    fn constant_limbs(&mut self, limbs: &[FieldElement]) -> Limbs {
+    /// Returns a constant field element from its limb decomposition.
+    pub fn constant_limbs(&mut self, limbs: &[FieldElement]) -> Limbs {
         let n = self.n();
         assert_eq!(
             limbs.len(),

@@ -5,46 +5,22 @@
 
 use {
     super::{
-        add_constant_witness, constrain_equal, constrain_to_constant, curve, ec_points,
-        emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, multi_limb_ops,
-        sanitize_point_scalar, scalar_relation, select_witness, FieldOps, Limbs,
+        curve, ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
+        multi_limb_ops::{MultiLimbOps, MultiLimbParams},
+        sanitize_point_scalar, scalar_relation, Limbs,
     },
     crate::{
+        constraint_helpers::{
+            add_constant_witness, constrain_equal, constrain_to_constant, select_witness,
+        },
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{AdditiveGroup, Field},
     curve::{decompose_to_limbs as decompose_to_limbs_pub, CurveParams},
-    multi_limb_ops::{MultiLimbOps, MultiLimbParams},
     provekit_common::{witness::SumTerm, FieldElement},
     std::collections::BTreeMap,
 };
-
-/// Build `MultiLimbParams` for a given runtime `num_limbs`.
-pub(super) fn build_params(
-    num_limbs: usize,
-    limb_bits: u32,
-    curve: &CurveParams,
-) -> MultiLimbParams {
-    let is_native = curve.is_native_field();
-    let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
-    let modulus_fe = if !is_native {
-        Some(curve.p_native_fe())
-    } else {
-        None
-    };
-    MultiLimbParams {
-        num_limbs,
-        limb_bits,
-        p_limbs: curve.p_limbs(limb_bits, num_limbs),
-        p_minus_1_limbs: curve.p_minus_1_limbs(limb_bits, num_limbs),
-        two_pow_w,
-        modulus_raw: curve.field_modulus_p,
-        curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
-        is_native,
-        modulus_fe,
-    }
-}
 
 /// FakeGLV verification for a single point: verifies R = \[s\]P.
 ///
@@ -53,7 +29,7 @@ pub(super) fn build_params(
 /// half-width scalars.
 ///
 /// Returns the mutable references back to the caller for continued use.
-pub(super) fn verify_point_fakeglv<'a>(
+fn verify_point_fakeglv<'a>(
     mut compiler: &'a mut NoirToR1CSCompiler,
     mut range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
     px: Limbs,
@@ -74,7 +50,7 @@ pub(super) fn verify_point_fakeglv<'a>(
     // ---
     let (s1_witness, s2_witness, neg1_witness, neg2_witness);
     {
-        let params = build_params(num_limbs, limb_bits, curve);
+        let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
         let mut ops = MultiLimbOps {
             compiler,
             range_checks,
@@ -185,7 +161,7 @@ pub(super) fn process_multi_point_non_native<'a>(
     let zero_witness = add_constant_witness(compiler, FieldElement::ZERO);
 
     // Build params once for all multi-limb ops in the multi-point path
-    let params = build_params(num_limbs, limb_bits, curve);
+    let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
 
     // Offset point as limbs for accumulation
     let offset_x_values = curve.offset_x_limbs(limb_bits, num_limbs);
@@ -349,7 +325,7 @@ fn verify_on_curve(
 }
 
 /// Decompose a point (px_witness, py_witness) into Limbs.
-pub(super) fn decompose_point_to_limbs(
+fn decompose_point_to_limbs(
     compiler: &mut NoirToR1CSCompiler,
     px_witness: usize,
     py_witness: usize,
