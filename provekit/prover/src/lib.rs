@@ -27,7 +27,9 @@ mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+    fn prove(self, input_map: InputMap) -> Result<NoirProof>;
+
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 }
 
 #[instrument(skip_all)]
@@ -63,11 +65,8 @@ fn generate_noir_witness(
 
 impl Prove for NoirProver {
     #[instrument(skip_all)]
-    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
-
-        let (input_map, _expected_return) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
 
         let acir_witness_idx_to_value_map = generate_noir_witness(&mut self, input_map)?;
         let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
@@ -206,21 +205,21 @@ impl Prove for NoirProver {
             whir_r1cs_proof,
         })
     }
+
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let (input_map, _return_value) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
 }
 
 impl Prove for MavrosProver {
     #[instrument(skip_all)]
-    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
-        let project_path = prover_toml
-            .as_ref()
-            .parent()
-            .context("Could not derive project path from Prover.toml path")?;
-
-        let params =
-            crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
-
+        let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map);
         let phase1 = mavros_interpreter::run_phase1(
             &mut self.witgen_binary,
             self.witness_layout,
@@ -304,13 +303,31 @@ impl Prove for MavrosProver {
             whir_r1cs_proof,
         })
     }
+
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let project_path = prover_toml
+            .as_ref()
+            .parent()
+            .context("Could not derive project path from Prover.toml path")?;
+
+        let input_map =
+            crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
+        self.prove(input_map)
+    }
 }
 
 impl Prove for Prover {
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
-            Prover::Noir(p) => p.prove(prover_toml),
-            Prover::Mavros(p) => p.prove(prover_toml),
+            Prover::Noir(p) => p.prove(input_map),
+            Prover::Mavros(p) => p.prove(input_map),
+        }
+    }
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        match self {
+            Prover::Noir(p) => p.prove_with_toml(prover_toml),
+            Prover::Mavros(p) => p.prove_with_toml(prover_toml),
         }
     }
 }

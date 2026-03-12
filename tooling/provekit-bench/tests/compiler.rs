@@ -44,7 +44,7 @@ fn test_noir_compiler(test_case_path: impl AsRef<Path>) {
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
     let proof = prover
-        .prove(&witness_file_path)
+        .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 
     verifier.verify(&proof).expect("Verifying proof");
