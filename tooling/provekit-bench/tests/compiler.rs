@@ -86,7 +86,8 @@ fn case_noir(path: &str) {
     test_noir_compiler(path);
 }
 
-/// Verify that the verifier rejects a proof whose public inputs have been tampered with. 
+/// Verify that the verifier rejects a proof whose public inputs have been
+/// tampered with.
 #[test]
 fn test_public_input_binding_exploit() {
     use provekit_common::{witness::PublicInputs, FieldElement, HashConfig};
@@ -121,7 +122,8 @@ fn test_public_input_binding_exploit() {
             .expect("Honest proof should verify");
     }
 
-    // Tamper: the committed polynomial encodes result=16 at position 1, but we claim result=42. The verifier should reject this.
+    // Tamper: the committed polynomial encodes result=16 at position 1, but we
+    // claim result=42. The verifier should reject this.
     proof.public_inputs = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
 
     let result = verifier.verify(&proof);

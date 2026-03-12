@@ -167,7 +167,8 @@ pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElemen
 
 /// Create a public weight [`PrefixCovector`] from Fiat-Shamir randomness `x`.
 ///
-/// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs + 1`.
+/// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs +
+/// 1`.
 #[must_use]
 pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -> PrefixCovector {
     let n = num_public_inputs + 1;
