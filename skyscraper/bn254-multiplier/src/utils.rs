@@ -154,8 +154,8 @@ impl MulShift {
 /// Returns a value ≤ ⌊x / P⌋. This is the most precise
 /// approximation achievable without multiplication on ARM64 and x86.
 ///
-/// Tradeoff: due the limited range of this division [0,4] (instead of [0,5] for
-/// u256) will lead to a larger value after subtraction reduction.
+/// Tradeoff: due the limited range of this division \[0,4\] (instead of \[0,5\]
+/// for u256) will lead to a larger value after subtraction reduction.
 /// subtraction reduction output: [0, 1+ε] with ε < 0.3.
 #[inline(always)]
 pub fn div_p_6b(x: u64) -> u64 {
