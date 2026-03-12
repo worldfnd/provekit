@@ -16,10 +16,6 @@ crate-type = ["staticlib"]
 provekit-common.workspace = true
 provekit-prover.workspace = true
 
-# Noir language
-acir.workspace = true
-noirc_abi.workspace = true
-
 # 3rd party
 anyhow.workspace = true
 serde_json.workspace = true
