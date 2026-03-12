@@ -2,6 +2,9 @@
 //!
 //! Used when `!curve.is_native_field()` — uses `MultiLimbOps` for all EC
 //! arithmetic with configurable limb width.
+//!
+//! Multi-point MSM uses merged doublings: all points share a single set of
+//! `w` doublings per window, saving `w × (n_points - 1)` doublings per window.
 
 use {
     super::{
@@ -22,122 +25,10 @@ use {
     std::collections::BTreeMap,
 };
 
-/// FakeGLV verification for a single point: verifies R = \[s\]P.
+/// Multi-point non-native MSM with merged-loop optimization.
 ///
-/// Decomposes s via half-GCD into sub-scalars (s1, s2) and verifies
-/// \[s1\]P + \[s2\]R = O using interleaved windowed scalar mul with
-/// half-width scalars.
-///
-/// Returns the mutable references back to the caller for continued use.
-fn verify_point_fakeglv<'a>(
-    mut compiler: &'a mut NoirToR1CSCompiler,
-    mut range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-    px: Limbs,
-    py: Limbs,
-    rx: Limbs,
-    ry: Limbs,
-    s_lo: usize,
-    s_hi: usize,
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
-    curve: &CurveParams,
-) -> (
-    &'a mut NoirToR1CSCompiler,
-    &'a mut BTreeMap<u32, Vec<usize>>,
-) {
-    // --- Steps 1-4: On-curve checks, FakeGLV decomposition, and GLV scalar mul
-    // ---
-    let (s1_witness, s2_witness, neg1_witness, neg2_witness);
-    {
-        let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
-        let mut ops = MultiLimbOps {
-            compiler,
-            range_checks,
-            params: &params,
-        };
-
-        // Step 1: On-curve checks for P and R
-        let b_limb_values = curve::decompose_to_limbs(&curve.curve_b, limb_bits, num_limbs);
-        verify_on_curve(&mut ops, px, py, &b_limb_values, num_limbs);
-        verify_on_curve(&mut ops, rx, ry, &b_limb_values, num_limbs);
-
-        // Step 2: FakeGLVHint → |s1|, |s2|, neg1, neg2
-        (s1_witness, s2_witness, neg1_witness, neg2_witness) =
-            emit_fakeglv_hint(ops.compiler, s_lo, s_hi, curve);
-
-        // Step 3: Decompose |s1|, |s2| into half_bits bits each
-        let half_bits = curve.glv_half_bits() as usize;
-        let s1_bits = decompose_half_scalar_bits(ops.compiler, s1_witness, half_bits);
-        let s2_bits = decompose_half_scalar_bits(ops.compiler, s2_witness, half_bits);
-
-        // Step 4: Conditionally negate P.y and R.y + GLV scalar mul + identity
-        // check
-
-        // Compute negated y-coordinates: neg_y = 0 - y (mod p)
-        let neg_py = ops.negate(py);
-        let neg_ry = ops.negate(ry);
-
-        // Select: if neg1=1, use neg_py; else use py
-        // neg1 and neg2 are constrained to be boolean by ops.select internally.
-        let py_effective = ops.select(neg1_witness, py, neg_py);
-        // Select: if neg2=1, use neg_ry; else use ry
-        let ry_effective = ops.select(neg2_witness, ry, neg_ry);
-
-        // GLV scalar mul
-        let offset_x_values = curve.offset_x_limbs(limb_bits, num_limbs);
-        let offset_y_values = curve.offset_y_limbs(limb_bits, num_limbs);
-        let offset_x = ops.constant_limbs(&offset_x_values);
-        let offset_y = ops.constant_limbs(&offset_y_values);
-
-        let glv_acc = ec_points::scalar_mul_glv(
-            &mut ops,
-            px,
-            py_effective,
-            &s1_bits,
-            rx,
-            ry_effective,
-            &s2_bits,
-            window_size,
-            offset_x,
-            offset_y,
-        );
-
-        // Identity check: acc should equal [2^(num_windows * window_size)] *
-        // offset_point
-        let glv_num_windows = (half_bits + window_size - 1) / window_size;
-        let glv_n_doublings = glv_num_windows * window_size;
-        let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(glv_n_doublings);
-
-        // Identity check: hardcode expected limb values as R1CS coefficients
-        let acc_off_x_values = decompose_to_limbs_pub(&acc_off_x_raw, limb_bits, num_limbs);
-        let acc_off_y_values = decompose_to_limbs_pub(&acc_off_y_raw, limb_bits, num_limbs);
-        for i in 0..num_limbs {
-            constrain_to_constant(ops.compiler, glv_acc.0[i], acc_off_x_values[i]);
-            constrain_to_constant(ops.compiler, glv_acc.1[i], acc_off_y_values[i]);
-        }
-
-        compiler = ops.compiler;
-        range_checks = ops.range_checks;
-    }
-
-    // --- Step 5: Scalar relation verification ---
-    scalar_relation::verify_scalar_relation(
-        compiler,
-        range_checks,
-        s_lo,
-        s_hi,
-        s1_witness,
-        s2_witness,
-        neg1_witness,
-        neg2_witness,
-        curve,
-    );
-
-    (compiler, range_checks)
-}
-
-/// Multi-point non-native MSM with offset-based accumulation.
+/// All points share a single set of doublings per window, saving
+/// `w × (n_points - 1)` doublings per window compared to separate loops.
 pub(super) fn process_multi_point_non_native<'a>(
     mut compiler: &'a mut NoirToR1CSCompiler,
     point_wits: &[usize],
@@ -160,27 +51,21 @@ pub(super) fn process_multi_point_non_native<'a>(
     let gen_y_witness = add_constant_witness(compiler, gen_y_fe);
     let zero_witness = add_constant_witness(compiler, FieldElement::ZERO);
 
-    // Build params once for all multi-limb ops in the multi-point path
+    // Build params once for all multi-limb ops
     let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
+    let b_limb_values = curve::decompose_to_limbs(&curve.curve_b, limb_bits, num_limbs);
 
     // Offset point as limbs for accumulation
     let offset_x_values = curve.offset_x_limbs(limb_bits, num_limbs);
     let offset_y_values = curve.offset_y_limbs(limb_bits, num_limbs);
 
-    // Start accumulator at offset_point
-    let mut ops = MultiLimbOps {
-        compiler,
-        range_checks,
-        params: &params,
-    };
-    let mut acc_x = ops.constant_limbs(&offset_x_values);
-    let mut acc_y = ops.constant_limbs(&offset_y_values);
-    compiler = ops.compiler;
-    range_checks = ops.range_checks;
-
     // Track all_skipped = product of all is_skip flags
     let mut all_skipped: Option<usize> = None;
+    let mut merged_points: Vec<ec_points::MergedGlvPoint> = Vec::new();
+    let mut scalar_rel_inputs: Vec<(usize, usize, usize, usize, usize, usize)> = Vec::new();
+    let mut accum_inputs: Vec<(Limbs, Limbs, usize)> = Vec::new();
 
+    // Phase 1: Per-point preprocessing
     for i in 0..n_points {
         let san = sanitize_point_scalar(
             compiler,
@@ -209,7 +94,7 @@ pub(super) fn process_multi_point_non_native<'a>(
             curve,
         );
 
-        // Generic multi-limb path
+        // Decompose points to limbs
         let (px, py) =
             decompose_point_to_limbs(compiler, san.px, san.py, num_limbs, limb_bits, range_checks);
         let (rx, ry) = decompose_point_to_limbs(
@@ -221,44 +106,134 @@ pub(super) fn process_multi_point_non_native<'a>(
             range_checks,
         );
 
-        // Verify R_i = [s_i]P_i using FakeGLV (on sanitized values)
-        (compiler, range_checks) = verify_point_fakeglv(
-            compiler,
-            range_checks,
+        // On-curve checks, FakeGLV, bit decomposition, y-negation (via MultiLimbOps)
+        let (s1_witness, s2_witness, neg1_witness, neg2_witness);
+        let (py_effective, ry_effective, s1_bits, s2_bits, s1_skew, s2_skew);
+        {
+            let mut ops = MultiLimbOps {
+                compiler,
+                range_checks,
+                params: &params,
+            };
+
+            // On-curve checks for P and R
+            verify_on_curve(&mut ops, px, py, &b_limb_values, num_limbs);
+            verify_on_curve(&mut ops, rx, ry, &b_limb_values, num_limbs);
+
+            // FakeGLVHint → |s1|, |s2|, neg1, neg2
+            (s1_witness, s2_witness, neg1_witness, neg2_witness) =
+                emit_fakeglv_hint(ops.compiler, san.s_lo, san.s_hi, curve);
+
+            // Signed-bit decomposition of |s1|, |s2| — produces signed digits
+            // d_i = 2*b_i - 1 ∈ {-1, +1} with skew correction, matching the
+            // native path's wNAF approach.
+            let half_bits = curve.glv_half_bits() as usize;
+            (s1_bits, s1_skew) = super::decompose_signed_bits(ops.compiler, s1_witness, half_bits);
+            (s2_bits, s2_skew) = super::decompose_signed_bits(ops.compiler, s2_witness, half_bits);
+
+            // Conditionally negate y-coordinates
+            let neg_py = ops.negate(py);
+            let neg_ry = ops.negate(ry);
+            py_effective = ops.select(neg1_witness, py, neg_py);
+            ry_effective = ops.select(neg2_witness, ry, neg_ry);
+
+            compiler = ops.compiler;
+            range_checks = ops.range_checks;
+        }
+
+        merged_points.push(ec_points::MergedGlvPoint {
             px,
-            py,
+            py: py_effective,
+            s1_bits,
+            s1_skew,
             rx,
-            ry,
+            ry: ry_effective,
+            s2_bits,
+            s2_skew,
+        });
+
+        scalar_rel_inputs.push((
             san.s_lo,
             san.s_hi,
-            num_limbs,
-            limb_bits,
-            window_size,
-            curve,
-        );
+            s1_witness,
+            s2_witness,
+            neg1_witness,
+            neg2_witness,
+        ));
+        accum_inputs.push((rx, ry, san.is_skip));
+    }
 
-        // Offset-based accumulation with conditional select
+    // Phase 2: Merged scalar mul verification (shared doublings across all points)
+    let half_bits = curve.glv_half_bits() as usize;
+    let glv_acc;
+    {
         let mut ops = MultiLimbOps {
             compiler,
             range_checks,
             params: &params,
         };
-        let (cand_x, cand_y) = ec_points::point_add(&mut ops, acc_x, acc_y, rx, ry);
-        let (new_acc_x, new_acc_y) = ec_points::point_select_unchecked(
+        let offset_x = ops.constant_limbs(&offset_x_values);
+        let offset_y = ops.constant_limbs(&offset_y_values);
+
+        glv_acc = ec_points::scalar_mul_merged_glv(
             &mut ops,
-            san.is_skip,
-            (cand_x, cand_y),
-            (acc_x, acc_y),
+            &merged_points,
+            window_size,
+            offset_x,
+            offset_y,
         );
-        acc_x = new_acc_x;
-        acc_y = new_acc_y;
+
+        // Identity check: acc should equal accumulated offset
+        let glv_num_windows = (half_bits + window_size - 1) / window_size;
+        let glv_n_doublings = glv_num_windows * window_size;
+        let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(glv_n_doublings);
+
+        let acc_off_x_values = decompose_to_limbs_pub(&acc_off_x_raw, limb_bits, num_limbs);
+        let acc_off_y_values = decompose_to_limbs_pub(&acc_off_y_raw, limb_bits, num_limbs);
+        for i in 0..num_limbs {
+            constrain_to_constant(ops.compiler, glv_acc.0[i], acc_off_x_values[i]);
+            constrain_to_constant(ops.compiler, glv_acc.1[i], acc_off_y_values[i]);
+        }
+
         compiler = ops.compiler;
         range_checks = ops.range_checks;
     }
 
+    // Phase 3: Per-point scalar relations
+    for &(s_lo, s_hi, s1, s2, neg1, neg2) in &scalar_rel_inputs {
+        scalar_relation::verify_scalar_relation(
+            compiler,
+            range_checks,
+            s_lo,
+            s_hi,
+            s1,
+            s2,
+            neg1,
+            neg2,
+            curve,
+        );
+    }
+
+    // Phase 4: Accumulation (offset-based, same as before)
     let all_skipped = all_skipped.expect("MSM must have at least one point");
 
-    // Generic multi-limb offset subtraction
+    let mut ops = MultiLimbOps {
+        compiler,
+        range_checks,
+        params: &params,
+    };
+    let mut acc_x = ops.constant_limbs(&offset_x_values);
+    let mut acc_y = ops.constant_limbs(&offset_y_values);
+
+    for &(rx, ry, is_skip) in &accum_inputs {
+        let (cand_x, cand_y) = ec_points::point_add(&mut ops, acc_x, acc_y, rx, ry);
+        let (new_acc_x, new_acc_y) =
+            ec_points::point_select_unchecked(&mut ops, is_skip, (cand_x, cand_y), (acc_x, acc_y));
+        acc_x = new_acc_x;
+        acc_y = new_acc_y;
+    }
+
+    // Offset subtraction
     let neg_offset_y_raw =
         curve::negate_field_element(&curve.offset_point.1, &curve.field_modulus_p);
     let neg_offset_y_values = curve::decompose_to_limbs(&neg_offset_y_raw, limb_bits, num_limbs);
@@ -266,12 +241,6 @@ pub(super) fn process_multi_point_non_native<'a>(
     let gen_x_limb_values = curve.generator_x_limbs(limb_bits, num_limbs);
     let neg_gen_y_raw = curve::negate_field_element(&curve.generator.1, &curve.field_modulus_p);
     let neg_gen_y_values = curve::decompose_to_limbs(&neg_gen_y_raw, limb_bits, num_limbs);
-
-    let mut ops = MultiLimbOps {
-        compiler,
-        range_checks,
-        params: &params,
-    };
 
     let sub_x = {
         let off_x = ops.constant_limbs(&offset_x_values);
@@ -380,17 +349,5 @@ fn recompose_limbs(compiler: &mut NoirToR1CSCompiler, limbs: &[usize], limb_bits
     compiler.add_sum(terms)
 }
 
-/// Decomposes a half-scalar witness into `half_bits` bit witnesses (LSB first).
-fn decompose_half_scalar_bits(
-    compiler: &mut NoirToR1CSCompiler,
-    scalar: usize,
-    half_bits: usize,
-) -> Vec<usize> {
-    let log_bases = vec![1usize; half_bits];
-    let dd = add_digital_decomposition(compiler, log_bases, vec![scalar]);
-    let mut bits = Vec::with_capacity(half_bits);
-    for bit_idx in 0..half_bits {
-        bits.push(dd.get_digit_witness_index(bit_idx, 0));
-    }
-    bits
-}
+// `decompose_half_scalar_bits` replaced by `super::decompose_signed_bits`
+// which produces signed digits with skew correction, halving lookup tables.

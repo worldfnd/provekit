@@ -10,14 +10,13 @@ use {
     },
     crate::{
         constraint_helpers::{
-            add_constant_witness, constrain_boolean, constrain_equal, constrain_to_constant,
-            select_witness,
+            add_constant_witness, constrain_equal, constrain_to_constant, select_witness,
         },
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{AdditiveGroup, Field},
+    ark_ff::AdditiveGroup,
     curve::CurveParams,
-    provekit_common::{witness::WitnessBuilder, FieldElement},
+    provekit_common::FieldElement,
     std::collections::BTreeMap,
 };
 
@@ -101,8 +100,8 @@ pub(super) fn process_multi_point_native(
         // FakeGLV decomposition + signed-bit decomposition
         let (s1, s2, neg1, neg2) = emit_fakeglv_hint(compiler, san.s_lo, san.s_hi, curve);
         let half_bits = curve.glv_half_bits() as usize;
-        let (s1_bits, s1_skew) = decompose_signed_bits(compiler, s1, half_bits);
-        let (s2_bits, s2_skew) = decompose_signed_bits(compiler, s2, half_bits);
+        let (s1_bits, s1_skew) = super::decompose_signed_bits(compiler, s1, half_bits);
+        let (s2_bits, s2_skew) = super::decompose_signed_bits(compiler, s2, half_bits);
 
         // Y-negation
         let (py_eff, neg_py_eff) = negate_y_signed_native(compiler, neg1, san.py);
@@ -275,56 +274,4 @@ fn scalar_mul_merged_native_wnaf(
     }
 
     (acc_x, acc_y)
-}
-
-/// Signed-bit decomposition for wNAF scalar multiplication.
-///
-/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
-/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
-///   scalar = Σ d_i * 2^i - skew
-///
-/// Reconstruction constraint (1 linear R1CS):
-///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-///
-/// All bits and skew are boolean-constrained.
-fn decompose_signed_bits(
-    compiler: &mut NoirToR1CSCompiler,
-    scalar: usize,
-    num_bits: usize,
-) -> (Vec<usize>, usize) {
-    let start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::SignedBitHint {
-        output_start: start,
-        scalar,
-        num_bits,
-    });
-    let bits: Vec<usize> = (start..start + num_bits).collect();
-    let skew = start + num_bits;
-
-    // Boolean-constrain each bit and skew
-    for &b in &bits {
-        constrain_boolean(compiler, b);
-    }
-    constrain_boolean(compiler, skew);
-
-    // Reconstruction: scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-    // Rearranged as: scalar + skew + (2^n - 1) - Σ b_i * 2^{i+1} = 0
-    let one = compiler.witness_one();
-    let constant = FieldElement::from(1u128 << num_bits) - FieldElement::ONE;
-    let mut b_terms: Vec<(FieldElement, usize)> = bits
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| (-FieldElement::from(1u128 << (i + 1)), b))
-        .collect();
-    b_terms.push((FieldElement::ONE, scalar));
-    b_terms.push((FieldElement::ONE, skew));
-    b_terms.push((constant, one));
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, one)], &b_terms, &[(
-            FieldElement::ZERO,
-            one,
-        )]);
-
-    (bits, skew)
 }

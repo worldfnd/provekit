@@ -1,5 +1,13 @@
 use {
-    crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
+    crate::{
+        bigint_mod::{
+            add_4limb, bigint_to_fe, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs,
+            divmod, divmod_wide, ec_point_add_with_lambda, ec_point_double_with_lambda,
+            ec_scalar_mul, fe_to_bigint, half_gcd, mod_pow, reconstruct_from_halves,
+            reconstruct_from_u128_limbs, sub_u64, widening_mul,
+        },
+        witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
+    },
     acir::native_types::WitnessMap,
     ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
@@ -49,7 +57,7 @@ fn read_witness_limbs(
             bigint[0] as u128 | ((bigint[1] as u128) << 64)
         })
         .collect();
-    crate::bigint_mod::reconstruct_from_u128_limbs(&limb_values, limb_bits)
+    reconstruct_from_u128_limbs(&limb_values, limb_bits)
 }
 
 /// Write u128 limb values as FieldElement witnesses starting at `start`.
@@ -110,22 +118,16 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 });
             }
             WitnessBuilder::ModularInverse(witness_idx, operand_idx, modulus) => {
-                let a = witness[*operand_idx].unwrap();
-                let a_limbs = a.into_bigint().0;
+                let a_limbs = fe_to_bigint(witness[*operand_idx].unwrap());
                 let m_limbs = modulus.into_bigint().0;
-                // Fermat's little theorem: a^{-1} = a^{m-2} mod m
-                let exp = crate::bigint_mod::sub_u64(&m_limbs, 2);
-                let result_limbs = crate::bigint_mod::mod_pow(&a_limbs, &exp, &m_limbs);
-                witness[*witness_idx] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(result_limbs)).unwrap());
+                let exp = sub_u64(&m_limbs, 2);
+                witness[*witness_idx] = Some(bigint_to_fe(&mod_pow(&a_limbs, &exp, &m_limbs)));
             }
             WitnessBuilder::IntegerQuotient(witness_idx, dividend_idx, divisor) => {
-                let dividend = witness[*dividend_idx].unwrap();
-                let d_limbs = dividend.into_bigint().0;
+                let d_limbs = fe_to_bigint(witness[*dividend_idx].unwrap());
                 let m_limbs = divisor.into_bigint().0;
-                let (quotient, _remainder) = crate::bigint_mod::divmod(&d_limbs, &m_limbs);
-                witness[*witness_idx] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(quotient)).unwrap());
+                let (quotient, _) = divmod(&d_limbs, &m_limbs);
+                witness[*witness_idx] = Some(bigint_to_fe(&quotient));
             }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,
@@ -335,9 +337,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 num_limbs,
             } => {
-                use crate::bigint_mod::{
-                    compute_mul_mod_carries, decompose_to_u128_limbs, divmod_wide, widening_mul,
-                };
                 let n = *num_limbs as usize;
                 let w = *limb_bits;
 
@@ -370,7 +369,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 num_limbs,
             } => {
-                use crate::bigint_mod::{decompose_to_u128_limbs, mod_pow, sub_u64};
                 let n = *num_limbs as usize;
                 let w = *limb_bits;
 
@@ -387,7 +385,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 ..
             } => {
-                use crate::bigint_mod::{add_4limb, cmp_4limb};
                 let w = *limb_bits;
 
                 let a_val = read_witness_limbs(witness, a_limbs, w);
@@ -414,7 +411,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 ..
             } => {
-                use crate::bigint_mod::cmp_4limb;
                 let w = *limb_bits;
 
                 let a_val = read_witness_limbs(witness, a_limbs, w);
@@ -445,17 +441,15 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 s_hi,
                 curve_order,
             } => {
-                // Reconstruct s = s_lo + s_hi * 2^128
-                let s_lo_val = witness[*s_lo].unwrap().into_bigint().0;
-                let s_hi_val = witness[*s_hi].unwrap().into_bigint().0;
-                let s_val: [u64; 4] = [s_lo_val[0], s_lo_val[1], s_hi_val[0], s_hi_val[1]];
+                let s_val = reconstruct_from_halves(
+                    &fe_to_bigint(witness[*s_lo].unwrap()),
+                    &fe_to_bigint(witness[*s_hi].unwrap()),
+                );
 
-                let (val1, val2, neg1, neg2) = crate::bigint_mod::half_gcd(&s_val, curve_order);
+                let (val1, val2, neg1, neg2) = half_gcd(&s_val, curve_order);
 
-                witness[*output_start] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(val1)).unwrap());
-                witness[*output_start + 1] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(val2)).unwrap());
+                witness[*output_start] = Some(bigint_to_fe(&val1));
+                witness[*output_start + 1] = Some(bigint_to_fe(&val2));
                 witness[*output_start + 2] = Some(FieldElement::from(neg1 as u64));
                 witness[*output_start + 3] = Some(FieldElement::from(neg2 as u64));
             }
@@ -466,33 +460,15 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 curve_a,
                 field_modulus_p,
             } => {
-                let px_val = witness[*px].unwrap().into_bigint().0;
-                let py_val = witness[*py].unwrap().into_bigint().0;
+                let px_val = fe_to_bigint(witness[*px].unwrap());
+                let py_val = fe_to_bigint(witness[*py].unwrap());
 
-                // Compute lambda, x3, y3 using bigint_mod helpers
-                use crate::bigint_mod::{mod_add, mod_inverse, mod_sub, mul_mod};
-                let x_sq = mul_mod(&px_val, &px_val, field_modulus_p);
-                let two_x_sq = mod_add(&x_sq, &x_sq, field_modulus_p);
-                let three_x_sq = mod_add(&two_x_sq, &x_sq, field_modulus_p);
-                let numerator = mod_add(&three_x_sq, curve_a, field_modulus_p);
-                let two_y = mod_add(&py_val, &py_val, field_modulus_p);
-                let denom_inv = mod_inverse(&two_y, field_modulus_p);
-                let lambda = mul_mod(&numerator, &denom_inv, field_modulus_p);
+                let (lambda, x3, y3) =
+                    ec_point_double_with_lambda(&px_val, &py_val, curve_a, field_modulus_p);
 
-                let lambda_sq = mul_mod(&lambda, &lambda, field_modulus_p);
-                let two_x = mod_add(&px_val, &px_val, field_modulus_p);
-                let x3 = mod_sub(&lambda_sq, &two_x, field_modulus_p);
-
-                let x_minus_x3 = mod_sub(&px_val, &x3, field_modulus_p);
-                let lambda_dx = mul_mod(&lambda, &x_minus_x3, field_modulus_p);
-                let y3 = mod_sub(&lambda_dx, &py_val, field_modulus_p);
-
-                witness[*output_start] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(lambda)).unwrap());
-                witness[*output_start + 1] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(x3)).unwrap());
-                witness[*output_start + 2] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(y3)).unwrap());
+                witness[*output_start] = Some(bigint_to_fe(&lambda));
+                witness[*output_start + 1] = Some(bigint_to_fe(&x3));
+                witness[*output_start + 2] = Some(bigint_to_fe(&y3));
             }
             WitnessBuilder::EcAddHint {
                 output_start,
@@ -502,31 +478,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 y2,
                 field_modulus_p,
             } => {
-                let x1_val = witness[*x1].unwrap().into_bigint().0;
-                let y1_val = witness[*y1].unwrap().into_bigint().0;
-                let x2_val = witness[*x2].unwrap().into_bigint().0;
-                let y2_val = witness[*y2].unwrap().into_bigint().0;
+                let x1_val = fe_to_bigint(witness[*x1].unwrap());
+                let y1_val = fe_to_bigint(witness[*y1].unwrap());
+                let x2_val = fe_to_bigint(witness[*x2].unwrap());
+                let y2_val = fe_to_bigint(witness[*y2].unwrap());
 
-                use crate::bigint_mod::{mod_add, mod_inverse, mod_sub, mul_mod};
-                let numerator = mod_sub(&y2_val, &y1_val, field_modulus_p);
-                let denominator = mod_sub(&x2_val, &x1_val, field_modulus_p);
-                let denom_inv = mod_inverse(&denominator, field_modulus_p);
-                let lambda = mul_mod(&numerator, &denom_inv, field_modulus_p);
+                let (lambda, x3, y3) =
+                    ec_point_add_with_lambda(&x1_val, &y1_val, &x2_val, &y2_val, field_modulus_p);
 
-                let lambda_sq = mul_mod(&lambda, &lambda, field_modulus_p);
-                let x1_plus_x2 = mod_add(&x1_val, &x2_val, field_modulus_p);
-                let x3 = mod_sub(&lambda_sq, &x1_plus_x2, field_modulus_p);
-
-                let x1_minus_x3 = mod_sub(&x1_val, &x3, field_modulus_p);
-                let lambda_dx = mul_mod(&lambda, &x1_minus_x3, field_modulus_p);
-                let y3 = mod_sub(&lambda_dx, &y1_val, field_modulus_p);
-
-                witness[*output_start] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(lambda)).unwrap());
-                witness[*output_start + 1] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(x3)).unwrap());
-                witness[*output_start + 2] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(y3)).unwrap());
+                witness[*output_start] = Some(bigint_to_fe(&lambda));
+                witness[*output_start + 1] = Some(bigint_to_fe(&x3));
+                witness[*output_start + 2] = Some(bigint_to_fe(&y3));
             }
             WitnessBuilder::EcScalarMulHint {
                 output_start,
@@ -537,28 +499,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 curve_a,
                 field_modulus_p,
             } => {
-                // Reconstruct scalar s = s_lo + s_hi * 2^128
-                let s_lo_val = witness[*s_lo].unwrap().into_bigint().0;
-                let s_hi_val = witness[*s_hi].unwrap().into_bigint().0;
-                let scalar: [u64; 4] = [s_lo_val[0], s_lo_val[1], s_hi_val[0], s_hi_val[1]];
-
-                // Reconstruct point P
-                let px_val = witness[*px].unwrap().into_bigint().0;
-                let py_val = witness[*py].unwrap().into_bigint().0;
-
-                // Compute R = [s]P
-                let (rx, ry) = crate::bigint_mod::ec_scalar_mul(
-                    &px_val,
-                    &py_val,
-                    &scalar,
-                    curve_a,
-                    field_modulus_p,
+                let scalar = reconstruct_from_halves(
+                    &fe_to_bigint(witness[*s_lo].unwrap()),
+                    &fe_to_bigint(witness[*s_hi].unwrap()),
                 );
+                let px_val = fe_to_bigint(witness[*px].unwrap());
+                let py_val = fe_to_bigint(witness[*py].unwrap());
 
-                witness[*output_start] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(rx)).unwrap());
-                witness[*output_start + 1] =
-                    Some(FieldElement::from_bigint(ark_ff::BigInt(ry)).unwrap());
+                let (rx, ry) = ec_scalar_mul(&px_val, &py_val, &scalar, curve_a, field_modulus_p);
+
+                witness[*output_start] = Some(bigint_to_fe(&rx));
+                witness[*output_start + 1] = Some(bigint_to_fe(&ry));
             }
             WitnessBuilder::SelectWitness {
                 output,
@@ -583,6 +534,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
             } => {
                 let s_fe = witness[*scalar].unwrap();
                 let s_big = s_fe.into_bigint().0;
+                // NOTE: Only reads lower 128 bits. Safe for FakeGLV half-scalars
+                // (≤128 bits for 256-bit curves) but would silently truncate
+                // larger values. The R1CS reconstruction constraint catches this.
                 let s_val: u128 = s_big[0] as u128 | ((s_big[1] as u128) << 64);
                 let n = *num_bits;
                 let skew: u128 = if s_val & 1 == 0 { 1 } else { 0 };

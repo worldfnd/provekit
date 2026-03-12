@@ -3,6 +3,7 @@
 /// These helpers compute modular inverse via Fermat's little theorem:
 /// a^{-1} = a^{m-2} mod m, using schoolbook multiplication and
 /// square-and-multiply exponentiation.
+use {ark_ff::PrimeField, provekit_common::FieldElement};
 
 /// Schoolbook multiplication: 4×4 limbs → 8 limbs (256-bit × 256-bit →
 /// 512-bit).
@@ -528,6 +529,26 @@ fn mul_mod_no_reduce(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 }
 
 // ---------------------------------------------------------------------------
+// Conversion helpers
+// ---------------------------------------------------------------------------
+
+/// Convert a `[u64; 4]` bigint to a `FieldElement`.
+pub fn bigint_to_fe(val: &[u64; 4]) -> FieldElement {
+    FieldElement::from_bigint(ark_ff::BigInt(*val)).unwrap()
+}
+
+/// Read a `FieldElement` witness as a `[u64; 4]` bigint.
+pub fn fe_to_bigint(fe: FieldElement) -> [u64; 4] {
+    fe.into_bigint().0
+}
+
+/// Reconstruct a 256-bit scalar from two 128-bit halves: `scalar = lo + hi *
+/// 2^128`.
+pub fn reconstruct_from_halves(lo: &[u64; 4], hi: &[u64; 4]) -> [u64; 4] {
+    [lo[0], lo[1], hi[0], hi[1]]
+}
+
+// ---------------------------------------------------------------------------
 // Modular arithmetic helpers for EC operations (prover-side)
 // ---------------------------------------------------------------------------
 
@@ -564,15 +585,15 @@ pub fn mod_inverse(a: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
     mod_pow(a, &exp, p)
 }
 
-/// EC point doubling in affine coordinates on y^2 = x^3 + ax + b.
-/// Returns (x3, y3) = 2*(px, py).
-pub fn ec_point_double(
+/// EC point doubling with lambda exposed: returns (lambda, x3, y3).
+///
+/// Used by the `EcDoubleHint` prover which needs lambda as a witness.
+pub fn ec_point_double_with_lambda(
     px: &[u64; 4],
     py: &[u64; 4],
     a: &[u64; 4],
     p: &[u64; 4],
-) -> ([u64; 4], [u64; 4]) {
-    // lambda = (3*x^2 + a) / (2*y)
+) -> ([u64; 4], [u64; 4], [u64; 4]) {
     let x_sq = mul_mod(px, px, p);
     let two_x_sq = mod_add(&x_sq, &x_sq, p);
     let three_x_sq = mod_add(&two_x_sq, &x_sq, p);
@@ -581,17 +602,53 @@ pub fn ec_point_double(
     let denom_inv = mod_inverse(&two_y, p);
     let lambda = mul_mod(&numerator, &denom_inv, p);
 
-    // x3 = lambda^2 - 2*x
     let lambda_sq = mul_mod(&lambda, &lambda, p);
     let two_x = mod_add(px, px, p);
     let x3 = mod_sub(&lambda_sq, &two_x, p);
 
-    // y3 = lambda * (x - x3) - y
     let x_minus_x3 = mod_sub(px, &x3, p);
     let lambda_dx = mul_mod(&lambda, &x_minus_x3, p);
     let y3 = mod_sub(&lambda_dx, py, p);
 
+    (lambda, x3, y3)
+}
+
+/// EC point doubling in affine coordinates on y^2 = x^3 + ax + b.
+/// Returns (x3, y3) = 2*(px, py).
+pub fn ec_point_double(
+    px: &[u64; 4],
+    py: &[u64; 4],
+    a: &[u64; 4],
+    p: &[u64; 4],
+) -> ([u64; 4], [u64; 4]) {
+    let (_, x3, y3) = ec_point_double_with_lambda(px, py, a, p);
     (x3, y3)
+}
+
+/// EC point addition with lambda exposed: returns (lambda, x3, y3).
+///
+/// Used by the `EcAddHint` prover which needs lambda as a witness.
+pub fn ec_point_add_with_lambda(
+    p1x: &[u64; 4],
+    p1y: &[u64; 4],
+    p2x: &[u64; 4],
+    p2y: &[u64; 4],
+    p: &[u64; 4],
+) -> ([u64; 4], [u64; 4], [u64; 4]) {
+    let numerator = mod_sub(p2y, p1y, p);
+    let denominator = mod_sub(p2x, p1x, p);
+    let denom_inv = mod_inverse(&denominator, p);
+    let lambda = mul_mod(&numerator, &denom_inv, p);
+
+    let lambda_sq = mul_mod(&lambda, &lambda, p);
+    let x1_plus_x2 = mod_add(p1x, p2x, p);
+    let x3 = mod_sub(&lambda_sq, &x1_plus_x2, p);
+
+    let x1_minus_x3 = mod_sub(p1x, &x3, p);
+    let lambda_dx = mul_mod(&lambda, &x1_minus_x3, p);
+    let y3 = mod_sub(&lambda_dx, p1y, p);
+
+    (lambda, x3, y3)
 }
 
 /// EC point addition in affine coordinates on y^2 = x^3 + ax + b.
@@ -603,22 +660,7 @@ pub fn ec_point_add(
     p2y: &[u64; 4],
     p: &[u64; 4],
 ) -> ([u64; 4], [u64; 4]) {
-    // lambda = (y2 - y1) / (x2 - x1)
-    let numerator = mod_sub(p2y, p1y, p);
-    let denominator = mod_sub(p2x, p1x, p);
-    let denom_inv = mod_inverse(&denominator, p);
-    let lambda = mul_mod(&numerator, &denom_inv, p);
-
-    // x3 = lambda^2 - x1 - x2
-    let lambda_sq = mul_mod(&lambda, &lambda, p);
-    let x1_plus_x2 = mod_add(p1x, p2x, p);
-    let x3 = mod_sub(&lambda_sq, &x1_plus_x2, p);
-
-    // y3 = lambda * (x1 - x3) - y1
-    let x1_minus_x3 = mod_sub(p1x, &x3, p);
-    let lambda_dx = mul_mod(&lambda, &x1_minus_x3, p);
-    let y3 = mod_sub(&lambda_dx, p1y, p);
-
+    let (_, x3, y3) = ec_point_add_with_lambda(p1x, p1y, p2x, p2y, p);
     (x3, y3)
 }
 

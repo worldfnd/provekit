@@ -141,62 +141,86 @@ pub fn calculate_msm_witness_cost(
     let n = ceil_div(curve_modulus_bits as usize, limb_bits as usize);
     let half_bits = (scalar_bits + 1) / 2;
     let w = window_size;
-    let table_size = 1usize << w;
+    let half_table_size = 1usize << (w - 1);
     let num_windows = ceil_div(half_bits, w);
 
     // === GLV scalar mul field op counts ===
     // point_double: (5 add, 3 sub, 4 mul, 1 inv) + N constant witnesses (curve_a)
     // point_add:    (1 add, 5 sub, 3 mul, 1 inv)
 
-    // Table building (2 tables for P and R)
-    let (tbl_d, tbl_a) = if table_size > 2 {
-        (1, table_size - 3)
+    // --- Shared costs (counted once, NOT per-point) ---
+    // Main loop doublings: w doublings per window, shared across all points
+    let mut shared_add = num_windows * w * 5;
+    let mut shared_sub = num_windows * w * 3;
+    let mut shared_mul = num_windows * w * 4;
+    let mut shared_inv = num_windows * w;
+
+    // --- Per-point costs ---
+    // Signed table building (2 tables for P and R): odd multiples [P, 3P, 5P, ...]
+    // Build cost: 1 double (for 2P) + (half_table_size - 1) adds when size >= 2.
+    let (tbl_d, tbl_a) = if half_table_size >= 2 {
+        (1, half_table_size - 1)
     } else {
         (0, 0)
     };
-    let mut n_add = 2 * (tbl_d * 5 + tbl_a * 1);
-    let mut n_sub = 2 * (tbl_d * 3 + tbl_a * 5);
-    let mut n_mul = 2 * (tbl_d * 4 + tbl_a * 3);
-    let mut n_inv = 2 * (tbl_d + tbl_a);
+    let mut pp_add = 2 * (tbl_d * 5 + tbl_a * 1);
+    let mut pp_sub = 2 * (tbl_d * 3 + tbl_a * 5);
+    let mut pp_mul = 2 * (tbl_d * 4 + tbl_a * 3);
+    let mut pp_inv = 2 * (tbl_d + tbl_a);
 
-    // Main loop: w shared doublings + 2 point_adds per window
-    n_add += num_windows * (w * 5 + 2 * 1);
-    n_sub += num_windows * (w * 3 + 2 * 5);
-    n_mul += num_windows * (w * 4 + 2 * 3);
-    n_inv += num_windows * (w + 2);
+    // Main loop per-point: 2 point_adds + 2 negates per window
+    pp_add += num_windows * 2 * 1;
+    pp_sub += num_windows * (2 * 5 + 2); // +2 for signed lookup negates
+    pp_mul += num_windows * 2 * 3;
+    pp_inv += num_windows * 2;
+
+    // Skew corrections: 2 branches × (1 negate + 1 point_add) per point
+    pp_add += 2 * 1;
+    pp_sub += 2 * (5 + 1); // point_add subs + negate sub
+    pp_mul += 2 * 3;
+    pp_inv += 2;
 
     // On-curve checks (P and R): 2 × (4 mul + 2 add)
-    n_mul += 8;
-    n_add += 4;
+    pp_mul += 8;
+    pp_add += 4;
 
-    // Y-negation: 2 negate = 2 sub (negate calls sub(zero, value))
-    n_sub += 2;
+    // Y-negation (FakeGLV): 2 negate = 2 sub
+    pp_sub += 2;
 
-    let glv_field_ops = field_op_witnesses(n_add, n_sub, n_mul, n_inv, n, false);
+    let shared_field_ops =
+        field_op_witnesses(shared_add, shared_sub, shared_mul, shared_inv, n, false);
+    let pp_field_ops = field_op_witnesses(pp_add, pp_sub, pp_mul, pp_inv, n, false);
 
     // Constant witness allocations not captured by field ops:
     // - curve_a() in each point_double: N per call
     // - on-curve: 2 × (curve_a + curve_b) = 4N
-    // - negate: 2 × constant_limbs(zero) = 2N
-    // - offset point in verify_point_fakeglv: 2N
-    let n_doubles = 2 * tbl_d + num_windows * w;
-    let glv_constants = n_doubles * n + 4 * n + 2 * n + 2 * n;
+    // - negate zeros: FakeGLV(2) + signed_lookup(2*num_windows) + skew(2) =
+    //   (4+2*num_windows)×N
+    // - offset point: 2N (shared)
+    let shared_doubles = num_windows * w;
+    let pp_doubles = 2 * tbl_d;
+    let pp_negate_zeros = (4 + 2 * num_windows) * n;
+    let shared_constants_glv = shared_doubles * n + 2 * n; // shared double curve_a + offset
+    let pp_constants = pp_doubles * n + 4 * n + pp_negate_zeros;
 
-    // Selects + is_zero (not field ops, priced separately)
-    let table_selects = num_windows * 2 * ((1 << w) - 1) * 2 * n;
-    let skip_selects = num_windows * 2 * 2 * n;
+    // Selects (not field ops, priced separately)
+    // Signed table: halved from 2^w to 2^(w-1) entries
+    let table_selects = num_windows * 2 * (half_table_size.saturating_sub(1)) * 2 * n;
+    // XOR bits for signed lookup: 2 witnesses per bit, (w-1) bits, 2 branches
+    let xor_cost = num_windows * 2 * 2 * w.saturating_sub(1);
+    // Y-select after negate in signed lookup: 2 branches per window
+    let signed_y_selects = num_windows * 2 * n;
+    // FakeGLV y-negation selects
     let y_negate_selects = 2 * n;
-    let is_zero_cost = num_windows * 2 * 3; // 3 native witnesses each
+    // Skew correction selects: 2 branches × 2 (x+y)
+    let skew_selects = 2 * 2 * n;
 
-    let glv_cost = glv_field_ops
-        + glv_constants
-        + table_selects
-        + skip_selects
-        + y_negate_selects
-        + is_zero_cost;
+    let pp_selects = table_selects + xor_cost + signed_y_selects + y_negate_selects + skew_selects;
 
     // === Per-point overhead ===
-    let scalar_bit_decomp = 2 * half_bits;
+    // Signed-bit decomposition: num_bits bits + 1 skew per half-scalar, 2
+    // half-scalars
+    let scalar_bit_decomp = 2 * (half_bits + 1);
     let detect_skip = 8; // 2×is_zero(3W) + product(1W) + or(1W)
     let sanitize = 4; // 4 select_witness
     let ec_hint = 4; // 2W hint + 2W selects
@@ -204,7 +228,9 @@ pub fn calculate_msm_witness_cost(
     let glv_hint = 4; // s1, s2, neg1, neg2
     let (sr_witnesses, sr_range_checks) = scalar_relation_cost(native_field_bits, scalar_bits);
 
-    let per_point = glv_cost
+    let per_point = pp_field_ops
+        + pp_constants
+        + pp_selects
         + scalar_bit_decomp
         + detect_skip
         + sanitize
@@ -227,12 +253,25 @@ pub fn calculate_msm_witness_cost(
     // === Range check resolution ===
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
 
-    // GLV field ops (per point)
+    // Shared GLV field ops (doublings — counted once)
     add_field_op_range_checks(
-        n_points * n_add,
-        n_points * n_sub,
-        n_points * n_mul,
-        n_points * n_inv,
+        shared_add,
+        shared_sub,
+        shared_mul,
+        shared_inv,
+        n,
+        limb_bits,
+        curve_modulus_bits,
+        false,
+        &mut rc_map,
+    );
+
+    // Per-point GLV field ops
+    add_field_op_range_checks(
+        n_points * pp_add,
+        n_points * pp_sub,
+        n_points * pp_mul,
+        n_points * pp_inv,
         n,
         limb_bits,
         curve_modulus_bits,
@@ -265,7 +304,12 @@ pub fn calculate_msm_witness_cost(
 
     let range_check_cost = crate::range_check::estimate_range_check_cost(&rc_map);
 
-    n_points * per_point + shared_constants + accum + range_check_cost
+    shared_field_ops
+        + shared_constants_glv
+        + n_points * per_point
+        + shared_constants
+        + accum
+        + range_check_cost
 }
 
 /// Native-field MSM cost: hint-verified EC ops with signed-bit wNAF (w=1).

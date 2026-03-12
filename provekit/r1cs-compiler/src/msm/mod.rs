@@ -15,7 +15,7 @@ use {
         msm::multi_limb_arith::compute_is_zero,
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{Field, PrimeField},
+    ark_ff::{AdditiveGroup, Field, PrimeField},
     curve::CurveParams,
     provekit_common::{
         witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
@@ -352,6 +352,65 @@ fn emit_fakeglv_hint(
         curve_order: curve.curve_order_n,
     });
     (glv_start, glv_start + 1, glv_start + 2, glv_start + 3)
+}
+
+/// Signed-bit decomposition for wNAF scalar multiplication.
+///
+/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
+/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
+///   scalar = Σ d_i * 2^i - skew
+///
+/// Reconstruction constraint (1 linear R1CS):
+///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+///
+/// All bits and skew are boolean-constrained.
+///
+/// # Limitation
+/// The prover's `SignedBitHint` solver reads the scalar as a `u128` (lower
+/// 128 bits of the field element). This is correct for FakeGLV half-scalars
+/// (≤128 bits for 256-bit curves) but would silently truncate if `num_bits`
+/// exceeds 128. The R1CS reconstruction constraint would then fail.
+pub(super) fn decompose_signed_bits(
+    compiler: &mut NoirToR1CSCompiler,
+    scalar: usize,
+    num_bits: usize,
+) -> (Vec<usize>, usize) {
+    let start = compiler.num_witnesses();
+    compiler.add_witness_builder(WitnessBuilder::SignedBitHint {
+        output_start: start,
+        scalar,
+        num_bits,
+    });
+    let bits: Vec<usize> = (start..start + num_bits).collect();
+    let skew = start + num_bits;
+
+    // Boolean-constrain each bit and skew
+    for &b in &bits {
+        constrain_boolean(compiler, b);
+    }
+    constrain_boolean(compiler, skew);
+
+    // Reconstruction: scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+    // Rearranged as: scalar + skew + (2^n - 1) - Σ b_i * 2^{i+1} = 0
+    let one = compiler.witness_one();
+    let two = FieldElement::from(2u64);
+    let constant = two.pow([num_bits as u64]) - FieldElement::ONE;
+    let mut b_terms: Vec<(FieldElement, usize)> = bits
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| (-two.pow([(i + 1) as u64]), b))
+        .collect();
+    b_terms.push((FieldElement::ONE, scalar));
+    b_terms.push((FieldElement::ONE, skew));
+    b_terms.push((constant, one));
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, one)], &b_terms, &[(
+            FieldElement::ZERO,
+            one,
+        )]);
+
+    (bits, skew)
 }
 
 /// Resolves a `ConstantOrR1CSWitness` to a witness index.
