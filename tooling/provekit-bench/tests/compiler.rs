@@ -111,7 +111,7 @@ fn test_public_input_binding_exploit() {
 
     // Prove honestly (a=5, b=3 → result = (5+3)*(5-3) = 16)
     let mut proof = prover
-        .prove(&witness_file_path)
+        .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 
     // Sanity: honest proof should verify
