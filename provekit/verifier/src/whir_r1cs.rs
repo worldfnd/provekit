@@ -136,8 +136,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
             let mut evaluations_1 = if !public_inputs.is_empty() {
                 let public_1: FieldElement = arthur
-                    .prover_hint_ark()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
+                verify_public_input_binding(public_1, x, public_inputs)?;
                 weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
@@ -181,8 +182,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
             let mut evaluations = if !public_inputs.is_empty() {
                 let public_eval: FieldElement = arthur
-                    .prover_hint_ark()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
+                verify_public_input_binding(public_eval, x, public_inputs)?;
                 weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
@@ -272,4 +274,22 @@ pub fn run_sumcheck_verifier(
         blinding_eval,
         f_at_alpha,
     })
+}
+
+/// Verify that the prover's claimed public evaluation matches the known public
+/// inputs. The weight covers positions `[0, 1, ..., N]` where position 0 is the
+/// R1CS constant `1` and positions `1..=N` are the public inputs.
+fn verify_public_input_binding(
+    public_eval: FieldElement,
+    x: FieldElement,
+    public_inputs: &PublicInputs,
+) -> Result<()> {
+    let mut expected = FieldElement::one();
+    let mut x_pow = x;
+    for &pi in &public_inputs.0 {
+        expected += x_pow * pi;
+        x_pow *= x;
+    }
+    ensure!(public_eval == expected, "Public input binding check failed");
+    Ok(())
 }

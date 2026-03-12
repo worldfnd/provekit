@@ -85,3 +85,48 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 fn case_noir(path: &str) {
     test_noir_compiler(path);
 }
+
+/// Verify that the verifier rejects a proof whose public inputs have been tampered with. 
+#[test]
+fn test_public_input_binding_exploit() {
+    use provekit_common::{witness::PublicInputs, FieldElement, HashConfig};
+
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+
+    compile_workspace(test_case_path).expect("Compiling workspace");
+
+    let nargo_toml_path = test_case_path.join("Nargo.toml");
+    let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
+    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
+    let package_name = nargo_toml.package.name;
+
+    let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+    let witness_file_path = test_case_path.join("Prover.toml");
+
+    let schema = NoirCompiler::from_file(&circuit_path, HashConfig::default())
+        .expect("Reading proof scheme");
+    let prover = Prover::from_noir_proof_scheme(schema.clone());
+    let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
+
+    // Prove honestly (a=5, b=3 → result = (5+3)*(5-3) = 16)
+    let mut proof = prover
+        .prove(&witness_file_path)
+        .expect("While proving Noir program statement");
+
+    // Sanity: honest proof should verify
+    {
+        let mut honest_verifier = Verifier::from_noir_proof_scheme(schema);
+        honest_verifier
+            .verify(&proof)
+            .expect("Honest proof should verify");
+    }
+
+    // Tamper: the committed polynomial encodes result=16 at position 1, but we claim result=42. The verifier should reject this.
+    proof.public_inputs = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
+
+    let result = verifier.verify(&proof);
+    assert!(
+        result.is_err(),
+        "Verification should fail when public inputs are tampered, but it succeeded",
+    );
+}
