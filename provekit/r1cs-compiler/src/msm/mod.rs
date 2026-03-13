@@ -5,21 +5,21 @@ pub(crate) mod multi_limb_arith;
 pub(crate) mod multi_limb_ops;
 mod native;
 mod non_native;
+mod sanitize;
 mod scalar_relation;
+#[cfg(test)]
+mod tests;
 
+// Re-export sanitize helpers so submodules (native, non_native) can use
+// `super::sanitize_point_scalar` etc.
 use {
-    crate::{
-        constraint_helpers::{
-            add_constant_witness, compute_boolean_or, constrain_boolean, select_witness,
-        },
-        msm::multi_limb_arith::compute_is_zero,
-        noir_to_r1cs::NoirToR1CSCompiler,
-    },
-    ark_ff::{AdditiveGroup, Field, PrimeField},
+    crate::{constraint_helpers::add_constant_witness, noir_to_r1cs::NoirToR1CSCompiler},
+    ark_ff::PrimeField,
     curve::CurveParams,
-    provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
-        FieldElement,
+    provekit_common::witness::ConstantOrR1CSWitness,
+    sanitize::{
+        decompose_signed_bits, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
+        negate_y_signed_native, sanitize_point_scalar,
     },
     std::collections::BTreeMap,
 };
@@ -120,99 +120,6 @@ impl std::ops::IndexMut<usize> for Limbs {
 }
 
 // ---------------------------------------------------------------------------
-// Private helpers (MSM-specific)
-// ---------------------------------------------------------------------------
-
-/// Detects whether a point-scalar pair is degenerate (scalar=0 or point at
-/// infinity). Constrains `inf_flag` to boolean. Returns `is_skip` (1 if
-/// degenerate).
-fn detect_skip(
-    compiler: &mut NoirToR1CSCompiler,
-    s_lo: usize,
-    s_hi: usize,
-    inf_flag: usize,
-) -> usize {
-    constrain_boolean(compiler, inf_flag);
-    let is_zero_s_lo = compute_is_zero(compiler, s_lo);
-    let is_zero_s_hi = compute_is_zero(compiler, s_hi);
-    let s_is_zero = compiler.add_product(is_zero_s_lo, is_zero_s_hi);
-    compute_boolean_or(compiler, s_is_zero, inf_flag)
-}
-
-/// Sanitized point-scalar inputs after degenerate-case detection.
-struct SanitizedInputs {
-    px:      usize,
-    py:      usize,
-    s_lo:    usize,
-    s_hi:    usize,
-    is_skip: usize,
-}
-
-/// Detects degenerate cases (scalar=0 or point at infinity) and replaces
-/// the point with the generator G and scalar with 1 when degenerate.
-fn sanitize_point_scalar(
-    compiler: &mut NoirToR1CSCompiler,
-    px: usize,
-    py: usize,
-    s_lo: usize,
-    s_hi: usize,
-    inf_flag: usize,
-    gen_x: usize,
-    gen_y: usize,
-    zero: usize,
-    one: usize,
-) -> SanitizedInputs {
-    let is_skip = detect_skip(compiler, s_lo, s_hi, inf_flag);
-    SanitizedInputs {
-        px: select_witness(compiler, is_skip, px, gen_x),
-        py: select_witness(compiler, is_skip, py, gen_y),
-        s_lo: select_witness(compiler, is_skip, s_lo, one),
-        s_hi: select_witness(compiler, is_skip, s_hi, zero),
-        is_skip,
-    }
-}
-
-/// Negate a y-coordinate and conditionally select based on a sign flag.
-/// Returns `(y_eff, neg_y_eff)` where:
-///   - if `neg_flag=0`: `y_eff = y`,     `neg_y_eff = -y`
-///   - if `neg_flag=1`: `y_eff = -y`,    `neg_y_eff = y`
-fn negate_y_signed_native(
-    compiler: &mut NoirToR1CSCompiler,
-    neg_flag: usize,
-    y: usize,
-) -> (usize, usize) {
-    constrain_boolean(compiler, neg_flag);
-    let neg_y = compiler.add_sum(vec![SumTerm(Some(-FieldElement::ONE), y)]);
-    let y_eff = select_witness(compiler, neg_flag, y, neg_y);
-    let neg_y_eff = select_witness(compiler, neg_flag, neg_y, y);
-    (y_eff, neg_y_eff)
-}
-
-/// Emit an `EcScalarMulHint` and sanitize the result point.
-/// When `is_skip=1`, the result is swapped to the generator point.
-fn emit_ec_scalar_mul_hint_and_sanitize(
-    compiler: &mut NoirToR1CSCompiler,
-    san: &SanitizedInputs,
-    gen_x_witness: usize,
-    gen_y_witness: usize,
-    curve: &CurveParams,
-) -> (usize, usize) {
-    let hint_start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::EcScalarMulHint {
-        output_start:    hint_start,
-        px:              san.px,
-        py:              san.py,
-        s_lo:            san.s_lo,
-        s_hi:            san.s_hi,
-        curve_a:         curve.curve_a,
-        field_modulus_p: curve.field_modulus_p,
-    });
-    let rx = select_witness(compiler, san.is_skip, hint_start, gen_x_witness);
-    let ry = select_witness(compiler, san.is_skip, hint_start + 1, gen_y_witness);
-    (rx, ry)
-}
-
-// ---------------------------------------------------------------------------
 // MSM entry point
 // ---------------------------------------------------------------------------
 
@@ -256,7 +163,7 @@ pub fn add_msm_with_curve(
         return;
     }
 
-    let native_bits = FieldElement::MODULUS_BIT_SIZE;
+    let native_bits = provekit_common::FieldElement::MODULUS_BIT_SIZE;
     let curve_bits = curve.modulus_bits();
     let is_native = curve.is_native_field();
     let n_points: usize = msm_ops.iter().map(|(pts, ..)| pts.len() / 3).sum();
@@ -337,82 +244,6 @@ fn add_single_msm(
     }
 }
 
-/// Allocates a FakeGLV hint and returns `(s1, s2, neg1, neg2)` witness indices.
-fn emit_fakeglv_hint(
-    compiler: &mut NoirToR1CSCompiler,
-    s_lo: usize,
-    s_hi: usize,
-    curve: &CurveParams,
-) -> (usize, usize, usize, usize) {
-    let glv_start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::FakeGLVHint {
-        output_start: glv_start,
-        s_lo,
-        s_hi,
-        curve_order: curve.curve_order_n,
-    });
-    (glv_start, glv_start + 1, glv_start + 2, glv_start + 3)
-}
-
-/// Signed-bit decomposition for wNAF scalar multiplication.
-///
-/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
-/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
-///   scalar = Σ d_i * 2^i - skew
-///
-/// Reconstruction constraint (1 linear R1CS):
-///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-///
-/// All bits and skew are boolean-constrained.
-///
-/// # Limitation
-/// The prover's `SignedBitHint` solver reads the scalar as a `u128` (lower
-/// 128 bits of the field element). This is correct for FakeGLV half-scalars
-/// (≤128 bits for 256-bit curves) but would silently truncate if `num_bits`
-/// exceeds 128. The R1CS reconstruction constraint would then fail.
-pub(super) fn decompose_signed_bits(
-    compiler: &mut NoirToR1CSCompiler,
-    scalar: usize,
-    num_bits: usize,
-) -> (Vec<usize>, usize) {
-    let start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::SignedBitHint {
-        output_start: start,
-        scalar,
-        num_bits,
-    });
-    let bits: Vec<usize> = (start..start + num_bits).collect();
-    let skew = start + num_bits;
-
-    // Boolean-constrain each bit and skew
-    for &b in &bits {
-        constrain_boolean(compiler, b);
-    }
-    constrain_boolean(compiler, skew);
-
-    // Reconstruction: scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-    // Rearranged as: scalar + skew + (2^n - 1) - Σ b_i * 2^{i+1} = 0
-    let one = compiler.witness_one();
-    let two = FieldElement::from(2u64);
-    let constant = two.pow([num_bits as u64]) - FieldElement::ONE;
-    let mut b_terms: Vec<(FieldElement, usize)> = bits
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| (-two.pow([(i + 1) as u64]), b))
-        .collect();
-    b_terms.push((FieldElement::ONE, scalar));
-    b_terms.push((FieldElement::ONE, skew));
-    b_terms.push((constant, one));
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, one)], &b_terms, &[(
-            FieldElement::ZERO,
-            one,
-        )]);
-
-    (bits, skew)
-}
-
 /// Resolves a `ConstantOrR1CSWitness` to a witness index.
 fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitness) -> usize {
     match input {
@@ -422,113 +253,5 @@ fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitnes
             compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, *value)));
             w
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use {super::*, crate::noir_to_r1cs::NoirToR1CSCompiler};
-
-    /// Verify that the non-native (SECP256R1) single-point MSM path generates
-    /// constraints without panicking. This does multi-limb arithmetic,
-    /// range checks, and FakeGLV verification — the entire non-native code path
-    /// that has no Noir e2e coverage for now : )
-    #[test]
-    fn test_secp256r1_single_point_msm_generates_constraints() {
-        let mut compiler = NoirToR1CSCompiler::new();
-        let curve = curve::secp256r1_params();
-        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-
-        // Allocate witness slots for: px, py, inf, s_lo, s_hi, out_x, out_y, out_inf
-        // (witness 0 is the constant-one witness)
-        let base = compiler.num_witnesses();
-        compiler.r1cs.add_witnesses(8);
-        let px = base;
-        let py = base + 1;
-        let inf = base + 2;
-        let s_lo = base + 3;
-        let s_hi = base + 4;
-        let out_x = base + 5;
-        let out_y = base + 6;
-        let out_inf = base + 7;
-
-        let points = vec![
-            ConstantOrR1CSWitness::Witness(px),
-            ConstantOrR1CSWitness::Witness(py),
-            ConstantOrR1CSWitness::Witness(inf),
-        ];
-        let scalars = vec![
-            ConstantOrR1CSWitness::Witness(s_lo),
-            ConstantOrR1CSWitness::Witness(s_hi),
-        ];
-        let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
-
-        add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
-
-        let n_constraints = compiler.r1cs.num_constraints();
-        let n_witnesses = compiler.num_witnesses();
-
-        assert!(
-            n_constraints > 100,
-            "expected substantial constraints for non-native MSM, got {n_constraints}"
-        );
-        assert!(
-            n_witnesses > 100,
-            "expected substantial witnesses for non-native MSM, got {n_witnesses}"
-        );
-        assert!(
-            !range_checks.is_empty(),
-            "non-native MSM should produce range checks"
-        );
-    }
-
-    /// Verify that the non-native multi-point MSM path (2 points, SECP256R1)
-    /// generates constraints. does the multi-point accumulation and offset
-    /// subtraction logic for the non-native path.
-    #[test]
-    fn test_secp256r1_multi_point_msm_generates_constraints() {
-        let mut compiler = NoirToR1CSCompiler::new();
-        let curve = curve::secp256r1_params();
-        let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-
-        // 2 points: px1, py1, inf1, px2, py2, inf2, s1_lo, s1_hi, s2_lo, s2_hi,
-        //           out_x, out_y, out_inf
-        let base = compiler.num_witnesses();
-        compiler.r1cs.add_witnesses(13);
-
-        let points = vec![
-            ConstantOrR1CSWitness::Witness(base),     // px1
-            ConstantOrR1CSWitness::Witness(base + 1), // py1
-            ConstantOrR1CSWitness::Witness(base + 2), // inf1
-            ConstantOrR1CSWitness::Witness(base + 3), // px2
-            ConstantOrR1CSWitness::Witness(base + 4), // py2
-            ConstantOrR1CSWitness::Witness(base + 5), // inf2
-        ];
-        let scalars = vec![
-            ConstantOrR1CSWitness::Witness(base + 6), // s1_lo
-            ConstantOrR1CSWitness::Witness(base + 7), // s1_hi
-            ConstantOrR1CSWitness::Witness(base + 8), // s2_lo
-            ConstantOrR1CSWitness::Witness(base + 9), // s2_hi
-        ];
-        let out_x = base + 10;
-        let out_y = base + 11;
-        let out_inf = base + 12;
-
-        let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
-
-        add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
-
-        let n_constraints = compiler.r1cs.num_constraints();
-        let n_witnesses = compiler.num_witnesses();
-
-        // Multi-point should produce more constraints than single-point
-        assert!(
-            n_constraints > 200,
-            "expected substantial constraints for 2-point non-native MSM, got {n_constraints}"
-        );
-        assert!(
-            n_witnesses > 200,
-            "expected substantial witnesses for 2-point non-native MSM, got {n_witnesses}"
-        );
     }
 }

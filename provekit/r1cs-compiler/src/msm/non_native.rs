@@ -1,10 +1,38 @@
 //! Non-native (generic multi-limb) MSM path.
 //!
-//! Used when `!curve.is_native_field()` — uses `MultiLimbOps` for all EC
-//! arithmetic with configurable limb width.
+//! Used when `!curve.is_native_field()` — the curve's base field differs from
+//! the R1CS native field (e.g. SECP256R1 over BN254). Field elements are
+//! represented as multi-limb values (N limbs of `limb_bits` each), and
+//! arithmetic is verified via schoolbook column equations.
 //!
-//! Multi-point MSM uses merged doublings: all points share a single set of
-//! `w` doublings per window, saving `w × (n_points - 1)` doublings per window.
+//! ## Key techniques
+//!
+//! - **Multi-limb arithmetic**: field elements split into N limbs; add/sub use
+//!   carry chains with boolean quotients, mul uses schoolbook column equations,
+//!   all verified mod the curve's base field.
+//! - **Hint-verified EC ops** (N ≥ 2): point_double, point_add, and on-curve
+//!   checks use prover hints verified via schoolbook column equations, avoiding
+//!   the step-by-step MultiLimbOps chain (which requires field inversions).
+//! - **FakeGLV**: same half-GCD scalar decomposition as the native path.
+//! - **Signed-digit windows**: w-bit windows produce signed odd digits d ∈ {±1,
+//!   ±3, ..., ±(2^w-1)}, eliminating zero-digit handling and halving the lookup
+//!   table to 2^(w-1) entries. Skew correction applied post-loop.
+//! - **Merged doublings**: all points share w doublings per window, saving w ×
+//!   (n_points - 1) doublings per window.
+//!
+//! ## Phases
+//!
+//! 1. **Preprocessing**: per-point sanitization, limb decomposition of point
+//!    coordinates, on-curve checks, FakeGLV decomposition, signed-bit
+//!    decomposition, y-negation via `negate_mod_p_multi`.
+//! 2. **Merged scalar mul**: `scalar_mul_merged_glv` runs a single windowed
+//!    loop with shared doublings + per-point signed table lookups. Identity
+//!    check: final accumulator must equal the known offset.
+//! 3. **Scalar relations**: per-point verification that (-1)^neg1·|s1| +
+//!    (-1)^neg2·|s2|·s ≡ 0 (mod curve_order).
+//! 4. **Accumulation**: adds each point's scalar-mul result (via dispatch to
+//!    hint-verified or generic add), subtracts offset, recomposes limbs to
+//!    native field elements, constrains outputs.
 
 use {
     super::{

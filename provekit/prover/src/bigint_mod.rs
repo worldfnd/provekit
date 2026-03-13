@@ -297,8 +297,8 @@ pub fn to_i128_limbs(limbs: &[u128]) -> Vec<i128> {
 }
 
 /// Compute signed quotient q such that:
-///   Σ lhs_products[i] * coeff_i - Σ rhs_products[j] * coeff_j - rhs_sub ≡ 0
-/// (mod p) Returns q as decomposed limbs, with negative q stored as -q in the
+///   Σ lhs_products\[i\] * coeff_i - Σ rhs_products\[j\] * coeff_j - rhs_sub ≡
+/// 0 (mod p) Returns q as decomposed limbs, with negative q stored as -q in the
 /// native field.
 pub fn signed_quotient_wide(
     lhs_products: &[(&[u64; 4], &[u64; 4], u64)],
@@ -846,12 +846,12 @@ pub fn divmod_wide(dividend: &[u64; 8], divisor: &[u64; 4]) -> ([u64; 4], [u64; 
 /// Compute unsigned-offset carries for a general merged column equation.
 ///
 /// Each `product_set` entry is (a_limbs, b_limbs, coefficient):
-///   LHS_terms = Σ coeff * Σ_{i+j=k} a[i]*b[j]
+///   LHS_terms = Σ coeff * Σ_{i+j=k} a\[i\]*b\[j\]
 ///
 /// Each `linear_set` entry is (limb_values, coefficient) for non-product terms:
-///   LHS_terms += Σ coeff * val[k]  (for k < val.len())
+///   LHS_terms += Σ coeff * val\[k\]  (for k < val.len())
 ///
-/// The equation verified is: LHS = Σ p[i]*q[j] + carry_chain
+/// The equation verified is: LHS = Σ p\[i\]*q\[j\] + carry_chain
 /// (no separate result — the "result" is encoded in the linear terms).
 pub fn compute_ec_verification_carries(
     product_sets: &[(&[u128], &[u128], i64)],

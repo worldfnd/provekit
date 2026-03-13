@@ -1,7 +1,36 @@
 //! Native-field MSM path: hint-verified EC ops with signed-bit wNAF.
 //!
-//! Used when `curve.is_native_field()` — replaces expensive field inversions
-//! with prover hints verified via raw R1CS constraints.
+//! Used when `curve.is_native_field()` — the curve's base field matches the
+//! R1CS native field (e.g. Grumpkin over BN254). Field operations are free
+//! (single native witness each), so EC operations use prover hints verified
+//! via raw R1CS constraints instead of expensive field inversions.
+//!
+//! ## Key techniques
+//!
+//! - **Hint-verified EC ops**: point_double (4W+4C), point_add (3W+3C), and
+//!   on-curve checks (2W+3C) use prover-supplied (lambda, x3, y3) hints
+//!   verified by the EC equations directly as R1CS constraints.
+//! - **FakeGLV**: each 256-bit scalar is decomposed into two ~128-bit
+//!   half-scalars (s1, s2) via half-GCD, verified by a scalar relation mod the
+//!   curve order.
+//! - **Signed-bit wNAF (w=1)**: each half-scalar is decomposed into signed bits
+//!   d_i ∈ {-1, +1}, eliminating zero-digit handling. A skew bit corrects the
+//!   bias post-loop.
+//! - **Merged doubling**: all points share a single doubling per bit, saving 4W
+//!   per extra point per bit.
+//!
+//! ## Phases
+//!
+//! 1. **Preprocessing**: per-point sanitization (degenerate-case replacement),
+//!    on-curve checks, FakeGLV decomposition, signed-bit decomposition,
+//!    y-negation based on sign flags.
+//! 2. **Merged scalar mul**: single loop from MSB to LSB with one shared
+//!    doubling + per-point P/R branch adds. Skew corrections after loop.
+//!    Identity check: final accumulator must equal the known offset.
+//! 3. **Scalar relations**: per-point verification that (-1)^neg1·|s1| +
+//!    (-1)^neg2·|s2|·s ≡ 0 (mod curve_order).
+//! 4. **Accumulation**: adds each point's scalar-mul result to an accumulator
+//!    (skipping degenerate points), subtracts the offset, constrains outputs.
 
 use {
     super::{

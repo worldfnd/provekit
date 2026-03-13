@@ -194,14 +194,21 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
 // N≥2 multi-limb path (generalization of wide_ops.rs)
 // ---------------------------------------------------------------------------
 
-/// (a + b) mod p for multi-limb values.
+/// Shared core for `add_mod_p_multi` and `sub_mod_p_multi`.
 ///
-/// Per limb i: v_i = a\[i\] + b\[i\] + 2^W - q*p\[i\] + carry_{i-1}
-///             carry_i = floor(v_i / 2^W)
-///             r\[i\] = v_i - carry_i * 2^W
-pub fn add_mod_p_multi(
+/// Both operations follow the same carry-chain structure; only the per-limb
+/// formula and quotient witness builder differ:
+///   add: v\[i\] = a\[i\] + b\[i\] + 2^W - q·p\[i\] + carry  (q via
+/// MultiLimbAddQuotient)   sub: v\[i\] = a\[i\] - b\[i\] + q·p\[i\] + 2^W +
+/// carry  (q via MultiLimbSubBorrow)
+///
+/// When `carry_prev` is present, the w1 coefficient absorbs a `-1` term
+/// (i.e. `w1_coeff = ... + 2^W - 1`) so that `carry_prev` contributes
+/// `+1 · carry_prev` without creating duplicate (row, col) entries.
+fn add_sub_mod_p_core(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    is_add: bool,
     a: Limbs,
     b: Limbs,
     p_limbs: &[FieldElement],
@@ -211,19 +218,30 @@ pub fn add_mod_p_multi(
     modulus_raw: &[u64; 4],
 ) -> Limbs {
     let n = a.len();
-    assert!(n >= 2, "add_mod_p_multi requires n >= 2, got n={n}");
+    assert!(n >= 2, "add/sub_mod_p_multi requires n >= 2, got n={n}");
     let w1 = compiler.witness_one();
 
-    // Witness: q = floor((a + b) / p) ∈ {0, 1}
+    // Witness: q ∈ {0, 1}
     let q = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
-        output: q,
-        a_limbs: a.as_slice().to_vec(),
-        b_limbs: b.as_slice().to_vec(),
-        modulus: *modulus_raw,
-        limb_bits,
-        num_limbs: n as u32,
-    });
+    if is_add {
+        compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
+            output: q,
+            a_limbs: a.as_slice().to_vec(),
+            b_limbs: b.as_slice().to_vec(),
+            modulus: *modulus_raw,
+            limb_bits,
+            num_limbs: n as u32,
+        });
+    } else {
+        compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
+            output: q,
+            a_limbs: a.as_slice().to_vec(),
+            b_limbs: b.as_slice().to_vec(),
+            modulus: *modulus_raw,
+            limb_bits,
+            num_limbs: n as u32,
+        });
+    }
     // q is boolean
     compiler
         .r1cs
@@ -236,7 +254,6 @@ pub fn add_mod_p_multi(
     let mut carry_prev: Option<usize> = None;
 
     for i in 0..n {
-        // v_offset = a[i] + b[i] + 2^W - q*p[i] + carry_{i-1}
         // When carry_prev exists, combine w1 terms to avoid duplicate column
         // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
         let w1_coeff = if carry_prev.is_some() {
@@ -244,12 +261,18 @@ pub fn add_mod_p_multi(
         } else {
             two_pow_w
         };
-        let mut terms = vec![
-            SumTerm(None, a[i]),
-            SumTerm(None, b[i]),
-            SumTerm(Some(w1_coeff), w1),
-            SumTerm(Some(-p_limbs[i]), q),
-        ];
+        // add: a[i] + b[i] + w1_coeff*1 - p[i]*q + carry
+        // sub: a[i] - b[i] + p[i]*q + w1_coeff*1 + carry
+        let mut terms = vec![SumTerm(None, a[i])];
+        if is_add {
+            terms.push(SumTerm(None, b[i]));
+            terms.push(SumTerm(Some(w1_coeff), w1));
+            terms.push(SumTerm(Some(-p_limbs[i]), q));
+        } else {
+            terms.push(SumTerm(Some(-FieldElement::ONE), b[i]));
+            terms.push(SumTerm(Some(p_limbs[i]), q));
+            terms.push(SumTerm(Some(w1_coeff), w1));
+        }
         if let Some(carry) = carry_prev {
             terms.push(SumTerm(None, carry));
         }
@@ -278,6 +301,36 @@ pub fn add_mod_p_multi(
     r
 }
 
+/// (a + b) mod p for multi-limb values.
+///
+/// Per limb i: v_i = a\[i\] + b\[i\] + 2^W - q*p\[i\] + carry_{i-1}
+///             carry_i = floor(v_i / 2^W)
+///             r\[i\] = v_i - carry_i * 2^W
+pub fn add_mod_p_multi(
+    compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    a: Limbs,
+    b: Limbs,
+    p_limbs: &[FieldElement],
+    p_minus_1_limbs: &[FieldElement],
+    two_pow_w: FieldElement,
+    limb_bits: u32,
+    modulus_raw: &[u64; 4],
+) -> Limbs {
+    add_sub_mod_p_core(
+        compiler,
+        range_checks,
+        true,
+        a,
+        b,
+        p_limbs,
+        p_minus_1_limbs,
+        two_pow_w,
+        limb_bits,
+        modulus_raw,
+    )
+}
+
 /// Negate a multi-limb value: computes `p - y` directly via borrow chain.
 ///
 /// Since inputs are already verified `y ∈ [0, p)` (from less_than_p on
@@ -288,7 +341,8 @@ pub fn add_mod_p_multi(
 /// This avoids the generic `sub_mod_p_multi` pathway which allocates
 /// N zero-constant witnesses, a borrow quotient, and a less_than_p check.
 ///
-/// Witnesses: 3N (N v-sums + N borrows + N result sums).
+/// Witnesses: 3N (N v-sums + N borrows + N result limbs).
+/// Constraints: N (one `add_sum` per limb, each producing 1W+1C).
 /// Range checks: N at limb_bits.
 pub fn negate_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
@@ -352,70 +406,18 @@ pub fn sub_mod_p_multi(
     limb_bits: u32,
     modulus_raw: &[u64; 4],
 ) -> Limbs {
-    let n = a.len();
-    assert!(n >= 2, "sub_mod_p_multi requires n >= 2, got n={n}");
-    let w1 = compiler.witness_one();
-
-    // Witness: q = (a < b) ? 1 : 0
-    let q = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
-        output: q,
-        a_limbs: a.as_slice().to_vec(),
-        b_limbs: b.as_slice().to_vec(),
-        modulus: *modulus_raw,
-        limb_bits,
-        num_limbs: n as u32,
-    });
-    // q is boolean
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, q)], &[(FieldElement::ONE, q)], &[(
-            FieldElement::ONE,
-            q,
-        )]);
-
-    let mut r = Limbs::new(n);
-    let mut carry_prev: Option<usize> = None;
-
-    for i in 0..n {
-        // v_offset = a[i] - b[i] + q*p[i] + 2^W + carry_{i-1}
-        // When carry_prev exists, combine w1 terms to avoid duplicate column
-        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
-        let w1_coeff = if carry_prev.is_some() {
-            two_pow_w - FieldElement::ONE
-        } else {
-            two_pow_w
-        };
-        let mut terms = vec![
-            SumTerm(None, a[i]),
-            SumTerm(Some(-FieldElement::ONE), b[i]),
-            SumTerm(Some(p_limbs[i]), q),
-            SumTerm(Some(w1_coeff), w1),
-        ];
-        if let Some(carry) = carry_prev {
-            terms.push(SumTerm(None, carry));
-        }
-        let v_offset = compiler.add_sum(terms);
-
-        let carry = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(carry, v_offset, two_pow_w));
-        r[i] = compiler.add_sum(vec![
-            SumTerm(None, v_offset),
-            SumTerm(Some(-two_pow_w), carry),
-        ]);
-        carry_prev = Some(carry);
-    }
-
-    less_than_p_check_multi(
+    add_sub_mod_p_core(
         compiler,
         range_checks,
-        r,
+        false,
+        a,
+        b,
+        p_limbs,
         p_minus_1_limbs,
         two_pow_w,
         limb_bits,
-    );
-
-    r
+        modulus_raw,
+    )
 }
 
 /// (a * b) mod p for multi-limb values using schoolbook multiplication.
@@ -623,8 +625,8 @@ pub fn inv_mod_p_multi(
 }
 
 /// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.
-/// Uses borrow propagation: d\[i\] = (p-1)\[i\] - r\[i\] + borrow_in -
-/// borrow_out * 2^W
+/// Uses borrow propagation: d\[i\] = (p-1)\[i\] + 2^W - r\[i\] + borrow_in -
+/// borrow_out · 2^W. The 2^W offset keeps intermediate values non-negative.
 pub fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,

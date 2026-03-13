@@ -331,8 +331,9 @@ impl MultiLimbOps<'_, '_> {
         multi_limb_arith::compute_is_zero(self.compiler, value)
     }
 
-    /// Packs bit witnesses into a single digit witness: `d = Σ bits[i] * 2^i`.
-    /// Does NOT constrain bits to be boolean — caller must ensure that.
+    /// Packs bit witnesses into a single digit witness: `d = Σ bits\[i\] *
+    /// 2^i`. Does NOT constrain bits to be boolean — caller must ensure
+    /// that.
     pub fn pack_bits(&mut self, bits: &[usize]) -> usize {
         pack_bits_helper(self.compiler, bits)
     }

@@ -57,12 +57,12 @@ pub struct CombinedTableEntryInverseData {
 /// Operation type for the unified non-native EC hint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NonNativeEcOp {
-    /// Point doubling: inputs = [[px_limbs], [py_limbs]], outputs 12N-6
+    /// Point doubling: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 12N-6
     Double,
-    /// Point addition: inputs = [[x1_limbs], [y1_limbs], [x2_limbs],
-    /// [y2_limbs]], outputs 12N-6
+    /// Point addition: inputs = \[\[x1_limbs\], \[y1_limbs\], \[x2_limbs\],
+    /// \[y2_limbs\]\], outputs 12N-6
     Add,
-    /// On-curve check: inputs = [[px_limbs], [py_limbs]], outputs 7N-4
+    /// On-curve check: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 7N-4
     OnCurve,
 }
 
@@ -361,9 +361,10 @@ pub enum WitnessBuilder {
     /// Unified prover hint for non-native EC operations (multi-limb).
     ///
     /// `op` selects the operation:
-    ///   - `Double`: inputs = [[px], [py]], outputs 12N-6 witnesses
-    ///   - `Add`:    inputs = [[x1], [y1], [x2], [y2]], outputs 12N-6 witnesses
-    ///   - `OnCurve`: inputs = [[px], [py]], outputs 7N-4 witnesses
+    ///   - `Double`: inputs = \[\[px\], \[py\]\], outputs 12N-6 witnesses
+    ///   - `Add`:    inputs = \[\[x1\], \[y1\], \[x2\], \[y2\]\], outputs 12N-6
+    ///     witnesses
+    ///   - `OnCurve`: inputs = \[\[px\], \[py\]\], outputs 7N-4 witnesses
     NonNativeEcHint {
         output_start:    usize,
         op:              NonNativeEcOp,

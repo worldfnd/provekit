@@ -49,7 +49,7 @@ pub(crate) fn select_witness(
     result
 }
 
-/// Packs bit witnesses into a digit: `d = Σ bits[i] * 2^i`.
+/// Packs bit witnesses into a digit: `d = Σ bits\[i\] * 2^i`.
 pub(crate) fn pack_bits_helper(compiler: &mut NoirToR1CSCompiler, bits: &[usize]) -> usize {
     let terms: Vec<SumTerm> = bits
         .iter()
