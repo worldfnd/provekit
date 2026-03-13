@@ -1,14 +1,14 @@
-//! Degenerate-case detection, sanitization, and bit decomposition helpers
-//! for MSM point-scalar pairs.
+//! Degenerate-case detection and sanitization helpers for MSM point-scalar
+//! pairs.
 
 use {
-    super::curve::CurveParams,
+    super::{curve::CurveParams, Limbs},
     crate::{
         constraint_helpers::{compute_boolean_or, constrain_boolean, select_witness},
         msm::multi_limb_arith::compute_is_zero,
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{AdditiveGroup, Field},
+    ark_ff::Field,
     provekit_common::{
         witness::{SumTerm, WitnessBuilder},
         FieldElement,
@@ -82,6 +82,7 @@ pub(super) fn negate_y_signed_native(
 
 /// Emit an `EcScalarMulHint` and sanitize the result point.
 /// When `is_skip=1`, the result is swapped to the generator point.
+/// Used by the native path where coordinates fit in a single field element.
 pub(super) fn emit_ec_scalar_mul_hint_and_sanitize(
     compiler: &mut NoirToR1CSCompiler,
     san: &SanitizedInputs,
@@ -92,12 +93,14 @@ pub(super) fn emit_ec_scalar_mul_hint_and_sanitize(
     let hint_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::EcScalarMulHint {
         output_start:    hint_start,
-        px:              san.px,
-        py:              san.py,
+        px_limbs:        vec![san.px],
+        py_limbs:        vec![san.py],
         s_lo:            san.s_lo,
         s_hi:            san.s_hi,
         curve_a:         curve.curve_a,
         field_modulus_p: curve.field_modulus_p,
+        num_limbs:       1,
+        limb_bits:       0,
     });
     let rx = select_witness(compiler, san.is_skip, hint_start, gen_x_witness);
     let ry = select_witness(compiler, san.is_skip, hint_start + 1, gen_y_witness);
@@ -121,61 +124,90 @@ pub(super) fn emit_fakeglv_hint(
     (glv_start, glv_start + 1, glv_start + 2, glv_start + 3)
 }
 
-/// Signed-bit decomposition for wNAF scalar multiplication.
+/// Multi-limb sanitized inputs for non-native MSM.
+pub(super) struct SanitizedInputsMultiLimb {
+    pub px_limbs: Limbs,
+    pub py_limbs: Limbs,
+    pub s_lo:     usize,
+    pub s_hi:     usize,
+    pub is_skip:  usize,
+}
+
+/// Sanitize a non-native point-scalar pair at the limb level.
 ///
-/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
-/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
-///   scalar = Σ d_i * 2^i - skew
-///
-/// Reconstruction constraint (1 linear R1CS):
-///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-///
-/// All bits and skew are boolean-constrained.
-///
-/// # Limitation
-/// The prover's `SignedBitHint` solver reads the scalar as a `u128` (lower
-/// 128 bits of the field element). This is correct for FakeGLV half-scalars
-/// (≤128 bits for 256-bit curves) but would silently truncate if `num_bits`
-/// exceeds 128. The R1CS reconstruction constraint would then fail.
-pub(super) fn decompose_signed_bits(
+/// Detects degenerate cases and replaces the point with the generator
+/// (as limbs) and scalar with 1 when degenerate. This avoids truncating
+/// generator coordinates that exceed BN254_Fr.
+pub(super) fn sanitize_point_scalar_multi_limb(
     compiler: &mut NoirToR1CSCompiler,
-    scalar: usize,
-    num_bits: usize,
-) -> (Vec<usize>, usize) {
-    let start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::SignedBitHint {
-        output_start: start,
-        scalar,
-        num_bits,
-    });
-    let bits: Vec<usize> = (start..start + num_bits).collect();
-    let skew = start + num_bits;
+    px_limbs: Limbs,
+    py_limbs: Limbs,
+    s_lo: usize,
+    s_hi: usize,
+    inf_flag: usize,
+    gen_x_limb_wits: &[usize],
+    gen_y_limb_wits: &[usize],
+    zero: usize,
+    one: usize,
+) -> SanitizedInputsMultiLimb {
+    let n = px_limbs.len();
+    let is_skip = detect_skip(compiler, s_lo, s_hi, inf_flag);
 
-    // Boolean-constrain each bit and skew
-    for &b in &bits {
-        constrain_boolean(compiler, b);
+    let mut san_px = Limbs::new(n);
+    let mut san_py = Limbs::new(n);
+    for i in 0..n {
+        san_px[i] = select_witness(compiler, is_skip, px_limbs[i], gen_x_limb_wits[i]);
+        san_py[i] = select_witness(compiler, is_skip, py_limbs[i], gen_y_limb_wits[i]);
     }
-    constrain_boolean(compiler, skew);
 
-    // Reconstruction: scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
-    // Rearranged as: scalar + skew + (2^n - 1) - Σ b_i * 2^{i+1} = 0
-    let one = compiler.witness_one();
-    let two = FieldElement::from(2u64);
-    let constant = two.pow([num_bits as u64]) - FieldElement::ONE;
-    let mut b_terms: Vec<(FieldElement, usize)> = bits
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| (-two.pow([(i + 1) as u64]), b))
-        .collect();
-    b_terms.push((FieldElement::ONE, scalar));
-    b_terms.push((FieldElement::ONE, skew));
-    b_terms.push((constant, one));
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, one)], &b_terms, &[(
-            FieldElement::ZERO,
-            one,
-        )]);
+    SanitizedInputsMultiLimb {
+        px_limbs: san_px,
+        py_limbs: san_py,
+        s_lo: select_witness(compiler, is_skip, s_lo, one),
+        s_hi: select_witness(compiler, is_skip, s_hi, zero),
+        is_skip,
+    }
+}
 
-    (bits, skew)
+/// Emit an `EcScalarMulHint` with multi-limb inputs/outputs and sanitize.
+///
+/// When `is_skip=1`, each output limb is replaced with the corresponding
+/// generator limb. Returns `(rx_limbs, ry_limbs)` as `Limbs`.
+pub(super) fn emit_ec_scalar_mul_hint_and_sanitize_multi_limb(
+    compiler: &mut NoirToR1CSCompiler,
+    san: &SanitizedInputsMultiLimb,
+    gen_x_limb_wits: &[usize],
+    gen_y_limb_wits: &[usize],
+    num_limbs: usize,
+    limb_bits: u32,
+    range_checks: &mut std::collections::BTreeMap<u32, Vec<usize>>,
+    curve: &CurveParams,
+) -> (Limbs, Limbs) {
+    let hint_start = compiler.num_witnesses();
+    compiler.add_witness_builder(WitnessBuilder::EcScalarMulHint {
+        output_start: hint_start,
+        px_limbs: san.px_limbs.as_slice().to_vec(),
+        py_limbs: san.py_limbs.as_slice().to_vec(),
+        s_lo: san.s_lo,
+        s_hi: san.s_hi,
+        curve_a: curve.curve_a,
+        field_modulus_p: curve.field_modulus_p,
+        num_limbs: num_limbs as u32,
+        limb_bits,
+    });
+
+    let mut rx = Limbs::new(num_limbs);
+    let mut ry = Limbs::new(num_limbs);
+    for i in 0..num_limbs {
+        let rx_hint = hint_start + i;
+        let ry_hint = hint_start + num_limbs + i;
+        // Range-check hint output limbs
+        range_checks.entry(limb_bits).or_default().push(rx_hint);
+        range_checks.entry(limb_bits).or_default().push(ry_hint);
+        // Sanitize: select between hint output and generator
+        rx[i] = select_witness(compiler, san.is_skip, rx_hint, gen_x_limb_wits[i]);
+        ry[i] = select_witness(compiler, san.is_skip, ry_hint, gen_y_limb_wits[i]);
+    }
+
+    (rx, ry)
 }

@@ -126,37 +126,37 @@ struct HintVerifiedEcCost {
 }
 
 impl HintVerifiedEcCost {
-    /// point_double: (12N-6)W hint + 5N² products + N constants + 3×3N ltp
+    /// point_double: (15N-6)W hint + 5N² products + N constants + 3×3N ltp
     fn point_double(n: usize, limb_bits: u32) -> Self {
-        let wit = (12 * n - 6) + 5 * n * n + n + 9 * n;
+        let wit = (15 * n - 6) + 5 * n * n + n + 9 * n;
         Self {
             witnesses:  wit,
-            rc_limb:    6 * n + 6 * n,   // 6N hint limbs + 3×2N ltp limbs
+            rc_limb:    9 * n + 6 * n, // 9N hint limbs (3+6 q_pos/q_neg) + 3×2N ltp limbs
             rc_carry:   3 * (2 * n - 2), // 3 equations × (2N-2) carries
-            carry_bits: hint_carry_bits(limb_bits, 6 + n as u64, n),
+            carry_bits: hint_carry_bits(limb_bits, 6 + 2 * n as u64, n),
         }
     }
 
-    /// point_add: (12N-6)W hint + 4N² products + 3×3N ltp
+    /// point_add: (15N-6)W hint + 4N² products + 3×3N ltp
     fn point_add(n: usize, limb_bits: u32) -> Self {
-        let wit = (12 * n - 6) + 4 * n * n + 9 * n;
+        let wit = (15 * n - 6) + 4 * n * n + 9 * n;
         Self {
             witnesses:  wit,
-            rc_limb:    6 * n + 6 * n,
+            rc_limb:    9 * n + 6 * n,
             rc_carry:   3 * (2 * n - 2),
-            carry_bits: hint_carry_bits(limb_bits, 4 + n as u64, n),
+            carry_bits: hint_carry_bits(limb_bits, 4 + 2 * n as u64, n),
         }
     }
 
-    /// on_curve (worst case, a != 0): (7N-4)W hint + 4N² products + 2N
+    /// on_curve (worst case, a != 0): (9N-4)W hint + 4N² products + 2N
     /// constants + 3N ltp
     fn on_curve(n: usize, limb_bits: u32) -> Self {
-        let wit = (7 * n - 4) + 4 * n * n + 2 * n + 3 * n;
+        let wit = (9 * n - 4) + 4 * n * n + 2 * n + 3 * n;
         Self {
             witnesses:  wit,
-            rc_limb:    3 * n + 2 * n,   // 3N hint limbs + 2N ltp limbs
+            rc_limb:    5 * n + 2 * n, // 5N hint limbs (1+4 q_pos/q_neg) + 2N ltp limbs
             rc_carry:   2 * (2 * n - 2), // 2 equations × (2N-2) carries
-            carry_bits: hint_carry_bits(limb_bits, 5 + n as u64, n),
+            carry_bits: hint_carry_bits(limb_bits, 5 + 2 * n as u64, n),
         }
     }
 
@@ -170,7 +170,7 @@ impl HintVerifiedEcCost {
 /// Carry range check bits for hint-verified EC column equations.
 fn hint_carry_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
     let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
-    limb_bits + extra_bits
+    limb_bits + extra_bits + 1
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +185,7 @@ fn hint_carry_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
 /// - Half-scalar decomposition (DD digits for s1, s2)
 /// - One mul + one add + one sub for sign handling
 /// - XOR witnesses (2) + select (num_limbs)
+/// - s2 non-zero check: compute_is_zero(3W) + constrain_zero
 fn scalar_relation_cost(
     native_field_bits: u32,
     scalar_bits: usize,
@@ -201,7 +202,8 @@ fn scalar_relation_cost(
         + 2 * n
         + field_op_witnesses(1, 1, 1, 0, n, false)
         + 2
-        + n;
+        + n
+        + 3; // compute_is_zero(s2): inv + product + is_zero
 
     // Only n limbs worth of scalar DD digits get range checks; unused digits
     // are zero-constrained instead (soundness fix for small curves).
@@ -306,12 +308,10 @@ fn calculate_msm_witness_cost_hint_verified(
     // negate_mod_p_multi: 3N witnesses, N range checks (no less_than_p)
     let negate_wit = 3 * n;
 
-    // --- Shared costs (one doubling chain for all points) ---
-    let shared_doubles = num_windows * w;
-    let shared_ec_wit = shared_doubles * ec_double.witnesses;
-    let shared_offset_constants = 2 * n;
-
-    // --- Per-point EC witnesses ---
+    // --- Per-point EC witnesses (each point has its own doubling chain) ---
+    let pp_doubles = num_windows * w; // per-point doublings (no longer shared)
+    let pp_doubles_ec = pp_doubles * ec_double.witnesses;
+    let pp_offset_constants = 2 * n; // offset limbs per point
     let pp_table_ec = 2 * (tbl_d * ec_double.witnesses + tbl_a * ec_add.witnesses);
     let pp_loop_ec = num_windows * 2 * ec_add.witnesses;
     let pp_skew_ec = 2 * ec_add.witnesses;
@@ -323,7 +323,9 @@ fn calculate_msm_witness_cost_hint_verified(
     let pp_table_selects = num_windows * 2 * half_table_size.saturating_sub(1) * 2 * n;
     let pp_xor = num_windows * 2 * 2 * w.saturating_sub(1);
 
-    let per_point = pp_table_ec
+    let per_point = pp_doubles_ec
+        + pp_offset_constants
+        + pp_table_ec
         + pp_loop_ec
         + pp_skew_ec
         + pp_oncurve
@@ -336,7 +338,7 @@ fn calculate_msm_witness_cost_hint_verified(
         + per_point_overhead(half_bits, n, sr_witnesses);
 
     // --- Shared constants ---
-    let shared_constants = 3 + shared_offset_constants; // gen_x, gen_y, zero + offset
+    let shared_constants = 3; // gen_x, gen_y, zero
 
     // --- Point accumulation ---
     let accum = n_points * (ec_add.witnesses + 2 * n)  // per-point add + skip select
@@ -347,11 +349,8 @@ fn calculate_msm_witness_cost_hint_verified(
     // --- Range checks ---
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
 
-    // Shared doublings
-    ec_double.add_range_checks(shared_doubles, limb_bits, &mut rc_map);
-
-    // Per-point: table doubles + table/loop/skew adds + on-curve
-    let pp_doubles_count = 2 * tbl_d;
+    // Per-point: loop doublings + table doubles + table/loop/skew adds + on-curve
+    let pp_doubles_count = pp_doubles + 2 * tbl_d;
     let pp_adds_count = 2 * tbl_a + num_windows * 2 + 2;
     ec_double.add_range_checks(n_points * pp_doubles_count, limb_bits, &mut rc_map);
     ec_add.add_range_checks(n_points * pp_adds_count, limb_bits, &mut rc_map);
@@ -373,7 +372,7 @@ fn calculate_msm_witness_cost_hint_verified(
     }
 
     let range_check_cost = crate::range_check::estimate_range_check_cost(&rc_map);
-    shared_ec_wit + shared_constants + n_points * per_point + accum + range_check_cost
+    shared_constants + n_points * per_point + accum + range_check_cost
 }
 
 // ---------------------------------------------------------------------------
@@ -381,7 +380,7 @@ fn calculate_msm_witness_cost_hint_verified(
 // ---------------------------------------------------------------------------
 
 /// Generic (single-limb) non-native MSM cost using MultiLimbOps field op
-/// chains.
+/// chains. Uses per-point accumulators (no shared doublings).
 #[allow(clippy::too_many_arguments)]
 fn calculate_msm_witness_cost_generic(
     native_field_bits: u32,
@@ -398,29 +397,22 @@ fn calculate_msm_witness_cost_generic(
     // point_double: (5 add, 3 sub, 4 mul, 1 inv)
     // point_add:    (1 add, 5 sub, 3 mul, 1 inv)
     let (tbl_d, tbl_a) = table_build_ops(half_table_size);
-    let shared_doubles = num_windows * w;
+    let pp_loop_doubles = num_windows * w;
 
-    // --- Shared doubling field ops ---
-    let shared_add = shared_doubles * 5;
-    let shared_sub = shared_doubles * 3;
-    let shared_mul = shared_doubles * 4;
-    let shared_inv = shared_doubles;
+    // --- Per-point field ops: loop doubles + tables + loop adds + skew + on-curve
+    // + y-negate ---
+    let pp_add = pp_loop_doubles * 5 + 2 * (tbl_d * 5 + tbl_a) + num_windows * 2 + 2 + 4;
+    let pp_sub =
+        pp_loop_doubles * 3 + 2 * (tbl_d * 3 + tbl_a * 5) + num_windows * (2 * 5 + 2) + 2 * 6 + 2;
+    let pp_mul =
+        pp_loop_doubles * 4 + 2 * (tbl_d * 4 + tbl_a * 3) + num_windows * 2 * 3 + 2 * 3 + 8;
+    let pp_inv = pp_loop_doubles + 2 * (tbl_d + tbl_a) + num_windows * 2 + 2;
 
-    // --- Per-point field ops: tables + loop adds + skew + on-curve + y-negate ---
-    let mut pp_add = 2 * (tbl_d * 5 + tbl_a) + num_windows * 2 + 2 + 4;
-    let mut pp_sub = 2 * (tbl_d * 3 + tbl_a * 5) + num_windows * (2 * 5 + 2) + 2 * 6 + 2;
-    let mut pp_mul = 2 * (tbl_d * 4 + tbl_a * 3) + num_windows * 2 * 3 + 2 * 3 + 8;
-    let mut pp_inv = 2 * (tbl_d + tbl_a) + num_windows * 2 + 2;
-
-    let shared_field_ops =
-        field_op_witnesses(shared_add, shared_sub, shared_mul, shared_inv, n, false);
     let pp_field_ops = field_op_witnesses(pp_add, pp_sub, pp_mul, pp_inv, n, false);
 
-    let pp_doubles = 2 * tbl_d;
+    let pp_doubles = pp_loop_doubles + 2 * tbl_d;
     let pp_negate_zeros = (4 + 2 * num_windows) * n;
-    let shared_constants_glv = shared_doubles * n + 2 * n;
-    let pp_constants = pp_doubles * n + 4 * n + pp_negate_zeros;
-
+    let pp_constants = pp_doubles * n + 4 * n + pp_negate_zeros + 2 * n; // +2N for offset limbs
     let pp_table_selects = num_windows * 2 * half_table_size.saturating_sub(1) * 2 * n;
     let pp_xor = num_windows * 2 * 2 * w.saturating_sub(1);
     let pp_signed_y_selects = num_windows * 2 * n;
@@ -434,7 +426,7 @@ fn calculate_msm_witness_cost_generic(
     let per_point =
         pp_field_ops + pp_constants + pp_selects + per_point_overhead(half_bits, n, sr_witnesses);
 
-    let shared_constants = 3 + 2 * n;
+    let shared_constants = 3; // gen_x, gen_y, zero
 
     // --- Point accumulation ---
     let pa_cost = field_op_witnesses(1, 5, 3, 1, n, false);
@@ -448,17 +440,6 @@ fn calculate_msm_witness_cost_generic(
 
     // --- Range checks ---
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
-    add_field_op_range_checks(
-        shared_add,
-        shared_sub,
-        shared_mul,
-        shared_inv,
-        n,
-        limb_bits,
-        curve_modulus_bits,
-        false,
-        &mut rc_map,
-    );
     add_field_op_range_checks(
         n_points * pp_add,
         n_points * pp_sub,
@@ -490,12 +471,7 @@ fn calculate_msm_witness_cost_generic(
 
     let range_check_cost = crate::range_check::estimate_range_check_cost(&rc_map);
 
-    shared_field_ops
-        + shared_constants_glv
-        + n_points * per_point
-        + shared_constants
-        + accum
-        + range_check_cost
+    n_points * per_point + shared_constants + accum + range_check_cost
 }
 
 // ---------------------------------------------------------------------------
@@ -510,7 +486,8 @@ fn calculate_msm_witness_cost_generic(
 /// - `verify_on_curve_native`: 2W (2 products)
 /// - No multi-limb arithmetic → zero EC-related range checks
 ///
-/// Uses merged-loop optimization: all points share a single doubling per bit.
+/// Uses per-point accumulators: each point has its own doubling chain and
+/// identity check for soundness.
 fn calculate_msm_witness_cost_native(
     native_field_bits: u32,
     n_points: usize,
@@ -522,17 +499,20 @@ fn calculate_msm_witness_cost_native(
     let y_negate = 6; // 2 × 3W (neg_y, y_eff, neg_y_eff)
     let (sr_wit, sr_rc) = scalar_relation_cost(native_field_bits, scalar_bits);
 
+    // Per point per bit: 4W (double) + 2×(1W select + 3W add) = 12W
+    let ec_loop_pp = half_bits * 12;
+    // Skew correction: 2 branches × (3W add + 2W select) = 10W per point
+    let skew_pp = 10;
+    // Offset constants per point
+    let offset_pp = 2;
+
     let per_point = on_curve + y_negate
         + 2 * (half_bits + 1)   // scalar bit decomposition
         + DETECT_SKIP_WIT + SANITIZE_WIT + EC_HINT_WIT + GLV_HINT_WIT
-        + sr_wit;
+        + sr_wit
+        + ec_loop_pp + skew_pp + offset_pp;
 
-    let shared_constants = 5; // gen_x, gen_y, zero, offset_x, offset_y
-
-    // Per bit: 4W (shared double) + n_points × 8W (2×(1W select + 3W add))
-    let ec_loop = half_bits * (4 + 8 * n_points);
-    // Skew correction: 2 branches × (3W add + 2W select) = 10W per point
-    let skew = n_points * 10;
+    let shared_constants = 3; // gen_x, gen_y, zero
 
     let accum = 2                           // initial acc constants
         + n_points * 5                      // add(3W) + skip_select(2W)
@@ -546,7 +526,7 @@ fn calculate_msm_witness_cost_native(
     }
     let range_check_cost = crate::range_check::estimate_range_check_cost(&rc_map);
 
-    n_points * per_point + shared_constants + ec_loop + skew + accum + range_check_cost
+    n_points * per_point + shared_constants + accum + range_check_cost
 }
 
 // ---------------------------------------------------------------------------

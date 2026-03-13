@@ -16,6 +16,7 @@ provekit-r1cs-compiler.workspace = true
 provekit-verifier.workspace = true
 
 # Noir language
+acir.workspace = true
 nargo.workspace = true
 nargo_cli.workspace = true
 nargo_toml.workspace = true

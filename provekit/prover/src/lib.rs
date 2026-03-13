@@ -21,9 +21,9 @@ use {
     whir::transcript::{codecs::Empty, ProverState, VerifierMessage},
 };
 
-pub(crate) mod bigint_mod;
+pub mod bigint_mod;
 pub mod input_utils;
-mod r1cs;
+pub mod r1cs;
 mod whir_r1cs;
 mod witness;
 

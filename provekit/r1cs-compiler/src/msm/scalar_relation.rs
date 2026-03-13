@@ -6,6 +6,7 @@
 use {
     super::{
         cost_model, curve,
+        multi_limb_arith::compute_is_zero,
         multi_limb_ops::{MultiLimbOps, MultiLimbParams},
         Limbs,
     },
@@ -89,6 +90,12 @@ pub(super) fn verify_scalar_relation(
     for i in 0..num_limbs {
         constrain_zero(ops.compiler, effective[i]);
     }
+
+    // Soundness: s2 must be non-zero. If s2=0 the relation degenerates to
+    // s1≡0 (mod n) which is trivially satisfiable with s1=0, leaving the
+    // hint-supplied result point R unconstrained.
+    let s2_is_zero = compute_is_zero(ops.compiler, s2_witness);
+    constrain_zero(ops.compiler, s2_is_zero);
 }
 
 /// Decompose a 256-bit scalar from two 128-bit halves into `num_limbs` limbs.

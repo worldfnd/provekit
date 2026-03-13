@@ -1,6 +1,7 @@
-pub(crate) mod cost_model;
-pub(crate) mod curve;
+pub mod cost_model;
+pub mod curve;
 pub(crate) mod ec_points;
+mod limbs;
 pub(crate) mod multi_limb_arith;
 pub(crate) mod multi_limb_ops;
 mod native;
@@ -10,114 +11,20 @@ mod scalar_relation;
 #[cfg(test)]
 mod tests;
 
-// Re-export sanitize helpers so submodules (native, non_native) can use
-// `super::sanitize_point_scalar` etc.
+pub use limbs::{Limbs, MAX_LIMBS};
 use {
-    crate::{constraint_helpers::add_constant_witness, noir_to_r1cs::NoirToR1CSCompiler},
-    ark_ff::PrimeField,
+    crate::{
+        constraint_helpers::{add_constant_witness, constrain_boolean},
+        noir_to_r1cs::NoirToR1CSCompiler,
+    },
+    ark_ff::{AdditiveGroup, Field, PrimeField},
     curve::CurveParams,
-    provekit_common::witness::ConstantOrR1CSWitness,
-    sanitize::{
-        decompose_signed_bits, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
-        negate_y_signed_native, sanitize_point_scalar,
+    provekit_common::{
+        witness::{ConstantOrR1CSWitness, WitnessBuilder},
+        FieldElement,
     },
     std::collections::BTreeMap,
 };
-
-// ---------------------------------------------------------------------------
-// Limbs: fixed-capacity, Copy array of witness indices
-// ---------------------------------------------------------------------------
-
-/// Maximum number of limbs supported. Covers all practical field sizes
-/// (e.g. a 512-bit modulus with 16-bit limbs = 32 limbs).
-pub const MAX_LIMBS: usize = 32;
-
-/// A fixed-capacity array of witness indices, indexed by limb position.
-///
-/// This type is `Copy`, so it can be passed by value without requiring
-/// const generics or dispatch macros. The runtime `len` field tracks how
-/// many limbs are actually in use.
-#[derive(Clone, Copy)]
-pub struct Limbs {
-    data: [usize; MAX_LIMBS],
-    len:  usize,
-}
-
-impl Limbs {
-    /// Sentinel value for uninitialized limb slots. Using `usize::MAX`
-    /// ensures accidental use of an unfilled slot indexes an absurdly
-    /// large witness, causing an immediate out-of-bounds panic.
-    const UNINIT: usize = usize::MAX;
-
-    /// Create a new `Limbs` with `len` limbs, all initialized to `UNINIT`.
-    pub fn new(len: usize) -> Self {
-        assert!(
-            len > 0 && len <= MAX_LIMBS,
-            "limb count must be 1..={MAX_LIMBS}, got {len}"
-        );
-        Self {
-            data: [Self::UNINIT; MAX_LIMBS],
-            len,
-        }
-    }
-
-    /// Create a single-limb `Limbs` wrapping one witness index.
-    pub fn single(value: usize) -> Self {
-        let mut l = Self {
-            data: [Self::UNINIT; MAX_LIMBS],
-            len:  1,
-        };
-        l.data[0] = value;
-        l
-    }
-
-    /// View the active limbs as a slice.
-    pub fn as_slice(&self) -> &[usize] {
-        &self.data[..self.len]
-    }
-
-    /// Number of active limbs.
-    #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl std::fmt::Debug for Limbs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(self.as_slice().iter()).finish()
-    }
-}
-
-impl PartialEq for Limbs {
-    fn eq(&self, other: &Self) -> bool {
-        self.len == other.len && self.data[..self.len] == other.data[..other.len]
-    }
-}
-impl Eq for Limbs {}
-
-impl std::ops::Index<usize> for Limbs {
-    type Output = usize;
-    fn index(&self, i: usize) -> &usize {
-        debug_assert!(
-            i < self.len,
-            "Limbs index {i} out of bounds (len={})",
-            self.len
-        );
-        &self.data[i]
-    }
-}
-
-impl std::ops::IndexMut<usize> for Limbs {
-    fn index_mut(&mut self, i: usize) -> &mut usize {
-        debug_assert!(
-            i < self.len,
-            "Limbs index {i} out of bounds (len={})",
-            self.len
-        );
-        &mut self.data[i]
-    }
-}
 
 // ---------------------------------------------------------------------------
 // MSM entry point
@@ -254,4 +161,147 @@ fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitnes
             w
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-limb MSM interface (for non-native curves with coords > BN254_Fr)
+// ---------------------------------------------------------------------------
+
+/// MSM outputs when coordinates are in multi-limb form.
+pub struct MsmLimbedOutputs {
+    pub out_x_limbs: Vec<usize>,
+    pub out_y_limbs: Vec<usize>,
+    pub out_inf:     usize,
+}
+
+/// Multi-limb MSM entry point for non-native curves.
+///
+/// Point coordinates are provided as limbs, avoiding truncation when
+/// values exceed BN254_Fr. Each point uses stride `2*num_limbs + 1`:
+/// `[px_l0..px_lN-1, py_l0..py_lN-1, inf]`.
+///
+/// Scalars remain as `[s_lo, s_hi]` pairs (128-bit halves fit in BN254_Fr).
+/// Outputs are per-limb: `MsmLimbedOutputs` with N limbs for each coordinate.
+pub fn add_msm_with_curve_limbed(
+    compiler: &mut NoirToR1CSCompiler,
+    msm_ops: Vec<(
+        Vec<ConstantOrR1CSWitness>,
+        Vec<ConstantOrR1CSWitness>,
+        MsmLimbedOutputs,
+    )>,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    curve: &CurveParams,
+    num_limbs: usize,
+) {
+    assert!(
+        !curve.is_native_field(),
+        "limbed MSM is only for non-native curves"
+    );
+    if msm_ops.is_empty() {
+        return;
+    }
+
+    let native_bits = provekit_common::FieldElement::MODULUS_BIT_SIZE;
+    let curve_bits = curve.modulus_bits();
+    let stride = 2 * num_limbs + 1;
+    let n_points: usize = msm_ops.iter().map(|(pts, ..)| pts.len() / stride).sum();
+    let (limb_bits, window_size) =
+        cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, 256, false);
+
+    // Verify num_limbs matches what cost model produces
+    let expected_num_limbs = (curve_bits as usize + limb_bits as usize - 1) / limb_bits as usize;
+    assert_eq!(
+        num_limbs, expected_num_limbs,
+        "num_limbs mismatch: caller passed {num_limbs}, cost model expects {expected_num_limbs}"
+    );
+
+    for (points, scalars, outputs) in msm_ops {
+        assert!(
+            points.len() % stride == 0,
+            "points length must be a multiple of {stride} (2*{num_limbs}+1)"
+        );
+        let n = points.len() / stride;
+        assert_eq!(scalars.len(), 2 * n, "scalars length must be 2x n_points");
+        assert_eq!(outputs.out_x_limbs.len(), num_limbs);
+        assert_eq!(outputs.out_y_limbs.len(), num_limbs);
+
+        let point_wits: Vec<usize> = points.iter().map(|p| resolve_input(compiler, p)).collect();
+        let scalar_wits: Vec<usize> = scalars.iter().map(|s| resolve_input(compiler, s)).collect();
+
+        non_native::process_multi_point_non_native_limbed(
+            compiler,
+            &point_wits,
+            &scalar_wits,
+            &outputs,
+            n,
+            num_limbs,
+            limb_bits,
+            window_size,
+            range_checks,
+            curve,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Signed-bit decomposition (shared by native and non-native paths)
+// ---------------------------------------------------------------------------
+
+/// Signed-bit decomposition for wNAF scalar multiplication.
+///
+/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
+/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
+///   scalar = Σ d_i * 2^i - skew
+///
+/// Reconstruction constraint (1 linear R1CS):
+///   scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+///
+/// All bits and skew are boolean-constrained.
+///
+/// # Limitation
+/// The prover's `SignedBitHint` solver reads the scalar as a `u128` (lower
+/// 128 bits of the field element). This is correct for FakeGLV half-scalars
+/// (≤128 bits for 256-bit curves) but would silently truncate if `num_bits`
+/// exceeds 128. The R1CS reconstruction constraint would then fail.
+pub(crate) fn decompose_signed_bits(
+    compiler: &mut NoirToR1CSCompiler,
+    scalar: usize,
+    num_bits: usize,
+) -> (Vec<usize>, usize) {
+    let start = compiler.num_witnesses();
+    compiler.add_witness_builder(WitnessBuilder::SignedBitHint {
+        output_start: start,
+        scalar,
+        num_bits,
+    });
+    let bits: Vec<usize> = (start..start + num_bits).collect();
+    let skew = start + num_bits;
+
+    // Boolean-constrain each bit and skew
+    for &b in &bits {
+        constrain_boolean(compiler, b);
+    }
+    constrain_boolean(compiler, skew);
+
+    // Reconstruction: scalar + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+    // Rearranged as: scalar + skew + (2^n - 1) - Σ b_i * 2^{i+1} = 0
+    let one = compiler.witness_one();
+    let two = FieldElement::from(2u64);
+    let constant = two.pow([num_bits as u64]) - FieldElement::ONE;
+    let mut b_terms: Vec<(FieldElement, usize)> = bits
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| (-two.pow([(i + 1) as u64]), b))
+        .collect();
+    b_terms.push((FieldElement::ONE, scalar));
+    b_terms.push((FieldElement::ONE, skew));
+    b_terms.push((constant, one));
+    compiler
+        .r1cs
+        .add_constraint(&[(FieldElement::ONE, one)], &b_terms, &[(
+            FieldElement::ZERO,
+            one,
+        )]);
+
+    (bits, skew)
 }

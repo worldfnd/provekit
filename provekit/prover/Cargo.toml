@@ -29,6 +29,7 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+num-bigint.workspace = true
 postcard.workspace = true
 tracing.workspace = true
 mavros-vm.workspace = true

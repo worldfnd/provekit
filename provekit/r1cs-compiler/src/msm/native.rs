@@ -34,8 +34,12 @@
 
 use {
     super::{
-        curve, ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
-        negate_y_signed_native, sanitize_point_scalar, scalar_relation,
+        curve, ec_points,
+        sanitize::{
+            emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint, negate_y_signed_native,
+            sanitize_point_scalar,
+        },
+        scalar_relation,
     },
     crate::{
         constraint_helpers::{
@@ -153,29 +157,33 @@ pub(super) fn process_multi_point_native(
         accum_inputs.push((sanitized_rx, sanitized_ry, san.is_skip));
     }
 
-    // Phase 2: Merged scalar mul verification (shared doubling)
+    // Phase 2: Per-point scalar mul verification
+    //
+    // Each point gets its own accumulator and identity check. This ensures
+    // per-point soundness: b_i * (R_i - scalar_i * P_i) = O with b_i ≠ 0
+    // implies R_i = scalar_i * P_i for each point independently.
     let half_bits = curve.glv_half_bits() as usize;
     let offset_x_fe = curve::curve_native_point_fe(&curve.offset_point.0);
     let offset_y_fe = curve::curve_native_point_fe(&curve.offset_point.1);
-    let offset_x = add_constant_witness(compiler, offset_x_fe);
-    let offset_y = add_constant_witness(compiler, offset_y_fe);
-
-    let (ver_acc_x, ver_acc_y) =
-        scalar_mul_merged_native_wnaf(compiler, &native_points, offset_x, offset_y, curve);
-
-    // Identity check: acc should equal accumulated offset (hardcoded into
-    // constraint matrix — not a witness the prover can manipulate)
     let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(half_bits);
-    constrain_to_constant(
-        compiler,
-        ver_acc_x,
-        curve::curve_native_point_fe(&acc_off_x_raw),
-    );
-    constrain_to_constant(
-        compiler,
-        ver_acc_y,
-        curve::curve_native_point_fe(&acc_off_y_raw),
-    );
+    let acc_off_x_fe = curve::curve_native_point_fe(&acc_off_x_raw);
+    let acc_off_y_fe = curve::curve_native_point_fe(&acc_off_y_raw);
+
+    for pt in &native_points {
+        let offset_x = add_constant_witness(compiler, offset_x_fe);
+        let offset_y = add_constant_witness(compiler, offset_y_fe);
+
+        let (ver_acc_x, ver_acc_y) = scalar_mul_merged_native_wnaf(
+            compiler,
+            std::slice::from_ref(pt),
+            offset_x,
+            offset_y,
+            curve,
+        );
+
+        constrain_to_constant(compiler, ver_acc_x, acc_off_x_fe);
+        constrain_to_constant(compiler, ver_acc_y, acc_off_y_fe);
+    }
 
     // Phase 3: Per-point scalar relations
     for &(s_lo, s_hi, s1, s2, neg1, neg2) in &scalar_rel_inputs {
@@ -235,15 +243,12 @@ pub(super) fn process_multi_point_native(
     constrain_equal(compiler, out_inf, all_skipped);
 }
 
-/// Merged multi-point scalar multiplication for native field using
-/// signed-bit wNAF (w=1) with shared doubling across all points.
+/// Multi-point scalar multiplication for native field using signed-bit wNAF
+/// (w=1).
 ///
-/// Instead of running separate 128-iteration loops per point (each with
-/// its own doubling), this merges all points into a single loop with one
-/// shared doubling per bit. Each bit costs:
-///   4C (shared double) + n_points × 8C (2×(1C select + 3C add))
-///
-/// Savings: 4C × (n_points - 1) per bit ≈ 512C for 2 points on Grumpkin.
+/// Called once per point with a single-element slice for per-point
+/// soundness (each point gets its own accumulator and identity check).
+/// Each bit costs: 4C (double) + 2 × (1C select + 3C add) = 12C per point.
 fn scalar_mul_merged_native_wnaf(
     compiler: &mut NoirToR1CSCompiler,
     points: &[NativePointData],

@@ -107,7 +107,7 @@ fn less_than_p_check_vec(
 /// Compute carry range bits for hint-verified column equations.
 fn carry_range_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
     let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
-    limb_bits + extra_bits
+    limb_bits + extra_bits + 1
 }
 
 /// Soundness check: verify that merged column equations fit the native field.
@@ -120,21 +120,34 @@ fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_n
     );
 }
 
+/// Merge terms with the same witness index by summing their coefficients.
+fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
+    use {ark_ff::Zero, std::collections::HashMap};
+    let mut map: HashMap<usize, FieldElement> = HashMap::new();
+    for &(coeff, idx) in terms {
+        *map.entry(idx).or_insert_with(FieldElement::zero) += coeff;
+    }
+    let mut result: Vec<(FieldElement, usize)> = map.into_iter().map(|(idx, c)| (c, idx)).collect();
+    result.sort_by_key(|&(_, idx)| idx);
+    result
+}
+
 /// Emit schoolbook column equations for a merged verification equation.
 ///
-/// Verifies: Σ (coeff_i × A_i ⊗ B_i) + Σ linear_k = q·p  (mod p, as integers)
+/// Verifies: Σ (coeff_i × A_i ⊗ B_i) + Σ linear_k + Σ p\[i\]*q_neg\[j\]
+///         = Σ p\[i\]*q_pos\[j\] + carry_chain  (as integers)
 ///
 /// `product_sets`: each (products_2d, coefficient) where products_2d\[i\]\[j\]
 ///   is the witness index for a\[i\]*b\[j\].
-/// `linear_limbs`: each (limb_witnesses, coefficient) for non-product terms
-///   (limb_witnesses has N entries, zero-padded).
-/// `q_witnesses`: quotient limbs (N entries).
+/// `linear_limbs`: each (limb_witnesses, coefficient) for non-product terms.
+/// `q_pos_witnesses`, `q_neg_witnesses`: split quotient limbs (N entries each).
 /// `carry_witnesses`: unsigned-offset carry witnesses (2N-2 entries).
 fn emit_schoolbook_column_equations(
     compiler: &mut NoirToR1CSCompiler,
     product_sets: &[(&[Vec<usize>], FieldElement)], // (products[i][j], coeff)
     linear_limbs: &[(&[usize], FieldElement)],      // (limb_witnesses, coeff)
-    q_witnesses: &[usize],
+    q_pos_witnesses: &[usize],
+    q_neg_witnesses: &[usize],
     carry_witnesses: &[usize],
     p_limbs: &[FieldElement],
     n: usize,
@@ -154,7 +167,7 @@ fn emit_schoolbook_column_equations(
     let num_columns = 2 * n - 1;
 
     for k in 0..num_columns {
-        // LHS: Σ coeff * products[i][j] for i+j=k + carry_in + offset
+        // LHS: Σ coeff * products[i][j] for i+j=k + Σ p[i]*q_neg[j] + carry_in + offset
         let mut lhs_terms: Vec<(FieldElement, usize)> = Vec::new();
 
         for &(products, coeff) in product_sets {
@@ -173,6 +186,14 @@ fn emit_schoolbook_column_equations(
             }
         }
 
+        // Add p*q_neg on the LHS (positive side)
+        for i in 0..n {
+            let j_val = k as isize - i as isize;
+            if j_val >= 0 && (j_val as usize) < n {
+                lhs_terms.push((p_limbs[i], q_neg_witnesses[j_val as usize]));
+            }
+        }
+
         // Add carry_in and offset
         if k > 0 {
             lhs_terms.push((FieldElement::ONE, carry_witnesses[k - 1]));
@@ -181,12 +202,12 @@ fn emit_schoolbook_column_equations(
             lhs_terms.push((offset_w, w1));
         }
 
-        // RHS: Σ p[i]*q[j] for i+j=k + carry_out * W (or offset at last column)
+        // RHS: Σ p[i]*q_pos[j] for i+j=k + carry_out * W (or offset at last column)
         let mut rhs_terms: Vec<(FieldElement, usize)> = Vec::new();
         for i in 0..n {
             let j_val = k as isize - i as isize;
             if j_val >= 0 && (j_val as usize) < n {
-                rhs_terms.push((p_limbs[i], q_witnesses[j_val as usize]));
+                rhs_terms.push((p_limbs[i], q_pos_witnesses[j_val as usize]));
             }
         }
 
@@ -197,9 +218,12 @@ fn emit_schoolbook_column_equations(
             rhs_terms.push((offset_w, w1));
         }
 
+        // Merge terms with the same witness index (products may share cached witnesses)
+        let lhs_merged = merge_terms(&lhs_terms);
+        let rhs_merged = merge_terms(&rhs_terms);
         compiler
             .r1cs
-            .add_constraint(&lhs_terms, &[(FieldElement::ONE, w1)], &rhs_terms);
+            .add_constraint(&lhs_merged, &[(FieldElement::ONE, w1)], &rhs_merged);
     }
 }
 
@@ -234,9 +258,9 @@ pub fn verify_on_curve_non_native(
     let a_is_zero = params.curve_a_raw.iter().all(|&v| v == 0);
 
     let max_coeff_sum: u64 = if a_is_zero {
-        4 + n as u64
+        4 + 2 * n as u64
     } else {
-        5 + n as u64
+        5 + 2 * n as u64
     };
     check_column_equation_fits(params.limb_bits, max_coeff_sum, n, "On-curve");
 
@@ -253,22 +277,27 @@ pub fn verify_on_curve_non_native(
         num_limbs:       n as u32,
     });
 
-    // Parse hint layout: [x_sq(N), q1(N), c1(2N-2), q2(N), c2(2N-2)]
+    // Parse hint layout: [x_sq(N), q1_pos(N), q1_neg(N), c1(2N-2),
+    //                      q2_pos(N), q2_neg(N), c2(2N-2)]
+    // Total: 9N-4
     let x_sq = witness_range(os, n);
-    let q1 = witness_range(os + n, n);
-    let c1 = witness_range(os + 2 * n, 2 * n - 2);
-    let q2 = witness_range(os + 4 * n - 2, n);
-    let c2 = witness_range(os + 5 * n - 2, 2 * n - 2);
+    let q1_pos = witness_range(os + n, n);
+    let q1_neg = witness_range(os + 2 * n, n);
+    let c1 = witness_range(os + 3 * n, 2 * n - 2);
+    let q2_pos = witness_range(os + 5 * n - 2, n);
+    let q2_neg = witness_range(os + 6 * n - 2, n);
+    let c2 = witness_range(os + 7 * n - 2, 2 * n - 2);
 
     // Eq1: px·px - x_sq = q1·p
     let prod_px_px = make_products(compiler, &px.as_slice()[..n], &px.as_slice()[..n]);
 
-    let max_coeff_eq1: u64 = 1 + 1 + n as u64;
+    let max_coeff_eq1: u64 = 1 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[(&prod_px_px, FieldElement::ONE)],
         &[(&x_sq, -FieldElement::ONE)],
-        &q1,
+        &q1_pos,
+        &q1_neg,
         &c1,
         &params.p_limbs,
         n,
@@ -282,7 +311,7 @@ pub fn verify_on_curve_non_native(
     let b_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_b_limbs[..n]);
 
     if a_is_zero {
-        let max_coeff_eq2: u64 = 1 + 1 + 1 + n as u64;
+        let max_coeff_eq2: u64 = 1 + 1 + 1 + 2 * n as u64;
         emit_schoolbook_column_equations(
             compiler,
             &[
@@ -290,7 +319,8 @@ pub fn verify_on_curve_non_native(
                 (&prod_xsq_px, -FieldElement::ONE),
             ],
             &[(&b_limbs, -FieldElement::ONE)],
-            &q2,
+            &q2_pos,
+            &q2_neg,
             &c2,
             &params.p_limbs,
             n,
@@ -301,7 +331,7 @@ pub fn verify_on_curve_non_native(
         let a_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_a_limbs[..n]);
         let prod_a_px = make_products(compiler, &a_limbs, &px.as_slice()[..n]);
 
-        let max_coeff_eq2: u64 = 1 + 1 + 1 + 1 + n as u64;
+        let max_coeff_eq2: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
         emit_schoolbook_column_equations(
             compiler,
             &[
@@ -310,7 +340,8 @@ pub fn verify_on_curve_non_native(
                 (&prod_a_px, -FieldElement::ONE),
             ],
             &[(&b_limbs, -FieldElement::ONE)],
-            &q2,
+            &q2_pos,
+            &q2_neg,
             &c2,
             &params.p_limbs,
             n,
@@ -323,7 +354,7 @@ pub fn verify_on_curve_non_native(
     let crb = carry_range_bits(params.limb_bits, max_coeff_sum, n);
     range_check_limbs_and_carries(
         range_checks,
-        &[&x_sq, &q1, &q2],
+        &[&x_sq, &q1_pos, &q1_neg, &q2_pos, &q2_neg],
         &[&c1, &c2],
         params.limb_bits,
         crb,
@@ -353,7 +384,7 @@ pub fn point_double_verified_non_native(
     let n = params.num_limbs;
     assert!(n >= 2, "hint-verified non-native requires n >= 2");
 
-    let max_coeff_sum: u64 = 2 + 3 + 1 + n as u64; // λy(2) + xx(3) + a(1) + pq(N)
+    let max_coeff_sum: u64 = 2 + 3 + 1 + 2 * n as u64; // λy(2) + xx(3) + a(1) + pq_pos(N) + pq_neg(N)
     check_column_equation_fits(params.limb_bits, max_coeff_sum, n, "Merged EC double");
 
     // Allocate hint
@@ -369,17 +400,23 @@ pub fn point_double_verified_non_native(
         num_limbs:       n as u32,
     });
 
-    // Parse hint layout: [lambda(N), x3(N), y3(N), q1(N), c1(2N-2), q2(N),
-    // c2(2N-2), q3(N), c3(2N-2)]
+    // Parse hint layout: [lambda(N), x3(N), y3(N),
+    //   q1_pos(N), q1_neg(N), c1(2N-2),
+    //   q2_pos(N), q2_neg(N), c2(2N-2),
+    //   q3_pos(N), q3_neg(N), c3(2N-2)]
+    // Total: 15N-6
     let lambda = witness_range(os, n);
     let x3 = witness_range(os + n, n);
     let y3 = witness_range(os + 2 * n, n);
-    let q1 = witness_range(os + 3 * n, n);
-    let c1 = witness_range(os + 4 * n, 2 * n - 2);
-    let q2 = witness_range(os + 6 * n - 2, n);
-    let c2 = witness_range(os + 7 * n - 2, 2 * n - 2);
-    let q3 = witness_range(os + 9 * n - 4, n);
-    let c3 = witness_range(os + 10 * n - 4, 2 * n - 2);
+    let q1_pos = witness_range(os + 3 * n, n);
+    let q1_neg = witness_range(os + 4 * n, n);
+    let c1 = witness_range(os + 5 * n, 2 * n - 2);
+    let q2_pos = witness_range(os + 7 * n - 2, n);
+    let q2_neg = witness_range(os + 8 * n - 2, n);
+    let c2 = witness_range(os + 9 * n - 2, 2 * n - 2);
+    let q3_pos = witness_range(os + 11 * n - 4, n);
+    let q3_neg = witness_range(os + 12 * n - 4, n);
+    let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
 
     let px_s = &px.as_slice()[..n];
     let py_s = &py.as_slice()[..n];
@@ -389,7 +426,7 @@ pub fn point_double_verified_non_native(
     let prod_px_px = make_products(compiler, px_s, px_s);
     let a_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_a_limbs[..n]);
 
-    let max_coeff_eq1: u64 = 2 + 3 + 1 + n as u64;
+    let max_coeff_eq1: u64 = 2 + 3 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[
@@ -397,7 +434,8 @@ pub fn point_double_verified_non_native(
             (&prod_px_px, -FieldElement::from(3u64)),
         ],
         &[(&a_limbs, -FieldElement::ONE)],
-        &q1,
+        &q1_pos,
+        &q1_neg,
         &c1,
         &params.p_limbs,
         n,
@@ -408,12 +446,13 @@ pub fn point_double_verified_non_native(
     // Eq2: lambda² - x3 - 2*px = q2*p
     let prod_lam_lam = make_products(compiler, &lambda, &lambda);
 
-    let max_coeff_eq2: u64 = 1 + 1 + 2 + n as u64;
+    let max_coeff_eq2: u64 = 1 + 1 + 2 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[(&prod_lam_lam, FieldElement::ONE)],
         &[(&x3, -FieldElement::ONE), (px_s, -FieldElement::from(2u64))],
-        &q2,
+        &q2_pos,
+        &q2_neg,
         &c2,
         &params.p_limbs,
         n,
@@ -425,7 +464,7 @@ pub fn point_double_verified_non_native(
     let prod_lam_px = make_products(compiler, &lambda, px_s);
     let prod_lam_x3 = make_products(compiler, &lambda, &x3);
 
-    let max_coeff_eq3: u64 = 1 + 1 + 1 + 1 + n as u64;
+    let max_coeff_eq3: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[
@@ -433,7 +472,8 @@ pub fn point_double_verified_non_native(
             (&prod_lam_x3, -FieldElement::ONE),
         ],
         &[(&y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
-        &q3,
+        &q3_pos,
+        &q3_neg,
         &c3,
         &params.p_limbs,
         n,
@@ -442,12 +482,14 @@ pub fn point_double_verified_non_native(
     );
 
     // Range checks on hint outputs
-    // max_coeff across eqs: Eq1 = 6+N, Eq2 = 4+N, Eq3 = 4+N → worst = 6+N
-    let max_coeff_carry = 6u64 + n as u64;
+    // max_coeff across eqs: Eq1 = 6+2N, Eq2 = 4+2N, Eq3 = 4+2N → worst = 6+2N
+    let max_coeff_carry = 6u64 + 2 * n as u64;
     let crb = carry_range_bits(params.limb_bits, max_coeff_carry, n);
     range_check_limbs_and_carries(
         range_checks,
-        &[&lambda, &x3, &y3, &q1, &q2, &q3],
+        &[
+            &lambda, &x3, &y3, &q1_pos, &q1_neg, &q2_pos, &q2_neg, &q3_pos, &q3_neg,
+        ],
         &[&c1, &c2, &c3],
         params.limb_bits,
         crb,
@@ -483,7 +525,7 @@ pub fn point_add_verified_non_native(
     let n = params.num_limbs;
     assert!(n >= 2, "hint-verified non-native requires n >= 2");
 
-    let max_coeff: u64 = 1 + 1 + 1 + 1 + n as u64; // all 3 eqs: 1+1+1+1+N
+    let max_coeff: u64 = 1 + 1 + 1 + 1 + 2 * n as u64; // all 3 eqs: 1+1+1+1+2N
     check_column_equation_fits(params.limb_bits, max_coeff, n, "EC add");
 
     let os = compiler.num_witnesses();
@@ -503,15 +545,23 @@ pub fn point_add_verified_non_native(
         num_limbs:       n as u32,
     });
 
+    // Parse hint layout: [lambda(N), x3(N), y3(N),
+    //   q1_pos(N), q1_neg(N), c1(2N-2),
+    //   q2_pos(N), q2_neg(N), c2(2N-2),
+    //   q3_pos(N), q3_neg(N), c3(2N-2)]
+    // Total: 15N-6
     let lambda = witness_range(os, n);
     let x3 = witness_range(os + n, n);
     let y3 = witness_range(os + 2 * n, n);
-    let q1 = witness_range(os + 3 * n, n);
-    let c1 = witness_range(os + 4 * n, 2 * n - 2);
-    let q2 = witness_range(os + 6 * n - 2, n);
-    let c2 = witness_range(os + 7 * n - 2, 2 * n - 2);
-    let q3 = witness_range(os + 9 * n - 4, n);
-    let c3 = witness_range(os + 10 * n - 4, 2 * n - 2);
+    let q1_pos = witness_range(os + 3 * n, n);
+    let q1_neg = witness_range(os + 4 * n, n);
+    let c1 = witness_range(os + 5 * n, 2 * n - 2);
+    let q2_pos = witness_range(os + 7 * n - 2, n);
+    let q2_neg = witness_range(os + 8 * n - 2, n);
+    let c2 = witness_range(os + 9 * n - 2, 2 * n - 2);
+    let q3_pos = witness_range(os + 11 * n - 4, n);
+    let q3_neg = witness_range(os + 12 * n - 4, n);
+    let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
 
     let x1_s = &x1.as_slice()[..n];
     let y1_s = &y1.as_slice()[..n];
@@ -529,7 +579,8 @@ pub fn point_add_verified_non_native(
             (&prod_lam_x1, -FieldElement::ONE),
         ],
         &[(y2_s, -FieldElement::ONE), (y1_s, FieldElement::ONE)],
-        &q1,
+        &q1_pos,
+        &q1_neg,
         &c1,
         &params.p_limbs,
         n,
@@ -548,7 +599,8 @@ pub fn point_add_verified_non_native(
             (x1_s, -FieldElement::ONE),
             (x2_s, -FieldElement::ONE),
         ],
-        &q2,
+        &q2_pos,
+        &q2_neg,
         &c2,
         &params.p_limbs,
         n,
@@ -567,7 +619,8 @@ pub fn point_add_verified_non_native(
             (&prod_lam_x3, -FieldElement::ONE),
         ],
         &[(&y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
-        &q3,
+        &q3_pos,
+        &q3_neg,
         &c3,
         &params.p_limbs,
         n,
@@ -576,12 +629,14 @@ pub fn point_add_verified_non_native(
     );
 
     // Range checks
-    // max_coeff across all 3 eqs = 4+N
-    let max_coeff_carry = 4u64 + n as u64;
+    // max_coeff across all 3 eqs = 4+2N
+    let max_coeff_carry = 4u64 + 2 * n as u64;
     let crb = carry_range_bits(params.limb_bits, max_coeff_carry, n);
     range_check_limbs_and_carries(
         range_checks,
-        &[&lambda, &x3, &y3, &q1, &q2, &q3],
+        &[
+            &lambda, &x3, &y3, &q1_pos, &q1_neg, &q2_pos, &q2_neg, &q3_pos, &q3_neg,
+        ],
         &[&c1, &c2, &c3],
         params.limb_bits,
         crb,

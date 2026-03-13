@@ -230,8 +230,17 @@ impl DependencyInfo {
             }
             WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
             WitnessBuilder::EcScalarMulHint {
-                px, py, s_lo, s_hi, ..
-            } => vec![*px, *py, *s_lo, *s_hi],
+                px_limbs,
+                py_limbs,
+                s_lo,
+                s_hi,
+                ..
+            } => px_limbs
+                .iter()
+                .chain(py_limbs.iter())
+                .copied()
+                .chain([*s_lo, *s_hi])
+                .collect(),
             WitnessBuilder::SelectWitness {
                 flag,
                 on_false,
@@ -368,9 +377,11 @@ impl DependencyInfo {
             WitnessBuilder::FakeGLVHint { output_start, .. } => {
                 (*output_start..*output_start + 4).collect()
             }
-            WitnessBuilder::EcScalarMulHint { output_start, .. } => {
-                (*output_start..*output_start + 2).collect()
-            }
+            WitnessBuilder::EcScalarMulHint {
+                output_start,
+                num_limbs,
+                ..
+            } => (*output_start..*output_start + 2 * *num_limbs as usize).collect(),
             WitnessBuilder::MultiLimbAddQuotient { output, .. } => vec![*output],
             WitnessBuilder::MultiLimbSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {

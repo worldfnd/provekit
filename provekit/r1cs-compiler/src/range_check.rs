@@ -178,7 +178,7 @@ pub(crate) fn estimate_range_check_cost(checks: &BTreeMap<u32, usize>) -> usize 
 /// Uses dynamic base width optimization: all range check requests are
 /// collected, and the optimal decomposition base width is determined by
 /// minimizing the total witness count (memory cost). The search evaluates
-/// every base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
+/// every base width from \[MIN_BASE_WIDTH\] to \[MAX_BASE_WIDTH\]. For each
 /// candidate, the cost model picks the cheaper of LogUp and naive for
 /// every atomic bucket.
 ///
@@ -189,7 +189,7 @@ pub(crate) fn estimate_range_check_cost(checks: &BTreeMap<u32, usize>) -> usize 
 ///
 /// `range_checks` is a map from the number of bits k to the vector of
 /// witness indices that are to be constrained within the range [0..2^k].
-pub(crate) fn add_range_checks(
+pub fn add_range_checks(
     r1cs: &mut NoirToR1CSCompiler,
     range_checks: BTreeMap<u32, Vec<usize>>,
 ) -> Option<u32> {

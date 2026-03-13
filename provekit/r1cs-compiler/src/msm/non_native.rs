@@ -31,14 +31,25 @@
 //! 3. **Scalar relations**: per-point verification that (-1)^neg1·|s1| +
 //!    (-1)^neg2·|s2|·s ≡ 0 (mod curve_order).
 //! 4. **Accumulation**: adds each point's scalar-mul result (via dispatch to
-//!    hint-verified or generic add), subtracts offset, recomposes limbs to
-//!    native field elements, constrains outputs.
+//!    hint-verified or generic add), subtracts offset, constrains outputs.
+//!
+//! ## I/O modes
+//!
+//! Two entry points share a single core implementation via `NonNativeIo`:
+//! - `process_multi_point_non_native`: point coordinates as single field
+//!   elements (decomposed to limbs internally); outputs as single witnesses.
+//! - `process_multi_point_non_native_limbed`: point coordinates pre-decomposed
+//!   as limbs; outputs constrained per-limb.
 
 use {
     super::{
-        curve, ec_points, emit_ec_scalar_mul_hint_and_sanitize, emit_fakeglv_hint,
+        curve, ec_points,
         multi_limb_ops::{MultiLimbOps, MultiLimbParams},
-        sanitize_point_scalar, scalar_relation, Limbs,
+        sanitize::{
+            emit_ec_scalar_mul_hint_and_sanitize_multi_limb, emit_fakeglv_hint,
+            sanitize_point_scalar_multi_limb,
+        },
+        scalar_relation, Limbs, MsmLimbedOutputs,
     },
     crate::{
         constraint_helpers::{
@@ -53,12 +64,31 @@ use {
     std::collections::BTreeMap,
 };
 
-/// Multi-point non-native MSM with merged-loop optimization.
+// ---------------------------------------------------------------------------
+// IO mode: single field-element outputs vs. per-limb outputs
+// ---------------------------------------------------------------------------
+
+/// Distinguishes the two non-native MSM I/O modes.
+///
+/// - `SingleFe`: point coordinates come as single field elements (decomposed to
+///   limbs internally); outputs are single witnesses `(out_x, out_y, out_inf)`.
+/// - `Limbed`: point coordinates arrive pre-decomposed as limbs (stride
+///   `2*num_limbs + 1` per point); outputs are per-limb witnesses.
+enum NonNativeIo<'a> {
+    SingleFe { outputs: (usize, usize, usize) },
+    Limbed { outputs: &'a MsmLimbedOutputs },
+}
+
+// ---------------------------------------------------------------------------
+// Public entry points (thin wrappers around the shared core)
+// ---------------------------------------------------------------------------
+
+/// Multi-point non-native MSM with single field-element I/O.
 ///
 /// All points share a single set of doublings per window, saving
 /// `w × (n_points - 1)` doublings per window compared to separate loops.
 pub(super) fn process_multi_point_non_native<'a>(
-    mut compiler: &'a mut NoirToR1CSCompiler,
+    compiler: &'a mut NoirToR1CSCompiler,
     point_wits: &[usize],
     scalar_wits: &[usize],
     outputs: (usize, usize, usize),
@@ -66,18 +96,93 @@ pub(super) fn process_multi_point_non_native<'a>(
     num_limbs: usize,
     limb_bits: u32,
     window_size: usize,
+    range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
+    curve: &CurveParams,
+) {
+    process_non_native_core(
+        compiler,
+        point_wits,
+        scalar_wits,
+        NonNativeIo::SingleFe { outputs },
+        n_points,
+        num_limbs,
+        limb_bits,
+        window_size,
+        range_checks,
+        curve,
+    );
+}
+
+/// Multi-point non-native MSM with per-limb I/O.
+///
+/// Point coordinates are provided as limbs (stride `2*num_limbs + 1` per
+/// point), avoiding the single-field-element bottleneck. Output coordinates
+/// are constrained per-limb rather than recomposed.
+pub(super) fn process_multi_point_non_native_limbed<'a>(
+    compiler: &'a mut NoirToR1CSCompiler,
+    point_wits: &[usize],
+    scalar_wits: &[usize],
+    outputs: &MsmLimbedOutputs,
+    n_points: usize,
+    num_limbs: usize,
+    limb_bits: u32,
+    window_size: usize,
+    range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
+    curve: &CurveParams,
+) {
+    process_non_native_core(
+        compiler,
+        point_wits,
+        scalar_wits,
+        NonNativeIo::Limbed { outputs },
+        n_points,
+        num_limbs,
+        limb_bits,
+        window_size,
+        range_checks,
+        curve,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Core implementation
+// ---------------------------------------------------------------------------
+
+/// Unified non-native MSM implementation.
+///
+/// The only differences between single-FE and limbed I/O modes are:
+/// 1. **Phase 1**: how point coordinates are extracted from `point_wits`
+///    (decompose from single FE vs. read pre-decomposed limbs).
+/// 2. **Phase 4**: how output coordinates are constrained (recompose to single
+///    FE vs. constrain per-limb).
+///
+/// Phases 2 (merged scalar mul) and 3 (scalar relations) are identical.
+fn process_non_native_core<'a>(
+    mut compiler: &'a mut NoirToR1CSCompiler,
+    point_wits: &[usize],
+    scalar_wits: &[usize],
+    io: NonNativeIo<'_>,
+    n_points: usize,
+    num_limbs: usize,
+    limb_bits: u32,
+    window_size: usize,
     mut range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
     curve: &CurveParams,
 ) {
-    let (out_x, out_y, out_inf) = outputs;
     let one = compiler.witness_one();
-
-    // Generator constants for sanitization
-    let gen_x_fe = curve::curve_native_point_fe(&curve.generator.0);
-    let gen_y_fe = curve::curve_native_point_fe(&curve.generator.1);
-    let gen_x_witness = add_constant_witness(compiler, gen_x_fe);
-    let gen_y_witness = add_constant_witness(compiler, gen_y_fe);
     let zero_witness = add_constant_witness(compiler, FieldElement::ZERO);
+
+    // Generator as limbs — avoids truncation when generator coords > BN254_Fr
+    let gen_x_fe_limbs = decompose_to_limbs_pub(&curve.generator.0, limb_bits, num_limbs);
+    let gen_y_fe_limbs = decompose_to_limbs_pub(&curve.generator.1, limb_bits, num_limbs);
+    let gen_x_limb_wits: Vec<usize> = gen_x_fe_limbs
+        .iter()
+        .map(|&v| add_constant_witness(compiler, v))
+        .collect();
+    let gen_y_limb_wits: Vec<usize> = gen_y_fe_limbs
+        .iter()
+        .map(|&v| add_constant_witness(compiler, v))
+        .collect();
 
     // Build params once for all multi-limb ops
     let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
@@ -95,15 +200,44 @@ pub(super) fn process_multi_point_non_native<'a>(
 
     // Phase 1: Per-point preprocessing
     for i in 0..n_points {
-        let san = sanitize_point_scalar(
+        // Extract point limbs and inf flag — differs by IO mode
+        let (px_limbs, py_limbs, inf_flag) = match &io {
+            NonNativeIo::SingleFe { .. } => {
+                let (px, py) = decompose_point_to_limbs(
+                    compiler,
+                    point_wits[3 * i],
+                    point_wits[3 * i + 1],
+                    num_limbs,
+                    limb_bits,
+                    range_checks,
+                );
+                (px, py, point_wits[3 * i + 2])
+            }
+            NonNativeIo::Limbed { .. } => {
+                let stride = 2 * num_limbs + 1;
+                let base = i * stride;
+                let mut px = Limbs::new(num_limbs);
+                let mut py = Limbs::new(num_limbs);
+                for j in 0..num_limbs {
+                    px[j] = point_wits[base + j];
+                    py[j] = point_wits[base + num_limbs + j];
+                    range_checks.entry(limb_bits).or_default().push(px[j]);
+                    range_checks.entry(limb_bits).or_default().push(py[j]);
+                }
+                (px, py, point_wits[base + 2 * num_limbs])
+            }
+        };
+
+        // Sanitize at the limb level — per-limb select between input and generator
+        let san = sanitize_point_scalar_multi_limb(
             compiler,
-            point_wits[3 * i],
-            point_wits[3 * i + 1],
+            px_limbs,
+            py_limbs,
             scalar_wits[2 * i],
             scalar_wits[2 * i + 1],
-            point_wits[3 * i + 2],
-            gen_x_witness,
-            gen_y_witness,
+            inf_flag,
+            &gen_x_limb_wits,
+            &gen_y_limb_wits,
             zero_witness,
             one,
         );
@@ -114,25 +248,21 @@ pub(super) fn process_multi_point_non_native<'a>(
             Some(prev) => compiler.add_product(prev, san.is_skip),
         });
 
-        let (sanitized_rx, sanitized_ry) = emit_ec_scalar_mul_hint_and_sanitize(
+        // EcScalarMulHint with multi-limb inputs/outputs
+        let (rx, ry) = emit_ec_scalar_mul_hint_and_sanitize_multi_limb(
             compiler,
             &san,
-            gen_x_witness,
-            gen_y_witness,
-            curve,
-        );
-
-        // Decompose points to limbs
-        let (px, py) =
-            decompose_point_to_limbs(compiler, san.px, san.py, num_limbs, limb_bits, range_checks);
-        let (rx, ry) = decompose_point_to_limbs(
-            compiler,
-            sanitized_rx,
-            sanitized_ry,
+            &gen_x_limb_wits,
+            &gen_y_limb_wits,
             num_limbs,
             limb_bits,
             range_checks,
+            curve,
         );
+
+        // Sanitized px/py are already in Limbs form
+        let px = san.px_limbs;
+        let py = san.py_limbs;
 
         // On-curve checks: use hint-verified for multi-limb, generic for single-limb
         if num_limbs >= 2 {
@@ -203,36 +333,43 @@ pub(super) fn process_multi_point_non_native<'a>(
         accum_inputs.push((rx, ry, san.is_skip));
     }
 
-    // Phase 2: Merged scalar mul verification (shared doublings across all points)
+    // Phase 2: Per-point scalar mul verification
+    //
+    // Each point gets its own accumulator and identity check. This ensures
+    // per-point soundness: b_i * (R_i - scalar_i * P_i) = O with b_i ≠ 0
+    // implies R_i = scalar_i * P_i for each point independently.
     let half_bits = curve.glv_half_bits() as usize;
-    let glv_acc;
     {
         let mut ops = MultiLimbOps {
             compiler,
             range_checks,
             params: &params,
         };
-        let offset_x = ops.constant_limbs(&offset_x_values);
-        let offset_y = ops.constant_limbs(&offset_y_values);
 
-        glv_acc = ec_points::scalar_mul_merged_glv(
-            &mut ops,
-            &merged_points,
-            window_size,
-            offset_x,
-            offset_y,
-        );
-
-        // Identity check: acc should equal accumulated offset
+        // Precompute the expected accumulated offset (same for all points)
         let glv_num_windows = (half_bits + window_size - 1) / window_size;
         let glv_n_doublings = glv_num_windows * window_size;
         let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(glv_n_doublings);
-
         let acc_off_x_values = decompose_to_limbs_pub(&acc_off_x_raw, limb_bits, num_limbs);
         let acc_off_y_values = decompose_to_limbs_pub(&acc_off_y_raw, limb_bits, num_limbs);
-        for i in 0..num_limbs {
-            constrain_to_constant(ops.compiler, glv_acc.0[i], acc_off_x_values[i]);
-            constrain_to_constant(ops.compiler, glv_acc.1[i], acc_off_y_values[i]);
+
+        for pt in &merged_points {
+            let offset_x = ops.constant_limbs(&offset_x_values);
+            let offset_y = ops.constant_limbs(&offset_y_values);
+
+            let glv_acc = ec_points::scalar_mul_merged_glv(
+                &mut ops,
+                std::slice::from_ref(pt),
+                window_size,
+                offset_x,
+                offset_y,
+            );
+
+            // Per-point identity check
+            for j in 0..num_limbs {
+                constrain_to_constant(ops.compiler, glv_acc.0[j], acc_off_x_values[j]);
+                constrain_to_constant(ops.compiler, glv_acc.1[j], acc_off_y_values[j]);
+            }
         }
 
         compiler = ops.compiler;
@@ -254,7 +391,7 @@ pub(super) fn process_multi_point_non_native<'a>(
         );
     }
 
-    // Phase 4: Accumulation (offset-based, same as before)
+    // Phase 4: Accumulation + output constraining
     let all_skipped = all_skipped.expect("MSM must have at least one point");
 
     let mut ops = MultiLimbOps {
@@ -296,21 +433,46 @@ pub(super) fn process_multi_point_non_native<'a>(
     let (result_x, result_y) = ec_points::point_add_dispatch(&mut ops, acc_x, acc_y, sub_x, sub_y);
     compiler = ops.compiler;
 
-    if num_limbs == 1 {
-        let masked_result_x = select_witness(compiler, all_skipped, result_x[0], zero_witness);
-        let masked_result_y = select_witness(compiler, all_skipped, result_y[0], zero_witness);
-        constrain_equal(compiler, out_x, masked_result_x);
-        constrain_equal(compiler, out_y, masked_result_y);
-    } else {
-        let recomposed_x = recompose_limbs(compiler, result_x.as_slice(), limb_bits);
-        let recomposed_y = recompose_limbs(compiler, result_y.as_slice(), limb_bits);
-        let masked_result_x = select_witness(compiler, all_skipped, recomposed_x, zero_witness);
-        let masked_result_y = select_witness(compiler, all_skipped, recomposed_y, zero_witness);
-        constrain_equal(compiler, out_x, masked_result_x);
-        constrain_equal(compiler, out_y, masked_result_y);
+    // Output constraining — differs by IO mode
+    match &io {
+        NonNativeIo::SingleFe {
+            outputs: (out_x, out_y, out_inf),
+        } => {
+            if num_limbs == 1 {
+                let masked_x = select_witness(compiler, all_skipped, result_x[0], zero_witness);
+                let masked_y = select_witness(compiler, all_skipped, result_y[0], zero_witness);
+                constrain_equal(compiler, *out_x, masked_x);
+                constrain_equal(compiler, *out_y, masked_y);
+            } else {
+                let recomposed_x = recompose_limbs(compiler, result_x.as_slice(), limb_bits);
+                let recomposed_y = recompose_limbs(compiler, result_y.as_slice(), limb_bits);
+                let masked_x = select_witness(compiler, all_skipped, recomposed_x, zero_witness);
+                let masked_y = select_witness(compiler, all_skipped, recomposed_y, zero_witness);
+                constrain_equal(compiler, *out_x, masked_x);
+                constrain_equal(compiler, *out_y, masked_y);
+            }
+            constrain_equal(compiler, *out_inf, all_skipped);
+        }
+        NonNativeIo::Limbed { outputs } => {
+            let zero_limb_wits: Vec<usize> = (0..num_limbs)
+                .map(|_| add_constant_witness(compiler, FieldElement::ZERO))
+                .collect();
+            for j in 0..num_limbs {
+                let masked_x =
+                    select_witness(compiler, all_skipped, result_x[j], zero_limb_wits[j]);
+                let masked_y =
+                    select_witness(compiler, all_skipped, result_y[j], zero_limb_wits[j]);
+                constrain_equal(compiler, outputs.out_x_limbs[j], masked_x);
+                constrain_equal(compiler, outputs.out_y_limbs[j], masked_y);
+            }
+            constrain_equal(compiler, outputs.out_inf, all_skipped);
+        }
     }
-    constrain_equal(compiler, out_inf, all_skipped);
 }
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /// On-curve check: verifies y^2 = x^3 + a*x + b for a single point.
 fn verify_on_curve(
@@ -388,6 +550,3 @@ fn recompose_limbs(compiler: &mut NoirToR1CSCompiler, limbs: &[usize], limb_bits
         .collect();
     compiler.add_sum(terms)
 }
-
-// `decompose_half_scalar_bits` replaced by `super::decompose_signed_bits`
-// which produces signed digits with skew correction, halving lookup tables.

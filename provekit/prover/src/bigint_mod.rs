@@ -3,7 +3,11 @@
 /// These helpers compute modular inverse via Fermat's little theorem:
 /// a^{-1} = a^{m-2} mod m, using schoolbook multiplication and
 /// square-and-multiply exponentiation.
-use {ark_ff::PrimeField, provekit_common::FieldElement};
+use {
+    ark_ff::PrimeField,
+    num_bigint::{BigInt, Sign},
+    provekit_common::FieldElement,
+};
 
 /// Schoolbook multiplication: 4×4 limbs → 8 limbs (256-bit × 256-bit →
 /// 512-bit).
@@ -61,8 +65,7 @@ fn reduce_wide(wide: &[u64; 8], modulus: &[u64; 4]) -> [u64; 4] {
     let mut remainder = [0u64; 4];
     for bit_pos in (0..highest_bit).rev() {
         // Left-shift remainder by 1
-        let carry = shift_left_one(&mut remainder);
-        debug_assert_eq!(carry, 0, "remainder overflow during shift");
+        let shift_carry = shift_left_one(&mut remainder);
 
         // Bring in the next bit from wide
         let limb_idx = bit_pos / 64;
@@ -70,9 +73,16 @@ fn reduce_wide(wide: &[u64; 8], modulus: &[u64; 4]) -> [u64; 4] {
         let bit = (wide[limb_idx] >> bit_idx) & 1;
         remainder[0] |= bit;
 
-        // If remainder >= modulus, subtract
-        if cmp_4limb(&remainder, modulus) != std::cmp::Ordering::Less {
-            sub_4limb_inplace(&mut remainder, modulus);
+        // If shift_carry is set, the effective remainder is 2^256 + remainder,
+        // which is always > any 256-bit modulus, so we must subtract.
+        if shift_carry != 0 || cmp_4limb(&remainder, modulus) != std::cmp::Ordering::Less {
+            let mut borrow = 0u64;
+            for i in 0..4 {
+                let (d1, b1) = remainder[i].overflowing_sub(modulus[i]);
+                let (d2, b2) = d1.overflowing_sub(borrow);
+                remainder[i] = d2;
+                borrow = (b1 as u64) + (b2 as u64);
+            }
         }
     }
 
@@ -296,82 +306,119 @@ pub fn to_i128_limbs(limbs: &[u128]) -> Vec<i128> {
     limbs.iter().map(|&v| v as i128).collect()
 }
 
+/// Convert a `[u64; 8]` wide value to a `BigInt`.
+fn wide_to_bigint(v: &[u64; 8]) -> BigInt {
+    let mut bytes = [0u8; 64];
+    for (i, &limb) in v.iter().enumerate() {
+        bytes[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
+    BigInt::from_bytes_le(Sign::Plus, &bytes)
+}
+
+/// Convert a `[u64; 4]` to a `BigInt`.
+fn u256_to_bigint(v: &[u64; 4]) -> BigInt {
+    let mut bytes = [0u8; 32];
+    for (i, &limb) in v.iter().enumerate() {
+        bytes[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
+    BigInt::from_bytes_le(Sign::Plus, &bytes)
+}
+
+/// Convert a non-negative `BigInt` to `u128`. Panics if negative or too large.
+fn bigint_to_u128(v: &BigInt) -> u128 {
+    assert!(v.sign() != Sign::Minus, "bigint_to_u128: negative value");
+    let (_, bytes) = v.to_bytes_le();
+    assert!(bytes.len() <= 16, "bigint_to_u128: value exceeds 128 bits");
+    let mut buf = [0u8; 16];
+    buf[..bytes.len()].copy_from_slice(&bytes);
+    u128::from_le_bytes(buf)
+}
+
+/// Convert a non-negative `BigInt` to `[u64; 4]`. Panics if it doesn't fit.
+fn bigint_to_u256(v: &BigInt) -> [u64; 4] {
+    assert!(v.sign() != Sign::Minus, "bigint_to_u256: negative value");
+    let (_, bytes) = v.to_bytes_le();
+    let mut result = [0u64; 4];
+    for (i, chunk) in bytes.chunks(8).enumerate() {
+        if i >= 4 {
+            assert!(
+                chunk.iter().all(|&b| b == 0),
+                "bigint_to_u256: value exceeds 256 bits"
+            );
+            break;
+        }
+        let mut buf = [0u8; 8];
+        buf[..chunk.len()].copy_from_slice(chunk);
+        result[i] = u64::from_le_bytes(buf);
+    }
+    result
+}
+
 /// Compute signed quotient q such that:
-///   Σ lhs_products\[i\] * coeff_i - Σ rhs_products\[j\] * coeff_j - rhs_sub ≡
-/// 0 (mod p) Returns q as decomposed limbs, with negative q stored as -q in the
-/// native field.
+///   Σ lhs_products\[i\] * coeff_i + Σ lhs_linear\[j\] * coeff_j
+///   - Σ rhs_products\[i\] * coeff_i - Σ rhs_linear\[j\] * coeff_j ≡ 0 (mod p)
+///
+/// Returns (|q| limbs, is_negative) where q = (LHS - RHS) / p.
 pub fn signed_quotient_wide(
     lhs_products: &[(&[u64; 4], &[u64; 4], u64)],
     rhs_products: &[(&[u64; 4], &[u64; 4], u64)],
-    rhs_sub: Option<&[u64; 4]>,
+    lhs_linear: &[(&[u64; 4], u64)],
+    rhs_linear: &[(&[u64; 4], u64)],
     p: &[u64; 4],
     n: usize,
     w: u32,
-) -> Vec<u128> {
-    fn accumulate_wide(terms: &[(&[u64; 4], &[u64; 4], u64)]) -> [u64; 8] {
-        let mut acc = [0u64; 8];
+) -> (Vec<u128>, bool) {
+    fn accumulate_wide_products(terms: &[(&[u64; 4], &[u64; 4], u64)]) -> BigInt {
+        let mut acc = BigInt::from(0);
         for &(a, b, coeff) in terms {
             let prod = widening_mul(a, b);
-            let mut carry = 0u128;
-            for i in 0..8 {
-                let v = acc[i] as u128 + (prod[i] as u128) * (coeff as u128) + carry;
-                acc[i] = v as u64;
-                carry = v >> 64;
-            }
+            acc += wide_to_bigint(&prod) * BigInt::from(coeff);
         }
         acc
     }
 
-    let lhs_wide = accumulate_wide(lhs_products);
-    let mut rhs_wide = accumulate_wide(rhs_products);
-    if let Some(sub) = rhs_sub {
-        let mut carry = 0u128;
-        for i in 0..4 {
-            let v = rhs_wide[i] as u128 + sub[i] as u128 + carry;
-            rhs_wide[i] = v as u64;
-            carry = v >> 64;
+    fn accumulate_wide_linear(terms: &[(&[u64; 4], u64)]) -> BigInt {
+        let mut acc = BigInt::from(0);
+        for &(val, coeff) in terms {
+            acc += u256_to_bigint(val) * BigInt::from(coeff);
         }
-        for i in 4..8 {
-            let v = rhs_wide[i] as u128 + carry;
-            rhs_wide[i] = v as u64;
-            carry = v >> 64;
-        }
+        acc
     }
 
-    let lhs_ge = {
-        let mut ge = false;
-        for i in (0..8).rev() {
-            if lhs_wide[i] > rhs_wide[i] {
-                ge = true;
-                break;
-            } else if lhs_wide[i] < rhs_wide[i] {
-                break;
-            }
-            if i == 0 {
-                ge = true;
-            }
-        }
-        ge
-    };
-    let (big, small) = if lhs_ge {
-        (lhs_wide, rhs_wide)
-    } else {
-        (rhs_wide, lhs_wide)
-    };
-    let mut diff = [0u64; 8];
-    let mut bw = 0u64;
-    for i in 0..8 {
-        let (d1, b1) = big[i].overflowing_sub(small[i]);
-        let (d2, b2) = d1.overflowing_sub(bw);
-        diff[i] = d2;
-        bw = b1 as u64 + b2 as u64;
+    let lhs = accumulate_wide_products(lhs_products) + accumulate_wide_linear(lhs_linear);
+    let rhs = accumulate_wide_products(rhs_products) + accumulate_wide_linear(rhs_linear);
+
+    let diff = lhs - rhs;
+    let p_big = u256_to_bigint(p);
+
+    let q_big = &diff / &p_big;
+    let rem = &diff - &q_big * &p_big;
+    debug_assert_eq!(
+        rem,
+        BigInt::from(0),
+        "signed_quotient_wide: non-zero remainder"
+    );
+
+    let is_neg = q_big.sign() == Sign::Minus;
+    let q_abs_big = if is_neg { -&q_big } else { q_big };
+
+    // Decompose directly from BigInt into u128 limbs at `w` bits each,
+    // since the quotient may exceed 256 bits.
+    let limb_mask = (BigInt::from(1u64) << w) - 1;
+    let mut limbs = Vec::with_capacity(n);
+    let mut remaining = q_abs_big;
+    for _ in 0..n {
+        let limb_val = &remaining & &limb_mask;
+        limbs.push(bigint_to_u128(&limb_val));
+        remaining >>= w;
     }
-    let (q_abs, _) = divmod_wide(&diff, p);
-    if lhs_ge {
-        decompose_to_u128_limbs(&q_abs, n, w)
-    } else {
-        decompose_to_u128_limbs(&fe_to_bigint(-bigint_to_fe(&q_abs)), n, w)
-    }
+    debug_assert_eq!(
+        remaining,
+        BigInt::from(0),
+        "quotient doesn't fit in {n} limbs at {w} bits"
+    );
+
+    (limbs, is_neg)
 }
 
 /// Reconstruct a 256-bit value from u128 limb values packed at `limb_bits`
@@ -413,62 +460,44 @@ pub fn compute_mul_mod_carries(
     let n = a_limbs.len();
     let w = limb_bits;
     let num_carries = 2 * n - 2;
-    let carry_offset = 1u128 << (w + ((n as f64).log2().ceil() as u32) + 1);
+    let carry_offset = BigInt::from(1u64) << (w + ((n as f64).log2().ceil() as u32) + 1);
     let mut carries = Vec::with_capacity(num_carries);
-    let mut carry: i128 = 0;
+    let mut carry = BigInt::from(0);
 
     for k in 0..(2 * n - 1) {
-        let mut ab_lo: u128 = 0;
-        let mut ab_hi: u64 = 0;
+        let mut col_value = BigInt::from(0);
+
+        // a*b products
         for i in 0..n {
             let j = k as isize - i as isize;
             if j >= 0 && (j as usize) < n {
-                let prod = a_limbs[i] * b_limbs[j as usize];
-                let (new_lo, ov) = ab_lo.overflowing_add(prod);
-                ab_lo = new_lo;
-                if ov {
-                    ab_hi += 1;
-                }
+                col_value += BigInt::from(a_limbs[i]) * BigInt::from(b_limbs[j as usize]);
             }
         }
-        let mut pq_lo: u128 = 0;
-        let mut pq_hi: u64 = 0;
+
+        // Subtract p*q + r
         for i in 0..n {
             let j = k as isize - i as isize;
             if j >= 0 && (j as usize) < n {
-                let prod = p_limbs[i] * q_limbs[j as usize];
-                let (new_lo, ov) = pq_lo.overflowing_add(prod);
-                pq_lo = new_lo;
-                if ov {
-                    pq_hi += 1;
-                }
+                col_value -= BigInt::from(p_limbs[i]) * BigInt::from(q_limbs[j as usize]);
             }
         }
         if k < n {
-            let (new_lo, ov) = pq_lo.overflowing_add(r_limbs[k]);
-            pq_lo = new_lo;
-            if ov {
-                pq_hi += 1;
-            }
+            col_value -= BigInt::from(r_limbs[k]);
         }
 
-        let diff_lo = ab_lo.wrapping_sub(pq_lo);
-        let borrow = if ab_lo < pq_lo { 1i64 } else { 0 };
-        let diff_hi = ab_hi as i64 - pq_hi as i64 - borrow;
-
-        let carry_lo = carry as u128;
-        let carry_hi: i64 = if carry < 0 { -1 } else { 0 };
-        let (total_lo, ov) = diff_lo.overflowing_add(carry_lo);
-        let total_hi = diff_hi + carry_hi + if ov { 1i64 } else { 0 };
+        col_value += &carry;
 
         if k < 2 * n - 2 {
+            let mask = (BigInt::from(1u64) << w) - 1;
             debug_assert_eq!(
-                total_lo & ((1u128 << w) - 1),
-                0,
+                &col_value & &mask,
+                BigInt::from(0),
                 "non-zero remainder at column {k}"
             );
-            carry = total_hi as i128 * (1i128 << (128 - w)) + (total_lo >> w) as i128;
-            carries.push((carry + carry_offset as i128) as u128);
+            carry = &col_value >> w;
+            let stored = &carry + &carry_offset;
+            carries.push(bigint_to_u128(&stored));
         }
     }
 
@@ -640,9 +669,15 @@ pub fn mod_add(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
     let sum = add_4limb(a, b);
     let sum4 = [sum[0], sum[1], sum[2], sum[3]];
     if sum[4] > 0 || cmp_4limb(&sum4, p) != std::cmp::Ordering::Less {
-        // sum >= p, subtract p
+        // sum >= p, subtract p (borrow absorbs carry bit if sum[4] > 0)
         let mut result = sum4;
-        sub_4limb_inplace(&mut result, p);
+        let mut borrow = 0u64;
+        for i in 0..4 {
+            let (d1, b1) = result[i].overflowing_sub(p[i]);
+            let (d2, b2) = d1.overflowing_sub(borrow);
+            result[i] = d2;
+            borrow = (b1 as u64) + (b2 as u64);
+        }
         result
     } else {
         sum4
@@ -851,47 +886,42 @@ pub fn divmod_wide(dividend: &[u64; 8], divisor: &[u64; 4]) -> ([u64; 4], [u64; 
 /// Each `linear_set` entry is (limb_values, coefficient) for non-product terms:
 ///   LHS_terms += Σ coeff * val\[k\]  (for k < val.len())
 ///
-/// The equation verified is: LHS = Σ p\[i\]*q\[j\] + carry_chain
-/// (no separate result — the "result" is encoded in the linear terms).
+/// The equation verified is:
+///   LHS + Σ p\[i\]*q_neg\[j\] = RHS + Σ p\[i\]*q_pos\[j\] + carry_chain
+///
+/// `q_pos_limbs` and `q_neg_limbs` are both non-negative; at most one is
+/// non-zero.
 pub fn compute_ec_verification_carries(
     product_sets: &[(&[u128], &[u128], i64)],
     linear_terms: &[(Vec<i128>, i64)], // (limb_values extended to 2N-1, coefficient)
     p_limbs: &[u128],
-    q_limbs: &[u128],
+    q_pos_limbs: &[u128],
+    q_neg_limbs: &[u128],
     n: usize,
     limb_bits: u32,
+    max_coeff_sum: u64,
 ) -> Vec<u128> {
     let w = limb_bits;
     let num_columns = 2 * n - 1;
     let num_carries = num_columns - 1;
 
-    // Use a larger offset to account for merged terms.
-    // Max terms per column: sum of coefficients × N products + linear terms.
-    let max_coeff_sum: u64 = product_sets
-        .iter()
-        .map(|(_, _, c)| c.unsigned_abs() as u64)
-        .sum::<u64>()
-        + linear_terms
-            .iter()
-            .map(|(_, c)| c.unsigned_abs() as u64)
-            .sum::<u64>()
-        + n as u64; // p*q terms
     let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
     let carry_offset_bits = w + extra_bits;
-    let carry_offset = 1u128 << carry_offset_bits;
+    let carry_offset = BigInt::from(1u64) << carry_offset_bits;
 
     let mut carries = Vec::with_capacity(num_carries);
-    let mut carry: i128 = 0;
+    let mut carry = BigInt::from(0);
 
     for k in 0..num_columns {
-        let mut col_value: i128 = 0;
+        let mut col_value = BigInt::from(0);
 
         // Product terms
         for &(a, b, coeff) in product_sets {
             for i in 0..n {
                 let j = k as isize - i as isize;
                 if j >= 0 && (j as usize) < n {
-                    col_value += coeff as i128 * (a[i] as i128) * (b[j as usize] as i128);
+                    col_value +=
+                        BigInt::from(coeff) * BigInt::from(a[i]) * BigInt::from(b[j as usize]);
                 }
             }
         }
@@ -899,30 +929,37 @@ pub fn compute_ec_verification_carries(
         // Linear terms
         for (vals, coeff) in linear_terms {
             if k < vals.len() {
-                col_value += *coeff as i128 * vals[k];
+                col_value += BigInt::from(*coeff) * BigInt::from(vals[k]);
             }
         }
 
-        // Subtract p*q contribution
+        // p*q_neg on positive side, p*q_pos on negative side
         for i in 0..n {
             let j = k as isize - i as isize;
             if j >= 0 && (j as usize) < n {
-                col_value -= (p_limbs[i] as i128) * (q_limbs[j as usize] as i128);
+                col_value += BigInt::from(p_limbs[i]) * BigInt::from(q_neg_limbs[j as usize]);
+                col_value -= BigInt::from(p_limbs[i]) * BigInt::from(q_pos_limbs[j as usize]);
             }
         }
 
-        col_value += carry;
+        col_value += &carry;
 
         if k < num_carries {
+            let mask = (BigInt::from(1u64) << w) - 1;
             debug_assert_eq!(
-                col_value & ((1i128 << w) - 1),
-                0,
+                &col_value & &mask,
+                BigInt::from(0),
                 "non-zero remainder at column {k}: col_value={col_value}"
             );
-            carry = col_value >> w;
-            carries.push((carry + carry_offset as i128) as u128);
+            carry = &col_value >> w;
+            let stored = &carry + &carry_offset;
+            carries.push(bigint_to_u128(&stored));
         } else {
-            debug_assert_eq!(col_value, 0, "non-zero final column value: {col_value}");
+            debug_assert_eq!(
+                col_value,
+                BigInt::from(0),
+                "non-zero final column value: {col_value}"
+            );
         }
     }
 

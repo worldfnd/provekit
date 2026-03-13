@@ -98,8 +98,8 @@ pub struct R1CSBreakdown {
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
-pub(crate) struct NoirToR1CSCompiler {
-    pub(crate) r1cs: R1CS,
+pub struct NoirToR1CSCompiler {
+    pub r1cs: R1CS,
 
     /// Indicates how to solve for each R1CS witness
     pub witness_builders: Vec<WitnessBuilder>,
@@ -142,7 +142,7 @@ pub fn noir_to_r1cs_with_breakdown(
 }
 
 impl NoirToR1CSCompiler {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let mut r1cs = R1CS::new();
         // Grow the matrices to account for the constant one witness.
         r1cs.add_witnesses(1);

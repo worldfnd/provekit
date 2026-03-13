@@ -57,12 +57,12 @@ pub struct CombinedTableEntryInverseData {
 /// Operation type for the unified non-native EC hint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum NonNativeEcOp {
-    /// Point doubling: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 12N-6
+    /// Point doubling: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 15N-6
     Double,
     /// Point addition: inputs = \[\[x1_limbs\], \[y1_limbs\], \[x2_limbs\],
-    /// \[y2_limbs\]\], outputs 12N-6
+    /// \[y2_limbs\]\], outputs 15N-6
     Add,
-    /// On-curve check: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 7N-4
+    /// On-curve check: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 9N-4
     OnCurve,
 }
 
@@ -303,15 +303,20 @@ pub enum WitnessBuilder {
     /// computes R = \[s\]P on the curve with parameter `curve_a` and
     /// field modulus `field_modulus_p`.
     ///
-    /// Outputs 2 witnesses at output_start: R_x, R_y.
+    /// When `num_limbs == 1`: inputs are single witnesses, outputs 2
+    /// witnesses (R_x, R_y) as native field elements.
+    /// When `num_limbs >= 2`: inputs are limb witnesses, outputs
+    /// `2 * num_limbs` witnesses (R_x limbs then R_y limbs).
     EcScalarMulHint {
         output_start:    usize,
-        px:              usize,
-        py:              usize,
+        px_limbs:        Vec<usize>,
+        py_limbs:        Vec<usize>,
         s_lo:            usize,
         s_hi:            usize,
         curve_a:         [u64; 4],
         field_modulus_p: [u64; 4],
+        num_limbs:       u32,
+        limb_bits:       u32,
     },
     /// Prover hint for EC point doubling on native field.
     /// Given P = (px, py) and curve parameter `a`, computes:
@@ -361,10 +366,10 @@ pub enum WitnessBuilder {
     /// Unified prover hint for non-native EC operations (multi-limb).
     ///
     /// `op` selects the operation:
-    ///   - `Double`: inputs = \[\[px\], \[py\]\], outputs 12N-6 witnesses
-    ///   - `Add`:    inputs = \[\[x1\], \[y1\], \[x2\], \[y2\]\], outputs 12N-6
+    ///   - `Double`: inputs = \[\[px\], \[py\]\], outputs 15N-6 witnesses
+    ///   - `Add`:    inputs = \[\[x1\], \[y1\], \[x2\], \[y2\]\], outputs 15N-6
     ///     witnesses
-    ///   - `OnCurve`: inputs = \[\[px\], \[py\]\], outputs 7N-4 witnesses
+    ///   - `OnCurve`: inputs = \[\[px\], \[py\]\], outputs 9N-4 witnesses
     NonNativeEcHint {
         output_start:    usize,
         op:              NonNativeEcOp,
@@ -457,11 +462,11 @@ impl WitnessBuilder {
             WitnessBuilder::EcDoubleHint { .. } => 3,
             WitnessBuilder::EcAddHint { .. } => 3,
             WitnessBuilder::NonNativeEcHint { op, num_limbs, .. } => match op {
-                NonNativeEcOp::Double | NonNativeEcOp::Add => (12 * *num_limbs - 6) as usize,
-                NonNativeEcOp::OnCurve => (7 * *num_limbs - 4) as usize,
+                NonNativeEcOp::Double | NonNativeEcOp::Add => (15 * *num_limbs - 6) as usize,
+                NonNativeEcOp::OnCurve => (9 * *num_limbs - 4) as usize,
             },
             WitnessBuilder::FakeGLVHint { .. } => 4,
-            WitnessBuilder::EcScalarMulHint { .. } => 2,
+            WitnessBuilder::EcScalarMulHint { num_limbs, .. } => 2 * *num_limbs as usize,
 
             _ => 1,
         }
