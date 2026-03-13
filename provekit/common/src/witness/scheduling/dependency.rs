@@ -1,7 +1,7 @@
 use {
     crate::witness::{
-        ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-        WitnessCoefficient,
+        ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
+        WitnessBuilder, WitnessCoefficient,
     },
     std::collections::HashMap,
 };
@@ -225,6 +225,9 @@ impl DependencyInfo {
             }
             WitnessBuilder::EcDoubleHint { px, py, .. } => vec![*px, *py],
             WitnessBuilder::EcAddHint { x1, y1, x2, y2, .. } => vec![*x1, *y1, *x2, *y2],
+            WitnessBuilder::NonNativeEcHint { inputs, .. } => {
+                inputs.iter().flatten().copied().collect()
+            }
             WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
             WitnessBuilder::EcScalarMulHint {
                 px, py, s_lo, s_hi, ..
@@ -349,6 +352,18 @@ impl DependencyInfo {
             }
             WitnessBuilder::EcAddHint { output_start, .. } => {
                 (*output_start..*output_start + 3).collect()
+            }
+            WitnessBuilder::NonNativeEcHint {
+                output_start,
+                num_limbs,
+                op,
+                ..
+            } => {
+                let count = match op {
+                    NonNativeEcOp::Double | NonNativeEcOp::Add => (12 * *num_limbs - 6) as usize,
+                    NonNativeEcOp::OnCurve => (7 * *num_limbs - 4) as usize,
+                };
+                (*output_start..*output_start + count).collect()
             }
             WitnessBuilder::FakeGLVHint { output_start, .. } => {
                 (*output_start..*output_start + 4).collect()

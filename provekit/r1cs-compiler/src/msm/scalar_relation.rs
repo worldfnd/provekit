@@ -96,6 +96,10 @@ pub(super) fn verify_scalar_relation(
 /// When `limb_bits` divides 128 (e.g. 64), limb boundaries align with the
 /// s_lo/s_hi split. Otherwise (e.g. 85-bit limbs), one limb straddles bit 128
 /// and is assembled from a partial s_lo digit and a partial s_hi digit.
+///
+/// For small curves where `num_limbs * limb_bits < 256`, the digits beyond the
+/// used limbs are constrained to zero. This ensures the scalar fits in the
+/// representation and prevents truncation attacks.
 fn decompose_scalar_from_halves(
     ops: &mut MultiLimbOps,
     s_lo: usize,
@@ -115,13 +119,26 @@ fn decompose_scalar_from_halves(
             limbs[i] = dd_lo.get_digit_witness_index(i, 0);
             ops.range_checks.entry(w as u32).or_default().push(limbs[i]);
         }
-        for (i, &w) in widths.iter().enumerate().take(num_limbs - from_lo) {
+        let from_hi = (num_limbs - from_lo).min(widths.len());
+        for (i, &w) in widths.iter().enumerate().take(from_hi) {
             limbs[from_lo + i] = dd_hi.get_digit_witness_index(i, 0);
             ops.range_checks
                 .entry(w as u32)
                 .or_default()
                 .push(limbs[from_lo + i]);
         }
+
+        // Constrain unused dd_lo digits to zero (small curves where num_limbs
+        // covers fewer than 128 bits of s_lo).
+        for i in from_lo..widths.len() {
+            constrain_zero(ops.compiler, dd_lo.get_digit_witness_index(i, 0));
+        }
+        // Constrain unused dd_hi digits to zero (small curves where the upper
+        // half is partially or entirely unused).
+        for i in from_hi..widths.len() {
+            constrain_zero(ops.compiler, dd_hi.get_digit_witness_index(i, 0));
+        }
+
         limbs
     } else {
         // Example: 85-bit limbs, 254-bit order →
@@ -134,11 +151,12 @@ fn decompose_scalar_from_halves(
         let lo_widths = limb_widths(SCALAR_HALF_BITS, limb_bits);
         let hi_widths = vec![hi_head, hi_rest];
 
-        let dd_lo = add_digital_decomposition(ops.compiler, lo_widths, vec![s_lo]);
+        let dd_lo = add_digital_decomposition(ops.compiler, lo_widths.clone(), vec![s_lo]);
         let dd_hi = add_digital_decomposition(ops.compiler, hi_widths, vec![s_hi]);
         let mut limbs = Limbs::new(num_limbs);
 
-        for i in 0..lo_full {
+        let lo_used = lo_full.min(num_limbs);
+        for i in 0..lo_used {
             limbs[i] = dd_lo.get_digit_witness_index(i, 0);
             ops.range_checks
                 .entry(limb_bits)
@@ -146,29 +164,50 @@ fn decompose_scalar_from_halves(
                 .push(limbs[i]);
         }
 
-        // Cross-boundary limb: lo_tail bits from s_lo + hi_head bits from s_hi
-        let shift = FieldElement::from(2u64).pow([lo_tail as u64]);
-        let lo_digit = dd_lo.get_digit_witness_index(lo_full, 0);
-        let hi_digit = dd_hi.get_digit_witness_index(0, 0);
-        limbs[lo_full] = ops.compiler.add_sum(vec![
-            SumTerm(None, lo_digit),
-            SumTerm(Some(shift), hi_digit),
-        ]);
-        ops.range_checks
-            .entry(lo_tail as u32)
-            .or_default()
-            .push(lo_digit);
-        ops.range_checks
-            .entry(hi_head as u32)
-            .or_default()
-            .push(hi_digit);
+        // Cross-boundary limb and hi_rest, only if num_limbs needs them.
+        let needs_cross = num_limbs > lo_full;
+        let needs_hi_rest = num_limbs > lo_full + 1 && hi_rest > 0;
 
-        if hi_rest > 0 {
+        if needs_cross {
+            let shift = FieldElement::from(2u64).pow([lo_tail as u64]);
+            let lo_digit = dd_lo.get_digit_witness_index(lo_full, 0);
+            let hi_digit = dd_hi.get_digit_witness_index(0, 0);
+            limbs[lo_full] = ops.compiler.add_sum(vec![
+                SumTerm(None, lo_digit),
+                SumTerm(Some(shift), hi_digit),
+            ]);
+            ops.range_checks
+                .entry(lo_tail as u32)
+                .or_default()
+                .push(lo_digit);
+            ops.range_checks
+                .entry(hi_head as u32)
+                .or_default()
+                .push(hi_digit);
+        }
+
+        if needs_hi_rest {
             limbs[lo_full + 1] = dd_hi.get_digit_witness_index(1, 0);
             ops.range_checks
                 .entry(hi_rest as u32)
                 .or_default()
                 .push(limbs[lo_full + 1]);
+        }
+
+        // Constrain unused digits to zero for small curves.
+        // dd_lo: digits beyond lo_used that aren't part of the cross-boundary.
+        if !needs_cross {
+            // The tail digit of dd_lo and all dd_hi digits are unused.
+            for i in lo_used..lo_widths.len() {
+                constrain_zero(ops.compiler, dd_lo.get_digit_witness_index(i, 0));
+            }
+            constrain_zero(ops.compiler, dd_hi.get_digit_witness_index(0, 0));
+            if hi_rest > 0 {
+                constrain_zero(ops.compiler, dd_hi.get_digit_witness_index(1, 0));
+            }
+        } else if !needs_hi_rest && hi_rest > 0 {
+            // Cross-boundary is used but hi_rest digit is unused.
+            constrain_zero(ops.compiler, dd_hi.get_digit_witness_index(1, 0));
         }
 
         limbs

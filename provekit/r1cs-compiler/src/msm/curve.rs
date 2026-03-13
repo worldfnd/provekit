@@ -31,6 +31,10 @@ impl CurveParams {
         decompose_to_limbs(&self.curve_a, limb_bits, num_limbs)
     }
 
+    pub fn curve_b_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.curve_b, limb_bits, num_limbs)
+    }
+
     /// Number of bits in the field modulus.
     pub fn modulus_bits(&self) -> u32 {
         if self.is_native_field() {

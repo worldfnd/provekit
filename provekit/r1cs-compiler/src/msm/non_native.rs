@@ -106,7 +106,23 @@ pub(super) fn process_multi_point_non_native<'a>(
             range_checks,
         );
 
-        // On-curve checks, FakeGLV, bit decomposition, y-negation (via MultiLimbOps)
+        // On-curve checks: use hint-verified for multi-limb, generic for single-limb
+        if num_limbs >= 2 {
+            ec_points::verify_on_curve_non_native(compiler, range_checks, px, py, &params);
+            ec_points::verify_on_curve_non_native(compiler, range_checks, rx, ry, &params);
+        } else {
+            let mut ops = MultiLimbOps {
+                compiler,
+                range_checks,
+                params: &params,
+            };
+            verify_on_curve(&mut ops, px, py, &b_limb_values, num_limbs);
+            verify_on_curve(&mut ops, rx, ry, &b_limb_values, num_limbs);
+            compiler = ops.compiler;
+            range_checks = ops.range_checks;
+        }
+
+        // FakeGLV, bit decomposition, y-negation (via MultiLimbOps)
         let (s1_witness, s2_witness, neg1_witness, neg2_witness);
         let (py_effective, ry_effective, s1_bits, s2_bits, s1_skew, s2_skew);
         {
@@ -115,10 +131,6 @@ pub(super) fn process_multi_point_non_native<'a>(
                 range_checks,
                 params: &params,
             };
-
-            // On-curve checks for P and R
-            verify_on_curve(&mut ops, px, py, &b_limb_values, num_limbs);
-            verify_on_curve(&mut ops, rx, ry, &b_limb_values, num_limbs);
 
             // FakeGLVHint → |s1|, |s2|, neg1, neg2
             (s1_witness, s2_witness, neg1_witness, neg2_witness) =
@@ -226,7 +238,7 @@ pub(super) fn process_multi_point_non_native<'a>(
     let mut acc_y = ops.constant_limbs(&offset_y_values);
 
     for &(rx, ry, is_skip) in &accum_inputs {
-        let (cand_x, cand_y) = ec_points::point_add(&mut ops, acc_x, acc_y, rx, ry);
+        let (cand_x, cand_y) = ec_points::point_add_dispatch(&mut ops, acc_x, acc_y, rx, ry);
         let (new_acc_x, new_acc_y) =
             ec_points::point_select_unchecked(&mut ops, is_skip, (cand_x, cand_y), (acc_x, acc_y));
         acc_x = new_acc_x;
@@ -253,7 +265,7 @@ pub(super) fn process_multi_point_non_native<'a>(
         ops.select(all_skipped, neg_off_y, neg_g_y)
     };
 
-    let (result_x, result_y) = ec_points::point_add(&mut ops, acc_x, acc_y, sub_x, sub_y);
+    let (result_x, result_y) = ec_points::point_add_dispatch(&mut ops, acc_x, acc_y, sub_x, sub_y);
     compiler = ops.compiler;
 
     if num_limbs == 1 {

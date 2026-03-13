@@ -26,6 +26,11 @@ pub struct MultiLimbParams {
     pub two_pow_w:       FieldElement,
     pub modulus_raw:     [u64; 4],
     pub curve_a_limbs:   Vec<FieldElement>,
+    /// Raw curve_a value as [u64; 4] for hint-verified EC ops
+    pub curve_a_raw:     [u64; 4],
+    pub curve_b_limbs:   Vec<FieldElement>,
+    /// Raw curve_b value as [u64; 4] for hint-verified on-curve checks
+    pub curve_b_raw:     [u64; 4],
     /// p = native field → skip mod reduction
     pub is_native:       bool,
     /// For N=1 non-native: the modulus as a single FieldElement
@@ -54,6 +59,9 @@ impl MultiLimbParams {
             two_pow_w,
             modulus_raw: curve.field_modulus_p,
             curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
+            curve_a_raw: curve.curve_a,
+            curve_b_limbs: curve.curve_b_limbs(limb_bits, num_limbs),
+            curve_b_raw: curve.curve_b,
             is_native,
             modulus_fe,
         }
@@ -79,6 +87,9 @@ impl MultiLimbParams {
             two_pow_w,
             modulus_raw: curve.curve_order_n,
             curve_a_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
+            curve_a_raw: [0u64; 4],                                   // unused for scalar relation
+            curve_b_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
+            curve_b_raw: [0u64; 4],                                   // unused for scalar relation
             is_native: false,                                         /* always non-native for
                                                                        * scalar relation */
             modulus_fe,
@@ -106,11 +117,26 @@ impl MultiLimbOps<'_, '_> {
         self.params.num_limbs
     }
 
-    /// Negate a multi-limb value: computes `0 - value (mod p)`.
+    /// Negate a multi-limb value: computes `p - value (mod p)`.
+    ///
+    /// For multi-limb non-native (N≥2), uses a dedicated borrow chain that
+    /// skips zero-constant allocation, the borrow-quotient hint, and the
+    /// less_than_p check — saving (4N+1) witnesses per call.
     pub fn negate(&mut self, value: Limbs) -> Limbs {
-        let zero_vals = vec![FieldElement::from(0u64); self.params.num_limbs];
-        let zero = self.constant_limbs(&zero_vals);
-        self.sub(zero, value)
+        if self.params.num_limbs >= 2 && !self.params.is_native {
+            multi_limb_arith::negate_mod_p_multi(
+                self.compiler,
+                self.range_checks,
+                value,
+                &self.params.p_limbs,
+                self.params.two_pow_w,
+                self.params.limb_bits,
+            )
+        } else {
+            let zero_vals = vec![FieldElement::from(0u64); self.params.num_limbs];
+            let zero = self.constant_limbs(&zero_vals);
+            self.sub(zero, value)
+        }
     }
 
     pub fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {

@@ -291,6 +291,89 @@ pub fn decompose_to_u128_limbs(val: &[u64; 4], num_limbs: usize, limb_bits: u32)
     limbs
 }
 
+/// Convert u128 limbs to i128 limbs (for carry computation linear terms).
+pub fn to_i128_limbs(limbs: &[u128]) -> Vec<i128> {
+    limbs.iter().map(|&v| v as i128).collect()
+}
+
+/// Compute signed quotient q such that:
+///   Σ lhs_products[i] * coeff_i - Σ rhs_products[j] * coeff_j - rhs_sub ≡ 0
+/// (mod p) Returns q as decomposed limbs, with negative q stored as -q in the
+/// native field.
+pub fn signed_quotient_wide(
+    lhs_products: &[(&[u64; 4], &[u64; 4], u64)],
+    rhs_products: &[(&[u64; 4], &[u64; 4], u64)],
+    rhs_sub: Option<&[u64; 4]>,
+    p: &[u64; 4],
+    n: usize,
+    w: u32,
+) -> Vec<u128> {
+    fn accumulate_wide(terms: &[(&[u64; 4], &[u64; 4], u64)]) -> [u64; 8] {
+        let mut acc = [0u64; 8];
+        for &(a, b, coeff) in terms {
+            let prod = widening_mul(a, b);
+            let mut carry = 0u128;
+            for i in 0..8 {
+                let v = acc[i] as u128 + (prod[i] as u128) * (coeff as u128) + carry;
+                acc[i] = v as u64;
+                carry = v >> 64;
+            }
+        }
+        acc
+    }
+
+    let lhs_wide = accumulate_wide(lhs_products);
+    let mut rhs_wide = accumulate_wide(rhs_products);
+    if let Some(sub) = rhs_sub {
+        let mut carry = 0u128;
+        for i in 0..4 {
+            let v = rhs_wide[i] as u128 + sub[i] as u128 + carry;
+            rhs_wide[i] = v as u64;
+            carry = v >> 64;
+        }
+        for i in 4..8 {
+            let v = rhs_wide[i] as u128 + carry;
+            rhs_wide[i] = v as u64;
+            carry = v >> 64;
+        }
+    }
+
+    let lhs_ge = {
+        let mut ge = false;
+        for i in (0..8).rev() {
+            if lhs_wide[i] > rhs_wide[i] {
+                ge = true;
+                break;
+            } else if lhs_wide[i] < rhs_wide[i] {
+                break;
+            }
+            if i == 0 {
+                ge = true;
+            }
+        }
+        ge
+    };
+    let (big, small) = if lhs_ge {
+        (lhs_wide, rhs_wide)
+    } else {
+        (rhs_wide, lhs_wide)
+    };
+    let mut diff = [0u64; 8];
+    let mut bw = 0u64;
+    for i in 0..8 {
+        let (d1, b1) = big[i].overflowing_sub(small[i]);
+        let (d2, b2) = d1.overflowing_sub(bw);
+        diff[i] = d2;
+        bw = b1 as u64 + b2 as u64;
+    }
+    let (q_abs, _) = divmod_wide(&diff, p);
+    if lhs_ge {
+        decompose_to_u128_limbs(&q_abs, n, w)
+    } else {
+        decompose_to_u128_limbs(&fe_to_bigint(-bigint_to_fe(&q_abs)), n, w)
+    }
+}
+
 /// Reconstruct a 256-bit value from u128 limb values packed at `limb_bits`
 /// boundaries.
 pub fn reconstruct_from_u128_limbs(limb_values: &[u128], limb_bits: u32) -> [u64; 4] {
@@ -758,6 +841,92 @@ pub fn divmod_wide(dividend: &[u64; 8], divisor: &[u64; 4]) -> ([u64; 4], [u64; 
     }
 
     (quotient, remainder)
+}
+
+/// Compute unsigned-offset carries for a general merged column equation.
+///
+/// Each `product_set` entry is (a_limbs, b_limbs, coefficient):
+///   LHS_terms = Σ coeff * Σ_{i+j=k} a[i]*b[j]
+///
+/// Each `linear_set` entry is (limb_values, coefficient) for non-product terms:
+///   LHS_terms += Σ coeff * val[k]  (for k < val.len())
+///
+/// The equation verified is: LHS = Σ p[i]*q[j] + carry_chain
+/// (no separate result — the "result" is encoded in the linear terms).
+pub fn compute_ec_verification_carries(
+    product_sets: &[(&[u128], &[u128], i64)],
+    linear_terms: &[(Vec<i128>, i64)], // (limb_values extended to 2N-1, coefficient)
+    p_limbs: &[u128],
+    q_limbs: &[u128],
+    n: usize,
+    limb_bits: u32,
+) -> Vec<u128> {
+    let w = limb_bits;
+    let num_columns = 2 * n - 1;
+    let num_carries = num_columns - 1;
+
+    // Use a larger offset to account for merged terms.
+    // Max terms per column: sum of coefficients × N products + linear terms.
+    let max_coeff_sum: u64 = product_sets
+        .iter()
+        .map(|(_, _, c)| c.unsigned_abs() as u64)
+        .sum::<u64>()
+        + linear_terms
+            .iter()
+            .map(|(_, c)| c.unsigned_abs() as u64)
+            .sum::<u64>()
+        + n as u64; // p*q terms
+    let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
+    let carry_offset_bits = w + extra_bits;
+    let carry_offset = 1u128 << carry_offset_bits;
+
+    let mut carries = Vec::with_capacity(num_carries);
+    let mut carry: i128 = 0;
+
+    for k in 0..num_columns {
+        let mut col_value: i128 = 0;
+
+        // Product terms
+        for &(a, b, coeff) in product_sets {
+            for i in 0..n {
+                let j = k as isize - i as isize;
+                if j >= 0 && (j as usize) < n {
+                    col_value += coeff as i128 * (a[i] as i128) * (b[j as usize] as i128);
+                }
+            }
+        }
+
+        // Linear terms
+        for (vals, coeff) in linear_terms {
+            if k < vals.len() {
+                col_value += *coeff as i128 * vals[k];
+            }
+        }
+
+        // Subtract p*q contribution
+        for i in 0..n {
+            let j = k as isize - i as isize;
+            if j >= 0 && (j as usize) < n {
+                col_value -= (p_limbs[i] as i128) * (q_limbs[j as usize] as i128);
+            }
+        }
+
+        col_value += carry;
+
+        if k < num_carries {
+            debug_assert_eq!(
+                col_value & ((1i128 << w) - 1),
+                0,
+                "non-zero remainder at column {k}: col_value={col_value}"
+            );
+            carry = col_value >> w;
+            carries.push((carry + carry_offset as i128) as u128);
+        } else {
+            debug_assert_eq!(col_value, 0, "non-zero final column value: {col_value}");
+        }
+    }
+
+    carries
 }
 
 #[cfg(test)]

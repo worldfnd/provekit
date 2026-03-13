@@ -394,6 +394,28 @@ impl WitnessIndexRemapper {
                 y2:              self.remap(*y2),
                 field_modulus_p: *field_modulus_p,
             },
+            WitnessBuilder::NonNativeEcHint {
+                output_start,
+                op,
+                inputs,
+                curve_a,
+                curve_b,
+                field_modulus_p,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::NonNativeEcHint {
+                output_start:    self.remap(*output_start),
+                op:              op.clone(),
+                inputs:          inputs
+                    .iter()
+                    .map(|v| v.iter().map(|&w| self.remap(w)).collect())
+                    .collect(),
+                curve_a:         *curve_a,
+                curve_b:         *curve_b,
+                field_modulus_p: *field_modulus_p,
+                limb_bits:       *limb_bits,
+                num_limbs:       *num_limbs,
+            },
             WitnessBuilder::FakeGLVHint {
                 output_start,
                 s_lo,

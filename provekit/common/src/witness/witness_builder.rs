@@ -54,9 +54,21 @@ pub struct CombinedTableEntryInverseData {
     pub xor_out:      FieldElement,
 }
 
+/// Operation type for the unified non-native EC hint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum NonNativeEcOp {
+    /// Point doubling: inputs = [[px_limbs], [py_limbs]], outputs 12N-6
+    Double,
+    /// Point addition: inputs = [[x1_limbs], [y1_limbs], [x2_limbs],
+    /// [y2_limbs]], outputs 12N-6
+    Add,
+    /// On-curve check: inputs = [[px_limbs], [py_limbs]], outputs 7N-4
+    OnCurve,
+}
+
 /// Indicates how to solve for a collection of R1CS witnesses in terms of
 /// earlier (i.e. already solved for) R1CS witnesses and/or ACIR witness values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
     /// (witness index, constant value)
@@ -346,6 +358,22 @@ pub enum WitnessBuilder {
         a:      usize,
         b:      usize,
     },
+    /// Unified prover hint for non-native EC operations (multi-limb).
+    ///
+    /// `op` selects the operation:
+    ///   - `Double`: inputs = [[px], [py]], outputs 12N-6 witnesses
+    ///   - `Add`:    inputs = [[x1], [y1], [x2], [y2]], outputs 12N-6 witnesses
+    ///   - `OnCurve`: inputs = [[px], [py]], outputs 7N-4 witnesses
+    NonNativeEcHint {
+        output_start:    usize,
+        op:              NonNativeEcOp,
+        inputs:          Vec<Vec<usize>>,
+        curve_a:         [u64; 4],
+        curve_b:         [u64; 4],
+        field_modulus_p: [u64; 4],
+        limb_bits:       u32,
+        num_limbs:       u32,
+    },
     /// Signed-bit decomposition hint for wNAF scalar multiplication.
     /// Given scalar s with num_bits bits, computes sign-bits b_0..b_{n-1}
     /// and skew ∈ {0,1} such that:
@@ -427,6 +455,10 @@ impl WitnessBuilder {
             WitnessBuilder::SignedBitHint { num_bits, .. } => *num_bits + 1,
             WitnessBuilder::EcDoubleHint { .. } => 3,
             WitnessBuilder::EcAddHint { .. } => 3,
+            WitnessBuilder::NonNativeEcHint { op, num_limbs, .. } => match op {
+                NonNativeEcOp::Double | NonNativeEcOp::Add => (12 * *num_limbs - 6) as usize,
+                NonNativeEcOp::OnCurve => (7 * *num_limbs - 4) as usize,
+            },
             WitnessBuilder::FakeGLVHint { .. } => 4,
             WitnessBuilder::EcScalarMulHint { .. } => 2,
 

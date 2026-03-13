@@ -19,8 +19,8 @@ pub use {
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders},
     witness_builder::{
-        CombinedTableEntryInverseData, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-        WitnessCoefficient,
+        CombinedTableEntryInverseData, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
+        WitnessBuilder, WitnessCoefficient,
     },
     witness_generator::NoirWitnessGenerator,
 };

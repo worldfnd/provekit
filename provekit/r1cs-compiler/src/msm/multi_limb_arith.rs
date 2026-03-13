@@ -278,6 +278,68 @@ pub fn add_mod_p_multi(
     r
 }
 
+/// Negate a multi-limb value: computes `p - y` directly via borrow chain.
+///
+/// Since inputs are already verified `y ∈ [0, p)` (from less_than_p on
+/// prior operations), the result `p - y` is in `(0, p]`. For `y > 0`,
+/// the result is in `(0, p)` — canonical. For `y = 0`, the result is `p ≡ 0`,
+/// which has valid limbs (each < 2^limb_bits) and is correct modulo p.
+///
+/// This avoids the generic `sub_mod_p_multi` pathway which allocates
+/// N zero-constant witnesses, a borrow quotient, and a less_than_p check.
+///
+/// Witnesses: 3N (N v-sums + N borrows + N result sums).
+/// Range checks: N at limb_bits.
+pub fn negate_mod_p_multi(
+    compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    y: Limbs,
+    p_limbs: &[FieldElement],
+    two_pow_w: FieldElement,
+    limb_bits: u32,
+) -> Limbs {
+    let n = y.len();
+    assert!(n >= 2, "negate_mod_p_multi requires n >= 2, got n={n}");
+    let w1 = compiler.witness_one();
+
+    let mut r = Limbs::new(n);
+    let mut borrow_prev: Option<usize> = None;
+
+    for i in 0..n {
+        // v[i] = p[i] + 2^W - y[i] + borrow_{i-1}
+        // The 2^W offset ensures v[i] >= 0 (since p[i] >= 0, y[i] < 2^W).
+        // When borrow_prev exists, combine w1 terms to avoid duplicate column
+        // indices in the R1CS sparse matrix.
+        let w1_coeff = if borrow_prev.is_some() {
+            p_limbs[i] + two_pow_w - FieldElement::ONE
+        } else {
+            p_limbs[i] + two_pow_w
+        };
+        let mut terms = vec![
+            SumTerm(Some(w1_coeff), w1),
+            SumTerm(Some(-FieldElement::ONE), y[i]),
+        ];
+        if let Some(borrow) = borrow_prev {
+            terms.push(SumTerm(None, borrow));
+        }
+        let v = compiler.add_sum(terms);
+
+        // borrow[i] = floor(v[i] / 2^W)
+        let borrow = compiler.num_witnesses();
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v, two_pow_w));
+
+        // r[i] = v[i] - borrow[i] * 2^W
+        r[i] = compiler.add_sum(vec![SumTerm(None, v), SumTerm(Some(-two_pow_w), borrow)]);
+
+        // Range check r[i] — ensures borrow is uniquely determined
+        range_checks.entry(limb_bits).or_default().push(r[i]);
+
+        borrow_prev = Some(borrow);
+    }
+
+    r
+}
+
 /// (a - b) mod p for multi-limb values.
 pub fn sub_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
@@ -563,7 +625,7 @@ pub fn inv_mod_p_multi(
 /// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.
 /// Uses borrow propagation: d\[i\] = (p-1)\[i\] - r\[i\] + borrow_in -
 /// borrow_out * 2^W
-fn less_than_p_check_multi(
+pub fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     r: Limbs,
