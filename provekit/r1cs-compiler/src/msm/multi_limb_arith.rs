@@ -1,7 +1,7 @@
 //! N-limb modular arithmetic for EC field operations.
 //!
-//! Replaces both `ec_ops.rs` (N=1 path) and `wide_ops.rs` (N>1 path) with
-//! unified multi-limb operations using `Limbs` (runtime-sized, Copy).
+//! Provides add/sub/mul/negate mod p for both single-limb (N=1) and multi-limb
+//! (N≥2) representations, plus `compute_is_zero` and `less_than_p` checks.
 
 use {
     super::Limbs,
@@ -15,7 +15,7 @@ use {
 };
 
 // ---------------------------------------------------------------------------
-// N=1 single-limb path (moved from ec_ops.rs)
+// N=1 single-limb path
 // ---------------------------------------------------------------------------
 
 /// Reduce the value to given modulus (N=1 path).
@@ -120,34 +120,6 @@ pub fn sub_mod_p_single(
     reduce_mod_p(compiler, a_sub_b, modulus, range_checks)
 }
 
-/// a^(-1) mod p (N=1 path)
-pub fn inv_mod_p_single(
-    compiler: &mut NoirToR1CSCompiler,
-    a: usize,
-    modulus: FieldElement,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> usize {
-    let a_inv = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::ModularInverse(a_inv, a, modulus));
-
-    let reduced = mul_mod_p_single(compiler, a, a_inv, modulus, range_checks);
-
-    // Constrain reduced = 1
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[
-            (FieldElement::ONE, reduced),
-            (-FieldElement::ONE, compiler.witness_one()),
-        ],
-        &[(FieldElement::ZERO, compiler.witness_one())],
-    );
-
-    let mod_bits = modulus.into_bigint().num_bits();
-    range_checks.entry(mod_bits).or_default().push(a_inv);
-
-    a_inv
-}
-
 /// Checks if value is zero or not (used by all N values).
 /// Returns a boolean witness: 1 if zero, 0 if non-zero.
 ///
@@ -197,14 +169,7 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
 /// Shared core for `add_mod_p_multi` and `sub_mod_p_multi`.
 ///
 /// Both operations follow the same carry-chain structure; only the per-limb
-/// formula and quotient witness builder differ:
-///   add: v\[i\] = a\[i\] + b\[i\] + 2^W - q·p\[i\] + carry  (q via
-/// MultiLimbAddQuotient)   sub: v\[i\] = a\[i\] - b\[i\] + q·p\[i\] + 2^W +
-/// carry  (q via MultiLimbSubBorrow)
-///
-/// When `carry_prev` is present, the w1 coefficient absorbs a `-1` term
-/// (i.e. `w1_coeff = ... + 2^W - 1`) so that `carry_prev` contributes
-/// `+1 · carry_prev` without creating duplicate (row, col) entries.
+/// formula and quotient witness builder differ.
 fn add_sub_mod_p_core(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -560,68 +525,6 @@ pub fn mul_mod_p_multi(
     }
 
     r_limbs
-}
-
-/// a^(-1) mod p for multi-limb values.
-/// Uses MultiLimbModularInverse hint, verifies via mul_mod_p(a, inv) = [1, 0,
-/// ..., 0].
-pub fn inv_mod_p_multi(
-    compiler: &mut NoirToR1CSCompiler,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    a: Limbs,
-    p_limbs: &[FieldElement],
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
-    modulus_raw: &[u64; 4],
-) -> Limbs {
-    let n = a.len();
-    assert!(n >= 2, "inv_mod_p_multi requires n >= 2, got n={n}");
-
-    // Hint: compute inverse
-    let inv_start = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::MultiLimbModularInverse {
-        output_start: inv_start,
-        a_limbs: a.as_slice().to_vec(),
-        modulus: *modulus_raw,
-        limb_bits,
-        num_limbs: n as u32,
-    });
-    let mut inv = Limbs::new(n);
-    for i in 0..n {
-        inv[i] = inv_start + i;
-        range_checks.entry(limb_bits).or_default().push(inv[i]);
-    }
-
-    // Verify: a * inv mod p = [1, 0, ..., 0]
-    let product = mul_mod_p_multi(
-        compiler,
-        range_checks,
-        a,
-        inv,
-        p_limbs,
-        p_minus_1_limbs,
-        two_pow_w,
-        limb_bits,
-        modulus_raw,
-    );
-
-    // Constrain product[0] = 1
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, product[0])],
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, compiler.witness_one())],
-    );
-    // Constrain product[1..n] = 0
-    for i in 1..n {
-        compiler.r1cs.add_constraint(
-            &[(FieldElement::ONE, product[i])],
-            &[(FieldElement::ONE, compiler.witness_one())],
-            &[],
-        );
-    }
-
-    inv
 }
 
 /// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.

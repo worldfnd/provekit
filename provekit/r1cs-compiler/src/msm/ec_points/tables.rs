@@ -4,21 +4,17 @@
 //! for both unsigned and signed-digit windowed approaches.
 
 use {
-    super::{generic::point_select_unchecked, point_add_dispatch, point_double_dispatch},
+    super::EcOps,
     crate::msm::{multi_limb_ops::MultiLimbOps, Limbs},
     ark_ff::Field,
     provekit_common::{witness::SumTerm, FieldElement},
 };
 
-/// Builds a signed point table of odd multiples for signed-digit windowed
-/// scalar multiplication.
-///
+/// Builds a signed point table of odd multiples:
 /// T\[0\] = P, T\[1\] = 3P, T\[2\] = 5P, ..., T\[k-1\] = (2k-1)P
-/// where k = `half_table_size` = 2^(w-1).
-///
-/// Build cost: 1 point_double (for 2P) + (k-1) point_adds when k >= 2.
-fn build_signed_point_table(
-    ops: &mut MultiLimbOps,
+/// where k = `half_table_size`.
+fn build_signed_point_table<E: EcOps>(
+    ops: &mut MultiLimbOps<'_, '_, E>,
     px: Limbs,
     py: Limbs,
     half_table_size: usize,
@@ -27,27 +23,22 @@ fn build_signed_point_table(
     let mut table = Vec::with_capacity(half_table_size);
     table.push((px, py)); // T[0] = 1*P
     if half_table_size >= 2 {
-        let two_p = point_double_dispatch(ops, px, py); // 2P
+        let two_p = ops.point_double(px, py); // 2P
         for i in 1..half_table_size {
             let prev = table[i - 1];
-            table.push(point_add_dispatch(ops, prev.0, prev.1, two_p.0, two_p.1));
+            table.push(ops.point_add(prev.0, prev.1, two_p.0, two_p.1));
         }
     }
     table
 }
 
 /// Selects T\[d\] from a point table using bit witnesses, where `d = Σ
-/// bits\[i\] * 2^i`.
+/// bits\[i\] * 2^i`, via binary tree of point selects.
 ///
-/// Uses a binary tree of `point_select`s: processes bits from MSB to LSB,
-/// halving the candidate set at each level. Total: `(2^w - 1)` point selects
-/// for a table of `2^w` entries.
-///
-/// When `constrain_bits` is true, each bit is constrained boolean exactly
-/// once. When false, bits are assumed already constrained (e.g. XOR'd bits
-/// derived from boolean-constrained inputs).
-fn table_lookup(
-    ops: &mut MultiLimbOps,
+/// When `constrain_bits` is true, each bit is boolean-constrained. When
+/// false, bits are assumed already constrained.
+fn table_lookup<E: EcOps>(
+    ops: &mut MultiLimbOps<'_, '_, E>,
     table: &[(Limbs, Limbs)],
     bits: &[usize],
     constrain_bits: bool,
@@ -62,38 +53,19 @@ fn table_lookup(
         let half = current.len() / 2;
         let mut next = Vec::with_capacity(half);
         for i in 0..half {
-            next.push(point_select_unchecked(
-                ops,
-                bit,
-                current[i],
-                current[i + half],
-            ));
+            next.push(ops.point_select_unchecked(bit, current[i], current[i + half]));
         }
         current = next;
     }
     current[0]
 }
 
-/// Signed-digit table lookup: selects from a half-size table using XOR'd
-/// index bits, then conditionally negates y based on the sign bit.
+/// Signed-digit table lookup: selects from a table of odd multiples,
+/// conditionally negating y based on the sign bit.
 ///
-/// For a w-bit window with bits \[b_0, ..., b_{w-1}\] (LSB first):
-///   - sign_bit = b_{w-1} (MSB): 1 = positive digit, 0 = negative digit
-///   - index_bits = \[b_0, ..., b_{w-2}\] (lower w-1 bits)
-///   - When positive: table index = lower bits as-is
-///   - When negative: table index = bitwise complement of lower bits, and y is
-///     negated
-///
-/// The XOR'd bits are computed as: `idx_i = 1 - b_i - MSB + 2*b_i*MSB`,
-/// which equals `b_i` when MSB=1, and `1-b_i` when MSB=0.
-///
-/// # Precondition
-/// `sign_bit` must be boolean-constrained by the caller. This function uses
-/// it in `select_unchecked` without re-constraining. Currently satisfied:
-/// `decompose_signed_bits` boolean-constrains all bits including the MSB
-/// used as `sign_bit`.
-fn signed_table_lookup(
-    ops: &mut MultiLimbOps,
+/// `sign_bit` must be boolean-constrained by the caller.
+fn signed_table_lookup<E: EcOps>(
+    ops: &mut MultiLimbOps<'_, '_, E>,
     table: &[(Limbs, Limbs)],
     index_bits: &[usize],
     sign_bit: usize,
@@ -124,18 +96,14 @@ fn signed_table_lookup(
         table_lookup(ops, table, &xor_bits, false)
     };
 
-    // Conditionally negate y: sign_bit=0 (negative) → -y, sign_bit=1 (positive) → y
     let neg_y = ops.negate(y);
     let eff_y = ops.select_unchecked(sign_bit, neg_y, y);
-    // select_unchecked(flag, on_false, on_true):
-    //   sign_bit=0 → on_false=neg_y (negative digit, negate y) ✓
-    //   sign_bit=1 → on_true=y (positive digit, keep y) ✓
 
     (x, eff_y)
 }
 
 /// Per-point data for merged multi-point GLV scalar multiplication.
-pub struct MergedGlvPoint {
+pub(in crate::msm) struct MergedGlvPoint {
     /// Point P x-coordinate (limbs)
     pub px:      Limbs,
     /// Point P y-coordinate (effective, post-negation)
@@ -166,8 +134,8 @@ pub struct MergedGlvPoint {
 /// (or R) to account for the signed decomposition bias.
 ///
 /// Returns the final accumulator `(x, y)`.
-pub fn scalar_mul_merged_glv(
-    ops: &mut MultiLimbOps,
+pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
+    ops: &mut MultiLimbOps<'_, '_, E>,
     points: &[MergedGlvPoint],
     window_size: usize,
     offset_x: Limbs,
@@ -200,7 +168,7 @@ pub fn scalar_mul_merged_glv(
         // w shared doublings on the accumulator (shared across ALL points)
         let mut doubled_acc = acc;
         for _ in 0..w {
-            doubled_acc = point_double_dispatch(ops, doubled_acc.0, doubled_acc.1);
+            doubled_acc = ops.point_double(doubled_acc.0, doubled_acc.1);
         }
 
         let mut cur = doubled_acc;
@@ -218,7 +186,7 @@ pub fn scalar_mul_merged_glv(
             };
             let looked_up_p = signed_table_lookup(ops, actual_table_p, index_bits_p, sign_bit_p);
             // All signed digits are non-zero — no is_zero check needed
-            cur = point_add_dispatch(ops, cur.0, cur.1, looked_up_p.0, looked_up_p.1);
+            cur = ops.point_add(cur.0, cur.1, looked_up_p.0, looked_up_p.1);
 
             // --- R branch (s2 window) ---
             let s2_window_bits = &pt.s2_bits[bit_start..bit_end];
@@ -230,7 +198,7 @@ pub fn scalar_mul_merged_glv(
                 &table_r[..]
             };
             let looked_up_r = signed_table_lookup(ops, actual_table_r, index_bits_r, sign_bit_r);
-            cur = point_add_dispatch(ops, cur.0, cur.1, looked_up_r.0, looked_up_r.1);
+            cur = ops.point_add(cur.0, cur.1, looked_up_r.0, looked_up_r.1);
         }
 
         acc = cur;
@@ -242,14 +210,14 @@ pub fn scalar_mul_merged_glv(
     for pt in points {
         // P branch skew
         let neg_py = ops.negate(pt.py);
-        let (sub_px, sub_py) = point_add_dispatch(ops, acc.0, acc.1, pt.px, neg_py);
+        let (sub_px, sub_py) = ops.point_add(acc.0, acc.1, pt.px, neg_py);
         let new_x = ops.select_unchecked(pt.s1_skew, acc.0, sub_px);
         let new_y = ops.select_unchecked(pt.s1_skew, acc.1, sub_py);
         acc = (new_x, new_y);
 
         // R branch skew
         let neg_ry = ops.negate(pt.ry);
-        let (sub_rx, sub_ry) = point_add_dispatch(ops, acc.0, acc.1, pt.rx, neg_ry);
+        let (sub_rx, sub_ry) = ops.point_add(acc.0, acc.1, pt.rx, neg_ry);
         let new_x = ops.select_unchecked(pt.s2_skew, acc.0, sub_rx);
         let new_y = ops.select_unchecked(pt.s2_skew, acc.1, sub_ry);
         acc = (new_x, new_y);

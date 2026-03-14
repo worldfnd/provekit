@@ -72,10 +72,20 @@ impl PartialEq for Limbs {
 }
 impl Eq for Limbs {}
 
+impl From<&[usize]> for Limbs {
+    fn from(slice: &[usize]) -> Self {
+        let mut l = Self::new(slice.len());
+        for (i, &v) in slice.iter().enumerate() {
+            l.data[i] = v;
+        }
+        l
+    }
+}
+
 impl std::ops::Index<usize> for Limbs {
     type Output = usize;
     fn index(&self, i: usize) -> &usize {
-        debug_assert!(
+        assert!(
             i < self.len,
             "Limbs index {i} out of bounds (len={})",
             self.len
@@ -86,7 +96,7 @@ impl std::ops::Index<usize> for Limbs {
 
 impl std::ops::IndexMut<usize> for Limbs {
     fn index_mut(&mut self, i: usize) -> &mut usize {
-        debug_assert!(
+        assert!(
             i < self.len,
             "Limbs index {i} out of bounds (len={})",
             self.len

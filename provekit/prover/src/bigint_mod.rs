@@ -334,26 +334,6 @@ fn bigint_to_u128(v: &BigInt) -> u128 {
     u128::from_le_bytes(buf)
 }
 
-/// Convert a non-negative `BigInt` to `[u64; 4]`. Panics if it doesn't fit.
-fn bigint_to_u256(v: &BigInt) -> [u64; 4] {
-    assert!(v.sign() != Sign::Minus, "bigint_to_u256: negative value");
-    let (_, bytes) = v.to_bytes_le();
-    let mut result = [0u64; 4];
-    for (i, chunk) in bytes.chunks(8).enumerate() {
-        if i >= 4 {
-            assert!(
-                chunk.iter().all(|&b| b == 0),
-                "bigint_to_u256: value exceeds 256 bits"
-            );
-            break;
-        }
-        let mut buf = [0u8; 8];
-        buf[..chunk.len()].copy_from_slice(chunk);
-        result[i] = u64::from_le_bytes(buf);
-    }
-    result
-}
-
 /// Compute signed quotient q such that:
 ///   Σ lhs_products\[i\] * coeff_i + Σ lhs_linear\[j\] * coeff_j
 ///   - Σ rhs_products\[i\] * coeff_i - Σ rhs_linear\[j\] * coeff_j ≡ 0 (mod p)
@@ -393,7 +373,7 @@ pub fn signed_quotient_wide(
 
     let q_big = &diff / &p_big;
     let rem = &diff - &q_big * &p_big;
-    debug_assert_eq!(
+    assert_eq!(
         rem,
         BigInt::from(0),
         "signed_quotient_wide: non-zero remainder"
@@ -412,7 +392,7 @@ pub fn signed_quotient_wide(
         limbs.push(bigint_to_u128(&limb_val));
         remaining >>= w;
     }
-    debug_assert_eq!(
+    assert_eq!(
         remaining,
         BigInt::from(0),
         "quotient doesn't fit in {n} limbs at {w} bits"
@@ -558,12 +538,8 @@ pub fn half_gcd(s: &[u64; 4], n: &[u64; 4]) -> ([u64; 4], [u64; 4], bool, bool) 
     let mut t_prev = [0u64; 4];
     let mut t_curr = [1u64, 0, 0, 0];
 
-    // Track sign of t: t_prev_neg=false (t_0=0, positive), t_curr_neg=false (t_1=1,
-    // positive)
-    let mut t_prev_neg = false;
+    // Track sign of t: t_curr_neg=false (t_1=1, positive)
     let mut t_curr_neg = false;
-
-    let mut iteration = 0u32;
 
     loop {
         // Check if r_curr < threshold
@@ -607,10 +583,8 @@ pub fn half_gcd(s: &[u64; 4], n: &[u64; 4]) -> ([u64; 4], [u64; 4], bool, bool) 
         r_prev = r_curr;
         r_curr = new_r;
         t_prev = t_curr;
-        t_prev_neg = t_curr_neg;
         t_curr = new_t;
         t_curr_neg = new_t_neg;
-        iteration += 1;
     }
 
     // At this point: r_curr < 2^half_bits and t_curr < ~2^half_bits (half-GCD
@@ -698,6 +672,10 @@ pub fn mod_sub(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
 }
 
 /// Modular inverse: a^{p-2} mod p (Fermat's little theorem).
+///
+/// # Precondition
+/// `p` must be prime. For composite moduli, Fermat's little theorem does not
+/// hold and this function will return incorrect results.
 pub fn mod_inverse(a: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
     let exp = sub_u64(p, 2);
     mod_pow(a, &exp, p)
@@ -783,6 +761,10 @@ pub fn ec_point_add(
 }
 
 /// EC scalar multiplication via double-and-add: returns \[scalar\]*P.
+///
+/// # Panics
+/// Panics if `scalar` is zero (the point at infinity is not representable in
+/// affine coordinates).
 pub fn ec_scalar_mul(
     px: &[u64; 4],
     py: &[u64; 4],

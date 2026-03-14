@@ -1,172 +1,129 @@
-use {
-    ark_ff::{Field, PrimeField},
-    provekit_common::FieldElement,
-};
+use {ark_ff::PrimeField, provekit_common::FieldElement};
 
+mod grumpkin;
+mod secp256r1;
 mod u256_arith;
 
-pub struct CurveParams {
-    pub field_modulus_p: [u64; 4],
-    pub curve_order_n:   [u64; 4],
-    pub curve_a:         [u64; 4],
-    pub curve_b:         [u64; 4],
-    pub generator:       ([u64; 4], [u64; 4]),
-    pub offset_point:    ([u64; 4], [u64; 4]),
-}
+pub use {grumpkin::Grumpkin, secp256r1::Secp256r1};
 
-impl CurveParams {
-    /// Decompose the field modulus p into `num_limbs` limbs of `limb_bits`
-    /// width each.
-    pub fn p_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.field_modulus_p, limb_bits, num_limbs)
-    }
+// ---------------------------------------------------------------------------
+// Curve trait — the only thing a new curve needs to implement
+// ---------------------------------------------------------------------------
 
-    /// Decompose (p - 1) into `num_limbs` limbs of `limb_bits` width each.
-    pub fn p_minus_1_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        let p_minus_1 = sub_one_u64_4(&self.field_modulus_p);
-        decompose_to_limbs(&p_minus_1, limb_bits, num_limbs)
-    }
+/// Elliptic curve definition for MSM circuit compilation.
+///
+/// Each supported curve is a zero-sized struct implementing this trait.
+/// Only the 6 required methods (curve constants) must be provided;
+/// all derived properties and decomposition helpers have default
+/// implementations.
+pub trait Curve {
+    // ===== Required: curve constants =====
 
-    /// Decompose the curve parameter `a` into `num_limbs` limbs of `limb_bits`
-    /// width.
-    pub fn curve_a_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.curve_a, limb_bits, num_limbs)
-    }
+    /// Base field modulus p as 4 × u64 limbs (256-bit, little-endian).
+    fn field_modulus_p(&self) -> [u64; 4];
+    /// Scalar field order n as 4 × u64 limbs.
+    fn curve_order_n(&self) -> [u64; 4];
+    /// Weierstrass curve parameter a.
+    fn curve_a(&self) -> [u64; 4];
+    /// Weierstrass curve parameter b.
+    fn curve_b(&self) -> [u64; 4];
+    /// Generator point (x, y).
+    fn generator(&self) -> ([u64; 4], [u64; 4]);
+    /// Offset point for accumulation (x, y).
+    fn offset_point(&self) -> ([u64; 4], [u64; 4]);
 
-    pub fn curve_b_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.curve_b, limb_bits, num_limbs)
-    }
+    // ===== Provided: derived properties =====
 
     /// Number of bits in the field modulus.
-    pub fn modulus_bits(&self) -> u32 {
-        if self.is_native_field() {
-            FieldElement::MODULUS_BIT_SIZE
-        } else {
-            let p = &self.field_modulus_p;
-            for i in (0..4).rev() {
-                if p[i] != 0 {
-                    return (i as u32) * 64 + (64 - p[i].leading_zeros());
-                }
-            }
-            0
-        }
+    fn modulus_bits(&self) -> u32 {
+        bit_length_u256(&self.field_modulus_p())
     }
 
-    /// Returns true if the curve's base field modulus equals the native BN254
-    /// scalar field modulus.
-    pub fn is_native_field(&self) -> bool {
-        let native_mod = FieldElement::MODULUS;
-        self.field_modulus_p == native_mod.0
-    }
-
-    /// Convert modulus to a native field element (only valid when p < native
-    /// modulus).
-    pub fn p_native_fe(&self) -> FieldElement {
-        curve_native_point_fe(&self.field_modulus_p)
-    }
-
-    /// Decompose the curve order n into `num_limbs` limbs of `limb_bits` width
-    /// each.
-    pub fn curve_order_n_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.curve_order_n, limb_bits, num_limbs)
-    }
-
-    /// Decompose (curve_order_n - 1) into `num_limbs` limbs of `limb_bits`
-    /// width each.
-    pub fn curve_order_n_minus_1_limbs(
-        &self,
-        limb_bits: u32,
-        num_limbs: usize,
-    ) -> Vec<FieldElement> {
-        let n_minus_1 = sub_one_u64_4(&self.curve_order_n);
-        decompose_to_limbs(&n_minus_1, limb_bits, num_limbs)
+    /// Returns true if the curve's base field equals the native field
+    /// (currently BN254 scalar field, but determined dynamically from
+    /// `FieldElement::MODULUS`).
+    fn is_native_field(&self) -> bool {
+        self.field_modulus_p() == FieldElement::MODULUS.0
     }
 
     /// Number of bits in the curve order n.
-    pub fn curve_order_bits(&self) -> u32 {
-        // Compute bit length directly from raw limbs to avoid reduction
-        // mod the native field (curve_order_n may exceed the native modulus).
-        let n = &self.curve_order_n;
-        for i in (0..4).rev() {
-            if n[i] != 0 {
-                return (i as u32) * 64 + (64 - n[i].leading_zeros());
-            }
-        }
-        0
+    fn curve_order_bits(&self) -> u32 {
+        bit_length_u256(&self.curve_order_n())
     }
 
     /// Number of bits for the GLV half-scalar: `ceil(order_bits / 2)`.
-    /// This determines the bit width of the sub-scalars s1, s2 from half-GCD.
-    pub fn glv_half_bits(&self) -> u32 {
+    fn glv_half_bits(&self) -> u32 {
         (self.curve_order_bits() + 1) / 2
     }
 
-    /// Decompose the generator x-coordinate into limbs.
-    pub fn generator_x_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.generator.0, limb_bits, num_limbs)
+    /// Convert modulus to a native field element.
+    fn p_native_fe(&self) -> FieldElement {
+        curve_native_point_fe(&self.field_modulus_p())
     }
 
-    /// Decompose the offset point x-coordinate into limbs.
-    pub fn offset_x_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.offset_point.0, limb_bits, num_limbs)
-    }
+    // ===== Provided: limb decomposition helpers =====
 
-    /// Decompose the offset point y-coordinate into limbs.
-    pub fn offset_y_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
-        decompose_to_limbs(&self.offset_point.1, limb_bits, num_limbs)
+    fn p_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.field_modulus_p(), limb_bits, num_limbs)
+    }
+    fn p_minus_1_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(
+            &sub_one_u64_4(&self.field_modulus_p()),
+            limb_bits,
+            num_limbs,
+        )
+    }
+    fn curve_a_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.curve_a(), limb_bits, num_limbs)
+    }
+    fn curve_b_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.curve_b(), limb_bits, num_limbs)
+    }
+    fn curve_order_n_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.curve_order_n(), limb_bits, num_limbs)
+    }
+    fn curve_order_n_minus_1_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&sub_one_u64_4(&self.curve_order_n()), limb_bits, num_limbs)
+    }
+    fn generator_x_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.generator().0, limb_bits, num_limbs)
+    }
+    fn offset_x_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.offset_point().0, limb_bits, num_limbs)
+    }
+    fn offset_y_limbs(&self, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+        decompose_to_limbs(&self.offset_point().1, limb_bits, num_limbs)
     }
 
     /// Compute `[2^n_doublings] * offset_point` on the curve (compile-time
     /// only).
-    ///
-    /// Used to compute the accumulated offset after the scalar_mul_glv loop:
-    /// since the accumulator starts at R and gets doubled n times total, the
-    /// offset to subtract is `[2^n]*R`, not just `R`.
-    pub fn accumulated_offset(&self, n_doublings: usize) -> ([u64; 4], [u64; 4]) {
-        if self.is_native_field() {
-            self.accumulated_offset_native(n_doublings)
-        } else {
-            self.accumulated_offset_generic(n_doublings)
-        }
-    }
-
-    /// Compute accumulated offset using FieldElement arithmetic (native field).
-    fn accumulated_offset_native(&self, n_doublings: usize) -> ([u64; 4], [u64; 4]) {
-        let mut x = curve_native_point_fe(&self.offset_point.0);
-        let mut y = curve_native_point_fe(&self.offset_point.1);
-        let a = curve_native_point_fe(&self.curve_a);
-
+    fn accumulated_offset(&self, n_doublings: usize) -> ([u64; 4], [u64; 4]) {
+        let p = self.field_modulus_p();
+        let a = self.curve_a();
+        let mut x = self.offset_point().0;
+        let mut y = self.offset_point().1;
         for _ in 0..n_doublings {
-            let x_sq = x * x;
-            let num = x_sq + x_sq + x_sq + a;
-            let denom_inv = (y + y).inverse().unwrap();
-            let lambda = num * denom_inv;
-            let x3 = lambda * lambda - x - x;
-            let y3 = lambda * (x - x3) - y;
+            let (x3, y3) = u256_arith::ec_point_double(&x, &y, &a, &p);
             x = x3;
             y = y3;
         }
-
-        (x.into_bigint().0, y.into_bigint().0)
-    }
-
-    /// Compute accumulated offset using generic 256-bit arithmetic (non-native
-    /// field).
-    fn accumulated_offset_generic(&self, n_doublings: usize) -> ([u64; 4], [u64; 4]) {
-        let p = &self.field_modulus_p;
-        let mut x = self.offset_point.0;
-        let mut y = self.offset_point.1;
-        let a = &self.curve_a;
-
-        for _ in 0..n_doublings {
-            let (x3, y3) = u256_arith::ec_point_double(&x, &y, a, p);
-            x = x3;
-            y = y3;
-        }
-
         (x, y)
     }
 }
+
+/// Compute bit length of a 256-bit value.
+fn bit_length_u256(val: &[u64; 4]) -> u32 {
+    for i in (0..4).rev() {
+        if val[i] != 0 {
+            return (i as u32) * 64 + (64 - val[i].leading_zeros());
+        }
+    }
+    0
+}
+
+// ---------------------------------------------------------------------------
+// Free functions
+// ---------------------------------------------------------------------------
 
 /// Decompose a 256-bit value into `num_limbs` limbs of `limb_bits` width each,
 /// returned as FieldElements.
@@ -245,171 +202,49 @@ pub fn negate_field_element(val: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
     result
 }
 
-/// Grumpkin curve parameters.
-///
-/// Grumpkin is a cycle-companion curve for BN254: its base field is the BN254
-/// scalar field, and its order is the BN254 base field order.
-///
-/// Equation: y² = x³ − 17  (a = 0, b = −17 mod p)
-pub fn grumpkin_params() -> CurveParams {
-    CurveParams {
-        // BN254 scalar field modulus
-        field_modulus_p: [
-            0x43e1f593f0000001_u64,
-            0x2833e84879b97091_u64,
-            0xb85045b68181585d_u64,
-            0x30644e72e131a029_u64,
-        ],
-        // BN254 base field modulus
-        curve_order_n:   [
-            0x3c208c16d87cfd47_u64,
-            0x97816a916871ca8d_u64,
-            0xb85045b68181585d_u64,
-            0x30644e72e131a029_u64,
-        ],
-        curve_a:         [0; 4],
-        // b = −17 mod p
-        curve_b:         [
-            0x43e1f593effffff0_u64,
-            0x2833e84879b97091_u64,
-            0xb85045b68181585d_u64,
-            0x30644e72e131a029_u64,
-        ],
-        // Generator G = (1, sqrt(−16) mod p)
-        generator:       ([1, 0, 0, 0], [
-            0x833fc48d823f272c_u64,
-            0x2d270d45f1181294_u64,
-            0xcf135e7506a45d63_u64,
-            0x0000000000000002_u64,
-        ]),
-        // Offset point = [2^128]G (large offset avoids collisions with small multiples of G)
-        offset_point:    (
-            [
-                0x626578b496650e95_u64,
-                0x8678dcf264df6c01_u64,
-                0xf0b3eb7e6d02aba8_u64,
-                0x223748a4c4edde75_u64,
-            ],
-            [
-                0xb75fb4c26bcd4f35_u64,
-                0x4d4ba4d97d5f99d9_u64,
-                0xccab35fdbf52368a_u64,
-                0x25b41c5f56f8472b_u64,
-            ],
-        ),
-    }
-}
-
-pub fn secp256r1_params() -> CurveParams {
-    CurveParams {
-        field_modulus_p: [
-            0xffffffffffffffff_u64,
-            0xffffffff_u64,
-            0x0_u64,
-            0xffffffff00000001_u64,
-        ],
-        curve_order_n:   [
-            0xf3b9cac2fc632551_u64,
-            0xbce6faada7179e84_u64,
-            0xffffffffffffffff_u64,
-            0xffffffff00000000_u64,
-        ],
-        curve_a:         [
-            0xfffffffffffffffc_u64,
-            0x00000000ffffffff_u64,
-            0x0000000000000000_u64,
-            0xffffffff00000001_u64,
-        ],
-        curve_b:         [
-            0x3bce3c3e27d2604b_u64,
-            0x651d06b0cc53b0f6_u64,
-            0xb3ebbd55769886bc_u64,
-            0x5ac635d8aa3a93e7_u64,
-        ],
-        generator:       (
-            [
-                0xf4a13945d898c296_u64,
-                0x77037d812deb33a0_u64,
-                0xf8bce6e563a440f2_u64,
-                0x6b17d1f2e12c4247_u64,
-            ],
-            [
-                0xcbb6406837bf51f5_u64,
-                0x2bce33576b315ece_u64,
-                0x8ee7eb4a7c0f9e16_u64,
-                0x4fe342e2fe1a7f9b_u64,
-            ],
-        ),
-        // Offset point = [2^128]G (large offset avoids collisions with small multiples of G)
-        offset_point:    (
-            [
-                0x57c84fc9d789bd85_u64,
-                0xfc35ff7dc297eac3_u64,
-                0xfb982fd588c6766e_u64,
-                0x447d739beedb5e67_u64,
-            ],
-            [
-                0x0c7e33c972e25b32_u64,
-                0x3d349b95a7fae500_u64,
-                0xe12e9d953a4aaff7_u64,
-                0x2d4825ab834131ee_u64,
-            ],
-        ),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_offset_point_on_curve_grumpkin() {
-        let c = grumpkin_params();
-        let x = curve_native_point_fe(&c.offset_point.0);
-        let y = curve_native_point_fe(&c.offset_point.1);
-        let b = curve_native_point_fe(&c.curve_b);
+        let c = Grumpkin;
+        let x = curve_native_point_fe(&c.offset_point().0);
+        let y = curve_native_point_fe(&c.offset_point().1);
+        let b = curve_native_point_fe(&c.curve_b());
         // Grumpkin: y^2 = x^3 + b (a=0)
         assert_eq!(y * y, x * x * x + b, "offset point not on Grumpkin");
     }
 
     #[test]
     fn test_accumulated_offset_single_double_grumpkin() {
-        let c = grumpkin_params();
+        let c = Grumpkin;
         let (x4, y4) = c.accumulated_offset(1);
         let x = curve_native_point_fe(&x4);
         let y = curve_native_point_fe(&y4);
-        let b = curve_native_point_fe(&c.curve_b);
+        let b = curve_native_point_fe(&c.curve_b());
         // Should still be on curve
         assert_eq!(y * y, x * x * x + b, "[2]*offset not on Grumpkin");
     }
 
     #[test]
-    fn test_accumulated_offset_native_vs_generic() {
-        let c = grumpkin_params();
-        // Both paths should give the same result
-        let native = c.accumulated_offset_native(10);
-        let generic = c.accumulated_offset_generic(10);
-        assert_eq!(native, generic, "native vs generic mismatch for n=10");
-    }
-
-    #[test]
     fn test_accumulated_offset_256_on_curve() {
-        let c = grumpkin_params();
+        let c = Grumpkin;
         let (x, y) = c.accumulated_offset(256);
         let xfe = curve_native_point_fe(&x);
         let yfe = curve_native_point_fe(&y);
-        let b = curve_native_point_fe(&c.curve_b);
+        let b = curve_native_point_fe(&c.curve_b());
         assert_eq!(yfe * yfe, xfe * xfe * xfe + b, "[2^257]G not on Grumpkin");
     }
 
     #[test]
     fn test_offset_point_on_curve_secp256r1() {
-        let c = secp256r1_params();
-        let p = &c.field_modulus_p;
-        let x = &c.offset_point.0;
-        let y = &c.offset_point.1;
-        let a = &c.curve_a;
-        let b = &c.curve_b;
+        let c = Secp256r1;
+        let p = &c.field_modulus_p();
+        let x = &c.offset_point().0;
+        let y = &c.offset_point().1;
+        let a = &c.curve_a();
+        let b = &c.curve_b();
         // y^2 = x^3 + a*x + b (mod p)
         let y_sq = u256_arith::mod_mul(y, y, p);
         let x_sq = u256_arith::mod_mul(x, x, p);
@@ -422,10 +257,10 @@ mod tests {
 
     #[test]
     fn test_accumulated_offset_secp256r1() {
-        let c = secp256r1_params();
-        let p = &c.field_modulus_p;
-        let a = &c.curve_a;
-        let b = &c.curve_b;
+        let c = Secp256r1;
+        let p = &c.field_modulus_p();
+        let a = &c.curve_a();
+        let b = &c.curve_b();
         let (x, y) = c.accumulated_offset(256);
         // Verify the accumulated offset is on the curve
         let y_sq = u256_arith::mod_mul(&y, &y, p);

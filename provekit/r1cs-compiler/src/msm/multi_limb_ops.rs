@@ -2,11 +2,15 @@
 //!
 //! Uses `Limbs` (a fixed-capacity Copy type) as the element representation,
 //! enabling arbitrary limb counts without const generics or dispatch macros.
+//!
+//! EC operations are dispatched at compile time via the `E: EcOps` type
+//! parameter, while field arithmetic (add/sub/mul/negate) dispatches at
+//! runtime based on `MultiLimbParams`.
 
 use {
-    super::{multi_limb_arith, Limbs},
+    super::{ec_points::EcOps, multi_limb_arith, Limbs},
     crate::{
-        constraint_helpers::{constrain_boolean, pack_bits_helper, select_witness},
+        constraint_helpers::{constrain_boolean, select_witness},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{AdditiveGroup, Field},
@@ -14,7 +18,7 @@ use {
         witness::{ConstantTerm, SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::collections::BTreeMap,
+    std::{collections::BTreeMap, marker::PhantomData},
 };
 
 /// Parameters for multi-limb field arithmetic.
@@ -39,10 +43,10 @@ pub struct MultiLimbParams {
 
 impl MultiLimbParams {
     /// Build params for EC field operations (mod field_modulus_p).
-    pub fn for_field_modulus(
+    pub fn for_field_modulus<C: super::curve::Curve>(
         num_limbs: usize,
         limb_bits: u32,
-        curve: &super::curve::CurveParams,
+        curve: &C,
     ) -> Self {
         let is_native = curve.is_native_field();
         let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
@@ -57,25 +61,25 @@ impl MultiLimbParams {
             p_limbs: curve.p_limbs(limb_bits, num_limbs),
             p_minus_1_limbs: curve.p_minus_1_limbs(limb_bits, num_limbs),
             two_pow_w,
-            modulus_raw: curve.field_modulus_p,
+            modulus_raw: curve.field_modulus_p(),
             curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
-            curve_a_raw: curve.curve_a,
+            curve_a_raw: curve.curve_a(),
             curve_b_limbs: curve.curve_b_limbs(limb_bits, num_limbs),
-            curve_b_raw: curve.curve_b,
+            curve_b_raw: curve.curve_b(),
             is_native,
             modulus_fe,
         }
     }
 
     /// Build params for scalar relation verification (mod curve_order_n).
-    pub fn for_curve_order(
+    pub fn for_curve_order<C: super::curve::Curve>(
         num_limbs: usize,
         limb_bits: u32,
-        curve: &super::curve::CurveParams,
+        curve: &C,
     ) -> Self {
         let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
         let modulus_fe = if num_limbs == 1 {
-            Some(super::curve::curve_native_point_fe(&curve.curve_order_n))
+            Some(super::curve::curve_native_point_fe(&curve.curve_order_n()))
         } else {
             None
         };
@@ -85,7 +89,7 @@ impl MultiLimbParams {
             p_limbs: curve.curve_order_n_limbs(limb_bits, num_limbs),
             p_minus_1_limbs: curve.curve_order_n_minus_1_limbs(limb_bits, num_limbs),
             two_pow_w,
-            modulus_raw: curve.curve_order_n,
+            modulus_raw: curve.curve_order_n(),
             curve_a_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
             curve_a_raw: [0u64; 4],                                   // unused for scalar relation
             curve_b_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
@@ -97,14 +101,50 @@ impl MultiLimbParams {
     }
 }
 
-/// Unified field operations struct parameterized by runtime limb count.
-pub struct MultiLimbOps<'a, 'p> {
+/// Allocate a pinned constant witness: value is embedded in the constraint
+/// matrix so a malicious prover cannot alter it.
+pub fn allocate_pinned_constant(compiler: &mut NoirToR1CSCompiler, value: FieldElement) -> usize {
+    let w = compiler.num_witnesses();
+    compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, value)));
+    compiler.r1cs.add_constraint(
+        &[(FieldElement::ONE, compiler.witness_one())],
+        &[(FieldElement::ONE, w)],
+        &[(value, compiler.witness_one())],
+    );
+    w
+}
+
+/// Unified field + EC operations struct.
+///
+/// Field arithmetic (add/sub/mul/negate) dispatches at runtime based on
+/// `MultiLimbParams` and is available for any `E`.
+///
+/// EC operations (point_double/add, verify_on_curve) require `E: EcOps`
+/// and are only available on the bounded impl block — code that only needs
+/// field ops (e.g. scalar relation verification) can use `MultiLimbOps<()>`
+/// without importing or naming any EC strategy.
+pub struct MultiLimbOps<'a, 'p, E> {
     pub compiler:     &'a mut NoirToR1CSCompiler,
     pub range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
     pub params:       &'p MultiLimbParams,
+    _ec:              PhantomData<E>,
 }
 
-impl MultiLimbOps<'_, '_> {
+impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
+    /// Construct a new `MultiLimbOps`.
+    pub fn new(
+        compiler: &'a mut NoirToR1CSCompiler,
+        range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
+        params: &'p MultiLimbParams,
+    ) -> Self {
+        Self {
+            compiler,
+            range_checks,
+            params,
+            _ec: PhantomData,
+        }
+    }
+
     fn is_native_single(&self) -> bool {
         self.params.num_limbs == 1 && self.params.is_native
     }
@@ -118,12 +158,14 @@ impl MultiLimbOps<'_, '_> {
     }
 
     /// Negate a multi-limb value: computes `p - value (mod p)`.
-    ///
-    /// For multi-limb non-native (N≥2), uses a dedicated borrow chain that
-    /// skips zero-constant allocation, the borrow-quotient hint, and the
-    /// less_than_p check — saving (4N+1) witnesses per call.
     pub fn negate(&mut self, value: Limbs) -> Limbs {
-        if self.params.num_limbs >= 2 && !self.params.is_native {
+        if self.is_native_single() {
+            // Native: -y is a single linear combination (1W+1C)
+            let r = self
+                .compiler
+                .add_sum(vec![SumTerm(Some(-FieldElement::ONE), value[0])]);
+            Limbs::single(r)
+        } else if self.params.num_limbs >= 2 && !self.params.is_native {
             multi_limb_arith::negate_mod_p_multi(
                 self.compiler,
                 self.range_checks,
@@ -251,57 +293,6 @@ impl MultiLimbOps<'_, '_> {
         }
     }
 
-    pub fn inv(&mut self, a: Limbs) -> Limbs {
-        debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
-        if self.is_native_single() {
-            let a_inv = self.compiler.num_witnesses();
-            self.compiler
-                .add_witness_builder(WitnessBuilder::Inverse(a_inv, a[0]));
-            // a * a_inv = 1
-            self.compiler.r1cs.add_constraint(
-                &[(FieldElement::ONE, a[0])],
-                &[(FieldElement::ONE, a_inv)],
-                &[(FieldElement::ONE, self.compiler.witness_one())],
-            );
-            Limbs::single(a_inv)
-        } else if self.is_non_native_single() {
-            let modulus = self.params.modulus_fe.unwrap();
-            let r =
-                multi_limb_arith::inv_mod_p_single(self.compiler, a[0], modulus, self.range_checks);
-            Limbs::single(r)
-        } else {
-            multi_limb_arith::inv_mod_p_multi(
-                self.compiler,
-                self.range_checks,
-                a,
-                &self.params.p_limbs,
-                &self.params.p_minus_1_limbs,
-                self.params.two_pow_w,
-                self.params.limb_bits,
-                &self.params.modulus_raw,
-            )
-        }
-    }
-
-    pub fn curve_a(&mut self) -> Limbs {
-        let n = self.n();
-        let mut out = Limbs::new(n);
-        for i in 0..n {
-            let w = self.compiler.num_witnesses();
-            let value = self.params.curve_a_limbs[i];
-            self.compiler
-                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, value)));
-            // Pin: prevent malicious prover from choosing a different curve_a
-            self.compiler.r1cs.add_constraint(
-                &[(FieldElement::ONE, self.compiler.witness_one())],
-                &[(FieldElement::ONE, w)],
-                &[(value, self.compiler.witness_one())],
-            );
-            out[i] = w;
-        }
-        out
-    }
-
     /// Constrains `flag` to be boolean (`flag * flag = flag`).
     pub fn constrain_flag(&mut self, flag: usize) {
         constrain_boolean(self.compiler, flag);
@@ -325,17 +316,18 @@ impl MultiLimbOps<'_, '_> {
         self.select_unchecked(flag, on_false, on_true)
     }
 
-    /// Checks if a native witness value is zero.
-    /// Returns a boolean witness: 1 if zero, 0 if non-zero.
-    pub fn is_zero(&mut self, value: usize) -> usize {
-        multi_limb_arith::compute_is_zero(self.compiler, value)
-    }
-
-    /// Packs bit witnesses into a single digit witness: `d = Σ bits\[i\] *
-    /// 2^i`. Does NOT constrain bits to be boolean — caller must ensure
-    /// that.
-    pub fn pack_bits(&mut self, bits: &[usize]) -> usize {
-        pack_bits_helper(self.compiler, bits)
+    /// Conditional point select without boolean constraint on `flag`.
+    /// Returns `on_true` if `flag=1`, `on_false` if `flag=0`.
+    /// Caller must ensure `flag` is already constrained boolean.
+    pub fn point_select_unchecked(
+        &mut self,
+        flag: usize,
+        on_false: (Limbs, Limbs),
+        on_true: (Limbs, Limbs),
+    ) -> (Limbs, Limbs) {
+        let x = self.select_unchecked(flag, on_false.0, on_true.0);
+        let y = self.select_unchecked(flag, on_false.1, on_true.1);
+        (x, y)
     }
 
     /// Returns a constant field element from its limb decomposition.
@@ -349,17 +341,39 @@ impl MultiLimbOps<'_, '_> {
         );
         let mut out = Limbs::new(n);
         for i in 0..n {
-            let w = self.compiler.num_witnesses();
-            self.compiler
-                .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, limbs[i])));
-            // Pin: prevent malicious prover from altering constant values
-            self.compiler.r1cs.add_constraint(
-                &[(FieldElement::ONE, self.compiler.witness_one())],
-                &[(FieldElement::ONE, w)],
-                &[(limbs[i], self.compiler.witness_one())],
-            );
-            out[i] = w;
+            out[i] = allocate_pinned_constant(self.compiler, limbs[i]);
         }
         out
+    }
+}
+
+// -----------------------------------------------------------------
+// EC point operations — only available when E: EcOps
+// -----------------------------------------------------------------
+
+impl<E: EcOps> MultiLimbOps<'_, '_, E> {
+    /// Point doubling: computes 2P. Statically dispatched via `E`.
+    pub fn point_double(&mut self, x: Limbs, y: Limbs) -> (Limbs, Limbs) {
+        E::point_double(self.compiler, self.range_checks, self.params, x, y)
+    }
+
+    /// Point addition: computes P1 + P2 (requires P1 ≠ ±P2). Statically
+    /// dispatched via `E`.
+    pub fn point_add(&mut self, x1: Limbs, y1: Limbs, x2: Limbs, y2: Limbs) -> (Limbs, Limbs) {
+        E::point_add(
+            self.compiler,
+            self.range_checks,
+            self.params,
+            x1,
+            y1,
+            x2,
+            y2,
+        )
+    }
+
+    /// On-curve verification: constrains y² = x³ + ax + b. Statically
+    /// dispatched via `E`.
+    pub fn verify_on_curve(&mut self, x: Limbs, y: Limbs) {
+        E::verify_on_curve(self.compiler, self.range_checks, self.params, x, y);
     }
 }

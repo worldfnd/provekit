@@ -5,10 +5,11 @@
 
 use {
     super::{
-        cost_model, curve,
+        cost_model,
+        curve::Curve,
         multi_limb_arith::compute_is_zero,
         multi_limb_ops::{MultiLimbOps, MultiLimbParams},
-        Limbs,
+        Limbs, SCALAR_HALF_BITS,
     },
     crate::{
         constraint_helpers::constrain_zero,
@@ -16,17 +17,12 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{Field, PrimeField},
-    curve::CurveParams,
     provekit_common::{
         witness::{ConstantTerm, SumTerm, WitnessBuilder},
         FieldElement,
     },
     std::collections::BTreeMap,
 };
-
-/// The 256-bit scalar is split into two 128-bit halves (s_lo, s_hi) because the
-/// full value doesn't fit in the native field.
-const SCALAR_HALF_BITS: usize = 128;
 
 /// Compute digit widths for decomposing `total_bits` into chunks of at most
 /// `max_width` bits. The last chunk may be smaller.
@@ -41,10 +37,8 @@ fn limb_widths(total_bits: usize, max_width: u32) -> Vec<usize> {
 }
 
 /// Verifies the scalar relation: (-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0
-/// (mod n).
-///
-/// Uses multi-limb arithmetic with curve_order_n as the modulus.
-pub(super) fn verify_scalar_relation(
+/// (mod n), and enforces s2 ≠ 0.
+pub(super) fn verify_scalar_relation<C: Curve>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     s_lo: usize,
@@ -53,7 +47,7 @@ pub(super) fn verify_scalar_relation(
     s2_witness: usize,
     neg1_witness: usize,
     neg2_witness: usize,
-    curve: &CurveParams,
+    curve: &C,
 ) {
     let order_bits = curve.curve_order_bits() as usize;
     let limb_bits =
@@ -62,11 +56,7 @@ pub(super) fn verify_scalar_relation(
     let half_bits = curve.glv_half_bits() as usize;
 
     let params = MultiLimbParams::for_curve_order(num_limbs, limb_bits, curve);
-    let mut ops = MultiLimbOps {
-        compiler,
-        range_checks,
-        params: &params,
-    };
+    let mut ops = MultiLimbOps::<()>::new(compiler, range_checks, &params);
 
     let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);
     let s1_limbs = decompose_half_scalar(&mut ops, s1_witness, num_limbs, half_bits, limb_bits);
@@ -108,7 +98,7 @@ pub(super) fn verify_scalar_relation(
 /// used limbs are constrained to zero. This ensures the scalar fits in the
 /// representation and prevents truncation attacks.
 fn decompose_scalar_from_halves(
-    ops: &mut MultiLimbOps,
+    ops: &mut MultiLimbOps<'_, '_, ()>,
     s_lo: usize,
     s_hi: usize,
     num_limbs: usize,
@@ -224,7 +214,7 @@ fn decompose_scalar_from_halves(
 /// Decompose a half-scalar witness into `num_limbs` limbs, zero-padding the
 /// upper limbs beyond `half_bits`.
 fn decompose_half_scalar(
-    ops: &mut MultiLimbOps,
+    ops: &mut MultiLimbOps<'_, '_, ()>,
     witness: usize,
     num_limbs: usize,
     half_bits: usize,

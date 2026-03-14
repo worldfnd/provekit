@@ -1,24 +1,19 @@
 //! Non-native hint-verified EC operations (multi-limb schoolbook).
 //!
-//! These replace the step-by-step MultiLimbOps chain with prover hints verified
-//! via schoolbook column equations. Each bilinear mod-p equation is checked by:
-//! 1. Pre-computing product witnesses a\[i\]*b\[j\]
-//! 2. Column equations: Σ coeff·prod\[k\] + linear\[k\] + carry_in + offset = Σ
-//!    p\[i\]*q\[j\] + carry_out * W
-//! Since p is constant, p\[i\]*q\[j\] terms are linear in q (no product
-//! witness).
+//! Each EC op allocates a prover hint and verifies it via schoolbook
+//! column equations, avoiding step-by-step field inversions.
 
 use {
     crate::{
         msm::{multi_limb_arith::less_than_p_check_multi, multi_limb_ops::MultiLimbParams, Limbs},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{Field, PrimeField},
+    ark_ff::{Field, PrimeField, Zero},
     provekit_common::{
         witness::{NonNativeEcOp, WitnessBuilder},
         FieldElement,
     },
-    std::collections::BTreeMap,
+    std::collections::{BTreeMap, HashMap},
 };
 
 /// Collect witness indices from `start..start+len`.
@@ -44,20 +39,10 @@ fn allocate_pinned_constant_limbs(
     compiler: &mut NoirToR1CSCompiler,
     limb_values: &[FieldElement],
 ) -> Vec<usize> {
+    use crate::msm::multi_limb_ops::allocate_pinned_constant;
     limb_values
         .iter()
-        .map(|&val| {
-            let w = compiler.num_witnesses();
-            compiler.add_witness_builder(WitnessBuilder::Constant(
-                provekit_common::witness::ConstantTerm(w, val),
-            ));
-            compiler.r1cs.add_constraint(
-                &[(FieldElement::ONE, compiler.witness_one())],
-                &[(FieldElement::ONE, w)],
-                &[(val, compiler.witness_one())],
-            );
-            w
-        })
+        .map(|&val| allocate_pinned_constant(compiler, val))
         .collect()
 }
 
@@ -89,15 +74,10 @@ fn less_than_p_check_vec(
     v: &[usize],
     params: &MultiLimbParams,
 ) {
-    let n = v.len();
-    let mut limbs = Limbs::new(n);
-    for i in 0..n {
-        limbs[i] = v[i];
-    }
     less_than_p_check_multi(
         compiler,
         range_checks,
-        limbs,
+        Limbs::from(v),
         &params.p_minus_1_limbs,
         params.two_pow_w,
         params.limb_bits,
@@ -122,7 +102,6 @@ fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_n
 
 /// Merge terms with the same witness index by summing their coefficients.
 fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
-    use {ark_ff::Zero, std::collections::HashMap};
     let mut map: HashMap<usize, FieldElement> = HashMap::new();
     for &(coeff, idx) in terms {
         *map.entry(idx).or_insert_with(FieldElement::zero) += coeff;
@@ -227,23 +206,16 @@ fn emit_schoolbook_column_equations(
     }
 }
 
-/// Helper to convert witness Vec to Limbs.
-fn vec_to_limbs(v: &[usize]) -> Limbs {
-    let n = v.len();
-    let mut limbs = Limbs::new(n);
-    for i in 0..n {
-        limbs[i] = v[i];
-    }
-    limbs
-}
-
 /// Hint-verified on-curve check for non-native field (multi-limb).
 ///
 /// Verifies y² = x³ + ax + b (mod p) via two schoolbook column equations:
 ///   Eq1: x·x - x_sq = q1·p              (x_sq correctness)
 ///   Eq2: y·y - x_sq·x - a·x - b = q2·p  (on-curve)
 ///
-/// Total: (7N-4)W hint + 3N² products (or 2N² when a=0) + 2×(2N-1) column
+/// Hint layout: x_sq(N), q1_pos(N), q1_neg(N), c1(2N-2),
+///              q2_pos(N), q2_neg(N), c2(2N-2) = 9N-4 witnesses.
+///
+/// Total: (9N-4)W hint + 3N² products (or 2N² when a=0) + 2×(2N-1) column
 ///        constraints + 1 less-than-p check.
 pub fn verify_on_curve_non_native(
     compiler: &mut NoirToR1CSCompiler,
@@ -372,7 +344,7 @@ pub fn verify_on_curve_non_native(
 ///   Eq2: lambda² - x3 - 2·px = q2·p        (1N² products: lam·lam)
 ///   Eq3: lambda·(px - x3) - y3 - py = q3·p (2N² products: lam·px, lam·x3)
 ///
-/// Total: (12N-6)W hint + 5N²+N products + 3×(2N-1) column constraints
+/// Total: (15N-6)W hint + 5N²+N products + 3×(2N-1) column constraints
 ///        + 3 less-than-p checks.
 pub fn point_double_verified_non_native(
     compiler: &mut NoirToR1CSCompiler,
@@ -500,7 +472,7 @@ pub fn point_double_verified_non_native(
     less_than_p_check_vec(compiler, range_checks, &x3, params);
     less_than_p_check_vec(compiler, range_checks, &y3, params);
 
-    (vec_to_limbs(&x3), vec_to_limbs(&y3))
+    (Limbs::from(x3.as_slice()), Limbs::from(y3.as_slice()))
 }
 
 /// Hint-verified point addition for non-native field (multi-limb).
@@ -511,7 +483,7 @@ pub fn point_double_verified_non_native(
 ///   Eq3: lambda·(x1-x3) - y3 - y1 = q3·p  (1N² products: lam·x3; lam·x1
 /// reused)
 ///
-/// Total: (12N-6)W hint + 4N² products + 3×(2N-1) column constraints
+/// Total: (15N-6)W hint + 4N² products + 3×(2N-1) column constraints
 ///        + 3 less-than-p checks.
 pub fn point_add_verified_non_native(
     compiler: &mut NoirToR1CSCompiler,
@@ -647,5 +619,5 @@ pub fn point_add_verified_non_native(
     less_than_p_check_vec(compiler, range_checks, &x3, params);
     less_than_p_check_vec(compiler, range_checks, &y3, params);
 
-    (vec_to_limbs(&x3), vec_to_limbs(&y3))
+    (Limbs::from(x3.as_slice()), Limbs::from(y3.as_slice()))
 }

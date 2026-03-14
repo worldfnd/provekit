@@ -3,7 +3,7 @@ use {
         binops::add_combined_binop_constraints,
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
-        msm::add_msm,
+        msm::{add_msm_with_curve, MsmLimbedOutputs},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -745,7 +745,22 @@ impl NoirToR1CSCompiler {
 
         let constraints_before_msm = self.r1cs.num_constraints();
         let witnesses_before_msm = self.num_witnesses();
-        add_msm(self, msm_ops, &mut range_checks);
+        let limbed_msm_ops = msm_ops
+            .into_iter()
+            .map(|(points, scalars, (out_x, out_y, out_inf))| {
+                (points, scalars, MsmLimbedOutputs {
+                    out_x_limbs: vec![out_x],
+                    out_y_limbs: vec![out_y],
+                    out_inf,
+                })
+            })
+            .collect();
+        add_msm_with_curve(
+            self,
+            limbed_msm_ops,
+            &mut range_checks,
+            &crate::msm::curve::Grumpkin,
+        );
         breakdown.msm_constraints = self.r1cs.num_constraints() - constraints_before_msm;
         breakdown.msm_witnesses = self.num_witnesses() - witnesses_before_msm;
 

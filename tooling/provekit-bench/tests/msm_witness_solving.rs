@@ -6,7 +6,7 @@
 //! 3. Solve all derived witnesses via the witness builder layer scheduler
 //! 4. Check R1CS satisfaction: A·w ⊙ B·w = C·w for all constraints
 //!
-//! All tests use the **limbed API** (`add_msm_with_curve_limbed`) where
+//! All tests use the **limbed API** (`add_msm_with_curve`) where
 //! point coordinates are multi-limb witnesses, supporting arbitrary
 //! secp256r1 coordinates (including those exceeding BN254 Fr).
 
@@ -20,9 +20,9 @@ use {
     provekit_prover::{bigint_mod::ec_scalar_mul, r1cs::solve_witness_vec},
     provekit_r1cs_compiler::{
         msm::{
-            add_msm_with_curve_limbed,
+            add_msm_with_curve,
             cost_model::get_optimal_msm_params,
-            curve::{decompose_to_limbs, secp256r1_params},
+            curve::{decompose_to_limbs, Curve, Secp256r1},
             MsmLimbedOutputs,
         },
         noir_to_r1cs::NoirToR1CSCompiler,
@@ -109,15 +109,13 @@ fn solve_witnesses(
 
 /// Compute the (num_limbs, limb_bits) that the compiler will use for this
 /// curve, so the test can decompose coordinates the same way.
-fn msm_params_for_curve(
-    curve: &provekit_r1cs_compiler::msm::curve::CurveParams,
-    n_points: usize,
-) -> (usize, u32) {
+fn msm_params_for_curve(curve: &impl Curve, n_points: usize) -> (usize, u32) {
     let native_bits = FieldElement::MODULUS_BIT_SIZE;
     let curve_bits = curve.modulus_bits();
-    let (limb_bits, _window_size) =
-        get_optimal_msm_params(native_bits, curve_bits, n_points, 256, false);
-    let num_limbs = (curve_bits as usize + limb_bits as usize - 1) / limb_bits as usize;
+    let is_native = curve.is_native_field();
+    let scalar_bits = curve.curve_order_bits() as usize;
+    let (limb_bits, _window_size, num_limbs) =
+        get_optimal_msm_params(native_bits, curve_bits, n_points, scalar_bits, is_native);
     (num_limbs, limb_bits)
 }
 
@@ -143,7 +141,7 @@ fn run_single_point_msm_test_limbed(
     expected_y: &[u64; 4],
     expected_inf: bool,
 ) {
-    let curve = secp256r1_params();
+    let curve = Secp256r1;
     let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
     let (s_lo, s_hi) = split_scalar(scalar);
     let stride = 2 * num_limbs + 1;
@@ -181,7 +179,7 @@ fn run_single_point_msm_test_limbed(
         out_inf,
     };
     let msm_ops = vec![(points, scalars, outputs)];
-    add_msm_with_curve_limbed(&mut compiler, msm_ops, &mut range_checks, &curve, num_limbs);
+    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
     add_range_checks(&mut compiler, range_checks);
 
     let num_witnesses = compiler.num_witnesses();
@@ -229,11 +227,17 @@ fn run_single_point_msm_test_limbed(
 /// The generator's x-coordinate exceeds BN254 Fr.
 #[test]
 fn test_single_point_generator() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
     let scalar: [u64; 4] = [7, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &scalar, &curve.curve_a, &curve.field_modulus_p);
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
 
     run_single_point_msm_test_limbed(&gx, &gy, false, &scalar, &ex, &ey, false);
 }
@@ -241,9 +245,9 @@ fn test_single_point_generator() {
 /// Scalar = 1: result should equal the input point.
 #[test]
 fn test_scalar_one() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
     let scalar: [u64; 4] = [1, 0, 0, 0];
 
     // 1·G = G
@@ -253,11 +257,17 @@ fn test_scalar_one() {
 /// Large scalar spanning both lo and hi halves of the 256-bit representation.
 #[test]
 fn test_large_scalar() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
     let scalar: [u64; 4] = [0xcafebabe, 0x12345678, 0x42, 0];
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &scalar, &curve.curve_a, &curve.field_modulus_p);
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
 
     run_single_point_msm_test_limbed(&gx, &gy, false, &scalar, &ex, &ey, false);
 }
@@ -265,9 +275,9 @@ fn test_large_scalar() {
 /// Zero scalar: result should be point at infinity.
 #[test]
 fn test_zero_scalar() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
     let zero_scalar: [u64; 4] = [0, 0, 0, 0];
     let zero_point: [u64; 4] = [0, 0, 0, 0];
 
@@ -286,10 +296,10 @@ fn test_zero_scalar() {
 /// of scalar.
 #[test]
 fn test_point_at_infinity_input() {
-    let curve = secp256r1_params();
+    let curve = Secp256r1;
     // Use generator coords as placeholder (they're ignored due to inf=1 select)
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
     let scalar: [u64; 4] = [42, 0, 0, 0];
     let zero_point: [u64; 4] = [0, 0, 0, 0];
 
@@ -300,11 +310,11 @@ fn test_point_at_infinity_input() {
 /// wNAF + FakeGLV pipeline.
 #[test]
 fn test_arbitrary_point_and_scalar() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
-    let a = &curve.curve_a;
-    let p = &curve.field_modulus_p;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let a = &curve.curve_a();
+    let p = &curve.field_modulus_p();
 
     // P = 2·G
     let (px, py) = ec_scalar_mul(&gx, &gy, &[2, 0, 0, 0], a, p);
@@ -318,11 +328,11 @@ fn test_arbitrary_point_and_scalar() {
 /// Two-point MSM: s1·P1 + s2·P2 with arbitrary coordinates.
 #[test]
 fn test_two_point_msm() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
-    let a = &curve.curve_a;
-    let p = &curve.field_modulus_p;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let a = &curve.curve_a();
+    let p = &curve.field_modulus_p();
     let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
     let stride = 2 * num_limbs + 1;
 
@@ -372,7 +382,7 @@ fn test_two_point_msm() {
         out_inf,
     };
     let msm_ops = vec![(points, scalars, outputs)];
-    add_msm_with_curve_limbed(&mut compiler, msm_ops, &mut range_checks, &curve, num_limbs);
+    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
     add_range_checks(&mut compiler, range_checks);
 
     let num_witnesses = compiler.num_witnesses();
@@ -415,11 +425,11 @@ fn test_two_point_msm() {
 /// should contribute.
 #[test]
 fn test_two_point_one_zero_scalar() {
-    let curve = secp256r1_params();
-    let gx = curve.generator.0;
-    let gy = curve.generator.1;
-    let a = &curve.curve_a;
-    let p = &curve.field_modulus_p;
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let a = &curve.curve_a();
+    let p = &curve.field_modulus_p();
     let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
     let stride = 2 * num_limbs + 1;
 
@@ -468,7 +478,7 @@ fn test_two_point_one_zero_scalar() {
         out_inf,
     };
     let msm_ops = vec![(points, scalars, outputs)];
-    add_msm_with_curve_limbed(&mut compiler, msm_ops, &mut range_checks, &curve, num_limbs);
+    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
     add_range_checks(&mut compiler, range_checks);
 
     let num_witnesses = compiler.num_witnesses();

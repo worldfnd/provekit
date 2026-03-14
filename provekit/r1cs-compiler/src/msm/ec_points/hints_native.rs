@@ -5,26 +5,20 @@
 //! R1CS constraints, eliminating expensive field inversions from the circuit.
 
 use {
-    crate::{msm::curve::CurveParams, noir_to_r1cs::NoirToR1CSCompiler},
+    crate::{msm::multi_limb_ops::MultiLimbParams, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{Field, PrimeField},
     provekit_common::{witness::WitnessBuilder, FieldElement},
 };
 
 /// Hint-verified point doubling for native field.
 ///
-/// Allocates EcDoubleHint → (lambda, x3, y3) = 3W hint.
-/// Verification via 4 R1CS constraints:
-///   1. x_sq = px * px                             (1W+1C via add_product)
-///   2. lambda · 2·py = 3·x_sq + a                 (1C)
-///   3. lambda² = x3 + 2·px                        (1C)
-///   4. lambda · (px - x3) = y3 + py               (1C)
-///
+/// Allocates 3W hint (lambda, x3, y3) + 1W product.
 /// Total: 4W + 4C.
 pub fn point_double_verified_native(
     compiler: &mut NoirToR1CSCompiler,
     px: usize,
     py: usize,
-    curve: &CurveParams,
+    params: &MultiLimbParams,
 ) -> (usize, usize) {
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
@@ -32,8 +26,8 @@ pub fn point_double_verified_native(
         output_start: hint_start,
         px,
         py,
-        curve_a: curve.curve_a,
-        field_modulus_p: curve.field_modulus_p,
+        curve_a: params.curve_a_raw,
+        field_modulus_p: params.modulus_raw,
     });
     let lambda = hint_start;
     let x3 = hint_start + 1;
@@ -44,7 +38,7 @@ pub fn point_double_verified_native(
 
     // Constraint: lambda * (2 * py) = 3 * x_sq + a
     // A = [lambda], B = [2*py], C = [3*x_sq + a_const]
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(curve.curve_a)).unwrap();
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw)).unwrap();
     let three = FieldElement::from(3u64);
     let two = FieldElement::from(2u64);
     compiler
@@ -73,12 +67,7 @@ pub fn point_double_verified_native(
 
 /// Hint-verified point addition for native field.
 ///
-/// Allocates EcAddHint → (lambda, x3, y3) = 3W.
-/// Verification constraints (3C):
-///   1. lambda * (x2 - x1) = y2 - y1               (1C raw)
-///   2. lambda^2 = x3 + x1 + x2                    (1C raw)
-///   3. lambda * (x1 - x3) = y3 + y1               (1C raw)
-///
+/// Allocates 3W hint (lambda, x3, y3).
 /// Total: 3W + 3C.
 pub fn point_add_verified_native(
     compiler: &mut NoirToR1CSCompiler,
@@ -86,7 +75,7 @@ pub fn point_add_verified_native(
     y1: usize,
     x2: usize,
     y2: usize,
-    curve: &CurveParams,
+    params: &MultiLimbParams,
 ) -> (usize, usize) {
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
@@ -96,7 +85,7 @@ pub fn point_add_verified_native(
         y1,
         x2,
         y2,
-        field_modulus_p: curve.field_modulus_p,
+        field_modulus_p: params.modulus_raw,
     });
     let lambda = hint_start;
     let x3 = hint_start + 1;
@@ -132,23 +121,18 @@ pub fn point_add_verified_native(
 
 /// On-curve check for native field: y² = x³ + a·x + b.
 ///
-/// Verification via 3 R1CS constraints:
-///   1. x_sq = x · x                                (1W+1C via add_product)
-///   2. x_cu = x_sq · x                             (1W+1C via add_product)
-///   3. y · y = x_cu + a·x + b                      (1C)
-///
-/// Total: 2W + 3C.
+/// Total: 2W (two products) + 3C.
 pub fn verify_on_curve_native(
     compiler: &mut NoirToR1CSCompiler,
     x: usize,
     y: usize,
-    curve: &CurveParams,
+    params: &MultiLimbParams,
 ) {
     let x_sq = compiler.add_product(x, x);
     let x_cu = compiler.add_product(x_sq, x);
 
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(curve.curve_a)).unwrap();
-    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(curve.curve_b)).unwrap();
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw)).unwrap();
+    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_b_raw)).unwrap();
 
     // y * y = x_cu + a*x + b
     compiler

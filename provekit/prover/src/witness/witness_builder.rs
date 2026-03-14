@@ -54,6 +54,11 @@ fn read_witness_limbs(
     let limb_values: Vec<u128> = indices
         .iter()
         .map(|&idx| {
+            assert!(
+                idx < witness.len(),
+                "read_witness_limbs: index {idx} out of bounds (witness len {})",
+                witness.len()
+            );
             let bigint = witness[idx].unwrap().into_bigint().0;
             bigint[0] as u128 | ((bigint[1] as u128) << 64)
         })
@@ -427,7 +432,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
             }
             WitnessBuilder::BytePartition { lo, hi, x, k } => {
                 let x_val = witness[*x].unwrap().into_bigint().0[0];
-                debug_assert!(x_val < 256, "BytePartition input must be 8-bit");
+                assert!(
+                    x_val < 256,
+                    "BytePartition input must be 8-bit, got {x_val}"
+                );
 
                 let mask = (1u64 << *k) - 1;
                 let lo_val = x_val & mask;
@@ -537,9 +545,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         write_limbs(witness, os + 2 * n, &yl);
 
                         // Per-equation max_coeff_sum must match compiler
-                        let mcs_eq1 = 6 + 2 * n as u64; // 2+3+1+2n
-                        let mcs_eq2 = 4 + 2 * n as u64; // 1+1+2+2n
-                        let mcs_eq3 = 4 + 2 * n as u64; // 1+1+1+1+2n
+                        // (see hints_non_native.rs:point_double_verified_non_native)
+                        let mcs_eq1 = 6 + 2 * n as u64; // λy(2)+xx(3)+a(1)+pq(2n)
+                        let mcs_eq2 = 4 + 2 * n as u64; // λλ(1)+x3(1)+px(2)+pq(2n)
+                        let mcs_eq3 = 4 + 2 * n as u64; // λΔx(1)+y3(1)+py(1)+r(1)+pq(2n) → 4+2n
 
                         // Layout: [lambda(N), x3(N), y3(N),
                         //          q1_pos(N), q1_neg(N), c1(2N-2),
@@ -640,8 +649,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         write_limbs(witness, os + n, &xl);
                         write_limbs(witness, os + 2 * n, &yl);
 
-                        // Must match compiler's max_coeff_sum: 1+1+1+1 + 2*n
-                        let mcs = 4 + 2 * n as u64;
+                        // Must match compiler's max_coeff_sum
+                        // (see hints_non_native.rs:point_add_verified_non_native)
+                        let mcs = 4 + 2 * n as u64; // 1+1+1+1+2n for all 3 eqs
 
                         // Layout: [lambda(N), x3(N), y3(N),
                         //          q1_pos(N), q1_neg(N), c1(2N-2),
@@ -739,11 +749,12 @@ impl WitnessBuilderSolver for WitnessBuilder {
 
                         let a_is_zero = curve_a.iter().all(|&v| v == 0);
                         // Per-equation max_coeff_sum must match compiler
-                        let mcs_eq1: u64 = 2 + 2 * n as u64; // 1+1+2n
+                        // (see hints_non_native.rs:verify_on_curve_non_native)
+                        let mcs_eq1: u64 = 2 + 2 * n as u64; // px·px(1)+x_sq(1)+pq(2n)
                         let mcs_eq2: u64 = if a_is_zero {
-                            3 + 2 * n as u64 // 1+1+1+2n
+                            3 + 2 * n as u64 // x³(1)+y²(1)+b(1)+pq(2n)
                         } else {
-                            4 + 2 * n as u64 // 1+1+1+1+2n
+                            4 + 2 * n as u64 // x³(1)+y²(1)+ax(1)+b(1)+pq(2n)
                         };
 
                         // Layout: [x_sq(N),
@@ -879,11 +890,13 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 scalar,
                 num_bits,
             } => {
+                assert!(
+                    *num_bits <= 128,
+                    "SignedBitHint: num_bits={} exceeds 128; scalar would be silently truncated",
+                    num_bits
+                );
                 let s_fe = witness[*scalar].unwrap();
                 let s_big = s_fe.into_bigint().0;
-                // NOTE: Only reads lower 128 bits. Safe for FakeGLV half-scalars
-                // (≤128 bits for 256-bit curves) but would silently truncate
-                // larger values. The R1CS reconstruction constraint catches this.
                 let s_val: u128 = s_big[0] as u128 | ((s_big[1] as u128) << 64);
                 let n = *num_bits;
                 let skew: u128 = if s_val & 1 == 0 { 1 } else { 0 };

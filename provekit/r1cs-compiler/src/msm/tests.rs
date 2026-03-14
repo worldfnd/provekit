@@ -3,39 +3,47 @@ use {
     provekit_common::witness::ConstantOrR1CSWitness, std::collections::BTreeMap,
 };
 
-/// Verify that the non-native (SECP256R1) single-point MSM path generates
-/// constraints without panicking. This does multi-limb arithmetic,
-/// range checks, and FakeGLV verification — the entire non-native code path
-/// that has no Noir e2e coverage for now : )
+/// Helper: compute num_limbs for a curve given the cost model.
+fn num_limbs_for(curve: &impl curve::Curve) -> usize {
+    let native_bits = provekit_common::FieldElement::MODULUS_BIT_SIZE;
+    let curve_bits = curve.modulus_bits();
+    let is_native = curve.is_native_field();
+    let scalar_bits = curve.curve_order_bits() as usize;
+    let (_limb_bits, _window_size, num_limbs) =
+        cost_model::get_optimal_msm_params(native_bits, curve_bits, 1, scalar_bits, is_native);
+    num_limbs
+}
+
+/// Verify that the SECP256R1 single-point MSM path generates constraints
+/// without panicking. This exercises multi-limb arithmetic, range checks,
+/// and FakeGLV verification through the unified pipeline.
 #[test]
 fn test_secp256r1_single_point_msm_generates_constraints() {
     let mut compiler = NoirToR1CSCompiler::new();
-    let curve = curve::secp256r1_params();
+    let curve = curve::Secp256r1;
     let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let num_limbs = num_limbs_for(&curve);
+    let stride = 2 * num_limbs + 1;
 
-    // Allocate witness slots for: px, py, inf, s_lo, s_hi, out_x, out_y, out_inf
-    // (witness 0 is the constant-one witness)
+    // Allocate witness slots: point limbs + inf, s_lo, s_hi, out limbs + out_inf
     let base = compiler.num_witnesses();
-    compiler.r1cs.add_witnesses(8);
-    let px = base;
-    let py = base + 1;
-    let inf = base + 2;
-    let s_lo = base + 3;
-    let s_hi = base + 4;
-    let out_x = base + 5;
-    let out_y = base + 6;
-    let out_inf = base + 7;
+    let total = stride + 2 + stride; // point + scalars + output
+    compiler.r1cs.add_witnesses(total);
 
-    let points = vec![
-        ConstantOrR1CSWitness::Witness(px),
-        ConstantOrR1CSWitness::Witness(py),
-        ConstantOrR1CSWitness::Witness(inf),
-    ];
+    let points: Vec<ConstantOrR1CSWitness> = (0..stride)
+        .map(|j| ConstantOrR1CSWitness::Witness(base + j))
+        .collect();
     let scalars = vec![
-        ConstantOrR1CSWitness::Witness(s_lo),
-        ConstantOrR1CSWitness::Witness(s_hi),
+        ConstantOrR1CSWitness::Witness(base + stride),
+        ConstantOrR1CSWitness::Witness(base + stride + 1),
     ];
-    let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
+    let out_base = base + stride + 2;
+    let outputs = MsmLimbedOutputs {
+        out_x_limbs: (0..num_limbs).map(|j| out_base + j).collect(),
+        out_y_limbs: (0..num_limbs).map(|j| out_base + num_limbs + j).collect(),
+        out_inf:     out_base + 2 * num_limbs,
+    };
+    let msm_ops = vec![(points, scalars, outputs)];
 
     add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
 
@@ -56,39 +64,38 @@ fn test_secp256r1_single_point_msm_generates_constraints() {
     );
 }
 
-/// Verify that the non-native multi-point MSM path (2 points, SECP256R1)
-/// generates constraints. does the multi-point accumulation and offset
-/// subtraction logic for the non-native path.
+/// Verify that the multi-point MSM path (2 points, SECP256R1) generates
+/// constraints. Exercises multi-point accumulation and offset subtraction.
 #[test]
 fn test_secp256r1_multi_point_msm_generates_constraints() {
     let mut compiler = NoirToR1CSCompiler::new();
-    let curve = curve::secp256r1_params();
+    let curve = curve::Secp256r1;
     let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+    let num_limbs = num_limbs_for(&curve);
+    let stride = 2 * num_limbs + 1;
 
-    // 2 points: px1, py1, inf1, px2, py2, inf2, s1_lo, s1_hi, s2_lo, s2_hi,
-    //           out_x, out_y, out_inf
+    // 2 points + scalars + outputs
     let base = compiler.num_witnesses();
-    compiler.r1cs.add_witnesses(13);
+    let total = 2 * stride + 4 + stride; // 2 points + 4 scalar halves + output
+    compiler.r1cs.add_witnesses(total);
 
-    let points = vec![
-        ConstantOrR1CSWitness::Witness(base),     // px1
-        ConstantOrR1CSWitness::Witness(base + 1), // py1
-        ConstantOrR1CSWitness::Witness(base + 2), // inf1
-        ConstantOrR1CSWitness::Witness(base + 3), // px2
-        ConstantOrR1CSWitness::Witness(base + 4), // py2
-        ConstantOrR1CSWitness::Witness(base + 5), // inf2
-    ];
+    let points: Vec<ConstantOrR1CSWitness> = (0..2 * stride)
+        .map(|j| ConstantOrR1CSWitness::Witness(base + j))
+        .collect();
+    let scalar_base = base + 2 * stride;
     let scalars = vec![
-        ConstantOrR1CSWitness::Witness(base + 6), // s1_lo
-        ConstantOrR1CSWitness::Witness(base + 7), // s1_hi
-        ConstantOrR1CSWitness::Witness(base + 8), // s2_lo
-        ConstantOrR1CSWitness::Witness(base + 9), // s2_hi
+        ConstantOrR1CSWitness::Witness(scalar_base),
+        ConstantOrR1CSWitness::Witness(scalar_base + 1),
+        ConstantOrR1CSWitness::Witness(scalar_base + 2),
+        ConstantOrR1CSWitness::Witness(scalar_base + 3),
     ];
-    let out_x = base + 10;
-    let out_y = base + 11;
-    let out_inf = base + 12;
-
-    let msm_ops = vec![(points, scalars, (out_x, out_y, out_inf))];
+    let out_base = scalar_base + 4;
+    let outputs = MsmLimbedOutputs {
+        out_x_limbs: (0..num_limbs).map(|j| out_base + j).collect(),
+        out_y_limbs: (0..num_limbs).map(|j| out_base + num_limbs + j).collect(),
+        out_inf:     out_base + 2 * num_limbs,
+    };
+    let msm_ops = vec![(points, scalars, outputs)];
 
     add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
 

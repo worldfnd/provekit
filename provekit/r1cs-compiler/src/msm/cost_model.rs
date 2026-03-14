@@ -4,20 +4,15 @@
 //! `calculate_msm_witness_cost` estimates total cost, `get_optimal_msm_params`
 //! searches the parameter space for the minimum.
 
-use std::collections::BTreeMap;
+use {super::SCALAR_HALF_BITS, std::collections::BTreeMap};
 
-/// The 256-bit scalar is split into two halves (s_lo, s_hi) because it doesn't
-/// fit in the native field.
-const SCALAR_HALF_BITS: usize = 128;
-
-/// Per-point overhead witnesses shared across all non-native paths.
+/// Per-point overhead witnesses shared across all MSM paths.
 /// - detect_skip: 2×is_zero(3W) + product(1W) + or(1W) = 8W
-/// - sanitize: 4 select_witness = 4W
-/// - ec_hint: EcScalarMulHint(2W) + 2W selects = 4W
 /// - glv_hint: s1, s2, neg1, neg2 = 4W
+///
+/// Limb-dependent overheads (sanitize, ec_hint) are computed inline since
+/// they scale with num_limbs: sanitize = 2N+2, ec_hint = 4N.
 const DETECT_SKIP_WIT: usize = 8;
-const SANITIZE_WIT: usize = 4;
-const EC_HINT_WIT: usize = 4;
 const GLV_HINT_WIT: usize = 4;
 
 fn ceil_div(a: usize, b: usize) -> usize {
@@ -34,14 +29,19 @@ fn table_build_ops(half_table_size: usize) -> (usize, usize) {
     }
 }
 
-/// Per-point overhead witnesses common to all non-native paths.
+/// Per-point overhead witnesses common to all MSM paths.
+///
+/// Sanitize: N selects for px + N for py + 1 for s_lo + 1 for s_hi = 2N+2.
+/// EC hint: 2N hint outputs + N selects for rx + N for ry = 4N.
 fn per_point_overhead(half_bits: usize, num_limbs: usize, sr_witnesses: usize) -> usize {
     let scalar_bit_decomp = 2 * (half_bits + 1);
     let point_decomp = if num_limbs > 1 { 4 * num_limbs } else { 0 };
+    let sanitize_wit = 2 * num_limbs + 2; // N px selects + N py selects + s_lo + s_hi
+    let ec_hint_wit = 4 * num_limbs; // 2N hint outputs + N rx selects + N ry selects
     scalar_bit_decomp
         + DETECT_SKIP_WIT
-        + SANITIZE_WIT
-        + EC_HINT_WIT
+        + sanitize_wit
+        + ec_hint_wit
         + GLV_HINT_WIT
         + point_decomp
         + sr_witnesses
@@ -249,37 +249,27 @@ pub fn calculate_msm_witness_cost(
     }
 
     let n = ceil_div(curve_modulus_bits as usize, limb_bits as usize);
+    assert!(
+        n >= 2,
+        "non-native MSM requires num_limbs >= 2, got {n} (limb_bits={limb_bits}, \
+         curve_modulus_bits={curve_modulus_bits})"
+    );
     let half_bits = (scalar_bits + 1) / 2;
     let w = window_size;
     let half_table_size = 1usize << (w - 1);
     let num_windows = ceil_div(half_bits, w);
 
-    if n >= 2 {
-        calculate_msm_witness_cost_hint_verified(
-            native_field_bits,
-            n_points,
-            scalar_bits,
-            w,
-            limb_bits,
-            n,
-            half_bits,
-            half_table_size,
-            num_windows,
-        )
-    } else {
-        calculate_msm_witness_cost_generic(
-            native_field_bits,
-            curve_modulus_bits,
-            n_points,
-            scalar_bits,
-            w,
-            limb_bits,
-            n,
-            half_bits,
-            half_table_size,
-            num_windows,
-        )
-    }
+    calculate_msm_witness_cost_hint_verified(
+        native_field_bits,
+        n_points,
+        scalar_bits,
+        w,
+        limb_bits,
+        n,
+        half_bits,
+        half_table_size,
+        num_windows,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -376,105 +366,6 @@ fn calculate_msm_witness_cost_hint_verified(
 }
 
 // ---------------------------------------------------------------------------
-// Generic (single-limb) non-native cost
-// ---------------------------------------------------------------------------
-
-/// Generic (single-limb) non-native MSM cost using MultiLimbOps field op
-/// chains. Uses per-point accumulators (no shared doublings).
-#[allow(clippy::too_many_arguments)]
-fn calculate_msm_witness_cost_generic(
-    native_field_bits: u32,
-    curve_modulus_bits: u32,
-    n_points: usize,
-    scalar_bits: usize,
-    w: usize,
-    limb_bits: u32,
-    n: usize,
-    half_bits: usize,
-    half_table_size: usize,
-    num_windows: usize,
-) -> usize {
-    // point_double: (5 add, 3 sub, 4 mul, 1 inv)
-    // point_add:    (1 add, 5 sub, 3 mul, 1 inv)
-    let (tbl_d, tbl_a) = table_build_ops(half_table_size);
-    let pp_loop_doubles = num_windows * w;
-
-    // --- Per-point field ops: loop doubles + tables + loop adds + skew + on-curve
-    // + y-negate ---
-    let pp_add = pp_loop_doubles * 5 + 2 * (tbl_d * 5 + tbl_a) + num_windows * 2 + 2 + 4;
-    let pp_sub =
-        pp_loop_doubles * 3 + 2 * (tbl_d * 3 + tbl_a * 5) + num_windows * (2 * 5 + 2) + 2 * 6 + 2;
-    let pp_mul =
-        pp_loop_doubles * 4 + 2 * (tbl_d * 4 + tbl_a * 3) + num_windows * 2 * 3 + 2 * 3 + 8;
-    let pp_inv = pp_loop_doubles + 2 * (tbl_d + tbl_a) + num_windows * 2 + 2;
-
-    let pp_field_ops = field_op_witnesses(pp_add, pp_sub, pp_mul, pp_inv, n, false);
-
-    let pp_doubles = pp_loop_doubles + 2 * tbl_d;
-    let pp_negate_zeros = (4 + 2 * num_windows) * n;
-    let pp_constants = pp_doubles * n + 4 * n + pp_negate_zeros + 2 * n; // +2N for offset limbs
-    let pp_table_selects = num_windows * 2 * half_table_size.saturating_sub(1) * 2 * n;
-    let pp_xor = num_windows * 2 * 2 * w.saturating_sub(1);
-    let pp_signed_y_selects = num_windows * 2 * n;
-    let pp_y_negate_selects = 2 * n;
-    let pp_skew_selects = 2 * 2 * n;
-    let pp_selects =
-        pp_table_selects + pp_xor + pp_signed_y_selects + pp_y_negate_selects + pp_skew_selects;
-
-    let (sr_witnesses, sr_range_checks) = scalar_relation_cost(native_field_bits, scalar_bits);
-
-    let per_point =
-        pp_field_ops + pp_constants + pp_selects + per_point_overhead(half_bits, n, sr_witnesses);
-
-    let shared_constants = 3; // gen_x, gen_y, zero
-
-    // --- Point accumulation ---
-    let pa_cost = field_op_witnesses(1, 5, 3, 1, n, false);
-    let accum = n_points * (pa_cost + 2 * n)
-        + n_points.saturating_sub(1)
-        + pa_cost
-        + 4 * n
-        + 2 * n
-        + 2
-        + if n > 1 { 2 } else { 0 };
-
-    // --- Range checks ---
-    let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
-    add_field_op_range_checks(
-        n_points * pp_add,
-        n_points * pp_sub,
-        n_points * pp_mul,
-        n_points * pp_inv,
-        n,
-        limb_bits,
-        curve_modulus_bits,
-        false,
-        &mut rc_map,
-    );
-    if n > 1 {
-        *rc_map.entry(limb_bits).or_default() += n_points * 4 * n;
-    }
-    for (&bits, &count) in &sr_range_checks {
-        *rc_map.entry(bits).or_default() += n_points * count;
-    }
-    add_field_op_range_checks(
-        n_points + 1,
-        (n_points + 1) * 5,
-        (n_points + 1) * 3,
-        n_points + 1,
-        n,
-        limb_bits,
-        curve_modulus_bits,
-        false,
-        &mut rc_map,
-    );
-
-    let range_check_cost = crate::range_check::estimate_range_check_cost(&rc_map);
-
-    n_points * per_point + shared_constants + accum + range_check_cost
-}
-
-// ---------------------------------------------------------------------------
 // Native-field cost
 // ---------------------------------------------------------------------------
 
@@ -499,16 +390,21 @@ fn calculate_msm_witness_cost_native(
     let y_negate = 6; // 2 × 3W (neg_y, y_eff, neg_y_eff)
     let (sr_wit, sr_rc) = scalar_relation_cost(native_field_bits, scalar_bits);
 
-    // Per point per bit: 4W (double) + 2×(1W select + 3W add) = 12W
-    let ec_loop_pp = half_bits * 12;
-    // Skew correction: 2 branches × (3W add + 2W select) = 10W per point
-    let skew_pp = 10;
+    // Per point per bit: 4W (double) + 2×(2W signed_lookup + 3W add) = 14W
+    // signed_lookup with w=1: negate(1W) + select_unchecked(1W) = 2W
+    let ec_loop_pp = half_bits * 14;
+    // Skew correction: 2 branches × (1W negate + 3W add + 2W select) = 12W
+    let skew_pp = 12;
     // Offset constants per point
     let offset_pp = 2;
+    // Sanitize(N=1): 2 px/py selects + s_lo + s_hi = 4W
+    // EC hint(N=1): 2 hint outputs + 2 selects = 4W
+    let sanitize_wit = 4;
+    let ec_hint_wit = 4;
 
     let per_point = on_curve + y_negate
         + 2 * (half_bits + 1)   // scalar bit decomposition
-        + DETECT_SKIP_WIT + SANITIZE_WIT + EC_HINT_WIT + GLV_HINT_WIT
+        + DETECT_SKIP_WIT + sanitize_wit + ec_hint_wit + GLV_HINT_WIT
         + sr_wit
         + ec_loop_pp + skew_pp + offset_pp;
 
@@ -558,9 +454,13 @@ pub(super) fn scalar_relation_limb_bits(native_field_bits: u32, order_bits: usiz
 
 /// Check whether schoolbook column equation values fit in the native field.
 ///
-/// The maximum integer value in any column equation is bounded by
-/// `2^(2W + ceil(log2(N)) + 3)` where W = limb_bits, N = num_limbs.
-/// This must be less than the native field modulus (~`2^native_field_bits`).
+/// The worst-case column equation is EC double Eq1 with
+/// `max_coeff_sum = 6 + 2N` (λy(2) + xx(3) + a(1) + pq(2N)).
+/// The carry offset needs `extra_bits = ceil(log2(max_coeff_sum * N)) + 1`,
+/// and the full column value fits in `2W + extra_bits + 1` bits, which must
+/// be less than the native field modulus (~`2^native_field_bits`).
+///
+/// Must match `check_column_equation_fits` in `hints_non_native.rs`.
 pub fn column_equation_fits_native_field(
     native_field_bits: u32,
     limb_bits: u32,
@@ -569,12 +469,16 @@ pub fn column_equation_fits_native_field(
     if num_limbs <= 1 {
         return true;
     }
-    let ceil_log2_n = (num_limbs as f64).log2().ceil() as u32;
-    2 * limb_bits + ceil_log2_n + 3 < native_field_bits
+    // Worst-case max_coeff_sum across all EC equations: 6 + 2N (double Eq1)
+    let max_coeff_sum = 6 + 2 * num_limbs as u64;
+    let extra_bits = ((max_coeff_sum as f64 * num_limbs as f64).log2().ceil() as u32) + 1;
+    2 * limb_bits + extra_bits + 1 < native_field_bits
 }
 
-/// Search for optimal (limb_bits, window_size) minimizing witness cost.
+/// Search for optimal (limb_bits, window_size, num_limbs) minimizing witness
+/// cost.
 ///
+/// Returns `(limb_bits, window_size, num_limbs)`.
 /// Searches limb_bits ∈ \[8..max\] and window_size ∈ \[2..8\].
 /// Each candidate is checked for column equation soundness.
 pub fn get_optimal_msm_params(
@@ -583,22 +487,27 @@ pub fn get_optimal_msm_params(
     n_points: usize,
     scalar_bits: usize,
     is_native: bool,
-) -> (u32, usize) {
+) -> (u32, usize, usize) {
     if is_native {
-        // Native path uses signed-bit wNAF (w=1), no limb decomposition.
-        // Window size is unused; return a default.
-        let cost = calculate_msm_witness_cost_native(native_field_bits, n_points, scalar_bits);
-        let _ = cost; // cost is the same regardless of window_size
-        return (native_field_bits, 4);
+        // Native path: num_limbs=1, signed-bit wNAF with window_size=1.
+        // The unified pipeline with w=1 produces equivalent circuits to the
+        // dedicated native path (each bit is a window, signed table has 1
+        // entry, lookup = conditional y-negation).
+        return (native_field_bits, 1, 1);
     }
 
     let max_limb_bits = (native_field_bits.saturating_sub(4)) / 2;
     let mut best_cost = usize::MAX;
     let mut best_limb_bits = max_limb_bits.min(86);
     let mut best_window = 4;
+    let mut best_num_limbs = ceil_div(curve_modulus_bits as usize, best_limb_bits as usize);
 
     for lb in 8..=max_limb_bits {
         let num_limbs = ceil_div(curve_modulus_bits as usize, lb as usize);
+        // Non-native path requires num_limbs >= 2 (hint-verified EC ops)
+        if num_limbs < 2 {
+            continue;
+        }
         if !column_equation_fits_native_field(native_field_bits, lb, num_limbs) {
             continue;
         }
@@ -616,11 +525,12 @@ pub fn get_optimal_msm_params(
                 best_cost = cost;
                 best_limb_bits = lb;
                 best_window = ws;
+                best_num_limbs = num_limbs;
             }
         }
     }
 
-    (best_limb_bits, best_window)
+    (best_limb_bits, best_window, best_num_limbs)
 }
 
 #[cfg(test)]
@@ -629,15 +539,15 @@ mod tests {
 
     #[test]
     fn test_optimal_params_bn254_native() {
-        let (limb_bits, window_size) = get_optimal_msm_params(254, 254, 1, 256, true);
+        let (limb_bits, window_size, num_limbs) = get_optimal_msm_params(254, 254, 1, 256, true);
         assert_eq!(limb_bits, 254);
-        assert!(window_size >= 2 && window_size <= 8);
+        assert_eq!(window_size, 1, "native path uses signed-bit wNAF (w=1)");
+        assert_eq!(num_limbs, 1, "native path uses 1 limb");
     }
 
     #[test]
     fn test_optimal_params_secp256r1() {
-        let (limb_bits, window_size) = get_optimal_msm_params(254, 256, 1, 256, false);
-        let num_limbs = ceil_div(256, limb_bits as usize);
+        let (limb_bits, window_size, num_limbs) = get_optimal_msm_params(254, 256, 1, 256, false);
         assert!(
             column_equation_fits_native_field(254, limb_bits, num_limbs),
             "optimizer selected unsound limb_bits={limb_bits} (N={num_limbs})"
@@ -647,8 +557,11 @@ mod tests {
 
     #[test]
     fn test_optimal_params_goldilocks() {
-        let (limb_bits, window_size) = get_optimal_msm_params(254, 64, 1, 64, false);
-        let num_limbs = ceil_div(64, limb_bits as usize);
+        let (limb_bits, window_size, num_limbs) = get_optimal_msm_params(254, 64, 1, 64, false);
+        assert!(
+            num_limbs >= 2,
+            "non-native path requires num_limbs >= 2, got {num_limbs}"
+        );
         assert!(
             column_equation_fits_native_field(254, limb_bits, num_limbs),
             "optimizer selected unsound limb_bits={limb_bits} (N={num_limbs})"
@@ -658,17 +571,19 @@ mod tests {
 
     #[test]
     fn test_column_equation_soundness_boundary() {
-        assert!(column_equation_fits_native_field(254, 124, 3));
-        assert!(!column_equation_fits_native_field(254, 125, 3));
-        assert!(!column_equation_fits_native_field(254, 126, 3));
+        // With N=3, max_coeff_sum = 6+2*3 = 12, extra_bits = ceil(log2(36))+1 = 7
+        // Need: 2*W + 7 + 1 < 254 → W < 123
+        assert!(column_equation_fits_native_field(254, 122, 3));
+        assert!(!column_equation_fits_native_field(254, 123, 3));
+        assert!(!column_equation_fits_native_field(254, 124, 3));
     }
 
     #[test]
-    fn test_secp256r1_limb_bits_not_126() {
-        let (limb_bits, _) = get_optimal_msm_params(254, 256, 1, 256, false);
+    fn test_secp256r1_limb_bits_not_unsound() {
+        let (limb_bits, _, num_limbs) = get_optimal_msm_params(254, 256, 1, 256, false);
         assert!(
-            limb_bits <= 124,
-            "secp256r1 limb_bits={limb_bits} exceeds safe maximum 124"
+            column_equation_fits_native_field(254, limb_bits, num_limbs),
+            "secp256r1 limb_bits={limb_bits} (N={num_limbs}) doesn't fit native field"
         );
     }
 
