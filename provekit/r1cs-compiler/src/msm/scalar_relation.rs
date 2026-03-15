@@ -16,7 +16,7 @@ use {
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{Field, PrimeField},
+    ark_ff::{AdditiveGroup, Field, PrimeField},
     provekit_common::{
         witness::{ConstantTerm, SumTerm, WitnessBuilder},
         FieldElement,
@@ -69,8 +69,8 @@ pub(super) fn verify_scalar_relation<C: Curve>(
     let sum = ops.add(s1_limbs, product);
     let diff = ops.sub(s1_limbs, product);
 
-    let xor_prod = ops.compiler.add_product(neg1_witness, neg2_witness);
-    let xor = ops.compiler.add_sum(vec![
+    let xor_prod = ops.product(neg1_witness, neg2_witness);
+    let xor = ops.sum(vec![
         SumTerm(None, neg1_witness),
         SumTerm(None, neg2_witness),
         SumTerm(Some(-FieldElement::from(2u64)), xor_prod),
@@ -114,15 +114,12 @@ fn decompose_scalar_from_halves(
         let from_lo = widths.len().min(num_limbs);
         for (i, &w) in widths.iter().enumerate().take(from_lo) {
             limbs[i] = dd_lo.get_digit_witness_index(i, 0);
-            ops.range_checks.entry(w as u32).or_default().push(limbs[i]);
+            ops.register_range_check(w as u32, limbs[i]);
         }
         let from_hi = (num_limbs - from_lo).min(widths.len());
         for (i, &w) in widths.iter().enumerate().take(from_hi) {
             limbs[from_lo + i] = dd_hi.get_digit_witness_index(i, 0);
-            ops.range_checks
-                .entry(w as u32)
-                .or_default()
-                .push(limbs[from_lo + i]);
+            ops.register_range_check(w as u32, limbs[from_lo + i]);
         }
 
         // Constrain unused dd_lo digits to zero (small curves where num_limbs
@@ -155,10 +152,7 @@ fn decompose_scalar_from_halves(
         let lo_used = lo_full.min(num_limbs);
         for i in 0..lo_used {
             limbs[i] = dd_lo.get_digit_witness_index(i, 0);
-            ops.range_checks
-                .entry(limb_bits)
-                .or_default()
-                .push(limbs[i]);
+            ops.register_range_check(limb_bits, limbs[i]);
         }
 
         // Cross-boundary limb and hi_rest, only if num_limbs needs them.
@@ -169,26 +163,17 @@ fn decompose_scalar_from_halves(
             let shift = FieldElement::from(2u64).pow([lo_tail as u64]);
             let lo_digit = dd_lo.get_digit_witness_index(lo_full, 0);
             let hi_digit = dd_hi.get_digit_witness_index(0, 0);
-            limbs[lo_full] = ops.compiler.add_sum(vec![
+            limbs[lo_full] = ops.sum(vec![
                 SumTerm(None, lo_digit),
                 SumTerm(Some(shift), hi_digit),
             ]);
-            ops.range_checks
-                .entry(lo_tail as u32)
-                .or_default()
-                .push(lo_digit);
-            ops.range_checks
-                .entry(hi_head as u32)
-                .or_default()
-                .push(hi_digit);
+            ops.register_range_check(lo_tail as u32, lo_digit);
+            ops.register_range_check(hi_head as u32, hi_digit);
         }
 
         if needs_hi_rest {
             limbs[lo_full + 1] = dd_hi.get_digit_witness_index(1, 0);
-            ops.range_checks
-                .entry(hi_rest as u32)
-                .or_default()
-                .push(limbs[lo_full + 1]);
+            ops.register_range_check(hi_rest as u32, limbs[lo_full + 1]);
         }
 
         // Constrain unused digits to zero for small curves.
@@ -226,16 +211,15 @@ fn decompose_half_scalar(
 
     for (i, &w) in widths.iter().enumerate() {
         limbs[i] = dd.get_digit_witness_index(i, 0);
-        ops.range_checks.entry(w as u32).or_default().push(limbs[i]);
+        ops.register_range_check(w as u32, limbs[i]);
     }
 
     for i in widths.len()..num_limbs {
-        let w = ops.compiler.num_witnesses();
-        ops.compiler
-            .add_witness_builder(WitnessBuilder::Constant(ConstantTerm(
-                w,
-                FieldElement::from(0u64),
-            )));
+        let w = ops.num_witnesses();
+        ops.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(
+            w,
+            FieldElement::ZERO,
+        )));
         limbs[i] = w;
         constrain_zero(ops.compiler, limbs[i]);
     }

@@ -1,8 +1,4 @@
 //! Native-field hint-verified EC operations.
-//!
-//! These operate on single native field element witnesses (no multi-limb).
-//! Each EC op allocates a hint for (lambda, x3, y3) and verifies via raw
-//! R1CS constraints, eliminating expensive field inversions from the circuit.
 
 use {
     crate::{msm::multi_limb_ops::MultiLimbParams, noir_to_r1cs::NoirToR1CSCompiler},
@@ -11,9 +7,7 @@ use {
 };
 
 /// Hint-verified point doubling for native field.
-///
-/// Allocates 3W hint (lambda, x3, y3) + 1W product.
-/// Total: 4W + 4C.
+#[must_use]
 pub fn point_double_verified_native(
     compiler: &mut NoirToR1CSCompiler,
     px: usize,
@@ -66,9 +60,7 @@ pub fn point_double_verified_native(
 }
 
 /// Hint-verified point addition for native field.
-///
-/// Allocates 3W hint (lambda, x3, y3).
-/// Total: 3W + 3C.
+#[must_use]
 pub fn point_add_verified_native(
     compiler: &mut NoirToR1CSCompiler,
     x1: usize,
@@ -120,8 +112,6 @@ pub fn point_add_verified_native(
 }
 
 /// On-curve check for native field: y² = x³ + a·x + b.
-///
-/// Total: 2W (two products) + 3C.
 pub fn verify_on_curve_native(
     compiler: &mut NoirToR1CSCompiler,
     x: usize,

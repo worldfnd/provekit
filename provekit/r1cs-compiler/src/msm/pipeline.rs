@@ -1,15 +1,7 @@
-//! Unified MSM pipeline for all curves (native and non-native).
+//! Unified MSM pipeline for all curves, generic over `E: EcOps`.
 //!
-//! Orchestrates the 4-phase MSM process, generic over `E: EcOps`:
-//!
-//! 1. **Preprocessing**: per-point sanitization, on-curve checks, FakeGLV
-//!    decomposition, signed-bit decomposition, y-negation.
-//! 2. **Scalar mul verification**: per-point `scalar_mul_merged_glv` with
-//!    identity check against the known accumulated offset.
-//! 3. **Scalar relations**: per-point verification that (-1)^neg1·|s1| +
-//!    (-1)^neg2·|s2|·s ≡ 0 (mod curve_order).
-//! 4. **Accumulation**: adds each point's scalar-mul result, subtracts offset,
-//!    constrains outputs.
+//! Orchestrates 4 phases: preprocessing, scalar mul verification,
+//! scalar relations, and accumulation.
 
 use {
     super::{
@@ -20,7 +12,7 @@ use {
             emit_ec_scalar_mul_hint_and_sanitize_multi_limb, emit_fakeglv_hint,
             sanitize_point_scalar_multi_limb,
         },
-        scalar_relation, Limbs, MsmLimbedOutputs,
+        scalar_relation, EcPoint, Limbs, MsmConfig, MsmLimbedOutputs,
     },
     crate::{
         constraint_helpers::{
@@ -53,7 +45,7 @@ struct PreprocessedData {
     all_skipped:       usize,
     merged_points:     Vec<ec_points::MergedGlvPoint>,
     scalar_rel_inputs: Vec<ScalarRelationInputs>,
-    accum_inputs:      Vec<(Limbs, Limbs, usize)>,
+    accum_inputs:      Vec<(EcPoint, usize)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -61,26 +53,22 @@ struct PreprocessedData {
 // ---------------------------------------------------------------------------
 
 /// Unified multi-point MSM with per-limb I/O.
-///
-/// Point coordinates are provided as limbs (stride `2*num_limbs + 1` per
-/// point). For native curves `num_limbs=1`, so each "limb" is the full
-/// coordinate witness. Output coordinates are constrained per-limb.
 pub(super) fn process_multi_point<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     point_wits: &[usize],
     scalar_wits: &[usize],
     outputs: &MsmLimbedOutputs,
     n_points: usize,
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
+    config: &MsmConfig,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     curve: &impl Curve,
 ) {
+    let num_limbs = config.num_limbs;
+    let limb_bits = config.limb_bits;
     let one = compiler.witness_one();
     let zero_witness = add_constant_witness(compiler, FieldElement::ZERO);
 
-    // Generator as limbs — avoids truncation when generator coords > BN254_Fr
+    // Generator as limbs
     let gen_x_fe_limbs = decompose_to_limbs_pub(&curve.generator().0, limb_bits, num_limbs);
     let gen_y_fe_limbs = decompose_to_limbs_pub(&curve.generator().1, limb_bits, num_limbs);
     let gen_x_limb_wits: Vec<usize> = gen_x_fe_limbs
@@ -110,8 +98,7 @@ pub(super) fn process_multi_point<E: EcOps>(
         zero_witness,
         one,
         n_points,
-        num_limbs,
-        limb_bits,
+        config,
         curve,
     );
 
@@ -123,9 +110,7 @@ pub(super) fn process_multi_point<E: EcOps>(
         &data.merged_points,
         &offset_x_values,
         &offset_y_values,
-        window_size,
-        num_limbs,
-        limb_bits,
+        config,
         curve,
     );
 
@@ -155,8 +140,7 @@ pub(super) fn process_multi_point<E: EcOps>(
         &offset_x_values,
         &offset_y_values,
         zero_witness,
-        num_limbs,
-        limb_bits,
+        config,
         curve,
     );
 }
@@ -165,9 +149,8 @@ pub(super) fn process_multi_point<E: EcOps>(
 // Phase 1: Per-point preprocessing
 // ---------------------------------------------------------------------------
 
-/// Sanitizes each point, verifies on-curve, decomposes scalars (FakeGLV +
-/// signed bits), and conditionally negates y-coordinates.
-#[allow(clippy::too_many_arguments)]
+/// Per-point preprocessing: sanitize, on-curve check, scalar decomposition,
+/// y-negation.
 fn preprocess_points<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -179,15 +162,16 @@ fn preprocess_points<E: EcOps>(
     zero_witness: usize,
     one: usize,
     n_points: usize,
-    num_limbs: usize,
-    limb_bits: u32,
+    config: &MsmConfig,
     curve: &impl Curve,
 ) -> PreprocessedData {
+    let num_limbs = config.num_limbs;
+    let limb_bits = config.limb_bits;
     let stride = 2 * num_limbs + 1;
     let mut all_skipped: Option<usize> = None;
     let mut merged_points: Vec<ec_points::MergedGlvPoint> = Vec::new();
     let mut scalar_rel_inputs: Vec<ScalarRelationInputs> = Vec::new();
-    let mut accum_inputs: Vec<(Limbs, Limbs, usize)> = Vec::new();
+    let mut accum_inputs: Vec<(EcPoint, usize)> = Vec::new();
 
     for i in 0..n_points {
         // Extract point limbs and inf flag from limbed layout
@@ -197,8 +181,7 @@ fn preprocess_points<E: EcOps>(
         for j in 0..num_limbs {
             px_limbs[j] = point_wits[base + j];
             py_limbs[j] = point_wits[base + num_limbs + j];
-            // Native (num_limbs=1): coordinates are native field elements,
-            // no range check needed.  Non-native: range-check each limb.
+            // Non-native: range-check each limb
             if num_limbs > 1 {
                 range_checks.entry(limb_bits).or_default().push(px_limbs[j]);
                 range_checks.entry(limb_bits).or_default().push(py_limbs[j]);
@@ -206,7 +189,7 @@ fn preprocess_points<E: EcOps>(
         }
         let inf_flag = point_wits[base + 2 * num_limbs];
 
-        // Sanitize at the limb level — per-limb select between input and generator
+        // Sanitize point-scalar pair
         let san = sanitize_point_scalar_multi_limb(
             compiler,
             px_limbs,
@@ -238,17 +221,20 @@ fn preprocess_points<E: EcOps>(
             curve,
         );
 
-        let px = san.px_limbs;
-        let py = san.py_limbs;
+        let p = EcPoint {
+            x: san.px_limbs,
+            y: san.py_limbs,
+        };
+        let r = EcPoint { x: rx, y: ry };
 
-        // On-curve checks via MultiLimbOps (statically dispatched via E)
+        // On-curve checks
         {
             let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
-            ops.verify_on_curve(px, py);
-            ops.verify_on_curve(rx, ry);
+            ops.verify_on_curve(p);
+            ops.verify_on_curve(r);
         }
 
-        // FakeGLV, bit decomposition, y-negation (via MultiLimbOps)
+        // FakeGLV decomposition and y-negation
         let (s1_witness, s2_witness, neg1_witness, neg2_witness);
         let (py_effective, ry_effective, s1_bits, s2_bits, s1_skew, s2_skew);
         {
@@ -264,19 +250,23 @@ fn preprocess_points<E: EcOps>(
             (s2_bits, s2_skew) = super::decompose_signed_bits(ops.compiler, s2_witness, half_bits);
 
             // Conditionally negate y-coordinates
-            let neg_py = ops.negate(py);
-            let neg_ry = ops.negate(ry);
-            py_effective = ops.select(neg1_witness, py, neg_py);
-            ry_effective = ops.select(neg2_witness, ry, neg_ry);
+            let neg_py = ops.negate(p.y);
+            let neg_ry = ops.negate(r.y);
+            py_effective = ops.select(neg1_witness, p.y, neg_py);
+            ry_effective = ops.select(neg2_witness, r.y, neg_ry);
         }
 
         merged_points.push(ec_points::MergedGlvPoint {
-            px,
-            py: py_effective,
+            p: EcPoint {
+                x: p.x,
+                y: py_effective,
+            },
             s1_bits,
             s1_skew,
-            rx,
-            ry: ry_effective,
+            r: EcPoint {
+                x: r.x,
+                y: ry_effective,
+            },
             s2_bits,
             s2_skew,
         });
@@ -289,7 +279,7 @@ fn preprocess_points<E: EcOps>(
             neg1: neg1_witness,
             neg2: neg2_witness,
         });
-        accum_inputs.push((rx, ry, san.is_skip));
+        accum_inputs.push((r, san.is_skip));
     }
 
     PreprocessedData {
@@ -304,10 +294,7 @@ fn preprocess_points<E: EcOps>(
 // Phase 2: Per-point scalar mul verification
 // ---------------------------------------------------------------------------
 
-/// Each point gets its own accumulator and identity check. This ensures
-/// per-point soundness: b_i * (R_i - scalar_i * P_i) = O with b_i ≠ 0
-/// implies R_i = scalar_i * P_i for each point independently.
-#[allow(clippy::too_many_arguments)]
+/// Per-point scalar mul verification with independent identity checks.
 fn verify_scalar_muls<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -315,15 +302,16 @@ fn verify_scalar_muls<E: EcOps>(
     merged_points: &[ec_points::MergedGlvPoint],
     offset_x_values: &[FieldElement],
     offset_y_values: &[FieldElement],
-    window_size: usize,
-    num_limbs: usize,
-    limb_bits: u32,
+    config: &MsmConfig,
     curve: &impl Curve,
 ) {
+    let num_limbs = config.num_limbs;
+    let limb_bits = config.limb_bits;
+    let window_size = config.window_size;
     let half_bits = curve.glv_half_bits() as usize;
     let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
 
-    // Precompute the expected accumulated offset (same for all points)
+    // Expected accumulated offset
     let glv_num_windows = (half_bits + window_size - 1) / window_size;
     let glv_n_doublings = glv_num_windows * window_size;
     let (acc_off_x_raw, acc_off_y_raw) = curve.accumulated_offset(glv_n_doublings);
@@ -331,21 +319,22 @@ fn verify_scalar_muls<E: EcOps>(
     let acc_off_y_values = decompose_to_limbs_pub(&acc_off_y_raw, limb_bits, num_limbs);
 
     for pt in merged_points {
-        let offset_x = ops.constant_limbs(offset_x_values);
-        let offset_y = ops.constant_limbs(offset_y_values);
+        let offset = EcPoint {
+            x: ops.constant_limbs(offset_x_values),
+            y: ops.constant_limbs(offset_y_values),
+        };
 
         let glv_acc = ec_points::scalar_mul_merged_glv(
             &mut ops,
             std::slice::from_ref(pt),
             window_size,
-            offset_x,
-            offset_y,
+            offset,
         );
 
         // Per-point identity check
         for j in 0..num_limbs {
-            constrain_to_constant(ops.compiler, glv_acc.0[j], acc_off_x_values[j]);
-            constrain_to_constant(ops.compiler, glv_acc.1[j], acc_off_y_values[j]);
+            constrain_to_constant(ops.compiler, glv_acc.x[j], acc_off_x_values[j]);
+            constrain_to_constant(ops.compiler, glv_acc.y[j], acc_off_y_values[j]);
         }
     }
 }
@@ -356,31 +345,30 @@ fn verify_scalar_muls<E: EcOps>(
 
 /// Accumulates per-point scalar-mul results, subtracts the offset, and
 /// constrains the final coordinates to the output witnesses.
-#[allow(clippy::too_many_arguments)]
 fn accumulate_and_constrain_outputs<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     params: &MultiLimbParams,
-    accum_inputs: &[(Limbs, Limbs, usize)],
+    accum_inputs: &[(EcPoint, usize)],
     outputs: &MsmLimbedOutputs,
     all_skipped: usize,
     offset_x_values: &[FieldElement],
     offset_y_values: &[FieldElement],
     zero_witness: usize,
-    num_limbs: usize,
-    limb_bits: u32,
+    config: &MsmConfig,
     curve: &impl Curve,
 ) {
+    let num_limbs = config.num_limbs;
+    let limb_bits = config.limb_bits;
     let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
-    let mut acc_x = ops.constant_limbs(offset_x_values);
-    let mut acc_y = ops.constant_limbs(offset_y_values);
+    let mut acc = EcPoint {
+        x: ops.constant_limbs(offset_x_values),
+        y: ops.constant_limbs(offset_y_values),
+    };
 
-    for &(rx, ry, is_skip) in accum_inputs {
-        let (cand_x, cand_y) = ops.point_add(acc_x, acc_y, rx, ry);
-        let (new_acc_x, new_acc_y) =
-            ops.point_select_unchecked(is_skip, (cand_x, cand_y), (acc_x, acc_y));
-        acc_x = new_acc_x;
-        acc_y = new_acc_y;
+    for &(r, is_skip) in accum_inputs {
+        let cand = ops.point_add(acc, r);
+        acc = ops.point_select_unchecked(is_skip, cand, acc);
     }
 
     // Offset subtraction
@@ -392,24 +380,26 @@ fn accumulate_and_constrain_outputs<E: EcOps>(
     let neg_gen_y_raw = curve::negate_field_element(&curve.generator().1, &curve.field_modulus_p());
     let neg_gen_y_values = curve::decompose_to_limbs(&neg_gen_y_raw, limb_bits, num_limbs);
 
-    let sub_x = {
-        let off_x = ops.constant_limbs(offset_x_values);
-        let g_x = ops.constant_limbs(&gen_x_limb_values);
-        ops.select(all_skipped, off_x, g_x)
-    };
-    let sub_y = {
-        let neg_off_y = ops.constant_limbs(&neg_offset_y_values);
-        let neg_g_y = ops.constant_limbs(&neg_gen_y_values);
-        ops.select(all_skipped, neg_off_y, neg_g_y)
+    let sub_pt = EcPoint {
+        x: {
+            let off_x = ops.constant_limbs(offset_x_values);
+            let g_x = ops.constant_limbs(&gen_x_limb_values);
+            ops.select(all_skipped, off_x, g_x)
+        },
+        y: {
+            let neg_off_y = ops.constant_limbs(&neg_offset_y_values);
+            let neg_g_y = ops.constant_limbs(&neg_gen_y_values);
+            ops.select(all_skipped, neg_off_y, neg_g_y)
+        },
     };
 
-    let (result_x, result_y) = ops.point_add(acc_x, acc_y, sub_x, sub_y);
+    let result = ops.point_add(acc, sub_pt);
     let compiler = ops.compiler;
 
-    // Output constraining — per-limb for all curves
+    // Output constraining
     for j in 0..num_limbs {
-        let masked_x = select_witness(compiler, all_skipped, result_x[j], zero_witness);
-        let masked_y = select_witness(compiler, all_skipped, result_y[j], zero_witness);
+        let masked_x = select_witness(compiler, all_skipped, result.x[j], zero_witness);
+        let masked_y = select_witness(compiler, all_skipped, result.y[j], zero_witness);
         constrain_equal(compiler, outputs.out_x_limbs[j], masked_x);
         constrain_equal(compiler, outputs.out_y_limbs[j], masked_y);
     }

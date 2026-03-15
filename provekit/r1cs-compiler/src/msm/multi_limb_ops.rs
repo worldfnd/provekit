@@ -1,14 +1,8 @@
-//! `MultiLimbOps` — field arithmetic parameterized by runtime limb count.
-//!
-//! Uses `Limbs` (a fixed-capacity Copy type) as the element representation,
-//! enabling arbitrary limb counts without const generics or dispatch macros.
-//!
-//! EC operations are dispatched at compile time via the `E: EcOps` type
-//! parameter, while field arithmetic (add/sub/mul/negate) dispatches at
-//! runtime based on `MultiLimbParams`.
+//! `MultiLimbOps` — field and EC arithmetic parameterized by runtime limb
+//! count.
 
 use {
-    super::{ec_points::EcOps, multi_limb_arith, Limbs},
+    super::{ec_points::EcOps, multi_limb_arith, EcPoint, Limbs},
     crate::{
         constraint_helpers::{constrain_boolean, select_witness},
         noir_to_r1cs::NoirToR1CSCompiler,
@@ -90,19 +84,19 @@ impl MultiLimbParams {
             p_minus_1_limbs: curve.curve_order_n_minus_1_limbs(limb_bits, num_limbs),
             two_pow_w,
             modulus_raw: curve.curve_order_n(),
-            curve_a_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
-            curve_a_raw: [0u64; 4],                                   // unused for scalar relation
-            curve_b_limbs: vec![FieldElement::from(0u64); num_limbs], // unused
-            curve_b_raw: [0u64; 4],                                   // unused for scalar relation
-            is_native: false,                                         /* always non-native for
-                                                                       * scalar relation */
+            curve_a_limbs: vec![FieldElement::ZERO; num_limbs], // unused
+            curve_a_raw: [0u64; 4],                             // unused for scalar relation
+            curve_b_limbs: vec![FieldElement::ZERO; num_limbs], // unused
+            curve_b_raw: [0u64; 4],                             // unused for scalar relation
+            is_native: false,                                   /* always non-native for
+                                                                 * scalar relation */
             modulus_fe,
         }
     }
 }
 
-/// Allocate a pinned constant witness: value is embedded in the constraint
-/// matrix so a malicious prover cannot alter it.
+/// Allocate a pinned constant witness embedded in the constraint matrix.
+#[must_use]
 pub fn allocate_pinned_constant(compiler: &mut NoirToR1CSCompiler, value: FieldElement) -> usize {
     let w = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(w, value)));
@@ -115,19 +109,11 @@ pub fn allocate_pinned_constant(compiler: &mut NoirToR1CSCompiler, value: FieldE
 }
 
 /// Unified field + EC operations struct.
-///
-/// Field arithmetic (add/sub/mul/negate) dispatches at runtime based on
-/// `MultiLimbParams` and is available for any `E`.
-///
-/// EC operations (point_double/add, verify_on_curve) require `E: EcOps`
-/// and are only available on the bounded impl block — code that only needs
-/// field ops (e.g. scalar relation verification) can use `MultiLimbOps<()>`
-/// without importing or naming any EC strategy.
 pub struct MultiLimbOps<'a, 'p, E> {
-    pub compiler:     &'a mut NoirToR1CSCompiler,
-    pub range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-    pub params:       &'p MultiLimbParams,
-    _ec:              PhantomData<E>,
+    pub(in crate::msm) compiler: &'a mut NoirToR1CSCompiler,
+    pub(in crate::msm) range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
+    pub params: &'p MultiLimbParams,
+    _ec: PhantomData<E>,
 }
 
 impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
@@ -157,10 +143,45 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
         self.params.num_limbs
     }
 
+    /// Returns the witness index for the constant-one wire.
+    #[must_use]
+    pub fn witness_one(&self) -> usize {
+        self.compiler.witness_one()
+    }
+
+    /// Returns the current number of allocated witnesses.
+    #[must_use]
+    pub fn num_witnesses(&self) -> usize {
+        self.compiler.num_witnesses()
+    }
+
+    /// Allocates a product witness: `out = a * b`.
+    #[must_use]
+    pub fn product(&mut self, a: usize, b: usize) -> usize {
+        self.compiler.add_product(a, b)
+    }
+
+    /// Allocates a linear combination witness: `out = Σ terms`.
+    #[must_use]
+    pub fn sum(&mut self, terms: Vec<SumTerm>) -> usize {
+        self.compiler.add_sum(terms)
+    }
+
+    /// Registers a witness builder for deferred witness solving.
+    pub fn add_witness_builder(&mut self, builder: WitnessBuilder) {
+        self.compiler.add_witness_builder(builder);
+    }
+
+    /// Registers a range check: `witness` must fit in `bits` bits.
+    pub fn register_range_check(&mut self, bits: u32, witness: usize) {
+        self.range_checks.entry(bits).or_default().push(witness);
+    }
+
     /// Negate a multi-limb value: computes `p - value (mod p)`.
+    #[must_use]
     pub fn negate(&mut self, value: Limbs) -> Limbs {
         if self.is_native_single() {
-            // Native: -y is a single linear combination (1W+1C)
+            // Native: single linear combination
             let r = self
                 .compiler
                 .add_sum(vec![SumTerm(Some(-FieldElement::ONE), value[0])]);
@@ -175,19 +196,18 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
                 self.params.limb_bits,
             )
         } else {
-            let zero_vals = vec![FieldElement::from(0u64); self.params.num_limbs];
+            let zero_vals = vec![FieldElement::ZERO; self.params.num_limbs];
             let zero = self.constant_limbs(&zero_vals);
             self.sub(zero, value)
         }
     }
 
+    #[must_use]
     pub fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {
-        debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
-        debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
+        assert_eq!(a.len(), self.n(), "add: a.len() != num_limbs");
+        assert_eq!(b.len(), self.n(), "add: b.len() != num_limbs");
         if self.is_native_single() {
-            // When both operands are the same witness, merge into a single
-            // term with coefficient 2 to avoid duplicate column indices in
-            // the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+            // Merge duplicate witness into single term to avoid duplicate column indices.
             let r = if a[0] == b[0] {
                 self.compiler
                     .add_sum(vec![SumTerm(Some(FieldElement::from(2u64)), a[0])])
@@ -221,12 +241,12 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
         }
     }
 
+    #[must_use]
     pub fn sub(&mut self, a: Limbs, b: Limbs) -> Limbs {
-        debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
-        debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
+        assert_eq!(a.len(), self.n(), "sub: a.len() != num_limbs");
+        assert_eq!(b.len(), self.n(), "sub: b.len() != num_limbs");
         if self.is_native_single() {
-            // When both operands are the same witness, a - a = 0. Use a
-            // single zero-coefficient term to avoid duplicate column indices.
+            // Merge duplicate witness into single term to avoid duplicate column indices.
             let r = if a[0] == b[0] {
                 self.compiler
                     .add_sum(vec![SumTerm(Some(FieldElement::ZERO), a[0])])
@@ -262,9 +282,10 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
         }
     }
 
+    #[must_use]
     pub fn mul(&mut self, a: Limbs, b: Limbs) -> Limbs {
-        debug_assert_eq!(a.len(), self.n(), "a.len() != num_limbs");
-        debug_assert_eq!(b.len(), self.n(), "b.len() != num_limbs");
+        assert_eq!(a.len(), self.n(), "mul: a.len() != num_limbs");
+        assert_eq!(b.len(), self.n(), "mul: b.len() != num_limbs");
         if self.is_native_single() {
             let r = self.compiler.add_product(a[0], b[0]);
             Limbs::single(r)
@@ -300,6 +321,7 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
 
     /// Conditional select without boolean constraint on `flag`.
     /// Caller must ensure `flag` is already constrained boolean.
+    #[must_use]
     pub fn select_unchecked(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
         let n = self.n();
         let mut out = Limbs::new(n);
@@ -311,6 +333,7 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
 
     /// Conditional select: returns `on_true` if `flag` is 1, `on_false` if
     /// `flag` is 0. Constrains `flag` to be boolean.
+    #[must_use]
     pub fn select(&mut self, flag: usize, on_false: Limbs, on_true: Limbs) -> Limbs {
         self.constrain_flag(flag);
         self.select_unchecked(flag, on_false, on_true)
@@ -319,18 +342,21 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
     /// Conditional point select without boolean constraint on `flag`.
     /// Returns `on_true` if `flag=1`, `on_false` if `flag=0`.
     /// Caller must ensure `flag` is already constrained boolean.
+    #[must_use]
     pub fn point_select_unchecked(
         &mut self,
         flag: usize,
-        on_false: (Limbs, Limbs),
-        on_true: (Limbs, Limbs),
-    ) -> (Limbs, Limbs) {
-        let x = self.select_unchecked(flag, on_false.0, on_true.0);
-        let y = self.select_unchecked(flag, on_false.1, on_true.1);
-        (x, y)
+        on_false: EcPoint,
+        on_true: EcPoint,
+    ) -> EcPoint {
+        EcPoint {
+            x: self.select_unchecked(flag, on_false.x, on_true.x),
+            y: self.select_unchecked(flag, on_false.y, on_true.y),
+        }
     }
 
     /// Returns a constant field element from its limb decomposition.
+    #[must_use]
     pub fn constant_limbs(&mut self, limbs: &[FieldElement]) -> Limbs {
         let n = self.n();
         assert_eq!(
@@ -352,28 +378,20 @@ impl<'a, 'p, E> MultiLimbOps<'a, 'p, E> {
 // -----------------------------------------------------------------
 
 impl<E: EcOps> MultiLimbOps<'_, '_, E> {
-    /// Point doubling: computes 2P. Statically dispatched via `E`.
-    pub fn point_double(&mut self, x: Limbs, y: Limbs) -> (Limbs, Limbs) {
-        E::point_double(self.compiler, self.range_checks, self.params, x, y)
+    /// Point doubling: computes 2P.
+    #[must_use]
+    pub fn point_double(&mut self, p: EcPoint) -> EcPoint {
+        E::point_double(self.compiler, self.range_checks, self.params, p)
     }
 
-    /// Point addition: computes P1 + P2 (requires P1 ≠ ±P2). Statically
-    /// dispatched via `E`.
-    pub fn point_add(&mut self, x1: Limbs, y1: Limbs, x2: Limbs, y2: Limbs) -> (Limbs, Limbs) {
-        E::point_add(
-            self.compiler,
-            self.range_checks,
-            self.params,
-            x1,
-            y1,
-            x2,
-            y2,
-        )
+    /// Point addition: computes P1 + P2 (requires P1 ≠ ±P2).
+    #[must_use]
+    pub fn point_add(&mut self, p1: EcPoint, p2: EcPoint) -> EcPoint {
+        E::point_add(self.compiler, self.range_checks, self.params, p1, p2)
     }
 
-    /// On-curve verification: constrains y² = x³ + ax + b. Statically
-    /// dispatched via `E`.
-    pub fn verify_on_curve(&mut self, x: Limbs, y: Limbs) {
-        E::verify_on_curve(self.compiler, self.range_checks, self.params, x, y);
+    /// On-curve verification: constrains y² = x³ + ax + b.
+    pub fn verify_on_curve(&mut self, p: EcPoint) {
+        E::verify_on_curve(self.compiler, self.range_checks, self.params, p);
     }
 }

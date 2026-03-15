@@ -369,8 +369,8 @@ impl DependencyInfo {
                 ..
             } => {
                 let count = match op {
-                    NonNativeEcOp::Double | NonNativeEcOp::Add => (12 * *num_limbs - 6) as usize,
-                    NonNativeEcOp::OnCurve => (7 * *num_limbs - 4) as usize,
+                    NonNativeEcOp::Double | NonNativeEcOp::Add => (15 * *num_limbs - 6) as usize,
+                    NonNativeEcOp::OnCurve => (9 * *num_limbs - 4) as usize,
                 };
                 (*output_start..*output_start + count).collect()
             }

@@ -5,15 +5,20 @@
 
 use {
     crate::{
-        msm::{multi_limb_arith::less_than_p_check_multi, multi_limb_ops::MultiLimbParams, Limbs},
+        msm::{
+            ceil_log2,
+            multi_limb_arith::{emit_schoolbook_column_equations, less_than_p_check_multi},
+            multi_limb_ops::MultiLimbParams,
+            Limbs,
+        },
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    ark_ff::{Field, PrimeField, Zero},
+    ark_ff::{Field, PrimeField},
     provekit_common::{
         witness::{NonNativeEcOp, WitnessBuilder},
         FieldElement,
     },
-    std::collections::{BTreeMap, HashMap},
+    std::collections::BTreeMap,
 };
 
 /// Collect witness indices from `start..start+len`.
@@ -86,13 +91,13 @@ fn less_than_p_check_vec(
 
 /// Compute carry range bits for hint-verified column equations.
 fn carry_range_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
-    let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
     limb_bits + extra_bits + 1
 }
 
 /// Soundness check: verify that merged column equations fit the native field.
 fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_name: &str) {
-    let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
     let max_bits = 2 * limb_bits + extra_bits + 1;
     assert!(
         max_bits < FieldElement::MODULUS_BIT_SIZE,
@@ -100,123 +105,7 @@ fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_n
     );
 }
 
-/// Merge terms with the same witness index by summing their coefficients.
-fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
-    let mut map: HashMap<usize, FieldElement> = HashMap::new();
-    for &(coeff, idx) in terms {
-        *map.entry(idx).or_insert_with(FieldElement::zero) += coeff;
-    }
-    let mut result: Vec<(FieldElement, usize)> = map.into_iter().map(|(idx, c)| (c, idx)).collect();
-    result.sort_by_key(|&(_, idx)| idx);
-    result
-}
-
-/// Emit schoolbook column equations for a merged verification equation.
-///
-/// Verifies: Σ (coeff_i × A_i ⊗ B_i) + Σ linear_k + Σ p\[i\]*q_neg\[j\]
-///         = Σ p\[i\]*q_pos\[j\] + carry_chain  (as integers)
-///
-/// `product_sets`: each (products_2d, coefficient) where products_2d\[i\]\[j\]
-///   is the witness index for a\[i\]*b\[j\].
-/// `linear_limbs`: each (limb_witnesses, coefficient) for non-product terms.
-/// `q_pos_witnesses`, `q_neg_witnesses`: split quotient limbs (N entries each).
-/// `carry_witnesses`: unsigned-offset carry witnesses (2N-2 entries).
-fn emit_schoolbook_column_equations(
-    compiler: &mut NoirToR1CSCompiler,
-    product_sets: &[(&[Vec<usize>], FieldElement)], // (products[i][j], coeff)
-    linear_limbs: &[(&[usize], FieldElement)],      // (limb_witnesses, coeff)
-    q_pos_witnesses: &[usize],
-    q_neg_witnesses: &[usize],
-    carry_witnesses: &[usize],
-    p_limbs: &[FieldElement],
-    n: usize,
-    limb_bits: u32,
-    max_coeff_sum: u64,
-) {
-    let w1 = compiler.witness_one();
-    let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
-
-    // Carry offset scaled for the merged equation's larger coefficients
-    let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
-    let carry_offset_bits = limb_bits + extra_bits;
-    let carry_offset_fe = FieldElement::from(2u64).pow([carry_offset_bits as u64]);
-    let offset_w = FieldElement::from(2u64).pow([(carry_offset_bits + limb_bits) as u64]);
-    let offset_w_minus_carry = offset_w - carry_offset_fe;
-
-    let num_columns = 2 * n - 1;
-
-    for k in 0..num_columns {
-        // LHS: Σ coeff * products[i][j] for i+j=k + Σ p[i]*q_neg[j] + carry_in + offset
-        let mut lhs_terms: Vec<(FieldElement, usize)> = Vec::new();
-
-        for &(products, coeff) in product_sets {
-            for i in 0..n {
-                let j_val = k as isize - i as isize;
-                if j_val >= 0 && (j_val as usize) < n {
-                    lhs_terms.push((coeff, products[i][j_val as usize]));
-                }
-            }
-        }
-
-        // Add linear terms (for k < N only, since linear_limbs are N-length)
-        for &(limbs, coeff) in linear_limbs {
-            if k < limbs.len() {
-                lhs_terms.push((coeff, limbs[k]));
-            }
-        }
-
-        // Add p*q_neg on the LHS (positive side)
-        for i in 0..n {
-            let j_val = k as isize - i as isize;
-            if j_val >= 0 && (j_val as usize) < n {
-                lhs_terms.push((p_limbs[i], q_neg_witnesses[j_val as usize]));
-            }
-        }
-
-        // Add carry_in and offset
-        if k > 0 {
-            lhs_terms.push((FieldElement::ONE, carry_witnesses[k - 1]));
-            lhs_terms.push((offset_w_minus_carry, w1));
-        } else {
-            lhs_terms.push((offset_w, w1));
-        }
-
-        // RHS: Σ p[i]*q_pos[j] for i+j=k + carry_out * W (or offset at last column)
-        let mut rhs_terms: Vec<(FieldElement, usize)> = Vec::new();
-        for i in 0..n {
-            let j_val = k as isize - i as isize;
-            if j_val >= 0 && (j_val as usize) < n {
-                rhs_terms.push((p_limbs[i], q_pos_witnesses[j_val as usize]));
-            }
-        }
-
-        if k < num_columns - 1 {
-            rhs_terms.push((two_pow_w, carry_witnesses[k]));
-        } else {
-            // Last column: balance with offset_w (no outgoing carry)
-            rhs_terms.push((offset_w, w1));
-        }
-
-        // Merge terms with the same witness index (products may share cached witnesses)
-        let lhs_merged = merge_terms(&lhs_terms);
-        let rhs_merged = merge_terms(&rhs_terms);
-        compiler
-            .r1cs
-            .add_constraint(&lhs_merged, &[(FieldElement::ONE, w1)], &rhs_merged);
-    }
-}
-
-/// Hint-verified on-curve check for non-native field (multi-limb).
-///
-/// Verifies y² = x³ + ax + b (mod p) via two schoolbook column equations:
-///   Eq1: x·x - x_sq = q1·p              (x_sq correctness)
-///   Eq2: y·y - x_sq·x - a·x - b = q2·p  (on-curve)
-///
-/// Hint layout: x_sq(N), q1_pos(N), q1_neg(N), c1(2N-2),
-///              q2_pos(N), q2_neg(N), c2(2N-2) = 9N-4 witnesses.
-///
-/// Total: (9N-4)W hint + 3N² products (or 2N² when a=0) + 2×(2N-1) column
-///        constraints + 1 less-than-p check.
+/// Hint-verified on-curve check: y² = x³ + ax + b (mod p).
 pub fn verify_on_curve_non_native(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -241,7 +130,7 @@ pub fn verify_on_curve_non_native(
     compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
         output_start:    os,
         op:              NonNativeEcOp::OnCurve,
-        inputs:          vec![px.as_slice()[..n].to_vec(), py.as_slice()[..n].to_vec()],
+        inputs:          vec![px.as_slice().to_vec(), py.as_slice().to_vec()],
         curve_a:         params.curve_a_raw,
         curve_b:         params.curve_b_raw,
         field_modulus_p: params.modulus_raw,
@@ -261,7 +150,7 @@ pub fn verify_on_curve_non_native(
     let c2 = witness_range(os + 7 * n - 2, 2 * n - 2);
 
     // Eq1: px·px - x_sq = q1·p
-    let prod_px_px = make_products(compiler, &px.as_slice()[..n], &px.as_slice()[..n]);
+    let prod_px_px = make_products(compiler, px.as_slice(), px.as_slice());
 
     let max_coeff_eq1: u64 = 1 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
@@ -269,7 +158,7 @@ pub fn verify_on_curve_non_native(
         &[(&prod_px_px, FieldElement::ONE)],
         &[(&x_sq, -FieldElement::ONE)],
         &q1_pos,
-        &q1_neg,
+        Some(&q1_neg),
         &c1,
         &params.p_limbs,
         n,
@@ -278,8 +167,8 @@ pub fn verify_on_curve_non_native(
     );
 
     // Eq2: py·py - x_sq·px - a·px - b = q2·p
-    let prod_py_py = make_products(compiler, &py.as_slice()[..n], &py.as_slice()[..n]);
-    let prod_xsq_px = make_products(compiler, &x_sq, &px.as_slice()[..n]);
+    let prod_py_py = make_products(compiler, py.as_slice(), py.as_slice());
+    let prod_xsq_px = make_products(compiler, &x_sq, px.as_slice());
     let b_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_b_limbs[..n]);
 
     if a_is_zero {
@@ -292,7 +181,7 @@ pub fn verify_on_curve_non_native(
             ],
             &[(&b_limbs, -FieldElement::ONE)],
             &q2_pos,
-            &q2_neg,
+            Some(&q2_neg),
             &c2,
             &params.p_limbs,
             n,
@@ -301,7 +190,7 @@ pub fn verify_on_curve_non_native(
         );
     } else {
         let a_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_a_limbs[..n]);
-        let prod_a_px = make_products(compiler, &a_limbs, &px.as_slice()[..n]);
+        let prod_a_px = make_products(compiler, &a_limbs, px.as_slice());
 
         let max_coeff_eq2: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
         emit_schoolbook_column_equations(
@@ -313,7 +202,7 @@ pub fn verify_on_curve_non_native(
             ],
             &[(&b_limbs, -FieldElement::ONE)],
             &q2_pos,
-            &q2_neg,
+            Some(&q2_neg),
             &c2,
             &params.p_limbs,
             n,
@@ -337,15 +226,6 @@ pub fn verify_on_curve_non_native(
 }
 
 /// Hint-verified point doubling for non-native field (multi-limb).
-///
-/// Allocates NonNativeEcDoubleHint → (lambda, x3, y3, q1, c1, q2, c2, q3, c3).
-/// Verifies via schoolbook column equations on 3 EC equations:
-///   Eq1: 2·lambda·py - 3·px² - a = q1·p    (2N² products: lam·py, px·px)
-///   Eq2: lambda² - x3 - 2·px = q2·p        (1N² products: lam·lam)
-///   Eq3: lambda·(px - x3) - y3 - py = q3·p (2N² products: lam·px, lam·x3)
-///
-/// Total: (15N-6)W hint + 5N²+N products + 3×(2N-1) column constraints
-///        + 3 less-than-p checks.
 pub fn point_double_verified_non_native(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -364,7 +244,7 @@ pub fn point_double_verified_non_native(
     compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
         output_start:    os,
         op:              NonNativeEcOp::Double,
-        inputs:          vec![px.as_slice()[..n].to_vec(), py.as_slice()[..n].to_vec()],
+        inputs:          vec![px.as_slice().to_vec(), py.as_slice().to_vec()],
         curve_a:         params.curve_a_raw,
         curve_b:         [0; 4], // unused for double
         field_modulus_p: params.modulus_raw,
@@ -390,8 +270,8 @@ pub fn point_double_verified_non_native(
     let q3_neg = witness_range(os + 12 * n - 4, n);
     let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
 
-    let px_s = &px.as_slice()[..n];
-    let py_s = &py.as_slice()[..n];
+    let px_s = px.as_slice();
+    let py_s = py.as_slice();
 
     // Eq1: 2*lambda*py - 3*px*px - a = q1*p
     let prod_lam_py = make_products(compiler, &lambda, py_s);
@@ -407,7 +287,7 @@ pub fn point_double_verified_non_native(
         ],
         &[(&a_limbs, -FieldElement::ONE)],
         &q1_pos,
-        &q1_neg,
+        Some(&q1_neg),
         &c1,
         &params.p_limbs,
         n,
@@ -424,7 +304,7 @@ pub fn point_double_verified_non_native(
         &[(&prod_lam_lam, FieldElement::ONE)],
         &[(&x3, -FieldElement::ONE), (px_s, -FieldElement::from(2u64))],
         &q2_pos,
-        &q2_neg,
+        Some(&q2_neg),
         &c2,
         &params.p_limbs,
         n,
@@ -445,7 +325,7 @@ pub fn point_double_verified_non_native(
         ],
         &[(&y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
         &q3_pos,
-        &q3_neg,
+        Some(&q3_neg),
         &c3,
         &params.p_limbs,
         n,
@@ -476,15 +356,6 @@ pub fn point_double_verified_non_native(
 }
 
 /// Hint-verified point addition for non-native field (multi-limb).
-///
-/// Same approach as `point_double_verified_non_native` but verifies:
-///   Eq1: lambda·(x2-x1) - (y2-y1) = q1·p  (2N² products: lam·x2, lam·x1)
-///   Eq2: lambda² - x3 - x1 - x2 = q2·p    (1N² products: lam·lam)
-///   Eq3: lambda·(x1-x3) - y3 - y1 = q3·p  (1N² products: lam·x3; lam·x1
-/// reused)
-///
-/// Total: (15N-6)W hint + 4N² products + 3×(2N-1) column constraints
-///        + 3 less-than-p checks.
 pub fn point_add_verified_non_native(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -505,10 +376,10 @@ pub fn point_add_verified_non_native(
         output_start:    os,
         op:              NonNativeEcOp::Add,
         inputs:          vec![
-            x1.as_slice()[..n].to_vec(),
-            y1.as_slice()[..n].to_vec(),
-            x2.as_slice()[..n].to_vec(),
-            y2.as_slice()[..n].to_vec(),
+            x1.as_slice().to_vec(),
+            y1.as_slice().to_vec(),
+            x2.as_slice().to_vec(),
+            y2.as_slice().to_vec(),
         ],
         curve_a:         [0; 4], // unused for add
         curve_b:         [0; 4], // unused for add
@@ -535,10 +406,10 @@ pub fn point_add_verified_non_native(
     let q3_neg = witness_range(os + 12 * n - 4, n);
     let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
 
-    let x1_s = &x1.as_slice()[..n];
-    let y1_s = &y1.as_slice()[..n];
-    let x2_s = &x2.as_slice()[..n];
-    let y2_s = &y2.as_slice()[..n];
+    let x1_s = x1.as_slice();
+    let y1_s = y1.as_slice();
+    let x2_s = x2.as_slice();
+    let y2_s = y2.as_slice();
 
     // Eq1: lambda*x2 - lambda*x1 - y2 + y1 = q1*p
     let prod_lam_x2 = make_products(compiler, &lambda, x2_s);
@@ -552,7 +423,7 @@ pub fn point_add_verified_non_native(
         ],
         &[(y2_s, -FieldElement::ONE), (y1_s, FieldElement::ONE)],
         &q1_pos,
-        &q1_neg,
+        Some(&q1_neg),
         &c1,
         &params.p_limbs,
         n,
@@ -572,7 +443,7 @@ pub fn point_add_verified_non_native(
             (x2_s, -FieldElement::ONE),
         ],
         &q2_pos,
-        &q2_neg,
+        Some(&q2_neg),
         &c2,
         &params.p_limbs,
         n,
@@ -592,7 +463,7 @@ pub fn point_add_verified_non_native(
         ],
         &[(&y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
         &q3_pos,
-        &q3_neg,
+        Some(&q3_neg),
         &c3,
         &params.p_limbs,
         n,

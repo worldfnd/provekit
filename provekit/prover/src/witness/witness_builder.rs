@@ -73,6 +73,61 @@ fn write_limbs(witness: &mut [Option<FieldElement>], start: usize, vals: &[u128]
     }
 }
 
+/// Split a signed quotient into `(q_pos, q_neg)` limb vectors.
+fn split_quotient(q_abs: Vec<u128>, is_neg: bool, n: usize) -> (Vec<u128>, Vec<u128>) {
+    if is_neg {
+        (vec![0u128; n], q_abs)
+    } else {
+        (q_abs, vec![0u128; n])
+    }
+}
+
+/// Solve one column equation: quotient → split → write → carries → write.
+///
+/// Computes `(LHS - RHS) / p` as a signed quotient, splits into (q_pos, q_neg),
+/// computes verification carries, and writes all witnesses at `os + offset`.
+/// Witness layout at offset: `[q_pos(N), q_neg(N), carries(2N-2)]`.
+fn solve_and_write_equation(
+    witness: &mut [Option<FieldElement>],
+    os: usize,
+    offset: usize,
+    n: usize,
+    w: u32,
+    max_coeff_sum: u64,
+    field_modulus_p: &[u64; 4],
+    p_l: &[u128],
+    sq_lhs_prods: &[(&[u64; 4], &[u64; 4], u64)],
+    sq_rhs_prods: &[(&[u64; 4], &[u64; 4], u64)],
+    sq_lhs_linear: &[(&[u64; 4], u64)],
+    sq_rhs_linear: &[(&[u64; 4], u64)],
+    carry_prods: &[(&[u128], &[u128], i64)],
+    carry_linear: &[(Vec<i128>, i64)],
+) {
+    let (q_abs, is_neg) = signed_quotient_wide(
+        sq_lhs_prods,
+        sq_rhs_prods,
+        sq_lhs_linear,
+        sq_rhs_linear,
+        field_modulus_p,
+        n,
+        w,
+    );
+    let (q_pos, q_neg) = split_quotient(q_abs, is_neg, n);
+    write_limbs(witness, os + offset, &q_pos);
+    write_limbs(witness, os + offset + n, &q_neg);
+    let carries = compute_ec_verification_carries(
+        carry_prods,
+        carry_linear,
+        p_l,
+        &q_pos,
+        &q_neg,
+        n,
+        w,
+        max_coeff_sum,
+    );
+    write_limbs(witness, os + offset + 2 * n, &carries);
+}
+
 impl WitnessBuilderSolver for WitnessBuilder {
     fn solve(
         &self,
@@ -515,19 +570,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
 
                 let p_l = decompose_to_u128_limbs(field_modulus_p, n, w);
 
-                // Helper to split signed quotient into (q_pos, q_neg).
-                fn split_quotient(
-                    q_abs: Vec<u128>,
-                    is_neg: bool,
-                    n: usize,
-                ) -> (Vec<u128>, Vec<u128>) {
-                    if is_neg {
-                        (vec![0u128; n], q_abs)
-                    } else {
-                        (q_abs, vec![0u128; n])
-                    }
-                }
-
                 match op {
                     NonNativeEcOp::Double => {
                         let px_val = read_witness_limbs(witness, &inputs[0], w);
@@ -557,79 +599,56 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         // Total: 15N-6
 
                         // Eq1: 2*λ*py - 3*px² - a = q1*p
-                        let (q1_abs, q1_neg) = signed_quotient_wide(
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            3 * n,
+                            n,
+                            w,
+                            mcs_eq1,
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &py_val, 2)],
                             &[(&px_val, &px_val, 3)],
                             &[],
                             &[(curve_a, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q1_pos, q1_neg) = split_quotient(q1_abs, q1_neg, n);
-                        write_limbs(witness, os + 3 * n, &q1_pos);
-                        write_limbs(witness, os + 4 * n, &q1_neg);
-                        let c1 = compute_ec_verification_carries(
                             &[(&ll, &pyl, 2), (&pl, &pl, -3)],
                             &[(to_i128_limbs(&a_l), -1)],
-                            &p_l,
-                            &q1_pos,
-                            &q1_neg,
+                        );
+                        // Eq2: λ² - x3 - 2*px = q2*p
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            7 * n - 2,
                             n,
                             w,
-                            mcs_eq1,
-                        );
-                        write_limbs(witness, os + 5 * n, &c1);
-
-                        // Eq2: λ² - x3 - 2*px = q2*p
-                        let (q2_abs, q2_neg) = signed_quotient_wide(
+                            mcs_eq2,
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &lam, 1)],
                             &[],
                             &[],
                             &[(&x3v, 1), (&px_val, 2)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q2_pos, q2_neg) = split_quotient(q2_abs, q2_neg, n);
-                        write_limbs(witness, os + 7 * n - 2, &q2_pos);
-                        write_limbs(witness, os + 8 * n - 2, &q2_neg);
-                        let c2 = compute_ec_verification_carries(
                             &[(&ll, &ll, 1)],
                             &[(to_i128_limbs(&xl), -1), (to_i128_limbs(&pl), -2)],
-                            &p_l,
-                            &q2_pos,
-                            &q2_neg,
+                        );
+                        // Eq3: λ*px - λ*x3 - y3 - py = q3*p
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            11 * n - 4,
                             n,
                             w,
-                            mcs_eq2,
-                        );
-                        write_limbs(witness, os + 9 * n - 2, &c2);
-
-                        // Eq3: λ*px - λ*x3 - y3 - py = q3*p
-                        let (q3_abs, q3_neg) = signed_quotient_wide(
+                            mcs_eq3,
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &px_val, 1)],
                             &[(&lam, &x3v, 1)],
                             &[],
                             &[(&y3v, 1), (&py_val, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q3_pos, q3_neg) = split_quotient(q3_abs, q3_neg, n);
-                        write_limbs(witness, os + 11 * n - 4, &q3_pos);
-                        write_limbs(witness, os + 12 * n - 4, &q3_neg);
-                        let c3 = compute_ec_verification_carries(
                             &[(&ll, &pl, 1), (&ll, &xl, -1)],
                             &[(to_i128_limbs(&yl), -1), (to_i128_limbs(&pyl), -1)],
-                            &p_l,
-                            &q3_pos,
-                            &q3_neg,
-                            n,
-                            w,
-                            mcs_eq3,
                         );
-                        write_limbs(witness, os + 13 * n - 4, &c3);
                     }
                     NonNativeEcOp::Add => {
                         let x1v = read_witness_limbs(witness, &inputs[0], w);
@@ -660,83 +679,60 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         // Total: 15N-6
 
                         // Eq1: λ*x2 - λ*x1 + y1 - y2 = q1*p
-                        let (q1_abs, q1_neg) = signed_quotient_wide(
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            3 * n,
+                            n,
+                            w,
+                            mcs,
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &x2v, 1)],
                             &[(&lam, &x1v, 1)],
                             &[(&y1v, 1)],
                             &[(&y2v, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q1_pos, q1_neg) = split_quotient(q1_abs, q1_neg, n);
-                        write_limbs(witness, os + 3 * n, &q1_pos);
-                        write_limbs(witness, os + 4 * n, &q1_neg);
-                        let c1 = compute_ec_verification_carries(
                             &[(&ll, &x2l, 1), (&ll, &x1l, -1)],
                             &[(to_i128_limbs(&y2l), -1), (to_i128_limbs(&y1l), 1)],
-                            &p_l,
-                            &q1_pos,
-                            &q1_neg,
+                        );
+                        // Eq2: λ² - x3 - x1 - x2 = q2*p
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            7 * n - 2,
                             n,
                             w,
                             mcs,
-                        );
-                        write_limbs(witness, os + 5 * n, &c1);
-
-                        // Eq2: λ² - x3 - x1 - x2 = q2*p
-                        let (q2_abs, q2_neg) = signed_quotient_wide(
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &lam, 1)],
                             &[],
                             &[],
                             &[(&x3v, 1), (&x1v, 1), (&x2v, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q2_pos, q2_neg) = split_quotient(q2_abs, q2_neg, n);
-                        write_limbs(witness, os + 7 * n - 2, &q2_pos);
-                        write_limbs(witness, os + 8 * n - 2, &q2_neg);
-                        let c2 = compute_ec_verification_carries(
                             &[(&ll, &ll, 1)],
                             &[
                                 (to_i128_limbs(&xl), -1),
                                 (to_i128_limbs(&x1l), -1),
                                 (to_i128_limbs(&x2l), -1),
                             ],
-                            &p_l,
-                            &q2_pos,
-                            &q2_neg,
+                        );
+                        // Eq3: λ*x1 - λ*x3 - y3 - y1 = q3*p
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            11 * n - 4,
                             n,
                             w,
                             mcs,
-                        );
-                        write_limbs(witness, os + 9 * n - 2, &c2);
-
-                        // Eq3: λ*x1 - λ*x3 - y3 - y1 = q3*p
-                        let (q3_abs, q3_neg) = signed_quotient_wide(
+                            field_modulus_p,
+                            &p_l,
                             &[(&lam, &x1v, 1)],
                             &[(&lam, &x3v, 1)],
                             &[],
                             &[(&y3v, 1), (&y1v, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q3_pos, q3_neg) = split_quotient(q3_abs, q3_neg, n);
-                        write_limbs(witness, os + 11 * n - 4, &q3_pos);
-                        write_limbs(witness, os + 12 * n - 4, &q3_neg);
-                        let c3 = compute_ec_verification_carries(
                             &[(&ll, &x1l, 1), (&ll, &xl, -1)],
                             &[(to_i128_limbs(&yl), -1), (to_i128_limbs(&y1l), -1)],
-                            &p_l,
-                            &q3_pos,
-                            &q3_neg,
-                            n,
-                            w,
-                            mcs,
                         );
-                        write_limbs(witness, os + 13 * n - 4, &c3);
                     }
                     NonNativeEcOp::OnCurve => {
                         let px_val = read_witness_limbs(witness, &inputs[0], w);
@@ -763,29 +759,22 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         // Total: 9N-4
 
                         // Eq1: px·px - x_sq = q1·p
-                        let (q1_abs, q1_neg) = signed_quotient_wide(
+                        solve_and_write_equation(
+                            witness,
+                            os,
+                            n,
+                            n,
+                            w,
+                            mcs_eq1,
+                            field_modulus_p,
+                            &p_l,
                             &[(&px_val, &px_val, 1)],
                             &[],
                             &[],
                             &[(&x_sq_val, 1)],
-                            field_modulus_p,
-                            n,
-                            w,
-                        );
-                        let (q1_pos, q1_neg) = split_quotient(q1_abs, q1_neg, n);
-                        write_limbs(witness, os + n, &q1_pos);
-                        write_limbs(witness, os + 2 * n, &q1_neg);
-                        let c1 = compute_ec_verification_carries(
                             &[(&pl, &pl, 1)],
                             &[(to_i128_limbs(&xsl), -1)],
-                            &p_l,
-                            &q1_pos,
-                            &q1_neg,
-                            n,
-                            w,
-                            mcs_eq1,
                         );
-                        write_limbs(witness, os + 3 * n, &c1);
 
                         // Eq2: py·py - x_sq·px - a·px - b = q2·p
                         let a_l = decompose_to_u128_limbs(curve_a, n, w);

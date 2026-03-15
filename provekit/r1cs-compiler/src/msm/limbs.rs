@@ -1,18 +1,14 @@
 //! `Limbs`: fixed-capacity, `Copy` array of witness indices.
+//! `EcPoint`: named wrapper for `(x, y)` coordinates.
 
 // ---------------------------------------------------------------------------
 // Limbs: fixed-capacity, Copy array of witness indices
 // ---------------------------------------------------------------------------
 
-/// Maximum number of limbs supported. Covers all practical field sizes
-/// (e.g. a 512-bit modulus with 16-bit limbs = 32 limbs).
+/// Maximum number of limbs supported.
 pub const MAX_LIMBS: usize = 32;
 
-/// A fixed-capacity array of witness indices, indexed by limb position.
-///
-/// This type is `Copy`, so it can be passed by value without requiring
-/// const generics or dispatch macros. The runtime `len` field tracks how
-/// many limbs are actually in use.
+/// A fixed-capacity `Copy` array of witness indices, indexed by limb position.
 #[derive(Clone, Copy)]
 pub struct Limbs {
     data: [usize; MAX_LIMBS],
@@ -20,9 +16,7 @@ pub struct Limbs {
 }
 
 impl Limbs {
-    /// Sentinel value for uninitialized limb slots. Using `usize::MAX`
-    /// ensures accidental use of an unfilled slot indexes an absurdly
-    /// large witness, causing an immediate out-of-bounds panic.
+    /// Sentinel value for uninitialized limb slots.
     const UNINIT: usize = usize::MAX;
 
     /// Create a new `Limbs` with `len` limbs, all initialized to `UNINIT`.
@@ -103,4 +97,15 @@ impl std::ops::IndexMut<usize> for Limbs {
         );
         &mut self.data[i]
     }
+}
+
+// ---------------------------------------------------------------------------
+// EcPoint: named (x, y) pair preventing transposition bugs
+// ---------------------------------------------------------------------------
+
+/// An elliptic curve point as named `(x, y)` coordinate limbs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EcPoint {
+    pub x: Limbs,
+    pub y: Limbs,
 }

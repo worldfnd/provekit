@@ -1,10 +1,13 @@
-use {ark_ff::PrimeField, provekit_common::FieldElement};
+use {
+    ark_ff::{AdditiveGroup, PrimeField},
+    provekit_common::FieldElement,
+};
 
 mod grumpkin;
 mod secp256r1;
 mod u256_arith;
 
-pub use {grumpkin::Grumpkin, secp256r1::Secp256r1};
+pub use {grumpkin::Grumpkin, provekit_common::u256_arith::U256, secp256r1::Secp256r1};
 
 // ---------------------------------------------------------------------------
 // Curve trait — the only thing a new curve needs to implement
@@ -20,17 +23,17 @@ pub trait Curve {
     // ===== Required: curve constants =====
 
     /// Base field modulus p as 4 × u64 limbs (256-bit, little-endian).
-    fn field_modulus_p(&self) -> [u64; 4];
+    fn field_modulus_p(&self) -> U256;
     /// Scalar field order n as 4 × u64 limbs.
-    fn curve_order_n(&self) -> [u64; 4];
+    fn curve_order_n(&self) -> U256;
     /// Weierstrass curve parameter a.
-    fn curve_a(&self) -> [u64; 4];
+    fn curve_a(&self) -> U256;
     /// Weierstrass curve parameter b.
-    fn curve_b(&self) -> [u64; 4];
+    fn curve_b(&self) -> U256;
     /// Generator point (x, y).
-    fn generator(&self) -> ([u64; 4], [u64; 4]);
+    fn generator(&self) -> (U256, U256);
     /// Offset point for accumulation (x, y).
-    fn offset_point(&self) -> ([u64; 4], [u64; 4]);
+    fn offset_point(&self) -> (U256, U256);
 
     // ===== Provided: derived properties =====
 
@@ -97,7 +100,7 @@ pub trait Curve {
 
     /// Compute `[2^n_doublings] * offset_point` on the curve (compile-time
     /// only).
-    fn accumulated_offset(&self, n_doublings: usize) -> ([u64; 4], [u64; 4]) {
+    fn accumulated_offset(&self, n_doublings: usize) -> (U256, U256) {
         let p = self.field_modulus_p();
         let a = self.curve_a();
         let mut x = self.offset_point().0;
@@ -112,7 +115,7 @@ pub trait Curve {
 }
 
 /// Compute bit length of a 256-bit value.
-fn bit_length_u256(val: &[u64; 4]) -> u32 {
+fn bit_length_u256(val: &U256) -> u32 {
     for i in (0..4).rev() {
         if val[i] != 0 {
             return (i as u32) * 64 + (64 - val[i].leading_zeros());
@@ -127,7 +130,7 @@ fn bit_length_u256(val: &[u64; 4]) -> u32 {
 
 /// Decompose a 256-bit value into `num_limbs` limbs of `limb_bits` width each,
 /// returned as FieldElements.
-pub fn decompose_to_limbs(val: &[u64; 4], limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+pub fn decompose_to_limbs(val: &U256, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
     // Special case: when a single limb needs > 128 bits, FieldElement::from(u128)
     // would truncate. Use from_sign_and_limbs to preserve the full value.
     if num_limbs == 1 && limb_bits > 128 {
@@ -139,7 +142,7 @@ pub fn decompose_to_limbs(val: &[u64; 4], limb_bits: u32, num_limbs: usize) -> V
     } else {
         (1u128 << limb_bits) - 1
     };
-    let mut result = vec![FieldElement::from(0u64); num_limbs];
+    let mut result = vec![FieldElement::ZERO; num_limbs];
     let mut remaining = *val;
     for item in result.iter_mut() {
         let lo = remaining[0] as u128 | ((remaining[1] as u128) << 64);
@@ -165,8 +168,8 @@ pub fn decompose_to_limbs(val: &[u64; 4], limb_bits: u32, num_limbs: usize) -> V
     result
 }
 
-/// Subtract 1 from a [u64; 4] value.
-fn sub_one_u64_4(val: &[u64; 4]) -> [u64; 4] {
+/// Subtract 1 from a U256 value.
+fn sub_one_u64_4(val: &U256) -> U256 {
     let mut result = *val;
     for limb in result.iter_mut() {
         if *limb > 0 {
@@ -179,13 +182,13 @@ fn sub_one_u64_4(val: &[u64; 4]) -> [u64; 4] {
 }
 
 /// Converts a 256-bit value ([u64; 4]) into a single native field element.
-pub fn curve_native_point_fe(val: &[u64; 4]) -> FieldElement {
+pub fn curve_native_point_fe(val: &U256) -> FieldElement {
     FieldElement::from_sign_and_limbs(true, val)
 }
 
 /// Negate a field element: compute `-val mod p` (i.e., `p - val`).
 /// Returns `[0; 4]` when `val` is zero.
-pub fn negate_field_element(val: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+pub fn negate_field_element(val: &U256, modulus: &U256) -> U256 {
     if *val == [0u64; 4] {
         return [0u64; 4];
     }

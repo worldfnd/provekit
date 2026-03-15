@@ -12,8 +12,7 @@ use {
 };
 
 /// Detects whether a point-scalar pair is degenerate (scalar=0 or point at
-/// infinity). Constrains `inf_flag` to boolean. Returns `is_skip` (1 if
-/// degenerate).
+/// infinity).
 fn detect_skip(
     compiler: &mut NoirToR1CSCompiler,
     s_lo: usize,
@@ -53,10 +52,8 @@ pub(super) struct SanitizedInputsMultiLimb {
     pub is_skip:  usize,
 }
 
-/// Sanitize a point-scalar pair at the limb level.
-///
-/// Detects degenerate cases and replaces the point with the generator
-/// (as limbs) and scalar with 1 when degenerate.
+/// Sanitize a point-scalar pair, replacing degenerate cases with the
+/// generator.
 pub(super) fn sanitize_point_scalar_multi_limb(
     compiler: &mut NoirToR1CSCompiler,
     px_limbs: Limbs,
@@ -88,10 +85,7 @@ pub(super) fn sanitize_point_scalar_multi_limb(
     }
 }
 
-/// Emit an `EcScalarMulHint` with multi-limb inputs/outputs and sanitize.
-///
-/// When `is_skip=1`, each output limb is replaced with the corresponding
-/// generator limb. Returns `(rx_limbs, ry_limbs)` as `Limbs`.
+/// Emit an `EcScalarMulHint` and sanitize the output limbs.
 pub(super) fn emit_ec_scalar_mul_hint_and_sanitize_multi_limb<C: Curve>(
     compiler: &mut NoirToR1CSCompiler,
     san: &SanitizedInputsMultiLimb,

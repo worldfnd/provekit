@@ -10,7 +10,7 @@ mod scalar_relation;
 #[cfg(test)]
 mod tests;
 
-pub use limbs::{Limbs, MAX_LIMBS};
+pub use limbs::{EcPoint, Limbs, MAX_LIMBS};
 use {
     crate::{
         constraint_helpers::{add_constant_witness, constrain_boolean},
@@ -26,39 +26,35 @@ use {
     std::collections::BTreeMap,
 };
 
-/// ABI constant: the scalar input is always split into two 128-bit halves
-/// (s_lo, s_hi) because a full 256-bit scalar doesn't fit in the native
-/// field. This is independent of the curve's actual scalar bit-width.
+/// Scalar inputs are split into two 128-bit halves (s_lo, s_hi).
 pub(crate) const SCALAR_HALF_BITS: usize = 128;
+
+/// Integer ceiling of log2.
+/// ceil_log2(1) = 0, ceil_log2(2) = 1, ceil_log2(3) = 2, ceil_log2(4) = 2.
+pub(crate) fn ceil_log2(n: u64) -> u32 {
+    assert!(n > 0, "ceil_log2(0) is undefined");
+    u64::BITS - (n - 1).leading_zeros()
+}
 
 // ---------------------------------------------------------------------------
 // MSM entry point
 // ---------------------------------------------------------------------------
 
 /// MSM outputs in multi-limb form.
-///
-/// For native curves (num_limbs=1) each vec has one element — the single
-/// witness index for that coordinate.  For non-native curves each vec has
-/// N limbs.
 pub struct MsmLimbedOutputs {
     pub out_x_limbs: Vec<usize>,
     pub out_y_limbs: Vec<usize>,
     pub out_inf:     usize,
 }
 
-/// Curve-agnostic MSM: compiles MSM operations for any curve implementing
-/// the `Curve` trait.
-///
-/// All curves use the same unified pipeline. The number of limbs is
-/// derived from the cost model — no need for the caller to supply it.
-///
-/// EC operations are monomorphized here: `curve.is_native_field()`
-/// selects `NativeEcOps` or `NonNativeEcOps`, and the choice flows
-/// through the entire pipeline via generics — no per-operation runtime
-/// dispatch.
-///
-/// Point layout per point: `[x_l0..x_lN-1, y_l0..y_lN-1, inf]`
-/// Scalar layout per scalar: `[s_lo, s_hi]` (128-bit halves)
+/// MSM circuit configuration parameters.
+pub(crate) struct MsmConfig {
+    pub num_limbs:   usize,
+    pub limb_bits:   u32,
+    pub window_size: usize,
+}
+
+/// Compiles MSM operations for any curve implementing the `Curve` trait.
 pub fn add_msm_with_curve<C: Curve>(
     compiler: &mut NoirToR1CSCompiler,
     msm_ops: Vec<(
@@ -96,27 +92,17 @@ pub fn add_msm_with_curve<C: Curve>(
         "output limb count ({first_num_limbs}) doesn't match cost model num_limbs ({num_limbs})"
     );
 
+    let config = MsmConfig {
+        num_limbs,
+        limb_bits,
+        window_size,
+    };
+
     // Dispatch once — the entire pipeline is monomorphized for the chosen strategy.
     if is_native {
-        add_msm_inner::<C, NativeEcOps>(
-            compiler,
-            msm_ops,
-            range_checks,
-            curve,
-            num_limbs,
-            limb_bits,
-            window_size,
-        );
+        add_msm_inner::<C, NativeEcOps>(compiler, msm_ops, range_checks, curve, &config);
     } else {
-        add_msm_inner::<C, NonNativeEcOps>(
-            compiler,
-            msm_ops,
-            range_checks,
-            curve,
-            num_limbs,
-            limb_bits,
-            window_size,
-        );
+        add_msm_inner::<C, NonNativeEcOps>(compiler, msm_ops, range_checks, curve, &config);
     }
 }
 
@@ -130,21 +116,20 @@ fn add_msm_inner<C: Curve, E: ec_points::EcOps>(
     )>,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     curve: &C,
-    num_limbs: usize,
-    limb_bits: u32,
-    window_size: usize,
+    config: &MsmConfig,
 ) {
-    let stride = 2 * num_limbs + 1;
+    let stride = 2 * config.num_limbs + 1;
 
     for (points, scalars, outputs) in msm_ops {
         assert!(
             points.len() % stride == 0,
-            "points length must be a multiple of {stride} (2*{num_limbs}+1)"
+            "points length must be a multiple of {stride} (2*{}+1)",
+            config.num_limbs
         );
         let n = points.len() / stride;
         assert_eq!(scalars.len(), 2 * n, "scalars length must be 2x n_points");
-        assert_eq!(outputs.out_x_limbs.len(), num_limbs);
-        assert_eq!(outputs.out_y_limbs.len(), num_limbs);
+        assert_eq!(outputs.out_x_limbs.len(), config.num_limbs);
+        assert_eq!(outputs.out_y_limbs.len(), config.num_limbs);
 
         let point_wits: Vec<usize> = points.iter().map(|p| resolve_input(compiler, p)).collect();
         let scalar_wits: Vec<usize> = scalars.iter().map(|s| resolve_input(compiler, s)).collect();
@@ -155,9 +140,7 @@ fn add_msm_inner<C: Curve, E: ec_points::EcOps>(
             &scalar_wits,
             &outputs,
             n,
-            num_limbs,
-            limb_bits,
-            window_size,
+            config,
             range_checks,
             curve,
         );
@@ -165,6 +148,7 @@ fn add_msm_inner<C: Curve, E: ec_points::EcOps>(
 }
 
 /// Resolves a `ConstantOrR1CSWitness` to a witness index.
+#[must_use]
 fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitness) -> usize {
     match input {
         ConstantOrR1CSWitness::Witness(idx) => *idx,
@@ -181,13 +165,6 @@ fn resolve_input(compiler: &mut NoirToR1CSCompiler, input: &ConstantOrR1CSWitnes
 // ---------------------------------------------------------------------------
 
 /// Signed-bit decomposition for wNAF scalar multiplication.
-///
-/// Decomposes `scalar` into `num_bits` sign-bits b_i ∈ {0,1} and a skew ∈ {0,1}
-/// such that the signed digits d_i = 2*b_i - 1 ∈ {-1, +1} satisfy:
-///   scalar = Σ d_i * 2^i - skew
-///
-/// All bits and skew are boolean-constrained. Reconstruction verified via
-/// 1 linear R1CS constraint.
 pub(crate) fn decompose_signed_bits(
     compiler: &mut NoirToR1CSCompiler,
     scalar: usize,

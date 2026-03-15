@@ -416,6 +416,7 @@ fn test_two_point_msm() {
     initial_values.push((out_inf, FieldElement::zero()));
 
     let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
+    println!(">>> number of witnesses : {:?}", witness.len());
 
     check_r1cs_satisfaction(&compiler.r1cs, &witness)
         .expect("R1CS satisfaction check failed for two-point MSM");

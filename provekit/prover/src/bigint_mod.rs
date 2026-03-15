@@ -1,3 +1,8 @@
+// Re-export shared 256-bit arithmetic from provekit_common.
+// Names are aliased where the prover's historical API differs.
+pub use provekit_common::u256_arith::{
+    mod_add, mod_inv as mod_inverse, mod_mul as mul_mod, mod_pow, mod_sub, widening_mul,
+};
 /// BigInteger modular arithmetic on [u64; 4] limbs (256-bit).
 ///
 /// These helpers compute modular inverse via Fermat's little theorem:
@@ -9,20 +14,10 @@ use {
     provekit_common::FieldElement,
 };
 
-/// Schoolbook multiplication: 4×4 limbs → 8 limbs (256-bit × 256-bit →
-/// 512-bit).
-pub fn widening_mul(a: &[u64; 4], b: &[u64; 4]) -> [u64; 8] {
-    let mut result = [0u64; 8];
-    for i in 0..4 {
-        let mut carry = 0u128;
-        for j in 0..4 {
-            let product = (a[i] as u128) * (b[j] as u128) + (result[i + j] as u128) + carry;
-            result[i + j] = product as u64;
-            carry = product >> 64;
-        }
-        result[i + 4] = carry as u64;
-    }
-    result
+/// Integer ceiling of log2. Avoids f64 rounding issues.
+fn ceil_log2(n: u64) -> u32 {
+    assert!(n > 0, "ceil_log2(0) is undefined");
+    u64::BITS - (n - 1).leading_zeros()
 }
 
 /// Compare 8-limb value with 4-limb value (zero-extended to 8 limbs).
@@ -43,50 +38,6 @@ fn cmp_wide_narrow(wide: &[u64; 8], narrow: &[u64; 4]) -> std::cmp::Ordering {
         }
     }
     std::cmp::Ordering::Equal
-}
-
-/// Modular reduction of a 512-bit value by a 256-bit modulus.
-/// Uses bit-by-bit long division.
-fn reduce_wide(wide: &[u64; 8], modulus: &[u64; 4]) -> [u64; 4] {
-    // Find the highest set bit in wide
-    let mut highest_bit = 0;
-    for i in (0..8).rev() {
-        if wide[i] != 0 {
-            highest_bit = i * 64 + (64 - wide[i].leading_zeros() as usize);
-            break;
-        }
-    }
-    if highest_bit == 0 {
-        return [0u64; 4];
-    }
-
-    // Bit-by-bit long division
-    // remainder starts at 0, we shift in bits from the dividend
-    let mut remainder = [0u64; 4];
-    for bit_pos in (0..highest_bit).rev() {
-        // Left-shift remainder by 1
-        let shift_carry = shift_left_one(&mut remainder);
-
-        // Bring in the next bit from wide
-        let limb_idx = bit_pos / 64;
-        let bit_idx = bit_pos % 64;
-        let bit = (wide[limb_idx] >> bit_idx) & 1;
-        remainder[0] |= bit;
-
-        // If shift_carry is set, the effective remainder is 2^256 + remainder,
-        // which is always > any 256-bit modulus, so we must subtract.
-        if shift_carry != 0 || cmp_4limb(&remainder, modulus) != std::cmp::Ordering::Less {
-            let mut borrow = 0u64;
-            for i in 0..4 {
-                let (d1, b1) = remainder[i].overflowing_sub(modulus[i]);
-                let (d2, b2) = d1.overflowing_sub(borrow);
-                remainder[i] = d2;
-                borrow = (b1 as u64) + (b2 as u64);
-            }
-        }
-    }
-
-    remainder
 }
 
 /// Left-shift a 4-limb number by 1 bit. Returns the carry-out bit.
@@ -121,42 +72,6 @@ fn sub_4limb_inplace(a: &mut [u64; 4], b: &[u64; 4]) {
         borrow = (borrow1 as u64) + (borrow2 as u64);
     }
     debug_assert_eq!(borrow, 0, "subtraction underflow: a < b");
-}
-
-/// Modular multiplication: (a * b) mod m.
-pub fn mul_mod(a: &[u64; 4], b: &[u64; 4], m: &[u64; 4]) -> [u64; 4] {
-    let wide = widening_mul(a, b);
-    reduce_wide(&wide, m)
-}
-
-/// Modular exponentiation: base^exp mod m using square-and-multiply.
-pub fn mod_pow(base: &[u64; 4], exp: &[u64; 4], m: &[u64; 4]) -> [u64; 4] {
-    // Find highest set bit in exp
-    let mut highest_bit = 0;
-    for i in (0..4).rev() {
-        if exp[i] != 0 {
-            highest_bit = i * 64 + (64 - exp[i].leading_zeros() as usize);
-            break;
-        }
-    }
-    if highest_bit == 0 {
-        // exp == 0 → result = 1 (for m > 1)
-        return [1, 0, 0, 0];
-    }
-
-    let mut result = [1u64, 0, 0, 0]; // 1
-    for bit_pos in (0..highest_bit).rev() {
-        // Square
-        result = mul_mod(&result, &result, m);
-        // Multiply if bit is set
-        let limb_idx = bit_pos / 64;
-        let bit_idx = bit_pos % 64;
-        if (exp[limb_idx] >> bit_idx) & 1 == 1 {
-            result = mul_mod(&result, base, m);
-        }
-    }
-
-    result
 }
 
 /// Integer division with remainder: dividend = quotient * divisor + remainder,
@@ -440,7 +355,7 @@ pub fn compute_mul_mod_carries(
     let n = a_limbs.len();
     let w = limb_bits;
     let num_carries = 2 * n - 2;
-    let carry_offset = BigInt::from(1u64) << (w + ((n as f64).log2().ceil() as u32) + 1);
+    let carry_offset = BigInt::from(1u64) << (w + ceil_log2(n as u64) + 1);
     let mut carries = Vec::with_capacity(num_carries);
     let mut carry = BigInt::from(0);
 
@@ -632,53 +547,6 @@ pub fn fe_to_bigint(fe: FieldElement) -> [u64; 4] {
 /// 2^128`.
 pub fn reconstruct_from_halves(lo: &[u64; 4], hi: &[u64; 4]) -> [u64; 4] {
     [lo[0], lo[1], hi[0], hi[1]]
-}
-
-// ---------------------------------------------------------------------------
-// Modular arithmetic helpers for EC operations (prover-side)
-// ---------------------------------------------------------------------------
-
-/// Modular addition: (a + b) mod p.
-pub fn mod_add(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
-    let sum = add_4limb(a, b);
-    let sum4 = [sum[0], sum[1], sum[2], sum[3]];
-    if sum[4] > 0 || cmp_4limb(&sum4, p) != std::cmp::Ordering::Less {
-        // sum >= p, subtract p (borrow absorbs carry bit if sum[4] > 0)
-        let mut result = sum4;
-        let mut borrow = 0u64;
-        for i in 0..4 {
-            let (d1, b1) = result[i].overflowing_sub(p[i]);
-            let (d2, b2) = d1.overflowing_sub(borrow);
-            result[i] = d2;
-            borrow = (b1 as u64) + (b2 as u64);
-        }
-        result
-    } else {
-        sum4
-    }
-}
-
-/// Modular subtraction: (a - b) mod p.
-pub fn mod_sub(a: &[u64; 4], b: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
-    let mut result = *a;
-    let no_borrow = sub_4limb_checked(&mut result, b);
-    if no_borrow {
-        result
-    } else {
-        // a < b, add p to get (a - b + p)
-        add_4limb_inplace(&mut result, p);
-        result
-    }
-}
-
-/// Modular inverse: a^{p-2} mod p (Fermat's little theorem).
-///
-/// # Precondition
-/// `p` must be prime. For composite moduli, Fermat's little theorem does not
-/// hold and this function will return incorrect results.
-pub fn mod_inverse(a: &[u64; 4], p: &[u64; 4]) -> [u64; 4] {
-    let exp = sub_u64(p, 2);
-    mod_pow(a, &exp, p)
 }
 
 /// EC point doubling with lambda exposed: returns (lambda, x3, y3).
@@ -887,7 +755,7 @@ pub fn compute_ec_verification_carries(
     let num_columns = 2 * n - 1;
     let num_carries = num_columns - 1;
 
-    let extra_bits = ((max_coeff_sum as f64 * n as f64).log2().ceil() as u32) + 1;
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
     let carry_offset_bits = w + extra_bits;
     let carry_offset = BigInt::from(1u64) << carry_offset_bits;
 
@@ -976,6 +844,7 @@ mod tests {
 
     #[test]
     fn test_reduce_wide_no_reduction() {
+        use provekit_common::u256_arith::reduce_wide;
         // 5 mod 7 = 5
         let wide = [5, 0, 0, 0, 0, 0, 0, 0];
         let modulus = [7, 0, 0, 0];
@@ -984,6 +853,7 @@ mod tests {
 
     #[test]
     fn test_reduce_wide_basic() {
+        use provekit_common::u256_arith::reduce_wide;
         // 10 mod 7 = 3
         let wide = [10, 0, 0, 0, 0, 0, 0, 0];
         let modulus = [7, 0, 0, 0];

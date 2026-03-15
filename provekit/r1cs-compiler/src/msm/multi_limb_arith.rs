@@ -4,14 +4,14 @@
 //! (N≥2) representations, plus `compute_is_zero` and `less_than_p` checks.
 
 use {
-    super::Limbs,
+    super::{ceil_log2, multi_limb_ops::allocate_pinned_constant, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{AdditiveGroup, BigInteger, Field, PrimeField},
     provekit_common::{
         witness::{SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::collections::BTreeMap,
+    std::collections::{BTreeMap, HashMap},
 };
 
 // ---------------------------------------------------------------------------
@@ -20,16 +20,14 @@ use {
 
 /// Reduce the value to given modulus (N=1 path).
 /// Computes v = k*m + result, where 0 <= result < m.
+#[must_use]
 pub fn reduce_mod_p(
     compiler: &mut NoirToR1CSCompiler,
     value: usize,
     modulus: FieldElement,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
 ) -> usize {
-    let m = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Constant(
-        provekit_common::witness::ConstantTerm(m, modulus),
-    ));
+    let m = allocate_pinned_constant(compiler, modulus);
     let k = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(k, value, modulus));
 
@@ -60,6 +58,7 @@ pub fn reduce_mod_p(
 }
 
 /// a + b mod p (N=1 path)
+#[must_use]
 pub fn add_mod_p_single(
     compiler: &mut NoirToR1CSCompiler,
     a: usize,
@@ -81,6 +80,7 @@ pub fn add_mod_p_single(
 }
 
 /// a * b mod p (N=1 path)
+#[must_use]
 pub fn mul_mod_p_single(
     compiler: &mut NoirToR1CSCompiler,
     a: usize,
@@ -100,6 +100,7 @@ pub fn mul_mod_p_single(
 }
 
 /// (a - b) mod p (N=1 path)
+#[must_use]
 pub fn sub_mod_p_single(
     compiler: &mut NoirToR1CSCompiler,
     a: usize,
@@ -126,6 +127,7 @@ pub fn sub_mod_p_single(
 /// Uses SafeInverse (not Inverse) because the input value may be zero.
 /// SafeInverse outputs 0 when the input is 0, and is solved in the Other
 /// layer (not batch-inverted), so zero inputs don't poison the batch.
+#[must_use]
 pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize {
     let value_inv = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::SafeInverse(value_inv, value));
@@ -167,9 +169,6 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
 // ---------------------------------------------------------------------------
 
 /// Shared core for `add_mod_p_multi` and `sub_mod_p_multi`.
-///
-/// Both operations follow the same carry-chain structure; only the per-limb
-/// formula and quotient witness builder differ.
 fn add_sub_mod_p_core(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -219,15 +218,12 @@ fn add_sub_mod_p_core(
     let mut carry_prev: Option<usize> = None;
 
     for i in 0..n {
-        // When carry_prev exists, combine w1 terms to avoid duplicate column
-        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+        // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if carry_prev.is_some() {
             two_pow_w - FieldElement::ONE
         } else {
             two_pow_w
         };
-        // add: a[i] + b[i] + w1_coeff*1 - p[i]*q + carry
-        // sub: a[i] - b[i] + p[i]*q + w1_coeff*1 + carry
         let mut terms = vec![SumTerm(None, a[i])];
         if is_add {
             terms.push(SumTerm(None, b[i]));
@@ -267,10 +263,7 @@ fn add_sub_mod_p_core(
 }
 
 /// (a + b) mod p for multi-limb values.
-///
-/// Per limb i: v_i = a\[i\] + b\[i\] + 2^W - q*p\[i\] + carry_{i-1}
-///             carry_i = floor(v_i / 2^W)
-///             r\[i\] = v_i - carry_i * 2^W
+#[must_use]
 pub fn add_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -297,18 +290,7 @@ pub fn add_mod_p_multi(
 }
 
 /// Negate a multi-limb value: computes `p - y` directly via borrow chain.
-///
-/// Since inputs are already verified `y ∈ [0, p)` (from less_than_p on
-/// prior operations), the result `p - y` is in `(0, p]`. For `y > 0`,
-/// the result is in `(0, p)` — canonical. For `y = 0`, the result is `p ≡ 0`,
-/// which has valid limbs (each < 2^limb_bits) and is correct modulo p.
-///
-/// This avoids the generic `sub_mod_p_multi` pathway which allocates
-/// N zero-constant witnesses, a borrow quotient, and a less_than_p check.
-///
-/// Witnesses: 3N (N v-sums + N borrows + N result limbs).
-/// Constraints: N (one `add_sum` per limb, each producing 1W+1C).
-/// Range checks: N at limb_bits.
+#[must_use]
 pub fn negate_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -325,10 +307,7 @@ pub fn negate_mod_p_multi(
     let mut borrow_prev: Option<usize> = None;
 
     for i in 0..n {
-        // v[i] = p[i] + 2^W - y[i] + borrow_{i-1}
-        // The 2^W offset ensures v[i] >= 0 (since p[i] >= 0, y[i] < 2^W).
-        // When borrow_prev exists, combine w1 terms to avoid duplicate column
-        // indices in the R1CS sparse matrix.
+        // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if borrow_prev.is_some() {
             p_limbs[i] + two_pow_w - FieldElement::ONE
         } else {
@@ -360,6 +339,7 @@ pub fn negate_mod_p_multi(
 }
 
 /// (a - b) mod p for multi-limb values.
+#[must_use]
 pub fn sub_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -386,10 +366,7 @@ pub fn sub_mod_p_multi(
 }
 
 /// (a * b) mod p for multi-limb values using schoolbook multiplication.
-///
-/// Verifies: a·b = p·q + r in base W = 2^limb_bits.
-/// Column k: Σ_{i+j=k} a\[i\]*b\[j\] + carry_{k-1} + OFFSET
-///         = Σ_{i+j=k} p\[i\]*q\[j\] + r\[k\] + carry_k * W
+#[must_use]
 pub fn mul_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -404,12 +381,9 @@ pub fn mul_mod_p_multi(
     let n = a.len();
     assert!(n >= 2, "mul_mod_p_multi requires n >= 2, got n={n}");
 
-    // Soundness check: column equation values must not overflow the native field.
-    // The maximum value across either side of any column equation is bounded by
-    // 2^(2*limb_bits + ceil(log2(n)) + 3). This must be strictly less than the
-    // native field modulus p >= 2^(MODULUS_BIT_SIZE - 1).
+    // Soundness: column values must fit the native field.
     {
-        let ceil_log2_n = (n as f64).log2().ceil() as u32;
+        let ceil_log2_n = ceil_log2(n as u64);
         let max_bits = 2 * limb_bits + ceil_log2_n + 3;
         assert!(
             max_bits < FieldElement::MODULUS_BIT_SIZE,
@@ -419,17 +393,12 @@ pub fn mul_mod_p_multi(
         );
     }
 
-    let w1 = compiler.witness_one();
     let num_carries = 2 * n - 2;
-    // Carry offset: 2^(limb_bits + ceil(log2(n)) + 1)
-    let extra_bits = ((n as f64).log2().ceil() as u32) + 1;
+    // Carry offset uses max_coeff_sum=1 (products only). The soundness check
+    // above already verified the full column value fits the native field.
+    let max_coeff_sum: u64 = 1;
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
     let carry_offset_bits = limb_bits + extra_bits;
-    let carry_offset_fe = FieldElement::from(2u64).pow([carry_offset_bits as u64]);
-    // offset_w = carry_offset * 2^limb_bits
-    let offset_w = FieldElement::from(2u64).pow([(carry_offset_bits + limb_bits) as u64]);
-    // offset_w_minus_carry = offset_w - carry_offset = carry_offset * (2^limb_bits
-    // - 1)
-    let offset_w_minus_carry = offset_w - carry_offset_fe;
 
     // Step 1: Allocate hint witnesses (q limbs, r limbs, carries)
     let os = compiler.num_witnesses();
@@ -456,49 +425,19 @@ pub fn mul_mod_p_multi(
     }
 
     // Step 3: Column equations (2n-1 R1CS constraints)
-    for k in 0..(2 * n - 1) {
-        // LHS: Σ_{i+j=k} a[i]*b[j] + carry_{k-1} + OFFSET
-        let mut lhs_terms: Vec<(FieldElement, usize)> = Vec::new();
-        for i in 0..n {
-            let j_val = k as isize - i as isize;
-            if j_val >= 0 && (j_val as usize) < n {
-                lhs_terms.push((FieldElement::ONE, ab_products[i][j_val as usize]));
-            }
-        }
-        // Add carry_{k-1}
-        if k > 0 {
-            lhs_terms.push((FieldElement::ONE, cu[k - 1]));
-            // Add offset_w - carry_offset for subsequent columns
-            lhs_terms.push((offset_w_minus_carry, w1));
-        } else {
-            // First column: add offset_w
-            lhs_terms.push((offset_w, w1));
-        }
-
-        // RHS: Σ_{i+j=k} p[i]*q[j] + r[k] + carry_k * W
-        let mut rhs_terms: Vec<(FieldElement, usize)> = Vec::new();
-        for i in 0..n {
-            let j_val = k as isize - i as isize;
-            if j_val >= 0 && (j_val as usize) < n {
-                rhs_terms.push((p_limbs[i], q[j_val as usize]));
-            }
-        }
-        if k < n {
-            rhs_terms.push((FieldElement::ONE, r_indices[k]));
-        }
-        if k < 2 * n - 2 {
-            rhs_terms.push((two_pow_w, cu[k]));
-        } else {
-            // Last column: RHS includes offset_w to balance the LHS offset
-            // LHS has: carry[k-1] + offset_w_minus_carry = true_carry + offset_w
-            // RHS needs: sum_pq[k] + offset_w (no outgoing carry at last column)
-            rhs_terms.push((offset_w, w1));
-        }
-
-        compiler
-            .r1cs
-            .add_constraint(&lhs_terms, &[(FieldElement::ONE, w1)], &rhs_terms);
-    }
+    // Equation: a·b - r = p·q (r on LHS with negative coeff, unsigned quotient)
+    emit_schoolbook_column_equations(
+        compiler,
+        &[(&ab_products, FieldElement::ONE)],
+        &[(&r_indices, -FieldElement::ONE)],
+        &q,
+        None, // unsigned quotient — no q_neg
+        &cu,
+        p_limbs,
+        n,
+        limb_bits,
+        max_coeff_sum,
+    );
 
     // Step 4: less-than-p check and range checks on r
     let mut r_limbs = Limbs::new(n);
@@ -527,9 +466,7 @@ pub fn mul_mod_p_multi(
     r_limbs
 }
 
-/// Proves r < p by decomposing (p-1) - r into non-negative multi-limb values.
-/// Uses borrow propagation: d\[i\] = (p-1)\[i\] + 2^W - r\[i\] + borrow_in -
-/// borrow_out · 2^W. The 2^W offset keeps intermediate values non-negative.
+/// Proves r < p by decomposing (p-1) - r via borrow propagation.
 pub fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
@@ -542,9 +479,7 @@ pub fn less_than_p_check_multi(
     let w1 = compiler.witness_one();
     let mut borrow_prev: Option<usize> = None;
     for i in 0..n {
-        // v_diff = (p-1)[i] + 2^W - r[i] + borrow_prev
-        // When borrow_prev exists, combine w1 terms to avoid duplicate column
-        // indices in the R1CS sparse matrix (set overwrites on duplicate (row,col)).
+        // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if borrow_prev.is_some() {
             p_minus_1_limbs[i] + two_pow_w - FieldElement::ONE
         } else {
@@ -575,15 +510,117 @@ pub fn less_than_p_check_multi(
         borrow_prev = Some(borrow);
     }
 
-    // Constrain final carry = 1: the 2^W offset at each limb propagates
-    // a carry of 1 through the chain. For valid r < p, the final carry
-    // must be exactly 1.  If r >= p, the carry chain underflows and the
-    // final carry is 0.
+    // Constrain final carry = 1 (valid r < p).
     if let Some(final_borrow) = borrow_prev {
         compiler.r1cs.add_constraint(
             &[(FieldElement::ONE, compiler.witness_one())],
             &[(FieldElement::ONE, final_borrow)],
             &[(FieldElement::ONE, compiler.witness_one())],
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Schoolbook column equations (shared by mul_mod_p_multi and non-native EC
+// hints)
+// ---------------------------------------------------------------------------
+
+/// Merge terms with the same witness index by summing their coefficients.
+fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
+    let mut map: HashMap<usize, FieldElement> = HashMap::new();
+    for &(coeff, idx) in terms {
+        *map.entry(idx).or_insert(FieldElement::ZERO) += coeff;
+    }
+    let mut result: Vec<(FieldElement, usize)> = map.into_iter().map(|(idx, c)| (c, idx)).collect();
+    result.sort_by_key(|&(_, idx)| idx);
+    result
+}
+
+/// Emit `2N-1` R1CS constraints verifying a schoolbook column equation
+/// with unsigned-offset carry chain.
+pub(in crate::msm) fn emit_schoolbook_column_equations(
+    compiler: &mut NoirToR1CSCompiler,
+    product_sets: &[(&[Vec<usize>], FieldElement)],
+    linear_limbs: &[(&[usize], FieldElement)],
+    q_pos_witnesses: &[usize],
+    q_neg_witnesses: Option<&[usize]>,
+    carry_witnesses: &[usize],
+    p_limbs: &[FieldElement],
+    n: usize,
+    limb_bits: u32,
+    max_coeff_sum: u64,
+) {
+    let w1 = compiler.witness_one();
+    let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
+
+    // Carry offset scaled for the merged equation's coefficients
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
+    let carry_offset_bits = limb_bits + extra_bits;
+    let carry_offset_fe = FieldElement::from(2u64).pow([carry_offset_bits as u64]);
+    let offset_w = FieldElement::from(2u64).pow([(carry_offset_bits + limb_bits) as u64]);
+    let offset_w_minus_carry = offset_w - carry_offset_fe;
+
+    let num_columns = 2 * n - 1;
+
+    for k in 0..num_columns {
+        // LHS: Σ coeff * products[i][j] for i+j=k + Σ p[i]*q_neg[j] + carry_in + offset
+        let mut lhs_terms: Vec<(FieldElement, usize)> = Vec::new();
+
+        for &(products, coeff) in product_sets {
+            for i in 0..n {
+                let j_val = k as isize - i as isize;
+                if j_val >= 0 && (j_val as usize) < n {
+                    lhs_terms.push((coeff, products[i][j_val as usize]));
+                }
+            }
+        }
+
+        // Add linear terms (for k < limbs.len() only)
+        for &(limbs, coeff) in linear_limbs {
+            if k < limbs.len() {
+                lhs_terms.push((coeff, limbs[k]));
+            }
+        }
+
+        // Add p*q_neg on the LHS (when using split quotients)
+        if let Some(q_neg) = q_neg_witnesses {
+            for i in 0..n {
+                let j_val = k as isize - i as isize;
+                if j_val >= 0 && (j_val as usize) < n {
+                    lhs_terms.push((p_limbs[i], q_neg[j_val as usize]));
+                }
+            }
+        }
+
+        // Add carry_in and offset
+        if k > 0 {
+            lhs_terms.push((FieldElement::ONE, carry_witnesses[k - 1]));
+            lhs_terms.push((offset_w_minus_carry, w1));
+        } else {
+            lhs_terms.push((offset_w, w1));
+        }
+
+        // RHS: Σ p[i]*q_pos[j] for i+j=k + carry_out * W (or offset at last column)
+        let mut rhs_terms: Vec<(FieldElement, usize)> = Vec::new();
+        for i in 0..n {
+            let j_val = k as isize - i as isize;
+            if j_val >= 0 && (j_val as usize) < n {
+                rhs_terms.push((p_limbs[i], q_pos_witnesses[j_val as usize]));
+            }
+        }
+
+        if k < num_columns - 1 {
+            rhs_terms.push((two_pow_w, carry_witnesses[k]));
+        } else {
+            // Last column: balance with offset_w (no outgoing carry)
+            rhs_terms.push((offset_w, w1));
+        }
+
+        // Merge terms with the same witness index (products may share cached witnesses)
+        let lhs_merged = merge_terms(&lhs_terms);
+        let rhs_merged = merge_terms(&rhs_terms);
+        compiler
+            .r1cs
+            .add_constraint(&lhs_merged, &[(FieldElement::ONE, w1)], &rhs_merged);
     }
 }

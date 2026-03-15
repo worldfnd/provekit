@@ -5,7 +5,7 @@
 
 use {
     super::EcOps,
-    crate::msm::{multi_limb_ops::MultiLimbOps, Limbs},
+    crate::msm::{multi_limb_ops::MultiLimbOps, EcPoint},
     ark_ff::Field,
     provekit_common::{witness::SumTerm, FieldElement},
 };
@@ -15,18 +15,16 @@ use {
 /// where k = `half_table_size`.
 fn build_signed_point_table<E: EcOps>(
     ops: &mut MultiLimbOps<'_, '_, E>,
-    px: Limbs,
-    py: Limbs,
+    p: EcPoint,
     half_table_size: usize,
-) -> Vec<(Limbs, Limbs)> {
+) -> Vec<EcPoint> {
     assert!(half_table_size >= 1);
     let mut table = Vec::with_capacity(half_table_size);
-    table.push((px, py)); // T[0] = 1*P
+    table.push(p); // T[0] = 1*P
     if half_table_size >= 2 {
-        let two_p = ops.point_double(px, py); // 2P
+        let two_p = ops.point_double(p); // 2P
         for i in 1..half_table_size {
-            let prev = table[i - 1];
-            table.push(ops.point_add(prev.0, prev.1, two_p.0, two_p.1));
+            table.push(ops.point_add(table[i - 1], two_p));
         }
     }
     table
@@ -39,12 +37,12 @@ fn build_signed_point_table<E: EcOps>(
 /// false, bits are assumed already constrained.
 fn table_lookup<E: EcOps>(
     ops: &mut MultiLimbOps<'_, '_, E>,
-    table: &[(Limbs, Limbs)],
+    table: &[EcPoint],
     bits: &[usize],
     constrain_bits: bool,
-) -> (Limbs, Limbs) {
+) -> EcPoint {
     assert_eq!(table.len(), 1 << bits.len());
-    let mut current: Vec<(Limbs, Limbs)> = table.to_vec();
+    let mut current: Vec<EcPoint> = table.to_vec();
     // Process bits from MSB to LSB
     for &bit in bits.iter().rev() {
         if constrain_bits {
@@ -66,23 +64,23 @@ fn table_lookup<E: EcOps>(
 /// `sign_bit` must be boolean-constrained by the caller.
 fn signed_table_lookup<E: EcOps>(
     ops: &mut MultiLimbOps<'_, '_, E>,
-    table: &[(Limbs, Limbs)],
+    table: &[EcPoint],
     index_bits: &[usize],
     sign_bit: usize,
-) -> (Limbs, Limbs) {
-    let (x, y) = if index_bits.is_empty() {
+) -> EcPoint {
+    let pt = if index_bits.is_empty() {
         // w=1: single entry, no lookup needed
         assert_eq!(table.len(), 1);
         table[0]
     } else {
         // Compute XOR'd index bits: idx_i = 1 - b_i - MSB + 2*b_i*MSB
-        let one_w = ops.compiler.witness_one();
+        let one_w = ops.witness_one();
         let two = FieldElement::from(2u64);
         let xor_bits: Vec<usize> = index_bits
             .iter()
             .map(|&bit| {
-                let prod = ops.compiler.add_product(bit, sign_bit);
-                ops.compiler.add_sum(vec![
+                let prod = ops.product(bit, sign_bit);
+                ops.sum(vec![
                     SumTerm(Some(FieldElement::ONE), one_w),
                     SumTerm(Some(-FieldElement::ONE), bit),
                     SumTerm(Some(-FieldElement::ONE), sign_bit),
@@ -91,31 +89,26 @@ fn signed_table_lookup<E: EcOps>(
             })
             .collect();
 
-        // XOR'd bits are boolean by construction (product of two booleans
-        // combined linearly), so skip redundant boolean constraints.
+        // XOR'd bits are boolean by construction, skip redundant constraints
         table_lookup(ops, table, &xor_bits, false)
     };
 
-    let neg_y = ops.negate(y);
-    let eff_y = ops.select_unchecked(sign_bit, neg_y, y);
+    let neg_y = ops.negate(pt.y);
+    let eff_y = ops.select_unchecked(sign_bit, neg_y, pt.y);
 
-    (x, eff_y)
+    EcPoint { x: pt.x, y: eff_y }
 }
 
 /// Per-point data for merged multi-point GLV scalar multiplication.
 pub(in crate::msm) struct MergedGlvPoint {
-    /// Point P x-coordinate (limbs)
-    pub px:      Limbs,
-    /// Point P y-coordinate (effective, post-negation)
-    pub py:      Limbs,
+    /// Point P (effective, post-negation)
+    pub p:       EcPoint,
     /// Signed-bit decomposition of |s1| (half-scalar for P), LSB first
     pub s1_bits: Vec<usize>,
     /// Skew correction witness for s1 branch (boolean)
     pub s1_skew: usize,
-    /// Point R x-coordinate (limbs)
-    pub rx:      Limbs,
-    /// Point R y-coordinate (effective, post-negation)
-    pub ry:      Limbs,
+    /// Point R (effective, post-negation)
+    pub r:       EcPoint,
     /// Signed-bit decomposition of |s2| (half-scalar for R), LSB first
     pub s2_bits: Vec<usize>,
     /// Skew correction witness for s2 branch (boolean)
@@ -124,40 +117,29 @@ pub(in crate::msm) struct MergedGlvPoint {
 
 /// Merged multi-point GLV scalar multiplication with shared doublings
 /// and signed-digit windows.
-///
-/// Uses signed-digit encoding: each w-bit window produces a signed odd digit
-/// d ∈ {±1, ±3, ..., ±(2^w - 1)}, eliminating zero-digit handling.
-/// Tables store odd multiples \[P, 3P, 5P, ..., (2^w-1)P\] with only
-/// 2^(w-1) entries (half the unsigned table size).
-///
-/// After the main loop, applies skew corrections: if skew=1, subtracts P
-/// (or R) to account for the signed decomposition bias.
-///
-/// Returns the final accumulator `(x, y)`.
 pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
     ops: &mut MultiLimbOps<'_, '_, E>,
     points: &[MergedGlvPoint],
     window_size: usize,
-    offset_x: Limbs,
-    offset_y: Limbs,
-) -> (Limbs, Limbs) {
+    offset: EcPoint,
+) -> EcPoint {
     assert!(!points.is_empty());
     let n = points[0].s1_bits.len();
     let w = window_size;
     let half_table_size = 1usize << (w - 1);
 
     // Build signed point tables (odd multiples) for all points upfront
-    let tables: Vec<(Vec<(Limbs, Limbs)>, Vec<(Limbs, Limbs)>)> = points
+    let tables: Vec<(Vec<EcPoint>, Vec<EcPoint>)> = points
         .iter()
         .map(|pt| {
-            let tp = build_signed_point_table(ops, pt.px, pt.py, half_table_size);
-            let tr = build_signed_point_table(ops, pt.rx, pt.ry, half_table_size);
+            let tp = build_signed_point_table(ops, pt.p, half_table_size);
+            let tr = build_signed_point_table(ops, pt.r, half_table_size);
             (tp, tr)
         })
         .collect();
 
     let num_windows = (n + w - 1) / w;
-    let mut acc = (offset_x, offset_y);
+    let mut acc = offset;
 
     // Process all windows from MSB down to LSB
     for i in (0..num_windows).rev() {
@@ -168,7 +150,7 @@ pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
         // w shared doublings on the accumulator (shared across ALL points)
         let mut doubled_acc = acc;
         for _ in 0..w {
-            doubled_acc = ops.point_double(doubled_acc.0, doubled_acc.1);
+            doubled_acc = ops.point_double(doubled_acc);
         }
 
         let mut cur = doubled_acc;
@@ -186,7 +168,7 @@ pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
             };
             let looked_up_p = signed_table_lookup(ops, actual_table_p, index_bits_p, sign_bit_p);
             // All signed digits are non-zero — no is_zero check needed
-            cur = ops.point_add(cur.0, cur.1, looked_up_p.0, looked_up_p.1);
+            cur = ops.point_add(cur, looked_up_p);
 
             // --- R branch (s2 window) ---
             let s2_window_bits = &pt.s2_bits[bit_start..bit_end];
@@ -198,29 +180,29 @@ pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
                 &table_r[..]
             };
             let looked_up_r = signed_table_lookup(ops, actual_table_r, index_bits_r, sign_bit_r);
-            cur = ops.point_add(cur.0, cur.1, looked_up_r.0, looked_up_r.1);
+            cur = ops.point_add(cur, looked_up_r);
         }
 
         acc = cur;
     }
 
-    // Skew corrections: subtract P (or R) if skew=1 for each point.
-    // The signed decomposition gives: scalar = Σ d_i * 2^i - skew,
-    // so the main loop computed (scalar + skew) * P. If skew=1, subtract P.
+    // Skew corrections
     for pt in points {
         // P branch skew
-        let neg_py = ops.negate(pt.py);
-        let (sub_px, sub_py) = ops.point_add(acc.0, acc.1, pt.px, neg_py);
-        let new_x = ops.select_unchecked(pt.s1_skew, acc.0, sub_px);
-        let new_y = ops.select_unchecked(pt.s1_skew, acc.1, sub_py);
-        acc = (new_x, new_y);
+        let neg_py = ops.negate(pt.p.y);
+        let sub_p = ops.point_add(acc, EcPoint {
+            x: pt.p.x,
+            y: neg_py,
+        });
+        acc = ops.point_select_unchecked(pt.s1_skew, acc, sub_p);
 
         // R branch skew
-        let neg_ry = ops.negate(pt.ry);
-        let (sub_rx, sub_ry) = ops.point_add(acc.0, acc.1, pt.rx, neg_ry);
-        let new_x = ops.select_unchecked(pt.s2_skew, acc.0, sub_rx);
-        let new_y = ops.select_unchecked(pt.s2_skew, acc.1, sub_ry);
-        acc = (new_x, new_y);
+        let neg_ry = ops.negate(pt.r.y);
+        let sub_r = ops.point_add(acc, EcPoint {
+            x: pt.r.x,
+            y: neg_ry,
+        });
+        acc = ops.point_select_unchecked(pt.s2_skew, acc, sub_r);
     }
 
     acc

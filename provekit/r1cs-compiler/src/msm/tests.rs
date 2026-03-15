@@ -3,15 +3,18 @@ use {
     provekit_common::witness::ConstantOrR1CSWitness, std::collections::BTreeMap,
 };
 
-/// Helper: compute num_limbs for a curve given the cost model.
-fn num_limbs_for(curve: &impl curve::Curve) -> usize {
+/// Helper: compute optimal MSM params for a curve.
+fn optimal_params_for(curve: &impl curve::Curve, n_points: usize) -> (u32, usize, usize) {
     let native_bits = provekit_common::FieldElement::MODULUS_BIT_SIZE;
     let curve_bits = curve.modulus_bits();
     let is_native = curve.is_native_field();
     let scalar_bits = curve.curve_order_bits() as usize;
-    let (_limb_bits, _window_size, num_limbs) =
-        cost_model::get_optimal_msm_params(native_bits, curve_bits, 1, scalar_bits, is_native);
-    num_limbs
+    cost_model::get_optimal_msm_params(native_bits, curve_bits, n_points, scalar_bits, is_native)
+}
+
+/// Helper: compute num_limbs for a curve given the cost model.
+fn num_limbs_for(curve: &impl curve::Curve) -> usize {
+    optimal_params_for(curve, 1).2
 }
 
 /// Verify that the SECP256R1 single-point MSM path generates constraints
