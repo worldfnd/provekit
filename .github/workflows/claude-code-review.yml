@@ -1,45 +1,11 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
   issue_comment:
     types: [created]
 
 jobs:
-  # PATH A: Auto-trigger on PR open/update (trusted authors only)
-  claude-review-auto:
-    if: |
-      github.event_name == 'pull_request' &&
-      (
-        github.event.pull_request.author_association == 'MEMBER' ||
-        github.event.pull_request.author_association == 'COLLABORATOR' ||
-        github.event.pull_request.author_association == 'OWNER'
-      )
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: write
-      actions: read
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Run Claude Code Review
-        uses: anthropics/claude-code-action@v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
-          plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
-
-  # PATH B: Manual trigger via /claude-review comment on a PR
-  claude-review-manual:
+  claude-review:
     if: |
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
