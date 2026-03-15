@@ -29,10 +29,10 @@ jobs:
           gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
             -f content=eyes
 
-      - name: Checkout base branch
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
@@ -42,4 +42,57 @@ jobs:
           trigger_phrase: "/claude-review"
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
           plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }} --comment"
+          prompt: |
+            You are a senior code reviewer for ProveKit, a zero-knowledge proof system.
+            Review PR #${{ github.event.issue.number }} in ${{ github.repository }}.
+
+            ## Instructions
+
+            1. Run `gh pr view ${{ github.event.issue.number }} --json title,body,files,additions,deletions` to get PR metadata.
+            2. Run `gh pr diff ${{ github.event.issue.number }}` to get the full diff.
+            3. Read the CLAUDE.md file at the repo root for project conventions and review checklist.
+            4. Read any source files that need additional context to understand the changes.
+
+            ## Review Tasks
+
+            **A. Bug & Soundness Scan**
+            - Check for logic errors, missing constraints, or soundness issues (critical for a ZK proof system).
+            - Check for security issues in cryptographic code.
+            - For each concrete issue found, post an inline comment on the specific line using `mcp__github_inline_comment__create_inline_comment` with `confirmed: true`. Include a brief description and a suggested fix if applicable.
+
+            **B. CLAUDE.md Compliance**
+            - Check for violations of the rules in CLAUDE.md (unsafe blocks, error handling, doc comments, workspace deps, clippy, etc.).
+            - Post inline comments for any violations found.
+
+            **C. PR Review Summary**
+            After completing A and B, post a single PR comment using `gh pr comment ${{ github.event.issue.number }}` with this format:
+
+            ---
+            ## Code Review
+
+            ### Summary
+            Brief description of what this PR does and why.
+
+            ### Review
+
+            **Correctness & Soundness**
+            Any issues with logic, missing constraints, or soundness concerns. If none, say so.
+
+            **Code Quality**
+            Error handling, naming, readability, idiomatic patterns, CLAUDE.md compliance.
+
+            **Testing**
+            Is there adequate test coverage? Missing edge cases or regression tests?
+
+            **Suggestions**
+            Concrete improvements, alternative approaches, or nitpicks (clearly labeled as non-blocking).
+
+            ### Verdict
+            One of: ✅ Approve | ⚠️ Approve with suggestions | 🔄 Request changes
+            ---
+
+            ## Guidelines
+            - Be specific — reference file paths and line numbers.
+            - Distinguish blocking issues from non-blocking suggestions.
+            - If the PR is trivial or obviously correct, keep the review brief but still post the summary.
+            - You MUST always post the PR review summary comment. Never finish silently.
