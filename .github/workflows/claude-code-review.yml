@@ -1,18 +1,21 @@
 name: Claude Code Review
 
 on:
-  workflow_run:
-    workflows: ["Prepare Claude Review"]
-    types: [completed]
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
   issue_comment:
     types: [created]
 
 jobs:
-  # PATH A: Auto-trigger via workflow_run (trusted authors, or label-approved fork PRs)
+  # PATH A: Auto-trigger on PR open/update (trusted authors only)
   claude-review-auto:
     if: |
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event_name == 'pull_request' &&
+      (
+        github.event.pull_request.author_association == 'MEMBER' ||
+        github.event.pull_request.author_association == 'COLLABORATOR' ||
+        github.event.pull_request.author_association == 'OWNER'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,40 +24,7 @@ jobs:
       actions: read
 
     steps:
-      - name: Download PR metadata
-        uses: actions/download-artifact@v4
-        with:
-          name: pr-metadata
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate PR metadata
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          PR_NUMBER=$(cat pr_number.txt)
-
-          # Validate PR number is a positive integer (defense against artifact tampering)
-          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
-            echo "::error::Invalid PR number in artifact: not an integer"
-            exit 1
-          fi
-
-          # Cross-reference: verify the PR's head SHA matches the workflow_run's head SHA
-          ACTUAL_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid -q '.headRefOid')
-          if [ "$ACTUAL_SHA" != "$WORKFLOW_HEAD_SHA" ]; then
-            echo "::error::SHA mismatch -- artifact PR ($ACTUAL_SHA) != workflow trigger ($WORKFLOW_HEAD_SHA)"
-            echo "::error::This may indicate artifact tampering. Aborting."
-            exit 1
-          fi
-
-          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "Validated PR #$PR_NUMBER (SHA: $WORKFLOW_HEAD_SHA)"
-
-      - name: Checkout base branch
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -66,7 +36,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
           plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ steps.pr.outputs.number }}"
+          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
 
   # PATH B: Manual trigger via /claude-review comment on a PR
   claude-review-manual:
