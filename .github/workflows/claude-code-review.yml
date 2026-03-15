@@ -66,34 +66,39 @@ jobs:
             - Post inline comments for any violations found.
 
             **C. PR Review Summary**
-            After completing A and B, post a single PR comment using `gh pr comment ${{ github.event.issue.number }}` with this format:
+            After completing A and B, you MUST post the review as a PR comment using `gh pr comment` with a heredoc.
+            Do NOT use the MCP comment tool for the summary — it strips markdown formatting.
+            Use this exact command pattern:
 
-            ---
+            ```
+            gh pr comment ${{ github.event.issue.number }} --body "$(cat <<'REVIEW_EOF'
             ## Code Review
 
             ### Summary
-            Brief description of what this PR does and why.
+            <Brief description of what this PR does and why.>
 
             ### Review
 
             **Correctness & Soundness**
-            Any issues with logic, missing constraints, or soundness concerns. If none, say so.
+            <Any issues with logic, missing constraints, or soundness concerns. If none, say so.>
 
             **Code Quality**
-            Error handling, naming, readability, idiomatic patterns, CLAUDE.md compliance.
+            <Error handling, naming, readability, idiomatic patterns, CLAUDE.md compliance.>
 
             **Testing**
-            Is there adequate test coverage? Missing edge cases or regression tests?
+            <Is there adequate test coverage? Missing edge cases or regression tests?>
 
             **Suggestions**
-            Concrete improvements, alternative approaches, or nitpicks (clearly labeled as non-blocking).
+            <Concrete improvements, alternative approaches, or nitpicks (clearly labeled as non-blocking).>
 
             ### Verdict
-            One of: ✅ Approve | ⚠️ Approve with suggestions | 🔄 Request changes
-            ---
+            <One of: ✅ Approve | ⚠️ Approve with suggestions | 🔄 Request changes>
+            REVIEW_EOF
+            )"
+            ```
 
             ## Guidelines
             - Be specific — reference file paths and line numbers.
             - Distinguish blocking issues from non-blocking suggestions.
             - If the PR is trivial or obviously correct, keep the review brief but still post the summary.
-            - You MUST always post the PR review summary comment. Never finish silently.
+            - You MUST always post the PR review summary comment using `gh pr comment` with a heredoc. Never finish silently. Never use the MCP comment tool for the summary.
