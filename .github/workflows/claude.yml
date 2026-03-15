@@ -1,6 +1,6 @@
 name: Claude Code
 
-# Claude Code interactive agent - responds to @claude mentions
+# Claude Code interactive agent — responds to @claude mentions
 on:
   issue_comment:
     types: [created]
