@@ -31,6 +31,14 @@ mod r1cs;
 mod whir_r1cs;
 mod witness;
 
+/// Proof generation trait.
+///
+/// `prove` and `prove_with_toml` are only available on native targets with the
+/// `witness-generation` feature (cfg-gated out on `wasm32`).
+/// `prove_with_witness` is available on all targets including WASM.
+///
+/// `MavrosProver` does not support `prove_with_witness` and returns an error
+/// at runtime — only Noir provers support witness-based proving.
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
@@ -38,11 +46,6 @@ pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
-    /// Generate a proof from a pre-computed witness map.
-    ///
-    /// This method is WASM-compatible and does not require witness generation
-    /// dependencies. The witness should be generated externally (e.g., using
-    /// @noir-lang/noir_js in the browser).
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
 
@@ -127,6 +130,8 @@ impl Prove for NoirProver {
         let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
 
         // Solve w1 (or all witnesses if no challenges).
+        // Outer span captures memory AFTER w1_layers parameter is freed
+        // (parameter drop happens before outer span close).
         {
             let _s = info_span!("solve_w1").entered();
             crate::r1cs::solve_witness_vec(
@@ -373,6 +378,7 @@ impl Prove for Prover {
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove_with_witness(witness),
+            // Mavros variant only exists on non-WASM targets (mirrors the cfg on the enum variant)
             #[cfg(not(target_arch = "wasm32"))]
             Prover::Mavros(p) => p.prove_with_witness(witness),
         }

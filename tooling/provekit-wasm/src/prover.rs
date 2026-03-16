@@ -12,7 +12,7 @@ use {
         NoirElement, NoirProof, Prover as ProverCore,
     },
     provekit_prover::Prove,
-    std::collections::BTreeMap,
+    std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };
 
@@ -61,8 +61,9 @@ impl Prover {
 
     /// Generates a proof from a witness map and returns it as JSON bytes.
     ///
-    /// The witness map should be a JavaScript Map or object mapping witness
-    /// indices to hex-encoded field element strings.
+    /// `witness_map` can be a JavaScript `Map<number, string>` (as returned by
+    /// noir\_js `execute()`) or a plain object `{ "0": "0xabc…", … }`.
+    /// Keys are witness indices; values are hex-encoded BN254 field elements.
     ///
     /// The prover is consumed by this call — subsequent calls will error.
     #[wasm_bindgen(js_name = proveBytes)]
@@ -152,44 +153,164 @@ impl Prover {
     }
 }
 
-/// Parses a JavaScript witness map into the internal format.
-fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsError> {
-    let map: BTreeMap<String, String> =
+/// Max byte length for a BN254 field element (32 bytes = 64 hex chars).
+pub(crate) const MAX_FIELD_ELEMENT_BYTES: usize = 32;
+
+/// Accepts a JS `Map<number|string, string>` or a plain object `{ "idx":
+/// "0xhex…" }`.
+pub(crate) fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsError> {
+    let map: BTreeMap<String, String> = if js_value.is_instance_of::<js_sys::Map>() {
+        js_map_to_btree(&js_sys::Map::from(js_value))?
+    } else {
         serde_wasm_bindgen::from_value(js_value).map_err(|err| {
             JsError::new(&format!(
-                "Failed to parse witness map. Expected object mapping witness indices to hex \
-                 strings: {err}"
+                "Expected a Map or plain object mapping witness indices to hex strings: {err}"
             ))
-        })?;
+        })?
+    };
 
+    parse_witness_map_entries(map)
+}
+
+fn parse_witness_map_entries(
+    map: BTreeMap<String, String>,
+) -> Result<WitnessMap<FieldElement>, JsError> {
+    parse_witness_map_entries_impl(map).map_err(|msg| JsError::new(&msg))
+}
+
+fn parse_witness_map_entries_impl(
+    map: BTreeMap<String, String>,
+) -> Result<WitnessMap<FieldElement>, String> {
     if map.is_empty() {
-        return Err(JsError::new("Witness map is empty"));
+        return Err("Witness map is empty".to_owned());
     }
 
     let mut witness_map = WitnessMap::new();
 
     for (index_str, hex_value) in map {
-        let index: u32 = index_str.parse().map_err(|err| {
-            JsError::new(&format!(
-                "Failed to parse witness index '{index_str}': {err}"
-            ))
-        })?;
+        let index: u32 = index_str
+            .parse()
+            .map_err(|err| format!("Failed to parse witness index '{index_str}': {err}"))?;
 
         let hex_str = hex_value.trim_start_matches("0x");
 
-        let bytes = hex::decode(hex_str).map_err(|err| {
-            JsError::new(&format!(
-                "Failed to parse hex string at index {index}: {err}"
-            ))
-        })?;
+        let bytes = hex::decode(hex_str)
+            .map_err(|err| format!("Failed to parse hex string at index {index}: {err}"))?;
 
-        // `from_be_bytes_reduce` reduces modulo the field order. This is safe
-        // because noir_js always produces valid BN254 field elements as hex
-        // strings — values are already in-range.
+        if bytes.len() > MAX_FIELD_ELEMENT_BYTES {
+            return Err(format!(
+                "Hex value at index {index} is {} bytes, exceeds BN254 field element size (32 \
+                 bytes)",
+                bytes.len()
+            ));
+        }
+
         let field_element = FieldElement::from_be_bytes_reduce(&bytes);
-
         witness_map.insert(Witness(index), field_element);
     }
 
     Ok(witness_map)
+}
+
+/// Converts a JS `Map` to `BTreeMap<String, String>`, handling numeric and
+/// string keys and Witness objects with an `inner` property.
+fn js_map_to_btree(map: &js_sys::Map) -> Result<BTreeMap<String, String>, JsError> {
+    let mut result = BTreeMap::new();
+    let err: RefCell<Option<String>> = RefCell::new(None);
+
+    map.for_each(&mut |value: JsValue, key: JsValue| {
+        if err.borrow().is_some() {
+            return;
+        }
+
+        let key_str = if let Some(n) = key.as_f64() {
+            (n as u32).to_string()
+        } else if let Some(s) = key.as_string() {
+            s
+        } else if let Ok(inner) = js_sys::Reflect::get(&key, &"inner".into()) {
+            if let Some(n) = inner.as_f64() {
+                (n as u32).to_string()
+            } else {
+                *err.borrow_mut() = Some(format!("Map key has non-numeric .inner property"));
+                return;
+            }
+        } else {
+            *err.borrow_mut() = Some(format!("Unsupported Map key type"));
+            return;
+        };
+
+        let val_str = match value.as_string() {
+            Some(s) => s,
+            None => {
+                *err.borrow_mut() = Some(format!("Map value at key {key_str} is not a string"));
+                return;
+            }
+        };
+
+        result.insert(key_str, val_str);
+    });
+
+    if let Some(msg) = err.into_inner() {
+        return Err(JsError::new(&msg));
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn witness_map_from_pairs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn max_field_element_bytes_is_32() {
+        assert_eq!(MAX_FIELD_ELEMENT_BYTES, 32);
+    }
+
+    #[test]
+    fn parse_witness_map_entries_parses_valid_hex_values() {
+        let input = witness_map_from_pairs(&[("1", "0x01"), ("2", "ff")]);
+
+        let parsed = parse_witness_map_entries(input).unwrap();
+
+        assert_eq!(parsed.get(&Witness(1)), Some(&FieldElement::from(1_u128)));
+        assert_eq!(parsed.get(&Witness(2)), Some(&FieldElement::from(255_u128)));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_empty_map() {
+        let err = parse_witness_map_entries_impl(BTreeMap::new()).unwrap_err();
+        assert!(err.contains("Witness map is empty"));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_invalid_index() {
+        let input = witness_map_from_pairs(&[("abc", "0x01")]);
+
+        let err = parse_witness_map_entries_impl(input).unwrap_err();
+        assert!(err.contains("Failed to parse witness index 'abc'"));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_invalid_hex() {
+        let input = witness_map_from_pairs(&[("1", "0xzz")]);
+
+        let err = parse_witness_map_entries_impl(input).unwrap_err();
+        assert!(err.contains("Failed to parse hex string at index 1"));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_too_many_bytes() {
+        let too_long_hex = format!("0x{}", "11".repeat(MAX_FIELD_ELEMENT_BYTES + 1));
+        let mut input = BTreeMap::new();
+        input.insert("5".to_owned(), too_long_hex);
+
+        let err = parse_witness_map_entries_impl(input).unwrap_err();
+        assert!(err.contains("exceeds BN254 field element size (32 bytes)"));
+    }
 }

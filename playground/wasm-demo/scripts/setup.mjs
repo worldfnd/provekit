@@ -328,7 +328,7 @@ async function buildShared() {
   log("\n🔧 ProveKit WASM Demo Setup\n", colors.bright);
 
   // Check prerequisites
-  logStep("1/4", "Checking prerequisites...");
+  logStep("1/5", "Checking prerequisites...");
 
   if (!checkCommand("nargo", "Noir (nargo)")) {
     log(
@@ -351,8 +351,30 @@ async function buildShared() {
   }
   logSuccess("cargo found");
 
+  // Install npm deps and copy vendor files for browser import map
+  logStep("2/5", "Installing noir-lang npm packages...");
+  if (!run("npm install --prefer-offline", { cwd: DEMO_DIR })) {
+    process.exit(1);
+  }
+  const vendorDir = join(DEMO_DIR, "vendor");
+  const vendorMappings = [
+    { pkg: "@noir-lang/acvm_js", dest: "acvm_js" },
+    { pkg: "@noir-lang/noirc_abi", dest: "noirc_abi" },
+  ];
+  for (const { pkg, dest } of vendorMappings) {
+    const srcDir = join(DEMO_DIR, "node_modules", pkg);
+    const destDir = join(vendorDir, dest);
+    if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+    for (const entry of readdirSync(srcDir)) {
+      if (entry.endsWith(".js") || entry.endsWith(".wasm") || entry.endsWith(".d.ts")) {
+        copyFileSync(join(srcDir, entry), join(destDir, entry));
+      }
+    }
+  }
+  logSuccess("Vendor files copied from node_modules");
+
   // Build WASM package with thread support (requires -Z build-std for atomics)
-  logStep("2/4", "Building WASM package with thread support...");
+  logStep("3/5", "Building WASM package with thread support...");
 
   // cargo build with -Z build-std to rebuild std with atomics support
   // RUSTFLAGS for atomics/shared-memory are in .cargo/config.toml
@@ -434,7 +456,7 @@ async function buildShared() {
   logSuccess("WASM package copied to demo/pkg");
 
   // Build native CLI
-  logStep("3/4", "Building native CLI...");
+  logStep("4/5", "Building native CLI...");
   if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
     process.exit(1);
   }
@@ -517,7 +539,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 async function main() {
   await buildShared();
 
-  logStep("4/4", `Preparing ${CIRCUITS.length} circuits...`);
+  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
   for (const circuit of CIRCUITS) {
     await prepareCircuit(circuit);
   }

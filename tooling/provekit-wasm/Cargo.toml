@@ -37,7 +37,8 @@ console_error_panic_hook.workspace = true
 getrandom.workspace = true   # Enable js feature for WASM via feature unification (v0.2)
 getrandom03.workspace = true  # Enable wasm_js feature for WASM via feature unification (v0.3)
 hex.workspace = true
-lzma-rs = "0.3"  # Pure-Rust XZ decompressor (native crate xz2 uses C bindings, incompatible with WASM)
+js-sys.workspace = true
+lzma-rs.workspace = true
 postcard.workspace = true
 ruzstd.workspace = true  # Pure-Rust Zstd decompressor (native crate zstd uses C bindings, incompatible with WASM)
 serde_json.workspace = true
@@ -45,7 +46,7 @@ serde-wasm-bindgen.workspace = true
 wasm-bindgen.workspace = true
 
 # WASM parallelism via Web Workers
-wasm-bindgen-rayon = "1.2"
+wasm-bindgen-rayon.workspace = true
 
 [package.metadata.cargo-machete]
 ignored = ["getrandom", "getrandom03"]

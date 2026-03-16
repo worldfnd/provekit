@@ -39,22 +39,32 @@ impl Verifier {
     }
 
     /// Verifies a proof provided as JSON bytes.
+    ///
+    /// The verifier is **not** consumed — it can verify multiple proofs.
     #[wasm_bindgen(js_name = verifyBytes)]
-    pub fn verify_bytes(&mut self, proof_json: &[u8]) -> Result<(), JsError> {
+    pub fn verify_bytes(&self, proof_json: &[u8]) -> Result<(), JsError> {
         let proof: NoirProof = serde_json::from_slice(proof_json)
             .map_err(|err| JsError::new(&format!("Failed to parse proof JSON: {err}")))?;
-        self.inner
-            .verify(&proof)
-            .map_err(|err| JsError::new(&format!("{err:#}")))
+        self.verify_proof(&proof)
     }
 
     /// Verifies a proof provided as a JavaScript object.
+    ///
+    /// The verifier is **not** consumed — it can verify multiple proofs.
     #[wasm_bindgen(js_name = verifyJs)]
-    pub fn verify_js(&mut self, proof: JsValue) -> Result<(), JsError> {
+    pub fn verify_js(&self, proof: JsValue) -> Result<(), JsError> {
         let proof: NoirProof = serde_wasm_bindgen::from_value(proof)
             .map_err(|err| JsError::new(&format!("Failed to parse proof: {err}")))?;
-        self.inner
-            .verify(&proof)
+        self.verify_proof(&proof)
+    }
+}
+
+impl Verifier {
+    fn verify_proof(&self, proof: &NoirProof) -> Result<(), JsError> {
+        // Clone so the core verifier's .take() consumption doesn't prevent reuse.
+        let mut verifier = self.inner.clone();
+        verifier
+            .verify(proof)
             .map_err(|err| JsError::new(&format!("{err:#}")))
     }
 }

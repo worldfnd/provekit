@@ -148,7 +148,10 @@ zeroize = "1.8.1"
 zstd = "0.13"
 
 # WASM-specific dependencies
+js-sys = "0.3"
+lzma-rs = "0.3"
 ruzstd = "0.8"
+wasm-bindgen-rayon = "1.2"
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"

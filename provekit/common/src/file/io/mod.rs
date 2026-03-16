@@ -1,10 +1,6 @@
-#[path = "bin.rs"]
 mod bin;
-#[path = "buf_ext.rs"]
 mod buf_ext;
-#[path = "counting_writer.rs"]
 mod counting_writer;
-#[path = "json.rs"]
 mod json;
 
 use {
