@@ -4,6 +4,7 @@ use {
     },
     ark_ff::Zero,
     serde::{Deserialize, Serialize},
+    sha3::{Digest, Sha3_256},
     std::collections::HashMap,
 };
 
@@ -108,10 +109,8 @@ impl R1CS {
         self.a.num_cols
     }
 
-    /// Hash of this R1CS instance, computed over its `postcard` serialization.
     #[must_use]
     pub fn hash(&self) -> [u8; 32] {
-        use sha3::{Digest, Sha3_256};
         let bytes = postcard::to_stdvec(self).expect("R1CS serialization failed");
         Sha3_256::digest(&bytes).into()
     }
