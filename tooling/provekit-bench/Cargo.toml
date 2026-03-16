@@ -24,10 +24,12 @@ noirc_driver.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+ark-ff.workspace = true
 divan.workspace = true
 serde.workspace = true
 test-case.workspace = true
 toml.workspace = true
+whir.workspace = true
 
 [lints]
 workspace = true

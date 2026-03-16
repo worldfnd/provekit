@@ -17,7 +17,7 @@ use {
     curve::Curve,
     ec_points::{NativeEcOps, NonNativeEcOps},
     provekit_common::{
-        witness::{ConstantOrR1CSWitness, WitnessBuilder},
+        witness::{ConstantOrR1CSWitness, ConstantTerm, WitnessBuilder},
         FieldElement,
     },
     std::collections::BTreeMap,

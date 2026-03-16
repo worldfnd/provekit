@@ -11,7 +11,7 @@ use {
         witness::{SumTerm, WitnessBuilder},
         FieldElement,
     },
-    std::collections::{BTreeMap, HashMap},
+    std::collections::BTreeMap,
 };
 
 /// Distinguishes modular addition from subtraction in the shared core.
@@ -389,13 +389,11 @@ pub fn less_than_p_check_multi(
 
 /// Merge terms with the same witness index by summing their coefficients.
 fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
-    let mut map: HashMap<usize, FieldElement> = HashMap::new();
+    let mut map: BTreeMap<usize, FieldElement> = BTreeMap::new();
     for &(coeff, idx) in terms {
         *map.entry(idx).or_insert(FieldElement::ZERO) += coeff;
     }
-    let mut result: Vec<(FieldElement, usize)> = map.into_iter().map(|(idx, c)| (c, idx)).collect();
-    result.sort_by_key(|&(_, idx)| idx);
-    result
+    map.into_iter().map(|(idx, c)| (c, idx)).collect()
 }
 
 /// Emit `2N-1` R1CS constraints verifying a schoolbook column equation
