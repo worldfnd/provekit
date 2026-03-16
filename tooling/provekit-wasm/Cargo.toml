@@ -50,7 +50,7 @@ wasm-bindgen-rayon = "1.2"
 rayon.workspace = true
 
 [package.metadata.cargo-machete]
-ignored = ["getrandom", "getrandom03"]
+ignored = ["getrandom", "getrandom03", "noirc_abi", "rayon", "serde"]
 
 [lints]
 workspace = true

@@ -24,7 +24,6 @@ noirc_abi.workspace = true
 # Cryptography and proof systems
 ark-ff.workspace = true
 ark-std.workspace = true
-spongefish.workspace = true
 whir.workspace = true
 
 # 3rd party
