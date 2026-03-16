@@ -2,8 +2,8 @@ use {
     crate::{
         sparse_matrix::SparseMatrix,
         witness::{
-            scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm,
-            SumTerm, WitnessBuilder, WitnessCoefficient,
+            limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
+            ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
         },
         R1CS,
     },
@@ -408,7 +408,11 @@ impl WitnessIndexRemapper {
                 op:              op.clone(),
                 inputs:          inputs
                     .iter()
-                    .map(|v| v.iter().map(|&w| self.remap(w)).collect())
+                    .map(|l| {
+                        let remapped: Vec<usize> =
+                            l.as_slice().iter().map(|&w| self.remap(w)).collect();
+                        Limbs::from(remapped.as_slice())
+                    })
                     .collect(),
                 curve_a:         *curve_a,
                 curve_b:         *curve_b,

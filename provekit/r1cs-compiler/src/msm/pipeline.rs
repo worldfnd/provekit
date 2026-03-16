@@ -176,15 +176,17 @@ fn preprocess_points<E: EcOps>(
     for i in 0..n_points {
         // Extract point limbs and inf flag from limbed layout
         let base = i * stride;
-        let mut px_limbs = Limbs::new(num_limbs);
-        let mut py_limbs = Limbs::new(num_limbs);
+        let mut px_limbs = Limbs::new();
+        let mut py_limbs = Limbs::new();
         for j in 0..num_limbs {
-            px_limbs[j] = point_wits[base + j];
-            py_limbs[j] = point_wits[base + num_limbs + j];
+            let px_j = point_wits[base + j];
+            let py_j = point_wits[base + num_limbs + j];
+            px_limbs.push(px_j);
+            py_limbs.push(py_j);
             // Non-native: range-check each limb
             if num_limbs > 1 {
-                range_checks.entry(limb_bits).or_default().push(px_limbs[j]);
-                range_checks.entry(limb_bits).or_default().push(py_limbs[j]);
+                range_checks.entry(limb_bits).or_default().push(px_j);
+                range_checks.entry(limb_bits).or_default().push(py_j);
             }
         }
         let inf_flag = point_wits[base + 2 * num_limbs];

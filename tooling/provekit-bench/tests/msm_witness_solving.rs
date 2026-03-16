@@ -417,6 +417,10 @@ fn test_two_point_msm() {
 
     let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
     println!(">>> number of witnesses : {:?}", witness.len());
+    println!(
+        ">>> number of constraints : {:?}",
+        compiler.r1cs.num_constraints()
+    );
 
     check_r1cs_satisfaction(&compiler.r1cs, &witness)
         .expect("R1CS satisfaction check failed for two-point MSM");

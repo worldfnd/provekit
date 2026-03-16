@@ -76,9 +76,15 @@ fn hint_carry_range_checks(n: usize, num_equations: usize) -> usize {
 }
 
 /// Carry range check bit-width for schoolbook column equations.
-fn hint_carry_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
+pub(crate) fn hint_carry_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
     let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
     limb_bits + extra_bits + 1
+}
+
+/// Maximum bit-width of a merged column equation value.
+pub(crate) fn column_equation_max_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
+    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
+    2 * limb_bits + extra_bits + 1
 }
 
 /// Worst-case max coefficient sum across all hint-verified EC equations.
@@ -161,13 +167,9 @@ fn scalar_relation_cost(
     let half_limbs = ceil_div(half_bits, limb_bits as usize);
     let scalar_half_limbs = ceil_div(SCALAR_HALF_BITS, limb_bits as usize);
 
-    // Field op witnesses for 1 add + 1 sub + 1 mul (no inv), always non-native
-    let field_ops_wit = if n == 1 {
-        3 * 5 // each single-limb non-native op costs 5 witnesses
-    } else {
-        // 2 × add/sub(1+6N) + 1 × mul(N²+7N-2)
-        n * n + 19 * n
-    };
+    // Field op witnesses for 1 add + 1 sub + 1 mul (no inv), always multi-limb
+    // (N≥2 enforced by scalar_relation_limb_bits)
+    let field_ops_wit = n * n + 19 * n; // 2 × add/sub(1+6N) + 1 × mul(N²+7N-2)
 
     let has_cross = n > 1 && SCALAR_HALF_BITS % limb_bits as usize != 0;
     let witnesses = 2 * scalar_half_limbs                    // s1, s2 digit decomposition
@@ -184,15 +186,11 @@ fn scalar_relation_cost(
     let mut rc_map = BTreeMap::new();
     *rc_map.entry(limb_bits).or_default() += scalar_dd_rcs + 2 * half_limbs;
 
-    // Field op range checks for 1 add + 1 sub + 1 mul
-    if n == 1 {
-        *rc_map.entry(scalar_bits as u32).or_default() += 3; // 1 per op
-    } else {
-        // add/sub: 2N each (×2 ops), mul: 3N
-        *rc_map.entry(limb_bits).or_default() += 7 * n;
-        let carry_bits = limb_bits + ceil_log2(n as u64) + 2;
-        *rc_map.entry(carry_bits).or_default() += 2 * n - 2; // mul carry chain
-    }
+    // Field op range checks for 1 add + 1 sub + 1 mul (always multi-limb)
+    // add/sub: 2N each (×2 ops), mul: 3N
+    *rc_map.entry(limb_bits).or_default() += 7 * n;
+    let carry_bits = limb_bits + ceil_log2(n as u64) + 2;
+    *rc_map.entry(carry_bits).or_default() += 2 * n - 2; // mul carry chain
 
     (witnesses, rc_map)
 }
@@ -372,13 +370,6 @@ fn calculate_msm_witness_cost_native(
 /// Picks the widest limb size for scalar-relation arithmetic that fits the
 /// native field.
 pub(super) fn scalar_relation_limb_bits(native_field_bits: u32, order_bits: usize) -> u32 {
-    let half_bits = (order_bits + 1) / 2;
-
-    // N=1 is valid only if mul product fits in the native field.
-    if half_bits + order_bits < native_field_bits as usize {
-        return order_bits as u32;
-    }
-
     for n in 2..=super::MAX_LIMBS {
         let lb = ((order_bits + n - 1) / n) as u32;
         if column_equation_fits_native_field(native_field_bits, lb, n) {
@@ -399,8 +390,7 @@ pub fn column_equation_fits_native_field(
         return true;
     }
     let max_coeff_sum = worst_case_ec_max_coeff(num_limbs);
-    let extra_bits = ceil_log2(max_coeff_sum * num_limbs as u64) + 1;
-    2 * limb_bits + extra_bits + 1 < native_field_bits
+    column_equation_max_bits(limb_bits, max_coeff_sum, num_limbs) < native_field_bits
 }
 
 /// Search for optimal `(limb_bits, window_size, num_limbs)` minimizing
@@ -510,18 +500,20 @@ mod tests {
     #[test]
     fn test_scalar_relation_cost_grumpkin() {
         let (sr, rc) = scalar_relation_cost(254, 256);
-        assert!(sr > 50 && sr < 200, "unexpected scalar_relation={sr}");
+        assert_eq!(sr, 85, "grumpkin scalar_relation witnesses changed: {sr}");
         let total_rc: usize = rc.values().sum();
-        assert!(total_rc > 30, "too few range checks: {total_rc}");
-        assert!(total_rc < 200, "too many range checks: {total_rc}");
+        assert_eq!(
+            total_rc, 32,
+            "grumpkin scalar_relation range checks changed: {total_rc}"
+        );
     }
 
     #[test]
     fn test_scalar_relation_cost_small_curve() {
         let (sr, _) = scalar_relation_cost(254, 64);
-        assert!(
-            sr < 100,
-            "64-bit curve scalar_relation={sr} should be < 100"
+        assert_eq!(
+            sr, 61,
+            "64-bit curve scalar_relation witnesses changed: {sr}"
         );
     }
 

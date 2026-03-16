@@ -69,11 +69,21 @@ pub(super) fn sanitize_point_scalar_multi_limb(
     let n = px_limbs.len();
     let is_skip = detect_skip(compiler, s_lo, s_hi, inf_flag);
 
-    let mut san_px = Limbs::new(n);
-    let mut san_py = Limbs::new(n);
+    let mut san_px = Limbs::new();
+    let mut san_py = Limbs::new();
     for i in 0..n {
-        san_px[i] = select_witness(compiler, is_skip, px_limbs[i], gen_x_limb_wits[i]);
-        san_py[i] = select_witness(compiler, is_skip, py_limbs[i], gen_y_limb_wits[i]);
+        san_px.push(select_witness(
+            compiler,
+            is_skip,
+            px_limbs[i],
+            gen_x_limb_wits[i],
+        ));
+        san_py.push(select_witness(
+            compiler,
+            is_skip,
+            py_limbs[i],
+            gen_y_limb_wits[i],
+        ));
     }
 
     SanitizedInputsMultiLimb {
@@ -109,8 +119,8 @@ pub(super) fn emit_ec_scalar_mul_hint_and_sanitize_multi_limb<C: Curve>(
         limb_bits,
     });
 
-    let mut rx = Limbs::new(num_limbs);
-    let mut ry = Limbs::new(num_limbs);
+    let mut rx = Limbs::new();
+    let mut ry = Limbs::new();
     for i in 0..num_limbs {
         let rx_hint = hint_start + i;
         let ry_hint = hint_start + num_limbs + i;
@@ -120,8 +130,18 @@ pub(super) fn emit_ec_scalar_mul_hint_and_sanitize_multi_limb<C: Curve>(
             range_checks.entry(limb_bits).or_default().push(ry_hint);
         }
         // Sanitize: select between hint output and generator
-        rx[i] = select_witness(compiler, san.is_skip, rx_hint, gen_x_limb_wits[i]);
-        ry[i] = select_witness(compiler, san.is_skip, ry_hint, gen_y_limb_wits[i]);
+        rx.push(select_witness(
+            compiler,
+            san.is_skip,
+            rx_hint,
+            gen_x_limb_wits[i],
+        ));
+        ry.push(select_witness(
+            compiler,
+            san.is_skip,
+            ry_hint,
+            gen_y_limb_wits[i],
+        ));
     }
 
     (rx, ry)

@@ -3,9 +3,9 @@ use {
     provekit_common::FieldElement,
 };
 
+mod ec_precompute;
 mod grumpkin;
 mod secp256r1;
-mod u256_arith;
 
 pub use {grumpkin::Grumpkin, provekit_common::u256_arith::U256, secp256r1::Secp256r1};
 
@@ -106,7 +106,7 @@ pub trait Curve {
         let mut x = self.offset_point().0;
         let mut y = self.offset_point().1;
         for _ in 0..n_doublings {
-            let (x3, y3) = u256_arith::ec_point_double(&x, &y, &a, &p);
+            let (x3, y3) = ec_precompute::ec_point_double(&x, &y, &a, &p);
             x = x3;
             y = y3;
         }
@@ -131,6 +131,7 @@ fn bit_length_u256(val: &U256) -> u32 {
 /// Decompose a 256-bit value into `num_limbs` limbs of `limb_bits` width each,
 /// returned as FieldElements.
 pub fn decompose_to_limbs(val: &U256, limb_bits: u32, num_limbs: usize) -> Vec<FieldElement> {
+    assert!(limb_bits > 0, "limb_bits must be positive");
     // Special case: when a single limb needs > 128 bits, FieldElement::from(u128)
     // would truncate. Use from_sign_and_limbs to preserve the full value.
     if num_limbs == 1 && limb_bits > 128 {
@@ -249,12 +250,12 @@ mod tests {
         let a = &c.curve_a();
         let b = &c.curve_b();
         // y^2 = x^3 + a*x + b (mod p)
-        let y_sq = u256_arith::mod_mul(y, y, p);
-        let x_sq = u256_arith::mod_mul(x, x, p);
-        let x_cubed = u256_arith::mod_mul(&x_sq, x, p);
-        let ax = u256_arith::mod_mul(a, x, p);
-        let x3_plus_ax = u256_arith::mod_add(&x_cubed, &ax, p);
-        let rhs = u256_arith::mod_add(&x3_plus_ax, b, p);
+        let y_sq = ec_precompute::mod_mul(y, y, p);
+        let x_sq = ec_precompute::mod_mul(x, x, p);
+        let x_cubed = ec_precompute::mod_mul(&x_sq, x, p);
+        let ax = ec_precompute::mod_mul(a, x, p);
+        let x3_plus_ax = ec_precompute::mod_add(&x_cubed, &ax, p);
+        let rhs = ec_precompute::mod_add(&x3_plus_ax, b, p);
         assert_eq!(y_sq, rhs, "offset point not on secp256r1");
     }
 
@@ -266,12 +267,12 @@ mod tests {
         let b = &c.curve_b();
         let (x, y) = c.accumulated_offset(256);
         // Verify the accumulated offset is on the curve
-        let y_sq = u256_arith::mod_mul(&y, &y, p);
-        let x_sq = u256_arith::mod_mul(&x, &x, p);
-        let x_cubed = u256_arith::mod_mul(&x_sq, &x, p);
-        let ax = u256_arith::mod_mul(a, &x, p);
-        let x3_plus_ax = u256_arith::mod_add(&x_cubed, &ax, p);
-        let rhs = u256_arith::mod_add(&x3_plus_ax, b, p);
+        let y_sq = ec_precompute::mod_mul(&y, &y, p);
+        let x_sq = ec_precompute::mod_mul(&x, &x, p);
+        let x_cubed = ec_precompute::mod_mul(&x_sq, &x, p);
+        let ax = ec_precompute::mod_mul(a, &x, p);
+        let x3_plus_ax = ec_precompute::mod_add(&x_cubed, &ax, p);
+        let rhs = ec_precompute::mod_add(&x3_plus_ax, b, p);
         assert_eq!(y_sq, rhs, "accumulated offset not on secp256r1");
     }
 

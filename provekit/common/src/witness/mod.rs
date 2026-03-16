@@ -1,5 +1,6 @@
 mod binops;
 mod digits;
+mod limbs;
 mod ram;
 mod scheduling;
 mod witness_builder;
@@ -16,6 +17,7 @@ use {
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
+    limbs::{Limbs, MAX_LIMBS},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     scheduling::{
         Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,

@@ -1,16 +1,13 @@
 pub mod cost_model;
 pub mod curve;
 pub(crate) mod ec_points;
-mod limbs;
 pub(crate) mod multi_limb_arith;
 pub(crate) mod multi_limb_ops;
 mod pipeline;
 mod sanitize;
 mod scalar_relation;
-#[cfg(test)]
-mod tests;
 
-pub use limbs::{EcPoint, Limbs, MAX_LIMBS};
+pub use provekit_common::witness::{Limbs, MAX_LIMBS};
 use {
     crate::{
         constraint_helpers::{add_constant_witness, constrain_boolean},
@@ -26,15 +23,17 @@ use {
     std::collections::BTreeMap,
 };
 
+/// An elliptic curve point as named `(x, y)` coordinate limbs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EcPoint {
+    pub x: Limbs,
+    pub y: Limbs,
+}
+
 /// Scalar inputs are split into two 128-bit halves (s_lo, s_hi).
 pub(crate) const SCALAR_HALF_BITS: usize = 128;
 
-/// Integer ceiling of log2.
-/// ceil_log2(1) = 0, ceil_log2(2) = 1, ceil_log2(3) = 2, ceil_log2(4) = 2.
-pub(crate) fn ceil_log2(n: u64) -> u32 {
-    assert!(n > 0, "ceil_log2(0) is undefined");
-    u64::BITS - (n - 1).leading_zeros()
-}
+pub(crate) use provekit_common::u256_arith::ceil_log2;
 
 // ---------------------------------------------------------------------------
 // MSM entry point

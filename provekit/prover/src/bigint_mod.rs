@@ -1,5 +1,6 @@
 // Re-export shared 256-bit arithmetic from provekit_common.
 // Names are aliased where the prover's historical API differs.
+use provekit_common::u256_arith::ceil_log2;
 pub use provekit_common::u256_arith::{
     mod_add, mod_inv as mod_inverse, mod_mul as mul_mod, mod_pow, mod_sub, widening_mul,
 };
@@ -13,12 +14,6 @@ use {
     num_bigint::{BigInt, Sign},
     provekit_common::FieldElement,
 };
-
-/// Integer ceiling of log2. Avoids f64 rounding issues.
-fn ceil_log2(n: u64) -> u32 {
-    assert!(n > 0, "ceil_log2(0) is undefined");
-    u64::BITS - (n - 1).leading_zeros()
-}
 
 /// Compare 8-limb value with 4-limb value (zero-extended to 8 limbs).
 /// Returns Ordering::Greater if wide > narrow, etc.
@@ -526,6 +521,10 @@ pub fn half_gcd(s: &[u64; 4], n: &[u64; 4]) -> ([u64; 4], [u64; 4], bool, bool) 
 /// Used internally by half_gcd for q * t_curr where the result is known to fit.
 fn mul_mod_no_reduce(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
     let wide = widening_mul(a, b);
+    debug_assert!(
+        wide[4..].iter().all(|&x| x == 0),
+        "mul_mod_no_reduce overflow: upper limbs are non-zero"
+    );
     [wide[0], wide[1], wide[2], wide[3]]
 }
 

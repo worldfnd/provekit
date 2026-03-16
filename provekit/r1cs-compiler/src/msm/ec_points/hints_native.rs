@@ -32,7 +32,8 @@ pub fn point_double_verified_native(
 
     // Constraint: lambda * (2 * py) = 3 * x_sq + a
     // A = [lambda], B = [2*py], C = [3*x_sq + a_const]
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw)).unwrap();
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw))
+        .expect("curve_a must fit in native field");
     let three = FieldElement::from(3u64);
     let two = FieldElement::from(2u64);
     compiler
@@ -121,8 +122,10 @@ pub fn verify_on_curve_native(
     let x_sq = compiler.add_product(x, x);
     let x_cu = compiler.add_product(x_sq, x);
 
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw)).unwrap();
-    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_b_raw)).unwrap();
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw))
+        .expect("curve_a must fit in native field");
+    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_b_raw))
+        .expect("curve_b must fit in native field");
 
     // y * y = x_cu + a*x + b
     compiler

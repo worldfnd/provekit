@@ -572,8 +572,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
 
                 match op {
                     NonNativeEcOp::Double => {
-                        let px_val = read_witness_limbs(witness, &inputs[0], w);
-                        let py_val = read_witness_limbs(witness, &inputs[1], w);
+                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), w);
+                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), w);
                         let (lam, x3v, y3v) =
                             ec_point_double_with_lambda(&px_val, &py_val, curve_a, field_modulus_p);
                         let ll = decompose_to_u128_limbs(&lam, n, w);
@@ -651,10 +651,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         );
                     }
                     NonNativeEcOp::Add => {
-                        let x1v = read_witness_limbs(witness, &inputs[0], w);
-                        let y1v = read_witness_limbs(witness, &inputs[1], w);
-                        let x2v = read_witness_limbs(witness, &inputs[2], w);
-                        let y2v = read_witness_limbs(witness, &inputs[3], w);
+                        let x1v = read_witness_limbs(witness, inputs[0].as_slice(), w);
+                        let y1v = read_witness_limbs(witness, inputs[1].as_slice(), w);
+                        let x2v = read_witness_limbs(witness, inputs[2].as_slice(), w);
+                        let y2v = read_witness_limbs(witness, inputs[3].as_slice(), w);
                         let (lam, x3v, y3v) =
                             ec_point_add_with_lambda(&x1v, &y1v, &x2v, &y2v, field_modulus_p);
                         let ll = decompose_to_u128_limbs(&lam, n, w);
@@ -735,8 +735,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         );
                     }
                     NonNativeEcOp::OnCurve => {
-                        let px_val = read_witness_limbs(witness, &inputs[0], w);
-                        let py_val = read_witness_limbs(witness, &inputs[1], w);
+                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), w);
+                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), w);
                         let x_sq_val = mul_mod(&px_val, &px_val, field_modulus_p);
                         let xsl = decompose_to_u128_limbs(&x_sq_val, n, w);
                         let pl = decompose_to_u128_limbs(&px_val, n, w);

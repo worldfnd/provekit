@@ -1,4 +1,4 @@
-//! 256-bit modular arithmetic for compile-time EC point computations.
+//! Compile-time EC point precomputation.
 //! Only used to precompute accumulated offset points; not performance-critical.
 
 pub(super) use provekit_common::u256_arith::{mod_add, mod_mul, U256};

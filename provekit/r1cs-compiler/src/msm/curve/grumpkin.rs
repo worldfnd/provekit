@@ -41,19 +41,26 @@ impl Curve for Grumpkin {
             0x0000000000000002,
         ])
     }
+    /// Offset point for accumulation blinding.
+    ///
+    /// NUMS (nothing-up-my-sleeve) construction:
+    /// `x = SHA256("provekit-grumpkin-offset")` interpreted as big-endian
+    /// integer mod p, incremented until y² = x³ + b has a square root.
+    /// Canonical (smaller) y is chosen. Reproducible via
+    /// `scripts/verify_offset_points.py`.
     fn offset_point(&self) -> ([u64; 4], [u64; 4]) {
         (
             [
-                0x626578b496650e95,
-                0x8678dcf264df6c01,
-                0xf0b3eb7e6d02aba8,
-                0x223748a4c4edde75,
+                0x0c7f59b08d3ed494,
+                0xc9c7cc25211e2d7a,
+                0x39c65342a2e5e9f2,
+                0x121b63f644122c3d,
             ],
             [
-                0xb75fb4c26bcd4f35,
-                0x4d4ba4d97d5f99d9,
-                0xccab35fdbf52368a,
-                0x25b41c5f56f8472b,
+                0xdbecdeb7a68f782d,
+                0x10f1f9045c0bc912,
+                0x1cd40a11a67012e1,
+                0x00767fcc149fc6b3,
             ],
         )
     }

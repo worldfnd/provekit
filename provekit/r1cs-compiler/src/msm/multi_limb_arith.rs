@@ -4,9 +4,9 @@
 //! (N≥2) representations, plus `compute_is_zero` and `less_than_p` checks.
 
 use {
-    super::{ceil_log2, multi_limb_ops::allocate_pinned_constant, Limbs},
+    super::{ceil_log2, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
-    ark_ff::{AdditiveGroup, BigInteger, Field, PrimeField},
+    ark_ff::{AdditiveGroup, Field, PrimeField},
     provekit_common::{
         witness::{SumTerm, WitnessBuilder},
         FieldElement,
@@ -14,111 +14,10 @@ use {
     std::collections::{BTreeMap, HashMap},
 };
 
-// ---------------------------------------------------------------------------
-// N=1 single-limb path
-// ---------------------------------------------------------------------------
-
-/// Reduce the value to given modulus (N=1 path).
-/// Computes v = k*m + result, where 0 <= result < m.
-#[must_use]
-pub fn reduce_mod_p(
-    compiler: &mut NoirToR1CSCompiler,
-    value: usize,
-    modulus: FieldElement,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> usize {
-    let m = allocate_pinned_constant(compiler, modulus);
-    let k = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(k, value, modulus));
-
-    let k_mul_m = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Product(k_mul_m, k, m));
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, k)], &[(FieldElement::ONE, m)], &[(
-            FieldElement::ONE,
-            k_mul_m,
-        )]);
-
-    let result = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(result, vec![
-        SumTerm(Some(FieldElement::ONE), value),
-        SumTerm(Some(-FieldElement::ONE), k_mul_m),
-    ]));
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, k_mul_m), (FieldElement::ONE, result)],
-        &[(FieldElement::ONE, value)],
-    );
-
-    let modulus_bits = modulus.into_bigint().num_bits();
-    range_checks.entry(modulus_bits).or_default().push(result);
-
-    result
-}
-
-/// a + b mod p (N=1 path)
-#[must_use]
-pub fn add_mod_p_single(
-    compiler: &mut NoirToR1CSCompiler,
-    a: usize,
-    b: usize,
-    modulus: FieldElement,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> usize {
-    let a_add_b = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(a_add_b, vec![
-        SumTerm(Some(FieldElement::ONE), a),
-        SumTerm(Some(FieldElement::ONE), b),
-    ]));
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, a), (FieldElement::ONE, b)],
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, a_add_b)],
-    );
-    reduce_mod_p(compiler, a_add_b, modulus, range_checks)
-}
-
-/// a * b mod p (N=1 path)
-#[must_use]
-pub fn mul_mod_p_single(
-    compiler: &mut NoirToR1CSCompiler,
-    a: usize,
-    b: usize,
-    modulus: FieldElement,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> usize {
-    let a_mul_b = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Product(a_mul_b, a, b));
-    compiler
-        .r1cs
-        .add_constraint(&[(FieldElement::ONE, a)], &[(FieldElement::ONE, b)], &[(
-            FieldElement::ONE,
-            a_mul_b,
-        )]);
-    reduce_mod_p(compiler, a_mul_b, modulus, range_checks)
-}
-
-/// (a - b) mod p (N=1 path)
-#[must_use]
-pub fn sub_mod_p_single(
-    compiler: &mut NoirToR1CSCompiler,
-    a: usize,
-    b: usize,
-    modulus: FieldElement,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-) -> usize {
-    let a_sub_b = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::Sum(a_sub_b, vec![
-        SumTerm(Some(FieldElement::ONE), a),
-        SumTerm(Some(-FieldElement::ONE), b),
-    ]));
-    compiler.r1cs.add_constraint(
-        &[(FieldElement::ONE, compiler.witness_one())],
-        &[(FieldElement::ONE, a), (-FieldElement::ONE, b)],
-        &[(FieldElement::ONE, a_sub_b)],
-    );
-    reduce_mod_p(compiler, a_sub_b, modulus, range_checks)
+/// Distinguishes modular addition from subtraction in the shared core.
+enum ModularOp {
+    Add,
+    Sub,
 }
 
 /// Checks if value is zero or not (used by all N values).
@@ -172,7 +71,7 @@ pub fn compute_is_zero(compiler: &mut NoirToR1CSCompiler, value: usize) -> usize
 fn add_sub_mod_p_core(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    is_add: bool,
+    op: ModularOp,
     a: Limbs,
     b: Limbs,
     p_limbs: &[FieldElement],
@@ -187,24 +86,27 @@ fn add_sub_mod_p_core(
 
     // Witness: q ∈ {0, 1}
     let q = compiler.num_witnesses();
-    if is_add {
-        compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
-            output: q,
-            a_limbs: a.as_slice().to_vec(),
-            b_limbs: b.as_slice().to_vec(),
-            modulus: *modulus_raw,
-            limb_bits,
-            num_limbs: n as u32,
-        });
-    } else {
-        compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
-            output: q,
-            a_limbs: a.as_slice().to_vec(),
-            b_limbs: b.as_slice().to_vec(),
-            modulus: *modulus_raw,
-            limb_bits,
-            num_limbs: n as u32,
-        });
+    match op {
+        ModularOp::Add => {
+            compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
+                output: q,
+                a_limbs: a.as_slice().to_vec(),
+                b_limbs: b.as_slice().to_vec(),
+                modulus: *modulus_raw,
+                limb_bits,
+                num_limbs: n as u32,
+            });
+        }
+        ModularOp::Sub => {
+            compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
+                output: q,
+                a_limbs: a.as_slice().to_vec(),
+                b_limbs: b.as_slice().to_vec(),
+                modulus: *modulus_raw,
+                limb_bits,
+                num_limbs: n as u32,
+            });
+        }
     }
     // q is boolean
     compiler
@@ -214,7 +116,7 @@ fn add_sub_mod_p_core(
             q,
         )]);
 
-    let mut r = Limbs::new(n);
+    let mut r = Limbs::new();
     let mut carry_prev: Option<usize> = None;
 
     for i in 0..n {
@@ -225,14 +127,17 @@ fn add_sub_mod_p_core(
             two_pow_w
         };
         let mut terms = vec![SumTerm(None, a[i])];
-        if is_add {
-            terms.push(SumTerm(None, b[i]));
-            terms.push(SumTerm(Some(w1_coeff), w1));
-            terms.push(SumTerm(Some(-p_limbs[i]), q));
-        } else {
-            terms.push(SumTerm(Some(-FieldElement::ONE), b[i]));
-            terms.push(SumTerm(Some(p_limbs[i]), q));
-            terms.push(SumTerm(Some(w1_coeff), w1));
+        match op {
+            ModularOp::Add => {
+                terms.push(SumTerm(None, b[i]));
+                terms.push(SumTerm(Some(w1_coeff), w1));
+                terms.push(SumTerm(Some(-p_limbs[i]), q));
+            }
+            ModularOp::Sub => {
+                terms.push(SumTerm(Some(-FieldElement::ONE), b[i]));
+                terms.push(SumTerm(Some(p_limbs[i]), q));
+                terms.push(SumTerm(Some(w1_coeff), w1));
+            }
         }
         if let Some(carry) = carry_prev {
             terms.push(SumTerm(None, carry));
@@ -243,10 +148,10 @@ fn add_sub_mod_p_core(
         let carry = compiler.num_witnesses();
         compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(carry, v_offset, two_pow_w));
         // r[i] = v_offset - carry * 2^W
-        r[i] = compiler.add_sum(vec![
+        r.push(compiler.add_sum(vec![
             SumTerm(None, v_offset),
             SumTerm(Some(-two_pow_w), carry),
-        ]);
+        ]));
         carry_prev = Some(carry);
     }
 
@@ -278,7 +183,7 @@ pub fn add_mod_p_multi(
     add_sub_mod_p_core(
         compiler,
         range_checks,
-        true,
+        ModularOp::Add,
         a,
         b,
         p_limbs,
@@ -303,7 +208,7 @@ pub fn negate_mod_p_multi(
     assert!(n >= 2, "negate_mod_p_multi requires n >= 2, got n={n}");
     let w1 = compiler.witness_one();
 
-    let mut r = Limbs::new(n);
+    let mut r = Limbs::new();
     let mut borrow_prev: Option<usize> = None;
 
     for i in 0..n {
@@ -327,10 +232,11 @@ pub fn negate_mod_p_multi(
         compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v, two_pow_w));
 
         // r[i] = v[i] - borrow[i] * 2^W
-        r[i] = compiler.add_sum(vec![SumTerm(None, v), SumTerm(Some(-two_pow_w), borrow)]);
+        let ri = compiler.add_sum(vec![SumTerm(None, v), SumTerm(Some(-two_pow_w), borrow)]);
+        r.push(ri);
 
         // Range check r[i] — ensures borrow is uniquely determined
-        range_checks.entry(limb_bits).or_default().push(r[i]);
+        range_checks.entry(limb_bits).or_default().push(ri);
 
         borrow_prev = Some(borrow);
     }
@@ -354,7 +260,7 @@ pub fn sub_mod_p_multi(
     add_sub_mod_p_core(
         compiler,
         range_checks,
-        false,
+        ModularOp::Sub,
         a,
         b,
         p_limbs,
@@ -440,9 +346,9 @@ pub fn mul_mod_p_multi(
     );
 
     // Step 4: less-than-p check and range checks on r
-    let mut r_limbs = Limbs::new(n);
-    for (i, &ri) in r_indices.iter().enumerate() {
-        r_limbs[i] = ri;
+    let mut r_limbs = Limbs::new();
+    for &ri in &r_indices {
+        r_limbs.push(ri);
     }
     less_than_p_check_multi(
         compiler,

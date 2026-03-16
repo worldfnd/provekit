@@ -3,6 +3,7 @@ use {
         utils::{serde_ark, serde_ark_option},
         witness::{
             digits::DigitalDecompositionWitnesses,
+            limbs::Limbs,
             ram::SpiceWitnesses,
             scheduling::{
                 LayerScheduler, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
@@ -373,7 +374,7 @@ pub enum WitnessBuilder {
     NonNativeEcHint {
         output_start:    usize,
         op:              NonNativeEcOp,
-        inputs:          Vec<Vec<usize>>,
+        inputs:          Vec<Limbs>,
         curve_a:         [u64; 4],
         curve_b:         [u64; 4],
         field_modulus_p: [u64; 4],

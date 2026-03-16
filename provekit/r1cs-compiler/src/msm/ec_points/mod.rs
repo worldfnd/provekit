@@ -6,7 +6,10 @@ mod tables;
 
 pub(super) use tables::{scalar_mul_merged_glv, MergedGlvPoint};
 use {
-    super::{multi_limb_ops::MultiLimbParams, EcPoint, Limbs},
+    super::{
+        multi_limb_ops::{FieldArith, MultiLimbField, MultiLimbParams, NativeSingleField},
+        EcPoint, Limbs,
+    },
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     std::collections::BTreeMap,
 };
@@ -16,7 +19,10 @@ use {
 // ---------------------------------------------------------------------------
 
 /// Strategy for constraining elliptic curve operations in the circuit.
-pub trait EcOps {
+///
+/// Any type implementing `EcOps` must also implement `FieldArith`, so that
+/// pipeline functions with `E: EcOps` get field arithmetic automatically.
+pub trait EcOps: FieldArith {
     /// Point doubling: computes 2P.
     fn point_double(
         compiler: &mut NoirToR1CSCompiler,
@@ -49,6 +55,47 @@ pub trait EcOps {
 
 /// Native-field EC operations via hint-verified R1CS constraints.
 pub(crate) struct NativeEcOps;
+
+impl FieldArith for NativeEcOps {
+    fn field_add(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        NativeSingleField::field_add(compiler, range_checks, params, a, b)
+    }
+
+    fn field_sub(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        NativeSingleField::field_sub(compiler, range_checks, params, a, b)
+    }
+
+    fn field_mul(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        NativeSingleField::field_mul(compiler, range_checks, params, a, b)
+    }
+
+    fn field_negate(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        value: Limbs,
+    ) -> Limbs {
+        NativeSingleField::field_negate(compiler, range_checks, params, value)
+    }
+}
 
 impl EcOps for NativeEcOps {
     fn point_double(
@@ -96,6 +143,47 @@ impl EcOps for NativeEcOps {
 
 /// Non-native EC operations via hint-verified schoolbook column equations.
 pub(crate) struct NonNativeEcOps;
+
+impl FieldArith for NonNativeEcOps {
+    fn field_add(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        MultiLimbField::field_add(compiler, range_checks, params, a, b)
+    }
+
+    fn field_sub(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        MultiLimbField::field_sub(compiler, range_checks, params, a, b)
+    }
+
+    fn field_mul(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        a: Limbs,
+        b: Limbs,
+    ) -> Limbs {
+        MultiLimbField::field_mul(compiler, range_checks, params, a, b)
+    }
+
+    fn field_negate(
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        params: &MultiLimbParams,
+        value: Limbs,
+    ) -> Limbs {
+        MultiLimbField::field_negate(compiler, range_checks, params, value)
+    }
+}
 
 impl EcOps for NonNativeEcOps {
     fn point_double(

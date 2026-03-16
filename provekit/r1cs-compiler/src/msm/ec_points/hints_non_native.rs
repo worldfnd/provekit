@@ -6,7 +6,7 @@
 use {
     crate::{
         msm::{
-            ceil_log2,
+            cost_model::{column_equation_max_bits, hint_carry_bits},
             multi_limb_arith::{emit_schoolbook_column_equations, less_than_p_check_multi},
             multi_limb_ops::MultiLimbParams,
             Limbs,
@@ -89,16 +89,9 @@ fn less_than_p_check_vec(
     );
 }
 
-/// Compute carry range bits for hint-verified column equations.
-fn carry_range_bits(limb_bits: u32, max_coeff_sum: u64, n: usize) -> u32 {
-    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
-    limb_bits + extra_bits + 1
-}
-
 /// Soundness check: verify that merged column equations fit the native field.
 fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_name: &str) {
-    let extra_bits = ceil_log2(max_coeff_sum * n as u64) + 1;
-    let max_bits = 2 * limb_bits + extra_bits + 1;
+    let max_bits = column_equation_max_bits(limb_bits, max_coeff_sum, n);
     assert!(
         max_bits < FieldElement::MODULUS_BIT_SIZE,
         "{op_name} column equation overflow: limb_bits={limb_bits}, n={n}, needs {max_bits} bits",
@@ -130,7 +123,7 @@ pub fn verify_on_curve_non_native(
     compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
         output_start:    os,
         op:              NonNativeEcOp::OnCurve,
-        inputs:          vec![px.as_slice().to_vec(), py.as_slice().to_vec()],
+        inputs:          vec![px, py],
         curve_a:         params.curve_a_raw,
         curve_b:         params.curve_b_raw,
         field_modulus_p: params.modulus_raw,
@@ -212,7 +205,7 @@ pub fn verify_on_curve_non_native(
     }
 
     // Range checks on hint outputs
-    let crb = carry_range_bits(params.limb_bits, max_coeff_sum, n);
+    let crb = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
     range_check_limbs_and_carries(
         range_checks,
         &[&x_sq, &q1_pos, &q1_neg, &q2_pos, &q2_neg],
@@ -244,7 +237,7 @@ pub fn point_double_verified_non_native(
     compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
         output_start:    os,
         op:              NonNativeEcOp::Double,
-        inputs:          vec![px.as_slice().to_vec(), py.as_slice().to_vec()],
+        inputs:          vec![px, py],
         curve_a:         params.curve_a_raw,
         curve_b:         [0; 4], // unused for double
         field_modulus_p: params.modulus_raw,
@@ -336,7 +329,7 @@ pub fn point_double_verified_non_native(
     // Range checks on hint outputs
     // max_coeff across eqs: Eq1 = 6+2N, Eq2 = 4+2N, Eq3 = 4+2N → worst = 6+2N
     let max_coeff_carry = 6u64 + 2 * n as u64;
-    let crb = carry_range_bits(params.limb_bits, max_coeff_carry, n);
+    let crb = hint_carry_bits(params.limb_bits, max_coeff_carry, n);
     range_check_limbs_and_carries(
         range_checks,
         &[
@@ -375,12 +368,7 @@ pub fn point_add_verified_non_native(
     compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
         output_start:    os,
         op:              NonNativeEcOp::Add,
-        inputs:          vec![
-            x1.as_slice().to_vec(),
-            y1.as_slice().to_vec(),
-            x2.as_slice().to_vec(),
-            y2.as_slice().to_vec(),
-        ],
+        inputs:          vec![x1, y1, x2, y2],
         curve_a:         [0; 4], // unused for add
         curve_b:         [0; 4], // unused for add
         field_modulus_p: params.modulus_raw,
@@ -474,7 +462,7 @@ pub fn point_add_verified_non_native(
     // Range checks
     // max_coeff across all 3 eqs = 4+2N
     let max_coeff_carry = 4u64 + 2 * n as u64;
-    let crb = carry_range_bits(params.limb_bits, max_coeff_carry, n);
+    let crb = hint_carry_bits(params.limb_bits, max_coeff_carry, n);
     range_check_limbs_and_carries(
         range_checks,
         &[

@@ -8,7 +8,7 @@ use {
         cost_model,
         curve::Curve,
         multi_limb_arith::compute_is_zero,
-        multi_limb_ops::{MultiLimbOps, MultiLimbParams},
+        multi_limb_ops::{MultiLimbField, MultiLimbOps, MultiLimbParams},
         Limbs, SCALAR_HALF_BITS,
     },
     crate::{
@@ -56,7 +56,7 @@ pub(super) fn verify_scalar_relation<C: Curve>(
     let half_bits = curve.glv_half_bits() as usize;
 
     let params = MultiLimbParams::for_curve_order(num_limbs, limb_bits, curve);
-    let mut ops = MultiLimbOps::<()>::new(compiler, range_checks, &params);
+    let mut ops = MultiLimbOps::<MultiLimbField>::new(compiler, range_checks, &params);
 
     let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);
     let s1_limbs = decompose_half_scalar(&mut ops, s1_witness, num_limbs, half_bits, limb_bits);
@@ -98,7 +98,7 @@ pub(super) fn verify_scalar_relation<C: Curve>(
 /// used limbs are constrained to zero. This ensures the scalar fits in the
 /// representation and prevents truncation attacks.
 fn decompose_scalar_from_halves(
-    ops: &mut MultiLimbOps<'_, '_, ()>,
+    ops: &mut MultiLimbOps<'_, '_, MultiLimbField>,
     s_lo: usize,
     s_hi: usize,
     num_limbs: usize,
@@ -110,16 +110,18 @@ fn decompose_scalar_from_halves(
         let widths = limb_widths(SCALAR_HALF_BITS, limb_bits);
         let dd_lo = add_digital_decomposition(ops.compiler, widths.clone(), vec![s_lo]);
         let dd_hi = add_digital_decomposition(ops.compiler, widths.clone(), vec![s_hi]);
-        let mut limbs = Limbs::new(num_limbs);
+        let mut limbs = Limbs::new();
         let from_lo = widths.len().min(num_limbs);
-        for (i, &w) in widths.iter().enumerate().take(from_lo) {
-            limbs[i] = dd_lo.get_digit_witness_index(i, 0);
-            ops.register_range_check(w as u32, limbs[i]);
+        for (_, &w) in widths.iter().enumerate().take(from_lo) {
+            let idx = dd_lo.get_digit_witness_index(limbs.len(), 0);
+            limbs.push(idx);
+            ops.register_range_check(w as u32, idx);
         }
         let from_hi = (num_limbs - from_lo).min(widths.len());
         for (i, &w) in widths.iter().enumerate().take(from_hi) {
-            limbs[from_lo + i] = dd_hi.get_digit_witness_index(i, 0);
-            ops.register_range_check(w as u32, limbs[from_lo + i]);
+            let idx = dd_hi.get_digit_witness_index(i, 0);
+            limbs.push(idx);
+            ops.register_range_check(w as u32, idx);
         }
 
         // Constrain unused dd_lo digits to zero (small curves where num_limbs
@@ -147,12 +149,13 @@ fn decompose_scalar_from_halves(
 
         let dd_lo = add_digital_decomposition(ops.compiler, lo_widths.clone(), vec![s_lo]);
         let dd_hi = add_digital_decomposition(ops.compiler, hi_widths, vec![s_hi]);
-        let mut limbs = Limbs::new(num_limbs);
+        let mut limbs = Limbs::new();
 
         let lo_used = lo_full.min(num_limbs);
         for i in 0..lo_used {
-            limbs[i] = dd_lo.get_digit_witness_index(i, 0);
-            ops.register_range_check(limb_bits, limbs[i]);
+            let idx = dd_lo.get_digit_witness_index(i, 0);
+            limbs.push(idx);
+            ops.register_range_check(limb_bits, idx);
         }
 
         // Cross-boundary limb and hi_rest, only if num_limbs needs them.
@@ -163,17 +166,19 @@ fn decompose_scalar_from_halves(
             let shift = FieldElement::from(2u64).pow([lo_tail as u64]);
             let lo_digit = dd_lo.get_digit_witness_index(lo_full, 0);
             let hi_digit = dd_hi.get_digit_witness_index(0, 0);
-            limbs[lo_full] = ops.sum(vec![
+            let cross_val = ops.sum(vec![
                 SumTerm(None, lo_digit),
                 SumTerm(Some(shift), hi_digit),
             ]);
+            limbs.push(cross_val);
             ops.register_range_check(lo_tail as u32, lo_digit);
             ops.register_range_check(hi_head as u32, hi_digit);
         }
 
         if needs_hi_rest {
-            limbs[lo_full + 1] = dd_hi.get_digit_witness_index(1, 0);
-            ops.register_range_check(hi_rest as u32, limbs[lo_full + 1]);
+            let idx = dd_hi.get_digit_witness_index(1, 0);
+            limbs.push(idx);
+            ops.register_range_check(hi_rest as u32, idx);
         }
 
         // Constrain unused digits to zero for small curves.
@@ -199,7 +204,7 @@ fn decompose_scalar_from_halves(
 /// Decompose a half-scalar witness into `num_limbs` limbs, zero-padding the
 /// upper limbs beyond `half_bits`.
 fn decompose_half_scalar(
-    ops: &mut MultiLimbOps<'_, '_, ()>,
+    ops: &mut MultiLimbOps<'_, '_, MultiLimbField>,
     witness: usize,
     num_limbs: usize,
     half_bits: usize,
@@ -207,21 +212,22 @@ fn decompose_half_scalar(
 ) -> Limbs {
     let widths = limb_widths(half_bits, limb_bits);
     let dd = add_digital_decomposition(ops.compiler, widths.clone(), vec![witness]);
-    let mut limbs = Limbs::new(num_limbs);
+    let mut limbs = Limbs::new();
 
     for (i, &w) in widths.iter().enumerate() {
-        limbs[i] = dd.get_digit_witness_index(i, 0);
-        ops.register_range_check(w as u32, limbs[i]);
+        let idx = dd.get_digit_witness_index(i, 0);
+        limbs.push(idx);
+        ops.register_range_check(w as u32, idx);
     }
 
-    for i in widths.len()..num_limbs {
+    for _ in widths.len()..num_limbs {
         let w = ops.num_witnesses();
         ops.add_witness_builder(WitnessBuilder::Constant(ConstantTerm(
             w,
             FieldElement::ZERO,
         )));
-        limbs[i] = w;
-        constrain_zero(ops.compiler, limbs[i]);
+        limbs.push(w);
+        constrain_zero(ops.compiler, w);
     }
 
     limbs

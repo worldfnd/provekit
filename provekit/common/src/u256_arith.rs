@@ -7,6 +7,13 @@
 /// 256-bit unsigned integer as 4 little-endian u64 limbs.
 pub type U256 = [u64; 4];
 
+/// Integer ceiling of log2.
+/// ceil_log2(1) = 0, ceil_log2(2) = 1, ceil_log2(3) = 2, ceil_log2(4) = 2.
+pub fn ceil_log2(n: u64) -> u32 {
+    assert!(n > 0, "ceil_log2(0) is undefined");
+    u64::BITS - (n - 1).leading_zeros()
+}
+
 /// Returns true if a >= b.
 pub fn gte(a: &U256, b: &U256) -> bool {
     for i in (0..4).rev() {

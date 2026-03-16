@@ -48,19 +48,26 @@ impl Curve for Secp256r1 {
             ],
         )
     }
+    /// Offset point for accumulation blinding.
+    ///
+    /// NUMS (nothing-up-my-sleeve) construction:
+    /// `x = SHA256("provekit-secp256r1-offset")` interpreted as big-endian
+    /// integer mod p, incremented until y² = x³ + ax + b has a square root.
+    /// Canonical (smaller) y is chosen. Reproducible via
+    /// `scripts/verify_offset_points.py`.
     fn offset_point(&self) -> ([u64; 4], [u64; 4]) {
         (
             [
-                0x57c84fc9d789bd85,
-                0xfc35ff7dc297eac3,
-                0xfb982fd588c6766e,
-                0x447d739beedb5e67,
+                0x3b8d6e63154ac0b8,
+                0x9d50c8f4c290feb5,
+                0x27080c391ced0ac0,
+                0x24d812942f1c942a,
             ],
             [
-                0x0c7e33c972e25b32,
-                0x3d349b95a7fae500,
-                0xe12e9d953a4aaff7,
-                0x2d4825ab834131ee,
+                0x1d028e001bc65cb8,
+                0xc4cb905df8bd1f90,
+                0x9f519d447e4a2d9d,
+                0x7c9e0b6ce248a7a0,
             ],
         )
     }
