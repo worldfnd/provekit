@@ -108,6 +108,14 @@ impl R1CS {
         self.a.num_cols
     }
 
+    /// Hash of this R1CS instance, computed over its `postcard` serialization.
+    #[must_use]
+    pub fn hash(&self) -> [u8; 32] {
+        use sha3::{Digest, Sha3_256};
+        let bytes = postcard::to_stdvec(self).expect("R1CS serialization failed");
+        Sha3_256::digest(&bytes).into()
+    }
+
     // Increase the size of the R1CS matrices to the specified dimensions.
     pub fn grow_matrices(&mut self, num_rows: usize, num_cols: usize) {
         self.a.grow(num_rows, num_cols);
