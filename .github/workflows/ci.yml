@@ -37,3 +37,11 @@ jobs:
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "--cfg doc_cfg -D warnings"
+
+  unused_deps:
+    name: check for unused dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: machete
+        uses: bnjbvr/cargo-machete@main

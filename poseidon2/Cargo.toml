@@ -16,4 +16,3 @@ workspace = true
 ark-bn254.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
-hex.workspace = true

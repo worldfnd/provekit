@@ -167,8 +167,8 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
+mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
