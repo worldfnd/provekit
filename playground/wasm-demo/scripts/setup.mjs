@@ -353,7 +353,7 @@ async function buildShared() {
 
   // Install npm deps and copy vendor files for browser import map
   logStep("2/5", "Installing noir-lang npm packages...");
-  if (!run("npm install --prefer-offline", { cwd: DEMO_DIR })) {
+  if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
   const vendorDir = join(DEMO_DIR, "vendor");

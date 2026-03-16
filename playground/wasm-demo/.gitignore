@@ -12,3 +12,4 @@ pkg-web/
 !src/**/*.wasm
 
 pnpm-lock.yaml
+package-lock.json
