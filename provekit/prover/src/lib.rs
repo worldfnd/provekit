@@ -32,10 +32,10 @@ mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
     /// Generate a proof from a pre-computed witness map.
@@ -244,7 +244,7 @@ impl Prove for NoirProver {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
-    #[instrument(skip_all)]
+    #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
@@ -333,6 +333,7 @@ impl Prove for MavrosProver {
         })
     }
 
+    #[cfg(feature = "witness-generation")]
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let project_path = prover_toml
@@ -353,7 +354,7 @@ impl Prove for MavrosProver {
 }
 
 impl Prove for Prover {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
@@ -361,7 +362,7 @@ impl Prove for Prover {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),

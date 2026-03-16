@@ -28,7 +28,7 @@ provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true
-noirc_abi.workspace = true  # Required for serde support of Abi type in get_circuit()
+
 
 # 3rd party
 anyhow.workspace = true
@@ -40,17 +40,15 @@ hex.workspace = true
 lzma-rs = "0.3"  # Pure-Rust XZ decompressor (native crate xz2 uses C bindings, incompatible with WASM)
 postcard.workspace = true
 ruzstd.workspace = true  # Pure-Rust Zstd decompressor (native crate zstd uses C bindings, incompatible with WASM)
-serde.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
 wasm-bindgen.workspace = true
 
 # WASM parallelism via Web Workers
 wasm-bindgen-rayon = "1.2"
-rayon.workspace = true
 
 [package.metadata.cargo-machete]
-ignored = ["getrandom", "getrandom03", "noirc_abi", "rayon", "serde"]
+ignored = ["getrandom", "getrandom03"]
 
 [lints]
 workspace = true
