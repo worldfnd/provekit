@@ -442,6 +442,29 @@ async function runDemo() {
     log(`Proof size: ${(proofSize / 1024).toFixed(1)} KB`);
     log(`Proving time: ${(proofTime / 1000).toFixed(2)}s`);
 
+    try {
+      const proofJson = JSON.parse(new TextDecoder().decode(proofBytes));
+      const pi = proofJson.public_inputs;
+      if (pi && pi.length > 0) {
+        const values = pi.map(hex => {
+          const be = hex.match(/.{2}/g).slice().reverse().join('');
+          return BigInt('0x' + be);
+        });
+        const allBytes = values.every(v => v < 256n);
+        if (allBytes) {
+          const hexStr = values.map(v => v.toString(16).padStart(2, '0')).join('');
+          log(`Public inputs (${pi.length}): 0x${hexStr}`);
+        } else {
+          log(`Public inputs (${pi.length}):`);
+          for (let i = 0; i < values.length; i++) {
+            log(`  [${i}]: 0x${values[i].toString(16)}`);
+          }
+        }
+      }
+    } catch (_) {
+      // non-critical — proof bytes may not be JSON in all modes
+    }
+
     updateStep(4, `Done (${(proofTime / 1000).toFixed(2)}s)`, "success");
 
     lastProofBytes = proofBytes;
