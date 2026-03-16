@@ -7,7 +7,7 @@ mod tables;
 pub(super) use tables::{scalar_mul_merged_glv, MergedGlvPoint};
 use {
     super::{
-        multi_limb_ops::{FieldArith, MultiLimbField, MultiLimbParams, NativeSingleField},
+        multi_limb_ops::{EcFieldParams, FieldArith, MultiLimbField, NativeSingleField},
         EcPoint, Limbs,
     },
     crate::noir_to_r1cs::NoirToR1CSCompiler,
@@ -20,14 +20,18 @@ use {
 
 /// Strategy for constraining elliptic curve operations in the circuit.
 ///
-/// Any type implementing `EcOps` must also implement `FieldArith`, so that
-/// pipeline functions with `E: EcOps` get field arithmetic automatically.
-pub trait EcOps: FieldArith {
+/// Each impl specifies its associated `Field: FieldArith` type, so
+/// `MultiLimbOps<E::Field, E, EcFieldParams>` gets both field and EC ops
+/// without EC types needing to re-implement field arithmetic.
+pub trait EcOps {
+    /// The field arithmetic strategy paired with this EC strategy.
+    type Field: FieldArith;
+
     /// Point doubling: computes 2P.
     fn point_double(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     ) -> EcPoint;
 
@@ -35,7 +39,7 @@ pub trait EcOps: FieldArith {
     fn point_add(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p1: EcPoint,
         p2: EcPoint,
     ) -> EcPoint;
@@ -44,7 +48,7 @@ pub trait EcOps: FieldArith {
     fn verify_on_curve(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     );
 }
@@ -56,52 +60,13 @@ pub trait EcOps: FieldArith {
 /// Native-field EC operations via hint-verified R1CS constraints.
 pub(crate) struct NativeEcOps;
 
-impl FieldArith for NativeEcOps {
-    fn field_add(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        NativeSingleField::field_add(compiler, range_checks, params, a, b)
-    }
-
-    fn field_sub(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        NativeSingleField::field_sub(compiler, range_checks, params, a, b)
-    }
-
-    fn field_mul(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        NativeSingleField::field_mul(compiler, range_checks, params, a, b)
-    }
-
-    fn field_negate(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        value: Limbs,
-    ) -> Limbs {
-        NativeSingleField::field_negate(compiler, range_checks, params, value)
-    }
-}
-
 impl EcOps for NativeEcOps {
+    type Field = NativeSingleField;
+
     fn point_double(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     ) -> EcPoint {
         let (x3, y3) = hints_native::point_double_verified_native(compiler, p.x[0], p.y[0], params);
@@ -114,7 +79,7 @@ impl EcOps for NativeEcOps {
     fn point_add(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p1: EcPoint,
         p2: EcPoint,
     ) -> EcPoint {
@@ -130,7 +95,7 @@ impl EcOps for NativeEcOps {
     fn verify_on_curve(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     ) {
         hints_native::verify_on_curve_native(compiler, p.x[0], p.y[0], params);
@@ -144,52 +109,13 @@ impl EcOps for NativeEcOps {
 /// Non-native EC operations via hint-verified schoolbook column equations.
 pub(crate) struct NonNativeEcOps;
 
-impl FieldArith for NonNativeEcOps {
-    fn field_add(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        MultiLimbField::field_add(compiler, range_checks, params, a, b)
-    }
-
-    fn field_sub(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        MultiLimbField::field_sub(compiler, range_checks, params, a, b)
-    }
-
-    fn field_mul(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        a: Limbs,
-        b: Limbs,
-    ) -> Limbs {
-        MultiLimbField::field_mul(compiler, range_checks, params, a, b)
-    }
-
-    fn field_negate(
-        compiler: &mut NoirToR1CSCompiler,
-        range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
-        value: Limbs,
-    ) -> Limbs {
-        MultiLimbField::field_negate(compiler, range_checks, params, value)
-    }
-}
-
 impl EcOps for NonNativeEcOps {
+    type Field = MultiLimbField;
+
     fn point_double(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     ) -> EcPoint {
         let (x3, y3) = hints_non_native::point_double_verified_non_native(
@@ -205,7 +131,7 @@ impl EcOps for NonNativeEcOps {
     fn point_add(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p1: EcPoint,
         p2: EcPoint,
     ) -> EcPoint {
@@ -224,7 +150,7 @@ impl EcOps for NonNativeEcOps {
     fn verify_on_curve(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &EcFieldParams,
         p: EcPoint,
     ) {
         hints_non_native::verify_on_curve_non_native(compiler, range_checks, p.x, p.y, params);

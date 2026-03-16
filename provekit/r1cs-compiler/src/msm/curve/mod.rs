@@ -1,9 +1,11 @@
 use {
     ark_ff::{AdditiveGroup, PrimeField},
-    provekit_common::FieldElement,
+    provekit_common::{
+        u256_arith::{mod_add, mod_inv, mod_mul, mod_sub},
+        FieldElement,
+    },
 };
 
-mod ec_precompute;
 mod grumpkin;
 mod secp256r1;
 
@@ -106,7 +108,7 @@ pub trait Curve {
         let mut x = self.offset_point().0;
         let mut y = self.offset_point().1;
         for _ in 0..n_doublings {
-            let (x3, y3) = ec_precompute::ec_point_double(&x, &y, &a, &p);
+            let (x3, y3) = ec_point_double(&x, &y, &a, &p);
             x = x3;
             y = y3;
         }
@@ -206,6 +208,30 @@ pub fn negate_field_element(val: &U256, modulus: &U256) -> U256 {
     result
 }
 
+/// EC point doubling on y² = x³ + ax + b (compile-time precomputation only).
+fn ec_point_double(x: &U256, y: &U256, a: &U256, p: &U256) -> (U256, U256) {
+    // lambda = (3*x^2 + a) / (2*y)
+    let x_sq = mod_mul(x, x, p);
+    let two_x_sq = mod_add(&x_sq, &x_sq, p);
+    let three_x_sq = mod_add(&two_x_sq, &x_sq, p);
+    let num = mod_add(&three_x_sq, a, p);
+    let two_y = mod_add(y, y, p);
+    let denom_inv = mod_inv(&two_y, p);
+    let lambda = mod_mul(&num, &denom_inv, p);
+
+    // x3 = lambda^2 - 2*x
+    let lambda_sq = mod_mul(&lambda, &lambda, p);
+    let two_x = mod_add(x, x, p);
+    let x3 = mod_sub(&lambda_sq, &two_x, p);
+
+    // y3 = lambda * (x - x3) - y
+    let x_minus_x3 = mod_sub(x, &x3, p);
+    let lambda_dx = mod_mul(&lambda, &x_minus_x3, p);
+    let y3 = mod_sub(&lambda_dx, y, p);
+
+    (x3, y3)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,12 +276,12 @@ mod tests {
         let a = &c.curve_a();
         let b = &c.curve_b();
         // y^2 = x^3 + a*x + b (mod p)
-        let y_sq = ec_precompute::mod_mul(y, y, p);
-        let x_sq = ec_precompute::mod_mul(x, x, p);
-        let x_cubed = ec_precompute::mod_mul(&x_sq, x, p);
-        let ax = ec_precompute::mod_mul(a, x, p);
-        let x3_plus_ax = ec_precompute::mod_add(&x_cubed, &ax, p);
-        let rhs = ec_precompute::mod_add(&x3_plus_ax, b, p);
+        let y_sq = mod_mul(y, y, p);
+        let x_sq = mod_mul(x, x, p);
+        let x_cubed = mod_mul(&x_sq, x, p);
+        let ax = mod_mul(a, x, p);
+        let x3_plus_ax = mod_add(&x_cubed, &ax, p);
+        let rhs = mod_add(&x3_plus_ax, b, p);
         assert_eq!(y_sq, rhs, "offset point not on secp256r1");
     }
 
@@ -267,12 +293,12 @@ mod tests {
         let b = &c.curve_b();
         let (x, y) = c.accumulated_offset(256);
         // Verify the accumulated offset is on the curve
-        let y_sq = ec_precompute::mod_mul(&y, &y, p);
-        let x_sq = ec_precompute::mod_mul(&x, &x, p);
-        let x_cubed = ec_precompute::mod_mul(&x_sq, &x, p);
-        let ax = ec_precompute::mod_mul(a, &x, p);
-        let x3_plus_ax = ec_precompute::mod_add(&x_cubed, &ax, p);
-        let rhs = ec_precompute::mod_add(&x3_plus_ax, b, p);
+        let y_sq = mod_mul(&y, &y, p);
+        let x_sq = mod_mul(&x, &x, p);
+        let x_cubed = mod_mul(&x_sq, &x, p);
+        let ax = mod_mul(a, &x, p);
+        let x3_plus_ax = mod_add(&x_cubed, &ax, p);
+        let rhs = mod_add(&x3_plus_ax, b, p);
         assert_eq!(y_sq, rhs, "accumulated offset not on secp256r1");
     }
 

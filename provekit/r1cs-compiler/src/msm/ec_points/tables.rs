@@ -5,7 +5,10 @@
 
 use {
     super::EcOps,
-    crate::msm::{multi_limb_ops::MultiLimbOps, EcPoint},
+    crate::msm::{
+        multi_limb_ops::{EcFieldParams, MultiLimbOps},
+        EcPoint,
+    },
     ark_ff::Field,
     provekit_common::{witness::SumTerm, FieldElement},
 };
@@ -14,7 +17,7 @@ use {
 /// T\[0\] = P, T\[1\] = 3P, T\[2\] = 5P, ..., T\[k-1\] = (2k-1)P
 /// where k = `half_table_size`.
 fn build_signed_point_table<E: EcOps>(
-    ops: &mut MultiLimbOps<'_, '_, E>,
+    ops: &mut MultiLimbOps<'_, '_, E::Field, E, EcFieldParams>,
     p: EcPoint,
     half_table_size: usize,
 ) -> Vec<EcPoint> {
@@ -36,7 +39,7 @@ fn build_signed_point_table<E: EcOps>(
 /// When `constrain_bits` is true, each bit is boolean-constrained. When
 /// false, bits are assumed already constrained.
 fn table_lookup<E: EcOps>(
-    ops: &mut MultiLimbOps<'_, '_, E>,
+    ops: &mut MultiLimbOps<'_, '_, E::Field, E, EcFieldParams>,
     table: &[EcPoint],
     bits: &[usize],
     constrain_bits: bool,
@@ -63,7 +66,7 @@ fn table_lookup<E: EcOps>(
 ///
 /// `sign_bit` must be boolean-constrained by the caller.
 fn signed_table_lookup<E: EcOps>(
-    ops: &mut MultiLimbOps<'_, '_, E>,
+    ops: &mut MultiLimbOps<'_, '_, E::Field, E, EcFieldParams>,
     table: &[EcPoint],
     index_bits: &[usize],
     sign_bit: usize,
@@ -118,7 +121,7 @@ pub(in crate::msm) struct MergedGlvPoint {
 /// Merged multi-point GLV scalar multiplication with shared doublings
 /// and signed-digit windows.
 pub(in crate::msm) fn scalar_mul_merged_glv<E: EcOps>(
-    ops: &mut MultiLimbOps<'_, '_, E>,
+    ops: &mut MultiLimbOps<'_, '_, E::Field, E, EcFieldParams>,
     points: &[MergedGlvPoint],
     window_size: usize,
     offset: EcPoint,

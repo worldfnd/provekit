@@ -15,20 +15,52 @@ use {
     std::{collections::BTreeMap, marker::PhantomData},
 };
 
-/// Parameters for multi-limb field arithmetic.
-pub struct MultiLimbParams {
+/// Shared modulus parameters for multi-limb field arithmetic.
+///
+/// Used by both EC operations (mod field_modulus_p) and scalar relations
+/// (mod curve_order_n).
+pub struct ModulusParams {
     pub num_limbs:       usize,
     pub limb_bits:       u32,
     pub p_limbs:         Vec<FieldElement>,
     pub p_minus_1_limbs: Vec<FieldElement>,
     pub two_pow_w:       FieldElement,
     pub modulus_raw:     [u64; 4],
-    pub curve_a_limbs:   Vec<FieldElement>,
-    /// Raw curve_a value as [u64; 4] for hint-verified EC ops
-    pub curve_a_raw:     [u64; 4],
-    pub curve_b_limbs:   Vec<FieldElement>,
-    /// Raw curve_b value as [u64; 4] for hint-verified on-curve checks
-    pub curve_b_raw:     [u64; 4],
+}
+
+/// EC-specific curve constants — only needed by EC point operations.
+pub struct CurveEcParams {
+    pub curve_a_limbs: Vec<FieldElement>,
+    pub curve_a_raw:   [u64; 4],
+    pub curve_b_limbs: Vec<FieldElement>,
+    pub curve_b_raw:   [u64; 4],
+}
+
+/// Full parameters for EC field operations (modulus + curve constants).
+///
+/// Derefs to `ModulusParams` so modulus fields are accessible directly.
+pub struct EcFieldParams {
+    pub modulus: ModulusParams,
+    pub ec:      CurveEcParams,
+}
+
+impl std::ops::Deref for EcFieldParams {
+    type Target = ModulusParams;
+    fn deref(&self) -> &ModulusParams {
+        &self.modulus
+    }
+}
+
+impl AsRef<ModulusParams> for ModulusParams {
+    fn as_ref(&self) -> &ModulusParams {
+        self
+    }
+}
+
+impl AsRef<ModulusParams> for EcFieldParams {
+    fn as_ref(&self) -> &ModulusParams {
+        &self.modulus
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +72,7 @@ pub trait FieldArith {
     fn field_add(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs;
@@ -48,7 +80,7 @@ pub trait FieldArith {
     fn field_sub(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs;
@@ -56,7 +88,7 @@ pub trait FieldArith {
     fn field_mul(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs;
@@ -64,7 +96,7 @@ pub trait FieldArith {
     fn field_negate(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         value: Limbs,
     ) -> Limbs;
 }
@@ -80,7 +112,7 @@ impl FieldArith for NativeSingleField {
     fn field_add(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        _params: &MultiLimbParams,
+        _params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
@@ -95,7 +127,7 @@ impl FieldArith for NativeSingleField {
     fn field_sub(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        _params: &MultiLimbParams,
+        _params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
@@ -113,7 +145,7 @@ impl FieldArith for NativeSingleField {
     fn field_mul(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        _params: &MultiLimbParams,
+        _params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
@@ -124,7 +156,7 @@ impl FieldArith for NativeSingleField {
     fn field_negate(
         compiler: &mut NoirToR1CSCompiler,
         _range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        _params: &MultiLimbParams,
+        _params: &ModulusParams,
         value: Limbs,
     ) -> Limbs {
         let r = compiler.add_sum(vec![SumTerm(Some(-FieldElement::ONE), value[0])]);
@@ -144,102 +176,44 @@ impl FieldArith for MultiLimbField {
     fn field_add(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
-        multi_limb_arith::add_mod_p_multi(
-            compiler,
-            range_checks,
-            a,
-            b,
-            &params.p_limbs,
-            &params.p_minus_1_limbs,
-            params.two_pow_w,
-            params.limb_bits,
-            &params.modulus_raw,
-        )
+        multi_limb_arith::add_mod_p_multi(compiler, range_checks, a, b, params)
     }
 
     fn field_sub(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
-        multi_limb_arith::sub_mod_p_multi(
-            compiler,
-            range_checks,
-            a,
-            b,
-            &params.p_limbs,
-            &params.p_minus_1_limbs,
-            params.two_pow_w,
-            params.limb_bits,
-            &params.modulus_raw,
-        )
+        multi_limb_arith::sub_mod_p_multi(compiler, range_checks, a, b, params)
     }
 
     fn field_mul(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         a: Limbs,
         b: Limbs,
     ) -> Limbs {
-        multi_limb_arith::mul_mod_p_multi(
-            compiler,
-            range_checks,
-            a,
-            b,
-            &params.p_limbs,
-            &params.p_minus_1_limbs,
-            params.two_pow_w,
-            params.limb_bits,
-            &params.modulus_raw,
-        )
+        multi_limb_arith::mul_mod_p_multi(compiler, range_checks, a, b, params)
     }
 
     fn field_negate(
         compiler: &mut NoirToR1CSCompiler,
         range_checks: &mut BTreeMap<u32, Vec<usize>>,
-        params: &MultiLimbParams,
+        params: &ModulusParams,
         value: Limbs,
     ) -> Limbs {
-        multi_limb_arith::negate_mod_p_multi(
-            compiler,
-            range_checks,
-            value,
-            &params.p_limbs,
-            params.two_pow_w,
-            params.limb_bits,
-        )
+        multi_limb_arith::negate_mod_p_multi(compiler, range_checks, value, params)
     }
 }
 
-impl MultiLimbParams {
-    /// Build params for EC field operations (mod field_modulus_p).
-    pub fn for_field_modulus<C: super::curve::Curve>(
-        num_limbs: usize,
-        limb_bits: u32,
-        curve: &C,
-    ) -> Self {
-        let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
-        Self {
-            num_limbs,
-            limb_bits,
-            p_limbs: curve.p_limbs(limb_bits, num_limbs),
-            p_minus_1_limbs: curve.p_minus_1_limbs(limb_bits, num_limbs),
-            two_pow_w,
-            modulus_raw: curve.field_modulus_p(),
-            curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
-            curve_a_raw: curve.curve_a(),
-            curve_b_limbs: curve.curve_b_limbs(limb_bits, num_limbs),
-            curve_b_raw: curve.curve_b(),
-        }
-    }
-
+impl ModulusParams {
     /// Build params for scalar relation verification (mod curve_order_n).
     pub fn for_curve_order<C: super::curve::Curve>(
         num_limbs: usize,
@@ -254,10 +228,33 @@ impl MultiLimbParams {
             p_minus_1_limbs: curve.curve_order_n_minus_1_limbs(limb_bits, num_limbs),
             two_pow_w,
             modulus_raw: curve.curve_order_n(),
-            curve_a_limbs: vec![FieldElement::ZERO; num_limbs], // unused
-            curve_a_raw: [0u64; 4],                             // unused for scalar relation
-            curve_b_limbs: vec![FieldElement::ZERO; num_limbs], // unused
-            curve_b_raw: [0u64; 4],                             // unused for scalar relation
+        }
+    }
+}
+
+impl EcFieldParams {
+    /// Build params for EC field operations (mod field_modulus_p).
+    pub fn for_field_modulus<C: super::curve::Curve>(
+        num_limbs: usize,
+        limb_bits: u32,
+        curve: &C,
+    ) -> Self {
+        let two_pow_w = FieldElement::from(2u64).pow([limb_bits as u64]);
+        Self {
+            modulus: ModulusParams {
+                num_limbs,
+                limb_bits,
+                p_limbs: curve.p_limbs(limb_bits, num_limbs),
+                p_minus_1_limbs: curve.p_minus_1_limbs(limb_bits, num_limbs),
+                two_pow_w,
+                modulus_raw: curve.field_modulus_p(),
+            },
+            ec:      CurveEcParams {
+                curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
+                curve_a_raw:   curve.curve_a(),
+                curve_b_limbs: curve.curve_b_limbs(limb_bits, num_limbs),
+                curve_b_raw:   curve.curve_b(),
+            },
         }
     }
 }
@@ -275,24 +272,38 @@ pub fn allocate_pinned_constant(compiler: &mut NoirToR1CSCompiler, value: FieldE
     w
 }
 
-/// Unified field + EC operations struct.
-pub struct MultiLimbOps<'a, 'p, F> {
+/// Allocate pinned constant witnesses from pre-decomposed `FieldElement` limbs.
+pub fn allocate_pinned_constant_limbs(
+    compiler: &mut NoirToR1CSCompiler,
+    limb_values: &[FieldElement],
+) -> Vec<usize> {
+    limb_values
+        .iter()
+        .map(|&val| allocate_pinned_constant(compiler, val))
+        .collect()
+}
+
+/// Unified field + EC operations struct, parameterized by:
+/// - `F`: field arithmetic strategy (`FieldArith`)
+/// - `E`: EC point arithmetic strategy (`EcOps`) — `()` when EC ops not needed
+/// - `P`: params type — `ModulusParams` for field-only, `EcFieldParams` for EC
+pub struct MultiLimbOps<'a, 'p, F, E = (), P: AsRef<ModulusParams> = ModulusParams> {
     pub(in crate::msm) compiler: &'a mut NoirToR1CSCompiler,
     pub(in crate::msm) range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-    pub params: &'p MultiLimbParams,
-    _field: PhantomData<F>,
+    pub params: &'p P,
+    _field: PhantomData<(F, E)>,
 }
 
 // -----------------------------------------------------------------
 // Helper methods — available for any F (no trait bound required)
 // -----------------------------------------------------------------
 
-impl<'a, 'p, F> MultiLimbOps<'a, 'p, F> {
+impl<'a, 'p, F, E, P: AsRef<ModulusParams>> MultiLimbOps<'a, 'p, F, E, P> {
     /// Construct a new `MultiLimbOps`.
     pub fn new(
         compiler: &'a mut NoirToR1CSCompiler,
         range_checks: &'a mut BTreeMap<u32, Vec<usize>>,
-        params: &'p MultiLimbParams,
+        params: &'p P,
     ) -> Self {
         Self {
             compiler,
@@ -302,8 +313,13 @@ impl<'a, 'p, F> MultiLimbOps<'a, 'p, F> {
         }
     }
 
+    /// Access the modulus parameters.
+    fn m(&self) -> &ModulusParams {
+        self.params.as_ref()
+    }
+
     fn n(&self) -> usize {
-        self.params.num_limbs
+        self.m().num_limbs
     }
 
     /// Returns the witness index for the constant-one wire.
@@ -391,11 +407,7 @@ impl<'a, 'p, F> MultiLimbOps<'a, 'p, F> {
             "constant_limbs: expected {n} limbs, got {}",
             limbs.len()
         );
-        let mut out = Limbs::new();
-        for i in 0..n {
-            out.push(allocate_pinned_constant(self.compiler, limbs[i]));
-        }
-        out
+        Limbs::from(allocate_pinned_constant_limbs(self.compiler, limbs).as_slice())
     }
 }
 
@@ -403,54 +415,59 @@ impl<'a, 'p, F> MultiLimbOps<'a, 'p, F> {
 // Field arithmetic — available when F: FieldArith
 // -----------------------------------------------------------------
 
-impl<F: FieldArith> MultiLimbOps<'_, '_, F> {
+impl<F: FieldArith, E, P: AsRef<ModulusParams>> MultiLimbOps<'_, '_, F, E, P> {
     /// Negate a multi-limb value: computes `p - value (mod p)`.
     #[must_use]
     pub fn negate(&mut self, value: Limbs) -> Limbs {
-        F::field_negate(self.compiler, self.range_checks, self.params, value)
+        F::field_negate(
+            self.compiler,
+            self.range_checks,
+            self.params.as_ref(),
+            value,
+        )
     }
 
     #[must_use]
     pub fn add(&mut self, a: Limbs, b: Limbs) -> Limbs {
         assert_eq!(a.len(), self.n(), "add: a.len() != num_limbs");
         assert_eq!(b.len(), self.n(), "add: b.len() != num_limbs");
-        F::field_add(self.compiler, self.range_checks, self.params, a, b)
+        F::field_add(self.compiler, self.range_checks, self.params.as_ref(), a, b)
     }
 
     #[must_use]
     pub fn sub(&mut self, a: Limbs, b: Limbs) -> Limbs {
         assert_eq!(a.len(), self.n(), "sub: a.len() != num_limbs");
         assert_eq!(b.len(), self.n(), "sub: b.len() != num_limbs");
-        F::field_sub(self.compiler, self.range_checks, self.params, a, b)
+        F::field_sub(self.compiler, self.range_checks, self.params.as_ref(), a, b)
     }
 
     #[must_use]
     pub fn mul(&mut self, a: Limbs, b: Limbs) -> Limbs {
         assert_eq!(a.len(), self.n(), "mul: a.len() != num_limbs");
         assert_eq!(b.len(), self.n(), "mul: b.len() != num_limbs");
-        F::field_mul(self.compiler, self.range_checks, self.params, a, b)
+        F::field_mul(self.compiler, self.range_checks, self.params.as_ref(), a, b)
     }
 }
 
 // -----------------------------------------------------------------
-// EC point operations — available when F: EcOps (implies F: FieldArith)
+// EC point operations — available when E: EcOps, P = EcFieldParams
 // -----------------------------------------------------------------
 
-impl<F: EcOps> MultiLimbOps<'_, '_, F> {
+impl<F, E: EcOps> MultiLimbOps<'_, '_, F, E, EcFieldParams> {
     /// Point doubling: computes 2P.
     #[must_use]
     pub fn point_double(&mut self, p: EcPoint) -> EcPoint {
-        F::point_double(self.compiler, self.range_checks, self.params, p)
+        E::point_double(self.compiler, self.range_checks, self.params, p)
     }
 
     /// Point addition: computes P1 + P2 (requires P1 ≠ ±P2).
     #[must_use]
     pub fn point_add(&mut self, p1: EcPoint, p2: EcPoint) -> EcPoint {
-        F::point_add(self.compiler, self.range_checks, self.params, p1, p2)
+        E::point_add(self.compiler, self.range_checks, self.params, p1, p2)
     }
 
     /// On-curve verification: constrains y² = x³ + ax + b.
     pub fn verify_on_curve(&mut self, p: EcPoint) {
-        F::verify_on_curve(self.compiler, self.range_checks, self.params, p);
+        E::verify_on_curve(self.compiler, self.range_checks, self.params, p);
     }
 }

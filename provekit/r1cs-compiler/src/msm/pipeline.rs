@@ -7,7 +7,7 @@ use {
     super::{
         curve::{self, Curve},
         ec_points::{self, EcOps},
-        multi_limb_ops::{MultiLimbOps, MultiLimbParams},
+        multi_limb_ops::{EcFieldParams, MultiLimbOps},
         sanitize::{
             emit_ec_scalar_mul_hint_and_sanitize_multi_limb, emit_fakeglv_hint,
             sanitize_point_scalar_multi_limb,
@@ -25,6 +25,10 @@ use {
     provekit_common::FieldElement,
     std::collections::BTreeMap,
 };
+
+/// EC-aware `MultiLimbOps` with both field (`E::Field`) and EC (`E`) ops
+/// available.
+type EcOpsCtx<'a, 'p, E> = MultiLimbOps<'a, 'p, <E as EcOps>::Field, E, EcFieldParams>;
 
 // ---------------------------------------------------------------------------
 // Phase 1 output
@@ -81,7 +85,7 @@ pub(super) fn process_multi_point<E: EcOps>(
         .collect();
 
     // Build params once for all operations
-    let params = MultiLimbParams::for_field_modulus(num_limbs, limb_bits, curve);
+    let params = EcFieldParams::for_field_modulus(num_limbs, limb_bits, curve);
     // Offset point as limbs for accumulation
     let offset_x_values = curve.offset_x_limbs(limb_bits, num_limbs);
     let offset_y_values = curve.offset_y_limbs(limb_bits, num_limbs);
@@ -154,7 +158,7 @@ pub(super) fn process_multi_point<E: EcOps>(
 fn preprocess_points<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
     point_wits: &[usize],
     scalar_wits: &[usize],
     gen_x_limb_wits: &[usize],
@@ -217,7 +221,6 @@ fn preprocess_points<E: EcOps>(
             &san,
             gen_x_limb_wits,
             gen_y_limb_wits,
-            num_limbs,
             limb_bits,
             range_checks,
             curve,
@@ -231,7 +234,7 @@ fn preprocess_points<E: EcOps>(
 
         // On-curve checks
         {
-            let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
+            let mut ops = EcOpsCtx::<E>::new(&mut *compiler, &mut *range_checks, params);
             ops.verify_on_curve(p);
             ops.verify_on_curve(r);
         }
@@ -240,7 +243,7 @@ fn preprocess_points<E: EcOps>(
         let (s1_witness, s2_witness, neg1_witness, neg2_witness);
         let (py_effective, ry_effective, s1_bits, s2_bits, s1_skew, s2_skew);
         {
-            let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
+            let mut ops = EcOpsCtx::<E>::new(&mut *compiler, &mut *range_checks, params);
 
             // FakeGLVHint → |s1|, |s2|, neg1, neg2
             (s1_witness, s2_witness, neg1_witness, neg2_witness) =
@@ -300,7 +303,7 @@ fn preprocess_points<E: EcOps>(
 fn verify_scalar_muls<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
     merged_points: &[ec_points::MergedGlvPoint],
     offset_x_values: &[FieldElement],
     offset_y_values: &[FieldElement],
@@ -311,7 +314,7 @@ fn verify_scalar_muls<E: EcOps>(
     let limb_bits = config.limb_bits;
     let window_size = config.window_size;
     let half_bits = curve.glv_half_bits() as usize;
-    let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
+    let mut ops = EcOpsCtx::<E>::new(&mut *compiler, &mut *range_checks, params);
 
     // Expected accumulated offset
     let glv_num_windows = (half_bits + window_size - 1) / window_size;
@@ -350,7 +353,7 @@ fn verify_scalar_muls<E: EcOps>(
 fn accumulate_and_constrain_outputs<E: EcOps>(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
     accum_inputs: &[(EcPoint, usize)],
     outputs: &MsmLimbedOutputs,
     all_skipped: usize,
@@ -362,7 +365,7 @@ fn accumulate_and_constrain_outputs<E: EcOps>(
 ) {
     let num_limbs = config.num_limbs;
     let limb_bits = config.limb_bits;
-    let mut ops = MultiLimbOps::<E>::new(&mut *compiler, &mut *range_checks, params);
+    let mut ops = EcOpsCtx::<E>::new(&mut *compiler, &mut *range_checks, params);
     let mut acc = EcPoint {
         x: ops.constant_limbs(offset_x_values),
         y: ops.constant_limbs(offset_y_values),

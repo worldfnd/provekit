@@ -101,11 +101,11 @@ pub(super) fn emit_ec_scalar_mul_hint_and_sanitize_multi_limb<C: Curve>(
     san: &SanitizedInputsMultiLimb,
     gen_x_limb_wits: &[usize],
     gen_y_limb_wits: &[usize],
-    num_limbs: usize,
     limb_bits: u32,
     range_checks: &mut std::collections::BTreeMap<u32, Vec<usize>>,
     curve: &C,
 ) -> (Limbs, Limbs) {
+    let num_limbs = san.px_limbs.len();
     let hint_start = compiler.num_witnesses();
     compiler.add_witness_builder(WitnessBuilder::EcScalarMulHint {
         output_start: hint_start,

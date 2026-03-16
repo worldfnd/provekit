@@ -1,7 +1,7 @@
 //! Native-field hint-verified EC operations.
 
 use {
-    crate::{msm::multi_limb_ops::MultiLimbParams, noir_to_r1cs::NoirToR1CSCompiler},
+    crate::{msm::multi_limb_ops::EcFieldParams, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{Field, PrimeField},
     provekit_common::{witness::WitnessBuilder, FieldElement},
 };
@@ -12,7 +12,7 @@ pub fn point_double_verified_native(
     compiler: &mut NoirToR1CSCompiler,
     px: usize,
     py: usize,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) -> (usize, usize) {
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
@@ -20,7 +20,7 @@ pub fn point_double_verified_native(
         output_start: hint_start,
         px,
         py,
-        curve_a: params.curve_a_raw,
+        curve_a: params.ec.curve_a_raw,
         field_modulus_p: params.modulus_raw,
     });
     let lambda = hint_start;
@@ -32,7 +32,7 @@ pub fn point_double_verified_native(
 
     // Constraint: lambda * (2 * py) = 3 * x_sq + a
     // A = [lambda], B = [2*py], C = [3*x_sq + a_const]
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw))
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.ec.curve_a_raw))
         .expect("curve_a must fit in native field");
     let three = FieldElement::from(3u64);
     let two = FieldElement::from(2u64);
@@ -68,7 +68,7 @@ pub fn point_add_verified_native(
     y1: usize,
     x2: usize,
     y2: usize,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) -> (usize, usize) {
     // Allocate hint witnesses
     let hint_start = compiler.num_witnesses();
@@ -117,14 +117,14 @@ pub fn verify_on_curve_native(
     compiler: &mut NoirToR1CSCompiler,
     x: usize,
     y: usize,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) {
     let x_sq = compiler.add_product(x, x);
     let x_cu = compiler.add_product(x_sq, x);
 
-    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_a_raw))
+    let a_fe = FieldElement::from_bigint(ark_ff::BigInt(params.ec.curve_a_raw))
         .expect("curve_a must fit in native field");
-    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(params.curve_b_raw))
+    let b_fe = FieldElement::from_bigint(ark_ff::BigInt(params.ec.curve_b_raw))
         .expect("curve_b must fit in native field");
 
     // y * y = x_cu + a*x + b

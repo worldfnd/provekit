@@ -8,7 +8,7 @@ use {
         cost_model,
         curve::Curve,
         multi_limb_arith::compute_is_zero,
-        multi_limb_ops::{MultiLimbField, MultiLimbOps, MultiLimbParams},
+        multi_limb_ops::{ModulusParams, MultiLimbField, MultiLimbOps},
         Limbs, SCALAR_HALF_BITS,
     },
     crate::{
@@ -55,7 +55,7 @@ pub(super) fn verify_scalar_relation<C: Curve>(
     let num_limbs = (order_bits + limb_bits as usize - 1) / limb_bits as usize;
     let half_bits = curve.glv_half_bits() as usize;
 
-    let params = MultiLimbParams::for_curve_order(num_limbs, limb_bits, curve);
+    let params = ModulusParams::for_curve_order(num_limbs, limb_bits, curve);
     let mut ops = MultiLimbOps::<MultiLimbField>::new(compiler, range_checks, &params);
 
     let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);

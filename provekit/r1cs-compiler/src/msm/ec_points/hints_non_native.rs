@@ -8,7 +8,7 @@ use {
         msm::{
             cost_model::{column_equation_max_bits, hint_carry_bits},
             multi_limb_arith::{emit_schoolbook_column_equations, less_than_p_check_multi},
-            multi_limb_ops::MultiLimbParams,
+            multi_limb_ops::{allocate_pinned_constant_limbs, EcFieldParams},
             Limbs,
         },
         noir_to_r1cs::NoirToR1CSCompiler,
@@ -39,18 +39,6 @@ fn make_products(compiler: &mut NoirToR1CSCompiler, a: &[usize], b: &[usize]) ->
     prods
 }
 
-/// Allocate pinned constant witnesses from pre-decomposed `FieldElement` limbs.
-fn allocate_pinned_constant_limbs(
-    compiler: &mut NoirToR1CSCompiler,
-    limb_values: &[FieldElement],
-) -> Vec<usize> {
-    use crate::msm::multi_limb_ops::allocate_pinned_constant;
-    limb_values
-        .iter()
-        .map(|&val| allocate_pinned_constant(compiler, val))
-        .collect()
-}
-
 /// Range-check limb witnesses at `limb_bits` and carry witnesses at
 /// `carry_range_bits`.
 fn range_check_limbs_and_carries(
@@ -72,23 +60,6 @@ fn range_check_limbs_and_carries(
     }
 }
 
-/// Convert `Vec<usize>` to `Limbs` and do a less-than-p check.
-fn less_than_p_check_vec(
-    compiler: &mut NoirToR1CSCompiler,
-    range_checks: &mut BTreeMap<u32, Vec<usize>>,
-    v: &[usize],
-    params: &MultiLimbParams,
-) {
-    less_than_p_check_multi(
-        compiler,
-        range_checks,
-        Limbs::from(v),
-        &params.p_minus_1_limbs,
-        params.two_pow_w,
-        params.limb_bits,
-    );
-}
-
 /// Soundness check: verify that merged column equations fit the native field.
 fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_name: &str) {
     let max_bits = column_equation_max_bits(limb_bits, max_coeff_sum, n);
@@ -98,18 +69,97 @@ fn check_column_equation_fits(limb_bits: u32, max_coeff_sum: u64, n: usize, op_n
     );
 }
 
+// ---------------------------------------------------------------------------
+// Parsed hint layout for 3-equation EC ops (point double and add)
+// ---------------------------------------------------------------------------
+
+/// Parsed hint layout: [lambda(N), x3(N), y3(N),
+///   q_pos\[0\](N), q_neg\[0\](N), carries\[0\](2N-2),
+///   q_pos\[1\](N), q_neg\[1\](N), carries\[1\](2N-2),
+///   q_pos\[2\](N), q_neg\[2\](N), carries\[2\](2N-2)]
+/// Total: 15N-6 witnesses.
+struct EcHint3Eq {
+    lambda:  Vec<usize>,
+    x3:      Vec<usize>,
+    y3:      Vec<usize>,
+    q_pos:   [Vec<usize>; 3],
+    q_neg:   [Vec<usize>; 3],
+    carries: [Vec<usize>; 3],
+}
+
+impl EcHint3Eq {
+    fn parse(os: usize, n: usize) -> Self {
+        Self {
+            lambda:  witness_range(os, n),
+            x3:      witness_range(os + n, n),
+            y3:      witness_range(os + 2 * n, n),
+            q_pos:   [
+                witness_range(os + 3 * n, n),
+                witness_range(os + 7 * n - 2, n),
+                witness_range(os + 11 * n - 4, n),
+            ],
+            q_neg:   [
+                witness_range(os + 4 * n, n),
+                witness_range(os + 8 * n - 2, n),
+                witness_range(os + 12 * n - 4, n),
+            ],
+            carries: [
+                witness_range(os + 5 * n, 2 * n - 2),
+                witness_range(os + 9 * n - 2, 2 * n - 2),
+                witness_range(os + 13 * n - 4, 2 * n - 2),
+            ],
+        }
+    }
+
+    /// Range-check all hint outputs and verify lambda/x3/y3 < p.
+    fn range_check_and_verify(
+        &self,
+        compiler: &mut NoirToR1CSCompiler,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+        max_coeff_sum: u64,
+        params: &EcFieldParams,
+    ) -> (Limbs, Limbs) {
+        let n = params.num_limbs;
+        let crb = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
+        range_check_limbs_and_carries(
+            range_checks,
+            &[
+                &self.lambda,
+                &self.x3,
+                &self.y3,
+                &self.q_pos[0],
+                &self.q_neg[0],
+                &self.q_pos[1],
+                &self.q_neg[1],
+                &self.q_pos[2],
+                &self.q_neg[2],
+            ],
+            &[&self.carries[0], &self.carries[1], &self.carries[2]],
+            params.limb_bits,
+            crb,
+        );
+        for v in [&self.lambda, &self.x3, &self.y3] {
+            less_than_p_check_multi(compiler, range_checks, Limbs::from(v.as_slice()), params);
+        }
+        (
+            Limbs::from(self.x3.as_slice()),
+            Limbs::from(self.y3.as_slice()),
+        )
+    }
+}
+
 /// Hint-verified on-curve check: y² = x³ + ax + b (mod p).
 pub fn verify_on_curve_non_native(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     px: Limbs,
     py: Limbs,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) {
     let n = params.num_limbs;
     assert!(n >= 2, "hint-verified on-curve check requires n >= 2");
 
-    let a_is_zero = params.curve_a_raw.iter().all(|&v| v == 0);
+    let a_is_zero = params.ec.curve_a_raw.iter().all(|&v| v == 0);
 
     let max_coeff_sum: u64 = if a_is_zero {
         4 + 2 * n as u64
@@ -124,8 +174,8 @@ pub fn verify_on_curve_non_native(
         output_start:    os,
         op:              NonNativeEcOp::OnCurve,
         inputs:          vec![px, py],
-        curve_a:         params.curve_a_raw,
-        curve_b:         params.curve_b_raw,
+        curve_a:         params.ec.curve_a_raw,
+        curve_b:         params.ec.curve_b_raw,
         field_modulus_p: params.modulus_raw,
         limb_bits:       params.limb_bits,
         num_limbs:       n as u32,
@@ -162,7 +212,7 @@ pub fn verify_on_curve_non_native(
     // Eq2: py·py - x_sq·px - a·px - b = q2·p
     let prod_py_py = make_products(compiler, py.as_slice(), py.as_slice());
     let prod_xsq_px = make_products(compiler, &x_sq, px.as_slice());
-    let b_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_b_limbs[..n]);
+    let b_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_b_limbs[..n]);
 
     if a_is_zero {
         let max_coeff_eq2: u64 = 1 + 1 + 1 + 2 * n as u64;
@@ -182,7 +232,7 @@ pub fn verify_on_curve_non_native(
             max_coeff_eq2,
         );
     } else {
-        let a_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_a_limbs[..n]);
+        let a_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_a_limbs[..n]);
         let prod_a_px = make_products(compiler, &a_limbs, px.as_slice());
 
         let max_coeff_eq2: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
@@ -215,7 +265,7 @@ pub fn verify_on_curve_non_native(
     );
 
     // Less-than-p check for x_sq
-    less_than_p_check_vec(compiler, range_checks, &x_sq, params);
+    less_than_p_check_multi(compiler, range_checks, Limbs::from(x_sq.as_slice()), params);
 }
 
 /// Hint-verified point doubling for non-native field (multi-limb).
@@ -224,7 +274,7 @@ pub fn point_double_verified_non_native(
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     px: Limbs,
     py: Limbs,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) -> (Limbs, Limbs) {
     let n = params.num_limbs;
     assert!(n >= 2, "hint-verified non-native requires n >= 2");
@@ -238,40 +288,22 @@ pub fn point_double_verified_non_native(
         output_start:    os,
         op:              NonNativeEcOp::Double,
         inputs:          vec![px, py],
-        curve_a:         params.curve_a_raw,
+        curve_a:         params.ec.curve_a_raw,
         curve_b:         [0; 4], // unused for double
         field_modulus_p: params.modulus_raw,
         limb_bits:       params.limb_bits,
         num_limbs:       n as u32,
     });
 
-    // Parse hint layout: [lambda(N), x3(N), y3(N),
-    //   q1_pos(N), q1_neg(N), c1(2N-2),
-    //   q2_pos(N), q2_neg(N), c2(2N-2),
-    //   q3_pos(N), q3_neg(N), c3(2N-2)]
-    // Total: 15N-6
-    let lambda = witness_range(os, n);
-    let x3 = witness_range(os + n, n);
-    let y3 = witness_range(os + 2 * n, n);
-    let q1_pos = witness_range(os + 3 * n, n);
-    let q1_neg = witness_range(os + 4 * n, n);
-    let c1 = witness_range(os + 5 * n, 2 * n - 2);
-    let q2_pos = witness_range(os + 7 * n - 2, n);
-    let q2_neg = witness_range(os + 8 * n - 2, n);
-    let c2 = witness_range(os + 9 * n - 2, 2 * n - 2);
-    let q3_pos = witness_range(os + 11 * n - 4, n);
-    let q3_neg = witness_range(os + 12 * n - 4, n);
-    let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
-
+    let h = EcHint3Eq::parse(os, n);
     let px_s = px.as_slice();
     let py_s = py.as_slice();
 
     // Eq1: 2*lambda*py - 3*px*px - a = q1*p
-    let prod_lam_py = make_products(compiler, &lambda, py_s);
+    let prod_lam_py = make_products(compiler, &h.lambda, py_s);
     let prod_px_px = make_products(compiler, px_s, px_s);
-    let a_limbs = allocate_pinned_constant_limbs(compiler, &params.curve_a_limbs[..n]);
+    let a_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_a_limbs[..n]);
 
-    let max_coeff_eq1: u64 = 2 + 3 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[
@@ -279,73 +311,56 @@ pub fn point_double_verified_non_native(
             (&prod_px_px, -FieldElement::from(3u64)),
         ],
         &[(&a_limbs, -FieldElement::ONE)],
-        &q1_pos,
-        Some(&q1_neg),
-        &c1,
+        &h.q_pos[0],
+        Some(&h.q_neg[0]),
+        &h.carries[0],
         &params.p_limbs,
         n,
         params.limb_bits,
-        max_coeff_eq1,
+        2 + 3 + 1 + 2 * n as u64,
     );
 
     // Eq2: lambda² - x3 - 2*px = q2*p
-    let prod_lam_lam = make_products(compiler, &lambda, &lambda);
+    let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
 
-    let max_coeff_eq2: u64 = 1 + 1 + 2 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[(&prod_lam_lam, FieldElement::ONE)],
-        &[(&x3, -FieldElement::ONE), (px_s, -FieldElement::from(2u64))],
-        &q2_pos,
-        Some(&q2_neg),
-        &c2,
+        &[
+            (&h.x3, -FieldElement::ONE),
+            (px_s, -FieldElement::from(2u64)),
+        ],
+        &h.q_pos[1],
+        Some(&h.q_neg[1]),
+        &h.carries[1],
         &params.p_limbs,
         n,
         params.limb_bits,
-        max_coeff_eq2,
+        1 + 1 + 2 + 2 * n as u64,
     );
 
     // Eq3: lambda*px - lambda*x3 - y3 - py = q3*p
-    let prod_lam_px = make_products(compiler, &lambda, px_s);
-    let prod_lam_x3 = make_products(compiler, &lambda, &x3);
+    let prod_lam_px = make_products(compiler, &h.lambda, px_s);
+    let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
 
-    let max_coeff_eq3: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
     emit_schoolbook_column_equations(
         compiler,
         &[
             (&prod_lam_px, FieldElement::ONE),
             (&prod_lam_x3, -FieldElement::ONE),
         ],
-        &[(&y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
-        &q3_pos,
-        Some(&q3_neg),
-        &c3,
+        &[(&h.y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
+        &h.q_pos[2],
+        Some(&h.q_neg[2]),
+        &h.carries[2],
         &params.p_limbs,
         n,
         params.limb_bits,
-        max_coeff_eq3,
+        1 + 1 + 1 + 1 + 2 * n as u64,
     );
 
-    // Range checks on hint outputs
-    // max_coeff across eqs: Eq1 = 6+2N, Eq2 = 4+2N, Eq3 = 4+2N → worst = 6+2N
-    let max_coeff_carry = 6u64 + 2 * n as u64;
-    let crb = hint_carry_bits(params.limb_bits, max_coeff_carry, n);
-    range_check_limbs_and_carries(
-        range_checks,
-        &[
-            &lambda, &x3, &y3, &q1_pos, &q1_neg, &q2_pos, &q2_neg, &q3_pos, &q3_neg,
-        ],
-        &[&c1, &c2, &c3],
-        params.limb_bits,
-        crb,
-    );
-
-    // Less-than-p checks for lambda, x3, y3
-    less_than_p_check_vec(compiler, range_checks, &lambda, params);
-    less_than_p_check_vec(compiler, range_checks, &x3, params);
-    less_than_p_check_vec(compiler, range_checks, &y3, params);
-
-    (Limbs::from(x3.as_slice()), Limbs::from(y3.as_slice()))
+    // Worst-case max_coeff across eqs: Eq1 = 6+2N
+    h.range_check_and_verify(compiler, range_checks, 6 + 2 * n as u64, params)
 }
 
 /// Hint-verified point addition for non-native field (multi-limb).
@@ -356,7 +371,7 @@ pub fn point_add_verified_non_native(
     y1: Limbs,
     x2: Limbs,
     y2: Limbs,
-    params: &MultiLimbParams,
+    params: &EcFieldParams,
 ) -> (Limbs, Limbs) {
     let n = params.num_limbs;
     assert!(n >= 2, "hint-verified non-native requires n >= 2");
@@ -376,32 +391,15 @@ pub fn point_add_verified_non_native(
         num_limbs:       n as u32,
     });
 
-    // Parse hint layout: [lambda(N), x3(N), y3(N),
-    //   q1_pos(N), q1_neg(N), c1(2N-2),
-    //   q2_pos(N), q2_neg(N), c2(2N-2),
-    //   q3_pos(N), q3_neg(N), c3(2N-2)]
-    // Total: 15N-6
-    let lambda = witness_range(os, n);
-    let x3 = witness_range(os + n, n);
-    let y3 = witness_range(os + 2 * n, n);
-    let q1_pos = witness_range(os + 3 * n, n);
-    let q1_neg = witness_range(os + 4 * n, n);
-    let c1 = witness_range(os + 5 * n, 2 * n - 2);
-    let q2_pos = witness_range(os + 7 * n - 2, n);
-    let q2_neg = witness_range(os + 8 * n - 2, n);
-    let c2 = witness_range(os + 9 * n - 2, 2 * n - 2);
-    let q3_pos = witness_range(os + 11 * n - 4, n);
-    let q3_neg = witness_range(os + 12 * n - 4, n);
-    let c3 = witness_range(os + 13 * n - 4, 2 * n - 2);
-
+    let h = EcHint3Eq::parse(os, n);
     let x1_s = x1.as_slice();
     let y1_s = y1.as_slice();
     let x2_s = x2.as_slice();
     let y2_s = y2.as_slice();
 
     // Eq1: lambda*x2 - lambda*x1 - y2 + y1 = q1*p
-    let prod_lam_x2 = make_products(compiler, &lambda, x2_s);
-    let prod_lam_x1 = make_products(compiler, &lambda, x1_s);
+    let prod_lam_x2 = make_products(compiler, &h.lambda, x2_s);
+    let prod_lam_x1 = make_products(compiler, &h.lambda, x1_s);
 
     emit_schoolbook_column_equations(
         compiler,
@@ -410,9 +408,9 @@ pub fn point_add_verified_non_native(
             (&prod_lam_x1, -FieldElement::ONE),
         ],
         &[(y2_s, -FieldElement::ONE), (y1_s, FieldElement::ONE)],
-        &q1_pos,
-        Some(&q1_neg),
-        &c1,
+        &h.q_pos[0],
+        Some(&h.q_neg[0]),
+        &h.carries[0],
         &params.p_limbs,
         n,
         params.limb_bits,
@@ -420,19 +418,19 @@ pub fn point_add_verified_non_native(
     );
 
     // Eq2: lambda² - x3 - x1 - x2 = q2*p
-    let prod_lam_lam = make_products(compiler, &lambda, &lambda);
+    let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
 
     emit_schoolbook_column_equations(
         compiler,
         &[(&prod_lam_lam, FieldElement::ONE)],
         &[
-            (&x3, -FieldElement::ONE),
+            (&h.x3, -FieldElement::ONE),
             (x1_s, -FieldElement::ONE),
             (x2_s, -FieldElement::ONE),
         ],
-        &q2_pos,
-        Some(&q2_neg),
-        &c2,
+        &h.q_pos[1],
+        Some(&h.q_neg[1]),
+        &h.carries[1],
         &params.p_limbs,
         n,
         params.limb_bits,
@@ -441,7 +439,7 @@ pub fn point_add_verified_non_native(
 
     // Eq3: lambda*x1 - lambda*x3 - y3 - y1 = q3*p
     // Reuse prod_lam_x1 from Eq1
-    let prod_lam_x3 = make_products(compiler, &lambda, &x3);
+    let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
 
     emit_schoolbook_column_equations(
         compiler,
@@ -449,34 +447,16 @@ pub fn point_add_verified_non_native(
             (&prod_lam_x1, FieldElement::ONE),
             (&prod_lam_x3, -FieldElement::ONE),
         ],
-        &[(&y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
-        &q3_pos,
-        Some(&q3_neg),
-        &c3,
+        &[(&h.y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
+        &h.q_pos[2],
+        Some(&h.q_neg[2]),
+        &h.carries[2],
         &params.p_limbs,
         n,
         params.limb_bits,
         max_coeff,
     );
 
-    // Range checks
     // max_coeff across all 3 eqs = 4+2N
-    let max_coeff_carry = 4u64 + 2 * n as u64;
-    let crb = hint_carry_bits(params.limb_bits, max_coeff_carry, n);
-    range_check_limbs_and_carries(
-        range_checks,
-        &[
-            &lambda, &x3, &y3, &q1_pos, &q1_neg, &q2_pos, &q2_neg, &q3_pos, &q3_neg,
-        ],
-        &[&c1, &c2, &c3],
-        params.limb_bits,
-        crb,
-    );
-
-    // Less-than-p checks
-    less_than_p_check_vec(compiler, range_checks, &lambda, params);
-    less_than_p_check_vec(compiler, range_checks, &x3, params);
-    less_than_p_check_vec(compiler, range_checks, &y3, params);
-
-    (Limbs::from(x3.as_slice()), Limbs::from(y3.as_slice()))
+    h.range_check_and_verify(compiler, range_checks, 4 + 2 * n as u64, params)
 }

@@ -4,7 +4,7 @@
 //! (N≥2) representations, plus `compute_is_zero` and `less_than_p` checks.
 
 use {
-    super::{ceil_log2, Limbs},
+    super::{ceil_log2, multi_limb_ops::ModulusParams, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{AdditiveGroup, Field, PrimeField},
     provekit_common::{
@@ -74,11 +74,7 @@ fn add_sub_mod_p_core(
     op: ModularOp,
     a: Limbs,
     b: Limbs,
-    p_limbs: &[FieldElement],
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
-    modulus_raw: &[u64; 4],
+    params: &ModulusParams,
 ) -> Limbs {
     let n = a.len();
     assert!(n >= 2, "add/sub_mod_p_multi requires n >= 2, got n={n}");
@@ -89,21 +85,21 @@ fn add_sub_mod_p_core(
     match op {
         ModularOp::Add => {
             compiler.add_witness_builder(WitnessBuilder::MultiLimbAddQuotient {
-                output: q,
-                a_limbs: a.as_slice().to_vec(),
-                b_limbs: b.as_slice().to_vec(),
-                modulus: *modulus_raw,
-                limb_bits,
+                output:    q,
+                a_limbs:   a.as_slice().to_vec(),
+                b_limbs:   b.as_slice().to_vec(),
+                modulus:   params.modulus_raw,
+                limb_bits: params.limb_bits,
                 num_limbs: n as u32,
             });
         }
         ModularOp::Sub => {
             compiler.add_witness_builder(WitnessBuilder::MultiLimbSubBorrow {
-                output: q,
-                a_limbs: a.as_slice().to_vec(),
-                b_limbs: b.as_slice().to_vec(),
-                modulus: *modulus_raw,
-                limb_bits,
+                output:    q,
+                a_limbs:   a.as_slice().to_vec(),
+                b_limbs:   b.as_slice().to_vec(),
+                modulus:   params.modulus_raw,
+                limb_bits: params.limb_bits,
                 num_limbs: n as u32,
             });
         }
@@ -122,20 +118,20 @@ fn add_sub_mod_p_core(
     for i in 0..n {
         // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if carry_prev.is_some() {
-            two_pow_w - FieldElement::ONE
+            params.two_pow_w - FieldElement::ONE
         } else {
-            two_pow_w
+            params.two_pow_w
         };
         let mut terms = vec![SumTerm(None, a[i])];
         match op {
             ModularOp::Add => {
                 terms.push(SumTerm(None, b[i]));
                 terms.push(SumTerm(Some(w1_coeff), w1));
-                terms.push(SumTerm(Some(-p_limbs[i]), q));
+                terms.push(SumTerm(Some(-params.p_limbs[i]), q));
             }
             ModularOp::Sub => {
                 terms.push(SumTerm(Some(-FieldElement::ONE), b[i]));
-                terms.push(SumTerm(Some(p_limbs[i]), q));
+                terms.push(SumTerm(Some(params.p_limbs[i]), q));
                 terms.push(SumTerm(Some(w1_coeff), w1));
             }
         }
@@ -146,23 +142,20 @@ fn add_sub_mod_p_core(
 
         // carry = floor(v_offset / 2^W)
         let carry = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(carry, v_offset, two_pow_w));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
+            carry,
+            v_offset,
+            params.two_pow_w,
+        ));
         // r[i] = v_offset - carry * 2^W
         r.push(compiler.add_sum(vec![
             SumTerm(None, v_offset),
-            SumTerm(Some(-two_pow_w), carry),
+            SumTerm(Some(-params.two_pow_w), carry),
         ]));
         carry_prev = Some(carry);
     }
 
-    less_than_p_check_multi(
-        compiler,
-        range_checks,
-        r,
-        p_minus_1_limbs,
-        two_pow_w,
-        limb_bits,
-    );
+    less_than_p_check_multi(compiler, range_checks, r, params);
 
     r
 }
@@ -174,24 +167,9 @@ pub fn add_mod_p_multi(
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     a: Limbs,
     b: Limbs,
-    p_limbs: &[FieldElement],
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
-    modulus_raw: &[u64; 4],
+    params: &ModulusParams,
 ) -> Limbs {
-    add_sub_mod_p_core(
-        compiler,
-        range_checks,
-        ModularOp::Add,
-        a,
-        b,
-        p_limbs,
-        p_minus_1_limbs,
-        two_pow_w,
-        limb_bits,
-        modulus_raw,
-    )
+    add_sub_mod_p_core(compiler, range_checks, ModularOp::Add, a, b, params)
 }
 
 /// Negate a multi-limb value: computes `p - y` directly via borrow chain.
@@ -200,9 +178,7 @@ pub fn negate_mod_p_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     y: Limbs,
-    p_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
+    params: &ModulusParams,
 ) -> Limbs {
     let n = y.len();
     assert!(n >= 2, "negate_mod_p_multi requires n >= 2, got n={n}");
@@ -214,9 +190,9 @@ pub fn negate_mod_p_multi(
     for i in 0..n {
         // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if borrow_prev.is_some() {
-            p_limbs[i] + two_pow_w - FieldElement::ONE
+            params.p_limbs[i] + params.two_pow_w - FieldElement::ONE
         } else {
-            p_limbs[i] + two_pow_w
+            params.p_limbs[i] + params.two_pow_w
         };
         let mut terms = vec![
             SumTerm(Some(w1_coeff), w1),
@@ -229,14 +205,17 @@ pub fn negate_mod_p_multi(
 
         // borrow[i] = floor(v[i] / 2^W)
         let borrow = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v, two_pow_w));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v, params.two_pow_w));
 
         // r[i] = v[i] - borrow[i] * 2^W
-        let ri = compiler.add_sum(vec![SumTerm(None, v), SumTerm(Some(-two_pow_w), borrow)]);
+        let ri = compiler.add_sum(vec![
+            SumTerm(None, v),
+            SumTerm(Some(-params.two_pow_w), borrow),
+        ]);
         r.push(ri);
 
         // Range check r[i] — ensures borrow is uniquely determined
-        range_checks.entry(limb_bits).or_default().push(ri);
+        range_checks.entry(params.limb_bits).or_default().push(ri);
 
         borrow_prev = Some(borrow);
     }
@@ -251,24 +230,9 @@ pub fn sub_mod_p_multi(
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     a: Limbs,
     b: Limbs,
-    p_limbs: &[FieldElement],
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
-    modulus_raw: &[u64; 4],
+    params: &ModulusParams,
 ) -> Limbs {
-    add_sub_mod_p_core(
-        compiler,
-        range_checks,
-        ModularOp::Sub,
-        a,
-        b,
-        p_limbs,
-        p_minus_1_limbs,
-        two_pow_w,
-        limb_bits,
-        modulus_raw,
-    )
+    add_sub_mod_p_core(compiler, range_checks, ModularOp::Sub, a, b, params)
 }
 
 /// (a * b) mod p for multi-limb values using schoolbook multiplication.
@@ -278,13 +242,10 @@ pub fn mul_mod_p_multi(
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     a: Limbs,
     b: Limbs,
-    p_limbs: &[FieldElement],
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
-    modulus_raw: &[u64; 4],
+    params: &ModulusParams,
 ) -> Limbs {
     let n = a.len();
+    let limb_bits = params.limb_bits;
     assert!(n >= 2, "mul_mod_p_multi requires n >= 2, got n={n}");
 
     // Soundness: column values must fit the native field.
@@ -312,7 +273,7 @@ pub fn mul_mod_p_multi(
         output_start: os,
         a_limbs: a.as_slice().to_vec(),
         b_limbs: b.as_slice().to_vec(),
-        modulus: *modulus_raw,
+        modulus: params.modulus_raw,
         limb_bits,
         num_limbs: n as u32,
     });
@@ -339,7 +300,7 @@ pub fn mul_mod_p_multi(
         &q,
         None, // unsigned quotient — no q_neg
         &cu,
-        p_limbs,
+        &params.p_limbs,
         n,
         limb_bits,
         max_coeff_sum,
@@ -350,14 +311,7 @@ pub fn mul_mod_p_multi(
     for &ri in &r_indices {
         r_limbs.push(ri);
     }
-    less_than_p_check_multi(
-        compiler,
-        range_checks,
-        r_limbs,
-        p_minus_1_limbs,
-        two_pow_w,
-        limb_bits,
-    );
+    less_than_p_check_multi(compiler, range_checks, r_limbs, params);
 
     // Step 5: Range checks for q limbs and carries
     for i in 0..n {
@@ -377,9 +331,7 @@ pub fn less_than_p_check_multi(
     compiler: &mut NoirToR1CSCompiler,
     range_checks: &mut BTreeMap<u32, Vec<usize>>,
     r: Limbs,
-    p_minus_1_limbs: &[FieldElement],
-    two_pow_w: FieldElement,
-    limb_bits: u32,
+    params: &ModulusParams,
 ) {
     let n = r.len();
     let w1 = compiler.witness_one();
@@ -387,9 +339,9 @@ pub fn less_than_p_check_multi(
     for i in 0..n {
         // Combine w1 terms to avoid duplicate column indices.
         let w1_coeff = if borrow_prev.is_some() {
-            p_minus_1_limbs[i] + two_pow_w - FieldElement::ONE
+            params.p_minus_1_limbs[i] + params.two_pow_w - FieldElement::ONE
         } else {
-            p_minus_1_limbs[i] + two_pow_w
+            params.p_minus_1_limbs[i] + params.two_pow_w
         };
         let mut terms = vec![
             SumTerm(Some(w1_coeff), w1),
@@ -402,16 +354,20 @@ pub fn less_than_p_check_multi(
 
         // borrow = floor(v_diff / 2^W)
         let borrow = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v_diff, two_pow_w));
+        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
+            borrow,
+            v_diff,
+            params.two_pow_w,
+        ));
         // d[i] = v_diff - borrow * 2^W
         let d_i = compiler.add_sum(vec![
             SumTerm(None, v_diff),
-            SumTerm(Some(-two_pow_w), borrow),
+            SumTerm(Some(-params.two_pow_w), borrow),
         ]);
 
         // Range check r[i] and d[i]
-        range_checks.entry(limb_bits).or_default().push(r[i]);
-        range_checks.entry(limb_bits).or_default().push(d_i);
+        range_checks.entry(params.limb_bits).or_default().push(r[i]);
+        range_checks.entry(params.limb_bits).or_default().push(d_i);
 
         borrow_prev = Some(borrow);
     }
