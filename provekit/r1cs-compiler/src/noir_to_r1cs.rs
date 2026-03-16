@@ -725,6 +725,14 @@ impl NoirToR1CSCompiler {
         breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before_range;
         breakdown.range_witnesses = self.num_witnesses() - witnesses_before_range;
 
+        // Noir's Circuit.opcodes may not reference every witness declared in
+        // Circuit.public_parameters (e.g. public inputs declared but not constrained).
+        // Create builders for any public inputs that the opcode loop above
+        // missed.
+        for acir_idx in circuit.public_inputs().indices() {
+            self.fetch_r1cs_witness_index(NoirWitness(acir_idx));
+        }
+
         Ok(breakdown)
     }
 }
