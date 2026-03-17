@@ -1,6 +1,9 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof},
+    provekit_common::{
+        skyscraper::SKYSCRAPER_ENGINE_ID,
+        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+    },
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -8,7 +11,8 @@ use {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GnarkConfig {
-    pub whir_config_witness: WHIRConfigGnark,
+    pub blinded_commitment_whir_config: WHIRConfigGnark,
+    pub blinding_commitment_whir_config: WHIRConfigGnark,
     pub log_num_constraints: usize,
     pub log_num_variables:   usize,
     pub log_a_num_terms:     usize,
@@ -16,6 +20,7 @@ pub struct GnarkConfig {
     pub narg_string_len:     usize,
     pub hints:               Vec<u8>,
     pub hints_len:           usize,
+    pub protocol_id:         Vec<u8>,
     pub num_challenges:      usize,
     pub w1_size:             usize,
     pub public_inputs:       PublicInputs,
@@ -127,7 +132,9 @@ impl WHIRConfigGnark {
 
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    whir_params_witness: &WhirConfig,
+    scheme: &WhirR1CSScheme,
+    blinded_commitment: &WhirConfig,
+    blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -136,8 +143,10 @@ pub fn gnark_parameters(
     w1_size: usize,
     public_inputs: &PublicInputs,
 ) -> GnarkConfig {
+    let protocol_id: Vec<u8> = [254, 56, 133, 87, 194, 81, 172, 125, 171, 232, 212, 34, 213, 54, 201, 175, 243, 8, 115, 212, 43, 15, 232, 98, 212, 206, 212, 200, 177, 211, 201, 173, 127, 207, 223, 18, 176, 207, 42, 100, 210, 104, 54, 46, 157, 243, 45, 22, 182, 241, 133, 183, 237, 27, 217, 103, 136, 241, 181, 218, 73, 192, 186, 128].to_vec();
     GnarkConfig {
-        whir_config_witness: WHIRConfigGnark::new(whir_params_witness),
+        blinded_commitment_whir_config: WHIRConfigGnark::new(blinded_commitment),
+        blinding_commitment_whir_config: WHIRConfigGnark::new(blinding_commitment),
         log_num_constraints: m_0,
         log_num_variables: m,
         log_a_num_terms: a_num_terms,
@@ -145,6 +154,7 @@ pub fn gnark_parameters(
         narg_string_len: proof.narg_string.len(),
         hints: proof.hints.clone(),
         hints_len: proof.hints.len(),
+        protocol_id,
         num_challenges,
         w1_size,
         public_inputs: public_inputs.clone(),
@@ -153,7 +163,9 @@ pub fn gnark_parameters(
 
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    whir_params_witness: &WhirConfig,
+    scheme: &WhirR1CSScheme,
+    blinded_commitment: &WhirConfig,
+    blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -164,7 +176,9 @@ pub fn write_gnark_parameters_to_file(
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
-        whir_params_witness,
+        scheme,
+        blinded_commitment,
+        blinding_commitment,
         proof,
         m_0,
         m,

@@ -288,7 +288,7 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	}
 
 	// Build hints
-	hidingSpartanData := consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
+	hidingSpartanData := consumeWhirData(config.BlindedCommitmentWhirConfig, &merklePaths, &stirAnswers)
 
 	var witnessFirstRoundHints []FirstRoundHint
 	var witnessRoundHints ZKHint
@@ -299,9 +299,9 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		for i := 0; i < numCommitments; i++ {
 			witnessFirstRoundHints[i] = consumeFirstRoundOnly(&merklePaths, &stirAnswers)
 		}
-		witnessRoundHints = consumeWhirDataRoundsOnly(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+		witnessRoundHints = consumeWhirDataRoundsOnly(config.BlindingCommitmentWhirConfig, &merklePaths, &stirAnswers)
 	} else {
-		witnessData := consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
+		witnessData := consumeWhirData(config.BlindingCommitmentWhirConfig, &merklePaths, &stirAnswers)
 		witnessFirstRoundHints = []FirstRoundHint{witnessData.firstRoundMerklePaths}
 		witnessRoundHints = witnessData
 	}
@@ -388,7 +388,6 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		NumChallenges:                           config.NumChallenges,
 		W1Size:                                  config.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,
 		MatrixB:                                 matrixB,
 		MatrixC:                                 matrixC,
@@ -424,7 +423,6 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		NumChallenges:                           config.NumChallenges,
 		W1Size:                                  config.W1Size,
 		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
 		MatrixA:                                 matrixA,
 		MatrixB:                                 matrixB,
 		MatrixC:                                 matrixC,

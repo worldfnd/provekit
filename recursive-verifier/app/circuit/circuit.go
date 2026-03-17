@@ -20,7 +20,7 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
-type Circuit struct {
+type Circuit2 struct {
 	// Inputs
 	WitnessLinearStatementEvaluations       []frontend.Variable
 	HidingSpartanLinearStatementEvaluations []frontend.Variable
@@ -30,7 +30,6 @@ type Circuit struct {
 	HidingSpartanFirstRound                 Merkle
 	HidingSpartanMerkle                     Merkle
 	WHIRParamsWitness                       WHIRParams
-	WHIRParamsHidingSpartan                 WHIRParams
 	NumChallenges                           int
 	W1Size                                  int
 
@@ -49,196 +48,253 @@ type Circuit struct {
 	MatrixB []MatrixCell
 	MatrixC []MatrixCell
 
-	IO           []byte
 	Transcript   []uints.U8 `gnark:",public"`
 	PublicInputs PublicInputs
 }
 
+type Circuit struct {
+	ProtocolID        [64]uints.U8 `gnark:",public"`
+	SessionID         [32]uints.U8 `gnark:",public"`
+	Transcript        []uints.U8   `gnark:",public"`
+	WHIRParamsWitness WHIRParams
+}
+
 func (circuit *Circuit) Define(api frontend.API) error {
-	sc, arthur, uapi, err := initializeComponents(api, circuit)
+	_, arthur, _, err := initializeComponents(api, circuit)
 	if err != nil {
 		return err
 	}
 
 	// Parse first commitment (C1) - needed to consume transcript
-	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+	rootHash1, _, _, err := parseBatchedCommitment(api, arthur, circuit.WHIRParamsWitness)
+	api.Println("rootHash1", rootHash1)
+	// api.Println("initialOODQueries1", initialOODQueries1)
+	// api.Println("initialOODAnswers1", initialOODAnswers1)
+	// api.AssertIsBoolean(rootHash1)
 	if err != nil {
-		return err
+		return fmt.Errorf("parse commitment 1: %w", err)
 	}
-
-	// Variables for second commitment (only used in dual mode)
-	var rootHash2, batchingRandomness2 frontend.Variable
-	var initialOODQueries2 []frontend.Variable
-	var initialOODAnswers2 [][]frontend.Variable
-
-	if circuit.NumChallenges > 0 {
-		// Squeeze logup challenges
-		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
-		if err = arthur.FillChallengeScalars(logupChallenges); err != nil {
-			return err
-		}
-
-		// Parse second commitment (C2)
-		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Squeeze tRand for Spartan
-	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err = arthur.FillChallengeScalars(tRand)
-	if err != nil {
-		return err
-	}
-
-	// Run ZK sumcheck
-	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
-	if err != nil {
-		return err
-	}
-
-	// Read public inputs hash from transcript
-	publicInputsHashBuf := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(publicInputsHashBuf); err != nil {
-		return fmt.Errorf("failed to read public inputs hash: %w", err)
-	}
-
-	expectedHash, err := hashPublicInputs(sc, circuit.PublicInputs)
-	if err != nil {
-		return fmt.Errorf("failed to compute public inputs hash: %w", err)
-	}
-
-	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
-
-	// Squeeze rand for public weights
-	publicWeightsChallenge := make([]frontend.Variable, 1)
-	if err := arthur.FillChallengeScalars(publicWeightsChallenge); err != nil {
-		return fmt.Errorf("failed to read public weights challenge: %w", err)
-	}
-
-	// WHIR verification
-	var whirFoldingRandomness []frontend.Variable
-	var az, bz, cz frontend.Variable
-
-	if circuit.NumChallenges > 0 {
-		// Only statement_1 (first commitment) gets extended with public weights, statement_2 remains unchanged
-		extendedLinearStatementEvalsBatch := make([][][]frontend.Variable, 2)
-
-		if !circuit.PublicInputs.IsEmpty() {
-			extendedLinearStatementEvalsBatch[0] = extendLinearStatement(
-				circuit,
-				[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
-				circuit.PubWitnessEvaluations,
-			)
-
-			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[1],
-				circuit.WitnessBlindingEvaluations[1],
-			}
-		} else {
-			// Use original arrays as before, no public inputs
-			extendedLinearStatementEvalsBatch[0] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[0],
-				circuit.WitnessBlindingEvaluations[0],
-			}
-			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[1],
-				circuit.WitnessBlindingEvaluations[1],
-			}
-		}
-
-		whirFoldingRandomness, err = RunZKWhirBatch(
-			api, arthur, uapi, sc,
-			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
-			[]frontend.Variable{batchingRandomness1, batchingRandomness2},   // batchingRandomnesses
-			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
-			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
-			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
-			circuit.WitnessMerkle,                                           // batchedMerkle
-			extendedLinearStatementEvalsBatch,                               // linearStatementEvals (extended for first commitment)
-			circuit.WHIRParamsWitness,                                       // whirParams
-			circuit.WitnessLinearStatementEvaluations,                       // linearStatementValuesAtPoints
-			circuit.PublicInputs,                                            // publicInputs
-		)
-		if err != nil {
-			return err
-		}
-
-		// Sum evaluations from both commitments
-		az = api.Add(circuit.WitnessClaimedEvaluations[0][0], circuit.WitnessClaimedEvaluations[1][0])
-		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
-		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
-	} else {
-		extendedLinearStatementEvals := extendLinearStatement(circuit, [][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]}, circuit.PubWitnessEvaluations)
-
-		// Single commitment mode
-		whirFoldingRandomness, err = RunZKWhir(
-			api, arthur, uapi, sc,
-			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
-			circuit.WHIRParamsWitness,
-			extendedLinearStatementEvals,
-			circuit.WitnessLinearStatementEvaluations,
-			batchingRandomness1,
-			initialOODQueries1,
-			initialOODAnswers1,
-			rootHash1,
-		)
-		if err != nil {
-			return err
-		}
-
-		az = circuit.WitnessClaimedEvaluations[0][0]
-		bz = circuit.WitnessClaimedEvaluations[0][1]
-		cz = circuit.WitnessClaimedEvaluations[0][2]
-	}
-
-	// Spartan sumcheck relation check (common to both modes)
-	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
-	api.AssertIsEqual(spartanSumcheckLastValue, x)
-
-	offset := 0
-	if !circuit.PublicInputs.IsEmpty() {
-		// can be generalized later on if we have more different kinds of statements
-		offset = 1
-	}
-
-	if circuit.NumChallenges > 0 {
-		// Batch mode - check 6 deferred values
-		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
-		for i := 0; i < 6; i++ {
-			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-		}
-	} else {
-
-		// Single mode - existing logic
-		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
-		for i := 0; i < 3; i++ {
-			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-		}
-	}
-
-	// Geometric weights for public inputs
-	if !circuit.PublicInputs.IsEmpty() {
-		publicWeightEval := computePublicWeightEvaluation(
-			api, circuit.PublicInputs, whirFoldingRandomness, publicWeightsChallenge[0],
-		)
-
-		api.AssertIsEqual(publicWeightEval, circuit.WitnessLinearStatementEvaluations[0])
-	}
-
 	return nil
 }
 
-func computePublicWeightEvaluation(
-	api frontend.API,
-	publicInputs PublicInputs,
-	foldingRandomness []frontend.Variable,
-	x frontend.Variable,
-) frontend.Variable {
-	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
+// func (circuit *Circuit) Define2(api frontend.API) error {
+// 	sc, arthur, uapi, err := initializeComponents(api, circuit)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// Parse first commitment (C1) - needed to consume transcript
+// 	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// 	// Variables for second commitment (only used in dual mode)
+// 	var rootHash2, batchingRandomness2 frontend.Variable
+// 	var initialOODQueries2 []frontend.Variable
+// 	var initialOODAnswers2 [][]frontend.Variable
+
+// 	if circuit.NumChallenges > 0 {
+// 		// Squeeze logup challenges
+// 		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
+// 		if err = arthur.FillChallengeScalars(logupChallenges); err != nil {
+// 			return err
+// 		}
+
+// 		// Parse second commitment (C2)
+// 		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
+
+// 	// Squeeze tRand for Spartan
+// 	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
+// 	err = arthur.FillChallengeScalars(tRand)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// Run ZK sumcheck
+// 	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsWitness)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// Read public inputs hash from transcript
+// 	publicInputsHashBuf := make([]frontend.Variable, 1)
+// 	if err := arthur.FillNextScalars(publicInputsHashBuf); err != nil {
+// 		return fmt.Errorf("failed to read public inputs hash: %w", err)
+// 	}
+
+// 	expectedHash, err := hashPublicInputs(sc, circuit.PublicInputs)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to compute public inputs hash: %w", err)
+// 	}
+
+// 	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
+
+// 	// Squeeze rand for public weights
+// 	publicWeightsChallenge := make([]frontend.Variable, 1)
+// 	if err := arthur.FillChallengeScalars(publicWeightsChallenge); err != nil {
+// 		return fmt.Errorf("failed to read public weights challenge: %w", err)
+// 	}
+
+// 	// WHIR verification
+// 	var whirFoldingRandomness []frontend.Variable
+// 	var az, bz, cz frontend.Variable
+
+// 	if circuit.NumChallenges > 0 {
+// 		// Only statement_1 (first commitment) gets extended with public weights, statement_2 remains unchanged
+// 		extendedLinearStatementEvalsBatch := make([][][]frontend.Variable, 2)
+
+// 		if !circuit.PublicInputs.IsEmpty() {
+// 			extendedLinearStatementEvalsBatch[0] = extendLinearStatement(
+// 				circuit,
+// 				[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
+// 				circuit.PubWitnessEvaluations,
+// 			)
+
+// 			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
+// 				circuit.WitnessClaimedEvaluations[1],
+// 				circuit.WitnessBlindingEvaluations[1],
+// 			}
+// 		} else {
+// 			// Use original arrays as before, no public inputs
+// 			extendedLinearStatementEvalsBatch[0] = [][]frontend.Variable{
+// 				circuit.WitnessClaimedEvaluations[0],
+// 				circuit.WitnessBlindingEvaluations[0],
+// 			}
+// 			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
+// 				circuit.WitnessClaimedEvaluations[1],
+// 				circuit.WitnessBlindingEvaluations[1],
+// 			}
+// 		}
+
+// 		whirFoldingRandomness, err = RunZKWhirBatch(
+// 			api, arthur, uapi, sc,
+// 			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
+// 			[]frontend.Variable{batchingRandomness1, batchingRandomness2},   // batchingRandomnesses
+// 			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
+// 			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
+// 			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
+// 			circuit.WitnessMerkle,                                           // batchedMerkle
+// 			extendedLinearStatementEvalsBatch,                               // linearStatementEvals (extended for first commitment)
+// 			circuit.WHIRParamsWitness,                                       // whirParams
+// 			circuit.WitnessLinearStatementEvaluations,                       // linearStatementValuesAtPoints
+// 			circuit.PublicInputs,                                            // publicInputs
+// 		)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		// Sum evaluations from both commitments
+// 		az = api.Add(circuit.WitnessClaimedEvaluations[0][0], circuit.WitnessClaimedEvaluations[1][0])
+// 		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
+// 		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
+// 	} else {
+// 		extendedLinearStatementEvals := extendLinearStatement(circuit, [][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]}, circuit.PubWitnessEvaluations)
+
+// 		// Single commitment mode
+// 		whirFoldingRandomness, err = RunZKWhir(
+// 			api, arthur, uapi, sc,
+// 			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
+// 			circuit.WHIRParamsWitness,
+// 			extendedLinearStatementEvals,
+// 			circuit.WitnessLinearStatementEvaluations,
+// 			batchingRandomness1,
+// 			initialOODQueries1,
+// 			initialOODAnswers1,
+// 			rootHash1,
+// 		)
+// 		if err != nil {
+// 			return err
+// 		}
+
+// 		az = circuit.WitnessClaimedEvaluations[0][0]
+// 		bz = circuit.WitnessClaimedEvaluations[0][1]
+// 		cz = circuit.WitnessClaimedEvaluations[0][2]
+// 	}
+
+// 	// Spartan sumcheck relation check (common to both modes)
+// 	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
+// 	api.AssertIsEqual(spartanSumcheckLastValue, x)
+
+// 	offset := 0
+// 	if !circuit.PublicInputs.IsEmpty() {
+// 		// can be generalized later on if we have more different kinds of statements
+// 		offset = 1
+// 	}
+
+// 	if circuit.NumChallenges > 0 {
+// 		// Batch mode - check 6 deferred values
+// 		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
+// 		for i := 0; i < 6; i++ {
+// 			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
+// 		}
+// 	} else {
+
+// 		// Single mode - existing logic
+// 		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
+// 		for i := 0; i < 3; i++ {
+// 			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
+// 		}
+// 	}
+
+// 	// Geometric weights for public inputs
+// 	if !circuit.PublicInputs.IsEmpty() {
+// 		publicWeightEval := computePublicWeightEvaluation(
+// 			api, circuit.PublicInputs, whirFoldingRandomness, publicWeightsChallenge[0],
+// 		)
+
+// 		api.AssertIsEqual(publicWeightEval, circuit.WitnessLinearStatementEvaluations[0])
+// 	}
+
+// 	return nil
+// }
+
+// func computePublicWeightEvaluation(
+// 	api frontend.API,
+// 	publicInputs PublicInputs,
+// 	foldingRandomness []frontend.Variable,
+// 	x frontend.Variable,
+// ) frontend.Variable {
+// 	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
+// }
+
+// configToProtocolIDAndSessionID returns (circuit placeholder, assignment) for ProtocolID.
+// Circuit placeholder is zeroed; assignment is filled from cfg.ProtocolID (padded to 64 bytes).
+func configToProtocolIDAndSessionID(cfg Config) (circuit, assign [64]uints.U8) {
+	for i := 0; i < 64; i++ {
+		b := byte(0)
+		if i < len(cfg.ProtocolID) {
+			b = cfg.ProtocolID[i]
+		}
+		assign[i] = uints.NewU8(b)
+	}
+	return circuit, assign
 }
 
+// configToSessionID returns (circuit placeholder, assignment) for SessionID.
+// Circuit placeholder is zeroed; assignment is filled from cfg.SessionID (zero-padded to 32 bytes).
+func configToSessionID(cfg Config) (circuit, assign [32]uints.U8) {
+	for i := 0; i < 32; i++ {
+		b := byte(0)
+		if i < len(cfg.SessionID) {
+			b = cfg.SessionID[i]
+		}
+		assign[i] = uints.NewU8(b)
+	}
+	return circuit, assign
+}
+
+// verifyCircuit builds the gnark circuit and runs Groth16 proving + verification.
+// Currently stubbed: the circuit requires transcript/IOPattern fields that are
+// being replaced by native spongefish replay. Will be re-enabled once the
+// SpongefishArthur-based circuit is integrated.
+//
+//nolint:unused
 func verifyCircuit(
 	deferred []Fp256,
 	cfg Config,
@@ -253,151 +309,171 @@ func verifyCircuit(
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
 ) error {
-	transcriptT := make([]uints.U8, cfg.TranscriptLen)
-	contTranscript := make([]uints.U8, cfg.TranscriptLen)
+	// TODO: Re-enable once the circuit uses SpongefishArthur with protocol_id
+	// instead of gnark-nimue IOPattern.
+	_ = deferred
+	_ = cfg
+	_ = hints
+	_ = pk
+	_ = vk
+	_ = claimedEvaluations
+	_ = claimedEvaluations2
+	_ = publicWeightsClaimedEvaluation
+	_ = internedR1CS
+	_ = interner
+	_ = buildOps
+	_ = publicInputs
+	// return fmt.Errorf("verifyCircuit is disabled pending SpongefishArthur circuit integration")
 
-	for i := range cfg.Transcript {
-		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
-	}
+	// Original implementation preserved for reference:
+	transcriptT := make([]uints.U8, len(cfg.NargString))
+	contTranscript := make([]uints.U8, len(cfg.NargString))
 
-	// Determine witness linear statement evals size based on mode
-	var witnessLinearStatementEvalsSize int
-	if cfg.NumChallenges > 0 {
-		if !cfg.PublicInputs.IsEmpty() {
-			// 3 per commitment in batch mode + 1 public_input (geometric statement as a subset of linear statement)
-			witnessLinearStatementEvalsSize = 7
-		} else {
-			witnessLinearStatementEvalsSize = 6
-		}
-	} else {
-		if !cfg.PublicInputs.IsEmpty() {
-			witnessLinearStatementEvalsSize = 4
-		} else {
-			witnessLinearStatementEvalsSize = 3
-		}
-	}
-
-	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-
-	if len(deferred) < 1+witnessLinearStatementEvalsSize {
-		return fmt.Errorf("deferred array too short: expected at least %d elements, got %d", 1+witnessLinearStatementEvalsSize, len(deferred))
-	}
-	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
-		witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	for i := range cfg.NargString {
+		transcriptT[i] = uints.NewU8(cfg.NargString[i])
 	}
 
-	colIndicesA := internedR1CS.A.DecodeColIndices()
-	if colIndicesA == nil {
-		return fmt.Errorf("failed to decode column indices for matrix A: inconsistent data")
-	}
-	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
-	for i := range len(internedR1CS.A.RowIndices) {
-		end := len(internedR1CS.A.Values) - 1
-		if i < len(internedR1CS.A.RowIndices)-1 {
-			end = int(internedR1CS.A.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-			matrixA[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesA[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
-			}
-		}
-	}
+	protocolIDCircuit, protocolIDAssign := configToProtocolIDAndSessionID(cfg)
+	sessionIDCircuit, sessionIDAssign := configToSessionID(cfg)
+	// fmt.Println("transcriptT", transcriptT)
+	// // Determine witness linear statement evals size based on mode
+	// var witnessLinearStatementEvalsSize int
+	// if cfg.NumChallenges > 0 {
+	// 	if !cfg.PublicInputs.IsEmpty() {
+	// 		// 3 per commitment in batch mode + 1 public_input (geometric statement as a subset of linear statement)
+	// 		witnessLinearStatementEvalsSize = 7
+	// 	} else {
+	// 		witnessLinearStatementEvalsSize = 6
+	// 	}
+	// } else {
+	// 	if !cfg.PublicInputs.IsEmpty() {
+	// 		witnessLinearStatementEvalsSize = 4
+	// 	} else {
+	// 		witnessLinearStatementEvalsSize = 3
+	// 	}
+	// }
 
-	colIndicesB := internedR1CS.B.DecodeColIndices()
-	if colIndicesB == nil {
-		return fmt.Errorf("failed to decode column indices for matrix B: inconsistent data")
-	}
-	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
-	for i := range len(internedR1CS.B.RowIndices) {
-		end := len(internedR1CS.B.Values) - 1
-		if i < len(internedR1CS.B.RowIndices)-1 {
-			end = int(internedR1CS.B.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-			matrixB[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesB[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
-			}
-		}
-	}
+	// witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
+	// hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
+	// contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
+	// contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
 
-	colIndicesC := internedR1CS.C.DecodeColIndices()
-	if colIndicesC == nil {
-		return fmt.Errorf("failed to decode column indices for matrix C: inconsistent data")
-	}
-	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
-	for i := range len(internedR1CS.C.RowIndices) {
-		end := len(internedR1CS.C.Values) - 1
-		if i < len(internedR1CS.C.RowIndices)-1 {
-			end = int(internedR1CS.C.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-			matrixC[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesC[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
-			}
-		}
-	}
+	// if len(deferred) < 1+witnessLinearStatementEvalsSize {
+	// 	return fmt.Errorf("deferred array too short: expected at least %d elements, got %d", 1+witnessLinearStatementEvalsSize, len(deferred))
+	// }
+	// hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
+	// for i := 0; i < witnessLinearStatementEvalsSize; i++ {
+	// 	witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	// }
 
-	// Parse claimed evaluations for first commitment
-	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
+	// colIndicesA := internedR1CS.A.DecodeColIndices()
+	// if colIndicesA == nil {
+	// 	return fmt.Errorf("failed to decode column indices for matrix A: inconsistent data")
+	// }
+	// matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
+	// for i := range len(internedR1CS.A.RowIndices) {
+	// 	end := len(internedR1CS.A.Values) - 1
+	// 	if i < len(internedR1CS.A.RowIndices)-1 {
+	// 		end = int(internedR1CS.A.RowIndices[i+1] - 1)
+	// 	}
+	// 	for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
+	// 		matrixA[j] = MatrixCell{
+	// 			row:    i,
+	// 			column: int(colIndicesA[j]),
+	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
+	// 		}
+	// 	}
+	// }
 
-	// Parse claimed evaluations for second commitment (if dual mode)
-	var fSums2, gSums2 []frontend.Variable
-	if cfg.NumChallenges > 0 {
-		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
-	}
+	// colIndicesB := internedR1CS.B.DecodeColIndices()
+	// if colIndicesB == nil {
+	// 	return fmt.Errorf("failed to decode column indices for matrix B: inconsistent data")
+	// }
+	// matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
+	// for i := range len(internedR1CS.B.RowIndices) {
+	// 	end := len(internedR1CS.B.Values) - 1
+	// 	if i < len(internedR1CS.B.RowIndices)-1 {
+	// 		end = int(internedR1CS.B.RowIndices[i+1] - 1)
+	// 	}
+	// 	for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
+	// 		matrixB[j] = MatrixCell{
+	// 			row:    i,
+	// 			column: int(colIndicesB[j]),
+	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
+	// 		}
+	// 	}
+	// }
 
-	// Parse public weights claimed evaluation
-	fSumPublicWeights, gSumPublicWeights := parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, true)
-	pubWitnessEvaluations := []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
+	// colIndicesC := internedR1CS.C.DecodeColIndices()
+	// if colIndicesC == nil {
+	// 	return fmt.Errorf("failed to decode column indices for matrix C: inconsistent data")
+	// }
+	// matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
+	// for i := range len(internedR1CS.C.RowIndices) {
+	// 	end := len(internedR1CS.C.Values) - 1
+	// 	if i < len(internedR1CS.C.RowIndices)-1 {
+	// 		end = int(internedR1CS.C.RowIndices[i+1] - 1)
+	// 	}
+	// 	for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
+	// 		matrixC[j] = MatrixCell{
+	// 			row:    i,
+	// 			column: int(colIndicesC[j]),
+	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
+	// 		}
+	// 	}
+	// }
 
-	// Build witness slices conditionally
-	var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
-	if cfg.NumChallenges > 0 {
-		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	} else {
-		witnessClaimedEvals = [][]frontend.Variable{fSums}
-		witnessBlindingEvals = [][]frontend.Variable{gSums}
-	}
+	// // Parse claimed evaluations for first commitment
+	// fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
 
-	// Empty container while circuit creation
-	publicInputsContainer := PublicInputs{
-		Values: make([]frontend.Variable, len(publicInputs.Values)),
-	}
+	// // Parse claimed evaluations for second commitment (if dual mode)
+	// var fSums2, gSums2 []frontend.Variable
+	// if cfg.NumChallenges > 0 {
+	// 	fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
+	// }
+
+	// // Parse public weights claimed evaluation
+	// fSumPublicWeights, gSumPublicWeights := parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, true)
+	// pubWitnessEvaluations := []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
+
+	// // Build witness slices conditionally
+	// var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
+	// if cfg.NumChallenges > 0 {
+	// 	witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+	// 	witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	// } else {
+	// 	witnessClaimedEvals = [][]frontend.Variable{fSums}
+	// 	witnessBlindingEvals = [][]frontend.Variable{gSums}
+	// }
+
+	// // Empty container while circuit creation
+	// publicInputsContainer := PublicInputs{
+	// 	Values: make([]frontend.Variable, len(publicInputs.Values)),
+	// }
 
 	circuit := Circuit{
-		IO:                                      []byte(cfg.IOPattern),
-		Transcript:                              contTranscript,
-		LogNumConstraints:                       cfg.LogNumConstraints,
-		LogNumVariables:                         cfg.LogNumVariables,
-		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               witnessClaimedEvals,
-		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		PubWitnessEvaluations:                   pubWitnessEvaluations,
-		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
-		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
-		NumChallenges:                           cfg.NumChallenges,
-		W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            publicInputsContainer,
+		ProtocolID: protocolIDCircuit,
+		SessionID:  sessionIDCircuit,
+		Transcript: contTranscript,
+		// LogNumConstraints:                       cfg.LogNumConstraints,
+		// LogNumVariables:                         cfg.LogNumVariables,
+		// LogANumTerms:                            cfg.LogANumTerms,
+		// WitnessClaimedEvaluations:               witnessClaimedEvals,
+		// WitnessBlindingEvaluations:              witnessBlindingEvals,
+		// PubWitnessEvaluations:                   pubWitnessEvaluations,
+		// WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
+		// HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
+		// HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
+		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
+		// WitnessFirstRounds:                      witnessFirstRounds(hints, true),
+		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
+		// NumChallenges:                           cfg.NumChallenges,
+		// W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		// MatrixA:                                 matrixA,
+		// MatrixB:                                 matrixB,
+		// MatrixC:                                 matrixC,
+		// PublicInputs:                            publicInputsContainer,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -476,42 +552,43 @@ func verifyCircuit(
 	}
 
 	// Parse actual values for assignment
-	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
-	if cfg.NumChallenges > 0 {
-		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
-		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	} else {
-		witnessClaimedEvals = [][]frontend.Variable{fSums}
-		witnessBlindingEvals = [][]frontend.Variable{gSums}
-	}
+	// fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
+	// if cfg.NumChallenges > 0 {
+	// 	fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
+	// 	witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
+	// 	witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
+	// } else {
+	// 	witnessClaimedEvals = [][]frontend.Variable{fSums}
+	// 	witnessBlindingEvals = [][]frontend.Variable{gSums}
+	// }
 
-	fSumPublicWeights, gSumPublicWeights = parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, false)
-	pubWitnessEvaluations = []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
+	// fSumPublicWeights, gSumPublicWeights = parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, false)
+	// pubWitnessEvaluations = []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
 
+	// fmt.Println("transcriptT", transcriptT)
 	assignment := Circuit{
-		IO:                                      []byte(cfg.IOPattern),
-		Transcript:                              transcriptT,
-		LogNumConstraints:                       cfg.LogNumConstraints,
-		LogNumVariables:                         cfg.LogNumVariables,
-		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               witnessClaimedEvals,
-		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
-		PubWitnessEvaluations:                   pubWitnessEvaluations,
-		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
-		NumChallenges:                           cfg.NumChallenges,
-		W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            publicInputs,
+		ProtocolID: protocolIDAssign,
+		SessionID:  sessionIDAssign,
+		Transcript: transcriptT,
+		// LogNumConstraints:                       cfg.LogNumConstraints,
+		// LogNumVariables:                         cfg.LogNumVariables,
+		// LogANumTerms:                            cfg.LogANumTerms,
+		// WitnessClaimedEvaluations:               witnessClaimedEvals,
+		// WitnessBlindingEvaluations:              witnessBlindingEvals,
+		// WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
+		// PubWitnessEvaluations:                   pubWitnessEvaluations,
+		// HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
+		// HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
+		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
+		// WitnessFirstRounds:                      witnessFirstRounds(hints, false),
+		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
+		// NumChallenges:                           cfg.NumChallenges,
+		// W1Size:                                  cfg.W1Size,
+		WHIRParamsWitness: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		// MatrixA:                                 matrixA,
+		// MatrixB:                                 matrixB,
+		// MatrixC:                                 matrixC,
+		// PublicInputs:                            publicInputs,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
@@ -535,6 +612,7 @@ func verifyCircuit(
 	return nil
 }
 
+//nolint:unused
 func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer bool) ([]frontend.Variable, []frontend.Variable) {
 	fSums := make([]frontend.Variable, len(claimedEvaluations.FSums))
 	gSums := make([]frontend.Variable, len(claimedEvaluations.GSums))
@@ -549,6 +627,7 @@ func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer 
 	return fSums, gSums
 }
 
+//nolint:unused
 func witnessFirstRounds(hints Hints, isContainer bool) []Merkle {
 	result := make([]Merkle, len(hints.WitnessFirstRoundHints))
 	for i, hint := range hints.WitnessFirstRoundHints {
@@ -557,6 +636,7 @@ func witnessFirstRounds(hints Hints, isContainer bool) []Merkle {
 	return result
 }
 
+//nolint:unused
 func parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation [2]Fp256, isContainer bool) (frontend.Variable, frontend.Variable) {
 	var fSumPublicWeights, gSumPublicWeights frontend.Variable
 
@@ -568,30 +648,30 @@ func parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation [2]Fp256
 	return fSumPublicWeights, gSumPublicWeights
 }
 
-func extendLinearStatement(
-	circuit *Circuit,
-	linearStatementEvaluations [][]frontend.Variable,
-	pubWitnessEvaluations []frontend.Variable,
-) [][]frontend.Variable {
-	var extendedLinearStatementEvals [][]frontend.Variable
+// func extendLinearStatement(
+// 	circuit *Circuit,
+// 	linearStatementEvaluations [][]frontend.Variable,
+// 	pubWitnessEvaluations []frontend.Variable,
+// ) [][]frontend.Variable {
+// 	var extendedLinearStatementEvals [][]frontend.Variable
 
-	if !circuit.PublicInputs.IsEmpty() {
-		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
-		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
+// 	if !circuit.PublicInputs.IsEmpty() {
+// 		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
+// 		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
 
-		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
-		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
-		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
-		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
+// 		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
+// 		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
+// 		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
+// 		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
 
-		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
-		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
-		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
-		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
-	} else {
-		// No public inputs, use original arrays
-		extendedLinearStatementEvals = linearStatementEvaluations
-	}
+// 		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
+// 		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
+// 		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
+// 		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
+// 	} else {
+// 		// No public inputs, use original arrays
+// 		extendedLinearStatementEvals = linearStatementEvaluations
+// 	}
 
-	return extendedLinearStatementEvals
-}
+// 	return extendedLinearStatementEvals
+// }

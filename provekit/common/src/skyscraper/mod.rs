@@ -5,5 +5,5 @@ mod whir;
 pub use self::{
     pow::SkyscraperPoW,
     sponge::SkyscraperSponge,
-    whir::{SkyscraperHashEngine, SKYSCRAPER},
+    whir::{SkyscraperHashEngine, SKYSCRAPER, SKYSCRAPER_ENGINE_ID},
 };

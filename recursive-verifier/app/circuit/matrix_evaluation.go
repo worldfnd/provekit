@@ -1,10 +1,7 @@
 package circuit
 
 import (
-	"fmt"
 	"math/big"
-
-	"github.com/consensys/gnark/frontend"
 )
 
 type SparseMatrix struct {
@@ -91,128 +88,128 @@ type MatrixCell struct {
 	value  *big.Int
 }
 
-func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
-	ansA := frontend.Variable(0)
-	ansB := frontend.Variable(0)
-	ansC := frontend.Variable(0)
+// func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
+// 	ansA := frontend.Variable(0)
+// 	ansB := frontend.Variable(0)
+// 	ansC := frontend.Variable(0)
 
-	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
-	colEval := calculateEQOverBooleanHypercube(api, colRand)
+// 	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+// 	colEval := calculateEQOverBooleanHypercube(api, colRand)
 
-	for i := range len(circuit.MatrixA) {
-		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
-	}
-	for i := range circuit.MatrixB {
-		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
-	}
-	for i := range circuit.MatrixC {
-		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
-	}
+// 	for i := range len(circuit.MatrixA) {
+// 		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
+// 	}
+// 	for i := range circuit.MatrixB {
+// 		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
+// 	}
+// 	for i := range circuit.MatrixC {
+// 		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
+// 	}
 
-	return []frontend.Variable{ansA, ansB, ansC}
-}
+// 	return []frontend.Variable{ansA, ansB, ansC}
+// }
 
-func evaluateR1CSMatrixExtensionBatch(
-	api frontend.API,
-	circuit *Circuit,
-	rowRand []frontend.Variable,
-	colRand []frontend.Variable,
-	w1Size int,
-) []frontend.Variable {
-	// Returns [Az1, Bz1, Cz1, Az2, Bz2, Cz2]
-	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
-	colEval := calculateEQOverBooleanHypercube(api, colRand)
+// func evaluateR1CSMatrixExtensionBatch(
+// 	api frontend.API,
+// 	circuit *Circuit,
+// 	rowRand []frontend.Variable,
+// 	colRand []frontend.Variable,
+// 	w1Size int,
+// ) []frontend.Variable {
+// 	// Returns [Az1, Bz1, Cz1, Az2, Bz2, Cz2]
+// 	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+// 	colEval := calculateEQOverBooleanHypercube(api, colRand)
 
-	ans := make([]frontend.Variable, 6)
-	for i := range ans {
-		ans[i] = frontend.Variable(0)
-	}
+// 	ans := make([]frontend.Variable, 6)
+// 	for i := range ans {
+// 		ans[i] = frontend.Variable(0)
+// 	}
 
-	for i := range circuit.MatrixA {
-		col := circuit.MatrixA[i].column
-		row := circuit.MatrixA[i].row
-		val := circuit.MatrixA[i].value
+// 	for i := range circuit.MatrixA {
+// 		col := circuit.MatrixA[i].column
+// 		row := circuit.MatrixA[i].row
+// 		val := circuit.MatrixA[i].value
 
-		if col < w1Size {
-			ans[0] = api.Add(ans[0], api.Mul(val, api.Mul(rowEval[row], colEval[col])))
-		} else {
-			ans[3] = api.Add(ans[3], api.Mul(val, api.Mul(rowEval[row], colEval[col-w1Size])))
-		}
-	}
+// 		if col < w1Size {
+// 			ans[0] = api.Add(ans[0], api.Mul(val, api.Mul(rowEval[row], colEval[col])))
+// 		} else {
+// 			ans[3] = api.Add(ans[3], api.Mul(val, api.Mul(rowEval[row], colEval[col-w1Size])))
+// 		}
+// 	}
 
-	for i := range circuit.MatrixB {
-		col := circuit.MatrixB[i].column
-		if col < w1Size {
-			ans[1] = api.Add(ans[1], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col])))
-		} else {
-			ans[4] = api.Add(ans[4], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col-w1Size])))
-		}
-	}
+// 	for i := range circuit.MatrixB {
+// 		col := circuit.MatrixB[i].column
+// 		if col < w1Size {
+// 			ans[1] = api.Add(ans[1], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col])))
+// 		} else {
+// 			ans[4] = api.Add(ans[4], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col-w1Size])))
+// 		}
+// 	}
 
-	for i := range circuit.MatrixC {
-		col := circuit.MatrixC[i].column
-		if col < w1Size {
-			ans[2] = api.Add(ans[2], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col])))
-		} else {
-			ans[5] = api.Add(ans[5], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col-w1Size])))
-		}
-	}
+// 	for i := range circuit.MatrixC {
+// 		col := circuit.MatrixC[i].column
+// 		if col < w1Size {
+// 			ans[2] = api.Add(ans[2], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col])))
+// 		} else {
+// 			ans[5] = api.Add(ans[5], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col-w1Size])))
+// 		}
+// 	}
 
-	return ans
-}
+// 	return ans
+// }
 
-func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
-	ans := []frontend.Variable{frontend.Variable(1)}
+// func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
+// 	ans := []frontend.Variable{frontend.Variable(1)}
 
-	for i := len(r) - 1; i >= 0; i-- {
-		x := r[i]
-		left := make([]frontend.Variable, len(ans))
-		right := make([]frontend.Variable, len(ans))
+// 	for i := len(r) - 1; i >= 0; i-- {
+// 		x := r[i]
+// 		left := make([]frontend.Variable, len(ans))
+// 		right := make([]frontend.Variable, len(ans))
 
-		for j, y := range ans {
-			left[j] = api.Mul(y, api.Sub(1, x))
-			right[j] = api.Mul(y, x)
-		}
+// 		for j, y := range ans {
+// 			left[j] = api.Mul(y, api.Sub(1, x))
+// 			right[j] = api.Mul(y, x)
+// 		}
 
-		ans = append(left, right...)
-	}
+// 		ans = append(left, right...)
+// 	}
 
-	return ans
-}
+// 	return ans
+// }
 
-// geometricTill evaluates the multilinear extension of the geometric vector
-// [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
-// This is O(k) constraints where k = len(foldingRandomness)
-func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
-	k := len(foldingRandomness)
-	if n <= 0 || n > (1<<k) {
-		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
-	}
+// // geometricTill evaluates the multilinear extension of the geometric vector
+// // [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
+// // This is O(k) constraints where k = len(foldingRandomness)
+// func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
+// 	k := len(foldingRandomness)
+// 	if n <= 0 || n > (1<<k) {
+// 		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
+// 	}
 
-	borrow0 := frontend.Variable(1)
-	borrow1 := frontend.Variable(0)
+// 	borrow0 := frontend.Variable(1)
+// 	borrow1 := frontend.Variable(0)
 
-	for i := range k {
-		ri := foldingRandomness[k-1-i]
-		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
+// 	for i := range k {
+// 		ri := foldingRandomness[k-1-i]
+// 		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
 
-		b0 := api.Sub(1, ri)
-		b1 := api.Mul(x, ri)
+// 		b0 := api.Sub(1, ri)
+// 		b1 := api.Mul(x, ri)
 
-		if bn == 0 {
-			newBorrow0 := api.Mul(b0, borrow0)
-			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
-			borrow0 = newBorrow0
-			borrow1 = newBorrow1
-		} else {
-			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
-			newBorrow1 := api.Mul(b1, borrow1)
-			borrow0 = newBorrow0
-			borrow1 = newBorrow1
-		}
+// 		if bn == 0 {
+// 			newBorrow0 := api.Mul(b0, borrow0)
+// 			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
+// 			borrow0 = newBorrow0
+// 			borrow1 = newBorrow1
+// 		} else {
+// 			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
+// 			newBorrow1 := api.Mul(b1, borrow1)
+// 			borrow0 = newBorrow0
+// 			borrow1 = newBorrow1
+// 		}
 
-		x = api.Mul(x, x)
-	}
+// 		x = api.Mul(x, x)
+// 	}
 
-	return borrow0
-}
+// 	return borrow0
+// }

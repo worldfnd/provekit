@@ -2,6 +2,8 @@ module reilabs/whir-verifier-circuit
 
 go 1.23.3
 
+replace github.com/reilabs/gnark-nimue => /Users/veljkovranic/reilabs/gnark-nimue
+
 require (
 	github.com/consensys/gnark v0.13.0
 	github.com/consensys/gnark-crypto v0.18.0

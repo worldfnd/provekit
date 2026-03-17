@@ -102,6 +102,7 @@ provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
 anyhow = "1.0.93"
+ciborium = "0.2.2"
 argh = "0.1.12"
 axum = "0.8.4"
 base64 = "0.22.1"
@@ -167,10 +168,12 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-  "ark-ff", "sha2",
-], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "20aecf708c34b91f652c851f0722177bf08315af", features = ["tracing"] }
+mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "main"}
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "main"}
+# Use git so we never point into reilabs/spongefish (workspace root = virtual manifest).
+# For local spongefish dev, vendor the crates into e.g. vendor/spongefish and patch here.
+spongefish = { path = "../../reilabs/spongefish/spongefish", features = [
+  "ark-ff", "sha2", "sha3", "blake3", "keccak", "std"
+] }
+spongefish-pow = { path = "../../reilabs/spongefish/pow", package = "spongefish-pow" }
+whir = { path = "../../Wizard/whir", features = ["tracing"] }

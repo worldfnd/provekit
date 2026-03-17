@@ -90,17 +90,21 @@ type ProofObject struct {
 	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
 }
 
+// Config matches the Rust GnarkConfig struct.
+// narg_string + hints are the spongefish proof buffers.
+// protocol_id is SHA3-512(CBOR(WhirR1CSScheme)); session_id is optional (default zero) for domain separation.
 type Config struct {
-	WHIRConfigWitness            WHIRConfig   `json:"whir_config_witness"`
-	WHIRConfigHidingSpartan      WHIRConfig   `json:"whir_config_hiding_spartan"`
+	BlindedCommitmentWhirConfig  WHIRConfig   `json:"blinded_commitment_whir_config"`
+	BlindingCommitmentWhirConfig WHIRConfig   `json:"blinding_commitment_whir_config"`
 	LogNumConstraints            int          `json:"log_num_constraints"`
 	LogNumVariables              int          `json:"log_num_variables"`
 	LogANumTerms                 int          `json:"log_a_num_terms"`
-	IOPattern                    string       `json:"io_pattern"`
-	Transcript                   []byte       `json:"transcript"`
-	TranscriptLen                int          `json:"transcript_len"`
-	WitnessStatementEvaluations  []string     `json:"witness_statement_evaluations"`
-	BlindingStatementEvaluations []string     `json:"blinding_statement_evaluations"`
+	NargString                   []byte       `json:"narg_string"`
+	NargStringLen                int          `json:"narg_string_len"`
+	Hints                        []byte       `json:"hints"`
+	HintsLen                     int          `json:"hints_len"`
+	ProtocolID                   []byte       `json:"protocol_id"`
+	SessionID                    []byte       `json:"session_id"`
 	NumChallenges                int          `json:"num_challenges"`
 	W1Size                       int          `json:"w1_size"`
 	PublicInputs                 PublicInputs `json:"public_inputs"`

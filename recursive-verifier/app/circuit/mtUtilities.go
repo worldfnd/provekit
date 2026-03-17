@@ -48,31 +48,28 @@ func initialSumcheck(
 	}, lastEval, initialSumcheckFoldingRandomness, nil
 }
 
-func parseBatchedCommitment(arthur gnarkNimue.Arthur, whir_params WHIRParams) (frontend.Variable, frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
+func parseBatchedCommitment(api frontend.API, arthur gnarkNimue.Arthur, whir_params WHIRParams) (frontend.Variable, []frontend.Variable, [][]frontend.Variable, error) {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {
-		return nil, nil, nil, [][]frontend.Variable{}, err
+		return nil, nil, [][]frontend.Variable{}, err
 	}
 	oodPoints := make([]frontend.Variable, 1)
 	oodAnswers := make([][]frontend.Variable, whir_params.BatchSize)
 
 	if err := arthur.FillChallengeScalars(oodPoints); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, err
 	}
-	for i := range whir_params.BatchSize {
-		oodAnswer := make([]frontend.Variable, 1)
+	api.Println(oodPoints...)
+	// for i := range whir_params.BatchSize {
+	// 	oodAnswer := make([]frontend.Variable, 1)
 
-		if err := arthur.FillNextScalars(oodAnswer); err != nil {
-			return nil, nil, nil, nil, err
-		}
-		oodAnswers[i] = oodAnswer
-	}
+	// 	if err := arthur.FillNextScalars(oodAnswer); err != nil {
+	// 		return nil, nil, nil, err
+	// 	}
+	// 	oodAnswers[i] = oodAnswer
+	// }
 
-	batchingRandomness := make([]frontend.Variable, 1)
-	if err := arthur.FillChallengeScalars(batchingRandomness); err != nil {
-		return nil, 0, nil, nil, err
-	}
-	return rootHash[0], batchingRandomness[0], oodPoints, oodAnswers, nil
+	return rootHash[0], oodPoints, oodAnswers, nil
 }
 
 func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnarkNimue.Arthur, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {

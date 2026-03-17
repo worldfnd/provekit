@@ -18,6 +18,7 @@ use {
     },
 };
 
+#[derive(Debug)]
 pub struct DataFromSumcheckVerifier {
     r:             Vec<FieldElement>,
     alpha:         Vec<FieldElement>,
@@ -58,10 +59,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .whir_witness
             .receive_commitments(&mut arthur, 1)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
+        println!("self.whir_witness: {:?}", self.whir_witness);
 
+        println!("commitment_1: {:?}", commitment_1);
         let commitment_2 = if self.num_challenges > 0 {
             let _logup_challenges: Vec<FieldElement> =
                 arthur.verifier_message_vec(self.num_challenges);
+            println!("logup_challenges: {:?}", _logup_challenges);
             Some(
                 self.whir_witness
                     .receive_commitments(&mut arthur, 1)
@@ -70,11 +74,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         } else {
             None
         };
-
+        println!("commitment_2: {:?}", commitment_2);
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
             || run_sumcheck_verifier(&mut arthur, self.m_0),
         );
+        println!("sumcheck_result: {:?}", sumcheck_result);
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
 
@@ -224,12 +229,15 @@ pub fn run_sumcheck_verifier(
 ) -> Result<DataFromSumcheckVerifier> {
     let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
 
+    println!("r: {:?}", r);
     let sum_g: FieldElement = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read sum_g"))?;
 
+    println!("sum_g: {:?}", sum_g);
     let rho: FieldElement = arthur.verifier_message();
 
+    println!("rho: {:?}", rho);
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g;
 
     let mut alpha = vec![FieldElement::zero(); m_0];
@@ -260,12 +268,15 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i);
     }
 
+    println!("alpha: {:?}", alpha);
     let blinding_eval: FieldElement = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;
 
+    println!("blinding_eval: {:?}", blinding_eval);
     let f_at_alpha = saved_val_for_sumcheck_equality_assertion - rho * blinding_eval;
 
+    println!("f_at_alpha: {:?}", f_at_alpha);
     Ok(DataFromSumcheckVerifier {
         r,
         alpha,
