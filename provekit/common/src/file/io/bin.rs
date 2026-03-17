@@ -1,6 +1,10 @@
 use {
     super::BufExt as _,
-    crate::{utils::human, HashConfig},
+    crate::{
+        binary_format::{HEADER_SIZE, MAGIC_BYTES, XZ_MAGIC, ZSTD_MAGIC},
+        utils::human,
+        HashConfig,
+    },
     anyhow::{ensure, Context as _, Result},
     bytes::{Buf, BufMut as _, Bytes, BytesMut},
     serde::{Deserialize, Serialize},
@@ -12,19 +16,9 @@ use {
     tracing::{info, instrument},
 };
 
-/// Header layout: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1) =
-/// 21 bytes
-const HEADER_SIZE: usize = 21;
-const MAGIC_BYTES: &[u8] = b"\xDC\xDFOZkp\x01\x00";
 /// Byte offset where hash config is stored: MAGIC(8) + FORMAT(8) + MAJOR(2) +
 /// MINOR(2) = 20
 const HASH_CONFIG_OFFSET: usize = 20;
-
-/// Zstd magic number: `28 B5 2F FD`.
-const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
-
-/// XZ magic number: `FD 37 7A 58 5A 00`.
-const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 
 /// Compression algorithm for binary file output.
 #[derive(Debug, Clone, Copy)]

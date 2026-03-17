@@ -13,7 +13,7 @@ pub mod rtz;
 pub mod constants;
 pub mod rne;
 mod scalar;
-mod utils;
+pub mod utils;
 
 #[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
 mod test_utils;

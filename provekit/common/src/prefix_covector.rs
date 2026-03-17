@@ -167,16 +167,17 @@ pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElemen
 
 /// Create a public weight [`PrefixCovector`] from Fiat-Shamir randomness `x`.
 ///
-/// Builds the vector `[1, x, x², …, x^{n-1}]` padded to a power of two,
-/// where `n = public_inputs_len`.
+/// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs +
+/// 1`.
 #[must_use]
-pub fn make_public_weight(x: FieldElement, public_inputs_len: usize, m: usize) -> PrefixCovector {
+pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -> PrefixCovector {
+    let n = num_public_inputs + 1;
     let domain_size = 1 << m;
-    let prefix_len = public_inputs_len.next_power_of_two().max(2);
+    let prefix_len = n.next_power_of_two().max(2);
     let mut public_weights = vec![FieldElement::zero(); prefix_len];
 
     let mut current_pow = FieldElement::one();
-    for slot in public_weights.iter_mut().take(public_inputs_len) {
+    for slot in public_weights.iter_mut().take(n) {
         *slot = current_pow;
         current_pow *= x;
     }
@@ -218,17 +219,19 @@ pub fn compute_alpha_evals<const N: usize>(
         .collect()
 }
 
-/// Compute the public weight evaluation `⟨[1, x, x², …], poly⟩` without
-/// allocating a [`PrefixCovector`].
+/// Compute the public weight evaluation `⟨[1, x, x², …, x^N], poly[0..=N]⟩`
+/// without allocating a [`PrefixCovector`]. Covers the R1CS constant at
+/// position 0 and `num_public_inputs` public input positions.
 #[must_use]
 pub fn compute_public_eval(
     x: FieldElement,
-    public_inputs_len: usize,
+    num_public_inputs: usize,
     polynomial: &[FieldElement],
 ) -> FieldElement {
+    let n = num_public_inputs + 1;
     let mut eval = FieldElement::zero();
     let mut x_pow = FieldElement::one();
-    for &p in polynomial.iter().take(public_inputs_len) {
+    for &p in polynomial.iter().take(n) {
         eval += x_pow * p;
         x_pow *= x;
     }

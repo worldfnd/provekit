@@ -14,7 +14,7 @@ crate-type = ["staticlib"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
-provekit-prover.workspace = true
+provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
 
 # 3rd party
 anyhow.workspace = true

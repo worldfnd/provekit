@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProveKit WASM Browser Demo</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Import map for @noir-lang packages -->
+  <script type="importmap">
+  {
+    "imports": {
+      "@noir-lang/acvm_js": "./vendor/acvm_js/acvm_js.js",
+      "@noir-lang/noirc_abi": "./vendor/noirc_abi/noirc_abi_wasm.js"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      /* Base Colors */
+      --bg-color: #050505;
+      --card-bg: #0F1115;
+      --card-border: #1A1C20;
+      
+      /* Accents */
+      --accent-cyan: #00E5FF;
+      --accent-cyan-hover: #33EDFF;
+      --accent-cyan-dim: rgba(0, 229, 255, 0.1);
+      
+      /* Text Colors */
+      --text-main: #FFFFFF;
+      --text-muted: #888C95;
+      --text-dark: #A1A1AA;
+      
+      /* Status Colors */
+      --success: #10B981;
+      --error: #FF5252;
+      --error-bg: rgba(255, 82, 82, 0.1);
+      
+      /* Grid / Lines */
+      --grid-line: rgba(255, 255, 255, 0.03);
+      --divider: #27272A;
+
+      --font-sans: 'Inter', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background-color: var(--bg-color);
+      /* Subtle dot grid */
+      background-image: radial-gradient(var(--grid-line) 1px, transparent 1px);
+      background-size: 20px 20px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Container for max-width constraint */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 0 40px;
+    }
+
+    /* === Navbar === */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--grid-line);
+      margin-bottom: 40px;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--accent-cyan);
+    }
+    .logo-text {
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+    }
+    .version {
+      color: var(--accent-cyan);
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      align-items: center;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text-main); }
+    
+    .nav-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--divider);
+    }
+
+    .btn-connect {
+      background: transparent;
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      color: var(--accent-cyan);
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-connect:hover {
+      background: var(--accent-cyan-dim);
+      border-color: var(--accent-cyan);
+    }
+
+    /* === Header Section & Circuit Selector === */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 40px;
+    }
+    .header-text h1 {
+      font-size: 2.5rem;
+      margin: 0 0 12px 0;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header-text p {
+      color: var(--text-muted);
+      margin: 0;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      max-width: 500px;
+    }
+    
+    .circuit-selector-group {
+      display: flex;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .circuit-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .circuit-btn:hover:not(.active) {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .circuit-btn.active {
+      background: var(--accent-cyan);
+      color: #000;
+      box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+    }
+
+    .circuit-btn svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+
+    /* === Custom Config Panel === */
+    .custom-config-panel {
+      display: none; /* Hidden by default */
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px; /* Space above dashboard layout */
+    }
+    
+    .config-header {
+      font-size: 0.9rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 0;
+      margin-bottom: 24px;
+    }
+    .config-header svg { color: var(--accent-cyan); width: 16px; height: 16px; }
+
+    .tag {
+      background: rgba(0, 229, 255, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 229, 255, 0.2);
+      font-size: 0.65rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      margin-left: auto;
+    }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed var(--divider);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.01);
+      transition: all 0.2s;
+    }
+    .dropzone:hover {
+      border-color: rgba(0, 229, 255, 0.4);
+      background: rgba(0, 229, 255, 0.02);
+    }
+    .dropzone svg {
+      width: 32px;
+      height: 32px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .dropzone h3 {
+      font-size: 0.9rem;
+      margin: 0 0 8px 0;
+    }
+    .dropzone p {
+      color: var(--text-dark);
+      font-size: 0.75rem;
+      margin: 0 0 20px 0;
+    }
+    .btn-select {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--divider);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-family: var(--font-sans);
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .btn-select:hover { background: rgba(255, 255, 255, 0.1); }
+
+    /* Checklist */
+    .checklist-title {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--text-dark);
+      letter-spacing: 0.1em;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+    }
+    .checklist-item.verified {
+      border-color: rgba(16, 185, 129, 0.3); /* Green border */
+    }
+    .item-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .item-icon {
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+    }
+    .verified .item-icon { color: var(--success); }
+    .pending .item-icon { 
+      border: 1px dotted var(--text-muted); 
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1;
+    }
+    .verified .item-name { color: var(--success); }
+    .pending .item-name { color: var(--text-muted); }
+    
+    .item-right {
+      color: var(--text-dark);
+      font-size: 0.7rem;
+    }
+
+    /* === Main Content Layout === */
+    .dashboard-layout {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 24px;
+    }
+
+    /* === Left Column: Steps === */
+    .steps-card {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      letter-spacing: 0.1em;
+      margin-top: 0;
+      margin-bottom: 30px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+    }
+
+    .steps-list {
+      position: relative;
+      margin-bottom: 40px;
+    }
+    /* Connecting vertical line */
+    .steps-list::before {
+      content: '';
+      position: absolute;
+      left: 14px;
+      top: 15px;
+      bottom: 15px;
+      width: 1px;
+      background: var(--divider);
+      z-index: 1;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 2;
+    }
+    .step-item:last-child { margin-bottom: 0; }
+
+    .step-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #1E2024;
+      border: 1px solid var(--divider);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+    /* States */
+    .step-icon.active {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+    }
+    .step-icon.success {
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+      color: #000;
+    }
+    .step-icon.error {
+      background: var(--error);
+      border-color: var(--error);
+      color: #fff;
+    }
+
+    .step-content {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-top: 4px;
+    }
+    .step-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-dark);
+      transition: color 0.3s;
+    }
+    .step-item.active .step-name, 
+    .step-item.success .step-name { color: var(--text-main); }
+    
+    .step-status {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+    .step-status.success-text { color: var(--accent-cyan); }
+    .step-status.error-text { color: var(--error); }
+
+    /* Action Buttons Area */
+    .actions-area {
+      display: flex;
+      gap: 12px;
+      margin-top: auto;
+    }
+    .btn-action {
+      flex: 1;
+      border: none;
+      padding: 16px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-action:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    #runBtn {
+      background: var(--accent-cyan);
+      color: #000;
+    }
+    #runBtn:hover:not(:disabled) { background: var(--accent-cyan-hover); }
+    
+    #verifyBtn {
+      background: #1A1D24;
+      color: var(--text-main);
+      border: 1px solid var(--divider);
+    }
+    #verifyBtn:hover:not(:disabled) { background: #232730; }
+
+
+    /* === Right Column: Terminal === */
+    .terminal-card {
+      display: flex;
+      flex-direction: column;
+      padding: 0; /* Header handles its own padding */
+      overflow: hidden;
+      height: 460px; /* Constrain height to enable auto-scrolling log */
+    }
+    
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .window-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .window-controls .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot.r { background: #FF5F56; }
+    .dot.y { background: #FFBD2E; }
+    .dot.g { background: #27C93F; }
+    
+    .terminal-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #666;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    
+    .terminal-body {
+      padding: 24px;
+      flex: 1;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      line-height: 1.6;
+      color: #A1A1AA;
+    }
+
+    /* Log styling overrides for terminal */
+    .log-line { margin-bottom: 6px; white-space: pre-wrap; word-break: break-all; }
+    .log-time { color: #555; margin-right: 8px; }
+    
+    /* We'll use JS to inject these arrows/checks */
+    .log-arrow { color: var(--accent-cyan); margin-right: 8px; font-weight: bold; }
+    .log-check { color: var(--success); margin-right: 8px; font-weight: bold; }
+    
+    /* Error block specific formatting */
+    .log-error-block {
+      background: var(--error-bg);
+      border: 1px solid rgba(255, 82, 82, 0.2);
+      padding: 12px;
+      border-radius: 4px;
+      margin: 12px 0;
+      color: var(--error);
+    }
+
+    /* === Metrics Bottom Row === */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .metric-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+    }
+    .metric-value.cyan {
+      color: var(--accent-cyan);
+    }
+
+    /* === Footer === */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid var(--grid-line);
+      padding: 24px 0;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #555;
+    }
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+    .footer-links span.online { color: var(--text-muted); }
+
+    /* SVG Utilities */
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--card-bg);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 4px;
+      border: 2px solid var(--card-bg);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #444;
+    }
+
+    /* === Mobile Responsiveness === */
+    @media (max-width: 768px) {
+      .container {
+        padding: 0 16px;
+      }
+      .page-header {
+        flex-direction: column;
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+      .header-text h1 {
+        font-size: 2rem;
+      }
+      .circuit-selector-group {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .circuit-btn {
+        justify-content: center;
+        padding: 10px 8px;
+        font-size: 0.8rem;
+      }
+      .dashboard-layout {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      .custom-config-panel {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      .metrics-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .actions-area {
+        flex-direction: column;
+        gap: 12px;
+      }
+      .terminal-card {
+        height: 400px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .circuit-selector-group {
+        grid-template-columns: 1fr;
+      }
+      .metrics-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Navbar -->
+    <nav class="navbar">
+      <div class="logo-group">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+          <line x1="8" y1="21" x2="16" y2="21"></line>
+          <line x1="12" y1="17" x2="12" y2="21"></line>
+        </svg>
+        <span class="logo-text">Provekit</span>
+        <span class="version">v1.0.0</span>
+      </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="page-header">
+      <div class="header-text">
+        <h1>Benchmarking Dashboard</h1>
+        <p id="circuitDescription">SHA-256 over a 1024-byte input.</p>
+      </div>
+      
+      <div class="circuit-selector-group" id="circuitSelector">
+        <button class="circuit-btn active" data-circuit="sha256">
+          SHA256
+        </button>
+        <button class="circuit-btn" data-circuit="poseidon">
+          Poseidon
+        </button>
+        <button class="circuit-btn" data-circuit="custom">
+          Custom
+        </button>
+      </div>
+    </header>
+
+    <!-- Custom Config Panel (Hidden by default, shown via JS) -->
+    <div class="card custom-config-panel" id="customConfigPanel">
+      <div class="config-left">
+        <h3 class="config-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Custom Circuit Configuration
+          <span class="tag">NOIR_COMPATIBLE_V1</span>
+        </h3>
+        
+        <div class="dropzone" id="dropzone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <h3>Drag & drop circuit files</h3>
+          <p>Required: prover.pkp, verifier.pkv, inputs.json</p>
+          <button class="btn-select" id="btnSelectFiles">Select Files</button>
+          <input type="file" id="fileInput" multiple accept=".json,.pkp,.pkv,.toml" style="display:none">
+        </div>
+      </div>
+      
+      <div class="config-right">
+        <h4 class="checklist-title">REQUIREMENT CHECKLIST</h4>
+        
+        <div class="checklist-item pending" id="check-prover">
+          <div class="item-left">
+            <div class="item-icon">-</div>
+            <span class="item-name">prover.pkp</span>
+          </div>
+          <div class="item-right" style="font-style: italic;">Waiting...</div>
+        </div>
+        
+        <div class="checklist-item pending" id="check-verifier">
+          <div class="item-left">
+            <div class="item-icon">-</div>
+            <span class="item-name">verifier.pkv</span>
+          </div>
+          <div class="item-right" style="font-style: italic;">Waiting...</div>
+        </div>
+        
+        <div class="checklist-item pending" id="check-inputs">
+          <div class="item-left">
+            <div class="item-icon">-</div>
+            <span class="item-name">inputs.json / Prover.toml</span>
+          </div>
+          <div class="item-right" style="font-style: italic;">Waiting...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="dashboard-layout">
+      
+      <!-- Left: Steps -->
+      <div class="card steps-card">
+        <h2 class="card-title">PROOF GENERATION STEPS</h2>
+        
+        <div class="steps-list">
+          
+          <div class="step-item" id="step1-container">
+            <div class="step-icon" id="step1-icon">1</div>
+            <div class="step-content">
+              <div class="step-name">Load WASM Modules</div>
+              <div class="step-status" id="step1-status">Status: Waiting...</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="step2-container">
+            <div class="step-icon" id="step2-icon">2</div>
+            <div class="step-content">
+              <div class="step-name">Load Circuit & Artifacts</div>
+              <div class="step-status" id="step2-status">Status: Waiting...</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="step3-container">
+            <div class="step-icon" id="step3-icon">3</div>
+            <div class="step-content">
+              <div class="step-name">Generate Witness (noir_js)</div>
+              <div class="step-status" id="step3-status">Status: Waiting...</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="step4-container">
+            <div class="step-icon" id="step4-icon">4</div>
+            <div class="step-content">
+              <div class="step-name">Generate Proof (ProveKit WASM)</div>
+              <div class="step-status" id="step4-status">Status: Waiting...</div>
+            </div>
+          </div>
+
+          <div class="step-item" id="step5-container">
+            <div class="step-icon" id="step5-icon">5</div>
+            <div class="step-content">
+              <div class="step-name">Verify Proof (ProveKit WASM)</div>
+              <div class="step-status" id="step5-status">Status: Waiting...</div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="actions-area">
+          <button id="runBtn" class="btn-action" onclick="runDemo()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            GENERATE PROOF
+          </button>
+          <button id="verifyBtn" class="btn-action" onclick="verifyProof()" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            VERIFY PROOF
+          </button>
+        </div>
+      </div>
+
+      <!-- Right: Terminal -->
+      <div class="card terminal-card">
+        <div class="terminal-header">
+          <div class="window-controls">
+            <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+            <span style="font-family: var(--font-mono); font-size: 0.65rem; color: #555; margin-left:8px; letter-spacing:0.1em;">SYSTEM LOG OUTPUT</span>
+          </div>
+          <div>
+            <svg id="copyLogBtn" class="copy-icon" style="cursor: pointer; transition: stroke 0.2s;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </div>
+        </div>
+        <div class="terminal-body" id="logContainer">
+          <!-- Logs will be piped here -->
+          <!-- Hidden proof output elements required by demo-web.mjs to avoid crashes -->
+          <div id="proofOutput" style="display:none;"></div>
+          <div id="proofCard" style="display:none;"></div>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- Metrics Row -->
+    <div class="metrics-row" id="summaryCard">
+      <div class="metric-card">
+        <div class="metric-label" id="metric1-label">TOTAL TIME (WITNESS + PROOF)</div>
+        <div class="metric-value" id="totalTimeUi">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label" id="metric2-label">PROOF SIZE</div>
+        <div class="metric-value" id="proofSizeUi">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">CONSTRAINTS</div>
+        <div class="metric-value" id="constraintsUi">-</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label" id="metric4-label">WITNESSES</div>
+        <div class="metric-value cyan" id="witnessesUi">-</div>
+      </div>
+    </div>
+
+
+
+  <script>
+    // Custom SVGs for step status
+    const ICON_CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    const ICON_CROSS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+
+    // Format current time for logs
+    function getTimeStr() {
+      const d = new Date();
+      return `[${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}]`;
+    }
+
+    // Capture logs to custom format them
+    const logContainer = document.getElementById('logContainer');
+    const originalAppend = logContainer.appendChild.bind(logContainer);
+    
+    // We override the appendChild to parse and style the logs based on design
+    logContainer.appendChild = function(elem) {
+      if (elem.className && elem.className.includes('log-line')) {
+        const text = elem.innerText || "";
+        const timeStr = `<span class="log-time">${getTimeStr()}</span>`;
+        
+        if (elem.className.includes('log-error')) {
+           // Format explicitly as a red block
+           elem.className = "log-error-block";
+           elem.innerHTML = `<strong>Error:</strong> ${text}`;
+        } else if (elem.className.includes('log-success')) {
+           elem.innerHTML = timeStr + `<span class="log-check">✓</span>` + text;
+        } else {
+           elem.innerHTML = timeStr + `<span class="log-arrow">→</span>` + text;
+        }
+      }
+      const res = originalAppend(elem);
+      logContainer.scrollTop = logContainer.scrollHeight;
+      return res;
+    };
+
+    // Observer configuration for reacting to demo script changes
+    const config = { childList: true, subtree: true, characterData: true };
+    const observer = new MutationObserver((mutations) => {
+       // Watch for changes to the status texts and update the icons accordingly
+       for (let i=1; i<=5; i++) {
+         const statusElem = document.getElementById(`step${i}-status`);
+         if (!statusElem) continue;
+         
+         const text = statusElem.innerText;
+         const iconElem = document.getElementById(`step${i}-icon`);
+         const container = document.getElementById(`step${i}-container`);
+         
+         if (text.includes('Loading') || text.includes('Generating') || text.includes('Running') || text.includes('Verifying')) {
+            // Active state
+            iconElem.className = 'step-icon active';
+            iconElem.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
+            container.className = 'step-item active';
+         } else if (text.includes('Done') || text.includes('Success') || text.includes('Loaded') || text.includes('Verified') || text.includes('Ready')) {
+            iconElem.className = 'step-icon success';
+            iconElem.innerHTML = ICON_CHECK;
+            container.className = 'step-item success';
+            statusElem.className = 'step-status success-text';
+         } else if (text.includes('Fail') || text.includes('Error')) {
+            iconElem.className = 'step-icon error';
+            iconElem.innerHTML = ICON_CROSS;
+            container.className = 'step-item error';
+            statusElem.className = 'step-status error-text';
+         } else if (text.includes('Waiting')) {
+            iconElem.className = 'step-icon';
+            iconElem.innerHTML = i;
+            container.className = 'step-item';
+            statusElem.className = 'step-status';
+         }
+       }
+    });
+    
+    // Start observing step status divs
+    for (let i=1; i<=5; i++) {
+       const s = document.getElementById(`step${i}-status`);
+       if(s) observer.observe(s, config);
+    }
+
+    // Circuit Selection Logic
+    const circuitBtns = document.querySelectorAll('.circuit-btn');
+    const customConfigPanel = document.getElementById('customConfigPanel');
+    const stepsTitle = document.querySelector('.steps-card .card-title');
+    
+    // Store original step HTML blocks to restore when switching away from Custom
+    const origSteps = {
+      s1: { name: document.getElementById('step1-container').querySelector('.step-name').innerText, id: 'step1' },
+      s2: { name: document.getElementById('step2-container').querySelector('.step-name').innerText, id: 'step2' },
+      s3: { name: document.getElementById('step3-container').querySelector('.step-name').innerText, id: 'step3' },
+      s4: { name: document.getElementById('step4-container').querySelector('.step-name').innerText, id: 'step4' },
+      s5: { name: document.getElementById('step5-container').querySelector('.step-name').innerText, id: 'step5' }
+    };
+
+    let activeCircuit = 'sha256'; // SHA256 is the default
+    window.activeCircuit = activeCircuit;
+
+    function updateUIForCircuit(circuit) {
+      const desc = document.getElementById('circuitDescription');
+      const descriptions = {
+        sha256: 'SHA-256 over a 1024-byte input.',
+        poseidon: 'Poseidon2 permutation \u00d7 1,000 rounds over 4 field elements.',
+        custom: 'Upload your own Noir circuit artifacts to benchmark proof generation and verification.'
+      };
+      if (desc) desc.textContent = descriptions[circuit] || descriptions.custom;
+
+      if (circuit === 'custom') {
+        // Show config panel + reset checklist
+        customConfigPanel.style.display = 'grid';
+        if (typeof resetChecklist === 'function') resetChecklist();
+        stepsTitle.innerHTML = 'PROOF GENERATION STEPS [CUSTOM]';
+        
+        // Same 5 steps as standard circuits
+        document.querySelector('#step1-container .step-name').innerText = origSteps.s1.name;
+        document.querySelector('#step1-status').innerText = 'Status: Waiting...';
+        document.getElementById('step1-container').style.display = 'flex';
+
+        document.querySelector('#step2-container .step-name').innerText = origSteps.s2.name;
+        document.querySelector('#step2-status').innerText = 'Status: Waiting...';
+        document.getElementById('step2-container').style.display = 'flex';
+
+        document.querySelector('#step3-container .step-name').innerText = origSteps.s3.name;
+        document.querySelector('#step3-status').innerText = 'Status: Waiting...';
+        document.getElementById('step3-container').style.display = 'flex';
+
+        document.querySelector('#step4-container .step-name').innerText = origSteps.s4.name;
+        document.querySelector('#step4-status').innerText = 'Status: Waiting...';
+        document.getElementById('step4-container').style.display = 'flex';
+
+        document.querySelector('#step5-container .step-name').innerText = origSteps.s5.name;
+        document.querySelector('#step5-status').innerText = 'Status: Waiting...';
+        document.getElementById('step5-container').style.display = 'flex';
+
+        // Labels are statically defined now
+        
+        // Disable buttons until files uploaded
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('verifyBtn').disabled = true;
+
+      } else {
+        // Hide config panel
+        customConfigPanel.style.display = 'none';
+        stepsTitle.innerHTML = `PROOF GENERATION STEPS [${circuit.toUpperCase()}]`;
+        
+        // Restore steps
+        document.getElementById('step1-container').style.display = 'flex';
+        document.querySelector('#step1-container .step-name').innerText = origSteps.s1.name;
+        document.querySelector('#step1-status').innerText = 'Status: Waiting...';
+
+        document.getElementById('step2-container').style.display = 'flex';
+        document.querySelector('#step2-container .step-name').innerText = origSteps.s2.name;
+        document.querySelector('#step2-status').innerText = 'Status: Waiting...';
+
+        document.getElementById('step3-container').style.display = 'flex';
+        document.querySelector('#step3-container .step-name').innerText = origSteps.s3.name;
+        document.querySelector('#step3-status').innerText = 'Status: Waiting...';
+
+        document.getElementById('step4-container').style.display = 'flex';
+        document.querySelector('#step4-container .step-name').innerText = origSteps.s4.name;
+        document.querySelector('#step4-status').innerText = 'Status: Waiting...';
+
+        document.getElementById('step5-container').style.display = 'flex';
+        document.querySelector('#step5-container .step-name').innerText = origSteps.s5.name;
+        document.querySelector('#step5-status').innerText = 'Status: Waiting...';
+
+        // Labels are statically defined now
+        
+        // Only re-enable if WASM is loaded (window.wasmReady is set by demo-web.mjs)
+        if (window.wasmReady) {
+          document.getElementById('runBtn').disabled = false;
+        }
+      }
+    }
+
+    // Initialize SHA256 UI by default
+    updateUIForCircuit('sha256');
+
+    circuitBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        // Remove active class from all
+        circuitBtns.forEach(b => b.classList.remove('active'));
+        // Add to clicked
+        const targetBtn = e.currentTarget;
+        targetBtn.classList.add('active');
+        activeCircuit = targetBtn.getAttribute('data-circuit');
+        window.activeCircuit = activeCircuit;
+        
+        // Log the selection visually
+        const logContent = document.createElement('div');
+        logContent.className = 'log-line';
+        const formattedLog = activeCircuit === 'custom' 
+          ? `<span class="log-time">${getTimeStr()}</span><span class="log-arrow">→</span><span style="color:var(--accent-cyan)">[Custom]</span> Awaiting circuit artifact uploads...`
+          : `<span class="log-time">${getTimeStr()}</span><span class="log-arrow">→</span><span style="color:var(--accent-cyan)">[${activeCircuit.toUpperCase()}]</span> Initializing environment...`;
+        
+        logContent.innerHTML = formattedLog;
+        logContainer.appendChild(logContent);
+        
+        // Auto-scroll log
+        logContainer.scrollTop = logContainer.scrollHeight;
+        
+        // Update DOM elements for the selected circuit
+        updateUIForCircuit(activeCircuit);
+
+        // Notify demo-web.mjs of circuit change
+        if (activeCircuit !== 'custom' && window.onCircuitChanged) {
+          window.onCircuitChanged(activeCircuit);
+        }
+      });
+    });
+
+    // === Custom Upload Handling ===
+    window.customFiles = {};
+
+    const ICON_CHECK_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+    function updateChecklist(fileKey, fileName, size) {
+      const el = document.getElementById(`check-${fileKey}`);
+      if (!el) return;
+      el.className = 'checklist-item verified';
+      el.querySelector('.item-icon').innerHTML = ICON_CHECK_SM;
+      el.querySelector('.item-name').textContent = fileName;
+      const sizeStr = size > 1024*1024 ? `${(size/1024/1024).toFixed(1)} MB` : `${(size/1024).toFixed(1)} KB`;
+      el.querySelector('.item-right').textContent = sizeStr;
+      el.querySelector('.item-right').style.fontStyle = 'normal';
+    }
+
+    function resetChecklist() {
+      ['prover', 'verifier', 'inputs'].forEach(key => {
+        const el = document.getElementById(`check-${key}`);
+        if (!el) return;
+        el.className = 'checklist-item pending';
+        el.querySelector('.item-icon').textContent = '-';
+        el.querySelector('.item-right').textContent = 'Waiting...';
+        el.querySelector('.item-right').style.fontStyle = 'italic';
+      });
+      // Restore default names
+      document.querySelector('#check-prover .item-name').textContent = 'prover.pkp';
+      document.querySelector('#check-verifier .item-name').textContent = 'verifier.pkv';
+      document.querySelector('#check-inputs .item-name').textContent = 'inputs.json / Prover.toml';
+      window.customFiles = {};
+    }
+
+    function checkCustomReady() {
+      const cf = window.customFiles;
+      if (cf.prover && cf.verifier && cf.inputs) {
+        if (window.wasmReady) {
+          document.getElementById('runBtn').disabled = false;
+        }
+        const logEl = document.createElement('div');
+        logEl.className = 'log-line log-success';
+        logEl.textContent = 'All required files uploaded — ready to generate proof';
+        logContainer.appendChild(logEl);
+      }
+    }
+
+    function handleUploadedFiles(files) {
+      for (const file of files) {
+        const name = file.name.toLowerCase();
+        const logEl = document.createElement('div');
+        logEl.className = 'log-line';
+        logEl.textContent = `File uploaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+        logContainer.appendChild(logEl);
+
+        if (name.endsWith('.pkp')) {
+          window.customFiles.prover = file;
+          updateChecklist('prover', file.name, file.size);
+        } else if (name.endsWith('.pkv')) {
+          window.customFiles.verifier = file;
+          updateChecklist('verifier', file.name, file.size);
+        } else if (name === 'inputs.json' || name.endsWith('.toml')) {
+          window.customFiles.inputs = file;
+          updateChecklist('inputs', file.name, file.size);
+        } else {
+          const warnEl = document.createElement('div');
+          warnEl.className = 'log-line log-error';
+          warnEl.textContent = `Unrecognized file: ${file.name}`;
+          logContainer.appendChild(warnEl);
+        }
+      }
+      checkCustomReady();
+    }
+
+    // Wire dropzone
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const btnSelectFiles = document.getElementById('btnSelectFiles');
+
+    if (dropzone && fileInput && btnSelectFiles) {
+      btnSelectFiles.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+      });
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) handleUploadedFiles(fileInput.files);
+        fileInput.value = '';
+      });
+      dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = 'var(--accent-cyan)';
+        dropzone.style.background = 'rgba(0, 229, 255, 0.05)';
+      });
+      dropzone.addEventListener('dragleave', () => {
+        dropzone.style.borderColor = '';
+        dropzone.style.background = '';
+      });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = '';
+        dropzone.style.background = '';
+        if (e.dataTransfer.files.length) handleUploadedFiles(e.dataTransfer.files);
+      });
+    }
+
+    // Copy Logs to Clipboard
+    const copyLogBtn = document.getElementById('copyLogBtn');
+    if (copyLogBtn) {
+      copyLogBtn.addEventListener('click', async () => {
+        try {
+          // Extract text from log elements
+          const logsText = Array.from(document.querySelectorAll('#logContainer .log-line, #logContainer .log-error-block'))
+            .map(el => el.innerText)
+            .join('\n');
+          
+          await navigator.clipboard.writeText(logsText);
+          
+          // Visual feedback
+          const origHtml = copyLogBtn.innerHTML;
+          const origStroke = copyLogBtn.getAttribute('stroke');
+          
+          copyLogBtn.innerHTML = `<polyline points="20 6 9 17 4 12"></polyline>`;
+          copyLogBtn.setAttribute('stroke', 'var(--accent-cyan)');
+          
+          setTimeout(() => {
+             copyLogBtn.innerHTML = origHtml;
+             copyLogBtn.setAttribute('stroke', origStroke);
+          }, 2000);
+        } catch (e) {
+          console.error('Failed to copy logs:', e);
+        }
+      });
+    }
+
+  </script>
+
+  <script type="module">
+    // Import noir_js from local files
+    import { initNoir, Noir, decompressWitness } from './noir-web/noir-init.mjs';
+
+    // Make available globally
+    window.initNoir = initNoir;
+    window.Noir = Noir;
+    window.decompressWitness = decompressWitness;
+  </script>
+
+  <script type="module" src="src/demo-web.mjs"></script>
+</body>
+</html>
