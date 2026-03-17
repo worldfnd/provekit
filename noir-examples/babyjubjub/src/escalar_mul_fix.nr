@@ -16,7 +16,7 @@ fn segment_mul_fix_generator<let N: u32>(
 ) -> (BabyJubJubPoint, MontgomeryPoint) {
     // Ensure segment size is within valid range
     // Copied below is the comment from circomlib explaining the reasoning
-    // This ensures that the Montogomery adders never receive identical points or zero points as input, as long as the base is not the identity point.
+    // This ensures that the Montgomery adders never receive identical points or zero points as input, as long as the base is not the identity point.
     /*
 
     The scalar is s = a0 + a1*2^3 + a2*2^6 + ...... + a81*2^243
@@ -210,8 +210,8 @@ fn test_optimized_generator_mul_fix() {
     let result_gen = g.scalar_mul(very_large_scalar);
     let result_opt = generator_mul_fix(very_large_scalar);
 
-    assert(result_gen.x == result_opt.x, "regular vs optimized: x mismatch for scalar=5");
-    assert(result_gen.y == result_opt.y, "regular vs optimized: y mismatch for scalar=5");
+    assert(result_gen.x == result_opt.x, "regular vs optimized: x mismatch for very large scalar");
+    assert(result_gen.y == result_opt.y, "regular vs optimized: y mismatch for very large scalar");
 }
 
 #[test]
@@ -238,5 +238,5 @@ fn test_segment_mul_fix_generator_by_minus_1() {
     let id = generator_mul_fix(minus_1);
     let minus_generator = BabyJubJubPoint::generator().negate();
     assert(id.x == minus_generator.x, "generator_mul_fix(-1) x should match generator");
-    assert(id.y == minus_generator.y, "generator_mul_fix(-1) x should match generator");
+    assert(id.y == minus_generator.y, "generator_mul_fix(-1) y should match generator");
 }

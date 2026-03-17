@@ -2,7 +2,7 @@ use super::constants::DS_DLOG;
 use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
-// Verify a Chaim-Pedersen dlog equality proof that shows that A=x*G and C=x*B share the same discrete log x, given A,B,C and proof e,s.
+// Verify a Chaum-Pedersen dlog equality proof that shows that A=x*G and C=x*B share the same discrete log x, given A,B,C and proof e,s.
 // Point A is a public input in our use case (the OPRF public key and therefore we expect it to be checked to be in the prime order subgroup outside of this circuit)
 pub fn verify_dlog_equality(
     e: Field,

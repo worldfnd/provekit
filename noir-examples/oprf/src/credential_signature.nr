@@ -12,12 +12,12 @@ pub fn check_credential_signature(
     genesis_issued_at: u64,
     expires_at: u64,
     hashes: [Field; 2],
-    current_time_stamp: u64,
+    current_timestamp: u64,
     genesis_issued_at_min: u64,
     credential_id: Field,
 ) {
     // Check expiration first
-    assert(current_time_stamp < expires_at, "Credential expired");
+    assert(current_timestamp < expires_at, "Credential expired");
     // Check genesis issued at is valid
     assert(genesis_issued_at >= genesis_issued_at_min, "Credential issued_at too old");
 

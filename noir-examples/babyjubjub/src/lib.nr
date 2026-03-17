@@ -29,6 +29,9 @@ global BABYJUBJUB_GENERATOR_Y: Field =
 global BABYJUBJUB_Fr: Field =
     2736030358979909402780800718157159386076813972158567259200215660948447373041;
 
+// Bit-decomposition of the BabyJubJub subgroup order (scalar field Fr), little-endian.
+// NOTE: Named CHARACTERISTIC for upstream compatibility, but this is the group order (Fr),
+// NOT the field characteristic (prime p of the base field).
 global BABYJUBJUB_CHARACTERISTIC: [u1; 251] = [
     1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
     0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0,

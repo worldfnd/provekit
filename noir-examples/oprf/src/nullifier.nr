@@ -145,7 +145,7 @@ fn nullifier_kat_test() {
         },
         beta: 2387462819376525223098422965806766751285565755980265072594901385662518965922,
     };
-    let nullifer_inputs = OprfNullifierInputs::<30, 7> {
+    let nullifier_inputs = OprfNullifierInputs::<30, 7> {
         query_inputs: inputs,
         issuer_schema_id: 1,
         cred_hashes: super::types::CredentialHashes {
@@ -207,7 +207,7 @@ fn nullifier_kat_test() {
         oprf_pk,
         signal_hash,
         nonce,
-        nullifer_inputs,
+        nullifier_inputs,
     );
 
     assert(outputs.id_commitment == expected_id_comm, "ID Commitment mismatch");
