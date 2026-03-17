@@ -6,12 +6,53 @@ use crate::pow_2;
 pub const U51_NP0: u64 = 0x1f593efffffff;
 
 /// BN254 scalar field prime
-pub const U51_P: [u64; 5] = [
-    0x1f593f0000001,
-    0x10f372e12287c,
-    0x6056174a0cfa1,
-    0x014dc2822db40,
-    0x30644e72e131a,
+pub const U51_P: [u64; 5] = U51_P_MULTIPLES[1];
+
+/// Lookup table: `U51_P_MULTIPLES[k]` = `k * P` for k in 0..=5, in 51-bit
+/// limbs.
+pub const U51_P_MULTIPLES: [[u64; 5]; 6] = [
+    [
+        0x0000000000000,
+        0x0000000000000,
+        0x0000000000000,
+        0x0000000000000,
+        0x0000000000000,
+    ], // 0P
+    [
+        0x1f593f0000001,
+        0x10f372e12287c,
+        0x6056174a0cfa1,
+        0x014dc2822db40,
+        0x30644e72e131a,
+    ], // 1P
+    [
+        0x3eb27e0000002,
+        0x21e6e5c2450f8,
+        0x40ac2e9419f42,
+        0x029b85045b681,
+        0x60c89ce5c2634,
+    ], // 2P
+    [
+        0x5e0bbd0000003,
+        0x32da58a367974,
+        0x210245de26ee3,
+        0x03e94786891c2,
+        0x112ceb58a394e,
+    ], // 3P
+    [
+        0x7d64fc0000004,
+        0x43cdcb848a1f0,
+        0x01585d2833e84,
+        0x05370a08b6d03,
+        0x419139cb84c68,
+    ], // 4P
+    [
+        0x1cbe3b0000005,
+        0x54c13e65aca6d,
+        0x61ae747240e25,
+        0x0684cc8ae4843,
+        0x71f5883e65f82,
+    ], // 5P
 ];
 
 /// Bit mask for 51-bit limbs.
