@@ -272,7 +272,7 @@ fn prove_from_alphas(
                 &commitment.polynomial,
                 public_weight,
             );
-            merlin.prover_hint_ark(&public_eval);
+            merlin.prover_message(&public_eval);
         }
 
         let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
@@ -317,7 +317,7 @@ fn prove_from_alphas(
 
         let public_1 = if !public_inputs.is_empty() {
             let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
-            merlin.prover_hint_ark(&p1);
+            merlin.prover_message(&p1);
             Some(p1)
         } else {
             None
