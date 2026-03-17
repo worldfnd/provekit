@@ -9,10 +9,6 @@ use {
     wasm_bindgen::prelude::*,
 };
 
-/// Validate a binary artifact header and return the payload after the header.
-///
-/// Checks magic bytes, format identifier, and version compatibility
-/// (major must match exactly, minor must be >= expected minimum).
 pub(crate) fn parse_binary_header<'a>(
     data: &'a [u8],
     expected_format: &[u8; 8],
@@ -55,7 +51,6 @@ fn parse_binary_header_impl<'a>(
     Ok(&data[HEADER_SIZE..])
 }
 
-/// Auto-detect compression (Zstd or XZ) and decompress.
 pub(crate) fn decompress(data: &[u8]) -> Result<Vec<u8>, JsError> {
     decompress_impl(data).map_err(|msg| JsError::new(&msg))
 }

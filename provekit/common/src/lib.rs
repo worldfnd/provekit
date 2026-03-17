@@ -2,7 +2,6 @@ pub mod file;
 pub use file::binary_format;
 pub mod hash_config;
 mod interner;
-#[cfg(not(target_arch = "wasm32"))]
 mod mavros;
 mod noir_proof_scheme;
 pub mod optimize;
@@ -21,12 +20,11 @@ use crate::{
     interner::{InternedFieldElement, Interner},
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
 };
-#[cfg(not(target_arch = "wasm32"))]
-pub use mavros::{MavrosProver, MavrosSchemeData};
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     hash_config::HashConfig,
+    mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
     prover::{NoirProver, Prover},

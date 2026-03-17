@@ -31,14 +31,9 @@ mod r1cs;
 mod whir_r1cs;
 mod witness;
 
-/// Proof generation trait.
-///
-/// `prove` and `prove_with_toml` are only available on native targets with the
-/// `witness-generation` feature (cfg-gated out on `wasm32`).
-/// `prove_with_witness` is available on all targets including WASM.
-///
-/// `MavrosProver` does not support `prove_with_witness` and returns an error
-/// at runtime — only Noir provers support witness-based proving.
+/// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
+/// `prove_with_witness` is available on all targets. `MavrosProver` does not
+/// support `prove_with_witness` (errors at runtime).
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
@@ -97,11 +92,6 @@ impl Prove for NoirProver {
         self.prove(input_map)
     }
 
-    /// Generate a proof from a pre-computed witness map.
-    ///
-    /// This method is WASM-compatible and does not require witness generation
-    /// dependencies. The witness should be generated externally (e.g., using
-    /// @noir-lang/noir_js in the browser).
     #[instrument(skip_all)]
     fn prove_with_witness(
         self,
@@ -378,9 +368,12 @@ impl Prove for Prover {
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove_with_witness(witness),
-            // Mavros variant only exists on non-WASM targets (mirrors the cfg on the enum variant)
             #[cfg(not(target_arch = "wasm32"))]
             Prover::Mavros(p) => p.prove_with_witness(witness),
+            #[cfg(target_arch = "wasm32")]
+            Prover::Mavros(_) => {
+                anyhow::bail!("Mavros prover is not supported on WASM")
+            }
         }
     }
 }

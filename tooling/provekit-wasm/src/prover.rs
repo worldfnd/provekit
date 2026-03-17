@@ -16,15 +16,7 @@ use {
     wasm_bindgen::prelude::*,
 };
 
-/// A prover instance for generating zero-knowledge proofs in WebAssembly.
-///
-/// Wraps the same `Prover` artifact used by the native CLI. Create an
-/// instance by loading a `.pkp` file.
-///
-/// The prover is **consumed** by `proveBytes` / `proveJs` — calling either
-/// a second time will return an error. Metadata methods (`getCircuit`,
-/// `getNumConstraints`, `getNumWitnesses`) are available **before** proof
-/// generation; once a proof is generated they will also error.
+/// WASM bindings for proof generation. Consumed after `proveBytes`/`proveJs`.
 #[wasm_bindgen]
 pub struct Prover {
     inner: Option<ProverCore>,
@@ -32,15 +24,6 @@ pub struct Prover {
 
 #[wasm_bindgen]
 impl Prover {
-    /// Creates a new prover from a `.pkp` prover artifact.
-    ///
-    /// Accepts binary `.pkp` format (compressed postcard with header)
-    /// or JSON serialization.
-    ///
-    /// Generate `.pkp` artifacts using:
-    /// ```sh
-    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv
-    /// ```
     #[wasm_bindgen(constructor)]
     pub fn new(prover_data: &[u8]) -> Result<Prover, JsError> {
         let is_binary = prover_data.len() >= HEADER_SIZE && &prover_data[..8] == MAGIC_BYTES;
@@ -59,13 +42,8 @@ impl Prover {
         Ok(Self { inner: Some(inner) })
     }
 
-    /// Generates a proof from a witness map and returns it as JSON bytes.
-    ///
-    /// `witness_map` can be a JavaScript `Map<number, string>` (as returned by
-    /// noir\_js `execute()`) or a plain object `{ "0": "0xabc…", … }`.
-    /// Keys are witness indices; values are hex-encoded BN254 field elements.
-    ///
-    /// The prover is consumed by this call — subsequent calls will error.
+    /// `witness_map`: JS `Map<number, string>` or plain object `{ "0": "0xhex…"
+    /// }`.
     #[wasm_bindgen(js_name = proveBytes)]
     pub fn prove_bytes(&mut self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
         let proof = self.prove_inner(witness_map)?;
@@ -74,10 +52,6 @@ impl Prover {
             .map_err(|err| JsError::new(&format!("Failed to serialize proof to JSON: {err}")))
     }
 
-    /// Generates a proof from a witness map and returns it as a JavaScript
-    /// object.
-    ///
-    /// The prover is consumed by this call — subsequent calls will error.
     #[wasm_bindgen(js_name = proveJs)]
     pub fn prove_js(&mut self, witness_map: JsValue) -> Result<JsValue, JsError> {
         let proof = self.prove_inner(witness_map)?;
@@ -85,11 +59,7 @@ impl Prover {
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
     }
 
-    /// Returns a circuit JSON suitable for `@noir-lang/noir_js`.
-    ///
-    /// Reconstructs `{ "abi": ..., "bytecode": "..." }` from the prover's
-    /// embedded program and ABI so the browser can generate witnesses
-    /// without a separate `circuit.json` file.
+    /// Returns circuit JSON for `@noir-lang/noir_js`.
     ///
     /// ```js
     /// const prover = new Prover(pkpBytes);
@@ -120,13 +90,11 @@ impl Prover {
             .map_err(|e| JsError::new(&format!("Failed to serialize circuit JSON: {e}")))
     }
 
-    /// Returns the number of R1CS constraints in this circuit.
     #[wasm_bindgen(js_name = getNumConstraints)]
     pub fn get_num_constraints(&self) -> Result<usize, JsError> {
         Ok(self.inner_ref()?.size().0)
     }
 
-    /// Returns the number of R1CS witnesses in this circuit.
     #[wasm_bindgen(js_name = getNumWitnesses)]
     pub fn get_num_witnesses(&self) -> Result<usize, JsError> {
         Ok(self.inner_ref()?.size().1)

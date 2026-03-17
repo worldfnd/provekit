@@ -1,9 +1,5 @@
 //! WebAssembly bindings for ProveKit.
 //!
-//! This module provides browser-compatible WASM bindings for generating and
-//! verifying zero-knowledge proofs using ProveKit. The API accepts the same
-//! `.pkp` / `.pkv` binary artifacts used by the native CLI.
-//!
 //! # Example
 //!
 //! ```javascript
@@ -28,11 +24,8 @@ mod format;
 mod prover;
 mod verifier;
 
-// Re-export wasm-bindgen-rayon's thread pool initialization
 pub use wasm_bindgen_rayon::init_thread_pool;
 
-/// Initializes panic hook for better browser console error messages.
-/// Idempotent — safe to call multiple times.
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = initPanicHook)]
 pub fn init_panic_hook() {
     console_error_panic_hook::set_once();

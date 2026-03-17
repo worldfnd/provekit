@@ -1,10 +1,8 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::MavrosSchemeData;
 use {
     crate::{
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, NoirElement, PublicInputs, R1CS,
+        HashConfig, MavrosSchemeData, NoirElement, PublicInputs, R1CS,
     },
     acir::circuit::Program,
     serde::{Deserialize, Serialize},
@@ -20,10 +18,12 @@ pub struct NoirSchemeData {
     pub hash_config:            HashConfig,
 }
 
+// INVARIANT: Variant order is wire-format-critical (postcard uses positional
+// discriminants). Do not reorder, cfg-gate, or insert variants without
+// verifying cross-target deserialization (native <-> WASM).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NoirProofScheme {
     Noir(NoirSchemeData),
-    #[cfg(not(target_arch = "wasm32"))]
     Mavros(MavrosSchemeData),
 }
 
@@ -38,7 +38,6 @@ impl NoirProofScheme {
     pub fn r1cs(&self) -> &R1CS {
         match self {
             NoirProofScheme::Noir(d) => &d.r1cs,
-            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => &d.r1cs,
         }
     }
@@ -47,7 +46,6 @@ impl NoirProofScheme {
     pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
         match self {
             NoirProofScheme::Noir(d) => &d.whir_for_witness,
-            #[cfg(not(target_arch = "wasm32"))]
             NoirProofScheme::Mavros(d) => &d.whir_for_witness,
         }
     }

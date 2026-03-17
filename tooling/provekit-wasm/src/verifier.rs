@@ -8,10 +8,7 @@ use {
     wasm_bindgen::prelude::*,
 };
 
-/// A verifier instance for verifying zero-knowledge proofs in WebAssembly.
-///
-/// Wraps the same `Verifier` artifact used by the native CLI. Create an
-/// instance by loading a `.pkv` file.
+/// WASM bindings for proof verification. Reusable across multiple proofs.
 #[wasm_bindgen]
 pub struct Verifier {
     inner: VerifierCore,
@@ -20,11 +17,6 @@ pub struct Verifier {
 #[wasm_bindgen]
 impl Verifier {
     /// Creates a new verifier from a `.pkv` verifier artifact.
-    ///
-    /// Generate `.pkv` artifacts using:
-    /// ```sh
-    /// provekit-cli prepare circuit.json --pkp prover.pkp --pkv verifier.pkv
-    /// ```
     #[wasm_bindgen(constructor)]
     pub fn new(verifier_data: &[u8]) -> Result<Verifier, JsError> {
         let is_binary = verifier_data.len() >= HEADER_SIZE && &verifier_data[..8] == MAGIC_BYTES;
@@ -38,9 +30,8 @@ impl Verifier {
         Ok(Self { inner })
     }
 
-    /// Verifies a proof provided as JSON bytes.
-    ///
-    /// The verifier is **not** consumed — it can verify multiple proofs.
+    /// Verifies a proof provided as JSON bytes. The verifier is **not**
+    /// consumed.
     #[wasm_bindgen(js_name = verifyBytes)]
     pub fn verify_bytes(&self, proof_json: &[u8]) -> Result<(), JsError> {
         let proof: NoirProof = serde_json::from_slice(proof_json)
@@ -48,9 +39,8 @@ impl Verifier {
         self.verify_proof(&proof)
     }
 
-    /// Verifies a proof provided as a JavaScript object.
-    ///
-    /// The verifier is **not** consumed — it can verify multiple proofs.
+    /// Verifies a proof provided as a JavaScript object. The verifier is
+    /// **not** consumed.
     #[wasm_bindgen(js_name = verifyJs)]
     pub fn verify_js(&self, proof: JsValue) -> Result<(), JsError> {
         let proof: NoirProof = serde_wasm_bindgen::from_value(proof)

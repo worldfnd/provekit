@@ -1,19 +1,13 @@
-//! Mavros-specific types for the prover and compilation pipeline.
-//!
-//! This module is only available on native targets (not WASM) because the
-//! Mavros VM and its artifacts depend on C bindings.
-
+#[cfg(target_arch = "wasm32")]
+pub use self::wasm_stubs::{ConstraintsLayout, WitnessLayout};
+#[cfg(not(target_arch = "wasm32"))]
+pub use mavros_vm::{ConstraintsLayout, WitnessLayout};
 use {
     crate::{whir_r1cs::WhirR1CSScheme, HashConfig, R1CS},
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
     noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
-/// Mavros-specific prover data serialized into `.pkp` files.
-///
-/// Unlike [`super::NoirProver`], the Mavros prover omits the R1CS matrices
-/// (they are reconstructed at prove-time from the AD binary).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MavrosProver {
     #[serde(with = "crate::utils::serde_jsonify")]
@@ -27,8 +21,6 @@ pub struct MavrosProver {
     pub hash_config:        HashConfig,
 }
 
-/// Mavros-specific compilation output (in-memory counterpart of
-/// [`MavrosProver`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MavrosSchemeData {
     #[serde(with = "crate::utils::serde_jsonify")]
@@ -41,4 +33,28 @@ pub struct MavrosSchemeData {
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
     pub hash_config:        HashConfig,
+}
+
+// Wire-compatible stubs for WASM targets where mavros_vm (C bindings) is
+// unavailable. Field names, types, and ordering MUST match the real mavros_vm
+// types exactly.
+#[cfg(target_arch = "wasm32")]
+mod wasm_stubs {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct WitnessLayout {
+        pub algebraic_size:      usize,
+        pub multiplicities_size: usize,
+        pub challenges_size:     usize,
+        pub tables_data_size:    usize,
+        pub lookups_data_size:   usize,
+    }
+
+    #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+    pub struct ConstraintsLayout {
+        pub algebraic_size:    usize,
+        pub tables_data_size:  usize,
+        pub lookups_data_size: usize,
+    }
 }
