@@ -736,3 +736,37 @@ impl NoirToR1CSCompiler {
         Ok(breakdown)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        acir::circuit::PublicInputs as AcirPublicInputs,
+        provekit_common::witness::WitnessBuilder,
+        std::collections::{BTreeSet, HashSet},
+    };
+
+    /// Regression: public inputs absent from all opcodes must still get
+    /// builders (case for unconstrained public inputs), otherwise
+    /// split_and_prepare_layers fails with NoBuilderForPublicInput.
+    #[test]
+    fn dead_public_input_compiles() {
+        let circuit = Circuit {
+            public_parameters: AcirPublicInputs(BTreeSet::from([NoirWitness(1)])),
+            opcodes: vec![],
+            ..Default::default()
+        };
+        let (r1cs, witness_map, witness_builders) =
+            noir_to_r1cs(&circuit).expect("noir_to_r1cs should succeed");
+
+        let acir_public_inputs: HashSet<u32> =
+            circuit.public_inputs().indices().iter().cloned().collect();
+        WitnessBuilder::split_and_prepare_layers(
+            &witness_builders,
+            r1cs,
+            witness_map,
+            acir_public_inputs,
+        )
+        .expect("split_and_prepare_layers should not fail with NoBuilderForPublicInput");
+    }
+}
