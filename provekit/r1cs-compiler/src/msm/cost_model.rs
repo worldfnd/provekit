@@ -209,7 +209,12 @@ pub fn calculate_msm_witness_cost(
     is_native: bool,
 ) -> usize {
     if is_native {
-        return calculate_msm_witness_cost_native(native_field_bits, n_points, scalar_bits);
+        return calculate_msm_witness_cost_native(
+            native_field_bits,
+            n_points,
+            scalar_bits,
+            window_size,
+        );
     }
 
     // --- Derived parameters ---
@@ -318,27 +323,42 @@ const NATIVE_NEGATE: usize = 1; // linear combination
 const NATIVE_SELECT: usize = 1; // select_witness
 const NATIVE_POINT_SELECT: usize = 2; // x + y select_witness
 
-/// Native-field MSM cost.
+/// Native-field MSM cost, parameterized by `window_size`.
 fn calculate_msm_witness_cost_native(
     native_field_bits: u32,
     n_points: usize,
     scalar_bits: usize,
+    window_size: usize,
 ) -> usize {
     let half_bits = (scalar_bits + 1) / 2;
+    let w = window_size;
+    let half_table_size = 1usize << (w - 1);
+    let num_windows = ceil_div(half_bits, w);
+    let (tbl_d, tbl_a) = table_build_ops(half_table_size);
     let (sr_wit, sr_rc) = scalar_relation_cost(native_field_bits, scalar_bits);
 
-    // Per-bit: double + 2 × (negate y_eff + signed select + add)
-    let per_bit = NATIVE_DOUBLE + 2 * (NATIVE_NEGATE + NATIVE_SELECT + NATIVE_ADD);
-    // Per half-scalar skew: negate + add + point_select
-    let per_skew = NATIVE_NEGATE + NATIVE_ADD + NATIVE_POINT_SELECT;
-
-    let per_point = 2 * NATIVE_ON_CURVE // on-curve checks (2 points)
+    // Phase 1: preprocessing — on-curve, y pre-negate, scalar decomposition,
+    // sanitize, hints, GLV
+    let preprocess = 2 * NATIVE_ON_CURVE
         + 2 * (NATIVE_NEGATE + 2 * NATIVE_SELECT) // y pre-negate per half-scalar
-        + 2 * (half_bits + 1)           // scalar bit decomposition
-        + DETECT_SKIP_WIT + 4 + 4 + GLV_HINT_WIT // sanitize + ec_hint + glv
-        + sr_wit
-        + half_bits * per_bit
-        + 2 * per_skew;
+        + 2 * (half_bits + 1)                      // scalar bit decomposition
+        + DETECT_SKIP_WIT + 4 + 4 + GLV_HINT_WIT; // sanitize + ec_hint + glv
+
+    // Phase 2: table building — construct [P, 3P, 5P, ...] + mux selects
+    // 2 tables per point (P and R branches)
+    let table = 2 * (tbl_d * NATIVE_DOUBLE + tbl_a * NATIVE_ADD)
+        + num_windows * 2 * half_table_size.saturating_sub(1) * NATIVE_POINT_SELECT;
+
+    // Phase 3: EC loop — w doublings per window, per-window adds
+    let doublings = num_windows * w * NATIVE_DOUBLE;
+    let loop_body =
+        num_windows * 2 * (NATIVE_NEGATE + NATIVE_SELECT + NATIVE_ADD + w.saturating_sub(1));
+    // per window × 2 half-scalars × (negate + select + add + XOR index bits)
+
+    // Phase 4: skew correction — per half-scalar: negate + add + point_select
+    let skew = 2 * (NATIVE_NEGATE + NATIVE_ADD + NATIVE_POINT_SELECT);
+
+    let per_point = preprocess + table + doublings + loop_body + skew + sr_wit;
 
     let shared_constants = 3 + 2; // gen_x, gen_y, zero + offset(x,y)
 
@@ -397,7 +417,25 @@ pub fn get_optimal_msm_params(
     is_native: bool,
 ) -> (u32, usize, usize) {
     if is_native {
-        return (native_field_bits, 1, 1);
+        // Search window_size space; limb_bits and num_limbs are fixed for native.
+        let mut best_cost = usize::MAX;
+        let mut best_window = 1;
+        for ws in 1..=8usize {
+            let cost = calculate_msm_witness_cost(
+                native_field_bits,
+                curve_modulus_bits,
+                n_points,
+                scalar_bits,
+                ws,
+                native_field_bits,
+                true,
+            );
+            if cost < best_cost {
+                best_cost = cost;
+                best_window = ws;
+            }
+        }
+        return (native_field_bits, best_window, 1);
     }
 
     let max_limb_bits = (native_field_bits.saturating_sub(4)) / 2;
@@ -445,7 +483,10 @@ mod tests {
     fn test_optimal_params_bn254_native() {
         let (limb_bits, window_size, num_limbs) = get_optimal_msm_params(254, 254, 1, 256, true);
         assert_eq!(limb_bits, 254);
-        assert_eq!(window_size, 1, "native path uses signed-bit wNAF (w=1)");
+        assert!(
+            window_size >= 1 && window_size <= 8,
+            "native window_size={window_size} out of search range"
+        );
         assert_eq!(num_limbs, 1, "native path uses 1 limb");
     }
 

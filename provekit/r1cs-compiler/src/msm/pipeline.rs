@@ -397,7 +397,7 @@ fn accumulate_and_constrain_outputs<E: EcOps>(
         y: {
             let neg_off_y = ops.constant_limbs(&neg_offset_y_values);
             let neg_g_y = ops.constant_limbs(&neg_gen_y_values);
-            ops.select(all_skipped, neg_off_y, neg_g_y)
+            ops.select_unchecked(all_skipped, neg_off_y, neg_g_y)
         },
     };
 
