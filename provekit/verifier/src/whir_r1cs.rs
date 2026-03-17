@@ -290,6 +290,9 @@ fn verify_public_input_binding(
         expected += x_pow * pi;
         x_pow *= x;
     }
-    ensure!(public_eval == expected, "Public input binding check failed");
+    ensure!(
+        public_eval == expected,
+        "Public input binding check failed: expected {expected:?}, got {public_eval:?}"
+    );
     Ok(())
 }
