@@ -513,5 +513,29 @@ pub(super) fn print_ge_optimization(
         stats.witnesses_after
     );
     println!("{}", SEPARATOR);
+
+    println!("\n┌─ Column Removal Details");
+    println!(
+        "│  Zero-occurrence cols:      {:>8}  (dead in A/B/C matrices, excl. public)",
+        stats.zero_occurrence_cols
+    );
+    println!(
+        "│  Blocked — ACIR witness map:{:>8}  (pinned as circuit inputs/outputs)",
+        stats.blocked_by_acir
+    );
+    println!(
+        "│  Blocked — live builder BFS:{:>8}  (pivot dependency chains still alive)",
+        stats.blocked_by_live_builder
+    );
+    println!(
+        "│  Actually removed:          {:>8}  ({:.1}% of zero-occurrence)",
+        stats.columns_removed,
+        if stats.zero_occurrence_cols > 0 {
+            stats.columns_removed as f64 / stats.zero_occurrence_cols as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
+    println!("└{}", SUBSECTION);
     println!();
 }
