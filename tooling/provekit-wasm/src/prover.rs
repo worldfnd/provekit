@@ -70,8 +70,9 @@ impl Prover {
     pub fn get_circuit(&self) -> Result<Box<[u8]>, JsError> {
         let noir_prover = match self.inner_ref()? {
             ProverCore::Noir(p) => p,
-            #[allow(unreachable_patterns)]
-            _ => return Err(JsError::new("Only Noir provers are supported in WASM")),
+            ProverCore::Mavros(_) => {
+                return Err(JsError::new("Only Noir provers are supported in WASM"))
+            }
         };
 
         let program_bytes = Program::<NoirElement>::serialize_program(&noir_prover.program);

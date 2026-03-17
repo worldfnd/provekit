@@ -59,7 +59,7 @@ fn decompress_impl(data: &[u8]) -> Result<Vec<u8>, String> {
     if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
         let mut decoder = ruzstd::decoding::StreamingDecoder::new(std::io::Cursor::new(data))
             .map_err(|e| format!("Failed to init Zstd decoder: {e}"))?;
-        let hint = decoder.decoder.content_size() as usize;
+        let hint = usize::try_from(decoder.decoder.content_size()).unwrap_or(0);
         let mut out = Vec::with_capacity(hint);
         std::io::Read::read_to_end(&mut decoder, &mut out)
             .map_err(|e| format!("Failed to decompress Zstd data: {e}"))?;
