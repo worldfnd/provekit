@@ -190,6 +190,23 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let (quotient, _) = divmod(&d_limbs, &m_limbs);
                 witness[*witness_idx] = Some(bigint_to_fe(&quotient));
             }
+            WitnessBuilder::SumQuotient {
+                output,
+                terms,
+                divisor,
+            } => {
+                let sum: FieldElement = terms
+                    .iter()
+                    .map(|SumTerm(coeff, idx)| {
+                        let val = witness[*idx].unwrap();
+                        coeff.map_or(val, |c| c * val)
+                    })
+                    .fold(FieldElement::zero(), |acc, x| acc + x);
+                let d_limbs = fe_to_bigint(sum);
+                let m_limbs = divisor.into_bigint().0;
+                let (quotient, _) = divmod(&d_limbs, &m_limbs);
+                witness[*output] = Some(bigint_to_fe(&quotient));
+            }
             WitnessBuilder::IndexedLogUpDenominator(
                 witness_idx,
                 sz_challenge,

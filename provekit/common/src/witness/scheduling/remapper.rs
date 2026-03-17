@@ -124,6 +124,21 @@ impl WitnessIndexRemapper {
             WitnessBuilder::IntegerQuotient(idx, dividend, divisor) => {
                 WitnessBuilder::IntegerQuotient(self.remap(*idx), self.remap(*dividend), *divisor)
             }
+            WitnessBuilder::SumQuotient {
+                output,
+                terms,
+                divisor,
+            } => {
+                let new_terms = terms
+                    .iter()
+                    .map(|SumTerm(coeff, idx)| SumTerm(*coeff, self.remap(*idx)))
+                    .collect();
+                WitnessBuilder::SumQuotient {
+                    output:  self.remap(*output),
+                    terms:   new_terms,
+                    divisor: *divisor,
+                }
+            }
             WitnessBuilder::ProductLinearOperation(
                 idx,
                 ProductLinearTerm(x, a, b),

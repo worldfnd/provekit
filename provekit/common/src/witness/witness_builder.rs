@@ -436,6 +436,15 @@ pub enum WitnessBuilder {
         spread_val:   FieldElement,
         multiplicity: usize,
     },
+    /// Computes `floor(linear_combination(terms) / divisor)` as an integer
+    /// quotient. Used for carry/borrow computation in multi-limb arithmetic,
+    /// avoiding an intermediate `Sum` witness.
+    SumQuotient {
+        output:  usize,
+        terms:   Vec<SumTerm>,
+        #[serde(with = "serde_ark")]
+        divisor: FieldElement,
+    },
 }
 
 impl WitnessBuilder {

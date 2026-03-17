@@ -76,6 +76,9 @@ impl DependencyInfo {
             | WitnessBuilder::Acir(..)
             | WitnessBuilder::Challenge(_) => vec![],
             WitnessBuilder::Sum(_, ops) => ops.iter().map(|SumTerm(_, idx)| *idx).collect(),
+            WitnessBuilder::SumQuotient { terms, .. } => {
+                terms.iter().map(|SumTerm(_, idx)| *idx).collect()
+            }
             WitnessBuilder::Product(_, a, b) => vec![*a, *b],
             WitnessBuilder::MultiplicitiesForRange(_, _, values) => values.clone(),
             WitnessBuilder::Inverse(_, x)
@@ -308,6 +311,7 @@ impl DependencyInfo {
             | WitnessBuilder::SpreadWitness(idx, ..)
             | WitnessBuilder::SpreadLookupDenominator(idx, ..)
             | WitnessBuilder::SpreadTableQuotient { idx, .. } => vec![*idx],
+            WitnessBuilder::SumQuotient { output, .. } => vec![*output],
             WitnessBuilder::SelectWitness { output, .. }
             | WitnessBuilder::BooleanOr { output, .. } => vec![*output],
             WitnessBuilder::SignedBitHint {

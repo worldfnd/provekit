@@ -323,12 +323,13 @@ fn verify_scalar_muls<E: EcOps>(
     let acc_off_x_values = decompose_to_limbs_pub(&acc_off_x_raw, limb_bits, num_limbs);
     let acc_off_y_values = decompose_to_limbs_pub(&acc_off_y_raw, limb_bits, num_limbs);
 
-    for pt in merged_points {
-        let offset = EcPoint {
-            x: ops.constant_limbs(offset_x_values),
-            y: ops.constant_limbs(offset_y_values),
-        };
+    // Allocate offset once
+    let offset = EcPoint {
+        x: ops.constant_limbs(offset_x_values),
+        y: ops.constant_limbs(offset_y_values),
+    };
 
+    for pt in merged_points {
         let glv_acc = ec_points::scalar_mul_merged_glv(
             &mut ops,
             std::slice::from_ref(pt),
@@ -366,9 +367,12 @@ fn accumulate_and_constrain_outputs<E: EcOps>(
     let num_limbs = config.num_limbs;
     let limb_bits = config.limb_bits;
     let mut ops = EcOpsCtx::<E>::new(&mut *compiler, &mut *range_checks, params);
+    // Allocate offset limbs once
+    let offset_x = ops.constant_limbs(offset_x_values);
+    let offset_y = ops.constant_limbs(offset_y_values);
     let mut acc = EcPoint {
-        x: ops.constant_limbs(offset_x_values),
-        y: ops.constant_limbs(offset_y_values),
+        x: offset_x,
+        y: offset_y,
     };
 
     for &(r, is_skip) in accum_inputs {
@@ -387,9 +391,8 @@ fn accumulate_and_constrain_outputs<E: EcOps>(
 
     let sub_pt = EcPoint {
         x: {
-            let off_x = ops.constant_limbs(offset_x_values);
             let g_x = ops.constant_limbs(&gen_x_limb_values);
-            ops.select(all_skipped, off_x, g_x)
+            ops.select(all_skipped, offset_x, g_x)
         },
         y: {
             let neg_off_y = ops.constant_limbs(&neg_offset_y_values);

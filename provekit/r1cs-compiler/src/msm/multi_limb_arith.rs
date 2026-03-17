@@ -117,6 +117,8 @@ fn add_sub_mod_p_core(
 
     for i in 0..n {
         // Combine w1 terms to avoid duplicate column indices.
+        // The offset 2^W is folded into w1_coeff (with -1 for carry_prev
+        // which also uses w1 implicitly via SumTerm(None, ...)).
         let w1_coeff = if carry_prev.is_some() {
             params.two_pow_w - FieldElement::ONE
         } else {
@@ -138,20 +140,18 @@ fn add_sub_mod_p_core(
         if let Some(carry) = carry_prev {
             terms.push(SumTerm(None, carry));
         }
-        let v_offset = compiler.add_sum(terms);
 
-        // carry = floor(v_offset / 2^W)
+        // carry = floor(sum(terms) / 2^W)
         let carry = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
-            carry,
-            v_offset,
-            params.two_pow_w,
-        ));
-        // r[i] = v_offset - carry * 2^W
-        r.push(compiler.add_sum(vec![
-            SumTerm(None, v_offset),
-            SumTerm(Some(-params.two_pow_w), carry),
-        ]));
+        compiler.add_witness_builder(WitnessBuilder::SumQuotient {
+            output:  carry,
+            terms:   terms.clone(),
+            divisor: params.two_pow_w,
+        });
+
+        // Merged constraint: r[i] = sum(terms) - carry * 2^W
+        terms.push(SumTerm(Some(-params.two_pow_w), carry));
+        r.push(compiler.add_sum(terms));
         carry_prev = Some(carry);
     }
 
@@ -201,17 +201,18 @@ pub fn negate_mod_p_multi(
         if let Some(borrow) = borrow_prev {
             terms.push(SumTerm(None, borrow));
         }
-        let v = compiler.add_sum(terms);
 
-        // borrow[i] = floor(v[i] / 2^W)
+        // borrow = floor(sum(terms) / 2^W)
         let borrow = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(borrow, v, params.two_pow_w));
+        compiler.add_witness_builder(WitnessBuilder::SumQuotient {
+            output:  borrow,
+            terms:   terms.clone(),
+            divisor: params.two_pow_w,
+        });
 
-        // r[i] = v[i] - borrow[i] * 2^W
-        let ri = compiler.add_sum(vec![
-            SumTerm(None, v),
-            SumTerm(Some(-params.two_pow_w), borrow),
-        ]);
+        // Merged constraint: r[i] = sum(terms) - borrow * 2^W
+        terms.push(SumTerm(Some(-params.two_pow_w), borrow));
+        let ri = compiler.add_sum(terms);
         r.push(ri);
 
         // Range check r[i] — ensures borrow is uniquely determined
@@ -350,20 +351,18 @@ pub fn less_than_p_check_multi(
         if let Some(borrow) = borrow_prev {
             terms.push(SumTerm(None, borrow));
         }
-        let v_diff = compiler.add_sum(terms);
 
-        // borrow = floor(v_diff / 2^W)
+        // borrow = floor(sum(terms) / 2^W)
         let borrow = compiler.num_witnesses();
-        compiler.add_witness_builder(WitnessBuilder::IntegerQuotient(
-            borrow,
-            v_diff,
-            params.two_pow_w,
-        ));
-        // d[i] = v_diff - borrow * 2^W
-        let d_i = compiler.add_sum(vec![
-            SumTerm(None, v_diff),
-            SumTerm(Some(-params.two_pow_w), borrow),
-        ]);
+        compiler.add_witness_builder(WitnessBuilder::SumQuotient {
+            output:  borrow,
+            terms:   terms.clone(),
+            divisor: params.two_pow_w,
+        });
+
+        // Merged constraint: d[i] = sum(terms) - borrow * 2^W
+        terms.push(SumTerm(Some(-params.two_pow_w), borrow));
+        let d_i = compiler.add_sum(terms);
 
         // Range check r[i] and d[i]
         range_checks.entry(params.limb_bits).or_default().push(r[i]);

@@ -41,13 +41,12 @@ fn table_build_ops(half_table_size: usize) -> (usize, usize) {
 // The helpers below decompose costs into these structural components.
 // ---------------------------------------------------------------------------
 
-/// Witnesses per limb from a less-than-p borrow chain: v_diff + borrow + d_i.
-const LTP_WIT_PER_LIMB: usize = 3;
+/// Witnesses per limb from a less-than-p borrow chain: borrow + d_i.
+const LTP_WIT_PER_LIMB: usize = 2;
 /// Range checks per limb from a less-than-p check: borrow + d_i.
 const LTP_RC_PER_LIMB: usize = 2;
-/// Witnesses per limb from a multi-limb negate (p-y borrow chain): v + borrow +
-/// r.
-const NEGATE_WIT_PER_LIMB: usize = 3;
+/// Witnesses per limb from a multi-limb negate (p-y borrow chain): borrow + r.
+const NEGATE_WIT_PER_LIMB: usize = 2;
 /// Range checks per limb from a multi-limb negate: r.
 const NEGATE_RC_PER_LIMB: usize = 1;
 
@@ -169,7 +168,7 @@ fn scalar_relation_cost(
 
     // Field op witnesses for 1 add + 1 sub + 1 mul (no inv), always multi-limb
     // (N≥2 enforced by scalar_relation_limb_bits)
-    let field_ops_wit = n * n + 19 * n; // 2 × add/sub(1+6N) + 1 × mul(N²+7N-2)
+    let field_ops_wit = n * n + 14 * n; // 2 × add/sub(1+4N) + 1 × mul(N²+6N-2)
 
     let has_cross = n > 1 && SCALAR_HALF_BITS % limb_bits as usize != 0;
     let witnesses = 2 * scalar_half_limbs                    // s1, s2 digit decomposition
@@ -263,22 +262,19 @@ pub fn calculate_msm_witness_cost(
     // Phase 4: skew correction — per half-scalar: add + negate + point_select
     let skew = 2 * (ec_add.witnesses + negate_wit + 2 * n);
 
-    let offset_constants = 2 * n;
-
-    let per_point =
-        preprocess + table + doublings + loop_body + skew + offset_constants + sr_witnesses;
+    let per_point = preprocess + table + doublings + loop_body + skew + sr_witnesses;
 
     // --- Accumulation witnesses ---
 
-    let shared_constants = 3; // gen_x, gen_y, zero
+    let shared_constants = 3 + 2 * n; // gen_x, gen_y, zero + offset(x,y) limbs
 
     // Per-point: add to accumulator + point_select(2N) for skip handling
     let accum_per_point = ec_add.witnesses + 2 * n;
     // Boolean product chain tracking all_skipped
     let accum_skip_chain = n_points.saturating_sub(1);
-    // Offset subtraction: add + gen constants(4N) + mask selects(2N) + init(2) +
-    // flags(2)
-    let accum_offset = ec_add.witnesses + 4 * n + 2 * n + 2 + 2;
+    // Offset subtraction: add + gen constants(3N, offset_x reused) +
+    // mask selects(2N) + init(2) + flags(2)
+    let accum_offset = ec_add.witnesses + 3 * n + 2 * n + 2 + 2;
     let accum = n_points * accum_per_point + accum_skip_chain + accum_offset;
 
     // --- Range checks ---
@@ -342,16 +338,14 @@ fn calculate_msm_witness_cost_native(
         + DETECT_SKIP_WIT + 4 + 4 + GLV_HINT_WIT // sanitize + ec_hint + glv
         + sr_wit
         + half_bits * per_bit
-        + 2 * per_skew
-        + 2; // offset constants
+        + 2 * per_skew;
 
-    let shared_constants = 3; // gen_x, gen_y, zero
+    let shared_constants = 3 + 2; // gen_x, gen_y, zero + offset(x,y)
 
     let accum_per_point = NATIVE_ADD + NATIVE_POINT_SELECT;
-    let accum = 2 // initial acc constants
-        + n_points * accum_per_point
+    let accum = n_points * accum_per_point
         + n_points.saturating_sub(1)     // all_skipped products
-        + NATIVE_ADD + 3 + 2 + 2; // offset sub: add + 3 const + 2 sel + 2 mask
+        + NATIVE_ADD + 2 + 2 + 2; // offset sub: add + 2 const + 2 sel + 2 mask
 
     // Range checks (only from scalar relation for native)
     let mut rc_map: BTreeMap<u32, usize> = BTreeMap::new();
@@ -500,7 +494,7 @@ mod tests {
     #[test]
     fn test_scalar_relation_cost_grumpkin() {
         let (sr, rc) = scalar_relation_cost(254, 256);
-        assert_eq!(sr, 85, "grumpkin scalar_relation witnesses changed: {sr}");
+        assert_eq!(sr, 70, "grumpkin scalar_relation witnesses changed: {sr}");
         let total_rc: usize = rc.values().sum();
         assert_eq!(
             total_rc, 32,
@@ -512,7 +506,7 @@ mod tests {
     fn test_scalar_relation_cost_small_curve() {
         let (sr, _) = scalar_relation_cost(254, 64);
         assert_eq!(
-            sr, 61,
+            sr, 51,
             "64-bit curve scalar_relation witnesses changed: {sr}"
         );
     }
