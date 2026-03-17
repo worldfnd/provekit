@@ -3,11 +3,9 @@ use {
         noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, NoirElement, R1CS,
+        HashConfig, MavrosProver, NoirElement, R1CS,
     },
     acir::circuit::Program,
-    mavros_vm::{ConstraintsLayout, WitnessLayout},
-    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
@@ -21,19 +19,9 @@ pub struct NoirProver {
     pub whir_for_witness:       WhirR1CSScheme,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MavrosProver {
-    #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:                Abi,
-    pub num_public_inputs:  usize,
-    pub whir_for_witness:   WhirR1CSScheme,
-    pub witgen_binary:      Vec<u64>,
-    pub ad_binary:          Vec<u64>,
-    pub constraints_layout: ConstraintsLayout,
-    pub witness_layout:     WitnessLayout,
-    pub hash_config:        HashConfig,
-}
-
+// INVARIANT: Variant order is wire-format-critical (postcard uses positional
+// discriminants). Do not reorder, cfg-gate, or insert variants without
+// verifying cross-target deserialization (native <-> WASM).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Prover {
     Noir(NoirProver),
@@ -41,6 +29,7 @@ pub enum Prover {
 }
 
 impl Prover {
+    /// Convert a compilation output into the on-disk prover format.
     pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
         match scheme {
             NoirProofScheme::Noir(d) => Prover::Noir(NoirProver {

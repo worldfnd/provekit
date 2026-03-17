@@ -1,6 +1,8 @@
 pub mod file;
+pub use file::binary_format;
 pub mod hash_config;
 mod interner;
+mod mavros;
 mod noir_proof_scheme;
 pub mod optimize;
 pub mod prefix_covector;
@@ -22,9 +24,10 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     hash_config::HashConfig,
-    noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
+    mavros::{MavrosProver, MavrosSchemeData},
+    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
-    prover::{MavrosProver, NoirProver, Prover},
+    prover::{NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,

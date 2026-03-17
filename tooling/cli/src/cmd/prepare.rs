@@ -84,13 +84,11 @@ impl Command for Args {
             }
         };
 
-        write(
-            &Prover::from_noir_proof_scheme(scheme.clone()),
-            &self.pkp_path,
-        )
-        .context("while writing Provekit Prover")?;
-        write(&Verifier::from_noir_proof_scheme(scheme), &self.pkv_path)
-            .context("while writing Provekit Verifier")?;
+        let prover = Prover::from_noir_proof_scheme(scheme.clone());
+        let verifier = Verifier::from_noir_proof_scheme(scheme);
+
+        write(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
+        write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
         Ok(())
     }
 }

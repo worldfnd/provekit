@@ -7,32 +7,45 @@ use {
     },
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    mavros_vm::interpreter as mavros_interpreter,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
     provekit_common::{
-        FieldElement, MavrosProver, NoirElement, NoirProof, NoirProver, Prover, PublicInputs,
-        TranscriptSponge,
+        FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
-    std::{mem::size_of, path::Path},
+    std::mem::size_of,
     tracing::{debug, info_span, instrument},
-    whir::transcript::{codecs::Empty, ProverState, VerifierMessage},
+    whir::transcript::{codecs::Empty, ProverState},
+};
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+use {
+    bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
+    whir::transcript::VerifierMessage,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
 mod r1cs;
 mod whir_r1cs;
 mod witness;
 
+/// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
+/// `prove_with_witness` is available on all targets. `MavrosProver` does not
+/// support `prove_with_witness` (errors at runtime).
 pub trait Prove {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
 
 #[instrument(skip_all)]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 fn generate_noir_witness(
     prover: &mut NoirProver,
     input_map: InputMap,
@@ -64,11 +77,28 @@ fn generate_noir_witness(
 }
 
 impl Prove for NoirProver {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+        let witness = generate_noir_witness(&mut self, input_map)?;
+        self.prove_with_witness(witness)
+    }
+
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let (input_map, _return_value) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
-        let acir_witness_idx_to_value_map = generate_noir_witness(&mut self, input_map)?;
         let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
         drop(self.program);
         drop(self.witness_generator);
@@ -205,21 +235,15 @@ impl Prove for NoirProver {
             whir_r1cs_proof,
         })
     }
-
-    #[instrument(skip_all)]
-    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        let (input_map, _return_value) =
-            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
-        self.prove(input_map)
-    }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
-    #[instrument(skip_all)]
+    #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
-        let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map);
+        let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(
             &mut self.witgen_binary,
             self.witness_layout,
@@ -304,6 +328,7 @@ impl Prove for MavrosProver {
         })
     }
 
+    #[cfg(feature = "witness-generation")]
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let project_path = prover_toml
@@ -315,22 +340,40 @@ impl Prove for MavrosProver {
             crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
         self.prove(input_map)
     }
+
+    fn prove_with_witness(self, _witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        Err(anyhow::anyhow!(
+            "prove_with_witness is not supported for Mavros prover"
+        ))
+    }
 }
 
 impl Prove for Prover {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
         }
     }
+
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
         }
     }
-}
 
-#[cfg(test)]
-mod tests {}
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+        match self {
+            Prover::Noir(p) => p.prove_with_witness(witness),
+            #[cfg(not(target_arch = "wasm32"))]
+            Prover::Mavros(p) => p.prove_with_witness(witness),
+            #[cfg(target_arch = "wasm32")]
+            Prover::Mavros(_) => {
+                anyhow::bail!("Mavros prover is not supported on WASM")
+            }
+        }
+    }
+}
