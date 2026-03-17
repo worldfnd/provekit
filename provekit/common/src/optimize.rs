@@ -11,12 +11,12 @@
 
 use {
     crate::{
-        witness::{DependencyInfo, WitnessBuilder},
+        witness::{DependencyInfo, SumTerm, WitnessBuilder},
         FieldElement, InternedFieldElement, SparseMatrix, R1CS,
     },
     ark_ff::Field,
     ark_std::{One, Zero},
-    std::collections::{HashMap, HashSet},
+    std::collections::{HashMap, HashSet, VecDeque},
     tracing::info,
 };
 
@@ -32,14 +32,23 @@ struct Substitution {
 
 /// Statistics from the optimization pass.
 pub struct OptimizationStats {
-    pub constraints_before: usize,
-    pub constraints_after:  usize,
-    pub witnesses_before:   usize,
-    pub witnesses_after:    usize,
-    pub eliminated:         usize,
-    pub builders_removed:   usize,
-    pub builders_rewritten: usize,
-    pub new_sum_builders:   usize,
+    pub constraints_before:      usize,
+    pub constraints_after:       usize,
+    pub witnesses_before:        usize,
+    pub witnesses_after:         usize,
+    pub eliminated:              usize,
+    pub builders_removed:        usize,
+    pub builders_rewritten:      usize,
+    pub new_sum_builders:        usize,
+    /// Zero-occurrence columns in A/B/C matrices (excl. col 0 and public
+    /// inputs).
+    pub zero_occurrence_cols:    usize,
+    /// Zero-occurrence cols pinned by the ACIR witness map.
+    pub blocked_by_acir:         usize,
+    /// Zero-occurrence cols whose producing builder is still transitively live.
+    pub blocked_by_live_builder: usize,
+    /// Columns actually removed after all blocking checks.
+    pub columns_removed:         usize,
 }
 
 impl OptimizationStats {
@@ -213,6 +222,10 @@ pub fn optimize_r1cs(
             builders_removed: 0,
             builders_rewritten: 0,
             new_sum_builders: 0,
+            zero_occurrence_cols: 0,
+            blocked_by_acir: 0,
+            blocked_by_live_builder: 0,
+            columns_removed: 0,
         };
     }
 
@@ -296,26 +309,71 @@ pub fn optimize_r1cs(
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
-    // Phase 4b: Rewrite witness builders to sever dependency chains.
-    // Currently disabled — Sum/SpreadBitExtract inlining can cause
-    // witness scheduling violations when substitution terms reference
-    // columns computed later in the builder schedule. Requires
-    // scheduling-aware cycle detection to enable safely.
-    // TODO(rs): Re-enable with proper topological ordering check.
+    // Phase 4b: Rewrite Sum/SpreadBitExtract builders to inline GE substitutions,
+    // severing the dependency chains that prevent dead-column removal.
+    //
+    // Cycle detection must run first (on the unmodified dependency graph) to
+    // identify builders that cannot be safely rewritten.  Counts are collected
+    // before the rewrite so the log reflects the original state.
+    let blocked_builders = compute_rewrite_blocked(witness_builders, &substitutions);
+
+    let pivot_cols: HashSet<usize> = substitutions.iter().map(|s| s.pivot_col).collect();
+    let mut total_candidates = 0usize;
+    let mut blocked_candidates = 0usize;
+    for (idx, builder) in witness_builders.iter().enumerate() {
+        let reads_pivot = match builder {
+            WitnessBuilder::Sum(_, terms) => {
+                terms.iter().any(|SumTerm(_, col)| pivot_cols.contains(col))
+            }
+            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
+                .iter()
+                .any(|SumTerm(_, col)| pivot_cols.contains(col)),
+            _ => false,
+        };
+        if reads_pivot {
+            total_candidates += 1;
+            if blocked_builders.contains(&idx) {
+                blocked_candidates += 1;
+            }
+        }
+    }
+
+    let builders_rewritten =
+        rewrite_builders_for_substitutions(witness_builders, &substitutions, &blocked_builders);
+
+    info!(
+        "Builder rewrite: {}/{} candidates rewritten, {} blocked by cycle detection",
+        builders_rewritten, total_candidates, blocked_candidates,
+    );
+
+    // Phase 4c: Restore a valid topological execution order.
+    //
+    // Phase 4b may have changed dependencies: builder X now reads w50/w60
+    // instead of pivot P.  If producer(w50) sits later in the Vec than X,
+    // the old order is no longer valid.  Re-sort so every builder comes after
+    // all the builders whose outputs it reads.  This is required by
+    // WitnessSplitter and provides a consistent starting point for
+    // LayerScheduler.
+    if builders_rewritten > 0 {
+        topological_reorder(witness_builders);
+    }
 
     // Phase 5: Remove dead witness columns and prune unreachable builders
-    let (witnesses_after, builders_removed) =
-        remove_dead_columns(r1cs, witness_builders, witness_map);
+    let col_stats = remove_dead_columns(r1cs, witness_builders, witness_map);
 
     let stats = OptimizationStats {
         constraints_before,
         constraints_after,
         witnesses_before,
-        witnesses_after,
+        witnesses_after: col_stats.witnesses_after,
         eliminated,
-        builders_removed,
-        builders_rewritten: 0,
+        builders_removed: col_stats.builders_removed,
+        builders_rewritten,
         new_sum_builders: 0,
+        zero_occurrence_cols: col_stats.zero_occurrence_cols,
+        blocked_by_acir: col_stats.blocked_by_acir,
+        blocked_by_live_builder: col_stats.blocked_by_live_builder,
+        columns_removed: col_stats.columns_removed,
     };
 
     info!(
@@ -328,14 +386,311 @@ pub fn optimize_r1cs(
     info!(
         "Column removal: {} -> {} witnesses ({:.1}% reduction), {} builders pruned",
         witnesses_before,
-        witnesses_after,
+        stats.witnesses_after,
         stats.witness_reduction_percent(),
-        builders_removed
+        stats.builders_removed
     );
 
     stats
 }
 
+/// Expands every `SumTerm` that references a pivot column by substituting the
+/// GE-derived linear expression for that pivot inline.
+///
+/// For a term `coeff_b * P` where `P = Σ (c_i * col_i)`:
+///   - Produces `Σ (coeff_b * c_i) * col_i` (one new term per substitution
+///     entry)
+///   - `coeff_b = None` is treated as the multiplicative identity (1)
+///   - If the substitution for P has no terms (P = 0), the term drops out
+///     entirely
+///
+/// Terms that do not reference any pivot column pass through unchanged.
+fn inline_sum_terms(
+    terms: &[SumTerm],
+    pivot_to_terms: &HashMap<usize, &Vec<(FieldElement, usize)>>,
+) -> Vec<SumTerm> {
+    let mut out: Vec<SumTerm> = Vec::with_capacity(terms.len());
+    for SumTerm(coeff, col) in terms {
+        match pivot_to_terms.get(col) {
+            None => {
+                // Not a pivot — copy through unchanged.
+                out.push(SumTerm(*coeff, *col));
+            }
+            Some(sub_terms) => {
+                // Inline: replace this single term with the full expansion.
+                // If sub_terms is empty the pivot equals zero; the term drops out.
+                let b: FieldElement = coeff.unwrap_or_else(|| One::one());
+                for (c_i, col_i) in sub_terms.iter() {
+                    out.push(SumTerm(Some(b * *c_i), *col_i));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Rewrites every non-blocked `Sum` and `SpreadBitExtract` builder by inlining
+/// GE substitutions for any pivot column they reference.
+///
+/// Builders in `blocked_builders` are skipped (cycle detection determined that
+/// inlining would create a dependency cycle in the witness execution graph).
+/// All other builder variants are left untouched — non-linear builders cannot
+/// be algebraically inlined regardless.
+///
+/// Returns the number of builders that were actually modified.
+fn rewrite_builders_for_substitutions(
+    witness_builders: &mut Vec<WitnessBuilder>,
+    substitutions: &[Substitution],
+    blocked_builders: &HashSet<usize>,
+) -> usize {
+    if substitutions.is_empty() {
+        return 0;
+    }
+
+    let pivot_to_terms: HashMap<usize, &Vec<(FieldElement, usize)>> = substitutions
+        .iter()
+        .map(|s| (s.pivot_col, &s.terms))
+        .collect();
+
+    let mut rewritten = 0usize;
+
+    for builder_idx in 0..witness_builders.len() {
+        if blocked_builders.contains(&builder_idx) {
+            continue;
+        }
+
+        // Peek at the builder to decide if any rewrite is needed, then clone
+        // only when we will actually modify it (avoids cloning the majority of
+        // builders that read no pivot columns at all).
+        let needs_rewrite = match &witness_builders[builder_idx] {
+            WitnessBuilder::Sum(_, terms) => terms
+                .iter()
+                .any(|SumTerm(_, col)| pivot_to_terms.contains_key(col)),
+            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
+                .iter()
+                .any(|SumTerm(_, col)| pivot_to_terms.contains_key(col)),
+            _ => false,
+        };
+        if !needs_rewrite {
+            continue;
+        }
+
+        // Clone to release the immutable borrow before the mutable assignment.
+        let old = witness_builders[builder_idx].clone();
+        witness_builders[builder_idx] = match old {
+            WitnessBuilder::Sum(idx, terms) => {
+                WitnessBuilder::Sum(idx, inline_sum_terms(&terms, &pivot_to_terms))
+            }
+            WitnessBuilder::SpreadBitExtract {
+                output_start,
+                chunk_bits,
+                sum_terms,
+                extract_even,
+            } => WitnessBuilder::SpreadBitExtract {
+                output_start,
+                chunk_bits,
+                sum_terms: inline_sum_terms(&sum_terms, &pivot_to_terms),
+                extract_even,
+            },
+            // needs_rewrite above only returns true for Sum / SpreadBitExtract.
+            _ => unreachable!(),
+        };
+        rewritten += 1;
+    }
+
+    rewritten
+}
+
+/// BFS from `start` following forward (producer→consumer) edges in
+/// `adjacency_list`.
+///
+/// Returns all builder indices transitively reachable from `start`, i.e. all
+/// builders that directly or indirectly depend on `start`'s outputs.
+/// `start` itself is NOT included.
+///
+/// Note: `adjacency_list` may contain duplicate consumer entries when a single
+/// producer feeds multiple witnesses to the same consumer.  The `visited` set
+/// ensures each node is enqueued at most once.
+fn forward_reachable(adjacency_list: &[Vec<usize>], start: usize) -> HashSet<usize> {
+    let mut visited: HashSet<usize> = HashSet::new();
+    // Seed the stack with start's direct consumers; start itself is excluded.
+    let mut stack: Vec<usize> = adjacency_list[start].clone();
+    while let Some(node) = stack.pop() {
+        if visited.insert(node) {
+            stack.extend_from_slice(&adjacency_list[node]);
+        }
+    }
+    visited
+}
+
+/// Returns the set of builder indices that **cannot** be safely rewritten by
+/// inlining GE substitution terms into their `SumTerm` reads.
+///
+/// # Safety condition
+///
+/// When we inline a substitution `P = c₁·w₅₀ + c₂·w₆₀` into builder B (which
+/// currently reads P), we are adding new dependency edges "B reads w₅₀" and
+/// "B reads w₆₀".  In the must-come-before graph that means:
+///
+///   producer(w₅₀) must run before B
+///   producer(w₆₀) must run before B
+///
+/// If producer(w₅₀) — call it Y — is already a *transitive consumer* of B
+/// (i.e. B →…→ Y exists in the current forward graph), then adding
+/// "Y must come before B" closes a cycle.  We detect this by checking whether
+/// Y is reachable from B following forward (producer→consumer) edges.
+///
+/// # What gets checked
+///
+/// Only `Sum` and `SpreadBitExtract` builders are ever candidates for
+/// algebraic inlining; all other variants are skipped.  A candidate is
+/// blocked if **any** pivot column it reads has **any** substitution term
+/// whose producer is forward-reachable from the candidate.
+///
+/// # Complexity
+///
+/// O(C × (B + E)) where C is the number of candidate builders (Sum /
+/// SpreadBitExtract that read at least one pivot), B is the total number of
+/// builders, and E is the total number of dependency edges.  In practice C
+/// is a small fraction of B, so this is fast.
+fn compute_rewrite_blocked(
+    witness_builders: &[WitnessBuilder],
+    substitutions: &[Substitution],
+) -> HashSet<usize> {
+    if substitutions.is_empty() {
+        return HashSet::new();
+    }
+
+    // pivot_col → substitution terms (already fully resolved by Phase 2b)
+    let pivot_to_terms: HashMap<usize, &Vec<(FieldElement, usize)>> = substitutions
+        .iter()
+        .map(|s| (s.pivot_col, &s.terms))
+        .collect();
+
+    let dep_info = DependencyInfo::new(witness_builders);
+
+    let mut blocked: HashSet<usize> = HashSet::new();
+
+    for (builder_idx, builder) in witness_builders.iter().enumerate() {
+        // Collect pivot columns this builder reads via SumTerms.
+        // Non-linear builders (Product, Inverse, DigitalDecomposition, …)
+        // cannot be algebraically inlined so they are always skipped.
+        let pivot_cols_read: Vec<usize> = match builder {
+            WitnessBuilder::Sum(_, terms) => terms
+                .iter()
+                .filter_map(|SumTerm(_, col)| pivot_to_terms.contains_key(col).then_some(*col))
+                .collect(),
+            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
+                .iter()
+                .filter_map(|SumTerm(_, col)| pivot_to_terms.contains_key(col).then_some(*col))
+                .collect(),
+            // Every other variant reads pivots through non-linear operations;
+            // inlining is not possible for them regardless.
+            _ => continue,
+        };
+
+        if pivot_cols_read.is_empty() {
+            continue;
+        }
+
+        // All builders that transitively consume B's outputs.
+        // If any substitution-term producer Y is in this set, adding the edge
+        // "B reads from Y" would create a cycle (B →…→ Y →…→ B).
+        let forward_consumers = forward_reachable(&dep_info.adjacency_list, builder_idx);
+
+        // Check every pivot this builder reads and every term of each pivot.
+        // A single unsafe term is enough to block the whole builder because
+        // rewriting is all-or-nothing per builder: we cannot partially inline
+        // one pivot and leave another.
+        'check_pivots: for pivot_col in pivot_cols_read {
+            for (_, term_col) in pivot_to_terms[&pivot_col] {
+                // term_col may be a constant / public input column with no
+                // producer — those are always safe.
+                if let Some(&producer) = dep_info.witness_producer.get(term_col) {
+                    if forward_consumers.contains(&producer) {
+                        // B →…→ producer exists; inlining closes a cycle.
+                        blocked.insert(builder_idx);
+                        break 'check_pivots;
+                    }
+                }
+            }
+        }
+    }
+
+    blocked
+}
+
+/// Reorders `witness_builders` into a valid topological execution order.
+///
+/// After Phase 4b rewrites, builder X may now read w50/w60 instead of pivot P.
+/// This changes X's dependencies: X must now run after producer(w50) and
+/// producer(w60). If producer(w50) currently sits later in the Vec than X, the
+/// old ordering is no longer valid.
+///
+/// A correct topological order is required by:
+/// - `WitnessSplitter` — its backward/forward reachability walks use
+///   `DependencyInfo` built from the builders, but the final split index lists
+///   it returns are resolved into sub-Vecs by position.  An out-of-order Vec
+///   can cause a w1 builder to be extracted before its dependency.
+/// - `remove_dead_columns` — it walks `builder_reads_from` which is
+///   position-indexed; a consistent ordering avoids double-counting.
+/// - The prover (via `LayerScheduler`) — correctly reorders on its own, but
+///   starting from a valid topological order speeds up scheduling.
+///
+/// Uses Kahn's BFS algorithm on the dependency graph built by
+/// `DependencyInfo::new`.  If the graph has a cycle (should not happen for a
+/// correctly constructed circuit), unreachable builders are appended at the
+/// end unchanged.
+fn topological_reorder(witness_builders: &mut Vec<WitnessBuilder>) {
+    let n = witness_builders.len();
+    if n == 0 {
+        return;
+    }
+
+    let dep_info = DependencyInfo::new(witness_builders);
+
+    // Kahn's algorithm: start with all nodes that have no remaining dependencies.
+    // `DependencyInfo::in_degrees` may contain duplicate-inflated counts (one
+    // increment per read-witness, not per unique producer).  This is consistent
+    // with `adjacency_list` which also has the same duplicates, so the algorithm
+    // remains correct: each duplicate edge decrements the count exactly once
+    // when its producer is processed.
+    let mut in_degrees = dep_info.in_degrees.clone();
+    let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degrees[i] == 0).collect();
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+
+    while let Some(node) = queue.pop_front() {
+        order.push(node);
+        for &consumer in &dep_info.adjacency_list[node] {
+            // saturating_sub prevents underflow if duplicate edges were
+            // already fully consumed by an earlier iteration.
+            in_degrees[consumer] = in_degrees[consumer].saturating_sub(1);
+            if in_degrees[consumer] == 0 {
+                queue.push_back(consumer);
+            }
+        }
+    }
+
+    // Fallback: append any nodes that Kahn's did not reach (genuine cycle or
+    // isolated node not reachable from in-degree-0 roots).
+    if order.len() != n {
+        let reached: HashSet<usize> = order.iter().copied().collect();
+        for i in 0..n {
+            if !reached.contains(&i) {
+                order.push(i);
+            }
+        }
+    }
+
+    // Apply the permutation using mem::swap to avoid cloning every builder.
+    // Build a mapping: new_position → old_index, then pull builders out by
+    // consuming the Vec into an indexed Option<> array and re-filling in order.
+    let mut indexed: Vec<Option<WitnessBuilder>> = witness_builders.drain(..).map(Some).collect();
+    witness_builders.reserve(n);
+    for old_idx in order {
+        witness_builders.push(indexed[old_idx].take().expect("each builder visited once"));
+    }
+}
 
 /// Build combined occurrence counts across A, B, C matrices.
 fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
@@ -348,6 +703,23 @@ fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
         counts[i] = a_counts[i] + b_counts[i] + c_counts[i];
     }
     counts
+}
+
+/// Counts collected during dead-column removal, returned alongside the updated
+/// witness count so callers can surface them in diagnostics.
+struct ColumnRemovalStats {
+    witnesses_after:         usize,
+    builders_removed:        usize,
+    /// Zero-occurrence columns in A/B/C matrices (excluding col 0 and public
+    /// inputs).
+    zero_occurrence_cols:    usize,
+    /// Zero-occurrence cols pinned by the ACIR witness map and therefore kept.
+    blocked_by_acir:         usize,
+    /// Zero-occurrence cols whose producing builder is transitively live
+    /// (some other live builder still reads one of its other outputs).
+    blocked_by_live_builder: usize,
+    /// Columns actually removed (zero-occurrence, not pinned, producer dead).
+    columns_removed:         usize,
 }
 
 /// Phase 5: Remove dead witness columns from matrices and prune unreachable
@@ -363,16 +735,21 @@ fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
 /// 4. Prunes unreachable builders (Phase B+C cascading)
 /// 5. Remaps matrix column indices to close gaps
 /// 6. Remaps remaining builder witness indices
-///
-/// Returns (new_witness_count, builders_removed_count).
 fn remove_dead_columns(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
-) -> (usize, usize) {
+) -> ColumnRemovalStats {
     let num_cols = r1cs.num_witnesses();
     if num_cols == 0 || witness_builders.is_empty() {
-        return (num_cols, 0);
+        return ColumnRemovalStats {
+            witnesses_after:         num_cols,
+            builders_removed:        0,
+            zero_occurrence_cols:    0,
+            blocked_by_acir:         0,
+            blocked_by_live_builder: 0,
+            columns_removed:         0,
+        };
     }
 
     // Step 1: Find dead columns (zero occurrence across A, B, C)
@@ -402,7 +779,14 @@ fn remove_dead_columns(
     }
 
     if dead_cols.is_empty() {
-        return (num_cols, 0);
+        return ColumnRemovalStats {
+            witnesses_after:         num_cols,
+            builders_removed:        0,
+            zero_occurrence_cols:    0,
+            blocked_by_acir:         0,
+            blocked_by_live_builder: 0,
+            columns_removed:         0,
+        };
     }
 
     // Diagnostic: count how many zero-occurrence cols are blocked by each mechanism
@@ -524,7 +908,14 @@ fn remove_dead_columns(
             "Column removal: all {} dead columns are transitively needed by live builders",
             dead_cols.len()
         );
-        return (num_cols, 0);
+        return ColumnRemovalStats {
+            witnesses_after: num_cols,
+            builders_removed: 0,
+            zero_occurrence_cols: zero_occ_total,
+            blocked_by_acir,
+            blocked_by_live_builder: blocked_by_bfs,
+            columns_removed: 0,
+        };
     }
 
     info!(
@@ -581,7 +972,14 @@ fn remove_dead_columns(
         num_cols, new_num_cols, builders_removed
     );
 
-    (new_num_cols, builders_removed)
+    ColumnRemovalStats {
+        witnesses_after: new_num_cols,
+        builders_removed,
+        zero_occurrence_cols: zero_occ_total,
+        blocked_by_acir,
+        blocked_by_live_builder: blocked_by_bfs,
+        columns_removed: removable_cols.len(),
+    }
 }
 
 /// Remap all witness column references inside a builder using the given
@@ -998,8 +1396,7 @@ mod tests {
         assert_eq!(
             stats.witnesses_after, stats.witnesses_before,
             "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before,
-            stats.witnesses_after
+            stats.witnesses_before, stats.witnesses_after
         );
 
         // Verify the remaining constraint references only valid column indices
@@ -1076,8 +1473,7 @@ mod tests {
         assert_eq!(
             stats.witnesses_after, stats.witnesses_before,
             "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before,
-            stats.witnesses_after
+            stats.witnesses_before, stats.witnesses_after
         );
 
         // Verify the remaining constraint references only valid column indices
@@ -1163,8 +1559,7 @@ mod tests {
         assert_eq!(
             stats.witnesses_after, stats.witnesses_before,
             "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before,
-            stats.witnesses_after
+            stats.witnesses_before, stats.witnesses_after
         );
 
         // Verify all column references are in valid range
