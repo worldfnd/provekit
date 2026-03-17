@@ -1,12 +1,10 @@
-use super::{
-    constants::{DS_C, DS_N, DS_Q},
-    types::{OprfNullifierOutputs, OprfQueryInputs, PublicKey},
-};
+use super::{constants::{DS_C, DS_N, DS_Q}, types::{OprfNullifierOutputs, OprfQueryInputs}};
+use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
 pub fn generate_commitment(
     query: Field,
-    oprf_response: PublicKey,
+    oprf_response: BabyJubJubPoint,
     mt_index: Field,
     commitment_r: Field,
 ) -> OprfNullifierOutputs {
@@ -15,7 +13,7 @@ pub fn generate_commitment(
     OprfNullifierOutputs { nullifier, id_commitment }
 }
 
-fn generate_nullifier(query: Field, oprf_response: PublicKey) -> Field {
+fn generate_nullifier(query: Field, oprf_response: BabyJubJubPoint) -> Field {
     let state = perm::x5_4([DS_N, query, oprf_response.x, oprf_response.y]);
     state[1]
 }
