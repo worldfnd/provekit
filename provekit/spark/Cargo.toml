@@ -10,12 +10,10 @@ repository.workspace = true
 
 [dependencies]
 provekit-common.workspace = true
-provekit-r1cs-compiler.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
 anyhow.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 whir.workspace = true
 itertools = "0.14.0"
 tracing.workspace = true
