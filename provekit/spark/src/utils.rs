@@ -1,7 +1,6 @@
 pub use crate::types::Memory;
 use provekit_common::{
-    utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq,
-    FieldElement,
+    utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
 };
 
 pub fn calculate_memory(

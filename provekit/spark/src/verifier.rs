@@ -5,12 +5,15 @@ use {
         sumcheck::run_sumcheck_verifier_spark,
         types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
     },
-    anyhow::{Context, Result, ensure},
+    anyhow::{ensure, Context, Result},
     ark_ff::Field,
     provekit_common::{
-        FieldElement, TranscriptSponge, spark::R1CSSparkQuery, utils::next_power_of_two
+        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge,
     },
-    whir::{algebra::linear_form::MultilinearExtension, transcript::{DomainSeparator, Proof, VerifierMessage, VerifierState, codecs::Empty}},
+    whir::{
+        algebra::linear_form::MultilinearExtension,
+        transcript::{codecs::Empty, DomainSeparator, Proof, VerifierMessage, VerifierState},
+    },
 };
 
 pub trait SPARKVerifier {

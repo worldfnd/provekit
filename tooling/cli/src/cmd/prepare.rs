@@ -299,7 +299,7 @@ fn build_spark_matrix(
         .collect();
 
     SparkMatrix {
-        coo: COOMatrix { row, col, val },
+        coo:        COOMatrix { row, col, val },
         timestamps: TimeStamps {
             read_row,
             read_col,

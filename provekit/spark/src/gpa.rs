@@ -1,12 +1,18 @@
 use {
-    anyhow::ensure, provekit_common::{
-        FieldElement, TranscriptSponge, utils::{
-            HALF, next_power_of_two, sumcheck::{
+    anyhow::ensure,
+    provekit_common::{
+        utils::{
+            next_power_of_two,
+            sumcheck::{
                 calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
                 sumcheck_fold_map_reduce,
-            }
-        }
-    }, tracing::instrument, whir::transcript::{ProverState, VerifierMessage, VerifierState}
+            },
+            HALF,
+        },
+        FieldElement, TranscriptSponge,
+    },
+    tracing::instrument,
+    whir::transcript::{ProverState, VerifierMessage, VerifierState},
 };
 
 #[instrument(skip_all)]
@@ -22,17 +28,12 @@ pub fn run_gpa2(
     let mut drain = layers.drain(1..);
 
     let first_layer = drain.next().expect("tree has at least 2 layers");
-    let (accumulated_randomness, mut sumcheck_claim) =
-        add_line_to_transcript(merlin, first_layer);
+    let (accumulated_randomness, mut sumcheck_claim) = add_line_to_transcript(merlin, first_layer);
     let mut accumulated_randomness = accumulated_randomness.to_vec();
 
     for layer in drain {
-        (sumcheck_claim, accumulated_randomness) = run_gpa_sumcheck(
-            merlin,
-            layer,
-            sumcheck_claim,
-            accumulated_randomness,
-        )?;
+        (sumcheck_claim, accumulated_randomness) =
+            run_gpa_sumcheck(merlin, layer, sumcheck_claim, accumulated_randomness)?;
     }
 
     Ok(accumulated_randomness)
@@ -66,12 +67,8 @@ pub fn run_gpa4(
     let mut sumcheck_claim = coeffs[0] + coeffs[1] * r1 + coeffs[2] * r0 + coeffs[3] * r0 * r1;
 
     for layer in drain {
-        (sumcheck_claim, accumulated_randomness) = run_gpa_sumcheck(
-            merlin,
-            layer,
-            sumcheck_claim,
-            accumulated_randomness,
-        )?;
+        (sumcheck_claim, accumulated_randomness) =
+            run_gpa_sumcheck(merlin, layer, sumcheck_claim, accumulated_randomness)?;
     }
 
     Ok(accumulated_randomness)

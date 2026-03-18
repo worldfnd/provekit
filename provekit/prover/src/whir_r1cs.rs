@@ -753,7 +753,7 @@ pub fn run_two_sumcheck(
 
         a_hhat_i_coeffs[0] = a_hhat_i_at_0;
         a_hhat_i_coeffs[2] = a_highest_coeff;
-        a_hhat_i_coeffs[1] = 
+        a_hhat_i_coeffs[1] =
             claimed_values[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[2];
 
         for a_coeff in &a_hhat_i_coeffs {
