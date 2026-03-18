@@ -298,9 +298,11 @@ pub fn mul_mod_p_multi(
         compiler,
         &[(&ab_products, FieldElement::ONE)],
         &[(&r_indices, -FieldElement::ONE)],
-        &q,
-        None, // unsigned quotient — no q_neg
-        &cu,
+        &QuotientCarryWitnesses {
+            q_pos:   &q,
+            q_neg:   None,
+            carries: &cu,
+        },
         &params.p_limbs,
         n,
         limb_bits,
@@ -395,15 +397,20 @@ fn merge_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
     map.into_iter().map(|(idx, c)| (c, idx)).collect()
 }
 
+/// Witness indices for quotient and carry chain in column equations.
+pub(in crate::msm) struct QuotientCarryWitnesses<'a> {
+    pub q_pos:   &'a [usize],
+    pub q_neg:   Option<&'a [usize]>,
+    pub carries: &'a [usize],
+}
+
 /// Emit `2N-1` R1CS constraints verifying a schoolbook column equation
 /// with unsigned-offset carry chain.
 pub(in crate::msm) fn emit_schoolbook_column_equations(
     compiler: &mut NoirToR1CSCompiler,
     product_sets: &[(&[Vec<usize>], FieldElement)],
     linear_limbs: &[(&[usize], FieldElement)],
-    q_pos_witnesses: &[usize],
-    q_neg_witnesses: Option<&[usize]>,
-    carry_witnesses: &[usize],
+    qc: &QuotientCarryWitnesses,
     p_limbs: &[FieldElement],
     n: usize,
     limb_bits: u32,
@@ -421,30 +428,31 @@ pub(in crate::msm) fn emit_schoolbook_column_equations(
 
     let num_columns = 2 * n - 1;
 
-    for k in 0..num_columns {
-        // LHS: Σ coeff * products[i][j] for i+j=k + Σ p[i]*q_neg[j] + carry_in + offset
+    for col in 0..num_columns {
+        // LHS: Σ coeff * products[i][j] for i+j=col + Σ p[i]*q_neg[j] + carry_in +
+        // offset
         let mut lhs_terms: Vec<(FieldElement, usize)> = Vec::new();
 
         for &(products, coeff) in product_sets {
             for i in 0..n {
-                let j_val = k as isize - i as isize;
+                let j_val = col as isize - i as isize;
                 if j_val >= 0 && (j_val as usize) < n {
                     lhs_terms.push((coeff, products[i][j_val as usize]));
                 }
             }
         }
 
-        // Add linear terms (for k < limbs.len() only)
+        // Add linear terms (for col < limbs.len() only)
         for &(limbs, coeff) in linear_limbs {
-            if k < limbs.len() {
-                lhs_terms.push((coeff, limbs[k]));
+            if col < limbs.len() {
+                lhs_terms.push((coeff, limbs[col]));
             }
         }
 
         // Add p*q_neg on the LHS (when using split quotients)
-        if let Some(q_neg) = q_neg_witnesses {
+        if let Some(q_neg) = qc.q_neg {
             for i in 0..n {
-                let j_val = k as isize - i as isize;
+                let j_val = col as isize - i as isize;
                 if j_val >= 0 && (j_val as usize) < n {
                     lhs_terms.push((p_limbs[i], q_neg[j_val as usize]));
                 }
@@ -452,24 +460,24 @@ pub(in crate::msm) fn emit_schoolbook_column_equations(
         }
 
         // Add carry_in and offset
-        if k > 0 {
-            lhs_terms.push((FieldElement::ONE, carry_witnesses[k - 1]));
+        if col > 0 {
+            lhs_terms.push((FieldElement::ONE, qc.carries[col - 1]));
             lhs_terms.push((offset_w_minus_carry, w1));
         } else {
             lhs_terms.push((offset_w, w1));
         }
 
-        // RHS: Σ p[i]*q_pos[j] for i+j=k + carry_out * W (or offset at last column)
+        // RHS: Σ p[i]*q_pos[j] for i+j=col + carry_out * W (or offset at last column)
         let mut rhs_terms: Vec<(FieldElement, usize)> = Vec::new();
         for i in 0..n {
-            let j_val = k as isize - i as isize;
+            let j_val = col as isize - i as isize;
             if j_val >= 0 && (j_val as usize) < n {
-                rhs_terms.push((p_limbs[i], q_pos_witnesses[j_val as usize]));
+                rhs_terms.push((p_limbs[i], qc.q_pos[j_val as usize]));
             }
         }
 
-        if k < num_columns - 1 {
-            rhs_terms.push((two_pow_w, carry_witnesses[k]));
+        if col < num_columns - 1 {
+            rhs_terms.push((two_pow_w, qc.carries[col]));
         } else {
             // Last column: balance with offset_w (no outgoing carry)
             rhs_terms.push((offset_w, w1));

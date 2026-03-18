@@ -109,7 +109,6 @@ impl HintVerifiedEcCost {
         Self {
             witnesses:  hint_output_witnesses(n, 3, 3)     // λ,x3,y3 + 3 equations
                 + schoolbook_product_witnesses(n, 5)       // λ×y, x×x, λ×λ, λ×x, λ×x3
-                + n                                        // pinned curve_a limbs
                 + num_ltp * LTP_WIT_PER_LIMB * n,
             rc_limb:    hint_limb_range_checks(n, 3, 3) + num_ltp * LTP_RC_PER_LIMB * n,
             rc_carry:   hint_carry_range_checks(n, 3),
@@ -136,7 +135,6 @@ impl HintVerifiedEcCost {
         Self {
             witnesses:  hint_output_witnesses(n, 1, 2)     // x_sq + 2 equations
                 + schoolbook_product_witnesses(n, 4)       // x×x, y×y, xsq×x, a×x
-                + 2 * n                                    // pinned curve_a + curve_b limbs
                 + num_ltp * LTP_WIT_PER_LIMB * n,
             rc_limb:    hint_limb_range_checks(n, 1, 2) + num_ltp * LTP_RC_PER_LIMB * n,
             rc_carry:   hint_carry_range_checks(n, 2),
@@ -271,7 +269,8 @@ pub fn calculate_msm_witness_cost(
 
     // --- Accumulation witnesses ---
 
-    let shared_constants = 3 + 2 * n; // gen_x, gen_y, zero + offset(x,y) limbs
+    // gen_x, gen_y, zero + offset(x,y) limbs + curve_a(N) + curve_b(N)
+    let shared_constants = 3 + 2 * n + 2 * n;
 
     // Per-point: add to accumulator + point_select(2N) for skip handling
     let accum_per_point = ec_add.witnesses + 2 * n;

@@ -1,14 +1,14 @@
-use super::Curve;
+use super::{Curve, U256};
 
 /// SECP256R1 (NIST P-256).
 /// Equation: y² = x³ + ax + b
 pub struct Secp256r1;
 
 impl Curve for Secp256r1 {
-    fn field_modulus_p(&self) -> [u64; 4] {
+    fn field_modulus_p(&self) -> U256 {
         [0xffffffffffffffff, 0xffffffff, 0x0, 0xffffffff00000001]
     }
-    fn curve_order_n(&self) -> [u64; 4] {
+    fn curve_order_n(&self) -> U256 {
         [
             0xf3b9cac2fc632551,
             0xbce6faada7179e84,
@@ -16,7 +16,7 @@ impl Curve for Secp256r1 {
             0xffffffff00000000,
         ]
     }
-    fn curve_a(&self) -> [u64; 4] {
+    fn curve_a(&self) -> U256 {
         [
             0xfffffffffffffffc,
             0x00000000ffffffff,
@@ -24,7 +24,7 @@ impl Curve for Secp256r1 {
             0xffffffff00000001,
         ]
     }
-    fn curve_b(&self) -> [u64; 4] {
+    fn curve_b(&self) -> U256 {
         [
             0x3bce3c3e27d2604b,
             0x651d06b0cc53b0f6,
@@ -32,7 +32,7 @@ impl Curve for Secp256r1 {
             0x5ac635d8aa3a93e7,
         ]
     }
-    fn generator(&self) -> ([u64; 4], [u64; 4]) {
+    fn generator(&self) -> (U256, U256) {
         (
             [
                 0xf4a13945d898c296,
@@ -55,7 +55,7 @@ impl Curve for Secp256r1 {
     /// integer mod p, incremented until y² = x³ + ax + b has a square root.
     /// Canonical (smaller) y is chosen. Reproducible via
     /// `scripts/verify_offset_points.py`.
-    fn offset_point(&self) -> ([u64; 4], [u64; 4]) {
+    fn offset_point(&self) -> (U256, U256) {
         (
             [
                 0x3b8d6e63154ac0b8,

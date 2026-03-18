@@ -30,10 +30,14 @@ pub struct ModulusParams {
 
 /// EC-specific curve constants — only needed by EC point operations.
 pub struct CurveEcParams {
-    pub curve_a_limbs: Vec<FieldElement>,
-    pub curve_a_raw:   [u64; 4],
-    pub curve_b_limbs: Vec<FieldElement>,
-    pub curve_b_raw:   [u64; 4],
+    pub curve_a_limbs:     Vec<FieldElement>,
+    pub curve_a_raw:       [u64; 4],
+    pub curve_b_limbs:     Vec<FieldElement>,
+    pub curve_b_raw:       [u64; 4],
+    /// Pinned witness indices for curve_a constant limbs (allocated once).
+    pub curve_a_witnesses: Vec<usize>,
+    /// Pinned witness indices for curve_b constant limbs (allocated once).
+    pub curve_b_witnesses: Vec<usize>,
 }
 
 /// Full parameters for EC field operations (modulus + curve constants).
@@ -250,12 +254,24 @@ impl EcFieldParams {
                 modulus_raw: curve.field_modulus_p(),
             },
             ec:      CurveEcParams {
-                curve_a_limbs: curve.curve_a_limbs(limb_bits, num_limbs),
-                curve_a_raw:   curve.curve_a(),
-                curve_b_limbs: curve.curve_b_limbs(limb_bits, num_limbs),
-                curve_b_raw:   curve.curve_b(),
+                curve_a_limbs:     curve.curve_a_limbs(limb_bits, num_limbs),
+                curve_a_raw:       curve.curve_a(),
+                curve_b_limbs:     curve.curve_b_limbs(limb_bits, num_limbs),
+                curve_b_raw:       curve.curve_b(),
+                curve_a_witnesses: Vec::new(),
+                curve_b_witnesses: Vec::new(),
             },
         }
+    }
+
+    /// Allocate pinned constant witnesses for curve_a and curve_b limbs.
+    ///
+    /// Must be called once before any EC operations.
+    pub fn allocate_curve_constant_witnesses(&mut self, compiler: &mut NoirToR1CSCompiler) {
+        self.ec.curve_a_witnesses =
+            allocate_pinned_constant_limbs(compiler, &self.ec.curve_a_limbs);
+        self.ec.curve_b_witnesses =
+            allocate_pinned_constant_limbs(compiler, &self.ec.curve_b_limbs);
     }
 }
 

@@ -85,7 +85,8 @@ pub(super) fn process_multi_point<E: EcOps>(
         .collect();
 
     // Build params once for all operations
-    let params = EcFieldParams::for_field_modulus(num_limbs, limb_bits, curve);
+    let mut params = EcFieldParams::for_field_modulus(num_limbs, limb_bits, curve);
+    params.allocate_curve_constant_witnesses(compiler);
     // Offset point as limbs for accumulation
     let offset_x_values = curve.offset_x_limbs(limb_bits, num_limbs);
     let offset_y_values = curve.offset_y_limbs(limb_bits, num_limbs);

@@ -7,8 +7,10 @@ use {
     crate::{
         msm::{
             cost_model::{column_equation_max_bits, hint_carry_bits},
-            multi_limb_arith::{emit_schoolbook_column_equations, less_than_p_check_multi},
-            multi_limb_ops::{allocate_pinned_constant_limbs, EcFieldParams},
+            multi_limb_arith::{
+                emit_schoolbook_column_equations, less_than_p_check_multi, QuotientCarryWitnesses,
+            },
+            multi_limb_ops::EcFieldParams,
             Limbs,
         },
         noir_to_r1cs::NoirToR1CSCompiler,
@@ -120,7 +122,7 @@ impl EcHint3Eq {
         params: &EcFieldParams,
     ) -> (Limbs, Limbs) {
         let n = params.num_limbs;
-        let crb = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
+        let carry_range_bits = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
         range_check_limbs_and_carries(
             range_checks,
             &[
@@ -136,7 +138,7 @@ impl EcHint3Eq {
             ],
             &[&self.carries[0], &self.carries[1], &self.carries[2]],
             params.limb_bits,
-            crb,
+            carry_range_bits,
         );
         for v in [&self.lambda, &self.x3, &self.y3] {
             less_than_p_check_multi(compiler, range_checks, Limbs::from(v.as_slice()), params);
@@ -200,9 +202,11 @@ pub fn verify_on_curve_non_native(
         compiler,
         &[(&prod_px_px, FieldElement::ONE)],
         &[(&x_sq, -FieldElement::ONE)],
-        &q1_pos,
-        Some(&q1_neg),
-        &c1,
+        &QuotientCarryWitnesses {
+            q_pos:   &q1_pos,
+            q_neg:   Some(&q1_neg),
+            carries: &c1,
+        },
         &params.p_limbs,
         n,
         params.limb_bits,
@@ -212,7 +216,7 @@ pub fn verify_on_curve_non_native(
     // Eq2: py·py - x_sq·px - a·px - b = q2·p
     let prod_py_py = make_products(compiler, py.as_slice(), py.as_slice());
     let prod_xsq_px = make_products(compiler, &x_sq, px.as_slice());
-    let b_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_b_limbs[..n]);
+    let b_wit = &params.ec.curve_b_witnesses;
 
     if a_is_zero {
         let max_coeff_eq2: u64 = 1 + 1 + 1 + 2 * n as u64;
@@ -222,18 +226,20 @@ pub fn verify_on_curve_non_native(
                 (&prod_py_py, FieldElement::ONE),
                 (&prod_xsq_px, -FieldElement::ONE),
             ],
-            &[(&b_limbs, -FieldElement::ONE)],
-            &q2_pos,
-            Some(&q2_neg),
-            &c2,
+            &[(b_wit.as_slice(), -FieldElement::ONE)],
+            &QuotientCarryWitnesses {
+                q_pos:   &q2_pos,
+                q_neg:   Some(&q2_neg),
+                carries: &c2,
+            },
             &params.p_limbs,
             n,
             params.limb_bits,
             max_coeff_eq2,
         );
     } else {
-        let a_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_a_limbs[..n]);
-        let prod_a_px = make_products(compiler, &a_limbs, px.as_slice());
+        let a_wit = &params.ec.curve_a_witnesses;
+        let prod_a_px = make_products(compiler, a_wit, px.as_slice());
 
         let max_coeff_eq2: u64 = 1 + 1 + 1 + 1 + 2 * n as u64;
         emit_schoolbook_column_equations(
@@ -243,10 +249,12 @@ pub fn verify_on_curve_non_native(
                 (&prod_xsq_px, -FieldElement::ONE),
                 (&prod_a_px, -FieldElement::ONE),
             ],
-            &[(&b_limbs, -FieldElement::ONE)],
-            &q2_pos,
-            Some(&q2_neg),
-            &c2,
+            &[(b_wit.as_slice(), -FieldElement::ONE)],
+            &QuotientCarryWitnesses {
+                q_pos:   &q2_pos,
+                q_neg:   Some(&q2_neg),
+                carries: &c2,
+            },
             &params.p_limbs,
             n,
             params.limb_bits,
@@ -255,17 +263,52 @@ pub fn verify_on_curve_non_native(
     }
 
     // Range checks on hint outputs
-    let crb = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
+    let carry_range_bits = hint_carry_bits(params.limb_bits, max_coeff_sum, n);
     range_check_limbs_and_carries(
         range_checks,
         &[&x_sq, &q1_pos, &q1_neg, &q2_pos, &q2_neg],
         &[&c1, &c2],
         params.limb_bits,
-        crb,
+        carry_range_bits,
     );
 
     // Less-than-p check for x_sq
     less_than_p_check_multi(compiler, range_checks, Limbs::from(x_sq.as_slice()), params);
+}
+
+/// Allocate a 3-equation EC hint, emit equations via closure, and range-check
+/// outputs.
+fn emit_3eq_ec_hint(
+    compiler: &mut NoirToR1CSCompiler,
+    range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    op: NonNativeEcOp,
+    inputs: Vec<Limbs>,
+    curve_a: [u64; 4],
+    curve_b: [u64; 4],
+    max_coeff_sum: u64,
+    op_name: &str,
+    params: &EcFieldParams,
+    build_equations: impl FnOnce(&mut NoirToR1CSCompiler, &EcHint3Eq, &EcFieldParams),
+) -> (Limbs, Limbs) {
+    let n = params.num_limbs;
+    assert!(n >= 2, "hint-verified non-native requires n >= 2");
+    check_column_equation_fits(params.limb_bits, max_coeff_sum, n, op_name);
+
+    let os = compiler.num_witnesses();
+    compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
+        output_start: os,
+        op,
+        inputs,
+        curve_a,
+        curve_b,
+        field_modulus_p: params.modulus_raw,
+        limb_bits: params.limb_bits,
+        num_limbs: n as u32,
+    });
+
+    let h = EcHint3Eq::parse(os, n);
+    build_equations(compiler, &h, params);
+    h.range_check_and_verify(compiler, range_checks, max_coeff_sum, params)
 }
 
 /// Hint-verified point doubling for non-native field (multi-limb).
@@ -277,90 +320,87 @@ pub fn point_double_verified_non_native(
     params: &EcFieldParams,
 ) -> (Limbs, Limbs) {
     let n = params.num_limbs;
-    assert!(n >= 2, "hint-verified non-native requires n >= 2");
-
-    let max_coeff_sum: u64 = 2 + 3 + 1 + 2 * n as u64; // λy(2) + xx(3) + a(1) + pq_pos(N) + pq_neg(N)
-    check_column_equation_fits(params.limb_bits, max_coeff_sum, n, "Merged EC double");
-
-    // Allocate hint
-    let os = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
-        output_start:    os,
-        op:              NonNativeEcOp::Double,
-        inputs:          vec![px, py],
-        curve_a:         params.ec.curve_a_raw,
-        curve_b:         [0; 4], // unused for double
-        field_modulus_p: params.modulus_raw,
-        limb_bits:       params.limb_bits,
-        num_limbs:       n as u32,
-    });
-
-    let h = EcHint3Eq::parse(os, n);
-    let px_s = px.as_slice();
-    let py_s = py.as_slice();
-
-    // Eq1: 2*lambda*py - 3*px*px - a = q1*p
-    let prod_lam_py = make_products(compiler, &h.lambda, py_s);
-    let prod_px_px = make_products(compiler, px_s, px_s);
-    let a_limbs = allocate_pinned_constant_limbs(compiler, &params.ec.curve_a_limbs[..n]);
-
-    emit_schoolbook_column_equations(
+    emit_3eq_ec_hint(
         compiler,
-        &[
-            (&prod_lam_py, FieldElement::from(2u64)),
-            (&prod_px_px, -FieldElement::from(3u64)),
-        ],
-        &[(&a_limbs, -FieldElement::ONE)],
-        &h.q_pos[0],
-        Some(&h.q_neg[0]),
-        &h.carries[0],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
-        2 + 3 + 1 + 2 * n as u64,
-    );
+        range_checks,
+        NonNativeEcOp::Double,
+        vec![px, py],
+        params.ec.curve_a_raw,
+        [0; 4],
+        6 + 2 * n as u64,
+        "Merged EC double",
+        params,
+        |compiler, h, params| {
+            let px_s = px.as_slice();
+            let py_s = py.as_slice();
 
-    // Eq2: lambda² - x3 - 2*px = q2*p
-    let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
+            // Eq1: 2*lambda*py - 3*px*px - a = q1*p
+            let prod_lam_py = make_products(compiler, &h.lambda, py_s);
+            let prod_px_px = make_products(compiler, px_s, px_s);
+            let a_wit = &params.ec.curve_a_witnesses;
 
-    emit_schoolbook_column_equations(
-        compiler,
-        &[(&prod_lam_lam, FieldElement::ONE)],
-        &[
-            (&h.x3, -FieldElement::ONE),
-            (px_s, -FieldElement::from(2u64)),
-        ],
-        &h.q_pos[1],
-        Some(&h.q_neg[1]),
-        &h.carries[1],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
-        1 + 1 + 2 + 2 * n as u64,
-    );
+            emit_schoolbook_column_equations(
+                compiler,
+                &[
+                    (&prod_lam_py, FieldElement::from(2u64)),
+                    (&prod_px_px, -FieldElement::from(3u64)),
+                ],
+                &[(a_wit.as_slice(), -FieldElement::ONE)],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[0],
+                    q_neg:   Some(&h.q_neg[0]),
+                    carries: &h.carries[0],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                2 + 3 + 1 + 2 * n as u64,
+            );
 
-    // Eq3: lambda*px - lambda*x3 - y3 - py = q3*p
-    let prod_lam_px = make_products(compiler, &h.lambda, px_s);
-    let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
+            // Eq2: lambda² - x3 - 2*px = q2*p
+            let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
 
-    emit_schoolbook_column_equations(
-        compiler,
-        &[
-            (&prod_lam_px, FieldElement::ONE),
-            (&prod_lam_x3, -FieldElement::ONE),
-        ],
-        &[(&h.y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
-        &h.q_pos[2],
-        Some(&h.q_neg[2]),
-        &h.carries[2],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
-        1 + 1 + 1 + 1 + 2 * n as u64,
-    );
+            emit_schoolbook_column_equations(
+                compiler,
+                &[(&prod_lam_lam, FieldElement::ONE)],
+                &[
+                    (&h.x3, -FieldElement::ONE),
+                    (px_s, -FieldElement::from(2u64)),
+                ],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[1],
+                    q_neg:   Some(&h.q_neg[1]),
+                    carries: &h.carries[1],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                1 + 1 + 2 + 2 * n as u64,
+            );
 
-    // Worst-case max_coeff across eqs: Eq1 = 6+2N
-    h.range_check_and_verify(compiler, range_checks, 6 + 2 * n as u64, params)
+            // Eq3: lambda*px - lambda*x3 - y3 - py = q3*p
+            let prod_lam_px = make_products(compiler, &h.lambda, px_s);
+            let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
+
+            emit_schoolbook_column_equations(
+                compiler,
+                &[
+                    (&prod_lam_px, FieldElement::ONE),
+                    (&prod_lam_x3, -FieldElement::ONE),
+                ],
+                &[(&h.y3, -FieldElement::ONE), (py_s, -FieldElement::ONE)],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[2],
+                    q_neg:   Some(&h.q_neg[2]),
+                    carries: &h.carries[2],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                1 + 1 + 1 + 1 + 2 * n as u64,
+            );
+        },
+    )
 }
 
 /// Hint-verified point addition for non-native field (multi-limb).
@@ -374,89 +414,88 @@ pub fn point_add_verified_non_native(
     params: &EcFieldParams,
 ) -> (Limbs, Limbs) {
     let n = params.num_limbs;
-    assert!(n >= 2, "hint-verified non-native requires n >= 2");
-
-    let max_coeff: u64 = 1 + 1 + 1 + 1 + 2 * n as u64; // all 3 eqs: 1+1+1+1+2N
-    check_column_equation_fits(params.limb_bits, max_coeff, n, "EC add");
-
-    let os = compiler.num_witnesses();
-    compiler.add_witness_builder(WitnessBuilder::NonNativeEcHint {
-        output_start:    os,
-        op:              NonNativeEcOp::Add,
-        inputs:          vec![x1, y1, x2, y2],
-        curve_a:         [0; 4], // unused for add
-        curve_b:         [0; 4], // unused for add
-        field_modulus_p: params.modulus_raw,
-        limb_bits:       params.limb_bits,
-        num_limbs:       n as u32,
-    });
-
-    let h = EcHint3Eq::parse(os, n);
-    let x1_s = x1.as_slice();
-    let y1_s = y1.as_slice();
-    let x2_s = x2.as_slice();
-    let y2_s = y2.as_slice();
-
-    // Eq1: lambda*x2 - lambda*x1 - y2 + y1 = q1*p
-    let prod_lam_x2 = make_products(compiler, &h.lambda, x2_s);
-    let prod_lam_x1 = make_products(compiler, &h.lambda, x1_s);
-
-    emit_schoolbook_column_equations(
+    let max_coeff: u64 = 4 + 2 * n as u64;
+    emit_3eq_ec_hint(
         compiler,
-        &[
-            (&prod_lam_x2, FieldElement::ONE),
-            (&prod_lam_x1, -FieldElement::ONE),
-        ],
-        &[(y2_s, -FieldElement::ONE), (y1_s, FieldElement::ONE)],
-        &h.q_pos[0],
-        Some(&h.q_neg[0]),
-        &h.carries[0],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
+        range_checks,
+        NonNativeEcOp::Add,
+        vec![x1, y1, x2, y2],
+        [0; 4],
+        [0; 4],
         max_coeff,
-    );
+        "EC add",
+        params,
+        |compiler, h, params| {
+            let x1_s = x1.as_slice();
+            let y1_s = y1.as_slice();
+            let x2_s = x2.as_slice();
+            let y2_s = y2.as_slice();
 
-    // Eq2: lambda² - x3 - x1 - x2 = q2*p
-    let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
+            // Eq1: lambda*x2 - lambda*x1 - y2 + y1 = q1*p
+            let prod_lam_x2 = make_products(compiler, &h.lambda, x2_s);
+            let prod_lam_x1 = make_products(compiler, &h.lambda, x1_s);
 
-    emit_schoolbook_column_equations(
-        compiler,
-        &[(&prod_lam_lam, FieldElement::ONE)],
-        &[
-            (&h.x3, -FieldElement::ONE),
-            (x1_s, -FieldElement::ONE),
-            (x2_s, -FieldElement::ONE),
-        ],
-        &h.q_pos[1],
-        Some(&h.q_neg[1]),
-        &h.carries[1],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
-        max_coeff,
-    );
+            emit_schoolbook_column_equations(
+                compiler,
+                &[
+                    (&prod_lam_x2, FieldElement::ONE),
+                    (&prod_lam_x1, -FieldElement::ONE),
+                ],
+                &[(y2_s, -FieldElement::ONE), (y1_s, FieldElement::ONE)],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[0],
+                    q_neg:   Some(&h.q_neg[0]),
+                    carries: &h.carries[0],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                max_coeff,
+            );
 
-    // Eq3: lambda*x1 - lambda*x3 - y3 - y1 = q3*p
-    // Reuse prod_lam_x1 from Eq1
-    let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
+            // Eq2: lambda² - x3 - x1 - x2 = q2*p
+            let prod_lam_lam = make_products(compiler, &h.lambda, &h.lambda);
 
-    emit_schoolbook_column_equations(
-        compiler,
-        &[
-            (&prod_lam_x1, FieldElement::ONE),
-            (&prod_lam_x3, -FieldElement::ONE),
-        ],
-        &[(&h.y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
-        &h.q_pos[2],
-        Some(&h.q_neg[2]),
-        &h.carries[2],
-        &params.p_limbs,
-        n,
-        params.limb_bits,
-        max_coeff,
-    );
+            emit_schoolbook_column_equations(
+                compiler,
+                &[(&prod_lam_lam, FieldElement::ONE)],
+                &[
+                    (&h.x3, -FieldElement::ONE),
+                    (x1_s, -FieldElement::ONE),
+                    (x2_s, -FieldElement::ONE),
+                ],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[1],
+                    q_neg:   Some(&h.q_neg[1]),
+                    carries: &h.carries[1],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                max_coeff,
+            );
 
-    // max_coeff across all 3 eqs = 4+2N
-    h.range_check_and_verify(compiler, range_checks, 4 + 2 * n as u64, params)
+            // Eq3: lambda*x1 - lambda*x3 - y3 - y1 = q3*p
+            // Reuse prod_lam_x1 from Eq1
+            let prod_lam_x3 = make_products(compiler, &h.lambda, &h.x3);
+
+            emit_schoolbook_column_equations(
+                compiler,
+                &[
+                    (&prod_lam_x1, FieldElement::ONE),
+                    (&prod_lam_x3, -FieldElement::ONE),
+                ],
+                &[(&h.y3, -FieldElement::ONE), (y1_s, -FieldElement::ONE)],
+                &QuotientCarryWitnesses {
+                    q_pos:   &h.q_pos[2],
+                    q_neg:   Some(&h.q_neg[2]),
+                    carries: &h.carries[2],
+                },
+                &params.p_limbs,
+                n,
+                params.limb_bits,
+                max_coeff,
+            );
+        },
+    )
 }

@@ -1,11 +1,13 @@
 use {
     crate::{
         bigint_mod::{
-            add_4limb, bigint_to_fe, cmp_4limb, compute_ec_verification_carries,
-            compute_mul_mod_carries, decompose_to_u128_limbs, divmod, divmod_wide,
-            ec_point_add_with_lambda, ec_point_double_with_lambda, ec_scalar_mul, fe_to_bigint,
-            half_gcd, mod_pow, mul_mod, reconstruct_from_halves, reconstruct_from_u128_limbs,
+            add_4limb, bigint_to_fe, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs,
+            divmod, divmod_wide, fe_to_bigint, half_gcd, mod_pow, mul_mod, reconstruct_from_halves,
             signed_quotient_wide, sub_u64, to_i128_limbs, widening_mul,
+        },
+        ec_arith::{
+            compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
+            ec_scalar_mul,
         },
         witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     },
@@ -32,100 +34,17 @@ pub trait WitnessBuilderSolver {
     );
 }
 
+use super::limb_io::{
+    read_witness_limbs, setup_3eq_ec_hint, solve_and_write_equation, split_quotient, write_limbs,
+    ColumnEqParams, ColumnEqTerms,
+};
+
 /// Resolve a ConstantOrR1CSWitness to its FieldElement value.
 fn resolve(witness: &[Option<FieldElement>], v: &ConstantOrR1CSWitness) -> FieldElement {
     match v {
         ConstantOrR1CSWitness::Constant(c) => *c,
         ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
     }
-}
-
-/// Convert a u128 value to a FieldElement.
-fn u128_to_fe(val: u128) -> FieldElement {
-    FieldElement::from_bigint(ark_ff::BigInt([val as u64, (val >> 64) as u64, 0, 0])).unwrap()
-}
-
-/// Read witness limbs and reconstruct as [u64; 4].
-fn read_witness_limbs(
-    witness: &[Option<FieldElement>],
-    indices: &[usize],
-    limb_bits: u32,
-) -> [u64; 4] {
-    let limb_values: Vec<u128> = indices
-        .iter()
-        .map(|&idx| {
-            assert!(
-                idx < witness.len(),
-                "read_witness_limbs: index {idx} out of bounds (witness len {})",
-                witness.len()
-            );
-            let bigint = witness[idx].unwrap().into_bigint().0;
-            bigint[0] as u128 | ((bigint[1] as u128) << 64)
-        })
-        .collect();
-    reconstruct_from_u128_limbs(&limb_values, limb_bits)
-}
-
-/// Write u128 limb values as FieldElement witnesses starting at `start`.
-fn write_limbs(witness: &mut [Option<FieldElement>], start: usize, vals: &[u128]) {
-    for (i, &val) in vals.iter().enumerate() {
-        witness[start + i] = Some(u128_to_fe(val));
-    }
-}
-
-/// Split a signed quotient into `(q_pos, q_neg)` limb vectors.
-fn split_quotient(q_abs: Vec<u128>, is_neg: bool, n: usize) -> (Vec<u128>, Vec<u128>) {
-    if is_neg {
-        (vec![0u128; n], q_abs)
-    } else {
-        (q_abs, vec![0u128; n])
-    }
-}
-
-/// Solve one column equation: quotient → split → write → carries → write.
-///
-/// Computes `(LHS - RHS) / p` as a signed quotient, splits into (q_pos, q_neg),
-/// computes verification carries, and writes all witnesses at `os + offset`.
-/// Witness layout at offset: `[q_pos(N), q_neg(N), carries(2N-2)]`.
-fn solve_and_write_equation(
-    witness: &mut [Option<FieldElement>],
-    os: usize,
-    offset: usize,
-    n: usize,
-    w: u32,
-    max_coeff_sum: u64,
-    field_modulus_p: &[u64; 4],
-    p_l: &[u128],
-    sq_lhs_prods: &[(&[u64; 4], &[u64; 4], u64)],
-    sq_rhs_prods: &[(&[u64; 4], &[u64; 4], u64)],
-    sq_lhs_linear: &[(&[u64; 4], u64)],
-    sq_rhs_linear: &[(&[u64; 4], u64)],
-    carry_prods: &[(&[u128], &[u128], i64)],
-    carry_linear: &[(Vec<i128>, i64)],
-) {
-    let (q_abs, is_neg) = signed_quotient_wide(
-        sq_lhs_prods,
-        sq_rhs_prods,
-        sq_lhs_linear,
-        sq_rhs_linear,
-        field_modulus_p,
-        n,
-        w,
-    );
-    let (q_pos, q_neg) = split_quotient(q_abs, is_neg, n);
-    write_limbs(witness, os + offset, &q_pos);
-    write_limbs(witness, os + offset + n, &q_neg);
-    let carries = compute_ec_verification_carries(
-        carry_prods,
-        carry_linear,
-        p_l,
-        &q_pos,
-        &q_neg,
-        n,
-        w,
-        max_coeff_sum,
-    );
-    write_limbs(witness, os + offset + 2 * n, &carries);
 }
 
 impl WitnessBuilderSolver for WitnessBuilder {
@@ -416,24 +335,24 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 num_limbs,
             } => {
                 let n = *num_limbs as usize;
-                let w = *limb_bits;
+                let limb_bits = *limb_bits;
 
-                let a_val = read_witness_limbs(witness, a_limbs, w);
-                let b_val = read_witness_limbs(witness, b_limbs, w);
+                let a_val = read_witness_limbs(witness, a_limbs, limb_bits);
+                let b_val = read_witness_limbs(witness, b_limbs, limb_bits);
 
                 let product = widening_mul(&a_val, &b_val);
                 let (q_val, r_val) = divmod_wide(&product, modulus);
 
-                let q_limbs_vals = decompose_to_u128_limbs(&q_val, n, w);
-                let r_limbs_vals = decompose_to_u128_limbs(&r_val, n, w);
+                let q_limbs_vals = decompose_to_u128_limbs(&q_val, n, limb_bits);
+                let r_limbs_vals = decompose_to_u128_limbs(&r_val, n, limb_bits);
 
                 let carries = compute_mul_mod_carries(
-                    &decompose_to_u128_limbs(&a_val, n, w),
-                    &decompose_to_u128_limbs(&b_val, n, w),
-                    &decompose_to_u128_limbs(modulus, n, w),
+                    &decompose_to_u128_limbs(&a_val, n, limb_bits),
+                    &decompose_to_u128_limbs(&b_val, n, limb_bits),
+                    &decompose_to_u128_limbs(modulus, n, limb_bits),
                     &q_limbs_vals,
                     &r_limbs_vals,
-                    w,
+                    limb_bits,
                 );
 
                 write_limbs(witness, *output_start, &q_limbs_vals);
@@ -448,12 +367,16 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 num_limbs,
             } => {
                 let n = *num_limbs as usize;
-                let w = *limb_bits;
+                let limb_bits = *limb_bits;
 
-                let a_val = read_witness_limbs(witness, a_limbs, w);
+                let a_val = read_witness_limbs(witness, a_limbs, limb_bits);
                 let exp = sub_u64(modulus, 2);
                 let inv = mod_pow(&a_val, &exp, modulus);
-                write_limbs(witness, *output_start, &decompose_to_u128_limbs(&inv, n, w));
+                write_limbs(
+                    witness,
+                    *output_start,
+                    &decompose_to_u128_limbs(&inv, n, limb_bits),
+                );
             }
             WitnessBuilder::MultiLimbAddQuotient {
                 output,
@@ -463,10 +386,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 ..
             } => {
-                let w = *limb_bits;
+                let limb_bits = *limb_bits;
 
-                let a_val = read_witness_limbs(witness, a_limbs, w);
-                let b_val = read_witness_limbs(witness, b_limbs, w);
+                let a_val = read_witness_limbs(witness, a_limbs, limb_bits);
+                let b_val = read_witness_limbs(witness, b_limbs, limb_bits);
 
                 let sum = add_4limb(&a_val, &b_val);
                 let q = if sum[4] > 0 {
@@ -489,10 +412,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 limb_bits,
                 ..
             } => {
-                let w = *limb_bits;
+                let limb_bits = *limb_bits;
 
-                let a_val = read_witness_limbs(witness, a_limbs, w);
-                let b_val = read_witness_limbs(witness, b_limbs, w);
+                let a_val = read_witness_limbs(witness, a_limbs, limb_bits);
+                let b_val = read_witness_limbs(witness, b_limbs, limb_bits);
 
                 let q = if cmp_4limb(&a_val, &b_val) == std::cmp::Ordering::Less {
                     1u64
@@ -582,182 +505,184 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 num_limbs,
             } => {
                 let n = *num_limbs as usize;
-                let w = *limb_bits;
+                let limb_bits = *limb_bits;
                 let os = *output_start;
 
-                let p_l = decompose_to_u128_limbs(field_modulus_p, n, w);
+                let p_l = decompose_to_u128_limbs(field_modulus_p, n, limb_bits);
 
                 match op {
                     NonNativeEcOp::Double => {
-                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), w);
-                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), w);
-                        let (lam, x3v, y3v) =
+                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), limb_bits);
+                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), limb_bits);
+                        let ec_result =
                             ec_point_double_with_lambda(&px_val, &py_val, curve_a, field_modulus_p);
-                        let ll = decompose_to_u128_limbs(&lam, n, w);
-                        let xl = decompose_to_u128_limbs(&x3v, n, w);
-                        let yl = decompose_to_u128_limbs(&y3v, n, w);
-                        let pl = decompose_to_u128_limbs(&px_val, n, w);
-                        let pyl = decompose_to_u128_limbs(&py_val, n, w);
-                        let a_l = decompose_to_u128_limbs(curve_a, n, w);
-                        write_limbs(witness, os, &ll);
-                        write_limbs(witness, os + n, &xl);
-                        write_limbs(witness, os + 2 * n, &yl);
+                        let v = setup_3eq_ec_hint(
+                            witness,
+                            os,
+                            n,
+                            limb_bits,
+                            &[px_val, py_val],
+                            ec_result,
+                        );
+                        let ll = &v.lambda_limbs;
+                        let xl = &v.x3_limbs;
+                        let yl = &v.y3_limbs;
+                        let pl = &v.input_limbs[0];
+                        let pyl = &v.input_limbs[1];
+                        let a_l = decompose_to_u128_limbs(curve_a, n, limb_bits);
 
                         // Per-equation max_coeff_sum must match compiler
                         // (see hints_non_native.rs:point_double_verified_non_native)
-                        let mcs_eq1 = 6 + 2 * n as u64; // λy(2)+xx(3)+a(1)+pq(2n)
-                        let mcs_eq2 = 4 + 2 * n as u64; // λλ(1)+x3(1)+px(2)+pq(2n)
-                        let mcs_eq3 = 4 + 2 * n as u64; // λΔx(1)+y3(1)+py(1)+r(1)+pq(2n) → 4+2n
-
-                        // Layout: [lambda(N), x3(N), y3(N),
-                        //          q1_pos(N), q1_neg(N), c1(2N-2),
-                        //          q2_pos(N), q2_neg(N), c2(2N-2),
-                        //          q3_pos(N), q3_neg(N), c3(2N-2)]
-                        // Total: 15N-6
 
                         // Eq1: 2*λ*py - 3*px² - a = q1*p
                         solve_and_write_equation(
                             witness,
                             os,
                             3 * n,
-                            n,
-                            w,
-                            mcs_eq1,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &py_val, 2)],
-                            &[(&px_val, &px_val, 3)],
-                            &[],
-                            &[(curve_a, 1)],
-                            &[(&ll, &pyl, 2), (&pl, &pl, -3)],
-                            &[(to_i128_limbs(&a_l), -1)],
+                            &ColumnEqParams {
+                                num_limbs: n,
+                                limb_bits,
+                                max_coeff_sum: 6 + 2 * n as u64,
+                                field_modulus_p,
+                                p_limbs: &p_l,
+                            },
+                            &ColumnEqTerms {
+                                lhs_products:   &[(&v.lambda, &py_val, 2)],
+                                rhs_products:   &[(&px_val, &px_val, 3)],
+                                lhs_linear:     &[],
+                                rhs_linear:     &[(curve_a, 1)],
+                                carry_products: &[(ll, pyl, 2), (pl, pl, -3)],
+                                carry_linear:   &[(to_i128_limbs(&a_l), -1)],
+                            },
                         );
                         // Eq2: λ² - x3 - 2*px = q2*p
                         solve_and_write_equation(
                             witness,
                             os,
                             7 * n - 2,
-                            n,
-                            w,
-                            mcs_eq2,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &lam, 1)],
-                            &[],
-                            &[],
-                            &[(&x3v, 1), (&px_val, 2)],
-                            &[(&ll, &ll, 1)],
-                            &[(to_i128_limbs(&xl), -1), (to_i128_limbs(&pl), -2)],
+                            &ColumnEqParams {
+                                num_limbs: n,
+                                limb_bits,
+                                max_coeff_sum: 4 + 2 * n as u64,
+                                field_modulus_p,
+                                p_limbs: &p_l,
+                            },
+                            &ColumnEqTerms {
+                                lhs_products:   &[(&v.lambda, &v.lambda, 1)],
+                                rhs_products:   &[],
+                                lhs_linear:     &[],
+                                rhs_linear:     &[(&v.x3, 1), (&px_val, 2)],
+                                carry_products: &[(ll, ll, 1)],
+                                carry_linear:   &[(to_i128_limbs(xl), -1), (to_i128_limbs(pl), -2)],
+                            },
                         );
                         // Eq3: λ*px - λ*x3 - y3 - py = q3*p
                         solve_and_write_equation(
                             witness,
                             os,
                             11 * n - 4,
-                            n,
-                            w,
-                            mcs_eq3,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &px_val, 1)],
-                            &[(&lam, &x3v, 1)],
-                            &[],
-                            &[(&y3v, 1), (&py_val, 1)],
-                            &[(&ll, &pl, 1), (&ll, &xl, -1)],
-                            &[(to_i128_limbs(&yl), -1), (to_i128_limbs(&pyl), -1)],
+                            &ColumnEqParams {
+                                num_limbs: n,
+                                limb_bits,
+                                max_coeff_sum: 4 + 2 * n as u64,
+                                field_modulus_p,
+                                p_limbs: &p_l,
+                            },
+                            &ColumnEqTerms {
+                                lhs_products:   &[(&v.lambda, &px_val, 1)],
+                                rhs_products:   &[(&v.lambda, &v.x3, 1)],
+                                lhs_linear:     &[],
+                                rhs_linear:     &[(&v.y3, 1), (&py_val, 1)],
+                                carry_products: &[(ll, pl, 1), (ll, xl, -1)],
+                                carry_linear:   &[
+                                    (to_i128_limbs(yl), -1),
+                                    (to_i128_limbs(pyl), -1),
+                                ],
+                            },
                         );
                     }
                     NonNativeEcOp::Add => {
-                        let x1v = read_witness_limbs(witness, inputs[0].as_slice(), w);
-                        let y1v = read_witness_limbs(witness, inputs[1].as_slice(), w);
-                        let x2v = read_witness_limbs(witness, inputs[2].as_slice(), w);
-                        let y2v = read_witness_limbs(witness, inputs[3].as_slice(), w);
-                        let (lam, x3v, y3v) =
+                        let x1v = read_witness_limbs(witness, inputs[0].as_slice(), limb_bits);
+                        let y1v = read_witness_limbs(witness, inputs[1].as_slice(), limb_bits);
+                        let x2v = read_witness_limbs(witness, inputs[2].as_slice(), limb_bits);
+                        let y2v = read_witness_limbs(witness, inputs[3].as_slice(), limb_bits);
+                        let ec_result =
                             ec_point_add_with_lambda(&x1v, &y1v, &x2v, &y2v, field_modulus_p);
-                        let ll = decompose_to_u128_limbs(&lam, n, w);
-                        let xl = decompose_to_u128_limbs(&x3v, n, w);
-                        let yl = decompose_to_u128_limbs(&y3v, n, w);
-                        let x1l = decompose_to_u128_limbs(&x1v, n, w);
-                        let y1l = decompose_to_u128_limbs(&y1v, n, w);
-                        let x2l = decompose_to_u128_limbs(&x2v, n, w);
-                        let y2l = decompose_to_u128_limbs(&y2v, n, w);
-                        write_limbs(witness, os, &ll);
-                        write_limbs(witness, os + n, &xl);
-                        write_limbs(witness, os + 2 * n, &yl);
+                        let v = setup_3eq_ec_hint(
+                            witness,
+                            os,
+                            n,
+                            limb_bits,
+                            &[x1v, y1v, x2v, y2v],
+                            ec_result,
+                        );
+                        let ll = &v.lambda_limbs;
+                        let xl = &v.x3_limbs;
+                        let yl = &v.y3_limbs;
+                        let x1l = &v.input_limbs[0];
+                        let y1l = &v.input_limbs[1];
+                        let x2l = &v.input_limbs[2];
+                        let y2l = &v.input_limbs[3];
 
                         // Must match compiler's max_coeff_sum
                         // (see hints_non_native.rs:point_add_verified_non_native)
                         let mcs = 4 + 2 * n as u64; // 1+1+1+1+2n for all 3 eqs
-
-                        // Layout: [lambda(N), x3(N), y3(N),
-                        //          q1_pos(N), q1_neg(N), c1(2N-2),
-                        //          q2_pos(N), q2_neg(N), c2(2N-2),
-                        //          q3_pos(N), q3_neg(N), c3(2N-2)]
-                        // Total: 15N-6
+                        let params = ColumnEqParams {
+                            num_limbs: n,
+                            limb_bits,
+                            max_coeff_sum: mcs,
+                            field_modulus_p,
+                            p_limbs: &p_l,
+                        };
 
                         // Eq1: λ*x2 - λ*x1 + y1 - y2 = q1*p
-                        solve_and_write_equation(
-                            witness,
-                            os,
-                            3 * n,
-                            n,
-                            w,
-                            mcs,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &x2v, 1)],
-                            &[(&lam, &x1v, 1)],
-                            &[(&y1v, 1)],
-                            &[(&y2v, 1)],
-                            &[(&ll, &x2l, 1), (&ll, &x1l, -1)],
-                            &[(to_i128_limbs(&y2l), -1), (to_i128_limbs(&y1l), 1)],
-                        );
+                        solve_and_write_equation(witness, os, 3 * n, &params, &ColumnEqTerms {
+                            lhs_products:   &[(&v.lambda, &x2v, 1)],
+                            rhs_products:   &[(&v.lambda, &x1v, 1)],
+                            lhs_linear:     &[(&y1v, 1)],
+                            rhs_linear:     &[(&y2v, 1)],
+                            carry_products: &[(ll, x2l, 1), (ll, x1l, -1)],
+                            carry_linear:   &[(to_i128_limbs(y2l), -1), (to_i128_limbs(y1l), 1)],
+                        });
                         // Eq2: λ² - x3 - x1 - x2 = q2*p
-                        solve_and_write_equation(
-                            witness,
-                            os,
-                            7 * n - 2,
-                            n,
-                            w,
-                            mcs,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &lam, 1)],
-                            &[],
-                            &[],
-                            &[(&x3v, 1), (&x1v, 1), (&x2v, 1)],
-                            &[(&ll, &ll, 1)],
-                            &[
-                                (to_i128_limbs(&xl), -1),
-                                (to_i128_limbs(&x1l), -1),
-                                (to_i128_limbs(&x2l), -1),
+                        solve_and_write_equation(witness, os, 7 * n - 2, &params, &ColumnEqTerms {
+                            lhs_products:   &[(&v.lambda, &v.lambda, 1)],
+                            rhs_products:   &[],
+                            lhs_linear:     &[],
+                            rhs_linear:     &[(&v.x3, 1), (&x1v, 1), (&x2v, 1)],
+                            carry_products: &[(ll, ll, 1)],
+                            carry_linear:   &[
+                                (to_i128_limbs(xl), -1),
+                                (to_i128_limbs(x1l), -1),
+                                (to_i128_limbs(x2l), -1),
                             ],
-                        );
+                        });
                         // Eq3: λ*x1 - λ*x3 - y3 - y1 = q3*p
                         solve_and_write_equation(
                             witness,
                             os,
                             11 * n - 4,
-                            n,
-                            w,
-                            mcs,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&lam, &x1v, 1)],
-                            &[(&lam, &x3v, 1)],
-                            &[],
-                            &[(&y3v, 1), (&y1v, 1)],
-                            &[(&ll, &x1l, 1), (&ll, &xl, -1)],
-                            &[(to_i128_limbs(&yl), -1), (to_i128_limbs(&y1l), -1)],
+                            &params,
+                            &ColumnEqTerms {
+                                lhs_products:   &[(&v.lambda, &x1v, 1)],
+                                rhs_products:   &[(&v.lambda, &v.x3, 1)],
+                                lhs_linear:     &[],
+                                rhs_linear:     &[(&v.y3, 1), (&y1v, 1)],
+                                carry_products: &[(ll, x1l, 1), (ll, xl, -1)],
+                                carry_linear:   &[
+                                    (to_i128_limbs(yl), -1),
+                                    (to_i128_limbs(y1l), -1),
+                                ],
+                            },
                         );
                     }
                     NonNativeEcOp::OnCurve => {
-                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), w);
-                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), w);
+                        let px_val = read_witness_limbs(witness, inputs[0].as_slice(), limb_bits);
+                        let py_val = read_witness_limbs(witness, inputs[1].as_slice(), limb_bits);
                         let x_sq_val = mul_mod(&px_val, &px_val, field_modulus_p);
-                        let xsl = decompose_to_u128_limbs(&x_sq_val, n, w);
-                        let pl = decompose_to_u128_limbs(&px_val, n, w);
-                        let pyl = decompose_to_u128_limbs(&py_val, n, w);
+                        let xsl = decompose_to_u128_limbs(&x_sq_val, n, limb_bits);
+                        let pl = decompose_to_u128_limbs(&px_val, n, limb_bits);
+                        let pyl = decompose_to_u128_limbs(&py_val, n, limb_bits);
                         write_limbs(witness, os, &xsl);
 
                         let a_is_zero = curve_a.iter().all(|&v| v == 0);
@@ -770,32 +695,31 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             4 + 2 * n as u64 // x³(1)+y²(1)+ax(1)+b(1)+pq(2n)
                         };
 
-                        // Layout: [x_sq(N),
-                        //          q1_pos(N), q1_neg(N), c1(2N-2),
-                        //          q2_pos(N), q2_neg(N), c2(2N-2)]
-                        // Total: 9N-4
-
                         // Eq1: px·px - x_sq = q1·p
                         solve_and_write_equation(
                             witness,
                             os,
                             n,
-                            n,
-                            w,
-                            mcs_eq1,
-                            field_modulus_p,
-                            &p_l,
-                            &[(&px_val, &px_val, 1)],
-                            &[],
-                            &[],
-                            &[(&x_sq_val, 1)],
-                            &[(&pl, &pl, 1)],
-                            &[(to_i128_limbs(&xsl), -1)],
+                            &ColumnEqParams {
+                                num_limbs: n,
+                                limb_bits,
+                                max_coeff_sum: mcs_eq1,
+                                field_modulus_p,
+                                p_limbs: &p_l,
+                            },
+                            &ColumnEqTerms {
+                                lhs_products:   &[(&px_val, &px_val, 1)],
+                                rhs_products:   &[],
+                                lhs_linear:     &[],
+                                rhs_linear:     &[(&x_sq_val, 1)],
+                                carry_products: &[(&pl, &pl, 1)],
+                                carry_linear:   &[(to_i128_limbs(&xsl), -1)],
+                            },
                         );
 
                         // Eq2: py·py - x_sq·px - a·px - b = q2·p
-                        let a_l = decompose_to_u128_limbs(curve_a, n, w);
-                        let b_l = decompose_to_u128_limbs(curve_b, n, w);
+                        let a_l = decompose_to_u128_limbs(curve_a, n, limb_bits);
+                        let b_l = decompose_to_u128_limbs(curve_b, n, limb_bits);
 
                         let mut rhs_prods: Vec<(&[u64; 4], &[u64; 4], u64)> =
                             vec![(&x_sq_val, &px_val, 1)];
@@ -809,7 +733,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             &[(curve_b, 1)],
                             field_modulus_p,
                             n,
-                            w,
+                            limb_bits,
                         );
 
                         let (q2_pos, q2_neg) = split_quotient(q2_abs, q2_neg, n);
@@ -828,7 +752,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             &q2_pos,
                             &q2_neg,
                             n,
-                            w,
+                            limb_bits,
                             mcs_eq2,
                         );
                         write_limbs(witness, os + 7 * n - 2, &c2);

@@ -1,4 +1,4 @@
-use super::Curve;
+use super::{Curve, U256};
 
 /// Grumpkin: BN254 cycle-companion curve.
 /// Base field = BN254 scalar field, order = BN254 base field order.
@@ -6,7 +6,7 @@ use super::Curve;
 pub struct Grumpkin;
 
 impl Curve for Grumpkin {
-    fn field_modulus_p(&self) -> [u64; 4] {
+    fn field_modulus_p(&self) -> U256 {
         [
             0x43e1f593f0000001,
             0x2833e84879b97091,
@@ -14,7 +14,7 @@ impl Curve for Grumpkin {
             0x30644e72e131a029,
         ]
     }
-    fn curve_order_n(&self) -> [u64; 4] {
+    fn curve_order_n(&self) -> U256 {
         [
             0x3c208c16d87cfd47,
             0x97816a916871ca8d,
@@ -22,10 +22,10 @@ impl Curve for Grumpkin {
             0x30644e72e131a029,
         ]
     }
-    fn curve_a(&self) -> [u64; 4] {
+    fn curve_a(&self) -> U256 {
         [0; 4]
     }
-    fn curve_b(&self) -> [u64; 4] {
+    fn curve_b(&self) -> U256 {
         [
             0x43e1f593effffff0,
             0x2833e84879b97091,
@@ -33,7 +33,7 @@ impl Curve for Grumpkin {
             0x30644e72e131a029,
         ]
     }
-    fn generator(&self) -> ([u64; 4], [u64; 4]) {
+    fn generator(&self) -> (U256, U256) {
         ([1, 0, 0, 0], [
             0x833fc48d823f272c,
             0x2d270d45f1181294,
@@ -48,7 +48,7 @@ impl Curve for Grumpkin {
     /// integer mod p, incremented until y² = x³ + b has a square root.
     /// Canonical (smaller) y is chosen. Reproducible via
     /// `scripts/verify_offset_points.py`.
-    fn offset_point(&self) -> ([u64; 4], [u64; 4]) {
+    fn offset_point(&self) -> (U256, U256) {
         (
             [
                 0x0c7f59b08d3ed494,

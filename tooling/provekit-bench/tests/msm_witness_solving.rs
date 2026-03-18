@@ -17,7 +17,7 @@ use {
         witness::{ConstantOrR1CSWitness, LayerScheduler, WitnessBuilder},
         FieldElement, NoirElement, TranscriptSponge,
     },
-    provekit_prover::{bigint_mod::ec_scalar_mul, r1cs::solve_witness_vec},
+    provekit_prover::{ec_scalar_mul, solve_witness_vec},
     provekit_r1cs_compiler::{
         msm::{
             add_msm_with_curve,
