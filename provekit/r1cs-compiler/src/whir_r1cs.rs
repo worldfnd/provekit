@@ -1,11 +1,22 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
+    provekit_common::{
+        utils::{next_power_of_two, next_smooth_domain},
+        WhirR1CSScheme, WhirZkConfig, R1CS,
+    },
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
+
+fn ensure_min_binary_vars(m: usize) -> usize {
+    let mut candidate = m;
+    while (candidate.trailing_zeros() as usize) < MIN_WHIR_NUM_VARIABLES {
+        candidate = next_smooth_domain(candidate + 1);
+    }
+    candidate
+}
 
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(
@@ -56,17 +67,22 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         );
         let w2_size = total_witnesses - w1_size;
 
-        let m1_raw = next_power_of_two(w1_size);
-        let m2_raw = next_power_of_two(w2_size);
+        // m1/m2 are actual smooth domain sizes; m0 stays as an exponent
+        // (inner sumcheck is always power-of-2).
+        let m1_raw = next_smooth_domain(w1_size);
+        let m2_raw = next_smooth_domain(w2_size);
         let m0_raw = next_power_of_two(r1cs.num_constraints());
 
-        let mut m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
+        let mut m_raw = m1_raw.max(m2_raw).max(1usize << MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m_raw) - w1_size < 4 * m_0 {
-            m_raw += 1;
+        if m_raw - w1_size < 4 * m_0 {
+            m_raw = next_smooth_domain(m_raw + 1);
         }
+
+        // Smooth-domain sizes may have too few trailing zeros for ZK blinding.
+        m_raw = ensure_min_binary_vars(m_raw);
 
         Self {
             m: m_raw,
@@ -80,11 +96,12 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     }
 
     fn new_whir_zk_config_for_size(
-        num_variables: usize,
+        size: usize,
         num_polynomials: usize,
         hash_id: EngineId,
     ) -> WhirZkConfig {
-        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
+        // `size` is the actual domain size .
+        let size = size.max(1usize << MIN_WHIR_NUM_VARIABLES);
 
         // Parameters tuned for 128-bit security under the Johnson bound (the old
         // ConjectureList soundness was disproven). Rate=2 balances query count vs
@@ -101,7 +118,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             batch_size: 1,
             hash_id,
         };
-        WhirZkConfig::new(1 << nv, &whir_params, num_polynomials)
+        WhirZkConfig::new(size, &whir_params, num_polynomials)
     }
 
     fn new_from_mavros_r1cs(
@@ -135,16 +152,20 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
-        let m_raw = next_power_of_two(num_witnesses);
+        // m is the actual smooth domain size; m0 stays as an exponent.
+        let m_raw = next_smooth_domain(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let mut m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let mut m = m_raw.max(1usize << MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m) - w1_size < 4 * m_0 {
-            m += 1;
+        if m - w1_size < 4 * m_0 {
+            m = next_smooth_domain(m + 1);
         }
+
+        // Smooth-domain sizes may have too few trailing zeros for ZK blinding.
+        m = ensure_min_binary_vars(m);
 
         Self {
             m,
@@ -179,6 +200,23 @@ mod tests {
             sec_blinding >= 128.0,
             "Blinding commitment security {sec_blinding:.2} < 128 bits"
         );
+    }
+
+    #[test]
+    fn smooth_domain_blinding_does_not_panic() {
+        let problematic_witness_counts = [10_001, 20_000, 40_000, 100_000];
+        for &n in &problematic_witness_counts {
+            let mut r1cs = R1CS::new();
+            r1cs.add_witnesses(n);
+            // Add a single dummy constraint so num_constraints > 0.
+            r1cs.add_constraint(
+                &[(ark_bn254::Fr::from(1u64), 1)],
+                &[(ark_bn254::Fr::from(1u64), 0)],
+                &[(ark_bn254::Fr::from(1u64), 1)],
+            );
+            // This should not panic.
+            let _scheme = WhirR1CSScheme::new_for_r1cs(&r1cs, n, 0, false, whir::hash::SHA2);
+        }
     }
 
     #[test]

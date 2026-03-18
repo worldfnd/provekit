@@ -22,15 +22,8 @@ pub struct PrefixCovector {
 
 impl PrefixCovector {
     /// Create a new `PrefixCovector` from a prefix vector and domain size.
-    ///
-    /// # Panics
-    ///
-    /// Debug-asserts that both `vector.len()` and `domain_size` are powers of
-    /// two, and that `domain_size >= vector.len()`.
     #[must_use]
     pub fn new(vector: Vec<FieldElement>, domain_size: usize) -> Self {
-        debug_assert!(vector.len().is_power_of_two());
-        debug_assert!(domain_size.is_power_of_two());
         assert!(
             domain_size >= vector.len(),
             "PrefixCovector: domain_size ({domain_size}) must be >= vector.len() ({})",
@@ -67,12 +60,26 @@ impl LinearForm<FieldElement> for PrefixCovector {
     }
 
     fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
-        let k = self.vector.len().trailing_zeros() as usize;
-        let r = point.len() - k;
-        let head_factor: FieldElement =
-            point[..r].iter().map(|p| FieldElement::one() - p).product();
-        let prefix_mle = multilinear_extend(&self.vector, &point[r..]);
-        head_factor * prefix_mle
+        let vec_len = self.vector.len();
+        if vec_len.is_power_of_two() {
+            let k = vec_len.trailing_zeros() as usize;
+            let r = point.len() - k;
+            let head_factor: FieldElement =
+                point[..r].iter().map(|p| FieldElement::one() - p).product();
+            head_factor * multilinear_extend(&self.vector, &point[r..])
+        } else {
+            // Non-power-of-2 prefix : pad to next power
+            // of 2 for multilinear_extend, then apply head factor for the
+            // remaining leading variables.
+            let padded_len = vec_len.next_power_of_two();
+            let k = padded_len.trailing_zeros() as usize;
+            let r = point.len() - k;
+            let head_factor: FieldElement =
+                point[..r].iter().map(|p| FieldElement::one() - p).product();
+            let mut padded = self.vector.clone();
+            padded.resize(padded_len, FieldElement::zero());
+            head_factor * multilinear_extend(&padded, &point[r..])
+        }
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
@@ -96,7 +103,6 @@ pub struct OffsetCovector {
 impl OffsetCovector {
     #[must_use]
     pub fn new(weights: Vec<FieldElement>, offset: usize, domain_size: usize) -> Self {
-        debug_assert!(domain_size.is_power_of_two());
         assert!(
             offset + weights.len() <= domain_size,
             "OffsetCovector: offset ({offset}) + weights.len() ({}) exceeds domain_size \
@@ -170,14 +176,19 @@ pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElemen
 /// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs +
 /// 1`.
 #[must_use]
-pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -> PrefixCovector {
-    let n = num_public_inputs + 1;
-    let domain_size = 1 << m;
-    let prefix_len = n.next_power_of_two().max(2);
+pub fn make_public_weight(
+    x: FieldElement,
+    public_inputs_len: usize,
+    domain_size: usize,
+) -> PrefixCovector {
+    let prefix_len = public_inputs_len
+        .next_power_of_two()
+        .max(2)
+        .min(domain_size);
     let mut public_weights = vec![FieldElement::zero(); prefix_len];
 
     let mut current_pow = FieldElement::one();
-    for slot in public_weights.iter_mut().take(n) {
+    for slot in public_weights.iter_mut().take(public_inputs_len) {
         *slot = current_pow;
         current_pow *= x;
     }
@@ -187,18 +198,19 @@ pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -
 
 /// Build [`PrefixCovector`] weights from alpha vectors, consuming the alphas.
 ///
-/// Each alpha vector is padded to a power-of-two length (min 2) and wrapped
-/// in a `PrefixCovector` with the given domain size `2^m`.
+/// Each alpha vector is padded to a power-of-two length (min 2, capped at
+/// `domain_size`) and wrapped in a `PrefixCovector`.
+/// `PrefixCovector::mle_evaluate` handles this transparently.
 #[must_use]
 pub fn build_prefix_covectors<const N: usize>(
-    m: usize,
+    domain_size: usize,
     alphas: [Vec<FieldElement>; N],
 ) -> Vec<PrefixCovector> {
-    let domain_size = 1usize << m;
     alphas
         .into_iter()
         .map(|mut w| {
-            let base_len = w.len().next_power_of_two().max(2);
+            // Pad to power-of-2 when it fits, otherwise cap at domain_size.
+            let base_len = w.len().next_power_of_two().max(2).min(domain_size);
             w.resize(base_len, FieldElement::zero());
             PrefixCovector::new(w, domain_size)
         })

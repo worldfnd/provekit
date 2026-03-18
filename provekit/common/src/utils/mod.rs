@@ -90,6 +90,22 @@ pub fn pad_to_power_of_two<T: Default>(mut witness: Vec<T>) -> Vec<T> {
     witness
 }
 
+pub const fn next_smooth_domain(n: usize) -> usize {
+    whir::smooth_domain::next_smooth(n)
+}
+
+#[instrument(skip_all)]
+pub fn pad_to_smooth_domain<T: Default>(mut witness: Vec<T>) -> Vec<T> {
+    let target_len = next_smooth_domain(witness.len());
+    if witness.len() < target_len {
+        witness.reserve_exact(target_len - witness.len());
+        while witness.len() < target_len {
+            witness.push(T::default());
+        }
+    }
+    witness
+}
+
 /// Pretty print a float using SI-prefixes.
 #[must_use]
 pub fn human(value: f64) -> impl Display {

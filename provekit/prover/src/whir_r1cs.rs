@@ -97,7 +97,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            witness_size <= 1 << self.m,
+            witness_size <= self.m,
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
@@ -105,13 +105,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "R1CS constraints exceed scheme capacity"
         );
 
-        let num_vars = self.whir_witness.num_witness_variables();
-        let target_len = 1usize << num_vars;
-
-        let mut padded_witness = pad_to_power_of_two(witness);
-        if padded_witness.len() < target_len {
-            padded_witness.resize(target_len, FieldElement::zero());
-        }
+        // Pad witness to the WHIR config's initial polynomial size .
+        let target_len = self.whir_witness.blinded_commitment.initial_size();
+        let mut padded_witness = witness;
+        padded_witness.resize(target_len, FieldElement::zero());
 
         let blinding = if is_w1 {
             let g = generate_blinding_univariates(self.m_0);
@@ -256,13 +253,13 @@ fn prove_from_alphas(
     let is_single = commitments.len() == 1;
     let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
 
-    let domain_size = 1usize << scheme.m;
+    let domain_size = scheme.m;
 
     if is_single {
         // Single commitment path
         let commitment = commitments.into_iter().next().unwrap();
         let (mut weights, evals) =
-            create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
+            create_weights_and_evaluations::<3>(domain_size, &commitment.polynomial, alphas);
 
         merlin.prover_hint_ark(&evals);
 
@@ -329,10 +326,10 @@ fn prove_from_alphas(
             ..
         } = c1;
         {
-            let mut weights = build_prefix_covectors(scheme.m, alphas_1);
+            let mut weights = build_prefix_covectors(domain_size, alphas_1);
             let mut evaluations: Vec<FieldElement> = Vec::new();
             if let Some(pe) = public_1 {
-                weights.insert(0, make_public_weight(x, public_inputs.len(), scheme.m));
+                weights.insert(0, make_public_weight(x, public_inputs.len(), domain_size));
                 evaluations.push(pe);
             }
             evaluations.extend_from_slice(&evals_1);
@@ -363,7 +360,7 @@ fn prove_from_alphas(
             ..
         } = c2;
         {
-            let weights = build_prefix_covectors(scheme.m, alphas_2);
+            let weights = build_prefix_covectors(domain_size, alphas_2);
             let evaluations: Vec<FieldElement> = evals_2;
 
             let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
@@ -586,17 +583,16 @@ pub fn run_zk_sumcheck_prover(
 }
 
 fn create_weights_and_evaluations<const N: usize>(
-    m: usize,
+    domain_size: usize,
     polynomial: &[FieldElement],
     alphas: [Vec<FieldElement>; N],
 ) -> (Vec<PrefixCovector>, Vec<FieldElement>) {
-    let domain_size = 1usize << m;
-
     let mut weights = Vec::with_capacity(N);
     let mut evals = Vec::with_capacity(N);
 
     for mut w in alphas {
-        let base_len = w.len().next_power_of_two().max(2);
+        // Pad to power-of-2 when it fits, otherwise cap at domain_size
+        let base_len = w.len().next_power_of_two().max(2).min(domain_size);
         w.resize(base_len, FieldElement::zero());
 
         evals.push(dot(&w, &polynomial[..base_len]));

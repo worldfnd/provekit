@@ -100,7 +100,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4>(&data_from_sumcheck_verifier.alpha);
-        let domain_size = 1usize << self.m;
+        let domain_size = self.m;
         let blinding_covector = OffsetCovector::new(blinding_weights, self.w1_size, domain_size);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
@@ -131,15 +131,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 2"))?;
 
-            let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
-            let weights_2 = build_prefix_covectors(self.m, alphas_2);
+            let mut weights_1 = build_prefix_covectors(domain_size, alphas_1);
+            let weights_2 = build_prefix_covectors(domain_size, alphas_2);
 
             let mut evaluations_1 = if !public_inputs.is_empty() {
                 let public_1: FieldElement = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
-                verify_public_input_binding(public_1, x, public_inputs)?;
-                weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
+                weights_1.insert(0, make_public_weight(x, public_inputs.len(), domain_size));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
                 evals_1.to_vec()
@@ -155,7 +154,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
-                .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
+                .map_err(|e| anyhow::anyhow!("WHIR verification failed for c1: {e:?}"))?;
 
             let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
                 .iter()
@@ -178,14 +177,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values"))?;
 
-            let mut weights = build_prefix_covectors(self.m, alphas);
+            let mut weights = build_prefix_covectors(domain_size, alphas);
 
             let mut evaluations = if !public_inputs.is_empty() {
                 let public_eval: FieldElement = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
-                verify_public_input_binding(public_eval, x, public_inputs)?;
-                weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
+                    .prover_hint_ark()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
+                weights.insert(0, make_public_weight(x, public_inputs.len(), domain_size));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
                 evals.to_vec()
