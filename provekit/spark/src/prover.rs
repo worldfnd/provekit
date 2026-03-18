@@ -25,23 +25,20 @@ use {
     },
 };
 
-/// SPARK proving interface for R1CS constraint systems.
 pub trait SPARKProver {
     fn prove(&self, spark_matrix: &SparkMatrix, request: &R1CSSparkQuery) -> Result<SPARKProof>;
 }
 
-/// SPARK scheme with pre-configured WHIR parameters.
 pub struct SPARKScheme {
     pub whir_configs:      SPARKWHIRConfigs,
     pub matrix_dimensions: MatrixDimensions,
 }
 
-/// Creates a non-ZK WHIR config for the given log-domain size and batch size.
 fn new_whir_config_for_size(log_size: usize, batch_size: usize) -> WhirConfig {
     let nv = log_size.max(4);
 
     let whir_params = ProtocolParameters {
-        unique_decoding: false, // list decoding for smaller proof size
+        unique_decoding: false,
         initial_folding_factor: 3,
         security_level: 128,
         pow_bits: 10,
@@ -55,7 +52,6 @@ fn new_whir_config_for_size(log_size: usize, batch_size: usize) -> WhirConfig {
 }
 
 impl SPARKScheme {
-    /// Configures SPARK scheme for given R1CS dimensions.
     pub fn new_for_r1cs(r1cs: &provekit_common::R1CS) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
@@ -65,7 +61,6 @@ impl SPARKScheme {
         Self::new(num_rows, num_cols, nonzero_terms)
     }
 
-    /// Configures SPARK scheme for given matrix dimensions.
     pub fn new(num_rows: usize, num_cols: usize, nonzero_terms: usize) -> Self {
         let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
 
@@ -100,7 +95,6 @@ impl SPARKProver for SPARKScheme {
     fn prove(&self, spark_matrix: &SparkMatrix, request: &R1CSSparkQuery) -> Result<SPARKProof> {
         let padded_num_entries = spark_matrix.coo.val.len();
 
-        // Set up transcript
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
@@ -135,7 +129,6 @@ impl SPARKProver for SPARKScheme {
             e_ry.push(memory.eq_ry[c]);
         }
 
-        // Convert row/col indices to field elements for the prover protocol
         let row_field: Vec<FieldElement> = spark_matrix
             .coo
             .row
@@ -174,7 +167,6 @@ impl SPARKProver for SPARKScheme {
     }
 }
 
-/// Core SPARK protocol: sumcheck + row/col memory checking.
 #[instrument(skip_all)]
 fn prove_spark_for_single_matrix(
     merlin: &mut ProverState<TranscriptSponge>,
@@ -283,7 +275,6 @@ fn spark_sumcheck(
         sumcheck_final_folds[2],
     ]);
 
-    // Prove e-values opening (2 vectors batched)
     produce_whir_proof(
         merlin,
         &folding_randomness,
@@ -292,7 +283,6 @@ fn spark_sumcheck(
         evalues_witness.clone(),
     )?;
 
-    // Prove val opening (1 vector)
     produce_whir_proof(
         merlin,
         &folding_randomness,
@@ -361,7 +351,6 @@ fn run_rs_ws_gpa_and_proofs(
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
 
-    // Evaluate addresses/timestamps in parallel
     let ((row_address_eval, row_timestamp_eval), (col_address_eval, col_timestamp_eval)) = join(
         || {
             join(
@@ -382,7 +371,6 @@ fn run_rs_ws_gpa_and_proofs(
     merlin.prover_hint_ark(&col_address_eval);
     merlin.prover_hint_ark(&col_timestamp_eval);
 
-    // Prove rs/ws opening (4 vectors batched)
     produce_whir_proof(
         merlin,
         evaluation_randomness,
@@ -396,7 +384,6 @@ fn run_rs_ws_gpa_and_proofs(
         rs_ws_witness,
     )?;
 
-    // Evaluate e-values in parallel
     let (row_value_eval, col_value_eval) = join(
         || multilinear_extend(&e_values.e_rx, evaluation_randomness),
         || multilinear_extend(&e_values.e_ry, evaluation_randomness),
@@ -404,7 +391,6 @@ fn run_rs_ws_gpa_and_proofs(
     merlin.prover_hint_ark(&row_value_eval);
     merlin.prover_hint_ark(&col_value_eval);
 
-    // Prove e-values opening (2 vectors batched)
     produce_whir_proof(
         merlin,
         evaluation_randomness,
@@ -427,8 +413,6 @@ struct GeneratedWitnesses {
     evalues_vecs:         [Vec<FieldElement>; 2],
 }
 
-/// Commits to vectors and returns WHIR witnesses along with the original
-/// vectors.
 #[instrument(skip_all)]
 fn generate_witnesses(
     merlin: &mut ProverState<TranscriptSponge>,
@@ -438,11 +422,9 @@ fn generate_witnesses(
     col_field: &[FieldElement],
     e_values: &EValuesForMatrix,
 ) -> Result<GeneratedWitnesses> {
-    // vals: 1-batched commit (just val)
     let vals_vec = matrix.coo.val.clone();
     let vals_witness = whir_configs.num_terms_1batched.commit(merlin, &[&vals_vec]);
 
-    // rs_ws: 4-batched commit (row_addr, row_ts, col_addr, col_ts)
     let rs_ws_vecs = [
         row_field.to_vec(),
         matrix.timestamps.read_row.clone(),
@@ -456,17 +438,14 @@ fn generate_witnesses(
         rs_ws_vecs[3].as_slice(),
     ]);
 
-    // final_row_ts: 1-batched commit
     let final_row_ts_witness = whir_configs
         .row
         .commit(merlin, &[&matrix.timestamps.final_row]);
 
-    // final_col_ts: 1-batched commit
     let final_col_ts_witness = whir_configs
         .col
         .commit(merlin, &[&matrix.timestamps.final_col]);
 
-    // e-values: 2-batched commit (e_rx, e_ry)
     let evalues_vecs = [e_values.e_rx.clone(), e_values.e_ry.clone()];
     let evalues_witness = whir_configs.num_terms_2batched.commit(merlin, &[
         evalues_vecs[0].as_slice(),

@@ -13,20 +13,16 @@ use {
     whir::{algebra::linear_form::MultilinearExtension, transcript::{DomainSeparator, Proof, VerifierMessage, VerifierState, codecs::Empty}},
 };
 
-/// SPARK verification interface.
 pub trait SPARKVerifier {
-    /// Verifies a SPARK proof against the given request.
     fn verify(&self, proof: SPARKProof, request: &R1CSSparkQuery) -> Result<()>;
 }
 
-/// SPARK verification scheme with configuration extracted from proof.
 pub struct SPARKScheme {
     pub whir_configs:      SPARKWHIRConfigs,
     pub matrix_dimensions: MatrixDimensions,
 }
 
 impl SPARKScheme {
-    /// Constructs verifier scheme from proof metadata.
     pub fn from_proof(proof: &SPARKProof) -> Self {
         Self {
             whir_configs:      proof.whir_params.clone(),
@@ -70,7 +66,6 @@ impl SPARKVerifier for SPARKScheme {
     }
 }
 
-/// Core SPARK verification: sumcheck + row/col memory checks.
 pub(crate) fn verify_spark_single_matrix(
     whir_params: &SPARKWHIRConfigs,
     matrix_dimensions: MatrixDimensions,
@@ -113,7 +108,6 @@ pub(crate) fn verify_spark_single_matrix(
 
     ensure!(a_last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
 
-    // Verify e-values commitment opening (2-batched: e_rx, e_ry)
     let e_values_claim = whir_params
         .num_terms_2batched
         .verify(arthur, &[&evalues_commitment], &[
@@ -125,7 +119,6 @@ pub(crate) fn verify_spark_single_matrix(
         .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
         .map_err(|e| anyhow::anyhow!("FinalClaim check failed for evalues: {e}"))?;
 
-    // Verify val commitment opening (1-batched: val)
     let val_claim = whir_params
         .num_terms_1batched
         .verify(arthur, &[&val_commitment], &[sumcheck_hints[0]])
@@ -165,8 +158,6 @@ pub(crate) fn verify_spark_single_matrix(
     let gpa_eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let gpa_eval_lf: &dyn whir::algebra::linear_form::LinearForm<FieldElement> = &gpa_eval_weight;
 
-    // Verify rsws commitment opening (4-batched: row_addr, row_ts, col_addr,
-    // col_ts)
     let rsws_claim = whir_params
         .num_terms_4batched
         .verify(arthur, &[&rsws_commitment], &[
@@ -187,7 +178,6 @@ pub(crate) fn verify_spark_single_matrix(
         .prover_hint_ark()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    // Verify evalues commitment opening (2-batched: e_rx, e_ry) at GPA point
     let evalues_gpa_claim = whir_params
         .num_terms_2batched
         .verify(arthur, &[&evalues_commitment], &[row_mem, col_mem])

@@ -12,14 +12,6 @@ use {
     whir::transcript::{ProverState, VerifierMessage, VerifierState},
 };
 
-/// Runs sumcheck protocol for SPARK matrix evaluation.
-///
-/// Proves that `∑ m₀(x) · m₁(x) · m₂(x) = claimed_value` over the boolean
-/// hypercube without revealing individual polynomial values.
-///
-/// # Returns
-///
-/// Tuple of `(final_folded_values, accumulated_randomness)`
 #[instrument(skip_all)]
 pub fn run_spark_sumcheck(
     merlin: &mut ProverState<TranscriptSponge>,
@@ -94,7 +86,6 @@ pub fn run_spark_sumcheck(
     ))
 }
 
-/// Verifies a SPARK sumcheck proof from the transcript.
 pub fn run_sumcheck_verifier_spark(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     variable_count: usize,

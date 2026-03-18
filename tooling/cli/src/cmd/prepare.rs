@@ -105,7 +105,6 @@ impl Command for Args {
             NoirProofScheme::Mavros(scheme) => scheme.whir_for_witness.clone(),
         };
 
-        // Prepare Combined R1CS
         let spark_r1cs = match &scheme {
             NoirProofScheme::Noir(noir) => build_spark_r1cs_noir(
                 &noir.r1cs,

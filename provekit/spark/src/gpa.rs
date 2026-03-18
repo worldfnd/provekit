@@ -9,7 +9,6 @@ use {
     }, tracing::instrument, whir::transcript::{ProverState, VerifierMessage, VerifierState}
 };
 
-/// Runs the Grand Product Argument (GPA) protocol to prove product equality.
 #[instrument(skip_all)]
 pub fn run_gpa2(
     merlin: &mut ProverState<TranscriptSponge>,
@@ -20,8 +19,6 @@ pub fn run_gpa2(
     concatenated.extend_from_slice(right);
     let mut layers = calculate_binary_multiplication_tree(concatenated)?;
 
-    // layers[0] is the root (1 elem), layers[1] is 2 elems, etc.
-    // Drain from index 1 onward, consuming each layer.
     let mut drain = layers.drain(1..);
 
     let first_layer = drain.next().expect("tree has at least 2 layers");
@@ -48,8 +45,6 @@ pub fn run_gpa4(
 ) -> anyhow::Result<Vec<FieldElement>> {
     let mut layers = calculate_binary_multiplication_tree(leaves)?;
 
-    // layers[0] is root, layers[1] is 2 elems, layers[2] is 4 elems, etc.
-    // Drain from index 2 onward (skip root and 2-elem layer).
     let mut drain = layers.drain(2..);
 
     let coeffs = drain.next().expect("tree has at least 3 layers");
@@ -112,7 +107,6 @@ fn add_line_to_transcript(
     merlin: &mut ProverState<TranscriptSponge>,
     arr: Vec<FieldElement>,
 ) -> ([FieldElement; 1], FieldElement) {
-    // Möbius transform on 2 elements: [a, b] → [a, b-a]
     let line_poly = [arr[0], arr[1] - arr[0]];
 
     for c in line_poly.iter() {
@@ -201,7 +195,6 @@ fn run_gpa_sumcheck(
         "GPA sumcheck claim mismatch"
     );
 
-    // Möbius transform on 2 elements: [a, b] → [a, b-a]
     let line_coeffs = [final_v0, final_v1 - final_v0];
 
     for c in &line_coeffs {
@@ -238,7 +231,6 @@ fn split_even_odd(input: Vec<FieldElement>) -> (Vec<FieldElement>, Vec<FieldElem
         .unzip()
 }
 
-/// Result of GPA sumcheck verification containing final randomness and claims.
 pub struct GPASumcheckResult {
     pub claimed_values:        Vec<FieldElement>,
     pub a_last_sumcheck_value: FieldElement,

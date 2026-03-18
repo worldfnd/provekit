@@ -289,8 +289,6 @@ fn prove_from_alphas(
 
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-        // Save the alpha weight data before boxing consumes them;
-        // we need these for the RLC computation after prove().
         let alpha_weight_data: Vec<_> = weights
             .iter()
             .map(|w| (w.vector().to_vec(), w.size()))
@@ -469,7 +467,6 @@ fn prove_from_alphas(
         let claimed_evals: [FieldElement; 3] =
             std::array::from_fn(|i| claimed_eval1[i] + beta * claimed_eval2[i]);
 
-        // let k = alphas_1;
         let mut eval_point1 = final_claim1.evaluation_point.clone();
         eval_point1.insert(0, FieldElement::zero());
         let hypercube1 =

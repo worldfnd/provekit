@@ -9,10 +9,8 @@ use {
     whir::protocols::irs_commit,
 };
 
-/// WHIR witness type used throughout the SPARK prover.
 pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
 
-/// Complete SPARK proof including transcript and configuration.
 #[derive(Serialize, Deserialize)]
 pub struct SPARKProof {
     #[serde(with = "serde_hex")]
@@ -25,7 +23,6 @@ pub struct SPARKProof {
     pub matrix_dimensions: MatrixDimensions,
 }
 
-/// Dimensions of the R1CS matrices used in the proof.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MatrixDimensions {
     pub num_rows:      usize,
@@ -33,7 +30,6 @@ pub struct MatrixDimensions {
     pub nonzero_terms: usize,
 }
 
-/// WHIR commitment scheme configurations for different vector sizes.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SPARKWHIRConfigs {
     pub row:                WhirConfig,
@@ -43,14 +39,12 @@ pub struct SPARKWHIRConfigs {
     pub num_terms_4batched: WhirConfig,
 }
 
-/// SPARK matrix in COO format with memory access timestamps.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparkMatrix {
     pub coo:        COOMatrix,
     pub timestamps: TimeStamps,
 }
 
-/// Coordinate (COO) sparse matrix format storing row/col indices and values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct COOMatrix {
     pub row: Vec<usize>,
@@ -59,7 +53,6 @@ pub struct COOMatrix {
     pub val: Vec<FieldElement>,
 }
 
-/// Memory access timestamps for GPA protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeStamps {
     #[serde(with = "serde_ark_vec")]
@@ -72,14 +65,12 @@ pub struct TimeStamps {
     pub final_col: Vec<FieldElement>,
 }
 
-/// Precomputed equality check evaluations for memory arguments.
 #[derive(Debug, Clone)]
 pub struct Memory {
     pub eq_rx: Vec<FieldElement>,
     pub eq_ry: Vec<FieldElement>,
 }
 
-/// Row and column evaluation vectors at the challenge point.
 #[derive(Debug, Clone)]
 pub struct EValuesForMatrix {
     pub e_rx: Vec<FieldElement>,

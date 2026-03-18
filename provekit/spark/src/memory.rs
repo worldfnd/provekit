@@ -19,14 +19,12 @@ use {
     },
 };
 
-/// Configuration bundle for row/column axis-specific data.
 struct AxisConfig<'a> {
     eq_memory:       &'a [FieldElement],
     final_timestamp: &'a [FieldElement],
     whir_config:     &'a WhirConfig,
 }
 
-/// Proves memory consistency for a single axis (row or column).
 #[inline]
 fn prove_axis(
     merlin: &mut ProverState<TranscriptSponge>,
@@ -113,10 +111,6 @@ pub fn prove_colwise(
         tau,
     )
 }
-
-// ============================================================================
-// Verifier
-// ============================================================================
 
 #[inline]
 fn verify_axis(
@@ -217,10 +211,6 @@ pub fn verify_colwise(
     )
 }
 
-/// Generates and advances a WHIR proof at a specific evaluation point.
-///
-/// `vectors` is the slice-of-slices of evaluation vectors committed to the
-/// witness. For batch_size=1, pass `&[&single_vector]`.
 #[instrument(skip_all)]
 pub fn produce_whir_proof(
     merlin: &mut ProverState<TranscriptSponge>,

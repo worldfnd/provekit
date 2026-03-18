@@ -4,7 +4,6 @@ use provekit_common::{
     FieldElement,
 };
 
-/// Computes equality check evaluations for row and column points.
 pub fn calculate_memory(
     b: FieldElement,
     point_row: Vec<FieldElement>,
