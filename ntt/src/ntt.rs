@@ -155,6 +155,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
 
     // The order of the interleaved NTTs themselves
     let order = values.order().0;
+    debug_assert!(order.is_power_of_two(), "order: {order}\tn:{n}");
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if order <= 1 {
@@ -226,12 +227,15 @@ fn dit_nr_cache(
     num_of_polys: usize,
 ) {
     let n = input.len();
-    debug_assert!(n.is_power_of_two());
 
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
     let single_n = n / num_of_polys;
+    debug_assert!(
+        single_n.is_power_of_two(),
+        "nr cache n: {n}\tnum_of_polys: {num_of_polys}\tsingle_n:{single_n}"
+    );
 
     while num_of_groups < single_n {
         let twiddle_base = segment * num_of_groups;
