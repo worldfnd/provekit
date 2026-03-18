@@ -52,6 +52,8 @@ pub struct WHIRConfigGnark {
     pub domain_generator:       String,
     /// Batch size (number of polynomials committed together).
     pub batch_size:             usize,
+    /// Initial committer in-domain samples (query count for zkWHIR in-domain verification).
+    pub initial_in_domain_samples: usize,
 }
 
 impl WHIRConfigGnark {
@@ -112,6 +114,7 @@ impl WHIRConfigGnark {
         let domain_generator = format!("{}", domain.group_gen());
 
         let batch_size = whir_params.initial_committer.num_vectors;
+        let initial_in_domain_samples = whir_params.initial_committer.in_domain_samples;
 
         WHIRConfigGnark {
             n_rounds,
@@ -126,6 +129,7 @@ impl WHIRConfigGnark {
             final_folding_pow_bits,
             domain_generator,
             batch_size,
+            initial_in_domain_samples,
         }
     }
 }

@@ -14,7 +14,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/groth16"
-	arkSerialize "github.com/reilabs/go-ark-serialize"
 
 	"reilabs/whir-verifier-circuit/app/common"
 )
@@ -65,21 +64,20 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	fmt.Println("blindedCommitmentPolyRoot", FrDecimalToHexLE(blindedCommitmentPolyRoot.String()))
 	fmt.Println("blindedCommitmentOODPoint", blindedCommitmentOODPoint)
 	fmt.Println("blindedCommitmentOODMatrix", blindedCommitmentOODMatrix)
-	fmt.Println("err", err)
 	if err != nil {
-		return fmt.Errorf("parse commitment 1: %w", err)
+		return fmt.Errorf("parse blinded commitment: %w", err)
 	}
+	blindedCommitment := NativeCommitmentFromParsed(blindedCommitmentOODPoint, blindedCommitmentOODMatrix)
 
 	blindingCommitmentPolyRoot, blindingCommitmentOODPoint, blindingCommitmentOODMatrix, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
 	fmt.Println("blindingCommitmentPolyRoot", FrDecimalToHexLE(blindingCommitmentPolyRoot.String()))
 	fmt.Println("blindingCommitmentOODPoint", blindingCommitmentOODPoint)
 	fmt.Println("blindingCommitmentOODMatrix", blindingCommitmentOODMatrix)
-	fmt.Println("err", err)
 	if err != nil {
-		return fmt.Errorf("parse commitment 1: %w", err)
+		return fmt.Errorf("parse blinding commitment: %w", err)
 	}
-	// Pass a deferred array of at least 4 elements to satisfy the expected size
-	// The first element corresponds to hidingSpartanLinearStatementEvaluations[0], the next 3 to witnessLinearStatementEvaluations[0..2] in single mode (no public inputs)
+	blindingCommitment := NativeCommitmentFromParsed(blindingCommitmentOODPoint, blindingCommitmentOODMatrix)
+
 	fmt.Println("config.BlindedCommitmentWhirConfig", config.BlindedCommitmentWhirConfig)
 	fmt.Println("config.BlindingCommitmentWhirConfig", config.BlindingCommitmentWhirConfig)
 
@@ -105,34 +103,14 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	// 3. Spartan sumcheck: squeeze tRand, then run ZK sumcheck
 	// ---------------------------------------------------------------
 	// 3a. tRand (Spartan verifier randomness)
-	tRand, err := arthur.FillChallengeScalars(config.LogNumConstraints)
-	fmt.Println("tRand", tRand)
+	sumcheckData, err := nativeRunSumcheckVerifier(arthur, config.LogNumConstraints)
 	if err != nil {
-		return fmt.Errorf("tRand: %w", err)
+		return fmt.Errorf("sumcheck verifier: %w", err)
 	}
-
-	err = verifyCircuit([]Fp256{
-		{}, // hidingSpartanLinearStatementEvaluations[0]
-		{}, // witnessLinearStatementEvaluations[0]
-		{}, // witnessLinearStatementEvaluations[1]
-		{}, // witnessLinearStatementEvaluations[2]
-	}, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, r1cs, Interner{}, buildOps, PublicInputs{})
-	if err != nil {
-		return fmt.Errorf("failed to verify circuit: %w", err)
-	}
-	return nil
-	// 3b. ZK Sumcheck: parseBatchedCommitment for hiding spartan, sumcheck rounds, unblind,
-	//     then RunZKWhir for the hiding spartan blinding polynomial.
-	//     For now we need the WHIRConfig for hiding spartan. Since it was removed from Config,
-	//     we use the witness config parameters to drive the replay (they share the same protocol structure).
-	//     TODO: Re-add hiding spartan config or derive it.
-	spartanHidingHints, err := nativeRunZKSumcheck(arthur, config, blindingCommitmentWhirConfig)
-	if err != nil {
-		return fmt.Errorf("zk sumcheck: %w", err)
-	}
+	fmt.Println("sumcheck data:", sumcheckData)
 
 	// ---------------------------------------------------------------
-	// 4. Public inputs hash + x challenge
+	// 4. public_inputs_hash (prover_message) + x challenge (verifier_message)
 	// ---------------------------------------------------------------
 	if _, err = arthur.FillNextScalars(1); err != nil {
 		return fmt.Errorf("public inputs hash: %w", err)
@@ -142,96 +120,444 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	}
 
 	// ---------------------------------------------------------------
-	// 5. Read claimed evaluations and deferred values from hints
+	// 5. Read claimed evaluations from hints (prover_hint_ark)
 	// ---------------------------------------------------------------
 	var evals1 []Fp256
 	if err = arthur.ProverHintArk(&evals1); err != nil {
 		return fmt.Errorf("evals_1: %w", err)
 	}
-	log.Printf("Read %d claimed evaluations (commitment 1)", len(evals1))
+	fmt.Println("evals_1:", evals1)
 
-	var evals2 []Fp256
+	// Convert evals1 to []*big.Int for WHIR verification
+	evals1BigInt := fp256SliceToBigInt(evals1)
+
+	var evals2BigInt []*big.Int
 	if config.NumChallenges > 0 {
+		var evals2 []Fp256
 		if err = arthur.ProverHintArk(&evals2); err != nil {
 			return fmt.Errorf("evals_2: %w", err)
 		}
-		log.Printf("Read %d claimed evaluations (commitment 2)", len(evals2))
+		fmt.Println("evals_2:", evals2)
+		evals2BigInt = fp256SliceToBigInt(evals2)
 	}
 
-	if !config.PublicInputs.IsEmpty() {
+	hasPublicInputs := !config.PublicInputs.IsEmpty()
+	if hasPublicInputs {
 		var publicEval Fp256
 		if err = arthur.ProverHintArk(&publicEval); err != nil {
 			return fmt.Errorf("public_eval: %w", err)
 		}
-		log.Printf("Read public weight evaluation")
+		fmt.Println("public_eval:", publicEval)
 	}
 
 	// ---------------------------------------------------------------
-	// 6. Witness WHIR verify — reads submatrix hints + merkle siblings
+	// 6. zkWHIR verify (first commitment)
+	//    weightsLen: 3 (A,B,C) + optional public + 1 blinding
+	//    numPolynomials: 1 (single commitment)
 	// ---------------------------------------------------------------
-	witnessHints, err := nativeWhirVerify(arthur, blindingCommitmentWhirConfig, config.BlindedCommitmentWhirConfig)
+	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
+	zkWhirData1, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
 	if err != nil {
-		return fmt.Errorf("witness whir verify commitment 1: %w", err)
+		return fmt.Errorf("zkWHIR verify commitment 1: %w", err)
 	}
+	fmt.Println("zkWHIR verify 1 complete:", zkWhirData1)
 
-	var witnessHints2 ZKHint
+	// ---------------------------------------------------------------
+	// 7. If dual mode: zkWHIR verify (second commitment)
+	//    weights_2 has no public weight and no blinding weight → 3 weights
+	// ---------------------------------------------------------------
 	if config.NumChallenges > 0 {
-		witnessHints2, err = nativeWhirVerify(arthur, blindingCommitmentWhirConfig, config.BlindedCommitmentWhirConfig)
+		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
+		zkWhirData2, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
 		if err != nil {
-			return fmt.Errorf("witness whir verify commitment 2: %w", err)
+			return fmt.Errorf("zkWHIR verify commitment 2: %w", err)
 		}
+		fmt.Println("zkWHIR verify 2 complete:", zkWhirData2)
 	}
-
 	// ---------------------------------------------------------------
-	// Build the Hints struct from what we consumed
+	// 8. Remaining transcript consumed. Log status.
 	// ---------------------------------------------------------------
-	var witnessFirstRoundHints []FirstRoundHint
-	if config.NumChallenges > 0 {
-		witnessFirstRoundHints = []FirstRoundHint{
-			witnessHints.firstRoundMerklePaths,
-			witnessHints2.firstRoundMerklePaths,
-		}
-	} else {
-		witnessFirstRoundHints = []FirstRoundHint{witnessHints.firstRoundMerklePaths}
-	}
-
-	hints := Hints{
-		spartanHidingHint:      spartanHidingHints,
-		WitnessFirstRoundHints: witnessFirstRoundHints,
-		WitnessRoundHints:      witnessHints,
-	}
-
 	remainingHints := arthur.hints.Len()
 	remainingTranscript := len(arthur.nargString)
-	log.Printf("Hint consumption complete. Remaining: %d hint bytes, %d transcript bytes", remainingHints, remainingTranscript)
-	log.Printf("Parsed hints: spartan=%d merkle paths, witness=%d merkle paths",
-		len(hints.spartanHidingHint.roundHints.merklePaths),
-		len(hints.WitnessRoundHints.roundHints.merklePaths))
-
-	// ---------------------------------------------------------------
-	// 7. Interner deserialization (needed for circuit, kept for reference)
-	// ---------------------------------------------------------------
-	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
-	if err != nil {
-		return fmt.Errorf("failed to decode interner values: %w", err)
-	}
-	var interner Interner
-	_, err = arkSerialize.CanonicalDeserializeWithMode(
-		bytes.NewReader(internerBytes), &interner, false, false,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to deserialize interner: %w", err)
-	}
-
-	// Skip the circuit call for now — parameter passing is functional.
-	log.Printf("Parameter passing functional. Skipping circuit call.")
-	_ = hints
-	_ = interner
-	_ = pk
-	_ = vk
-	_ = buildOps
+	fmt.Printf("Native transcript replay complete. Remaining: %d hint bytes, %d transcript bytes\n", remainingHints, remainingTranscript)
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Native sumcheck verifier (mirrors Rust run_sumcheck_verifier)
+// ---------------------------------------------------------------------------
+
+// NativeSumcheckData holds the output of the native sumcheck verifier replay.
+type NativeSumcheckData struct {
+	R            []*big.Int // verifier randomness (length m0)
+	Alpha        []*big.Int // folding challenges (length m0)
+	BlindingEval *big.Int   // blinding polynomial evaluation
+	FAtAlpha     *big.Int   // f evaluated at alpha
+}
+
+// nativeEvalCubicPoly evaluates poly[0] + x*(poly[1] + x*(poly[2] + x*poly[3])) mod p.
+func nativeEvalCubicPoly(poly [4]*big.Int, point *big.Int) *big.Int {
+	// Horner's method: ((poly[3]*x + poly[2])*x + poly[1])*x + poly[0]
+	result := new(big.Int).Set(poly[3])
+	result.Mul(result, point)
+	result.Add(result, poly[2])
+	result.Mul(result, point)
+	result.Add(result, poly[1])
+	result.Mul(result, point)
+	result.Add(result, poly[0])
+	result.Mod(result, bn254Modulus)
+	return result
+}
+
+// nativeRunSumcheckVerifier replays the Spartan sumcheck transcript and
+// verifies the sumcheck equality assertions natively.
+func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckData, error) {
+	// r = verifier_message_vec(m0)
+	r, err := arthur.FillChallengeScalars(m0)
+	if err != nil {
+		return nil, fmt.Errorf("r: %w", err)
+	}
+	fmt.Println("r:", r)
+
+	// sum_g = prover_message()
+	sumGSlice, err := arthur.FillNextScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("sum_g: %w", err)
+	}
+	sumG := sumGSlice[0]
+	fmt.Println("sum_g:", sumG)
+
+	// rho = verifier_message()
+	rhoSlice, err := arthur.FillChallengeScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("rho: %w", err)
+	}
+	rho := rhoSlice[0]
+	fmt.Println("rho:", rho)
+
+	// saved_val = rho * sum_g
+	savedVal := new(big.Int).Mul(rho, sumG)
+	savedVal.Mod(savedVal, bn254Modulus)
+
+	alpha := make([]*big.Int, m0)
+
+	for i := range m0 {
+		// Read 4 cubic polynomial coefficients
+		coeffSlice, err := arthur.FillNextScalars(4)
+		if err != nil {
+			return nil, fmt.Errorf("hhat coeff round %d: %w", i, err)
+		}
+		var hhat [4]*big.Int
+		hhat[0] = coeffSlice[0]
+		hhat[1] = coeffSlice[1]
+		hhat[2] = coeffSlice[2]
+		hhat[3] = coeffSlice[3]
+
+		// alpha_i = verifier_message()
+		alphaSlice, err := arthur.FillChallengeScalars(1)
+		if err != nil {
+			return nil, fmt.Errorf("alpha round %d: %w", i, err)
+		}
+		alpha[i] = alphaSlice[0]
+
+		// Sumcheck equality assertion: saved_val == hhat(0) + hhat(1)
+		hhatAtZero := nativeEvalCubicPoly(hhat, big.NewInt(0))
+		hhatAtOne := nativeEvalCubicPoly(hhat, big.NewInt(1))
+		sum := new(big.Int).Add(hhatAtZero, hhatAtOne)
+		sum.Mod(sum, bn254Modulus)
+		if savedVal.Cmp(sum) != 0 {
+			return nil, fmt.Errorf("sumcheck equality assertion failed at round %d: %s != %s", i, savedVal.String(), sum.String())
+		}
+
+		// saved_val = hhat(alpha_i)
+		savedVal = nativeEvalCubicPoly(hhat, alpha[i])
+	}
+	fmt.Println("alpha:", alpha)
+
+	// blinding_eval = prover_message()
+	blindingSlice, err := arthur.FillNextScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("blinding_eval: %w", err)
+	}
+	blindingEval := blindingSlice[0]
+	fmt.Println("blinding_eval:", blindingEval)
+
+	// f_at_alpha = saved_val - rho * blinding_eval
+	rhoBE := new(big.Int).Mul(rho, blindingEval)
+	rhoBE.Mod(rhoBE, bn254Modulus)
+	fAtAlpha := new(big.Int).Sub(savedVal, rhoBE)
+	fAtAlpha.Mod(fAtAlpha, bn254Modulus)
+	// Ensure non-negative result (Go's Mod can return negative for negative inputs)
+	if fAtAlpha.Sign() < 0 {
+		fAtAlpha.Add(fAtAlpha, bn254Modulus)
+	}
+	fmt.Println("f_at_alpha:", fAtAlpha)
+
+	return &NativeSumcheckData{
+		R:            r,
+		Alpha:        alpha,
+		BlindingEval: blindingEval,
+		FAtAlpha:     fAtAlpha,
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Native zkWHIR verification transcript replay
+// ---------------------------------------------------------------------------
+
+// ZKWhirVerifyParams bundles the config values needed to replay the zkWHIR
+// verify transcript. All counts refer to the Rust Config fields.
+type ZKWhirVerifyParams struct {
+	NumPolynomials int // commitment.f_hat.len() (typically 1)
+	WeightsLen     int // number of weight linear forms (includes blinding weight)
+}
+
+// newZKWhirVerifyParams derives the transcript replay parameters from the
+// Config and blinded/blinding WHIRParams. The caller only needs to supply
+// numPolynomials and weightsLen which depend on the call site.
+func newZKWhirVerifyParams(numPolynomials int, hasPublicInputs bool) ZKWhirVerifyParams {
+	// weightsLen: 3 (A,B,C) + 1 (blinding) = 4 without public inputs
+	//             3 (A,B,C) + 1 (public) + 1 (blinding) = 5 with public inputs
+	// The blinding weight is the last one; it is an internal zkWHIR weight used
+	// to compute numWFoldedEvals from the transcript, but its evaluation is NOT
+	// in the external evaluations slice passed to NativeWhirVerify.
+	weightsLen := 4
+	if hasPublicInputs {
+		weightsLen = 5
+	}
+	return ZKWhirVerifyParams{
+		NumPolynomials: numPolynomials,
+		WeightsLen:     weightsLen,
+	}
+}
+
+// NativeZKWhirData holds the transcript values parsed by nativeZKWhirVerify.
+type NativeZKWhirData struct {
+	BlindingChallenge    *big.Int
+	WFoldedBlindingEvals []*big.Int
+	MaskingChallenge     *big.Int
+	InitialQueryIndices  []int
+	Tau1                 *big.Int
+	Tau2                 *big.Int
+	// Per-gamma, per-polynomial evaluations: [gamma_idx][poly_idx] → (m_eval, g_hat_evals...)
+	PerGammaEvals  [][][]*big.Int
+	CombinedClaims []*big.Int
+	BatchedHClaims []*big.Int
+}
+
+// nativeIRSCommitVerify replays the initial_committer.verify() transcript
+// operations: squeeze in-domain challenge indices, read submatrix hint, read
+// Merkle proof hints.
+func nativeIRSCommitVerify(
+	arthur *NativeArthur,
+	numQueries int,
+	domainSize int,
+	foldingFactorPower int,
+) ([]int, error) {
+	// in_domain_challenges: squeeze challenge bytes → query indices
+	indices, err := nativeGetStirChallenges(arthur, numQueries, domainSize, foldingFactorPower)
+	if err != nil {
+		return nil, fmt.Errorf("initial in-domain challenges: %w", err)
+	}
+	fmt.Println("initial_committer indices:", indices)
+
+	// prover_hint_ark: read submatrix from hints
+	var submatrix []Fp256
+	if err = arthur.ProverHintArk(&submatrix); err != nil {
+		return nil, fmt.Errorf("initial submatrix: %w", err)
+	}
+	fmt.Println("initial_committer submatrix len:", len(submatrix))
+
+	// matrix_commit.verify: read Merkle proof from hints
+	foldedDomainSize := domainSize / foldingFactorPower
+	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
+	dedupedIndices := make([]int, len(indices))
+	copy(dedupedIndices, indices)
+	sort.Ints(dedupedIndices)
+	dedupedIndices = dedup(dedupedIndices)
+
+	_, err = consumeMerkleHints(arthur, dedupedIndices, treeHeight)
+	if err != nil {
+		return nil, fmt.Errorf("initial merkle: %w", err)
+	}
+
+	return indices, nil
+}
+
+// nativeZKWhirVerify replays the zkWHIR Config::verify() transcript.
+// It parses all transcript messages in the same order as the Rust verifier,
+// calling nativeIRSCommitVerify for the initial commitment and NativeWhirVerify
+// for the blinded/blinding commitment WHIR verifications.
+//
+// blindedCommitment and blindingCommitment are the parsed commitments from
+// nativeParseBatchedCommitment, converted via NativeCommitmentFromParsed.
+// evaluations are the claimed linear form evaluations from the Spartan layer.
+func nativeZKWhirVerify(
+	arthur *NativeArthur,
+	config Config,
+	blindedWhirParams WHIRParams,
+	blindingWhirParams WHIRParams,
+	params ZKWhirVerifyParams,
+	blindedCommitment *NativeCommitment,
+	blindingCommitment *NativeCommitment,
+	evaluations []*big.Int,
+) (*NativeZKWhirData, error) {
+	data := &NativeZKWhirData{}
+
+	// Derive parameters from WHIRParams:
+	// μ = num_witness_variables = blinded commitment's initial_num_variables (NVars)
+	numWitnessVariables := blindedWhirParams.MVParamsNumberOfVariables
+	// interleaving_depth = 1 << initial_folding_factor = 1 << foldingFactorArray[0]
+	interleavingDepth := 1 << blindedWhirParams.FoldingFactorArray[0]
+
+	// ---------------------------------------------------------------
+	// 1. blinding_challenge = verifier_message()
+	// ---------------------------------------------------------------
+	bc, err := arthur.FillChallengeScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("blinding_challenge: %w", err)
+	}
+	data.BlindingChallenge = bc[0]
+	fmt.Println("blinding_challenge:", data.BlindingChallenge)
+
+	// ---------------------------------------------------------------
+	// 2. w_folded_blinding_evals = prover_messages_vec(num_w_folded_evals)
+	//    num_w_folded_evals = weights.len() * num_polynomials * (μ + 1)
+	// ---------------------------------------------------------------
+	numWFoldedEvals := params.WeightsLen * params.NumPolynomials * (numWitnessVariables + 1)
+	wfbe, err := arthur.FillNextScalars(numWFoldedEvals)
+	if err != nil {
+		return nil, fmt.Errorf("w_folded_blinding_evals: %w", err)
+	}
+	data.WFoldedBlindingEvals = wfbe
+	fmt.Println("w_folded_blinding_evals:", wfbe)
+
+	// ---------------------------------------------------------------
+	// 3. masking_challenge = verifier_message()
+	// ---------------------------------------------------------------
+	mc, err := arthur.FillChallengeScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("masking_challenge: %w", err)
+	}
+	data.MaskingChallenge = mc[0]
+	fmt.Println("masking_challenge:", data.MaskingChallenge)
+
+	// ---------------------------------------------------------------
+	// 4. initial_committer.verify() — IRS commit in-domain verification
+	//    domainSize = blinded WHIRParams DomainSize
+	//    foldingFactorPower = interleaving_depth = 1 << foldingFactor[0]
+	//    numQueries = initial_in_domain_samples from config
+	// ---------------------------------------------------------------
+
+	indices, err := nativeIRSCommitVerify(
+		arthur,
+		blindedWhirParams.InitialInDomainSamples,
+		blindedWhirParams.DomainSize,
+		interleavingDepth,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("initial_committer: %w", err)
+	}
+	data.InitialQueryIndices = indices
+
+	// h_gammas = all_gammas(initial_in_domain.points)
+	// Each query point expands to interleavingDepth gamma points.
+	hGammasCount := len(indices) * interleavingDepth
+	fmt.Println("h_gammas count:", hGammasCount)
+
+	// ---------------------------------------------------------------
+	// 5. tau1 = verifier_message(), tau2 = verifier_message()
+	// ---------------------------------------------------------------
+	tau1Slice, err := arthur.FillChallengeScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("tau1: %w", err)
+	}
+	data.Tau1 = tau1Slice[0]
+	fmt.Println("tau1:", data.Tau1)
+
+	tau2Slice, err := arthur.FillChallengeScalars(1)
+	if err != nil {
+		return nil, fmt.Errorf("tau2: %w", err)
+	}
+	data.Tau2 = tau2Slice[0]
+	fmt.Println("tau2:", data.Tau2)
+
+	// ---------------------------------------------------------------
+	// 6. Per-gamma evaluation loop
+	//    For each gamma in h_gammas:
+	//      For each polynomial:
+	//        m_eval      = prover_message()
+	//        g_hat_evals = prover_message() × num_witness_variables
+	// ---------------------------------------------------------------
+	evalsPerPoly := 1 + numWitnessVariables // m_eval + g_hat_evals
+	data.PerGammaEvals = make([][][]*big.Int, hGammasCount)
+	for g := range hGammasCount {
+		data.PerGammaEvals[g] = make([][]*big.Int, params.NumPolynomials)
+		for p := range params.NumPolynomials {
+			vals, err := arthur.FillNextScalars(evalsPerPoly)
+			if err != nil {
+				return nil, fmt.Errorf("gamma %d poly %d evals: %w", g, p, err)
+			}
+			data.PerGammaEvals[g][p] = vals
+		}
+	}
+	fmt.Println("per-gamma evals parsed:", hGammasCount, "gammas x", params.NumPolynomials, "polys")
+
+	// ---------------------------------------------------------------
+	// 7. combined_claims = prover_messages_vec(num_polynomials)
+	//    batched_h_claims = prover_messages_vec(num_polynomials)
+	// ---------------------------------------------------------------
+	data.CombinedClaims, err = arthur.FillNextScalars(params.NumPolynomials)
+	if err != nil {
+		return nil, fmt.Errorf("combined_claims: %w", err)
+	}
+	fmt.Println("combined_claims:", data.CombinedClaims)
+
+	data.BatchedHClaims, err = arthur.FillNextScalars(params.NumPolynomials)
+	if err != nil {
+		return nil, fmt.Errorf("batched_h_claims: %w", err)
+	}
+	fmt.Println("batched_h_claims:", data.BatchedHClaims)
+
+	// ---------------------------------------------------------------
+	// 8. blinded_commitment.verify() — full WHIR verification
+	//    Verifies the witness polynomial commitment using NativeWhirVerify.
+	// ---------------------------------------------------------------
+	// numLinearForms excludes the blinding weight (last in WeightsLen) because
+	// the blinding evaluation is not part of the external evaluations slice.
+	blindedResult, err := NativeWhirVerify(
+		arthur,
+		blindedWhirParams,
+		config.BlindedCommitmentWhirConfig,
+		[]*NativeCommitment{blindedCommitment},
+		evaluations,
+		params.WeightsLen-1,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("blinded_commitment verify: %w", err)
+	}
+	fmt.Println("blinded WHIR FinalClaim:", blindedResult.FinalClaim)
+
+	// ---------------------------------------------------------------
+	// 9. blinding_commitment.verify() — full WHIR verification
+	//    Verifies the blinding polynomial commitment using NativeWhirVerify.
+	//    The blinding commitment has 1 linear form (the blinding weight).
+	// ---------------------------------------------------------------
+	blindingResult, err := NativeWhirVerify(
+		arthur,
+		blindingWhirParams,
+		config.BlindingCommitmentWhirConfig,
+		[]*NativeCommitment{blindingCommitment},
+		nil, // blinding commitment has no external evaluations
+		0,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("blinding_commitment verify: %w", err)
+	}
+	fmt.Println("blinding WHIR FinalClaim:", blindingResult.FinalClaim)
+
+	return data, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +658,8 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 	// --- Geometric challenges: vector_rlc_coeffs ---
 	numVectors := whirParams.BatchSize
 	if numVectors >= 2 {
-		if _, err := arthur.FillChallengeScalars(1); err != nil {
+		if x, err := arthur.FillChallengeScalars(1); err != nil {
+			fmt.Println("x", x)
 			return ZKHint{}, fmt.Errorf("vector_rlc: %w", err)
 		}
 	}

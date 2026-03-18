@@ -28,18 +28,19 @@ type FullMultiPath[Digest any] struct {
 
 // WHIR specific types
 type WHIRConfig struct {
-	NRounds             int    `json:"n_rounds"`
-	Rate                int    `json:"rate"`
-	NVars               int    `json:"n_vars"`
-	FoldingFactor       []int  `json:"folding_factor"`
-	OODSamples          []int  `json:"ood_samples"`
-	NumQueries          []int  `json:"num_queries"`
-	PowBits             []int  `json:"pow_bits"`
-	FinalQueries        int    `json:"final_queries"`
-	FinalPowBits        int    `json:"final_pow_bits"`
-	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
-	DomainGenerator     string `json:"domain_generator"`
-	BatchSize           int    `json:"batch_size"`
+	NRounds                 int    `json:"n_rounds"`
+	Rate                    int    `json:"rate"`
+	NVars                   int    `json:"n_vars"`
+	FoldingFactor           []int  `json:"folding_factor"`
+	OODSamples              []int  `json:"ood_samples"`
+	NumQueries              []int  `json:"num_queries"`
+	PowBits                 []int  `json:"pow_bits"`
+	FinalQueries            int    `json:"final_queries"`
+	FinalPowBits            int    `json:"final_pow_bits"`
+	FinalFoldingPowBits     int    `json:"final_folding_pow_bits"`
+	DomainGenerator         string `json:"domain_generator"`
+	BatchSize               int    `json:"batch_size"`
+	InitialInDomainSamples  int    `json:"initial_in_domain_samples"`  // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
 }
 
 type WHIRParams struct {
@@ -57,6 +58,7 @@ type WHIRParams struct {
 	FinalSumcheckRounds                  int
 	MVParamsNumberOfVariables            int
 	BatchSize                            int
+	InitialInDomainSamples               int
 }
 
 type MainRoundData struct {

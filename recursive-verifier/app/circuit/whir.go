@@ -44,6 +44,7 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
 		BatchSize:                            cfg.BatchSize,
+		InitialInDomainSamples:               cfg.InitialInDomainSamples,
 	}
 }
 

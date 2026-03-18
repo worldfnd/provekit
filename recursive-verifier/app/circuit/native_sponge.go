@@ -109,21 +109,67 @@ func nativePermuteV2(state *[2]*big.Int) {
 
 // ---------------------------------------------------------------------------
 // NativeSponge: duplex sponge over BN254 scalars using PermuteV2
-// Matches gnark-nimue DuplexSponge<SkyscraperState> with R=1.
+// Matches Rust DuplexSponge<Skyscraper, 64, 32> with byte-level position
+// tracking. State is 64 bytes (2 field elements), rate R = 32 bytes.
 // ---------------------------------------------------------------------------
 
+const spongeRate = 32
+
 type NativeSponge struct {
-	state      [2]*big.Int
-	absorbPos  int
-	squeezePos int
+	state      [64]byte
+	absorbPos  int // 0..spongeRate (byte-level)
+	squeezePos int // 0..spongeRate (byte-level)
 }
 
 func newNativeSponge() *NativeSponge {
 	return &NativeSponge{
-		state:      [2]*big.Int{big.NewInt(0), big.NewInt(0)},
-		absorbPos:  0,
-		squeezePos: 1,
+		squeezePos: spongeRate,
 	}
+}
+
+func (s *NativeSponge) permute() {
+	left := leBytesToNativeBigInt(s.state[:32])
+	right := leBytesToNativeBigInt(s.state[32:])
+	st := [2]*big.Int{left, right}
+	nativePermuteV2(&st)
+	lBytes := nativeBigIntToLeBytes(st[0])
+	rBytes := nativeBigIntToLeBytes(st[1])
+	copy(s.state[:32], lBytes[:])
+	copy(s.state[32:], rBytes[:])
+}
+
+// Absorb writes input bytes into the rate portion of the state, permuting
+// when the rate is full. Matches DuplexSponge::absorb exactly.
+func (s *NativeSponge) Absorb(input []byte) {
+	if len(input) == 0 {
+		return
+	}
+	if s.absorbPos == spongeRate {
+		s.absorbPos = 0
+		s.squeezePos = spongeRate
+		s.permute()
+	}
+	chunkLen := min(len(input), spongeRate-s.absorbPos)
+	copy(s.state[s.absorbPos:s.absorbPos+chunkLen], input[:chunkLen])
+	s.absorbPos += chunkLen
+	s.Absorb(input[chunkLen:])
+}
+
+// Squeeze reads output bytes from the rate portion of the state, permuting
+// when the rate is exhausted. Matches DuplexSponge::squeeze exactly.
+func (s *NativeSponge) Squeeze(output []byte) {
+	if len(output) == 0 {
+		return
+	}
+	if s.squeezePos == spongeRate {
+		s.squeezePos = 0
+		s.absorbPos = 0
+		s.permute()
+	}
+	chunkLen := min(len(output), spongeRate-s.squeezePos)
+	copy(output[:chunkLen], s.state[s.squeezePos:s.squeezePos+chunkLen])
+	s.squeezePos += chunkLen
+	s.Squeeze(output[chunkLen:])
 }
 
 // InitFromProtocolID initializes the sponge by absorbing the 64-byte protocol_id
@@ -131,9 +177,9 @@ func newNativeSponge() *NativeSponge {
 // If sessionID is nil or shorter than 32 bytes, session_id is absorbed as Fr(0).
 // This matches spongefish's DomainSeparator initialization.
 func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte) {
-	s.state = [2]*big.Int{big.NewInt(0), big.NewInt(0)}
+	s.state = [64]byte{}
 	s.absorbPos = 0
-	s.squeezePos = 1
+	s.squeezePos = spongeRate
 	sessionID = make([]byte, 32)
 
 	s.AbsorbFr(leBytesToNativeBigInt(protocolID[:32]))
@@ -147,26 +193,17 @@ func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte)
 	s.AbsorbFr(sessionFr)
 }
 
+// AbsorbFr absorbs a field element as 32 LE bytes.
 func (s *NativeSponge) AbsorbFr(val *big.Int) {
-	s.squeezePos = 1
-	if s.absorbPos == 1 {
-		nativePermuteV2(&s.state)
-		s.absorbPos = 0
-	}
-	s.state[s.absorbPos] = new(big.Int).Set(val).Mod(val, bn254Modulus)
-	s.absorbPos++
+	leBytes := nativeBigIntToLeBytes(val)
+	s.Absorb(leBytes[:])
 }
 
+// SqueezeFr squeezes 32 bytes and interprets them as a LE field element.
 func (s *NativeSponge) SqueezeFr() *big.Int {
-	s.absorbPos = 0
-	if s.squeezePos == 1 {
-		s.squeezePos = 0
-		nativePermuteV2(&s.state)
-	}
-	val := new(big.Int).Set(s.state[s.squeezePos])
-	val.Mod(val, bn254Modulus)
-	s.squeezePos++
-	return val
+	var buf [32]byte
+	s.Squeeze(buf[:])
+	return leBytesToNativeBigInt(buf[:])
 }
 
 func leBytesToNativeBigInt(b []byte) *big.Int {
@@ -191,11 +228,9 @@ func nativeBigIntToLeBytes(v *big.Int) [32]byte {
 	return buf
 }
 
-// stateTo64Hex returns the sponge state (left, right) as 64 bytes LE, hex-encoded.
-func stateTo64Hex(state *[2]*big.Int) string {
-	l := nativeBigIntToLeBytes(state[0])
-	r := nativeBigIntToLeBytes(state[1])
-	return fmt.Sprintf("%x%x", l, r)
+// stateTo64Hex returns the sponge state as 64 bytes LE, hex-encoded.
+func stateTo64Hex(state *[64]byte) string {
+	return fmt.Sprintf("%x%x", state[:32], state[32:])
 }
 
 // ---------------------------------------------------------------------------
@@ -273,22 +308,11 @@ func (a *NativeArthur) FillNextBytes(n int) ([]byte, error) {
 	return raw, nil
 }
 
-const safeBytesPerSqueeze = 15
-
-// FillChallengeBytes squeezes field elements and extracts bytes (LE),
-// 15 safe random bytes per squeeze. Matches gnark-nimue nativeArthur behavior.
+// FillChallengeBytes squeezes n bytes directly from the sponge.
+// Uses byte-level squeeze tracking, matching Rust DuplexSponge exactly.
 func (a *NativeArthur) FillChallengeBytes(n int) ([]byte, error) {
 	out := make([]byte, n)
-	for i := 0; i < n; i += safeBytesPerSqueeze {
-		elem := a.sponge.SqueezeFr()
-		end := min(safeBytesPerSqueeze, n-i)
-		for k := 0; k < end; k++ {
-			var tmp big.Int
-			tmp.And(elem, big.NewInt(0xff))
-			out[i+k] = byte(tmp.Int64())
-			elem.Rsh(elem, 8)
-		}
-	}
+	a.sponge.Squeeze(out)
 	return out, nil
 }
 
@@ -324,11 +348,12 @@ func nativeGetStirChallenges(
 	foldedDomainSize := domainSize / foldingFactorPower
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
 
+	fmt.Println("domainSizeBytes", domainSizeBytes*numQueries)
 	challengeBytes, err := arthur.FillChallengeBytes(domainSizeBytes * numQueries)
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Println("challengeBytes", challengeBytes)
 	bitLength := bits.Len(uint(foldedDomainSize)) - 1
 	mask := (1 << bitLength) - 1
 
