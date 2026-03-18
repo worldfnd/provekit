@@ -14,7 +14,10 @@ pub const MAX_SIGNED_ATTRIBUTES_SIZE: usize = 200;
 pub const MAX_DG1_SIZE: usize = 95;
 pub const SIG_BYTES: usize = 256;
 pub const MAX_ECONTENT_SIZE: usize = 200;
-pub const MAX_TBS_SIZE: usize = 1300;
+pub const MAX_TBS_SIZE: usize = 720;
+pub const MAX_TBS_SIZE_1300: usize = 1300;
+pub const CHUNK1_SIZE: usize = 640;
+pub const TREE_DEPTH: usize = 24;
 
 #[derive(Debug, Clone)]
 pub enum DigestAlgorithm {
@@ -214,4 +217,13 @@ pub enum PassportError {
     InvalidDate(String),
     #[error("Unsupported digest algorithm: {0}")]
     UnsupportedDigestAlgorithm(String),
+    #[error("Invalid hex field '{field}': {source}")]
+    InvalidHexField {
+        field:  String,
+        source: hex::FromHexError,
+    },
+    #[error("Invalid leaf_index '{value}': must be a non-negative integer")]
+    InvalidLeafIndex { value: String },
+    #[error("SHA256 computation error: {0}")]
+    Sha256Error(String),
 }

@@ -14,12 +14,14 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-wasm",
   "tooling/verifier-server",
   "ntt",
   "provekit/spark",
   "tooling/spark-cli",
+  "poseidon2",
+  "playground/passport-input-gen",
 ]
-exclude = ["playground/passport-input-gen"]
 
 [workspace.package]
 edition = "2021"
@@ -88,6 +90,7 @@ fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }
 ntt = { path = "ntt" }
+poseidon2 = { path = "poseidon2" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
@@ -95,12 +98,13 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover" }
+provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-spark = { path = "provekit/spark" }
 spark-cli = { path = "tooling/spark-cli" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
 anyhow = "1.0.93"
@@ -130,8 +134,6 @@ seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = { version = "0.10.9", features = ["asm"] }
-sha3 = "0.11.0-rc.3"
-blake3 = "1.5.6"
 test-case = "3.3.1"
 tikv-jemallocator = "0.6"
 toml = "0.8.8"
@@ -149,6 +151,17 @@ zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
 
+# WASM-specific dependencies
+js-sys = "0.3"
+lzma-rs = "0.3"
+ruzstd = "0.8"
+wasm-bindgen-rayon = "1.2"
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
@@ -164,13 +177,12 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.1
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
   "scalar_field",
 ] }
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree", "parallel"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "split_main"}
+mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }

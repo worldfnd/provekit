@@ -1,24 +1,43 @@
 [package]
 name = "passport-input-gen"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 description = "Passport input generator"
 
-[dependencies]
-rsa = { version = "0.9.8", features = ["sha2"] }
-sha2 = { version = "0.10", features = ["compress"] }
-x509-parser = "0.16"
-base64 = "0.22"
-hex = "0.4"
-rasn = "0.15"
-rasn-pkix = "0.15"
-rasn-cms = "0.15"
-chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.143"
-toml = "0.8"
-noir-bignum-paramgen = "0.1.5"
-thiserror = "2.0.16"
-signature = "2.2"
-lazy_static = "1.5.0"
+[lints]
+workspace = true
 
+[dependencies]
+# Workspace dependencies
+poseidon2.workspace = true
+anyhow.workspace = true
+ark-bn254.workspace = true
+ark-ff.workspace = true
+base64.workspace = true
+hex.workspace = true
+noirc_abi.workspace = true
+provekit-common.workspace = true
+provekit-prover.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = { workspace = true, features = ["compress"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+
+# Crate-specific dependencies
+chrono = { version = "0.4", features = ["serde"] }
+argh.workspace = true
+lazy_static = "1.5.0"
+noir-bignum-paramgen = "0.1.5"
+rasn = "0.15"
+rasn-cms = "0.15"
+rasn-pkix = "0.15"
+rsa = { version = "0.9.8", features = ["sha2"] }
+signature = "2.2"
+thiserror = "2.0.16"
+x509-parser = "0.16"

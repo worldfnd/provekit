@@ -725,6 +725,48 @@ impl NoirToR1CSCompiler {
         breakdown.range_constraints = self.r1cs.num_constraints() - constraints_before_range;
         breakdown.range_witnesses = self.num_witnesses() - witnesses_before_range;
 
+        // Noir's Circuit.opcodes may not reference every witness declared in
+        // Circuit.public_parameters (e.g. public inputs declared but not constrained).
+        // Create builders for any public inputs that the opcode loop above
+        // missed.
+        for acir_idx in circuit.public_inputs().indices() {
+            self.fetch_r1cs_witness_index(NoirWitness(acir_idx));
+        }
+
         Ok(breakdown)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        acir::circuit::PublicInputs as AcirPublicInputs,
+        provekit_common::witness::WitnessBuilder,
+        std::collections::{BTreeSet, HashSet},
+    };
+
+    /// Regression: public inputs absent from all opcodes must still get
+    /// builders (case for unconstrained public inputs), otherwise
+    /// split_and_prepare_layers fails with NoBuilderForPublicInput.
+    #[test]
+    fn dead_public_input_compiles() {
+        let circuit = Circuit {
+            public_parameters: AcirPublicInputs(BTreeSet::from([NoirWitness(1)])),
+            opcodes: vec![],
+            ..Default::default()
+        };
+        let (r1cs, witness_map, witness_builders) =
+            noir_to_r1cs(&circuit).expect("noir_to_r1cs should succeed");
+
+        let acir_public_inputs: HashSet<u32> =
+            circuit.public_inputs().indices().iter().cloned().collect();
+        WitnessBuilder::split_and_prepare_layers(
+            &witness_builders,
+            r1cs,
+            witness_map,
+            acir_public_inputs,
+        )
+        .expect("split_and_prepare_layers should not fail with NoBuilderForPublicInput");
     }
 }

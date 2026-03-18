@@ -13,7 +13,7 @@ repository.workspace = true
 mavros-artifacts.workspace = true
 provekit-common.workspace = true
 provekit-gnark.workspace = true
-provekit-prover.workspace = true
+provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
 provekit-spark.workspace = true
 provekit-verifier.workspace = true
@@ -33,7 +33,6 @@ base64.workspace = true
 hex.workspace = true
 postcard.workspace = true
 rayon.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 tikv-jemallocator = { workspace = true, optional = true }
 tracing.workspace = true

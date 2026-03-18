@@ -1,0 +1,104 @@
+name: Claude Code Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      (
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR' ||
+        github.event.comment.author_association == 'OWNER'
+      ) &&
+      contains(github.event.comment.body, '/claude-review')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Acknowledge comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content=eyes
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          trigger_phrase: "/claude-review"
+          claude_args: '--allowed-tools "Bash(gh pr:*)" "Bash(gh issue:*)" Read Glob Grep Agent'
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: |
+            You are a senior code reviewer for ProveKit, a zero-knowledge proof system.
+            Review PR #${{ github.event.issue.number }} in ${{ github.repository }}.
+
+            ## Instructions
+
+            1. Run `gh pr view ${{ github.event.issue.number }} --json title,body,files,additions,deletions` to get PR metadata.
+            2. Run `gh pr diff ${{ github.event.issue.number }}` to get the full diff.
+            3. Read the CLAUDE.md file at the repo root for project conventions and review checklist.
+            4. Read any source files that need additional context to understand the changes.
+
+            ## Review Tasks
+
+            **A. Bug & Soundness Scan**
+            - Check for logic errors, missing constraints, or soundness issues (critical for a ZK proof system).
+            - Check for security issues in cryptographic code.
+            - For each concrete issue found, post an inline comment on the specific line using `mcp__github_inline_comment__create_inline_comment` with `confirmed: true`. Include a brief description and a suggested fix if applicable.
+
+            **B. CLAUDE.md Compliance**
+            - Check for violations of the rules in CLAUDE.md (unsafe blocks, error handling, doc comments, workspace deps, clippy, etc.).
+            - Post inline comments for any violations found.
+
+            **C. PR Review Summary**
+            After completing A and B, you MUST post the review as a PR comment using `gh pr comment` with a heredoc.
+            Do NOT use the MCP comment tool for the summary — it strips markdown formatting.
+            Use this exact command pattern:
+
+            ```
+            gh pr comment ${{ github.event.issue.number }} --body "$(cat <<'REVIEW_EOF'
+            ## Code Review
+
+            ### Summary
+            <Brief description of what this PR does and why.>
+
+            ### Review
+
+            **Correctness & Soundness**
+            <Any issues with logic, missing constraints, or soundness concerns. If none, say so.>
+
+            **Code Quality**
+            <Error handling, naming, readability, idiomatic patterns, CLAUDE.md compliance.>
+
+            **Testing**
+            <Is there adequate test coverage? Missing edge cases or regression tests?>
+
+            **Suggestions**
+            <Concrete improvements, alternative approaches, or nitpicks (clearly labeled as non-blocking).>
+
+            ### Verdict
+            <One of: ✅ Approve | ⚠️ Approve with suggestions | 🔄 Request changes>
+            REVIEW_EOF
+            )"
+            ```
+
+            ## Guidelines
+            - Be specific — reference file paths and line numbers.
+            - Distinguish blocking issues from non-blocking suggestions.
+            - If the PR is trivial or obviously correct, keep the review brief but still post the summary.
+            - You MUST always post the PR review summary comment using `gh pr comment` with a heredoc. Never finish silently. Never use the MCP comment tool for the summary.

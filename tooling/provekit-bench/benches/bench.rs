@@ -30,7 +30,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
     bencher.bench_local(|| {
         let prover = black_box(prover.clone());
         let witness_path = black_box(&witness_path);
-        prover.prove(witness_path)
+        prover.prove_with_toml(witness_path)
     });
 }
 
@@ -52,7 +52,7 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
             })
             .expect("Reading prover failed");
         let prover = black_box(prover);
-        prover.prove(black_box(&witness_path))
+        prover.prove_with_toml(black_box(&witness_path))
     });
 }
 

@@ -2,9 +2,6 @@ use {
     anyhow::{ensure, Result},
     ark_ff::{AdditiveGroup, UniformRand},
     ark_std::{One, Zero},
-    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::{interpreter::Phase1Result, Field},
-    nargo::insert_all_files_for_workspace_into_file_manager,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
@@ -23,7 +20,6 @@ use {
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
-    spongefish::Unit,
     std::borrow::Cow,
     tracing::instrument,
     whir::{
@@ -32,6 +28,11 @@ use {
         transcript::{ProverState, VerifierMessage},
         utils::zip_strict,
     },
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
+    mavros_vm::interpreter::Phase1Result,
 };
 
 pub struct BlindingState {
@@ -64,6 +65,7 @@ pub trait WhirR1CSProver {
         public_inputs: &PublicInputs,
     ) -> Result<(WhirR1CSProof, R1CSSparkQuery)>;
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
@@ -188,6 +190,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         Ok((whir_r1cs_proof, final_claim))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(skip_all)]
     fn prove_mavros(
         &self,
@@ -206,10 +209,11 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .as_ref()
             .expect("c1 must carry blinding state");
 
+        let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-            phase1.out_a,
-            phase1.out_b,
-            phase1.out_c,
+            a,
+            b,
+            c,
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
@@ -277,7 +281,7 @@ fn prove_from_alphas(
                 &commitment.polynomial,
                 public_weight,
             );
-            merlin.prover_hint_ark(&public_eval);
+            merlin.prover_message(&public_eval);
         }
 
         let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
@@ -357,7 +361,7 @@ fn prove_from_alphas(
 
         let public_1 = if !public_inputs.is_empty() {
             let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
-            merlin.prover_hint_ark(&p1);
+            merlin.prover_message(&p1);
             Some(p1)
         } else {
             None
@@ -725,20 +729,17 @@ pub fn run_two_sumcheck(
     let mut b_mle = alphas[1].to_vec();
     let mut c_mle = alphas[2].to_vec();
     loop {
-        let [a_hhat_i_at_0, a_hhat_i_at_1, a_highest_coeff, b_hhat_i_at_0, b_highest_coeff, b_hhat_i_at_1, c_hhat_i_at_0, c_hhat_i_at_1, c_highest_coeff] =
+        let [a_hhat_i_at_0, a_highest_coeff, b_hhat_i_at_0, b_highest_coeff, c_hhat_i_at_0, c_highest_coeff] =
             sumcheck_fold_map_reduce(
                 [&mut h_mle, &mut a_mle, &mut b_mle, &mut c_mle],
                 fold,
                 |[h_mle, a_mle, b_mle, c_mle]| {
                     [
                         h_mle.0 * a_mle.0,
-                        h_mle.1 * a_mle.1,
                         (h_mle.1 - h_mle.0) * (a_mle.1 - a_mle.0),
                         h_mle.0 * b_mle.0,
-                        h_mle.1 * b_mle.1,
                         (h_mle.1 - h_mle.0) * (b_mle.1 - b_mle.0),
                         h_mle.0 * c_mle.0,
-                        h_mle.1 * c_mle.1,
                         (h_mle.1 - h_mle.0) * (c_mle.1 - c_mle.0),
                     ]
                 },
@@ -755,9 +756,8 @@ pub fn run_two_sumcheck(
 
         a_hhat_i_coeffs[0] = a_hhat_i_at_0;
         a_hhat_i_coeffs[2] = a_highest_coeff;
-        a_hhat_i_coeffs[1] = a_hhat_i_at_1 - a_hhat_i_at_0 - a_highest_coeff;
-
-        assert!(a_hhat_i_at_0 + a_hhat_i_at_1 == claimed_values[0]);
+        a_hhat_i_coeffs[1] = 
+            claimed_values[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[2];
 
         for a_coeff in &a_hhat_i_coeffs {
             merlin.prover_message(a_coeff);

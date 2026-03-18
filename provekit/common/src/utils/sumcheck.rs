@@ -227,6 +227,7 @@ pub fn multiply_transposed_by_eq_alpha(
         },
         || ct.hydrate(interner) * eq_alpha.as_slice(),
     );
+
     [a, b, c]
 }
 

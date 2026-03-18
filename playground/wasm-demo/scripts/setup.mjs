@@ -1,0 +1,556 @@
+#!/usr/bin/env node
+/**
+ * Setup script for ProveKit WASM browser demo.
+ *
+ * Usage:
+ *   node scripts/setup.mjs
+ *
+ * Builds WASM + CLI once, then prepares both SHA256 and Poseidon circuits
+ * into artifacts/sha256/ and artifacts/poseidon/ respectively.
+ */
+
+import { execSync, spawnSync } from "child_process";
+import {
+  existsSync,
+  mkdirSync,
+  copyFileSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+} from "fs";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = resolve(__dirname, "../../..");
+const DEMO_DIR = resolve(__dirname, "..");
+const WASM_PKG_DIR = join(ROOT_DIR, "tooling/provekit-wasm/pkg");
+
+const CIRCUITS = [
+  { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
+  { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
+];
+
+// Colors for console output
+const colors = {
+  reset: "\x1b[0m",
+  bright: "\x1b[1m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  red: "\x1b[31m",
+};
+
+function log(msg, color = colors.reset) {
+  console.log(`${color}${msg}${colors.reset}`);
+}
+
+function logStep(step, msg) {
+  console.log(
+    `\n${colors.blue}[${step}]${colors.reset} ${colors.bright}${msg}${colors.reset}`
+  );
+}
+
+function logSuccess(msg) {
+  console.log(`${colors.green}✓${colors.reset} ${msg}`);
+}
+
+function logError(msg) {
+  console.error(`${colors.red}✗ ${msg}${colors.reset}`);
+}
+
+function run(cmd, opts = {}) {
+  log(`  $ ${cmd}`, colors.yellow);
+  try {
+    execSync(cmd, { stdio: "inherit", ...opts });
+    return true;
+  } catch (e) {
+    logError(`Command failed: ${cmd}`);
+    return false;
+  }
+}
+
+function checkCommand(cmd, name) {
+  const result = spawnSync("which", [cmd], { stdio: "pipe" });
+  if (result.status !== 0) {
+    logError(`${name} not found. Please install it first.`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Get circuit name from Nargo.toml
+ */
+function getCircuitName(circuitDir) {
+  const nargoToml = join(circuitDir, "Nargo.toml");
+  if (!existsSync(nargoToml)) {
+    throw new Error(`Nargo.toml not found in ${circuitDir}`);
+  }
+
+  const content = readFileSync(nargoToml, "utf-8");
+  const match = content.match(/^name\s*=\s*"([^"]+)"/m);
+  if (!match) {
+    throw new Error("Could not find circuit name in Nargo.toml");
+  }
+  return match[1];
+}
+
+/**
+ * Parse a TOML value (handles strings, arrays, inline tables)
+ */
+function parseTomlValue(valueStr) {
+  valueStr = valueStr.trim();
+
+  // String
+  if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
+    return valueStr.slice(1, -1);
+  }
+
+  // Single-quoted literal string (TOML literal strings)
+  if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
+    return valueStr.slice(1, -1);
+  }
+
+  // Inline table { key = "value", ... }
+  if (valueStr.startsWith("{") && valueStr.endsWith("}")) {
+    const inner = valueStr.slice(1, -1).trim();
+    const obj = {};
+    // Parse key = value pairs, handling nested structures
+    let depth = 0;
+    let currentKey = "";
+    let currentValue = "";
+    let inKey = true;
+    let inString = false;
+
+    for (let i = 0; i < inner.length; i++) {
+      const char = inner[i];
+
+      if (char === '"' && inner[i - 1] !== "\\") {
+        inString = !inString;
+      }
+
+      if (!inString) {
+        if (char === "{" || char === "[") depth++;
+        if (char === "}" || char === "]") depth--;
+
+        if (char === "=" && depth === 0 && inKey) {
+          inKey = false;
+          continue;
+        }
+
+        if (char === "," && depth === 0) {
+          if (currentKey.trim() && currentValue.trim()) {
+            obj[currentKey.trim()] = parseTomlValue(currentValue.trim());
+          }
+          currentKey = "";
+          currentValue = "";
+          inKey = true;
+          continue;
+        }
+      }
+
+      if (inKey) {
+        currentKey += char;
+      } else {
+        currentValue += char;
+      }
+    }
+
+    // Handle last key-value pair
+    if (currentKey.trim() && currentValue.trim()) {
+      obj[currentKey.trim()] = parseTomlValue(currentValue.trim());
+    }
+
+    return obj;
+  }
+
+  // Array [ ... ]
+  if (valueStr.startsWith("[") && valueStr.endsWith("]")) {
+    const inner = valueStr.slice(1, -1).trim();
+    if (!inner) return [];
+
+    const items = [];
+    let depth = 0;
+    let current = "";
+    let inString = false;
+
+    for (let i = 0; i < inner.length; i++) {
+      const char = inner[i];
+
+      if (char === '"' && inner[i - 1] !== "\\") {
+        inString = !inString;
+      }
+
+      if (!inString) {
+        if (char === "{" || char === "[") depth++;
+        if (char === "}" || char === "]") depth--;
+
+        if (char === "," && depth === 0) {
+          if (current.trim()) {
+            items.push(parseTomlValue(current.trim()));
+          }
+          current = "";
+          continue;
+        }
+      }
+
+      current += char;
+    }
+
+    if (current.trim()) {
+      items.push(parseTomlValue(current.trim()));
+    }
+
+    return items;
+  }
+
+  // Number or bare string
+  return valueStr;
+}
+
+/**
+ * Check if brackets are balanced in a string
+ */
+function areBracketsBalanced(str) {
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (char === '"' && str[i - 1] !== "\\") {
+      inString = !inString;
+    }
+    if (!inString) {
+      if (char === "[" || char === "{") depth++;
+      if (char === "]" || char === "}") depth--;
+    }
+  }
+  return depth === 0;
+}
+
+/**
+ * Parse Prover.toml to JSON for browser demo
+ */
+function parseProverToml(content) {
+  const result = {};
+  const lines = content.split("\n");
+  let currentSection = null;
+  let pendingLine = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i].trim();
+
+    // Skip comments and empty lines (unless we're accumulating a multi-line value)
+    if (!pendingLine && (!line || line.startsWith("#"))) continue;
+
+    // If we have a pending line, append this line to it
+    if (pendingLine) {
+      // Skip comment lines within multi-line values
+      if (line.startsWith("#")) continue;
+      pendingLine += " " + line;
+      line = pendingLine;
+
+      // Check if brackets are balanced now
+      if (!areBracketsBalanced(line)) {
+        continue; // Keep accumulating
+      }
+      pendingLine = "";
+    }
+
+    // Section header [section]
+    const sectionMatch = line.match(/^\[([^\]]+)\]$/);
+    if (sectionMatch) {
+      currentSection = sectionMatch[1];
+      continue;
+    }
+
+    // Key = value (find first = that's not inside a string or nested structure)
+    const eqIndex = findTopLevelEquals(line);
+    if (eqIndex !== -1) {
+      const key = line.slice(0, eqIndex).trim();
+      const valueStr = line.slice(eqIndex + 1).trim();
+
+      // Check if this is an incomplete multi-line value
+      if (!areBracketsBalanced(valueStr)) {
+        pendingLine = line;
+        continue;
+      }
+
+      const value = parseTomlValue(valueStr);
+
+      const fullKey = currentSection ? `${currentSection}.${key}` : key;
+      setNestedValue(result, fullKey, value);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Find the first = that's not inside quotes or nested structures
+ */
+function findTopLevelEquals(line) {
+  let inString = false;
+  let depth = 0;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"' && line[i - 1] !== "\\") {
+      inString = !inString;
+    }
+
+    if (!inString) {
+      if (char === "{" || char === "[") depth++;
+      if (char === "}" || char === "]") depth--;
+      if (char === "=" && depth === 0) {
+        return i;
+      }
+    }
+  }
+
+  return -1;
+}
+
+function setNestedValue(obj, path, value) {
+  const parts = path.split(".");
+  let current = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!(parts[i] in current)) {
+      current[parts[i]] = {};
+    }
+    current = current[parts[i]];
+  }
+  current[parts[parts.length - 1]] = value;
+}
+
+async function buildShared() {
+  log("\n🔧 ProveKit WASM Demo Setup\n", colors.bright);
+
+  // Check prerequisites
+  logStep("1/5", "Checking prerequisites...");
+
+  if (!checkCommand("nargo", "Noir (nargo)")) {
+    log(
+      "\nInstall Noir:\n  curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash"
+    );
+    log("  noirup --version v1.0.0-beta.11");
+    process.exit(1);
+  }
+  logSuccess("nargo found");
+
+  if (!checkCommand("wasm-bindgen", "wasm-bindgen-cli")) {
+    log("\nInstall wasm-bindgen-cli:\n  cargo install wasm-bindgen-cli");
+    process.exit(1);
+  }
+  logSuccess("wasm-bindgen found");
+
+  if (!checkCommand("cargo", "Rust (cargo)")) {
+    log("\nInstall Rust: https://rustup.rs");
+    process.exit(1);
+  }
+  logSuccess("cargo found");
+
+  // Install npm deps and copy vendor files for browser import map
+  logStep("2/5", "Installing noir-lang npm packages...");
+  if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
+    process.exit(1);
+  }
+  const vendorDir = join(DEMO_DIR, "vendor");
+  const vendorMappings = [
+    { pkg: "@noir-lang/acvm_js", dest: "acvm_js" },
+    { pkg: "@noir-lang/noirc_abi", dest: "noirc_abi" },
+  ];
+  for (const { pkg, dest } of vendorMappings) {
+    const srcDir = join(DEMO_DIR, "node_modules", pkg);
+    const destDir = join(vendorDir, dest);
+    if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+    for (const entry of readdirSync(srcDir)) {
+      if (entry.endsWith(".js") || entry.endsWith(".wasm") || entry.endsWith(".d.ts")) {
+        copyFileSync(join(srcDir, entry), join(destDir, entry));
+      }
+    }
+  }
+  logSuccess("Vendor files copied from node_modules");
+
+  // Build WASM package with thread support (requires -Z build-std for atomics)
+  logStep("3/5", "Building WASM package with thread support...");
+
+  // cargo build with -Z build-std to rebuild std with atomics support
+  // RUSTFLAGS for atomics/shared-memory are in .cargo/config.toml
+  if (!run(
+    `cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std`,
+    { cwd: ROOT_DIR }
+  )) {
+    process.exit(1);
+  }
+
+  // Generate JS bindings from the built .wasm
+  if (!run(
+    `wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm`,
+    { cwd: ROOT_DIR }
+  )) {
+    process.exit(1);
+  }
+  logSuccess("WASM package built");
+
+  // Copy WASM package to demo/pkg
+  const wasmDestDir = join(DEMO_DIR, "pkg");
+  if (!existsSync(wasmDestDir)) {
+    mkdirSync(wasmDestDir, { recursive: true });
+  }
+
+  for (const file of [
+    "provekit_wasm_bg.wasm",
+    "provekit_wasm.js",
+    "provekit_wasm.d.ts",
+    "package.json",
+  ]) {
+    const src = join(WASM_PKG_DIR, file);
+    const dest = join(wasmDestDir, file);
+    if (existsSync(src)) {
+      copyFileSync(src, dest);
+    }
+  }
+
+  // Copy snippets directory (for wasm-bindgen-rayon worker helpers)
+  const snippetsDir = join(WASM_PKG_DIR, "snippets");
+  if (existsSync(snippetsDir)) {
+    const snippetsDestDir = join(wasmDestDir, "snippets");
+    if (!existsSync(snippetsDestDir)) {
+      mkdirSync(snippetsDestDir, { recursive: true });
+    }
+    function copyDirRecursive(src, dest) {
+      if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
+      for (const entry of readdirSync(src, { withFileTypes: true })) {
+        const srcPath = join(src, entry.name);
+        const destPath = join(dest, entry.name);
+        if (entry.isDirectory()) {
+          copyDirRecursive(srcPath, destPath);
+        } else {
+          copyFileSync(srcPath, destPath);
+        }
+      }
+    }
+    copyDirRecursive(snippetsDir, snippetsDestDir);
+    logSuccess("WASM snippets copied (for thread pool)");
+
+    function patchWorkerHelpers(dir) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          patchWorkerHelpers(fullPath);
+        } else if (entry.name === "workerHelpers.js") {
+          let content = readFileSync(fullPath, "utf-8");
+          content = content.replace(
+            "import('../../..')",
+            "import('../../../provekit_wasm.js')"
+          );
+          writeFileSync(fullPath, content);
+        }
+      }
+    }
+    patchWorkerHelpers(snippetsDestDir);
+    logSuccess("Worker helpers patched for browser imports");
+  }
+  logSuccess("WASM package copied to demo/pkg");
+
+  // Build native CLI
+  logStep("4/5", "Building native CLI...");
+  if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
+    process.exit(1);
+  }
+  logSuccess("Native CLI built");
+}
+
+async function prepareCircuit({ name, path: circuitDir }) {
+  const artifactsDir = join(DEMO_DIR, "artifacts", name);
+  if (!existsSync(artifactsDir)) {
+    mkdirSync(artifactsDir, { recursive: true });
+  }
+
+  // Validate circuit directory
+  if (!existsSync(circuitDir)) {
+    logError(`Circuit directory not found: ${circuitDir}`);
+    process.exit(1);
+  }
+
+  const circuitName = getCircuitName(circuitDir);
+  log(`\n📦 Preparing circuit: ${name} (${circuitName})`, colors.bright);
+  log(`   Path: ${circuitDir}`);
+
+  // Compile Noir circuit
+  logStep(`${name}`, `Compiling Noir circuit (${circuitName})...`);
+  if (!run("nargo compile", { cwd: circuitDir })) {
+    process.exit(1);
+  }
+  logSuccess("Circuit compiled");
+
+  // Copy compiled circuit
+  const circuitSrc = join(circuitDir, `target/${circuitName}.json`);
+  const circuitDest = join(artifactsDir, "circuit.json");
+  if (!existsSync(circuitSrc)) {
+    logError(`Compiled circuit not found: ${circuitSrc}`);
+    process.exit(1);
+  }
+  copyFileSync(circuitSrc, circuitDest);
+  logSuccess(`Circuit artifact copied (${circuitName}.json -> circuit.json)`);
+
+  // Prepare prover/verifier artifacts
+  logStep(`${name}`, "Preparing prover/verifier artifacts...");
+  const cliPath = join(ROOT_DIR, "target/release-fast/provekit-cli");
+  const proverBinPath = join(artifactsDir, "prover.pkp");
+  const verifierBinPath = join(artifactsDir, "verifier.pkv");
+
+  if (
+    !run(
+      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
+      { cwd: artifactsDir }
+    )
+  ) {
+    process.exit(1);
+  }
+  logSuccess("prover.pkp and verifier.pkv created");
+
+
+  // Copy Prover.toml and convert to inputs.json
+  logStep(`${name}`, "Preparing inputs...");
+  const proverTomlSrc = join(circuitDir, "Prover.toml");
+  const proverTomlDest = join(artifactsDir, "Prover.toml");
+  copyFileSync(proverTomlSrc, proverTomlDest);
+  logSuccess("Prover.toml copied");
+
+  // Convert Prover.toml to inputs.json for browser demo
+  const tomlContent = readFileSync(proverTomlSrc, "utf-8");
+  const inputs = parseProverToml(tomlContent);
+  const inputsJsonPath = join(artifactsDir, "inputs.json");
+  writeFileSync(inputsJsonPath, JSON.stringify(inputs, null, 2));
+  logSuccess("inputs.json created");
+
+  // Save circuit metadata
+  const metadataPath = join(artifactsDir, "metadata.json");
+  writeFileSync(
+    metadataPath,
+    JSON.stringify({ name: circuitName, path: circuitDir }, null, 2)
+  );
+  logSuccess("metadata.json created");
+}
+
+async function main() {
+  await buildShared();
+
+  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
+  for (const circuit of CIRCUITS) {
+    await prepareCircuit(circuit);
+  }
+
+  log("\n\u2705 Setup complete!\n", colors.green + colors.bright);
+  log("Run the demo with:", colors.bright);
+  log("  node scripts/serve.mjs    # Start browser demo server");
+  log("  # Open http://localhost:8080\n");
+}
+
+main().catch((err) => {
+  logError(err.message);
+  process.exit(1);
+});
