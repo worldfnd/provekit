@@ -533,7 +533,8 @@ fn mul_mod_no_reduce(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 
 /// Convert a `[u64; 4]` bigint to a `FieldElement`.
 pub fn bigint_to_fe(val: &[u64; 4]) -> FieldElement {
-    FieldElement::from_bigint(ark_ff::BigInt(*val)).unwrap()
+    FieldElement::from_bigint(ark_ff::BigInt(*val))
+        .expect("bigint value exceeds BN254 field modulus")
 }
 
 /// Read a `FieldElement` witness as a `[u64; 4]` bigint.

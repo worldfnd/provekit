@@ -9,10 +9,7 @@ mod scalar_relation;
 
 pub use provekit_common::witness::{Limbs, MAX_LIMBS};
 use {
-    crate::{
-        constraint_helpers::{add_constant_witness, constrain_boolean},
-        noir_to_r1cs::NoirToR1CSCompiler,
-    },
+    crate::{constraint_helpers::constrain_boolean, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{AdditiveGroup, Field, PrimeField},
     curve::Curve,
     ec_points::{NativeEcOps, NonNativeEcOps},

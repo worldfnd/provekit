@@ -39,11 +39,16 @@ use super::limb_io::{
     ColumnEqParams, ColumnEqTerms,
 };
 
+/// Read a solved witness value, panicking with the index if not yet solved.
+fn get_witness(witness: &[Option<FieldElement>], idx: usize) -> FieldElement {
+    witness[idx].unwrap_or_else(|| panic!("witness at index {idx} not yet solved"))
+}
+
 /// Resolve a ConstantOrR1CSWitness to its FieldElement value.
 fn resolve(witness: &[Option<FieldElement>], v: &ConstantOrR1CSWitness) -> FieldElement {
     match v {
         ConstantOrR1CSWitness::Constant(c) => *c,
-        ConstantOrR1CSWitness::Witness(idx) => witness[*idx].unwrap(),
+        ConstantOrR1CSWitness::Witness(idx) => get_witness(witness, *idx),
     }
 }
 
@@ -62,7 +67,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*witness_idx] = Some(noir_to_native(
                     *acir_witness_idx_to_value_map
                         .get_index(*acir_witness_idx as u32)
-                        .unwrap(),
+                        .expect("ACIR witness index not found in witness map"),
                 ));
             }
             WitnessBuilder::Sum(witness_idx, operands) => {
@@ -71,17 +76,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
                         .iter()
                         .map(|SumTerm(coeff, witness_idx)| {
                             if let Some(coeff) = coeff {
-                                *coeff * witness[*witness_idx].unwrap()
+                                *coeff * get_witness(witness, *witness_idx)
                             } else {
-                                witness[*witness_idx].unwrap()
+                                get_witness(witness, *witness_idx)
                             }
                         })
                         .fold(FieldElement::zero(), |acc, x| acc + x),
                 );
             }
             WitnessBuilder::Product(witness_idx, operand_idx_a, operand_idx_b) => {
-                let a: FieldElement = witness[*operand_idx_a].unwrap();
-                let b: FieldElement = witness[*operand_idx_b].unwrap();
+                let a: FieldElement = get_witness(witness, *operand_idx_a);
+                let b: FieldElement = get_witness(witness, *operand_idx_b);
                 witness[*witness_idx] = Some(a * b);
             }
             WitnessBuilder::Inverse(..) | WitnessBuilder::LogUpInverse(..) => {
@@ -90,21 +95,22 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 )
             }
             WitnessBuilder::SafeInverse(witness_idx, operand_idx) => {
-                let val = witness[*operand_idx].unwrap();
+                let val = get_witness(witness, *operand_idx);
                 witness[*witness_idx] = Some(if val == FieldElement::zero() {
                     FieldElement::zero()
                 } else {
-                    val.inverse().unwrap()
+                    val.inverse()
+                        .expect("non-zero field element must have an inverse")
                 });
             }
             WitnessBuilder::ModularInverse(witness_idx, operand_idx, modulus) => {
-                let a_limbs = fe_to_bigint(witness[*operand_idx].unwrap());
+                let a_limbs = fe_to_bigint(get_witness(witness, *operand_idx));
                 let m_limbs = modulus.into_bigint().0;
                 let exp = sub_u64(&m_limbs, 2);
                 witness[*witness_idx] = Some(bigint_to_fe(&mod_pow(&a_limbs, &exp, &m_limbs)));
             }
             WitnessBuilder::IntegerQuotient(witness_idx, dividend_idx, divisor) => {
-                let d_limbs = fe_to_bigint(witness[*dividend_idx].unwrap());
+                let d_limbs = fe_to_bigint(get_witness(witness, *dividend_idx));
                 let m_limbs = divisor.into_bigint().0;
                 let (quotient, _) = divmod(&d_limbs, &m_limbs);
                 witness[*witness_idx] = Some(bigint_to_fe(&quotient));
@@ -117,7 +123,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let sum: FieldElement = terms
                     .iter()
                     .map(|SumTerm(coeff, idx)| {
-                        let val = witness[*idx].unwrap();
+                        let val = get_witness(witness, *idx);
                         coeff.map_or(val, |c| c * val)
                     })
                     .fold(FieldElement::zero(), |acc, x| acc + x);
@@ -133,10 +139,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 rs_challenge,
                 value,
             ) => {
-                let index = witness[*index].unwrap();
-                let value = witness[*value].unwrap();
-                let rs_challenge = witness[*rs_challenge].unwrap();
-                let sz_challenge = witness[*sz_challenge].unwrap();
+                let index = get_witness(witness, *index);
+                let value = get_witness(witness, *value);
+                let rs_challenge = get_witness(witness, *rs_challenge);
+                let sz_challenge = get_witness(witness, *sz_challenge);
                 witness[*witness_idx] =
                     Some(sz_challenge - (*index_coeff * index + rs_challenge * value));
             }
@@ -145,7 +151,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 for value_witness_idx in value_witnesses {
                     // If the value is representable as just a u64, then it should be the least
                     // significant value in the BigInt representation.
-                    let value = witness[*value_witness_idx].unwrap().into_bigint().0[0];
+                    let value = get_witness(witness, *value_witness_idx).into_bigint().0[0];
                     multiplicities[value as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -162,7 +168,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 WitnessCoefficient(value_coeff, value),
             ) => {
                 witness[*witness_idx] = Some(
-                    witness[*sz_challenge].unwrap() - (*value_coeff * witness[*value].unwrap()),
+                    get_witness(witness, *sz_challenge)
+                        - (*value_coeff * get_witness(witness, *value)),
                 );
             }
             WitnessBuilder::ProductLinearOperation(
@@ -170,8 +177,9 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 ProductLinearTerm(x, a, b),
                 ProductLinearTerm(y, c, d),
             ) => {
-                witness[*witness_idx] =
-                    Some((*a * witness[*x].unwrap() + *b) * (*c * witness[*y].unwrap() + *d));
+                witness[*witness_idx] = Some(
+                    (*a * get_witness(witness, *x) + *b) * (*c * get_witness(witness, *y) + *d),
+                );
             }
             WitnessBuilder::DigitalDecomposition(dd_struct) => {
                 dd_struct.solve(witness);
@@ -185,13 +193,13 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 WitnessCoefficient(timer, timer_witness),
             ) => {
                 witness[*witness_idx] = Some(
-                    witness[*sz_challenge].unwrap()
-                        - (*addr * witness[*addr_witness].unwrap()
-                            + witness[*rs_challenge].unwrap() * witness[*value].unwrap()
-                            + witness[*rs_challenge].unwrap()
-                                * witness[*rs_challenge].unwrap()
+                    get_witness(witness, *sz_challenge)
+                        - (*addr * get_witness(witness, *addr_witness)
+                            + get_witness(witness, *rs_challenge) * get_witness(witness, *value)
+                            + get_witness(witness, *rs_challenge)
+                                * get_witness(witness, *rs_challenge)
                                 * *timer
-                                * witness[*timer_witness].unwrap()),
+                                * get_witness(witness, *timer_witness)),
                 );
             }
             WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
@@ -210,10 +218,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let rhs = resolve(witness, rhs);
                 let output = resolve(witness, output);
                 witness[*witness_idx] = Some(
-                    witness[*sz_challenge].unwrap()
+                    get_witness(witness, *sz_challenge)
                         - (lhs
-                            + witness[*rs_challenge].unwrap() * rhs
-                            + witness[*rs_challenge_sqrd].unwrap() * output),
+                            + get_witness(witness, *rs_challenge) * rhs
+                            + get_witness(witness, *rs_challenge_sqrd) * output),
                 );
             }
             WitnessBuilder::CombinedBinOpLookupDenominator(
@@ -233,11 +241,11 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let xor_out = resolve(witness, xor_output);
                 // Encoding: sz - (lhs + rs*rhs + rs²*and_out + rs³*xor_out)
                 witness[*witness_idx] = Some(
-                    witness[*sz_challenge].unwrap()
+                    get_witness(witness, *sz_challenge)
                         - (lhs
-                            + witness[*rs_challenge].unwrap() * rhs
-                            + witness[*rs_sqrd].unwrap() * and_out
-                            + witness[*rs_cubed].unwrap() * xor_out),
+                            + get_witness(witness, *rs_challenge) * rhs
+                            + get_witness(witness, *rs_sqrd) * and_out
+                            + get_witness(witness, *rs_cubed) * xor_out),
                 );
             }
             WitnessBuilder::MultiplicitiesForBinOp(witness_idx, atomic_bits, operands) => {
@@ -426,7 +434,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*output] = Some(FieldElement::from(q));
             }
             WitnessBuilder::BytePartition { lo, hi, x, k } => {
-                let x_val = witness[*x].unwrap().into_bigint().0[0];
+                let x_val = get_witness(witness, *x).into_bigint().0[0];
                 assert!(
                     x_val < 256,
                     "BytePartition input must be 8-bit, got {x_val}"
@@ -446,8 +454,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 curve_order,
             } => {
                 let s_val = reconstruct_from_halves(
-                    &fe_to_bigint(witness[*s_lo].unwrap()),
-                    &fe_to_bigint(witness[*s_hi].unwrap()),
+                    &fe_to_bigint(get_witness(witness, *s_lo)),
+                    &fe_to_bigint(get_witness(witness, *s_hi)),
                 );
 
                 let (val1, val2, neg1, neg2) = half_gcd(&s_val, curve_order);
@@ -464,8 +472,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 curve_a,
                 field_modulus_p,
             } => {
-                let px_val = fe_to_bigint(witness[*px].unwrap());
-                let py_val = fe_to_bigint(witness[*py].unwrap());
+                let px_val = fe_to_bigint(get_witness(witness, *px));
+                let py_val = fe_to_bigint(get_witness(witness, *py));
 
                 let (lambda, x3, y3) =
                     ec_point_double_with_lambda(&px_val, &py_val, curve_a, field_modulus_p);
@@ -482,10 +490,10 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 y2,
                 field_modulus_p,
             } => {
-                let x1_val = fe_to_bigint(witness[*x1].unwrap());
-                let y1_val = fe_to_bigint(witness[*y1].unwrap());
-                let x2_val = fe_to_bigint(witness[*x2].unwrap());
-                let y2_val = fe_to_bigint(witness[*y2].unwrap());
+                let x1_val = fe_to_bigint(get_witness(witness, *x1));
+                let y1_val = fe_to_bigint(get_witness(witness, *y1));
+                let x2_val = fe_to_bigint(get_witness(witness, *x2));
+                let y2_val = fe_to_bigint(get_witness(witness, *y2));
 
                 let (lambda, x3, y3) =
                     ec_point_add_with_lambda(&x1_val, &y1_val, &x2_val, &y2_val, field_modulus_p);
@@ -772,17 +780,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
             } => {
                 let n = *num_limbs as usize;
                 let scalar = reconstruct_from_halves(
-                    &fe_to_bigint(witness[*s_lo].unwrap()),
-                    &fe_to_bigint(witness[*s_hi].unwrap()),
+                    &fe_to_bigint(get_witness(witness, *s_lo)),
+                    &fe_to_bigint(get_witness(witness, *s_hi)),
                 );
 
                 let px_val = if n == 1 {
-                    fe_to_bigint(witness[px_limbs[0]].unwrap())
+                    fe_to_bigint(get_witness(witness, px_limbs[0]))
                 } else {
                     read_witness_limbs(witness, px_limbs, *limb_bits)
                 };
                 let py_val = if n == 1 {
-                    fe_to_bigint(witness[py_limbs[0]].unwrap())
+                    fe_to_bigint(get_witness(witness, py_limbs[0]))
                 } else {
                     read_witness_limbs(witness, py_limbs, *limb_bits)
                 };
@@ -805,14 +813,14 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 on_false,
                 on_true,
             } => {
-                let f = witness[*flag].unwrap();
-                let a = witness[*on_false].unwrap();
-                let b = witness[*on_true].unwrap();
+                let f = get_witness(witness, *flag);
+                let a = get_witness(witness, *on_false);
+                let b = get_witness(witness, *on_true);
                 witness[*output] = Some(a + f * (b - a));
             }
             WitnessBuilder::BooleanOr { output, a, b } => {
-                let a_val = witness[*a].unwrap();
-                let b_val = witness[*b].unwrap();
+                let a_val = get_witness(witness, *a);
+                let b_val = get_witness(witness, *b);
                 witness[*output] = Some(a_val + b_val - a_val * b_val);
             }
             WitnessBuilder::SignedBitHint {
@@ -825,7 +833,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     "SignedBitHint: num_bits={} exceeds 128; scalar would be silently truncated",
                     num_bits
                 );
-                let s_fe = witness[*scalar].unwrap();
+                let s_fe = get_witness(witness, *scalar);
                 let s_big = s_fe.into_bigint().0;
                 let s_val: u128 = s_big[0] as u128 | ((s_big[1] as u128) << 64);
                 let n = *num_bits;
@@ -855,7 +863,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 packed,
                 chunk_bits,
             } => {
-                let packed_val = witness[*packed].unwrap().into_bigint().0[0];
+                let packed_val = get_witness(witness, *packed).into_bigint().0[0];
                 let mut offset = 0u32;
                 for (i, &bits) in chunk_bits.iter().enumerate() {
                     let mask = (1u64 << bits) - 1;
@@ -865,7 +873,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 }
             }
             WitnessBuilder::SpreadWitness(output_idx, input_idx) => {
-                let input_val = witness[*input_idx].unwrap().into_bigint().0[0];
+                let input_val = get_witness(witness, *input_idx).into_bigint().0[0];
                 let spread = compute_spread(input_val);
                 witness[*output_idx] = Some(FieldElement::from(spread));
             }
@@ -879,7 +887,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 let sum_fe: FieldElement = sum_terms
                     .iter()
                     .map(|SumTerm(coeff, idx)| {
-                        let v = witness[*idx].unwrap();
+                        let v = get_witness(witness, *idx);
                         if let Some(c) = coeff {
                             *c * v
                         } else {
@@ -916,8 +924,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 }
             }
             WitnessBuilder::SpreadLookupDenominator(idx, sz, rs, input, spread_output) => {
-                let sz_val = witness[*sz].unwrap();
-                let rs_val = witness[*rs].unwrap();
+                let sz_val = get_witness(witness, *sz);
+                let rs_val = get_witness(witness, *rs);
                 let input_val = resolve(witness, input);
                 let spread_val = resolve(witness, spread_output);
                 // sz - (input + rs * spread_output)

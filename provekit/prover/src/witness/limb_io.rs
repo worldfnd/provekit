@@ -14,7 +14,8 @@ use {
 
 /// Convert a u128 value to a FieldElement.
 pub(super) fn u128_to_fe(val: u128) -> FieldElement {
-    FieldElement::from_bigint(BigInt([val as u64, (val >> 64) as u64, 0, 0])).unwrap()
+    FieldElement::from_bigint(BigInt([val as u64, (val >> 64) as u64, 0, 0]))
+        .expect("u128 value exceeds BN254 field modulus")
 }
 
 /// Read witness limbs and reconstruct as [u64; 4].
@@ -31,7 +32,10 @@ pub(super) fn read_witness_limbs(
                 "read_witness_limbs: index {idx} out of bounds (witness len {})",
                 witness.len()
             );
-            let bigint = witness[idx].unwrap().into_bigint().0;
+            let bigint = witness[idx]
+                .unwrap_or_else(|| panic!("witness limb at index {idx} not yet solved"))
+                .into_bigint()
+                .0;
             bigint[0] as u128 | ((bigint[1] as u128) << 64)
         })
         .collect();
