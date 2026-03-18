@@ -14,38 +14,53 @@ fn main() {
 // (log2 of per-polynomial NTT size, number of polynomials)
 const NTT_CASES: &[(u32, usize)] = &[(22, 1), (24, 1)];
 
-// (poly_size_log2, expansion, interleaving_depth_log2)
-const RS_CASES: &[(u32, usize, u32)] = &[(22, 2, 4)];
+const RS_CASES: &[(u32, usize, usize)] = &[
+    (16, 2, 2),
+    (18, 2, 2),
+    (20, 2, 3),
+    (16, 4, 3),
+    (18, 4, 3),
+    (20, 4, 4),
+    (22, 4, 4),
+];
 
 #[divan::bench(args = RS_CASES)]
-fn provekit_rs(bencher: Bencher, &(log_n, expansion, log_depth): &(u32, usize, u32)) {
+fn provekit_rs(bencher: Bencher, case: &(u32, usize, usize)) {
     let ntt = InPlaceNTT::<FieldElement>::default();
     bencher
         .with_inputs(|| {
+            let (exp, expansion, coset_sz) = *case;
             let mut rng = ark_std::test_rng();
-            let coeffs: Vec<FieldElement> = (0..1usize << log_n)
-                .map(|_| FieldElement::rand(&mut rng))
-                .collect();
-            (coeffs, expansion, 1usize << log_depth)
+            let size = 1 << exp;
+            let coeffs: Vec<_> = (0..size).map(|_| FieldElement::rand(&mut rng)).collect();
+            (coeffs, expansion, coset_sz)
         })
-        .bench_values(|(coeffs, expansion, depth)| {
-            black_box(ntt.interleaved_encode(&[&coeffs, &coeffs, &coeffs], expansion, depth))
+        .bench_values(|(coeffs, expansion, coset_sz)| {
+            black_box(ntt.interleaved_encode(
+                &[&coeffs],
+                (coeffs.len() >> coset_sz) * expansion,
+                1 << coset_sz,
+            ))
         });
 }
 
 #[divan::bench(args = RS_CASES)]
-fn ark_rs(bencher: Bencher, &(log_n, expansion, log_depth): &(u32, usize, u32)) {
+fn ark_rs(bencher: Bencher, case: &(u32, usize, usize)) {
     let ntt = ArkNtt::<FieldElement>::default();
     bencher
         .with_inputs(|| {
+            let (exp, expansion, coset_sz) = *case;
             let mut rng = ark_std::test_rng();
-            let coeffs: Vec<FieldElement> = (0..1usize << log_n)
-                .map(|_| FieldElement::rand(&mut rng))
-                .collect();
-            (coeffs, expansion, 1usize << log_depth)
+            let size = 1 << exp;
+            let coeffs: Vec<_> = (0..size).map(|_| FieldElement::rand(&mut rng)).collect();
+            (coeffs, expansion, coset_sz)
         })
-        .bench_values(|(coeffs, expansion, depth)| {
-            black_box(ntt.interleaved_encode(&[&coeffs, &coeffs, &coeffs], expansion, depth))
+        .bench_values(|(coeffs, expansion, coset_sz)| {
+            black_box(ntt.interleaved_encode(
+                &[&coeffs],
+                (coeffs.len() >> coset_sz) * expansion,
+                1 << coset_sz,
+            ))
         });
 }
 
