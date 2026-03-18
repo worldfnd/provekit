@@ -315,7 +315,7 @@ func nativeIRSCommitVerifyWithPoints(
 ) ([]int, error) {
 	fmt.Println("nativeIRSCommitVerifyWithPoints numQueries:", numQueries, "domainSize:", domainSize, "foldingFactorPower:", foldingFactorPower)
 	// Squeeze challenge indices
-	indices, err := nativeGetStirChallenges(arthur, numQueries, domainSize, foldingFactorPower)
+	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
 		return nil, fmt.Errorf("stir challenges: %w", err)
 	}
@@ -472,7 +472,10 @@ func NativeWhirVerify(
 			},
 		}, nil
 	}
-
+	fmt.Println("evaluations:", evaluations)
+	fmt.Println("numVectors:", numVectors)
+	numLinearForms = len(evaluations) / numVectors
+	fmt.Println("numLinearForms:", numLinearForms)
 	// ---------------------------------------------------------------
 	// 1. Complete OOD evaluation matrix with cross-terms
 	// ---------------------------------------------------------------
@@ -522,6 +525,7 @@ func NativeWhirVerify(
 	// 3. Constraint RLC
 	// ---------------------------------------------------------------
 	totalConstraints := len(oodsEvalInfos) + numLinearForms
+	fmt.Println("totalConstraints:", totalConstraints)
 	constraintRLCCoeffs, err := nativeGeometricChallenge(arthur, totalConstraints)
 	if err != nil {
 		return nil, fmt.Errorf("constraint_rlc: %w", err)
@@ -623,15 +627,15 @@ func NativeWhirVerify(
 		if prev == prevInitial {
 			inDomainIndices, err = nativeIRSCommitVerifyWithPoints(
 				arthur,
-				whirParams.RoundParametersNumOfQueries[r],
+				whirParams.InitialInDomainSamples,
 				domainSize,
 				foldingFactorPower,
 			)
 		} else {
-			prevFF := 1 << whirParams.FoldingFactorArray[r]
+			prevFF := 1 << whirParams.FoldingFactorArray[r-1]
 			inDomainIndices, err = nativeIRSCommitVerifyWithPoints(
 				arthur,
-				whirParams.RoundParametersNumOfQueries[r],
+				whirParams.RoundParametersNumOfQueries[r-1],
 				domainSize,
 				prevFF,
 			)
@@ -746,9 +750,9 @@ func NativeWhirVerify(
 	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
 	finalIndices, err := nativeGetStirChallenges(
 		arthur,
+		domainSize/finalFoldingFactorPower,
 		whirParams.FinalQueries,
-		domainSize,
-		finalFoldingFactorPower,
+		false,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("final stir challenges: %w", err)

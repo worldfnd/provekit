@@ -302,9 +302,7 @@ func (a *NativeArthur) FillNextBytes(n int) ([]byte, error) {
 	raw := make([]byte, n)
 	copy(raw, a.nargString[:n])
 	a.nargString = a.nargString[n:]
-	for _, b := range raw {
-		a.sponge.AbsorbFr(big.NewInt(int64(b)))
-	}
+	a.sponge.Absorb(raw)
 	return raw, nil
 }
 
@@ -341,31 +339,45 @@ func (a *NativeArthur) ProverHintArk(target interface{}) error {
 
 func nativeGetStirChallenges(
 	arthur *NativeArthur,
-	numQueries int,
-	domainSize int,
-	foldingFactorPower int,
+	numLeaves int,
+	count int,
+	deduplicate bool,
 ) ([]int, error) {
-	foldedDomainSize := domainSize / foldingFactorPower
-	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
+	if count == 0 {
+		return []int{}, nil
+	}
+	if numLeaves == 1 {
+		if deduplicate {
+			return []int{0}, nil
+		}
+		return make([]int, count), nil
+	}
 
-	fmt.Println("domainSizeBytes", domainSizeBytes*numQueries)
-	challengeBytes, err := arthur.FillChallengeBytes(domainSizeBytes * numQueries)
+	sizeBytes := (bits.Len(uint(numLeaves)) - 1 + 7) / 8
+
+	fmt.Println("entropy bytes:", count*sizeBytes)
+	entropy, err := arthur.FillChallengeBytes(count * sizeBytes)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("challengeBytes", challengeBytes)
-	bitLength := bits.Len(uint(foldedDomainSize)) - 1
-	mask := (1 << bitLength) - 1
+	fmt.Println("entropy:", entropy)
 
-	indexes := make([]int, numQueries)
-	for i := range numQueries {
+	indices := make([]int, count)
+	for i := range count {
+		chunk := entropy[i*sizeBytes : (i+1)*sizeBytes]
 		value := 0
-		for j := range domainSizeBytes {
-			value = int(challengeBytes[j+i*domainSizeBytes]) + value*256
+		for _, b := range chunk {
+			value = (value << 8) | int(b)
 		}
-		indexes[i] = value & mask
+		indices[i] = value % numLeaves
 	}
-	return indexes, nil
+
+	if deduplicate {
+		sort.Ints(indices)
+		indices = dedup(indices)
+	}
+
+	return indices, nil
 }
 
 // ---------------------------------------------------------------------------

@@ -356,7 +356,7 @@ func nativeIRSCommitVerify(
 	foldingFactorPower int,
 ) ([]int, error) {
 	// in_domain_challenges: squeeze challenge bytes → query indices
-	indices, err := nativeGetStirChallenges(arthur, numQueries, domainSize, foldingFactorPower)
+	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
 		return nil, fmt.Errorf("initial in-domain challenges: %w", err)
 	}
@@ -719,9 +719,9 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
 		indices, err := nativeGetStirChallenges(
 			arthur,
+			domainSize/foldingFactorPower,
 			whirParams.RoundParametersNumOfQueries[r],
-			domainSize,
-			foldingFactorPower,
+			false,
 		)
 		if err != nil {
 			return ZKHint{}, fmt.Errorf("round %d stir challenges: %w", r, err)
@@ -791,9 +791,9 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
 	finalIndices, err := nativeGetStirChallenges(
 		arthur,
+		domainSize/finalFoldingFactorPower,
 		whirParams.FinalQueries,
-		domainSize,
-		finalFoldingFactorPower,
+		false,
 	)
 	if err != nil {
 		return ZKHint{}, fmt.Errorf("final stir challenges: %w", err)
