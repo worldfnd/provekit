@@ -1,5 +1,6 @@
 use {
     crate::{
+        spark::R1CSSparkQuery,
         whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         HashConfig, NoirElement, PublicInputs, R1CS,
@@ -42,8 +43,9 @@ pub enum NoirProofScheme {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
-    pub public_inputs:   PublicInputs,
-    pub whir_r1cs_proof: WhirR1CSProof,
+    pub public_inputs:    PublicInputs,
+    pub whir_r1cs_proof:  WhirR1CSProof,
+    pub r1cs_spark_query: R1CSSparkQuery,
 }
 
 impl NoirProofScheme {

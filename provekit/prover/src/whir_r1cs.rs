@@ -1,32 +1,36 @@
 use {
     anyhow::{ensure, Result},
-    ark_ff::UniformRand,
+    ark_ff::{AdditiveGroup, UniformRand},
     ark_std::{One, Zero},
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
+    mavros_vm::{interpreter::Phase1Result, Field},
+    nargo::insert_all_files_for_workspace_into_file_manager,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
             make_public_weight, OffsetCovector,
         },
+        spark::{Point, R1CSSparkQuery},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
-                eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
-                transpose_r1cs_matrices,
+                eval_cubic_poly, eval_quadratic_poly, multiply_transposed_by_eq_alpha,
+                sumcheck_fold_map_reduce, transpose_r1cs_matrices,
             },
             HALF,
         },
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
+    spongefish::Unit,
     std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
-        protocols::whir_zk::Witness as WhirZkWitness,
+        protocols::{whir::FinalClaim, whir_zk::Witness as WhirZkWitness},
         transcript::{ProverState, VerifierMessage},
+        utils::zip_strict,
     },
 };
 
@@ -58,7 +62,7 @@ pub trait WhirR1CSProver {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-    ) -> Result<WhirR1CSProof>;
+    ) -> Result<(WhirR1CSProof, R1CSSparkQuery)>;
 
     fn prove_mavros(
         &self,
@@ -69,7 +73,7 @@ pub trait WhirR1CSProver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
-    ) -> Result<WhirR1CSProof>;
+    ) -> Result<(WhirR1CSProof, R1CSSparkQuery)>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
@@ -142,7 +146,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-    ) -> Result<WhirR1CSProof> {
+    ) -> Result<(WhirR1CSProof, R1CSSparkQuery)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
@@ -169,16 +173,19 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);
-        prove_from_alphas(
+        let (whir_r1cs_proof, final_claim) = prove_from_alphas(
             self,
             merlin,
+            alpha,
             alphas,
             blinding_eval,
             blinding_offset,
             blinding_weights,
             commitments,
             public_inputs,
-        )
+        )?;
+
+        Ok((whir_r1cs_proof, final_claim))
     }
 
     #[instrument(skip_all)]
@@ -191,7 +198,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
-    ) -> Result<WhirR1CSProof> {
+    ) -> Result<(WhirR1CSProof, R1CSSparkQuery)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let blinding = commitments[0]
@@ -223,16 +230,19 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);
 
-        prove_from_alphas(
+        let (whir_r1cs_proof, final_claim) = prove_from_alphas(
             self,
             merlin,
+            alpha,
             alphas,
             blinding_eval,
             blinding_offset,
             blinding_weights,
             commitments,
             public_inputs,
-        )
+        )?;
+
+        Ok((whir_r1cs_proof, final_claim))
     }
 }
 
@@ -240,19 +250,20 @@ impl WhirR1CSProver for WhirR1CSScheme {
 fn prove_from_alphas(
     scheme: &WhirR1CSScheme,
     mut merlin: ProverState<TranscriptSponge>,
+    alpha: Vec<FieldElement>,
     alphas: [Vec<FieldElement>; 3],
     blinding_eval: FieldElement,
     blinding_offset: usize,
     blinding_weights: Vec<FieldElement>,
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
-) -> Result<WhirR1CSProof> {
+) -> Result<(WhirR1CSProof, R1CSSparkQuery)> {
     let is_single = commitments.len() == 1;
     let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
 
     let domain_size = 1usize << scheme.m;
 
-    if is_single {
+    let final_claim = if is_single {
         // Single commitment path
         let commitment = commitments.into_iter().next().unwrap();
         let (mut weights, evals) =
@@ -274,19 +285,53 @@ fn prove_from_alphas(
 
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
+        // Save the alpha weight data before boxing consumes them;
+        // we need these for the RLC computation after prove().
+        let alpha_weight_data: Vec<_> = weights
+            .iter()
+            .map(|w| (w.vector().to_vec(), w.size()))
+            .collect();
+
         let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
             .into_iter()
             .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
             .collect();
         boxed_weights.push(Box::new(blinding_covector));
 
-        let _ = scheme.whir_witness.prove(
+        let public_offset = if public_inputs.is_empty() { 0 } else { 1 };
+
+        let final_claim = scheme.whir_witness.prove(
             &mut merlin,
             vec![Cow::Borrowed(commitment.polynomial.as_slice())],
             commitment.witness,
             boxed_weights,
             Cow::Borrowed(&evaluations),
         );
+
+        let rlc = zip_strict(
+            final_claim.rlc_coefficients[public_offset..(public_offset + 3)].iter(),
+            alpha_weight_data[public_offset..(public_offset + 3)].iter(),
+        )
+        .map(|(&c, (vec, ds))| {
+            let w = PrefixCovector::new(vec.clone(), *ds);
+            c * w.mle_evaluate(&final_claim.evaluation_point)
+        })
+        .sum::<FieldElement>();
+
+        let claimed_batched_spark_value = if !public_inputs.is_empty() {
+            rlc / final_claim.rlc_coefficients[1]
+        } else {
+            rlc
+        };
+
+        R1CSSparkQuery {
+            point_to_evaluate:          Point {
+                row: alpha,
+                col: final_claim.evaluation_point,
+            },
+            matrix_batching_randomness: final_claim.rlc_coefficients[1],
+            claimed_value:              claimed_batched_spark_value,
+        }
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
@@ -294,6 +339,7 @@ fn prove_from_alphas(
         let c2 = commitments.next().unwrap();
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
+            .clone()
             .into_iter()
             .map(|mut v| {
                 let v2 = v.split_off(scheme.w1_size);
@@ -322,8 +368,8 @@ fn prove_from_alphas(
             polynomial: p1,
             ..
         } = c1;
-        {
-            let mut weights = build_prefix_covectors(scheme.m, alphas_1);
+        let final_claim1 = {
+            let mut weights = build_prefix_covectors(scheme.m, alphas_1.clone());
             let mut evaluations: Vec<FieldElement> = Vec::new();
             if let Some(pe) = public_1 {
                 weights.insert(0, make_public_weight(x, public_inputs.len(), scheme.m));
@@ -341,14 +387,14 @@ fn prove_from_alphas(
                 .collect();
             boxed_weights.push(Box::new(blinding_covector));
 
-            let _ = scheme.whir_witness.prove(
+            scheme.whir_witness.prove(
                 &mut merlin,
                 vec![Cow::Borrowed(p1.as_slice())],
                 w1,
                 boxed_weights,
                 Cow::Borrowed(&evaluations),
-            );
-        }
+            )
+        };
         drop(p1);
 
         let WhirR1CSCommitment {
@@ -356,31 +402,116 @@ fn prove_from_alphas(
             polynomial: p2,
             ..
         } = c2;
-        {
-            let weights = build_prefix_covectors(scheme.m, alphas_2);
+        let final_claim2 = {
+            let weights = build_prefix_covectors(scheme.m, alphas_2.clone());
             let evaluations: Vec<FieldElement> = evals_2;
 
             let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
                 .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
-            let _ = scheme.whir_witness.prove(
+            scheme.whir_witness.prove(
                 &mut merlin,
                 vec![Cow::Borrowed(p2.as_slice())],
                 w2,
                 boxed_weights,
                 Cow::Borrowed(&evaluations),
-            );
+            )
+        };
+
+        let beta: FieldElement = merlin.verifier_message();
+
+        let alphas1_padded: Vec<Vec<FieldElement>> = alphas_1
+            .clone()
+            .into_iter()
+            .map(|mut alpha| {
+                alpha.resize(1 << scheme.m, FieldElement::zero());
+                alpha
+            })
+            .collect();
+        let alphas2_padded: Vec<Vec<FieldElement>> = alphas_2
+            .clone()
+            .into_iter()
+            .map(|mut alpha| {
+                alpha.resize(1 << scheme.m, FieldElement::zero());
+                alpha
+            })
+            .collect();
+
+        let alphas: Vec<Vec<FieldElement>> = alphas1_padded
+            .iter()
+            .zip(alphas2_padded.iter())
+            .map(|(a1, a2)| {
+                let mut combined = a1.clone();
+                combined.extend_from_slice(a2);
+                combined
+            })
+            .collect();
+
+        let claimed_eval1: Vec<FieldElement> = alphas1_padded
+            .iter()
+            .map(|alphas1| {
+                PrefixCovector::new(alphas1.clone(), 1 << scheme.m)
+                    .mle_evaluate(&final_claim1.evaluation_point)
+            })
+            .collect();
+        let claimed_eval2: Vec<FieldElement> = alphas2_padded
+            .iter()
+            .map(|alphas2| {
+                PrefixCovector::new(alphas2.clone(), 1 << scheme.m)
+                    .mle_evaluate(&final_claim2.evaluation_point)
+            })
+            .collect();
+        let claimed_evals: [FieldElement; 3] =
+            std::array::from_fn(|i| claimed_eval1[i] + beta * claimed_eval2[i]);
+
+        // let k = alphas_1;
+        let mut eval_point1 = final_claim1.evaluation_point.clone();
+        eval_point1.insert(0, FieldElement::zero());
+        let hypercube1 =
+            calculate_evaluations_over_boolean_hypercube_for_eq(&eval_point1, 1 << (scheme.m + 1));
+
+        let mut eval_point2 = final_claim2.evaluation_point.clone();
+        eval_point2.insert(0, FieldElement::one());
+        let hypercube2 =
+            calculate_evaluations_over_boolean_hypercube_for_eq(&eval_point2, 1 << (scheme.m + 1));
+
+        let hypercube: Vec<FieldElement> = hypercube1
+            .iter()
+            .zip(hypercube2)
+            .map(|(h1, h2)| *h1 + beta * h2)
+            .collect();
+
+        let alpha_refs: [&[FieldElement]; 3] = [&alphas[0], &alphas[1], &alphas[2]];
+
+        let (folded_values, folding_randomness) =
+            run_two_sumcheck(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
+
+        let matrix_batching: FieldElement = merlin.verifier_message();
+        let claimed_batched = folded_values[1]
+            + folded_values[2] * matrix_batching
+            + folded_values[3] * matrix_batching * matrix_batching;
+
+        R1CSSparkQuery {
+            point_to_evaluate:          Point {
+                row: alpha,
+                col: folding_randomness,
+            },
+            matrix_batching_randomness: matrix_batching,
+            claimed_value:              claimed_batched,
         }
-    }
+    };
 
     let proof = merlin.proof();
-    Ok(WhirR1CSProof {
-        narg_string: proof.narg_string,
-        hints: proof.hints,
-        #[cfg(debug_assertions)]
-        pattern: proof.pattern,
-    })
+    Ok((
+        WhirR1CSProof {
+            narg_string: proof.narg_string,
+            hints: proof.hints,
+            #[cfg(debug_assertions)]
+            pattern: proof.pattern,
+        },
+        final_claim,
+    ))
 }
 
 pub fn compute_blinding_coefficients_for_round(
@@ -577,6 +708,104 @@ pub fn run_zk_sumcheck_prover(
     merlin.prover_message(&blinding_eval);
 
     (alpha, blinding_eval)
+}
+
+pub fn run_two_sumcheck(
+    merlin: &mut ProverState<TranscriptSponge>,
+    hypercube: &[FieldElement],
+    alphas: [&[FieldElement]; 3],
+    mut claimed_values: [FieldElement; 3],
+) -> Result<([FieldElement; 4], Vec<FieldElement>)> {
+    let mut sumcheck_randomness;
+    let mut sumcheck_randomness_accumulator = Vec::<FieldElement>::new();
+    let mut fold = None;
+
+    let mut h_mle = hypercube.to_vec();
+    let mut a_mle = alphas[0].to_vec();
+    let mut b_mle = alphas[1].to_vec();
+    let mut c_mle = alphas[2].to_vec();
+    loop {
+        let [a_hhat_i_at_0, a_hhat_i_at_1, a_highest_coeff, b_hhat_i_at_0, b_highest_coeff, b_hhat_i_at_1, c_hhat_i_at_0, c_hhat_i_at_1, c_highest_coeff] =
+            sumcheck_fold_map_reduce(
+                [&mut h_mle, &mut a_mle, &mut b_mle, &mut c_mle],
+                fold,
+                |[h_mle, a_mle, b_mle, c_mle]| {
+                    [
+                        h_mle.0 * a_mle.0,
+                        h_mle.1 * a_mle.1,
+                        (h_mle.1 - h_mle.0) * (a_mle.1 - a_mle.0),
+                        h_mle.0 * b_mle.0,
+                        h_mle.1 * b_mle.1,
+                        (h_mle.1 - h_mle.0) * (b_mle.1 - b_mle.0),
+                        h_mle.0 * c_mle.0,
+                        h_mle.1 * c_mle.1,
+                        (h_mle.1 - h_mle.0) * (c_mle.1 - c_mle.0),
+                    ]
+                },
+            );
+
+        if fold.is_some() {
+            h_mle.truncate(h_mle.len() / 2);
+            a_mle.truncate(a_mle.len() / 2);
+            b_mle.truncate(b_mle.len() / 2);
+            c_mle.truncate(c_mle.len() / 2);
+        }
+
+        let mut a_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        a_hhat_i_coeffs[0] = a_hhat_i_at_0;
+        a_hhat_i_coeffs[2] = a_highest_coeff;
+        a_hhat_i_coeffs[1] = a_hhat_i_at_1 - a_hhat_i_at_0 - a_highest_coeff;
+
+        assert!(a_hhat_i_at_0 + a_hhat_i_at_1 == claimed_values[0]);
+
+        for a_coeff in &a_hhat_i_coeffs {
+            merlin.prover_message(a_coeff);
+        }
+
+        let mut b_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        b_hhat_i_coeffs[0] = b_hhat_i_at_0;
+        b_hhat_i_coeffs[2] = b_highest_coeff;
+        b_hhat_i_coeffs[1] =
+            claimed_values[1] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[2];
+
+        for b_coeff in &b_hhat_i_coeffs {
+            merlin.prover_message(b_coeff);
+        }
+
+        let mut c_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        c_hhat_i_coeffs[0] = c_hhat_i_at_0;
+        c_hhat_i_coeffs[2] = c_highest_coeff;
+        c_hhat_i_coeffs[1] =
+            claimed_values[2] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[2];
+
+        for c_coeff in &c_hhat_i_coeffs {
+            merlin.prover_message(c_coeff);
+        }
+
+        sumcheck_randomness = merlin.verifier_message();
+        fold = Some(sumcheck_randomness);
+        claimed_values[0] = eval_quadratic_poly(a_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[1] = eval_quadratic_poly(b_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[2] = eval_quadratic_poly(c_hhat_i_coeffs, sumcheck_randomness);
+
+        sumcheck_randomness_accumulator.push(sumcheck_randomness);
+        if h_mle.len() <= 2 {
+            break;
+        }
+    }
+
+    let folded_h = h_mle[0] + (h_mle[1] - h_mle[0]) * sumcheck_randomness;
+    let folded_a = a_mle[0] + (a_mle[1] - a_mle[0]) * sumcheck_randomness;
+    let folded_b = b_mle[0] + (b_mle[1] - b_mle[0]) * sumcheck_randomness;
+    let folded_c = c_mle[0] + (c_mle[1] - c_mle[0]) * sumcheck_randomness;
+
+    Ok((
+        [folded_h, folded_a, folded_b, folded_c],
+        sumcheck_randomness_accumulator,
+    ))
 }
 
 fn create_weights_and_evaluations<const N: usize>(

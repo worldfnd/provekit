@@ -5,7 +5,6 @@ use {
         FieldElement, R1CS,
     },
     ark_std::{One, Zero},
-    rayon::iter::{IndexedParallelIterator as _, IntoParallelRefIterator, ParallelIterator as _},
     std::array,
     tracing::instrument,
 };
@@ -151,6 +150,11 @@ fn eval_eq(
     } else {
         out[0] += scalar;
     }
+}
+
+/// Evaluates a quadratic polynomial on a value
+pub fn eval_quadratic_poly(poly: [FieldElement; 3], point: FieldElement) -> FieldElement {
+    poly[0] + point * (poly[1] + point * poly[2])
 }
 
 /// Evaluates a cubic polynomial on a value

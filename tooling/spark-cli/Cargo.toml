@@ -1,0 +1,28 @@
+[package]
+name = "spark-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+provekit-common.workspace = true
+provekit-spark.workspace = true
+anyhow.workspace = true
+postcard.workspace = true
+argh.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-tracy = { workspace = true, optional = true, features = ["default", "sampling","manual-lifetime"] }
+
+[lints]
+workspace = true
+
+[features]
+default = ["profiling-allocator"]
+profiling-allocator = []
+tracy = ["dep:tracing-tracy"]

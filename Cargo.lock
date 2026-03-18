@@ -4784,13 +4784,16 @@ dependencies = [
  "argh",
  "ark-ff 0.5.0",
  "base64",
+ "bincode 1.3.3",
  "hex",
+ "mavros-artifacts",
  "noirc_abi 1.0.0-beta.11",
  "postcard",
  "provekit-common",
  "provekit-gnark",
  "provekit-prover",
  "provekit-r1cs-compiler",
+ "provekit-spark",
  "provekit-verifier",
  "rayon",
  "serde",
@@ -4905,6 +4908,23 @@ dependencies = [
  "ntt",
  "postcard",
  "provekit-common",
+ "serde",
+ "serde_json",
+ "tracing",
+ "whir",
+]
+
+[[package]]
+name = "provekit-spark"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "itertools 0.14.0",
+ "provekit-common",
+ "provekit-r1cs-compiler",
+ "rayon",
  "serde",
  "serde_json",
  "tracing",
@@ -6123,6 +6143,21 @@ name = "sorted-iter"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bceb57dc07c92cdae60f5b27b3fa92ecaaa42fe36c55e22dbfb0b44893e0b1f7"
+
+[[package]]
+name = "spark-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argh",
+ "postcard",
+ "provekit-common",
+ "provekit-spark",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber 0.3.22",
+ "tracing-tracy",
+]
 
 [[package]]
 name = "spin"

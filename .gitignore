@@ -17,6 +17,7 @@ params
 artifacts/
 spartan_vm_debug/
 mavros_debug/
+mavros/
 
 # Don't ignore benchmarking artifacts
 !tooling/provekit-bench/benches/*

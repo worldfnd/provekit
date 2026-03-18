@@ -7,6 +7,7 @@ pub mod prefix_covector;
 mod prover;
 mod r1cs;
 pub mod skyscraper;
+pub mod spark;
 pub mod sparse_matrix;
 mod transcript_sponge;
 pub mod utils;
