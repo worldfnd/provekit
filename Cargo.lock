@@ -4509,7 +4509,9 @@ checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 name = "provekit-bench"
 version = "0.1.0"
 dependencies = [
+ "acir",
  "anyhow",
+ "ark-ff 0.5.0",
  "divan",
  "nargo",
  "nargo_cli",
@@ -4522,6 +4524,7 @@ dependencies = [
  "serde",
  "test-case",
  "toml 0.8.23",
+ "whir",
 ]
 
 [[package]]
@@ -4619,6 +4622,7 @@ dependencies = [
  "nargo",
  "noir_artifact_cli",
  "noirc_abi",
+ "num-bigint",
  "postcard",
  "provekit-common",
  "tracing",

@@ -3,6 +3,7 @@ use {
         binops::add_combined_binop_constraints,
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
+        msm::{add_msm_with_curve, MsmLimbedOutputs},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -88,12 +89,17 @@ pub struct R1CSBreakdown {
     pub poseidon2_constraints: usize,
     /// Witnesses from Poseidon2 permutation
     pub poseidon2_witnesses:   usize,
+
+    /// Constraints from multi-scalar multiplication
+    pub msm_constraints: usize,
+    /// Witnesses from multi-scalar multiplication
+    pub msm_witnesses:   usize,
 }
 
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
-pub(crate) struct NoirToR1CSCompiler {
-    pub(crate) r1cs: R1CS,
+pub struct NoirToR1CSCompiler {
+    pub r1cs: R1CS,
 
     /// Indicates how to solve for each R1CS witness
     pub witness_builders: Vec<WitnessBuilder>,
@@ -136,7 +142,7 @@ pub fn noir_to_r1cs_with_breakdown(
 }
 
 impl NoirToR1CSCompiler {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let mut r1cs = R1CS::new();
         // Grow the matrices to account for the constant one witness.
         r1cs.add_witnesses(1);
@@ -457,6 +463,7 @@ impl NoirToR1CSCompiler {
         let mut xor_ops = vec![];
         let mut sha256_compression_ops = vec![];
         let mut poseidon2_ops = vec![];
+        let mut msm_ops = vec![];
 
         let mut breakdown = R1CSBreakdown::default();
 
@@ -627,6 +634,24 @@ impl NoirToR1CSCompiler {
                             output_witnesses,
                         ));
                     }
+                    BlackBoxFuncCall::MultiScalarMul {
+                        points,
+                        scalars,
+                        outputs,
+                    } => {
+                        let point_wits: Vec<ConstantOrR1CSWitness> = points
+                            .iter()
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .collect();
+                        let scalar_wits: Vec<ConstantOrR1CSWitness> = scalars
+                            .iter()
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .collect();
+                        let out_x = self.fetch_r1cs_witness_index(outputs.0);
+                        let out_y = self.fetch_r1cs_witness_index(outputs.1);
+                        let out_inf = self.fetch_r1cs_witness_index(outputs.2);
+                        msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
+                    }
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
                     }
@@ -717,6 +742,27 @@ impl NoirToR1CSCompiler {
         add_poseidon2_permutation(self, poseidon2_ops);
         breakdown.poseidon2_constraints = self.r1cs.num_constraints() - constraints_before_poseidon;
         breakdown.poseidon2_witnesses = self.num_witnesses() - witnesses_before_poseidon;
+
+        let constraints_before_msm = self.r1cs.num_constraints();
+        let witnesses_before_msm = self.num_witnesses();
+        let limbed_msm_ops = msm_ops
+            .into_iter()
+            .map(|(points, scalars, (out_x, out_y, out_inf))| {
+                (points, scalars, MsmLimbedOutputs {
+                    out_x_limbs: vec![out_x],
+                    out_y_limbs: vec![out_y],
+                    out_inf,
+                })
+            })
+            .collect();
+        add_msm_with_curve(
+            self,
+            limbed_msm_ops,
+            &mut range_checks,
+            &crate::msm::curve::Grumpkin,
+        );
+        breakdown.msm_constraints = self.r1cs.num_constraints() - constraints_before_msm;
+        breakdown.msm_witnesses = self.num_witnesses() - witnesses_before_msm;
 
         breakdown.range_ops_total = range_checks.values().map(|v| v.len()).sum();
         let constraints_before_range = self.r1cs.num_constraints();

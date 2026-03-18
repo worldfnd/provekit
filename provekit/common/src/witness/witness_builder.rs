@@ -3,6 +3,7 @@ use {
         utils::{serde_ark, serde_ark_option},
         witness::{
             digits::DigitalDecompositionWitnesses,
+            limbs::Limbs,
             ram::SpiceWitnesses,
             scheduling::{
                 LayerScheduler, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
@@ -54,9 +55,21 @@ pub struct CombinedTableEntryInverseData {
     pub xor_out:      FieldElement,
 }
 
+/// Operation type for the unified non-native EC hint.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum NonNativeEcOp {
+    /// Point doubling: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 15N-6
+    Double,
+    /// Point addition: inputs = \[\[x1_limbs\], \[y1_limbs\], \[x2_limbs\],
+    /// \[y2_limbs\]\], outputs 15N-6
+    Add,
+    /// On-curve check: inputs = \[\[px_limbs\], \[py_limbs\]\], outputs 9N-4
+    OnCurve,
+}
+
 /// Indicates how to solve for a collection of R1CS witnesses in terms of
 /// earlier (i.e. already solved for) R1CS witnesses and/or ACIR witness values.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WitnessBuilder {
     /// Constant value, used for the constant one witness & e.g. static lookups
     /// (witness index, constant value)
@@ -88,6 +101,23 @@ pub enum WitnessBuilder {
     /// The inverse of the value at a specified witness index
     /// (witness index, operand witness index)
     Inverse(usize, usize),
+    /// Safe inverse: like Inverse but handles zero by outputting 0.
+    /// Used by compute_is_zero where the input may be zero. Solved in the
+    /// Other layer (not batch-inverted), so zero inputs don't poison the batch.
+    /// (witness index, operand witness index)
+    SafeInverse(usize, usize),
+    /// The modular inverse of the value at a specified witness index, modulo
+    /// a given prime modulus. Computes a^{-1} mod m using Fermat's little
+    /// theorem (a^{m-2} mod m). Unlike Inverse (BN254 field inverse), this
+    /// operates as integer modular arithmetic.
+    /// (witness index, operand witness index, modulus)
+    ModularInverse(usize, usize, #[serde(with = "serde_ark")] FieldElement),
+    /// The integer quotient floor(dividend / divisor). Used by reduce_mod to
+    /// compute k = floor(v / m) so that v = k*m + result with 0 <= result < m.
+    /// Unlike field multiplication by the inverse, this performs true integer
+    /// division on the BigInteger representation.
+    /// (witness index, dividend witness index, divisor constant)
+    IntegerQuotient(usize, usize, #[serde(with = "serde_ark")] FieldElement),
     /// Products with linear operations on the witness indices.
     /// Fields are ProductLinearOperation(witness_idx, (index, a, b), (index, c,
     /// d)) such that we wish to compute (ax + b) * (cx + d).
@@ -189,6 +219,61 @@ pub enum WitnessBuilder {
     /// Inverse of combined lookup table entry denominator (constant operands).
     /// Computes: 1 / (sz - lhs - rs*rhs - rs²*and_out - rs³*xor_out)
     CombinedTableEntryInverse(CombinedTableEntryInverseData),
+    /// Prover hint for multi-limb modular multiplication: (a * b) mod p.
+    /// Given inputs a and b as N-limb vectors (each limb `limb_bits` wide),
+    /// and a constant 256-bit modulus p, computes quotient q, remainder r,
+    /// and carry witnesses for schoolbook column verification.
+    ///
+    /// Outputs (4*num_limbs - 2) witnesses starting at output_start:
+    ///   [0..N)        q limbs (quotient)
+    ///   [N..2N)       r limbs (remainder) — OUTPUT
+    ///   [2N..4N-2)    carry witnesses (unsigned-offset)
+    MultiLimbMulModHint {
+        output_start: usize,
+        a_limbs:      Vec<usize>,
+        b_limbs:      Vec<usize>,
+        modulus:      [u64; 4],
+        limb_bits:    u32,
+        num_limbs:    u32,
+    },
+    /// Prover hint for multi-limb modular inverse: a^{-1} mod p.
+    /// Given input a as N-limb vector and constant modulus p,
+    /// computes the inverse via Fermat's little theorem (a^{p-2} mod p).
+    ///
+    /// Outputs num_limbs witnesses at output_start: inv limbs.
+    MultiLimbModularInverse {
+        output_start: usize,
+        a_limbs:      Vec<usize>,
+        modulus:      [u64; 4],
+        limb_bits:    u32,
+        num_limbs:    u32,
+    },
+    /// Prover hint for multi-limb addition quotient: q = floor((a + b) / p).
+    /// Given inputs a and b as N-limb vectors, and a constant modulus p,
+    /// computes q ∈ {0, 1}.
+    ///
+    /// Outputs 1 witness at output: q.
+    MultiLimbAddQuotient {
+        output:    usize,
+        a_limbs:   Vec<usize>,
+        b_limbs:   Vec<usize>,
+        modulus:   [u64; 4],
+        limb_bits: u32,
+        num_limbs: u32,
+    },
+    /// Prover hint for multi-limb subtraction borrow: q = (a < b) ? 1 : 0.
+    /// Given inputs a and b as N-limb vectors, and a constant modulus p,
+    /// computes q ∈ {0, 1} indicating whether a borrow (adding p) is needed.
+    ///
+    /// Outputs 1 witness at output: q.
+    MultiLimbSubBorrow {
+        output:    usize,
+        a_limbs:   Vec<usize>,
+        b_limbs:   Vec<usize>,
+        modulus:   [u64; 4],
+        limb_bits: u32,
+        num_limbs: u32,
+    },
     /// Decomposes a packed value into chunks of specified bit-widths.
     /// Given packed value and chunk_bits = [b0, b1, ..., bn]:
     ///   packed = c0 + c1 * 2^b0 + c2 * 2^(b0+b1) + ...
@@ -197,6 +282,118 @@ pub enum WitnessBuilder {
         output_start: usize,
         packed:       usize,
         chunk_bits:   Vec<u32>,
+    },
+    /// Prover hint for FakeGLV scalar decomposition.
+    /// Given scalar s (from s_lo + s_hi * 2^128) and curve order n,
+    /// computes half_gcd(s, n) → (|s1|, |s2|, neg1, neg2) such that:
+    ///   (-1)^neg1 * |s1| + (-1)^neg2 * |s2| * s ≡ 0 (mod n)
+    ///
+    /// Outputs 4 witnesses starting at output_start:
+    ///   \[0\] |s1| (128-bit field element)
+    ///   \[1\] |s2| (128-bit field element)
+    ///   \[2\] neg1 (boolean: 0 or 1)
+    ///   \[3\] neg2 (boolean: 0 or 1)
+    FakeGLVHint {
+        output_start: usize,
+        s_lo:         usize,
+        s_hi:         usize,
+        curve_order:  [u64; 4],
+    },
+    /// Prover hint for EC scalar multiplication: computes R = \[s\]P.
+    /// Given point P = (px, py) and scalar s = s_lo + s_hi * 2^128,
+    /// computes R = \[s\]P on the curve with parameter `curve_a` and
+    /// field modulus `field_modulus_p`.
+    ///
+    /// When `num_limbs == 1`: inputs are single witnesses, outputs 2
+    /// witnesses (R_x, R_y) as native field elements.
+    /// When `num_limbs >= 2`: inputs are limb witnesses, outputs
+    /// `2 * num_limbs` witnesses (R_x limbs then R_y limbs).
+    EcScalarMulHint {
+        output_start:    usize,
+        px_limbs:        Vec<usize>,
+        py_limbs:        Vec<usize>,
+        s_lo:            usize,
+        s_hi:            usize,
+        curve_a:         [u64; 4],
+        field_modulus_p: [u64; 4],
+        num_limbs:       u32,
+        limb_bits:       u32,
+    },
+    /// Prover hint for EC point doubling on native field.
+    /// Given P = (px, py) and curve parameter `a`, computes:
+    ///   lambda = (3*px^2 + a) / (2*py) mod p
+    ///   x3 = lambda^2 - 2*px mod p
+    ///   y3 = lambda * (px - x3) - py mod p
+    ///
+    /// Outputs 3 witnesses at output_start: lambda, x3, y3.
+    EcDoubleHint {
+        output_start:    usize,
+        px:              usize,
+        py:              usize,
+        curve_a:         [u64; 4],
+        field_modulus_p: [u64; 4],
+    },
+    /// Prover hint for EC point addition on native field.
+    /// Given P1 = (x1, y1) and P2 = (x2, y2), computes:
+    ///   lambda = (y2 - y1) / (x2 - x1) mod p
+    ///   x3 = lambda^2 - x1 - x2 mod p
+    ///   y3 = lambda * (x1 - x3) - y1 mod p
+    ///
+    /// Outputs 3 witnesses at output_start: lambda, x3, y3.
+    EcAddHint {
+        output_start:    usize,
+        x1:              usize,
+        y1:              usize,
+        x2:              usize,
+        y2:              usize,
+        field_modulus_p: [u64; 4],
+    },
+    /// Conditional select: output = on_false + flag * (on_true - on_false).
+    /// When flag=0, output=on_false; when flag=1, output=on_true.
+    /// (output, flag, on_false, on_true)
+    SelectWitness {
+        output:   usize,
+        flag:     usize,
+        on_false: usize,
+        on_true:  usize,
+    },
+    /// Boolean OR: output = a + b - a*b = 1 - (1-a)*(1-b).
+    /// (output, a, b)
+    BooleanOr {
+        output: usize,
+        a:      usize,
+        b:      usize,
+    },
+    /// Unified prover hint for non-native EC operations (multi-limb).
+    ///
+    /// `op` selects the operation:
+    ///   - `Double`: inputs = \[\[px\], \[py\]\], outputs 15N-6 witnesses
+    ///   - `Add`:    inputs = \[\[x1\], \[y1\], \[x2\], \[y2\]\], outputs 15N-6
+    ///     witnesses
+    ///   - `OnCurve`: inputs = \[\[px\], \[py\]\], outputs 9N-4 witnesses
+    NonNativeEcHint {
+        output_start:    usize,
+        op:              NonNativeEcOp,
+        inputs:          Vec<Limbs>,
+        curve_a:         [u64; 4],
+        curve_b:         [u64; 4],
+        field_modulus_p: [u64; 4],
+        limb_bits:       u32,
+        num_limbs:       u32,
+    },
+    /// Signed-bit decomposition hint for wNAF scalar multiplication.
+    /// Given scalar s with num_bits bits, computes sign-bits b_0..b_{n-1}
+    /// and skew ∈ {0,1} such that:
+    ///   s + skew + (2^n - 1) = Σ b_i * 2^{i+1}
+    /// where d_i = 2*b_i - 1 ∈ {-1, +1}.
+    ///
+    /// Outputs (num_bits + 1) witnesses at output_start:
+    ///   [0..num_bits)  b_i sign bits
+    ///   \[num_bits\]     skew (0 if s is odd, 1 if s is even)
+    SignedBitHint {
+        output_start: usize,
+        scalar:       usize,
+        num_bits:     usize,
     },
     /// Computes spread(input): interleave bits with zeros.
     /// Output: 0 b_{n-1} 0 b_{n-2} ... 0 b_1 0 b_0
@@ -239,6 +436,15 @@ pub enum WitnessBuilder {
         spread_val:   FieldElement,
         multiplicity: usize,
     },
+    /// Computes `floor(linear_combination(terms) / divisor)` as an integer
+    /// quotient. Used for carry/borrow computation in multi-limb arithmetic,
+    /// avoiding an intermediate `Sum` witness.
+    SumQuotient {
+        output:  usize,
+        terms:   Vec<SumTerm>,
+        #[serde(with = "serde_ark")]
+        divisor: FieldElement,
+    },
 }
 
 impl WitnessBuilder {
@@ -260,6 +466,17 @@ impl WitnessBuilder {
             WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
+            WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => (4 * *num_limbs - 2) as usize,
+            WitnessBuilder::MultiLimbModularInverse { num_limbs, .. } => *num_limbs as usize,
+            WitnessBuilder::SignedBitHint { num_bits, .. } => *num_bits + 1,
+            WitnessBuilder::EcDoubleHint { .. } => 3,
+            WitnessBuilder::EcAddHint { .. } => 3,
+            WitnessBuilder::NonNativeEcHint { op, num_limbs, .. } => match op {
+                NonNativeEcOp::Double | NonNativeEcOp::Add => (15 * *num_limbs - 6) as usize,
+                NonNativeEcOp::OnCurve => (9 * *num_limbs - 4) as usize,
+            },
+            WitnessBuilder::FakeGLVHint { .. } => 4,
+            WitnessBuilder::EcScalarMulHint { num_limbs, .. } => 2 * *num_limbs as usize,
 
             _ => 1,
         }

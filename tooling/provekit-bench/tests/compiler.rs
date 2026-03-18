@@ -23,7 +23,7 @@ struct NargoTomlPackage {
     name: String,
 }
 
-fn test_noir_compiler(test_case_path: impl AsRef<Path>) {
+fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
     let test_case_path = test_case_path.as_ref();
 
     compile_workspace(test_case_path).expect("Compiling workspace");
@@ -36,7 +36,7 @@ fn test_noir_compiler(test_case_path: impl AsRef<Path>) {
     let package_name = nargo_toml.package.name;
 
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
-    let witness_file_path = test_case_path.join("Prover.toml");
+    let witness_file_path = test_case_path.join(witness_file);
 
     let schema = NoirCompiler::from_file(&circuit_path, provekit_common::HashConfig::default())
         .expect("Reading proof scheme");
@@ -69,21 +69,59 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     Ok(workspace)
 }
 
-#[test_case("../../noir-examples/noir-r1cs-test-programs/acir_assert_zero")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/read-only-memory")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-u8")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-u16")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/read-write-memory")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/conditional-write")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/bin-opcode")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
-#[test_case("../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained")]
-#[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
-fn case_noir(path: &str) {
-    test_noir_compiler(path);
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/acir_assert_zero",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/read-only-memory",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/range-check-u8",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/range-check-u16",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/read-write-memory",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/conditional-write",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode",
+    "Prover.toml"
+)]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha", "Prover.toml")]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bounded-vec",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained",
+    "Prover.toml"
+)]
+#[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check", "Prover.toml"; "complete_age_check")]
+#[test_case("../../noir-examples/embedded_curve_msm", "Prover.toml"; "embedded_curve_msm")]
+#[test_case("../../noir-examples/embedded_curve_msm", "Prover_zero_scalars.toml"; "msm_zero_scalars")]
+#[test_case("../../noir-examples/embedded_curve_msm", "Prover_single_nonzero.toml"; "msm_single_nonzero")]
+#[test_case("../../noir-examples/embedded_curve_msm", "Prover_near_order.toml"; "msm_near_order")]
+#[test_case("../../noir-examples/embedded_curve_msm", "Prover_near_identity.toml"; "msm_near_identity")]
+fn case_noir(path: &str, witness_file: &str) {
+    test_noir_compiler(path, witness_file);
 }
 
 /// Verify that the verifier rejects a proof whose public inputs have been

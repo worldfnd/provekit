@@ -11,6 +11,7 @@ mod r1cs;
 pub mod skyscraper;
 pub mod sparse_matrix;
 mod transcript_sponge;
+pub mod u256_arith;
 pub mod utils;
 mod verifier;
 mod whir_r1cs;

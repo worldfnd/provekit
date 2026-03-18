@@ -2,8 +2,8 @@ use {
     crate::{
         sparse_matrix::SparseMatrix,
         witness::{
-            scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm,
-            SumTerm, WitnessBuilder, WitnessCoefficient,
+            limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
+            ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
         },
         R1CS,
     },
@@ -115,6 +115,30 @@ impl WitnessIndexRemapper {
             WitnessBuilder::Inverse(idx, operand) => {
                 WitnessBuilder::Inverse(self.remap(*idx), self.remap(*operand))
             }
+            WitnessBuilder::SafeInverse(idx, operand) => {
+                WitnessBuilder::SafeInverse(self.remap(*idx), self.remap(*operand))
+            }
+            WitnessBuilder::ModularInverse(idx, operand, modulus) => {
+                WitnessBuilder::ModularInverse(self.remap(*idx), self.remap(*operand), *modulus)
+            }
+            WitnessBuilder::IntegerQuotient(idx, dividend, divisor) => {
+                WitnessBuilder::IntegerQuotient(self.remap(*idx), self.remap(*dividend), *divisor)
+            }
+            WitnessBuilder::SumQuotient {
+                output,
+                terms,
+                divisor,
+            } => {
+                let new_terms = terms
+                    .iter()
+                    .map(|SumTerm(coeff, idx)| SumTerm(*coeff, self.remap(*idx)))
+                    .collect();
+                WitnessBuilder::SumQuotient {
+                    output:  self.remap(*output),
+                    terms:   new_terms,
+                    divisor: *divisor,
+                }
+            }
             WitnessBuilder::ProductLinearOperation(
                 idx,
                 ProductLinearTerm(x, a, b),
@@ -215,6 +239,64 @@ impl WitnessIndexRemapper {
                         .collect(),
                 )
             }
+            WitnessBuilder::MultiLimbMulModHint {
+                output_start,
+                a_limbs,
+                b_limbs,
+                modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbMulModHint {
+                output_start: self.remap(*output_start),
+                a_limbs:      a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:      b_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:      *modulus,
+                limb_bits:    *limb_bits,
+                num_limbs:    *num_limbs,
+            },
+            WitnessBuilder::MultiLimbModularInverse {
+                output_start,
+                a_limbs,
+                modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbModularInverse {
+                output_start: self.remap(*output_start),
+                a_limbs:      a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:      *modulus,
+                limb_bits:    *limb_bits,
+                num_limbs:    *num_limbs,
+            },
+            WitnessBuilder::MultiLimbAddQuotient {
+                output,
+                a_limbs,
+                b_limbs,
+                modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbAddQuotient {
+                output:    self.remap(*output),
+                a_limbs:   a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:   b_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:   *modulus,
+                limb_bits: *limb_bits,
+                num_limbs: *num_limbs,
+            },
+            WitnessBuilder::MultiLimbSubBorrow {
+                output,
+                a_limbs,
+                b_limbs,
+                modulus,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::MultiLimbSubBorrow {
+                output:    self.remap(*output),
+                a_limbs:   a_limbs.iter().map(|&w| self.remap(w)).collect(),
+                b_limbs:   b_limbs.iter().map(|&w| self.remap(w)).collect(),
+                modulus:   *modulus,
+                limb_bits: *limb_bits,
+                num_limbs: *num_limbs,
+            },
             WitnessBuilder::BytePartition { lo, hi, x, k } => WitnessBuilder::BytePartition {
                 lo: self.remap(*lo),
                 hi: self.remap(*hi),
@@ -299,6 +381,117 @@ impl WitnessIndexRemapper {
                     },
                 )
             }
+            WitnessBuilder::EcDoubleHint {
+                output_start,
+                px,
+                py,
+                curve_a,
+                field_modulus_p,
+            } => WitnessBuilder::EcDoubleHint {
+                output_start:    self.remap(*output_start),
+                px:              self.remap(*px),
+                py:              self.remap(*py),
+                curve_a:         *curve_a,
+                field_modulus_p: *field_modulus_p,
+            },
+            WitnessBuilder::EcAddHint {
+                output_start,
+                x1,
+                y1,
+                x2,
+                y2,
+                field_modulus_p,
+            } => WitnessBuilder::EcAddHint {
+                output_start:    self.remap(*output_start),
+                x1:              self.remap(*x1),
+                y1:              self.remap(*y1),
+                x2:              self.remap(*x2),
+                y2:              self.remap(*y2),
+                field_modulus_p: *field_modulus_p,
+            },
+            WitnessBuilder::NonNativeEcHint {
+                output_start,
+                op,
+                inputs,
+                curve_a,
+                curve_b,
+                field_modulus_p,
+                limb_bits,
+                num_limbs,
+            } => WitnessBuilder::NonNativeEcHint {
+                output_start:    self.remap(*output_start),
+                op:              op.clone(),
+                inputs:          inputs
+                    .iter()
+                    .map(|l| {
+                        let remapped: Vec<usize> =
+                            l.as_slice().iter().map(|&w| self.remap(w)).collect();
+                        Limbs::from(remapped.as_slice())
+                    })
+                    .collect(),
+                curve_a:         *curve_a,
+                curve_b:         *curve_b,
+                field_modulus_p: *field_modulus_p,
+                limb_bits:       *limb_bits,
+                num_limbs:       *num_limbs,
+            },
+            WitnessBuilder::FakeGLVHint {
+                output_start,
+                s_lo,
+                s_hi,
+                curve_order,
+            } => WitnessBuilder::FakeGLVHint {
+                output_start: self.remap(*output_start),
+                s_lo:         self.remap(*s_lo),
+                s_hi:         self.remap(*s_hi),
+                curve_order:  *curve_order,
+            },
+            WitnessBuilder::EcScalarMulHint {
+                output_start,
+                px_limbs,
+                py_limbs,
+                s_lo,
+                s_hi,
+                curve_a,
+                field_modulus_p,
+                num_limbs,
+                limb_bits,
+            } => WitnessBuilder::EcScalarMulHint {
+                output_start:    self.remap(*output_start),
+                px_limbs:        px_limbs.iter().map(|&w| self.remap(w)).collect(),
+                py_limbs:        py_limbs.iter().map(|&w| self.remap(w)).collect(),
+                s_lo:            self.remap(*s_lo),
+                s_hi:            self.remap(*s_hi),
+                curve_a:         *curve_a,
+                field_modulus_p: *field_modulus_p,
+                num_limbs:       *num_limbs,
+                limb_bits:       *limb_bits,
+            },
+            WitnessBuilder::SelectWitness {
+                output,
+                flag,
+                on_false,
+                on_true,
+            } => WitnessBuilder::SelectWitness {
+                output:   self.remap(*output),
+                flag:     self.remap(*flag),
+                on_false: self.remap(*on_false),
+                on_true:  self.remap(*on_true),
+            },
+            WitnessBuilder::BooleanOr { output, a, b } => WitnessBuilder::BooleanOr {
+                output: self.remap(*output),
+                a:      self.remap(*a),
+                b:      self.remap(*b),
+            },
+            WitnessBuilder::SignedBitHint {
+                output_start,
+                scalar,
+                num_bits,
+            } => WitnessBuilder::SignedBitHint {
+                output_start: self.remap(*output_start),
+                scalar:       self.remap(*scalar),
+                num_bits:     *num_bits,
+            },
             WitnessBuilder::ChunkDecompose {
                 output_start,
                 packed,

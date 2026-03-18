@@ -260,7 +260,10 @@ fn prove_from_alphas(
 
     if is_single {
         // Single commitment path
-        let commitment = commitments.into_iter().next().unwrap();
+        let commitment = commitments
+            .into_iter()
+            .next()
+            .expect("single-commitment path requires at least one commitment");
         let (mut weights, evals) =
             create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
 
@@ -296,8 +299,12 @@ fn prove_from_alphas(
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
-        let c1 = commitments.next().unwrap();
-        let c2 = commitments.next().unwrap();
+        let c1 = commitments
+            .next()
+            .expect("dual-commitment path requires first commitment");
+        let c2 = commitments
+            .next()
+            .expect("dual-commitment path requires second commitment");
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
             .into_iter()
@@ -307,8 +314,12 @@ fn prove_from_alphas(
             })
             .unzip();
 
-        let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
-        let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+        let alphas_1: [Vec<FieldElement>; 3] = alphas_1
+            .try_into()
+            .expect("alphas_1 must have exactly 3 elements");
+        let alphas_2: [Vec<FieldElement>; 3] = alphas_2
+            .try_into()
+            .expect("alphas_2 must have exactly 3 elements");
 
         let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
         let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
