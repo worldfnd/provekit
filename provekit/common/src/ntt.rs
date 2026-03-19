@@ -45,11 +45,11 @@ fn interleaved_rs_encode(
     assert!(poly_size.is_multiple_of(interleaving_depth));
     let message_length = poly_size / interleaving_depth;
 
-    let per_poly_size = codeword_length * interleaving_depth; // codeword_length * interleaving_depth = message_length * expanstion *
-                                                              // interleaving depth = poly_size / interleaving_depth * expansion *
-                                                              // interleaving depth = poly_size * expansion.;
+    let expanded_poly_size = codeword_length * interleaving_depth; // codeword_length * interleaving_depth = message_length * expanstion *
+                                                                   // interleaving depth = poly_size / interleaving_depth * expansion *
+                                                                   // interleaving depth = poly_size * expansion.;
 
-    let total_size = coeffs.len() * per_poly_size;
+    let total_size = coeffs.len() * expanded_poly_size;
 
     let mut result = vec![FieldElement::ZERO; total_size];
 
