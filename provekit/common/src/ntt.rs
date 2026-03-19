@@ -1,6 +1,6 @@
 use {
     ark_bn254::Fr as FieldElement, ark_ff::AdditiveGroup, ntt::ntt_nr, std::marker::PhantomData,
-    whir::algebra::ntt::ReedSolomon,
+    tracing::instrument, whir::algebra::ntt::ReedSolomon,
 };
 
 #[derive(Debug, Default)]
@@ -22,6 +22,12 @@ impl ReedSolomon<FieldElement> for InPlaceNTT<FieldElement> {
     }
 }
 
+#[instrument(skip(coeffs), fields(
+    num_polys = coeffs.len(),
+    poly_len = coeffs.first().map(|c| c.len()),
+    codeword_length = codeword_length,
+    interleaving_depth = interleaving_depth,
+))]
 fn interleaved_rs_encode(
     coeffs: &[&[FieldElement]],
     codeword_length: usize,

@@ -49,6 +49,7 @@ pub fn register_ntt() {
         // Register NTT for polynomial operations
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
             Arc::new(InPlaceNTT::<FieldElement>::default());
+        // Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
         whir::algebra::ntt::NTT.insert(ntt);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
