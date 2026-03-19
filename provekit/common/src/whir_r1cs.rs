@@ -6,7 +6,7 @@ use {
     crate::{utils::serde_hex, FieldElement},
     serde::{Deserialize, Serialize},
     whir::{
-        algebra::embedding::Identity,
+        algebra::{embedding::Identity, ntt::EvaluationOrder},
         protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
         transcript,
     },
@@ -38,6 +38,7 @@ impl WhirR1CSScheme {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
+    pub ntt_order:   EvaluationOrder,
     #[serde(with = "serde_hex")]
     pub narg_string: Vec<u8>,
     #[serde(with = "serde_hex")]

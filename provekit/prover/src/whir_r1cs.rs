@@ -22,7 +22,7 @@ use {
     std::borrow::Cow,
     tracing::instrument,
     whir::{
-        algebra::{dot, linear_form::LinearForm},
+        algebra::{dot, linear_form::LinearForm, ntt::NTT},
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{ProverState, VerifierMessage},
     },
@@ -391,8 +391,13 @@ fn prove_from_alphas(
         }
     }
 
+    let ntt_order = NTT
+        .get::<FieldElement>()
+        .expect("no NTT registered for FieldElement")
+        .evaluation_order();
     let proof = merlin.proof();
     Ok(WhirR1CSProof {
+        ntt_order,
         narg_string: proof.narg_string,
         hints: proof.hints,
         #[cfg(debug_assertions)]

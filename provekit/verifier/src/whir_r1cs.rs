@@ -44,6 +44,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         r1cs: &R1CS,
         hash_config: HashConfig,
     ) -> Result<()> {
+        let ntt_order = proof.ntt_order;
+
         let ds = self.create_domain_separator().instance(&Empty);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
@@ -154,7 +156,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
-                .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
+                .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1, ntt_order)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
             let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
@@ -162,7 +164,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
             self.whir_witness
-                .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
+                .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2, ntt_order)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
 
             (
@@ -199,7 +201,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
-                .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
+                .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1, ntt_order)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
 
             (evals[0], evals[1], evals[2])
