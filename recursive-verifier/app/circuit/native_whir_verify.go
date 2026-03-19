@@ -321,10 +321,10 @@ func nativeIRSCommitVerifyWithPoints(
 	}
 
 	// Read submatrix hint
-	var submatrix []Fp256
-	if err = arthur.ProverHintArk(&submatrix); err != nil {
-		return nil, fmt.Errorf("submatrix: %w", err)
-	}
+	// var submatrix []Fp256
+	// if err = arthur.ProverHintArk(&submatrix); err != nil {
+	// 	return nil, fmt.Errorf("submatrix: %w", err)
+	// }
 
 	// Read Merkle proof hints
 	foldedDomainSize := domainSize / foldingFactorPower
@@ -735,6 +735,8 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	finalSize := 1 << whirParams.FinalSumcheckRounds
 	finalVector, err := arthur.FillNextScalars(finalSize)
+	fmt.Println("finalVector:", finalVector)
+
 	if err != nil {
 		return nil, fmt.Errorf("final vector: %w", err)
 	}
@@ -758,11 +760,11 @@ func NativeWhirVerify(
 		return nil, fmt.Errorf("final stir challenges: %w", err)
 	}
 
-	var finalSubmatrix []Fp256
-	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
-		return nil, fmt.Errorf("final submatrix: %w", err)
-	}
-	allStirAnswers = append(allStirAnswers, [][]Fp256{finalSubmatrix})
+	// var finalSubmatrix []Fp256
+	// if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
+	// 	return nil, fmt.Errorf("final submatrix: %w", err)
+	// }
+	allStirAnswers = append(allStirAnswers, [][]Fp256{})
 
 	foldedDomainSize := domainSize / finalFoldingFactorPower
 	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
@@ -780,11 +782,11 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	// 9. Read deferred weight evaluations
 	// ---------------------------------------------------------------
-	var deferred []Fp256
-	if err = arthur.ProverHintArk(&deferred); err != nil {
-		return nil, fmt.Errorf("deferred: %w", err)
-	}
-	fmt.Printf("Read %d deferred weight evaluations\n", len(deferred))
+	// var deferred []Fp256
+	// if err = arthur.ProverHintArk(&deferred); err != nil {
+	// 	return nil, fmt.Errorf("deferred: %w", err)
+	// }
+	// fmt.Printf("Read %d deferred weight evaluations\n", len(deferred))
 
 	// ---------------------------------------------------------------
 	// 10. Final sumcheck

@@ -156,11 +156,11 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	//    numPolynomials: 1 (single commitment)
 	// ---------------------------------------------------------------
 	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
-	zkWhirData1, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
+	_, err = nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
 	if err != nil {
 		return fmt.Errorf("zkWHIR verify commitment 1: %w", err)
 	}
-	fmt.Println("zkWHIR verify 1 complete:", zkWhirData1)
+	// fmt.Println("zkWHIR verify 1 complete:", zkWhirData1)
 
 	// ---------------------------------------------------------------
 	// 7. If dual mode: zkWHIR verify (second commitment)
@@ -168,11 +168,11 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	// ---------------------------------------------------------------
 	if config.NumChallenges > 0 {
 		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
-		zkWhirData2, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
+		_, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
 		if err != nil {
 			return fmt.Errorf("zkWHIR verify commitment 2: %w", err)
 		}
-		fmt.Println("zkWHIR verify 2 complete:", zkWhirData2)
+		// fmt.Println("zkWHIR verify 2 complete:", zkWhirData2)
 	}
 	// ---------------------------------------------------------------
 	// 8. Remaining transcript consumed. Log status.
@@ -542,14 +542,55 @@ func nativeZKWhirVerify(
 	// ---------------------------------------------------------------
 	// 9. blinding_commitment.verify() — full WHIR verification
 	//    Verifies the blinding polynomial commitment using NativeWhirVerify.
-	//    The blinding commitment has 1 linear form (the blinding weight).
+	//
+	//    The evaluations are all_expected_blinding_claims, which is the
+	//    concatenation of:
+	//      - expected_batched_blinding_subproof_claims: accumulated m_claims
+	//        and g_hat_claims from the per-gamma evaluation loop, interleaved
+	//        as [m_0, g_hat_0..., m_1, g_hat_1..., ...] (num_polynomials *
+	//        (1 + num_witness_variables) elements)
+	//      - w_folded_blinding_evals: parsed from transcript at step 2
 	// ---------------------------------------------------------------
+
+	// Accumulate m_claims[p] = Σ_g tau2^g * PerGammaEvals[g][p][0]
+	// and g_hat_claims[p][j] = Σ_g tau2^g * PerGammaEvals[g][p][j+1]
+	mClaims := make([]*big.Int, params.NumPolynomials)
+	gHatClaims := make([][]*big.Int, params.NumPolynomials)
+	for p := range params.NumPolynomials {
+		mClaims[p] = new(big.Int)
+		gHatClaims[p] = make([]*big.Int, numWitnessVariables)
+		for j := range numWitnessVariables {
+			gHatClaims[p][j] = new(big.Int)
+		}
+	}
+	tau2Power := big.NewInt(1)
+	for g := range hGammasCount {
+		for p := range params.NumPolynomials {
+			evals := data.PerGammaEvals[g][p]
+			mClaims[p] = frAdd(mClaims[p], frMul(tau2Power, evals[0]))
+			for j := range numWitnessVariables {
+				gHatClaims[p][j] = frAdd(gHatClaims[p][j], frMul(tau2Power, evals[j+1]))
+			}
+		}
+		tau2Power = frMul(tau2Power, data.Tau2)
+	}
+
+	// Build subproof_claims: [m_0, g_hat_0..., m_1, g_hat_1..., ...]
+	subproofClaims := make([]*big.Int, 0, params.NumPolynomials*(1+numWitnessVariables))
+	for p := range params.NumPolynomials {
+		subproofClaims = append(subproofClaims, mClaims[p])
+		subproofClaims = append(subproofClaims, gHatClaims[p]...)
+	}
+
+	// all_expected_blinding_claims = subproof_claims ++ w_folded_blinding_evals
+	blindingEvaluations := append(subproofClaims, data.WFoldedBlindingEvals...)
+
 	blindingResult, err := NativeWhirVerify(
 		arthur,
 		blindingWhirParams,
 		config.BlindingCommitmentWhirConfig,
 		[]*NativeCommitment{blindingCommitment},
-		nil, // blinding commitment has no external evaluations
+		blindingEvaluations,
 		0,
 	)
 	if err != nil {
