@@ -12,7 +12,6 @@ repository.workspace = true
 # Workspace crates
 provekit-common.workspace = true
 poseidon2.workspace = true
-ark-bn254.workspace = true
 
 # Noir language
 acir.workspace = true
