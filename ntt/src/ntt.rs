@@ -155,12 +155,16 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
 
     // The order of the interleaved NTTs themselves
     let order = values.order().0;
-    debug_assert!(order.is_power_of_two(), "order: {order}\tn:{n}");
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if order <= 1 {
         return;
     }
+
+    debug_assert!(
+        order.is_power_of_two(),
+        "interleaved_ntt_nr order: {order}\tn:{n}"
+    );
 
     let number_of_polynomials = n / order;
 
