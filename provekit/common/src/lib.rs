@@ -4,6 +4,7 @@ pub mod hash_config;
 mod interner;
 mod mavros;
 mod noir_proof_scheme;
+pub mod ntt;
 pub mod optimize;
 pub mod prefix_covector;
 mod prover;
@@ -27,6 +28,7 @@ pub use {
     hash_config::HashConfig,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
+    ntt::InPlaceNTT,
     prefix_covector::{OffsetCovector, PrefixCovector},
     prover::{NoirProver, Prover},
     r1cs::R1CS,

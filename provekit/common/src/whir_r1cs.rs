@@ -38,11 +38,11 @@ impl WhirR1CSScheme {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSProof {
-    pub ntt_order:   EvaluationOrder,
+    pub evaluation_order: EvaluationOrder,
     #[serde(with = "serde_hex")]
-    pub narg_string: Vec<u8>,
+    pub narg_string:      Vec<u8>,
     #[serde(with = "serde_hex")]
-    pub hints:       Vec<u8>,
+    pub hints:            Vec<u8>,
 
     /// Transcript interaction pattern for debug-mode validation.
     /// Populated by the prover; absent from serialized proofs on disk.

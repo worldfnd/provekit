@@ -15,6 +15,7 @@ parallel = []
 [dependencies]
 # Workspace crates
 skyscraper.workspace = true
+ntt.workspace = true
 
 # Noir language
 acir.workspace = true
@@ -49,6 +50,13 @@ zstd.workspace = true
 mavros-vm.workspace = true
 mavros-artifacts.workspace = true
 xz2.workspace = true
+
+[dev-dependencies]
+divan.workspace = true
+
+[[bench]]
+name = "ntt"
+harness = false
 
 [lints]
 workspace = true

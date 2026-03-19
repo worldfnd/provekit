@@ -154,7 +154,7 @@ mod sqr {
         bencher
             //.counter(ItemsCount::new(1usize))
             .with_inputs(|| rng().random())
-            .bench_local_values(|a| rne::mono::sqr(a));
+            .bench_local_values(rne::mono::sqr);
     }
 
     #[divan::bench]
