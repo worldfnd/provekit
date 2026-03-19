@@ -181,6 +181,8 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	remainingTranscript := len(arthur.nargString)
 	fmt.Printf("Native transcript replay complete. Remaining: %d hint bytes, %d transcript bytes\n", remainingHints, remainingTranscript)
 
+	verifyCircuit(nil, config, Hints{}, nil, nil, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, common.BuildOps{}, PublicInputs{})
+
 	return nil
 }
 
