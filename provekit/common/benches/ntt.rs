@@ -15,13 +15,20 @@ fn main() {
 const NTT_CASES: &[(u32, usize)] = &[(22, 1), (24, 1)];
 
 const RS_CASES: &[(u32, usize, usize, usize)] = &[
-    (16, 2, 2, 1),   (16, 2, 2, 128),
-    (18, 2, 2, 1),   (18, 2, 2, 128),
-    (20, 2, 3, 1),   (20, 2, 3, 128),
-    (16, 4, 3, 1),   (16, 4, 3, 128),
-    (18, 4, 3, 1),   (18, 4, 3, 128),
-    (20, 4, 4, 1),   (20, 4, 4, 128),
-    (22, 4, 4, 1),   (22, 4, 4, 128),
+    (16, 2, 2, 1),
+    (16, 2, 2, 32),
+    (18, 2, 2, 1),
+    (18, 2, 2, 32),
+    (20, 2, 3, 1),
+    (20, 2, 3, 32),
+    (16, 4, 3, 1),
+    (16, 4, 3, 32),
+    (18, 4, 3, 1),
+    (18, 4, 3, 32),
+    (20, 4, 4, 1),
+    (20, 4, 4, 32),
+    (22, 4, 4, 1),
+    (22, 4, 4, 32),
 ];
 
 #[divan::bench(args = RS_CASES)]
@@ -34,7 +41,11 @@ fn provekit_rs(bencher: Bencher, case: &(u32, usize, usize, usize)) {
             let total_size = 1 << exp;
             let poly_size = total_size / num_polys;
             let polys: Vec<Vec<FieldElement>> = (0..num_polys)
-                .map(|_| (0..poly_size).map(|_| FieldElement::rand(&mut rng)).collect())
+                .map(|_| {
+                    (0..poly_size)
+                        .map(|_| FieldElement::rand(&mut rng))
+                        .collect()
+                })
                 .collect();
             (polys, expansion, coset_sz)
         })
@@ -59,7 +70,11 @@ fn ark_rs(bencher: Bencher, case: &(u32, usize, usize, usize)) {
             let total_size = 1 << exp;
             let poly_size = total_size / num_polys;
             let polys: Vec<Vec<FieldElement>> = (0..num_polys)
-                .map(|_| (0..poly_size).map(|_| FieldElement::rand(&mut rng)).collect())
+                .map(|_| {
+                    (0..poly_size)
+                        .map(|_| FieldElement::rand(&mut rng))
+                        .collect()
+                })
                 .collect();
             (polys, expansion, coset_sz)
         })
