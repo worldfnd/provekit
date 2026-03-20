@@ -355,9 +355,8 @@ impl SparseMatrix {
 
         // Find the column
         match cols.binary_search(&(col as u32)) {
-            Ok(i) => {
-                // Column already exists
-                self.values[row_range][i] = value;
+            Ok(_) => {
+                unreachable!("Duplicate column {col} in row {row}");
             }
             Err(i) => {
                 // Need to insert column at i
