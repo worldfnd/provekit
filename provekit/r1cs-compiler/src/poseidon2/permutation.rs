@@ -536,13 +536,16 @@ fn mds_t_block_forms(s: &[ConstantOrR1CSWitness]) -> Vec<LinearForm> {
                 block_outs.push(arr);
             }
 
-            // Add the column sums back into each block lane to get the full MDS output.
+            // Add the column sums back into each block lane to get the full MDS
+            // output. col_acc[j] already includes arr_i[j], so canonicalize to
+            // merge the resulting duplicate witness terms.
             let mut out: Vec<LinearForm> = Vec::with_capacity(t);
             for i in 0..blocks {
                 let arr = &block_outs[i];
                 for j in 0..4 {
                     let mut cell = arr[j].clone();
                     cell.add_mut(&col_acc[j]);
+                    cell.canonicalize_terms(CANONICALIZE_THRESHOLD);
                     out.push(cell);
                 }
             }
