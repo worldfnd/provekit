@@ -1,19 +1,10 @@
 use {
-    super::Command,
-    anyhow::{Context, Result},
-    argh::FromArgs,
-    mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{
-        file::write, utils::next_power_of_two, FieldElement, HashConfig, NoirProofScheme, Prover,
-        Verifier, R1CS,
-    },
-    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::types::{COOMatrix, SparkMatrix, TimeStamps},
-    std::{
+    super::Command, anyhow::{Context, Result}, argh::FromArgs, mavros_artifacts::R1CS as MavrosR1CS, provekit_common::{
+        FieldElement, HashConfig, NoirProofScheme, Prover, R1CS, TranscriptSponge, Verifier, WhirConfig, file::write, utils::next_power_of_two
+    }, provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler}, provekit_spark::{SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkWitnesses, prover::new_whir_config_for_size, types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps}}, std::{
         path::{Path, PathBuf},
         str::FromStr,
-    },
-    tracing::instrument,
+    }, tracing::instrument, whir::{hash::Hash, transcript::{DomainSeparator, ProverState, VerifierMessage, VerifierState, codecs::Empty}},
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -77,6 +68,22 @@ pub struct Args {
     )]
     spark_r1cs_path: PathBuf,
 
+    /// output path for the spark witnesses
+    #[argh(
+        option,
+        long = "spark-witnesses",
+        default = "PathBuf::from(\"spark_witnesses.bin\")"
+    )]
+    spark_witnesses_path: PathBuf,
+
+    /// output path for the spark commitments
+    #[argh(
+        option,
+        long = "spark-commitments",
+        default = "PathBuf::from(\"spark_commitments.bin\")"
+    )]
+    spark_commitments_path: PathBuf,
+
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
@@ -112,7 +119,7 @@ impl Command for Args {
                 whir_r1cs_scheme.m,
                 whir_r1cs_scheme.w1_size,
                 whir_r1cs_scheme.num_challenges,
-            ),
+            )?,
             NoirProofScheme::Mavros(_) => {
                 let r1cs_path = self
                     .r1cs_path
@@ -125,14 +132,38 @@ impl Command for Args {
                     whir_r1cs_scheme.m,
                     whir_r1cs_scheme.w1_size,
                     whir_r1cs_scheme.num_challenges,
-                )
+                )?
             }
-        };
+        };  
+
+        let num_rows = spark_r1cs.timestamps.final_row.len();
+        let num_cols = spark_r1cs.timestamps.final_col.len();
+        let num_nz_vals = spark_r1cs.coo.val.len();
+
+        provekit_common::register_ntt();
+        let spark_committer_scheme = SPARKCommitterScheme::new(num_rows, num_cols, num_nz_vals);
+        let ds = DomainSeparator::protocol(&spark_committer_scheme.whir_configs).instance(&Empty);
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
+        let witnesses = spark_committer_scheme.commit(&mut merlin, &spark_r1cs);
 
         let spark_r1cs_bytes =
-            postcard::to_stdvec(&spark_r1cs?).context("while serializing spark R1CS")?;
+            postcard::to_stdvec(&spark_r1cs).context("while serializing spark R1CS")?;
         std::fs::write(&self.spark_r1cs_path, spark_r1cs_bytes)
             .context("while writing spark R1CS")?;
+
+        let serializable_witnesses = SerializableSparkWitnesses::from(witnesses);
+        let spark_witnesses_bytes =
+            postcard::to_stdvec(&serializable_witnesses).context("while serializing spark witnesses")?;
+        std::fs::write(&self.spark_witnesses_path, spark_witnesses_bytes)
+            .context("while writing spark witnesses")?;
+  
+        let proof = merlin.proof();
+        let mut arthur = VerifierState::new(&ds, &proof, TranscriptSponge::default());
+        let commitments = extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
+        let spark_commitments_bytes =
+            postcard::to_stdvec(&commitments).context("while serializing spark commitments")?;
+        std::fs::write(&self.spark_commitments_path, spark_commitments_bytes)
+            .context("while writing spark commitments")?;
 
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
@@ -308,3 +339,112 @@ fn build_spark_matrix(
         },
     }
 }
+
+pub struct SPARKCommitterScheme {
+    pub whir_configs:      SPARKWHIRConfigs,
+}
+
+impl SPARKCommitterScheme {
+    pub fn new(num_rows: usize, num_cols: usize, nonzero_terms: usize) -> Self {
+        let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
+
+        let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1);
+        let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1);
+        let num_terms_1batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 1);
+        let num_terms_2batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
+        let num_terms_4batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
+
+        Self {
+            whir_configs:      SPARKWHIRConfigs {
+                row:                row_config,
+                col:                col_config,
+                num_terms_1batched: num_terms_1batched_config,
+                num_terms_2batched: num_terms_2batched_config,
+                num_terms_4batched: num_terms_4batched_config,
+            },
+        }
+    }
+
+    pub fn commit(&self, merlin: &mut ProverState<TranscriptSponge>, matrix: &SparkMatrix) -> SparkWitnesses {
+        let vals_witness = self.whir_configs.num_terms_1batched.commit(merlin, &[&matrix.coo.val]);
+
+        let row_field: Vec<FieldElement> = matrix
+            .coo
+            .row
+            .iter()
+            .map(|&r| FieldElement::from(r as u64))
+            .collect();
+        let col_field: Vec<FieldElement> = matrix
+            .coo
+            .col
+            .iter()
+            .map(|&c| FieldElement::from(c as u64))
+            .collect();
+
+        let rs_ws_witness = self.whir_configs.num_terms_4batched.commit(merlin, &[
+            &row_field,
+            &matrix.timestamps.read_row,
+            &col_field,
+            &matrix.timestamps.read_col,
+        ]);
+
+        let final_row_ts_witness = self.whir_configs
+            .row
+            .commit(merlin, &[&matrix.timestamps.final_row]);
+
+        let final_col_ts_witness = self.whir_configs
+            .col
+            .commit(merlin, &[&matrix.timestamps.final_col]);
+        
+        SparkWitnesses {
+            vals_witness,
+            rs_ws_witness,
+            final_row_ts_witness,
+            final_col_ts_witness,
+        }
+    }
+}
+
+fn extract_single_commitment(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    config: &WhirConfig,
+) -> Result<SerializableCommitment> {
+    let ic = &config.initial_committer;
+    let merkle_root: Hash = arthur
+        .prover_message()
+        .map_err(|e| anyhow::anyhow!("Failed to read merkle root: {e}"))?;
+    let out_of_domain_points: Vec<FieldElement> =
+        arthur.verifier_message_vec(ic.out_domain_samples);
+    let out_of_domain_evals: Vec<FieldElement> = arthur
+        .prover_messages_vec(ic.out_domain_samples * ic.num_vectors)
+        .map_err(|e| anyhow::anyhow!("Failed to read OOD evaluations: {e}"))?;
+    Ok(SerializableCommitment {
+        merkle_root,
+        out_of_domain_points,
+        out_of_domain_evals,
+    })
+}
+
+fn extract_commitments(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    configs: &SPARKWHIRConfigs,
+) -> Result<SparkCommitments> {
+    let vals = extract_single_commitment(arthur, &configs.num_terms_1batched)
+        .context("while extracting vals commitment")?;
+    let rs_ws = extract_single_commitment(arthur, &configs.num_terms_4batched)
+        .context("while extracting rs_ws commitment")?;
+    let final_row_ts = extract_single_commitment(arthur, &configs.row)
+        .context("while extracting final_row_ts commitment")?;
+    let final_col_ts = extract_single_commitment(arthur, &configs.col)
+        .context("while extracting final_col_ts commitment")?;
+    Ok(SparkCommitments {
+        vals,
+        rs_ws,
+        final_row_ts,
+        final_col_ts,
+    })
+}
+

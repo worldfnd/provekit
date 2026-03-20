@@ -4550,6 +4550,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-tracy",
+ "whir",
 ]
 
 [[package]]
