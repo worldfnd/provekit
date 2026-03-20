@@ -110,10 +110,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	api.Println("spartanSumcheckRand", spartanSumcheckRand)
 	api.Println("spartanSumcheckLastValue", spartanSumcheckLastValue)
 
-	err = publicInputsHashCheck(api, nimue, circuit.PublicInputs)
+	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
 		return err
 	}
+
+	publicWeightsChallenge := make([]frontend.Variable, 1)
+	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
+		return fmt.Errorf("failed to read public weights challenge: %w", err)
+	}
+	api.Println("publicWeightsChallenge", publicWeightsChallenge)
 
 	return nil
 }
@@ -683,30 +689,30 @@ func parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation [2]Fp256
 	return fSumPublicWeights, gSumPublicWeights
 }
 
-// func extendLinearStatement(
-// 	circuit *Circuit,
-// 	linearStatementEvaluations [][]frontend.Variable,
-// 	pubWitnessEvaluations []frontend.Variable,
-// ) [][]frontend.Variable {
-// 	var extendedLinearStatementEvals [][]frontend.Variable
+func extendLinearStatement(
+	circuit *Circuit,
+	linearStatementEvaluations [][]frontend.Variable,
+	pubWitnessEvaluations []frontend.Variable,
+) [][]frontend.Variable {
+	var extendedLinearStatementEvals [][]frontend.Variable
 
-// 	if !circuit.PublicInputs.IsEmpty() {
-// 		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
-// 		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
+	if !circuit.PublicInputs.IsEmpty() {
+		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
+		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
 
-// 		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
-// 		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
-// 		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
-// 		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
+		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
+		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
+		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
+		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
 
-// 		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
-// 		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
-// 		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
-// 		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
-// 	} else {
-// 		// No public inputs, use original arrays
-// 		extendedLinearStatementEvals = linearStatementEvaluations
-// 	}
+		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
+		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
+		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
+		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
+	} else {
+		// No public inputs, use original arrays
+		extendedLinearStatementEvals = linearStatementEvaluations
+	}
 
-// 	return extendedLinearStatementEvals
-// }
+	return extendedLinearStatementEvals
+}

@@ -89,8 +89,7 @@ func runZKSumcheck(
 	foldingFactor int,
 	polynomialDegree int,
 ) ([]frontend.Variable, frontend.Variable, error) {
-	//TODO figure this out, cannot be hardcoded
-	tRand := make([]frontend.Variable, 8)
+	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
 	err := nimue.FillChallengeScalars(tRand)
 	if err != nil {
 		return nil, nil, err
@@ -119,21 +118,25 @@ func runZKSumcheck(
 	return foldingRandomness, lastEval, nil
 }
 
-//	let public_inputs_hash_buf: FieldElement = arthur
-//	.prover_message()
-//	.map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
-//
-// let expected_public_inputs_hash = public_inputs.hash();
-// ensure!(
-//
-//	public_inputs_hash_buf == expected_public_inputs_hash,
-//	"Public inputs hash mismatch: expected {:?}, got {:?}",
-//	expected_public_inputs_hash,
-//	public_inputs_hash_buf
-//
-// );
+func publicInputsHash(sc *skyscraper.Skyscraper, publicInputs PublicInputs) frontend.Variable {
+	var expectedHash frontend.Variable
+	switch len(publicInputs.Values) {
+	case 0:
+		expectedHash = frontend.Variable(0)
+	case 1:
+		expectedHash = sc.CompressV2(publicInputs.Values[0], frontend.Variable(0))
+	default:
+		expectedHash = publicInputs.Values[0]
+		for i := 1; i < len(publicInputs.Values); i++ {
+			expectedHash = sc.CompressV2(expectedHash, publicInputs.Values[i])
+		}
+	}
+	return expectedHash
+}
+
 func publicInputsHashCheck(
 	api frontend.API,
+	sc *skyscraper.Skyscraper,
 	nimue gnarkNimue.Nimue,
 	publicInputs PublicInputs,
 ) error {
@@ -141,7 +144,11 @@ func publicInputsHashCheck(
 	if err := nimue.FillNextScalars(publicInputsHashBuf); err != nil {
 		return err
 	}
+
+	expectedHash := publicInputsHash(sc, publicInputs)
 	api.Println("publicInputsHashBuf", publicInputsHashBuf)
+	api.Println("expectedHash", expectedHash)
+	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
 	return nil
 }
 
