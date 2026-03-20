@@ -247,7 +247,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             "last sumcheck value does not match"
         );
 
-        Ok(())
+        arthur
+            .check_eof()
+            .map_err(|_| anyhow::anyhow!("Proof contains unparsed trailing bytes"))
     }
 }
 
