@@ -53,7 +53,7 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 // to verify the given circuit proof against the provided parameters.
 func RunZKWhir(
 	api frontend.API,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	circuit Merkle,
@@ -223,7 +223,7 @@ func RunZKWhir(
 // This is used when num_challenges > 0 (batch commitment mode).
 func RunZKWhirBatch(
 	api frontend.API,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	// N commitments data for round 0
@@ -587,7 +587,7 @@ func RunZKWhirBatch(
 //nolint:unused
 func runWhir(
 	api frontend.API,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	circuit Merkle,
@@ -724,7 +724,7 @@ func runWhir(
 
 // RunPoW executes a proof-of-work challenge if the difficulty is greater than zero.
 // This is used as part of the Fiat-Shamir transformation to prevent malicious prover behavior.
-func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthur, difficulty int) error {
+func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Nimue, difficulty int) error {
 	if difficulty > 0 {
 		_, _, err := utilities.PoW(api, sc, arthur, difficulty)
 		if err != nil {
@@ -738,7 +738,7 @@ func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthu
 // It calculates the folding factor power and generates the stir challenges for the given leaf indexes.
 func GenerateStirChallengePoints(
 	api frontend.API,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	NQueries int,
 	leafIndexes []uints.U64,
 	domainSize int,
@@ -768,7 +768,7 @@ func GenerateStirChallengePoints(
 
 // GenerateCombinationRandomness generates the combination randomness for the given parameters.
 // It generates a random scalar and expands it to the required length.
-func GenerateCombinationRandomness(api frontend.API, arthur gnarkNimue.Arthur, randomnessLength int) ([]frontend.Variable, error) {
+func GenerateCombinationRandomness(api frontend.API, arthur gnarkNimue.Nimue, randomnessLength int) ([]frontend.Variable, error) {
 	combRandomnessGen := make([]frontend.Variable, 1)
 	if err := arthur.FillChallengeScalars(combRandomnessGen); err != nil {
 		return nil, err

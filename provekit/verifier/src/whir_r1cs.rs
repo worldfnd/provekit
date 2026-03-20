@@ -86,6 +86,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let public_inputs_hash_buf: FieldElement = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
+        println!("public_inputs_hash_buf: {:?}", public_inputs_hash_buf);
         let expected_public_inputs_hash = public_inputs.hash();
         ensure!(
             public_inputs_hash_buf == expected_public_inputs_hash,

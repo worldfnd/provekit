@@ -82,7 +82,7 @@ func PrefixDecodePath[T any](prevPath []T, prefixLen uint64, suffix []T) []T {
 	}
 }
 
-func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Arthur, difficulty int) ([]uints.U8, []uints.U8, error) {
+func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Nimue, difficulty int) ([]uints.U8, []uints.U8, error) {
 	challenge := make([]uints.U8, 32)
 	if err := arthur.FillChallengeBytes(challenge); err != nil {
 		return nil, nil, err

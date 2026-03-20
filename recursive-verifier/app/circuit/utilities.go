@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"math/big"
+	"reilabs/whir-verifier-circuit/app/utilities"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -32,13 +33,13 @@ func bytesToScalarLE(api frontend.API, b []uints.U8) frontend.Variable {
 // 	return ans
 // }
 
-func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Arthur, *uints.BinaryField[uints.U64], error) {
+func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Nimue, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	var protocolIDAndSessionID []frontend.Variable
-	protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[:32]))
-	protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[32:]))
-	protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.SessionID[:]))
-	arthur, err := gnarkNimue.NewSkyscraperArthurWithProtocolID(api, sc, protocolIDAndSessionID, circuit.Transcript[:])
+	// var protocolIDAndSessionID []frontend.Variable
+	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[:32]))
+	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[32:]))
+	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.SessionID[:]))
+	nimue, err := gnarkNimue.NewSkyscraperNimue(api, sc, circuit.InitializationData, circuit.Transcript[:])
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -46,104 +47,132 @@ func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skysc
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return sc, arthur, uapi, nil
+	return sc, nimue, uapi, nil
 }
 
-// func runSumcheck(
-// 	api frontend.API,
-// 	arthur gnarkNimue.Arthur,
-// 	lastEval frontend.Variable,
-// 	foldingFactor int,
-// 	polynomialDegree int,
-// ) ([]frontend.Variable, frontend.Variable, error) {
-// 	sumcheckPolynomial := make([]frontend.Variable, polynomialDegree)
-// 	foldingRandomness := make([]frontend.Variable, foldingFactor)
-// 	foldingRandomnessTemp := make([]frontend.Variable, 1)
+func runSumcheck(
+	api frontend.API,
+	nimue gnarkNimue.Nimue,
+	lastEval frontend.Variable,
+	foldingFactor int,
+	polynomialDegree int,
+) ([]frontend.Variable, frontend.Variable, error) {
+	sumcheckPolynomial := make([]frontend.Variable, polynomialDegree)
+	foldingRandomness := make([]frontend.Variable, foldingFactor)
+	foldingRandomnessTemp := make([]frontend.Variable, 1)
 
-// 	for i := range foldingFactor {
-// 		if err := arthur.FillNextScalars(sumcheckPolynomial); err != nil {
-// 			return nil, nil, err
-// 		}
-// 		if err := arthur.FillChallengeScalars(foldingRandomnessTemp); err != nil {
-// 			return nil, nil, err
-// 		}
-// 		foldingRandomness[i] = foldingRandomnessTemp[0]
-// 		sumcheckVal := api.Add(
-// 			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{0})[0],
-// 			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{1})[0],
-// 		)
-// 		api.AssertIsEqual(sumcheckVal, lastEval)
-// 		lastEval = utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{foldingRandomness[i]})[0]
-// 	}
-// 	return foldingRandomness, lastEval, nil
-// }
+	for i := range foldingFactor {
+		if err := nimue.FillNextScalars(sumcheckPolynomial); err != nil {
+			return nil, nil, err
+		}
+		if err := nimue.FillChallengeScalars(foldingRandomnessTemp); err != nil {
+			return nil, nil, err
+		}
+		foldingRandomness[i] = foldingRandomnessTemp[0]
+		sumcheckVal := api.Add(
+			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{0})[0],
+			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{1})[0],
+		)
+		api.AssertIsEqual(sumcheckVal, lastEval)
+		lastEval = utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{foldingRandomness[i]})[0]
+	}
+	return foldingRandomness, lastEval, nil
+}
 
-// func runZKSumcheck(
-// 	api frontend.API,
-// 	sc *skyscraper.Skyscraper,
-// 	uapi *uints.BinaryField[uints.U64],
-// 	circuit *Circuit,
-// 	arthur gnarkNimue.Arthur,
-// 	lastEval frontend.Variable,
-// 	foldingFactor int,
-// 	polynomialDegree int,
-// 	whirParams WHIRParams,
-// ) ([]frontend.Variable, frontend.Variable, error) {
-// 	rootHash, batchingRandomness, initialOODQueries, initialOODAnswers, err := parseBatchedCommitment(arthur, whirParams)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
+func runZKSumcheck(
+	api frontend.API,
+	sc *skyscraper.Skyscraper,
+	uapi *uints.BinaryField[uints.U64],
+	circuit *Circuit,
+	nimue gnarkNimue.Nimue,
+	lastEval frontend.Variable,
+	foldingFactor int,
+	polynomialDegree int,
+) ([]frontend.Variable, frontend.Variable, error) {
+	//TODO figure this out, cannot be hardcoded
+	tRand := make([]frontend.Variable, 8)
+	err := nimue.FillChallengeScalars(tRand)
+	if err != nil {
+		return nil, nil, err
+	}
+	api.Println("tRand", tRand)
 
-// 	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(arthur)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
+	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(nimue)
+	if err != nil {
+		return nil, nil, err
+	}
+	api.Println("sumOfG", sumOfG)
+	api.Println("rhoRandomness", rhoRandomness)
 
-// 	lastEval = api.Add(lastEval, api.Mul(sumOfG, rhoRandomness))
+	lastEval = api.Add(lastEval, api.Mul(sumOfG, rhoRandomness))
 
-// 	foldingRandomness, lastEval, err := runSumcheck(api, arthur, lastEval, foldingFactor, polynomialDegree)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
+	foldingRandomness, lastEval, err := runSumcheck(api, nimue, lastEval, foldingFactor, polynomialDegree)
+	if err != nil {
+		return nil, nil, err
+	}
+	api.Println("foldingRandomness", foldingRandomness)
+	api.Println("lastEval", lastEval)
 
-// 	lastEval, polynomialSums := unblindLastEval(api, arthur, lastEval, rhoRandomness)
+	lastEval, polynomialSums := unblindLastEval(api, nimue, lastEval, rhoRandomness)
+	api.Println("polynomialSums", polynomialSums)
 
-// 	_, err = RunZKWhir(api, arthur, uapi, sc, circuit.HidingSpartanMerkle, circuit.HidingSpartanFirstRound, whirParams, [][]frontend.Variable{{polynomialSums[0]}, {polynomialSums[1]}}, circuit.HidingSpartanLinearStatementEvaluations, batchingRandomness, initialOODQueries, initialOODAnswers, rootHash)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
+	return foldingRandomness, lastEval, nil
+}
 
-// 	return foldingRandomness, lastEval, nil
-// }
+//	let public_inputs_hash_buf: FieldElement = arthur
+//	.prover_message()
+//	.map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
+//
+// let expected_public_inputs_hash = public_inputs.hash();
+// ensure!(
+//
+//	public_inputs_hash_buf == expected_public_inputs_hash,
+//	"Public inputs hash mismatch: expected {:?}, got {:?}",
+//	expected_public_inputs_hash,
+//	public_inputs_hash_buf
+//
+// );
+func publicInputsHashCheck(
+	api frontend.API,
+	nimue gnarkNimue.Nimue,
+	publicInputs PublicInputs,
+) error {
+	publicInputsHashBuf := make([]frontend.Variable, 1)
+	if err := nimue.FillNextScalars(publicInputsHashBuf); err != nil {
+		return err
+	}
+	api.Println("publicInputsHashBuf", publicInputsHashBuf)
+	return nil
+}
 
-// func getZKSumcheckInitialValue(
-// 	arthur gnarkNimue.Arthur,
-// ) (frontend.Variable, frontend.Variable, error) {
-// 	sumOfG := make([]frontend.Variable, 1)
-// 	rhoRandomness := make([]frontend.Variable, 1)
-// 	if err := arthur.FillNextScalars(sumOfG); err != nil {
-// 		return nil, nil, err
-// 	}
-// 	if err := arthur.FillChallengeScalars(rhoRandomness); err != nil {
-// 		return nil, nil, err
-// 	}
-// 	return sumOfG[0], rhoRandomness[0], nil
-// }
+func getZKSumcheckInitialValue(
+	nimue gnarkNimue.Nimue,
+) (frontend.Variable, frontend.Variable, error) {
+	sumOfG := make([]frontend.Variable, 1)
+	rhoRandomness := make([]frontend.Variable, 1)
+	if err := nimue.FillNextScalars(sumOfG); err != nil {
+		return nil, nil, err
+	}
+	if err := nimue.FillChallengeScalars(rhoRandomness); err != nil {
+		return nil, nil, err
+	}
+	return sumOfG[0], rhoRandomness[0], nil
+}
 
-// func unblindLastEval(
-// 	api frontend.API,
-// 	arthur gnarkNimue.Arthur,
-// 	lastEval frontend.Variable,
-// 	rhoRandomness frontend.Variable,
-// ) (frontend.Variable, []frontend.Variable) {
-// 	polynomialSums := make([]frontend.Variable, 2)
-// 	if err := arthur.FillNextScalars(polynomialSums); err != nil {
-// 		return 0, nil
-// 	}
+func unblindLastEval(
+	api frontend.API,
+	nimue gnarkNimue.Nimue,
+	lastEval frontend.Variable,
+	rhoRandomness frontend.Variable,
+) (frontend.Variable, []frontend.Variable) {
+	polynomialSums := make([]frontend.Variable, 1)
+	if err := nimue.FillNextScalars(polynomialSums); err != nil {
+		return 0, nil
+	}
 
-// 	lastEval = api.Sub(lastEval, api.Mul(polynomialSums[0], rhoRandomness))
-// 	return lastEval, polynomialSums
-// }
+	lastEval = api.Sub(lastEval, api.Mul(polynomialSums[0], rhoRandomness))
+	return lastEval, polynomialSums
+}
 
 func consumeFront[T any](slice *[]T) T {
 	var zero T

@@ -48,7 +48,7 @@ func verifyMerkleTreeProofs(api frontend.API, uapi *uints.BinaryField[uints.U64]
 
 func getStirChallenges(
 	api frontend.API,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	numQueries int,
 	domainSize int,
 	foldingFactorPower int,
@@ -85,7 +85,7 @@ func generateEmptyMainRoundData(circuit WHIRParams) MainRoundData {
 	}
 }
 
-func fillInOODPointsAndAnswers(numberOfOODPoints int, arthur gnarkNimue.Arthur) ([]frontend.Variable, []frontend.Variable, error) {
+func fillInOODPointsAndAnswers(numberOfOODPoints int, arthur gnarkNimue.Nimue) ([]frontend.Variable, []frontend.Variable, error) {
 	oodPoints := make([]frontend.Variable, numberOfOODPoints)
 	oodAnswers := make([]frontend.Variable, numberOfOODPoints)
 
@@ -103,7 +103,7 @@ func fillInOODPointsAndAnswers(numberOfOODPoints int, arthur gnarkNimue.Arthur) 
 func runWhirSumcheckRounds(
 	api frontend.API,
 	lastEval frontend.Variable,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 	foldingFactor int,
 	polynomialDegree int,
 ) ([]frontend.Variable, frontend.Variable, error) {
@@ -166,7 +166,7 @@ func fillInAndVerifyRootHash(
 	uapi *uints.BinaryField[uints.U64],
 	sc *skyscraper.Skyscraper,
 	circuit Merkle,
-	arthur gnarkNimue.Arthur,
+	arthur gnarkNimue.Nimue,
 ) error {
 	rootHash := make([]frontend.Variable, 1)
 	if err := arthur.FillNextScalars(rootHash); err != nil {

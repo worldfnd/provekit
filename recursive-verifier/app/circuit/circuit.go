@@ -18,7 +18,10 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/math/uints"
+	gnark_nimue "github.com/reilabs/gnark-nimue"
 )
+
+type NimueInit = gnark_nimue.NimueInit
 
 type Circuit2 struct {
 	// Inputs
@@ -53,27 +56,65 @@ type Circuit2 struct {
 }
 
 type Circuit struct {
-	ProtocolID        [64]uints.U8 `gnark:",public"`
-	SessionID         [32]uints.U8 `gnark:",public"`
-	Transcript        []uints.U8   `gnark:",public"`
-	WHIRParamsWitness WHIRParams
+	InitializationData NimueInit
+	LogNumConstraints  int
+
+	SessionID                    [32]uints.U8 `gnark:",public"`
+	Transcript                   []uints.U8   `gnark:",public"`
+	BlindingCommitmentWhirConfig WHIRParams
+	BlindedCommitmentWhirConfig  WHIRParams
+	NumChallenges                int
+	PublicInputs                 PublicInputs
+}
+
+type Commitment struct {
+	RootHash          frontend.Variable
+	InitialOODQueries []frontend.Variable
+	InitialOODAnswers [][]frontend.Variable
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
-	_, arthur, _, err := initializeComponents(api, circuit)
+	sc, nimue, uapi, err := initializeComponents(api, circuit)
 	if err != nil {
 		return err
 	}
 
-	// Parse first commitment (C1) - needed to consume transcript
-	rootHash1, _, _, err := parseBatchedCommitment(api, arthur, circuit.WHIRParamsWitness)
-	api.Println("rootHash1", rootHash1)
-	// api.Println("initialOODQueries1", initialOODQueries1)
-	// api.Println("initialOODAnswers1", initialOODAnswers1)
-	// api.AssertIsBoolean(rootHash1)
+	blindedCommitment, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig)
+	api.Println("blindedCommitment", blindedCommitment)
+	api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
-		return fmt.Errorf("parse commitment 1: %w", err)
+		return err
 	}
+
+	if circuit.NumChallenges > 0 {
+		// Squeeze logup challenges
+		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
+		if err = nimue.FillChallengeScalars(logupChallenges); err != nil {
+			return err
+		}
+
+		// Parse second commitment (C2)
+		blindedCommitment2, blindingCommitment2, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig)
+		api.Println("blindedCommitment2", blindedCommitment2)
+		api.Println("blindingCommitment2", blindingCommitment2)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Run ZK sumcheck
+	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
+	if err != nil {
+		return err
+	}
+	api.Println("spartanSumcheckRand", spartanSumcheckRand)
+	api.Println("spartanSumcheckLastValue", spartanSumcheckLastValue)
+
+	err = publicInputsHashCheck(api, nimue, circuit.PublicInputs)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -263,28 +304,23 @@ func (circuit *Circuit) Define(api frontend.API) error {
 // 	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
 // }
 
-// configToProtocolIDAndSessionID returns (circuit placeholder, assignment) for ProtocolID.
-// Circuit placeholder is zeroed; assignment is filled from cfg.ProtocolID (padded to 64 bytes).
-func configToProtocolIDAndSessionID(cfg Config) (circuit, assign [64]uints.U8) {
-	for i := 0; i < 64; i++ {
-		b := byte(0)
-		if i < len(cfg.ProtocolID) {
-			b = cfg.ProtocolID[i]
-		}
-		assign[i] = uints.NewU8(b)
-	}
-	return circuit, assign
-}
+// configToNimueInit returns (circuit placeholder, assignment) for NimueInit.
+// Circuit placeholder has all fields zeroed. Assignment is filled from cfg:
+//   - ProtocolID[0]: little-endian field element from cfg.ProtocolID bytes 0..31
+//   - ProtocolID[1]: little-endian field element from cfg.ProtocolID bytes 32..63
+//   - SessionID:     little-endian field element from cfg.SessionID bytes 0..31
+func configToNimueInit(cfg Config) (circuit, assign NimueInit) {
+	var pid [64]byte
+	copy(pid[:], cfg.ProtocolID)
+	var sid [32]byte
+	copy(sid[:], cfg.SessionID)
 
-// configToSessionID returns (circuit placeholder, assignment) for SessionID.
-// Circuit placeholder is zeroed; assignment is filled from cfg.SessionID (zero-padded to 32 bytes).
-func configToSessionID(cfg Config) (circuit, assign [32]uints.U8) {
-	for i := 0; i < 32; i++ {
-		b := byte(0)
-		if i < len(cfg.SessionID) {
-			b = cfg.SessionID[i]
-		}
-		assign[i] = uints.NewU8(b)
+	assign = NimueInit{
+		ProtocolID: [2]frontend.Variable{
+			leBytesToNativeBigInt(pid[:32]),
+			leBytesToNativeBigInt(pid[32:]),
+		},
+		SessionID: leBytesToNativeBigInt(sid[:]),
 	}
 	return circuit, assign
 }
@@ -333,8 +369,7 @@ func verifyCircuit(
 		transcriptT[i] = uints.NewU8(cfg.NargString[i])
 	}
 
-	protocolIDCircuit, protocolIDAssign := configToProtocolIDAndSessionID(cfg)
-	sessionIDCircuit, sessionIDAssign := configToSessionID(cfg)
+	nimueInitCircuit, nimueInitAssign := configToNimueInit(cfg)
 	// fmt.Println("transcriptT", transcriptT)
 	// // Determine witness linear statement evals size based on mode
 	// var witnessLinearStatementEvalsSize int
@@ -447,15 +482,14 @@ func verifyCircuit(
 	// }
 
 	// // Empty container while circuit creation
-	// publicInputsContainer := PublicInputs{
-	// 	Values: make([]frontend.Variable, len(publicInputs.Values)),
-	// }
+	publicInputsContainer := PublicInputs{
+		Values: make([]frontend.Variable, len(publicInputs.Values)),
+	}
 
 	circuit := Circuit{
-		ProtocolID: protocolIDCircuit,
-		SessionID:  sessionIDCircuit,
-		Transcript: contTranscript,
-		// LogNumConstraints:                       cfg.LogNumConstraints,
+		InitializationData: nimueInitCircuit,
+		Transcript:         contTranscript,
+		LogNumConstraints:  cfg.LogNumConstraints,
 		// LogNumVariables:                         cfg.LogNumVariables,
 		// LogANumTerms:                            cfg.LogANumTerms,
 		// WitnessClaimedEvaluations:               witnessClaimedEvals,
@@ -467,13 +501,14 @@ func verifyCircuit(
 		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
 		// WitnessFirstRounds:                      witnessFirstRounds(hints, true),
 		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
-		// NumChallenges:                           cfg.NumChallenges,
+		NumChallenges: cfg.NumChallenges,
 		// W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		// MatrixA:                                 matrixA,
 		// MatrixB:                                 matrixB,
 		// MatrixC:                                 matrixC,
-		// PublicInputs:                            publicInputsContainer,
+		PublicInputs: publicInputsContainer,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -567,10 +602,9 @@ func verifyCircuit(
 
 	// fmt.Println("transcriptT", transcriptT)
 	assignment := Circuit{
-		ProtocolID: protocolIDAssign,
-		SessionID:  sessionIDAssign,
-		Transcript: transcriptT,
-		// LogNumConstraints:                       cfg.LogNumConstraints,
+		InitializationData: nimueInitAssign,
+		Transcript:         transcriptT,
+		LogNumConstraints:  cfg.LogNumConstraints,
 		// LogNumVariables:                         cfg.LogNumVariables,
 		// LogANumTerms:                            cfg.LogANumTerms,
 		// WitnessClaimedEvaluations:               witnessClaimedEvals,
@@ -582,13 +616,14 @@ func verifyCircuit(
 		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
 		// WitnessFirstRounds:                      witnessFirstRounds(hints, false),
 		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
-		// NumChallenges:                           cfg.NumChallenges,
+		NumChallenges: cfg.NumChallenges,
 		// W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		// MatrixA:                                 matrixA,
 		// MatrixB:                                 matrixB,
 		// MatrixC:                                 matrixC,
-		// PublicInputs:                            publicInputs,
+		PublicInputs: publicInputs,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
