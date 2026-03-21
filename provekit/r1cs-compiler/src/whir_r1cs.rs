@@ -11,6 +11,7 @@ pub trait WhirR1CSSchemeBuilder {
         r1cs: &R1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
     ) -> Self;
 
@@ -22,8 +23,15 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         r1cs: &R1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
     ) -> Self {
+        debug_assert_eq!(
+            num_challenges,
+            challenge_offsets.len(),
+            "num_challenges ({num_challenges}) must equal challenge_offsets.len() ({})",
+            challenge_offsets.len()
+        );
         let total_witnesses = r1cs.num_witnesses();
         assert!(
             w1_size <= total_witnesses,
@@ -49,6 +57,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
+            challenge_offsets,
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1),
             has_public_inputs,
         }
