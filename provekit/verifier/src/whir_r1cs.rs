@@ -3,7 +3,8 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, expand_powers, make_public_weight, OffsetCovector,
+            build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
+            OffsetCovector,
         },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
@@ -59,16 +60,15 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .receive_commitments(&mut arthur, 1)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
-        let commitment_2 = if self.num_challenges > 0 {
-            let _logup_challenges: Vec<FieldElement> =
-                arthur.verifier_message_vec(self.num_challenges);
-            Some(
-                self.whir_witness
-                    .receive_commitments(&mut arthur, 1)
-                    .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
-            )
+        let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
+            let challenges: Vec<FieldElement> = arthur.verifier_message_vec(self.num_challenges);
+            let commitment = self
+                .whir_witness
+                .receive_commitments(&mut arthur, 1)
+                .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?;
+            (Some(commitment), Some(challenges))
         } else {
-            None
+            (None, None)
         };
 
         let (transposed, sumcheck_result) = rayon::join(
@@ -145,7 +145,21 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_1.to_vec()
             };
             evaluations_1.push(blinding_eval);
-            let evaluations_2 = evals_2.to_vec();
+            let mut evaluations_2 = evals_2.to_vec();
+
+            // Challenge binding: verify that w2 contains the correct
+            // Fiat-Shamir challenge values at the expected positions.
+            let challenge_covector = if let Some(ref challenges) = logup_challenges {
+                let challenge_eval: FieldElement = arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read challenge_eval"))?;
+                verify_challenge_binding(challenge_eval, x, challenges)?;
+                let cw = make_challenge_weight(x, &self.challenge_offsets, self.m);
+                evaluations_2.push(challenge_eval);
+                Some(cw)
+            } else {
+                None
+            };
 
             let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
                 .iter()
@@ -157,10 +171,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
-            let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
+            let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            if let Some(ref cw) = challenge_covector {
+                weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
+            }
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
@@ -274,6 +291,27 @@ pub fn run_sumcheck_verifier(
         blinding_eval,
         f_at_alpha,
     })
+}
+
+/// Verify that the prover's claimed challenge evaluation matches the
+/// Fiat-Shamir challenges sampled by the verifier. This binds the committed
+/// w2 polynomial to the transcript-derived challenge values.
+fn verify_challenge_binding(
+    challenge_eval: FieldElement,
+    x: FieldElement,
+    challenges: &[FieldElement],
+) -> Result<()> {
+    let mut expected = FieldElement::zero();
+    let mut x_pow = FieldElement::one();
+    for &ch in challenges {
+        expected += x_pow * ch;
+        x_pow *= x;
+    }
+    ensure!(
+        challenge_eval == expected,
+        "Challenge binding check failed: expected {expected:?}, got {challenge_eval:?}"
+    );
+    Ok(())
 }
 
 /// Verify that the prover's claimed public evaluation matches the known public

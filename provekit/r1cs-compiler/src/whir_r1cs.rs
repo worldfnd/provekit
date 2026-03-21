@@ -12,6 +12,7 @@ pub trait WhirR1CSSchemeBuilder {
         r1cs: &R1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self;
@@ -20,6 +21,7 @@ pub trait WhirR1CSSchemeBuilder {
         r1cs: &MavrosR1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self;
@@ -30,6 +32,7 @@ pub trait WhirR1CSSchemeBuilder {
         a_num_entries: usize,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self;
@@ -46,9 +49,16 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         r1cs: &R1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
+        debug_assert_eq!(
+            num_challenges,
+            challenge_offsets.len(),
+            "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
+            challenge_offsets.len()
+        );
         let total_witnesses = r1cs.num_witnesses();
         assert!(
             w1_size <= total_witnesses,
@@ -74,6 +84,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
+            challenge_offsets,
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
             has_public_inputs,
         }
@@ -108,6 +119,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         r1cs: &MavrosR1CS,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
@@ -121,6 +133,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             a_num_entries,
             w1_size,
             num_challenges,
+            challenge_offsets,
             has_public_inputs,
             hash_id,
         )
@@ -132,9 +145,16 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         a_num_entries: usize,
         w1_size: usize,
         num_challenges: usize,
+        challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
+        debug_assert_eq!(
+            num_challenges,
+            challenge_offsets.len(),
+            "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
+            challenge_offsets.len()
+        );
         let m_raw = next_power_of_two(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
 
@@ -153,6 +173,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_id),
             w1_size,
             num_challenges,
+            challenge_offsets,
             has_public_inputs,
         }
     }

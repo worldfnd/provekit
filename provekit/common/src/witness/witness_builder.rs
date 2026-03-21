@@ -512,7 +512,15 @@ impl WitnessBuilder {
         r1cs: R1CS,
         witness_map: Vec<Option<NonZeroU32>>,
         acir_public_inputs_indices_set: HashSet<u32>,
-    ) -> Result<(SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, usize), SplitError> {
+    ) -> Result<
+        (
+            SplitWitnessBuilders,
+            R1CS,
+            Vec<Option<NonZeroU32>>,
+            Vec<usize>,
+        ),
+        SplitError,
+    > {
         if witness_builders.is_empty() {
             return Ok((
                 SplitWitnessBuilders {
@@ -522,7 +530,7 @@ impl WitnessBuilder {
                 },
                 r1cs,
                 witness_map,
-                0,
+                Vec::new(),
             ));
         }
 
@@ -575,12 +583,15 @@ impl WitnessBuilder {
             scheduler.build_layers()
         };
 
-        let num_challenges = w2_layers
+        let challenge_offsets: Vec<usize> = w2_layers
             .layers
             .iter()
             .flat_map(|layer| &layer.witness_builders)
-            .filter(|b| matches!(b, WitnessBuilder::Challenge(_)))
-            .count();
+            .filter_map(|b| match b {
+                WitnessBuilder::Challenge(idx) => Some(*idx - w1_size),
+                _ => None,
+            })
+            .collect();
 
         Ok((
             SplitWitnessBuilders {
@@ -590,7 +601,7 @@ impl WitnessBuilder {
             },
             remapped_r1cs,
             remapped_witness_map,
-            num_challenges,
+            challenge_offsets,
         ))
     }
 }
