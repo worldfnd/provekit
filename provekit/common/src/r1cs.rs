@@ -1,6 +1,7 @@
 use {
     crate::{FieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
     serde::{Deserialize, Serialize},
+    sha3::{Digest, Sha3_256},
 };
 
 /// Represents a R1CS constraint system.
@@ -55,6 +56,13 @@ impl R1CS {
     /// witness).
     pub const fn num_witnesses(&self) -> usize {
         self.a.num_cols
+    }
+
+    /// Hash of the R1CS
+    #[must_use]
+    pub fn hash(&self) -> [u8; 32] {
+        let bytes = postcard::to_stdvec(self).expect("R1CS serialization failed");
+        Sha3_256::digest(&bytes).into()
     }
 
     // Increase the size of the R1CS matrices to the specified dimensions.

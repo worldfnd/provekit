@@ -51,6 +51,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             num_challenges,
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1),
             has_public_inputs,
+            r1cs_hash: r1cs.hash(),
         }
     }
 

@@ -31,6 +31,7 @@ pub struct WhirR1CSScheme {
     pub num_challenges:    usize,
     pub has_public_inputs: bool,
     pub whir_witness:      WhirZkConfig,
+    pub r1cs_hash:         [u8; 32],
 }
 
 impl WhirR1CSScheme {
