@@ -104,13 +104,13 @@ pub fn solve_witness_vec(
     plan: LayeredWitnessBuilders,
     acir_map: &WitnessMap<NoirElement>,
     transcript: &mut ProverState<TranscriptSponge>,
-) {
+) -> Result<()> {
     for layer in &plan.layers {
         match layer.typ {
             LayerType::Other => {
                 // Execute regular operations
                 for builder in &layer.witness_builders {
-                    builder.solve(acir_map, witness, transcript);
+                    builder.solve(acir_map, witness, transcript)?;
                 }
             }
             LayerType::Inverse => {
@@ -205,6 +205,7 @@ pub fn solve_witness_vec(
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
