@@ -295,7 +295,15 @@ impl WitnessBuilder {
         r1cs: R1CS,
         witness_map: Vec<Option<NonZeroU32>>,
         acir_public_inputs_indices_set: HashSet<u32>,
-    ) -> Result<(SplitWitnessBuilders, R1CS, Vec<Option<NonZeroU32>>, Vec<usize>), SplitError> {
+    ) -> Result<
+        (
+            SplitWitnessBuilders,
+            R1CS,
+            Vec<Option<NonZeroU32>>,
+            Vec<usize>,
+        ),
+        SplitError,
+    > {
         if witness_builders.is_empty() {
             return Ok((
                 SplitWitnessBuilders {

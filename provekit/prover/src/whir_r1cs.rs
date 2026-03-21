@@ -4,8 +4,9 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval, compute_public_eval,
-            expand_powers, make_challenge_weight, make_public_weight, OffsetCovector,
+            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
+            compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
+            OffsetCovector,
         },
         utils::{
             pad_to_power_of_two,
@@ -228,8 +229,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             // the committed w2 polynomial contains the correct Fiat-Shamir
             // challenges.
             let challenge_eval = if !self.challenge_offsets.is_empty() {
-                let ce =
-                    compute_challenge_eval(x, &self.challenge_offsets, &c2.polynomial);
+                let ce = compute_challenge_eval(x, &self.challenge_offsets, &c2.polynomial);
                 merlin.prover_message(&ce);
                 Some(ce)
             } else {
