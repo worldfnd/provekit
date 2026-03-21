@@ -1,4 +1,5 @@
 use {
+    anyhow::{ensure, Result},
     ark_ff::PrimeField,
     provekit_common::{
         witness::{SpiceMemoryOperation, SpiceWitnesses},
@@ -7,11 +8,11 @@ use {
 };
 
 pub(crate) trait SpiceWitnessesSolver {
-    fn solve(&self, witness: &mut [Option<FieldElement>]);
+    fn solve(&self, witness: &mut [Option<FieldElement>]) -> Result<()>;
 }
 
 impl SpiceWitnessesSolver for SpiceWitnesses {
-    fn solve(&self, witness: &mut [Option<FieldElement>]) {
+    fn solve(&self, witness: &mut [Option<FieldElement>]) -> Result<()> {
         debug_assert_eq!(
             self.initial_value_witnesses.len(),
             self.memory_length,
@@ -30,6 +31,11 @@ impl SpiceWitnessesSolver for SpiceWitnesses {
                 SpiceMemoryOperation::Load(addr, value, read_timestamp) => {
                     let addr = witness[*addr].unwrap();
                     let addr_as_usize = addr.into_bigint().0[0] as usize;
+                    ensure!(
+                        addr_as_usize < self.memory_length,
+                        "RAM Load: address {addr_as_usize} out of bounds for memory of size {}",
+                        self.memory_length
+                    );
                     witness[*read_timestamp] =
                         Some(FieldElement::from(rt_final[addr_as_usize] as u64));
                     rv_final[addr_as_usize] = witness[*value];
@@ -38,6 +44,11 @@ impl SpiceWitnessesSolver for SpiceWitnesses {
                 SpiceMemoryOperation::Store(addr, old_value, new_value, read_timestamp) => {
                     let addr = witness[*addr].unwrap();
                     let addr_as_usize = addr.into_bigint().0[0] as usize;
+                    ensure!(
+                        addr_as_usize < self.memory_length,
+                        "RAM Store: address {addr_as_usize} out of bounds for memory of size {}",
+                        self.memory_length
+                    );
                     witness[*old_value] = rv_final[addr_as_usize];
                     witness[*read_timestamp] =
                         Some(FieldElement::from(rt_final[addr_as_usize] as u64));
@@ -52,5 +63,6 @@ impl SpiceWitnessesSolver for SpiceWitnesses {
             witness[self.rv_final_start + i] = rv_final[i];
             witness[self.rt_final_start + i] = Some(FieldElement::from(rt_final[i] as u64));
         }
+        Ok(())
     }
 }
