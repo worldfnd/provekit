@@ -149,6 +149,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 let public_1: FieldElement = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
+                verify_public_input_binding(public_1, x, public_inputs)?;
                 weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
@@ -216,6 +217,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 let public_eval: FieldElement = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
+                verify_public_input_binding(public_eval, x, public_inputs)?;
                 weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
@@ -309,28 +311,23 @@ pub fn run_sumcheck_verifier(
     })
 }
 
-/// Verify that `challenge_eval == Σ xⁱ · challenges[i]`.
-///
-/// The prover sends `challenge_eval` as a transcript-bound message, and WHIR
-/// verifies that it equals the inner product of `make_challenge_weight(x, …)`
-/// with the committed w2 polynomial.  This function independently recomputes
-/// the expected value from the Fiat-Shamir `challenges` (which the verifier
-/// already knows) and checks equality, ensuring the committed w2 polynomial
-/// stores the correct challenge values at the declared offsets.
-fn verify_challenge_binding(
-    challenge_eval: FieldElement,
+/// Verify that the prover's claimed public evaluation matches the known public
+/// inputs. The weight covers positions `[0, 1, ..., N]` where position 0 is the
+/// R1CS constant `1` and positions `1..=N` are the public inputs.
+fn verify_public_input_binding(
+    public_eval: FieldElement,
     x: FieldElement,
-    challenges: &[FieldElement],
+    public_inputs: &PublicInputs,
 ) -> Result<()> {
-    let mut expected = FieldElement::zero();
-    let mut x_pow = FieldElement::one();
-    for &ch in challenges {
-        expected += x_pow * ch;
+    let mut expected = FieldElement::one();
+    let mut x_pow = x;
+    for &pi in &public_inputs.0 {
+        expected += x_pow * pi;
         x_pow *= x;
     }
     ensure!(
-        challenge_eval == expected,
-        "Challenge binding check failed: prover's challenge_eval does not match expected value"
+        public_eval == expected,
+        "Public input binding check failed: expected {expected:?}, got {public_eval:?}"
     );
     Ok(())
 }
