@@ -176,7 +176,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             num_challenges,
             challenge_offsets,
             has_public_inputs,
-            r1cs_hash: [0u8; 32], // TODO: Mavros path needs r1cs_hash
+            r1cs_hash: [0u8; 32],
         }
     }
 }
