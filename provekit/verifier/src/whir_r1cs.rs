@@ -13,7 +13,7 @@ use {
     tracing::instrument,
     whir::{
         algebra::linear_form::LinearForm,
-        transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
+        transcript::{Proof, VerifierMessage, VerifierState},
     },
 };
 
@@ -41,7 +41,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
-        let ds = self.create_domain_separator().instance(&Empty);
+        let instance = public_inputs.hash_bytes();
+        let ds = self.create_domain_separator().instance(&instance);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
             hints: proof.hints.clone(),
