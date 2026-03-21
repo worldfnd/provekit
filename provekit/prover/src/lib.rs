@@ -8,12 +8,22 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, MavrosProver, NoirElement, NoirProof, NoirProver,
-        Prover, PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
+        PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
-    whir::transcript::{ProverState, VerifierMessage},
+    whir::transcript::ProverState,
+};
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+use {
+    bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
+    whir::transcript::VerifierMessage,
 };
 
 pub(crate) mod bigint_mod;
@@ -94,8 +104,6 @@ impl Prove for NoirProver {
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
     ) -> Result<NoirProof> {
         provekit_common::register_ntt();
-
-        let acir_witness_idx_to_value_map = generate_noir_witness(&mut self, input_map)?;
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
         public_input_indices.sort_unstable();
