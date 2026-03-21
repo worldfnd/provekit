@@ -67,13 +67,14 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
         // Split witness builders and remap indices for sound challenge generation
-        let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
             WitnessBuilder::split_and_prepare_layers(
                 &witness_builders,
                 r1cs,
                 witness_map,
                 acir_public_inputs_indices_set,
             )?;
+        let num_challenges = challenge_offsets.len();
         info!(
             "Witness split: w1 size = {}, w2 size = {}",
             split_witness_builders.w1_size,
@@ -92,6 +93,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
             &remapped_r1cs,
             split_witness_builders.w1_size,
             num_challenges,
+            challenge_offsets,
             has_public_inputs,
         );
 
