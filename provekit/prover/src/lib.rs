@@ -267,7 +267,6 @@ impl Prove for MavrosProver {
         let public_inputs = if num_public_inputs == 0 {
             PublicInputs::new()
         } else {
-            // TODO : Verify marvos prover's handling of public input
             PublicInputs::from_vec(phase1.out_wit_pre_comm[1..=num_public_inputs].to_vec())
         };
 

@@ -109,9 +109,13 @@ impl R1CS {
         self.a.num_cols
     }
 
+    /// Compute a SHA3-256 hash of the serialized R1CS matrices.
+    ///
+    /// Panics if postcard serialization fails, which should not happen for a
+    /// well-formed `R1CS` (all fields implement `Serialize`).
     #[must_use]
     pub fn hash(&self) -> [u8; 32] {
-        let bytes = postcard::to_stdvec(self).expect("R1CS serialization failed");
+        let bytes = postcard::to_stdvec(self).expect("R1CS serialization should not fail");
         Sha3_256::digest(&bytes).into()
     }
 

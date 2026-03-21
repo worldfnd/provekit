@@ -136,7 +136,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = { version = "0.10.9", features = ["asm"] }
 sha3 = "0.10"
-blake3 = "1.5.6"
 test-case = "3.3.1"
 tikv-jemallocator = "0.6"
 toml = "0.8.8"
