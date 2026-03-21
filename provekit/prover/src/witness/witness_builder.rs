@@ -1,6 +1,7 @@
 use {
     crate::witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
     acir::native_types::WitnessMap,
+    anyhow::{ensure, Result},
     ark_ff::{BigInteger, PrimeField},
     ark_std::Zero,
     provekit_common::{
@@ -20,7 +21,7 @@ pub trait WitnessBuilderSolver {
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
         transcript: &mut ProverState<TranscriptSponge>,
-    );
+    ) -> Result<()>;
 }
 
 impl WitnessBuilderSolver for WitnessBuilder {
@@ -29,7 +30,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
         acir_witness_idx_to_value_map: &WitnessMap<NoirElement>,
         witness: &mut [Option<FieldElement>],
         transcript: &mut ProverState<TranscriptSponge>,
-    ) {
+    ) -> Result<()> {
         match self {
             WitnessBuilder::Constant(ConstantTerm(witness_idx, c)) => {
                 witness[*witness_idx] = Some(*c);
@@ -85,6 +86,11 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     // If the value is representable as just a u64, then it should be the least
                     // significant value in the BigInt representation.
                     let value = witness[*value_witness_idx].unwrap().into_bigint().0[0];
+                    ensure!(
+                        (value as usize) < *range_size,
+                        "MultiplicitiesForRange: value {value} out of bounds for range size \
+                         {range_size}"
+                    );
                     multiplicities[value as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -134,7 +140,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 );
             }
             WitnessBuilder::SpiceWitnesses(spice_witnesses) => {
-                spice_witnesses.solve(witness);
+                spice_witnesses.solve(witness)?;
             }
             WitnessBuilder::BinOpLookupDenominator(
                 witness_idx,
@@ -201,7 +207,8 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 );
             }
             WitnessBuilder::MultiplicitiesForBinOp(witness_idx, atomic_bits, operands) => {
-                let mut multiplicities = vec![0u32; 2usize.pow(2 * *atomic_bits)];
+                let table_size = 2usize.pow(2 * *atomic_bits);
+                let mut multiplicities = vec![0u32; table_size];
                 for (lhs, rhs) in operands {
                     let lhs = match lhs {
                         ConstantOrR1CSWitness::Constant(c) => *c,
@@ -215,7 +222,14 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             witness[*witness_idx].unwrap()
                         }
                     };
-                    let index = (lhs.into_bigint().0[0] << *atomic_bits) + rhs.into_bigint().0[0];
+                    let lhs_limb = lhs.into_bigint().0[0];
+                    let rhs_limb = rhs.into_bigint().0[0];
+                    let index = (lhs_limb << *atomic_bits) + rhs_limb;
+                    ensure!(
+                        (index as usize) < table_size,
+                        "MultiplicitiesForBinOp: index {index} (lhs={lhs_limb}, rhs={rhs_limb}, \
+                         atomic_bits={atomic_bits}) out of bounds for table size {table_size}"
+                    );
                     multiplicities[index as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -399,6 +413,11 @@ impl WitnessBuilderSolver for WitnessBuilder {
                             witness[*w].unwrap().into_bigint().0[0]
                         }
                     };
+                    ensure!(
+                        (val as usize) < table_size,
+                        "MultiplicitiesForSpread: value {val} out of bounds for table size \
+                         {table_size} (num_bits={num_bits})"
+                    );
                     multiplicities[val as usize] += 1;
                 }
                 for (i, count) in multiplicities.iter().enumerate() {
@@ -425,5 +444,6 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 )
             }
         }
+        Ok(())
     }
 }
