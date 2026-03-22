@@ -47,7 +47,10 @@ type PairMapEntry = (
 /// - Complementary: worst case one per op (missing AND or XOR).
 /// - Overhead: 4 challenges (sz, rs, rs², rs³) + 2 grand sum witnesses.
 fn calculate_binop_witness_cost(w: u32, n: usize) -> usize {
-    debug_assert!(w >= 2 && w <= 8, "width must be in [2, 8]");
+    assert!(
+        matches!(w, 2 | 4 | 8),
+        "width must be in {{2, 4, 8}} to evenly divide 8, got {w}"
+    );
     let d = 8u32.div_ceil(w) as usize;
     let table = 3 * (1usize << (2 * w));
     let queries = 4 * n * d;
@@ -57,10 +60,13 @@ fn calculate_binop_witness_cost(w: u32, n: usize) -> usize {
     table + queries + decomp + complementary + overhead
 }
 
-/// Finds the atomic bit-width in [2, 8] that minimizes the total
+/// Finds the atomic bit-width in {2, 4, 8} that minimizes the total
 /// witness count for `n` byte-level binop pairs.
+/// (3, 5, 6, 7) need a separate range check on the last chunk to
+/// restore byte semantics; once that cost is included, they compute
+/// to roughly the same witness count as the dividing widths.
 fn get_optimal_binop_width(n: usize) -> u32 {
-    (2u32..=8)
+    [2u32, 4, 8]
         .into_iter()
         .min_by_key(|&w| calculate_binop_witness_cost(w, n))
         .unwrap()
@@ -476,4 +482,108 @@ fn add_combined_lookup_summand(
     );
 
     inverse
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::digits::add_digital_decomposition};
+
+    /// Check R1CS satisfaction: for every constraint row, (A·w)*(B·w) == C·w.
+    fn constraints_satisfied(r1cs: &provekit_common::R1CS, witness: &[FieldElement]) -> bool {
+        let a = r1cs.a() * witness;
+        let b = r1cs.b() * witness;
+        let c = r1cs.c() * witness;
+        a.iter()
+            .zip(b.iter())
+            .zip(c.iter())
+            .all(|((av, bv), cv)| *av * *bv == *cv)
+    }
+
+    /// Decompose `value` into `d` digits of `w` bits each (little-endian).
+    fn decompose(value: u64, w: u32, d: usize) -> Vec<u64> {
+        let mask = (1u64 << w) - 1;
+        (0..d)
+            .map(|i| (value >> (i as u64 * w as u64)) & mask)
+            .collect()
+    }
+
+    /// `get_optimal_binop_width` must never return a width that does not divide
+    /// 8, because non-dividing widths (e.g. 3) cause digit decompositions
+    /// that overallocate bit capacity beyond [0, 255], breaking byte
+    /// semantics.
+    #[test]
+    fn optimal_binop_width_always_divides_8() {
+        for n in 1..=1024 {
+            let w = get_optimal_binop_width(n);
+            assert!(
+                8 % w == 0,
+                "get_optimal_binop_width({n}) returned {w}, which does not divide 8"
+            );
+        }
+    }
+
+    /// Regression test for Issue D: when atomic_bits divides 8, the digital
+    /// decomposition recomposition constraint rejects non-canonical byte
+    /// values (> 255).
+    ///
+    /// The recomposition constraint enforces:
+    ///     byte = d0 + 2^w * d1 + 2^(2w) * d2 + ... + 2^((d-1)*w) * d_{d-1}
+    ///
+    /// When w divides 8, d = 8/w digits of w bits each cover exactly 8 bits,
+    /// so the maximum representable value with in-range digits is 255. A byte
+    /// witness of 256 cannot satisfy this constraint with any valid digit
+    /// assignment.
+    #[test]
+    fn non_canonical_byte_rejected_by_recomposition() {
+        // Test for each valid atomic width that decomposes bytes.
+        for atomic_bits in [2u32, 4] {
+            let d = (8 / atomic_bits) as usize;
+            let log_bases = vec![atomic_bits as usize; d];
+
+            let mut compiler = NoirToR1CSCompiler::new();
+
+            // Add a witness slot for the "byte" value.
+            let byte_idx = compiler.num_witnesses();
+            compiler.r1cs.add_witnesses(1);
+            compiler.witness_builders.push(WitnessBuilder::Constant(
+                provekit_common::witness::ConstantTerm(byte_idx, FieldElement::from(200u64)),
+            ));
+
+            // Decompose — adds digit witnesses + recomposition constraints.
+            let dd = add_digital_decomposition(&mut compiler, log_bases, vec![byte_idx]);
+
+            let num_w = compiler.num_witnesses();
+
+            // --- Canonical case: byte = 200, valid digits ---
+            let mut witness = vec![FieldElement::from(0u64); num_w];
+            witness[0] = FieldElement::from(1u64); // constant-one witness
+            witness[byte_idx] = FieldElement::from(200u64);
+
+            for (i, digit) in decompose(200, atomic_bits, d).into_iter().enumerate() {
+                witness[dd.get_digit_witness_index(i, 0)] = FieldElement::from(digit);
+            }
+
+            assert!(
+                constraints_satisfied(&compiler.r1cs, &witness),
+                "Canonical byte=200 with w={atomic_bits} must satisfy recomposition"
+            );
+
+            // --- Non-canonical case: tamper byte to 256, digits unchanged ---
+            // Digits still sum to 200, but byte is 256 → mismatch.
+            witness[byte_idx] = FieldElement::from(256u64);
+            assert!(
+                !constraints_satisfied(&compiler.r1cs, &witness),
+                "byte=256 with digits for 200 (w={atomic_bits}) must NOT satisfy recomposition"
+            );
+
+            // --- Verify that no in-range digit combination can represent 256 ---
+            let max_representable: u64 = (0..d)
+                .map(|i| ((1u64 << atomic_bits) - 1) << (i as u64 * atomic_bits as u64))
+                .sum();
+            assert_eq!(
+                max_representable, 255,
+                "Max representable value with w={atomic_bits}, d={d} digits must be exactly 255"
+            );
+        }
+    }
 }
