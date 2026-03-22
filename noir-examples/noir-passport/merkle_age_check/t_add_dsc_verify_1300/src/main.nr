@@ -3,6 +3,7 @@ use partial_sha256::{
     SHA256State, sha256_continue, sha256_finalize, verify_sha256_state_and_data_commitment, commit_to_data_chunk,
 };
 use fragmented_sig_check_rsa::verify_rsa_signature;
+use utils::check_zero_padding;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -27,6 +28,10 @@ fn main(
         tbs_certificate_len <= TBS_CERT_SIZE,
         "tbs_certificate_len must not exceed TBS_CERT_SIZE (1300)"
     );
+
+    // Ensure all bytes beyond the signed length are zero so that trailing
+    // bytes cannot carry attacker-controlled data into the commitment.
+    check_zero_padding(tbs_certificate, tbs_certificate_len);
 
     let mut chunk1: [u8; CHUNK1_SIZE] = [0; CHUNK1_SIZE];
     for i in 0..CHUNK1_SIZE {
