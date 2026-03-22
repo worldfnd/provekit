@@ -1,4 +1,5 @@
 use bignum::{params::BigNumParams, RuntimeBigNum};
+use common::assert_allowed_rsa_exponent;
 use rsa::rsa::verify_sha256_pkcs1v15;
 
 // Part 2 RSA verification - takes pre-computed hash (used in fragmented circuits)
@@ -6,9 +7,10 @@ use rsa::rsa::verify_sha256_pkcs1v15;
 pub fn verify_rsa_signature<let SIG_BYTES: u32>(
     pubkey_bytes: [u8; SIG_BYTES],
     sig_bytes: [u8; (((SIG_BYTES * 8) + 7) / 8)],
+    // NOTE: reverted to witness-supplied Barrett/redc parameter for compatibility with existing proving inputs.
     redc_param_bytes: [u8; SIG_BYTES + 1],
     exponent: u32,
-    msg_hash: [u8; 32]  // Pre-computed SHA256 hash
+    msg_hash: [u8; 32], // Pre-computed SHA256 hash
 ) -> bool {
     assert(
         (SIG_BYTES == 768)
@@ -18,6 +20,8 @@ pub fn verify_rsa_signature<let SIG_BYTES: u32>(
             | (SIG_BYTES == 128),
         "Only modulus of bit size 1024, 2048, 3072, 4096 and 6144 are supported",
     );
+    // TODO: Add support for more exponent values if needed for other countries. 
+    assert_allowed_rsa_exponent(exponent);
 
     let pubkey =
         utils::pack_be_bytes_into_u128s::<SIG_BYTES, (SIG_BYTES + 14) / 15, 15>(pubkey_bytes);
