@@ -47,6 +47,7 @@ pub fn verify_rsa_pubkey_in_tbs<let DSC_KEY_SIZE: u32, let TBS_CERT_SIZE: u32>(
     if exponent < 0x100 {
         // 1-byte exponent (only exponent=3 in the allowed list).
         // exponent_offset must point to the single value byte in TBS.
+        assert(exponent_offset < TBS_CERT_SIZE, "Exponent offset out of bounds");
         assert(
             tbs_certificate[exponent_offset] == exponent as u8,
             "Exponent mismatch in TBS",

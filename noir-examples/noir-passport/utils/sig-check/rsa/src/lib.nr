@@ -13,10 +13,10 @@ global RSA_KEY_NE_HASH_DOMAIN: Field = 0x5253415f4e455f48; // "RSA_NE_H"
 
 fn exponent_to_be_bytes(exponent: u32) -> [u8; 4] {
     [
-        (exponent / 16777216) as u8,
-        ((exponent / 65536) % 256) as u8,
-        ((exponent / 256) % 256) as u8,
-        (exponent % 256) as u8,
+        ((exponent >> 24) & 0xFF) as u8,
+        ((exponent >> 16) & 0xFF) as u8,
+        ((exponent >> 8) & 0xFF) as u8,
+        (exponent & 0xFF) as u8,
     ]
 }
 
@@ -115,4 +115,25 @@ fn test_allowed_rsa_exponents() {
 #[test(should_fail_with = "Unsupported RSA exponent")]
 fn test_rejects_exponent_one() {
     assert_allowed_rsa_exponent(1);
+}
+
+#[test]
+fn test_compute_key_ne_hash_differs_by_exponent() {
+    // Same pubkey, different exponent must produce different hash.
+    // Catches regressions where the exponent is dropped from the hash input.
+    let pubkey: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
+    let hash_65537 = compute_key_ne_hash::<4>(pubkey, 65537);
+    let hash_3 = compute_key_ne_hash::<4>(pubkey, 3);
+    assert(hash_65537 != hash_3);
+}
+
+#[test]
+fn test_compute_key_ne_hash_differs_by_pubkey() {
+    // Same exponent, different pubkey must produce different hash.
+    // Catches regressions where the pubkey is dropped from the hash input.
+    let pubkey_a: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
+    let pubkey_b: [u8; 4] = [0x05, 0x06, 0x07, 0x08];
+    let hash_a = compute_key_ne_hash::<4>(pubkey_a, 65537);
+    let hash_b = compute_key_ne_hash::<4>(pubkey_b, 65537);
+    assert(hash_a != hash_b);
 }
