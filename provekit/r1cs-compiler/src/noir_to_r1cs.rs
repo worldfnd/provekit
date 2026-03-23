@@ -350,12 +350,24 @@ impl NoirToR1CSCompiler {
             (fe.into_bigint().0[bit_offset / 64] >> (bit_offset % 64)) as u8 as u64
         }
 
+        /// Assert that a field element fits in 32 bits.
+        fn assert_fits_32_bits(fe: &FieldElement) {
+            let bigint = fe.into_bigint();
+            assert!(
+                bigint.0[1..].iter().all(|&limb| limb == 0)
+                    && bigint.0[0] <= u32::MAX as u64,
+                "AND/XOR constant exceeds 32 bits: {fe}"
+            );
+        }
+
         match (lhs, rhs) {
             // Both constant — nargo usually folds this at compile time,
             // but we handle it defensively.
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let lhs_fe = noir_to_native(lhs_c);
                 let rhs_fe = noir_to_native(rhs_c);
+                assert_fits_32_bits(&lhs_fe);
+                assert_fits_32_bits(&rhs_fe);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                 for byte_idx in 0..num_digits {
@@ -372,6 +384,7 @@ impl NoirToR1CSCompiler {
             // lhs constant, rhs witness
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
                 let lhs_fe = noir_to_native(lhs_c);
+                assert_fits_32_bits(&lhs_fe);
                 let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
@@ -388,6 +401,7 @@ impl NoirToR1CSCompiler {
             // lhs witness, rhs constant
             (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let rhs_fe = noir_to_native(rhs_c);
+                assert_fits_32_bits(&rhs_fe);
                 let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
