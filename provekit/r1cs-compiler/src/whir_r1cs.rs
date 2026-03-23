@@ -26,7 +26,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
     ) -> Self {
-        debug_assert_eq!(
+        assert_eq!(
             num_challenges,
             challenge_offsets.len(),
             "num_challenges ({num_challenges}) must equal challenge_offsets.len() ({})",

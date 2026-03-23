@@ -247,6 +247,11 @@ impl SparseCovector {
     /// Create a new `SparseCovector` from `(position, weight)` pairs and a
     /// domain size.
     pub fn new(entries: Vec<(usize, FieldElement)>, domain_size: usize) -> Self {
+        assert!(domain_size.is_power_of_two());
+        assert!(
+            entries.iter().all(|&(pos, _)| pos < domain_size),
+            "SparseCovector: all entry positions must be < domain_size ({domain_size})"
+        );
         Self {
             entries,
             domain_size,
