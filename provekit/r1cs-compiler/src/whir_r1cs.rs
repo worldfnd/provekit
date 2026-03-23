@@ -53,7 +53,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
-        debug_assert_eq!(
+        assert_eq!(
             num_challenges,
             challenge_offsets.len(),
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
