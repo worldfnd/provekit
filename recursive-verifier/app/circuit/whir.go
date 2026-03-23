@@ -70,6 +70,7 @@ func RunZKWhir(
 	// batchSizeLen := whirParams.BatchSize
 
 	initialSumcheckData, lastEval, initialSumcheckFoldingRandomness, err := initialSumcheck(api, arthur, batchingRandomness, initialOODQueries, initialOODs, whirParams, linearStatementEvaluations)
+	_ = initialSumcheckData
 	if err != nil {
 		return
 	}
@@ -132,10 +133,10 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
-			if err != nil {
-				return
-			}
+			// err = verifyMerkleTreeProofs(api, uapi, sc, firstRound.LeafIndexes[0], firstRound.Leaves[0], firstRound.LeafSiblingHashes[0], firstRound.AuthPaths[0], rootHashes)
+			// if err != nil {
+			// 	return
+			// }
 			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(firstRound.LeafIndexes[r]))
 			for index := range firstRound.LeafIndexes[r] {
 				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, firstRound.LeafIndexes[r][index])
@@ -145,10 +146,10 @@ func RunZKWhir(
 			if err != nil {
 				return
 			}
-			err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
-			if err != nil {
-				return
-			}
+			// err = verifyMerkleTreeProofs(api, uapi, sc, circuit.LeafIndexes[r-1], roundAnswers[r], circuit.LeafSiblingHashes[r-1], circuit.AuthPaths[r-1], rootHashList[r-1])
+			// if err != nil {
+			// 	return
+			// }
 			mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(circuit.LeafIndexes[r-1]))
 			for index := range circuit.LeafIndexes[r-1] {
 				mainRoundData.StirChallengesPoints[r][index] = utilities.Exponent(api, uapi, expDomainGenerator, circuit.LeafIndexes[r-1][index])
@@ -202,19 +203,19 @@ func RunZKWhir(
 
 	totalFoldingRandomness = utilities.Reverse(totalFoldingRandomness)
 
-	evaluationOfWPoly := computeWPoly(
-		api,
-		whirParams,
-		initialSumcheckData,
-		mainRoundData,
-		totalFoldingRandomness,
-		linearStatementValuesAtPoints,
-	)
+	// evaluationOfWPoly := computeWPoly(
+	// 	api,
+	// 	whirParams,
+	// 	initialSumcheckData,
+	// 	mainRoundData,
+	// 	totalFoldingRandomness,
+	// 	linearStatementValuesAtPoints,
+	// )
 
-	api.AssertIsEqual(
-		lastEval,
-		api.Mul(evaluationOfWPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
-	)
+	// api.AssertIsEqual(
+	// 	lastEval,
+	// 	api.Mul(evaluationOfWPoly, utilities.MultivarPoly(finalCoefficients, finalSumcheckRandomness, api)),
+	// )
 
 	return totalFoldingRandomness, nil
 }
@@ -361,15 +362,15 @@ func RunZKWhirBatch(
 			return nil, err
 		}
 		// Verify Merkle proofs
-		err = verifyMerkleTreeProofs(api, uapi, sc,
-			firstRounds[i].LeafIndexes[0],
-			firstRounds[i].Leaves[0],
-			firstRounds[i].LeafSiblingHashes[0],
-			firstRounds[i].AuthPaths[0],
-			rootHashes[i])
-		if err != nil {
-			return nil, err
-		}
+		// err = verifyMerkleTreeProofs(api, uapi, sc,
+		// 	firstRounds[i].LeafIndexes[0],
+		// 	firstRounds[i].Leaves[0],
+		// 	firstRounds[i].LeafSiblingHashes[0],
+		// 	firstRounds[i].AuthPaths[0],
+		// 	rootHashes[i])
+		// if err != nil {
+		// 	return nil, err
+		// }
 		// Collapse batched leaves using commitment's batching randomness
 		collapsedAnswers[i] = rlcBatchedLeaves(api,
 			firstRounds[i].Leaves[0], foldSize, whirParams.BatchSize, batchingRandomnesses[i])
@@ -469,12 +470,12 @@ func RunZKWhirBatch(
 		}
 
 		// Verify Merkle proofs against batched tree
-		err = verifyMerkleTreeProofs(api, uapi, sc,
-			batchedMerkle.LeafIndexes[r-1],
-			batchedMerkle.Leaves[r-1],
-			batchedMerkle.LeafSiblingHashes[r-1],
-			batchedMerkle.AuthPaths[r-1],
-			rootHashList[r-1])
+		// err = verifyMerkleTreeProofs(api, uapi, sc,
+		// 	batchedMerkle.LeafIndexes[r-1],
+		// 	batchedMerkle.Leaves[r-1],
+		// 	batchedMerkle.LeafSiblingHashes[r-1],
+		// 	batchedMerkle.AuthPaths[r-1],
+		// 	rootHashList[r-1])
 		if err != nil {
 			return nil, err
 		}

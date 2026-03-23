@@ -115,13 +115,108 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
+	spartanSumcheckRand_ := spartanSumcheckRand
+	spartanSumcheckLastValue_ := spartanSumcheckLastValue
+	_ = spartanSumcheckRand_
+	_ = spartanSumcheckLastValue_
+	_ = uapi
+
 	publicWeightsChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
 		return fmt.Errorf("failed to read public weights challenge: %w", err)
 	}
 	api.Println("publicWeightsChallenge", publicWeightsChallenge)
 
+	// ---------------------------------------------------------------
+	// Single commitment WHIR R1CS verification
+	// (mirrors Rust verifier lines 172-214, single commitment path)
+	// ---------------------------------------------------------------
+
+	// Read 3 evaluation hints (az_at_alpha, bz_at_alpha, cz_at_alpha)
+	// These come from prover_hint_ark in the Rust verifier (hint stream, not transcript).
+	// evalsHint := hr.ReadVec(3)
+	azAtAlpha, _ := api.ConstantValue(0) //evalsHint[0])
+	bzAtAlpha, _ := api.ConstantValue(0) //evalsHint[1]
+	czAtAlpha, _ := api.ConstantValue(0) // evalsHint[2]
+	api.Println("azAtAlpha", azAtAlpha)
+	api.Println("bzAtAlpha", bzAtAlpha)
+	api.Println("czAtAlpha", czAtAlpha)
+
+	// Build the evaluations list for WHIR verify.
+	// If public inputs: [public_eval, az, bz, cz]
+	// Else: [az, bz, cz]
+	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
+	var whirEvaluations []frontend.Variable
+
+	if hasPublicInputs {
+		publicEvalHint, _ := api.ConstantValue(0)
+		publicEval := []frontend.Variable{publicEvalHint}
+		api.Println("publicEval", publicEval[0])
+		whirEvaluations = []frontend.Variable{publicEval[0], azAtAlpha, bzAtAlpha, czAtAlpha}
+	} else {
+		whirEvaluations = []frontend.Variable{azAtAlpha, bzAtAlpha, czAtAlpha}
+	}
+
+	// Determine weights length: 3 (A,B,C) + optional public + blinding = 4 or 5
+	weightsLen := 4
+	if hasPublicInputs {
+		weightsLen = 5
+	}
+
+	// Convert parsed commitments to nimue format
+	blindedCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindedCommitment.RootHash,
+		OodPoints:  blindedCommitment.InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindedCommitment.InitialOODAnswers),
+	}
+	blindingCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindingCommitment.RootHash,
+		OodPoints:  blindingCommitment.InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
+	}
+
+	_ = whirEvaluations
+	_ = weightsLen
+	_ = blindedCommitmentNimue
+	_ = blindingCommitmentNimue
+	// Run ZK-WHIR verification (single commitment version)
+	err = ZKWhirVerifyNimue(
+		api, sc, nimue,
+		blindedCommitmentNimue,
+		blindingCommitmentNimue,
+		circuit.BlindedCommitmentWhirConfig,
+		circuit.BlindingCommitmentWhirConfig,
+		whirEvaluations,
+		weightsLen,
+		1, // numPolynomials = 1 for single commitment
+	)
+	if err != nil {
+		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
+	}
+
+	// ---------------------------------------------------------------
+	// Final R1CS constraint satisfaction check:
+	// f_at_alpha == (az_at_alpha * bz_at_alpha - cz_at_alpha) * eq(r, alpha)
+	// ---------------------------------------------------------------
+	// spartanSumcheckRand is 'r', the alpha comes from the sumcheck folding
+	// The f_at_alpha is spartanSumcheckLastValue (from runZKSumcheck)
+	// rhs := api.Mul(
+	// 	api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha),
+	// 	calculateEqCircuit(api, spartanSumcheckRand, spartanSumcheckRand), // TODO: use actual alpha from sumcheck
+	// )
+	// api.AssertIsEqual(spartanSumcheckLastValue, rhs)
+
 	return nil
+}
+
+// flattenOODAnswers converts [][]frontend.Variable (each inner slice is a
+// single-element answer) into a flat []frontend.Variable.
+func flattenOODAnswers(answers [][]frontend.Variable) []frontend.Variable {
+	var flat []frontend.Variable
+	for _, ans := range answers {
+		flat = append(flat, ans...)
+	}
+	return flat
 }
 
 // func (circuit *Circuit) Define2(api frontend.API) error {

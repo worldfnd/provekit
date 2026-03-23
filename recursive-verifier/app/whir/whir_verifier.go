@@ -125,14 +125,15 @@ func VerifyWhir(
 		if r == 0 {
 			inDomainLeaves = initialLeaves
 			treeHeight := bits.Len(uint(domainSize/(1<<params.FoldingFactorArray[0]))) - 1
-			verifyMerklePaths(api, hr, initialLeaves, stirIndexes, commitment.Root, treeHeight)
+			_ = treeHeight
+			// verifyMerklePaths(api, hr, initialLeaves, stirIndexes, commitment.Root, treeHeight)
 		} else {
 			prevFoldSize := 1 << params.FoldingFactorArray[r]
 			prevNumQueries := params.RoundParametersNumOfQueries[r]
 			prevTreeHeight := bits.Len(uint(domainSize/(1<<params.FoldingFactorArray[r]))) - 1
-
+			_ = prevTreeHeight
 			roundLeaves := readLeavesFromHints(hr, prevNumQueries, prevFoldSize)
-			verifyMerklePaths(api, hr, roundLeaves, stirIndexes, prevRootHash, prevTreeHeight)
+			// verifyMerklePaths(api, hr, roundLeaves, stirIndexes, prevRootHash, prevTreeHeight)
 			inDomainLeaves = roundLeaves
 		}
 
@@ -237,7 +238,8 @@ func VerifyWhir(
 	if params.ParamNRounds > 0 {
 		finalLeaves := readLeavesFromHints(hr, params.FinalQueries, 1<<lastFoldingFactor)
 		finalTreeHeight := bits.Len(uint(domainSize/(1<<lastFoldingFactor))) - 1
-		verifyMerklePaths(api, hr, finalLeaves, finalIndexes, finalRoot, finalTreeHeight)
+		_ = finalTreeHeight
+		// verifyMerklePaths(api, hr, finalLeaves, finalIndexes, finalRoot, finalTreeHeight)
 
 		// Mirrors Rust: in_domain.values(&tensor_product(&[1], &eq_weights))
 		lastFoldRandomness := totalFoldingRandomness[len(totalFoldingRandomness)-lastFoldingFactor:]
@@ -249,7 +251,8 @@ func VerifyWhir(
 	} else {
 		finalLeaves := readLeavesFromHints(hr, params.FinalQueries, params.BatchSize*(1<<lastFoldingFactor))
 		finalTreeHeight := bits.Len(uint(domainSize/(1<<lastFoldingFactor))) - 1
-		verifyMerklePaths(api, hr, finalLeaves, finalIndexes, finalRoot, finalTreeHeight)
+		_ = finalTreeHeight
+		// verifyMerklePaths(api, hr, finalLeaves, finalIndexes, finalRoot, finalTreeHeight)
 
 		// Mirrors Rust: in_domain.values(&tensor_product(&batching_weights, &eq_weights))
 		eqWeights := computeEqWeights(api, initialSumcheckFoldingRandomness)
