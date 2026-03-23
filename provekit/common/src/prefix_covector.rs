@@ -1,4 +1,5 @@
- use {
+
+use {
     crate::FieldElement,
     ark_std::{One, Zero},
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
