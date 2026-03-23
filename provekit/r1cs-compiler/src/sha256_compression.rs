@@ -256,7 +256,15 @@ pub(crate) fn add_sha256_compression(
         let hash_constant_u32: [Option<u32>; 8] = hash_values
             .iter()
             .map(|hv| match hv {
-                ConstantOrR1CSWitness::Constant(val) => Some(val.into_bigint().0[0] as u32),
+                ConstantOrR1CSWitness::Constant(val) => {
+                    let bigint = val.into_bigint();
+                    assert!(
+                        bigint.0[1..].iter().all(|&limb| limb == 0)
+                            && bigint.0[0] <= u32::MAX as u64,
+                        "SHA256 hash constant exceeds 32 bits: {val}"
+                    );
+                    Some(bigint.0[0] as u32)
+                }
                 ConstantOrR1CSWitness::Witness(_) => None,
             })
             .collect::<Vec<_>>()
