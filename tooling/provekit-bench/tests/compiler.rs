@@ -9,7 +9,7 @@ use {
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_verifier::Verify,
     serde::Deserialize,
-    std::path::Path,
+    std::path::{Path, PathBuf},
     test_case::test_case,
 };
 
@@ -23,10 +23,38 @@ struct NargoTomlPackage {
     name: String,
 }
 
+/// Ensures each workspace is compiled at most once across parallel test
+/// threads. Multiple test cases may share the same Noir workspace (e.g.
+/// embedded_curve_msm with different witness files).
+fn compile_workspace_once(workspace_path: &Path) {
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex, OnceLock},
+    };
+
+    static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<bool>>>>> = OnceLock::new();
+    let locks = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+
+    let canonical = workspace_path
+        .canonicalize()
+        .expect("Canonicalizing workspace path");
+
+    let path_lock = {
+        let mut map = locks.lock().unwrap();
+        map.entry(canonical).or_default().clone()
+    };
+
+    let mut compiled = path_lock.lock().unwrap();
+    if !*compiled {
+        compile_workspace(workspace_path).expect("Compiling workspace");
+        *compiled = true;
+    }
+}
+
 fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
     let test_case_path = test_case_path.as_ref();
 
-    compile_workspace(test_case_path).expect("Compiling workspace");
+    compile_workspace_once(test_case_path);
 
     let nargo_toml_path = test_case_path.join("Nargo.toml");
 
@@ -132,7 +160,7 @@ fn test_public_input_binding_exploit() {
 
     let test_case_path = Path::new("../../noir-examples/basic-4");
 
-    compile_workspace(test_case_path).expect("Compiling workspace");
+    compile_workspace_once(test_case_path);
 
     let nargo_toml_path = test_case_path.join("Nargo.toml");
     let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
