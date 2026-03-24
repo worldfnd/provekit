@@ -336,7 +336,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 )
             }
             WitnessBuilder::ChunkDecompose {
-                output_start,
+                output_indices,
                 packed,
                 chunk_bits,
             } => {
@@ -345,7 +345,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 for (i, &bits) in chunk_bits.iter().enumerate() {
                     let mask = (1u64 << bits) - 1;
                     let chunk_val = (packed_val >> offset) & mask;
-                    witness[output_start + i] = Some(FieldElement::from(chunk_val));
+                    witness[output_indices[i]] = Some(FieldElement::from(chunk_val));
                     offset += bits;
                 }
             }
@@ -355,12 +355,11 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 witness[*output_idx] = Some(FieldElement::from(spread));
             }
             WitnessBuilder::SpreadBitExtract {
-                output_start,
+                output_indices,
                 chunk_bits,
                 sum_terms,
                 extract_even,
             } => {
-                // Compute the spread sum inline from terms (no phantom witness needed)
                 let sum_fe: FieldElement = sum_terms
                     .iter()
                     .map(|SumTerm(coeff, idx)| {
@@ -373,19 +372,17 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     })
                     .fold(FieldElement::zero(), |acc, x| acc + x);
                 let sum_val = sum_fe.into_bigint().0[0];
-                // Extract even or odd bits from the spread sum
                 let bit_offset = if *extract_even { 0 } else { 1 };
                 let total_bits: u32 = chunk_bits.iter().sum();
                 let mut extracted = 0u64;
                 for i in 0..total_bits {
                     extracted |= ((sum_val >> (2 * i + bit_offset)) & 1) << i;
                 }
-                // Decompose extracted value into chunks
                 let mut offset = 0u32;
                 for (i, &bits) in chunk_bits.iter().enumerate() {
                     let mask = (1u64 << bits) - 1;
                     let chunk_val = (extracted >> offset) & mask;
-                    witness[output_start + i] = Some(FieldElement::from(chunk_val));
+                    witness[output_indices[i]] = Some(FieldElement::from(chunk_val));
                     offset += bits;
                 }
             }

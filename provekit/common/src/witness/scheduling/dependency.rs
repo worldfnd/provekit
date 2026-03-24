@@ -258,9 +258,7 @@ impl DependencyInfo {
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
             }
-            WitnessBuilder::DigitalDecomposition(dd) => {
-                (dd.first_witness_idx..dd.first_witness_idx + dd.num_witnesses).collect()
-            }
+            WitnessBuilder::DigitalDecomposition(dd) => dd.output_indices.clone(),
             WitnessBuilder::SpiceWitnesses(sw) => {
                 (sw.first_witness_idx..sw.first_witness_idx + sw.num_witnesses).collect()
             }
@@ -268,16 +266,8 @@ impl DependencyInfo {
                 let n = 2usize.pow(2 * *atomic_bits);
                 (*start..*start + n).collect()
             }
-            WitnessBuilder::ChunkDecompose {
-                output_start,
-                chunk_bits,
-                ..
-            } => (*output_start..*output_start + chunk_bits.len()).collect(),
-            WitnessBuilder::SpreadBitExtract {
-                output_start,
-                chunk_bits,
-                ..
-            } => (*output_start..*output_start + chunk_bits.len()).collect(),
+            WitnessBuilder::ChunkDecompose { output_indices, .. } => output_indices.clone(),
+            WitnessBuilder::SpreadBitExtract { output_indices, .. } => output_indices.clone(),
             WitnessBuilder::MultiplicitiesForSpread(start, num_bits, _) => {
                 let n = 1usize << *num_bits;
                 (*start..*start + n).collect()

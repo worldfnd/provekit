@@ -11,12 +11,12 @@
 
 use {
     crate::{
-        witness::{DependencyInfo, SumTerm, WitnessBuilder},
+        witness::{DependencyInfo, WitnessBuilder},
         FieldElement, InternedFieldElement, SparseMatrix, R1CS,
     },
     ark_ff::Field,
     ark_std::{One, Zero},
-    std::collections::{HashMap, HashSet, VecDeque},
+    std::collections::{HashMap, HashSet},
     tracing::info,
 };
 
@@ -32,23 +32,14 @@ struct Substitution {
 
 /// Statistics from the optimization pass.
 pub struct OptimizationStats {
-    pub constraints_before:      usize,
-    pub constraints_after:       usize,
-    pub witnesses_before:        usize,
-    pub witnesses_after:         usize,
-    pub eliminated:              usize,
-    pub builders_removed:        usize,
-    pub builders_rewritten:      usize,
-    pub new_sum_builders:        usize,
-    /// Zero-occurrence columns in A/B/C matrices (excl. col 0 and public
-    /// inputs).
-    pub zero_occurrence_cols:    usize,
-    /// Zero-occurrence cols pinned by the ACIR witness map.
-    pub blocked_by_acir:         usize,
-    /// Zero-occurrence cols whose producing builder is still transitively live.
-    pub blocked_by_live_builder: usize,
-    /// Columns actually removed after all blocking checks.
-    pub columns_removed:         usize,
+    pub constraints_before: usize,
+    pub constraints_after:  usize,
+    pub witnesses_before:   usize,
+    pub witnesses_after:    usize,
+    pub eliminated:         usize,
+    pub builders_removed:   usize,
+    /// Virtual witnesses: computation-only, excluded from WHIR commitment.
+    pub num_virtual:        usize,
 }
 
 impl OptimizationStats {
@@ -220,12 +211,7 @@ pub fn optimize_r1cs(
             witnesses_after: witnesses_before,
             eliminated: 0,
             builders_removed: 0,
-            builders_rewritten: 0,
-            new_sum_builders: 0,
-            zero_occurrence_cols: 0,
-            blocked_by_acir: 0,
-            blocked_by_live_builder: 0,
-            columns_removed: 0,
+            num_virtual: 0,
         };
     }
 
@@ -309,57 +295,15 @@ pub fn optimize_r1cs(
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
-    // Phase 4b: Rewrite Sum/SpreadBitExtract builders to inline GE substitutions,
-    // severing the dependency chains that prevent dead-column removal.
-    //
-    // Cycle detection must run first (on the unmodified dependency graph) to
-    // identify builders that cannot be safely rewritten.  Counts are collected
-    // before the rewrite so the log reflects the original state.
-    let blocked_builders = compute_rewrite_blocked(witness_builders, &substitutions);
-
-    let pivot_cols: HashSet<usize> = substitutions.iter().map(|s| s.pivot_col).collect();
-    let mut total_candidates = 0usize;
-    let mut blocked_candidates = 0usize;
-    for (idx, builder) in witness_builders.iter().enumerate() {
-        let reads_pivot = match builder {
-            WitnessBuilder::Sum(_, terms) => {
-                terms.iter().any(|SumTerm(_, col)| pivot_cols.contains(col))
-            }
-            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
-                .iter()
-                .any(|SumTerm(_, col)| pivot_cols.contains(col)),
-            _ => false,
-        };
-        if reads_pivot {
-            total_candidates += 1;
-            if blocked_builders.contains(&idx) {
-                blocked_candidates += 1;
-            }
-        }
-    }
-
-    let builders_rewritten =
-        rewrite_builders_for_substitutions(witness_builders, &substitutions, &blocked_builders);
-
     info!(
-        "Builder rewrite: {}/{} candidates rewritten, {} blocked by cycle detection",
-        builders_rewritten, total_candidates, blocked_candidates,
+        "Phase 3 done: {} constraints remaining after substitution",
+        constraints_after
     );
 
-    // Phase 4c: Restore a valid topological execution order.
-    //
-    // Phase 4b may have changed dependencies: builder X now reads w50/w60
-    // instead of pivot P.  If producer(w50) sits later in the Vec than X,
-    // the old order is no longer valid.  Re-sort so every builder comes after
-    // all the builders whose outputs it reads.  This is required by
-    // WitnessSplitter and provides a consistent starting point for
-    // LayerScheduler.
-    if builders_rewritten > 0 {
-        topological_reorder(witness_builders);
-    }
-
     // Phase 5: Remove dead witness columns and prune unreachable builders
+    info!("Phase 5: starting dead column removal + virtual witness assignment");
     let col_stats = remove_dead_columns(r1cs, witness_builders, witness_map);
+    r1cs.num_virtual = col_stats.num_virtual;
 
     let stats = OptimizationStats {
         constraints_before,
@@ -368,12 +312,7 @@ pub fn optimize_r1cs(
         witnesses_after: col_stats.witnesses_after,
         eliminated,
         builders_removed: col_stats.builders_removed,
-        builders_rewritten,
-        new_sum_builders: 0,
-        zero_occurrence_cols: col_stats.zero_occurrence_cols,
-        blocked_by_acir: col_stats.blocked_by_acir,
-        blocked_by_live_builder: col_stats.blocked_by_live_builder,
-        columns_removed: col_stats.columns_removed,
+        num_virtual: col_stats.num_virtual,
     };
 
     info!(
@@ -394,304 +333,6 @@ pub fn optimize_r1cs(
     stats
 }
 
-/// Expands every `SumTerm` that references a pivot column by substituting the
-/// GE-derived linear expression for that pivot inline.
-///
-/// For a term `coeff_b * P` where `P = Σ (c_i * col_i)`:
-///   - Produces `Σ (coeff_b * c_i) * col_i` (one new term per substitution
-///     entry)
-///   - `coeff_b = None` is treated as the multiplicative identity (1)
-///   - If the substitution for P has no terms (P = 0), the term drops out
-///     entirely
-///
-/// Terms that do not reference any pivot column pass through unchanged.
-fn inline_sum_terms(
-    terms: &[SumTerm],
-    pivot_to_terms: &HashMap<usize, &Vec<(FieldElement, usize)>>,
-) -> Vec<SumTerm> {
-    let mut out: Vec<SumTerm> = Vec::with_capacity(terms.len());
-    for SumTerm(coeff, col) in terms {
-        match pivot_to_terms.get(col) {
-            None => {
-                // Not a pivot — copy through unchanged.
-                out.push(SumTerm(*coeff, *col));
-            }
-            Some(sub_terms) => {
-                // Inline: replace this single term with the full expansion.
-                // If sub_terms is empty the pivot equals zero; the term drops out.
-                let b: FieldElement = coeff.unwrap_or_else(|| One::one());
-                for (c_i, col_i) in sub_terms.iter() {
-                    out.push(SumTerm(Some(b * *c_i), *col_i));
-                }
-            }
-        }
-    }
-    out
-}
-
-/// Rewrites every non-blocked `Sum` and `SpreadBitExtract` builder by inlining
-/// GE substitutions for any pivot column they reference.
-///
-/// Builders in `blocked_builders` are skipped (cycle detection determined that
-/// inlining would create a dependency cycle in the witness execution graph).
-/// All other builder variants are left untouched — non-linear builders cannot
-/// be algebraically inlined regardless.
-///
-/// Returns the number of builders that were actually modified.
-fn rewrite_builders_for_substitutions(
-    witness_builders: &mut Vec<WitnessBuilder>,
-    substitutions: &[Substitution],
-    blocked_builders: &HashSet<usize>,
-) -> usize {
-    if substitutions.is_empty() {
-        return 0;
-    }
-
-    let pivot_to_terms: HashMap<usize, &Vec<(FieldElement, usize)>> = substitutions
-        .iter()
-        .map(|s| (s.pivot_col, &s.terms))
-        .collect();
-
-    let mut rewritten = 0usize;
-
-    for builder_idx in 0..witness_builders.len() {
-        if blocked_builders.contains(&builder_idx) {
-            continue;
-        }
-
-        // Peek at the builder to decide if any rewrite is needed, then clone
-        // only when we will actually modify it (avoids cloning the majority of
-        // builders that read no pivot columns at all).
-        let needs_rewrite = match &witness_builders[builder_idx] {
-            WitnessBuilder::Sum(_, terms) => terms
-                .iter()
-                .any(|SumTerm(_, col)| pivot_to_terms.contains_key(col)),
-            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
-                .iter()
-                .any(|SumTerm(_, col)| pivot_to_terms.contains_key(col)),
-            _ => false,
-        };
-        if !needs_rewrite {
-            continue;
-        }
-
-        // Clone to release the immutable borrow before the mutable assignment.
-        let old = witness_builders[builder_idx].clone();
-        witness_builders[builder_idx] = match old {
-            WitnessBuilder::Sum(idx, terms) => {
-                WitnessBuilder::Sum(idx, inline_sum_terms(&terms, &pivot_to_terms))
-            }
-            WitnessBuilder::SpreadBitExtract {
-                output_start,
-                chunk_bits,
-                sum_terms,
-                extract_even,
-            } => WitnessBuilder::SpreadBitExtract {
-                output_start,
-                chunk_bits,
-                sum_terms: inline_sum_terms(&sum_terms, &pivot_to_terms),
-                extract_even,
-            },
-            // needs_rewrite above only returns true for Sum / SpreadBitExtract.
-            _ => unreachable!(),
-        };
-        rewritten += 1;
-    }
-
-    rewritten
-}
-
-/// BFS from `start` following forward (producer→consumer) edges in
-/// `adjacency_list`.
-///
-/// Returns all builder indices transitively reachable from `start`, i.e. all
-/// builders that directly or indirectly depend on `start`'s outputs.
-/// `start` itself is NOT included.
-///
-/// Note: `adjacency_list` may contain duplicate consumer entries when a single
-/// producer feeds multiple witnesses to the same consumer.  The `visited` set
-/// ensures each node is enqueued at most once.
-fn forward_reachable(adjacency_list: &[Vec<usize>], start: usize) -> HashSet<usize> {
-    let mut visited: HashSet<usize> = HashSet::new();
-    // Seed the stack with start's direct consumers; start itself is excluded.
-    let mut stack: Vec<usize> = adjacency_list[start].clone();
-    while let Some(node) = stack.pop() {
-        if visited.insert(node) {
-            stack.extend_from_slice(&adjacency_list[node]);
-        }
-    }
-    visited
-}
-
-/// Returns the set of builder indices that **cannot** be safely rewritten by
-/// inlining GE substitution terms into their `SumTerm` reads.
-///
-/// # Safety condition
-///
-/// When we inline a substitution `P = c₁·w₅₀ + c₂·w₆₀` into builder B (which
-/// currently reads P), we are adding new dependency edges "B reads w₅₀" and
-/// "B reads w₆₀".  In the must-come-before graph that means:
-///
-///   producer(w₅₀) must run before B
-///   producer(w₆₀) must run before B
-///
-/// If producer(w₅₀) — call it Y — is already a *transitive consumer* of B
-/// (i.e. B →…→ Y exists in the current forward graph), then adding
-/// "Y must come before B" closes a cycle.  We detect this by checking whether
-/// Y is reachable from B following forward (producer→consumer) edges.
-///
-/// # What gets checked
-///
-/// Only `Sum` and `SpreadBitExtract` builders are ever candidates for
-/// algebraic inlining; all other variants are skipped.  A candidate is
-/// blocked if **any** pivot column it reads has **any** substitution term
-/// whose producer is forward-reachable from the candidate.
-///
-/// # Complexity
-///
-/// O(C × (B + E)) where C is the number of candidate builders (Sum /
-/// SpreadBitExtract that read at least one pivot), B is the total number of
-/// builders, and E is the total number of dependency edges.  In practice C
-/// is a small fraction of B, so this is fast.
-fn compute_rewrite_blocked(
-    witness_builders: &[WitnessBuilder],
-    substitutions: &[Substitution],
-) -> HashSet<usize> {
-    if substitutions.is_empty() {
-        return HashSet::new();
-    }
-
-    // pivot_col → substitution terms (already fully resolved by Phase 2b)
-    let pivot_to_terms: HashMap<usize, &Vec<(FieldElement, usize)>> = substitutions
-        .iter()
-        .map(|s| (s.pivot_col, &s.terms))
-        .collect();
-
-    let dep_info = DependencyInfo::new(witness_builders);
-
-    let mut blocked: HashSet<usize> = HashSet::new();
-
-    for (builder_idx, builder) in witness_builders.iter().enumerate() {
-        // Collect pivot columns this builder reads via SumTerms.
-        // Non-linear builders (Product, Inverse, DigitalDecomposition, …)
-        // cannot be algebraically inlined so they are always skipped.
-        let pivot_cols_read: Vec<usize> = match builder {
-            WitnessBuilder::Sum(_, terms) => terms
-                .iter()
-                .filter_map(|SumTerm(_, col)| pivot_to_terms.contains_key(col).then_some(*col))
-                .collect(),
-            WitnessBuilder::SpreadBitExtract { sum_terms, .. } => sum_terms
-                .iter()
-                .filter_map(|SumTerm(_, col)| pivot_to_terms.contains_key(col).then_some(*col))
-                .collect(),
-            // Every other variant reads pivots through non-linear operations;
-            // inlining is not possible for them regardless.
-            _ => continue,
-        };
-
-        if pivot_cols_read.is_empty() {
-            continue;
-        }
-
-        // All builders that transitively consume B's outputs.
-        // If any substitution-term producer Y is in this set, adding the edge
-        // "B reads from Y" would create a cycle (B →…→ Y →…→ B).
-        let forward_consumers = forward_reachable(&dep_info.adjacency_list, builder_idx);
-
-        // Check every pivot this builder reads and every term of each pivot.
-        // A single unsafe term is enough to block the whole builder because
-        // rewriting is all-or-nothing per builder: we cannot partially inline
-        // one pivot and leave another.
-        'check_pivots: for pivot_col in pivot_cols_read {
-            for (_, term_col) in pivot_to_terms[&pivot_col] {
-                // term_col may be a constant / public input column with no
-                // producer — those are always safe.
-                if let Some(&producer) = dep_info.witness_producer.get(term_col) {
-                    if forward_consumers.contains(&producer) {
-                        // B →…→ producer exists; inlining closes a cycle.
-                        blocked.insert(builder_idx);
-                        break 'check_pivots;
-                    }
-                }
-            }
-        }
-    }
-
-    blocked
-}
-
-/// Reorders `witness_builders` into a valid topological execution order.
-///
-/// After Phase 4b rewrites, builder X may now read w50/w60 instead of pivot P.
-/// This changes X's dependencies: X must now run after producer(w50) and
-/// producer(w60). If producer(w50) currently sits later in the Vec than X, the
-/// old ordering is no longer valid.
-///
-/// A correct topological order is required by:
-/// - `WitnessSplitter` — its backward/forward reachability walks use
-///   `DependencyInfo` built from the builders, but the final split index lists
-///   it returns are resolved into sub-Vecs by position.  An out-of-order Vec
-///   can cause a w1 builder to be extracted before its dependency.
-/// - `remove_dead_columns` — it walks `builder_reads_from` which is
-///   position-indexed; a consistent ordering avoids double-counting.
-/// - The prover (via `LayerScheduler`) — correctly reorders on its own, but
-///   starting from a valid topological order speeds up scheduling.
-///
-/// Uses Kahn's BFS algorithm on the dependency graph built by
-/// `DependencyInfo::new`.  If the graph has a cycle (should not happen for a
-/// correctly constructed circuit), unreachable builders are appended at the
-/// end unchanged.
-fn topological_reorder(witness_builders: &mut Vec<WitnessBuilder>) {
-    let n = witness_builders.len();
-    if n == 0 {
-        return;
-    }
-
-    let dep_info = DependencyInfo::new(witness_builders);
-
-    // Kahn's algorithm: start with all nodes that have no remaining dependencies.
-    // `DependencyInfo::in_degrees` may contain duplicate-inflated counts (one
-    // increment per read-witness, not per unique producer).  This is consistent
-    // with `adjacency_list` which also has the same duplicates, so the algorithm
-    // remains correct: each duplicate edge decrements the count exactly once
-    // when its producer is processed.
-    let mut in_degrees = dep_info.in_degrees.clone();
-    let mut queue: VecDeque<usize> = (0..n).filter(|&i| in_degrees[i] == 0).collect();
-    let mut order: Vec<usize> = Vec::with_capacity(n);
-
-    while let Some(node) = queue.pop_front() {
-        order.push(node);
-        for &consumer in &dep_info.adjacency_list[node] {
-            // saturating_sub prevents underflow if duplicate edges were
-            // already fully consumed by an earlier iteration.
-            in_degrees[consumer] = in_degrees[consumer].saturating_sub(1);
-            if in_degrees[consumer] == 0 {
-                queue.push_back(consumer);
-            }
-        }
-    }
-
-    // Fallback: append any nodes that Kahn's did not reach (genuine cycle or
-    // isolated node not reachable from in-degree-0 roots).
-    if order.len() != n {
-        let reached: HashSet<usize> = order.iter().copied().collect();
-        for i in 0..n {
-            if !reached.contains(&i) {
-                order.push(i);
-            }
-        }
-    }
-
-    // Apply the permutation using mem::swap to avoid cloning every builder.
-    // Build a mapping: new_position → old_index, then pull builders out by
-    // consuming the Vec into an indexed Option<> array and re-filling in order.
-    let mut indexed: Vec<Option<WitnessBuilder>> = witness_builders.drain(..).map(Some).collect();
-    witness_builders.reserve(n);
-    for old_idx in order {
-        witness_builders.push(indexed[old_idx].take().expect("each builder visited once"));
-    }
-}
-
 /// Build combined occurrence counts across A, B, C matrices.
 fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
     let num_cols = r1cs.num_witnesses();
@@ -708,18 +349,11 @@ fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
 /// Counts collected during dead-column removal, returned alongside the updated
 /// witness count so callers can surface them in diagnostics.
 struct ColumnRemovalStats {
-    witnesses_after:         usize,
-    builders_removed:        usize,
-    /// Zero-occurrence columns in A/B/C matrices (excluding col 0 and public
-    /// inputs).
-    zero_occurrence_cols:    usize,
-    /// Zero-occurrence cols pinned by the ACIR witness map and therefore kept.
-    blocked_by_acir:         usize,
-    /// Zero-occurrence cols whose producing builder is transitively live
-    /// (some other live builder still reads one of its other outputs).
-    blocked_by_live_builder: usize,
-    /// Columns actually removed (zero-occurrence, not pinned, producer dead).
-    columns_removed:         usize,
+    witnesses_after:  usize,
+    builders_removed: usize,
+    /// Virtual columns: computation-only, excluded from R1CS/WHIR but needed
+    /// by builders.
+    num_virtual:      usize,
 }
 
 /// Phase 5: Remove dead witness columns from matrices and prune unreachable
@@ -743,12 +377,9 @@ fn remove_dead_columns(
     let num_cols = r1cs.num_witnesses();
     if num_cols == 0 || witness_builders.is_empty() {
         return ColumnRemovalStats {
-            witnesses_after:         num_cols,
-            builders_removed:        0,
-            zero_occurrence_cols:    0,
-            blocked_by_acir:         0,
-            blocked_by_live_builder: 0,
-            columns_removed:         0,
+            witnesses_after:  num_cols,
+            builders_removed: 0,
+            num_virtual:      0,
         };
     }
 
@@ -780,12 +411,9 @@ fn remove_dead_columns(
 
     if dead_cols.is_empty() {
         return ColumnRemovalStats {
-            witnesses_after:         num_cols,
-            builders_removed:        0,
-            zero_occurrence_cols:    0,
-            blocked_by_acir:         0,
-            blocked_by_live_builder: 0,
-            columns_removed:         0,
+            witnesses_after:  num_cols,
+            builders_removed: 0,
+            num_virtual:      0,
         };
     }
 
@@ -873,7 +501,6 @@ fn remove_dead_columns(
         witness_builders.len() - live_builders.len()
     );
 
-    // Count dead cols blocked by live builder deps
     let blocked_by_bfs = dead_cols
         .iter()
         .filter(|&&col| {
@@ -882,6 +509,14 @@ fn remove_dead_columns(
                 .map_or(false, |&b| live_builders.contains(&b))
         })
         .count();
+
+    // Detailed diagnostic breakdowns (reader types, producer types,
+    // hypothetical analyses) are disabled for performance — they are
+    // O(dead_cols × graph_size) and blow up on large circuits. Enable
+    // selectively when debugging a specific circuit.
+    //
+    // See git history for the full diagnostic block.
+
     info!(
         "Column removal: of {} dead cols, {} blocked by live builder BFS, {} removable",
         dead_cols.len(),
@@ -889,57 +524,172 @@ fn remove_dead_columns(
         dead_cols.len() - blocked_by_bfs
     );
 
-    // Step 4: Determine which columns to actually remove.
-    // A column is removable if:
-    //   - It's dead in matrices (zero occurrences) AND
-    //   - Its producing builder is NOT live (not transitively reachable)
-    let mut removable_cols: HashSet<usize> = HashSet::new();
-    for &col in &dead_cols {
-        let producer_is_live = col_to_builder
-            .get(&col)
-            .map_or(false, |&b| live_builders.contains(&b));
-        if !producer_is_live {
-            removable_cols.insert(col);
+    // Step 4: Dead columns are removable from R1CS matrices — BUT we must
+    // protect multi-output builders whose output ranges must stay contiguous.
+    // If ANY column in a multi-output builder's range is live (non-dead),
+    // ALL columns in that range must stay real to preserve the contiguous
+    // output_start + num_witnesses layout.
+    let mut protected_cols: HashSet<usize> = HashSet::new();
+    let mut prot_dd = 0usize;
+    let mut prot_spice = 0usize;
+    let mut prot_mult_range = 0usize;
+    let mut prot_mult_binop = 0usize;
+    let mut prot_mult_spread = 0usize;
+    let mut prot_u32 = 0usize;
+    let mut prot_byte = 0usize;
+    let mut prot_chunk = 0usize;
+    let mut prot_spread_ext = 0usize;
+    let mut prot_other = 0usize;
+    for builder in witness_builders.iter() {
+        let writes = DependencyInfo::extract_writes(builder);
+        if writes.len() <= 1 {
+            continue;
         }
+        // Builders with independent output fields (U32Addition, U32AdditionMulti,
+        // BytePartition) don't need protection — their outputs are individually
+        // remapped, not derived from a contiguous range.
+        // Skip builders with individually-addressed outputs (no contiguity
+        // assumption): U32Addition/Multi, BytePartition have independent
+        // index fields; ChunkDecompose/SpreadBitExtract use output_indices Vec.
+        if matches!(
+            builder,
+            WitnessBuilder::U32Addition(..)
+                | WitnessBuilder::U32AdditionMulti(..)
+                | WitnessBuilder::BytePartition { .. }
+                | WitnessBuilder::ChunkDecompose { .. }
+                | WitnessBuilder::SpreadBitExtract { .. }
+                | WitnessBuilder::DigitalDecomposition(..)
+        ) {
+            continue;
+        }
+        // Remaining multi-output builders use contiguous ranges (output_start +
+        // offset). If any output is live, protect all to preserve contiguity.
+        let has_live = writes.iter().any(|c| !dead_cols.contains(c));
+        let dead_in_range = writes.iter().filter(|c| dead_cols.contains(c)).count();
+        if has_live && dead_in_range > 0 {
+            for &c in &writes {
+                protected_cols.insert(c);
+            }
+            match builder {
+                WitnessBuilder::DigitalDecomposition(..) => prot_dd += dead_in_range,
+                WitnessBuilder::SpiceWitnesses(..) => prot_spice += dead_in_range,
+                WitnessBuilder::MultiplicitiesForRange(..) => prot_mult_range += dead_in_range,
+                WitnessBuilder::MultiplicitiesForBinOp(..) => prot_mult_binop += dead_in_range,
+                WitnessBuilder::MultiplicitiesForSpread(..) => prot_mult_spread += dead_in_range,
+                WitnessBuilder::U32Addition(..) | WitnessBuilder::U32AdditionMulti(..) => {
+                    prot_u32 += dead_in_range
+                }
+                WitnessBuilder::BytePartition { .. } => prot_byte += dead_in_range,
+                WitnessBuilder::ChunkDecompose { .. } => prot_chunk += dead_in_range,
+                WitnessBuilder::SpreadBitExtract { .. } => prot_spread_ext += dead_in_range,
+                _ => prot_other += dead_in_range,
+            }
+        }
+    }
+    let removable_cols: HashSet<usize> = dead_cols
+        .iter()
+        .filter(|c| !protected_cols.contains(c))
+        .copied()
+        .collect();
+    let protected_count = dead_cols.len() - removable_cols.len();
+    if protected_count > 0 {
+        info!(
+            "Column removal: {protected_count} dead cols protected by builder type: DD={prot_dd}, \
+             Spice={prot_spice}, MultRange={prot_mult_range}, MultBinOp={prot_mult_binop}, \
+             MultSpread={prot_mult_spread}, U32={prot_u32}, Byte={prot_byte}, Chunk={prot_chunk}, \
+             SpreadExt={prot_spread_ext}, Other={prot_other}"
+        );
+        info!(
+            "Column removal: {} dead cols protected (part of multi-output builder with live \
+             outputs)",
+            protected_count
+        );
     }
 
     if removable_cols.is_empty() {
-        info!(
-            "Column removal: all {} dead columns are transitively needed by live builders",
-            dead_cols.len()
-        );
         return ColumnRemovalStats {
-            witnesses_after: num_cols,
+            witnesses_after:  num_cols,
             builders_removed: 0,
-            zero_occurrence_cols: zero_occ_total,
-            blocked_by_acir,
-            blocked_by_live_builder: blocked_by_bfs,
-            columns_removed: 0,
+            num_virtual:      0,
         };
     }
 
-    info!(
-        "Column removal: {} columns removable ({} dead, {} kept for live builder deps)",
-        removable_cols.len(),
-        dead_cols.len(),
-        dead_cols.len() - removable_cols.len()
-    );
-
-    // Step 5: Build remap table (old_col -> new_col)
-    let mut remap: Vec<Option<usize>> = vec![None; num_cols];
-    let mut next_col = 0;
-    for col in 0..num_cols {
-        if !removable_cols.contains(&col) {
-            remap[col] = Some(next_col);
-            next_col += 1;
+    // Partition dead cols: dead producers (fully removable) vs live producers
+    // (virtual). A column must also be virtual if ANY live builder reads it
+    // (even if its producer is dead) — this can happen after builder rewriting
+    // changes dependency chains.
+    let live_read_cols: HashSet<usize> = {
+        let mut s = HashSet::new();
+        for (bi, b) in witness_builders.iter().enumerate() {
+            if live_builders.contains(&bi) {
+                for c in DependencyInfo::extract_reads(b) {
+                    if removable_cols.contains(&c) {
+                        s.insert(c);
+                    }
+                }
+            }
+        }
+        s
+    };
+    let mut fully_dead_cols: HashSet<usize> = HashSet::new();
+    let mut virtual_cols: HashSet<usize> = HashSet::new();
+    for &col in &removable_cols {
+        let producer_is_live = col_to_builder
+            .get(&col)
+            .map_or(false, |&b| live_builders.contains(&b));
+        if producer_is_live || live_read_cols.contains(&col) {
+            virtual_cols.insert(col);
+        } else {
+            fully_dead_cols.insert(col);
         }
     }
-    let new_num_cols = next_col;
 
-    // Step 6: Remap matrices
-    r1cs.a = r1cs.a.remove_columns(&remap);
-    r1cs.b = r1cs.b.remove_columns(&remap);
-    r1cs.c = r1cs.c.remove_columns(&remap);
+    info!(
+        "Column removal: {} dead cols total, {} fully dead (producer dead), {} virtual (producer \
+         live, computation-only)",
+        removable_cols.len(),
+        fully_dead_cols.len(),
+        virtual_cols.len()
+    );
+
+    // Step 5: Build remap table with two regions:
+    //   Real columns → [0, num_real)         (for R1CS matrices + builders)
+    //   Virtual columns → [num_real, num_real+num_virtual) (for builders only)
+    //   Fully dead columns → None            (no mapping, builders pruned)
+    let mut remap: Vec<Option<usize>> = vec![None; num_cols];
+    let mut next_real = 0usize;
+    // First pass: assign real column indices
+    for col in 0..num_cols {
+        if !removable_cols.contains(&col) {
+            remap[col] = Some(next_real);
+            next_real += 1;
+        }
+    }
+    let num_real = next_real;
+    // Second pass: assign virtual column indices (after real)
+    let mut next_virtual = num_real;
+    for col in 0..num_cols {
+        if virtual_cols.contains(&col) {
+            remap[col] = Some(next_virtual);
+            next_virtual += 1;
+        }
+    }
+    let num_virtual = next_virtual - num_real;
+
+    // Step 6: Remap R1CS matrices — only uses [0, num_real) columns.
+    // Virtual columns had zero entries so remove_columns drops them cleanly.
+    let matrix_remap: Vec<Option<usize>> = (0..num_cols)
+        .map(|col| {
+            if removable_cols.contains(&col) {
+                None // Remove from matrices (both virtual and fully dead)
+            } else {
+                remap[col] // Real column → compact index
+            }
+        })
+        .collect();
+    r1cs.a = r1cs.a.remove_columns(&matrix_remap);
+    r1cs.b = r1cs.b.remove_columns(&matrix_remap);
+    r1cs.c = r1cs.c.remove_columns(&matrix_remap);
 
     // Step 6b: Remap ACIR witness map (ACIR index -> R1CS column)
     for entry in witness_map.iter_mut() {
@@ -956,29 +706,78 @@ fn remove_dead_columns(
         }
     }
 
-    // Step 7: Prune dead builders and remap surviving ones
+    // Step 7: Prune dead builders and remap surviving ones.
+    // A builder must be kept if it's live OR if it produces any virtual column
+    // (needed for computation even though its outputs are zero in A/B/C).
+    let mut keep_builders = live_builders.clone();
+    for &col in &virtual_cols {
+        if let Some(&producer_idx) = col_to_builder.get(&col) {
+            keep_builders.insert(producer_idx);
+        }
+    }
     let builders_before = witness_builders.len();
-    let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(live_builders.len());
+    let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(keep_builders.len());
     for (idx, builder) in witness_builders.drain(..).enumerate() {
-        if live_builders.contains(&idx) {
+        if keep_builders.contains(&idx) {
             new_builders.push(remap_builder_columns(&builder, &remap));
         }
     }
     *witness_builders = new_builders;
     let builders_removed = builders_before - witness_builders.len();
 
+    // Validation: every column that any builder reads must be produced by
+    // some other builder (i.e. appear in some builder's writes).
+    {
+        let mut all_writes: HashSet<usize> = HashSet::new();
+        for b in witness_builders.iter() {
+            for c in DependencyInfo::extract_writes(b) {
+                all_writes.insert(c);
+            }
+        }
+        for (bi, b) in witness_builders.iter().enumerate() {
+            for c in DependencyInfo::extract_reads(b) {
+                if !all_writes.contains(&c) {
+                    // Find the original column for debugging
+                    let orig_col = remap
+                        .iter()
+                        .position(|r| r == &Some(c))
+                        .unwrap_or(usize::MAX);
+                    let was_dead = orig_col != usize::MAX && dead_cols.contains(&orig_col);
+                    let was_virtual = orig_col != usize::MAX && virtual_cols.contains(&orig_col);
+                    let was_fully_dead =
+                        orig_col != usize::MAX && fully_dead_cols.contains(&orig_col);
+                    let had_producer =
+                        orig_col != usize::MAX && col_to_builder.contains_key(&orig_col);
+                    let occ = if orig_col < occurrence_counts.len() {
+                        occurrence_counts[orig_col]
+                    } else {
+                        usize::MAX
+                    };
+                    panic!(
+                        "Builder {bi} reads remapped col {c} (orig {orig_col}) not written by any \
+                         builder. occurrences={occ}, dead={was_dead}, virtual={was_virtual}, \
+                         fully_dead={was_fully_dead}, had_producer={had_producer}, \
+                         num_real={num_real}, num_virtual={num_virtual}"
+                    );
+                }
+            }
+        }
+    }
+
     info!(
-        "Column removal: {} -> {} witnesses, {} builders pruned",
-        num_cols, new_num_cols, builders_removed
+        "Column removal: {} -> {} real + {} virtual witnesses ({} total for solving), {} builders \
+         pruned",
+        num_cols,
+        num_real,
+        num_virtual,
+        num_real + num_virtual,
+        builders_removed
     );
 
     ColumnRemovalStats {
-        witnesses_after: new_num_cols,
+        witnesses_after: num_real,
         builders_removed,
-        zero_occurrence_cols: zero_occ_total,
-        blocked_by_acir,
-        blocked_by_live_builder: blocked_by_bfs,
-        columns_removed: removable_cols.len(),
+        num_virtual,
     }
 }
 
@@ -1056,14 +855,15 @@ fn remap_builder_columns(builder: &WitnessBuilder, remap: &[Option<usize>]) -> W
             WitnessBuilder::LogUpInverse(r(*idx), r(*sz), WitnessCoefficient(*coeff, r(*value)))
         }
         WitnessBuilder::DigitalDecomposition(dd) => {
-            let new_witnesses_to_decompose =
-                dd.witnesses_to_decompose.iter().map(|&w| r(w)).collect();
             WitnessBuilder::DigitalDecomposition(crate::witness::DigitalDecompositionWitnesses {
                 log_bases:                  dd.log_bases.clone(),
                 num_witnesses_to_decompose: dd.num_witnesses_to_decompose,
-                witnesses_to_decompose:     new_witnesses_to_decompose,
-                first_witness_idx:          r(dd.first_witness_idx),
-                num_witnesses:              dd.num_witnesses,
+                witnesses_to_decompose:     dd
+                    .witnesses_to_decompose
+                    .iter()
+                    .map(|&w| r(w))
+                    .collect(),
+                output_indices:             dd.output_indices.iter().map(|&i| r(i)).collect(),
             })
         }
         WitnessBuilder::SpiceMultisetFactor(
@@ -1179,30 +979,30 @@ fn remap_builder_columns(builder: &WitnessBuilder, remap: &[Option<usize>]) -> W
             )
         }
         WitnessBuilder::ChunkDecompose {
-            output_start,
+            output_indices,
             packed,
             chunk_bits,
         } => WitnessBuilder::ChunkDecompose {
-            output_start: r(*output_start),
-            packed:       r(*packed),
-            chunk_bits:   chunk_bits.clone(),
+            output_indices: output_indices.iter().map(|&i| r(i)).collect(),
+            packed:         r(*packed),
+            chunk_bits:     chunk_bits.clone(),
         },
         WitnessBuilder::SpreadWitness(output, input) => {
             WitnessBuilder::SpreadWitness(r(*output), r(*input))
         }
         WitnessBuilder::SpreadBitExtract {
-            output_start,
+            output_indices,
             chunk_bits,
             sum_terms,
             extract_even,
         } => WitnessBuilder::SpreadBitExtract {
-            output_start: r(*output_start),
-            chunk_bits:   chunk_bits.clone(),
-            sum_terms:    sum_terms
+            output_indices: output_indices.iter().map(|&i| r(i)).collect(),
+            chunk_bits:     chunk_bits.clone(),
+            sum_terms:      sum_terms
                 .iter()
                 .map(|SumTerm(coeff, idx)| SumTerm(*coeff, r(*idx)))
                 .collect(),
-            extract_even: *extract_even,
+            extract_even:   *extract_even,
         },
         WitnessBuilder::MultiplicitiesForSpread(start, num_bits, queries) => {
             let new_queries = queries.iter().map(|c| rc(c)).collect();
@@ -1390,13 +1190,18 @@ mod tests {
         assert_eq!(stats.constraints_after, 1);
         assert_eq!(r1cs.num_constraints(), 1);
 
-        // Without builder rewriting (currently disabled), pivot columns
-        // remain alive because their producer builders are transitively
-        // reachable from live builders. No witness reduction expected.
+        // After Phase 4b: Sum(4) is rewritten to inline w3's substitution
+        // (-1·w0 + 1·w1), so it no longer reads w3.  Sum(3) (producer of w3)
+        // has no live consumers left → dead → w3 fully removed.
+        // w4 is dead in constraints (GE substituted it out) but Sum(4) still
+        // produces it and Product(5) reads it → w4 becomes virtual.
+        // Expected: 6 → 4 real witnesses (w3 fully removed, w4 virtual).
         assert_eq!(
-            stats.witnesses_after, stats.witnesses_before,
-            "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before, stats.witnesses_after
+            stats.witnesses_after,
+            stats.witnesses_before - 2,
+            "Expected 2 witnesses removed from R1CS (w3 dead, w4 virtual), got {} -> {}",
+            stats.witnesses_before,
+            stats.witnesses_after
         );
 
         // Verify the remaining constraint references only valid column indices
@@ -1467,13 +1272,22 @@ mod tests {
         assert_eq!(stats.constraints_after, 1);
         assert_eq!(r1cs.num_constraints(), 1);
 
-        // Without builder rewriting (currently disabled), pivot columns
-        // w3-w6 remain alive because their producer builders are still
-        // reachable. No witness reduction expected.
+        // After Phase 4b linear rewrites:
+        //   Sum(4): inlines w3 → reads w0, w1 (no longer reads w3)
+        //   Sum(5): inlines w4 → reads w0, w1 (no longer reads w4)
+        //   Sum(6): inlines w5 → reads w0, w1 (no longer reads w5)
+        // Sum(3) (produces w3) has no live consumers → dead → w3 removed.
+        // Sum(4) (produces w4) has no live consumers (Sum(5) was rewritten) → dead → w4
+        // removed. Sum(5) (produces w5) has no live consumers (Sum(6) was
+        // rewritten) → dead → w5 removed. Sum(6) stays alive because Product(7)
+        // reads w6. w6 is dead in constraints but Product(7) reads it → virtual.
+        // Expected: 8 → 4 real witnesses (w3,w4,w5 fully removed, w6 virtual).
         assert_eq!(
-            stats.witnesses_after, stats.witnesses_before,
-            "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before, stats.witnesses_after
+            stats.witnesses_after,
+            stats.witnesses_before - 4,
+            "Expected 4 witnesses removed from R1CS, got {} -> {}",
+            stats.witnesses_before,
+            stats.witnesses_after
         );
 
         // Verify the remaining constraint references only valid column indices
@@ -1553,13 +1367,16 @@ mod tests {
         assert_eq!(stats.eliminated, 2);
         assert_eq!(stats.constraints_after, 3);
 
-        // Without builder rewriting (currently disabled), pivot columns
-        // w3, w5 remain alive because their producer builders are still
-        // reachable. No witness reduction expected.
+        // Pivot columns w3, w5 are dead in constraints (GE substituted
+        // them out) but their producers are still live (downstream builders
+        // read them) → they become virtual witnesses.
+        // Expected: 9 → 7 real witnesses (w3 and w5 become virtual).
         assert_eq!(
-            stats.witnesses_after, stats.witnesses_before,
-            "Expected no witness reduction without builder rewriting, got {} -> {}",
-            stats.witnesses_before, stats.witnesses_after
+            stats.witnesses_after,
+            stats.witnesses_before - 2,
+            "Expected 2 virtual witnesses (w3, w5), got {} -> {}",
+            stats.witnesses_before,
+            stats.witnesses_after
         );
 
         // Verify all column references are in valid range

@@ -86,17 +86,17 @@ impl NoirCompiler {
                 witness_map,
                 acir_public_inputs_indices_set,
             )?;
+        let num_real = remapped_r1cs.num_witnesses();
+        let num_virtual = remapped_r1cs.num_virtual;
         info!(
-            "Witness split: w1 size = {}, w2 size = {}",
+            "Witness split: w1 = {}, w2 = {} (real, committed) + {} virtual (solving only)",
             split_witness_builders.w1_size,
-            remapped_r1cs.num_witnesses() - split_witness_builders.w1_size
+            num_real - split_witness_builders.w1_size,
+            num_virtual
         );
 
-        let witness_generator = NoirWitnessGenerator::new(
-            &program,
-            remapped_witness_map,
-            remapped_r1cs.num_witnesses(),
-        );
+        let witness_generator =
+            NoirWitnessGenerator::new(&program, remapped_witness_map, num_real + num_virtual);
 
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
             &remapped_r1cs,
