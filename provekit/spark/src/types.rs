@@ -154,6 +154,15 @@ pub struct SparkCommitments {
     pub final_col_ts: SerializableCommitment,
 }
 
+/// Combined container for all SPARK prepared data: the R1CS matrix,
+/// witnesses, and commitments.
+#[derive(Serialize, Deserialize)]
+pub struct SparkPreparedData {
+    pub matrix:      SparkMatrix,
+    pub witnesses:   SerializableSparkWitnesses,
+    pub commitments: SparkCommitments,
+}
+
 #[derive(Debug, Clone)]
 pub struct Memory {
     pub eq_rx: Vec<FieldElement>,

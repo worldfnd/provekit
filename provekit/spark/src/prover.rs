@@ -5,7 +5,8 @@ use {
         sumcheck::run_spark_sumcheck,
         types::{
             EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
-            SerializableCommitment, SparkCommitments, SparkMatrix, SparkWitnesses, WhirWitness,
+            SerializableCommitment, SparkCommitments, SparkMatrix, SparkPreparedData,
+            SparkWitnesses, WhirWitness,
         },
         utils::calculate_memory,
     },
@@ -24,7 +25,7 @@ use {
 };
 
 pub trait SPARKProver {
-    fn prove(&self, spark_matrix: &SparkMatrix, request: &R1CSSparkQuery, spark_witnesses: SparkWitnesses, commitments: SparkCommitments) -> Result<SPARKProof>;
+    fn prove(&self, spark_data: SparkPreparedData, request: &R1CSSparkQuery) -> Result<SPARKProof>;
 }
 
 pub struct SPARKScheme {
@@ -90,7 +91,10 @@ impl SPARKScheme {
 
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
-    fn prove(&self, spark_matrix: &SparkMatrix, request: &R1CSSparkQuery, spark_witnesses: SparkWitnesses, commitments: SparkCommitments) -> Result<SPARKProof> {
+    fn prove(&self, spark_data: SparkPreparedData, request: &R1CSSparkQuery) -> Result<SPARKProof> {
+        let spark_matrix = spark_data.matrix;
+        let spark_witnesses: SparkWitnesses = spark_data.witnesses.into();
+        let commitments = spark_data.commitments;
         let padded_num_entries = spark_matrix.coo.val.len();
 
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
@@ -144,7 +148,7 @@ impl SPARKProver for SPARKScheme {
 
         prove_spark_for_single_matrix(
             &mut merlin,
-            spark_matrix,
+            &spark_matrix,
             row_field,
             col_field,
             &memory,

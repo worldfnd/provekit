@@ -1,7 +1,7 @@
 use {
     super::Command, anyhow::{Context, Result}, argh::FromArgs, mavros_artifacts::R1CS as MavrosR1CS, provekit_common::{
         FieldElement, HashConfig, NoirProofScheme, Prover, R1CS, TranscriptSponge, Verifier, WhirConfig, file::write, utils::next_power_of_two
-    }, provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler}, provekit_spark::{SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkWitnesses, prover::new_whir_config_for_size, types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps}}, std::{
+    }, provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler}, provekit_spark::{SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkPreparedData, SparkWitnesses, prover::new_whir_config_for_size, types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps}}, std::{
         path::{Path, PathBuf},
         str::FromStr,
     }, tracing::instrument, whir::{hash::Hash, transcript::{DomainSeparator, ProverState, VerifierMessage, VerifierState, codecs::Empty}},
@@ -60,29 +60,14 @@ pub struct Args {
     )]
     pkv_path: PathBuf,
 
-    /// output path for the spark R1CS matrix
+    /// output path for the combined spark data (matrix, witnesses,
+    /// commitments)
     #[argh(
         option,
-        long = "spark-r1cs",
-        default = "PathBuf::from(\"spark_r1cs.bin\")"
+        long = "spark-data",
+        default = "PathBuf::from(\"spark_data.bin\")"
     )]
-    spark_r1cs_path: PathBuf,
-
-    /// output path for the spark witnesses
-    #[argh(
-        option,
-        long = "spark-witnesses",
-        default = "PathBuf::from(\"spark_witnesses.bin\")"
-    )]
-    spark_witnesses_path: PathBuf,
-
-    /// output path for the spark commitments
-    #[argh(
-        option,
-        long = "spark-commitments",
-        default = "PathBuf::from(\"spark_commitments.bin\")"
-    )]
-    spark_commitments_path: PathBuf,
+    spark_data_path: PathBuf,
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
@@ -146,24 +131,19 @@ impl Command for Args {
         let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
         let witnesses = spark_committer_scheme.commit(&mut merlin, &spark_r1cs);
 
-        let spark_r1cs_bytes =
-            postcard::to_stdvec(&spark_r1cs).context("while serializing spark R1CS")?;
-        std::fs::write(&self.spark_r1cs_path, spark_r1cs_bytes)
-            .context("while writing spark R1CS")?;
-
-        let serializable_witnesses = SerializableSparkWitnesses::from(witnesses);
-        let spark_witnesses_bytes =
-            postcard::to_stdvec(&serializable_witnesses).context("while serializing spark witnesses")?;
-        std::fs::write(&self.spark_witnesses_path, spark_witnesses_bytes)
-            .context("while writing spark witnesses")?;
-  
         let proof = merlin.proof();
         let mut arthur = VerifierState::new(&ds, &proof, TranscriptSponge::default());
         let commitments = extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
-        let spark_commitments_bytes =
-            postcard::to_stdvec(&commitments).context("while serializing spark commitments")?;
-        std::fs::write(&self.spark_commitments_path, spark_commitments_bytes)
-            .context("while writing spark commitments")?;
+
+        let spark_data = SparkPreparedData {
+            matrix:      spark_r1cs,
+            witnesses:   SerializableSparkWitnesses::from(witnesses),
+            commitments,
+        };
+        let spark_data_bytes =
+            postcard::to_stdvec(&spark_data).context("while serializing spark data")?;
+        std::fs::write(&self.spark_data_path, spark_data_bytes)
+            .context("while writing spark data")?;
 
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
