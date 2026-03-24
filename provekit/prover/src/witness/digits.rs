@@ -19,9 +19,8 @@ impl DigitalDecompositionWitnessesSolver for DigitalDecompositionWitnesses {
                     .iter()
                     .enumerate()
                     .for_each(|(digit_place, digit_value)| {
-                        witness[self.first_witness_idx
-                            + digit_place * self.witnesses_to_decompose.len()
-                            + i] = Some(*digit_value);
+                        let idx = digit_place * self.witnesses_to_decompose.len() + i;
+                        witness[self.output_indices[idx]] = Some(*digit_value);
                     });
             });
     }

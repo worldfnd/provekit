@@ -63,6 +63,11 @@ pub struct R1CS {
     pub a:                 SparseMatrix,
     pub b:                 SparseMatrix,
     pub c:                 SparseMatrix,
+    /// Virtual witnesses: computation-only columns excluded from matrices/WHIR
+    /// commitment but needed by witness builders for intermediate calculations.
+    /// The prover allocates `num_witnesses() + num_virtual` for solving.
+    #[serde(default)]
+    pub num_virtual:       usize,
 }
 
 impl Default for R1CS {
@@ -80,6 +85,7 @@ impl R1CS {
             a:                 SparseMatrix::new(0, 0),
             b:                 SparseMatrix::new(0, 0),
             c:                 SparseMatrix::new(0, 0),
+            num_virtual:       0,
         }
     }
 
