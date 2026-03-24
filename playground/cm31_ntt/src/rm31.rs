@@ -92,7 +92,7 @@ impl RF {
     }
 
     pub fn mul_2exp_u64(&self, exp: u64) -> Self {
-        // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
+        // Adapted from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = exp % 31;
         let left = (reduced << exp) & P;
@@ -102,7 +102,7 @@ impl RF {
     }
 
     pub fn div_2exp_u64(&self, exp: u64) -> Self {
-        // Adpated from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
+        // Adapted from https://github.com/Plonky3/Plonky3/blob/6049a30c3b1f5351c3eb0f7c994dc97e8f68d10d/mersenne-31/src/lib.rs#L162
         let reduced = reduce(self.val);
         let exp = (exp % 31) as u8;
         let left = reduced >> exp;
@@ -383,7 +383,7 @@ mod tests {
             }
         }
 
-        // Print all faling test cases. This is useful for debugging. I don't use
+        // Print all failing test cases. This is useful for debugging. I don't use
         // test_case here as I want to reuse TEST_CASES, and I ran into issues
         // with test_case name clashes.
         if failing_test_cases.len() > 0 {

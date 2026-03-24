@@ -132,7 +132,7 @@ def fold_virtually(oracle_ndxes : list[int],  # list of indices in proof oracle
 
     1. First compute the fold_factor ℓ := 2^{len(fold_challenges)}
     2. Compute ℓ-th roots of unity `fold_omega` from `ntt_omega`. 
-    2. Given `ndx`, compute other indicies that are ℓ-th root 
+    2. Given `ndx`, compute other indices that are ℓ-th root 
         conjugates corresponding to `ndx`.
     3. Given a polynomial f(x), it can be written as 
         f(x) = f_0(x^ℓ) + x•f_1(x^ℓ) + ••• + x^{ℓ}•f_{ℓ-1}(x^ℓ)
@@ -193,12 +193,12 @@ class WhirRound:
                      last_whir_round: Self,
                      whir_round : Self,
                      ood_data: dict[FiniteField, FiniteField] ,
-                     shift_qeries : list[FiniteField],
+                     shift_queries : list[FiniteField],
                      ):
             self.last_round = last_whir_round
             self.this_round = whir_round
             self.ood_data = ood_data
-            self.shift_queries = shift_qeries
+            self.shift_queries = shift_queries
 
 
     def __init__(self,
@@ -515,7 +515,7 @@ class WhirVerifier:
                        trace : bool = True
                        ):
         ood_challenge = list(ood_query.keys())[0]
-        ood_reponse = ood_query[ood_challenge]
+        ood_response = ood_query[ood_challenge]
 
         weight_eq_vars = self.polyvars()
 
@@ -525,7 +525,7 @@ class WhirVerifier:
         weight = weight_updt(ood_challenge)
 
         if trace:
-            print(f"\n    V> Weight update for OOD challenge {ood_challenge} => {ood_reponse} : {self.weight_var}*({weight})")
+            print(f"\n    V> Weight update for OOD challenge {ood_challenge} => {ood_response} : {self.weight_var}*({weight})")
 
         update_sum = gamma*weight
 
@@ -540,7 +540,7 @@ class WhirVerifier:
         if trace:
             print(f"    V> Updated new weight: {self.weight_polynomial}")
 
-        h_terms = [ood_reponse] + [r for (_,r) in shift_query]
+        h_terms = [ood_response] + [r for (_,r) in shift_query]
         h_update = sum([ sresp * gamma**(i+1) for (i,sresp) in enumerate(h_terms)])
 
         if trace:

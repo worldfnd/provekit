@@ -157,7 +157,7 @@ pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldEle
     poly[0] + point * (poly[1] + point * (poly[2] + point * poly[3]))
 }
 
-/// Given a path to JSON file with sparce matrices and a witness, calculates
+/// Given a path to JSON file with sparse matrices and a witness, calculates
 /// matrix-vector multiplication and returns them
 #[instrument(skip_all)]
 pub fn calculate_witness_bounds(

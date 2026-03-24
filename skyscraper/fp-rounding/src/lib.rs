@@ -67,7 +67,7 @@ pub unsafe fn with_rounding_mode<Mode: RoundingDirectionMarker, Input, Result>(
     let guard = RoundingGuard::new();
     // Tie the mode to the input such that mode will be seated before the first use
     // of input by f.
-    // Tieing the input to the Mode does not seem to be strictly necessary, but it's
+    // Tying the input to the Mode does not seem to be strictly necessary, but it's
     // here for added safety.
     let (guard, input) = fence((guard, input));
     let result = f(&guard, input);

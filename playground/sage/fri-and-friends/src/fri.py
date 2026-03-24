@@ -143,11 +143,11 @@ class FRIRound:
         poly_evals = [(v, eval_poly(v)) for v in ood_challenges]
         numerator = PolyRing.lagrange_polynomial(poly_evals)
         x = PolyRing.gen()
-        denomonator = prod([(x - v) for v in ood_challenges])
-        return (numerator, denomonator)
+        denominator = prod([(x - v) for v in ood_challenges])
+        return (numerator, denominator)
 
     @staticmethod
-    def consistancy_cross_check(this_round: Self, prev_round : Self, folding_challenge, queries = 1, ood_response = None):
+    def consistency_cross_check(this_round: Self, prev_round : Self, folding_challenge, queries = 1, ood_response = None):
         previous_round_proof = prev_round.gen_proof()
         this_round_proof = this_round.gen_proof()
         alphas = [prev_round.folding_root**i for i in range(prev_round.folding_factor)]
@@ -232,7 +232,7 @@ class FRIOPP:
             this_fri = this_round.fri_round
             fold_random = this_round.fold_randomness
             deep_frac = this_round.deep_poly
-            is_good = FRIRound.consistancy_cross_check(this_fri, 
+            is_good = FRIRound.consistency_cross_check(this_fri, 
                                                        prev_round, 
                                                        fold_random, 
                                                        query_count,
@@ -321,14 +321,14 @@ class FRIPCS_Verifier:
             # Reed Solomon evaluation domains are incompatible!
             return False
         
-        rs_orignal = original.gen_proof()
+        rs_original = original.gen_proof()
         rs_quot = quot.gen_proof()
         votes = 0
 
         for _ in range(self.query_count):
-            ndx = int(random()*len(rs_orignal))
+            ndx = int(random()*len(rs_original))
             reconstructed = expected_value + (rs_quot[ndx] * (eval_points[ndx] - evaluation_point))
-            if reconstructed == rs_orignal[ndx]:
+            if reconstructed == rs_original[ndx]:
                 votes += 1
 
         # Overwhelming majority might be too weak!
@@ -358,8 +358,8 @@ if __name__ == '__main__':
                       folding_factor=folding_factor, 
                       ood_count=ood_count)
 
-        assert iopp.verify_proximity(poly_degree), "FRI IOPP varification should work"
-        assert not iopp.verify_proximity(poly_degree // folding_factor - 1), "FRI IOPP varification should fail if the max degree is 1/folding factor away"
+        assert iopp.verify_proximity(poly_degree), "FRI IOPP verification should work"
+        assert not iopp.verify_proximity(poly_degree // folding_factor - 1), "FRI IOPP verification should fail if the max degree is 1/folding factor away"
 
 
     def run_test_fri_round(code_dimension=2048, rate_factor=4, folding_factor=4, ood_count = 5):
@@ -371,7 +371,7 @@ if __name__ == '__main__':
         folding_randomness = Fq.random_element()
         ood_randomness = [Fq.random_element() for _ in range(ood_count)]
         (second_oracle, ood_response) = first_oracle.fold(folding_randomness, ood_randomness)
-        assert FRIRound.consistancy_cross_check(second_oracle, first_oracle, folding_challenge=folding_randomness, queries=5, ood_response=ood_response)
+        assert FRIRound.consistency_cross_check(second_oracle, first_oracle, folding_challenge=folding_randomness, queries=5, ood_response=ood_response)
 
     def run_test_pcs(code_dimension=2048, rate_factor=4, folding_factor=4, ood_count = 5):
         ntt_omega = omega**(cofactor*2**(twodicity - log(code_dimension, 2)))
@@ -392,7 +392,7 @@ if __name__ == '__main__':
                 "An invalid opening of evaluation point should not succeed, but it did"
         
         assert not verifier.verify_proof(commitment, proof, evaluation_point, expected_value + 1), \
-                "An invalid opening of evaluation value shoud not succeed, but it did"
+                "An invalid opening of evaluation value should not succeed, but it did"
 
     run_test_fri_round()
     run_test_friopp()
