@@ -57,17 +57,18 @@ jobs:
       - name: Clean stale benchmark artifacts
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
-          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np
+          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np ./benchmark-inputs/*.bin
           echo "Cleaned stale benchmark artifacts"
 
-      - name: Prepare circuits 
+      - name: Prepare circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Preparing $circuit"
             cargo run --release --bin provekit-cli prepare ./target/$circuit.json \
               --pkp ./benchmark-inputs/$circuit-prover.pkp \
-              --pkv ./benchmark-inputs/$circuit-verifier.pkv
+              --pkv ./benchmark-inputs/$circuit-verifier.pkv \
+              --spark-data ./benchmark-inputs/$circuit-spark-data.bin
             echo "Prepared $circuit"
           done
 
@@ -92,6 +93,30 @@ jobs:
               ./benchmark-inputs/$circuit-verifier.pkv \
               ./benchmark-inputs/$circuit-proof.np
             echo "Verified $circuit"
+          done
+
+      - name: Generate SPARK proofs for all circuits
+        working-directory: noir-examples/noir-passport/merkle_age_check
+        run: |
+          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
+            echo "SPARK proving $circuit"
+            cargo run --release --bin spark-cli prove \
+              --noir-proof-scheme ./benchmark-inputs/$circuit-prover.pkp \
+              --noir-proof ./benchmark-inputs/$circuit-proof.np \
+              --spark-data ./benchmark-inputs/$circuit-spark-data.bin \
+              -o ./benchmark-inputs/$circuit-spark-proof.json
+            echo "SPARK proved $circuit"
+          done
+
+      - name: Verify SPARK proofs for all circuits
+        working-directory: noir-examples/noir-passport/merkle_age_check
+        run: |
+          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
+            echo "SPARK verifying $circuit"
+            cargo run --release --bin spark-cli verify \
+              --spark-proof ./benchmark-inputs/$circuit-spark-proof.json \
+              --noir-proof ./benchmark-inputs/$circuit-proof.np
+            echo "SPARK verified $circuit"
           done
 
       - name: Generate Gnark inputs

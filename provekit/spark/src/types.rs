@@ -6,7 +6,10 @@ use {
         FieldElement, WhirConfig,
     },
     serde::{Deserialize, Serialize},
-    whir::{hash::Hash, protocols::{irs_commit, matrix_commit}},
+    whir::{
+        hash::Hash,
+        protocols::{irs_commit, matrix_commit},
+    },
 };
 
 pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
@@ -75,12 +78,12 @@ pub struct SparkWitnesses {
 #[derive(Serialize, Deserialize)]
 pub struct SerializableWhirWitness {
     #[serde(with = "serde_ark_vec")]
-    matrix:                Vec<FieldElement>,
-    matrix_witness:        matrix_commit::Witness,
+    matrix:               Vec<FieldElement>,
+    matrix_witness:       matrix_commit::Witness,
     #[serde(with = "serde_ark_vec")]
-    out_of_domain_points:  Vec<FieldElement>,
+    out_of_domain_points: Vec<FieldElement>,
     #[serde(with = "serde_ark_vec")]
-    out_of_domain_matrix:  Vec<FieldElement>,
+    out_of_domain_matrix: Vec<FieldElement>,
 }
 
 impl From<WhirWitness> for SerializableWhirWitness {

@@ -192,11 +192,7 @@ fn prove_spark_for_single_matrix(
     let GeneratedWitnesses {
         evalues_witness,
         evalues_vecs,
-    } = generate_witnesses(
-        merlin,
-        whir_configs,
-        &e_values,
-    )?;
+    } = generate_witnesses(merlin, whir_configs, &e_values)?;
 
     let rs_ws_vecs = [
         row_field.to_vec(),
@@ -445,8 +441,7 @@ fn replay_commitment(
     merlin.prover_message(&commitment.merkle_root);
 
     // Draw OOD challenge points (deterministic from transcript state)
-    let _oods_points: Vec<FieldElement> =
-        merlin.verifier_message_vec(ic.out_domain_samples);
+    let _oods_points: Vec<FieldElement> = merlin.verifier_message_vec(ic.out_domain_samples);
 
     // Absorb OOD evaluations
     for eval in &commitment.out_of_domain_evals {

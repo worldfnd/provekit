@@ -1,10 +1,28 @@
 use {
-    super::Command, anyhow::{Context, Result}, argh::FromArgs, mavros_artifacts::R1CS as MavrosR1CS, provekit_common::{
-        FieldElement, HashConfig, NoirProofScheme, Prover, R1CS, TranscriptSponge, Verifier, WhirConfig, file::write, utils::next_power_of_two
-    }, provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler}, provekit_spark::{SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkPreparedData, SparkWitnesses, prover::new_whir_config_for_size, types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps}}, std::{
+    super::Command,
+    anyhow::{Context, Result},
+    argh::FromArgs,
+    mavros_artifacts::R1CS as MavrosR1CS,
+    provekit_common::{
+        file::write, utils::next_power_of_two, FieldElement, HashConfig, NoirProofScheme, Prover,
+        TranscriptSponge, Verifier, WhirConfig, R1CS,
+    },
+    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
+    provekit_spark::{
+        prover::new_whir_config_for_size,
+        types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps},
+        SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkPreparedData,
+        SparkWitnesses,
+    },
+    std::{
         path::{Path, PathBuf},
         str::FromStr,
-    }, tracing::instrument, whir::{hash::Hash, transcript::{DomainSeparator, ProverState, VerifierMessage, VerifierState, codecs::Empty}},
+    },
+    tracing::instrument,
+    whir::{
+        hash::Hash,
+        transcript::{codecs::Empty, DomainSeparator, ProverState, VerifierMessage, VerifierState},
+    },
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -119,7 +137,7 @@ impl Command for Args {
                     whir_r1cs_scheme.num_challenges,
                 )?
             }
-        };  
+        };
 
         let num_rows = spark_r1cs.timestamps.final_row.len();
         let num_cols = spark_r1cs.timestamps.final_col.len();
@@ -136,8 +154,8 @@ impl Command for Args {
         let commitments = extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
 
         let spark_data = SparkPreparedData {
-            matrix:      spark_r1cs,
-            witnesses:   SerializableSparkWitnesses::from(witnesses),
+            matrix: spark_r1cs,
+            witnesses: SerializableSparkWitnesses::from(witnesses),
             commitments,
         };
         let spark_data_bytes =
@@ -321,7 +339,7 @@ fn build_spark_matrix(
 }
 
 pub struct SPARKCommitterScheme {
-    pub whir_configs:      SPARKWHIRConfigs,
+    pub whir_configs: SPARKWHIRConfigs,
 }
 
 impl SPARKCommitterScheme {
@@ -338,7 +356,7 @@ impl SPARKCommitterScheme {
             new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
 
         Self {
-            whir_configs:      SPARKWHIRConfigs {
+            whir_configs: SPARKWHIRConfigs {
                 row:                row_config,
                 col:                col_config,
                 num_terms_1batched: num_terms_1batched_config,
@@ -348,8 +366,15 @@ impl SPARKCommitterScheme {
         }
     }
 
-    pub fn commit(&self, merlin: &mut ProverState<TranscriptSponge>, matrix: &SparkMatrix) -> SparkWitnesses {
-        let vals_witness = self.whir_configs.num_terms_1batched.commit(merlin, &[&matrix.coo.val]);
+    pub fn commit(
+        &self,
+        merlin: &mut ProverState<TranscriptSponge>,
+        matrix: &SparkMatrix,
+    ) -> SparkWitnesses {
+        let vals_witness = self
+            .whir_configs
+            .num_terms_1batched
+            .commit(merlin, &[&matrix.coo.val]);
 
         let row_field: Vec<FieldElement> = matrix
             .coo
@@ -371,14 +396,16 @@ impl SPARKCommitterScheme {
             &matrix.timestamps.read_col,
         ]);
 
-        let final_row_ts_witness = self.whir_configs
+        let final_row_ts_witness = self
+            .whir_configs
             .row
             .commit(merlin, &[&matrix.timestamps.final_row]);
 
-        let final_col_ts_witness = self.whir_configs
+        let final_col_ts_witness = self
+            .whir_configs
             .col
             .commit(merlin, &[&matrix.timestamps.final_col]);
-        
+
         SparkWitnesses {
             vals_witness,
             rs_ws_witness,
@@ -427,4 +454,3 @@ fn extract_commitments(
         final_col_ts,
     })
 }
-

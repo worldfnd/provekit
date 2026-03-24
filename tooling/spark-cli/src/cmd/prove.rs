@@ -2,7 +2,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, NoirProof, Prover},
-    provekit_spark::{SparkPreparedData, SPARKProver, SPARKProverScheme},
+    provekit_spark::{SPARKProver, SPARKProverScheme, SparkPreparedData},
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
 };
