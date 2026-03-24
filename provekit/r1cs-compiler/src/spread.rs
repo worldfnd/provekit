@@ -35,7 +35,6 @@ fn subchunks(bits: u32, w: u32) -> Vec<u32> {
 #[derive(Clone, Debug)]
 pub(crate) struct SpreadChunk {
     pub total_bits:  u32,
-    pub sub_values:  Vec<usize>,
     pub sub_spreads: Vec<usize>,
     pub sub_bits:    Vec<u32>,
 }
@@ -147,8 +146,9 @@ pub(crate) fn decompose_to_spread_word(
     // Step 2: Single ChunkDecompose producing all sub-chunks directly
     // from the packed value.
     let sub_start = compiler.num_witnesses();
+    let chunk_count = flat_bits.len();
     compiler.add_witness_builder(WitnessBuilder::ChunkDecompose {
-        output_start: sub_start,
+        output_indices: (sub_start..sub_start + chunk_count).collect(),
         packed,
         chunk_bits: flat_bits.clone(),
     });
@@ -175,7 +175,6 @@ pub(crate) fn decompose_to_spread_word(
         let n_subs = chunk_sub_counts[ci];
         let sub_bits_slice = &flat_bits[flat_idx..flat_idx + n_subs];
 
-        let mut sub_values = Vec::with_capacity(n_subs);
         let mut sub_spreads = Vec::with_capacity(n_subs);
         for j in 0..n_subs {
             let val_idx = sub_start + flat_idx + j;
@@ -187,13 +186,11 @@ pub(crate) fn decompose_to_spread_word(
                     .or_default()
                     .push(val_idx);
             }
-            sub_values.push(val_idx);
             sub_spreads.push(spread_idx);
         }
 
         chunks.push(SpreadChunk {
             total_bits: chunk_spec[ci],
-            sub_values,
             sub_spreads,
             sub_bits: sub_bits_slice.to_vec(),
         });
@@ -262,17 +259,19 @@ pub(crate) fn spread_decompose(
     // The sum is computed inline by the solver from sum_terms,
     // avoiding a phantom witness that would inflate the witness vector.
     let even_start = compiler.num_witnesses();
+    let even_count = extract_chunks.len();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
-        output_start: even_start,
-        chunk_bits:   extract_chunks.clone(),
-        sum_terms:    sum_terms.clone(),
-        extract_even: true,
+        output_indices: (even_start..even_start + even_count).collect(),
+        chunk_bits:     extract_chunks.clone(),
+        sum_terms:      sum_terms.clone(),
+        extract_even:   true,
     });
 
     // Extract odd bits (AND/MAJ) into chunks
     let odd_start = compiler.num_witnesses();
+    let odd_count = extract_chunks.len();
     compiler.add_witness_builder(WitnessBuilder::SpreadBitExtract {
-        output_start: odd_start,
+        output_indices: (odd_start..odd_start + odd_count).collect(),
         chunk_bits: extract_chunks.clone(),
         sum_terms,
         extract_even: false,
@@ -478,10 +477,8 @@ pub(crate) fn decompose_constant_to_spread_word(
     // spread table lookup is needed for soundness.
 
     // Build SpreadChunks with pinned spread witnesses.
-    // No ChunkDecompose needed — sub_values are never read by any
-    // downstream R1CS constraint (only sub_spreads are used in
-    // spread_decompose). We still populate sub_values with the
-    // spread witness indices as placeholders to satisfy the struct.
+    // No ChunkDecompose needed — only sub_spreads are used in
+    // downstream spread_decompose constraints.
     let mut chunks = Vec::with_capacity(num_chunks);
     let mut flat_idx = 0usize;
 
@@ -504,10 +501,6 @@ pub(crate) fn decompose_constant_to_spread_word(
 
         chunks.push(SpreadChunk {
             total_bits: chunk_spec[ci],
-            // NB: sub_values normally holds chunk-value witness indices, but the constant
-            // path doesn't create separate chunk-value witnesses. Set to spread indices
-            // instead; this field is currently unused so the mismatch is harmless.
-            sub_values: sub_spreads.clone(),
             sub_spreads,
             sub_bits: sub_bits_slice.to_vec(),
         });

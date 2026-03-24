@@ -130,6 +130,7 @@ impl Prove for NoirProver {
         let compressed_r1cs =
             CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
         let num_witnesses = compressed_r1cs.num_witnesses();
+        let num_virtual = compressed_r1cs.num_virtual();
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
@@ -140,7 +141,9 @@ impl Prove for NoirProver {
             .instance(&instance);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
-        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
+        // Allocate space for real + virtual witnesses. Virtual witnesses are
+        // computation-only (zero entries in A/B/C) but needed by builders.
+        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses + num_virtual];
 
         // Solve w1 (or all witnesses if no challenges).
         {
@@ -205,7 +208,8 @@ impl Prove for NoirProver {
 
             let w2 = {
                 let _s = info_span!("allocate_w2").entered();
-                witness[self.whir_for_witness.w1_size..]
+                // Only real w2 witnesses (exclude virtual at the end).
+                witness[self.whir_for_witness.w1_size..num_witnesses]
                     .iter()
                     .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))
                     .collect::<Result<Vec<_>>>()?
@@ -228,11 +232,30 @@ impl Prove for NoirProver {
             .context("While decompressing R1CS")?;
 
         #[cfg(test)]
-        r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
-            .context("While verifying R1CS instance")?;
+        r1cs.test_witness_satisfaction(
+            &witness[..num_witnesses]
+                .iter()
+                .map(|w| w.unwrap())
+                .collect::<Vec<_>>(),
+        )
+        .context("While verifying R1CS instance")?;
 
-        let full_witness: Vec<FieldElement> = witness
-            .into_iter()
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(
+                witness[1..=num_public_inputs]
+                    .iter()
+                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
+                    .collect::<Result<Vec<FieldElement>>>()?,
+            )
+        };
+
+        // Extract only real witnesses (first num_witnesses) for the sumcheck.
+        // Virtual witnesses at [num_witnesses, num_witnesses+num_virtual) were
+        // needed for builder computation but have zero entries in A/B/C.
+        let full_witness: Vec<FieldElement> = witness[..num_witnesses]
+            .iter()
             .enumerate()
             .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
             .collect::<Result<Vec<_>>>()?;

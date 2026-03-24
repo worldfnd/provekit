@@ -277,11 +277,11 @@ pub enum WitnessBuilder {
     /// Decomposes a packed value into chunks of specified bit-widths.
     /// Given packed value and chunk_bits = [b0, b1, ..., bn]:
     ///   packed = c0 + c1 * 2^b0 + c2 * 2^(b0+b1) + ...
-    /// Writes chunk values to output_start..output_start+chunk_bits.len()
+    /// `output_indices[i]` is the witness index for chunk `i`.
     ChunkDecompose {
-        output_start: usize,
-        packed:       usize,
-        chunk_bits:   Vec<u32>,
+        output_indices: Vec<usize>,
+        packed:         usize,
+        chunk_bits:     Vec<u32>,
     },
     /// Prover hint for FakeGLV scalar decomposition.
     /// Given scalar s (from s_lo + s_hi * 2^128) and curve order n,
@@ -401,13 +401,12 @@ pub enum WitnessBuilder {
     SpreadWitness(usize, usize),
     /// Extracts even or odd bits from a spread sum, decomposed into
     /// byte-sized chunks. Even bits = XOR result, Odd bits = MAJ/AND
-    /// result. The sum is computed inline from the provided terms,
-    /// avoiding a separate witness allocation.
+    /// result. `output_indices[i]` is the witness index for chunk `i`.
     SpreadBitExtract {
-        output_start: usize,
-        chunk_bits:   Vec<u32>,
-        sum_terms:    Vec<SumTerm>,
-        extract_even: bool,
+        output_indices: Vec<usize>,
+        chunk_bits:     Vec<u32>,
+        sum_terms:      Vec<SumTerm>,
+        extract_even:   bool,
     },
     /// Spread table multiplicities: counts how many times each input
     /// value appears in the query set.
@@ -453,7 +452,7 @@ impl WitnessBuilder {
     pub fn num_witnesses(&self) -> usize {
         match self {
             WitnessBuilder::MultiplicitiesForRange(_, range_size, _) => *range_size,
-            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.num_witnesses,
+            WitnessBuilder::DigitalDecomposition(dd_struct) => dd_struct.output_indices.len(),
             WitnessBuilder::SpiceWitnesses(spice_witnesses_struct) => {
                 spice_witnesses_struct.num_witnesses
             }
@@ -463,8 +462,8 @@ impl WitnessBuilder {
             WitnessBuilder::U32Addition(..) => 2,
             WitnessBuilder::U32AdditionMulti(..) => 2,
             WitnessBuilder::BytePartition { .. } => 2,
-            WitnessBuilder::ChunkDecompose { chunk_bits, .. } => chunk_bits.len(),
-            WitnessBuilder::SpreadBitExtract { chunk_bits, .. } => chunk_bits.len(),
+            WitnessBuilder::ChunkDecompose { output_indices, .. } => output_indices.len(),
+            WitnessBuilder::SpreadBitExtract { output_indices, .. } => output_indices.len(),
             WitnessBuilder::MultiplicitiesForSpread(_, num_bits, _) => 1usize << *num_bits,
             WitnessBuilder::MultiLimbMulModHint { num_limbs, .. } => (4 * *num_limbs - 2) as usize,
             WitnessBuilder::MultiLimbModularInverse { num_limbs, .. } => *num_limbs as usize,
@@ -549,8 +548,12 @@ impl WitnessBuilder {
             .map(|&idx| witness_builders[idx].clone())
             .collect();
 
-        // Step 3: Create witness index remapper
-        let remapper = WitnessIndexRemapper::new(&w1_builders, &w2_builders);
+        // Step 3: Create witness index remapper.
+        // Pass num_real_cols so virtual witnesses are placed at the end,
+        // after all real w1/w2 witnesses — keeping them out of the
+        // committed WHIR polynomial.
+        let num_real_cols = r1cs.num_witnesses();
+        let remapper = WitnessIndexRemapper::new(&w1_builders, &w2_builders, num_real_cols);
         let w1_size = remapper.w1_size;
 
         // Step 4: Remap all builders
@@ -564,7 +567,9 @@ impl WitnessBuilder {
             .map(|b| remapper.remap_builder(b))
             .collect();
 
-        // Step 5: Remap R1CS and witness map
+        // Step 5: Remap R1CS and witness map.
+        // num_virtual is preserved — virtual witnesses are at the end of
+        // the index space, after all real w1/w2 witnesses.
         let remapped_r1cs = remapper.remap_r1cs(r1cs);
         let remapped_witness_map = remapper.remap_acir_witness_map(witness_map);
 
