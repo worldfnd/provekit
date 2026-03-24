@@ -25,11 +25,16 @@ use {
     whir::transcript::VerifierMessage,
 };
 
+pub(crate) mod bigint_mod;
+pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
-mod r1cs;
+pub(crate) mod r1cs;
 mod whir_r1cs;
 mod witness;
+
+// Public re-exports for items used by integration tests and benchmarks.
+pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not

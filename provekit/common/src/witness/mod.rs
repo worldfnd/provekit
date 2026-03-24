@@ -1,5 +1,6 @@
 mod binops;
 mod digits;
+mod limbs;
 mod ram;
 mod scheduling;
 mod witness_builder;
@@ -16,11 +17,14 @@ use {
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
+    limbs::{Limbs, MAX_LIMBS},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
-    scheduling::{Layer, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders},
+    scheduling::{
+        Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
+    },
     witness_builder::{
-        CombinedTableEntryInverseData, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-        WitnessCoefficient,
+        CombinedTableEntryInverseData, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
+        WitnessBuilder, WitnessCoefficient,
     },
     witness_generator::NoirWitnessGenerator,
 };

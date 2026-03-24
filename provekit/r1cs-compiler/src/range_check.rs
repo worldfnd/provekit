@@ -139,13 +139,46 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
     optimal_width
 }
 
+/// Estimates total witness cost for resolving range checks without
+/// constructing actual R1CS constraints.
+///
+/// Takes a map of `bit_width → count` (number of witnesses needing that
+/// range check). Uses the same optimal-base-width search and
+/// LogUp-vs-naive cost model as [`add_range_checks`], but operates on
+/// aggregate counts rather than concrete witness indices.
+pub(crate) fn estimate_range_check_cost(checks: &BTreeMap<u32, usize>) -> usize {
+    if checks.is_empty() {
+        return 0;
+    }
+
+    // Create synthetic RangeCheckRequests with unique dummy indices.
+    let mut collected: Vec<RangeCheckRequest> = Vec::new();
+    let mut dummy_idx = 0usize;
+    for (&bits, &count) in checks {
+        for _ in 0..count {
+            collected.push(RangeCheckRequest {
+                witness_idx: dummy_idx,
+                bits,
+            });
+            dummy_idx += 1;
+        }
+    }
+
+    if collected.is_empty() {
+        return 0;
+    }
+
+    let base_width = get_optimal_base_width(&collected);
+    calculate_witness_cost(base_width, &collected)
+}
+
 /// Add witnesses and constraints that ensure that the values of the witness
 /// belong to a range 0..2^k (for some k).
 ///
 /// Uses dynamic base width optimization: all range check requests are
 /// collected, and the optimal decomposition base width is determined by
 /// minimizing the total witness count (memory cost). The search evaluates
-/// every base width from [MIN_BASE_WIDTH] to [MAX_BASE_WIDTH]. For each
+/// every base width from \[MIN_BASE_WIDTH\] to \[MAX_BASE_WIDTH\]. For each
 /// candidate, the cost model picks the cheaper of LogUp and naive for
 /// every atomic bucket.
 ///
@@ -156,7 +189,7 @@ fn get_optimal_base_width(collected: &[RangeCheckRequest]) -> u32 {
 ///
 /// `range_checks` is a map from the number of bits k to the vector of
 /// witness indices that are to be constrained within the range [0..2^k].
-pub(crate) fn add_range_checks(
+pub fn add_range_checks(
     r1cs: &mut NoirToR1CSCompiler,
     range_checks: BTreeMap<u32, Vec<usize>>,
 ) -> Option<u32> {
