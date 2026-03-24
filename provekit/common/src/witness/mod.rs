@@ -18,7 +18,8 @@ pub use {
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     scheduling::{
-        DependencyInfo, Layer, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
+        DependencyInfo, Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError,
+        SplitWitnessBuilders,
     },
     witness_builder::{
         CombinedTableEntryInverseData, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
