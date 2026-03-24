@@ -4,9 +4,6 @@ groth = "groth"
 Groth = "Groth"
 GROTH = "GROTH"
 
-# Lambda spelled as "lamda" in Noir circuit code (external convention)
-lamda = "lamda"
-
 [files]
 extend-exclude = [
     # Notebook outputs contain escaped terminal codes that trigger false positives

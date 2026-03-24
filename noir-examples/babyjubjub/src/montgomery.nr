@@ -79,13 +79,13 @@ impl MontgomeryPoint {
     pub fn double(self) -> MontgomeryPoint {
         // Safety: cast to unconstrained field
         // lambda = (3*u^2 + 2*A*u + 1) / (2*v)
-        let lamda = unsafe { Self::double_lambda_unconstrained(self) };
+        let lambda = unsafe { Self::double_lambda_unconstrained(self) };
         let num = 3 * self.u * self.u + 2 * MONT_A * self.u + 1;
         let den = 2 * self.v;
-        assert(lamda * den == num, "Montgomery double slope constraint failed");
+        assert(lambda * den == num, "Montgomery double slope constraint failed");
 
-        let u3 = MONT_B * lamda * lamda - MONT_A - 2 * self.u;
-        let v3 = lamda * (self.u - u3) - self.v;
+        let u3 = MONT_B * lambda * lambda - MONT_A - 2 * self.u;
+        let v3 = lambda * (self.u - u3) - self.v;
 
         MontgomeryPoint { u: u3, v: v3 }
     }
