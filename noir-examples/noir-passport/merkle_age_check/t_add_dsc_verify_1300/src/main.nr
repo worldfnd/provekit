@@ -91,3 +91,35 @@ fn main(
 
     comm_out
 }
+
+/// A TBS buffer whose tail (bytes >= len) is all-zero must pass.
+#[test]
+fn test_zero_padding_passes_when_tail_is_all_zero() {
+    let mut tbs: [u8; TBS_CERT_SIZE] = [0; TBS_CERT_SIZE];
+    tbs[0] = 0x30;
+    tbs[1] = 0x82;
+    let len: u32 = 10;
+    check_zero_padding(tbs, len);
+}
+
+/// A single non-zero byte immediately after the declared length must be
+/// rejected.  This is the canonical one-byte smuggling attack.
+#[test(should_fail_with = "Failed constraint")]
+fn test_zero_padding_fails_when_nonzero_byte_in_unsigned_tail() {
+    let mut tbs: [u8; TBS_CERT_SIZE] = [0; TBS_CERT_SIZE];
+    tbs[0] = 0x30;
+    tbs[1] = 0x82;
+    let len: u32 = 10;
+    tbs[10] = 0x01;
+    check_zero_padding(tbs, len);
+}
+
+/// A non-zero byte at the very last byte of the 1300-byte buffer must be
+/// rejected regardless of how far it is from the signed region.
+#[test(should_fail_with = "Failed constraint")]
+fn test_zero_padding_fails_when_nonzero_byte_at_end_of_buffer() {
+    let mut tbs: [u8; TBS_CERT_SIZE] = [0; TBS_CERT_SIZE];
+    let len: u32 = 100;
+    tbs[TBS_CERT_SIZE - 1] = 0xFF;
+    check_zero_padding(tbs, len);
+}
