@@ -20,9 +20,8 @@ pub use {
     limbs::{Limbs, MAX_LIMBS},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     scheduling::{
-        
-        DependencyInfo, Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
-    ,
+        DependencyInfo, Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError,
+        SplitWitnessBuilders,
     },
     witness_builder::{
         CombinedTableEntryInverseData, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
