@@ -2,6 +2,7 @@
 use whir::transcript::Interaction;
 use {
     provekit_common::{
+        interner::{InternedFieldElement, Interner},
         utils::{serde_ark_vec, serde_hex},
         FieldElement, WhirConfig,
     },
@@ -66,6 +67,80 @@ pub struct TimeStamps {
     pub final_row: Vec<FieldElement>,
     #[serde(with = "serde_ark_vec")]
     pub final_col: Vec<FieldElement>,
+}
+
+/// Compact on-disk representation of a spark matrix. Uses `Interner` for
+/// value deduplication. Timestamps are omitted and recomputed on
+/// deserialization.
+#[derive(Serialize, Deserialize)]
+pub struct CompactSparkMatrix {
+    pub num_rows: usize,
+    pub num_cols: usize,
+    pub row:      Vec<usize>,
+    pub col:      Vec<usize>,
+    pub interner: Interner,
+    pub val:      Vec<InternedFieldElement>,
+}
+
+impl From<SparkMatrix> for CompactSparkMatrix {
+    fn from(m: SparkMatrix) -> Self {
+        let num_rows = m.timestamps.final_row.len();
+        let num_cols = m.timestamps.final_col.len();
+        let mut interner = Interner::new();
+        let val = m.coo.val.iter().map(|v| interner.intern(*v)).collect();
+        Self {
+            num_rows,
+            num_cols,
+            row: m.coo.row,
+            col: m.coo.col,
+            interner,
+            val,
+        }
+    }
+}
+
+impl From<CompactSparkMatrix> for SparkMatrix {
+    fn from(c: CompactSparkMatrix) -> Self {
+        let row = c.row;
+        let col = c.col;
+        let val: Vec<FieldElement> = c
+            .val
+            .iter()
+            .map(|&v| c.interner.get(v).expect("invalid interned value"))
+            .collect();
+
+        let len = row.len();
+        let mut read_row_counters = vec![0usize; c.num_rows];
+        let mut read_col_counters = vec![0usize; c.num_cols];
+        let mut read_row = Vec::with_capacity(len);
+        let mut read_col = Vec::with_capacity(len);
+
+        for i in 0..len {
+            read_row.push(FieldElement::from(read_row_counters[row[i]] as u64));
+            read_row_counters[row[i]] += 1;
+            read_col.push(FieldElement::from(read_col_counters[col[i]] as u64));
+            read_col_counters[col[i]] += 1;
+        }
+
+        let final_row = read_row_counters
+            .iter()
+            .map(|&x| FieldElement::from(x as u64))
+            .collect();
+        let final_col = read_col_counters
+            .iter()
+            .map(|&x| FieldElement::from(x as u64))
+            .collect();
+
+        SparkMatrix {
+            coo:        COOMatrix { row, col, val },
+            timestamps: TimeStamps {
+                read_row,
+                read_col,
+                final_row,
+                final_col,
+            },
+        }
+    }
 }
 
 pub struct SparkWitnesses {
@@ -157,11 +232,11 @@ pub struct SparkCommitments {
     pub final_col_ts: SerializableCommitment,
 }
 
-/// Combined container for all SPARK prepared data: the R1CS matrix,
-/// witnesses, and commitments.
+/// Combined container for all SPARK prepared data: the R1CS matrix
+/// (compact on-disk format), witnesses, and commitments.
 #[derive(Serialize, Deserialize)]
 pub struct SparkPreparedData {
-    pub matrix:      SparkMatrix,
+    pub matrix:      CompactSparkMatrix,
     pub witnesses:   SerializableSparkWitnesses,
     pub commitments: SparkCommitments,
 }

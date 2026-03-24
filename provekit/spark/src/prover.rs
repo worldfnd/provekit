@@ -92,7 +92,7 @@ impl SPARKScheme {
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
     fn prove(&self, spark_data: SparkPreparedData, request: &R1CSSparkQuery) -> Result<SPARKProof> {
-        let spark_matrix = spark_data.matrix;
+        let spark_matrix: SparkMatrix = spark_data.matrix.into();
         let spark_witnesses: SparkWitnesses = spark_data.witnesses.into();
         let commitments = spark_data.commitments;
         let padded_num_entries = spark_matrix.coo.val.len();

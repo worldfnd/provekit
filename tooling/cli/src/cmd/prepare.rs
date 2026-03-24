@@ -154,7 +154,7 @@ impl Command for Args {
         let commitments = extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
 
         let spark_data = SparkPreparedData {
-            matrix: spark_r1cs,
+            matrix: spark_r1cs.into(),
             witnesses: SerializableSparkWitnesses::from(witnesses),
             commitments,
         };

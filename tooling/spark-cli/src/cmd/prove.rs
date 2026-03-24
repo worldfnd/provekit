@@ -49,9 +49,9 @@ pub fn execute(args: ProveArgs) -> Result<()> {
     let spark_query = noir_proof.r1cs_spark_query;
     info!("Extracted SPARK statement from NoirProof");
 
-    let num_constraints = spark_data.matrix.timestamps.final_row.len();
-    let num_witnesses = spark_data.matrix.timestamps.final_col.len();
-    let num_nonzero = spark_data.matrix.coo.val.len();
+    let num_constraints = spark_data.matrix.num_rows;
+    let num_witnesses = spark_data.matrix.num_cols;
+    let num_nonzero = spark_data.matrix.val.len();
 
     info!("Creating SPARK scheme ({num_constraints} constraints, {num_witnesses} witnesses)");
     let scheme = SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero);

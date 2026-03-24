@@ -1,7 +1,7 @@
 pub mod file;
 pub use file::binary_format;
 pub mod hash_config;
-mod interner;
+pub mod interner;
 mod mavros;
 mod noir_proof_scheme;
 pub mod optimize;
