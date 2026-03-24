@@ -93,7 +93,7 @@ impl NTTEngine {
         }
     }
 
-    // Returns the maximum order that it supports without extention
+    // Returns the maximum order that it supports without extension
     fn order(&self) -> Pow2<usize> {
         Pow2(self.0.len() * 2)
     }

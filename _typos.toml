@@ -1,0 +1,15 @@
+[default.extend-words]
+# Groth16 is a zero-knowledge proof system (not "Growth")
+groth = "groth"
+Groth = "Groth"
+GROTH = "GROTH"
+
+[files]
+extend-exclude = [
+    # Notebook outputs contain escaped terminal codes that trigger false positives
+    "playground/sage/*.ipynb",
+    # Base64-encoded mock keys contain random substrings
+    "playground/passport-input-gen/src/mock_keys.rs",
+    # Typst labels (e.g. <thm-hm>) are not typos
+    "playground/sage/*.typst",
+]

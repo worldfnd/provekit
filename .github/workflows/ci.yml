@@ -45,3 +45,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: machete
         uses: bnjbvr/cargo-machete@main
+
+  typos:
+    name: Spell check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1.44.0
