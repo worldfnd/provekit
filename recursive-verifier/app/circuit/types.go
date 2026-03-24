@@ -53,7 +53,7 @@ type WHIRParams struct {
 	FinalFoldingPowBits                  int
 	StartingDomainBackingDomainGenerator frontend.Variable
 	DomainSize                           int
-	CommitmentOODSamples                int
+	CommitmentOODSamples                 int
 	FinalSumcheckRounds                  int
 	MVParamsNumberOfVariables            int
 	BatchSize                            int
