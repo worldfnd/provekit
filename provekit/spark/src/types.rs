@@ -4,8 +4,8 @@ use {
     provekit_common::{
         file::{
             binary_format::{
-            SPARK_DATA_FORMAT, SPARK_DATA_VERSION, SPARK_PROOF_FORMAT, SPARK_PROOF_VERSION,
-        },
+                SPARK_DATA_FORMAT, SPARK_DATA_VERSION, SPARK_PROOF_FORMAT, SPARK_PROOF_VERSION,
+            },
             Compression, FileFormat, MaybeHashAware,
         },
         interner::{InternedFieldElement, Interner},

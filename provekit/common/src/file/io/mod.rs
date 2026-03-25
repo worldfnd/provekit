@@ -4,7 +4,6 @@ mod counting_writer;
 mod json;
 
 pub use self::bin::Compression;
-
 use {
     self::{
         bin::{read_bin, read_hash_config as read_hash_config_bin, write_bin},

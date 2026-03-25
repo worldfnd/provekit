@@ -1,7 +1,10 @@
 use {
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::{read, write}, NoirProof, Prover},
+    provekit_common::{
+        file::{read, write},
+        NoirProof, Prover,
+    },
     provekit_spark::{SPARKProver, SPARKProverScheme, SparkPreparedData},
     std::path::PathBuf,
     tracing::{info, instrument},
