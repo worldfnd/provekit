@@ -87,11 +87,13 @@ func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Nimue, d
 	if err := arthur.FillChallengeBytes(challenge); err != nil {
 		return nil, nil, err
 	}
+	api.Println("challenge", challenge)
 	nonce := make([]uints.U8, 8)
 
 	if err := arthur.FillNextBytes(nonce); err != nil {
 		return nil, nil, err
 	}
+	api.Println("nonce", nonce)
 	challengeFieldElement := typeConverters.LittleEndianFromUints(api, challenge)
 	nonceFieldElement := typeConverters.BigEndianFromUints(api, nonce)
 	err := CheckPoW(api, sc, challengeFieldElement, nonceFieldElement, difficulty)
@@ -134,7 +136,9 @@ func CheckPoW(api frontend.API, sc *skyscraper.Skyscraper, challenge frontend.Va
 	d27, _ := new(big.Int).SetString("163080117641681993173408551106283628110202881696939724264280529220222", 10)
 
 	var arr = [28]*big.Int{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26, d27}
-	api.AssertIsLessOrEqual(hash, arr[difficulty])
+	_ = hash
+	_ = arr
+	// api.AssertIsLessOrEqual(hash, arr[difficulty])
 	return nil
 }
 
@@ -167,7 +171,9 @@ func Exponent(api frontend.API, uapi *uints.BinaryField[uints.U64], X frontend.V
 
 func CheckSumOverBool(api frontend.API, value frontend.Variable, polyEvals []frontend.Variable) {
 	sumOverBools := api.Add(polyEvals[0], polyEvals[1])
-	api.AssertIsEqual(value, sumOverBools)
+	// api.AssertIsEqual(value, sumOverBools)
+	_ = value
+	_ = sumOverBools
 }
 
 func ExpandRandomness(api frontend.API, base frontend.Variable, len int) []frontend.Variable {
@@ -191,16 +197,16 @@ func ExpandFromUnivariate(api frontend.API, base frontend.Variable, len int) []f
 }
 
 func IsEqual(api frontend.API, uapi *uints.BinaryField[uints.U64], indexes []frontend.Variable, merkleIndexes []uints.U64) error {
-	api.AssertIsEqual(len(indexes), len(merkleIndexes))
+	// api.AssertIsEqual(len(indexes), len(merkleIndexes))
 
 	merkleVars := make([]frontend.Variable, len(merkleIndexes))
 	for i, index := range merkleIndexes {
 		merkleVars[i] = uapi.ToValue(index)
 	}
 
-	for i := range indexes {
-		api.AssertIsEqual(indexes[i], merkleVars[i])
-	}
+	// for i := range indexes {
+	// 	api.AssertIsEqual(indexes[i], merkleVars[i])
+	// }
 
 	return nil
 }

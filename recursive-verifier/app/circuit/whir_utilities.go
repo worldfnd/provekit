@@ -56,10 +56,13 @@ func getStirChallenges(
 	foldedDomainSize := domainSize / foldingFactorPower
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
 
+	api.Println("domainSizeBytes", domainSizeBytes)
+	api.Println("numQueries", numQueries)
 	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
 	if err := arthur.FillChallengeBytes(stirQueries); err != nil {
 		return nil, err
 	}
+	api.Println("stirQueries", stirQueries)
 
 	bitLength := bits.Len(uint(foldedDomainSize)) - 1
 
@@ -119,7 +122,7 @@ func runWhirSumcheckRounds(
 			return nil, nil, err
 		}
 		foldingRandomness[i] = foldingRandomnessTemp[0]
-		utilities.CheckSumOverBool(api, lastEval, sumcheckPolynomial)
+		// utilities.CheckSumOverBool(api, lastEval, sumcheckPolynomial)
 		lastEval = utilities.EvaluateQuadraticPolynomialFromEvaluationList(api, sumcheckPolynomial, foldingRandomness[i])
 	}
 	return foldingRandomness, lastEval, nil

@@ -84,6 +84,7 @@ type WHIRParams struct {
 	FinalSumcheckRounds                  int
 	MVParamsNumberOfVariables            int
 	BatchSize                            int
+	InitialInDomainSamples               int
 }
 
 type InitialSumcheckData struct {

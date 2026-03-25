@@ -739,7 +739,11 @@ func verifyCircuit(
 		backend.WithIcicleAcceleration(),
 	}
 
-	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)
+	proof, err := groth16.Prove(ccs, *pk, witness, opts...)
+	if err != nil {
+		log.Printf("Failed to prove: %v", err)
+		return err
+	}
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)

@@ -293,8 +293,9 @@ func (a *NativeArthur) FillChallengeScalars(n int) ([]*big.Int, error) {
 	return out, nil
 }
 
-// FillNextBytes reads n bytes from the transcript and absorbs each byte
-// as an individual field element (matching spongefish behavior).
+// FillNextBytes reads n bytes from the transcript and absorbs them as raw
+// bytes into the sponge rate block. Partial writes leave the remaining rate
+// bytes unchanged, matching Rust spongefish's EncodingByteBuffer behavior.
 func (a *NativeArthur) FillNextBytes(n int) ([]byte, error) {
 	if len(a.nargString) < n {
 		return nil, fmt.Errorf("FillNextBytes: need %d bytes, have %d", n, len(a.nargString))

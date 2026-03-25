@@ -319,6 +319,7 @@ func nativeIRSCommitVerifyWithPoints(
 	if err != nil {
 		return nil, fmt.Errorf("stir challenges: %w", err)
 	}
+	fmt.Println("nativeIRSCommitVerifyWithPoints indices", indices)
 
 	// Read submatrix hint
 	// var submatrix []Fp256

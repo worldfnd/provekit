@@ -1,23 +1,26 @@
 package whir
 
 import (
-	"reilabs/keccacheck/transcript"
-
 	"github.com/consensys/gnark/frontend"
+	gnarkNimue "github.com/reilabs/gnark-nimue"
 )
 
 // geometricChallenge mirrors Rust's geometric_challenge.
 // Returns [1] for count <= 1 (no entropy sourced), or [1, x, x^2, ..., x^{count-1}]
 // for count > 1 where x is squeezed from the transcript.
-func geometricChallenge(api frontend.API, v *transcript.Verifier, count int) []frontend.Variable {
+func geometricChallenge(api frontend.API, nimue gnarkNimue.Nimue, count int) ([]frontend.Variable, error) {
 	switch {
 	case count == 0:
-		return nil
+		return nil, nil
 	case count == 1:
-		return []frontend.Variable{frontend.Variable(1)}
+		return []frontend.Variable{frontend.Variable(1)}, nil
 	default:
-		x := v.Generate(api)
-		return ExpandRandomness(api, x, count)
+		x := make([]frontend.Variable, 1)
+		if err := nimue.FillChallengeScalars(x); err != nil {
+			return nil, err
+		}
+		api.Println("x", x[0])
+		return ExpandRandomness(api, x[0], count), nil
 	}
 }
 

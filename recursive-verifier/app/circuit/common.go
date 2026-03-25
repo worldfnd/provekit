@@ -760,12 +760,17 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 
 		// Challenge indices (squeeze bytes → indices)
 		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
+
+		// 	numInitialQueries := blindedParams.InitialInDomainSamples
+		// initialStirIndexes, err := getStirChallenges(api, nimue, numInitialQueries, blindedParams.DomainSize, interleavingDepth)
+
 		indices, err := nativeGetStirChallenges(
 			arthur,
 			domainSize/foldingFactorPower,
 			whirParams.RoundParametersNumOfQueries[r],
 			false,
 		)
+		fmt.Println("indices", indices)
 		if err != nil {
 			return ZKHint{}, fmt.Errorf("round %d stir challenges: %w", r, err)
 		}

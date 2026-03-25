@@ -6,6 +6,7 @@ import (
 	"math/bits"
 
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
@@ -133,6 +134,7 @@ func nimueGeometricChallenge(
 		if err := nimue.FillChallengeScalars(x); err != nil {
 			return nil, err
 		}
+		api.Println("x", x)
 		return utilities.ExpandRandomness(api, x[0], count), nil
 	}
 }
@@ -159,7 +161,8 @@ func nimueWhirSumcheckRounds(
 		}
 		c0 := coeffs[0]
 		c2 := coeffs[1]
-
+		api.Println("c0", c0)
+		api.Println("c2", c2)
 		// c1 = sum - 2*c0 - c2
 		c1 := api.Sub(sum, api.Add(api.Add(c0, c0), c2))
 
@@ -168,6 +171,7 @@ func nimueWhirSumcheckRounds(
 		if err := nimue.FillChallengeScalars(rBuf); err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
 		}
+		api.Println("rBuf", rBuf)
 		foldingRandomness[i] = rBuf[0]
 
 		// sum = P(r) = (c2*r + c1)*r + c0
@@ -416,7 +420,7 @@ func VerifyWhirNimue(
 		if err = nimue.FillNextScalars(rootHash); err != nil {
 			return nil, fmt.Errorf("round %d root: %w", r, err)
 		}
-
+		api.Println("rootHash", rootHash)
 		roundOODPoints := make([]frontend.Variable, params.RoundParametersOODSamples[r])
 		roundOODAnswers := make([]frontend.Variable, params.RoundParametersOODSamples[r])
 		if params.RoundParametersOODSamples[r] > 0 {
@@ -427,6 +431,8 @@ func VerifyWhirNimue(
 				return nil, fmt.Errorf("round %d ood answers: %w", r, err)
 			}
 		}
+		api.Println("roundOODPoints", roundOODPoints)
+		api.Println("roundOODAnswers", roundOODAnswers)
 		mainRoundData.OODPoints[r] = roundOODPoints
 
 		// PoW
@@ -434,12 +440,27 @@ func VerifyWhirNimue(
 			return nil, fmt.Errorf("round %d pow: %w", r, err)
 		}
 
-		// STIR challenge indices
-		stirIndexes, err := getStirChallenges(api, nimue, params.RoundParametersNumOfQueries[r], domainSize, 1<<params.FoldingFactorArray[r])
+		// Open previous commitment (IRS verify)
+		foldingFactorPower := 1 << params.FoldingFactorArray[r]
+		var numQueries int
+		var stirFoldingFactor int
+		if r == 0 {
+			// First round: open initial commitment
+			numQueries = params.InitialInDomainSamples
+			stirFoldingFactor = foldingFactorPower
+		} else {
+			// Subsequent rounds: open previous round's commitment
+			numQueries = params.RoundParametersNumOfQueries[r-1]
+			stirFoldingFactor = 1 << params.FoldingFactorArray[r-1]
+		}
+		api.Println("IRS numQueries", numQueries)
+		api.Println("IRS domainSize", domainSize)
+		api.Println("IRS stirFoldingFactor", stirFoldingFactor)
+		stirIndexes, err := getStirChallenges(api, nimue, numQueries, domainSize, stirFoldingFactor)
 		if err != nil {
 			return nil, fmt.Errorf("round %d stir: %w", r, err)
 		}
-
+		api.Println("stirIndexes", stirIndexes)
 		// TODO: Re-enable Merkle/leaf verification once hints are wired up.
 		// For now, skip in-domain leaf reading and Merkle proof verification.
 
@@ -452,9 +473,16 @@ func VerifyWhirNimue(
 			mainRoundData.StirChallengesPoints[r][index] = exponentVarCircuit(api, expDomainGenerator, idx, numBits)
 		}
 
-		// Constraint values = OOD values only (in-domain skipped for now)
-		constraintValues := make([]frontend.Variable, 0, len(roundOODAnswers))
+		// Constraint values = OOD values + in-domain zero placeholders.
+		// The in-domain values are zeroed until Merkle/leaf verification is enabled,
+		// but the count must match the native verifier so that the geometric
+		// challenge squeeze produces the same transcript state.
+		numInDomainQueries := len(stirIndexes)
+		constraintValues := make([]frontend.Variable, 0, len(roundOODAnswers)+numInDomainQueries)
 		constraintValues = append(constraintValues, roundOODAnswers...)
+		for range numInDomainQueries {
+			constraintValues = append(constraintValues, frontend.Variable(0))
+		}
 
 		// Combination randomness
 		roundCombRlcCoeffs, err := nimueGeometricChallenge(api, nimue, len(constraintValues))
@@ -646,7 +674,6 @@ func ZKWhirVerifyNimue(
 			perGammaEvals[g][p] = vals
 		}
 	}
-
 	// ---------------------------------------------------------------
 	// 7. combined_claims, batched_h_claims
 	// ---------------------------------------------------------------
@@ -664,16 +691,14 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	// 8. Blinded commitment WHIR verify
 	// ---------------------------------------------------------------
-	// Build statements from evaluations (one per evaluation, batchSize=1)
-	blindedStatements := make([]WhirStatement, len(evaluations))
-	for i, eval := range evaluations {
-		blindedStatements[i] = WhirStatement{Evaluation: eval}
-	}
+	blindedWhirCommitment := toWhirCommitment(blindedCommitment)
+	blindedWhirStatements := toWhirStatements(evaluations)
+	blindedWhirParams := toWhirParams(blindedParams)
 
-	// _, err = VerifyWhirNimue(api, sc, nimue, blindedCommitment, blindedStatements, blindedParams)
-	// if err != nil {
-	// 	return fmt.Errorf("blinded WHIR verify: %w", err)
-	// }
+	_, err = whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams)
+	if err != nil {
+		return fmt.Errorf("blinded WHIR verify: %w", err)
+	}
 
 	// ---------------------------------------------------------------
 	// 9. Blinding commitment WHIR verify
@@ -711,17 +736,61 @@ func ZKWhirVerifyNimue(
 	// all_expected_blinding_claims = subproof_claims ++ w_folded_blinding_evals
 	blindingEvaluations := append(subproofClaims, wFoldedBlindingEvals...)
 
-	blindingStatements := make([]WhirStatement, len(blindingEvaluations))
-	for i, eval := range blindingEvaluations {
-		blindingStatements[i] = WhirStatement{Evaluation: eval}
+	blindingWhirCommitment := toWhirCommitment(blindingCommitment)
+	blindingWhirStatements := toWhirStatements(blindingEvaluations)
+	blindingWhirParams := toWhirParams(blindingParams)
+
+	_, err = whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams)
+	if err != nil {
+		return fmt.Errorf("blinding WHIR verify: %w", err)
 	}
 
-	// _, err = VerifyWhirNimue(api, sc, nimue, blindingCommitment, blindingStatements, blindingParams)
-	// if err != nil {
-	// 	return fmt.Errorf("blinding WHIR verify: %w", err)
-	// }
-
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Type conversion helpers for calling whir.VerifyWhir from the circuit package.
+// ---------------------------------------------------------------------------
+
+func toWhirCommitment(c ParsedCommitmentNimue) whir.ParsedCommitment {
+	return whir.ParsedCommitment{
+		Root:       c.Root,
+		OodPoints:  c.OodPoints,
+		OodAnswers: c.OodAnswers,
+	}
+}
+
+// toWhirStatements converts a flat slice of evaluation values into
+// whir.Statement objects (one per evaluation, batchSize=1).
+func toWhirStatements(evaluations []frontend.Variable) []whir.Statement {
+	statements := make([]whir.Statement, len(evaluations))
+	for i, eval := range evaluations {
+		statements[i] = whir.Statement{
+			Constraints: []whir.MLConstraint{{Evaluation: eval}},
+			NVars:       0,
+		}
+	}
+	return statements
+}
+
+func toWhirParams(p WHIRParams) whir.WHIRParams {
+	return whir.WHIRParams{
+		ParamNRounds:                         p.ParamNRounds,
+		FoldingFactorArray:                   p.FoldingFactorArray,
+		RoundParametersOODSamples:            p.RoundParametersOODSamples,
+		RoundParametersNumOfQueries:          p.RoundParametersNumOfQueries,
+		PowBits:                              p.PowBits,
+		FinalQueries:                         p.FinalQueries,
+		FinalPowBits:                         p.FinalPowBits,
+		FinalFoldingPowBits:                  p.FinalFoldingPowBits,
+		StartingDomainBackingDomainGenerator: p.StartingDomainBackingDomainGenerator,
+		DomainSize:                           p.DomainSize,
+		CommittmentOODSamples:                p.CommittmentOODSamples,
+		FinalSumcheckRounds:                  p.FinalSumcheckRounds,
+		MVParamsNumberOfVariables:            p.MVParamsNumberOfVariables,
+		BatchSize:                            p.BatchSize,
+		InitialInDomainSamples:               p.InitialInDomainSamples,
+	}
 }
 
 // ---------------------------------------------------------------------------
