@@ -239,7 +239,12 @@ fn decompress_bytes(data: &[u8]) -> Result<Vec<u8>> {
     let is_xz = data[..6] == XZ_MAGIC;
 
     if is_zstd {
-        zstd::bulk::decompress(data, usize::MAX).context("while decompressing zstd data")
+        let mut out = Vec::new();
+        let mut decoder = zstd::Decoder::new(data).context("while initializing zstd decoder")?;
+        decoder
+            .read_to_end(&mut out)
+            .context("while decompressing zstd data")?;
+        Ok(out)
     } else if is_xz {
         let mut out = Vec::new();
         let mut decoder = xz2::read::XzDecoder::new(data);
