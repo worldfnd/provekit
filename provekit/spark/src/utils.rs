@@ -3,6 +3,7 @@ use provekit_common::{
     utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
 };
 
+#[tracing::instrument(skip_all)]
 pub fn calculate_memory(
     b: FieldElement,
     point_row: Vec<FieldElement>,

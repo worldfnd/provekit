@@ -86,6 +86,7 @@ pub fn run_spark_sumcheck(
     ))
 }
 
+#[instrument(skip_all)]
 pub fn run_sumcheck_verifier_spark(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     variable_count: usize,

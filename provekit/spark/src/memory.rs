@@ -25,7 +25,7 @@ struct AxisConfig<'a> {
     whir_config:     &'a WhirConfig,
 }
 
-#[inline]
+#[instrument(skip_all)]
 fn prove_axis(
     merlin: &mut ProverState<TranscriptSponge>,
     config: AxisConfig<'_>,
@@ -163,6 +163,7 @@ fn verify_axis(
     Ok(())
 }
 
+#[instrument(skip_all)]
 pub fn verify_rowwise(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     num_rows: usize,
@@ -187,6 +188,7 @@ pub fn verify_rowwise(
     )
 }
 
+#[instrument(skip_all)]
 pub fn verify_colwise(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     num_cols: usize,

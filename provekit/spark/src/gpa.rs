@@ -234,6 +234,7 @@ pub struct GPASumcheckResult {
     pub randomness:            Vec<FieldElement>,
 }
 
+#[instrument(skip_all)]
 pub fn gpa_sumcheck_verifier2(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     height_of_binary_tree: usize,
@@ -318,6 +319,7 @@ pub fn gpa_sumcheck_verifier2(
     })
 }
 
+#[instrument(skip_all)]
 pub fn gpa_sumcheck_verifier4(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     height_of_binary_tree: usize,

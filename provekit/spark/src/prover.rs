@@ -320,32 +320,34 @@ fn run_rs_ws_gpa_and_proofs(
     let n = row_field.len();
     let m = col_field.len();
 
-    let (row_pairs, col_pairs) = join(
-        || {
-            (0..n)
-                .into_par_iter()
-                .map(|i| {
-                    let a = row_field[i];
-                    let v = e_values.e_rx[i];
-                    let t = matrix.timestamps.read_row[i];
-                    let base = a * gamma_sq + v * *gamma + t - *tau;
-                    (base, base + one)
-                })
-                .collect::<Vec<(FieldElement, FieldElement)>>()
-        },
-        || {
-            (0..m)
-                .into_par_iter()
-                .map(|i| {
-                    let a = col_field[i];
-                    let v = e_values.e_ry[i];
-                    let t = matrix.timestamps.read_col[i];
-                    let base = a * gamma_sq + v * *gamma + t - *tau;
-                    (base, base + one)
-                })
-                .collect::<Vec<(FieldElement, FieldElement)>>()
-        },
-    );
+    let (row_pairs, col_pairs) = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
+        join(
+            || {
+                (0..n)
+                    .into_par_iter()
+                    .map(|i| {
+                        let a = row_field[i];
+                        let v = e_values.e_rx[i];
+                        let t = matrix.timestamps.read_row[i];
+                        let base = a * gamma_sq + v * *gamma + t - *tau;
+                        (base, base + one)
+                    })
+                    .collect::<Vec<(FieldElement, FieldElement)>>()
+            },
+            || {
+                (0..m)
+                    .into_par_iter()
+                    .map(|i| {
+                        let a = col_field[i];
+                        let v = e_values.e_ry[i];
+                        let t = matrix.timestamps.read_col[i];
+                        let base = a * gamma_sq + v * *gamma + t - *tau;
+                        (base, base + one)
+                    })
+                    .collect::<Vec<(FieldElement, FieldElement)>>()
+            },
+        )
+    });
     let (row_rs_vec, row_ws_vec): (Vec<_>, Vec<_>) = row_pairs.into_iter().unzip();
     let (col_rs_vec, col_ws_vec): (Vec<_>, Vec<_>) = col_pairs.into_iter().unzip();
 
@@ -356,20 +358,23 @@ fn run_rs_ws_gpa_and_proofs(
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
 
-    let ((row_address_eval, row_timestamp_eval), (col_address_eval, col_timestamp_eval)) = join(
-        || {
+    let ((row_address_eval, row_timestamp_eval), (col_address_eval, col_timestamp_eval)) =
+        tracing::info_span!("multilinear_extend_rs_ws").in_scope(|| {
             join(
-                || multilinear_extend(row_field, evaluation_randomness),
-                || multilinear_extend(&matrix.timestamps.read_row, evaluation_randomness),
+                || {
+                    join(
+                        || multilinear_extend(row_field, evaluation_randomness),
+                        || multilinear_extend(&matrix.timestamps.read_row, evaluation_randomness),
+                    )
+                },
+                || {
+                    join(
+                        || multilinear_extend(col_field, evaluation_randomness),
+                        || multilinear_extend(&matrix.timestamps.read_col, evaluation_randomness),
+                    )
+                },
             )
-        },
-        || {
-            join(
-                || multilinear_extend(col_field, evaluation_randomness),
-                || multilinear_extend(&matrix.timestamps.read_col, evaluation_randomness),
-            )
-        },
-    );
+        });
 
     merlin.prover_hint_ark(&row_address_eval);
     merlin.prover_hint_ark(&row_timestamp_eval);
@@ -389,10 +394,13 @@ fn run_rs_ws_gpa_and_proofs(
         rs_ws_witness,
     )?;
 
-    let (row_value_eval, col_value_eval) = join(
-        || multilinear_extend(&e_values.e_rx, evaluation_randomness),
-        || multilinear_extend(&e_values.e_ry, evaluation_randomness),
-    );
+    let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_evalues")
+        .in_scope(|| {
+            join(
+                || multilinear_extend(&e_values.e_rx, evaluation_randomness),
+                || multilinear_extend(&e_values.e_ry, evaluation_randomness),
+            )
+        });
     merlin.prover_hint_ark(&row_value_eval);
     merlin.prover_hint_ark(&col_value_eval);
 

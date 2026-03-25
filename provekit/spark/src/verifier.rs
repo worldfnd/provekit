@@ -10,6 +10,7 @@ use {
     provekit_common::{
         spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge,
     },
+    tracing::instrument,
     whir::{
         algebra::linear_form::MultilinearExtension,
         transcript::{codecs::Empty, DomainSeparator, Proof, VerifierMessage, VerifierState},
@@ -35,6 +36,7 @@ impl SPARKScheme {
 }
 
 impl SPARKVerifier for SPARKScheme {
+    #[instrument(skip_all)]
     fn verify(&self, proof: SPARKProof, request: &R1CSSparkQuery) -> Result<()> {
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
         let whir_proof = Proof {
@@ -69,6 +71,7 @@ impl SPARKVerifier for SPARKScheme {
     }
 }
 
+#[instrument(skip_all)]
 pub(crate) fn verify_spark_single_matrix(
     whir_params: &SPARKWHIRConfigs,
     matrix_dimensions: MatrixDimensions,
