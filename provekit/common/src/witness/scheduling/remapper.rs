@@ -19,13 +19,13 @@ use {
 /// This ensures w1 can be committed independently before challenge extraction.
 pub struct WitnessIndexRemapper {
     /// Maps old witness index to new witness index
-    pub old_to_new: HashMap<usize, usize>,
+    pub(crate) old_to_new: HashMap<usize, usize>,
     /// Number of real w1 witnesses (boundary between w1 and w2 in committed
     /// vector)
-    pub w1_size:    usize,
+    pub(crate) w1_size:    usize,
     /// Total real witnesses (w1_real + w2_real) — used to set matrix
     /// `num_cols` so matrices exclude virtual witnesses.
-    pub num_real:   usize,
+    pub(crate) num_real:   usize,
 }
 
 impl WitnessIndexRemapper {
@@ -90,6 +90,19 @@ impl WitnessIndexRemapper {
             old_to_new,
             w1_size: w1_real,
             num_real: next_real_w2,
+        }
+    }
+
+    /// Creates a remapper from a pre-built mapping table, for use cases
+    /// that only need `remap_builder` (e.g., column removal optimization).
+    ///
+    /// `w1_size` and `num_real` are set to 0 — do not use this remapper for
+    /// matrix column updates or w1/w2 splitting.
+    pub fn from_map(old_to_new: HashMap<usize, usize>) -> Self {
+        Self {
+            old_to_new,
+            w1_size: 0,
+            num_real: 0,
         }
     }
 
