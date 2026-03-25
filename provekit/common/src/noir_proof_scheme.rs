@@ -55,4 +55,12 @@ impl NoirProofScheme {
         let r1cs = self.r1cs();
         (r1cs.num_constraints(), r1cs.num_witnesses())
     }
+
+    #[must_use]
+    pub fn abi(&self) -> &noirc_abi::Abi {
+        match self {
+            NoirProofScheme::Noir(d) => d.witness_generator.abi(),
+            NoirProofScheme::Mavros(d) => &d.abi,
+        }
+    }
 }
