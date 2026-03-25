@@ -3,7 +3,9 @@ use whir::transcript::Interaction;
 use {
     provekit_common::{
         file::{
-            binary_format::{SPARK_DATA_FORMAT, SPARK_DATA_VERSION},
+            binary_format::{
+            SPARK_DATA_FORMAT, SPARK_DATA_VERSION, SPARK_PROOF_FORMAT, SPARK_PROOF_VERSION,
+        },
             Compression, FileFormat, MaybeHashAware,
         },
         interner::{InternedFieldElement, Interner},
@@ -29,6 +31,20 @@ pub struct SPARKProof {
     pub pattern:           Vec<Interaction>,
     pub whir_params:       SPARKWHIRConfigs,
     pub matrix_dimensions: MatrixDimensions,
+}
+
+impl FileFormat for SPARKProof {
+    const FORMAT: [u8; 8] = SPARK_PROOF_FORMAT;
+    const EXTENSION: &'static str = "sp";
+    const VERSION: (u16, u16) = SPARK_PROOF_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+/// Impl for SPARKProof (no hash config).
+impl MaybeHashAware for SPARKProof {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

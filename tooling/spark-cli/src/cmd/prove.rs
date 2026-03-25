@@ -1,9 +1,9 @@
 use {
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, Prover},
+    provekit_common::{file::{read, write}, NoirProof, Prover},
     provekit_spark::{SPARKProver, SPARKProverScheme, SparkPreparedData},
-    std::{fs::File, io::Write, path::PathBuf},
+    std::path::PathBuf,
     tracing::{info, instrument},
 };
 
@@ -23,8 +23,8 @@ pub struct ProveArgs {
     #[argh(option, default = "PathBuf::from(\"spark_data.spd\")")]
     spark_data: PathBuf,
 
-    /// output path for proof (default: spark_proof.json)
-    #[argh(option, short = 'o', default = "PathBuf::from(\"spark_proof.json\")")]
+    /// output path for proof (default: spark_proof.sp)
+    #[argh(option, short = 'o', default = "PathBuf::from(\"spark_proof.sp\")")]
     output: PathBuf,
 }
 
@@ -60,9 +60,7 @@ pub fn execute(args: ProveArgs) -> Result<()> {
         .context("Failed to generate proof")?;
 
     info!("Writing proof to {:?}", args.output);
-    let mut file = File::create(&args.output).context("Failed to create output file")?;
-    file.write_all(serde_json::to_string(&proof)?.as_bytes())
-        .context("Failed to write proof")?;
+    write(&proof, &args.output).context("while writing spark proof")?;
 
     info!("SPARK proof generated successfully");
     Ok(())

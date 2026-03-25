@@ -3,7 +3,7 @@ use {
     argh::FromArgs,
     provekit_common::{file::read, NoirProof},
     provekit_spark::{SPARKProof, SPARKVerifier, SPARKVerifierScheme},
-    std::{fs, path::PathBuf},
+    std::path::PathBuf,
     tracing::info,
 };
 
@@ -24,9 +24,8 @@ pub fn execute(args: VerifyArgs) -> Result<()> {
     provekit_common::register_ntt();
 
     info!("Loading spark-proof from {:?}", args.spark_proof);
-    let proof_str = fs::read_to_string(&args.spark_proof).context("Failed to read proof file")?;
     let proof: SPARKProof =
-        serde_json::from_str(&proof_str).context("Failed to deserialize spark-proof")?;
+        read(&args.spark_proof).context("while reading spark proof")?;
 
     info!("Loading NoirProof from {:?}", args.noir_proof);
     let noir_proof: NoirProof = read(&args.noir_proof).context("Failed to read NoirProof file")?;
