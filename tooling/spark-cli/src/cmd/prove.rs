@@ -20,7 +20,7 @@ pub struct ProveArgs {
     noir_proof: PathBuf,
 
     /// path to the combined spark data file (matrix, witnesses, commitments)
-    #[argh(option, default = "PathBuf::from(\"spark_data.bin\")")]
+    #[argh(option, default = "PathBuf::from(\"spark_data.spd\")")]
     spark_data: PathBuf,
 
     /// output path for proof (default: spark_proof.json)
@@ -37,10 +37,8 @@ pub fn execute(args: ProveArgs) -> Result<()> {
         read(&args.noir_proof_scheme).context("while reading Noir proof scheme")?;
 
     info!("Loading spark data from {:?}", args.spark_data);
-    let spark_data_bytes =
-        std::fs::read(&args.spark_data).context("while reading spark data file")?;
     let spark_data: SparkPreparedData =
-        postcard::from_bytes(&spark_data_bytes).context("while deserializing spark data")?;
+        read(&args.spark_data).context("while reading spark data")?;
     info!("Loaded spark data");
 
     info!("Loading NoirProof from {:?}", args.noir_proof);

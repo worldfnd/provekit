@@ -2,9 +2,13 @@
 use whir::transcript::Interaction;
 use {
     provekit_common::{
+        file::{
+            binary_format::{SPARK_DATA_FORMAT, SPARK_DATA_VERSION},
+            Compression, FileFormat, MaybeHashAware,
+        },
         interner::{InternedFieldElement, Interner},
         utils::{serde_ark_vec, serde_hex},
-        FieldElement, WhirConfig,
+        FieldElement, HashConfig, WhirConfig,
     },
     serde::{Deserialize, Serialize},
     whir::{
@@ -239,6 +243,20 @@ pub struct SparkPreparedData {
     pub matrix:      CompactSparkMatrix,
     pub witnesses:   SerializableSparkWitnesses,
     pub commitments: SparkCommitments,
+}
+
+impl FileFormat for SparkPreparedData {
+    const FORMAT: [u8; 8] = SPARK_DATA_FORMAT;
+    const EXTENSION: &'static str = "spd";
+    const VERSION: (u16, u16) = SPARK_DATA_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+/// Impl for SparkPreparedData (no hash config).
+impl MaybeHashAware for SparkPreparedData {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
+    }
 }
 
 #[derive(Debug, Clone)]

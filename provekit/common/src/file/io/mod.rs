@@ -3,9 +3,11 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
+pub use self::bin::Compression;
+
 use {
     self::{
-        bin::{read_bin, read_hash_config as read_hash_config_bin, write_bin, Compression},
+        bin::{read_bin, read_hash_config as read_hash_config_bin, write_bin},
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
@@ -26,7 +28,7 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
 }
 
 /// Helper trait to optionally extract hash config.
-pub(crate) trait MaybeHashAware {
+pub trait MaybeHashAware {
     fn maybe_hash_config(&self) -> Option<HashConfig>;
 }
 

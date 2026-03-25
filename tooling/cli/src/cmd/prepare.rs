@@ -83,7 +83,7 @@ pub struct Args {
     #[argh(
         option,
         long = "spark-data",
-        default = "PathBuf::from(\"spark_data.bin\")"
+        default = "PathBuf::from(\"spark_data.spd\")"
     )]
     spark_data_path: PathBuf,
 
@@ -158,10 +158,7 @@ impl Command for Args {
             witnesses: SerializableSparkWitnesses::from(witnesses),
             commitments,
         };
-        let spark_data_bytes =
-            postcard::to_stdvec(&spark_data).context("while serializing spark data")?;
-        std::fs::write(&self.spark_data_path, spark_data_bytes)
-            .context("while writing spark data")?;
+        write(&spark_data, &self.spark_data_path).context("while writing spark data")?;
 
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
