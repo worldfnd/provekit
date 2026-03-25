@@ -20,8 +20,12 @@ use {
 pub struct WitnessIndexRemapper {
     /// Maps old witness index to new witness index
     pub old_to_new: HashMap<usize, usize>,
-    /// Number of witnesses in w1 (boundary between w1 and w2)
+    /// Number of real w1 witnesses (boundary between w1 and w2 in committed
+    /// vector)
     pub w1_size:    usize,
+    /// Total real witnesses (w1_real + w2_real) — used to set matrix
+    /// `num_cols` so matrices exclude virtual witnesses.
+    pub num_real:   usize,
 }
 
 impl WitnessIndexRemapper {
@@ -85,6 +89,7 @@ impl WitnessIndexRemapper {
         Self {
             old_to_new,
             w1_size: w1_real,
+            num_real: next_real_w2,
         }
     }
 
@@ -610,13 +615,11 @@ impl WitnessIndexRemapper {
     }
 
     /// Helper to remap a single sparse matrix.
-    /// Updates `num_cols` to the total witness count after remapping
-    /// (w1_size + w2_size), so the matrix dimensions match the new
-    /// witness layout.
+    /// Updates `num_cols` to `num_real` (w1_real + w2_real) so the matrix
+    /// dimensions exclude virtual witnesses.
     fn remap_sparse_matrix(&self, mut matrix: SparseMatrix) -> SparseMatrix {
-        let total_witnesses = self.old_to_new.values().copied().max().map_or(0, |m| m + 1);
         matrix.remap_columns(|old_col| self.remap(old_col));
-        matrix.num_cols = total_witnesses;
+        matrix.num_cols = self.num_real;
         matrix
     }
 

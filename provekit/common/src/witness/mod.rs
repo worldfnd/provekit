@@ -21,7 +21,7 @@ pub use {
     ram::{SpiceMemoryOperation, SpiceWitnesses},
     scheduling::{
         DependencyInfo, Layer, LayerScheduler, LayerType, LayeredWitnessBuilders, SplitError,
-        SplitWitnessBuilders,
+        SplitWitnessBuilders, WitnessIndexRemapper,
     },
     witness_builder::{
         CombinedTableEntryInverseData, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,

@@ -570,9 +570,9 @@ impl SparseMatrix {
     }
 
     /// Remove columns at the given indices and compact remaining columns.
-    /// Returns a new SparseMatrix with dead columns removed and remaining
-    /// columns renumbered. `cols_to_remove` must be sorted.
-    /// Also takes a remap table (old_col -> Option<new_col>) to apply.
+    /// Returns a new SparseMatrix with columns remapped according to the
+    /// given table. `remap[old_col] = Some(new_col)` keeps the column;
+    /// `None` removes it (entries are dropped).
     pub fn remove_columns(&self, remap: &[Option<usize>]) -> SparseMatrix {
         let new_num_cols = remap.iter().filter(|r| r.is_some()).count();
         let mut new_row_indices = Vec::with_capacity(self.num_rows);
