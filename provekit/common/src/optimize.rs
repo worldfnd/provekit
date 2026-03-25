@@ -666,11 +666,12 @@ fn remove_dead_columns(
                     old_col
                 )
             });
-            *nz = std::num::NonZeroU32::new(new_col as u32)
-                .unwrap_or_else(|| panic!(
+            *nz = std::num::NonZeroU32::new(new_col as u32).unwrap_or_else(|| {
+                panic!(
                     "ACIR witness col {} remapped to 0 (constant-one column)",
                     old_col
-                ));
+                )
+            });
         }
     }
 

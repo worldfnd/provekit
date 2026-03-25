@@ -598,10 +598,9 @@ impl WitnessBuilder {
                 for r in DependencyInfo::extract_reads(b) {
                     assert!(
                         produced.contains(&r),
-                        "Builder integrity violation after remapping: \
-                         builder {i} ({b:?}) reads witness {r}, \
-                         but no builder produces it. \
-                         This indicates a bug in the pruning/remapping logic."
+                        "Builder integrity violation after remapping: builder {i} ({b:?}) reads \
+                         witness {r}, but no builder produces it. This indicates a bug in the \
+                         pruning/remapping logic."
                     );
                 }
             }
