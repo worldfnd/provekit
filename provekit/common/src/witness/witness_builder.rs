@@ -6,8 +6,8 @@ use {
             limbs::Limbs,
             ram::SpiceWitnesses,
             scheduling::{
-                LayerScheduler, LayeredWitnessBuilders, SplitError, SplitWitnessBuilders,
-                WitnessIndexRemapper, WitnessSplitter,
+                DependencyInfo, LayerScheduler, LayeredWitnessBuilders, SplitError,
+                SplitWitnessBuilders, WitnessIndexRemapper, WitnessSplitter,
             },
             ConstantOrR1CSWitness,
         },
@@ -572,6 +572,40 @@ impl WitnessBuilder {
         // the index space, after all real w1/w2 witnesses.
         let remapped_r1cs = remapper.remap_r1cs(r1cs);
         let remapped_witness_map = remapper.remap_acir_witness_map(witness_map);
+
+        // Debug validation: ensure every remapped builder's reads have a
+        // producer in the remapped set. Without this, a bug in
+        // pruning/remapping could silently break the dependency graph,
+        // causing wrong witnesses at proving time.
+        #[cfg(debug_assertions)]
+        {
+            let all_builders: Vec<&WitnessBuilder> = remapped_w1_builders
+                .iter()
+                .chain(remapped_w2_builders.iter())
+                .collect();
+
+            // Build producer map over all remapped builders.
+            let mut produced: HashSet<usize> = HashSet::new();
+            produced.insert(0); // witness-one is always available
+            for b in &all_builders {
+                for w in DependencyInfo::extract_writes(b) {
+                    produced.insert(w);
+                }
+            }
+
+            // Check that every read is satisfied.
+            for (i, b) in all_builders.iter().enumerate() {
+                for r in DependencyInfo::extract_reads(b) {
+                    assert!(
+                        produced.contains(&r),
+                        "Builder integrity violation after remapping: \
+                         builder {i} ({b:?}) reads witness {r}, \
+                         but no builder produces it. \
+                         This indicates a bug in the pruning/remapping logic."
+                    );
+                }
+            }
+        }
 
         // Step 6: Schedule both groups independently with batch inversions
         let w1_layers = if remapped_w1_builders.is_empty() {

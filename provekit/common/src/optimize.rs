@@ -667,7 +667,10 @@ fn remove_dead_columns(
                 )
             });
             *nz = std::num::NonZeroU32::new(new_col as u32)
-                .expect("Remapped ACIR witness index should be non-zero");
+                .unwrap_or_else(|| panic!(
+                    "ACIR witness col {} remapped to 0 (constant-one column)",
+                    old_col
+                ));
         }
     }
 
@@ -690,11 +693,7 @@ fn remove_dead_columns(
             .enumerate()
             .filter_map(|(old, new)| new.map(|n| (old, n)))
             .collect();
-        WitnessIndexRemapper {
-            old_to_new,
-            w1_size: 0,
-            num_real: 0,
-        }
+        WitnessIndexRemapper::from_map(old_to_new)
     };
     let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(keep_builders.len());
     for (idx, builder) in witness_builders.drain(..).enumerate() {
@@ -1002,6 +1001,11 @@ mod tests {
             let dot = |matrix: &crate::SparseMatrix| -> FieldElement {
                 let mut acc = FieldElement::zero();
                 for (col, interned_val) in matrix.iter_row(row) {
+                    assert!(
+                        col < witness.len(),
+                        "Row {row}: column index {col} out of range (witness len {})",
+                        witness.len()
+                    );
                     let val = interner.get(interned_val).unwrap();
                     acc += val * witness[col];
                 }
@@ -1025,7 +1029,6 @@ mod tests {
         // w4=w1*w2=15, w5=w3+w4=23
         let mut r1cs = R1CS::new();
         let one = FieldElement::one();
-        let neg = -one;
 
         r1cs.add_witnesses(6);
         r1cs.num_public_inputs = 2;
@@ -1055,8 +1058,6 @@ mod tests {
             WitnessBuilder::Sum(5, vec![SumTerm(None, 3), SumTerm(None, 4)]),
         ];
 
-        let r1cs_before = r1cs.clone();
-
         let stats = {
             let mut wmap = vec![];
             optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
@@ -1065,33 +1066,7 @@ mod tests {
         assert_eq!(stats.eliminated, 2, "Should eliminate 2 linear constraints");
         assert_eq!(r1cs.num_constraints(), 1, "Should have 1 constraint left");
 
-        // Build remapped witness for the optimized R1CS.
-        // After optimization, some columns are remapped. The optimized R1CS
-        // has fewer columns. We need a witness that matches the new layout.
-        let num_real = r1cs.num_witnesses();
-        let num_virtual = r1cs.num_virtual;
-        let mut opt_witness = vec![FieldElement::zero(); num_real + num_virtual];
-
-        // Solve using builders (they know the remapped indices)
-        let mut opt_witness_opt: Vec<Option<FieldElement>> = vec![None; num_real + num_virtual];
-        // Set ACIR values — find Acir builders and set their source values
-        let acir_values: Vec<FieldElement> = witness_vals[1..=2].to_vec();
-        for b in &builders {
-            match b {
-                WitnessBuilder::Constant(crate::witness::ConstantTerm(idx, val)) => {
-                    opt_witness_opt[*idx] = Some(*val);
-                }
-                WitnessBuilder::Acir(idx, acir_idx) => {
-                    opt_witness_opt[*idx] = Some(acir_values[*acir_idx]);
-                }
-                _ => {}
-            }
-        }
-
-        // Verify the optimized R1CS satisfies A·w * B·w == C·w
-        // We can't easily solve all builders here (no full solver in
-        // common), but we can verify constraint structure is valid:
-        // no dangling pivots and column bounds.
+        // Verify column indices are in bounds.
         let num_cols = r1cs.num_witnesses();
         for row in 0..r1cs.num_constraints() {
             for (col, _) in r1cs.a.iter_row(row) {
@@ -1105,10 +1080,34 @@ mod tests {
             }
         }
 
-        // Verify no original constraint had wrong coefficients by
-        // checking the original R1CS was satisfied (already done above).
-        // The GE substitution preserves constraint equivalence
-        // algebraically — wrong coefficients would make the original
-        // R1CS fail.
+        // Solve all builders to produce the optimized witness, then verify
+        // the optimized R1CS is actually satisfied.
+        let num_total = r1cs.num_witnesses() + r1cs.num_virtual;
+        let mut opt_witness = vec![FieldElement::zero(); num_total];
+        let acir_values: Vec<FieldElement> = witness_vals[1..=2].to_vec();
+        for b in &builders {
+            match b {
+                WitnessBuilder::Constant(crate::witness::ConstantTerm(idx, val)) => {
+                    opt_witness[*idx] = *val;
+                }
+                WitnessBuilder::Acir(idx, acir_idx) => {
+                    opt_witness[*idx] = acir_values[*acir_idx];
+                }
+                WitnessBuilder::Sum(idx, terms) => {
+                    let mut acc = FieldElement::zero();
+                    for term in terms {
+                        let coeff = term.0.unwrap_or(FieldElement::one());
+                        acc += coeff * opt_witness[term.1];
+                    }
+                    opt_witness[*idx] = acc;
+                }
+                WitnessBuilder::Product(idx, a, b) => {
+                    opt_witness[*idx] = opt_witness[*a] * opt_witness[*b];
+                }
+                _ => panic!("Unexpected builder type in test"),
+            }
+        }
+
+        assert_r1cs_satisfied(&r1cs, &opt_witness);
     }
 }
