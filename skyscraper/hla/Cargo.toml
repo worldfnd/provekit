@@ -16,5 +16,8 @@ paste.workspace = true
 quickcheck.workspace = true
 quickcheck_macros.workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["quickcheck"]  # Required by quickcheck_macros at expansion time
+
 [lints]
 workspace = true
