@@ -681,10 +681,25 @@ fn remove_dead_columns(
         }
     }
     let builders_before = witness_builders.len();
+    // Build the remapper ONCE (not per-builder) to avoid repeated HashMap
+    // construction from the 1M+ entry remap table.
+    let remapper = {
+        use crate::witness::WitnessIndexRemapper;
+        let old_to_new: HashMap<usize, usize> = remap
+            .iter()
+            .enumerate()
+            .filter_map(|(old, new)| new.map(|n| (old, n)))
+            .collect();
+        WitnessIndexRemapper {
+            old_to_new,
+            w1_size: 0,
+            num_real: 0,
+        }
+    };
     let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(keep_builders.len());
     for (idx, builder) in witness_builders.drain(..).enumerate() {
         if keep_builders.contains(&idx) {
-            new_builders.push(remap_builder_columns(&builder, &remap));
+            new_builders.push(remapper.remap_builder(&builder));
         }
     }
     *witness_builders = new_builders;
@@ -705,25 +720,6 @@ fn remove_dead_columns(
         builders_removed,
         num_virtual,
     }
-}
-
-/// Remap all witness column references inside a builder using the given
-/// remap table. Delegates to  to
-/// avoid duplicating per-variant remap logic.
-fn remap_builder_columns(builder: &WitnessBuilder, remap: &[Option<usize>]) -> WitnessBuilder {
-    use crate::witness::WitnessIndexRemapper;
-
-    let old_to_new: HashMap<usize, usize> = remap
-        .iter()
-        .enumerate()
-        .filter_map(|(old, new)| new.map(|n| (old, n)))
-        .collect();
-    let remapper = WitnessIndexRemapper {
-        old_to_new,
-        w1_size: 0,  // unused for remap_builder
-        num_real: 0, // unused for remap_builder
-    };
-    remapper.remap_builder(builder)
 }
 
 /// Apply all relevant substitutions to a single row of a matrix.
