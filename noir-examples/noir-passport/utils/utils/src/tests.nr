@@ -1,4 +1,7 @@
-use crate::{find_subarray_index, pack_be_bytes_into_fields, pack_be_bytes_into_u128s};
+use crate::{
+    find_subarray_index, get_asn1_element_length, pack_be_bytes_into_fields,
+    pack_be_bytes_into_u128s,
+};
 
 #[test]
 fn test_pack_be_bytes_into_u128() {
@@ -210,4 +213,43 @@ fn test_find_substring_index_various_cases() {
     let haystack10 = [0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x08, 0x09];
     let index10 = find_subarray_index(needle10, haystack10);
     assert_eq(index10, haystack10.len()); // Should equal haystack size
+}
+
+/// Short-form DER: tag=0x30, length=0x05 -> total = 2 + 5 = 7
+#[test]
+fn test_get_asn1_element_length_short_form() {
+    let data: [u8; 10] = [0x30, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05, 0x00, 0x00, 0x00];
+    let len = get_asn1_element_length(data);
+    assert_eq(len, 7);
+}
+
+/// Long-form DER with 1 length byte: tag=0x30, 0x81, 0x80 -> total = 3 + 128 = 131
+#[test]
+fn test_get_asn1_element_length_long_form_1byte() {
+    let mut data: [u8; 140] = [0; 140];
+    data[0] = 0x30; // SEQUENCE tag
+    data[1] = 0x81; // long form, 1 length byte
+    data[2] = 0x80; // content length = 128
+    let len = get_asn1_element_length(data);
+    assert_eq(len, 131);
+}
+
+/// Long-form DER with 2 length bytes: tag=0x30, 0x82, 0x02, 0xC8 -> total = 4 + 712 = 716
+#[test]
+fn test_get_asn1_element_length_long_form_2bytes() {
+    let mut data: [u8; 720] = [0; 720];
+    data[0] = 0x30; // SEQUENCE tag
+    data[1] = 0x82; // long form, 2 length bytes
+    data[2] = 0x02; // high byte: 712 >> 8 = 2
+    data[3] = 0xC8; // low byte: 712 & 0xFF = 200
+    let len = get_asn1_element_length(data);
+    assert_eq(len, 716);
+}
+
+/// Tag-agnostic: works with SET tag (0x31) used for signed attributes
+#[test]
+fn test_get_asn1_element_length_set_tag() {
+    let data: [u8; 10] = [0x31, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x00];
+    let len = get_asn1_element_length(data);
+    assert_eq(len, 8);
 }
