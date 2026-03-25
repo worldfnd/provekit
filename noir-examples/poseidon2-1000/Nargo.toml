@@ -1,0 +1,4 @@
+[package]
+name = "poseidon2_1000"
+type = "bin"
+compiler_version = ">=1.0.0"

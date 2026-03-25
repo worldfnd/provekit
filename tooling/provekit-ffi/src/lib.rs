@@ -15,8 +15,11 @@
 //! # Usage
 //!
 //! 1. Call `pk_init()` once before using any other functions
-//! 2. Use `pk_prove_to_file()` or `pk_prove_to_json()` to generate proofs
-//! 3. Free any returned buffers using `pk_free_buf()`
+//! 2. Use `pk_prepare()` to compile a Noir program into prover/verifier
+//!    artifacts
+//! 3. Use `pk_prove_to_file()` or `pk_prove_to_json()` to generate proofs
+//! 4. Use `pk_verify_file()` or `pk_verify_json()` to verify proofs
+//! 5. Free any returned buffers using `pk_free_buf()`
 //!
 //! # Safety
 //!

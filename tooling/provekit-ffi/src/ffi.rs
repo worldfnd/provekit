@@ -6,12 +6,18 @@ use {
         utils::c_str_to_str,
     },
     anyhow::Result,
-    provekit_common::{file::read, Prover},
+    provekit_common::{
+        file::{read, write},
+        HashConfig, NoirProof, Prover, Verifier,
+    },
     provekit_prover::Prove,
+    provekit_r1cs_compiler::NoirCompiler,
+    provekit_verifier::Verify,
     std::{
         os::raw::{c_char, c_int},
         panic,
         path::Path,
+        str::FromStr,
     },
 };
 
@@ -244,4 +250,169 @@ pub unsafe extern "C" fn pk_get_memory_stats(
     }
 
     PKError::Success.into()
+}
+
+/// Verify a proof from files on disk.
+///
+/// # Arguments
+///
+/// * `verifier_path` - Path to the verifier artifact (.pkv file)
+/// * `proof_path` - Path to the proof file (.np or .json)
+///
+/// # Returns
+///
+/// Returns `PKError::Success` if the proof is valid, or an appropriate error
+/// code on failure.
+///
+/// # Safety
+///
+/// The caller must ensure that all path parameters are valid null-terminated C
+/// strings.
+#[no_mangle]
+pub unsafe extern "C" fn pk_verify_file(
+    verifier_path: *const c_char,
+    proof_path: *const c_char,
+) -> c_int {
+    catch_panic(PKError::VerificationError.into(), || {
+        let result = (|| -> Result<(), PKError> {
+            let verifier_path = c_str_to_str(verifier_path)?;
+            let proof_path = c_str_to_str(proof_path)?;
+
+            let mut verifier: Verifier =
+                read(Path::new(&verifier_path)).map_err(|_| PKError::SchemeReadError)?;
+
+            let proof: NoirProof =
+                read(Path::new(&proof_path)).map_err(|_| PKError::ProofReadError)?;
+
+            verifier
+                .verify(&proof)
+                .map_err(|_| PKError::VerificationError)?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => PKError::Success.into(),
+            Err(error) => error.into(),
+        }
+    })
+}
+
+/// Verify a proof provided as JSON bytes.
+///
+/// # Arguments
+///
+/// * `verifier_path` - Path to the verifier artifact (.pkv file)
+/// * `proof_json` - Pointer to JSON-encoded proof bytes
+/// * `proof_json_len` - Length of the proof JSON bytes
+///
+/// # Returns
+///
+/// Returns `PKError::Success` if the proof is valid, or an appropriate error
+/// code on failure.
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// - `verifier_path` is a valid null-terminated C string
+/// - `proof_json` points to `proof_json_len` valid bytes
+#[no_mangle]
+pub unsafe extern "C" fn pk_verify_json(
+    verifier_path: *const c_char,
+    proof_json: *const u8,
+    proof_json_len: usize,
+) -> c_int {
+    if proof_json.is_null() {
+        return PKError::InvalidInput.into();
+    }
+
+    catch_panic(PKError::VerificationError.into(), || {
+        let result = (|| -> Result<(), PKError> {
+            let verifier_path = c_str_to_str(verifier_path)?;
+
+            let mut verifier: Verifier =
+                read(Path::new(&verifier_path)).map_err(|_| PKError::SchemeReadError)?;
+
+            // SAFETY: caller guarantees proof_json points to proof_json_len
+            // valid bytes.
+            let json_bytes = std::slice::from_raw_parts(proof_json, proof_json_len);
+
+            let proof: NoirProof =
+                serde_json::from_slice(json_bytes).map_err(|_| PKError::SerializationError)?;
+
+            verifier
+                .verify(&proof)
+                .map_err(|_| PKError::VerificationError)?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => PKError::Success.into(),
+            Err(error) => error.into(),
+        }
+    })
+}
+
+/// Compile a Noir program and write the prover (.pkp) and verifier (.pkv)
+/// artifacts.
+///
+/// # Arguments
+///
+/// * `program_path` - Path to the compiled Noir program JSON (from `nargo
+///   compile`)
+/// * `pkp_path` - Output path for the prover artifact (.pkp file)
+/// * `pkv_path` - Output path for the verifier artifact (.pkv file)
+/// * `hash` - Hash algorithm name: "skyscraper", "sha256", "keccak", or
+///   "blake3" (NULL defaults to "skyscraper")
+///
+/// # Returns
+///
+/// Returns `PKError::Success` on success, or an appropriate error code on
+/// failure.
+///
+/// # Safety
+///
+/// The caller must ensure that all non-NULL parameters are valid
+/// null-terminated C strings.
+#[no_mangle]
+pub unsafe extern "C" fn pk_prepare(
+    program_path: *const c_char,
+    pkp_path: *const c_char,
+    pkv_path: *const c_char,
+    hash: *const c_char,
+) -> c_int {
+    catch_panic(PKError::CompileError.into(), || {
+        let result = (|| -> Result<(), PKError> {
+            let program_path = c_str_to_str(program_path)?;
+            let pkp_path = c_str_to_str(pkp_path)?;
+            let pkv_path = c_str_to_str(pkv_path)?;
+
+            let hash_name = if hash.is_null() {
+                "skyscraper".to_owned()
+            } else {
+                c_str_to_str(hash)?
+            };
+            let hash_config =
+                HashConfig::from_str(&hash_name).map_err(|_| PKError::InvalidInput)?;
+
+            let scheme = NoirCompiler::from_file(program_path, hash_config)
+                .map_err(|_| PKError::CompileError)?;
+
+            let prover = Prover::from_noir_proof_scheme(scheme.clone());
+            let verifier = Verifier::from_noir_proof_scheme(scheme);
+
+            write(&prover, Path::new(&pkp_path))
+                .map_err(|_| PKError::FileWriteError)?;
+            write(&verifier, Path::new(&pkv_path))
+                .map_err(|_| PKError::FileWriteError)?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => PKError::Success.into(),
+            Err(error) => error.into(),
+        }
+    })
 }

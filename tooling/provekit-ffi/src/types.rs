@@ -54,6 +54,12 @@ pub enum PKError {
     Utf8Error          = 6,
     /// File write error
     FileWriteError     = 7,
+    /// Failed to verify proof
+    VerificationError  = 8,
+    /// Failed to read proof file
+    ProofReadError     = 9,
+    /// Failed to compile circuit
+    CompileError       = 10,
 }
 
 impl From<PKError> for c_int {
