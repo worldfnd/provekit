@@ -1,6 +1,9 @@
 //! Type definitions for ProveKit FFI bindings.
 
-use std::{os::raw::c_int, ptr};
+use {
+    provekit_common::{Prover, Verifier},
+    std::{os::raw::c_int, ptr},
+};
 
 /// Buffer structure for returning data to foreign languages.
 /// The caller is responsible for freeing the buffer using `pk_free_buf`.
@@ -54,10 +57,36 @@ pub enum PKError {
     Utf8Error          = 6,
     /// File write error
     FileWriteError     = 7,
+    /// Circuit compilation error
+    CompilationError   = 8,
 }
 
 impl From<PKError> for c_int {
     fn from(error: PKError) -> Self {
         error as c_int
     }
+}
+
+/// Opaque handle to a compiled prover scheme.
+///
+/// Holds a `Prover` that is cloned for each prove call (since `Prove::prove`
+/// consumes `self`). Thread-safe: `Prover` is `Send + Sync`, and all access
+/// through the handle is read-only (clone then use).
+///
+/// Created by `pk_prepare` or `pk_load_prover`. Must be freed exactly once
+/// via `pk_free_prover`.
+pub struct PKProver {
+    pub(crate) prover: Prover,
+}
+
+/// Opaque handle to a compiled verifier scheme.
+///
+/// Holds a `Verifier` that is cloned for each verify call (since
+/// `Verify::verify` consumes `whir_for_witness` via `.take()`). Thread-safe
+/// for the same reasons as `PKProver`.
+///
+/// Created by `pk_prepare` or `pk_load_verifier`. Must be freed exactly once
+/// via `pk_free_verifier`.
+pub struct PKVerifier {
+    pub(crate) verifier: Verifier,
 }
