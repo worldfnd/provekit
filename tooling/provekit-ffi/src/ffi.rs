@@ -7,17 +7,15 @@ use {
     },
     anyhow::Result,
     provekit_common::{
-        file::{read, write},
-        HashConfig, NoirProof, Prover, Verifier,
+        file::read,
+        NoirProof, Prover, Verifier,
     },
     provekit_prover::Prove,
-    provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     std::{
         os::raw::{c_char, c_int},
         panic,
         path::Path,
-        str::FromStr,
     },
 };
 
@@ -354,65 +352,4 @@ pub unsafe extern "C" fn pk_verify_json(
     })
 }
 
-/// Compile a Noir program and write the prover (.pkp) and verifier (.pkv)
-/// artifacts.
-///
-/// # Arguments
-///
-/// * `program_path` - Path to the compiled Noir program JSON (from `nargo
-///   compile`)
-/// * `pkp_path` - Output path for the prover artifact (.pkp file)
-/// * `pkv_path` - Output path for the verifier artifact (.pkv file)
-/// * `hash` - Hash algorithm name: "skyscraper", "sha256", "keccak", or
-///   "blake3" (NULL defaults to "skyscraper")
-///
-/// # Returns
-///
-/// Returns `PKError::Success` on success, or an appropriate error code on
-/// failure.
-///
-/// # Safety
-///
-/// The caller must ensure that all non-NULL parameters are valid
-/// null-terminated C strings.
-#[no_mangle]
-pub unsafe extern "C" fn pk_prepare(
-    program_path: *const c_char,
-    pkp_path: *const c_char,
-    pkv_path: *const c_char,
-    hash: *const c_char,
-) -> c_int {
-    catch_panic(PKError::CompileError.into(), || {
-        let result = (|| -> Result<(), PKError> {
-            let program_path = c_str_to_str(program_path)?;
-            let pkp_path = c_str_to_str(pkp_path)?;
-            let pkv_path = c_str_to_str(pkv_path)?;
-
-            let hash_name = if hash.is_null() {
-                "skyscraper".to_owned()
-            } else {
-                c_str_to_str(hash)?
-            };
-            let hash_config =
-                HashConfig::from_str(&hash_name).map_err(|_| PKError::InvalidInput)?;
-
-            let scheme = NoirCompiler::from_file(program_path, hash_config)
-                .map_err(|_| PKError::CompileError)?;
-
-            let prover = Prover::from_noir_proof_scheme(scheme.clone());
-            let verifier = Verifier::from_noir_proof_scheme(scheme);
-
-            write(&prover, Path::new(&pkp_path))
-                .map_err(|_| PKError::FileWriteError)?;
-            write(&verifier, Path::new(&pkv_path))
-                .map_err(|_| PKError::FileWriteError)?;
-
-            Ok(())
-        })();
-
-        match result {
-            Ok(()) => PKError::Success.into(),
-            Err(error) => error.into(),
-        }
-    })
-}
+// TODO: pk_prepare will be added once provekit-r1cs-compiler API is stabilized.
