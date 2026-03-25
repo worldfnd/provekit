@@ -85,6 +85,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: machete
         uses: bnjbvr/cargo-machete@main
+        with:
+          args: --with-metadata
 
   typos:
     name: Spell check
