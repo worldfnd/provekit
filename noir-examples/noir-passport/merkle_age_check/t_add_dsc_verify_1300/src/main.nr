@@ -4,6 +4,7 @@ use partial_sha256::{
 };
 use fragmented_sig_check_rsa::verify_rsa_signature;
 use utils::check_zero_padding;
+use utils::get_asn1_element_length;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -27,7 +28,15 @@ fn main(
     // Validate tbs_certificate_len bounds
     assert(
         tbs_certificate_len <= TBS_CERT_SIZE,
-        "tbs_certificate_len must not exceed TBS_CERT_SIZE (1300)"
+        "tbs_certificate_len must not exceed TBS_CERT_SIZE (1300)",
+    );
+
+    // Validate prover-supplied tbs_certificate_len against ASN.1 DER header
+    assert(tbs_certificate[0] == 0x30, "TBS must start with SEQUENCE tag");
+    let computed_len = get_asn1_element_length(tbs_certificate);
+    assert(
+        tbs_certificate_len == computed_len,
+        "tbs_certificate_len does not match ASN.1 header",
     );
     assert(
         csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),

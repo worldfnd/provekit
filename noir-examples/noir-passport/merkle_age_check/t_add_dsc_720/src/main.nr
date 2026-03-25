@@ -1,6 +1,7 @@
 // Verify CSCA signed DSC certificate (720-byte TBS)
 use commitment::hash_salt_country_tbs;
-use sig_check_rsa::{compute_key_ne_hash, verify_signature};
+use sig_check_rsa::verify_signature;
+use utils::get_asn1_element_length;
 use utils::types::Alpha3CountryCode;
 
 fn main(
@@ -17,7 +18,15 @@ fn main(
     // Validate tbs_certificate_len bounds
     assert(
         tbs_certificate_len <= 720,
-        "tbs_certificate_len must not exceed 720"
+        "tbs_certificate_len must not exceed 720",
+    );
+
+    // Validate prover-supplied tbs_certificate_len against ASN.1 DER header
+    assert(tbs_certificate[0] == 0x30, "TBS must start with SEQUENCE tag");
+    let computed_len = get_asn1_element_length(tbs_certificate);
+    assert(
+        tbs_certificate_len == computed_len,
+        "tbs_certificate_len does not match ASN.1 header",
     );
     assert(
         csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
