@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build_and_test:
-    name: Build and test
+    name: Build & Test (all features)
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -28,18 +28,58 @@ jobs:
         with:
           channel: nightly-2026-03-04
           cache-base: main
-          components: rustfmt, clippy
-      - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --all-features --verbose
-      - run: cargo build --all-targets --all-features --verbose
-      - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
-      - run: cargo test --doc --all-features --verbose
-      - run: cargo doc --workspace --all-features --no-deps --document-private-items
+      - name: Build
+        run: cargo build --all-targets --all-features --verbose
+      - name: Run tests
+        run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
+      - name: Run doc tests
+        run: cargo test --doc --all-features --verbose
+
+  cargo_clippy:
+    name: Clippy (all features)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+          components: clippy
+      - name: Clippy Check
+        run: cargo clippy --all-targets --all-features --verbose
+
+  cargo_fmt:
+    name: Cargo fmt
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+          components: rustfmt
+      - name: Rustfmt Check
+        run: cargo fmt --all --check
+
+  cargo_doc:
+    name: Documentation
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+      - name: Build docs
+        run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "--cfg doc_cfg -D warnings"
 
   unused_deps:
-    name: check for unused dependencies
+    name: Check for unused dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
