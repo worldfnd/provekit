@@ -67,27 +67,35 @@ jobs:
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             CIRCUIT_ARGS="$CIRCUIT_ARGS --circuit $circuit:./target/$circuit.json"
           done
-          cargo run --release --bin provekit-cli serve \
+          ../../../target/release/provekit-cli serve \
             --socket /tmp/spark.sock \
             --output-dir ./benchmark-inputs \
             $CIRCUIT_ARGS &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
           # Wait for READY
-          for i in $(seq 1 120); do
+          for i in $(seq 1 600); do
             if [ -S /tmp/spark.sock ]; then
               echo "Server ready after ${i}s"
               break
             fi
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+              echo "Server process died during preparation"
+              exit 1
+            fi
             sleep 1
           done
+          if [ ! -S /tmp/spark.sock ]; then
+            echo "Timed out waiting for server"
+            exit 1
+          fi
 
       - name: Prove and request spark proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Proving $circuit"
-            cargo run --release --bin provekit-cli prove \
+            ../../../target/release/provekit-cli prove \
               ./benchmark-inputs/$circuit.pkp \
               ./benchmark-inputs/tbs_720/$circuit.toml \
               -o ./benchmark-inputs/$circuit-proof.np \
@@ -106,7 +114,7 @@ jobs:
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Verifying $circuit"
-            cargo run --release --bin provekit-cli verify \
+            ../../../target/release/provekit-cli verify \
               ./benchmark-inputs/$circuit.pkv \
               ./benchmark-inputs/$circuit-proof.np
             echo "Verified $circuit"
@@ -117,7 +125,7 @@ jobs:
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "SPARK verifying $circuit"
-            cargo run --release --bin spark-cli verify \
+            ../../../target/release/spark-cli verify \
               --spark-proof ./benchmark-inputs/$circuit-spark-proof.sp \
               --noir-proof ./benchmark-inputs/$circuit-proof.np
             echo "SPARK verified $circuit"
@@ -126,7 +134,7 @@ jobs:
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
-          cargo run --release --bin provekit-cli generate-gnark-inputs \
+          ../../../target/release/provekit-cli generate-gnark-inputs \
             ./benchmark-inputs/t_attest-verifier.pkv \
             ./benchmark-inputs/t_attest-proof.np
           

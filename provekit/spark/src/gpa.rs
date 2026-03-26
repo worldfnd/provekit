@@ -77,6 +77,8 @@ pub fn run_gpa4(
 fn calculate_binary_multiplication_tree(
     array_to_prove: Vec<FieldElement>,
 ) -> anyhow::Result<Vec<Vec<FieldElement>>> {
+    use rayon::prelude::*;
+
     ensure!(
         array_to_prove.len() == (1 << next_power_of_two(array_to_prove.len())),
         "Input length must be power of two"
@@ -86,8 +88,8 @@ fn calculate_binary_multiplication_tree(
     let mut current_layer = array_to_prove;
 
     while current_layer.len() > 1 {
-        let next_layer = current_layer
-            .chunks_exact(2)
+        let next_layer: Vec<FieldElement> = current_layer
+            .par_chunks_exact(2)
             .map(|pair| pair[0] * pair[1])
             .collect();
 

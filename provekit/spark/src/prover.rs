@@ -111,38 +111,39 @@ impl SPARKProver for SPARKScheme {
             / (FieldElement::ONE + request.matrix_batching_randomness))
             / (FieldElement::ONE + request.matrix_batching_randomness);
 
-        let mut e_rx = Vec::with_capacity(padded_num_entries);
-        let mut e_ry = Vec::with_capacity(padded_num_entries);
+        let (e_rx, e_ry) = rayon::join(
+            || {
+                spark_matrix.coo.row[..padded_num_entries]
+                    .par_iter()
+                    .map(|&r| memory.eq_rx[r])
+                    .collect()
+            },
+            || {
+                spark_matrix.coo.col[..padded_num_entries]
+                    .par_iter()
+                    .map(|&c| memory.eq_ry[c])
+                    .collect()
+            },
+        );
 
-        for i in 0..padded_num_entries {
-            let r = spark_matrix.coo.row[i];
-            let c = spark_matrix.coo.col[i];
-            debug_assert!(
-                r < memory.eq_rx.len(),
-                "COO row index {r} out of bounds (len {})",
-                memory.eq_rx.len()
-            );
-            debug_assert!(
-                c < memory.eq_ry.len(),
-                "COO col index {c} out of bounds (len {})",
-                memory.eq_ry.len()
-            );
-            e_rx.push(memory.eq_rx[r]);
-            e_ry.push(memory.eq_ry[c]);
-        }
-
-        let row_field: Vec<FieldElement> = spark_matrix
-            .coo
-            .row
-            .iter()
-            .map(|&r| FieldElement::from(r as u64))
-            .collect();
-        let col_field: Vec<FieldElement> = spark_matrix
-            .coo
-            .col
-            .iter()
-            .map(|&c| FieldElement::from(c as u64))
-            .collect();
+        let (row_field, col_field): (Vec<FieldElement>, Vec<FieldElement>) = join(
+            || {
+                spark_matrix
+                    .coo
+                    .row
+                    .par_iter()
+                    .map(|&r| FieldElement::from(r as u64))
+                    .collect()
+            },
+            || {
+                spark_matrix
+                    .coo
+                    .col
+                    .par_iter()
+                    .map(|&c| FieldElement::from(c as u64))
+                    .collect()
+            },
+        );
 
         let e_values = EValuesForMatrix { e_rx, e_ry };
 

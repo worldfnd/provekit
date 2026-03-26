@@ -5,7 +5,7 @@ use {
     },
     anyhow::{ensure, Result},
     ark_std::One,
-    itertools::izip,
+    rayon::prelude::*,
     provekit_common::{
         spark::R1CSSparkQuery, utils::sumcheck::calculate_eq, FieldElement, TranscriptSponge,
         WhirConfig,
@@ -35,19 +35,31 @@ fn prove_axis(
 ) -> Result<()> {
     let gamma_sq = *gamma * *gamma;
 
-    let init_vec: Vec<_> = izip!(0.., config.eq_memory.iter(), config.final_timestamp.iter())
-        .map(|(i, &v, _)| {
-            let a = FieldElement::from(i);
-            a * gamma_sq + v * gamma - tau
-        })
-        .collect();
-
-    let final_vec: Vec<_> = izip!(0.., config.eq_memory.iter(), config.final_timestamp.iter())
-        .map(|(i, &v, &t)| {
-            let a = FieldElement::from(i);
-            a * gamma_sq + v * gamma + t - tau
-        })
-        .collect();
+    let (init_vec, final_vec) = rayon::join(
+        || {
+            config
+                .eq_memory
+                .par_iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    let a = FieldElement::from(i as u64);
+                    a * gamma_sq + v * gamma - tau
+                })
+                .collect::<Vec<_>>()
+        },
+        || {
+            config
+                .eq_memory
+                .par_iter()
+                .zip(config.final_timestamp.par_iter())
+                .enumerate()
+                .map(|(i, (&v, &t))| {
+                    let a = FieldElement::from(i as u64);
+                    a * gamma_sq + v * gamma + t - tau
+                })
+                .collect::<Vec<_>>()
+        },
+    );
 
     let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec)?;
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
