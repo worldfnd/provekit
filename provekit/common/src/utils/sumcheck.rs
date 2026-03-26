@@ -113,7 +113,11 @@ pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
     num_entries: usize,
 ) -> Vec<FieldElement> {
     let full_size = 1usize << r.len();
-    debug_assert!(num_entries <= full_size);
+    assert!(
+        num_entries <= full_size,
+        "num_entries ({num_entries}) exceeds 2^{} = {full_size}",
+        r.len()
+    );
     let mut result = vec![FieldElement::zero(); num_entries];
     eval_eq(r, &mut result, FieldElement::one(), full_size);
     result
