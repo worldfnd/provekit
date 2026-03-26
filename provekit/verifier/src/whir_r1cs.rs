@@ -3,7 +3,8 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, expand_powers, make_public_weight, OffsetCovector,
+            build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
+            OffsetCovector,
         },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
@@ -55,16 +56,19 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .receive_commitments(&mut arthur, 1)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
-        let commitment_2 = if self.num_challenges > 0 {
-            let _logup_challenges: Vec<FieldElement> =
+        let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
+            let logup_challenges: Vec<FieldElement> =
                 arthur.verifier_message_vec(self.num_challenges);
-            Some(
-                self.whir_witness
-                    .receive_commitments(&mut arthur, 1)
-                    .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
+            (
+                Some(
+                    self.whir_witness
+                        .receive_commitments(&mut arthur, 1)
+                        .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
+                ),
+                logup_challenges,
             )
         } else {
-            None
+            (None, Vec::new())
         };
 
         let (transposed, sumcheck_result) = rayon::join(
@@ -140,7 +144,21 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_1.to_vec()
             };
             evaluations_1.push(blinding_eval);
-            let evaluations_2 = evals_2.to_vec();
+            let mut evaluations_2 = evals_2.to_vec();
+
+            // Challenge binding: read the prover's claimed evaluation and verify
+            // that it matches the expected inner product of challenges with the
+            // committed w2 polynomial.
+            let challenge_weight = if !self.challenge_offsets.is_empty() {
+                let challenge_eval: FieldElement = arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read challenge eval"))?;
+                verify_challenge_binding(challenge_eval, x, &logup_challenges)?;
+                evaluations_2.push(challenge_eval);
+                Some(make_challenge_weight(x, &self.challenge_offsets, self.m))
+            } else {
+                None
+            };
 
             let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
                 .iter()
@@ -152,10 +170,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
-            let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
+            let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            if let Some(ref cw) = challenge_weight {
+                weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
+            }
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
@@ -268,4 +289,30 @@ pub fn run_sumcheck_verifier(
         blinding_eval,
         f_at_alpha,
     })
+}
+
+/// Verify that `challenge_eval == Σ xⁱ · challenges[i]`.
+///
+/// The prover sends `challenge_eval` as a transcript-bound message, and WHIR
+/// verifies that it equals the inner product of `make_challenge_weight(x, …)`
+/// with the committed w2 polynomial.  This function independently recomputes
+/// the expected value from the Fiat-Shamir `challenges` (which the verifier
+/// already knows) and checks equality, ensuring the committed w2 polynomial
+/// stores the correct challenge values at the declared offsets.
+fn verify_challenge_binding(
+    challenge_eval: FieldElement,
+    x: FieldElement,
+    challenges: &[FieldElement],
+) -> Result<()> {
+    let mut expected = FieldElement::zero();
+    let mut x_pow = FieldElement::one();
+    for &ch in challenges {
+        expected += x_pow * ch;
+        x_pow *= x;
+    }
+    ensure!(
+        challenge_eval == expected,
+        "Challenge binding check failed: prover's challenge_eval does not match expected value"
+    );
+    Ok(())
 }
