@@ -164,7 +164,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
             let (mut weights, evals) =
                 create_weights_and_evaluations::<3>(self.m, &commitment.polynomial, alphas);
 
-            merlin.prover_hint_ark(&evals);
+            for eval in &evals {
+                merlin.prover_message(eval);
+            }
 
             if !public_inputs.is_empty() {
                 let public_eval = compute_public_weight_evaluation(
@@ -172,7 +174,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                     &commitment.polynomial,
                     public_weight,
                 );
-                merlin.prover_hint_ark(&public_eval);
+                merlin.prover_message(&public_eval);
             }
 
             let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
@@ -213,12 +215,16 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
             let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
             let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
-            merlin.prover_hint_ark(&evals_1);
-            merlin.prover_hint_ark(&evals_2);
+            for eval in &evals_1 {
+                merlin.prover_message(eval);
+            }
+            for eval in &evals_2 {
+                merlin.prover_message(eval);
+            }
 
             let public_1 = if !public_inputs.is_empty() {
                 let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
-                merlin.prover_hint_ark(&p1);
+                merlin.prover_message(&p1);
                 Some(p1)
             } else {
                 None

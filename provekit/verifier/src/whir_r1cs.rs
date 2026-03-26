@@ -118,26 +118,36 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 2"))?;
 
-            let evals_1: Vec<FieldElement> = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read evals_1 hint"))?;
-            let evals_2: Vec<FieldElement> = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read evals_2 hint"))?;
-            let evals_1: [FieldElement; 3] = evals_1
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 1"))?;
-            let evals_2: [FieldElement; 3] = evals_2
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values for commitment 2"))?;
+            let evals_1: [FieldElement; 3] = [
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[0]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[1]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[2]"))?,
+            ];
+            let evals_2: [FieldElement; 3] = [
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[0]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[1]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[2]"))?,
+            ];
 
             let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
             let weights_2 = build_prefix_covectors(self.m, alphas_2);
 
             let mut evaluations_1 = if !public_inputs.is_empty() {
                 let public_1: FieldElement = arthur
-                    .prover_hint_ark()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public_1 hint"))?;
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
                 weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
@@ -187,19 +197,24 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_1[2] + evals_2[2],
             )
         } else {
-            let evals: Vec<FieldElement> = arthur
-                .prover_hint_ark()
-                .map_err(|_| anyhow::anyhow!("Failed to read evals hint"))?;
-            let evals: [FieldElement; 3] = evals
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Expected 3 evaluation values"))?;
+            let evals: [FieldElement; 3] = [
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals[0]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals[1]"))?,
+                arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read evals[2]"))?,
+            ];
 
             let mut weights = build_prefix_covectors(self.m, alphas);
 
             let mut evaluations = if !public_inputs.is_empty() {
                 let public_eval: FieldElement = arthur
-                    .prover_hint_ark()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public eval hint"))?;
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
                 weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
