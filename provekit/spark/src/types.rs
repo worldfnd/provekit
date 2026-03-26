@@ -121,11 +121,13 @@ impl From<SparkMatrix> for CompactSparkMatrix {
 
 impl From<CompactSparkMatrix> for SparkMatrix {
     fn from(c: CompactSparkMatrix) -> Self {
+        use rayon::prelude::*;
+
         let row = c.row;
         let col = c.col;
         let val: Vec<FieldElement> = c
             .val
-            .iter()
+            .par_iter()
             .map(|&v| c.interner.get(v).expect("invalid interned value"))
             .collect();
 
@@ -142,14 +144,20 @@ impl From<CompactSparkMatrix> for SparkMatrix {
             read_col_counters[col[i]] += 1;
         }
 
-        let final_row = read_row_counters
-            .iter()
-            .map(|&x| FieldElement::from(x as u64))
-            .collect();
-        let final_col = read_col_counters
-            .iter()
-            .map(|&x| FieldElement::from(x as u64))
-            .collect();
+        let (final_row, final_col) = rayon::join(
+            || {
+                read_row_counters
+                    .par_iter()
+                    .map(|&x| FieldElement::from(x as u64))
+                    .collect()
+            },
+            || {
+                read_col_counters
+                    .par_iter()
+                    .map(|&x| FieldElement::from(x as u64))
+                    .collect()
+            },
+        );
 
         SparkMatrix {
             coo:        COOMatrix { row, col, val },

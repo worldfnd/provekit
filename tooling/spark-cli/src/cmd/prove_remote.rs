@@ -47,8 +47,8 @@ struct ProveResponse {
 #[instrument(skip_all)]
 pub fn execute(args: ProveRemoteArgs) -> Result<()> {
     info!("Connecting to server at {:?}", args.socket);
-    let mut stream =
-        UnixStream::connect(&args.socket).with_context(|| format!("connecting to {:?}", args.socket))?;
+    let mut stream = UnixStream::connect(&args.socket)
+        .with_context(|| format!("connecting to {:?}", args.socket))?;
 
     let request = ProveRequest {
         circuit:    args.circuit,
@@ -72,7 +72,9 @@ pub fn execute(args: ProveRemoteArgs) -> Result<()> {
     let len = u32::from_le_bytes(len_buf) as usize;
 
     let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf).context("reading response body")?;
+    stream
+        .read_exact(&mut buf)
+        .context("reading response body")?;
 
     let response: ProveResponse = serde_json::from_slice(&buf).context("parsing response")?;
 

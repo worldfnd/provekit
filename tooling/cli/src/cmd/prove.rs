@@ -53,7 +53,11 @@ pub struct Args {
     circuit: Option<String>,
 
     /// output path for SPARK proof (default: spark_proof.sp)
-    #[argh(option, long = "spark-out", default = "PathBuf::from(\"spark_proof.sp\")")]
+    #[argh(
+        option,
+        long = "spark-out",
+        default = "PathBuf::from(\"spark_proof.sp\")"
+    )]
     spark_proof_path: PathBuf,
 }
 
@@ -91,8 +95,8 @@ impl Command for Args {
                 .context("--circuit is required when --socket is provided")?;
 
             info!("Connecting to SPARK server at {socket:?}");
-            let mut stream = UnixStream::connect(socket)
-                .with_context(|| format!("connecting to {socket:?}"))?;
+            let mut stream =
+                UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
 
             let request = SparkRequest {
                 circuit:    circuit.clone(),

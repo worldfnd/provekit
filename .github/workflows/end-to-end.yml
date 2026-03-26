@@ -67,10 +67,11 @@ jobs:
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             CIRCUIT_ARGS="$CIRCUIT_ARGS --circuit $circuit:./target/$circuit.json"
           done
+          rm -f /tmp/spark.sock
           ../../../target/release/provekit-cli serve \
             --socket /tmp/spark.sock \
             --output-dir ./benchmark-inputs \
-            $CIRCUIT_ARGS &
+            $CIRCUIT_ARGS > /tmp/spark-server.log 2>&1 &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
           # Wait for READY
@@ -107,7 +108,10 @@ jobs:
 
       - name: Stop SPARK server
         if: always()
-        run: kill $SERVER_PID 2>/dev/null || true
+        run: |
+          kill $SERVER_PID 2>/dev/null || true
+          echo "=== SPARK server log ==="
+          cat /tmp/spark-server.log 2>/dev/null || true
 
       - name: Verify proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
@@ -135,7 +139,7 @@ jobs:
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           ../../../target/release/provekit-cli generate-gnark-inputs \
-            ./benchmark-inputs/t_attest-verifier.pkv \
+            ./benchmark-inputs/t_attest.pkv \
             ./benchmark-inputs/t_attest-proof.np
           
 

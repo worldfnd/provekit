@@ -191,8 +191,8 @@ fn prove_spark_for_single_matrix(
     replay_commitment(merlin, &commitments.final_col_ts, &whir_configs.col);
 
     let GeneratedWitnesses {
-        evalues_witness,
-        evalues_vecs,
+        e_values_witness,
+        e_values_vecs,
     } = generate_witnesses(merlin, whir_configs, &e_values)?;
 
     let rs_ws_vecs = [
@@ -208,8 +208,8 @@ fn prove_spark_for_single_matrix(
         &e_values.e_rx,
         &e_values.e_ry,
         &claimed_value,
-        &evalues_vecs,
-        &evalues_witness,
+        &e_values_vecs,
+        &e_values_witness,
         &matrix.coo.val,
         spark_witnesses.vals_witness,
         &whir_configs.num_terms_1batched,
@@ -227,8 +227,8 @@ fn prove_spark_for_single_matrix(
         &e_values,
         spark_witnesses.rs_ws_witness,
         rs_ws_vecs,
-        evalues_witness,
-        evalues_vecs,
+        e_values_witness,
+        e_values_vecs,
         whir_configs,
         &gamma,
         &tau,
@@ -264,8 +264,8 @@ fn spark_sumcheck(
     e_rx: &[FieldElement],
     e_ry: &[FieldElement],
     claimed_value: &FieldElement,
-    evalues_vecs: &[Vec<FieldElement>; 2],
-    evalues_witness: &WhirWitness,
+    e_values_vecs: &[Vec<FieldElement>; 2],
+    e_values_witness: &WhirWitness,
     vals_vec: &[FieldElement],
     vals_witness: WhirWitness,
     num_terms_1batched: &WhirConfig,
@@ -284,9 +284,9 @@ fn spark_sumcheck(
     produce_whir_proof(
         merlin,
         &folding_randomness,
-        &[evalues_vecs[0].as_slice(), evalues_vecs[1].as_slice()],
+        &[e_values_vecs[0].as_slice(), e_values_vecs[1].as_slice()],
         num_terms_2batched,
-        evalues_witness.clone(),
+        e_values_witness.clone(),
     )?;
 
     produce_whir_proof(
@@ -309,8 +309,8 @@ fn run_rs_ws_gpa_and_proofs(
     e_values: &EValuesForMatrix,
     rs_ws_witness: WhirWitness,
     rs_ws_vecs: [Vec<FieldElement>; 4],
-    evalues_witness: WhirWitness,
-    evalues_vecs: [Vec<FieldElement>; 2],
+    e_values_witness: WhirWitness,
+    e_values_vecs: [Vec<FieldElement>; 2],
     whir_configs: &SPARKWHIRConfigs,
     gamma: &FieldElement,
     tau: &FieldElement,
@@ -395,7 +395,7 @@ fn run_rs_ws_gpa_and_proofs(
         rs_ws_witness,
     )?;
 
-    let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_evalues")
+    let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_e_values")
         .in_scope(|| {
             join(
                 || multilinear_extend(&e_values.e_rx, evaluation_randomness),
@@ -408,17 +408,17 @@ fn run_rs_ws_gpa_and_proofs(
     produce_whir_proof(
         merlin,
         evaluation_randomness,
-        &[evalues_vecs[0].as_slice(), evalues_vecs[1].as_slice()],
+        &[e_values_vecs[0].as_slice(), e_values_vecs[1].as_slice()],
         &whir_configs.num_terms_2batched,
-        evalues_witness,
+        e_values_witness,
     )?;
 
     Ok(())
 }
 
 struct GeneratedWitnesses {
-    evalues_witness: WhirWitness,
-    evalues_vecs:    [Vec<FieldElement>; 2],
+    e_values_witness: WhirWitness,
+    e_values_vecs:    [Vec<FieldElement>; 2],
 }
 
 #[instrument(skip_all)]
@@ -427,15 +427,15 @@ fn generate_witnesses(
     whir_configs: &SPARKWHIRConfigs,
     e_values: &EValuesForMatrix,
 ) -> Result<GeneratedWitnesses> {
-    let evalues_vecs = [e_values.e_rx.clone(), e_values.e_ry.clone()];
-    let evalues_witness = whir_configs.num_terms_2batched.commit(merlin, &[
-        evalues_vecs[0].as_slice(),
-        evalues_vecs[1].as_slice(),
+    let e_values_vecs = [e_values.e_rx.clone(), e_values.e_ry.clone()];
+    let e_values_witness = whir_configs.num_terms_2batched.commit(merlin, &[
+        e_values_vecs[0].as_slice(),
+        e_values_vecs[1].as_slice(),
     ]);
 
     Ok(GeneratedWitnesses {
-        evalues_witness,
-        evalues_vecs,
+        e_values_witness,
+        e_values_vecs,
     })
 }
 

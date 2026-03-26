@@ -64,7 +64,11 @@ pub fn execute(args: ServeArgs) -> Result<()> {
     let listener = UnixListener::bind(&args.socket)
         .with_context(|| format!("binding Unix socket at {:?}", args.socket))?;
 
-    info!("SPARK server ready on {:?} with {} circuit(s)", args.socket, circuits.len());
+    info!(
+        "SPARK server ready on {:?} with {} circuit(s)",
+        args.socket,
+        circuits.len()
+    );
     // Signal readiness — clients can wait for this line
     println!("READY");
 
@@ -122,11 +126,15 @@ fn handle_prove(
 
 fn read_request(stream: &mut impl Read) -> Result<ProveRequest> {
     let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf).context("reading request length")?;
+    stream
+        .read_exact(&mut len_buf)
+        .context("reading request length")?;
     let len = u32::from_le_bytes(len_buf) as usize;
 
     let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf).context("reading request body")?;
+    stream
+        .read_exact(&mut buf)
+        .context("reading request body")?;
 
     serde_json::from_slice(&buf).context("parsing request JSON")
 }

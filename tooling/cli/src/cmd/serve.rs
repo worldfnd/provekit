@@ -64,8 +64,7 @@ struct ProveResponse {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let hash_config =
-            HashConfig::from_str(&self.hash).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow::anyhow!("{}", e))?;
 
         provekit_common::register_ntt();
 
@@ -85,8 +84,7 @@ impl Command for Args {
 
             let prover = Prover::from_noir_proof_scheme(scheme.clone());
             let verifier = Verifier::from_noir_proof_scheme(scheme);
-            write(&prover, &pkp_path)
-                .with_context(|| format!("writing prover for '{name}'"))?;
+            write(&prover, &pkp_path).with_context(|| format!("writing prover for '{name}'"))?;
             write(&verifier, &pkv_path)
                 .with_context(|| format!("writing verifier for '{name}'"))?;
             info!("Wrote {pkp_path:?} and {pkv_path:?}");
@@ -170,8 +168,8 @@ fn prepare_circuit(
         prepare::extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
 
     let spark_data = SparkPreparedData {
-        matrix:      spark_r1cs.into(),
-        witnesses:   SerializableSparkWitnesses::from(witnesses),
+        matrix: spark_r1cs.into(),
+        witnesses: SerializableSparkWitnesses::from(witnesses),
         commitments,
     };
 

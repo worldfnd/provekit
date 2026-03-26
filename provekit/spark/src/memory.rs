@@ -5,11 +5,11 @@ use {
     },
     anyhow::{ensure, Result},
     ark_std::One,
-    rayon::prelude::*,
     provekit_common::{
         spark::R1CSSparkQuery, utils::sumcheck::calculate_eq, FieldElement, TranscriptSponge,
         WhirConfig,
     },
+    rayon::prelude::*,
     std::borrow::Cow,
     tracing::instrument,
     whir::{

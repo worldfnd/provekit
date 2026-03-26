@@ -95,10 +95,10 @@ pub(crate) fn verify_spark_single_matrix(
         .col
         .receive_commitment(arthur)
         .map_err(|e| anyhow::anyhow!("Failed to receive col finalts commitment: {e}"))?;
-    let evalues_commitment = whir_params
+    let e_values_commitment = whir_params
         .num_terms_2batched
         .receive_commitment(arthur)
-        .map_err(|e| anyhow::anyhow!("Failed to receive evalues commitment: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Failed to receive e_values commitment: {e}"))?;
 
     let (randomness, a_last_sumcheck_value) = run_sumcheck_verifier_spark(
         arthur,
@@ -116,14 +116,14 @@ pub(crate) fn verify_spark_single_matrix(
 
     let e_values_claim = whir_params
         .num_terms_2batched
-        .verify(arthur, &[&evalues_commitment], &[
+        .verify(arthur, &[&e_values_commitment], &[
             sumcheck_hints[1],
             sumcheck_hints[2],
         ])
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for evalues (sumcheck): {e}"))?;
+        .map_err(|e| anyhow::anyhow!("WHIR verify failed for e_values (sumcheck): {e}"))?;
     e_values_claim
         .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for evalues: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for e_values: {e}"))?;
 
     let val_claim = whir_params
         .num_terms_1batched
@@ -184,13 +184,13 @@ pub(crate) fn verify_spark_single_matrix(
         .prover_hint_ark()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let evalues_gpa_claim = whir_params
+    let e_values_gpa_claim = whir_params
         .num_terms_2batched
-        .verify(arthur, &[&evalues_commitment], &[row_mem, col_mem])
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for evalues (GPA): {e}"))?;
-    evalues_gpa_claim
+        .verify(arthur, &[&e_values_commitment], &[row_mem, col_mem])
+        .map_err(|e| anyhow::anyhow!("WHIR verify failed for e_values (GPA): {e}"))?;
+    e_values_gpa_claim
         .verify([gpa_eval_lf])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for evalues (GPA): {e}"))?;
+        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for e_values (GPA): {e}"))?;
 
     let gamma_sq = gamma * gamma;
 
