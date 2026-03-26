@@ -264,8 +264,11 @@ pub fn build_spark_matrix(
         .map(|&x| FieldElement::from(x as u64))
         .collect();
 
+    let row_field = row.iter().map(|&r| FieldElement::from(r as u64)).collect();
+    let col_field = col.iter().map(|&c| FieldElement::from(c as u64)).collect();
+
     SparkMatrix {
-        coo:        COOMatrix { row, col, val },
+        coo:        COOMatrix { row, col, row_field, col_field, val },
         timestamps: TimeStamps {
             read_row,
             read_col,
@@ -313,23 +316,10 @@ impl SPARKCommitterScheme {
             .num_terms_1batched
             .commit(merlin, &[&matrix.coo.val]);
 
-        let row_field: Vec<FieldElement> = matrix
-            .coo
-            .row
-            .iter()
-            .map(|&r| FieldElement::from(r as u64))
-            .collect();
-        let col_field: Vec<FieldElement> = matrix
-            .coo
-            .col
-            .iter()
-            .map(|&c| FieldElement::from(c as u64))
-            .collect();
-
         let rs_ws_witness = self.whir_configs.num_terms_4batched.commit(merlin, &[
-            &row_field,
+            &matrix.coo.row_field,
             &matrix.timestamps.read_row,
-            &col_field,
+            &matrix.coo.col_field,
             &matrix.timestamps.read_col,
         ]);
 

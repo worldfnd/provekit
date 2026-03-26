@@ -1,5 +1,5 @@
 use {
-    anyhow::ensure,
+    anyhow::{ensure, Context},
     provekit_common::{
         utils::{
             next_power_of_two,
@@ -27,7 +27,7 @@ pub fn run_gpa2(
 
     let mut drain = layers.drain(1..);
 
-    let first_layer = drain.next().expect("tree has at least 2 layers");
+    let first_layer = drain.next().context("GPA tree has fewer than 2 layers")?;
     let (accumulated_randomness, mut sumcheck_claim) = add_line_to_transcript(merlin, first_layer);
     let mut accumulated_randomness = accumulated_randomness.to_vec();
 
@@ -48,7 +48,7 @@ pub fn run_gpa4(
 
     let mut drain = layers.drain(2..);
 
-    let coeffs = drain.next().expect("tree has at least 3 layers");
+    let coeffs = drain.next().context("GPA tree has fewer than 3 layers")?;
     let coeffs = [
         coeffs[0],
         coeffs[1] - coeffs[0],
@@ -232,7 +232,7 @@ fn split_even_odd(input: Vec<FieldElement>) -> (Vec<FieldElement>, Vec<FieldElem
 
 pub struct GPASumcheckResult {
     pub claimed_values:        Vec<FieldElement>,
-    pub a_last_sumcheck_value: FieldElement,
+    pub last_sumcheck_value: FieldElement,
     pub randomness:            Vec<FieldElement>,
 }
 
@@ -316,7 +316,7 @@ pub fn gpa_sumcheck_verifier2(
 
     Ok(GPASumcheckResult {
         claimed_values,
-        a_last_sumcheck_value: sumcheck_value,
+        last_sumcheck_value: sumcheck_value,
         randomness: prev_randomness,
     })
 }
@@ -413,7 +413,7 @@ pub fn gpa_sumcheck_verifier4(
 
     Ok(GPASumcheckResult {
         claimed_values,
-        a_last_sumcheck_value: sumcheck_value,
+        last_sumcheck_value: sumcheck_value,
         randomness: prev_randomness,
     })
 }

@@ -65,9 +65,11 @@ pub struct SparkMatrix {
 
 #[derive(Debug, Clone)]
 pub struct COOMatrix {
-    pub row: Vec<usize>,
-    pub col: Vec<usize>,
-    pub val: Vec<FieldElement>,
+    pub row:       Vec<usize>,
+    pub col:       Vec<usize>,
+    pub row_field: Vec<FieldElement>,
+    pub col_field: Vec<FieldElement>,
+    pub val:       Vec<FieldElement>,
 }
 
 #[derive(Debug, Clone)]

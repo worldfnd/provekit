@@ -4,6 +4,7 @@ mod generate_gnark_inputs;
 pub mod prepare;
 mod prove;
 mod serve;
+mod spark_protocol;
 mod show_inputs;
 mod verify;
 

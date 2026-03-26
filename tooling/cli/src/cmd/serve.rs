@@ -1,6 +1,7 @@
 use {
     super::{
         prepare::{self, Compiler, SPARKCommitterScheme},
+        spark_protocol::{self, SparkRequest, SparkResponse},
         Command,
     },
     anyhow::{Context, Result},
@@ -10,11 +11,9 @@ use {
         HashConfig, NoirProofScheme, Prover, TranscriptSponge, Verifier,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::{SPARKProver, SPARKProverScheme, SparkPreparedData},
-    serde::{Deserialize, Serialize},
+    provekit_spark::{SPARKProver as _, SPARKProverScheme, SparkPreparedData},
     std::{
         collections::HashMap,
-        io::{Read, Write},
         os::unix::net::UnixListener,
         path::{Path, PathBuf},
         str::FromStr,
@@ -53,19 +52,6 @@ pub struct Args {
     output_dir: PathBuf,
 }
 
-#[derive(Deserialize)]
-struct ProveRequest {
-    circuit:    String,
-    noir_proof: PathBuf,
-    output:     PathBuf,
-}
-
-#[derive(Serialize)]
-struct ProveResponse {
-    ok:    bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-}
 
 impl Command for Args {
     #[instrument(skip_all)]
@@ -119,18 +105,18 @@ impl Command for Args {
         for stream in listener.incoming() {
             let mut stream = stream.context("accepting connection")?;
 
-            let request = read_request(&mut stream)?;
+            let request: SparkRequest = spark_protocol::read_message(&mut stream)?;
             let response = match handle_prove(&circuits, &request) {
-                Ok(()) => ProveResponse {
+                Ok(()) => SparkResponse {
                     ok:    true,
                     error: None,
                 },
-                Err(e) => ProveResponse {
+                Err(e) => SparkResponse {
                     ok:    false,
                     error: Some(format!("{e:?}")),
                 },
             };
-            write_response(&mut stream, &response)?;
+            spark_protocol::write_message(&mut stream, &response)?;
         }
 
         Ok(())
@@ -205,12 +191,11 @@ fn prepare_circuit(
 #[instrument(skip_all, fields(circuit = %request.circuit))]
 fn handle_prove(
     circuits: &HashMap<String, SparkPreparedData>,
-    request: &ProveRequest,
+    request: &SparkRequest,
 ) -> Result<()> {
     let spark_data = circuits
         .get(&request.circuit)
-        .with_context(|| format!("unknown circuit '{}'", request.circuit))?
-        .clone();
+        .with_context(|| format!("unknown circuit '{}'", request.circuit))?;
 
     info!("Loading NoirProof from {:?}", request.noir_proof);
     let noir_proof: provekit_common::NoirProof =
@@ -234,27 +219,3 @@ fn handle_prove(
     Ok(())
 }
 
-fn read_request(stream: &mut impl Read) -> Result<ProveRequest> {
-    let mut len_buf = [0u8; 4];
-    stream
-        .read_exact(&mut len_buf)
-        .context("reading request length")?;
-    let len = u32::from_le_bytes(len_buf) as usize;
-
-    let mut buf = vec![0u8; len];
-    stream
-        .read_exact(&mut buf)
-        .context("reading request body")?;
-
-    serde_json::from_slice(&buf).context("parsing request JSON")
-}
-
-fn write_response(stream: &mut impl Write, response: &ProveResponse) -> Result<()> {
-    let bytes = serde_json::to_vec(response).context("serializing response")?;
-    stream
-        .write_all(&(bytes.len() as u32).to_le_bytes())
-        .context("writing response length")?;
-    stream.write_all(&bytes).context("writing response body")?;
-    stream.flush().context("flushing response")?;
-    Ok(())
-}

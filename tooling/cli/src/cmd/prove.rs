@@ -1,5 +1,8 @@
 use {
-    super::Command,
+    super::{
+        spark_protocol::{self, SparkRequest, SparkResponse},
+        Command,
+    },
     anyhow::{bail, Context, Result},
     argh::FromArgs,
     provekit_common::{
@@ -7,12 +10,7 @@ use {
         Prover,
     },
     provekit_prover::Prove,
-    serde::{Deserialize, Serialize},
-    std::{
-        io::{Read as _, Write as _},
-        os::unix::net::UnixStream,
-        path::PathBuf,
-    },
+    std::{os::unix::net::UnixStream, path::PathBuf},
     tracing::{info, instrument},
 };
 #[cfg(test)]
@@ -104,26 +102,8 @@ impl Command for Args {
                 output:     self.spark_proof_path.clone(),
             };
 
-            let bytes = serde_json::to_vec(&request).context("serializing request")?;
-            stream
-                .write_all(&(bytes.len() as u32).to_le_bytes())
-                .context("writing request length")?;
-            stream.write_all(&bytes).context("writing request body")?;
-            stream.flush().context("flushing request")?;
-
-            let mut len_buf = [0u8; 4];
-            stream
-                .read_exact(&mut len_buf)
-                .context("reading response length")?;
-            let len = u32::from_le_bytes(len_buf) as usize;
-
-            let mut buf = vec![0u8; len];
-            stream
-                .read_exact(&mut buf)
-                .context("reading response body")?;
-
-            let response: SparkResponse =
-                serde_json::from_slice(&buf).context("parsing response")?;
+            spark_protocol::write_message(&mut stream, &request)?;
+            let response: SparkResponse = spark_protocol::read_message(&mut stream)?;
 
             if response.ok {
                 info!("SPARK proof written to {:?}", self.spark_proof_path);
@@ -139,15 +119,3 @@ impl Command for Args {
     }
 }
 
-#[derive(Serialize)]
-struct SparkRequest {
-    circuit:    String,
-    noir_proof: PathBuf,
-    output:     PathBuf,
-}
-
-#[derive(Deserialize)]
-struct SparkResponse {
-    ok:    bool,
-    error: Option<String>,
-}

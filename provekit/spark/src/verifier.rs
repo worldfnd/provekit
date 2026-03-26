@@ -1,14 +1,16 @@
 use {
     crate::{
         gpa::gpa_sumcheck_verifier4,
-        memory::{verify_colwise, verify_rowwise},
+        memory::verify_axis,
         sumcheck::run_sumcheck_verifier_spark,
         types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
     ark_ff::Field,
     provekit_common::{
-        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge,
+        spark::R1CSSparkQuery,
+        utils::{next_power_of_two, sumcheck::calculate_eq},
+        FieldElement, TranscriptSponge,
     },
     tracing::instrument,
     whir::{
@@ -100,7 +102,7 @@ pub(crate) fn verify_spark_single_matrix(
         .receive_commitment(arthur)
         .map_err(|e| anyhow::anyhow!("Failed to receive e_values commitment: {e}"))?;
 
-    let (randomness, a_last_sumcheck_value) = run_sumcheck_verifier_spark(
+    let (randomness, last_sumcheck_value) = run_sumcheck_verifier_spark(
         arthur,
         next_power_of_two(matrix_dimensions.nonzero_terms),
         *claimed_value,
@@ -112,7 +114,7 @@ pub(crate) fn verify_spark_single_matrix(
         .prover_hint_ark()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    ensure!(a_last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
+    ensure!(last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
 
     let e_values_claim = whir_params
         .num_terms_2batched
@@ -212,26 +214,26 @@ pub(crate) fn verify_spark_single_matrix(
             * (FieldElement::from(1) - combination_randomness[1])
         + col_ws_opening * combination_randomness[0] * combination_randomness[1];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    ensure!(evaluated_value == gpa_result.last_sumcheck_value);
 
-    verify_rowwise(
+    verify_axis(
         arthur,
         matrix_dimensions.num_rows,
-        whir_params,
-        request,
+        &whir_params.row,
         a_row_finalts_commitment,
+        |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
         &tau,
         &gamma,
         &claimed_row_rs,
         &claimed_row_ws,
     )?;
 
-    verify_colwise(
+    verify_axis(
         arthur,
         matrix_dimensions.num_cols,
-        whir_params,
-        request,
+        &whir_params.col,
         a_col_finalts_commitment,
+        |eval_rand| calculate_eq(&request.point_to_evaluate.col, eval_rand),
         &tau,
         &gamma,
         &claimed_col_rs,

@@ -1,13 +1,12 @@
 use {
     crate::{
         gpa::{calculate_adr, gpa_sumcheck_verifier2, run_gpa2},
-        types::{Memory, SPARKWHIRConfigs, WhirWitness},
+        types::WhirWitness,
     },
     anyhow::{ensure, Result},
     ark_std::One,
     provekit_common::{
-        spark::R1CSSparkQuery, utils::sumcheck::calculate_eq, FieldElement, TranscriptSponge,
-        WhirConfig,
+        FieldElement, TranscriptSponge, WhirConfig,
     },
     rayon::prelude::*,
     std::borrow::Cow,
@@ -19,17 +18,17 @@ use {
     },
 };
 
-struct AxisConfig<'a> {
-    eq_memory:       &'a [FieldElement],
-    final_timestamp: &'a [FieldElement],
-    whir_config:     &'a WhirConfig,
+pub struct AxisConfig<'a> {
+    pub eq_memory:       &'a [FieldElement],
+    pub final_timestamp: &'a [FieldElement],
+    pub whir_config:     &'a WhirConfig,
 }
 
 #[instrument(skip_all)]
-fn prove_axis(
+pub fn prove_axis(
     merlin: &mut ProverState<TranscriptSponge>,
     config: AxisConfig<'_>,
-    final_ts_witness: WhirWitness,
+    final_ts_witness: &WhirWitness,
     gamma: &FieldElement,
     tau: &FieldElement,
 ) -> Result<()> {
@@ -78,54 +77,10 @@ fn prove_axis(
     Ok(())
 }
 
-#[instrument(skip_all)]
-pub fn prove_rowwise(
-    merlin: &mut ProverState<TranscriptSponge>,
-    final_row: &[FieldElement],
-    memory: &Memory,
-    whir_configs: &SPARKWHIRConfigs,
-    final_row_ts_witness: WhirWitness,
-    gamma: &FieldElement,
-    tau: &FieldElement,
-) -> Result<()> {
-    prove_axis(
-        merlin,
-        AxisConfig {
-            eq_memory:       &memory.eq_rx,
-            final_timestamp: final_row,
-            whir_config:     &whir_configs.row,
-        },
-        final_row_ts_witness,
-        gamma,
-        tau,
-    )
-}
+
 
 #[instrument(skip_all)]
-pub fn prove_colwise(
-    merlin: &mut ProverState<TranscriptSponge>,
-    final_col: &[FieldElement],
-    memory: &Memory,
-    whir_configs: &SPARKWHIRConfigs,
-    final_col_ts_witness: WhirWitness,
-    gamma: &FieldElement,
-    tau: &FieldElement,
-) -> Result<()> {
-    prove_axis(
-        merlin,
-        AxisConfig {
-            eq_memory:       &memory.eq_ry,
-            final_timestamp: final_col,
-            whir_config:     &whir_configs.col,
-        },
-        final_col_ts_witness,
-        gamma,
-        tau,
-    )
-}
-
-#[inline]
-fn verify_axis(
+pub fn verify_axis(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     num_axis_items: usize,
     whir_config: &WhirConfig,
@@ -168,62 +123,13 @@ fn verify_axis(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.a_last_sumcheck_value);
+    ensure!(evaluated_value == gpa_result.last_sumcheck_value);
 
     ensure!(claimed_init * claimed_ws == claimed_final * claimed_rs);
 
     Ok(())
 }
 
-#[instrument(skip_all)]
-pub fn verify_rowwise(
-    arthur: &mut VerifierState<'_, TranscriptSponge>,
-    num_rows: usize,
-    whir_params: &SPARKWHIRConfigs,
-    request: &R1CSSparkQuery,
-    row_finalts_commitment: Commitment<FieldElement>,
-    tau: &FieldElement,
-    gamma: &FieldElement,
-    claimed_rs: &FieldElement,
-    claimed_ws: &FieldElement,
-) -> Result<()> {
-    verify_axis(
-        arthur,
-        num_rows,
-        &whir_params.row,
-        row_finalts_commitment,
-        |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
-        tau,
-        gamma,
-        claimed_rs,
-        claimed_ws,
-    )
-}
-
-#[instrument(skip_all)]
-pub fn verify_colwise(
-    arthur: &mut VerifierState<'_, TranscriptSponge>,
-    num_cols: usize,
-    whir_params: &SPARKWHIRConfigs,
-    request: &R1CSSparkQuery,
-    col_finalts_commitment: Commitment<FieldElement>,
-    tau: &FieldElement,
-    gamma: &FieldElement,
-    claimed_rs: &FieldElement,
-    claimed_ws: &FieldElement,
-) -> Result<()> {
-    verify_axis(
-        arthur,
-        num_cols,
-        &whir_params.col,
-        col_finalts_commitment,
-        |eval_rand| calculate_eq(&request.point_to_evaluate.col, eval_rand),
-        tau,
-        gamma,
-        claimed_rs,
-        claimed_ws,
-    )
-}
 
 #[instrument(skip_all)]
 pub fn produce_whir_proof(
@@ -231,7 +137,7 @@ pub fn produce_whir_proof(
     evaluation_point: &[FieldElement],
     vectors: &[&[FieldElement]],
     config: &WhirConfig,
-    witness: WhirWitness,
+    witness: &WhirWitness,
 ) -> Result<()> {
     let lf = MultilinearExtension::new(evaluation_point.to_vec());
 
@@ -243,7 +149,7 @@ pub fn produce_whir_proof(
     _ = config.prove(
         merlin,
         vectors.iter().map(|v| Cow::Borrowed(*v)).collect(),
-        vec![Cow::Owned(witness)],
+        vec![Cow::Owned(witness.clone())],
         vec![Box::new(lf)
             as Box<
                 dyn whir::algebra::linear_form::LinearForm<FieldElement>,
