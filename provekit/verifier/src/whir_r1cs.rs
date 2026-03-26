@@ -14,6 +14,7 @@ use {
     tracing::instrument,
     whir::{
         algebra::linear_form::LinearForm,
+        protocols::whir::FinalClaim,
         transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
     },
 };
@@ -56,7 +57,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         let commitment_1 = self
             .whir_witness
-            .receive_commitments(&mut arthur, 1)
+            .receive_commitments(&mut arthur)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         let commitment_2 = if self.num_challenges > 0 {
@@ -64,7 +65,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 arthur.verifier_message_vec(self.num_challenges);
             Some(
                 self.whir_witness
-                    .receive_commitments(&mut arthur, 1)
+                    .receive_commitments(&mut arthur)
                     .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
             )
         } else {
@@ -152,17 +153,25 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .collect();
             weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
-            self.whir_witness
+            let claim_1: FinalClaim<FieldElement> = self
+                .whir_witness
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|e| anyhow::anyhow!("WHIR verification failed for c1: {e:?}"))?;
+            claim_1
+                .verify(weight_refs_1)
+                .map_err(|_| anyhow::anyhow!("WHIR final claim check failed for c1"))?;
 
             let weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
-            self.whir_witness
+            let claim_2: FinalClaim<FieldElement> = self
+                .whir_witness
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
+            claim_2
+                .verify(weight_refs_2)
+                .map_err(|_| anyhow::anyhow!("WHIR final claim check failed for c2"))?;
 
             (
                 evals_1[0] + evals_2[0],
@@ -196,9 +205,13 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .collect();
             weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
-            self.whir_witness
+            let claim: FinalClaim<FieldElement> = self
+                .whir_witness
                 .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
+            claim
+                .verify(weight_refs)
+                .map_err(|_| anyhow::anyhow!("WHIR final claim check failed"))?;
 
             (evals[0], evals[1], evals[2])
         };

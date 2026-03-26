@@ -8,7 +8,6 @@ use {
             make_public_weight, OffsetCovector,
         },
         utils::{
-            pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
                 eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
@@ -106,7 +105,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         );
 
         // Pad witness to the WHIR config's initial polynomial size .
-        let target_len = self.whir_witness.blinded_commitment.initial_size();
+        let target_len = self.whir_witness.blinded_polynomial.initial_size();
         let mut padded_witness = witness;
         padded_witness.resize(target_len, FieldElement::zero());
 

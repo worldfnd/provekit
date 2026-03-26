@@ -45,11 +45,7 @@ pub trait WhirR1CSSchemeBuilder {
         hash_id: EngineId,
     ) -> Self;
 
-    fn new_whir_zk_config_for_size(
-        num_variables: usize,
-        num_polynomials: usize,
-        hash_id: EngineId,
-    ) -> WhirZkConfig;
+    fn new_whir_zk_config_for_size(num_variables: usize, hash_id: EngineId) -> WhirZkConfig;
 }
 
 impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
@@ -67,22 +63,19 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         );
         let w2_size = total_witnesses - w1_size;
 
-        // m1/m2 are actual smooth domain sizes; m0 stays as an exponent
-        // (inner sumcheck is always power-of-2).
-        let m1_raw = next_smooth_domain(w1_size);
-        let m2_raw = next_smooth_domain(w2_size);
+        // zkWHIR 2.0 requires power-of-2 witness polynomials (binary sumcheck + NTT commit).
+        // Use next_power_of_two so that scheme.m always matches initial_size().
         let m0_raw = next_power_of_two(r1cs.num_constraints());
-
-        let mut m_raw = m1_raw.max(m2_raw).max(1usize << MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
+
+        let m1_raw = next_smooth_domain(w1_size).next_power_of_two();
+        let m2_raw = next_smooth_domain(w2_size).next_power_of_two();
+        let mut m_raw = m1_raw.max(m2_raw).max(1usize << MIN_WHIR_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
         if m_raw - w1_size < 4 * m_0 {
-            m_raw = next_smooth_domain(m_raw + 1);
+            m_raw <<= 1; // double (stays power-of-2)
         }
-
-        // Smooth-domain sizes may have too few trailing zeros for ZK blinding.
-        m_raw = ensure_min_binary_vars(m_raw);
 
         Self {
             m: m_raw,
@@ -90,17 +83,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
+            whir_witness: Self::new_whir_zk_config_for_size(m_raw, hash_id),
             has_public_inputs,
         }
     }
 
-    fn new_whir_zk_config_for_size(
-        size: usize,
-        num_polynomials: usize,
-        hash_id: EngineId,
-    ) -> WhirZkConfig {
-        // `size` is the actual domain size .
+    fn new_whir_zk_config_for_size(size: usize, hash_id: EngineId) -> WhirZkConfig {
+        // `size` is the actual domain size (may be a smooth non-power-of-2).
         let size = size.max(1usize << MIN_WHIR_NUM_VARIABLES);
 
         // Parameters tuned for 128-bit security under the Johnson bound (the old
@@ -118,7 +107,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             batch_size: 1,
             hash_id,
         };
-        WhirZkConfig::new(size, &whir_params, num_polynomials)
+        WhirZkConfig::new(size, &whir_params)
     }
 
     fn new_from_mavros_r1cs(
@@ -152,26 +141,24 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         has_public_inputs: bool,
         hash_id: EngineId,
     ) -> Self {
-        // m is the actual smooth domain size; m0 stays as an exponent.
-        let m_raw = next_smooth_domain(num_witnesses);
+        // zkWHIR 2.0 requires power-of-2 witness polynomials (binary sumcheck + NTT commit).
         let m0_raw = next_power_of_two(num_constraints);
-
-        let mut m = m_raw.max(1usize << MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
+
+        let mut m = next_smooth_domain(num_witnesses)
+            .next_power_of_two()
+            .max(1usize << MIN_WHIR_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
         if m - w1_size < 4 * m_0 {
-            m = next_smooth_domain(m + 1);
+            m <<= 1; // double (stays power-of-2)
         }
-
-        // Smooth-domain sizes may have too few trailing zeros for ZK blinding.
-        m = ensure_min_binary_vars(m);
 
         Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_id),
+            whir_witness: Self::new_whir_zk_config_for_size(m, hash_id),
             w1_size,
             num_challenges,
             has_public_inputs,
@@ -185,13 +172,13 @@ mod tests {
 
     #[test]
     fn verify_security_level() {
-        let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, 1, whir::hash::SHA2);
+        let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, whir::hash::SHA2);
         let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+            .blinded_polynomial
+            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
         let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+            .blinding_polynomial
+            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
         assert!(
             sec_blinded >= 128.0,
             "Blinded commitment security {sec_blinded:.2} < 128 bits"
@@ -223,15 +210,14 @@ mod tests {
     fn verify_security_level_min_variables() {
         let config = WhirR1CSScheme::new_whir_zk_config_for_size(
             MIN_WHIR_NUM_VARIABLES,
-            1,
             whir::hash::SHA2,
         );
         let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+            .blinded_polynomial
+            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
         let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+            .blinding_polynomial
+            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
         assert!(
             sec_blinded >= 128.0,
             "Blinded commitment security {sec_blinded:.2} < 128 bits at nv={}",
