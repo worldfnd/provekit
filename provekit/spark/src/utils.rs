@@ -9,8 +9,12 @@ pub fn calculate_memory(
     point_row: &[FieldElement],
     point_col: &[FieldElement],
 ) -> Memory {
-    let row_point: Vec<_> = std::iter::once(b).chain(point_row.iter().copied()).collect();
-    let col_point: Vec<_> = std::iter::once(b).chain(point_col.iter().copied()).collect();
+    let row_point: Vec<_> = std::iter::once(b)
+        .chain(point_row.iter().copied())
+        .collect();
+    let col_point: Vec<_> = std::iter::once(b)
+        .chain(point_col.iter().copied())
+        .collect();
     Memory {
         eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(
             &row_point,

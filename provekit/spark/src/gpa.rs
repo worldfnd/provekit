@@ -231,9 +231,9 @@ fn split_even_odd(input: Vec<FieldElement>) -> (Vec<FieldElement>, Vec<FieldElem
 }
 
 pub struct GPASumcheckResult {
-    pub claimed_values:        Vec<FieldElement>,
+    pub claimed_values:      Vec<FieldElement>,
     pub last_sumcheck_value: FieldElement,
-    pub randomness:            Vec<FieldElement>,
+    pub randomness:          Vec<FieldElement>,
 }
 
 #[instrument(skip_all)]

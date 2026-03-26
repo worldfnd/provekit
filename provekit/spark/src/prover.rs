@@ -97,7 +97,11 @@ struct Challenges {
 
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
-    fn prove(&self, spark_data: &SparkPreparedData, request: &R1CSSparkQuery) -> Result<SPARKProof> {
+    fn prove(
+        &self,
+        spark_data: &SparkPreparedData,
+        request: &R1CSSparkQuery,
+    ) -> Result<SPARKProof> {
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
@@ -161,8 +165,16 @@ fn prove_spark(
     memory: &Memory,
     whir_configs: &SPARKWHIRConfigs,
 ) -> Result<()> {
-    replay_commitment(merlin, &data.commitments.vals, &whir_configs.num_terms_1batched);
-    replay_commitment(merlin, &data.commitments.rs_ws, &whir_configs.num_terms_4batched);
+    replay_commitment(
+        merlin,
+        &data.commitments.vals,
+        &whir_configs.num_terms_1batched,
+    );
+    replay_commitment(
+        merlin,
+        &data.commitments.rs_ws,
+        &whir_configs.num_terms_4batched,
+    );
     replay_commitment(merlin, &data.commitments.final_row_ts, &whir_configs.row);
     replay_commitment(merlin, &data.commitments.final_col_ts, &whir_configs.col);
 

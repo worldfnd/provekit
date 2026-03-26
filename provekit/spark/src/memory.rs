@@ -5,9 +5,7 @@ use {
     },
     anyhow::{ensure, Result},
     ark_std::One,
-    provekit_common::{
-        FieldElement, TranscriptSponge, WhirConfig,
-    },
+    provekit_common::{FieldElement, TranscriptSponge, WhirConfig},
     rayon::prelude::*,
     std::borrow::Cow,
     tracing::instrument,
@@ -77,8 +75,6 @@ pub fn prove_axis(
     Ok(())
 }
 
-
-
 #[instrument(skip_all)]
 pub fn verify_axis(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
@@ -129,7 +125,6 @@ pub fn verify_axis(
 
     Ok(())
 }
-
 
 #[instrument(skip_all)]
 pub fn produce_whir_proof(

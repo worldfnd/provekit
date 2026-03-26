@@ -52,7 +52,6 @@ pub struct Args {
     output_dir: PathBuf,
 }
 
-
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
@@ -218,4 +217,3 @@ fn handle_prove(
     info!("Done");
     Ok(())
 }
-

@@ -268,7 +268,13 @@ pub fn build_spark_matrix(
     let col_field = col.iter().map(|&c| FieldElement::from(c as u64)).collect();
 
     SparkMatrix {
-        coo:        COOMatrix { row, col, row_field, col_field, val },
+        coo:        COOMatrix {
+            row,
+            col,
+            row_field,
+            col_field,
+            val,
+        },
         timestamps: TimeStamps {
             read_row,
             read_col,
