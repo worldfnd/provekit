@@ -340,8 +340,13 @@ impl NoirToR1CSCompiler {
                     unreachable!()
                 };
                 // Decompose lhs constant into bytes
-                let lhs_val: u64 = lhs_fe.into_bigint().0[0];
-                let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+                let lhs_bigint = lhs_fe.into_bigint();
+                assert!(
+                    lhs_bigint.0[1..].iter().all(|&limb| limb == 0)
+                        && lhs_bigint.0[0] <= u32::MAX as u64,
+                    "AND/XOR constant lhs exceeds 32 bits: {lhs_fe}"
+                );
+                let lhs_bytes: [u8; 4] = (lhs_bigint.0[0] as u32).to_le_bytes();
 
                 let out_idx = self.fetch_r1cs_witness_index(output);
                 let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
@@ -354,8 +359,13 @@ impl NoirToR1CSCompiler {
                         let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c else {
                             unreachable!()
                         };
-                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                        let rhs_bytes: [u8; 4] = (rhs_val as u32).to_le_bytes();
+                        let rhs_bigint = rhs_fe.into_bigint();
+                        assert!(
+                            rhs_bigint.0[1..].iter().all(|&limb| limb == 0)
+                                && rhs_bigint.0[0] <= u32::MAX as u64,
+                            "AND/XOR constant rhs exceeds 32 bits: {rhs_fe}"
+                        );
+                        let rhs_bytes: [u8; 4] = (rhs_bigint.0[0] as u32).to_le_bytes();
 
                         let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                         for byte_idx in 0..NUM_DIGITS {
@@ -400,8 +410,13 @@ impl NoirToR1CSCompiler {
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
                 // Decompose rhs constant into bytes
                 let rhs_bytes: [u8; 4] = if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
-                    let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                    (rhs_val as u32).to_le_bytes()
+                    let rhs_bigint = rhs_fe.into_bigint();
+                    assert!(
+                        rhs_bigint.0[1..].iter().all(|&limb| limb == 0)
+                            && rhs_bigint.0[0] <= u32::MAX as u64,
+                        "AND/XOR constant rhs exceeds 32 bits: {rhs_fe}"
+                    );
+                    (rhs_bigint.0[0] as u32).to_le_bytes()
                 } else {
                     unreachable!()
                 };
