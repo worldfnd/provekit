@@ -60,29 +60,46 @@ jobs:
           rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np ./benchmark-inputs/*.spd ./benchmark-inputs/*.sp
           echo "Cleaned stale benchmark artifacts"
 
-      - name: Prepare circuits
+      - name: Start server (prepare + serve)
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
+          CIRCUIT_ARGS=""
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
-            echo "Preparing $circuit"
-            cargo run --release --bin provekit-cli prepare ./target/$circuit.json \
-              --pkp ./benchmark-inputs/$circuit-prover.pkp \
-              --pkv ./benchmark-inputs/$circuit-verifier.pkv \
-              --spark-data ./benchmark-inputs/$circuit-spark-data.spd
-            echo "Prepared $circuit"
+            CIRCUIT_ARGS="$CIRCUIT_ARGS --circuit $circuit:./target/$circuit.json"
+          done
+          cargo run --release --bin provekit-cli serve \
+            --socket /tmp/spark.sock \
+            --output-dir ./benchmark-inputs \
+            $CIRCUIT_ARGS &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
+          # Wait for READY
+          for i in $(seq 1 120); do
+            if [ -S /tmp/spark.sock ]; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
           done
 
-      - name: Generate proofs for all circuits
+      - name: Prove and request spark proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Proving $circuit"
             cargo run --release --bin provekit-cli prove \
-              ./benchmark-inputs/$circuit-prover.pkp \
+              ./benchmark-inputs/$circuit.pkp \
               ./benchmark-inputs/tbs_720/$circuit.toml \
-              -o ./benchmark-inputs/$circuit-proof.np
+              -o ./benchmark-inputs/$circuit-proof.np \
+              --socket /tmp/spark.sock \
+              --circuit $circuit \
+              --spark-out ./benchmark-inputs/$circuit-spark-proof.sp
             echo "Proved $circuit"
           done
+
+      - name: Stop SPARK server
+        if: always()
+        run: kill $SERVER_PID 2>/dev/null || true
 
       - name: Verify proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
@@ -90,22 +107,9 @@ jobs:
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Verifying $circuit"
             cargo run --release --bin provekit-cli verify \
-              ./benchmark-inputs/$circuit-verifier.pkv \
+              ./benchmark-inputs/$circuit.pkv \
               ./benchmark-inputs/$circuit-proof.np
             echo "Verified $circuit"
-          done
-
-      - name: Generate SPARK proofs for all circuits
-        working-directory: noir-examples/noir-passport/merkle_age_check
-        run: |
-          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
-            echo "SPARK proving $circuit"
-            cargo run --release --bin spark-cli prove \
-              --noir-proof-scheme ./benchmark-inputs/$circuit-prover.pkp \
-              --noir-proof ./benchmark-inputs/$circuit-proof.np \
-              --spark-data ./benchmark-inputs/$circuit-spark-data.spd \
-              -o ./benchmark-inputs/$circuit-spark-proof.sp
-            echo "SPARK proved $circuit"
           done
 
       - name: Verify SPARK proofs for all circuits

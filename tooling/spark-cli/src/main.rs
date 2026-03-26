@@ -30,6 +30,8 @@ struct Args {
 #[argh(subcommand)]
 enum Command {
     Prove(cmd::prove::ProveArgs),
+    ProveRemote(cmd::prove_remote::ProveRemoteArgs),
+    Serve(cmd::serve::ServeArgs),
     Verify(cmd::verify::VerifyArgs),
 }
 
@@ -40,6 +42,8 @@ fn main() -> Result<()> {
 
     match args.command {
         Command::Prove(args) => cmd::prove::execute(args),
+        Command::ProveRemote(args) => cmd::prove_remote::execute(args),
+        Command::Serve(args) => cmd::serve::execute(args),
         Command::Verify(args) => cmd::verify::execute(args),
     }
 }

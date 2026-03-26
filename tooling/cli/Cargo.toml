@@ -33,6 +33,7 @@ base64.workspace = true
 hex.workspace = true
 postcard.workspace = true
 rayon.workspace = true
+serde.workspace = true
 whir.workspace = true
 serde_json.workspace = true
 tikv-jemallocator = { workspace = true, optional = true }

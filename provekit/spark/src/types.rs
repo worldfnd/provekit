@@ -92,7 +92,7 @@ pub struct TimeStamps {
 /// Compact on-disk representation of a spark matrix. Uses `Interner` for
 /// value deduplication. Timestamps are omitted and recomputed on
 /// deserialization.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CompactSparkMatrix {
     pub num_rows: usize,
     pub num_cols: usize,
@@ -170,7 +170,7 @@ pub struct SparkWitnesses {
     pub final_col_ts_witness: WhirWitness,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SerializableWhirWitness {
     #[serde(with = "serde_ark_vec")]
     matrix:               Vec<FieldElement>,
@@ -205,7 +205,7 @@ impl From<SerializableWhirWitness> for WhirWitness {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SerializableSparkWitnesses {
     vals_witness:         SerializableWhirWitness,
     rs_ws_witness:        SerializableWhirWitness,
@@ -235,7 +235,7 @@ impl From<SerializableSparkWitnesses> for SparkWitnesses {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SerializableCommitment {
     pub merkle_root:          Hash,
     #[serde(with = "serde_ark_vec")]
@@ -244,7 +244,7 @@ pub struct SerializableCommitment {
     pub out_of_domain_evals:  Vec<FieldElement>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparkCommitments {
     pub vals:         SerializableCommitment,
     pub rs_ws:        SerializableCommitment,
@@ -254,7 +254,7 @@ pub struct SparkCommitments {
 
 /// Combined container for all SPARK prepared data: the R1CS matrix
 /// (compact on-disk format), witnesses, and commitments.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparkPreparedData {
     pub matrix:      CompactSparkMatrix,
     pub witnesses:   SerializableSparkWitnesses,

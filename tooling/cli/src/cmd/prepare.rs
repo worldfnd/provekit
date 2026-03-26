@@ -169,7 +169,7 @@ impl Command for Args {
     }
 }
 
-fn build_spark_r1cs_noir(
+pub fn build_spark_r1cs_noir(
     r1cs: &R1CS,
     log_row: usize,
     log_col: usize,
@@ -295,7 +295,7 @@ fn build_spark_r1cs_mavros(
     Ok(build_spark_matrix(row, col, val, 2 * row_cnt, 2 * col_cnt))
 }
 
-fn build_spark_matrix(
+pub fn build_spark_matrix(
     row: Vec<usize>,
     col: Vec<usize>,
     val: Vec<FieldElement>,
@@ -412,7 +412,7 @@ impl SPARKCommitterScheme {
     }
 }
 
-fn extract_single_commitment(
+pub fn extract_single_commitment(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     config: &WhirConfig,
 ) -> Result<SerializableCommitment> {
@@ -432,7 +432,7 @@ fn extract_single_commitment(
     })
 }
 
-fn extract_commitments(
+pub fn extract_commitments(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     configs: &SPARKWHIRConfigs,
 ) -> Result<SparkCommitments> {
