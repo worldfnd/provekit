@@ -57,7 +57,7 @@ jobs:
       - name: Clean stale benchmark artifacts
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
-          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np ./benchmark-inputs/*.spd ./benchmark-inputs/*.sp
+          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np ./benchmark-inputs/*.sp
           echo "Cleaned stale benchmark artifacts"
 
       - name: Start server (prepare + serve)
@@ -129,9 +129,10 @@ jobs:
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "SPARK verifying $circuit"
-            ../../../target/release/spark-cli verify \
-              --spark-proof ./benchmark-inputs/$circuit-spark-proof.sp \
-              --noir-proof ./benchmark-inputs/$circuit-proof.np
+            ../../../target/release/provekit-cli verify \
+              ./benchmark-inputs/$circuit.pkv \
+              ./benchmark-inputs/$circuit-proof.np \
+              --spark-proof ./benchmark-inputs/$circuit-spark-proof.sp
             echo "SPARK verified $circuit"
           done
 

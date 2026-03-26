@@ -1,6 +1,6 @@
 use {
     super::{
-        prepare::{self, SPARKCommitterScheme},
+        prepare::{self, Compiler, SPARKCommitterScheme},
         Command,
     },
     anyhow::{Context, Result},
@@ -9,10 +9,8 @@ use {
         file::{read, write},
         HashConfig, NoirProofScheme, Prover, TranscriptSponge, Verifier,
     },
-    provekit_r1cs_compiler::NoirCompiler,
-    provekit_spark::{
-        SPARKProver, SPARKProverScheme, SerializableSparkWitnesses, SparkPreparedData,
-    },
+    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
+    provekit_spark::{SPARKProver, SPARKProverScheme, SparkPreparedData},
     serde::{Deserialize, Serialize},
     std::{
         collections::HashMap,
@@ -36,6 +34,14 @@ pub struct Args {
     /// circuit to prepare, format: name:path/to/program.json (repeatable)
     #[argh(option)]
     circuit: Vec<String>,
+
+    /// compiler backend: "noir" (default) or "mavros"
+    #[argh(option, long = "compiler", default = "Compiler::Noir")]
+    compiler: Compiler,
+
+    /// path to R1CS file (required for mavros compiler)
+    #[argh(option, long = "r1cs")]
+    r1cs_path: Option<PathBuf>,
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
@@ -76,7 +82,12 @@ impl Command for Args {
                 .with_context(|| format!("invalid circuit spec '{spec}', expected name:path"))?;
 
             info!("Preparing circuit '{name}' from {path:?}");
-            let (spark_data, scheme) = prepare_circuit(Path::new(path), hash_config)?;
+            let (spark_data, scheme) = prepare_circuit(
+                Path::new(path),
+                &self.compiler,
+                self.r1cs_path.as_deref(),
+                hash_config,
+            )?;
 
             // Write .pkp and .pkv so provekit-prover can load them
             let pkp_path = self.output_dir.join(format!("{name}.pkp"));
@@ -104,7 +115,6 @@ impl Command for Args {
             self.socket,
             circuits.len()
         );
-        println!("READY");
 
         for stream in listener.incoming() {
             let mut stream = stream.context("accepting connection")?;
@@ -130,10 +140,19 @@ impl Command for Args {
 #[instrument(skip_all)]
 fn prepare_circuit(
     program_path: &Path,
+    compiler: &Compiler,
+    r1cs_path: Option<&Path>,
     hash_config: HashConfig,
 ) -> Result<(SparkPreparedData, NoirProofScheme)> {
-    let scheme = NoirCompiler::from_file(program_path, hash_config)
-        .context("while compiling Noir program")?;
+    let scheme = match compiler {
+        Compiler::Noir => NoirCompiler::from_file(program_path, hash_config)
+            .context("while compiling Noir program")?,
+        Compiler::Mavros => {
+            let r1cs_path = r1cs_path.context("--r1cs is required for mavros compiler")?;
+            MavrosCompiler::compile(program_path, r1cs_path, hash_config)
+                .context("while compiling with Mavros")?
+        }
+    };
 
     let whir_r1cs_scheme = match &scheme {
         NoirProofScheme::Noir(s) => s.whir_for_witness.clone(),
@@ -149,7 +168,14 @@ fn prepare_circuit(
             whir_r1cs_scheme.num_challenges,
         )?,
         NoirProofScheme::Mavros(_) => {
-            anyhow::bail!("Mavros compiler not supported in serve mode")
+            let r1cs_path = r1cs_path.context("--r1cs is required for mavros compiler")?;
+            prepare::build_spark_r1cs_mavros(
+                r1cs_path,
+                whir_r1cs_scheme.m_0,
+                whir_r1cs_scheme.m,
+                whir_r1cs_scheme.w1_size,
+                whir_r1cs_scheme.num_challenges,
+            )?
         }
     };
 
@@ -168,8 +194,8 @@ fn prepare_circuit(
         prepare::extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
 
     let spark_data = SparkPreparedData {
-        matrix: spark_r1cs.into(),
-        witnesses: SerializableSparkWitnesses::from(witnesses),
+        matrix: spark_r1cs,
+        witnesses,
         commitments,
     };
 
@@ -191,9 +217,9 @@ fn handle_prove(
         read(&request.noir_proof).context("reading NoirProof")?;
     let spark_query = noir_proof.r1cs_spark_query;
 
-    let num_constraints = spark_data.matrix.num_rows;
-    let num_witnesses = spark_data.matrix.num_cols;
-    let num_nonzero = spark_data.matrix.val.len();
+    let num_constraints = spark_data.matrix.timestamps.final_row.len();
+    let num_witnesses = spark_data.matrix.timestamps.final_col.len();
+    let num_nonzero = spark_data.matrix.coo.val.len();
 
     info!("Proving ({num_constraints} constraints, {num_witnesses} witnesses)");
     let scheme = SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero);

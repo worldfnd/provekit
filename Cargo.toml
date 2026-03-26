@@ -18,7 +18,6 @@ members = [
   "tooling/verifier-server",
   "ntt",
   "provekit/spark",
-  "tooling/spark-cli",
   "poseidon2",
   "playground/passport-input-gen",
 ]
@@ -101,7 +100,6 @@ provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-spark = { path = "provekit/spark" }
-spark-cli = { path = "tooling/spark-cli" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 provekit-wasm = { path = "tooling/provekit-wasm" }

@@ -54,13 +54,13 @@ pub fn run_spark_sumcheck(
             - hhat_i_coeffs[3]
             - hhat_i_coeffs[2];
 
-        debug_assert_eq!(
-            claimed_value,
-            hhat_i_coeffs[0]
-                + hhat_i_coeffs[0]
-                + hhat_i_coeffs[1]
-                + hhat_i_coeffs[2]
-                + hhat_i_coeffs[3],
+        ensure!(
+            claimed_value
+                == hhat_i_coeffs[0]
+                    + hhat_i_coeffs[0]
+                    + hhat_i_coeffs[1]
+                    + hhat_i_coeffs[2]
+                    + hhat_i_coeffs[3],
             "Sumcheck binding check failed"
         );
 

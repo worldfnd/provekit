@@ -9,8 +9,8 @@ pub mod verifier;
 pub use {
     prover::{SPARKProver, SPARKScheme as SPARKProverScheme},
     types::{
-        CompactSparkMatrix, MatrixDimensions, SPARKProof, SPARKWHIRConfigs,
-        SerializableSparkWitnesses, SparkCommitments, SparkPreparedData, SparkWitnesses,
+        MatrixDimensions, SPARKProof, SPARKWHIRConfigs, SparkCommitments, SparkPreparedData,
+        SparkWitnesses,
     },
     utils::calculate_memory,
     verifier::{SPARKScheme as SPARKVerifierScheme, SPARKVerifier},

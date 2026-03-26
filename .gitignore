@@ -15,7 +15,6 @@
 *.pkv
 *.np
 *.sp
-*.spd
 params_for_recursive_verifier
 params
 artifacts/

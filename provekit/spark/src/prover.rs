@@ -92,8 +92,8 @@ impl SPARKScheme {
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
     fn prove(&self, spark_data: SparkPreparedData, request: &R1CSSparkQuery) -> Result<SPARKProof> {
-        let spark_matrix: SparkMatrix = spark_data.matrix.into();
-        let spark_witnesses: SparkWitnesses = spark_data.witnesses.into();
+        let spark_matrix = spark_data.matrix;
+        let spark_witnesses = spark_data.witnesses;
         let commitments = spark_data.commitments;
         let padded_num_entries = spark_matrix.coo.val.len();
 
@@ -103,8 +103,8 @@ impl SPARKProver for SPARKScheme {
         let memory = calculate_memory(
             request.matrix_batching_randomness
                 / (FieldElement::ONE + request.matrix_batching_randomness),
-            request.point_to_evaluate.row.clone(),
-            request.point_to_evaluate.col.clone(),
+            &request.point_to_evaluate.row,
+            &request.point_to_evaluate.col,
         );
 
         let claimed_value = (request.claimed_value
@@ -195,11 +195,11 @@ fn prove_spark_for_single_matrix(
         e_values_vecs,
     } = generate_witnesses(merlin, whir_configs, &e_values)?;
 
-    let rs_ws_vecs = [
-        row_field.to_vec(),
-        matrix.timestamps.read_row.clone(),
-        col_field.to_vec(),
-        matrix.timestamps.read_col.clone(),
+    let rs_ws_vecs: [&[FieldElement]; 4] = [
+        &row_field,
+        &matrix.timestamps.read_row,
+        &col_field,
+        &matrix.timestamps.read_col,
     ];
 
     spark_sumcheck(
@@ -308,7 +308,7 @@ fn run_rs_ws_gpa_and_proofs(
     col_field: &[FieldElement],
     e_values: &EValuesForMatrix,
     rs_ws_witness: WhirWitness,
-    rs_ws_vecs: [Vec<FieldElement>; 4],
+    rs_ws_vecs: [&[FieldElement]; 4],
     e_values_witness: WhirWitness,
     e_values_vecs: [Vec<FieldElement>; 2],
     whir_configs: &SPARKWHIRConfigs,
@@ -385,12 +385,7 @@ fn run_rs_ws_gpa_and_proofs(
     produce_whir_proof(
         merlin,
         evaluation_randomness,
-        &[
-            rs_ws_vecs[0].as_slice(),
-            rs_ws_vecs[1].as_slice(),
-            rs_ws_vecs[2].as_slice(),
-            rs_ws_vecs[3].as_slice(),
-        ],
+        &rs_ws_vecs,
         &whir_configs.num_terms_4batched,
         rs_ws_witness,
     )?;

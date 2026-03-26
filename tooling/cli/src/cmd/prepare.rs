@@ -4,15 +4,14 @@ use {
     argh::FromArgs,
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{
-        file::write, utils::next_power_of_two, FieldElement, HashConfig, NoirProofScheme, Prover,
-        TranscriptSponge, Verifier, WhirConfig, R1CS,
+        file::write, utils::next_power_of_two, FieldElement, HashConfig, Prover, TranscriptSponge,
+        Verifier, WhirConfig, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_spark::{
         prover::new_whir_config_for_size,
         types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps},
-        SPARKWHIRConfigs, SerializableSparkWitnesses, SparkCommitments, SparkPreparedData,
-        SparkWitnesses,
+        SPARKWHIRConfigs, SparkCommitments, SparkWitnesses,
     },
     std::{
         path::{Path, PathBuf},
@@ -21,12 +20,12 @@ use {
     tracing::instrument,
     whir::{
         hash::Hash,
-        transcript::{codecs::Empty, DomainSeparator, ProverState, VerifierMessage, VerifierState},
+        transcript::{ProverState, VerifierMessage, VerifierState},
     },
 };
 
 #[derive(PartialEq, Eq, Debug)]
-enum Compiler {
+pub enum Compiler {
     Noir,
     Mavros,
 }
@@ -78,15 +77,6 @@ pub struct Args {
     )]
     pkv_path: PathBuf,
 
-    /// output path for the combined spark data (matrix, witnesses,
-    /// commitments)
-    #[argh(
-        option,
-        long = "spark-data",
-        default = "PathBuf::from(\"spark_data.spd\")"
-    )]
-    spark_data_path: PathBuf,
-
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
@@ -109,56 +99,6 @@ impl Command for Args {
                     .context("while compiling with Mavros")?
             }
         };
-
-        let whir_r1cs_scheme = match &scheme {
-            NoirProofScheme::Noir(scheme) => scheme.whir_for_witness.clone(),
-            NoirProofScheme::Mavros(scheme) => scheme.whir_for_witness.clone(),
-        };
-
-        let spark_r1cs = match &scheme {
-            NoirProofScheme::Noir(noir) => build_spark_r1cs_noir(
-                &noir.r1cs,
-                whir_r1cs_scheme.m_0,
-                whir_r1cs_scheme.m,
-                whir_r1cs_scheme.w1_size,
-                whir_r1cs_scheme.num_challenges,
-            )?,
-            NoirProofScheme::Mavros(_) => {
-                let r1cs_path = self
-                    .r1cs_path
-                    .as_ref()
-                    .context("--r1cs is required when using the mavros compiler")?;
-
-                build_spark_r1cs_mavros(
-                    r1cs_path,
-                    whir_r1cs_scheme.m_0,
-                    whir_r1cs_scheme.m,
-                    whir_r1cs_scheme.w1_size,
-                    whir_r1cs_scheme.num_challenges,
-                )?
-            }
-        };
-
-        let num_rows = spark_r1cs.timestamps.final_row.len();
-        let num_cols = spark_r1cs.timestamps.final_col.len();
-        let num_nz_vals = spark_r1cs.coo.val.len();
-
-        provekit_common::register_ntt();
-        let spark_committer_scheme = SPARKCommitterScheme::new(num_rows, num_cols, num_nz_vals);
-        let ds = DomainSeparator::protocol(&spark_committer_scheme.whir_configs).instance(&Empty);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
-        let witnesses = spark_committer_scheme.commit(&mut merlin, &spark_r1cs);
-
-        let proof = merlin.proof();
-        let mut arthur = VerifierState::new(&ds, &proof, TranscriptSponge::default());
-        let commitments = extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
-
-        let spark_data = SparkPreparedData {
-            matrix: spark_r1cs.into(),
-            witnesses: SerializableSparkWitnesses::from(witnesses),
-            commitments,
-        };
-        write(&spark_data, &self.spark_data_path).context("while writing spark data")?;
 
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
@@ -225,7 +165,7 @@ pub fn build_spark_r1cs_noir(
     Ok(build_spark_matrix(row, col, val, 2 * row_cnt, 2 * col_cnt))
 }
 
-fn build_spark_r1cs_mavros(
+pub fn build_spark_r1cs_mavros(
     r1cs_path: &Path,
     log_row: usize,
     log_col: usize,

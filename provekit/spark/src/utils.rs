@@ -6,11 +6,11 @@ use provekit_common::{
 #[tracing::instrument(skip_all)]
 pub fn calculate_memory(
     b: FieldElement,
-    point_row: Vec<FieldElement>,
-    point_col: Vec<FieldElement>,
+    point_row: &[FieldElement],
+    point_col: &[FieldElement],
 ) -> Memory {
-    let row_point: Vec<_> = std::iter::once(b).chain(point_row).collect();
-    let col_point: Vec<_> = std::iter::once(b).chain(point_col).collect();
+    let row_point: Vec<_> = std::iter::once(b).chain(point_row.iter().copied()).collect();
+    let col_point: Vec<_> = std::iter::once(b).chain(point_col.iter().copied()).collect();
     Memory {
         eq_rx: calculate_evaluations_over_boolean_hypercube_for_eq(
             &row_point,

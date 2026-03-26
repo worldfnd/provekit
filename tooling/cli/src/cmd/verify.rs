@@ -3,9 +3,10 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, NoirProof, Verifier},
+    provekit_spark::{SPARKProof, SPARKVerifier, SPARKVerifierScheme},
     provekit_verifier::Verify,
     std::path::PathBuf,
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 /// Verify a Noir proof
@@ -19,6 +20,10 @@ pub struct Args {
     /// path to the proof file
     #[argh(positional)]
     proof_path: PathBuf,
+
+    /// path to the SPARK proof file (optional)
+    #[argh(option, long = "spark-proof")]
+    spark_proof_path: Option<PathBuf>,
 }
 
 impl Command for Args {
@@ -36,6 +41,19 @@ impl Command for Args {
         verifier
             .verify(&proof)
             .context("While verifying Noir proof")?;
+
+        // Verify the SPARK proof if provided
+        if let Some(spark_proof_path) = &self.spark_proof_path {
+            info!("Verifying SPARK proof from {spark_proof_path:?}");
+            let spark_proof: SPARKProof =
+                read(spark_proof_path).context("while reading SPARK proof")?;
+            let spark_statement = proof.r1cs_spark_query;
+            let scheme = SPARKVerifierScheme::from_proof(&spark_proof);
+            scheme
+                .verify(spark_proof, &spark_statement)
+                .context("While verifying SPARK proof")?;
+            info!("SPARK proof verified successfully");
+        }
 
         Ok(())
     }
