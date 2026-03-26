@@ -148,6 +148,26 @@ where
     }
 }
 
+/// Compute total TLV length of a DER/BER element from its header bytes (constrained).
+/// Supports short form (len < 128) and long form with 1-2 length bytes.
+/// Tag-agnostic - callers should assert the expected tag separately if needed.
+pub fn get_asn1_element_length<let N: u32>(data: [u8; N]) -> u32 {
+    let len_byte = data[1];
+    if (len_byte & 0x80) == 0 {
+        // Short form: content length is in low 7 bits
+        2 + (len_byte as u32)
+    } else {
+        let nlen: u32 = (len_byte & 0x7F) as u32;
+        assert(nlen >= 1, "Zero length-of-length");
+        assert(nlen <= 2, "Length field > 2 bytes not supported");
+        if nlen == 1 {
+            3 + (data[2] as u32)
+        } else {
+            4 + (data[2] as u32) * 256 + (data[3] as u32)
+        }
+    }
+}
+
 pub fn get_issuing_country_from_mrz(dg1: DG1Data) -> MRZIssuingCountry {
     let mrz = get_mrz_from_dg1(dg1);
     // No need to check if it's an ID card since the issuing country
