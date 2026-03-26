@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/big"
 	"math/bits"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"sort"
 
 	arkSerialize "github.com/reilabs/go-ark-serialize"
@@ -421,6 +422,7 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 			} else {
 				// Need sibling hash from hints
 				siblingHash, err := arthur.ProverHint(32)
+				fmt.Println("prover hint:", FrDecimalToHexLE(typeConverters.LittleEndianUint8ToBigInt(siblingHash).String()))
 				if err != nil {
 					return FullMultiPath[KeccakDigest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}

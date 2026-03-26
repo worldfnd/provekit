@@ -16,6 +16,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 
 	"reilabs/whir-verifier-circuit/app/common"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 )
 
 func FrDecimalToHexLE(decimal string) string {
@@ -369,8 +370,15 @@ func nativeIRSCommitVerify(
 	if err = arthur.ProverHintArk(&submatrix); err != nil {
 		return nil, fmt.Errorf("initial submatrix: %w", err)
 	}
-	fmt.Println("initial_committer submatrix len:", len(submatrix))
-
+	fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+	for i, v := range submatrix {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		val := typeConverters.LimbsToBigIntMod(v.Limbs)
+		fmt.Print(val.String())
+	}
+	fmt.Println("]")
 	// matrix_commit.verify: read Merkle proof from hints
 	foldedDomainSize := domainSize / foldingFactorPower
 	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
@@ -781,6 +789,16 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 		if err = arthur.ProverHintArk(&submatrix); err != nil {
 			return ZKHint{}, fmt.Errorf("round %d submatrix: %w", r, err)
 		}
+		fmt.Println("round", r)
+		fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+		for i, v := range submatrix {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			val := typeConverters.LimbsToBigIntMod(v.Limbs)
+			fmt.Print(val.String())
+		}
+		fmt.Println("]")
 		allStirAnswers = append(allStirAnswers, [][]Fp256{submatrix})
 
 		// Merkle tree hints
@@ -851,6 +869,7 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
 		return ZKHint{}, fmt.Errorf("final submatrix: %w", err)
 	}
+	fmt.Println("final submatrix:", finalSubmatrix)
 	allStirAnswers = append(allStirAnswers, [][]Fp256{finalSubmatrix})
 
 	foldedDomainSize := domainSize / finalFoldingFactorPower
@@ -871,6 +890,7 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 	if err = arthur.ProverHintArk(&deferred); err != nil {
 		return ZKHint{}, fmt.Errorf("deferred: %w", err)
 	}
+	fmt.Println("deferred:", deferred)
 	log.Printf("Read %d deferred weight evaluations", len(deferred))
 
 	// --- Final sumcheck ---

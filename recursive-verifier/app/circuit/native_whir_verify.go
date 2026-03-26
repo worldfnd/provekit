@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
+	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"sort"
 )
 
@@ -322,10 +323,20 @@ func nativeIRSCommitVerifyWithPoints(
 	fmt.Println("nativeIRSCommitVerifyWithPoints indices", indices)
 
 	// Read submatrix hint
-	// var submatrix []Fp256
-	// if err = arthur.ProverHintArk(&submatrix); err != nil {
-	// 	return nil, fmt.Errorf("submatrix: %w", err)
-	// }
+	var submatrix []Fp256
+	if err = arthur.ProverHintArk(&submatrix); err != nil {
+		return nil, fmt.Errorf("submatrix: %w", err)
+	}
+	// Print submatrix values as decimal using LimbsToBigIntMod
+	fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+	for i, v := range submatrix {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		val := typeConverters.LimbsToBigIntMod(v.Limbs)
+		fmt.Print(val.String())
+	}
+	fmt.Println("]")
 
 	// Read Merkle proof hints
 	foldedDomainSize := domainSize / foldingFactorPower
@@ -761,10 +772,20 @@ func NativeWhirVerify(
 		return nil, fmt.Errorf("final stir challenges: %w", err)
 	}
 
-	// var finalSubmatrix []Fp256
-	// if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
-	// 	return nil, fmt.Errorf("final submatrix: %w", err)
-	// }
+	var finalSubmatrix []Fp256
+	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
+		return nil, fmt.Errorf("final submatrix: %w", err)
+	}
+	fmt.Print("finalSubmatrix [")
+	for i, v := range finalSubmatrix {
+		if i > 0 {
+			fmt.Print(", ")
+		}
+		val := typeConverters.LimbsToBigIntMod(v.Limbs)
+		fmt.Print(val.String())
+	}
+	fmt.Println("]")
+
 	allStirAnswers = append(allStirAnswers, [][]Fp256{})
 
 	foldedDomainSize := domainSize / finalFoldingFactorPower
@@ -781,16 +802,7 @@ func NativeWhirVerify(
 	allMerklePaths = append(allMerklePaths, finalMerklePath)
 
 	// ---------------------------------------------------------------
-	// 9. Read deferred weight evaluations
-	// ---------------------------------------------------------------
-	// var deferred []Fp256
-	// if err = arthur.ProverHintArk(&deferred); err != nil {
-	// 	return nil, fmt.Errorf("deferred: %w", err)
-	// }
-	// fmt.Printf("Read %d deferred weight evaluations\n", len(deferred))
-
-	// ---------------------------------------------------------------
-	// 10. Final sumcheck
+	// 9. Final sumcheck
 	// ---------------------------------------------------------------
 	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(arthur, theSum, whirParams.FinalSumcheckRounds)
 	if err != nil {
