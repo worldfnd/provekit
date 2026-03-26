@@ -112,7 +112,8 @@ impl Prove for Prover {
                 self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
                 &mut merlin,
-            );
+            )
+            .context("While solving w1 witnesses")?;
         }
 
         // Compress w2 layers to free memory during w1 commit (only when
@@ -172,7 +173,8 @@ impl Prove for Prover {
                     w2_layers,
                     &acir_witness_idx_to_value_map,
                     &mut merlin,
-                );
+                )
+                .context("While solving w2 witnesses")?;
             }
             drop(acir_witness_idx_to_value_map);
 
