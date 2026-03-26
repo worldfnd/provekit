@@ -4,8 +4,9 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
-            make_public_weight, OffsetCovector,
+            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
+            compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
+            OffsetCovector,
         },
         utils::{
             pad_to_power_of_two,
@@ -223,6 +224,18 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
+            // Challenge binding: compute eval of challenge positions in w2 and
+            // send as transcript-bound message so the verifier can check that
+            // the committed w2 polynomial contains the correct Fiat-Shamir
+            // challenges.
+            let challenge_eval = if !self.challenge_offsets.is_empty() {
+                let ce = compute_challenge_eval(x, &self.challenge_offsets, &c2.polynomial);
+                merlin.prover_message(&ce);
+                Some(ce)
+            } else {
+                None
+            };
+
             let WhirR1CSCommitment {
                 witness: w1,
                 polynomial: p1,
@@ -264,12 +277,20 @@ impl WhirR1CSProver for WhirR1CSScheme {
             } = c2;
             {
                 let weights = build_prefix_covectors(self.m, alphas_2);
-                let evaluations: Vec<FieldElement> = evals_2;
+                let mut evaluations: Vec<FieldElement> = evals_2;
 
-                let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                     .into_iter()
                     .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                     .collect();
+
+                if let Some(ce) = challenge_eval {
+                    let challenge_weight =
+                        make_challenge_weight(x, &self.challenge_offsets, self.m);
+                    boxed_weights.push(Box::new(challenge_weight));
+                    evaluations.push(ce);
+                }
+
                 let _ = self.whir_witness.prove(
                     &mut merlin,
                     vec![Cow::Borrowed(p2.as_slice())],

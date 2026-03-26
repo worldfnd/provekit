@@ -235,6 +235,100 @@ pub fn compute_public_eval(
     eval
 }
 
+/// Covector with non-zero weights at arbitrary (possibly non-contiguous)
+/// positions.  Used for challenge binding where Fiat-Shamir challenge
+/// witnesses may be scattered throughout the w2 polynomial.
+pub struct SparseCovector {
+    entries:     Vec<(usize, FieldElement)>,
+    domain_size: usize,
+}
+
+impl SparseCovector {
+    /// Create a new `SparseCovector` from `(position, weight)` pairs and a
+    /// domain size.
+    pub fn new(entries: Vec<(usize, FieldElement)>, domain_size: usize) -> Self {
+        assert!(domain_size.is_power_of_two());
+        assert!(
+            entries.iter().all(|&(pos, _)| pos < domain_size),
+            "SparseCovector: all entry positions must be < domain_size ({domain_size})"
+        );
+        Self {
+            entries,
+            domain_size,
+        }
+    }
+}
+
+impl LinearForm<FieldElement> for SparseCovector {
+    fn size(&self) -> usize {
+        self.domain_size
+    }
+
+    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+        let n = point.len();
+        let mut result = FieldElement::zero();
+        for &(idx, w) in &self.entries {
+            if w.is_zero() {
+                continue;
+            }
+            let mut basis = FieldElement::one();
+            for (k, pk) in point.iter().enumerate() {
+                if (idx >> (n - 1 - k)) & 1 == 1 {
+                    basis *= pk;
+                } else {
+                    basis *= FieldElement::one() - pk;
+                }
+            }
+            result += w * basis;
+        }
+        result
+    }
+
+    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+        for &(pos, w) in &self.entries {
+            accumulator[pos] += scalar * w;
+        }
+    }
+}
+
+/// Build a [`SparseCovector`] that extracts the challenge positions from a w2
+/// polynomial, weighted by successive powers of `x`.
+#[must_use]
+pub fn make_challenge_weight(
+    x: FieldElement,
+    challenge_offsets: &[usize],
+    m: usize,
+) -> SparseCovector {
+    let domain_size = 1usize << m;
+    let mut x_pow = FieldElement::one();
+    let entries: Vec<(usize, FieldElement)> = challenge_offsets
+        .iter()
+        .map(|&pos| {
+            let entry = (pos, x_pow);
+            x_pow *= x;
+            entry
+        })
+        .collect();
+    SparseCovector::new(entries, domain_size)
+}
+
+/// Evaluate `Σ xⁱ · polynomial[challenge_offsets[i]]` — the challenge binding
+/// value that the prover sends as a transcript-bound message.
+#[must_use]
+pub fn compute_challenge_eval(
+    x: FieldElement,
+    challenge_offsets: &[usize],
+    polynomial: &[FieldElement],
+) -> FieldElement {
+    let mut result = FieldElement::zero();
+    let mut x_pow = FieldElement::one();
+    for &pos in challenge_offsets {
+        result += x_pow * polynomial[pos];
+        x_pow *= x;
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, whir::algebra::multilinear_extend};
@@ -429,5 +523,70 @@ mod tests {
     fn new_panics_on_out_of_bounds() {
         // offset + weights.len() = 7 + 2 = 9 > 8
         let _ = OffsetCovector::new(vec![fe(1), fe(2)], 7, 8);
+    }
+
+    #[test]
+    fn sparse_covector_mle_matches_dense() {
+        let entries = vec![(0, fe(3)), (3, fe(7))];
+        let sc = SparseCovector::new(entries, 4);
+        let mut dense = vec![FieldElement::zero(); 4];
+        dense[0] = fe(3);
+        dense[3] = fe(7);
+        let pc = PrefixCovector::new(dense, 4);
+        let point = vec![fe(2), fe(5)];
+        assert_eq!(sc.mle_evaluate(&point), pc.mle_evaluate(&point));
+    }
+
+    #[test]
+    fn sparse_covector_accumulate() {
+        let entries = vec![(1, fe(4)), (3, fe(2))];
+        let sc = SparseCovector::new(entries, 4);
+        let mut acc = vec![FieldElement::zero(); 4];
+        sc.accumulate(&mut acc, fe(3));
+        assert_eq!(acc[0], FieldElement::zero());
+        assert_eq!(acc[1], fe(12));
+        assert_eq!(acc[2], FieldElement::zero());
+        assert_eq!(acc[3], fe(6));
+    }
+
+    #[test]
+    fn make_challenge_weight_consistency() {
+        let x = fe(11);
+        let offsets = vec![2, 5, 9];
+        let cw = make_challenge_weight(x, &offsets, 4);
+        assert_eq!(cw.size(), 16);
+        let mut poly = vec![FieldElement::zero(); 16];
+        poly[2] = fe(100);
+        poly[5] = fe(200);
+        poly[9] = fe(300);
+        let eval = compute_challenge_eval(x, &offsets, &poly);
+        let mut acc = vec![FieldElement::zero(); 16];
+        cw.accumulate(&mut acc, FieldElement::one());
+        let dot: FieldElement = acc.iter().zip(poly.iter()).map(|(a, b)| *a * *b).sum();
+        assert_eq!(eval, dot);
+    }
+
+    #[test]
+    fn compute_challenge_eval_basic() {
+        let x = fe(3);
+        let offsets = vec![0, 2];
+        let poly = vec![fe(10), fe(20), fe(30)];
+        let eval = compute_challenge_eval(x, &offsets, &poly);
+        assert_eq!(eval, fe(10) + fe(3) * fe(30));
+    }
+
+    #[test]
+    fn sparse_covector_empty_entries() {
+        let sc = SparseCovector::new(vec![], 8);
+        let point = vec![fe(1), fe(2), fe(3)];
+        assert_eq!(sc.mle_evaluate(&point), FieldElement::zero());
+    }
+
+    #[test]
+    fn sparse_covector_single_entry_matches_prefix() {
+        let sc = SparseCovector::new(vec![(0, fe(5))], 4);
+        let pc = PrefixCovector::new(vec![fe(5), FieldElement::zero()], 4);
+        let point = vec![fe(7), fe(11)];
+        assert_eq!(sc.mle_evaluate(&point), pc.mle_evaluate(&point));
     }
 }
