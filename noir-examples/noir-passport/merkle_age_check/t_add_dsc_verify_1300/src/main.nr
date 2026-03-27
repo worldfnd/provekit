@@ -5,6 +5,7 @@ use partial_sha256::{
 use fragmented_sig_check_rsa::verify_rsa_signature;
 use utils::check_zero_padding;
 use utils::get_asn1_element_length;
+use sig_check_rsa::compute_key_ne_hash;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -14,12 +15,13 @@ global TBS_CERT_SIZE: u32 = 1300;
 fn main(
     comm_in: pub Field,
     csc_pubkey: pub [u8; 512],
+    csc_key_ne_hash: pub Field,
+    csc_pubkey_redc_param: [u8; 513],
     salt: Field,
     country: Alpha3CountryCode,
     state1: SHA256State,
     tbs_certificate: [u8; TBS_CERT_SIZE],
     tbs_certificate_len: u32,
-    csc_pubkey_redc_param: [u8; 513],
     dsc_signature: [u8; 512],
     exponent: u32,
     salt_out: Field,
@@ -41,6 +43,10 @@ fn main(
     // Ensure all bytes beyond the signed length are zero so that trailing
     // bytes cannot carry attacker-controlled data into the commitment.
     check_zero_padding(tbs_certificate, tbs_certificate_len);
+    assert(
+        csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
+        "CSC key hash does not match (n||e)",
+    );
 
     let mut chunk1: [u8; CHUNK1_SIZE] = [0; CHUNK1_SIZE];
     for i in 0..CHUNK1_SIZE {
