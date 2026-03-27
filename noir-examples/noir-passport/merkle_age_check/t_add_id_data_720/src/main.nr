@@ -13,17 +13,18 @@ fn main(
     dsc_pubkey: [u8; 256],
     dsc_pubkey_redc_param: [u8; 257],
     dsc_pubkey_offset_in_dsc_cert: u32,
+    exponent: u32,
+    exponent_offset_in_dsc_cert: u32,
     sod_signature: [u8; 256],
     tbs_certificate: [u8; 720],
     signed_attributes: SignedAttrsData,
-    exponent: u32,
     e_content: EContentData,
 ) -> pub Field {
     // Compute TBS certificate length from DER header 
     assert(tbs_certificate[0] == 0x30, "TBS must start with SEQUENCE tag");
     let tbs_certificate_len = get_asn1_element_length(tbs_certificate);
 
-    verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate, dsc_pubkey_offset_in_dsc_cert, tbs_certificate_len);
+    verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate, dsc_pubkey_offset_in_dsc_cert, tbs_certificate_len,exponent,exponent_offset_in_dsc_cert);
 
     // Compute signed_attributes_size from ASN.1 header 
     let signed_attributes_size = get_asn1_element_length(signed_attributes);
