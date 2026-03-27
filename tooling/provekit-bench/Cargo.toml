@@ -20,7 +20,6 @@ nargo.workspace = true
 nargo_cli.workspace = true
 nargo_toml.workspace = true
 noirc_driver.workspace = true
-noirc_artifacts.workspace = true
 
 # 3rd party
 anyhow.workspace = true
