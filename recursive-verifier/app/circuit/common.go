@@ -143,12 +143,14 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	}
 
 	hasPublicInputs := !config.PublicInputs.IsEmpty()
+	var publicEvalBigInt *big.Int
 	if hasPublicInputs {
 		var publicEval Fp256
 		if err = arthur.ProverHintArk(&publicEval); err != nil {
 			return fmt.Errorf("public_eval: %w", err)
 		}
 		fmt.Println("public_eval:", publicEval)
+		publicEvalBigInt = fp256ToBigInt(publicEval)
 	}
 
 	// ---------------------------------------------------------------
@@ -182,7 +184,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	remainingTranscript := len(arthur.nargString)
 	fmt.Printf("Native transcript replay complete. Remaining: %d hint bytes, %d transcript bytes\n", remainingHints, remainingTranscript)
 
-	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, buildOps, PublicInputs{})
+	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, buildOps, PublicInputs{}, evals1BigInt, publicEvalBigInt)
 
 	return nil
 }

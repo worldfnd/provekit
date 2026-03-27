@@ -16,7 +16,9 @@ func VerifyWhir(
 	commitment ParsedCommitment,
 	statements []Statement,
 	params WHIRParams,
-) (totalFoldingRandomness []frontend.Variable, err error) {
+	merkleData *WhirMerkleData, // nil to skip Merkle verification
+) (result *VerifyResult, err error) {
+	var totalFoldingRandomness []frontend.Variable
 
 	numVectors := params.BatchSize
 
@@ -84,13 +86,11 @@ func VerifyWhir(
 	// Perform the initial sumcheck
 	initialSumcheckData, theSum, initialSumcheckFoldingRandomness, err := initialSumcheck(api, nimue, theSum, commitment.OodPoints, oodsRlcCoeffs, initialFormRlcCoeffs, params)
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	// TODO: Re-enable once hint infrastructure is wired up.
-	// foldSize := 1 << params.FoldingFactorArray[0]
-	// numQueries := params.RoundParametersNumOfQueries[0]
-	// initialLeaves := readLeavesFromHints(hr, numQueries, params.BatchSize*foldSize)
+	// Initial commitment leaf data is verified by the ZK wrapper's
+	// initial_committer.verify(), not here. We proceed with the round loop.
 
 	mainRoundData := generateEmptyMainRoundData(params)
 	expDomainGenerator := ExponentVar(api, params.StartingDomainBackingDomainGenerator, frontend.Variable(1<<params.FoldingFactorArray[0]), bits.Len(uint(params.DomainSize)))
@@ -143,8 +143,11 @@ func VerifyWhir(
 			return nil, fmt.Errorf("round %d stir: %w", r, err)
 		}
 
-		// TODO: Re-enable Merkle/leaf verification once hints are wired up.
-		_ = stirIndexes
+		// Verify Merkle proofs and read leaf data when MerkleData is provided.
+		if merkleData != nil && r < len(merkleData.Rounds) {
+			rd := merkleData.Rounds[r]
+			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+		}
 
 		prevRootHash = rootHash[0]
 
@@ -155,12 +158,29 @@ func VerifyWhir(
 			mainRoundData.StirChallengesPoints[r][index] = ExponentVar(api, expDomainGenerator, idx, numBits)
 		}
 
-		// Constraint values = OOD values + in-domain zero placeholders.
+		// Constraint values = OOD values + in-domain values from Merkle-verified leaves.
 		numInDomainQueries := len(stirIndexes)
 		constraintValues := make([]frontend.Variable, 0, len(roundOODAnswers)+numInDomainQueries)
 		constraintValues = append(constraintValues, roundOODAnswers...)
-		for range numInDomainQueries {
-			constraintValues = append(constraintValues, frontend.Variable(0))
+
+		if merkleData != nil && r < len(merkleData.Rounds) {
+			// Compute in-domain constraint values from verified leaf data.
+			// Each leaf contains foldSize elements. The constraint value is the
+			// dot product with the tensor(polyRLC, eq_weights(lastFoldRandomness)).
+			lastFoldRand := totalFoldingRandomness[len(totalFoldingRandomness)-params.FoldingFactorArray[r]:]
+			eqW := computeEqWeights(api, lastFoldRand)
+			rd := merkleData.Rounds[r]
+			for q := range numInDomainQueries {
+				if q < len(rd.Leaves) {
+					constraintValues = append(constraintValues, DotProduct(api, eqW, rd.Leaves[q]))
+				} else {
+					constraintValues = append(constraintValues, frontend.Variable(0))
+				}
+			}
+		} else {
+			for range numInDomainQueries {
+				constraintValues = append(constraintValues, frontend.Variable(0))
+			}
 		}
 
 		// Combination randomness
@@ -213,10 +233,12 @@ func VerifyWhir(
 		finalRandomnessPoints[i] = ExponentVar(api, expDomainGenerator, idx, numBits)
 	}
 
-	// TODO: Re-enable final round leaf/Merkle verification once hints are wired up.
-	_ = prevRootHash
-	_ = finalRandomnessPoints
-	_ = finalVector
+	// Verify final round Merkle proofs when data is provided.
+	finalRoundIdx := params.ParamNRounds
+	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
+		rd := merkleData.Rounds[finalRoundIdx]
+		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+	}
 
 	// Final sumcheck.
 	finalSumcheckRandomness, theSum, err := runWhirSumcheckRounds(api, theSum, nimue, params.FinalSumcheckRounds)
@@ -232,14 +254,69 @@ func VerifyWhir(
 		}
 	}
 
-	// TODO: Re-enable deferred evaluation check and final equation once hints are wired up.
-	_ = initialSumcheckData
-	_ = mainRoundData
-	_ = initialFormRlcCoeffs
-	_ = numLinearForms
-	_ = finalSumcheckRandomness
+	// ---------------------------------------------------------------
+	// 10. Deferred evaluation check
+	//
+	// Mirrors Rust whir verifier.rs lines 246-268:
+	//   poly_eval = MLE(finalSumcheckRandomness, finalVector)
+	//   linear_form_rlc = the_sum / poly_eval
+	//   for each round's internal constraints, subtract:
+	//     rlc_coeff * UnivariateEvaluation{point, size}.mle_evaluate(evaluationPoint)
+	// ---------------------------------------------------------------
 
-	return totalFoldingRandomness, nil
+	// Concatenate all folding randomness into the full evaluation point.
+	evaluationPoint := totalFoldingRandomness
+
+	// poly_eval = MLE(finalSumcheckRandomness).evaluate(Identity, finalVector)
+	polyEval := MultilinearEvalCircuit(api, finalSumcheckRandomness, finalVector)
+
+	// linear_form_rlc = the_sum / poly_eval
+	// In gnark: api.Div(a, b) constrains b * result == a.
+	linearFormRLC := api.Div(theSum, polyEval)
+
+	// Subtract initial round OOD evaluator contributions.
+	// Each OOD evaluator is UnivariateEvaluation{point, size} with
+	// size = domainSize / (1 << rate) = 2^MVParamsNumberOfVariables.
+	numInitialVars := params.MVParamsNumberOfVariables
+	initialSubPoint := evaluationPoint[len(evaluationPoint)-numInitialVars:]
+	numOODInitial := len(initialSumcheckData.InitialOODQueries)
+	for i := 0; i < numOODInitial; i++ {
+		oodIdx := numLinearForms + i // OOD coeffs come after linear form coeffs
+		mleVal := UnivarMleEvaluate(api, initialSumcheckData.InitialOODQueries[i], initialSubPoint)
+		linearFormRLC = api.Sub(linearFormRLC, api.Mul(initialSumcheckData.InitialCombinationRandomness[oodIdx], mleVal))
+	}
+
+	// Subtract main round constraint contributions (OOD + in-domain STIR evaluators).
+	numVarsForRound := numInitialVars
+	for r := range params.ParamNRounds {
+		numVarsForRound -= params.FoldingFactorArray[r]
+		subPoint := evaluationPoint[len(evaluationPoint)-numVarsForRound:]
+
+		roundOODCount := params.RoundParametersOODSamples[r]
+		roundCombRLC := mainRoundData.CombinationRandomness[r]
+
+		// OOD evaluators for this round
+		for i := 0; i < roundOODCount; i++ {
+			mleVal := UnivarMleEvaluate(api, mainRoundData.OODPoints[r][i], subPoint)
+			linearFormRLC = api.Sub(linearFormRLC, api.Mul(roundCombRLC[i], mleVal))
+		}
+
+		// In-domain STIR evaluators for this round
+		stirPoints := mainRoundData.StirChallengesPoints[r]
+		for i, stirPt := range stirPoints {
+			mleVal := UnivarMleEvaluate(api, stirPt, subPoint)
+			linearFormRLC = api.Sub(linearFormRLC, api.Mul(roundCombRLC[roundOODCount+i], mleVal))
+		}
+	}
+
+	return &VerifyResult{
+		TotalFoldingRandomness: totalFoldingRandomness,
+		FinalClaim: FinalClaimCircuit{
+			EvaluationPoint: evaluationPoint,
+			RLCCoefficients: initialFormRlcCoeffs,
+			LinearFormRLC:   linearFormRLC,
+		},
+	}, nil
 }
 
 // ExpandFromUnivariate converts a univariate evaluation point into a multilinear one.

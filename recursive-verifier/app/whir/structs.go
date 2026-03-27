@@ -103,6 +103,39 @@ type MainRoundData struct {
 	CombinationRandomness [][]frontend.Variable
 }
 
+// FinalClaimCircuit mirrors the Rust FinalClaim<F> for the gnark circuit.
+// The caller must verify: LinearFormRLC == Σ(RLCCoefficients[i] * weight_i.mle_evaluate(EvaluationPoint))
+type FinalClaimCircuit struct {
+	EvaluationPoint []frontend.Variable
+	RLCCoefficients []frontend.Variable
+	LinearFormRLC   frontend.Variable
+}
+
+// VerifyResult bundles all outputs from VerifyWhir.
+type VerifyResult struct {
+	TotalFoldingRandomness []frontend.Variable
+	FinalClaim             FinalClaimCircuit
+}
+
+// RoundMerkleEntry holds the Merkle proof data for one round of WHIR opening.
+type RoundMerkleEntry struct {
+	// Leaf values (submatrix): [query_idx][fold_element_idx]
+	Leaves [][]frontend.Variable
+	// Leaf sibling hashes for the Merkle proof: [query_idx]
+	SiblingHashes []frontend.Variable
+	// Auth path hashes for the Merkle proof: [query_idx][level]
+	AuthPaths [][]frontend.Variable
+	// Leaf indexes in the folded domain: [query_idx]
+	LeafIndexes []frontend.Variable
+}
+
+// WhirMerkleData holds all Merkle proof data for a single VerifyWhir call.
+// Rounds[0..nRounds-1] correspond to main round openings;
+// Rounds[nRounds] is the final round opening.
+type WhirMerkleData struct {
+	Rounds []RoundMerkleEntry
+}
+
 // ComputeWhirProofFrs returns the exact number of field elements consumed from
 // the WHIR transcript verifier (narg string) during ReceiveCommitment + VerifyWhir.
 // This traces every Read/ReadVector call on the transcript deterministically.

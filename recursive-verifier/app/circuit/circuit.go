@@ -3,6 +3,7 @@ package circuit
 import (
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -65,6 +66,12 @@ type Circuit struct {
 	BlindedCommitmentWhirConfig  WHIRParams
 	NumChallenges                int
 	PublicInputs                 PublicInputs
+
+	// Evaluation hints from prover (prover_hint_ark, not transcript-bound).
+	// Single commitment: [az_at_alpha, bz_at_alpha, cz_at_alpha]
+	Evaluations []frontend.Variable
+	// Public input evaluation hint (only used when PublicInputs is non-empty).
+	PublicEval frontend.Variable
 }
 
 type Commitment struct {
@@ -102,24 +109,19 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 	}
 
-	// Run ZK sumcheck
-	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
+	// Run ZK sumcheck — returns tRand (r) and alpha (folding challenges).
+	tRand, alpha, fAtAlpha, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
-	api.Println("spartanSumcheckRand", spartanSumcheckRand)
-	api.Println("spartanSumcheckLastValue", spartanSumcheckLastValue)
+	api.Println("tRand", tRand)
+	api.Println("alpha", alpha)
+	api.Println("fAtAlpha", fAtAlpha)
 
 	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
 		return err
 	}
-
-	spartanSumcheckRand_ := spartanSumcheckRand
-	spartanSumcheckLastValue_ := spartanSumcheckLastValue
-	_ = spartanSumcheckRand_
-	_ = spartanSumcheckLastValue_
-	_ = uapi
 
 	publicWeightsChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
@@ -132,12 +134,15 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// (mirrors Rust verifier lines 172-214, single commitment path)
 	// ---------------------------------------------------------------
 
-	// Read 3 evaluation hints (az_at_alpha, bz_at_alpha, cz_at_alpha)
-	// These come from prover_hint_ark in the Rust verifier (hint stream, not transcript).
-	// evalsHint := hr.ReadVec(3)
-	azAtAlpha, _ := api.ConstantValue(0) //evalsHint[0])
-	bzAtAlpha, _ := api.ConstantValue(0) //evalsHint[1]
-	czAtAlpha, _ := api.ConstantValue(0) // evalsHint[2]
+	// Evaluation hints (az_at_alpha, bz_at_alpha, cz_at_alpha) come from
+	// prover_hint_ark in the Rust verifier (hint stream, not transcript).
+	// They are passed as circuit witness fields.
+	if len(circuit.Evaluations) < 3 {
+		return fmt.Errorf("circuit.Evaluations must have at least 3 elements, got %d", len(circuit.Evaluations))
+	}
+	azAtAlpha := circuit.Evaluations[0]
+	bzAtAlpha := circuit.Evaluations[1]
+	czAtAlpha := circuit.Evaluations[2]
 	api.Println("azAtAlpha", azAtAlpha)
 	api.Println("bzAtAlpha", bzAtAlpha)
 	api.Println("czAtAlpha", czAtAlpha)
@@ -149,10 +154,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	var whirEvaluations []frontend.Variable
 
 	if hasPublicInputs {
-		publicEvalHint, _ := api.ConstantValue(0)
-		publicEval := []frontend.Variable{publicEvalHint}
-		api.Println("publicEval", publicEval[0])
-		whirEvaluations = []frontend.Variable{publicEval[0], azAtAlpha, bzAtAlpha, czAtAlpha}
+		api.Println("publicEval", circuit.PublicEval)
+		whirEvaluations = []frontend.Variable{circuit.PublicEval, azAtAlpha, bzAtAlpha, czAtAlpha}
 	} else {
 		whirEvaluations = []frontend.Variable{azAtAlpha, bzAtAlpha, czAtAlpha}
 	}
@@ -175,10 +178,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
 	}
 
-	_ = whirEvaluations
-	_ = weightsLen
-	_ = blindedCommitmentNimue
-	_ = blindingCommitmentNimue
+	// _ = whirEvaluations
+	// _ = weightsLen
+	// _ = blindedCommitmentNimue
+	// _ = blindingCommitmentNimue
 	// Run ZK-WHIR verification (single commitment version)
 	err = ZKWhirVerifyNimue(
 		api, sc, nimue,
@@ -196,15 +199,15 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	// ---------------------------------------------------------------
 	// Final R1CS constraint satisfaction check:
-	// f_at_alpha == (az_at_alpha * bz_at_alpha - cz_at_alpha) * eq(r, alpha)
+	// f_at_alpha == (az·bz - cz) * eq(tRand, alpha)
+	//
+	// tRand is the Spartan verifier randomness (r), alpha is the
+	// sumcheck folding challenges, fAtAlpha is the unblinded last
+	// evaluation from the sumcheck.
 	// ---------------------------------------------------------------
-	// spartanSumcheckRand is 'r', the alpha comes from the sumcheck folding
-	// The f_at_alpha is spartanSumcheckLastValue (from runZKSumcheck)
-	// rhs := api.Mul(
-	// 	api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha),
-	// 	calculateEqCircuit(api, spartanSumcheckRand, spartanSumcheckRand), // TODO: use actual alpha from sumcheck
-	// )
-	// api.AssertIsEqual(spartanSumcheckLastValue, rhs)
+	eqRA := calculateEqCircuit(api, tRand, alpha)
+	rhs := api.Mul(api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha), eqRA)
+	api.AssertIsEqual(fAtAlpha, rhs)
 
 	return nil
 }
@@ -445,6 +448,8 @@ func verifyCircuit(
 	interner Interner,
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
+	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints
+	publicEvalBigInt *big.Int, // public input evaluation (nil if no public inputs)
 ) error {
 	// TODO: Re-enable once the circuit uses SpongefishArthur with protocol_id
 	// instead of gnark-nimue IOPattern.
@@ -587,29 +592,17 @@ func verifyCircuit(
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
 
+	// Circuit template: placeholder (zero-valued) fields for compilation.
+	evalsContainer := make([]frontend.Variable, 3)
 	circuit := Circuit{
-		InitializationData: nimueInitCircuit,
-		Transcript:         contTranscript,
-		LogNumConstraints:  cfg.LogNumConstraints,
-		// LogNumVariables:                         cfg.LogNumVariables,
-		// LogANumTerms:                            cfg.LogANumTerms,
-		// WitnessClaimedEvaluations:               witnessClaimedEvals,
-		// WitnessBlindingEvaluations:              witnessBlindingEvals,
-		// PubWitnessEvaluations:                   pubWitnessEvaluations,
-		// WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
-		// HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
-		// HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		// WitnessFirstRounds:                      witnessFirstRounds(hints, true),
-		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
-		NumChallenges: cfg.NumChallenges,
-		// W1Size:                                  cfg.W1Size,
+		InitializationData:           nimueInitCircuit,
+		Transcript:                   contTranscript,
+		LogNumConstraints:            cfg.LogNumConstraints,
+		NumChallenges:                cfg.NumChallenges,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
-		// MatrixA:                                 matrixA,
-		// MatrixB:                                 matrixB,
-		// MatrixC:                                 matrixC,
-		PublicInputs: publicInputsContainer,
+		PublicInputs:                 publicInputsContainer,
+		Evaluations:                  evalsContainer,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -701,30 +694,28 @@ func verifyCircuit(
 	// fSumPublicWeights, gSumPublicWeights = parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, false)
 	// pubWitnessEvaluations = []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
 
-	// fmt.Println("transcriptT", transcriptT)
+	// Build evaluation witness values from the native-parsed big.Ints.
+	evalsAssign := make([]frontend.Variable, 3)
+	for i := 0; i < 3 && i < len(evaluationsBigInt); i++ {
+		evalsAssign[i] = evaluationsBigInt[i]
+	}
+	var publicEvalAssign frontend.Variable
+	if publicEvalBigInt != nil {
+		publicEvalAssign = publicEvalBigInt
+	} else {
+		publicEvalAssign = big.NewInt(0)
+	}
+
 	assignment := Circuit{
-		InitializationData: nimueInitAssign,
-		Transcript:         transcriptT,
-		LogNumConstraints:  cfg.LogNumConstraints,
-		// LogNumVariables:                         cfg.LogNumVariables,
-		// LogANumTerms:                            cfg.LogANumTerms,
-		// WitnessClaimedEvaluations:               witnessClaimedEvals,
-		// WitnessBlindingEvaluations:              witnessBlindingEvals,
-		// WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
-		// PubWitnessEvaluations:                   pubWitnessEvaluations,
-		// HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-		// HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		// HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
-		// WitnessFirstRounds:                      witnessFirstRounds(hints, false),
-		// WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
-		NumChallenges: cfg.NumChallenges,
-		// W1Size:                                  cfg.W1Size,
+		InitializationData:           nimueInitAssign,
+		Transcript:                   transcriptT,
+		LogNumConstraints:            cfg.LogNumConstraints,
+		NumChallenges:                cfg.NumChallenges,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
-		// MatrixA:                                 matrixA,
-		// MatrixB:                                 matrixB,
-		// MatrixC:                                 matrixC,
-		PublicInputs: publicInputs,
+		PublicInputs:                 publicInputs,
+		Evaluations:                  evalsAssign,
+		PublicEval:                   publicEvalAssign,
 	}
 
 	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

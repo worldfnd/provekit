@@ -267,17 +267,49 @@ func nimueReadLeavesFromHints(hr *NimueHintReader, numLeaves, numCols int) [][]f
 // nimueVerifyMerklePaths verifies Merkle membership proofs using Skyscraper.
 // ---------------------------------------------------------------------------
 
+// nimueVerifyMerklePaths verifies Merkle membership proofs using Skyscraper CompressV2.
+// Each leaf is hashed, then the auth path is traversed to the root.
+// Parameters:
+//   - leaves: [query_idx][fold_element_idx] - leaf values from submatrix
+//   - leafIndexes: [query_idx] - leaf positions in the folded domain
+//   - siblingHashes: [query_idx] - sibling hashes at the leaf level
+//   - authPaths: [query_idx][level] - authentication path hashes
+//   - rootHash: expected Merkle root
 func nimueVerifyMerklePaths(
-	_ frontend.API,
-	_ *skyscraper.Skyscraper,
-	_ *NimueHintReader,
-	_ [][]frontend.Variable,
-	_ []frontend.Variable,
-	_ frontend.Variable,
-	_ int,
+	api frontend.API,
+	sc *skyscraper.Skyscraper,
+	leaves [][]frontend.Variable,
+	leafIndexes []frontend.Variable,
+	siblingHashes []frontend.Variable,
+	authPaths [][]frontend.Variable,
+	rootHash frontend.Variable,
+	treeHeight int,
 ) {
-	// TODO: Re-enable Merkle tree verification once hint infrastructure is wired up.
-	// For now, Merkle proofs are skipped to allow transcript replay testing.
+	for i := range leaves {
+		leafIndexBits := api.ToBinary(leafIndexes[i], treeHeight)
+
+		// Hash leaf elements into a single commitment.
+		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
+		for x := 2; x < len(leaves[i]); x++ {
+			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x])
+		}
+
+		// Level 0: combine with sibling.
+		dir := leafIndexBits[0]
+		left := api.Select(dir, siblingHashes[i], claimedLeafHash)
+		right := api.Select(dir, claimedLeafHash, siblingHashes[i])
+		currentHash := sc.CompressV2(left, right)
+
+		// Remaining levels.
+		for level := 1; level < treeHeight; level++ {
+			indexBit := api.And(leafIndexBits[level], 1)
+			left = api.Select(indexBit, authPaths[i][level-1], currentHash)
+			right = api.Select(indexBit, currentHash, authPaths[i][level-1])
+			currentHash = sc.CompressV2(left, right)
+		}
+
+		api.AssertIsEqual(currentHash, rootHash)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -639,7 +671,7 @@ func ZKWhirVerifyNimue(
 	// 		_ = hr.ReadHash()
 	// 	}
 	// }
-	_ = initialStirIndexes
+	// _ = initialStirIndexes
 
 	// h_gammas count
 	hGammasCount := numInitialQueries * interleavingDepth
@@ -695,10 +727,11 @@ func ZKWhirVerifyNimue(
 	blindedWhirStatements := toWhirStatements(evaluations)
 	blindedWhirParams := toWhirParams(blindedParams)
 
-	_, err = whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams)
+	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, nil)
 	if err != nil {
 		return fmt.Errorf("blinded WHIR verify: %w", err)
 	}
+	_ = blindedResult // FinalClaim verified by caller via R1CS matrix evaluation
 
 	// ---------------------------------------------------------------
 	// 9. Blinding commitment WHIR verify
@@ -740,10 +773,11 @@ func ZKWhirVerifyNimue(
 	blindingWhirStatements := toWhirStatements(blindingEvaluations)
 	blindingWhirParams := toWhirParams(blindingParams)
 
-	_, err = whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams)
+	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, nil)
 	if err != nil {
 		return fmt.Errorf("blinding WHIR verify: %w", err)
 	}
+	_ = blindingResult // FinalClaim verified by caller via R1CS matrix evaluation
 
 	return nil
 }

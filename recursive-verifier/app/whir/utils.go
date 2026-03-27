@@ -3,6 +3,7 @@ package whir
 import (
 	"github.com/consensys/gnark/frontend"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
+	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
 // geometricChallenge mirrors Rust's geometric_challenge.
@@ -177,4 +178,52 @@ func UnivarMleEvaluate(api frontend.API, univarPoint frontend.Variable, point []
 		x2i = api.Mul(x2i, x2i)
 	}
 	return result
+}
+
+// MultilinearEvalCircuit evaluates the multilinear extension of `values` at
+// `point`: MLE(point) = Σ_i values[i] * eq(i, point).
+// len(values) must equal 2^len(point).
+func MultilinearEvalCircuit(api frontend.API, point []frontend.Variable, values []frontend.Variable) frontend.Variable {
+	eqW := computeEqWeights(api, point)
+	return DotProduct(api, eqW, values)
+}
+
+// verifyMerkleProofs verifies Merkle membership proofs using Skyscraper CompressV2.
+// Each leaf is hashed to a single field element, then the auth path is traversed
+// up to the root.
+func verifyMerkleProofs(
+	api frontend.API,
+	sc *skyscraper.Skyscraper,
+	leaves [][]frontend.Variable,
+	leafIndexes []frontend.Variable,
+	siblingHashes []frontend.Variable,
+	authPaths [][]frontend.Variable,
+	rootHash frontend.Variable,
+) {
+	for i := range leaves {
+		treeHeight := len(authPaths[i]) + 1
+		leafIndexBits := api.ToBinary(leafIndexes[i], treeHeight)
+
+		// Hash the leaf elements into a single commitment.
+		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
+		for x := 2; x < len(leaves[i]); x++ {
+			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x])
+		}
+
+		// Level 0: combine with sibling.
+		dir := leafIndexBits[0]
+		left := api.Select(dir, siblingHashes[i], claimedLeafHash)
+		right := api.Select(dir, claimedLeafHash, siblingHashes[i])
+		currentHash := sc.CompressV2(left, right)
+
+		// Remaining levels.
+		for level := 1; level < treeHeight; level++ {
+			indexBit := api.And(leafIndexBits[level], 1)
+			left = api.Select(indexBit, authPaths[i][level-1], currentHash)
+			right = api.Select(indexBit, currentHash, authPaths[i][level-1])
+			currentHash = sc.CompressV2(left, right)
+		}
+
+		api.AssertIsEqual(currentHash, rootHash)
+	}
 }
