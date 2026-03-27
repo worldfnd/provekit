@@ -31,7 +31,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features --verbose
       - run: cargo build --all-targets --all-features --verbose
-      - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
+      - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins -- --nocapture
+        env:
+          RUST_BACKTRACE: 1
       - run: cargo test --doc --all-features --verbose
       - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
