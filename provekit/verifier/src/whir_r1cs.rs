@@ -311,6 +311,32 @@ pub fn run_sumcheck_verifier(
     })
 }
 
+/// Verify that `challenge_eval == Σ xⁱ · challenges[i]`.
+///
+/// The prover sends `challenge_eval` as a transcript-bound message, and WHIR
+/// verifies that it equals the inner product of `make_challenge_weight(x, …)`
+/// with the committed w2 polynomial.  This function independently recomputes
+/// the expected value from the Fiat-Shamir `challenges` (which the verifier
+/// already knows) and checks equality, ensuring the committed w2 polynomial
+/// stores the correct challenge values at the declared offsets.
+fn verify_challenge_binding(
+    challenge_eval: FieldElement,
+    x: FieldElement,
+    challenges: &[FieldElement],
+) -> Result<()> {
+    let mut expected = FieldElement::zero();
+    let mut x_pow = FieldElement::one();
+    for &ch in challenges {
+        expected += x_pow * ch;
+        x_pow *= x;
+    }
+    ensure!(
+        challenge_eval == expected,
+        "Challenge binding check failed: prover's challenge_eval does not match expected value"
+    );
+    Ok(())
+}
+
 /// Verify that the prover's claimed public evaluation matches the known public
 /// inputs. The weight covers positions `[0, 1, ..., N]` where position 0 is the
 /// R1CS constant `1` and positions `1..=N` are the public inputs.
