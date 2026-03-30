@@ -66,6 +66,11 @@ opt-level = 3
 codegen-units = 1
 lto = "fat"
 
+# Size-optimized builds for mobile (iOS/Android): cargo build --profile release-mobile
+[profile.release-mobile]
+inherits = "release"
+opt-level = "z"
+
 # Fast release builds for development iteration: cargo build --profile release-fast
 [profile.release-fast]
 inherits = "release"
