@@ -29,7 +29,7 @@ bytes.workspace = true
 # 3rd party
 anyhow.workspace = true
 serde.workspace = true
-parking_lot = "0.12"
+parking_lot.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

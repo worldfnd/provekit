@@ -84,7 +84,7 @@ extern "C"
     ///
     /// @param out_buf Output buffer (must be freed with pk_free_buf)
     /// @return PK_SUCCESS
-    int pk_get_last_error(PKBuf *out_buf);
+    int pk_get_last_error(PKBuf *_Nonnull out_buf);
 
     // -----------------------------------------------------------------------
     // Prepare (compile circuit)
@@ -96,8 +96,9 @@ extern "C"
     /// @param out_prover Output prover handle (must be freed with pk_free_prover)
     /// @param out_verifier Output verifier handle (must be freed with pk_free_verifier)
     /// @return PK_SUCCESS or error code
-    int pk_prepare(const char *circuit_path,
-                   PKProver **out_prover, PKVerifier **out_verifier);
+    int pk_prepare(const char *_Nonnull circuit_path,
+                   PKProver *_Nonnull *_Nonnull out_prover,
+                   PKVerifier *_Nonnull *_Nonnull out_verifier);
 
     // -----------------------------------------------------------------------
     // Load from file
@@ -108,14 +109,14 @@ extern "C"
     /// @param path Path to the .pkp file
     /// @param out Output prover handle (must be freed with pk_free_prover)
     /// @return PK_SUCCESS or error code
-    int pk_load_prover(const char *path, PKProver **out);
+    int pk_load_prover(const char *_Nonnull path, PKProver *_Nonnull *_Nonnull out);
 
     /// Load a verifier scheme from a .pkv file.
     ///
     /// @param path Path to the .pkv file
     /// @param out Output verifier handle (must be freed with pk_free_verifier)
     /// @return PK_SUCCESS or error code
-    int pk_load_verifier(const char *path, PKVerifier **out);
+    int pk_load_verifier(const char *_Nonnull path, PKVerifier *_Nonnull *_Nonnull out);
 
     // -----------------------------------------------------------------------
     // Load from bytes
@@ -127,7 +128,8 @@ extern "C"
     /// @param len Length of the byte data
     /// @param out Output prover handle (must be freed with pk_free_prover)
     /// @return PK_SUCCESS or error code
-    int pk_load_prover_bytes(const uint8_t *ptr, size_t len, PKProver **out);
+    int pk_load_prover_bytes(const uint8_t *_Nonnull ptr, size_t len,
+                             PKProver *_Nonnull *_Nonnull out);
 
     /// Load a verifier scheme from bytes (same format as .pkv files).
     ///
@@ -135,7 +137,8 @@ extern "C"
     /// @param len Length of the byte data
     /// @param out Output verifier handle (must be freed with pk_free_verifier)
     /// @return PK_SUCCESS or error code
-    int pk_load_verifier_bytes(const uint8_t *ptr, size_t len, PKVerifier **out);
+    int pk_load_verifier_bytes(const uint8_t *_Nonnull ptr, size_t len,
+                               PKVerifier *_Nonnull *_Nonnull out);
 
     // -----------------------------------------------------------------------
     // Save to file
@@ -146,14 +149,14 @@ extern "C"
     /// @param prover Valid prover handle
     /// @param path Output file path (must end in .pkp)
     /// @return PK_SUCCESS or error code
-    int pk_save_prover(const PKProver *prover, const char *path);
+    int pk_save_prover(const PKProver *_Nonnull prover, const char *_Nonnull path);
 
     /// Save a verifier scheme to a .pkv file.
     ///
     /// @param verifier Valid verifier handle
     /// @param path Output file path (must end in .pkv)
     /// @return PK_SUCCESS or error code
-    int pk_save_verifier(const PKVerifier *verifier, const char *path);
+    int pk_save_verifier(const PKVerifier *_Nonnull verifier, const char *_Nonnull path);
 
     // -----------------------------------------------------------------------
     // Serialize to bytes
@@ -164,14 +167,14 @@ extern "C"
     /// @param prover Valid prover handle
     /// @param out_buf Output buffer (must be freed with pk_free_buf)
     /// @return PK_SUCCESS or error code
-    int pk_serialize_prover(const PKProver *prover, PKBuf *out_buf);
+    int pk_serialize_prover(const PKProver *_Nonnull prover, PKBuf *_Nonnull out_buf);
 
     /// Serialize a verifier scheme to bytes (same format as .pkv files).
     ///
     /// @param verifier Valid verifier handle
     /// @param out_buf Output buffer (must be freed with pk_free_buf)
     /// @return PK_SUCCESS or error code
-    int pk_serialize_verifier(const PKVerifier *verifier, PKBuf *out_buf);
+    int pk_serialize_verifier(const PKVerifier *_Nonnull verifier, PKBuf *_Nonnull out_buf);
 
     // -----------------------------------------------------------------------
     // Prove
@@ -183,7 +186,8 @@ extern "C"
     /// @param toml_path Path to the witness/input TOML file
     /// @param out_proof Output proof bytes in .np format (must be freed with pk_free_buf)
     /// @return PK_SUCCESS or error code
-    int pk_prove_toml(const PKProver *prover, const char *toml_path, PKBuf *out_proof);
+    int pk_prove_toml(const PKProver *_Nonnull prover, const char *_Nonnull toml_path,
+                      PKBuf *_Nonnull out_proof);
 
     /// Prove using a prover handle and a JSON string of inputs.
     /// Example JSON: {"x": "5", "y": "10"}
@@ -192,7 +196,8 @@ extern "C"
     /// @param inputs_json JSON string matching the circuit ABI
     /// @param out_proof Output proof bytes in .np format (must be freed with pk_free_buf)
     /// @return PK_SUCCESS or error code
-    int pk_prove_json(const PKProver *prover, const char *inputs_json, PKBuf *out_proof);
+    int pk_prove_json(const PKProver *_Nonnull prover, const char *_Nonnull inputs_json,
+                      PKBuf *_Nonnull out_proof);
 
     // -----------------------------------------------------------------------
     // Verify
@@ -204,20 +209,22 @@ extern "C"
     /// @param proof_ptr Pointer to proof bytes (.np format)
     /// @param proof_len Length of proof bytes
     /// @return PK_SUCCESS if valid, PK_PROOF_ERROR if invalid
-    int pk_verify(const PKVerifier *verifier, const uint8_t *proof_ptr, size_t proof_len);
+    int pk_verify(const PKVerifier *_Nonnull verifier, const uint8_t *_Nonnull proof_ptr,
+                  size_t proof_len);
 
     // -----------------------------------------------------------------------
     // Cleanup
     // -----------------------------------------------------------------------
 
     /// Free a prover handle.
-    void pk_free_prover(PKProver *prover);
+    void pk_free_prover(PKProver *_Nonnull prover);
 
     /// Free a verifier handle.
-    void pk_free_verifier(PKVerifier *verifier);
+    void pk_free_verifier(PKVerifier *_Nonnull verifier);
 
     /// Free a buffer allocated by ProveKit FFI functions.
-    void pk_free_buf(PKBuf buf);
+    /// Zeroes the struct after freeing to prevent dangling pointer use.
+    void pk_free_buf(PKBuf *_Nonnull buf);
 
     /// Set custom allocator functions for memory management.
     ///

@@ -594,8 +594,12 @@ pub unsafe extern "C" fn pk_prove_json(
                 PKStatus::WitnessReadError
             })?;
 
+            // Use a unique temp file to avoid races between concurrent calls.
+            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let tmp_dir = std::env::temp_dir();
-            let tmp_path = tmp_dir.join("provekit_ffi_inputs.toml");
+            let tmp_path =
+                tmp_dir.join(format!("provekit_ffi_inputs_{id}_{:?}.toml", std::thread::current().id()));
             std::fs::write(&tmp_path, &toml_str).map_err(|e| {
                 set_last_error(format!("failed to write temp inputs: {e}"));
                 PKStatus::FileWriteError
@@ -604,6 +608,8 @@ pub unsafe extern "C" fn pk_prove_json(
             // Clone is required: Prove::prove consumes self.
             let fresh_prover = (*prover).prover.clone();
             let proof = fresh_prover.prove(&tmp_path).map_err(|e| {
+                // Clean up temp file on error.
+                let _ = std::fs::remove_file(&tmp_path);
                 set_last_error(format!("{e:#}"));
                 PKStatus::ProofError
             })?;
@@ -712,14 +718,25 @@ pub unsafe extern "C" fn pk_free_verifier(verifier: *mut PKVerifier) {
 
 /// Free a buffer allocated by ProveKit FFI functions.
 ///
+/// Takes a pointer so the caller's struct is zeroed after freeing, preventing
+/// use-after-free from a stale local copy.
+///
 /// # Safety
 ///
-/// The buffer must have been allocated by a ProveKit FFI function and must
-/// not be used after this call.
+/// - `buf` must be a valid, non-null pointer to a `PKBuf` allocated by a
+///   ProveKit FFI function.
+/// - The buffer must not be used after this call.
 #[no_mangle]
-pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
-    if !buf.ptr.is_null() && buf.cap > 0 {
-        // SAFETY: buf was created by PKBuf::from_vec which used mem::forget.
-        drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.cap));
+pub unsafe extern "C" fn pk_free_buf(buf: *mut PKBuf) {
+    if buf.is_null() {
+        return;
     }
+    // SAFETY: buf is guaranteed non-null by the check above.
+    let b = &mut *buf;
+    if !b.ptr.is_null() && b.cap > 0 {
+        // SAFETY: b was created by PKBuf::from_vec which used mem::forget.
+        drop(Vec::from_raw_parts(b.ptr, b.len, b.cap));
+    }
+    // Zero out to prevent dangling pointer use.
+    *b = PKBuf::empty();
 }

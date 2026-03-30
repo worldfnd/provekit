@@ -7,6 +7,10 @@
 //! This module exists because v1's `provekit_common::file` module only
 //! supports file-path-based I/O. The FFI handle-based API needs to
 //! serialize/deserialize to/from byte buffers.
+//!
+//! TODO: Extract `serialize_to_bytes` / `deserialize_from_bytes` into
+//! `provekit_common::file` and call them from both here and the CLI, to
+//! avoid maintaining two copies of the header/compression logic.
 
 use {
     anyhow::{ensure, Context as _, Result},
