@@ -4592,7 +4592,6 @@ dependencies = [
  "libc",
  "noirc_abi",
  "parking_lot",
- "postcard",
  "provekit-common",
  "provekit-prover",
  "provekit-r1cs-compiler",

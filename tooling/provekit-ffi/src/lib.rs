@@ -14,11 +14,13 @@
 //! # Usage
 //!
 //! 1. Call `pk_init()` once before using any other functions
-//! 2. Call `pk_prepare()` to compile a circuit into prover + verifier handles
+//! 2. Call `pk_prepare(path, hash_config, ...)` to compile a circuit, or
+//!    `pk_load_prover()` / `pk_load_verifier()` to load from files
 //! 3. Call `pk_prove_toml()` or `pk_prove_json()` to generate proofs
 //! 4. Call `pk_verify()` to verify proofs
-//! 5. Free handles with `pk_free_prover()` / `pk_free_verifier()`
-//! 6. Free buffers with `pk_free_buf()`
+//! 5. On error, call `pk_get_last_error()` for a diagnostic message
+//! 6. Free handles with `pk_free_prover()` / `pk_free_verifier()`
+//! 7. Free buffers with `pk_free_buf()`
 //!
 //! # Safety
 //!

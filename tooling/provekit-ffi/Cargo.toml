@@ -21,7 +21,6 @@ provekit-verifier = { workspace = true }
 # 3rd party
 anyhow.workspace = true
 noirc_abi.workspace = true
-postcard.workspace = true
 parking_lot = "0.12"
 
 [target.'cfg(unix)'.dependencies]

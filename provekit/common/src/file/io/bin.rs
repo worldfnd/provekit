@@ -6,7 +6,7 @@ use {
         HashConfig,
     },
     anyhow::{ensure, Context as _, Result},
-    bytes::{Buf, BufMut as _, Bytes, BytesMut},
+    bytes::{Buf, BufMut as _, Bytes},
     serde::{Deserialize, Serialize},
     std::{
         fs::File,
@@ -20,11 +20,35 @@ use {
 /// MINOR(2) = 20
 const HASH_CONFIG_OFFSET: usize = 20;
 
+/// Zstd compression level used for serialization.
+const ZSTD_LEVEL: i32 = 3;
+
+/// XZ compression level used for serialization.
+const XZ_LEVEL: u32 = 6;
+
 /// Compression algorithm for binary file output.
 #[derive(Debug, Clone, Copy)]
 pub enum Compression {
     Zstd,
     Xz,
+}
+
+/// Compress data using the specified algorithm.
+fn compress(data: &[u8], compression: Compression) -> Result<Vec<u8>> {
+    match compression {
+        Compression::Zstd => {
+            zstd::bulk::compress(data, ZSTD_LEVEL).context("while compressing with zstd")
+        }
+        Compression::Xz => {
+            let mut buf = Vec::new();
+            let mut encoder = xz2::write::XzEncoder::new(&mut buf, XZ_LEVEL);
+            encoder
+                .write_all(data)
+                .context("while compressing with xz")?;
+            encoder.finish().context("while finishing xz stream")?;
+            Ok(buf)
+        }
+    }
 }
 
 /// Write a compressed binary file.
@@ -33,56 +57,21 @@ pub fn write_bin<T: Serialize>(
     value: &T,
     path: &Path,
     format: [u8; 8],
-    (major, minor): (u16, u16),
+    version: (u16, u16),
     compression: Compression,
     hash_config: Option<HashConfig>,
 ) -> Result<()> {
-    let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
-    let uncompressed = postcard_data.len();
-
-    let compressed_data = match compression {
-        Compression::Zstd => {
-            zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?
-        }
-        Compression::Xz => {
-            let mut buf = Vec::new();
-            let mut encoder = xz2::write::XzEncoder::new(&mut buf, 6);
-            encoder
-                .write_all(&postcard_data)
-                .context("while compressing with xz")?;
-            encoder.finish().context("while finishing xz stream")?;
-            buf
-        }
-    };
+    let data = serialize_to_bytes(value, format, version, compression, hash_config)?;
 
     let mut file = File::create(path).context("while creating output file")?;
-
-    // Write header: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1)
-    let mut header = BytesMut::with_capacity(HEADER_SIZE);
-    header.put(MAGIC_BYTES);
-    header.put(&format[..]);
-    header.put_u16_le(major);
-    header.put_u16_le(minor);
-    header.put_u8(hash_config.map(|c| c.to_byte()).unwrap_or(0xff));
-
-    file.write_all(&header).context("while writing header")?;
-
-    file.write_all(&compressed_data)
-        .context("while writing compressed data")?;
-
-    let compressed = HEADER_SIZE + compressed_data.len();
-    let size = file.metadata().map(|m| m.len()).ok();
+    file.write_all(&data).context("while writing data")?;
     file.sync_all().context("while syncing output file")?;
-    drop(file);
 
-    let ratio = compressed as f64 / uncompressed as f64;
     info!(
         ?path,
-        size,
-        compressed,
-        uncompressed,
-        "Wrote {}B bytes to {path:?} ({ratio:.2} compression ratio)",
-        human(compressed as f64)
+        size = data.len(),
+        "Wrote {}B to {path:?}",
+        human(data.len() as f64)
     );
     Ok(())
 }
@@ -167,21 +156,7 @@ pub fn serialize_to_bytes<T: Serialize>(
     hash_config: Option<HashConfig>,
 ) -> Result<Vec<u8>> {
     let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
-
-    let compressed_data = match compression {
-        Compression::Zstd => {
-            zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?
-        }
-        Compression::Xz => {
-            let mut buf = Vec::new();
-            let mut encoder = xz2::write::XzEncoder::new(&mut buf, 6);
-            encoder
-                .write_all(&postcard_data)
-                .context("while compressing with xz")?;
-            encoder.finish().context("while finishing xz stream")?;
-            buf
-        }
-    };
+    let compressed_data = compress(&postcard_data, compression)?;
 
     let mut out = Vec::with_capacity(HEADER_SIZE + compressed_data.len());
     // Header: MAGIC(8) + FORMAT(8) + MAJOR(2) + MINOR(2) + HASH_CONFIG(1)

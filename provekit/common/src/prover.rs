@@ -6,6 +6,7 @@ use {
         HashConfig, MavrosProver, NoirElement, R1CS,
     },
     acir::circuit::Program,
+    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
@@ -50,6 +51,13 @@ impl Prover {
                 witness_layout:     d.witness_layout,
                 hash_config:        d.hash_config,
             }),
+        }
+    }
+
+    pub fn abi(&self) -> &Abi {
+        match self {
+            Prover::Noir(p) => p.witness_generator.abi(),
+            Prover::Mavros(p) => &p.abi,
         }
     }
 
