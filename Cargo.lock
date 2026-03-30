@@ -4307,6 +4307,7 @@ dependencies = [
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "serde",
+ "tempfile",
  "xz2",
  "zstd",
 ]
