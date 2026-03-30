@@ -1,6 +1,5 @@
 #![feature(portable_simd)]
-#![feature(bigint_helper_methods)]
-#![feature(cold_path)]
+#![feature(const_unsigned_bigint_helpers)]
 
 pub mod arithmetic;
 pub mod bar;

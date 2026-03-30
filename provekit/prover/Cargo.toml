@@ -11,7 +11,6 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
-skyscraper.workspace = true
 
 # Noir language
 acir.workspace = true
@@ -23,13 +22,11 @@ noirc_abi.workspace = true
 # Cryptography and proof systems
 ark-ff.workspace = true
 ark-std.workspace = true
-spongefish.workspace = true
 whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
 postcard.workspace = true
-rand.workspace = true
 rayon.workspace = true
 tracing.workspace = true
 

@@ -2,9 +2,9 @@ name: End-to-end CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, v1]
   pull_request:
-    branches: [main]
+    branches: [main, v1]
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,7 +27,7 @@ jobs:
       - name: Setup Rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
-          channel: nightly-2025-04-05
+          channel: nightly-2026-03-04
           cache-base: main
           components: rustfmt, clippy
 
