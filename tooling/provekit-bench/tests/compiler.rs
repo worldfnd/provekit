@@ -133,6 +133,18 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     "../../noir-examples/noir-r1cs-test-programs/bin-opcode",
     "Prover.toml"
 )]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode-u8",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode-u16",
+    "Prover.toml"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode-u64",
+    "Prover.toml"
+)]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha", "Prover.toml")]
 #[test_case(
     "../../noir-examples/noir-r1cs-test-programs/bounded-vec",
