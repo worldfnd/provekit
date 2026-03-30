@@ -1,4 +1,3 @@
-
 use {
     crate::FieldElement,
     ark_std::{One, Zero},

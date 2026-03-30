@@ -10,7 +10,7 @@ use {
             Simd,
         },
     },
-    std::simd::StdFloat,
+    std::simd::{Select, StdFloat},
 };
 
 // -- [SIMD UTILS]

@@ -3,9 +3,9 @@ name: Go CI
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: [main, v1]
   pull_request:
-    branches: ["main"]
+    branches: [main, v1]
 
 # Minimal permissions so golangci-lint can annotate PRs
 permissions:

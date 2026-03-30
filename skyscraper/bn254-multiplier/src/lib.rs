@@ -1,5 +1,4 @@
 #![feature(portable_simd)]
-#![feature(bigint_helper_methods)]
 //#![no_std] This crate can technically be no_std. However this requires
 // replacing StdFloat.mul_add with intrinsics.
 
