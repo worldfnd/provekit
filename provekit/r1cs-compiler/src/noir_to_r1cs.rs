@@ -18,14 +18,13 @@ use {
         },
         native_types::{Expression, Witness as NoirWitness},
     },
-    anyhow::{bail, Result},
+    anyhow::{bail, ensure, Result},
     ark_ff::PrimeField,
     ark_std::One,
     provekit_common::{
         utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS,
-            NUM_DIGITS,
         },
         FieldElement, NoirElement, R1CS,
     },
@@ -333,85 +332,68 @@ impl NoirToR1CSCompiler {
         lhs: ConstantOrACIRWitness<NoirElement>,
         rhs: ConstantOrACIRWitness<NoirElement>,
         output: NoirWitness,
+        num_bits: u32,
         target_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     ) {
-        // Get the 32-bit witness indices
-        let lhs_witness = match lhs {
-            ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
-            ConstantOrACIRWitness::Constant(lhs_c) => {
-                // lhs is constant
-                let lhs_c =
-                    self.fetch_constant_or_r1cs_witness(ConstantOrACIRWitness::Constant(lhs_c));
-                let ConstantOrR1CSWitness::Constant(lhs_fe) = lhs_c else {
-                    unreachable!()
-                };
-                // Decompose lhs constant into bytes
-                let lhs_val: u64 = lhs_fe.into_bigint().0[0];
-                let lhs_bytes: [u8; 4] = (lhs_val as u32).to_le_bytes();
+        let num_digits = (num_bits as usize).div_ceil(BINOP_ATOMIC_BITS);
+        let log_bases = vec![BINOP_ATOMIC_BITS; num_digits];
+        let out_idx = self.fetch_r1cs_witness_index(output);
 
-                let out_idx = self.fetch_r1cs_witness_index(output);
-                let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
+        /// Extract the little-endian byte decomposition of a constant field
+        /// element into `num_digits` bytes.
+        fn const_bytes(fe: FieldElement, num_digits: usize) -> Vec<u8> {
+            let val: u64 = fe.into_bigint().0[0];
+            (0..num_digits)
+                .map(|i| (val >> (i * BINOP_ATOMIC_BITS)) as u8)
+                .collect()
+        }
 
-                match rhs {
-                    ConstantOrACIRWitness::Constant(rhs_c) => {
-                        // Both lhs and rhs are constants
-                        let rhs_c = self
-                            .fetch_constant_or_r1cs_witness(ConstantOrACIRWitness::Constant(rhs_c));
-                        let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c else {
-                            unreachable!()
-                        };
-                        let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                        let rhs_bytes: [u8; 4] = (rhs_val as u32).to_le_bytes();
+        match (lhs, rhs) {
+            // Both constant — nargo usually folds this at compile time,
+            // but we handle it defensively.
+            (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
+                let lhs_fe = noir_to_native(lhs_c);
+                let rhs_fe = noir_to_native(rhs_c);
+                let lhs_bytes = const_bytes(lhs_fe, num_digits);
+                let rhs_bytes = const_bytes(rhs_fe, num_digits);
 
-                        let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
-                        for byte_idx in 0..NUM_DIGITS {
-                            let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                                lhs_bytes[byte_idx] as u64,
-                            ));
-                            let rhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                                rhs_bytes[byte_idx] as u64,
-                            ));
-                            let out_byte = dd.get_digit_witness_index(byte_idx, 0);
-                            target_ops.push((lhs_byte, rhs_byte, out_byte));
-                        }
-                    }
-                    ConstantOrACIRWitness::Witness(rhs_w) => {
-                        // lhs constant, rhs witness - decompose rhs witness
-                        let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
-                        let dd =
-                            add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
-                        for byte_idx in 0..NUM_DIGITS {
-                            let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                                lhs_bytes[byte_idx] as u64,
-                            ));
-                            let rhs_byte = ConstantOrR1CSWitness::Witness(
-                                dd.get_digit_witness_index(byte_idx, 0),
-                            );
-                            let out_byte = dd.get_digit_witness_index(byte_idx, 1);
-                            target_ops.push((lhs_byte, rhs_byte, out_byte));
-                        }
-                    }
+                let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
+                for byte_idx in 0..num_digits {
+                    let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
+                        lhs_bytes[byte_idx] as u64,
+                    ));
+                    let rhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
+                        rhs_bytes[byte_idx] as u64,
+                    ));
+                    let out_byte = dd.get_digit_witness_index(byte_idx, 0);
+                    target_ops.push((lhs_byte, rhs_byte, out_byte));
                 }
-                return;
             }
-        };
-        let rhs_witness = match rhs {
-            ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
-            ConstantOrACIRWitness::Constant(rhs_c) => {
-                // For rhs constant with witness lhs
-                let rhs_c =
-                    self.fetch_constant_or_r1cs_witness(ConstantOrACIRWitness::Constant(rhs_c));
-                let out_idx = self.fetch_r1cs_witness_index(output);
-                let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
+            // lhs constant, rhs witness
+            (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
+                let lhs_fe = noir_to_native(lhs_c);
+                let lhs_bytes = const_bytes(lhs_fe, num_digits);
+                let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
+
+                let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
+                for byte_idx in 0..num_digits {
+                    let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
+                        lhs_bytes[byte_idx] as u64,
+                    ));
+                    let rhs_byte =
+                        ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
+                    let out_byte = dd.get_digit_witness_index(byte_idx, 1);
+                    target_ops.push((lhs_byte, rhs_byte, out_byte));
+                }
+            }
+            // lhs witness, rhs constant
+            (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
+                let rhs_fe = noir_to_native(rhs_c);
+                let rhs_bytes = const_bytes(rhs_fe, num_digits);
+                let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
+
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
-                // Decompose rhs constant into bytes
-                let rhs_bytes: [u8; 4] = if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
-                    let rhs_val: u64 = rhs_fe.into_bigint().0[0];
-                    (rhs_val as u32).to_le_bytes()
-                } else {
-                    unreachable!()
-                };
-                for byte_idx in 0..NUM_DIGITS {
+                for byte_idx in 0..num_digits {
                     let lhs_byte =
                         ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
                     let rhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
@@ -420,21 +402,26 @@ impl NoirToR1CSCompiler {
                     let out_byte = dd.get_digit_witness_index(byte_idx, 1);
                     target_ops.push((lhs_byte, rhs_byte, out_byte));
                 }
-                return;
             }
-        };
-        let out_idx = self.fetch_r1cs_witness_index(output);
+            // Both witnesses
+            (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Witness(rhs_w)) => {
+                let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
+                let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
-        // Decompose all three 32-bit values into bytes
-        let log_bases = vec![BINOP_ATOMIC_BITS; NUM_DIGITS];
-        let dd =
-            add_digital_decomposition(self, log_bases, vec![lhs_witness, rhs_witness, out_idx]);
-
-        for byte_idx in 0..NUM_DIGITS {
-            let lhs_byte = ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
-            let rhs_byte = ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 1));
-            let out_byte = dd.get_digit_witness_index(byte_idx, 2);
-            target_ops.push((lhs_byte, rhs_byte, out_byte));
+                let dd = add_digital_decomposition(self, log_bases, vec![
+                    lhs_witness,
+                    rhs_witness,
+                    out_idx,
+                ]);
+                for byte_idx in 0..num_digits {
+                    let lhs_byte =
+                        ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
+                    let rhs_byte =
+                        ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 1));
+                    let out_byte = dd.get_digit_witness_index(byte_idx, 2);
+                    target_ops.push((lhs_byte, rhs_byte, out_byte));
+                }
+            }
         }
     }
 
@@ -577,13 +564,37 @@ impl NoirToR1CSCompiler {
 
                     // Binary operations:
                     // The inputs and outputs will have already been solved for by the ACIR solver.
-                    // Noir blackbox AND/XOR operate on 32-bit values. We decompose into 4 bytes
+                    // We decompose into bytes using the actual bit width from the ACIR opcode
                     // and add byte-level ops to leverage the combined byte-level lookup table.
                     BlackBoxFuncCall::AND { lhs, rhs, output } => {
-                        self.process_binop_opcode(lhs.input(), rhs.input(), *output, &mut and_ops);
+                        ensure!(
+                            lhs.num_bits() == rhs.num_bits(),
+                            "AND operands must have the same bit width, got {} and {}",
+                            lhs.num_bits(),
+                            rhs.num_bits()
+                        );
+                        self.process_binop_opcode(
+                            lhs.input(),
+                            rhs.input(),
+                            *output,
+                            lhs.num_bits(),
+                            &mut and_ops,
+                        );
                     }
                     BlackBoxFuncCall::XOR { lhs, rhs, output } => {
-                        self.process_binop_opcode(lhs.input(), rhs.input(), *output, &mut xor_ops);
+                        ensure!(
+                            lhs.num_bits() == rhs.num_bits(),
+                            "XOR operands must have the same bit width, got {} and {}",
+                            lhs.num_bits(),
+                            rhs.num_bits()
+                        );
+                        self.process_binop_opcode(
+                            lhs.input(),
+                            rhs.input(),
+                            *output,
+                            lhs.num_bits(),
+                            &mut xor_ops,
+                        );
                     }
                     BlackBoxFuncCall::Poseidon2Permutation {
                         inputs,
