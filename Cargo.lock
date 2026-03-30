@@ -4297,11 +4297,18 @@ name = "provekit-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "libc",
+ "noirc_abi",
  "parking_lot",
+ "postcard",
  "provekit-common",
  "provekit-prover",
- "serde_json",
+ "provekit-r1cs-compiler",
+ "provekit-verifier",
+ "serde",
+ "xz2",
+ "zstd",
 ]
 
 [[package]]
