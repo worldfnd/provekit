@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"sort"
+
+	"github.com/consensys/gnark/frontend"
+
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/whir"
 )
 
 // ---------------------------------------------------------------------------
@@ -269,8 +273,6 @@ func nativeWhirSumcheckVerify(
 		}
 		c0 := evals[0]
 		c2 := evals[1]
-		fmt.Println("c0:", c0)
-		fmt.Println("c2:", c2)
 		// c1 = sum - 2*c0 - c2  (from c0 + c1 = sum, but we need to derive c1)
 		// Actually: the polynomial p(x) is quadratic with p(0)=c0, p(1)=c1, p(2)=c2
 		// The sumcheck check is: p(0) + p(1) = sum, so c1 = sum - c0
@@ -280,7 +282,6 @@ func nativeWhirSumcheckVerify(
 
 		// Squeeze folding randomness
 		rSlice, err := arthur.FillChallengeScalars(1)
-		fmt.Println("r:", rSlice)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
 		}
@@ -307,36 +308,37 @@ func nativeWhirSumcheckVerify(
 // ---------------------------------------------------------------------------
 
 // nativeIRSCommitVerifyWithPoints replays the IRS commit verification and
-// returns the in-domain query points (as domain elements).
+// returns the in-domain query indices plus the parsed Merkle round data.
 func nativeIRSCommitVerifyWithPoints(
 	arthur *NativeArthur,
 	numQueries int,
 	domainSize int,
 	foldingFactorPower int,
-) ([]int, error) {
-	fmt.Println("nativeIRSCommitVerifyWithPoints numQueries:", numQueries, "domainSize:", domainSize, "foldingFactorPower:", foldingFactorPower)
+) ([]int, *whir.RoundMerkleEntry, error) {
+	hintPos := int(arthur.hints.Size()) - arthur.hints.Len()
+	fmt.Println("nativeIRSCommitVerifyWithPoints numQueries:", numQueries, "domainSize:", domainSize, "foldingFactorPower:", foldingFactorPower, "hintPos:", hintPos)
 	// Squeeze challenge indices
 	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
-		return nil, fmt.Errorf("stir challenges: %w", err)
+		return nil, nil, fmt.Errorf("stir challenges: %w", err)
 	}
 	fmt.Println("nativeIRSCommitVerifyWithPoints indices", indices)
 
 	// Read submatrix hint
 	var submatrix []Fp256
 	if err = arthur.ProverHintArk(&submatrix); err != nil {
-		return nil, fmt.Errorf("submatrix: %w", err)
+		return nil, nil, fmt.Errorf("submatrix: %w", err)
 	}
 	// Print submatrix values as decimal using LimbsToBigIntMod
-	fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-	for i, v := range submatrix {
-		if i > 0 {
-			fmt.Print(", ")
-		}
-		val := typeConverters.LimbsToBigIntMod(v.Limbs)
-		fmt.Print(val.String())
-	}
-	fmt.Println("]")
+	// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+	// for i, v := range submatrix {
+	// 	if i > 0 {
+	// 		fmt.Print(", ")
+	// 	}
+	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
+	// 	fmt.Print(val.String())
+	// }
+	// fmt.Println("]")
 
 	// Read Merkle proof hints
 	foldedDomainSize := domainSize / foldingFactorPower
@@ -346,12 +348,310 @@ func nativeIRSCommitVerifyWithPoints(
 	sort.Ints(dedupedIndices)
 	dedupedIndices = dedup(dedupedIndices)
 
-	_, err = consumeMerkleHints(arthur, dedupedIndices, treeHeight)
+	merklePaths, err := consumeMerkleHints(arthur, dedupedIndices, treeHeight)
 	if err != nil {
-		return nil, fmt.Errorf("merkle: %w", err)
+		return nil, nil, fmt.Errorf("merkle: %w", err)
 	}
 
-	return indices, nil
+	// Build RoundMerkleEntry from the parsed data.
+	// The leaf fold size (num_cols) may differ from foldingFactorPower when
+	// batch_size > 1 (initial commitment). Derive it from the submatrix length.
+	leafFoldSize := foldingFactorPower
+	if len(indices) > 0 {
+		leafFoldSize = len(submatrix) / len(indices)
+	}
+	entry := buildRoundMerkleEntry(indices, submatrix, merklePaths, leafFoldSize, treeHeight)
+	return indices, entry, nil
+}
+
+// IndexPair identifies a node in the Merkle tree by its depth and index.
+type IndexPair struct {
+	Depth uint64
+	Index uint64
+}
+
+// populateTreeFromPath records every node along a single proof path into the
+// shared tree map, computing intermediate hashes using native Skyscraper.
+func PopulateTreeFromPath(
+	tree map[IndexPair]KeccakDigest,
+	proof *Path[KeccakDigest],
+	leafHash KeccakDigest,
+	depth int,
+) {
+	leafIdx := proof.LeafIndex
+
+	// Store leaf hash (always authoritative — computed from actual leaf data).
+	tree[IndexPair{Depth: uint64(depth), Index: leafIdx}] = leafHash
+	// Store sibling only if not already populated (sibling-pair optimization
+	// leaves LeafSiblingHash as zero; the correct value comes from the other
+	// query's leaf hash stored by another PopulateTreeFromPath call).
+	sibKey := IndexPair{Depth: uint64(depth), Index: leafIdx ^ 1}
+	if _, exists := tree[sibKey]; !exists {
+		tree[sibKey] = proof.LeafSiblingHash
+	}
+
+	// Compute parent hash for leaf level using the tree's current values.
+	leafNode := tree[IndexPair{Depth: uint64(depth), Index: leafIdx &^ 1}] // even sibling
+	sibNode := tree[IndexPair{Depth: uint64(depth), Index: leafIdx | 1}]   // odd sibling
+	parentHash := HashTwoDigests(leafNode, sibNode)
+	currentIdx := leafIdx / 2
+	currentDepth := depth - 1
+	tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}] = parentHash
+
+	// Walk up the auth path.
+	var left, right KeccakDigest
+	for _, sibling := range proof.AuthPath {
+		sibKey := IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}
+		if _, exists := tree[sibKey]; !exists {
+			tree[sibKey] = sibling
+		}
+		// Use the tree's values (may have been set by another proof path).
+		if currentIdx%2 == 0 {
+			left = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}]
+			right = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}]
+		} else {
+			left = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}]
+			right = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}]
+		}
+		parentHash = HashTwoDigests(left, right)
+		currentIdx /= 2
+		currentDepth--
+		tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}] = parentHash
+	}
+}
+
+// extractFullAuthPath extracts a complete authentication path for a given leaf
+// index from the reconstructed tree map.
+func ExtractFullAuthPath(
+	tree map[IndexPair]KeccakDigest,
+	leafIdx uint64,
+	depth int,
+) (siblingHash KeccakDigest, authPath []KeccakDigest) {
+	siblingHash = tree[IndexPair{Depth: uint64(depth), Index: leafIdx ^ 1}]
+	authPath = make([]KeccakDigest, depth-1)
+	currentIdx := leafIdx / 2
+	for level := depth - 1; level >= 1; level-- {
+		authPath[depth-1-level] = tree[IndexPair{Depth: uint64(level), Index: currentIdx ^ 1}]
+		currentIdx /= 2
+	}
+	return siblingHash, authPath
+}
+
+// buildRoundMerkleEntry converts native submatrix + FullMultiPath into a
+// whir.RoundMerkleEntry suitable for passing to the gnark circuit.
+// It reconstructs the full Merkle tree from the compressed multi-path to
+// produce complete per-query proofs (no gaps from sibling-pair optimization).
+func buildRoundMerkleEntry(
+	indices []int,
+	submatrix []Fp256,
+	merklePaths FullMultiPath[KeccakDigest],
+	foldSize int,
+	treeHeight int,
+) *whir.RoundMerkleEntry {
+	// Build index → submatrix row lookup. The submatrix is laid out in the
+	// order of the ORIGINAL indices (unsorted, with duplicates). Each index
+	// contributes foldSize elements. We map by the original order, then
+	// deduplication uses whichever row was seen first for each index.
+	dedupSorted := make([]int, len(indices))
+	copy(dedupSorted, indices)
+	sort.Ints(dedupSorted)
+	dedupSorted = dedup(dedupSorted)
+
+	leafFp256ByIdx := make(map[int][]Fp256)
+	leafVarByIdx := make(map[int][]frontend.Variable)
+	for i, idx := range indices {
+		if _, exists := leafFp256ByIdx[idx]; exists {
+			continue // already mapped (duplicate index)
+		}
+		fp256Row := make([]Fp256, foldSize)
+		varRow := make([]frontend.Variable, foldSize)
+		for j := range foldSize {
+			elemIdx := i*foldSize + j
+			if elemIdx < len(submatrix) {
+				fp256Row[j] = submatrix[elemIdx]
+				varRow[j] = typeConverters.LimbsToBigIntMod(submatrix[elemIdx].Limbs)
+			}
+		}
+		leafFp256ByIdx[idx] = fp256Row
+		leafVarByIdx[idx] = varRow
+	}
+
+	// Reconstruct the Merkle tree by replaying the same bottom-up algorithm
+	// used by the Rust verifier (merkle_tree::verify). This mirrors the hint
+	// consumption order in consumeMerkleHints: for each level, sibling pairs
+	// (both in the query set) don't need a hint; others get a sibling hash
+	// from the proof path. We hash pairs to produce the next level's hashes.
+	//
+	// This is more correct than PopulateTreeFromPath which assumed compressed
+	// auth paths mapped to consecutive tree depths (they don't when sibling
+	// pairs cause skipped levels).
+	tree := make(map[IndexPair]KeccakDigest)
+
+	// Step 1: Compute and store all leaf hashes.
+	for _, idx := range dedupSorted {
+		leafHash := HashLeafData(leafFp256ByIdx[idx])
+		tree[IndexPair{Depth: uint64(treeHeight), Index: uint64(idx)}] = leafHash
+	}
+
+	// Step 2: Bottom-up level-by-level reconstruction mirroring the Rust
+	// verifier. currentIndices tracks the sorted deduped indices at each level.
+	// For each level, pair siblings or fill from the proof hint data, then
+	// hash to produce parent hashes.
+	currentIndices := make([]int, len(dedupSorted))
+	copy(currentIndices, dedupSorted)
+
+	// Build a map from leaf index → proof for quick lookup of sibling hashes.
+	proofByLeaf := make(map[int]*Path[KeccakDigest])
+	for i := range merklePaths.Proofs {
+		proofByLeaf[int(merklePaths.Proofs[i].LeafIndex)] = &merklePaths.Proofs[i]
+	}
+
+	// hintIterators tracks the current auth path position for each original leaf.
+	// consumeMerkleHints stores auth path entries only for levels where a hint
+	// was read (level > 0, non-sibling-pair). We consume them in order.
+	authPathPos := make(map[int]int) // origIdx → next AuthPath index to consume
+	for _, idx := range dedupSorted {
+		authPathPos[idx] = 0
+	}
+
+	for level := 0; level < treeHeight; level++ {
+		currentDepth := uint64(treeHeight - level) // tree depth for currentIndices
+		parentDepth := currentDepth - 1
+		var nextIndices []int
+		i := 0
+		for i < len(currentIndices) {
+			a := currentIndices[i]
+			if i+1 < len(currentIndices) && currentIndices[i+1] == a^1 {
+				// Sibling pair: both hashes already in tree from prior level.
+				aHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
+				bHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}]
+				var left, right KeccakDigest
+				if a%2 == 0 {
+					left, right = aHash, bHash
+				} else {
+					left, right = bHash, aHash
+				}
+				tree[IndexPair{Depth: parentDepth, Index: uint64(a >> 1)}] = HashTwoDigests(left, right)
+				nextIndices = append(nextIndices, a>>1)
+				i += 2
+			} else {
+				// Single index: sibling hash comes from the proof hints.
+				// Find the sibling hash for this level from the proof data.
+				var sibHash KeccakDigest
+				if level == 0 {
+					// At the leaf level, the sibling hash is LeafSiblingHash.
+					// Find any original leaf whose proof covers index a.
+					for _, origIdx := range dedupSorted {
+						if origIdx == a {
+							sibHash = proofByLeaf[origIdx].LeafSiblingHash
+							break
+						}
+					}
+				} else {
+					// At higher levels, the sibling hash is the next auth path
+					// entry for any original leaf tracing through index a.
+					for _, origIdx := range dedupSorted {
+						ancestorIdx := origIdx >> uint(level)
+						if ancestorIdx == a {
+							p := proofByLeaf[origIdx]
+							pos := authPathPos[origIdx]
+							if pos < len(p.AuthPath) {
+								sibHash = p.AuthPath[pos]
+							}
+							break
+						}
+					}
+					// Advance auth path position for all leaves tracing through a.
+					for _, origIdx := range dedupSorted {
+						ancestorIdx := origIdx >> uint(level)
+						if ancestorIdx == a {
+							authPathPos[origIdx]++
+						}
+					}
+				}
+
+				// Store sibling in tree if not already present.
+				sibKey := IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}
+				if _, exists := tree[sibKey]; !exists {
+					tree[sibKey] = sibHash
+				}
+
+				// Compute parent hash.
+				nodeHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
+				sibNodeHash := tree[sibKey]
+				var left, right KeccakDigest
+				if a%2 == 0 {
+					left, right = nodeHash, sibNodeHash
+				} else {
+					left, right = sibNodeHash, nodeHash
+				}
+				tree[IndexPair{Depth: parentDepth, Index: uint64(a >> 1)}] = HashTwoDigests(left, right)
+				nextIndices = append(nextIndices, a>>1)
+				i++
+			}
+		}
+		sort.Ints(nextIndices)
+		nextIndices = dedup(nextIndices)
+		currentIndices = nextIndices
+	}
+
+	// Debug validation.
+	if root, ok := tree[IndexPair{Depth: 0, Index: 0}]; ok {
+		fmt.Println("buildRoundMerkleEntry: reconstructed root =", DigestToFieldElement(root))
+	} else {
+		fmt.Println("buildRoundMerkleEntry: WARNING - root not found in tree")
+	}
+	// Debug: print tree height, num deduped indices, and first few tree entries
+	fmt.Println("buildRoundMerkleEntry: treeHeight =", treeHeight, "numDeduped =", len(dedupSorted), "numQueries =", len(indices))
+	// Debug: for first query, print full verification trace
+	if len(indices) > 0 {
+		idx := uint64(indices[0])
+		leafHash := tree[IndexPair{Depth: uint64(treeHeight), Index: idx}]
+		sibHash := tree[IndexPair{Depth: uint64(treeHeight), Index: idx ^ 1}]
+		fmt.Println("buildRoundMerkleEntry: query[0] idx =", idx)
+		fmt.Println("  leaf hash  =", DigestToFieldElement(leafHash))
+		fmt.Println("  sib hash   =", DigestToFieldElement(sibHash))
+		currentIdx := idx
+		for d := treeHeight; d > 0; d-- {
+			node := tree[IndexPair{Depth: uint64(d), Index: currentIdx}]
+			sib := tree[IndexPair{Depth: uint64(d), Index: currentIdx ^ 1}]
+			var left, right KeccakDigest
+			if currentIdx%2 == 0 {
+				left, right = node, sib
+			} else {
+				left, right = sib, node
+			}
+			parent := HashTwoDigests(left, right)
+			storedParent := tree[IndexPair{Depth: uint64(d - 1), Index: currentIdx / 2}]
+			fmt.Printf("  depth %d: idx=%d, parent=%s, stored=%s, match=%v\n",
+				d, currentIdx, DigestToFieldElement(parent), DigestToFieldElement(storedParent),
+				DigestToFieldElement(parent).Cmp(DigestToFieldElement(storedParent)) == 0)
+			currentIdx /= 2
+		}
+	}
+
+	// Build the per-query RoundMerkleEntry with complete proofs.
+	nq := len(indices)
+	entry := &whir.RoundMerkleEntry{
+		Leaves:        make([][]frontend.Variable, nq),
+		SiblingHashes: make([]frontend.Variable, nq),
+		AuthPaths:     make([][]frontend.Variable, nq),
+		LeafIndexes:   make([]frontend.Variable, nq),
+	}
+
+	for q, idx := range indices {
+		entry.LeafIndexes[q] = big.NewInt(int64(idx))
+		entry.Leaves[q] = leafVarByIdx[idx]
+
+		siblingHash, authPath := ExtractFullAuthPath(tree, uint64(idx), treeHeight)
+		entry.SiblingHashes[q] = DigestToFieldElement(siblingHash)
+		entry.AuthPaths[q] = make([]frontend.Variable, len(authPath))
+		for lvl, digest := range authPath {
+			entry.AuthPaths[q][lvl] = DigestToFieldElement(digest)
+		}
+	}
+
+	return entry
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +747,7 @@ func nativePoWVerify(arthur *NativeArthur, powBits int) error {
 type NativeWhirVerifyResult struct {
 	FinalClaim NativeFinalClaim
 	Hint       ZKHint
+	MerkleData *whir.WhirMerkleData
 }
 
 // NativeWhirVerify replays and verifies the full WHIR protocol transcript.
@@ -607,6 +908,7 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	domainSize := whirParams.DomainSize
 	nRounds := whirParams.ParamNRounds
+	var merkleRounds []whir.RoundMerkleEntry
 
 	// Track which commitment type was previous (for opening)
 	type prevType int
@@ -635,9 +937,10 @@ func NativeWhirVerify(
 		// Open previous commitment (IRS verify)
 		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
 		var inDomainIndices []int
+		var roundMerkle *whir.RoundMerkleEntry
 		fmt.Println("prev: prevInitial", prev, prevInitial)
 		if prev == prevInitial {
-			inDomainIndices, err = nativeIRSCommitVerifyWithPoints(
+			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
 				arthur,
 				whirParams.InitialInDomainSamples,
 				domainSize,
@@ -645,7 +948,7 @@ func NativeWhirVerify(
 			)
 		} else {
 			prevFF := 1 << whirParams.FoldingFactorArray[r-1]
-			inDomainIndices, err = nativeIRSCommitVerifyWithPoints(
+			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
 				arthur,
 				whirParams.RoundParametersNumOfQueries[r-1],
 				domainSize,
@@ -655,6 +958,7 @@ func NativeWhirVerify(
 		if err != nil {
 			return nil, fmt.Errorf("round %d irs verify: %w", r, err)
 		}
+		merkleRounds = append(merkleRounds, *roundMerkle)
 		allStirAnswers = append(allStirAnswers, [][]Fp256{{}})
 		allMerklePaths = append(allMerklePaths, FullMultiPath[KeccakDigest]{})
 
@@ -776,15 +1080,15 @@ func NativeWhirVerify(
 	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
 		return nil, fmt.Errorf("final submatrix: %w", err)
 	}
-	fmt.Print("finalSubmatrix [")
-	for i, v := range finalSubmatrix {
-		if i > 0 {
-			fmt.Print(", ")
-		}
-		val := typeConverters.LimbsToBigIntMod(v.Limbs)
-		fmt.Print(val.String())
-	}
-	fmt.Println("]")
+	// fmt.Print("finalSubmatrix [")
+	// for i, v := range finalSubmatrix {
+	// 	if i > 0 {
+	// 		fmt.Print(", ")
+	// 	}
+	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
+	// 	fmt.Print(val.String())
+	// }
+	// fmt.Println("]")
 
 	allStirAnswers = append(allStirAnswers, [][]Fp256{})
 
@@ -800,6 +1104,10 @@ func NativeWhirVerify(
 		return nil, fmt.Errorf("final merkle: %w", err)
 	}
 	allMerklePaths = append(allMerklePaths, finalMerklePath)
+
+	// Build final round merkle entry from the parsed data.
+	finalMerkleEntry := buildRoundMerkleEntry(finalIndices, finalSubmatrix, finalMerklePath, finalFoldingFactorPower, treeHeight)
+	merkleRounds = append(merkleRounds, *finalMerkleEntry)
 
 	// ---------------------------------------------------------------
 	// 9. Final sumcheck
@@ -870,5 +1178,8 @@ func NativeWhirVerify(
 			LinearFormRLC:   linearFormRLC,
 		},
 		Hint: zkHint,
+		MerkleData: &whir.WhirMerkleData{
+			Rounds: merkleRounds,
+		},
 	}, nil
 }

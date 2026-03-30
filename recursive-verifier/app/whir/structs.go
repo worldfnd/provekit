@@ -136,6 +136,7 @@ type WhirMerkleData struct {
 	Rounds []RoundMerkleEntry
 }
 
+
 // ComputeWhirProofFrs returns the exact number of field elements consumed from
 // the WHIR transcript verifier (narg string) during ReceiveCommitment + VerifyWhir.
 // This traces every Read/ReadVector call on the transcript deterministically.

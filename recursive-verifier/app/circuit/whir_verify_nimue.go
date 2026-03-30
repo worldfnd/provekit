@@ -617,7 +617,8 @@ func ZKWhirVerifyNimue(
 	evaluations []frontend.Variable, // claimed linear form evaluations [az, bz, cz] or [pub, az, bz, cz]
 	weightsLen int, // 4 (no public) or 5 (with public)
 	numPolynomials int, // typically 1
-	// hr *NimueHintReader,
+	blindedMerkleData *whir.WhirMerkleData,
+	blindingMerkleData *whir.WhirMerkleData,
 ) error {
 	numWitnessVariables := blindedParams.MVParamsNumberOfVariables
 	interleavingDepth := 1 << blindedParams.FoldingFactorArray[0]
@@ -727,7 +728,7 @@ func ZKWhirVerifyNimue(
 	blindedWhirStatements := toWhirStatements(evaluations)
 	blindedWhirParams := toWhirParams(blindedParams)
 
-	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, nil)
+	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, blindedMerkleData)
 	if err != nil {
 		return fmt.Errorf("blinded WHIR verify: %w", err)
 	}
@@ -773,7 +774,7 @@ func ZKWhirVerifyNimue(
 	blindingWhirStatements := toWhirStatements(blindingEvaluations)
 	blindingWhirParams := toWhirParams(blindingParams)
 
-	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, nil)
+	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, blindingMerkleData)
 	if err != nil {
 		return fmt.Errorf("blinding WHIR verify: %w", err)
 	}

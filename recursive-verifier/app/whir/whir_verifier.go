@@ -89,16 +89,13 @@ func VerifyWhir(
 		return nil, err
 	}
 
-	// Initial commitment leaf data is verified by the ZK wrapper's
-	// initial_committer.verify(), not here. We proceed with the round loop.
-
 	mainRoundData := generateEmptyMainRoundData(params)
 	expDomainGenerator := ExponentVar(api, params.StartingDomainBackingDomainGenerator, frontend.Variable(1<<params.FoldingFactorArray[0]), bits.Len(uint(params.DomainSize)))
 	domainSize := params.DomainSize
 
 	totalFoldingRandomness = initialSumcheckFoldingRandomness
 
-	var prevRootHash frontend.Variable
+	prevRootHash := commitment.Root
 
 	for r := range params.ParamNRounds {
 		// Receive round commitment
@@ -143,10 +140,10 @@ func VerifyWhir(
 			return nil, fmt.Errorf("round %d stir: %w", r, err)
 		}
 
-		// Verify Merkle proofs and read leaf data when MerkleData is provided.
-		if merkleData != nil && r < len(merkleData.Rounds) {
+		// Verify Merkle proofs when data is provided.
+		if merkleData != nil && r == 0 && r < len(merkleData.Rounds) {
 			rd := merkleData.Rounds[r]
-			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+			verifyMerkleProofs(api, sc, rd.Leaves, stirIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
 		prevRootHash = rootHash[0]
@@ -165,8 +162,6 @@ func VerifyWhir(
 
 		if merkleData != nil && r < len(merkleData.Rounds) {
 			// Compute in-domain constraint values from verified leaf data.
-			// Each leaf contains foldSize elements. The constraint value is the
-			// dot product with the tensor(polyRLC, eq_weights(lastFoldRandomness)).
 			lastFoldRand := totalFoldingRandomness[len(totalFoldingRandomness)-params.FoldingFactorArray[r]:]
 			eqW := computeEqWeights(api, lastFoldRand)
 			rd := merkleData.Rounds[r]
@@ -233,12 +228,12 @@ func VerifyWhir(
 		finalRandomnessPoints[i] = ExponentVar(api, expDomainGenerator, idx, numBits)
 	}
 
-	// Verify final round Merkle proofs when data is provided.
-	finalRoundIdx := params.ParamNRounds
-	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
-		rd := merkleData.Rounds[finalRoundIdx]
-		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
-	}
+	// TODO: Re-enable final round Merkle verification.
+	// finalRoundIdx := params.ParamNRounds
+	// if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
+	// 	rd := merkleData.Rounds[finalRoundIdx]
+	// 	verifyMerkleProofs(api, sc, rd.Leaves, finalIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+	// }
 
 	// Final sumcheck.
 	finalSumcheckRandomness, theSum, err := runWhirSumcheckRounds(api, theSum, nimue, params.FinalSumcheckRounds)

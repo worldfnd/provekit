@@ -6,7 +6,6 @@ import (
 	"io"
 	"math/big"
 	"math/bits"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"sort"
 
 	arkSerialize "github.com/reilabs/go-ark-serialize"
@@ -279,7 +278,6 @@ func (a *NativeArthur) FillNextScalars(n int) ([]*big.Int, error) {
 // DecodingFieldBuffer which uses (MODULUS_BIT_SIZE.div_ceil(8) + 32) = 64 bytes
 // per field element for statistical uniformity, then reduces mod p.
 func (a *NativeArthur) FillChallengeScalars(n int) ([]*big.Int, error) {
-	fmt.Println("fillChallengeScalars", n)
 	out := make([]*big.Int, n)
 	for i := range n {
 		// Squeeze two field elements (64 bytes total) and combine as LE integer mod p.
@@ -357,12 +355,10 @@ func nativeGetStirChallenges(
 
 	sizeBytes := (bits.Len(uint(numLeaves)) - 1 + 7) / 8
 
-	fmt.Println("entropy bytes:", count*sizeBytes)
 	entropy, err := arthur.FillChallengeBytes(count * sizeBytes)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("entropy:", entropy)
 
 	indices := make([]int, count)
 	for i := range count {
@@ -422,7 +418,7 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 			} else {
 				// Need sibling hash from hints
 				siblingHash, err := arthur.ProverHint(32)
-				fmt.Println("prover hint:", FrDecimalToHexLE(typeConverters.LittleEndianUint8ToBigInt(siblingHash).String()))
+				// fmt.Println("prover hint:", FrDecimalToHexLE(typeConverters.LittleEndianUint8ToBigInt(siblingHash).String()))
 				if err != nil {
 					return FullMultiPath[KeccakDigest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}

@@ -16,7 +16,7 @@ import (
 	"github.com/consensys/gnark/backend/groth16"
 
 	"reilabs/whir-verifier-circuit/app/common"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/whir"
 )
 
 func FrDecimalToHexLE(decimal string) string {
@@ -159,11 +159,10 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	//    numPolynomials: 1 (single commitment)
 	// ---------------------------------------------------------------
 	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
-	_, err = nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
+	zkWhirData1, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
 	if err != nil {
 		return fmt.Errorf("zkWHIR verify commitment 1: %w", err)
 	}
-	// fmt.Println("zkWHIR verify 1 complete:", zkWhirData1)
 
 	// ---------------------------------------------------------------
 	// 7. If dual mode: zkWHIR verify (second commitment)
@@ -175,7 +174,6 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		if err != nil {
 			return fmt.Errorf("zkWHIR verify commitment 2: %w", err)
 		}
-		// fmt.Println("zkWHIR verify 2 complete:", zkWhirData2)
 	}
 	// ---------------------------------------------------------------
 	// 8. Remaining transcript consumed. Log status.
@@ -184,7 +182,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	remainingTranscript := len(arthur.nargString)
 	fmt.Printf("Native transcript replay complete. Remaining: %d hint bytes, %d transcript bytes\n", remainingHints, remainingTranscript)
 
-	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, buildOps, PublicInputs{}, evals1BigInt, publicEvalBigInt)
+	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
 
 	return nil
 }
@@ -349,6 +347,9 @@ type NativeZKWhirData struct {
 	PerGammaEvals  [][][]*big.Int
 	CombinedClaims []*big.Int
 	BatchedHClaims []*big.Int
+	// Merkle proof data for each WHIR verification (blinded and blinding).
+	BlindedMerkleData  *whir.WhirMerkleData
+	BlindingMerkleData *whir.WhirMerkleData
 }
 
 // nativeIRSCommitVerify replays the initial_committer.verify() transcript
@@ -360,6 +361,8 @@ func nativeIRSCommitVerify(
 	domainSize int,
 	foldingFactorPower int,
 ) ([]int, error) {
+	hintPos := int(arthur.hints.Size()) - arthur.hints.Len()
+	fmt.Println("nativeIRSCommitVerify hintPos:", hintPos)
 	// in_domain_challenges: squeeze challenge bytes → query indices
 	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
@@ -372,15 +375,15 @@ func nativeIRSCommitVerify(
 	if err = arthur.ProverHintArk(&submatrix); err != nil {
 		return nil, fmt.Errorf("initial submatrix: %w", err)
 	}
-	fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-	for i, v := range submatrix {
-		if i > 0 {
-			fmt.Print(", ")
-		}
-		val := typeConverters.LimbsToBigIntMod(v.Limbs)
-		fmt.Print(val.String())
-	}
-	fmt.Println("]")
+	// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+	// for i, v := range submatrix {
+	// 	if i > 0 {
+	// 		fmt.Print(", ")
+	// 	}
+	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
+	// 	fmt.Print(val.String())
+	// }
+	// fmt.Println("]")
 	// matrix_commit.verify: read Merkle proof from hints
 	foldedDomainSize := domainSize / foldingFactorPower
 	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
@@ -610,6 +613,9 @@ func nativeZKWhirVerify(
 	}
 	fmt.Println("blinding WHIR FinalClaim:", blindingResult.FinalClaim)
 
+	data.BlindedMerkleData = blindedResult.MerkleData
+	data.BlindingMerkleData = blindingResult.MerkleData
+
 	return data, nil
 }
 
@@ -792,15 +798,15 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 			return ZKHint{}, fmt.Errorf("round %d submatrix: %w", r, err)
 		}
 		fmt.Println("round", r)
-		fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-		for i, v := range submatrix {
-			if i > 0 {
-				fmt.Print(", ")
-			}
-			val := typeConverters.LimbsToBigIntMod(v.Limbs)
-			fmt.Print(val.String())
-		}
-		fmt.Println("]")
+		// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
+		// for i, v := range submatrix {
+		// 	if i > 0 {
+		// 		fmt.Print(", ")
+		// 	}
+		// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
+		// 	fmt.Print(val.String())
+		// }
+		// fmt.Println("]")
 		allStirAnswers = append(allStirAnswers, [][]Fp256{submatrix})
 
 		// Merkle tree hints
@@ -871,7 +877,7 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
 		return ZKHint{}, fmt.Errorf("final submatrix: %w", err)
 	}
-	fmt.Println("final submatrix:", finalSubmatrix)
+	// fmt.Println("final submatrix:", finalSubmatrix)
 	allStirAnswers = append(allStirAnswers, [][]Fp256{finalSubmatrix})
 
 	foldedDomainSize := domainSize / finalFoldingFactorPower

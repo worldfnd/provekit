@@ -11,6 +11,7 @@ import (
 	"reilabs/whir-verifier-circuit/app/common"
 	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -72,6 +73,10 @@ type Circuit struct {
 	Evaluations []frontend.Variable
 	// Public input evaluation hint (only used when PublicInputs is non-empty).
 	PublicEval frontend.Variable
+
+	// Merkle proof data for WHIR commitment verification.
+	BlindedMerkleData  whir.WhirMerkleData
+	BlindingMerkleData whir.WhirMerkleData
 }
 
 type Commitment struct {
@@ -192,6 +197,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		whirEvaluations,
 		weightsLen,
 		1, // numPolynomials = 1 for single commitment
+		&circuit.BlindedMerkleData,
+		&circuit.BlindingMerkleData,
 	)
 	if err != nil {
 		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
@@ -450,23 +457,9 @@ func verifyCircuit(
 	publicInputs PublicInputs,
 	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints
 	publicEvalBigInt *big.Int, // public input evaluation (nil if no public inputs)
+	blindedMerkleData whir.WhirMerkleData,
+	blindingMerkleData whir.WhirMerkleData,
 ) error {
-	// TODO: Re-enable once the circuit uses SpongefishArthur with protocol_id
-	// instead of gnark-nimue IOPattern.
-	_ = deferred
-	_ = cfg
-	_ = hints
-	_ = pk
-	_ = vk
-	_ = claimedEvaluations
-	_ = claimedEvaluations2
-	_ = publicWeightsClaimedEvaluation
-	_ = internedR1CS
-	_ = interner
-	_ = buildOps
-	_ = publicInputs
-	// return fmt.Errorf("verifyCircuit is disabled pending SpongefishArthur circuit integration")
-
 	// Original implementation preserved for reference:
 	transcriptT := make([]uints.U8, len(cfg.NargString))
 	contTranscript := make([]uints.U8, len(cfg.NargString))
@@ -594,6 +587,8 @@ func verifyCircuit(
 
 	// Circuit template: placeholder (zero-valued) fields for compilation.
 	evalsContainer := make([]frontend.Variable, 3)
+	blindedMerkleTemplate := allocateZeroWhirMerkleData(blindedMerkleData)
+	blindingMerkleTemplate := allocateZeroWhirMerkleData(blindingMerkleData)
 	circuit := Circuit{
 		InitializationData:           nimueInitCircuit,
 		Transcript:                   contTranscript,
@@ -603,6 +598,8 @@ func verifyCircuit(
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputsContainer,
 		Evaluations:                  evalsContainer,
+		BlindedMerkleData:            blindedMerkleTemplate,
+		BlindingMerkleData:           blindingMerkleTemplate,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -716,9 +713,15 @@ func verifyCircuit(
 		PublicInputs:                 publicInputs,
 		Evaluations:                  evalsAssign,
 		PublicEval:                   publicEvalAssign,
+		BlindedMerkleData:            blindedMerkleData,
+		BlindingMerkleData:           blindingMerkleData,
 	}
 
-	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	witness, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	if err != nil {
+		log.Printf("Failed to create witness: %v", err)
+		return err
+	}
 	publicWitness, err := witness.Public()
 	if err != nil {
 		log.Printf("Failed witness, Public(): %v", err)
@@ -741,6 +744,34 @@ func verifyCircuit(
 		return err
 	}
 	return nil
+}
+
+// allocateZeroWhirMerkleData creates a zero-valued copy of a WhirMerkleData
+// with the same shape. Used as the circuit template for gnark compilation;
+// the actual values go in the assignment only.
+func allocateZeroWhirMerkleData(src whir.WhirMerkleData) whir.WhirMerkleData {
+	dst := whir.WhirMerkleData{
+		Rounds: make([]whir.RoundMerkleEntry, len(src.Rounds)),
+	}
+	for r, rd := range src.Rounds {
+		nq := len(rd.Leaves)
+		entry := whir.RoundMerkleEntry{
+			Leaves:        make([][]frontend.Variable, nq),
+			SiblingHashes: make([]frontend.Variable, nq),
+			AuthPaths:     make([][]frontend.Variable, nq),
+			LeafIndexes:   make([]frontend.Variable, nq),
+		}
+		for q := range nq {
+			if len(rd.Leaves[q]) > 0 {
+				entry.Leaves[q] = make([]frontend.Variable, len(rd.Leaves[q]))
+			}
+			if len(rd.AuthPaths[q]) > 0 {
+				entry.AuthPaths[q] = make([]frontend.Variable, len(rd.AuthPaths[q]))
+			}
+		}
+		dst.Rounds[r] = entry
+	}
+	return dst
 }
 
 //nolint:unused
