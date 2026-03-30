@@ -3,9 +3,7 @@ package circuit
 import (
 	"fmt"
 	"math/big"
-	"math/bits"
 
-	"reilabs/whir-verifier-circuit/app/utilities"
 	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark/constraint/solver"
@@ -81,530 +79,16 @@ type WhirStatement struct {
 }
 
 // ---------------------------------------------------------------------------
-// nimueReceiveCommitment reads a round commitment from the nimue transcript.
-// ---------------------------------------------------------------------------
-
-func nimueReceiveCommitment(
-	nimue gnarkNimue.Nimue,
-	oodSamples int,
-) (ParsedCommitmentNimue, error) {
-	rootHash := make([]frontend.Variable, 1)
-	if err := nimue.FillNextScalars(rootHash); err != nil {
-		return ParsedCommitmentNimue{}, fmt.Errorf("root hash: %w", err)
-	}
-
-	oodPoints := make([]frontend.Variable, oodSamples)
-	if oodSamples > 0 {
-		if err := nimue.FillChallengeScalars(oodPoints); err != nil {
-			return ParsedCommitmentNimue{}, fmt.Errorf("ood points: %w", err)
-		}
-	}
-
-	oodAnswers := make([]frontend.Variable, oodSamples)
-	if oodSamples > 0 {
-		if err := nimue.FillNextScalars(oodAnswers); err != nil {
-			return ParsedCommitmentNimue{}, fmt.Errorf("ood answers: %w", err)
-		}
-	}
-
-	return ParsedCommitmentNimue{
-		Root:       rootHash[0],
-		OodPoints:  oodPoints,
-		OodAnswers: oodAnswers,
-	}, nil
-}
-
-// ---------------------------------------------------------------------------
-// nimueGeometricChallenge mirrors Rust geometric_challenge using nimue.
-// Returns [1] for count <= 1, or [1, x, x^2, ...] for count > 1.
-// ---------------------------------------------------------------------------
-
-func nimueGeometricChallenge(
-	api frontend.API,
-	nimue gnarkNimue.Nimue,
-	count int,
-) ([]frontend.Variable, error) {
-	switch {
-	case count == 0:
-		return nil, nil
-	case count == 1:
-		return []frontend.Variable{frontend.Variable(1)}, nil
-	default:
-		x := make([]frontend.Variable, 1)
-		if err := nimue.FillChallengeScalars(x); err != nil {
-			return nil, err
-		}
-		api.Println("x", x)
-		return utilities.ExpandRandomness(api, x[0], count), nil
-	}
-}
-
-// ---------------------------------------------------------------------------
-// nimueWhirSumcheckRounds mirrors the WHIR quadratic sumcheck verifier.
-// Each round reads c0, c2 from the transcript, derives c1, and squeezes
-// a folding challenge.
-// ---------------------------------------------------------------------------
-
-func nimueWhirSumcheckRounds(
-	api frontend.API,
-	nimue gnarkNimue.Nimue,
-	sum frontend.Variable,
-	numRounds int,
-) ([]frontend.Variable, frontend.Variable, error) {
-	foldingRandomness := make([]frontend.Variable, numRounds)
-
-	for i := range numRounds {
-		// Read c0 and c2
-		coeffs := make([]frontend.Variable, 2)
-		if err := nimue.FillNextScalars(coeffs); err != nil {
-			return nil, nil, fmt.Errorf("sumcheck round %d: %w", i, err)
-		}
-		c0 := coeffs[0]
-		c2 := coeffs[1]
-		api.Println("c0", c0)
-		api.Println("c2", c2)
-		// c1 = sum - 2*c0 - c2
-		c1 := api.Sub(sum, api.Add(api.Add(c0, c0), c2))
-
-		// Squeeze folding randomness
-		rBuf := make([]frontend.Variable, 1)
-		if err := nimue.FillChallengeScalars(rBuf); err != nil {
-			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
-		}
-		api.Println("rBuf", rBuf)
-		foldingRandomness[i] = rBuf[0]
-
-		// sum = P(r) = (c2*r + c1)*r + c0
-		r := foldingRandomness[i]
-		sum = api.Add(api.Mul(api.Add(api.Mul(c2, r), c1), r), c0)
-	}
-
-	return foldingRandomness, sum, nil
-}
-
-// ---------------------------------------------------------------------------
-// computeEqWeightsCircuit computes eq(point, p) for all binary points p.
-// ---------------------------------------------------------------------------
-
-func computeEqWeightsCircuit(api frontend.API, point []frontend.Variable) []frontend.Variable {
-	n := len(point)
-	size := 1 << n
-	result := make([]frontend.Variable, size)
-	result[0] = frontend.Variable(1)
-	cur := 1
-	for i := 0; i < n; i++ {
-		for j := cur - 1; j >= 0; j-- {
-			lo := api.Mul(result[j], api.Sub(frontend.Variable(1), point[i]))
-			hi := api.Sub(result[j], lo)
-			result[2*j] = lo
-			result[2*j+1] = hi
-		}
-		cur *= 2
-	}
-	return result
-}
-
-// ---------------------------------------------------------------------------
-// tensorProductCircuit computes the Kronecker product of two vectors.
-// ---------------------------------------------------------------------------
-
-func tensorProductCircuit(api frontend.API, a, b []frontend.Variable) []frontend.Variable {
-	result := make([]frontend.Variable, len(a)*len(b))
-	for i, x := range a {
-		for j, y := range b {
-			result[i*len(b)+j] = api.Mul(x, y)
-		}
-	}
-	return result
-}
-
-// ---------------------------------------------------------------------------
-// univarMleEvaluateCircuit computes the MLE of the univariate evaluation
-// linear form: Π_i ((1 - r_i) + r_i * point^(2^i))
-// ---------------------------------------------------------------------------
-
-func univarMleEvaluateCircuit(api frontend.API, univarPoint frontend.Variable, point []frontend.Variable) frontend.Variable {
-	n := len(point)
-	result := frontend.Variable(1)
-	x2i := univarPoint
-	for i := n - 1; i >= 0; i-- {
-		factor := api.Add(api.Sub(frontend.Variable(1), point[i]), api.Mul(point[i], x2i))
-		result = api.Mul(result, factor)
-		x2i = api.Mul(x2i, x2i)
-	}
-	return result
-}
-
-// ---------------------------------------------------------------------------
-// exponentVarCircuit computes base^exp using square-and-multiply.
-// ---------------------------------------------------------------------------
-
-func exponentVarCircuit(api frontend.API, base frontend.Variable, exp frontend.Variable, numBits int) frontend.Variable {
-	expBits := api.ToBinary(exp, numBits)
-	output := frontend.Variable(1)
-	multiply := base
-	for i := range expBits {
-		output = api.Select(expBits[i], api.Mul(output, multiply), output)
-		multiply = api.Mul(multiply, multiply)
-	}
-	return output
-}
-
-// ---------------------------------------------------------------------------
-// nimueReadLeavesFromHints reads leaf values from the hint stream.
-// ---------------------------------------------------------------------------
-
-func nimueReadLeavesFromHints(hr *NimueHintReader, numLeaves, numCols int) [][]frontend.Variable {
-	flat := hr.ReadVec(numLeaves * numCols)
-	leaves := make([][]frontend.Variable, numLeaves)
-	for i := range leaves {
-		leaves[i] = flat[i*numCols : (i+1)*numCols]
-	}
-	return leaves
-}
-
-// ---------------------------------------------------------------------------
-// nimueVerifyMerklePaths verifies Merkle membership proofs using Skyscraper.
-// ---------------------------------------------------------------------------
-
-// nimueVerifyMerklePaths verifies Merkle membership proofs using Skyscraper CompressV2.
-// Each leaf is hashed, then the auth path is traversed to the root.
-// Parameters:
-//   - leaves: [query_idx][fold_element_idx] - leaf values from submatrix
-//   - leafIndexes: [query_idx] - leaf positions in the folded domain
-//   - siblingHashes: [query_idx] - sibling hashes at the leaf level
-//   - authPaths: [query_idx][level] - authentication path hashes
-//   - rootHash: expected Merkle root
-func nimueVerifyMerklePaths(
-	api frontend.API,
-	sc *skyscraper.Skyscraper,
-	leaves [][]frontend.Variable,
-	leafIndexes []frontend.Variable,
-	siblingHashes []frontend.Variable,
-	authPaths [][]frontend.Variable,
-	rootHash frontend.Variable,
-	treeHeight int,
-) {
-	for i := range leaves {
-		leafIndexBits := api.ToBinary(leafIndexes[i], treeHeight)
-
-		// Hash leaf elements into a single commitment.
-		claimedLeafHash := sc.CompressV2(leaves[i][0], leaves[i][1])
-		for x := 2; x < len(leaves[i]); x++ {
-			claimedLeafHash = sc.CompressV2(claimedLeafHash, leaves[i][x])
-		}
-
-		// Level 0: combine with sibling.
-		dir := leafIndexBits[0]
-		left := api.Select(dir, siblingHashes[i], claimedLeafHash)
-		right := api.Select(dir, claimedLeafHash, siblingHashes[i])
-		currentHash := sc.CompressV2(left, right)
-
-		// Remaining levels.
-		for level := 1; level < treeHeight; level++ {
-			indexBit := api.And(leafIndexBits[level], 1)
-			left = api.Select(indexBit, authPaths[i][level-1], currentHash)
-			right = api.Select(indexBit, currentHash, authPaths[i][level-1])
-			currentHash = sc.CompressV2(left, right)
-		}
-
-		api.AssertIsEqual(currentHash, rootHash)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// MainRoundDataNimue holds per-round constraint data for WHIR.
-// ---------------------------------------------------------------------------
-
-type MainRoundDataNimue struct {
-	OODPoints             [][]frontend.Variable
-	StirChallengesPoints  [][]frontend.Variable
-	CombinationRandomness [][]frontend.Variable
-}
-
-type InitialSumcheckDataNimue struct {
-	InitialOODQueries            []frontend.Variable
-	InitialCombinationRandomness []frontend.Variable
-}
-
-// ---------------------------------------------------------------------------
-// VerifyWhirNimue is the circuit-level WHIR verification using nimue.
-// Adapted from gnark whir's VerifyWhir (whir_verifier.go).
-//
-// Parameters:
-//   - commitment: parsed initial commitment (root, OOD points, OOD answers)
-//   - statements: external linear form evaluations to verify
-//   - params: WHIR protocol parameters (circuit.WHIRParams)
-//   - hr: hint reader for Merkle proofs and leaf data
-// ---------------------------------------------------------------------------
-
-func VerifyWhirNimue(
-	api frontend.API,
-	sc *skyscraper.Skyscraper,
-	nimue gnarkNimue.Nimue,
-	commitment ParsedCommitmentNimue,
-	statements []WhirStatement,
-	params WHIRParams,
-	// hr *NimueHintReader,
-) (totalFoldingRandomness []frontend.Variable, err error) {
-
-	numVectors := params.BatchSize
-
-	// ---------------------------------------------------------------
-	// 1. Complete OOD evaluation matrix (single commitment, no cross-terms)
-	// ---------------------------------------------------------------
-	numOODConstraints := 0
-	var oodMatrix []frontend.Variable
-	for i := 0; i < params.CommittmentOODSamples; i++ {
-		for j := 0; j < numVectors; j++ {
-			oodMatrix = append(oodMatrix, commitment.OodAnswers[i*numVectors+j])
-		}
-		numOODConstraints++
-	}
-
-	// Extract OOD multilinear points from univariate challenge points
-	oodPoints := make([][]frontend.Variable, len(commitment.OodPoints))
-	for i, point := range commitment.OodPoints {
-		oodPoints[i] = utilities.ExpandFromUnivariate(api, point, params.MVParamsNumberOfVariables)
-	}
-
-	// ---------------------------------------------------------------
-	// 2. Vector RLC
-	// ---------------------------------------------------------------
-	vectorRlcCoeffs, err := nimueGeometricChallenge(api, nimue, numVectors)
-	if err != nil {
-		return nil, fmt.Errorf("vector_rlc: %w", err)
-	}
-
-	// ---------------------------------------------------------------
-	// 3. Constraint RLC
-	// ---------------------------------------------------------------
-	numLinearForms := len(statements)
-	totalConstraints := numOODConstraints + numLinearForms
-	constraintRlcCoeffs, err := nimueGeometricChallenge(api, nimue, totalConstraints)
-	if err != nil {
-		return nil, fmt.Errorf("constraint_rlc: %w", err)
-	}
-
-	oodsRlcCoeffs := constraintRlcCoeffs[:numOODConstraints]
-	initialFormRlcCoeffs := constraintRlcCoeffs[numOODConstraints:]
-
-	// ---------------------------------------------------------------
-	// 4. Compute "the sum"
-	// ---------------------------------------------------------------
-	theSum := frontend.Variable(0)
-
-	// Contribution from external linear forms.
-	// For batchSize=1 (single commitment), each statement maps to one evaluation.
-	// The dot product with vectorRlcCoeffs=[1] simplifies to just the evaluation.
-	for i, rlcCoeff := range initialFormRlcCoeffs {
-		theSum = api.Add(theSum, api.Mul(rlcCoeff, statements[i].Evaluation))
-	}
-
-	// Contribution from OOD constraints.
-	// For batchSize=1, each OOD row has one element.
-	for i, rlcCoeff := range oodsRlcCoeffs {
-		if numVectors == 1 {
-			theSum = api.Add(theSum, api.Mul(rlcCoeff, oodMatrix[i]))
-		} else {
-			oodsRow := oodMatrix[i*numVectors : (i+1)*numVectors]
-			theSum = api.Add(theSum, api.Mul(rlcCoeff, utilities.DotProduct(api, vectorRlcCoeffs, oodsRow)))
-		}
-	}
-
-	// ---------------------------------------------------------------
-	// 5. Initial sumcheck
-	// ---------------------------------------------------------------
-	initialSumcheckFoldingRandomness, theSum, err := nimueWhirSumcheckRounds(api, nimue, theSum, params.FoldingFactorArray[0])
-	if err != nil {
-		return nil, fmt.Errorf("initial sumcheck: %w", err)
-	}
-
-	initialSumcheckData := InitialSumcheckDataNimue{
-		InitialOODQueries:            commitment.OodPoints,
-		InitialCombinationRandomness: constraintRlcCoeffs,
-	}
-
-	// TODO: Re-enable once hint infrastructure is wired up.
-	// foldSize := 1 << params.FoldingFactorArray[0]
-	// numQueries := params.RoundParametersNumOfQueries[0]
-	// initialLeaves := nimueReadLeavesFromHints(hr, numQueries, params.BatchSize*foldSize)
-
-	mainRoundData := MainRoundDataNimue{
-		OODPoints:             make([][]frontend.Variable, params.ParamNRounds),
-		StirChallengesPoints:  make([][]frontend.Variable, params.ParamNRounds),
-		CombinationRandomness: make([][]frontend.Variable, params.ParamNRounds),
-	}
-
-	expDomainGenerator := exponentVarCircuit(api, params.StartingDomainBackingDomainGenerator, frontend.Variable(1<<params.FoldingFactorArray[0]), bits.Len(uint(params.DomainSize)))
-	domainSize := params.DomainSize
-
-	totalFoldingRandomness = initialSumcheckFoldingRandomness
-
-	var prevRootHash frontend.Variable
-
-	// ---------------------------------------------------------------
-	// 6. Main WHIR rounds
-	// ---------------------------------------------------------------
-	for r := range params.ParamNRounds {
-		// Receive round commitment
-		rootHash := make([]frontend.Variable, 1)
-		if err = nimue.FillNextScalars(rootHash); err != nil {
-			return nil, fmt.Errorf("round %d root: %w", r, err)
-		}
-		api.Println("rootHash", rootHash)
-		roundOODPoints := make([]frontend.Variable, params.RoundParametersOODSamples[r])
-		roundOODAnswers := make([]frontend.Variable, params.RoundParametersOODSamples[r])
-		if params.RoundParametersOODSamples[r] > 0 {
-			if err = nimue.FillChallengeScalars(roundOODPoints); err != nil {
-				return nil, fmt.Errorf("round %d ood points: %w", r, err)
-			}
-			if err = nimue.FillNextScalars(roundOODAnswers); err != nil {
-				return nil, fmt.Errorf("round %d ood answers: %w", r, err)
-			}
-		}
-		api.Println("roundOODPoints", roundOODPoints)
-		api.Println("roundOODAnswers", roundOODAnswers)
-		mainRoundData.OODPoints[r] = roundOODPoints
-
-		// PoW
-		if err = RunPoW(api, sc, nimue, params.PowBits[r]); err != nil {
-			return nil, fmt.Errorf("round %d pow: %w", r, err)
-		}
-
-		// Open previous commitment (IRS verify)
-		foldingFactorPower := 1 << params.FoldingFactorArray[r]
-		var numQueries int
-		var stirFoldingFactor int
-		if r == 0 {
-			// First round: open initial commitment
-			numQueries = params.InitialInDomainSamples
-			stirFoldingFactor = foldingFactorPower
-		} else {
-			// Subsequent rounds: open previous round's commitment
-			numQueries = params.RoundParametersNumOfQueries[r-1]
-			stirFoldingFactor = 1 << params.FoldingFactorArray[r-1]
-		}
-		api.Println("IRS numQueries", numQueries)
-		api.Println("IRS domainSize", domainSize)
-		api.Println("IRS stirFoldingFactor", stirFoldingFactor)
-		stirIndexes, err := getStirChallenges(api, nimue, numQueries, domainSize, stirFoldingFactor)
-		if err != nil {
-			return nil, fmt.Errorf("round %d stir: %w", r, err)
-		}
-		api.Println("stirIndexes", stirIndexes)
-		// TODO: Re-enable Merkle/leaf verification once hints are wired up.
-		// For now, skip in-domain leaf reading and Merkle proof verification.
-
-		prevRootHash = rootHash[0]
-
-		// Compute domain evaluation points from indices
-		numBits := bits.Len(uint(domainSize - 1))
-		mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(stirIndexes))
-		for index, idx := range stirIndexes {
-			mainRoundData.StirChallengesPoints[r][index] = exponentVarCircuit(api, expDomainGenerator, idx, numBits)
-		}
-
-		// Constraint values = OOD values + in-domain zero placeholders.
-		// The in-domain values are zeroed until Merkle/leaf verification is enabled,
-		// but the count must match the native verifier so that the geometric
-		// challenge squeeze produces the same transcript state.
-		numInDomainQueries := len(stirIndexes)
-		constraintValues := make([]frontend.Variable, 0, len(roundOODAnswers)+numInDomainQueries)
-		constraintValues = append(constraintValues, roundOODAnswers...)
-		for range numInDomainQueries {
-			constraintValues = append(constraintValues, frontend.Variable(0))
-		}
-
-		// Combination randomness
-		roundCombRlcCoeffs, err := nimueGeometricChallenge(api, nimue, len(constraintValues))
-		if err != nil {
-			return nil, fmt.Errorf("round %d comb: %w", r, err)
-		}
-		mainRoundData.CombinationRandomness[r] = roundCombRlcCoeffs
-
-		// Update theSum
-		constraintDot := utilities.DotProduct(api, roundCombRlcCoeffs, constraintValues)
-		theSum = api.Add(theSum, constraintDot)
-
-		// Round sumcheck
-		var roundFoldingRandomness []frontend.Variable
-		roundFoldingRandomness, theSum, err = nimueWhirSumcheckRounds(api, nimue, theSum, params.FoldingFactorArray[r+1])
-		if err != nil {
-			return nil, fmt.Errorf("round %d sumcheck: %w", r, err)
-		}
-
-		totalFoldingRandomness = append(totalFoldingRandomness, roundFoldingRandomness...)
-		domainSize /= 2
-		numSquarings := 1 + params.FoldingFactorArray[r+1] - params.FoldingFactorArray[r]
-		for k := 0; k < numSquarings; k++ {
-			expDomainGenerator = api.Mul(expDomainGenerator, expDomainGenerator)
-		}
-	}
-
-	// ---------------------------------------------------------------
-	// 7. Final polynomial
-	// ---------------------------------------------------------------
-	finalVector := make([]frontend.Variable, 1<<params.FinalSumcheckRounds)
-	if err = nimue.FillNextScalars(finalVector); err != nil {
-		return nil, fmt.Errorf("final vector: %w", err)
-	}
-
-	// Final PoW
-	if err = RunPoW(api, sc, nimue, params.FinalPowBits); err != nil {
-		return nil, fmt.Errorf("final pow: %w", err)
-	}
-
-	// ---------------------------------------------------------------
-	// 8. Final STIR challenges and opening
-	// ---------------------------------------------------------------
-	lastFoldingFactor := params.FoldingFactorArray[len(params.FoldingFactorArray)-1]
-	finalIndexes, err := getStirChallenges(api, nimue, params.FinalQueries, domainSize, 1<<lastFoldingFactor)
-	if err != nil {
-		return nil, fmt.Errorf("final stir: %w", err)
-	}
-
-	numBits := bits.Len(uint(domainSize - 1))
-	finalRandomnessPoints := make([]frontend.Variable, len(finalIndexes))
-	for i, idx := range finalIndexes {
-		finalRandomnessPoints[i] = exponentVarCircuit(api, expDomainGenerator, idx, numBits)
-	}
-
-	// TODO: Re-enable final round leaf/Merkle verification once hints are wired up.
-	_ = prevRootHash
-	_ = finalRandomnessPoints
-	_ = finalVector
-
-	// ---------------------------------------------------------------
-	// 9. Final sumcheck
-	// ---------------------------------------------------------------
-	finalSumcheckRandomness, theSum, err := nimueWhirSumcheckRounds(api, nimue, theSum, params.FinalSumcheckRounds)
-	if err != nil {
-		return nil, fmt.Errorf("final sumcheck: %w", err)
-	}
-	totalFoldingRandomness = append(totalFoldingRandomness, finalSumcheckRandomness...)
-
-	if params.FinalFoldingPowBits > 0 {
-		if err = RunPoW(api, sc, nimue, params.FinalFoldingPowBits); err != nil {
-			return nil, fmt.Errorf("final folding pow: %w", err)
-		}
-	}
-
-	// TODO: Re-enable deferred evaluation check and final equation once hints are wired up.
-	// For now, skip the weight evaluation and final sumcheck equation check.
-	_ = initialSumcheckData
-	_ = mainRoundData
-	_ = initialFormRlcCoeffs
-	_ = numLinearForms
-	_ = finalSumcheckRandomness
-
-	return totalFoldingRandomness, nil
-}
-
-// ---------------------------------------------------------------------------
 // ZKWhirVerifyNimue is the circuit-level ZK-WHIR verification wrapper.
 // Mirrors nativeZKWhirVerify but uses gnark constraints.
 // ---------------------------------------------------------------------------
+
+// ZKWhirVerifyResult holds the outputs from ZKWhirVerifyNimue needed for
+// deferred evaluation checks (FinalClaim binding).
+type ZKWhirVerifyResult struct {
+	BlindedResult  *whir.VerifyResult
+	BlindingResult *whir.VerifyResult
+}
 
 func ZKWhirVerifyNimue(
 	api frontend.API,
@@ -614,12 +98,12 @@ func ZKWhirVerifyNimue(
 	blindingCommitment ParsedCommitmentNimue,
 	blindedParams WHIRParams,
 	blindingParams WHIRParams,
-	evaluations []frontend.Variable, // claimed linear form evaluations [az, bz, cz] or [pub, az, bz, cz]
+	evaluations []frontend.Variable, // claimed linear form evaluations [pub?, az, bz, cz, blinding_eval]
 	weightsLen int, // 4 (no public) or 5 (with public)
 	numPolynomials int, // typically 1
 	blindedMerkleData *whir.WhirMerkleData,
 	blindingMerkleData *whir.WhirMerkleData,
-) error {
+) (*ZKWhirVerifyResult, error) {
 	numWitnessVariables := blindedParams.MVParamsNumberOfVariables
 	interleavingDepth := 1 << blindedParams.FoldingFactorArray[0]
 
@@ -628,7 +112,7 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	blindingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(blindingChallenge); err != nil {
-		return fmt.Errorf("blinding_challenge: %w", err)
+		return nil, fmt.Errorf("blinding_challenge: %w", err)
 	}
 	api.Println("blinding_challenge", blindingChallenge[0])
 
@@ -638,7 +122,7 @@ func ZKWhirVerifyNimue(
 	numWFoldedEvals := weightsLen * numPolynomials * (numWitnessVariables + 1)
 	wFoldedBlindingEvals := make([]frontend.Variable, numWFoldedEvals)
 	if err := nimue.FillNextScalars(wFoldedBlindingEvals); err != nil {
-		return fmt.Errorf("w_folded_blinding_evals: %w", err)
+		return nil, fmt.Errorf("w_folded_blinding_evals: %w", err)
 	}
 	api.Println("w_folded_blinding_evals", wFoldedBlindingEvals)
 	// ---------------------------------------------------------------
@@ -646,7 +130,7 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	maskingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(maskingChallenge); err != nil {
-		return fmt.Errorf("masking_challenge: %w", err)
+		return nil, fmt.Errorf("masking_challenge: %w", err)
 	}
 	api.Println("masking_challenge", maskingChallenge[0])
 
@@ -656,7 +140,7 @@ func ZKWhirVerifyNimue(
 	numInitialQueries := blindedParams.InitialInDomainSamples
 	initialStirIndexes, err := getStirChallenges(api, nimue, numInitialQueries, blindedParams.DomainSize, interleavingDepth)
 	if err != nil {
-		return fmt.Errorf("initial_committer stir: %w", err)
+		return nil, fmt.Errorf("initial_committer stir: %w", err)
 	}
 	api.Println("initial_committer stir", initialStirIndexes)
 
@@ -683,11 +167,11 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	tau1 := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(tau1); err != nil {
-		return fmt.Errorf("tau1: %w", err)
+		return nil, fmt.Errorf("tau1: %w", err)
 	}
 	tau2 := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(tau2); err != nil {
-		return fmt.Errorf("tau2: %w", err)
+		return nil, fmt.Errorf("tau2: %w", err)
 	}
 	api.Println("tau1", tau1[0])
 	api.Println("tau2", tau2[0])
@@ -702,7 +186,7 @@ func ZKWhirVerifyNimue(
 		for p := range numPolynomials {
 			vals := make([]frontend.Variable, evalsPerPoly)
 			if err := nimue.FillNextScalars(vals); err != nil {
-				return fmt.Errorf("gamma %d poly %d: %w", g, p, err)
+				return nil, fmt.Errorf("gamma %d poly %d: %w", g, p, err)
 			}
 			perGammaEvals[g][p] = vals
 		}
@@ -712,17 +196,77 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	combinedClaims := make([]frontend.Variable, numPolynomials)
 	if err := nimue.FillNextScalars(combinedClaims); err != nil {
-		return fmt.Errorf("combined_claims: %w", err)
+		return nil, fmt.Errorf("combined_claims: %w", err)
 	}
 	batchedHClaims := make([]frontend.Variable, numPolynomials)
 	if err := nimue.FillNextScalars(batchedHClaims); err != nil {
-		return fmt.Errorf("batched_h_claims: %w", err)
+		return nil, fmt.Errorf("batched_h_claims: %w", err)
 	}
 	api.Println("combined_claims", combinedClaims)
 	api.Println("batched_h_claims", batchedHClaims)
 
 	// ---------------------------------------------------------------
+	// 7a. Verify batched_h_claims (Rust: verify!(batched_h_claims == expected_batched_h_claims))
+	//     Compute gamma points from query indices and verify h-value accumulation.
+	// ---------------------------------------------------------------
+
+	// Compute gamma values: for each query index i, for k = 0..interleavingDepth-1:
+	//   gamma_{i,k} = omega_full^(index_i) * zeta^k
+	numBitsIdx := 0
+	for v := blindedParams.DomainSize / interleavingDepth; v > 1; v >>= 1 {
+		numBitsIdx++
+	}
+	// Precompute zeta powers: [1, zeta, zeta^2, ..., zeta^(interleavingDepth-1)]
+	zetaPowers := make([]frontend.Variable, interleavingDepth)
+	zetaPowers[0] = frontend.Variable(1)
+	for k := 1; k < interleavingDepth; k++ {
+		zetaPowers[k] = api.Mul(zetaPowers[k-1], blindedParams.Zeta)
+	}
+
+	gammas := make([]frontend.Variable, hGammasCount)
+	for qi := range numInitialQueries {
+		// coset_offset = omega_full^(initialStirIndexes[qi])
+		cosetOffset := whir.ExponentVar(api, blindedParams.OmegaFull, initialStirIndexes[qi], numBitsIdx)
+		for k := range interleavingDepth {
+			gammas[qi*interleavingDepth+k] = api.Mul(cosetOffset, zetaPowers[k])
+		}
+	}
+
+	// Compute expected_batched_h_claims from per-gamma evaluations.
+	// Mirrors Rust whir_zk/verifier.rs lines 95-113.
+	expectedBatchedHClaims := make([]frontend.Variable, numPolynomials)
+	for p := range numPolynomials {
+		expectedBatchedHClaims[p] = frontend.Variable(0)
+	}
+	tau2PowerH := frontend.Variable(1)
+	for g := range hGammasCount {
+		gamma := gammas[g]
+		for p := range numPolynomials {
+			evals := perGammaEvals[g][p]
+			mEval := evals[0]
+			hValue := mEval
+			blindingPower := blindingChallenge[0]
+			gammaPower := gamma
+			for j := range numWitnessVariables {
+				gHatEval := evals[j+1]
+				hValue = api.Add(hValue, api.Mul(api.Mul(blindingPower, gammaPower), gHatEval))
+				blindingPower = api.Mul(blindingPower, blindingChallenge[0])
+				gammaPower = api.Mul(gammaPower, gammaPower)
+			}
+			expectedBatchedHClaims[p] = api.Add(expectedBatchedHClaims[p], api.Mul(tau2PowerH, hValue))
+		}
+		tau2PowerH = api.Mul(tau2PowerH, tau2[0])
+	}
+	for p := range numPolynomials {
+		api.AssertIsEqual(batchedHClaims[p], expectedBatchedHClaims[p])
+	}
+
+	// ---------------------------------------------------------------
 	// 8. Blinded commitment WHIR verify
+	//    The Go implementation passes raw evaluations to the inner WHIR
+	//    verifier (matching the native NativeWhirVerify). The m_evals
+	//    adjustment is not applied here because the Go WHIR verifier
+	//    handles the evaluation binding differently from Rust's whir_zk.
 	// ---------------------------------------------------------------
 	blindedWhirCommitment := toWhirCommitment(blindedCommitment)
 	blindedWhirStatements := toWhirStatements(evaluations)
@@ -730,9 +274,11 @@ func ZKWhirVerifyNimue(
 
 	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, blindedMerkleData)
 	if err != nil {
-		return fmt.Errorf("blinded WHIR verify: %w", err)
+		return nil, fmt.Errorf("blinded WHIR verify: %w", err)
 	}
-	_ = blindedResult // FinalClaim verified by caller via R1CS matrix evaluation
+
+	// NOTE: Blinded FinalClaim constraint is enforced by the caller (circuit.Define)
+	// using evaluateR1CSMatrixExtension against the R1CS matrices embedded in the circuit.
 
 	// ---------------------------------------------------------------
 	// 9. Blinding commitment WHIR verify
@@ -760,6 +306,21 @@ func ZKWhirVerifyNimue(
 		tau2Power = api.Mul(tau2Power, tau2[0])
 	}
 
+	// ---------------------------------------------------------------
+	// 9a. Verify combined_claims (Rust: verify!(combined_claims == expected_combined_claims))
+	//     combined_claims[p] = m_claims[p] + 2 * tau1 * univariate_evaluate(g_hat_claims[p], tau1)
+	// ---------------------------------------------------------------
+	for p := range numPolynomials {
+		// Horner evaluation of g_hat_claims[p] at tau1
+		gHatEval := frontend.Variable(0)
+		for j := len(gHatClaims[p]) - 1; j >= 0; j-- {
+			gHatEval = api.Add(gHatClaims[p][j], api.Mul(gHatEval, tau1[0]))
+		}
+		// expected = m_claims[p] + 2 * tau1 * gHatEval
+		expectedCombined := api.Add(mClaims[p], api.Mul(frontend.Variable(2), api.Mul(tau1[0], gHatEval)))
+		api.AssertIsEqual(combinedClaims[p], expectedCombined)
+	}
+
 	// Build subproof_claims: [m_0, g_hat_0..., m_1, g_hat_1..., ...]
 	var subproofClaims []frontend.Variable
 	for p := range numPolynomials {
@@ -776,11 +337,19 @@ func ZKWhirVerifyNimue(
 
 	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, blindingMerkleData)
 	if err != nil {
-		return fmt.Errorf("blinding WHIR verify: %w", err)
+		return nil, fmt.Errorf("blinding WHIR verify: %w", err)
 	}
-	_ = blindingResult // FinalClaim verified by caller via R1CS matrix evaluation
 
-	return nil
+	// TODO(soundness): Blinding FinalClaim constraint (same as blinded above).
+	// The blinding weights are beq_weights (batched eq from gammas) and
+	// w_folded_weights (folded R1CS weights). Their MLE evaluations at the
+	// blinding evaluation point must match LinearFormRLC.
+	_ = blindingResult
+
+	return &ZKWhirVerifyResult{
+		BlindedResult:  blindedResult,
+		BlindingResult: blindingResult,
+	}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -841,23 +410,6 @@ func calculateEqCircuit(api frontend.API, a, b []frontend.Variable) frontend.Var
 		prod := api.Mul(oneMinusA, oneMinusB)
 		term := api.Add(ab, prod)
 		result = api.Mul(result, term)
-	}
-	return result
-}
-
-// ---------------------------------------------------------------------------
-// expandPowersCircuit computes [1, alpha[0]*alpha[1]*..., alpha[0], ...] etc.
-// Mirrors Rust expand_powers::<N> for the blinding covector weights.
-// For N=4: returns [1, α₁, α₁α₂, α₁α₂α₃] where α = alpha.
-// ---------------------------------------------------------------------------
-
-func expandPowersCircuit(api frontend.API, alpha []frontend.Variable) [4]frontend.Variable {
-	var result [4]frontend.Variable
-	result[0] = frontend.Variable(1)
-	acc := frontend.Variable(1)
-	for i := 0; i < 3 && i < len(alpha); i++ {
-		acc = api.Mul(acc, alpha[i])
-		result[i+1] = acc
 	}
 	return result
 }

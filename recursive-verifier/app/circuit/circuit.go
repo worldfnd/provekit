@@ -77,6 +77,12 @@ type Circuit struct {
 	// Merkle proof data for WHIR commitment verification.
 	BlindedMerkleData  whir.WhirMerkleData
 	BlindingMerkleData whir.WhirMerkleData
+
+	// R1CS matrices as sparse cell lists. Used to compute the weight MLE
+	// evaluations for the FinalClaim binding check.
+	MatrixA []MatrixCell
+	MatrixB []MatrixCell
+	MatrixC []MatrixCell
 }
 
 type Commitment struct {
@@ -114,14 +120,15 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 	}
 
-	// Run ZK sumcheck — returns tRand (r) and alpha (folding challenges).
-	tRand, alpha, fAtAlpha, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
+	// Run ZK sumcheck — returns tRand (r), alpha (folding challenges), and blindingEval.
+	tRand, alpha, fAtAlpha, blindingEval, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
 	api.Println("tRand", tRand)
 	api.Println("alpha", alpha)
 	api.Println("fAtAlpha", fAtAlpha)
+	api.Println("blindingEval", blindingEval)
 
 	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
@@ -153,19 +160,21 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	api.Println("czAtAlpha", czAtAlpha)
 
 	// Build the evaluations list for WHIR verify.
-	// If public inputs: [public_eval, az, bz, cz]
-	// Else: [az, bz, cz]
+	// Includes blinding_eval as the last weight, matching Rust's
+	// [pub?, az, bz, cz, blinding_eval] passed to whir_zk::verify.
 	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
 	var whirEvaluations []frontend.Variable
 
 	if hasPublicInputs {
 		api.Println("publicEval", circuit.PublicEval)
-		whirEvaluations = []frontend.Variable{circuit.PublicEval, azAtAlpha, bzAtAlpha, czAtAlpha}
+		whirEvaluations = []frontend.Variable{circuit.PublicEval, azAtAlpha, bzAtAlpha, czAtAlpha, blindingEval}
 	} else {
-		whirEvaluations = []frontend.Variable{azAtAlpha, bzAtAlpha, czAtAlpha}
+		whirEvaluations = []frontend.Variable{azAtAlpha, bzAtAlpha, czAtAlpha, blindingEval}
 	}
 
 	// Determine weights length: 3 (A,B,C) + optional public + blinding = 4 or 5
+	// weightsLen includes the blinding weight for computing numWFoldedEvals
+	// in the ZK wrapper, even though evaluations doesn't include blinding_eval.
 	weightsLen := 4
 	if hasPublicInputs {
 		weightsLen = 5
@@ -188,7 +197,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	// _ = blindedCommitmentNimue
 	// _ = blindingCommitmentNimue
 	// Run ZK-WHIR verification (single commitment version)
-	err = ZKWhirVerifyNimue(
+	zkWhirResult, err := ZKWhirVerifyNimue(
 		api, sc, nimue,
 		blindedCommitmentNimue,
 		blindingCommitmentNimue,
@@ -203,6 +212,14 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
 	}
+	// TODO(soundness): Blinded FinalClaim constraint.
+	// The FinalClaim has 4 weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector].
+	// The R1CS matrix MLE evaluation infrastructure is in place (evaluateR1CSMatrixExtension,
+	// calculateEQOverBooleanHypercube, geometricTill). The blinding covector MLE
+	// (OffsetCovector with expand_powers::<4>(alpha) at offset w1_size) needs to be
+	// computed in-circuit. Once all 4 weight MLEs are available:
+	//   api.AssertIsEqual(fc.LinearFormRLC, sum(fc.RLCCoefficients[i] * weightMLE[i]))
+	_ = zkWhirResult
 
 	// ---------------------------------------------------------------
 	// Final R1CS constraint satisfaction check:
@@ -500,62 +517,10 @@ func verifyCircuit(
 	// 	witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
 	// }
 
-	// colIndicesA := internedR1CS.A.DecodeColIndices()
-	// if colIndicesA == nil {
-	// 	return fmt.Errorf("failed to decode column indices for matrix A: inconsistent data")
-	// }
-	// matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
-	// for i := range len(internedR1CS.A.RowIndices) {
-	// 	end := len(internedR1CS.A.Values) - 1
-	// 	if i < len(internedR1CS.A.RowIndices)-1 {
-	// 		end = int(internedR1CS.A.RowIndices[i+1] - 1)
-	// 	}
-	// 	for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-	// 		matrixA[j] = MatrixCell{
-	// 			row:    i,
-	// 			column: int(colIndicesA[j]),
-	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
-	// 		}
-	// 	}
-	// }
-
-	// colIndicesB := internedR1CS.B.DecodeColIndices()
-	// if colIndicesB == nil {
-	// 	return fmt.Errorf("failed to decode column indices for matrix B: inconsistent data")
-	// }
-	// matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
-	// for i := range len(internedR1CS.B.RowIndices) {
-	// 	end := len(internedR1CS.B.Values) - 1
-	// 	if i < len(internedR1CS.B.RowIndices)-1 {
-	// 		end = int(internedR1CS.B.RowIndices[i+1] - 1)
-	// 	}
-	// 	for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-	// 		matrixB[j] = MatrixCell{
-	// 			row:    i,
-	// 			column: int(colIndicesB[j]),
-	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
-	// 		}
-	// 	}
-	// }
-
-	// colIndicesC := internedR1CS.C.DecodeColIndices()
-	// if colIndicesC == nil {
-	// 	return fmt.Errorf("failed to decode column indices for matrix C: inconsistent data")
-	// }
-	// matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
-	// for i := range len(internedR1CS.C.RowIndices) {
-	// 	end := len(internedR1CS.C.Values) - 1
-	// 	if i < len(internedR1CS.C.RowIndices)-1 {
-	// 		end = int(internedR1CS.C.RowIndices[i+1] - 1)
-	// 	}
-	// 	for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-	// 		matrixC[j] = MatrixCell{
-	// 			row:    i,
-	// 			column: int(colIndicesC[j]),
-	// 			value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
-	// 		}
-	// 	}
-	// }
+	matrixA, matrixB, matrixC, err := buildR1CSMatrixCells(internedR1CS, interner)
+	if err != nil {
+		return err
+	}
 
 	// // Parse claimed evaluations for first commitment
 	// fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
@@ -600,6 +565,9 @@ func verifyCircuit(
 		Evaluations:                  evalsContainer,
 		BlindedMerkleData:            blindedMerkleTemplate,
 		BlindingMerkleData:           blindingMerkleTemplate,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -715,6 +683,9 @@ func verifyCircuit(
 		PublicEval:                   publicEvalAssign,
 		BlindedMerkleData:            blindedMerkleData,
 		BlindingMerkleData:           blindingMerkleData,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
 	witness, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())

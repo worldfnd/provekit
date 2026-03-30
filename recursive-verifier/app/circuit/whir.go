@@ -14,6 +14,21 @@ import (
 
 // NewWhirParams creates a new WHIRParams instance from the given configuration.
 // It processes the folding factors and calculates domain sizes based on the provided config.
+// bn254TwoAdicRootOfUnity is the primitive 2^28-th root of unity for BN254 Fr.
+// This matches arkworks bn254::Fr::TWO_ADIC_ROOT_OF_UNITY.
+var bn254TwoAdicRootOfUnity, _ = new(big.Int).SetString(
+	"19103219067921713944291392827692070036145651957329286315305642004821462161904", 10)
+
+const bn254TwoAdicity = 28
+
+// computeNTTGenerator computes the primitive root of unity of order `domainSize`
+// for the BN254 scalar field. domainSize must be a power of two <= 2^28.
+func computeNTTGenerator(domainSize int) *big.Int {
+	// generator(N) = two_adic_root ^ (2^28 / N)
+	exp := new(big.Int).SetUint64(uint64(1 << bn254TwoAdicity / domainSize))
+	return new(big.Int).Exp(bn254TwoAdicRootOfUnity, exp, bn254Modulus)
+}
+
 func NewWhirParams(cfg WHIRConfig) WHIRParams {
 	startingDomainGen, _ := new(big.Int).SetString(cfg.DomainGenerator, 10)
 	mvParamsNumberOfVariables := cfg.NVars
@@ -28,6 +43,13 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		finalSumcheckRounds = mvParamsNumberOfVariables % 4
 	}
 	domainSize := (2 << mvParamsNumberOfVariables) * (1 << cfg.Rate) / 2
+	interleavingDepth := 1 << foldingFactor[0]
+
+	// Compute omega_full (generator of full domain of size DomainSize) and
+	// zeta (interleaving coset generator = omega_full^codeword_length).
+	omegaFull := computeNTTGenerator(domainSize)
+	codewordLength := domainSize / interleavingDepth
+	zeta := new(big.Int).Exp(omegaFull, big.NewInt(int64(codewordLength)), bn254Modulus)
 
 	return WHIRParams{
 		ParamNRounds:                         cfg.NRounds,
@@ -45,6 +67,8 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
 		BatchSize:                            cfg.BatchSize,
 		InitialInDomainSamples:               cfg.InitialInDomainSamples,
+		OmegaFull:                            *omegaFull,
+		Zeta:                                 *zeta,
 	}
 }
 

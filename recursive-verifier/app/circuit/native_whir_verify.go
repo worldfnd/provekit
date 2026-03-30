@@ -186,17 +186,21 @@ func nativeTensorProduct(a, b []*big.Int) []*big.Int {
 
 // nativeEqWeights computes eq polynomial weights for a multilinear point.
 // Returns a vector of size 2^n where result[i] = eq(point, binary(i)).
+// Matches the circuit's calculateEQOverBooleanHypercube: iterates in reverse
+// so that point[0] controls bit 0 (LSB) of the index.
 func nativeEqWeights(point []*big.Int) []*big.Int {
 	result := []*big.Int{big.NewInt(1)}
-	for _, x := range point {
+	for i := len(point) - 1; i >= 0; i-- {
+		x := point[i]
 		oneMinusX := frSub(big.NewInt(1), x)
 		length := len(result)
-		newResult := make([]*big.Int, 2*length)
-		for i := length - 1; i >= 0; i-- {
-			newResult[2*i+1] = frMul(result[i], x)
-			newResult[2*i] = frMul(result[i], oneMinusX)
+		left := make([]*big.Int, length)
+		right := make([]*big.Int, length)
+		for j := 0; j < length; j++ {
+			left[j] = frMul(result[j], oneMinusX)
+			right[j] = frMul(result[j], x)
 		}
-		result = newResult
+		result = append(left, right...)
 	}
 	return result
 }
@@ -1182,4 +1186,54 @@ func NativeWhirVerify(
 			Rounds: merkleRounds,
 		},
 	}, nil
+}
+
+// nativeMatrixMLE computes the MLE of a sparse matrix weight:
+// sum over cells: value * rowEval[row] * colEval[col]
+func nativeMatrixMLE(cells []MatrixCell, rowEval []*big.Int, colEval []*big.Int) *big.Int {
+	result := big.NewInt(0)
+	for _, cell := range cells {
+		if cell.row < len(rowEval) && cell.column < len(colEval) {
+			term := frMul(cell.value, frMul(rowEval[cell.row], colEval[cell.column]))
+			result = frAdd(result, term)
+		}
+	}
+	return result
+}
+
+// nativeGeometricTillMLE evaluates the MLE of [1, x, x^2, ..., x^{n-1}, 0, ..., 0]
+// at the given point. This mirrors the circuit geometricTill function.
+func nativeGeometricTillMLE(x *big.Int, n int, point []*big.Int) *big.Int {
+	k := len(point)
+	if n <= 0 || n > (1<<k) {
+		panic(fmt.Sprintf("nativeGeometricTillMLE: invalid n=%d for k=%d", n, k))
+	}
+
+	borrow0 := big.NewInt(1)
+	borrow1 := big.NewInt(0)
+	xCur := new(big.Int).Set(x)
+
+	for i := range k {
+		ri := point[k-1-i]
+		bn := ((n - 1) >> i) & 1
+
+		b0 := frSub(big.NewInt(1), ri)
+		b1 := frMul(xCur, ri)
+
+		if bn == 0 {
+			newBorrow0 := frMul(b0, borrow0)
+			newBorrow1 := frAdd(frMul(frAdd(b0, b1), borrow1), frMul(b1, borrow0))
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		} else {
+			newBorrow0 := frAdd(frMul(frAdd(b0, b1), borrow0), frMul(b0, borrow1))
+			newBorrow1 := frMul(b1, borrow1)
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		}
+
+		xCur = frMul(xCur, xCur)
+	}
+
+	return borrow0
 }

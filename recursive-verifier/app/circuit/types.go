@@ -59,6 +59,11 @@ type WHIRParams struct {
 	MVParamsNumberOfVariables            int
 	BatchSize                            int
 	InitialInDomainSamples               int
+	// OmegaFull is the generator of the full NTT domain (order = DomainSize).
+	// Used to compute gamma points for batched_h_claims verification.
+	OmegaFull frontend.Variable
+	// Zeta = OmegaFull^(DomainSize/interleavingDepth), the interleaving coset generator.
+	Zeta frontend.Variable
 }
 
 type MainRoundData struct {

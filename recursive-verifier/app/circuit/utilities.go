@@ -80,10 +80,11 @@ func runSumcheck(
 }
 
 // runZKSumcheck replays the ZK Spartan sumcheck transcript.
-// Returns (tRand, alpha, fAtAlpha, error) where:
+// Returns (tRand, alpha, fAtAlpha, blindingEval, error) where:
 //   - tRand: verifier randomness r (length m0)
 //   - alpha: folding challenges from the sumcheck rounds (length m0)
 //   - fAtAlpha: the unblinded final evaluation f(alpha)
+//   - blindingEval: evaluation of the blinding polynomial at alpha
 func runZKSumcheck(
 	api frontend.API,
 	sc *skyscraper.Skyscraper,
@@ -93,17 +94,17 @@ func runZKSumcheck(
 	lastEval frontend.Variable,
 	foldingFactor int,
 	polynomialDegree int,
-) ([]frontend.Variable, []frontend.Variable, frontend.Variable, error) {
+) ([]frontend.Variable, []frontend.Variable, frontend.Variable, frontend.Variable, error) {
 	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
 	err := nimue.FillChallengeScalars(tRand)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	api.Println("tRand", tRand)
 
 	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(nimue)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	api.Println("sumOfG", sumOfG)
 	api.Println("rhoRandomness", rhoRandomness)
@@ -112,7 +113,7 @@ func runZKSumcheck(
 
 	foldingRandomness, lastEval, err := runSumcheck(api, nimue, lastEval, foldingFactor, polynomialDegree)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	api.Println("foldingRandomness", foldingRandomness)
 	api.Println("lastEval", lastEval)
@@ -120,7 +121,7 @@ func runZKSumcheck(
 	lastEval, polynomialSums := unblindLastEval(api, nimue, lastEval, rhoRandomness)
 	api.Println("polynomialSums", polynomialSums)
 
-	return tRand, foldingRandomness, lastEval, nil
+	return tRand, foldingRandomness, lastEval, polynomialSums[0], nil
 }
 
 func publicInputsHash(sc *skyscraper.Skyscraper, publicInputs PublicInputs) frontend.Variable {

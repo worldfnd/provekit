@@ -71,14 +71,19 @@ func parseBatchedCommitment(api frontend.API, nimue gnarkNimue.Nimue, whir_param
 	if err := nimue.FillNextScalars(rootHash); err != nil {
 		return Commitment{}, err
 	}
-	oodPoints := make([]frontend.Variable, 1)
-	oodAnswers := make([][]frontend.Variable, whir_params.BatchSize)
+
+	// OOD samples count comes from the commitment's out_domain_samples config.
+	oodSamples := whir_params.CommittmentOODSamples
+	oodPoints := make([]frontend.Variable, oodSamples)
 
 	if err := nimue.FillChallengeScalars(oodPoints); err != nil {
 		return Commitment{}, err
 	}
 
-	for i := range whir_params.BatchSize {
+	// Total OOD answers = ood_samples * batch_size (mirrors Rust irs_commit receive_commitment).
+	totalOODAnswers := oodSamples * whir_params.BatchSize
+	oodAnswers := make([][]frontend.Variable, totalOODAnswers)
+	for i := range totalOODAnswers {
 		oodAnswer := make([]frontend.Variable, 1)
 
 		if err := nimue.FillNextScalars(oodAnswer); err != nil {

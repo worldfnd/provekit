@@ -1,7 +1,15 @@
 package circuit
 
 import (
+	"bytes"
+	"encoding/hex"
+	"fmt"
 	"math/big"
+
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+
+	"github.com/consensys/gnark/frontend"
+	arkSerialize "github.com/reilabs/go-ark-serialize"
 )
 
 type SparseMatrix struct {
@@ -88,26 +96,82 @@ type MatrixCell struct {
 	value  *big.Int
 }
 
-// func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
-// 	ansA := frontend.Variable(0)
-// 	ansB := frontend.Variable(0)
-// 	ansC := frontend.Variable(0)
+// ParseInterner decodes the hex-encoded interner from R1CS JSON into an Interner.
+func ParseInterner(r1cs R1CS) (Interner, error) {
+	internerBytes, err := hex.DecodeString(r1cs.Interner.Values)
+	if err != nil {
+		return Interner{}, fmt.Errorf("decode interner hex: %w", err)
+	}
+	var interner Interner
+	_, err = arkSerialize.CanonicalDeserializeWithMode(
+		bytes.NewReader(internerBytes), &interner, false, false,
+	)
+	if err != nil {
+		return Interner{}, fmt.Errorf("deserialize interner: %w", err)
+	}
+	return interner, nil
+}
 
-// 	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
-// 	colEval := calculateEQOverBooleanHypercube(api, colRand)
+// buildSparseMatrixCells converts a SparseMatrix + Interner into a flat []MatrixCell.
+func buildSparseMatrixCells(sm SparseMatrix, interner Interner) ([]MatrixCell, error) {
+	colIndices := sm.DecodeColIndices()
+	if colIndices == nil {
+		return nil, fmt.Errorf("failed to decode column indices: inconsistent data")
+	}
+	cells := make([]MatrixCell, len(sm.Values))
+	for i := range len(sm.RowIndices) {
+		end := len(sm.Values) - 1
+		if i < len(sm.RowIndices)-1 {
+			end = int(sm.RowIndices[i+1] - 1)
+		}
+		for j := int(sm.RowIndices[i]); j <= end; j++ {
+			cells[j] = MatrixCell{
+				row:    i,
+				column: int(colIndices[j]),
+				value:  typeConverters.LimbsToBigIntMod(interner.Values[sm.Values[j]].Limbs),
+			}
+		}
+	}
+	return cells, nil
+}
 
-// 	for i := range len(circuit.MatrixA) {
-// 		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
-// 	}
-// 	for i := range circuit.MatrixB {
-// 		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
-// 	}
-// 	for i := range circuit.MatrixC {
-// 		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
-// 	}
+// buildR1CSMatrixCells builds MatrixCell slices for all three R1CS matrices.
+func buildR1CSMatrixCells(r1cs R1CS, interner Interner) ([]MatrixCell, []MatrixCell, []MatrixCell, error) {
+	a, err := buildSparseMatrixCells(r1cs.A, interner)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("matrix A: %w", err)
+	}
+	b, err := buildSparseMatrixCells(r1cs.B, interner)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("matrix B: %w", err)
+	}
+	c, err := buildSparseMatrixCells(r1cs.C, interner)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("matrix C: %w", err)
+	}
+	return a, b, c, nil
+}
 
-// 	return []frontend.Variable{ansA, ansB, ansC}
-// }
+func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []frontend.Variable, colRand []frontend.Variable) []frontend.Variable {
+	ansA := frontend.Variable(0)
+	ansB := frontend.Variable(0)
+	ansC := frontend.Variable(0)
+
+	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+	colEval := calculateEQOverBooleanHypercube(api, colRand)
+
+	for i := range len(circuit.MatrixA) {
+		ansA = api.Add(ansA, api.Mul(circuit.MatrixA[i].value, api.Mul(rowEval[circuit.MatrixA[i].row], colEval[circuit.MatrixA[i].column])))
+	}
+	for i := range circuit.MatrixB {
+		ansB = api.Add(ansB, api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[circuit.MatrixB[i].column])))
+	}
+	for i := range circuit.MatrixC {
+		ansC = api.Add(ansC, api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[circuit.MatrixC[i].column])))
+	}
+
+	return []frontend.Variable{ansA, ansB, ansC}
+}
 
 // func evaluateR1CSMatrixExtensionBatch(
 // 	api frontend.API,
@@ -158,58 +222,59 @@ type MatrixCell struct {
 // 	return ans
 // }
 
-// func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
-// 	ans := []frontend.Variable{frontend.Variable(1)}
+func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
+	ans := []frontend.Variable{frontend.Variable(1)}
 
-// 	for i := len(r) - 1; i >= 0; i-- {
-// 		x := r[i]
-// 		left := make([]frontend.Variable, len(ans))
-// 		right := make([]frontend.Variable, len(ans))
+	for i := len(r) - 1; i >= 0; i-- {
+		x := r[i]
+		left := make([]frontend.Variable, len(ans))
+		right := make([]frontend.Variable, len(ans))
 
-// 		for j, y := range ans {
-// 			left[j] = api.Mul(y, api.Sub(1, x))
-// 			right[j] = api.Mul(y, x)
-// 		}
+		for j, y := range ans {
+			left[j] = api.Mul(y, api.Sub(1, x))
+			right[j] = api.Mul(y, x)
+		}
 
-// 		ans = append(left, right...)
-// 	}
+		ans = append(left, right...)
+	}
 
-// 	return ans
-// }
+	return ans
+}
 
-// // geometricTill evaluates the multilinear extension of the geometric vector
-// // [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
-// // This is O(k) constraints where k = len(foldingRandomness)
-// func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
-// 	k := len(foldingRandomness)
-// 	if n <= 0 || n > (1<<k) {
-// 		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
-// 	}
+// geometricTill evaluates the multilinear extension of the geometric vector
+// [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
+// This is O(k) constraints where k = len(foldingRandomness).
+// Used for the public weight MLE evaluation (make_public_weight in Rust).
+func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomness []frontend.Variable) frontend.Variable {
+	k := len(foldingRandomness)
+	if n <= 0 || n > (1<<k) {
+		panic(fmt.Sprintf("geometricTill: invalid n=%d for k=%d", n, k))
+	}
 
-// 	borrow0 := frontend.Variable(1)
-// 	borrow1 := frontend.Variable(0)
+	borrow0 := frontend.Variable(1)
+	borrow1 := frontend.Variable(0)
 
-// 	for i := range k {
-// 		ri := foldingRandomness[k-1-i]
-// 		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
+	for i := range k {
+		ri := foldingRandomness[k-1-i]
+		bn := ((n - 1) >> i) & 1 // i-th bit of n-1
 
-// 		b0 := api.Sub(1, ri)
-// 		b1 := api.Mul(x, ri)
+		b0 := api.Sub(1, ri)
+		b1 := api.Mul(x, ri)
 
-// 		if bn == 0 {
-// 			newBorrow0 := api.Mul(b0, borrow0)
-// 			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
-// 			borrow0 = newBorrow0
-// 			borrow1 = newBorrow1
-// 		} else {
-// 			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
-// 			newBorrow1 := api.Mul(b1, borrow1)
-// 			borrow0 = newBorrow0
-// 			borrow1 = newBorrow1
-// 		}
+		if bn == 0 {
+			newBorrow0 := api.Mul(b0, borrow0)
+			newBorrow1 := api.Add(api.Mul(api.Add(b0, b1), borrow1), api.Mul(b1, borrow0))
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		} else {
+			newBorrow0 := api.Add(api.Mul(api.Add(b0, b1), borrow0), api.Mul(b0, borrow1))
+			newBorrow1 := api.Mul(b1, borrow1)
+			borrow0 = newBorrow0
+			borrow1 = newBorrow1
+		}
 
-// 		x = api.Mul(x, x)
-// 	}
+		x = api.Mul(x, x)
+	}
 
-// 	return borrow0
-// }
+	return borrow0
+}

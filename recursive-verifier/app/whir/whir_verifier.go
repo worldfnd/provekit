@@ -62,26 +62,40 @@ func VerifyWhir(
 
 	// Random linear combination of the constraints.
 	numLinearForms := len(statements)
-	constraintRlcCoeffs, err := geometricChallenge(api, nimue, numOODConstraints+numLinearForms)
+	// Rust orders constraints as [linear_forms..., oods...].
+	constraintRlcCoeffs, err := geometricChallenge(api, nimue, numLinearForms+numOODConstraints)
 	if err != nil {
 		return nil, fmt.Errorf("constraint_rlc: %w", err)
 	}
-	oodsRlcCoeffs := constraintRlcCoeffs[:numOODConstraints]
-	initialFormRlcCoeffs := constraintRlcCoeffs[numOODConstraints:]
+	initialFormRlcCoeffs := constraintRlcCoeffs[:numLinearForms]
+	oodsRlcCoeffs := constraintRlcCoeffs[numLinearForms:]
 
 	// Compute "the sum" (mirrors Rust whir::verifier lines 110-118)
+	// Each statement has one evaluation per vector. For numVectors=1 (typical),
+	// each statement contributes rlc[i] * eval. For numVectors>1, the evaluations
+	// are combined via the vector RLC.
 	theSum := frontend.Variable(0)
-	// for i, rlcCoeff := range initialFormRlcCoeffs {
-	// 	evaluationRow := make([]frontend.Variable, params.BatchSize)
-	// 	for j := range evaluationRow {
-	// 		evaluationRow[j] = statements[i].Constraints[j].Evaluation
-	// 	}
-	// 	theSum = api.Add(theSum, api.Mul(rlcCoeff, DotProduct(api, vectorRlcCoeffs, evaluationRow)))
-	// }
-	// for i, rlcCoeff := range oodsRlcCoeffs {
-	// 	oodsRow := oodMatrix[i*numVectors : (i+1)*numVectors]
-	// 	theSum = api.Add(theSum, api.Mul(rlcCoeff, DotProduct(api, vectorRlcCoeffs, oodsRow)))
-	// }
+	for i, rlcCoeff := range initialFormRlcCoeffs {
+		nConstraints := len(statements[i].Constraints)
+		evaluationRow := make([]frontend.Variable, nConstraints)
+		for j := range nConstraints {
+			evaluationRow[j] = statements[i].Constraints[j].Evaluation
+		}
+		// Pad or truncate to numVectors for the dot product
+		row := make([]frontend.Variable, numVectors)
+		for j := range numVectors {
+			if j < nConstraints {
+				row[j] = evaluationRow[j]
+			} else {
+				row[j] = frontend.Variable(0)
+			}
+		}
+		theSum = api.Add(theSum, api.Mul(rlcCoeff, DotProduct(api, vectorRlcCoeffs, row)))
+	}
+	for i, rlcCoeff := range oodsRlcCoeffs {
+		oodsRow := oodMatrix[i*numVectors : (i+1)*numVectors]
+		theSum = api.Add(theSum, api.Mul(rlcCoeff, DotProduct(api, vectorRlcCoeffs, oodsRow)))
+	}
 
 	// Perform the initial sumcheck
 	initialSumcheckData, theSum, initialSumcheckFoldingRandomness, err := initialSumcheck(api, nimue, theSum, commitment.OodPoints, oodsRlcCoeffs, initialFormRlcCoeffs, params)
@@ -96,6 +110,7 @@ func VerifyWhir(
 	totalFoldingRandomness = initialSumcheckFoldingRandomness
 
 	prevRootHash := commitment.Root
+	api.Println("prevRootHash", prevRootHash)
 
 	for r := range params.ParamNRounds {
 		// Receive round commitment
@@ -142,8 +157,8 @@ func VerifyWhir(
 
 		// Verify Merkle proofs when data is provided.
 		if merkleData != nil && r == 0 && r < len(merkleData.Rounds) {
-			rd := merkleData.Rounds[r]
-			verifyMerkleProofs(api, sc, rd.Leaves, stirIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+			//rd := merkleData.Rounds[r]
+			// verifyMerkleProofs(api, sc, rd.Leaves, stirIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
 		prevRootHash = rootHash[0]

@@ -91,10 +91,20 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		if err != nil {
 			return fmt.Errorf("logup challenges: %w", err)
 		}
-		e, f, g, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
-		fmt.Println("e", e)
-		fmt.Println("f", f)
-		fmt.Println("g", g)
+		// Commitment 2 is another witness commitment (same config as commitment 1),
+		// parsed via receive_commitments which calls blinded.receive_commitment +
+		// blinding.receive_commitment.
+		e, f, g, err := nativeParseBatchedCommitment(arthur, blindedCommitmentWhirConfig)
+		fmt.Println("c2_blinded_root", e)
+		fmt.Println("c2_blinded_ood_points", f)
+		fmt.Println("c2_blinded_ood_matrix", g)
+		if err != nil {
+			return fmt.Errorf("parse commitment 2 blinded: %w", err)
+		}
+		e2, f2, g2, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
+		fmt.Println("c2_blinding_root", e2)
+		fmt.Println("c2_blinding_ood_points", f2)
+		fmt.Println("c2_blinding_ood_matrix", g2)
 		if err != nil {
 			return fmt.Errorf("parse commitment 2: %w", err)
 		}
@@ -182,7 +192,12 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	remainingTranscript := len(arthur.nargString)
 	fmt.Printf("Native transcript replay complete. Remaining: %d hint bytes, %d transcript bytes\n", remainingHints, remainingTranscript)
 
-	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, R1CS{}, Interner{}, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
+	interner, err := ParseInterner(r1cs)
+	if err != nil {
+		return fmt.Errorf("parse interner: %w", err)
+	}
+
+	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
 
 	return nil
 }
@@ -305,6 +320,7 @@ func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckDat
 	}, nil
 }
 
+
 // ---------------------------------------------------------------------------
 // Native zkWHIR verification transcript replay
 // ---------------------------------------------------------------------------
@@ -350,6 +366,8 @@ type NativeZKWhirData struct {
 	// Merkle proof data for each WHIR verification (blinded and blinding).
 	BlindedMerkleData  *whir.WhirMerkleData
 	BlindingMerkleData *whir.WhirMerkleData
+	// FinalClaim from the blinded WHIR verification.
+	BlindedFinalClaim NativeFinalClaim
 }
 
 // nativeIRSCommitVerify replays the initial_committer.verify() transcript
@@ -615,6 +633,7 @@ func nativeZKWhirVerify(
 
 	data.BlindedMerkleData = blindedResult.MerkleData
 	data.BlindingMerkleData = blindingResult.MerkleData
+	data.BlindedFinalClaim = blindedResult.FinalClaim
 
 	return data, nil
 }
