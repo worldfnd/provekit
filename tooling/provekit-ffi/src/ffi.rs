@@ -318,7 +318,8 @@ pub unsafe extern "C" fn pk_load_prover_bytes(
         *out = std::ptr::null_mut();
 
         let result = (|| -> Result<*mut PKProver, PKStatus> {
-            // SAFETY: ptr/len validity is guaranteed by the caller (documented in # Safety).
+            // SAFETY: ptr/len validity is guaranteed by the caller (documented in #
+            // Safety).
             let data = std::slice::from_raw_parts(ptr, len);
             let prover: Prover = file::deserialize(data).map_err(|e| {
                 set_last_error(format!("{e:#}"));
@@ -359,7 +360,8 @@ pub unsafe extern "C" fn pk_load_verifier_bytes(
         *out = std::ptr::null_mut();
 
         let result = (|| -> Result<*mut PKVerifier, PKStatus> {
-            // SAFETY: ptr/len validity is guaranteed by the caller (documented in # Safety).
+            // SAFETY: ptr/len validity is guaranteed by the caller (documented in #
+            // Safety).
             let data = std::slice::from_raw_parts(ptr, len);
             let verifier: Verifier = file::deserialize(data).map_err(|e| {
                 set_last_error(format!("{e:#}"));
