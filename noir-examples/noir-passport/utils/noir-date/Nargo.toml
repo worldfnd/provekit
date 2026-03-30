@@ -1,0 +1,5 @@
+[package]
+name = "noir_date"
+type = "lib"
+authors = ["Théo Madzou"]
+compiler_version = ">=0.22.0"
