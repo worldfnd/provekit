@@ -4,6 +4,7 @@ pub mod hash_config;
 mod interner;
 mod mavros;
 mod noir_proof_scheme;
+pub mod ntt;
 pub mod optimize;
 pub mod prefix_covector;
 mod prover;

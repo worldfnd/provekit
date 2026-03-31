@@ -153,7 +153,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
 
     let n = values.len();
 
-    // The order of the interleaved NTTs themselves
+    // The order of the interleaved NTTs themselves -> codeword size
     let order = values.order().0;
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
@@ -164,7 +164,8 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
     let number_of_polynomials = n / order;
 
     // Each unique twiddle factor within a stage is a group.
-    let mut pairs_in_group = n / 2;
+    let mut elements_in_group = n;
+
     let mut num_of_groups = 1;
 
     // For large NTTs we start with linear scans through memory and once all the
@@ -179,40 +180,40 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while num_of_groups < 32.min(order) && 2 * pairs_in_group > workload_size::<Fr>() {
+    while num_of_groups < 32.min(order) && elements_in_group > workload_size::<Fr>() {
         values
-            .chunks_exact_mut(2 * pairs_in_group)
+            .chunks_exact_mut(elements_in_group)
             .enumerate()
             .for_each(|(k, group)| {
                 let omega = reversed_ordered_roots[k];
-                let (evens, odds) = group.split_at_mut(pairs_in_group);
+                let (evens, odds) = group.split_at_mut(elements_in_group / 2);
 
                 evens.par_iter_mut().zip(odds).for_each(|(even, odd)| {
                     (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
                 });
             });
-        pairs_in_group /= 2;
+        elements_in_group /= 2;
         num_of_groups *= 2;
     }
 
-    while num_of_groups < order && 2 * pairs_in_group > workload_size::<Fr>() {
+    while num_of_groups < order && elements_in_group > workload_size::<Fr>() {
         values
-            .par_chunks_exact_mut(2 * pairs_in_group)
+            .par_chunks_exact_mut(elements_in_group)
             .enumerate()
             .for_each(|(k, group)| {
                 let omega = reversed_ordered_roots[k];
-                let (evens, odds) = group.split_at_mut(pairs_in_group);
+                let (evens, odds) = group.split_at_mut(elements_in_group / 2);
 
                 evens.iter_mut().zip(odds).for_each(|(even, odd)| {
                     (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
                 });
             });
-        pairs_in_group /= 2;
+        elements_in_group /= 2;
         num_of_groups *= 2;
     }
 
     values
-        .par_chunks_exact_mut(2 * pairs_in_group)
+        .par_chunks_exact_mut(elements_in_group)
         .enumerate()
         .for_each(|(k, group)| {
             dit_nr_cache(reversed_ordered_roots, k, group, number_of_polynomials);
@@ -226,12 +227,12 @@ fn dit_nr_cache(
     num_of_polys: usize,
 ) {
     let n = input.len();
-    debug_assert!(n.is_power_of_two());
 
     let mut pairs_in_group = n / 2;
     let mut num_of_groups = 1;
 
-    let single_n = n / num_of_polys;
+    let single_n = n / num_of_polys; // n / (n_total / codeword_size) -> codeword_size * n / n_total
+    debug_assert!(single_n.is_power_of_two());
 
     while num_of_groups < single_n {
         let twiddle_base = segment * num_of_groups;
