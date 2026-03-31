@@ -598,8 +598,10 @@ pub unsafe extern "C" fn pk_prove_json(
             static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let tmp_dir = std::env::temp_dir();
-            let tmp_path =
-                tmp_dir.join(format!("provekit_ffi_inputs_{id}_{:?}.toml", std::thread::current().id()));
+            let tmp_path = tmp_dir.join(format!(
+                "provekit_ffi_inputs_{id}_{:?}.toml",
+                std::thread::current().id()
+            ));
             std::fs::write(&tmp_path, &toml_str).map_err(|e| {
                 set_last_error(format!("failed to write temp inputs: {e}"));
                 PKStatus::FileWriteError
