@@ -1,22 +1,26 @@
 //! FFI bindings for ProveKit, enabling integration with multiple programming
 //! languages and platforms.
 //!
-//! This crate provides C-compatible functions for loading Noir proof schemes,
-//! reading witness inputs, and generating proofs that can be called from any
+//! This crate provides C-compatible functions for compiling Noir circuits,
+//! generating proofs, and verifying proofs. It can be called from any
 //! language that supports C FFI (Swift, Kotlin, Python, JavaScript, etc.).
 //!
 //! # Architecture
 //!
-//! The FFI bindings are organized into several modules:
-//! - `types`: Type definitions (PKBuf, PKError, etc.)
-//! - `ffi`: Main FFI functions exposed via C ABI
-//! - `utils`: Internal utility functions
+//! The FFI uses opaque handles (`PKProver`, `PKVerifier`) instead of file
+//! paths. The SDK creates handles via `pk_prepare` or `pk_load_*`, uses them
+//! for proving/verifying, and frees them when done.
 //!
 //! # Usage
 //!
 //! 1. Call `pk_init()` once before using any other functions
-//! 2. Use `pk_prove_to_file()` or `pk_prove_to_json()` to generate proofs
-//! 3. Free any returned buffers using `pk_free_buf()`
+//! 2. Call `pk_prepare(path, hash_config, ...)` to compile a circuit, or
+//!    `pk_load_prover()` / `pk_load_verifier()` to load from files
+//! 3. Call `pk_prove_toml()` or `pk_prove_json()` to generate proofs
+//! 4. Call `pk_verify()` to verify proofs
+//! 5. On error, call `pk_get_last_error()` for a diagnostic message
+//! 6. Free handles with `pk_free_prover()` / `pk_free_verifier()`
+//! 7. Free buffers with `pk_free_buf()`
 //!
 //! # Safety
 //!
