@@ -4298,10 +4298,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libc",
+ "noirc_abi",
  "parking_lot",
  "provekit-common",
  "provekit-prover",
- "serde_json",
+ "provekit-r1cs-compiler",
+ "provekit-verifier",
+ "serde",
 ]
 
 [[package]]
