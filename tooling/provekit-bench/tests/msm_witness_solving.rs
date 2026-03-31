@@ -124,15 +124,98 @@ fn u256_to_limb_fes(v: &[u64; 4], limb_bits: u32, num_limbs: usize) -> Vec<Field
     decompose_to_limbs(v, limb_bits, num_limbs)
 }
 
-// ---------------------------------------------------------------------------
-// Single-point limbed MSM test runner
-// ---------------------------------------------------------------------------
+/// Increment a 256-bit little-endian integer by one.
+fn increment_u256(v: &[u64; 4]) -> [u64; 4] {
+    let mut out = *v;
+    for limb in &mut out {
+        let (next, carry) = limb.overflowing_add(1);
+        *limb = next;
+        if !carry {
+            break;
+        }
+    }
+    out
+}
 
-/// Compile and solve a single-point MSM circuit using the limbed API.
-///
-/// When `expected_inf` is true, the expected output is point at infinity
-/// (all output limbs zero, out_inf = 1).
-fn run_single_point_msm_test_limbed(
+/// Pick a different field element without relying on arithmetic traits.
+fn different_field_element(value: FieldElement) -> FieldElement {
+    if value == FieldElement::zero() {
+        FieldElement::from(1u64)
+    } else {
+        FieldElement::zero()
+    }
+}
+
+/// Overwrite specific witness slots with the supplied values.
+fn overwrite_witness_values(
+    witness: &mut [FieldElement],
+    indices: &[usize],
+    values: &[FieldElement],
+) {
+    assert_eq!(
+        indices.len(),
+        values.len(),
+        "indices and values must have the same length"
+    );
+    for (&idx, &value) in indices.iter().zip(values.iter()) {
+        witness[idx] = value;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FakeGlvWitnessIndices {
+    s1:   usize,
+    s2:   usize,
+    neg1: usize,
+    neg2: usize,
+}
+
+#[derive(Clone, Debug)]
+struct SinglePointMsmLayout {
+    point_x_limbs: Vec<usize>,
+    point_y_limbs: Vec<usize>,
+    point_inf:     usize,
+    scalar_lo:     usize,
+    scalar_hi:     usize,
+    out_x_limbs:   Vec<usize>,
+    out_y_limbs:   Vec<usize>,
+    out_inf:       usize,
+    fake_glv:      FakeGlvWitnessIndices,
+}
+
+struct SinglePointMsmFixture {
+    compiler:       NoirToR1CSCompiler,
+    num_witnesses:  usize,
+    initial_values: Vec<(usize, FieldElement)>,
+    layout:         SinglePointMsmLayout,
+}
+
+/// Locate the single FakeGLV hint used by the single-point MSM circuit.
+fn locate_single_point_fake_glv(builders: &[WitnessBuilder]) -> FakeGlvWitnessIndices {
+    let fake_glv_indices: Vec<FakeGlvWitnessIndices> = builders
+        .iter()
+        .filter_map(|builder| match builder {
+            WitnessBuilder::FakeGLVHint { output_start, .. } => Some(FakeGlvWitnessIndices {
+                s1:   *output_start,
+                s2:   *output_start + 1,
+                neg1: *output_start + 2,
+                neg2: *output_start + 3,
+            }),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        fake_glv_indices.len(),
+        1,
+        "single-point MSM circuit should contain exactly one FakeGLV hint"
+    );
+    fake_glv_indices[0]
+}
+
+/// Build the single-point secp256r1 MSM circuit together with stable witness
+/// metadata used by the negative tests.
+fn build_single_point_msm_fixture(
     px: &[u64; 4],
     py: &[u64; 4],
     inf: bool,
@@ -140,7 +223,7 @@ fn run_single_point_msm_test_limbed(
     expected_x: &[u64; 4],
     expected_y: &[u64; 4],
     expected_inf: bool,
-) {
+) -> SinglePointMsmFixture {
     let curve = Secp256r1;
     let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
     let (s_lo, s_hi) = split_scalar(scalar);
@@ -158,14 +241,18 @@ fn run_single_point_msm_test_limbed(
     let total_input_wits = stride + 2 + stride;
     compiler.r1cs.add_witnesses(total_input_wits);
 
+    let point_x_limbs: Vec<usize> = (0..num_limbs).map(|j| base + j).collect();
+    let point_y_limbs: Vec<usize> = (0..num_limbs).map(|j| base + num_limbs + j).collect();
+    let point_inf = base + 2 * num_limbs;
+
     let points: Vec<ConstantOrR1CSWitness> = (0..stride)
         .map(|j| ConstantOrR1CSWitness::Witness(base + j))
         .collect();
-    let slo_w = base + stride;
-    let shi_w = base + stride + 1;
+    let scalar_lo = base + stride;
+    let scalar_hi = base + stride + 1;
     let scalars = vec![
-        ConstantOrR1CSWitness::Witness(slo_w),
-        ConstantOrR1CSWitness::Witness(shi_w),
+        ConstantOrR1CSWitness::Witness(scalar_lo),
+        ConstantOrR1CSWitness::Witness(scalar_hi),
     ];
 
     let out_base = base + stride + 2;
@@ -182,40 +269,106 @@ fn run_single_point_msm_test_limbed(
     add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
     add_range_checks(&mut compiler, range_checks);
 
-    let num_witnesses = compiler.num_witnesses();
+    let layout = SinglePointMsmLayout {
+        point_x_limbs,
+        point_y_limbs,
+        point_inf,
+        scalar_lo,
+        scalar_hi,
+        out_x_limbs,
+        out_y_limbs,
+        out_inf,
+        fake_glv: locate_single_point_fake_glv(&compiler.witness_builders),
+    };
 
     // Set initial witness values
     let mut initial_values = vec![(0, FieldElement::from(1u64))];
     for (j, fe) in px_fes.iter().enumerate() {
-        initial_values.push((base + j, *fe));
+        initial_values.push((layout.point_x_limbs[j], *fe));
     }
     for (j, fe) in py_fes.iter().enumerate() {
-        initial_values.push((base + num_limbs + j, *fe));
+        initial_values.push((layout.point_y_limbs[j], *fe));
     }
     let inf_fe = if inf {
         FieldElement::from(1u64)
     } else {
         FieldElement::zero()
     };
-    initial_values.push((base + 2 * num_limbs, inf_fe));
-    initial_values.push((slo_w, u256_to_fe(&s_lo)));
-    initial_values.push((shi_w, u256_to_fe(&s_hi)));
+    initial_values.push((layout.point_inf, inf_fe));
+    initial_values.push((layout.scalar_lo, u256_to_fe(&s_lo)));
+    initial_values.push((layout.scalar_hi, u256_to_fe(&s_hi)));
     for (j, fe) in ex_fes.iter().enumerate() {
-        initial_values.push((out_x_limbs[j], *fe));
+        initial_values.push((layout.out_x_limbs[j], *fe));
     }
     for (j, fe) in ey_fes.iter().enumerate() {
-        initial_values.push((out_y_limbs[j], *fe));
+        initial_values.push((layout.out_y_limbs[j], *fe));
     }
     let out_inf_fe = if expected_inf {
         FieldElement::from(1u64)
     } else {
         FieldElement::zero()
     };
-    initial_values.push((out_inf, out_inf_fe));
+    initial_values.push((layout.out_inf, out_inf_fe));
 
-    let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
+    let num_witnesses = compiler.num_witnesses();
 
-    check_r1cs_satisfaction(&compiler.r1cs, &witness)
+    SinglePointMsmFixture {
+        compiler,
+        num_witnesses,
+        initial_values,
+        layout,
+    }
+}
+
+/// Solve the valid witness, then verify that a targeted corruption is rejected.
+fn assert_single_point_corruption_is_rejected(
+    fixture: SinglePointMsmFixture,
+    scenario: &str,
+    mutate: impl FnOnce(&SinglePointMsmLayout, &mut Vec<FieldElement>),
+) {
+    let witness = solve_witnesses(
+        &fixture.compiler.witness_builders,
+        fixture.num_witnesses,
+        &fixture.initial_values,
+    );
+    check_r1cs_satisfaction(&fixture.compiler.r1cs, &witness)
+        .unwrap_or_else(|err| panic!("valid witness should satisfy R1CS for {scenario}: {err}"));
+
+    let mut corrupted = witness.clone();
+    mutate(&fixture.layout, &mut corrupted);
+
+    assert!(
+        check_r1cs_satisfaction(&fixture.compiler.r1cs, &corrupted).is_err(),
+        "corrupted witness should fail R1CS satisfaction for {scenario}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Single-point limbed MSM test runner
+// ---------------------------------------------------------------------------
+
+/// Compile and solve a single-point MSM circuit using the limbed API.
+///
+/// When `expected_inf` is true, the expected output is point at infinity
+/// (all output limbs zero, out_inf = 1).
+fn run_single_point_msm_test_limbed(
+    px: &[u64; 4],
+    py: &[u64; 4],
+    inf: bool,
+    scalar: &[u64; 4],
+    expected_x: &[u64; 4],
+    expected_y: &[u64; 4],
+    expected_inf: bool,
+) {
+    let fixture =
+        build_single_point_msm_fixture(px, py, inf, scalar, expected_x, expected_y, expected_inf);
+    let witness = solve_witnesses(
+        &fixture.compiler.witness_builders,
+        fixture.num_witnesses,
+        &fixture.initial_values,
+    );
+
+    check_r1cs_satisfaction(&fixture.compiler.r1cs, &witness)
         .expect("R1CS satisfaction check failed (limbed)");
 }
 
@@ -323,6 +476,158 @@ fn test_arbitrary_point_and_scalar() {
     let (ex, ey) = ec_scalar_mul(&gx, &gy, &[34, 0, 0, 0], a, p);
 
     run_single_point_msm_test_limbed(&px, &py, false, &scalar, &ex, &ey, false);
+}
+
+/// Corrupting an expected output limb must violate the output equality
+/// constraints.
+#[test]
+fn test_single_point_rejects_wrong_output_coordinate() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(
+        fixture,
+        "wrong output coordinate",
+        |layout, corrupted| {
+            let idx = layout.out_x_limbs[0];
+            corrupted[idx] = different_field_element(corrupted[idx]);
+        },
+    );
+}
+
+/// Corrupting the input y-coordinate must violate the curve-membership and
+/// consistency constraints.
+#[test]
+fn test_single_point_rejects_off_curve_input() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
+    let py_off_curve = increment_u256(&gy);
+    let py_off_curve_fes = u256_to_limb_fes(&py_off_curve, limb_bits, num_limbs);
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(fixture, "off-curve input", |layout, corrupted| {
+        overwrite_witness_values(corrupted, &layout.point_y_limbs, &py_off_curve_fes);
+    });
+}
+
+/// Replacing the expected output with a different scalar multiple must fail.
+#[test]
+fn test_single_point_rejects_wrong_scalar_output_pairing() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let wrong_scalar: [u64; 4] = [5, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let (wrong_ex, wrong_ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &wrong_scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
+    let wrong_ex_fes = u256_to_limb_fes(&wrong_ex, limb_bits, num_limbs);
+    let wrong_ey_fes = u256_to_limb_fes(&wrong_ey, limb_bits, num_limbs);
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(
+        fixture,
+        "wrong scalar/output pairing",
+        |layout, corrupted| {
+            overwrite_witness_values(corrupted, &layout.out_x_limbs, &wrong_ex_fes);
+            overwrite_witness_values(corrupted, &layout.out_y_limbs, &wrong_ey_fes);
+        },
+    );
+}
+
+/// Zeroing s2 must violate the explicit s2 != 0 soundness check.
+#[test]
+fn test_single_point_rejects_zero_s2_forgery() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [17, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(fixture, "s2 forgery", |layout, corrupted| {
+        assert_ne!(
+            corrupted[layout.fake_glv.s1],
+            FieldElement::zero(),
+            "valid witness should produce a non-zero s1"
+        );
+        assert_ne!(
+            corrupted[layout.fake_glv.s2],
+            FieldElement::zero(),
+            "valid witness should produce a non-zero s2"
+        );
+        corrupted[layout.fake_glv.s2] = FieldElement::zero();
+    });
+}
+
+/// Flipping neg1 must violate the scalar relation tying the GLV decomposition
+/// back to the original scalar.
+#[test]
+fn test_single_point_rejects_flipped_neg1_bit() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [17, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(fixture, "flipped neg1 bit", |layout, corrupted| {
+        assert!(
+            corrupted[layout.fake_glv.neg1] == FieldElement::zero()
+                || corrupted[layout.fake_glv.neg1] == FieldElement::from(1u64),
+            "neg1 should be boolean"
+        );
+        assert!(
+            corrupted[layout.fake_glv.neg2] == FieldElement::zero()
+                || corrupted[layout.fake_glv.neg2] == FieldElement::from(1u64),
+            "neg2 should be boolean"
+        );
+        corrupted[layout.fake_glv.neg1] = different_field_element(corrupted[layout.fake_glv.neg1]);
+    });
 }
 
 /// Two-point MSM: s1·P1 + s2·P2 with arbitrary coordinates.
