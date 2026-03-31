@@ -5,7 +5,7 @@ mod json;
 
 use {
     self::{
-        bin::{read_bin, write_bin, Compression},
+        bin::{deserialize_from_bytes, read_bin, serialize_to_bytes, write_bin, Compression},
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
@@ -79,4 +79,14 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
             T::EXTENSION
         )),
     }
+}
+
+/// Serialize a value to bytes using the binary format.
+pub fn serialize<T: FileFormat>(value: &T) -> Result<Vec<u8>> {
+    serialize_to_bytes(value, T::FORMAT, T::VERSION, T::COMPRESSION)
+}
+
+/// Deserialize a value from bytes in the binary format.
+pub fn deserialize<T: FileFormat>(data: &[u8]) -> Result<T> {
+    deserialize_from_bytes(data, T::FORMAT, T::VERSION)
 }

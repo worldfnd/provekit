@@ -20,11 +20,6 @@ provekit-verifier.workspace = true
 
 # Noir language
 noirc_abi.workspace = true
-# Serialization (for in-memory byte serialization matching the binary file format)
-postcard.workspace = true
-zstd.workspace = true
-xz2.workspace = true
-bytes.workspace = true
 
 # 3rd party
 anyhow.workspace = true
