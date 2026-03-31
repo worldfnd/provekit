@@ -105,13 +105,13 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 ///   coefficients to be transformed.
 pub fn ntt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
     let roots = ENGINE.read().unwrap();
-    let new_root = if roots.order() >= values.order() {
+    let new_root = if roots.order() >= values.codeword_size() {
         roots
     } else {
         // Drop read lock
         drop(roots);
         let mut roots = ENGINE.write().unwrap();
-        roots.extend_roots_table(values.order());
+        roots.extend_roots_table(values.codeword_size());
         // Drop write lock
         drop(roots);
         ENGINE.read().unwrap()
@@ -147,21 +147,18 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
-    let n = values.len();
-
     // The order of the interleaved NTTs themselves -> codeword size
-    let order = values.order();
+    let codeword_size = values.codeword_size();
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
-    if order <= 1 {
+    if codeword_size <= 1 {
         return;
     }
 
-    let number_of_polynomials = n / order;
-
     // Each unique twiddle factor within a stage is a group.
-    let mut elements_in_group = n;
+    let mut elements_in_group = values.len();
 
+    // num of groups is the same as inner inner ntt size
     let mut num_of_groups = 1;
 
     // For large NTTs we start with linear scans through memory and once all the
@@ -176,7 +173,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while num_of_groups < 32.min(order) && elements_in_group > workload_size::<Fr>() {
+    while num_of_groups < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
         values
             .chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -192,7 +189,7 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
         num_of_groups *= 2;
     }
 
-    while num_of_groups < order && elements_in_group > workload_size::<Fr>() {
+    while num_of_groups < codeword_size && elements_in_group > workload_size::<Fr>() {
         values
             .par_chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -212,35 +209,32 @@ fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values
         .par_chunks_exact_mut(elements_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, number_of_polynomials);
+            dit_nr_cache(
+                reversed_ordered_roots,
+                k,
+                group,
+                codeword_size / num_of_groups,
+            );
         });
 }
 
-fn dit_nr_cache(
-    reverse_ordered_roots: &[Fr],
-    segment: usize,
-    input: &mut [Fr],
-    num_of_polys: usize,
-) {
-    let n = input.len();
-
-    let mut pairs_in_group = n / 2;
+fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+    let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
-    let single_n = n / num_of_polys; // n / (n_total / codeword_size) -> codeword_size * n / n_total
-    debug_assert!(single_n.is_power_of_two());
+    debug_assert!(size.is_power_of_two());
 
-    while num_of_groups < single_n {
+    while num_of_groups < size {
         let twiddle_base = segment * num_of_groups;
-        for (k, group) in input.chunks_exact_mut(2 * pairs_in_group).enumerate() {
+        for (k, group) in input.chunks_exact_mut(elements_in_group).enumerate() {
             let twiddle = twiddle_base + k;
             let omega = reverse_ordered_roots[twiddle];
-            let (evens, odds) = group.split_at_mut(pairs_in_group);
+            let (evens, odds) = group.split_at_mut(elements_in_group / 2);
             evens.iter_mut().zip(odds).for_each(|(even, odd)| {
                 (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
             });
         }
-        pairs_in_group /= 2;
+        elements_in_group /= 2;
         num_of_groups *= 2;
     }
 }
@@ -306,7 +300,7 @@ fn init_roots_reverse_ordered(order: usize, capacity: Option<usize>) -> Vec<Fr> 
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
 fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
-    match values.order() {
+    match values.codeword_size() {
         0 | 1 => (),
         n => {
             for index in 0..n {
@@ -328,7 +322,7 @@ pub fn intt_rn<C: NTTContainer<Fr>>(input: &mut NTT<Fr, C>) {
 
 // Inverse NTT
 fn intt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
-    match values.order() {
+    match values.codeword_size() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
@@ -400,7 +394,7 @@ mod tests {
 
     impl<T> fmt::Debug for HiddenNTT<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "HiddenNTT(len={})", self.0.order())
+            write!(f, "HiddenNTT(len={})", self.0.codeword_size())
         }
     }
 

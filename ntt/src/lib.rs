@@ -40,7 +40,7 @@ impl<T, C: NTTContainer<T>> NTT<T, C> {
         }
     }
 
-    pub fn order(&self) -> usize {
+    pub fn codeword_size(&self) -> usize {
         self.codeword_size
     }
 
