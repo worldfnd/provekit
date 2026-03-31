@@ -111,6 +111,8 @@ pub unsafe extern "C" fn pk_configure_memory(
 
     if crate::mmap_allocator::configure_allocator(ram_limit_bytes, use_file_backed, swap_file_path)
     {
+        // Activate mmap mode so the global allocator routes through it.
+        crate::ffi_allocator::activate_mmap_mode();
         PKStatus::Success.into()
     } else {
         set_last_error("memory allocator configuration failed".into());

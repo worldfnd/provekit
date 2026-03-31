@@ -23,6 +23,14 @@ static DEALLOC_FN: AtomicPtr<()> = AtomicPtr::new(ptr::null_mut());
 /// Mode selector: true = use mmap allocator, false = use callbacks
 static USE_MMAP_ALLOCATOR: AtomicBool = AtomicBool::new(false);
 
+/// Activate mmap mode so the global allocator routes through the mmap
+/// allocator.
+pub fn activate_mmap_mode() {
+    USE_MMAP_ALLOCATOR.store(true, Ordering::Release);
+    ALLOC_FN.store(ptr::null_mut(), Ordering::Release);
+    DEALLOC_FN.store(ptr::null_mut(), Ordering::Release);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn pk_set_allocator(
     alloc_fn: Option<AllocFn>,
@@ -31,9 +39,7 @@ pub unsafe extern "C" fn pk_set_allocator(
     // If both are None and mmap allocator is configured, use mmap mode
     if alloc_fn.is_none() && dealloc_fn.is_none() {
         if crate::mmap_allocator::is_configured() {
-            USE_MMAP_ALLOCATOR.store(true, Ordering::Release);
-            ALLOC_FN.store(ptr::null_mut(), Ordering::Release);
-            DEALLOC_FN.store(ptr::null_mut(), Ordering::Release);
+            activate_mmap_mode();
             return;
         }
     }
