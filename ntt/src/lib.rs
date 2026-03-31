@@ -3,7 +3,6 @@ pub mod ntt;
 pub use ntt::*;
 use std::{
     marker::PhantomData,
-    num::NonZero,
     ops::{Deref, DerefMut},
 };
 
@@ -21,29 +20,28 @@ impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
 /// without needing to first transpose the data
 #[derive(Debug, Clone, PartialEq)]
 pub struct NTT<T, C: NTTContainer<T>> {
-    container: C,
-    order:     Pow2<usize>,
-    _phantom:  PhantomData<T>,
+    container:     C,
+    codeword_size: usize,
+    _phantom:      PhantomData<T>,
 }
 
 impl<T, C: NTTContainer<T>> NTT<T, C> {
-    pub fn new(vec: C, number_of_polynomials: usize) -> Option<Self> {
+    pub fn new(vec: C, number_of_polynomials: usize) -> Self {
         let n = vec.as_ref().len();
-        // All polynomials of the same size
-        if number_of_polynomials == 0 || n % number_of_polynomials != 0 {
-            return None;
-        }
+
+        let order = n / number_of_polynomials;
+        assert!(n == 0 || order.is_power_of_two());
 
         // The order of the individual polynomials needs to be a power of two
-        Pow2::new(n / number_of_polynomials).map(|order| Self {
-            container: vec,
-            order,
-            _phantom: PhantomData,
-        })
+        Self {
+            container:     vec,
+            codeword_size: order,
+            _phantom:      PhantomData,
+        }
     }
 
-    pub fn order(&self) -> Pow2<usize> {
-        self.order
+    pub fn order(&self) -> usize {
+        self.codeword_size
     }
 
     pub fn into_inner(self) -> C {
@@ -62,47 +60,5 @@ impl<T, C: NTTContainer<T>> Deref for NTT<T, C> {
 impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.container.as_mut()
-    }
-}
-
-/// Represents the valid length of an NTT (Number Theoretic Transform).
-///
-/// The allowed values depend on the type parameter:
-/// - `Pow2<usize>`: length is 0 or a power of two (`{0} ∪ {2ⁿ : n ≥ 0}`).
-/// - `Pow2<NonZero<usize>>`: length is a nonzero power of two (`{2ⁿ : n ≥ 0}`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pow2<T = usize>(T);
-
-impl<T: InPowerOfTwoSet> Pow2<T> {
-    pub fn new(value: T) -> Option<Self> {
-        match value.in_set() {
-            true => Some(Self(value)),
-            false => None,
-        }
-    }
-}
-
-// Only Deref is implement as DerefMut allows for breaking the proof.
-impl<T> Deref for Pow2<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub trait InPowerOfTwoSet {
-    fn in_set(&self) -> bool;
-}
-
-impl InPowerOfTwoSet for usize {
-    fn in_set(&self) -> bool {
-        usize::is_power_of_two(*self) || *self == 0
-    }
-}
-
-impl InPowerOfTwoSet for NonZero<usize> {
-    fn in_set(&self) -> bool {
-        self.get().is_power_of_two()
     }
 }
