@@ -95,7 +95,7 @@ func PoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Nimue, d
 	}
 	api.Println("nonce", nonce)
 	challengeFieldElement := typeConverters.LittleEndianFromUints(api, challenge)
-	nonceFieldElement := typeConverters.BigEndianFromUints(api, nonce)
+	nonceFieldElement := typeConverters.LittleEndianFromUints(api, nonce)
 	err := CheckPoW(api, sc, challengeFieldElement, nonceFieldElement, difficulty)
 	if err != nil {
 		return nil, nil, err

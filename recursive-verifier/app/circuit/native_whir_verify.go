@@ -731,14 +731,65 @@ func nativePoWVerify(arthur *NativeArthur, powBits int) error {
 		if err != nil {
 			return fmt.Errorf("pow challenge: %w", err)
 		}
-		fmt.Println("challengeBytes:", challengeBytes)
-		nonce, err := arthur.FillNextBytes(8)
+		nonceBytes, err := arthur.FillNextBytes(8)
 		if err != nil {
 			return fmt.Errorf("pow nonce: %w", err)
 		}
-		fmt.Println("nonce:", nonce)
+
+		// Convert challenge bytes (LE) to [4]uint64 limbs
+		var challengeLimbs [4]uint64
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 8; j++ {
+				challengeLimbs[i] |= uint64(challengeBytes[i*8+j]) << (8 * j)
+			}
+		}
+
+		// Convert nonce bytes (LE) to [4]uint64 — nonce is u64 in low limb, rest zero
+		var nonceLimbs [4]uint64
+		for j := 0; j < 8; j++ {
+			nonceLimbs[0] |= uint64(nonceBytes[j]) << (8 * j)
+		}
+
+		// Skyscraper compress
+		hash := SkyscraperCompress(challengeLimbs, nonceLimbs)
+
+		// Compute threshold: modulus * 2^(-difficulty)
+		// Using the same approach as Rust: approximate modulus via high limb, then f64 arithmetic
+		threshold := nativePowThreshold(powBits)
+
+		// Print hash and threshold as big.Ints for easier interpretation:
+		hashInt := skLimbsToBigInt(hash)
+		thresholdInt := skLimbsToBigInt(threshold)
+		fmt.Printf("hash:      %s\nthreshold: %s\n", hashInt.String(), thresholdInt.String())
+		// less_than comparison on [4]uint64 limbs (little-endian)
+		if !(hash[0] < threshold[0]) {
+			return fmt.Errorf("PoW check failed: hash not below threshold for difficulty %d", powBits)
+		}
 	}
 	return nil
+}
+
+// nativePowThreshold computes the PoW threshold for an integer difficulty,
+// matching Rust skyscraper::pow::threshold().
+func nativePowThreshold(difficulty int) [4]uint64 {
+	// BN254 scalar field modulus
+	modulus, _ := new(big.Int).SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
+	// threshold = floor(modulus / 2^difficulty)
+	threshold := new(big.Int).Rsh(modulus, uint(difficulty))
+	return skBigIntToLimbs(threshold)
+}
+
+// limbsLessThan returns true if a < b, comparing [4]uint64 as little-endian 256-bit integers.
+func limbsLessThan(a, b [4]uint64) bool {
+	for i := 3; i >= 0; i-- {
+		if a[i] < b[i] {
+			return true
+		}
+		if a[i] > b[i] {
+			return false
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
