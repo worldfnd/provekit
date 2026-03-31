@@ -157,7 +157,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
     let mut elements_in_group = values.len();
 
     // num of groups is the same as inner inner ntt size
-    let mut num_of_groups = 1;
+    let mut inner_ntt_size = 1;
 
     // For large NTTs we start with linear scans through memory and once all the
     // elements of the sub NTTs reach the size of workload_size we know that they
@@ -171,7 +171,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while num_of_groups < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
+    while inner_ntt_size < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
         values
             .chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -184,10 +184,10 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
                 });
             });
         elements_in_group /= 2;
-        num_of_groups *= 2;
+        inner_ntt_size *= 2;
     }
 
-    while num_of_groups < codeword_size && elements_in_group > workload_size::<Fr>() {
+    while inner_ntt_size < codeword_size && elements_in_group > workload_size::<Fr>() {
         values
             .par_chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -200,7 +200,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
                 });
             });
         elements_in_group /= 2;
-        num_of_groups *= 2;
+        inner_ntt_size *= 2;
     }
 
     values
@@ -211,7 +211,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
                 reversed_ordered_roots,
                 k,
                 group,
-                codeword_size / num_of_groups,
+                codeword_size / inner_ntt_size,
             );
         });
 }

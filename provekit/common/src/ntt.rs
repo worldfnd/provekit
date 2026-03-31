@@ -44,37 +44,33 @@ impl ReedSolomon<Fr> for RSFr {
     fn interleaved_encode(
         &self,
         messages: &[&[Fr]],
-        masks: &[Fr],
+        _masks: &[Fr],
         codeword_length: usize,
     ) -> Vec<Fr> {
-        interleaved_rs_encode(messages, masks, codeword_length)
-    }
-}
-
-fn interleaved_rs_encode(messages: &[&[Fr]], _masks: &[Fr], codeword_length: usize) -> Vec<Fr> {
-    if messages.is_empty() {
-        return vec![];
-    }
-
-    let num_messages = messages.len();
-
-    let message_length = messages[0].len();
-    for message in messages {
-        assert_eq!(message_length, message.len())
-    }
-
-    let expanded_size = num_messages * codeword_length;
-
-    let mut result = vec![Fr::ZERO; expanded_size];
-
-    for (row, message) in messages.iter().enumerate() {
-        for (column, element) in message.iter().enumerate() {
-            result[column * num_messages + row] = *element;
+        if messages.is_empty() {
+            return vec![];
         }
-    }
 
-    ntt_nr(&mut result, codeword_length);
-    result
+        let num_messages = messages.len();
+
+        let message_length = messages[0].len();
+        for message in messages {
+            assert_eq!(message_length, message.len())
+        }
+
+        let total_size = num_messages * codeword_length;
+
+        let mut result = vec![Fr::ZERO; total_size];
+
+        for (row, message) in messages.iter().enumerate() {
+            for (column, element) in message.iter().enumerate() {
+                result[column * num_messages + row] = *element;
+            }
+        }
+
+        ntt_nr(&mut result, codeword_length);
+        result
+    }
 }
 
 #[cfg(test)]
