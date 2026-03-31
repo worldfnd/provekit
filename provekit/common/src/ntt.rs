@@ -34,7 +34,7 @@ impl ReedSolomon<Fr> for RSFr {
                     i.reverse_bits() >> (usize::BITS - bits)
                 };
 
-                // Optimise generator away
+                // TODO Optimise generator away by storing it in the engine
                 let generator = Fr::get_root_of_unity(codeword_length as u64).unwrap();
                 generator.pow([k as u64])
             })
@@ -47,29 +47,32 @@ impl ReedSolomon<Fr> for RSFr {
         masks: &[Fr],
         codeword_length: usize,
     ) -> Vec<Fr> {
-        todo!()
+        interleaved_rs_encode(messages, masks, codeword_length)
     }
 }
 
-fn interleaved_rs_encode(
-    interleaved_coeffs: &[Fr],
-    expansion: usize,
-    interleaving_depth: usize,
-) -> Vec<Fr> {
-    let expanded_size = interleaved_coeffs.len() * expansion;
+fn interleaved_rs_encode(messages: &[&[Fr]], masks: &[Fr], codeword_length: usize) -> Vec<Fr> {
+    if messages.is_empty() {
+        return vec![];
+    }
 
-    debug_assert_eq!(expanded_size % interleaving_depth, 0);
+    let num_messages = messages.len();
+
+    let message_length = messages[0].len();
+    for message in messages {
+        assert_eq!(message_length, message.len())
+    }
+
+    let expanded_size = num_messages * codeword_length;
 
     let mut result = vec![Fr::ZERO; expanded_size];
-    result[..interleaved_coeffs.len()].copy_from_slice(interleaved_coeffs);
 
-    // Tranpose needs to happen here.
+    for (row, message) in messages.iter().enumerate() {
+        for (column, element) in message.iter().enumerate() {
+            result[column * num_messages + row] = *element;
+        }
+    }
 
-    let mut ntt = ntt::NTT::new(result, interleaving_depth).expect(
-        "interleaved_coeffs.len() * expansion / interleaving_depth needs to be a power of two.",
-    );
-
-    ntt_nr(&mut ntt);
-
-    ntt.into_inner()
+    ntt_nr(&mut result, codeword_length);
+    result
 }
