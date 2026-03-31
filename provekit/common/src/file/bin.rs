@@ -21,11 +21,32 @@ const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 /// XZ magic number: `FD 37 7A 58 5A 00`.
 const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 
+const ZSTD_LEVEL: i32 = 3;
+const XZ_LEVEL: u32 = 6;
+
 /// Compression algorithm for binary file output.
 #[derive(Debug, Clone, Copy)]
 pub enum Compression {
     Zstd,
     Xz,
+}
+
+/// Compress data using the specified compression algorithm.
+fn compress(data: &[u8], compression: Compression) -> Result<Vec<u8>> {
+    match compression {
+        Compression::Zstd => {
+            zstd::bulk::compress(data, ZSTD_LEVEL).context("while compressing with zstd")
+        }
+        Compression::Xz => {
+            let mut buf = Vec::new();
+            let mut encoder = xz2::write::XzEncoder::new(&mut buf, XZ_LEVEL);
+            encoder
+                .write_all(data)
+                .context("while compressing with xz")?;
+            encoder.finish().context("while finishing xz stream")?;
+            Ok(buf)
+        }
+    }
 }
 
 /// Write a compressed binary file.
@@ -40,20 +61,7 @@ pub fn write_bin<T: Serialize>(
     let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
     let uncompressed = postcard_data.len();
 
-    let compressed_data = match compression {
-        Compression::Zstd => {
-            zstd::bulk::compress(&postcard_data, 3).context("while compressing with zstd")?
-        }
-        Compression::Xz => {
-            let mut buf = Vec::new();
-            let mut encoder = xz2::write::XzEncoder::new(&mut buf, 6);
-            encoder
-                .write_all(&postcard_data)
-                .context("while compressing with xz")?;
-            encoder.finish().context("while finishing xz stream")?;
-            buf
-        }
-    };
+    let compressed_data = compress(&postcard_data, compression)?;
 
     let mut file = File::create(path).context("while creating output file")?;
 
@@ -114,6 +122,90 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
     let uncompressed = decompress_stream(&mut file)?;
 
     postcard::from_bytes(&uncompressed).context("while decoding from postcard")
+}
+
+/// Serialize a value to bytes using the binary format (header + compressed
+/// postcard). Produces the same byte-for-byte output as `write_bin`.
+pub fn serialize_to_bytes<T: Serialize>(
+    value: &T,
+    format: [u8; 8],
+    (major, minor): (u16, u16),
+    compression: Compression,
+) -> Result<Vec<u8>> {
+    let postcard_data = postcard::to_allocvec(value).context("while encoding to postcard")?;
+    let compressed = compress(&postcard_data, compression)?;
+
+    let mut out = Vec::with_capacity(HEADER_SIZE + compressed.len());
+    out.put(MAGIC_BYTES);
+    out.put(&format[..]);
+    out.put_u16_le(major);
+    out.put_u16_le(minor);
+    out.extend_from_slice(&compressed);
+
+    Ok(out)
+}
+
+/// Deserialize a value from bytes produced by `serialize_to_bytes` or read
+/// from a file written by `write_bin`.
+pub fn deserialize_from_bytes<T: for<'a> Deserialize<'a>>(
+    data: &[u8],
+    format: [u8; 8],
+    (major, minor): (u16, u16),
+) -> Result<T> {
+    ensure!(
+        data.len() > HEADER_SIZE,
+        "Data too small ({} bytes, need at least {})",
+        data.len(),
+        HEADER_SIZE + 1
+    );
+
+    let mut header = Bytes::copy_from_slice(&data[..HEADER_SIZE]);
+
+    let mut magic = [0u8; 8];
+    header.copy_to_slice(&mut magic);
+    ensure!(magic == MAGIC_BYTES, "Invalid magic bytes");
+
+    let mut fmt = [0u8; 8];
+    header.copy_to_slice(&mut fmt);
+    ensure!(fmt == format, "Invalid format");
+
+    let file_major = header.get_u16_le();
+    let file_minor = header.get_u16_le();
+    ensure!(file_major == major, "Incompatible format major version");
+    ensure!(file_minor >= minor, "Incompatible format minor version");
+
+    let compressed = &data[HEADER_SIZE..];
+    let decompressed = decompress_bytes(compressed)?;
+
+    postcard::from_bytes(&decompressed).context("while decoding from postcard")
+}
+
+/// Auto-detect compression format from magic bytes and decompress a byte
+/// slice.
+fn decompress_bytes(data: &[u8]) -> Result<Vec<u8>> {
+    ensure!(data.len() >= 6, "Compressed data too small");
+
+    if data[..4] == ZSTD_MAGIC {
+        let mut out = Vec::new();
+        let mut decoder = zstd::Decoder::new(std::io::Cursor::new(data))
+            .context("while initializing zstd decoder")?;
+        decoder
+            .read_to_end(&mut out)
+            .context("while decompressing zstd data")?;
+        Ok(out)
+    } else if data[..6] == XZ_MAGIC {
+        let mut out = Vec::new();
+        let mut decoder = xz2::read::XzDecoder::new(std::io::Cursor::new(data));
+        decoder
+            .read_to_end(&mut out)
+            .context("while decompressing XZ data")?;
+        Ok(out)
+    } else {
+        anyhow::bail!(
+            "Unknown compression format (first bytes: {:02X?})",
+            &data[..data.len().min(6)]
+        );
+    }
 }
 
 /// Peek at the first bytes to detect compression format, then
