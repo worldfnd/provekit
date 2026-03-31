@@ -148,6 +148,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
+parking_lot = "0.12"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
