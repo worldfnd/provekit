@@ -249,13 +249,20 @@ func ZKWhirVerifyNimue(
 
 	// ---------------------------------------------------------------
 	// 8. Blinded commitment WHIR verify
-	//    The Go implementation passes raw evaluations to the inner WHIR
-	//    verifier (matching the native NativeWhirVerify). The m_evals
-	//    adjustment is not applied here because the Go WHIR verifier
-	//    handles the evaluation binding differently from Rust's whir_zk.
+	//    Mirrors Rust whir_zk/verifier.rs lines 118-125:
+	//    modified_evaluations[i] = evaluations[i] + m_evals[i]
+	//    where m_evals[i] is the first element of each (μ+1)-sized block
+	//    in wFoldedBlindingEvals.
 	// ---------------------------------------------------------------
+	blockSize := numWitnessVariables + 1
+	modifiedEvaluations := make([]frontend.Variable, len(evaluations))
+	for i, eval := range evaluations {
+		mEval := wFoldedBlindingEvals[i*blockSize] // first element of each block
+		modifiedEvaluations[i] = api.Add(eval, mEval)
+		api.Println("m_eval adjustment: eval", i, eval, "+ m_eval", mEval, "=", modifiedEvaluations[i])
+	}
 	blindedWhirCommitment := toWhirCommitment(blindedCommitment)
-	blindedWhirStatements := toWhirStatements(evaluations)
+	blindedWhirStatements := toWhirStatements(modifiedEvaluations)
 	blindedWhirParams := toWhirParams(blindedParams)
 
 	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, blindedMerkleData)

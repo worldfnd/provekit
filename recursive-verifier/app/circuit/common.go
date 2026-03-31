@@ -197,7 +197,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("parse interner: %w", err)
 	}
 
-	verifyCircuit(nil, config, Hints{}, pk, vk, ClaimedEvaluations{}, ClaimedEvaluations{}, [2]Fp256{}, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
+	verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
 
 	return nil
 }

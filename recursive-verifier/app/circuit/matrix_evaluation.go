@@ -241,6 +241,46 @@ func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []
 	return ans
 }
 
+// blindingCovectorMLE computes the MLE evaluation of the blinding OffsetCovector
+// at the given evaluation point. This mirrors Rust's OffsetCovector::mle_evaluate
+// for the blinding polynomial weights expand_powers::<4>(alpha) at offset w1Size.
+//
+// weights[4*j + k] = alpha[j]^k for k in 0..4, placed at domain index w1Size + 4*j + k.
+func blindingCovectorMLE(api frontend.API, alpha []frontend.Variable, w1Size int, evaluationPoint []frontend.Variable) frontend.Variable {
+	n := len(evaluationPoint)
+	result := frontend.Variable(0)
+
+	api.Println("=== blindingCovectorMLE debug ===")
+	api.Println("blindingCovectorMLE: n(eval_point_len)", n, "w1Size", w1Size, "alpha_len", len(alpha))
+	for j, a := range alpha {
+		api.Println("blindingCovectorMLE: alpha", j, a)
+	}
+
+	// expand_powers::<4>(alpha) produces [1, α₀, α₀², α₀³, 1, α₁, α₁², α₁³, ...]
+	for j := range alpha {
+		alphaPow := frontend.Variable(1) // alpha[j]^0
+		for k := 0; k < 4; k++ {
+			idx := w1Size + 4*j + k
+
+			// Compute Lagrange basis: Π_bit point[bit] or (1-point[bit])
+			basis := frontend.Variable(1)
+			for b := 0; b < n; b++ {
+				if (idx>>(n-1-b))&1 == 1 {
+					basis = api.Mul(basis, evaluationPoint[b])
+				} else {
+					basis = api.Mul(basis, api.Sub(1, evaluationPoint[b]))
+				}
+			}
+
+			api.Println("blindingCovectorMLE: j", j, "k", k, "idx", idx, "weight", alphaPow, "basis", basis)
+			result = api.Add(result, api.Mul(alphaPow, basis))
+			alphaPow = api.Mul(alphaPow, alpha[j])
+		}
+	}
+	api.Println("blindingCovectorMLE: result", result)
+	return result
+}
+
 // geometricTill evaluates the multilinear extension of the geometric vector
 // [1, x, x^2, ..., x^{n-1}, 0, ..., 0] at point foldingRandomness.
 // This is O(k) constraints where k = len(foldingRandomness).

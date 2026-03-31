@@ -8,7 +8,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
-	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
 // NewWhirParams creates a new WHIRParams instance from the given configuration.
@@ -69,18 +68,6 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		OmegaFull:                            *omegaFull,
 		Zeta:                                 *zeta,
 	}
-}
-
-// RunPoW executes a proof-of-work challenge if the difficulty is greater than zero.
-// This is used as part of the Fiat-Shamir transformation to prevent malicious prover behavior.
-func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, arthur gnarkNimue.Nimue, difficulty int) error {
-	if difficulty > 0 {
-		_, _, err := utilities.PoW(api, sc, arthur, difficulty)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // GenerateStirChallengePoints generates the stir challenge points for the given parameters.

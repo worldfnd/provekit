@@ -31,9 +31,9 @@ func initialSumcheck(
 		return InitialSumcheckData{}, nil, nil, err
 	}
 
-	combinedRlcCoeffs := make([]frontend.Variable, len(oodsRlcCoeffs)+len(initialFormRlcCoeffs))
-	copy(combinedRlcCoeffs, oodsRlcCoeffs)
-	copy(combinedRlcCoeffs[len(oodsRlcCoeffs):], initialFormRlcCoeffs)
+	combinedRlcCoeffs := make([]frontend.Variable, len(initialFormRlcCoeffs)+len(oodsRlcCoeffs))
+	copy(combinedRlcCoeffs, initialFormRlcCoeffs)
+	copy(combinedRlcCoeffs[len(initialFormRlcCoeffs):], oodsRlcCoeffs)
 
 	return InitialSumcheckData{
 		InitialOODQueries:            oodPoints,

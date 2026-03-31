@@ -66,6 +66,7 @@ type Circuit struct {
 	BlindingCommitmentWhirConfig WHIRParams
 	BlindedCommitmentWhirConfig  WHIRParams
 	NumChallenges                int
+	W1Size                       int
 	PublicInputs                 PublicInputs
 
 	// Evaluation hints from prover (prover_hint_ark, not transcript-bound).
@@ -220,6 +221,17 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		fc := zkWhirResult.BlindedResult.FinalClaim
 		foldingRandomness := fc.EvaluationPoint
 
+		api.Println("=== FinalClaim RLC Debug ===")
+		api.Println("fc.LinearFormRLC", fc.LinearFormRLC)
+		api.Println("evaluation_point len", len(foldingRandomness))
+		api.Println("num RLC coefficients", len(fc.RLCCoefficients))
+		for i, c := range fc.RLCCoefficients {
+			api.Println("fc.RLCCoefficients", i, c)
+		}
+		for i, p := range foldingRandomness {
+			api.Println("evaluation_point", i, p)
+		}
+
 		// Compute R1CS weight MLE evaluations
 		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, alpha, foldingRandomness)
 
@@ -228,26 +240,29 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 		if hasPublicInputs {
 			publicWeightMLE := geometricTill(api, publicWeightsChallenge[0], len(circuit.PublicInputs.Values), foldingRandomness)
+			api.Println("weight[pub] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", publicWeightMLE)
 			expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], publicWeightMLE))
+			api.Println("expectedRLC after pub", expectedRLC)
 			rlcIdx++
 		}
 
 		// A, B, C weight MLE evaluations
+		labels := []string{"A", "B", "C"}
 		for i := 0; i < 3; i++ {
+			api.Println("weight["+labels[i]+"] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", matrixExtensionEvals[i])
 			expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], matrixExtensionEvals[i]))
+			api.Println("expectedRLC after "+labels[i], expectedRLC)
 			rlcIdx++
 		}
 
 		// Blinding covector MLE: expand_powers::<4>(alpha) at offset w1_size
-		// TODO(soundness): compute blinding covector MLE in-circuit.
-		// For now, pass blinding_eval as a hint and verify via the FinalClaim.
-		// The blinding_eval is already constrained by the R1CS check
-		// (f_at_alpha = (az*bz - cz) * eq(r, alpha)) and the sumcheck,
-		// so it's indirectly bound. The full in-circuit blinding weight MLE
-		// computation can be added for defense in depth.
-		expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], blindingEval))
-		api.Println("fc.LinearFormRLC, expectedRLC", fc.LinearFormRLC, expectedRLC)
-		// api.AssertIsEqual(fc.LinearFormRLC, expectedRLC)
+		// Mirrors Rust's OffsetCovector::mle_evaluate for the blinding polynomial.
+		api.Println("blinding covector: W1Size", circuit.W1Size, "alpha len", len(alpha))
+		blindingCovectorMle := blindingCovectorMLE(api, alpha, circuit.W1Size, foldingRandomness)
+		api.Println("weight[blinding] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", blindingCovectorMle)
+		expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], blindingCovectorMle))
+		api.Println("=== FINAL: fc.LinearFormRLC", fc.LinearFormRLC, "expectedRLC", expectedRLC)
+		api.AssertIsEqual(fc.LinearFormRLC, expectedRLC)
 	}
 
 	// ---------------------------------------------------------------
@@ -489,14 +504,9 @@ func configToNimueInit(cfg Config) (circuit, assign NimueInit) {
 //
 //nolint:unused
 func verifyCircuit(
-	deferred []Fp256,
 	cfg Config,
-	hints Hints,
 	pk *groth16.ProvingKey,
 	vk *groth16.VerifyingKey,
-	claimedEvaluations ClaimedEvaluations,
-	claimedEvaluations2 ClaimedEvaluations,
-	publicWeightsClaimedEvaluation [2]Fp256,
 	internedR1CS R1CS,
 	interner Interner,
 	buildOps common.BuildOps,
@@ -506,7 +516,6 @@ func verifyCircuit(
 	blindedMerkleData whir.WhirMerkleData,
 	blindingMerkleData whir.WhirMerkleData,
 ) error {
-	// Original implementation preserved for reference:
 	transcriptT := make([]uints.U8, len(cfg.NargString))
 	contTranscript := make([]uints.U8, len(cfg.NargString))
 
@@ -515,66 +524,12 @@ func verifyCircuit(
 	}
 
 	nimueInitCircuit, nimueInitAssign := configToNimueInit(cfg)
-	// fmt.Println("transcriptT", transcriptT)
-	// // Determine witness linear statement evals size based on mode
-	// var witnessLinearStatementEvalsSize int
-	// if cfg.NumChallenges > 0 {
-	// 	if !cfg.PublicInputs.IsEmpty() {
-	// 		// 3 per commitment in batch mode + 1 public_input (geometric statement as a subset of linear statement)
-	// 		witnessLinearStatementEvalsSize = 7
-	// 	} else {
-	// 		witnessLinearStatementEvalsSize = 6
-	// 	}
-	// } else {
-	// 	if !cfg.PublicInputs.IsEmpty() {
-	// 		witnessLinearStatementEvalsSize = 4
-	// 	} else {
-	// 		witnessLinearStatementEvalsSize = 3
-	// 	}
-	// }
-
-	// witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	// hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	// contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	// contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-
-	// if len(deferred) < 1+witnessLinearStatementEvalsSize {
-	// 	return fmt.Errorf("deferred array too short: expected at least %d elements, got %d", 1+witnessLinearStatementEvalsSize, len(deferred))
-	// }
-	// hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	// for i := 0; i < witnessLinearStatementEvalsSize; i++ {
-	// 	witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
-	// }
 
 	matrixA, matrixB, matrixC, err := buildR1CSMatrixCells(internedR1CS, interner)
 	if err != nil {
 		return err
 	}
 
-	// // Parse claimed evaluations for first commitment
-	// fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
-
-	// // Parse claimed evaluations for second commitment (if dual mode)
-	// var fSums2, gSums2 []frontend.Variable
-	// if cfg.NumChallenges > 0 {
-	// 	fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
-	// }
-
-	// // Parse public weights claimed evaluation
-	// fSumPublicWeights, gSumPublicWeights := parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, true)
-	// pubWitnessEvaluations := []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
-
-	// // Build witness slices conditionally
-	// var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
-	// if cfg.NumChallenges > 0 {
-	// 	witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-	// 	witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	// } else {
-	// 	witnessClaimedEvals = [][]frontend.Variable{fSums}
-	// 	witnessBlindingEvals = [][]frontend.Variable{gSums}
-	// }
-
-	// // Empty container while circuit creation
 	publicInputsContainer := PublicInputs{
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
@@ -588,6 +543,7 @@ func verifyCircuit(
 		Transcript:                   contTranscript,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,
+		W1Size:                       cfg.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputsContainer,
@@ -674,20 +630,6 @@ func verifyCircuit(
 		}
 	}
 
-	// Parse actual values for assignment
-	// fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
-	// if cfg.NumChallenges > 0 {
-	// 	fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
-	// 	witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-	// 	witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	// } else {
-	// 	witnessClaimedEvals = [][]frontend.Variable{fSums}
-	// 	witnessBlindingEvals = [][]frontend.Variable{gSums}
-	// }
-
-	// fSumPublicWeights, gSumPublicWeights = parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, false)
-	// pubWitnessEvaluations = []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
-
 	// Build evaluation witness values from the native-parsed big.Ints.
 	evalsAssign := make([]frontend.Variable, 3)
 	for i := 0; i < 3 && i < len(evaluationsBigInt); i++ {
@@ -705,6 +647,7 @@ func verifyCircuit(
 		Transcript:                   transcriptT,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,
+		W1Size:                       cfg.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputs,
