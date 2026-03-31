@@ -1,5 +1,4 @@
 use {
-    crate::{NTTContainer, NTT},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -103,21 +102,21 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// # Arguments
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
-pub fn ntt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
+pub fn ntt_nr(values: &mut [Fr], codeword_size: usize) {
     let roots = ENGINE.read().unwrap();
-    let new_root = if roots.order() >= values.codeword_size() {
+    let new_root = if roots.order() >= codeword_size {
         roots
     } else {
         // Drop read lock
         drop(roots);
         let mut roots = ENGINE.write().unwrap();
-        roots.extend_roots_table(values.codeword_size());
+        roots.extend_roots_table(codeword_size);
         // Drop write lock
         drop(roots);
         ENGINE.read().unwrap()
     };
 
-    interleaved_ntt_nr(&new_root.0, values)
+    interleaved_ntt_nr(&new_root.0, values, codeword_size)
 }
 
 impl Default for NTTEngine {
@@ -143,17 +142,16 @@ impl Default for NTTEngine {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-fn interleaved_ntt_nr<C: NTTContainer<Fr>>(reversed_ordered_roots: &[Fr], values: &mut NTT<Fr, C>) {
+fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword_size: usize) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
-
-    // The order of the interleaved NTTs themselves -> codeword size
-    let codeword_size = values.codeword_size();
 
     // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
     if codeword_size <= 1 {
         return;
     }
+
+    assert!(codeword_size.is_power_of_two());
 
     // Each unique twiddle factor within a stage is a group.
     let mut elements_in_group = values.len();
@@ -299,8 +297,9 @@ fn init_roots_reverse_ordered(order: usize, capacity: Option<usize>) -> Vec<Fr> 
 
 // Reorder the input in reverse bit order, allows to convert from normal order
 // to reverse order or vice versa
-fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
-    match values.codeword_size() {
+fn reverse_order<T>(values: &mut [T], codeword_size: usize) {
+    assert!(codeword_size.is_power_of_two());
+    match codeword_size {
         0 | 1 => (),
         n => {
             for index in 0..n {
@@ -314,20 +313,20 @@ fn reverse_order<T, C: NTTContainer<T>>(values: &mut NTT<T, C>) {
 }
 
 /// Note: not specifically optimized
-pub fn intt_rn<C: NTTContainer<Fr>>(input: &mut NTT<Fr, C>) {
-    reverse_order(input);
+pub fn intt_rn(input: &mut [Fr]) {
+    reverse_order(input, input.len());
     intt_nr(input);
-    reverse_order(input);
+    reverse_order(input, input.len());
 }
 
 // Inverse NTT
-fn intt_nr<C: NTTContainer<Fr>>(values: &mut NTT<Fr, C>) {
-    match values.codeword_size() {
+fn intt_nr(values: &mut [Fr]) {
+    match values.len() {
         0 => (),
         n => {
             // Reverse the input such that the roots act as inverse roots
             values[1..].reverse();
-            ntt_nr(values);
+            ntt_nr(values, n);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
@@ -346,7 +345,7 @@ mod tests {
         super::{init_roots_reverse_ordered, reverse_order},
         crate::{
             ntt::{intt_rn, NTTEngine},
-            ntt_nr, NTT,
+            ntt_nr,
         },
         ark_bn254::Fr,
         ark_ff::BigInt,
@@ -375,13 +374,11 @@ mod tests {
     /// length.
     fn ntt<T: fmt::Debug>(
         sizes: impl Strategy<Value = usize>,
-        number_of_polynomials: usize,
         elem: impl Strategy<Value = T> + Clone,
-    ) -> impl Strategy<Value = NTT<T, Vec<T>>> {
+    ) -> impl Strategy<Value = Vec<T>> {
         sizes
             .prop_map(|k| 1 << k)
             .prop_flat_map(move |len| collection::vec(elem.clone(), len..=len))
-            .prop_map(move |v| NTT::new(v, number_of_polynomials))
     }
 
     /// Newtype wrapper to prevent proptest from writing the contents of an NTT
@@ -390,30 +387,30 @@ mod tests {
     /// If the contents does have to be viewed replace [`hidden_ntt`] with
     /// [`ntt`] as the test strategy
     #[derive(Clone, PartialEq)]
-    struct HiddenNTT<T>(NTT<T, Vec<T>>);
+    struct HiddenNTT<T>(Vec<T>);
 
     impl<T> fmt::Debug for HiddenNTT<T> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "HiddenNTT(len={})", self.0.codeword_size())
+            write!(f, "HiddenNTT(len={})", self.0.len())
         }
     }
 
     fn hidden_ntt<T: fmt::Debug>(
         sizes: impl Strategy<Value = usize>,
-        number_of_polynomials: usize,
         elem: impl Strategy<Value = T> + Clone,
     ) -> impl Strategy<Value = HiddenNTT<T>> {
-        ntt(sizes, number_of_polynomials, elem).prop_map(HiddenNTT)
+        ntt(sizes, elem).prop_map(HiddenNTT)
     }
 
     proptest! {
         #[test]
-        fn round_trip_ntt(original in hidden_ntt(0_usize..15, 1, fr()))
+        fn round_trip_ntt(original in hidden_ntt(0_usize..15, fr()))
         {
             let mut s = original.clone();
 
             // Forward NTT
-            ntt_nr(&mut s.0);
+            let codeword_size = s.0.len();
+            ntt_nr(&mut s.0, codeword_size);
 
             // Inverse NTT
             intt_rn(&mut s.0);
@@ -472,7 +469,7 @@ mod tests {
                 (
                     Just(constr(len - column)),
                     Just(constr(column)),
-                    hidden_ntt(len..=len, constr(column).get(), fr()),
+                    hidden_ntt(len..=len, fr()),
                 )
             })
         })
@@ -485,14 +482,14 @@ mod tests {
             let mut transposed = transpose(&ntt, rows.get(), columns.get());
 
             for chunk in transposed.chunks_exact_mut(rows.get()){
-                let mut fold = NTT::new(chunk,1);
-                ntt_nr(&mut fold);
+                let codeword_size = chunk.len();
+                ntt_nr(chunk, codeword_size);
             }
 
-        let double_transposed = transpose(&transposed, columns.get(), rows.get());
+            let double_transposed = transpose(&transposed, columns.get(), rows.get());
 
-        ntt_nr(&mut ntt);
-        prop_assert!(double_transposed == ntt.into_inner());
+            ntt_nr(&mut ntt, rows.get());
+            prop_assert!(double_transposed == ntt);
 
         }
     }
@@ -500,8 +497,8 @@ mod tests {
     #[test]
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
-        let mut v = NTT::new(vec![], 1);
-        ntt_nr(&mut v);
+        let mut v = vec![];
+        ntt_nr(&mut v, 0);
     }
 
     // Compare direct generation of the roots vs. extending from a base set of roots
@@ -516,19 +513,21 @@ mod tests {
 
     proptest! {
         #[test]
-        fn round_trip_reverse_order(original in ntt(0_usize..10, 1, any::<u32>())){
+        fn round_trip_reverse_order(original in ntt(0_usize..10, any::<u32>())){
             let mut v = original.clone();
-            reverse_order(&mut v);
-            reverse_order(&mut v);
+            let codeword_size = v.len();
+            reverse_order(&mut v,codeword_size);
+            reverse_order(&mut v,codeword_size);
             prop_assert_eq!(original, v)
         }
     }
 
     proptest! {
         #[test]
-        fn reverse_order_noop(original in ntt(0_usize..=1, 1, any::<u32>())) {
+        fn reverse_order_noop(original in ntt(0_usize..=1, any::<u32>())) {
             let mut v = original.clone();
-            reverse_order(&mut v);
+            let codeword_size = v.len();
+            reverse_order(&mut v, codeword_size);
             assert_eq!(original, v)
         }
 
