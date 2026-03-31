@@ -52,7 +52,12 @@ mavros-artifacts.workspace = true
 xz2.workspace = true
 
 [dev-dependencies]
+divan.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "rs_bench"
+harness = false
 
 [lints]
 workspace = true
