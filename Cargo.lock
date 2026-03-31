@@ -191,15 +191,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "approx"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7136,9 +7127,8 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/WizardOfMenlo/whir/?rev=20aecf708c34b91f652c851f0722177bf08315af#20aecf708c34b91f652c851f0722177bf08315af"
+source = "git+https://github.com/WizardOfMenlo/whir/?rev=790bdf02cc469700fcb227aae48c8fbc25ca9f49#790bdf02cc469700fcb227aae48c8fbc25ca9f49"
 dependencies = [
- "approx",
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
@@ -7151,7 +7141,6 @@ dependencies = [
  "digest 0.10.7",
  "hex",
  "hex-literal",
- "itertools 0.14.0",
  "ordered-float",
  "rayon",
  "serde",
