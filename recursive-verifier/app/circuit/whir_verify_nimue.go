@@ -144,20 +144,6 @@ func ZKWhirVerifyNimue(
 	}
 	api.Println("initial_committer stir", initialStirIndexes)
 
-	// TODO: Re-enable once hint infrastructure is wired up.
-	// Read submatrix from hints
-	// _ = hr.ReadVec(numInitialQueries * interleavingDepth * blindedParams.BatchSize)
-
-	// Verify Merkle paths for initial commitment
-	// foldedDomainSize := blindedParams.DomainSize / interleavingDepth
-	// treeHeight := bits.Len(uint(foldedDomainSize)) - 1
-	// for range numInitialQueries {
-	// 	for range treeHeight {
-	// 		_ = hr.ReadHash()
-	// 	}
-	// }
-	// _ = initialStirIndexes
-
 	// h_gammas count
 	hGammasCount := numInitialQueries * interleavingDepth
 	api.Println("h_gammas count", hGammasCount)
@@ -344,7 +330,6 @@ func ZKWhirVerifyNimue(
 	// The blinding weights are beq_weights (batched eq from gammas) and
 	// w_folded_weights (folded R1CS weights). Their MLE evaluations at the
 	// blinding evaluation point must match LinearFormRLC.
-	_ = blindingResult
 
 	return &ZKWhirVerifyResult{
 		BlindedResult:  blindedResult,

@@ -1,52 +1,10 @@
 package circuit
 
 import (
-	"reilabs/whir-verifier-circuit/app/utilities"
-
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/math/uints"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
-
-func initialSumcheck(
-	api frontend.API,
-	arthur gnarkNimue.Nimue,
-	batchingRandomness frontend.Variable,
-	initialOODQueries []frontend.Variable,
-	initialOODAnswers []frontend.Variable,
-	whirParams WHIRParams,
-	linearStatementEvaluations [][]frontend.Variable,
-) (InitialSumcheckData, frontend.Variable, []frontend.Variable, error) {
-
-	initialCombinationRandomness, err := GenerateCombinationRandomness(api, arthur, len(initialOODAnswers)+len(linearStatementEvaluations[0]))
-	if err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	combinedLinearStatementEvaluations := make([]frontend.Variable, len(linearStatementEvaluations[0])) //[0, 1, 2]
-	for evaluationIndex := range len(linearStatementEvaluations[0]) {
-		sum := frontend.Variable(0)
-		multiplier := frontend.Variable(1)
-		for j := range len(linearStatementEvaluations) {
-			sum = api.Add(sum, api.Mul(linearStatementEvaluations[j][evaluationIndex], multiplier))
-			multiplier = api.Mul(multiplier, batchingRandomness)
-		}
-		combinedLinearStatementEvaluations[evaluationIndex] = sum
-	}
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
-
-	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
-	if err != nil {
-		return InitialSumcheckData{}, nil, nil, err
-	}
-
-	return InitialSumcheckData{
-		InitialOODQueries:            initialOODQueries,
-		InitialCombinationRandomness: initialCombinationRandomness,
-	}, lastEval, initialSumcheckFoldingRandomness, nil
-}
 
 func zkWHIRCommitmentParsing(api frontend.API, nimue gnarkNimue.Nimue, blindedCommitmentWhirConfig WHIRParams, blindingCommitmentWhirConfig WHIRParams) (Commitment, Commitment, error) {
 	blindedCommitment, err := parseBatchedCommitment(api, nimue, blindedCommitmentWhirConfig)
@@ -96,24 +54,6 @@ func parseBatchedCommitment(api frontend.API, nimue gnarkNimue.Nimue, whir_param
 		InitialOODQueries: oodPoints,
 		InitialOODAnswers: oodAnswers,
 	}, nil
-}
-
-func generateFinalCoefficientsAndRandomnessPoints(api frontend.API, arthur gnarkNimue.Nimue, whir_params WHIRParams, circuit Merkle, uapi *uints.BinaryField[uints.U64], sc *skyscraper.Skyscraper, domainSize int, expDomainGenerator frontend.Variable) ([]frontend.Variable, []frontend.Variable, error) {
-	finalCoefficients := make([]frontend.Variable, 1<<whir_params.FinalSumcheckRounds)
-	if err := arthur.FillNextScalars(finalCoefficients); err != nil {
-		return nil, nil, err
-	}
-
-	if err := RunPoW(api, sc, arthur, whir_params.FinalPowBits); err != nil {
-		return nil, nil, err
-	}
-
-	finalRandomnessPoints, err := GenerateStirChallengePoints(api, arthur, whir_params.FinalQueries, circuit.LeafIndexes[len(circuit.LeafIndexes)-1], domainSize, uapi, expDomainGenerator, whir_params.FoldingFactorArray[len(whir_params.FoldingFactorArray)-1])
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return finalCoefficients, finalRandomnessPoints, nil
 }
 
 // rlcBatchedLeaves collapses a wide leaf (length foldSize * batchSize) into foldSize via

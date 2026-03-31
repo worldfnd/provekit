@@ -203,8 +203,7 @@ func CheckPoW(api frontend.API, sc *skyscraper.Skyscraper, challenge frontend.Va
 	d27, _ := new(big.Int).SetString("163080117641681993173408551106283628110202881696939724264280529220222", 10)
 
 	var arr = [28]*big.Int{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26, d27}
-	_ = hash
-	_ = arr
+	api.Println("hash, arr[difficulty]", hash, arr[difficulty])
 	// api.AssertIsLessOrEqual(hash, arr[difficulty])
 	return nil
 }

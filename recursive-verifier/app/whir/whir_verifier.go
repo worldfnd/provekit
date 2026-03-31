@@ -58,7 +58,6 @@ func VerifyWhir(
 	if err != nil {
 		return nil, fmt.Errorf("vector_rlc: %w", err)
 	}
-	_ = vectorRlcCoeffs
 
 	// Random linear combination of the constraints.
 	numLinearForms := len(statements)
@@ -155,10 +154,16 @@ func VerifyWhir(
 			return nil, fmt.Errorf("round %d stir: %w", r, err)
 		}
 
-		// Verify Merkle proofs when data is provided.
-		if merkleData != nil && r == 0 && r < len(merkleData.Rounds) {
-			//rd := merkleData.Rounds[r]
-			// verifyMerkleProofs(api, sc, rd.Leaves, stirIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+		// Verify Merkle proofs: each round opens the previous commitment.
+		if merkleData != nil && r < len(merkleData.Rounds) {
+			rd := merkleData.Rounds[r]
+			// Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
+			for q := range stirIndexes {
+				if q < len(rd.LeafIndexes) {
+					api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
+				}
+			}
+			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
 		prevRootHash = rootHash[0]
@@ -243,12 +248,18 @@ func VerifyWhir(
 		finalRandomnessPoints[i] = ExponentVar(api, expDomainGenerator, idx, numBits)
 	}
 
-	// TODO: Re-enable final round Merkle verification.
-	// finalRoundIdx := params.ParamNRounds
-	// if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
-	// 	rd := merkleData.Rounds[finalRoundIdx]
-	// 	verifyMerkleProofs(api, sc, rd.Leaves, finalIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
-	// }
+	// Final round: open the last round's commitment.
+	finalRoundIdx := params.ParamNRounds
+	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
+		rd := merkleData.Rounds[finalRoundIdx]
+		// Constrain witness leaf indexes to match transcript-derived final STIR indexes.
+		for q := range finalIndexes {
+			if q < len(rd.LeafIndexes) {
+				api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
+			}
+		}
+		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+	}
 
 	// Final sumcheck.
 	finalSumcheckRandomness, theSum, err := runWhirSumcheckRounds(api, theSum, nimue, params.FinalSumcheckRounds)
