@@ -7,7 +7,7 @@ use {
     },
     std::{
         mem::size_of,
-        sync::{LazyLock, RwLock},
+        sync::{LazyLock, RwLock, RwLockReadGuard},
     },
 };
 
@@ -21,7 +21,7 @@ pub const fn workload_size<T: Sized>() -> usize {
 }
 
 /// NTTEngine allows for reusing twiddle factors between computations
-pub struct NTTEngine(Vec<Fr>);
+pub struct NTTEngine(pub Vec<Fr>);
 
 impl NTTEngine {
     /// Initialize an NTT Engine
@@ -103,6 +103,11 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
 pub fn ntt_nr(values: &mut [Fr], codeword_size: usize) {
+    let new_root = extend_roots_table(codeword_size);
+    interleaved_ntt_nr(&new_root.0, values, codeword_size)
+}
+
+pub fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
     let roots = ENGINE.read().unwrap();
     let new_root = if roots.order() >= codeword_size {
         roots
@@ -116,7 +121,7 @@ pub fn ntt_nr(values: &mut [Fr], codeword_size: usize) {
         ENGINE.read().unwrap()
     };
 
-    interleaved_ntt_nr(&new_root.0, values, codeword_size)
+    new_root
 }
 
 impl Default for NTTEngine {
@@ -216,7 +221,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
         });
 }
 
-fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+pub fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
     let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
