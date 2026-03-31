@@ -342,9 +342,12 @@ impl NoirToR1CSCompiler {
         /// Extract the little-endian byte decomposition of a constant field
         /// element into `num_digits` bytes.
         fn const_bytes(fe: FieldElement, num_digits: usize) -> Vec<u8> {
-            let val: u64 = fe.into_bigint().0[0];
+            let limbs = fe.into_bigint().0;
             (0..num_digits)
-                .map(|i| (val >> (i * BINOP_ATOMIC_BITS)) as u8)
+                .map(|i| {
+                    let bit_offset = i * BINOP_ATOMIC_BITS;
+                    (limbs[bit_offset / 64] >> (bit_offset % 64)) as u8
+                })
                 .collect()
         }
 
