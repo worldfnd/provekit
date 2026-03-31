@@ -90,30 +90,6 @@ mod tests {
         proptest::array::uniform4(0u64..).prop_map(|val| Fr::new(BigInt(val)))
     }
 
-    // Sort a codeword by evaluation point so ordering differences don't matter.
-    fn sort_by_points(
-        rs: &dyn whir::algebra::ntt::ReedSolomon<Fr>,
-        message_length: usize,
-        codeword_length: usize,
-        num_messages: usize,
-        codeword: &[Fr],
-    ) -> Vec<Vec<Fr>> {
-        let indices: Vec<usize> = (0..codeword_length).collect();
-        let points = rs.evaluation_points(message_length, codeword_length, &indices);
-        let mut rows: Vec<(ark_ff::BigInt<4>, Vec<Fr>)> = points
-            .iter()
-            .enumerate()
-            .map(|(i, pt)| {
-                let values: Vec<Fr> = (0..num_messages)
-                    .map(|row| codeword[i * num_messages + row])
-                    .collect();
-                (pt.into_bigint(), values)
-            })
-            .collect();
-        rows.sort_by_key(|(k, _)| *k);
-        rows.into_iter().map(|(_, v)| v).collect()
-    }
-
     proptest! {
         #[test]
         fn interleaved_encode_matches_whir_reference(
@@ -130,15 +106,28 @@ mod tests {
             data.resize(total, Fr::ZERO);
 
             let messages: Vec<&[Fr]> = data.chunks(message_length).collect();
+            let indices: Vec<usize> = (0..codeword_length).collect();
 
             let reference = NttEngine::<Fr>::new_from_fftfield();
             let our_codeword = RSFr.interleaved_encode(&messages, &[], codeword_length);
             let ref_codeword = reference.interleaved_encode(&messages, &[], codeword_length);
 
-            let our_sorted = sort_by_points(&RSFr, message_length, codeword_length, num_messages, &our_codeword);
-            let ref_sorted = sort_by_points(&reference, message_length, codeword_length, num_messages, &ref_codeword);
+            let our_points = RSFr.evaluation_points(message_length, codeword_length, &indices);
+            let ref_points = reference.evaluation_points(message_length, codeword_length, &indices);
 
-            prop_assert_eq!(our_sorted, ref_sorted);
+            // Pair each evaluation point with its num_messages-wide slice, then sort
+            // by point so that ordering differences between implementations don't matter.
+            let mut our_rows: Vec<_> = our_points.iter().enumerate()
+                .map(|(i, pt)| (pt.into_bigint(), &our_codeword[i * num_messages..(i + 1) * num_messages]))
+                .collect();
+            our_rows.sort_by_key(|(k, _)| *k);
+
+            let mut ref_rows: Vec<_> = ref_points.iter().enumerate()
+                .map(|(i, pt)| (pt.into_bigint(), &ref_codeword[i * num_messages..(i + 1) * num_messages]))
+                .collect();
+            ref_rows.sort_by_key(|(k, _)| *k);
+
+            prop_assert_eq!(our_rows, ref_rows);
         }
     }
 }
