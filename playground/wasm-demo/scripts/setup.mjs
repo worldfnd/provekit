@@ -334,7 +334,7 @@ async function buildShared() {
     log(
       "\nInstall Noir:\n  curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash"
     );
-    log("  noirup --version v1.0.0-beta.11");
+    log("  noirup --version v1.0.0-beta.19");
     process.exit(1);
   }
   logSuccess("nargo found");
