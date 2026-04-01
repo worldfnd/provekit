@@ -163,25 +163,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	// Run ZK-WHIR verification (single commitment version)
-	// The callback computes blinded weight MLE evaluations for VerifyClaim.
-	// Weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector]
-	blindedWeightMLEFn := func(fc whir.FinalClaimCircuit) []frontend.Variable {
-		foldingRandomness := fc.EvaluationPoint
-		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, alpha, foldingRandomness)
-
-		var weightMLEEvals []frontend.Variable
-		if hasPublicInputs {
-			publicWeightMLE := geometricTill(api, publicWeightsChallenge[0], len(circuit.PublicInputs.Values), foldingRandomness)
-			weightMLEEvals = append(weightMLEEvals, publicWeightMLE)
-		}
-		weightMLEEvals = append(weightMLEEvals, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
-
-		blindingCovectorMle := blindingCovectorMLE(api, alpha, circuit.W1Size, foldingRandomness)
-		weightMLEEvals = append(weightMLEEvals, blindingCovectorMle)
-		return weightMLEEvals
-	}
-
-	_, err = ZKWhirVerifyNimue(
+	err = ZKWhirVerifyNimue(
 		api, sc, nimue,
 		blindedCommitmentNimue,
 		blindingCommitmentNimue,
@@ -192,7 +174,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		numPolynomials,
 		&circuit.BlindedMerkleData,
 		&circuit.BlindingMerkleData,
-		blindedWeightMLEFn,
+		R1CSWeightParams{
+			Circuit:                circuit,
+			Alpha:                  alpha,
+			PublicWeightsChallenge: publicWeightsChallenge[0],
+			HasPublicInputs:        hasPublicInputs,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
@@ -222,192 +209,6 @@ func flattenOODAnswers(answers [][]frontend.Variable) []frontend.Variable {
 	}
 	return flat
 }
-
-// func (circuit *Circuit) Define2(api frontend.API) error {
-// 	sc, arthur, uapi, err := initializeComponents(api, circuit)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Parse first commitment (C1) - needed to consume transcript
-// 	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// 	// Variables for second commitment (only used in dual mode)
-// 	var rootHash2, batchingRandomness2 frontend.Variable
-// 	var initialOODQueries2 []frontend.Variable
-// 	var initialOODAnswers2 [][]frontend.Variable
-
-// 	if circuit.NumChallenges > 0 {
-// 		// Squeeze logup challenges
-// 		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
-// 		if err = arthur.FillChallengeScalars(logupChallenges); err != nil {
-// 			return err
-// 		}
-
-// 		// Parse second commitment (C2)
-// 		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	// Squeeze tRand for Spartan
-// 	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
-// 	err = arthur.FillChallengeScalars(tRand)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Run ZK sumcheck
-// 	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsWitness)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Read public inputs hash from transcript
-// 	publicInputsHashBuf := make([]frontend.Variable, 1)
-// 	if err := arthur.FillNextScalars(publicInputsHashBuf); err != nil {
-// 		return fmt.Errorf("failed to read public inputs hash: %w", err)
-// 	}
-
-// 	expectedHash, err := hashPublicInputs(sc, circuit.PublicInputs)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to compute public inputs hash: %w", err)
-// 	}
-
-// 	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
-
-// 	// Squeeze rand for public weights
-// 	publicWeightsChallenge := make([]frontend.Variable, 1)
-// 	if err := arthur.FillChallengeScalars(publicWeightsChallenge); err != nil {
-// 		return fmt.Errorf("failed to read public weights challenge: %w", err)
-// 	}
-
-// 	// WHIR verification
-// 	var whirFoldingRandomness []frontend.Variable
-// 	var az, bz, cz frontend.Variable
-
-// 	if circuit.NumChallenges > 0 {
-// 		// Only statement_1 (first commitment) gets extended with public weights, statement_2 remains unchanged
-// 		extendedLinearStatementEvalsBatch := make([][][]frontend.Variable, 2)
-
-// 		if !circuit.PublicInputs.IsEmpty() {
-// 			extendedLinearStatementEvalsBatch[0] = extendLinearStatement(
-// 				circuit,
-// 				[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
-// 				circuit.PubWitnessEvaluations,
-// 			)
-
-// 			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-// 				circuit.WitnessClaimedEvaluations[1],
-// 				circuit.WitnessBlindingEvaluations[1],
-// 			}
-// 		} else {
-// 			// Use original arrays as before, no public inputs
-// 			extendedLinearStatementEvalsBatch[0] = [][]frontend.Variable{
-// 				circuit.WitnessClaimedEvaluations[0],
-// 				circuit.WitnessBlindingEvaluations[0],
-// 			}
-// 			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-// 				circuit.WitnessClaimedEvaluations[1],
-// 				circuit.WitnessBlindingEvaluations[1],
-// 			}
-// 		}
-
-// 		whirFoldingRandomness, err = RunZKWhirBatch(
-// 			api, arthur, uapi, sc,
-// 			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
-// 			[]frontend.Variable{batchingRandomness1, batchingRandomness2},   // batchingRandomnesses
-// 			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
-// 			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
-// 			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
-// 			circuit.WitnessMerkle,                                           // batchedMerkle
-// 			extendedLinearStatementEvalsBatch,                               // linearStatementEvals (extended for first commitment)
-// 			circuit.WHIRParamsWitness,                                       // whirParams
-// 			circuit.WitnessLinearStatementEvaluations,                       // linearStatementValuesAtPoints
-// 			circuit.PublicInputs,                                            // publicInputs
-// 		)
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		// Sum evaluations from both commitments
-// 		az = api.Add(circuit.WitnessClaimedEvaluations[0][0], circuit.WitnessClaimedEvaluations[1][0])
-// 		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
-// 		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
-// 	} else {
-// 		extendedLinearStatementEvals := extendLinearStatement(circuit, [][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]}, circuit.PubWitnessEvaluations)
-
-// 		// Single commitment mode
-// 		whirFoldingRandomness, err = RunZKWhir(
-// 			api, arthur, uapi, sc,
-// 			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
-// 			circuit.WHIRParamsWitness,
-// 			extendedLinearStatementEvals,
-// 			circuit.WitnessLinearStatementEvaluations,
-// 			batchingRandomness1,
-// 			initialOODQueries1,
-// 			initialOODAnswers1,
-// 			rootHash1,
-// 		)
-// 		if err != nil {
-// 			return err
-// 		}
-
-// 		az = circuit.WitnessClaimedEvaluations[0][0]
-// 		bz = circuit.WitnessClaimedEvaluations[0][1]
-// 		cz = circuit.WitnessClaimedEvaluations[0][2]
-// 	}
-
-// 	// Spartan sumcheck relation check (common to both modes)
-// 	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
-// 	api.AssertIsEqual(spartanSumcheckLastValue, x)
-
-// 	offset := 0
-// 	if !circuit.PublicInputs.IsEmpty() {
-// 		// can be generalized later on if we have more different kinds of statements
-// 		offset = 1
-// 	}
-
-// 	if circuit.NumChallenges > 0 {
-// 		// Batch mode - check 6 deferred values
-// 		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
-// 		for i := 0; i < 6; i++ {
-// 			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-// 		}
-// 	} else {
-
-// 		// Single mode - existing logic
-// 		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
-// 		for i := 0; i < 3; i++ {
-// 			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-// 		}
-// 	}
-
-// 	// Geometric weights for public inputs
-// 	if !circuit.PublicInputs.IsEmpty() {
-// 		publicWeightEval := computePublicWeightEvaluation(
-// 			api, circuit.PublicInputs, whirFoldingRandomness, publicWeightsChallenge[0],
-// 		)
-
-// 		api.AssertIsEqual(publicWeightEval, circuit.WitnessLinearStatementEvaluations[0])
-// 	}
-
-// 	return nil
-// }
-
-// func computePublicWeightEvaluation(
-// 	api frontend.API,
-// 	publicInputs PublicInputs,
-// 	foldingRandomness []frontend.Variable,
-// 	x frontend.Variable,
-// ) frontend.Variable {
-// 	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
-// }
 
 // configToNimueInit returns (circuit placeholder, assignment) for NimueInit.
 // Circuit placeholder has all fields zeroed. Assignment is filled from cfg:

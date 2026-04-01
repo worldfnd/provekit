@@ -173,6 +173,44 @@ func evaluateR1CSMatrixExtension(api frontend.API, circuit *Circuit, rowRand []f
 	return []frontend.Variable{ansA, ansB, ansC}
 }
 
+// evaluateFoldedR1CSMatrixExtension computes the MLE of folded R1CS weight
+// covectors at the given evaluation point. Folding wraps column indices modulo
+// maskSize = 2^(numBlindingVars+1), producing a covector of that size. The MLE
+// of the folded covector at foldedPoint (with numBlindingVars+1 variables) is:
+//
+//	w_folded_mle(p) = Σ_{(row,col)} M[row,col] * eq(alpha, row) * L_{col mod mask}(p)
+//
+// Returns [A_folded_mle, B_folded_mle, C_folded_mle].
+func evaluateFoldedR1CSMatrixExtension(
+	api frontend.API,
+	circuit *Circuit,
+	rowRand []frontend.Variable,
+	foldedPoint []frontend.Variable,
+	maskSize int,
+) []frontend.Variable {
+	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+	foldedColEval := calculateEQOverBooleanHypercube(api, foldedPoint)
+
+	ansA := frontend.Variable(0)
+	ansB := frontend.Variable(0)
+	ansC := frontend.Variable(0)
+
+	for i := range circuit.MatrixA {
+		cell := circuit.MatrixA[i]
+		ansA = api.Add(ansA, api.Mul(cell.value, api.Mul(rowEval[cell.row], foldedColEval[cell.column%maskSize])))
+	}
+	for i := range circuit.MatrixB {
+		cell := circuit.MatrixB[i]
+		ansB = api.Add(ansB, api.Mul(cell.value, api.Mul(rowEval[cell.row], foldedColEval[cell.column%maskSize])))
+	}
+	for i := range circuit.MatrixC {
+		cell := circuit.MatrixC[i]
+		ansC = api.Add(ansC, api.Mul(cell.value, api.Mul(rowEval[cell.row], foldedColEval[cell.column%maskSize])))
+	}
+
+	return []frontend.Variable{ansA, ansB, ansC}
+}
+
 // func evaluateR1CSMatrixExtensionBatch(
 // 	api frontend.API,
 // 	circuit *Circuit,
@@ -250,12 +288,6 @@ func blindingCovectorMLE(api frontend.API, alpha []frontend.Variable, w1Size int
 	n := len(evaluationPoint)
 	result := frontend.Variable(0)
 
-	api.Println("=== blindingCovectorMLE debug ===")
-	api.Println("blindingCovectorMLE: n(eval_point_len)", n, "w1Size", w1Size, "alpha_len", len(alpha))
-	for j, a := range alpha {
-		api.Println("blindingCovectorMLE: alpha", j, a)
-	}
-
 	// expand_powers::<4>(alpha) produces [1, α₀, α₀², α₀³, 1, α₁, α₁², α₁³, ...]
 	for j := range alpha {
 		alphaPow := frontend.Variable(1) // alpha[j]^0
@@ -272,12 +304,10 @@ func blindingCovectorMLE(api frontend.API, alpha []frontend.Variable, w1Size int
 				}
 			}
 
-			api.Println("blindingCovectorMLE: j", j, "k", k, "idx", idx, "weight", alphaPow, "basis", basis)
 			result = api.Add(result, api.Mul(alphaPow, basis))
 			alphaPow = api.Mul(alphaPow, alpha[j])
 		}
 	}
-	api.Println("blindingCovectorMLE: result", result)
 	return result
 }
 
@@ -317,4 +347,54 @@ func geometricTill(api frontend.API, x frontend.Variable, n int, foldingRandomne
 	}
 
 	return borrow0
+}
+
+// foldedGeometricTill computes the MLE of the geometric vector [1, x, ..., x^{n-1}, 0, ...]
+// folded modulo maskSize, evaluated at evalPoint (with log2(maskSize) variables).
+//
+//	result = Σ_{i=0..n-1} x^i * L_{i mod maskSize}(evalPoint)
+func foldedGeometricTill(
+	api frontend.API,
+	x frontend.Variable,
+	n int,
+	evalPoint []frontend.Variable,
+	maskSize int,
+) frontend.Variable {
+	lagrange := calculateEQOverBooleanHypercube(api, evalPoint)
+
+	result := frontend.Variable(0)
+	xPow := frontend.Variable(1)
+	for i := range n {
+		result = api.Add(result, api.Mul(xPow, lagrange[i%maskSize]))
+		xPow = api.Mul(xPow, x)
+	}
+	return result
+}
+
+// foldedBlindingCovectorMLE computes the MLE of the blinding OffsetCovector
+// folded modulo maskSize, evaluated at evalPoint.
+// The blinding covector has weights expand_powers::<4>(alpha) at offset w1Size:
+//
+//	weights[4*j + k] = alpha[j]^k at domain index w1Size + 4*j + k
+//
+// Folded: result = Σ_{j,k} alpha[j]^k * L_{(w1Size + 4*j + k) mod maskSize}(evalPoint)
+func foldedBlindingCovectorMLE(
+	api frontend.API,
+	alpha []frontend.Variable,
+	w1Size int,
+	evalPoint []frontend.Variable,
+	maskSize int,
+) frontend.Variable {
+	lagrange := calculateEQOverBooleanHypercube(api, evalPoint)
+
+	result := frontend.Variable(0)
+	for j := range alpha {
+		alphaPow := frontend.Variable(1)
+		for k := 0; k < 4; k++ {
+			idx := (w1Size + 4*j + k) % maskSize
+			result = api.Add(result, api.Mul(alphaPow, lagrange[idx]))
+			alphaPow = api.Mul(alphaPow, alpha[j])
+		}
+	}
+	return result
 }

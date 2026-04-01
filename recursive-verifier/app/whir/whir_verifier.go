@@ -38,7 +38,6 @@ func VerifyWhir(
 				if err = nimue.FillNextScalars(crossTerm); err != nil {
 					return nil, fmt.Errorf("ood cross-term: %w", err)
 				}
-				api.Println("crossTerm", crossTerm[0])
 				oodMatrix = append(oodMatrix, crossTerm[0])
 			}
 		}
@@ -97,9 +96,7 @@ func VerifyWhir(
 	}
 
 	// Perform the initial sumcheck
-	api.Println("WHIR theSum BEFORE initial sumcheck", theSum)
 	initialSumcheckData, theSum, initialSumcheckFoldingRandomness, err := initialSumcheck(api, nimue, theSum, commitment.OodPoints, oodsRlcCoeffs, initialFormRlcCoeffs, params)
-	api.Println("WHIR theSum AFTER initial sumcheck", theSum)
 	if err != nil {
 		return nil, err
 	}
@@ -184,12 +181,20 @@ func VerifyWhir(
 
 		if merkleData != nil && r < len(merkleData.Rounds) {
 			// Compute in-domain constraint values from verified leaf data.
+			// For the initial round (r==0), weights = tensor_product(polyRLC, eqWeights)
+			// where polyRLC = vectorRlcCoeffs. For subsequent rounds, polyRLC = [1].
 			lastFoldRand := totalFoldingRandomness[len(totalFoldingRandomness)-params.FoldingFactorArray[r]:]
 			eqW := computeEqWeights(api, lastFoldRand)
+			var inDomainWeights []frontend.Variable
+			if r == 0 {
+				inDomainWeights = TensorProduct(api, vectorRlcCoeffs, eqW)
+			} else {
+				inDomainWeights = eqW
+			}
 			rd := merkleData.Rounds[r]
 			for q := range numInDomainQueries {
 				if q < len(rd.Leaves) {
-					constraintValues = append(constraintValues, DotProduct(api, eqW, rd.Leaves[q]))
+					constraintValues = append(constraintValues, DotProduct(api, inDomainWeights, rd.Leaves[q]))
 				} else {
 					constraintValues = append(constraintValues, frontend.Variable(0))
 				}
@@ -209,12 +214,10 @@ func VerifyWhir(
 
 		constraintDot := DotProduct(api, roundCombRlcCoeffs, constraintValues)
 		theSum = api.Add(theSum, constraintDot)
-		api.Println("WHIR theSum BEFORE round", r, "sumcheck", theSum)
 
 		// Sumcheck round
 		var roundFoldingRandomness []frontend.Variable
 		roundFoldingRandomness, theSum, err = runWhirSumcheckRounds(api, theSum, nimue, params.FoldingFactorArray[r+1])
-		api.Println("WHIR theSum AFTER round", r, "sumcheck", theSum)
 		if err != nil {
 			return nil, fmt.Errorf("round %d sumcheck: %w", r, err)
 		}
@@ -266,9 +269,7 @@ func VerifyWhir(
 	}
 
 	// Final sumcheck.
-	api.Println("WHIR theSum BEFORE final sumcheck", theSum)
 	finalSumcheckRandomness, theSum, err := runWhirSumcheckRounds(api, theSum, nimue, params.FinalSumcheckRounds)
-	api.Println("WHIR theSum AFTER final sumcheck", theSum)
 	if err != nil {
 		return nil, fmt.Errorf("final sumcheck: %w", err)
 	}
@@ -301,32 +302,16 @@ func VerifyWhir(
 	// In gnark: api.Div(a, b) constrains b * result == a.
 	linearFormRLC := api.Div(theSum, polyEval)
 
-	api.Println("=== WHIR linearFormRLC Debug (Go) ===")
-	api.Println("WHIR theSum", theSum)
-	api.Println("WHIR polyEval", polyEval)
-	api.Println("WHIR linearFormRLC after div", linearFormRLC)
-	api.Println("WHIR evaluationPoint len", len(evaluationPoint))
-	api.Println("WHIR numLinearForms", numLinearForms)
-	for i, p := range evaluationPoint {
-		api.Println("WHIR evaluationPoint", i, p)
-	}
-	for i, c := range initialFormRlcCoeffs {
-		api.Println("WHIR initialFormRlcCoeffs", i, c)
-	}
-
 	// Subtract initial round OOD evaluator contributions.
 	// Each OOD evaluator is UnivariateEvaluation{point, size} with
 	// size = domainSize / (1 << rate) = 2^MVParamsNumberOfVariables.
 	numInitialVars := params.MVParamsNumberOfVariables
 	initialSubPoint := evaluationPoint[len(evaluationPoint)-numInitialVars:]
 	numOODInitial := len(initialSumcheckData.InitialOODQueries)
-	api.Println("WHIR numInitialVars", numInitialVars, "numOODInitial", numOODInitial)
 	for i := 0; i < numOODInitial; i++ {
 		oodIdx := numLinearForms + i // OOD coeffs come after linear form coeffs
 		mleVal := UnivarMleEvaluate(api, initialSumcheckData.InitialOODQueries[i], initialSubPoint)
-		api.Println("WHIR initial OOD sub", i, "oodIdx", oodIdx, "coeff", initialSumcheckData.InitialCombinationRandomness[oodIdx], "mleVal", mleVal)
 		linearFormRLC = api.Sub(linearFormRLC, api.Mul(initialSumcheckData.InitialCombinationRandomness[oodIdx], mleVal))
-		api.Println("WHIR linearFormRLC after initial OOD sub", i, linearFormRLC)
 	}
 
 	// Subtract main round constraint contributions (OOD + in-domain STIR evaluators).
@@ -338,27 +323,19 @@ func VerifyWhir(
 		roundOODCount := params.RoundParametersOODSamples[r]
 		roundCombRLC := mainRoundData.CombinationRandomness[r]
 
-		api.Println("WHIR round", r, "numVarsForRound", numVarsForRound, "roundOODCount", roundOODCount)
-
 		// OOD evaluators for this round
 		for i := 0; i < roundOODCount; i++ {
 			mleVal := UnivarMleEvaluate(api, mainRoundData.OODPoints[r][i], subPoint)
-			api.Println("WHIR round", r, "OOD sub", i, "coeff", roundCombRLC[i], "mleVal", mleVal)
 			linearFormRLC = api.Sub(linearFormRLC, api.Mul(roundCombRLC[i], mleVal))
-			api.Println("WHIR linearFormRLC after round OOD sub", linearFormRLC)
 		}
 
 		// In-domain STIR evaluators for this round
 		stirPoints := mainRoundData.StirChallengesPoints[r]
 		for i, stirPt := range stirPoints {
 			mleVal := UnivarMleEvaluate(api, stirPt, subPoint)
-			api.Println("WHIR round", r, "STIR sub", i, "coeff", roundCombRLC[roundOODCount+i], "mleVal", mleVal)
 			linearFormRLC = api.Sub(linearFormRLC, api.Mul(roundCombRLC[roundOODCount+i], mleVal))
-			api.Println("WHIR linearFormRLC after round STIR sub", linearFormRLC)
 		}
 	}
-
-	api.Println("WHIR FINAL linearFormRLC", linearFormRLC)
 
 	return &VerifyResult{
 		TotalFoldingRandomness: totalFoldingRandomness,

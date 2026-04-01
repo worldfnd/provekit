@@ -83,17 +83,14 @@ type WhirStatement struct {
 // Mirrors nativeZKWhirVerify but uses gnark constraints.
 // ---------------------------------------------------------------------------
 
-// ZKWhirVerifyResult holds the outputs from ZKWhirVerifyNimue needed for
-// deferred evaluation checks (FinalClaim binding).
-type ZKWhirVerifyResult struct {
-	BlindedResult  *whir.VerifyResult
-	BlindingResult *whir.VerifyResult
+// R1CSWeightParams bundles the circuit data needed to compute weight MLE
+// evaluations for both the blinded and blinding FinalClaim checks.
+type R1CSWeightParams struct {
+	Circuit               *Circuit
+	Alpha                 []frontend.Variable
+	PublicWeightsChallenge frontend.Variable
+	HasPublicInputs       bool
 }
-
-// WeightMLEFunc computes the weight MLE evaluations for a FinalClaim.
-// Given the FinalClaimCircuit (which contains the EvaluationPoint), it returns
-// the weight MLE values in the same order as the RLC coefficients.
-type WeightMLEFunc func(fc whir.FinalClaimCircuit) []frontend.Variable
 
 func ZKWhirVerifyNimue(
 	api frontend.API,
@@ -108,8 +105,8 @@ func ZKWhirVerifyNimue(
 	numPolynomials int, // typically 1
 	blindedMerkleData *whir.WhirMerkleData,
 	blindingMerkleData *whir.WhirMerkleData,
-	blindedWeightMLEFn WeightMLEFunc, // computes blinded weight MLE evaluations for VerifyClaim
-) (*ZKWhirVerifyResult, error) {
+	r1csWeights R1CSWeightParams,
+) error {
 	numWitnessVariables := blindedParams.MVParamsNumberOfVariables
 	interleavingDepth := 1 << blindedParams.FoldingFactorArray[0]
 
@@ -118,7 +115,7 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	blindingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(blindingChallenge); err != nil {
-		return nil, fmt.Errorf("blinding_challenge: %w", err)
+		return fmt.Errorf("blinding_challenge: %w", err)
 	}
 	api.Println("blinding_challenge", blindingChallenge[0])
 
@@ -128,7 +125,7 @@ func ZKWhirVerifyNimue(
 	numWFoldedEvals := weightsLen * numPolynomials * (numWitnessVariables + 1)
 	wFoldedBlindingEvals := make([]frontend.Variable, numWFoldedEvals)
 	if err := nimue.FillNextScalars(wFoldedBlindingEvals); err != nil {
-		return nil, fmt.Errorf("w_folded_blinding_evals: %w", err)
+		return fmt.Errorf("w_folded_blinding_evals: %w", err)
 	}
 	api.Println("w_folded_blinding_evals", wFoldedBlindingEvals)
 	// ---------------------------------------------------------------
@@ -136,7 +133,7 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	maskingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(maskingChallenge); err != nil {
-		return nil, fmt.Errorf("masking_challenge: %w", err)
+		return fmt.Errorf("masking_challenge: %w", err)
 	}
 	api.Println("masking_challenge", maskingChallenge[0])
 
@@ -146,7 +143,7 @@ func ZKWhirVerifyNimue(
 	numInitialQueries := blindedParams.InitialInDomainSamples
 	initialStirIndexes, err := getStirChallenges(api, nimue, numInitialQueries, blindedParams.DomainSize, interleavingDepth)
 	if err != nil {
-		return nil, fmt.Errorf("initial_committer stir: %w", err)
+		return fmt.Errorf("initial_committer stir: %w", err)
 	}
 	api.Println("initial_committer stir", initialStirIndexes)
 
@@ -159,11 +156,11 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	tau1 := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(tau1); err != nil {
-		return nil, fmt.Errorf("tau1: %w", err)
+		return fmt.Errorf("tau1: %w", err)
 	}
 	tau2 := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(tau2); err != nil {
-		return nil, fmt.Errorf("tau2: %w", err)
+		return fmt.Errorf("tau2: %w", err)
 	}
 	api.Println("tau1", tau1[0])
 	api.Println("tau2", tau2[0])
@@ -178,7 +175,7 @@ func ZKWhirVerifyNimue(
 		for p := range numPolynomials {
 			vals := make([]frontend.Variable, evalsPerPoly)
 			if err := nimue.FillNextScalars(vals); err != nil {
-				return nil, fmt.Errorf("gamma %d poly %d: %w", g, p, err)
+				return fmt.Errorf("gamma %d poly %d: %w", g, p, err)
 			}
 			perGammaEvals[g][p] = vals
 		}
@@ -188,11 +185,11 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	combinedClaims := make([]frontend.Variable, numPolynomials)
 	if err := nimue.FillNextScalars(combinedClaims); err != nil {
-		return nil, fmt.Errorf("combined_claims: %w", err)
+		return fmt.Errorf("combined_claims: %w", err)
 	}
 	batchedHClaims := make([]frontend.Variable, numPolynomials)
 	if err := nimue.FillNextScalars(batchedHClaims); err != nil {
-		return nil, fmt.Errorf("batched_h_claims: %w", err)
+		return fmt.Errorf("batched_h_claims: %w", err)
 	}
 	api.Println("combined_claims", combinedClaims)
 	api.Println("batched_h_claims", batchedHClaims)
@@ -265,21 +262,15 @@ func ZKWhirVerifyNimue(
 	for i, eval := range evaluations {
 		mEval := wFoldedBlindingEvals[i*blockSize] // first element of each block
 		modifiedEvaluations[i] = api.Add(eval, mEval)
-		api.Println("m_eval adjustment: eval", i, eval, "+ m_eval", mEval, "=", modifiedEvaluations[i])
 	}
 	blindedWhirCommitment := toWhirCommitment(blindedCommitment)
-	blindedWhirStatements := toWhirStatements(modifiedEvaluations)
+	blindedWhirStatements := toWhirStatements(modifiedEvaluations, blindedParams.BatchSize)
 	blindedWhirParams := toWhirParams(blindedParams)
 
 	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, blindedMerkleData)
 	if err != nil {
-		return nil, fmt.Errorf("blinded WHIR verify: %w", err)
+		return fmt.Errorf("blinded WHIR verify: %w", err)
 	}
-
-	// Blinded FinalClaim constraint: verify that the WHIR-committed polynomial
-	// is consistent with the R1CS weight linear forms.
-	blindedWeightMLEs := blindedWeightMLEFn(blindedResult.FinalClaim)
-	blindedResult.FinalClaim.VerifyClaim(api, blindedWeightMLEs)
 
 	// ---------------------------------------------------------------
 	// 9. Blinding commitment WHIR verify
@@ -333,23 +324,58 @@ func ZKWhirVerifyNimue(
 	blindingEvaluations := append(subproofClaims, wFoldedBlindingEvals...)
 
 	blindingWhirCommitment := toWhirCommitment(blindingCommitment)
-	blindingWhirStatements := toWhirStatements(blindingEvaluations)
+	blindingWhirStatements := toWhirStatements(blindingEvaluations, blindingParams.BatchSize)
 	blindingWhirParams := toWhirParams(blindingParams)
 
 	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, blindingMerkleData)
 	if err != nil {
-		return nil, fmt.Errorf("blinding WHIR verify: %w", err)
+		return fmt.Errorf("blinding WHIR verify: %w", err)
 	}
 
-	// TODO(soundness): Blinding FinalClaim constraint (same as blinded above).
-	// The blinding weights are beq_weights (batched eq from gammas) and
-	// w_folded_weights (folded R1CS weights). Their MLE evaluations at the
-	// blinding evaluation point must match LinearFormRLC.
+	// ---------------------------------------------------------------
+	// 10. Blinded FinalClaim: verify WHIR-committed polynomial matches
+	//     R1CS weight linear forms.
+	//     Weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector]
+	// ---------------------------------------------------------------
+	{
+		w := r1csWeights
+		fc := blindedResult.FinalClaim
+		foldingRandomness := fc.EvaluationPoint
+		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, w.Circuit, w.Alpha, foldingRandomness)
 
-	return &ZKWhirVerifyResult{
-		BlindedResult:  blindedResult,
-		BlindingResult: blindingResult,
-	}, nil
+		var weightMLEs []frontend.Variable
+		if w.HasPublicInputs {
+			weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
+		}
+		weightMLEs = append(weightMLEs, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
+		weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
+		fc.VerifyClaim(api, weightMLEs)
+	}
+
+	// ---------------------------------------------------------------
+	// 11. Blinding FinalClaim: verify blinding polynomial matches
+	//     beq_weights and folded R1CS weights.
+	//     Weights: [beq_weights, pub?, az_folded, bz_folded, cz_folded, blinding_folded]
+	// ---------------------------------------------------------------
+	{
+		w := r1csWeights
+		fc := blindingResult.FinalClaim
+		evalPoint := fc.EvaluationPoint
+		numBlindingVars := blindingParams.MVParamsNumberOfVariables - 1
+		maskSize := 1 << (numBlindingVars + 1)
+		foldedMatrixEvals := evaluateFoldedR1CSMatrixExtension(api, w.Circuit, w.Alpha, evalPoint, maskSize)
+
+		beqMLE := batchedBeqMLE(api, gammas, maskingChallenge[0], tau2[0], numBlindingVars, evalPoint)
+		weightMLEs := []frontend.Variable{beqMLE}
+		if w.HasPublicInputs {
+			weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
+		}
+		weightMLEs = append(weightMLEs, foldedMatrixEvals[0], foldedMatrixEvals[1], foldedMatrixEvals[2])
+		weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
+		fc.VerifyClaim(api, weightMLEs)
+	}
+
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -365,14 +391,18 @@ func toWhirCommitment(c ParsedCommitmentNimue) whir.ParsedCommitment {
 }
 
 // toWhirStatements converts a flat slice of evaluation values into
-// whir.Statement objects (one per evaluation, batchSize=1).
-func toWhirStatements(evaluations []frontend.Variable) []whir.Statement {
-	statements := make([]whir.Statement, len(evaluations))
-	for i, eval := range evaluations {
-		statements[i] = whir.Statement{
-			Constraints: []whir.MLConstraint{{Evaluation: eval}},
-			NVars:       0,
+// whir.Statement objects, grouping every numVectors evaluations into a
+// single statement with that many constraints. When numVectors=1 each
+// evaluation becomes its own statement (the common case for the blinded WHIR).
+func toWhirStatements(evaluations []frontend.Variable, numVectors int) []whir.Statement {
+	numStatements := len(evaluations) / numVectors
+	statements := make([]whir.Statement, numStatements)
+	for i := range numStatements {
+		constraints := make([]whir.MLConstraint, numVectors)
+		for j := range numVectors {
+			constraints[j] = whir.MLConstraint{Evaluation: evaluations[i*numVectors+j]}
 		}
+		statements[i] = whir.Statement{Constraints: constraints, NVars: 0}
 	}
 	return statements
 }
@@ -411,6 +441,61 @@ func calculateEqCircuit(api frontend.API, a, b []frontend.Variable) frontend.Var
 		term := api.Add(ab, prod)
 		result = api.Mul(result, term)
 	}
+	return result
+}
+
+// batchedBeqMLE computes the MLE of the batched beq_weights at evalPoint.
+//
+// beq_weights = Σ_g tau2^g * beq((pow(gamma_g), -maskingChallenge), ·)
+//
+// The MLE of a covector c at point p equals c(p) = Σ_j c[j] * L_j(p).
+// Since beq is itself multilinear, its MLE at p is just beq(target, p).
+// So: beq_mle(p) = Σ_g tau2^g * beq((pow(gamma_g), -maskingChallenge), p)
+//
+// where beq(a, b) = Π_i (a_i*b_i + (1-a_i)*(1-b_i)) over ell+1 variables:
+//   - variables 0..ell-1: squaring ladder (gamma, gamma^2, gamma^4, ...)
+//   - variable ell: -maskingChallenge
+func batchedBeqMLE(
+	api frontend.API,
+	gammas []frontend.Variable,
+	maskingChallenge frontend.Variable,
+	tau2 frontend.Variable,
+	numBlindingVars int,
+	evalPoint []frontend.Variable, // ell+1 variables
+) frontend.Variable {
+	negRho := api.Neg(maskingChallenge)
+
+	result := frontend.Variable(0)
+	tau2Power := frontend.Variable(1)
+
+	for _, gamma := range gammas {
+		// Compute beq((pow(gamma), -rho), evalPoint)
+		beqVal := frontend.Variable(1)
+
+		// Variables 0..ell-1: squaring ladder of gamma
+		gammaPower := gamma
+		for i := range numBlindingVars {
+			ab := api.Mul(gammaPower, evalPoint[i])
+			oneMinusA := api.Sub(frontend.Variable(1), gammaPower)
+			oneMinusB := api.Sub(frontend.Variable(1), evalPoint[i])
+			term := api.Add(ab, api.Mul(oneMinusA, oneMinusB))
+			beqVal = api.Mul(beqVal, term)
+			gammaPower = api.Mul(gammaPower, gammaPower)
+		}
+
+		// Variable ell: -maskingChallenge
+		{
+			ab := api.Mul(negRho, evalPoint[numBlindingVars])
+			oneMinusA := api.Sub(frontend.Variable(1), negRho)
+			oneMinusB := api.Sub(frontend.Variable(1), evalPoint[numBlindingVars])
+			term := api.Add(ab, api.Mul(oneMinusA, oneMinusB))
+			beqVal = api.Mul(beqVal, term)
+		}
+
+		result = api.Add(result, api.Mul(tau2Power, beqVal))
+		tau2Power = api.Mul(tau2Power, tau2)
+	}
+
 	return result
 }
 

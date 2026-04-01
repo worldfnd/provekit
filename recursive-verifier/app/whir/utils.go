@@ -44,6 +44,18 @@ func DotProduct(api frontend.API, a []frontend.Variable, b []frontend.Variable) 
 	return acc
 }
 
+// TensorProduct computes the tensor (Kronecker) product of two vectors:
+// result[i*len(b) + j] = a[i] * b[j]
+func TensorProduct(api frontend.API, a []frontend.Variable, b []frontend.Variable) []frontend.Variable {
+	result := make([]frontend.Variable, len(a)*len(b))
+	for i, x := range a {
+		for j, y := range b {
+			result[i*len(b)+j] = api.Mul(x, y)
+		}
+	}
+	return result
+}
+
 // EvaluateQuadraticPolynomialFromEvaluationList performs Lagrange interpolation on a
 // quadratic polynomial P(x) defined by evaluations over the domain {0, 1, 2}.
 //
