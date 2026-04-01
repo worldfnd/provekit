@@ -117,21 +117,42 @@ mod tests {
             log_msg in 0_usize..=4,
             log_extra in 0_usize..=3,
             num_messages in 1_usize..=4,
+            log_mask in 0_usize..=3,
             messages_flat in collection::vec(fr(), 0..=64),
+            masks_flat in collection::vec(fr(), 0..=64),
         ) {
             let message_length = 1 << log_msg;
-            let codeword_length = message_length << log_extra;
+            let mask_length: usize = 1 << log_mask;
+            let masked_message_length = message_length + mask_length;
+            let codeword_length = masked_message_length.next_power_of_two() << log_extra;
 
             let total = num_messages * message_length;
             let mut data = messages_flat;
             data.resize(total, Fr::ZERO);
 
             let messages: Vec<&[Fr]> = data.chunks(message_length).collect();
+
+            // Our masks are interleaved: num_messages x mask_length in row-major order
+            // i.e. [m0_c0, m1_c0, m0_c1, m1_c1, ...]
+            let mask_total = num_messages * mask_length;
+            let mut masks = masks_flat;
+            masks.resize(mask_total, Fr::ZERO);
+
+            // Whir expects masks per-message (column-major from our perspective):
+            // [m0_c0, m0_c1, ..., m1_c0, m1_c1, ...]
+            // Transpose the num_messages x mask_length matrix.
+            let mut masks_transposed = vec![Fr::ZERO; mask_total];
+            for row in 0..num_messages {
+                for col in 0..mask_length {
+                    masks_transposed[row * mask_length + col] = masks[col * num_messages + row];
+                }
+            }
+
             let indices: Vec<usize> = (0..codeword_length).collect();
 
             let reference = NttEngine::<Fr>::new_from_fftfield();
-            let our_codeword = RSFr.interleaved_encode(&messages, &[], codeword_length);
-            let ref_codeword = reference.interleaved_encode(&messages, &[], codeword_length);
+            let our_codeword = RSFr.interleaved_encode(&messages, &masks, codeword_length);
+            let ref_codeword = reference.interleaved_encode(&messages, &masks_transposed, codeword_length);
 
             let our_points = RSFr.evaluation_points(message_length, codeword_length, &indices);
             let ref_points = reference.evaluation_points(message_length, codeword_length, &indices);
