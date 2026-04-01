@@ -20,7 +20,7 @@ pub struct PassportValidityContents {
     /// Signed Attributes block from SOD.
     pub signed_attributes: [u8; SIGNED_ATTRIBUTES_MAX_SIZE],
     /// Length of Signed Attributes.
-    pub signed_attributes_size: u64,
+    pub signed_attributes_size: u32,
     /// DSC signature over Signed Attributes.
     pub dsc_signature: [u8; DSC_SIGNATURE_SIZE],
 
@@ -80,7 +80,7 @@ pub fn check_passport_validity(passport_validity_contents: PassportValidityConte
         passport_validity_contents.dsc_barrett_mu,
         passport_validity_contents.dsc_rsa_exponent,
         passport_validity_contents.signed_attributes,
-        passport_validity_contents.signed_attributes_size as u32,
+        passport_validity_contents.signed_attributes_size,
         0,
     ));
 
@@ -126,7 +126,7 @@ pub fn check_integrity_of_sod_within_sod_cert(
 
     // Clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff"
     // That "stuff" is the thing which is actually signed
-    let econtent_hash = sha256_var(econtent, econtent_len as u64);
+    let econtent_hash = sha256_var(econtent, econtent_len);
 
     for i in 0..32 {
         assert(econtent_hash[i] == signed_attributes[econtent_hash_offset + i]);
@@ -137,7 +137,7 @@ pub fn check_integrity_of_sod_within_sod_cert(
 /// the passport's SOD.
 pub fn check_dg1_hash_within_sod(
     dg1: [u8; 95],
-    dg1_padded_length: u64,
+    dg1_padded_length: u32,
     econtent: [u8; 200],
     econtent_len: u32,
     dg1_hash_offset: u32,

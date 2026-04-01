@@ -35,7 +35,7 @@ use passport_validity_check::{
 
 fn main(
     dg1: [u8; 95],
-    dg1_padded_length: u64,
+    dg1_padded_length: u32,
     // This is just the offset within the SOD string where the DG1 hash is supposed to live.
     // TODO(ryancao): Is this not supposed to be public???
     current_date: pub u64,

@@ -3,7 +3,7 @@ use utils::{check_zero_padding, is_subarray_in_array, types::EContentData};
 
 pub fn check_dg1_hash_within_sod(
     dg1: [u8; 95],
-    dg1_padded_length: u64,
+    dg1_padded_length: u32,
     econtent: [u8; 200],
     econtent_len: u32,
     dg1_hash_offset: u32,
@@ -34,7 +34,7 @@ pub fn check_signed_attributes_sha256<let SA_SIZE: u32>(
     e_content: EContentData,
     e_content_size: u32,
 ) {
-    let computed_final_hash = sha256_var(e_content, e_content_size as u64);
+    let computed_final_hash = sha256_var(e_content, e_content_size);
 
     // Check that the computed final hash is in the signed attributes
     assert(

@@ -38,7 +38,7 @@ pub fn sha224_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     // from being used by the prover
     check_zero_padding(data_to_sign, data_to_sign_len);
     // Calculate the hash of data_to_sign up to data_to_sign_len
-    sha224_var(data_to_sign, data_to_sign_len as u64)
+    sha224_var(data_to_sign, data_to_sign_len)
 }
 
 pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
@@ -50,7 +50,7 @@ pub fn sha256_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     check_zero_padding(data_to_sign, data_to_sign_len);
     // Calculate the hash of data_to_sign up to data_to_sign_len.
     // Zero-padding is verified above to ensure trailing bytes cannot be manipulated.
-    sha256_var(data_to_sign, data_to_sign_len as u64)
+    sha256_var(data_to_sign, data_to_sign_len)
 }
 
 pub fn sha384_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
