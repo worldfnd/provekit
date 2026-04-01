@@ -27,7 +27,11 @@ mod witness;
 pub trait Prove {
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
-    fn prove(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+    fn prove(self, input_map: InputMap) -> Result<NoirProof>;
+
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+
+    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
 
 impl Prove for Prover {
@@ -60,13 +64,24 @@ impl Prove for Prover {
     }
 
     #[instrument(skip_all)]
-    fn prove(mut self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
-        provekit_common::register_ntt();
+    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+        let witness = self.generate_witness(input_map)?;
+        self.prove_with_witness(witness)
+    }
 
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _expected_return) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
 
-        let acir_witness_idx_to_value_map = self.generate_witness(input_map)?;
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
+        provekit_common::register_ntt();
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
         public_input_indices.sort_unstable();

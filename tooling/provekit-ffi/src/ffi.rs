@@ -517,10 +517,12 @@ pub unsafe extern "C" fn pk_prove_toml(
             // Clone is required: Prove::prove consumes self.
             // SAFETY: prover is guaranteed non-null and valid by caller contract.
             let fresh_prover = (*prover).prover.clone();
-            let proof = fresh_prover.prove(Path::new(&toml_path)).map_err(|e| {
-                set_last_error(format!("{e:#}"));
-                PKStatus::ProofError
-            })?;
+            let proof = fresh_prover
+                .prove_with_toml(Path::new(&toml_path))
+                .map_err(|e| {
+                    set_last_error(format!("{e:#}"));
+                    PKStatus::ProofError
+                })?;
 
             serialization::serialize(&proof).map_err(|e| {
                 set_last_error(format!("{e:#}"));
@@ -538,16 +540,13 @@ pub unsafe extern "C" fn pk_prove_toml(
     })
 }
 
-/// Prove using a prover handle and a JSON string of inputs.
+/// Prove using a prover handle and a JSON string of inputs (fully in-memory).
 ///
 /// The JSON must match the circuit's ABI. Example:
 /// `{"x": "5", "y": "10"}` for `fn main(x: Field, y: Field)`.
 ///
 /// Returns proof bytes in `out_proof` using the standard `.np` binary format.
 /// The caller must free the buffer via `pk_free_buf`.
-///
-/// Note: internally writes inputs to a temporary TOML file since v1's prover
-/// accepts file paths. This may be improved in future versions.
 ///
 /// # Safety
 ///
@@ -585,41 +584,12 @@ pub unsafe extern "C" fn pk_prove_json(
                 PKStatus::WitnessReadError
             })?;
 
-            // Serialize as TOML and write to a temporary file, since v1's
-            // Prove::prove accepts a file path.
-            let toml_format = Format::from_ext("toml").ok_or_else(|| {
-                set_last_error("TOML format not supported by noirc_abi".into());
-                PKStatus::InvalidInput
-            })?;
-            let toml_str = toml_format.serialize(&input_map, abi).map_err(|e| {
-                set_last_error(format!("{e:#}"));
-                PKStatus::WitnessReadError
-            })?;
-
-            // Use a unique temp file to avoid races between concurrent calls.
-            static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let tmp_dir = std::env::temp_dir();
-            let tmp_path = tmp_dir.join(format!(
-                "provekit_ffi_inputs_{id}_{:?}.toml",
-                std::thread::current().id()
-            ));
-            std::fs::write(&tmp_path, &toml_str).map_err(|e| {
-                set_last_error(format!("failed to write temp inputs: {e}"));
-                PKStatus::FileWriteError
-            })?;
-
             // Clone is required: Prove::prove consumes self.
             let fresh_prover = (*prover).prover.clone();
-            let proof = fresh_prover.prove(&tmp_path).map_err(|e| {
-                // Clean up temp file on error.
-                let _ = std::fs::remove_file(&tmp_path);
+            let proof = fresh_prover.prove(input_map).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::ProofError
             })?;
-
-            // Clean up temp file (best-effort).
-            let _ = std::fs::remove_file(&tmp_path);
 
             serialization::serialize(&proof).map_err(|e| {
                 set_last_error(format!("{e:#}"));
