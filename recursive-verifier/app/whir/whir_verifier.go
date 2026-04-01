@@ -370,6 +370,22 @@ func VerifyWhir(
 	}, nil
 }
 
+// VerifyClaim verifies that the WHIR-committed polynomial is consistent with
+// the provided weight MLE evaluations. It checks:
+//
+//	LinearFormRLC == Σ(RLCCoefficients[i] * weightMLEEvals[i])
+//
+// The caller is responsible for computing the weight MLE evaluations
+// (e.g. public input weight, A/B/C matrix covectors, blinding covector)
+// and passing them in the correct order matching the RLC coefficients.
+func (fc *FinalClaimCircuit) VerifyClaim(api frontend.API, weightMLEEvals []frontend.Variable) {
+	expectedRLC := frontend.Variable(0)
+	for i, mleVal := range weightMLEEvals {
+		expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[i], mleVal))
+	}
+	api.AssertIsEqual(fc.LinearFormRLC, expectedRLC)
+}
+
 // ExpandFromUnivariate converts a univariate evaluation point into a multilinear one.
 //
 // It maps a single point 'y' to a vector of coordinates:

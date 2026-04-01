@@ -163,7 +163,25 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	}
 
 	// Run ZK-WHIR verification (single commitment version)
-	zkWhirResult, err := ZKWhirVerifyNimue(
+	// The callback computes blinded weight MLE evaluations for VerifyClaim.
+	// Weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector]
+	blindedWeightMLEFn := func(fc whir.FinalClaimCircuit) []frontend.Variable {
+		foldingRandomness := fc.EvaluationPoint
+		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, alpha, foldingRandomness)
+
+		var weightMLEEvals []frontend.Variable
+		if hasPublicInputs {
+			publicWeightMLE := geometricTill(api, publicWeightsChallenge[0], len(circuit.PublicInputs.Values), foldingRandomness)
+			weightMLEEvals = append(weightMLEEvals, publicWeightMLE)
+		}
+		weightMLEEvals = append(weightMLEEvals, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
+
+		blindingCovectorMle := blindingCovectorMLE(api, alpha, circuit.W1Size, foldingRandomness)
+		weightMLEEvals = append(weightMLEEvals, blindingCovectorMle)
+		return weightMLEEvals
+	}
+
+	_, err = ZKWhirVerifyNimue(
 		api, sc, nimue,
 		blindedCommitmentNimue,
 		blindingCommitmentNimue,
@@ -174,64 +192,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		numPolynomials,
 		&circuit.BlindedMerkleData,
 		&circuit.BlindingMerkleData,
+		blindedWeightMLEFn,
 	)
 	if err != nil {
 		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
-	}
-	// ---------------------------------------------------------------
-	// Blinded FinalClaim constraint: verify that the WHIR-committed
-	// polynomial is consistent with the R1CS weight linear forms.
-	//
-	// LinearFormRLC == sum_i(RLCCoefficients[i] * weight_i.mle_evaluate(EvaluationPoint))
-	//
-	// Weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector]
-	// ---------------------------------------------------------------
-	{
-		fc := zkWhirResult.BlindedResult.FinalClaim
-		foldingRandomness := fc.EvaluationPoint
-
-		api.Println("=== FinalClaim RLC Debug ===")
-		api.Println("fc.LinearFormRLC", fc.LinearFormRLC)
-		api.Println("evaluation_point len", len(foldingRandomness))
-		api.Println("num RLC coefficients", len(fc.RLCCoefficients))
-		for i, c := range fc.RLCCoefficients {
-			api.Println("fc.RLCCoefficients", i, c)
-		}
-		for i, p := range foldingRandomness {
-			api.Println("evaluation_point", i, p)
-		}
-
-		// Compute R1CS weight MLE evaluations
-		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, alpha, foldingRandomness)
-
-		expectedRLC := frontend.Variable(0)
-		rlcIdx := 0
-
-		if hasPublicInputs {
-			publicWeightMLE := geometricTill(api, publicWeightsChallenge[0], len(circuit.PublicInputs.Values), foldingRandomness)
-			api.Println("weight[pub] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", publicWeightMLE)
-			expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], publicWeightMLE))
-			api.Println("expectedRLC after pub", expectedRLC)
-			rlcIdx++
-		}
-
-		// A, B, C weight MLE evaluations
-		labels := []string{"A", "B", "C"}
-		for i := 0; i < 3; i++ {
-			api.Println("weight["+labels[i]+"] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", matrixExtensionEvals[i])
-			expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], matrixExtensionEvals[i]))
-			api.Println("expectedRLC after "+labels[i], expectedRLC)
-			rlcIdx++
-		}
-
-		// Blinding covector MLE: expand_powers::<4>(alpha) at offset w1_size
-		// Mirrors Rust's OffsetCovector::mle_evaluate for the blinding polynomial.
-		api.Println("blinding covector: W1Size", circuit.W1Size, "alpha len", len(alpha))
-		blindingCovectorMle := blindingCovectorMLE(api, alpha, circuit.W1Size, foldingRandomness)
-		api.Println("weight[blinding] rlcIdx", rlcIdx, "rlc_coeff", fc.RLCCoefficients[rlcIdx], "mle_val", blindingCovectorMle)
-		expectedRLC = api.Add(expectedRLC, api.Mul(fc.RLCCoefficients[rlcIdx], blindingCovectorMle))
-		api.Println("=== FINAL: fc.LinearFormRLC", fc.LinearFormRLC, "expectedRLC", expectedRLC)
-		api.AssertIsEqual(fc.LinearFormRLC, expectedRLC)
 	}
 
 	// ---------------------------------------------------------------

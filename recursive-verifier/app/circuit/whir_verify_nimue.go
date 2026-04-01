@@ -90,6 +90,11 @@ type ZKWhirVerifyResult struct {
 	BlindingResult *whir.VerifyResult
 }
 
+// WeightMLEFunc computes the weight MLE evaluations for a FinalClaim.
+// Given the FinalClaimCircuit (which contains the EvaluationPoint), it returns
+// the weight MLE values in the same order as the RLC coefficients.
+type WeightMLEFunc func(fc whir.FinalClaimCircuit) []frontend.Variable
+
 func ZKWhirVerifyNimue(
 	api frontend.API,
 	sc *skyscraper.Skyscraper,
@@ -103,6 +108,7 @@ func ZKWhirVerifyNimue(
 	numPolynomials int, // typically 1
 	blindedMerkleData *whir.WhirMerkleData,
 	blindingMerkleData *whir.WhirMerkleData,
+	blindedWeightMLEFn WeightMLEFunc, // computes blinded weight MLE evaluations for VerifyClaim
 ) (*ZKWhirVerifyResult, error) {
 	numWitnessVariables := blindedParams.MVParamsNumberOfVariables
 	interleavingDepth := 1 << blindedParams.FoldingFactorArray[0]
@@ -270,8 +276,10 @@ func ZKWhirVerifyNimue(
 		return nil, fmt.Errorf("blinded WHIR verify: %w", err)
 	}
 
-	// NOTE: Blinded FinalClaim constraint is enforced by the caller (circuit.Define)
-	// using evaluateR1CSMatrixExtension against the R1CS matrices embedded in the circuit.
+	// Blinded FinalClaim constraint: verify that the WHIR-committed polynomial
+	// is consistent with the R1CS weight linear forms.
+	blindedWeightMLEs := blindedWeightMLEFn(blindedResult.FinalClaim)
+	blindedResult.FinalClaim.VerifyClaim(api, blindedWeightMLEs)
 
 	// ---------------------------------------------------------------
 	// 9. Blinding commitment WHIR verify
