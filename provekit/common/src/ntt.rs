@@ -1,7 +1,11 @@
 use {
     ark_bn254::Fr,
     ark_ff::{AdditiveGroup, FftField, Field},
-    ntt::{dit_nr_cache, extend_roots_table, ntt_nr},
+    ntt::ntt_nr,
+    rayon::{
+        iter::{IndexedParallelIterator, ParallelIterator},
+        slice::ParallelSliceMut,
+    },
     whir::algebra::ntt::ReedSolomon,
 };
 
@@ -44,7 +48,7 @@ impl ReedSolomon<Fr> for RSFr {
     fn interleaved_encode(
         &self,
         messages: &[&[Fr]],
-        _masks: &[Fr],
+        masks: &[Fr],
         codeword_length: usize,
     ) -> Vec<Fr> {
         if messages.is_empty() {
@@ -62,13 +66,21 @@ impl ReedSolomon<Fr> for RSFr {
 
         let mut result = vec![Fr::ZERO; total_size];
 
-        for (row, message) in messages.iter().enumerate() {
-            for (column, element) in message.iter().enumerate() {
-                result[column * num_messages + row] = *element;
+        (0..message_length).for_each(|column| {
+            let base = column * num_messages;
+            for row in 0..num_messages {
+                result[base + row] = messages[row][column];
             }
-        }
+        });
 
-        let mut coset_size = self.next_order(message_length).unwrap();
+        result[message_length * num_messages..message_length * num_messages + masks.len()]
+            .copy_from_slice(masks);
+
+        let mask_length = masks.len() / num_messages;
+
+        let masked_message_length = message_length + mask_length;
+
+        let mut coset_size = self.next_order(masked_message_length).unwrap();
         while !codeword_length.is_multiple_of(coset_size) {
             coset_size = self.next_order(coset_size + 1).unwrap();
         }
