@@ -7130,7 +7130,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/atheonxyz/whir/?rev=85dd92fe212cee7b2e5a8fc618397d01d230e348#85dd92fe212cee7b2e5a8fc618397d01d230e348"
+source = "git+https://github.com/atheonxyz/whir/?branch=us%2Fproof-size#c0b64e868042fb04deaf66d12d56efebc1faa7ed"
 dependencies = [
  "approx",
  "ark-ff 0.5.0",

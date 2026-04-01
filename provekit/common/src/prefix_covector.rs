@@ -181,14 +181,15 @@ pub fn make_public_weight(
     public_inputs_len: usize,
     domain_size: usize,
 ) -> PrefixCovector {
-    let prefix_len = public_inputs_len
+    let num_terms = public_inputs_len + 1; // constant term + public inputs
+    let prefix_len = num_terms
         .next_power_of_two()
         .max(2)
         .min(domain_size);
     let mut public_weights = vec![FieldElement::zero(); prefix_len];
 
     let mut current_pow = FieldElement::one();
-    for slot in public_weights.iter_mut().take(public_inputs_len) {
+    for slot in public_weights.iter_mut().take(num_terms) {
         *slot = current_pow;
         current_pow *= x;
     }
