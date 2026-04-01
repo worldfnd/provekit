@@ -74,21 +74,12 @@ impl ReedSolomon<Fr> for RSFr {
         }
         let num_cosets = codeword_length / coset_size;
 
-        let roots = extend_roots_table(codeword_length);
-
         let chunk_size = coset_size * num_messages;
         for k in 1..num_cosets {
             result.copy_within(0..chunk_size, k * chunk_size);
         }
 
-        for k in 0..num_cosets {
-            dit_nr_cache(
-                &roots.0,
-                k,
-                &mut result[k * chunk_size..(k + 1) * chunk_size],
-                coset_size,
-            );
-        }
+        ntt_nr(&mut result, codeword_length, num_cosets);
 
         // ntt_nr(&mut result, coset_size);
         result

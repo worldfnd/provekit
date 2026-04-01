@@ -6,6 +6,6 @@ fn main() {
 
     let mut input = vec![Fr::from(1); 2_usize.pow(24)];
     let codeword_size = input.len();
-    ntt_nr(&mut input, codeword_size);
+    ntt_nr(&mut input, codeword_size, 1);
     black_box(input);
 }

@@ -102,9 +102,9 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// # Arguments
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
-pub fn ntt_nr(values: &mut [Fr], codeword_size: usize) {
+pub fn ntt_nr(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
-    interleaved_ntt_nr(&new_root.0, values, codeword_size)
+    interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
 }
 
 pub fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
@@ -147,7 +147,12 @@ impl Default for NTTEngine {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword_size: usize) {
+fn interleaved_ntt_nr(
+    reversed_ordered_roots: &[Fr],
+    values: &mut [Fr],
+    codeword_size: usize,
+    mut num_groups: usize,
+) {
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
@@ -159,10 +164,10 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
     assert!(codeword_size.is_power_of_two());
 
     // Each unique twiddle factor within a stage is a group.
-    let mut elements_in_group = values.len();
+    let mut elements_in_group = values.len() / num_groups;
 
     // num of groups is the same as inner inner ntt size
-    let mut inner_ntt_size = 1;
+    // let mut num_groups = 1;
 
     // For large NTTs we start with linear scans through memory and once all the
     // elements of the sub NTTs reach the size of workload_size we know that they
@@ -176,7 +181,7 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while inner_ntt_size < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
+    while num_groups < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
         values
             .chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -189,10 +194,10 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
                 });
             });
         elements_in_group /= 2;
-        inner_ntt_size *= 2;
+        num_groups *= 2;
     }
 
-    while inner_ntt_size < codeword_size && elements_in_group > workload_size::<Fr>() {
+    while num_groups < codeword_size && elements_in_group > workload_size::<Fr>() {
         values
             .par_chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -205,19 +210,14 @@ fn interleaved_ntt_nr(reversed_ordered_roots: &[Fr], values: &mut [Fr], codeword
                 });
             });
         elements_in_group /= 2;
-        inner_ntt_size *= 2;
+        num_groups *= 2;
     }
 
     values
         .par_chunks_exact_mut(elements_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(
-                reversed_ordered_roots,
-                k,
-                group,
-                codeword_size / inner_ntt_size,
-            );
+            dit_nr_cache(reversed_ordered_roots, k, group, codeword_size / num_groups);
         });
 }
 
@@ -331,7 +331,7 @@ fn intt_nr(values: &mut [Fr]) {
         n => {
             // Reverse the input such that the roots act as inverse roots
             values[1..].reverse();
-            ntt_nr(values, n);
+            ntt_nr(values, n, 1);
 
             let factor = Fr::ONE / Fr::from(n as u64);
 
@@ -415,7 +415,7 @@ mod tests {
 
             // Forward NTT
             let codeword_size = s.0.len();
-            ntt_nr(&mut s.0, codeword_size);
+            ntt_nr(&mut s.0, codeword_size,1);
 
             // Inverse NTT
             intt_rn(&mut s.0);
@@ -488,12 +488,12 @@ mod tests {
 
             for chunk in transposed.chunks_exact_mut(rows.get()){
                 let codeword_size = chunk.len();
-                ntt_nr(chunk, codeword_size);
+                ntt_nr(chunk, codeword_size,1);
             }
 
             let double_transposed = transpose(&transposed, columns.get(), rows.get());
 
-            ntt_nr(&mut ntt, rows.get());
+            ntt_nr(&mut ntt, rows.get(),1);
             prop_assert!(double_transposed == ntt);
 
         }
@@ -503,7 +503,7 @@ mod tests {
     // The roundtrip test doesn't test size 0.
     fn ntt_empty() {
         let mut v = vec![];
-        ntt_nr(&mut v, 0);
+        ntt_nr(&mut v, 0, 1);
     }
 
     // Compare direct generation of the roots vs. extending from a base set of roots
