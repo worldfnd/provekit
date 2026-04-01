@@ -6,25 +6,28 @@ import (
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
 
-func zkWHIRCommitmentParsing(api frontend.API, nimue gnarkNimue.Nimue, blindedCommitmentWhirConfig WHIRParams, blindingCommitmentWhirConfig WHIRParams) (Commitment, Commitment, error) {
-	blindedCommitment, err := parseBatchedCommitment(api, nimue, blindedCommitmentWhirConfig)
-	api.Println("blindedCommitment", blindedCommitment)
-
-	if err != nil {
-		api.Println("parse commitment 1")
-		return Commitment{}, Commitment{}, err
+func zkWHIRCommitmentParsing(api frontend.API, nimue gnarkNimue.Nimue, blindedCommitmentWhirConfig WHIRParams, blindingCommitmentWhirConfig WHIRParams, numPolynomials int) ([]Commitment, Commitment, error) {
+	fHat := make([]Commitment, numPolynomials)
+	for i := 0; i < numPolynomials; i++ {
+		blindedCommitment, err := irsReceiveCommitment(api, nimue, blindedCommitmentWhirConfig)
+		if err != nil {
+			api.Println("parse commitment 1")
+			return []Commitment{}, Commitment{}, err
+		}
+		fHat[i] = blindedCommitment
+		api.Println("blindedCommitment", blindedCommitment)
 	}
 
-	blindingCommitment, err := parseBatchedCommitment(api, nimue, blindingCommitmentWhirConfig)
+	blindingCommitment, err := irsReceiveCommitment(api, nimue, blindingCommitmentWhirConfig)
 	api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
-		return Commitment{}, Commitment{}, err
+		return []Commitment{}, Commitment{}, err
 	}
 
-	return blindedCommitment, blindingCommitment, nil
+	return fHat, blindingCommitment, nil
 }
 
-func parseBatchedCommitment(api frontend.API, nimue gnarkNimue.Nimue, whir_params WHIRParams) (Commitment, error) {
+func irsReceiveCommitment(api frontend.API, nimue gnarkNimue.Nimue, whir_params WHIRParams) (Commitment, error) {
 	rootHash := make([]frontend.Variable, 1)
 	if err := nimue.FillNextScalars(rootHash); err != nil {
 		return Commitment{}, err

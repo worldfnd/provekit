@@ -44,12 +44,6 @@ func DotProduct(api frontend.API, a []frontend.Variable, b []frontend.Variable) 
 	return acc
 }
 
-func CheckSumOverBool(api frontend.API, value frontend.Variable, polyEvals []frontend.Variable) {
-	sumOverBools := api.Add(polyEvals[0], polyEvals[1])
-	api.Println("value, sumOverBools", value, sumOverBools)
-	// api.AssertIsEqual(value, sumOverBools)
-}
-
 // EvaluateQuadraticPolynomialFromEvaluationList performs Lagrange interpolation on a
 // quadratic polynomial P(x) defined by evaluations over the domain {0, 1, 2}.
 //

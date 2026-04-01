@@ -28,19 +28,19 @@ type FullMultiPath[Digest any] struct {
 
 // WHIR specific types
 type WHIRConfig struct {
-	NRounds                 int    `json:"n_rounds"`
-	Rate                    int    `json:"rate"`
-	NVars                   int    `json:"n_vars"`
-	FoldingFactor           []int  `json:"folding_factor"`
-	OODSamples              []int  `json:"ood_samples"`
-	NumQueries              []int  `json:"num_queries"`
-	PowBits                 []int  `json:"pow_bits"`
-	FinalQueries            int    `json:"final_queries"`
-	FinalPowBits            int    `json:"final_pow_bits"`
-	FinalFoldingPowBits     int    `json:"final_folding_pow_bits"`
-	DomainGenerator         string `json:"domain_generator"`
-	BatchSize               int    `json:"batch_size"`
-	InitialInDomainSamples  int    `json:"initial_in_domain_samples"`  // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
+	NRounds                int    `json:"n_rounds"`
+	Rate                   int    `json:"rate"`
+	NVars                  int    `json:"n_vars"`
+	FoldingFactor          []int  `json:"folding_factor"`
+	OODSamples             []int  `json:"ood_samples"`
+	NumQueries             []int  `json:"num_queries"`
+	PowBits                []int  `json:"pow_bits"`
+	FinalQueries           int    `json:"final_queries"`
+	FinalPowBits           int    `json:"final_pow_bits"`
+	FinalFoldingPowBits    int    `json:"final_folding_pow_bits"`
+	DomainGenerator        string `json:"domain_generator"`
+	BatchSize              int    `json:"batch_size"`
+	InitialInDomainSamples int    `json:"initial_in_domain_samples"` // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
 }
 
 type WHIRParams struct {
@@ -78,23 +78,11 @@ type InitialSumcheckData struct {
 }
 
 // Merkle specific types
-type MerklePaths struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
-}
-
 type Merkle struct {
 	Leaves            [][][]frontend.Variable
 	LeafIndexes       [][]uints.U64
 	LeafSiblingHashes [][]frontend.Variable
 	AuthPaths         [][][]frontend.Variable
-}
-
-// Other types
-type ProofObject struct {
-	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
 }
 
 // Config matches the Rust GnarkConfig struct.

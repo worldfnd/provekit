@@ -57,28 +57,6 @@ func IndexOf(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
 	return nil
 }
 
-func Reverse[T any](s []T) []T {
-	res := make([]T, len(s))
-	copy(res, s)
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		res[i], res[j] = s[j], s[i]
-	}
-	return res
-}
-
-func PrefixDecodePath[T any](prevPath []T, prefixLen uint64, suffix []T) []T {
-	if prefixLen == 0 {
-		res := make([]T, len(suffix))
-		copy(res, suffix)
-		return res
-	} else {
-		res := make([]T, prefixLen+uint64(len(suffix)))
-		copy(res, prevPath[:prefixLen])
-		copy(res[prefixLen:], suffix)
-		return res
-	}
-}
-
 func EqPolyOutside(api frontend.API, coords []frontend.Variable, point []frontend.Variable) frontend.Variable {
 	acc := frontend.Variable(1)
 	for i := range coords {
@@ -106,13 +84,6 @@ func Exponent(api frontend.API, uapi *uints.BinaryField[uints.U64], X frontend.V
 	return output
 }
 
-func CheckSumOverBool(api frontend.API, value frontend.Variable, polyEvals []frontend.Variable) {
-	sumOverBools := api.Add(polyEvals[0], polyEvals[1])
-	// api.AssertIsEqual(value, sumOverBools)
-	_ = value
-	_ = sumOverBools
-}
-
 func ExpandRandomness(api frontend.API, base frontend.Variable, len int) []frontend.Variable {
 	res := make([]frontend.Variable, len)
 	acc := frontend.Variable(1)
@@ -131,21 +102,6 @@ func ExpandFromUnivariate(api frontend.API, base frontend.Variable, len int) []f
 		acc = api.Mul(acc, acc)
 	}
 	return res
-}
-
-func IsEqual(api frontend.API, uapi *uints.BinaryField[uints.U64], indexes []frontend.Variable, merkleIndexes []uints.U64) error {
-	// api.AssertIsEqual(len(indexes), len(merkleIndexes))
-
-	merkleVars := make([]frontend.Variable, len(merkleIndexes))
-	for i, index := range merkleIndexes {
-		merkleVars[i] = uapi.ToValue(index)
-	}
-
-	// for i := range indexes {
-	// 	api.AssertIsEqual(indexes[i], merkleVars[i])
-	// }
-
-	return nil
 }
 
 func DotProduct(api frontend.API, a []frontend.Variable, b []frontend.Variable) frontend.Variable {

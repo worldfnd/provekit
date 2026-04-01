@@ -122,7 +122,6 @@ func runWhirSumcheckRounds(
 			return nil, nil, err
 		}
 		foldingRandomness[i] = foldingRandomnessTemp[0]
-		// utilities.CheckSumOverBool(api, lastEval, sumcheckPolynomial)
 		lastEval = utilities.EvaluateQuadraticPolynomialFromEvaluationList(api, sumcheckPolynomial, foldingRandomness[i])
 	}
 	return foldingRandomness, lastEval, nil

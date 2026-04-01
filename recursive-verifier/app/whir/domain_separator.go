@@ -70,6 +70,7 @@ func (s SoundnessType) MarshalCBOR() ([]byte, error) {
 
 // cborSessionString returns the CBOR encoding of the session string,
 // matching ciborium's serialization of &"keccacheck-input-coxmmitment".
+// NOTE: The typo "coxmmitment" is intentional — it must match the Rust side's domain separator exactly.
 func cborSessionString() []byte {
 	data, err := cbor.Marshal("keccacheck-input-coxmmitment")
 	if err != nil {

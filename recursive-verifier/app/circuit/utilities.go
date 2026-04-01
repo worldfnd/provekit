@@ -25,20 +25,8 @@ func bytesToScalarLE(api frontend.API, b []uints.U8) frontend.Variable {
 	return out
 }
 
-// func calculateEQ(api frontend.API, alphas []frontend.Variable, r []frontend.Variable) frontend.Variable {
-// 	ans := frontend.Variable(1)
-// 	for i, alpha := range alphas {
-// 		ans = api.Mul(ans, api.Add(api.Mul(alpha, r[i]), api.Mul(api.Sub(frontend.Variable(1), alpha), api.Sub(frontend.Variable(1), r[i]))))
-// 	}
-// 	return ans
-// }
-
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Nimue, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	// var protocolIDAndSessionID []frontend.Variable
-	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[:32]))
-	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.ProtocolID[32:]))
-	// protocolIDAndSessionID = append(protocolIDAndSessionID, bytesToScalarLE(api, circuit.SessionID[:]))
 	nimue, err := gnarkNimue.NewSkyscraperNimue(api, sc, circuit.InitializationData, circuit.Transcript[:])
 	if err != nil {
 		return nil, nil, nil, err
@@ -100,14 +88,11 @@ func runZKSumcheck(
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	api.Println("tRand", tRand)
 
 	sumOfG, rhoRandomness, err := getZKSumcheckInitialValue(nimue)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	api.Println("sumOfG", sumOfG)
-	api.Println("rhoRandomness", rhoRandomness)
 
 	lastEval = api.Add(lastEval, api.Mul(sumOfG, rhoRandomness))
 
@@ -115,11 +100,8 @@ func runZKSumcheck(
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	api.Println("foldingRandomness", foldingRandomness)
-	api.Println("lastEval", lastEval)
 
 	lastEval, polynomialSums := unblindLastEval(api, nimue, lastEval, rhoRandomness)
-	api.Println("polynomialSums", polynomialSums)
 
 	return tRand, foldingRandomness, lastEval, polynomialSums[0], nil
 }
@@ -230,47 +212,3 @@ func consumeWhirData(whirConfig WHIRConfig, merkle_paths *[]FullMultiPath[Keccak
 
 	return zkHint
 }
-
-// // consumeFirstRoundOnly consumes only the first round hint (no subsequent rounds)
-// // Used for batch mode where each original commitment has its own first round
-// func consumeFirstRoundOnly(merklePaths *[]FullMultiPath[KeccakDigest], stirAnswers *[][][]Fp256) FirstRoundHint {
-// 	var hint FirstRoundHint
-
-// 	if len(*merklePaths) > 0 && len(*stirAnswers) > 0 {
-// 		firstRoundMerklePath := consumeFront(merklePaths)
-// 		firstRoundStirAnswers := consumeFront(stirAnswers)
-
-// 		hint = FirstRoundHint{
-// 			path: Hint{
-// 				merklePaths: []FullMultiPath[KeccakDigest]{firstRoundMerklePath},
-// 				stirAnswers: [][][]Fp256{firstRoundStirAnswers},
-// 			},
-// 			expectedStirAnswers: firstRoundStirAnswers,
-// 		}
-// 	}
-
-// 	return hint
-// }
-
-// // consumeWhirDataRoundsOnly consumes only the round hints (not first round)
-// // Used for batched polynomial in batch mode
-// func consumeWhirDataRoundsOnly(whirConfig WHIRConfig, merklePaths *[]FullMultiPath[KeccakDigest], stirAnswers *[][][]Fp256) ZKHint {
-// 	var zkHint ZKHint
-
-// 	expectedRounds := whirConfig.NRounds
-
-// 	var remainingMerklePaths []FullMultiPath[KeccakDigest]
-// 	var remainingStirAnswers [][][]Fp256
-
-// 	for i := 0; i < expectedRounds && len(*merklePaths) > 0 && len(*stirAnswers) > 0; i++ {
-// 		remainingMerklePaths = append(remainingMerklePaths, consumeFront(merklePaths))
-// 		remainingStirAnswers = append(remainingStirAnswers, consumeFront(stirAnswers))
-// 	}
-
-// 	zkHint.roundHints = Hint{
-// 		merklePaths: remainingMerklePaths,
-// 		stirAnswers: remainingStirAnswers,
-// 	}
-
-// 	return zkHint
-// }

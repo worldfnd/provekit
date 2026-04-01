@@ -25,38 +25,6 @@ import (
 
 type NimueInit = gnark_nimue.NimueInit
 
-type Circuit2 struct {
-	// Inputs
-	WitnessLinearStatementEvaluations       []frontend.Variable
-	HidingSpartanLinearStatementEvaluations []frontend.Variable
-	LogNumConstraints                       int
-	LogNumVariables                         int
-	LogANumTerms                            int
-	HidingSpartanFirstRound                 Merkle
-	HidingSpartanMerkle                     Merkle
-	WHIRParamsWitness                       WHIRParams
-	NumChallenges                           int
-	W1Size                                  int
-
-	// Witness commitments (length 1 for single mode, N for batch mode)
-	WitnessFirstRounds         []Merkle
-	WitnessClaimedEvaluations  [][]frontend.Variable // [commitment_idx][eval_idx]
-	WitnessBlindingEvaluations [][]frontend.Variable
-
-	// For public_f_sum and public_g_sum
-	PubWitnessEvaluations []frontend.Variable
-
-	// Batch mode only: batched polynomial for rounds 1+
-	WitnessMerkle Merkle
-
-	MatrixA []MatrixCell
-	MatrixB []MatrixCell
-	MatrixC []MatrixCell
-
-	Transcript   []uints.U8 `gnark:",public"`
-	PublicInputs PublicInputs
-}
-
 type Circuit struct {
 	InitializationData NimueInit
 	LogNumConstraints  int
@@ -98,12 +66,13 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	blindedCommitment, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig)
-	api.Println("blindedCommitment", blindedCommitment)
+	blindedCommitments, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
+	api.Println("blindedCommitments", blindedCommitments)
 	api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
 		return err
 	}
+	numPolynomials := 1
 
 	if circuit.NumChallenges > 0 {
 		// Squeeze logup challenges
@@ -113,8 +82,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 
 		// Parse second commitment (C2)
-		blindedCommitment2, blindingCommitment2, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig)
-		api.Println("blindedCommitment2", blindedCommitment2)
+		blindedCommitments2, blindingCommitment2, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
+		api.Println("blindedCommitments2", blindedCommitments2)
 		api.Println("blindingCommitment2", blindingCommitment2)
 		if err != nil {
 			return err
@@ -183,9 +152,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	// Convert parsed commitments to nimue format
 	blindedCommitmentNimue := ParsedCommitmentNimue{
-		Root:       blindedCommitment.RootHash,
-		OodPoints:  blindedCommitment.InitialOODQueries,
-		OodAnswers: flattenOODAnswers(blindedCommitment.InitialOODAnswers),
+		Root:       blindedCommitments[0].RootHash,
+		OodPoints:  blindedCommitments[0].InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
 	}
 	blindingCommitmentNimue := ParsedCommitmentNimue{
 		Root:       blindingCommitment.RootHash,
@@ -202,7 +171,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		circuit.BlindingCommitmentWhirConfig,
 		whirEvaluations,
 		weightsLen,
-		1, // numPolynomials = 1 for single commitment
+		numPolynomials,
 		&circuit.BlindedMerkleData,
 		&circuit.BlindingMerkleData,
 	)

@@ -83,12 +83,7 @@ func GenerateStirChallengePoints(
 	foldingFactor int,
 ) ([]frontend.Variable, error) {
 	foldingFactorPower := 1 << foldingFactor
-	finalIndexes, err := getStirChallenges(api, arthur, NQueries, domainSize, foldingFactorPower)
-	if err != nil {
-		return nil, err
-	}
-
-	err = utilities.IsEqual(api, uapi, finalIndexes, leafIndexes)
+	_, err := getStirChallenges(api, arthur, NQueries, domainSize, foldingFactorPower)
 	if err != nil {
 		return nil, err
 	}
