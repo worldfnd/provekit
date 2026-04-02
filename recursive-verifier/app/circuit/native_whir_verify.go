@@ -319,14 +319,12 @@ func nativeIRSCommitVerifyWithPoints(
 	domainSize int,
 	foldingFactorPower int,
 ) ([]int, *whir.RoundMerkleEntry, error) {
-	hintPos := int(arthur.hints.Size()) - arthur.hints.Len()
-	fmt.Println("nativeIRSCommitVerifyWithPoints numQueries:", numQueries, "domainSize:", domainSize, "foldingFactorPower:", foldingFactorPower, "hintPos:", hintPos)
+	_ = int(arthur.hints.Size()) - arthur.hints.Len()
 	// Squeeze challenge indices
 	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("stir challenges: %w", err)
 	}
-	fmt.Println("nativeIRSCommitVerifyWithPoints indices", indices)
 
 	// Read submatrix hint
 	var submatrix []Fp256
@@ -361,65 +359,15 @@ type IndexPair struct {
 	Index uint64
 }
 
-// populateTreeFromPath records every node along a single proof path into the
-// shared tree map, computing intermediate hashes using native Skyscraper.
-func PopulateTreeFromPath(
-	tree map[IndexPair]KeccakDigest,
-	proof *Path[KeccakDigest],
-	leafHash KeccakDigest,
-	depth int,
-) {
-	leafIdx := proof.LeafIndex
-
-	// Store leaf hash (always authoritative — computed from actual leaf data).
-	tree[IndexPair{Depth: uint64(depth), Index: leafIdx}] = leafHash
-	// Store sibling only if not already populated (sibling-pair optimization
-	// leaves LeafSiblingHash as zero; the correct value comes from the other
-	// query's leaf hash stored by another PopulateTreeFromPath call).
-	sibKey := IndexPair{Depth: uint64(depth), Index: leafIdx ^ 1}
-	if _, exists := tree[sibKey]; !exists {
-		tree[sibKey] = proof.LeafSiblingHash
-	}
-
-	// Compute parent hash for leaf level using the tree's current values.
-	leafNode := tree[IndexPair{Depth: uint64(depth), Index: leafIdx &^ 1}] // even sibling
-	sibNode := tree[IndexPair{Depth: uint64(depth), Index: leafIdx | 1}]   // odd sibling
-	parentHash := HashTwoDigests(leafNode, sibNode)
-	currentIdx := leafIdx / 2
-	currentDepth := depth - 1
-	tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}] = parentHash
-
-	// Walk up the auth path.
-	var left, right KeccakDigest
-	for _, sibling := range proof.AuthPath {
-		sibKey := IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}
-		if _, exists := tree[sibKey]; !exists {
-			tree[sibKey] = sibling
-		}
-		// Use the tree's values (may have been set by another proof path).
-		if currentIdx%2 == 0 {
-			left = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}]
-			right = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}]
-		} else {
-			left = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx ^ 1}]
-			right = tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}]
-		}
-		parentHash = HashTwoDigests(left, right)
-		currentIdx /= 2
-		currentDepth--
-		tree[IndexPair{Depth: uint64(currentDepth), Index: currentIdx}] = parentHash
-	}
-}
-
 // extractFullAuthPath extracts a complete authentication path for a given leaf
 // index from the reconstructed tree map.
 func ExtractFullAuthPath(
-	tree map[IndexPair]KeccakDigest,
+	tree map[IndexPair]Digest,
 	leafIdx uint64,
 	depth int,
-) (siblingHash KeccakDigest, authPath []KeccakDigest) {
+) (siblingHash Digest, authPath []Digest) {
 	siblingHash = tree[IndexPair{Depth: uint64(depth), Index: leafIdx ^ 1}]
-	authPath = make([]KeccakDigest, depth-1)
+	authPath = make([]Digest, depth-1)
 	currentIdx := leafIdx / 2
 	for level := depth - 1; level >= 1; level-- {
 		authPath[depth-1-level] = tree[IndexPair{Depth: uint64(level), Index: currentIdx ^ 1}]
@@ -473,7 +421,7 @@ func consumeHintsAndBuildMerkleEntry(
 	// Build the Merkle tree bottom-up while consuming hints from arthur.
 	// For each level, sibling pairs (both in the query set) don't need a hint;
 	// single indices get a sibling hash from the hint stream.
-	tree := make(map[IndexPair]KeccakDigest)
+	tree := make(map[IndexPair]Digest)
 
 	// Compute and store all leaf hashes.
 	for _, idx := range dedupSorted {
@@ -496,7 +444,7 @@ func consumeHintsAndBuildMerkleEntry(
 				// Sibling pair: both hashes already in tree.
 				aHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
 				bHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}]
-				var left, right KeccakDigest
+				var left, right Digest
 				if a%2 == 0 {
 					left, right = aHash, bHash
 				} else {
@@ -511,8 +459,8 @@ func consumeHintsAndBuildMerkleEntry(
 				if err != nil {
 					return nil, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}
-				var digest KeccakDigest
-				copy(digest.KeccakDigest[:], siblingHash)
+				var digest Digest
+				copy(digest.Digest[:], siblingHash)
 
 				sibKey := IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}
 				if _, exists := tree[sibKey]; !exists {
@@ -522,7 +470,7 @@ func consumeHintsAndBuildMerkleEntry(
 				// Compute parent hash.
 				nodeHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
 				sibNodeHash := tree[sibKey]
-				var left, right KeccakDigest
+				var left, right Digest
 				if a%2 == 0 {
 					left, right = nodeHash, sibNodeHash
 				} else {
@@ -710,7 +658,7 @@ func NativeWhirVerify(
 	evaluations []*big.Int,
 	numLinearForms int,
 ) (*NativeWhirVerifyResult, error) {
-	var allMerklePaths []FullMultiPath[KeccakDigest]
+	var allMerklePaths []FullMultiPath[Digest]
 	var allStirAnswers [][][]Fp256
 
 	numVectors := 0
@@ -890,7 +838,7 @@ func NativeWhirVerify(
 		}
 		merkleRounds = append(merkleRounds, *roundMerkle)
 		allStirAnswers = append(allStirAnswers, [][]Fp256{{}})
-		allMerklePaths = append(allMerklePaths, FullMultiPath[KeccakDigest]{})
+		allMerklePaths = append(allMerklePaths, FullMultiPath[Digest]{})
 
 		// Compute round size for evaluators
 		numVarsForRound := whirParams.MVParamsNumberOfVariables
@@ -1022,7 +970,7 @@ func NativeWhirVerify(
 	if err != nil {
 		return nil, fmt.Errorf("final merkle: %w", err)
 	}
-	allMerklePaths = append(allMerklePaths, FullMultiPath[KeccakDigest]{})
+	allMerklePaths = append(allMerklePaths, FullMultiPath[Digest]{})
 	merkleRounds = append(merkleRounds, *finalMerkleEntry)
 
 	// ---------------------------------------------------------------

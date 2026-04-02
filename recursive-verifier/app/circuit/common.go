@@ -690,7 +690,7 @@ func nativeRunZKSumcheck(arthur *NativeArthur, config Config, whirParams WHIRPar
 // nativeWhirVerify replays the full WHIR verification protocol, consuming
 // transcript messages and hints. Returns the parsed Merkle proofs as a ZKHint.
 func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WHIRConfig) (ZKHint, error) {
-	var allMerklePaths []FullMultiPath[KeccakDigest]
+	var allMerklePaths []FullMultiPath[Digest]
 	var allStirAnswers [][][]Fp256
 
 	domainSize := whirParams.DomainSize

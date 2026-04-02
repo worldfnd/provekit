@@ -8,8 +8,8 @@ import (
 )
 
 // Common types
-type KeccakDigest struct {
-	KeccakDigest [32]uint8
+type Digest struct {
+	Digest [32]uint8
 }
 
 type Fp256 struct {
@@ -118,7 +118,7 @@ type Hints struct {
 }
 
 type Hint struct {
-	merklePaths []FullMultiPath[KeccakDigest]
+	merklePaths []FullMultiPath[Digest]
 	stirAnswers [][][]Fp256
 }
 

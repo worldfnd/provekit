@@ -233,11 +233,6 @@ func nativeBigIntToLeBytes(v *big.Int) [32]byte {
 	return buf
 }
 
-// stateTo64Hex returns the sponge state as 64 bytes LE, hex-encoded.
-func stateTo64Hex(state *[64]byte) string {
-	return fmt.Sprintf("%x%x", state[:32], state[32:])
-}
-
 // ---------------------------------------------------------------------------
 // NativeArthur: native transcript reader mirroring the in-circuit Arthur.
 // Reads scalars from nargString (prover messages), squeezes challenges
@@ -389,9 +384,9 @@ func nativeGetStirChallenges(
 // countMerkleHints determines the number of 32-byte sibling hashes in the
 // hints buffer for a Merkle multi-opening at the given leaf indices.
 // It also returns the FullMultiPath reconstructed from the hints.
-func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (FullMultiPath[KeccakDigest], error) {
+func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (FullMultiPath[Digest], error) {
 	if len(indices) == 0 {
-		return FullMultiPath[KeccakDigest]{}, nil
+		return FullMultiPath[Digest]{}, nil
 	}
 
 	sorted := make([]int, len(indices))
@@ -399,11 +394,11 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 	sort.Ints(sorted)
 	sorted = dedup(sorted)
 
-	proofs := make(map[int]*Path[KeccakDigest])
+	proofs := make(map[int]*Path[Digest])
 	for _, idx := range sorted {
-		proofs[idx] = &Path[KeccakDigest]{
+		proofs[idx] = &Path[Digest]{
 			LeafIndex: uint64(idx),
-			AuthPath:  make([]KeccakDigest, 0, treeHeight),
+			AuthPath:  make([]Digest, 0, treeHeight),
 		}
 	}
 
@@ -421,10 +416,10 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 				// Need sibling hash from hints
 				siblingHash, err := arthur.ProverHint(32)
 				if err != nil {
-					return FullMultiPath[KeccakDigest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
+					return FullMultiPath[Digest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}
-				var digest KeccakDigest
-				copy(digest.KeccakDigest[:], siblingHash)
+				var digest Digest
+				copy(digest.Digest[:], siblingHash)
 
 				sibling := a ^ 1
 				if level == 0 {
@@ -458,11 +453,11 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 	}
 
 	// Build the FullMultiPath from collected proofs (in original index order)
-	paths := make([]Path[KeccakDigest], 0, len(sorted))
+	paths := make([]Path[Digest], 0, len(sorted))
 	for _, idx := range sorted {
 		paths = append(paths, *proofs[idx])
 	}
-	return FullMultiPath[KeccakDigest]{Proofs: paths}, nil
+	return FullMultiPath[Digest]{Proofs: paths}, nil
 }
 
 func dedup(sorted []int) []int {

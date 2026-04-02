@@ -154,19 +154,19 @@ func SkyscraperCompress(left, right [4]uint64) [4]uint64 {
 
 // HashLeafData hashes multiple Fp256 elements into a single KeccakDigest
 // using iterative Skyscraper compression.
-func HashLeafData(leafData []Fp256) KeccakDigest {
+func HashLeafData(leafData []Fp256) Digest {
 	if len(leafData) == 0 {
-		return KeccakDigest{}
+		return Digest{}
 	}
 	currentLimbs := leafData[0].Limbs
 	for i := 1; i < len(leafData); i++ {
 		currentLimbs = SkyscraperCompress(currentLimbs, leafData[i].Limbs)
 	}
-	var digest KeccakDigest
+	var digest Digest
 	for i := 0; i < 4; i++ {
 		limb := currentLimbs[i]
 		for j := 0; j < 8; j++ {
-			digest.KeccakDigest[i*8+j] = byte(limb & 0xFF)
+			digest.Digest[i*8+j] = byte(limb & 0xFF)
 			limb >>= 8
 		}
 	}
@@ -174,29 +174,29 @@ func HashLeafData(leafData []Fp256) KeccakDigest {
 }
 
 // HashTwoDigests hashes two KeccakDigest values together using Skyscraper compression.
-func HashTwoDigests(left, right KeccakDigest) KeccakDigest {
+func HashTwoDigests(left, right Digest) Digest {
 	leftLimbs := [4]uint64{}
 	rightLimbs := [4]uint64{}
 	for i := 0; i < 4; i++ {
 		var limb uint64
 		for j := 0; j < 8; j++ {
-			limb |= uint64(left.KeccakDigest[i*8+j]) << (8 * j)
+			limb |= uint64(left.Digest[i*8+j]) << (8 * j)
 		}
 		leftLimbs[i] = limb
 	}
 	for i := 0; i < 4; i++ {
 		var limb uint64
 		for j := 0; j < 8; j++ {
-			limb |= uint64(right.KeccakDigest[i*8+j]) << (8 * j)
+			limb |= uint64(right.Digest[i*8+j]) << (8 * j)
 		}
 		rightLimbs[i] = limb
 	}
 	resultLimbs := SkyscraperCompress(leftLimbs, rightLimbs)
-	var digest KeccakDigest
+	var digest Digest
 	for i := 0; i < 4; i++ {
 		limb := resultLimbs[i]
 		for j := 0; j < 8; j++ {
-			digest.KeccakDigest[i*8+j] = byte(limb & 0xFF)
+			digest.Digest[i*8+j] = byte(limb & 0xFF)
 			limb >>= 8
 		}
 	}
@@ -204,11 +204,11 @@ func HashTwoDigests(left, right KeccakDigest) KeccakDigest {
 }
 
 // DigestToFieldElement converts a KeccakDigest to a *big.Int field element.
-func DigestToFieldElement(d KeccakDigest) *big.Int {
+func DigestToFieldElement(d Digest) *big.Int {
 	result := new(big.Int)
 	for i := 31; i >= 0; i-- {
 		result.Lsh(result, 8)
-		result.Add(result, big.NewInt(int64(d.KeccakDigest[i])))
+		result.Add(result, big.NewInt(int64(d.Digest[i])))
 	}
 	return result.Mod(result, bn254Modulus)
 }
