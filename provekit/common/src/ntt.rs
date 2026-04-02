@@ -2,10 +2,7 @@ use {
     ark_bn254::Fr,
     ark_ff::{AdditiveGroup, FftField, Field},
     ntt::ntt_nr,
-    rayon::{
-        iter::{IndexedParallelIterator, ParallelIterator},
-        slice::ParallelSliceMut,
-    },
+    tracing::instrument,
     whir::algebra::ntt::ReedSolomon,
 };
 
@@ -45,6 +42,13 @@ impl ReedSolomon<Fr> for RSFr {
             .collect()
     }
 
+    #[instrument(skip(self, messages, masks), fields(
+        num_messages = messages.len(),
+        message_len = messages.first().map(|c| c.len()),
+        codeword_length = codeword_length,
+        mask_len = masks.len() / messages.len()
+
+    ))]
     fn interleaved_encode(
         &self,
         messages: &[&[Fr]],
@@ -93,7 +97,6 @@ impl ReedSolomon<Fr> for RSFr {
 
         ntt_nr(&mut result, codeword_length, num_cosets);
 
-        // ntt_nr(&mut result, coset_size);
         result
     }
 }

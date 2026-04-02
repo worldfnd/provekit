@@ -29,7 +29,7 @@ fn make_messages(exp: usize, coset_sz: usize) -> Vec<Vec<Fr>> {
 }
 
 fn make_mask(num_messages: usize) -> Vec<Fr> {
-    let mask_length = 4;
+    let mask_length = 1 << 10;
     let mut rng = ark_std::rand::thread_rng();
     (0..num_messages * mask_length)
         .map(|_| Fr::rand(&mut rng))

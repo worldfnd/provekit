@@ -46,8 +46,14 @@ pub fn register_ntt() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         // Register NTT for polynomial operations
+        #[cfg(not(feature = "provekit_ntt"))]
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
             Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
+
+        #[cfg(feature = "provekit_ntt")]
+        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
+            Arc::new(crate::ntt::RSFr);
+
         whir::algebra::ntt::NTT.insert(ntt);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
