@@ -1,32 +1,24 @@
+use sha256::sha256_var;
 // Sha256 example
 //
 // Calls Sha256 from the standard library.
 //
 // The Compiler sees this special function and creates an ACIR gate
 //
-// The ACIR SHA256 gate is passed to PLONK who should
-// know how to create the necessary constraints.
-//
-// Not yet here: For R1CS, it is more about manipulating arithmetic gates to get performance
-// This can be done in ACIR!
 fn main(x: Field, result: [u8; 32], input: [u8; 2], toggle: bool) {
     let x = hash(x, 1234);
 
     // We use the `as` keyword here to denote the fact that we want to take just the first byte from the x Field
     // The padding is taken care of by the program
     // docs:start:sha256_var
-    let digest = std::hash::sha256_var([x as u8], 1);
+    let digest = sha256_var([x as u8], 1);
     // docs:end:sha256_var
-    assert(digest == result);
-
-
-    let digest = std::hash::sha256([x as u8]);
     assert(digest == result);
 
     // variable size
     let size: Field = 1 + toggle as Field;
-    let var_sha = std::hash::sha256_var(input, size as u64);
-    assert(var_sha == std::hash::sha256_var(input, 1));
+    let var_sha = sha256_var(input, size as u32);
+    assert(var_sha == sha256_var(input, 1));
 }
 
 fn sq(x: Field) -> Field {
@@ -39,8 +31,6 @@ fn cu(x: Field) -> Field {
 
 // hashes two inputs
 fn hash(val: Field, salt: Field) -> Field {
-    // let mut slt = salt as u64;
-    // let val = val as u64;
     let salts = [
         0xf8bf3bd6c22ba3b1bf3ab2e3fb40818cd4217ffbaf294ca42331d4e3043a0a6,
         0x388c9fcf30fc2841d648f46bad01dd10bee9dc184d25eabc9f617021109cec3,
