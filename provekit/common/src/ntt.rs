@@ -36,7 +36,7 @@ impl ReedSolomon<Fr> for RSFr {
                 };
 
                 // TODO Optimise generator away by storing it in the engine
-                let generator = Fr::get_root_of_unity(codeword_length as u64).unwrap();
+                let generator = self.generator(codeword_length);
                 generator.pow([k as u64])
             })
             .collect()
@@ -46,7 +46,7 @@ impl ReedSolomon<Fr> for RSFr {
         num_messages = messages.len(),
         message_len = messages.first().map(|c| c.len()),
         codeword_length = codeword_length,
-        mask_len = masks.len() / messages.len()
+        mask_len = masks.len().checked_div(messages.len())
 
     ))]
     fn interleaved_encode(
@@ -98,6 +98,10 @@ impl ReedSolomon<Fr> for RSFr {
         ntt_nr(&mut result, codeword_length, num_cosets);
 
         result
+    }
+
+    fn generator(&self, codeword_length: usize) -> Fr {
+        Fr::get_root_of_unity(codeword_length as u64).unwrap()
     }
 }
 
