@@ -335,20 +335,16 @@ impl NoirToR1CSCompiler {
         num_bits: u32,
         target_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     ) {
+        debug_assert_eq!(BINOP_ATOMIC_BITS, 8, "process_binop_opcode assumes 8-bit digits");
         let num_digits = (num_bits as usize).div_ceil(BINOP_ATOMIC_BITS);
         let log_bases = vec![BINOP_ATOMIC_BITS; num_digits];
         let out_idx = self.fetch_r1cs_witness_index(output);
 
-        /// Extract the little-endian byte decomposition of a constant field
-        /// element into `num_digits` bytes.
-        fn const_bytes(fe: FieldElement, num_digits: usize) -> Vec<u8> {
-            let limbs = fe.into_bigint().0;
-            (0..num_digits)
-                .map(|i| {
-                    let bit_offset = i * BINOP_ATOMIC_BITS;
-                    (limbs[bit_offset / 64] >> (bit_offset % 64)) as u8
-                })
-                .collect()
+        /// Extract the `i`-th byte from a field element's little-endian
+        /// representation
+        fn const_byte(fe: &FieldElement, i: usize) -> u64 {
+            let bit_offset = i * BINOP_ATOMIC_BITS;
+            (fe.into_bigint().0[bit_offset / 64] >> (bit_offset % 64)) as u8 as u64
         }
 
         match (lhs, rhs) {
@@ -357,16 +353,14 @@ impl NoirToR1CSCompiler {
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let lhs_fe = noir_to_native(lhs_c);
                 let rhs_fe = noir_to_native(rhs_c);
-                let lhs_bytes = const_bytes(lhs_fe, num_digits);
-                let rhs_bytes = const_bytes(rhs_fe, num_digits);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                 for byte_idx in 0..num_digits {
                     let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                        lhs_bytes[byte_idx] as u64,
+                        const_byte(&lhs_fe, byte_idx),
                     ));
                     let rhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                        rhs_bytes[byte_idx] as u64,
+                        const_byte(&rhs_fe, byte_idx),
                     ));
                     let out_byte = dd.get_digit_witness_index(byte_idx, 0);
                     target_ops.push((lhs_byte, rhs_byte, out_byte));
@@ -375,13 +369,12 @@ impl NoirToR1CSCompiler {
             // lhs constant, rhs witness
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
                 let lhs_fe = noir_to_native(lhs_c);
-                let lhs_bytes = const_bytes(lhs_fe, num_digits);
                 let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
                 for byte_idx in 0..num_digits {
                     let lhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                        lhs_bytes[byte_idx] as u64,
+                        const_byte(&lhs_fe, byte_idx),
                     ));
                     let rhs_byte =
                         ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
@@ -392,7 +385,6 @@ impl NoirToR1CSCompiler {
             // lhs witness, rhs constant
             (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let rhs_fe = noir_to_native(rhs_c);
-                let rhs_bytes = const_bytes(rhs_fe, num_digits);
                 let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
@@ -400,7 +392,7 @@ impl NoirToR1CSCompiler {
                     let lhs_byte =
                         ConstantOrR1CSWitness::Witness(dd.get_digit_witness_index(byte_idx, 0));
                     let rhs_byte = ConstantOrR1CSWitness::Constant(FieldElement::from(
-                        rhs_bytes[byte_idx] as u64,
+                        const_byte(&rhs_fe, byte_idx),
                     ));
                     let out_byte = dd.get_digit_witness_index(byte_idx, 1);
                     target_ops.push((lhs_byte, rhs_byte, out_byte));
