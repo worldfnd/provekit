@@ -1,7 +1,5 @@
 /*
 ############################################################
-# Ryan attempt at combining different circuit statements together
-############################################################
 # Should do three things:
     - Checks that the hash of DG1 exists in SOD
     - Checks that H(SOD) || other stuff is signed by DSC public key
