@@ -35,7 +35,6 @@ impl ReedSolomon<Fr> for RSFr {
                     i.reverse_bits() >> (usize::BITS - bits)
                 };
 
-                // TODO Optimise generator away by storing it in the engine
                 let generator = self.generator(codeword_length);
                 generator.pow([k as u64])
             })
