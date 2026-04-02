@@ -11,7 +11,8 @@ global C3: Field = 4077002941042049829335213777657090702755072042423493106607013
 global C5: Field = 19103219067921713944291392827692070036145651957329286315305642004821462161904;
 
 fn hash_to_field(input: Field) -> Field {
-    let hash_input = [0, input, 0];
+    // element 0 is the DS string "OPRF_HashToField_BabyJubJub"
+    let hash_input = [32627786498498119128812045057993354633158048678109587794777765218, input, 0];
     let hash_result = perm::x5_3(hash_input);
 
     hash_result[1]
@@ -21,9 +22,30 @@ fn is_zero(x: Field) -> bool {
     x == 0
 }
 
+unconstrained fn inverse_or_zero_unconstrained(x: Field) -> Field {
+    if x == 0 {
+        0
+    } else {
+        1 / x
+    }
+}
+
 fn inverse_or_zero(x: Field) -> Field {
-    let is_zero = (x == 0) as Field;
-    (1 / x) * (1 - is_zero)
+    // SAFETY: We constrain the inverse below
+    let inv = unsafe { inverse_or_zero_unconstrained(x) };
+    let is_zero = 1 - x * inv;
+    // Constraint strategy:
+    // if x != 0
+    //  then is_zero must be 0 due to constraint 1 => x * inv = 1, therefore inv is the inverse of x
+    // if x == 0
+    //  then is_zero must be 1 due to the definition above, since x = 0. inv could be anything, but we enforce inv = 0 in constraints 2 below
+
+    // These are the two constraints enforcing above logic:
+    // One of x or is_zero must be zero
+    assert(x * is_zero == 0, "InverseOrZero zero constraint 1 failed");
+    // One of inv or is_zero must be zero
+    assert(inv * is_zero == 0, "InverseOrZero zero constraint 2 failed");
+    inv
 }
 
 fn pow(x: Field, y: Field) -> Field {
@@ -80,6 +102,8 @@ fn is_quadratic_residue_or_zero(x: Field) -> bool {
     // For l =  1: (l(l-1)) = 0 and (l+1) = 2 => b^2 = a
     // For l = -1: (l(l-1)) = 2 and (l+1) = 0 => b^2 = n*a
     // For l =  0: (l(l-1)) = 0 and (l+1) = 1 => b^2 = a (which forces a to be 0 or a quadratic residue)
+    // Note that the above checks from the paper would also allow for a=0,b=0, but l=-1.
+    // Therefore we add another constraint enforcing a=0 => l=0, see below.
     let l = unsafe { legendre(x) };
     assert(l * (l - 1) * (l + 1) == 0, "l must be in {-1,0,1}"); // l in {-1,0,1}
 
@@ -97,6 +121,13 @@ fn is_quadratic_residue_or_zero(x: Field) -> bool {
     let c_na = b2 - na;
     let c_a = b2 - x;
     assert(s_na * c_na + s_a * c_a == 0, "b must be a square root of na or a");
+
+    // Constraint a=0 => l=0
+    // at least one of l and (isZero(a)) need to be 0
+    // This disallows the case of l!=0 and a==0, the case l==0 and a==0 is as expected, same with l!=0 and a!=0.
+    // There is still the case of l==0 and a!=0 which would be allowed by this and would give an invalid legendre symbol for a.
+    // However we enforce in that case (l = 0) that a = b^2, which still produces the correct high-level output for this gadget, since l in {0,1} and we do not directly return l.
+    assert((x == 0) as Field * l == 0);
     l != -1
 }
 
@@ -219,15 +250,44 @@ pub fn encode(input: Field) -> (Field, Field) {
 }
 
 #[test]
-fn test_encode_to_curve() {
+fn test_encode_to_curve_kat0() {
     let input = 0x03e4070110668921a99c37627dedddb5ab65fae33c19e24d9ee19d7065fdeca8;
     let (x, y) = encode(input);
+
     assert(
-        x == 10175058421265066103271621309400893795433239363389874688251488422849525264799,
+        x == 10317659717708787122683977912952208883341451354299498236440964928299898571531,
         "encode x mismatch for test vector",
     );
     assert(
-        y == 3628966387438731209966022732278382991713986757399185528286224796904478655258,
+        y == 2771878628977713302835201233169750856073682825638128695522023521672351725258,
+        "encode y mismatch for test vector",
+    );
+}
+
+#[test]
+fn test_encode_to_curve_kat1() {
+    let input = 0x42;
+    let (x, y) = encode(input);
+    assert(
+        x == 16453178030699411958341692808730701741568100876455568813278163225032347056514,
+        "encode x mismatch for test vector",
+    );
+    assert(
+        y == 5447922750205248208490261749483809853022174346498064122782172531486866662376,
+        "encode y mismatch for test vector",
+    );
+}
+
+#[test]
+fn test_encode_to_curve_kat2() {
+    let input = 0;
+    let (x, y) = encode(input);
+    assert(
+        x == 16605852874433019712683889710166313607515083375138125349412270828059484170936,
+        "encode x mismatch for test vector",
+    );
+    assert(
+        y == 12075050546928691602283582412953179086742727007172364313655633055645374686589,
         "encode y mismatch for test vector",
     );
 }
