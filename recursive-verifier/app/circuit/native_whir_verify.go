@@ -342,19 +342,16 @@ func nativeIRSCommitVerifyWithPoints(
 	sort.Ints(dedupedIndices)
 	dedupedIndices = dedup(dedupedIndices)
 
-	merklePaths, err := consumeMerkleHints(arthur, dedupedIndices, treeHeight)
-	if err != nil {
-		return nil, nil, fmt.Errorf("merkle: %w", err)
-	}
-
-	// Build RoundMerkleEntry from the parsed data.
 	// The leaf fold size (num_cols) may differ from foldingFactorPower when
 	// batch_size > 1 (initial commitment). Derive it from the submatrix length.
 	leafFoldSize := foldingFactorPower
 	if len(indices) > 0 {
 		leafFoldSize = len(submatrix) / len(indices)
 	}
-	entry := buildRoundMerkleEntry(indices, submatrix, merklePaths, leafFoldSize, treeHeight)
+	entry, err := consumeHintsAndBuildMerkleEntry(arthur, indices, dedupedIndices, submatrix, leafFoldSize, treeHeight)
+	if err != nil {
+		return nil, nil, fmt.Errorf("merkle: %w", err)
+	}
 	return indices, entry, nil
 }
 
@@ -431,26 +428,29 @@ func ExtractFullAuthPath(
 	return siblingHash, authPath
 }
 
-// buildRoundMerkleEntry converts native submatrix + FullMultiPath into a
-// whir.RoundMerkleEntry suitable for passing to the gnark circuit.
-// It reconstructs the full Merkle tree from the compressed multi-path to
-// produce complete per-query proofs (no gaps from sibling-pair optimization).
-func buildRoundMerkleEntry(
+// consumeHintsAndBuildMerkleEntry reads Merkle proof hints from arthur and
+// builds the RoundMerkleEntry in a single bottom-up pass. This combines what
+// was previously two separate functions (consumeMerkleHints + buildRoundMerkleEntry)
+// that each independently replayed the same level-by-level tree traversal.
+//
+// indices: original query indices (may contain duplicates)
+// dedupSorted: sorted, deduplicated indices (pre-computed by caller)
+// submatrix: leaf data laid out in order of indices, foldSize elements per index
+func consumeHintsAndBuildMerkleEntry(
+	arthur *NativeArthur,
 	indices []int,
+	dedupSorted []int,
 	submatrix []Fp256,
-	merklePaths FullMultiPath[KeccakDigest],
 	foldSize int,
 	treeHeight int,
-) *whir.RoundMerkleEntry {
+) (*whir.RoundMerkleEntry, error) {
+	if len(indices) == 0 {
+		return &whir.RoundMerkleEntry{}, nil
+	}
+
 	// Build index → submatrix row lookup. The submatrix is laid out in the
 	// order of the ORIGINAL indices (unsorted, with duplicates). Each index
-	// contributes foldSize elements. We map by the original order, then
-	// deduplication uses whichever row was seen first for each index.
-	dedupSorted := make([]int, len(indices))
-	copy(dedupSorted, indices)
-	sort.Ints(dedupSorted)
-	dedupSorted = dedup(dedupSorted)
-
+	// contributes foldSize elements.
 	leafFp256ByIdx := make(map[int][]Fp256)
 	leafVarByIdx := make(map[int][]frontend.Variable)
 	for i, idx := range indices {
@@ -470,53 +470,30 @@ func buildRoundMerkleEntry(
 		leafVarByIdx[idx] = varRow
 	}
 
-	// Reconstruct the Merkle tree by replaying the same bottom-up algorithm
-	// used by the Rust verifier (merkle_tree::verify). This mirrors the hint
-	// consumption order in consumeMerkleHints: for each level, sibling pairs
-	// (both in the query set) don't need a hint; others get a sibling hash
-	// from the proof path. We hash pairs to produce the next level's hashes.
-	//
-	// This is more correct than PopulateTreeFromPath which assumed compressed
-	// auth paths mapped to consecutive tree depths (they don't when sibling
-	// pairs cause skipped levels).
+	// Build the Merkle tree bottom-up while consuming hints from arthur.
+	// For each level, sibling pairs (both in the query set) don't need a hint;
+	// single indices get a sibling hash from the hint stream.
 	tree := make(map[IndexPair]KeccakDigest)
 
-	// Step 1: Compute and store all leaf hashes.
+	// Compute and store all leaf hashes.
 	for _, idx := range dedupSorted {
 		leafHash := HashLeafData(leafFp256ByIdx[idx])
 		tree[IndexPair{Depth: uint64(treeHeight), Index: uint64(idx)}] = leafHash
 	}
 
-	// Step 2: Bottom-up level-by-level reconstruction mirroring the Rust
-	// verifier. currentIndices tracks the sorted deduped indices at each level.
-	// For each level, pair siblings or fill from the proof hint data, then
-	// hash to produce parent hashes.
+	// Bottom-up level-by-level: consume hints and compute parent hashes.
 	currentIndices := make([]int, len(dedupSorted))
 	copy(currentIndices, dedupSorted)
 
-	// Build a map from leaf index → proof for quick lookup of sibling hashes.
-	proofByLeaf := make(map[int]*Path[KeccakDigest])
-	for i := range merklePaths.Proofs {
-		proofByLeaf[int(merklePaths.Proofs[i].LeafIndex)] = &merklePaths.Proofs[i]
-	}
-
-	// hintIterators tracks the current auth path position for each original leaf.
-	// consumeMerkleHints stores auth path entries only for levels where a hint
-	// was read (level > 0, non-sibling-pair). We consume them in order.
-	authPathPos := make(map[int]int) // origIdx → next AuthPath index to consume
-	for _, idx := range dedupSorted {
-		authPathPos[idx] = 0
-	}
-
 	for level := 0; level < treeHeight; level++ {
-		currentDepth := uint64(treeHeight - level) // tree depth for currentIndices
+		currentDepth := uint64(treeHeight - level)
 		parentDepth := currentDepth - 1
 		var nextIndices []int
 		i := 0
 		for i < len(currentIndices) {
 			a := currentIndices[i]
 			if i+1 < len(currentIndices) && currentIndices[i+1] == a^1 {
-				// Sibling pair: both hashes already in tree from prior level.
+				// Sibling pair: both hashes already in tree.
 				aHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
 				bHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}]
 				var left, right KeccakDigest
@@ -529,45 +506,17 @@ func buildRoundMerkleEntry(
 				nextIndices = append(nextIndices, a>>1)
 				i += 2
 			} else {
-				// Single index: sibling hash comes from the proof hints.
-				// Find the sibling hash for this level from the proof data.
-				var sibHash KeccakDigest
-				if level == 0 {
-					// At the leaf level, the sibling hash is LeafSiblingHash.
-					// Find any original leaf whose proof covers index a.
-					for _, origIdx := range dedupSorted {
-						if origIdx == a {
-							sibHash = proofByLeaf[origIdx].LeafSiblingHash
-							break
-						}
-					}
-				} else {
-					// At higher levels, the sibling hash is the next auth path
-					// entry for any original leaf tracing through index a.
-					for _, origIdx := range dedupSorted {
-						ancestorIdx := origIdx >> uint(level)
-						if ancestorIdx == a {
-							p := proofByLeaf[origIdx]
-							pos := authPathPos[origIdx]
-							if pos < len(p.AuthPath) {
-								sibHash = p.AuthPath[pos]
-							}
-							break
-						}
-					}
-					// Advance auth path position for all leaves tracing through a.
-					for _, origIdx := range dedupSorted {
-						ancestorIdx := origIdx >> uint(level)
-						if ancestorIdx == a {
-							authPathPos[origIdx]++
-						}
-					}
+				// Single index: read sibling hash from hints.
+				siblingHash, err := arthur.ProverHint(32)
+				if err != nil {
+					return nil, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}
+				var digest KeccakDigest
+				copy(digest.KeccakDigest[:], siblingHash)
 
-				// Store sibling in tree if not already present.
 				sibKey := IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}
 				if _, exists := tree[sibKey]; !exists {
-					tree[sibKey] = sibHash
+					tree[sibKey] = digest
 				}
 
 				// Compute parent hash.
@@ -589,37 +538,7 @@ func buildRoundMerkleEntry(
 		currentIndices = nextIndices
 	}
 
-	// Debug validation.
-	if root, ok := tree[IndexPair{Depth: 0, Index: 0}]; ok {
-		fmt.Println("buildRoundMerkleEntry: reconstructed root =", DigestToFieldElement(root))
-	} else {
-		fmt.Println("buildRoundMerkleEntry: WARNING - root not found in tree")
-	}
-	// Debug: print tree height, num deduped indices, and first few tree entries
-	fmt.Println("buildRoundMerkleEntry: treeHeight =", treeHeight, "numDeduped =", len(dedupSorted), "numQueries =", len(indices))
-	// Debug: for first query, print full verification trace
-	if len(indices) > 0 {
-		idx := uint64(indices[0])
-		currentIdx := idx
-		for d := treeHeight; d > 0; d-- {
-			node := tree[IndexPair{Depth: uint64(d), Index: currentIdx}]
-			sib := tree[IndexPair{Depth: uint64(d), Index: currentIdx ^ 1}]
-			var left, right KeccakDigest
-			if currentIdx%2 == 0 {
-				left, right = node, sib
-			} else {
-				left, right = sib, node
-			}
-			parent := HashTwoDigests(left, right)
-			storedParent := tree[IndexPair{Depth: uint64(d - 1), Index: currentIdx / 2}]
-			fmt.Printf("  depth %d: idx=%d, parent=%s, stored=%s, match=%v\n",
-				d, currentIdx, DigestToFieldElement(parent), DigestToFieldElement(storedParent),
-				DigestToFieldElement(parent).Cmp(DigestToFieldElement(storedParent)) == 0)
-			currentIdx /= 2
-		}
-	}
-
-	// Build the per-query RoundMerkleEntry with complete proofs.
+	// Build the per-query RoundMerkleEntry with complete auth paths from the tree.
 	nq := len(indices)
 	entry := &whir.RoundMerkleEntry{
 		Leaves:        make([][]frontend.Variable, nq),
@@ -640,7 +559,7 @@ func buildRoundMerkleEntry(
 		}
 	}
 
-	return entry
+	return entry, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1099,14 +1018,11 @@ func NativeWhirVerify(
 	sort.Ints(dedupedFinal)
 	dedupedFinal = dedup(dedupedFinal)
 
-	finalMerklePath, err := consumeMerkleHints(arthur, dedupedFinal, treeHeight)
+	finalMerkleEntry, err := consumeHintsAndBuildMerkleEntry(arthur, finalIndices, dedupedFinal, finalSubmatrix, finalFoldingFactorPower, treeHeight)
 	if err != nil {
 		return nil, fmt.Errorf("final merkle: %w", err)
 	}
-	allMerklePaths = append(allMerklePaths, finalMerklePath)
-
-	// Build final round merkle entry from the parsed data.
-	finalMerkleEntry := buildRoundMerkleEntry(finalIndices, finalSubmatrix, finalMerklePath, finalFoldingFactorPower, treeHeight)
+	allMerklePaths = append(allMerklePaths, FullMultiPath[KeccakDigest]{})
 	merkleRounds = append(merkleRounds, *finalMerkleEntry)
 
 	// ---------------------------------------------------------------
