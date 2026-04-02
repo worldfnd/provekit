@@ -796,7 +796,7 @@ pub fn gen_precomp_full(n: usize, w: CF, block: usize) -> Result<Vec<CF>> {
 /// case which accepts an input size of NTT_BLOCK_SIZE_FOR_CACHE, and memory
 /// allocation via Vecs for the higher levels. This is done to maximise cache
 /// use and minimise memory allocations. This function expects a reference to a
-/// zero buffer as the scratch parameter, of size NTT_BLOCK_SIZE_FOR_CACH, of
+/// zero buffer as the scratch parameter, of size NTT_BLOCK_SIZE_FOR_CACHE, of
 /// size NTT_BLOCK_SIZE_FOR_CACHE. The precomp_small and precomp_full parameters
 /// are precomputed twiddles for the base NTT and the higher layers,
 /// respectively. They must be generated using precomputed_twiddles().

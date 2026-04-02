@@ -1,7 +1,7 @@
 use {
     crate::witness::{
-        ConstantOrR1CSWitness, ConstantTerm, ProductLinearTerm, SumTerm, WitnessBuilder,
-        WitnessCoefficient,
+        ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
+        WitnessBuilder, WitnessCoefficient,
     },
     std::collections::HashMap,
 };
@@ -76,9 +76,15 @@ impl DependencyInfo {
             | WitnessBuilder::Acir(..)
             | WitnessBuilder::Challenge(_) => vec![],
             WitnessBuilder::Sum(_, ops) => ops.iter().map(|SumTerm(_, idx)| *idx).collect(),
+            WitnessBuilder::SumQuotient { terms, .. } => {
+                terms.iter().map(|SumTerm(_, idx)| *idx).collect()
+            }
             WitnessBuilder::Product(_, a, b) => vec![*a, *b],
             WitnessBuilder::MultiplicitiesForRange(_, _, values) => values.clone(),
-            WitnessBuilder::Inverse(_, x) => vec![*x],
+            WitnessBuilder::Inverse(_, x)
+            | WitnessBuilder::SafeInverse(_, x)
+            | WitnessBuilder::ModularInverse(_, x, _)
+            | WitnessBuilder::IntegerQuotient(_, x, _) => vec![*x],
             WitnessBuilder::IndexedLogUpDenominator(
                 _,
                 sz,
@@ -152,6 +158,28 @@ impl DependencyInfo {
                 }
                 v
             }
+            WitnessBuilder::MultiLimbMulModHint {
+                a_limbs, b_limbs, ..
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
+            WitnessBuilder::MultiLimbModularInverse { a_limbs, .. } => a_limbs.clone(),
+            WitnessBuilder::MultiLimbAddQuotient {
+                a_limbs, b_limbs, ..
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
+            WitnessBuilder::MultiLimbSubBorrow {
+                a_limbs, b_limbs, ..
+            } => {
+                let mut v = a_limbs.clone();
+                v.extend(b_limbs);
+                v
+            }
             WitnessBuilder::BytePartition { x, .. } => vec![*x],
 
             WitnessBuilder::U32AdditionMulti(_, _, inputs) => inputs
@@ -198,6 +226,32 @@ impl DependencyInfo {
                     data.rs_cubed,
                 ]
             }
+            WitnessBuilder::EcDoubleHint { px, py, .. } => vec![*px, *py],
+            WitnessBuilder::EcAddHint { x1, y1, x2, y2, .. } => vec![*x1, *y1, *x2, *y2],
+            WitnessBuilder::NonNativeEcHint { inputs, .. } => {
+                inputs.iter().flat_map(|l| l.as_slice()).copied().collect()
+            }
+            WitnessBuilder::FakeGLVHint { s_lo, s_hi, .. } => vec![*s_lo, *s_hi],
+            WitnessBuilder::EcScalarMulHint {
+                px_limbs,
+                py_limbs,
+                s_lo,
+                s_hi,
+                ..
+            } => px_limbs
+                .iter()
+                .chain(py_limbs.iter())
+                .copied()
+                .chain([*s_lo, *s_hi])
+                .collect(),
+            WitnessBuilder::SelectWitness {
+                flag,
+                on_false,
+                on_true,
+                ..
+            } => vec![*flag, *on_false, *on_true],
+            WitnessBuilder::BooleanOr { a, b, .. } => vec![*a, *b],
+            WitnessBuilder::SignedBitHint { scalar, .. } => vec![*scalar],
             WitnessBuilder::ChunkDecompose { packed, .. } => vec![*packed],
             WitnessBuilder::SpreadWitness(_, input) => vec![*input],
             WitnessBuilder::SpreadBitExtract { sum_terms, .. } => {
@@ -240,6 +294,9 @@ impl DependencyInfo {
             | WitnessBuilder::Challenge(idx)
             | WitnessBuilder::IndexedLogUpDenominator(idx, ..)
             | WitnessBuilder::Inverse(idx, _)
+            | WitnessBuilder::SafeInverse(idx, _)
+            | WitnessBuilder::ModularInverse(idx, ..)
+            | WitnessBuilder::IntegerQuotient(idx, ..)
             | WitnessBuilder::ProductLinearOperation(idx, ..)
             | WitnessBuilder::LogUpDenominator(idx, ..)
             | WitnessBuilder::LogUpInverse(idx, ..)
@@ -254,6 +311,14 @@ impl DependencyInfo {
             | WitnessBuilder::SpreadWitness(idx, ..)
             | WitnessBuilder::SpreadLookupDenominator(idx, ..)
             | WitnessBuilder::SpreadTableQuotient { idx, .. } => vec![*idx],
+            WitnessBuilder::SumQuotient { output, .. } => vec![*output],
+            WitnessBuilder::SelectWitness { output, .. }
+            | WitnessBuilder::BooleanOr { output, .. } => vec![*output],
+            WitnessBuilder::SignedBitHint {
+                output_start,
+                num_bits,
+                ..
+            } => (*output_start..*output_start + *num_bits + 1).collect(),
 
             WitnessBuilder::MultiplicitiesForRange(start, range, _) => {
                 (*start..*start + *range).collect()
@@ -282,6 +347,47 @@ impl DependencyInfo {
                 let n = 1usize << *num_bits;
                 (*start..*start + n).collect()
             }
+            WitnessBuilder::MultiLimbMulModHint {
+                output_start,
+                num_limbs,
+                ..
+            } => {
+                let count = (4 * *num_limbs - 2) as usize;
+                (*output_start..*output_start + count).collect()
+            }
+            WitnessBuilder::MultiLimbModularInverse {
+                output_start,
+                num_limbs,
+                ..
+            } => (*output_start..*output_start + *num_limbs as usize).collect(),
+            WitnessBuilder::EcDoubleHint { output_start, .. } => {
+                (*output_start..*output_start + 3).collect()
+            }
+            WitnessBuilder::EcAddHint { output_start, .. } => {
+                (*output_start..*output_start + 3).collect()
+            }
+            WitnessBuilder::NonNativeEcHint {
+                output_start,
+                num_limbs,
+                op,
+                ..
+            } => {
+                let count = match op {
+                    NonNativeEcOp::Double | NonNativeEcOp::Add => (15 * *num_limbs - 6) as usize,
+                    NonNativeEcOp::OnCurve => (9 * *num_limbs - 4) as usize,
+                };
+                (*output_start..*output_start + count).collect()
+            }
+            WitnessBuilder::FakeGLVHint { output_start, .. } => {
+                (*output_start..*output_start + 4).collect()
+            }
+            WitnessBuilder::EcScalarMulHint {
+                output_start,
+                num_limbs,
+                ..
+            } => (*output_start..*output_start + 2 * *num_limbs as usize).collect(),
+            WitnessBuilder::MultiLimbAddQuotient { output, .. } => vec![*output],
+            WitnessBuilder::MultiLimbSubBorrow { output, .. } => vec![*output],
             WitnessBuilder::U32Addition(result_idx, carry_idx, ..) => {
                 vec![*result_idx, *carry_idx]
             }

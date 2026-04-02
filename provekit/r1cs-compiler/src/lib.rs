@@ -1,10 +1,12 @@
 mod binops;
+mod constraint_helpers;
 mod digits;
 mod memory;
+pub mod msm;
 mod noir_proof_scheme;
-mod noir_to_r1cs;
+pub mod noir_to_r1cs;
 mod poseidon2;
-mod range_check;
+pub mod range_check;
 mod sha256_compression;
 mod spread;
 mod uints;

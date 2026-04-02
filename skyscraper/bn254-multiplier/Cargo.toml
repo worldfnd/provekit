@@ -34,6 +34,9 @@ proptest.workspace = true
 bn254-multiplier-codegen.workspace = true
 hla.workspace = true
 
+[package.metadata.cargo-machete]
+ignored = ["hla", "bn254-multiplier-codegen"]  # Used in build.rs (machete doesn't check build scripts)
+
 [lints]
 workspace = true
 

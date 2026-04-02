@@ -92,7 +92,7 @@ pub fn add_ram_checking(
     // required range checks later.
     let mut all_mem_op_index_and_rt = vec![];
 
-    // For each of the writes in the inititialization, add a factor to the write
+    // For each of the writes in the initialization, add a factor to the write
     // hash
     block
         .initial_value_witnesses

@@ -1,0 +1,6 @@
+[package]
+name = "native_msm"
+type = "bin"
+authors = [""]
+
+[dependencies]

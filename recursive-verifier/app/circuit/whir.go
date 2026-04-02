@@ -59,7 +59,7 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		FinalFoldingPowBits:                  cfg.FinalFoldingPowBits,
 		StartingDomainBackingDomainGenerator: *startingDomainGen,
 		DomainSize:                           domainSize,
-		CommittmentOODSamples:                1,
+		CommitmentOODSamples:                 1,
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
 		BatchSize:                            cfg.BatchSize,

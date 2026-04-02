@@ -2,8 +2,6 @@ use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
-    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
@@ -28,6 +26,11 @@ use {
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{ProverState, VerifierMessage},
     },
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
+    mavros_vm::interpreter::Phase1Result,
 };
 
 pub struct BlindingState {
@@ -60,6 +63,7 @@ pub trait WhirR1CSProver {
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
@@ -181,6 +185,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         )
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[instrument(skip_all)]
     fn prove_mavros(
         &self,
@@ -199,10 +204,11 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .as_ref()
             .expect("c1 must carry blinding state");
 
+        let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-            phase1.out_a,
-            phase1.out_b,
-            phase1.out_c,
+            a,
+            b,
+            c,
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
@@ -254,7 +260,10 @@ fn prove_from_alphas(
 
     if is_single {
         // Single commitment path
-        let commitment = commitments.into_iter().next().unwrap();
+        let commitment = commitments
+            .into_iter()
+            .next()
+            .expect("single-commitment path requires at least one commitment");
         let (mut weights, evals) =
             create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
 
@@ -265,7 +274,7 @@ fn prove_from_alphas(
                 &commitment.polynomial,
                 public_weight,
             );
-            merlin.prover_hint_ark(&public_eval);
+            merlin.prover_message(&public_eval);
         }
 
         let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
@@ -289,8 +298,12 @@ fn prove_from_alphas(
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
-        let c1 = commitments.next().unwrap();
-        let c2 = commitments.next().unwrap();
+        let c1 = commitments
+            .next()
+            .expect("dual-commitment path requires first commitment");
+        let c2 = commitments
+            .next()
+            .expect("dual-commitment path requires second commitment");
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
             .into_iter()
@@ -300,8 +313,12 @@ fn prove_from_alphas(
             })
             .unzip();
 
-        let alphas_1: [Vec<FieldElement>; 3] = alphas_1.try_into().unwrap();
-        let alphas_2: [Vec<FieldElement>; 3] = alphas_2.try_into().unwrap();
+        let alphas_1: [Vec<FieldElement>; 3] = alphas_1
+            .try_into()
+            .expect("alphas_1 must have exactly 3 elements");
+        let alphas_2: [Vec<FieldElement>; 3] = alphas_2
+            .try_into()
+            .expect("alphas_2 must have exactly 3 elements");
 
         let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
         let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
@@ -310,7 +327,7 @@ fn prove_from_alphas(
 
         let public_1 = if !public_inputs.is_empty() {
             let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
-            merlin.prover_hint_ark(&p1);
+            merlin.prover_message(&p1);
             Some(p1)
         } else {
             None

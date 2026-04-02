@@ -1,6 +1,8 @@
 pub mod file;
+pub use file::binary_format;
 pub mod hash_config;
 mod interner;
+mod mavros;
 mod noir_proof_scheme;
 pub mod optimize;
 pub mod prefix_covector;
@@ -9,6 +11,7 @@ mod r1cs;
 pub mod skyscraper;
 pub mod sparse_matrix;
 mod transcript_sponge;
+pub mod u256_arith;
 pub mod utils;
 mod verifier;
 mod whir_r1cs;
@@ -22,9 +25,10 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     hash_config::HashConfig,
-    noir_proof_scheme::{MavrosSchemeData, NoirProof, NoirProofScheme, NoirSchemeData},
+    mavros::{MavrosProver, MavrosSchemeData},
+    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector},
-    prover::{MavrosProver, NoirProver, Prover},
+    prover::{NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
@@ -42,7 +46,7 @@ pub fn register_ntt() {
     INIT.call_once(|| {
         // Register NTT for polynomial operations
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
+            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
         whir::algebra::ntt::NTT.insert(ntt);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines

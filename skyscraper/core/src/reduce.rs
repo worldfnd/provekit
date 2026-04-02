@@ -43,7 +43,7 @@ pub fn reduce_partial(x: [u64; 4]) -> [u64; 4] {
 /// Combined partial reduction and add round constant
 /// Input can be any value.
 /// Output is in range [0, 2M + ϵ)  (TODO: Analyse more carefully)
-/// TODO: Maybe with a round dependend lookup factor it can be [0, M + ϵ)
+/// TODO: Maybe with a round dependent lookup factor it can be [0, M + ϵ)
 #[inline(always)]
 pub fn reduce_partial_add_rc(x: [u64; 4], rc: usize) -> [u64; 4] {
     // The compiler should turn this division by constant into an umulh.

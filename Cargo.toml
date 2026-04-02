@@ -14,6 +14,7 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-wasm",
   "tooling/verifier-server",
   "ntt",
   "poseidon2",
@@ -60,10 +61,14 @@ missing_docs_in_private_items = { level = "allow", priority = 1 }
 missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
-debug = true      # Generate symbol info for profiling
 opt-level = 3
 codegen-units = 1
 lto = "fat"
+
+# Size-optimized builds for mobile (iOS/Android): cargo build --profile release-mobile
+[profile.release-mobile]
+inherits = "release"
+opt-level = "z"
 
 # Fast release builds for development iteration: cargo build --profile release-fast
 [profile.release-fast]
@@ -95,10 +100,11 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover" }
+provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
 anyhow = "1.0.93"
@@ -114,6 +120,7 @@ chrono = "0.4.41"
 divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
+num-bigint = "0.4"
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
 primitive-types = "0.13.1"
@@ -129,8 +136,6 @@ seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = { version = "0.10.9", features = ["asm"] }
-sha3 = "0.11.0-rc.3"
-blake3 = "1.5.6"
 test-case = "3.3.1"
 tikv-jemallocator = "0.6"
 toml = "0.8.8"
@@ -143,10 +148,22 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
+parking_lot = "0.12"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
+
+# WASM-specific dependencies
+js-sys = "0.3"
+lzma-rs = "0.3"
+ruzstd = "0.8"
+wasm-bindgen-rayon = "1.2"
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 
 # Noir language dependencies
 acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
@@ -163,17 +180,14 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.1
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
   "scalar_field",
 ] }
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree", "parallel"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", branch = "main"}
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", branch = "main"}
-# Use git so we never point into reilabs/spongefish (workspace root = virtual manifest).
-# For local spongefish dev, vendor the crates into e.g. vendor/spongefish and patch here.
-spongefish = { path = "../../reilabs/spongefish/spongefish", features = [
-  "ark-ff", "sha2", "sha3", "blake3", "keccak", "std"
-] }
-spongefish-pow = { path = "../../reilabs/spongefish/pow", package = "spongefish-pow" }
-whir = { path = "../../Wizard/whir", features = ["tracing"] }
+mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04"}
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
+  "ark-ff", "sha2",
+], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "790bdf02cc469700fcb227aae48c8fbc25ca9f49", features = ["tracing", "rs_in_order"] }

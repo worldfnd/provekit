@@ -1,0 +1,55 @@
+# WASM build:
+#   cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std
+#   wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm
+#   wasm-opt -O3 --enable-simd --enable-threads --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext --fast-math --low-memory-unused -o pkg/provekit_wasm_bg.wasm pkg/provekit_wasm_bg.wasm
+#
+# RUSTFLAGS and linker args are in .cargo/config.toml under [target.wasm32-unknown-unknown].
+# The browser must serve with Cross-Origin-Opener-Policy: same-origin and
+# Cross-Origin-Embedder-Policy: require-corp headers for SharedArrayBuffer.
+
+[package]
+name = "provekit-wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Workspace crates - enable parallel features with wasm-bindgen-rayon
+provekit-common.workspace = true
+provekit-prover = { workspace = true, default-features = false, features = ["parallel"] }
+provekit-verifier.workspace = true
+
+# Noir language
+acir.workspace = true
+
+
+# 3rd party
+anyhow.workspace = true
+base64.workspace = true
+console_error_panic_hook.workspace = true
+getrandom.workspace = true   # Enable js feature for WASM via feature unification (v0.2)
+getrandom03.workspace = true  # Enable wasm_js feature for WASM via feature unification (v0.3)
+hex.workspace = true
+js-sys.workspace = true
+lzma-rs.workspace = true
+postcard.workspace = true
+ruzstd.workspace = true  # Pure-Rust Zstd decompressor (native crate zstd uses C bindings, incompatible with WASM)
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+
+# WASM parallelism via Web Workers
+wasm-bindgen-rayon.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["getrandom", "getrandom03"]
+
+[lints]
+workspace = true
