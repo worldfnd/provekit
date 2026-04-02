@@ -571,6 +571,10 @@ impl NoirToR1CSCompiler {
                     // and add byte-level ops to leverage the combined byte-level lookup table.
                     BlackBoxFuncCall::AND { lhs, rhs, output } => {
                         ensure!(
+                            lhs.num_bits() > 0,
+                            "AND operands must have nonzero bit width"
+                        );
+                        ensure!(
                             lhs.num_bits() == rhs.num_bits(),
                             "AND operands must have the same bit width, got {} and {}",
                             lhs.num_bits(),
@@ -585,6 +589,10 @@ impl NoirToR1CSCompiler {
                         );
                     }
                     BlackBoxFuncCall::XOR { lhs, rhs, output } => {
+                        ensure!(
+                            lhs.num_bits() > 0,
+                            "XOR operands must have nonzero bit width"
+                        );
                         ensure!(
                             lhs.num_bits() == rhs.num_bits(),
                             "XOR operands must have the same bit width, got {} and {}",
