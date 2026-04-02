@@ -15,7 +15,7 @@ use {
     serde::{Deserialize, Serialize},
 };
 pub use {
-    binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
+    binops::BINOP_ATOMIC_BITS,
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
     limbs::{Limbs, MAX_LIMBS},
     ram::{SpiceMemoryOperation, SpiceWitnesses},
