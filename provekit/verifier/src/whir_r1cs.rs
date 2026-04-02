@@ -5,7 +5,7 @@ use {
         }, utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         }
-    }, std::os::unix::raw::pid_t, tracing::instrument, whir::{
+    }, tracing::instrument, whir::{
         algebra::linear_form::LinearForm,
         transcript::{Proof, VerifierMessage, VerifierState, codecs::Empty},
     }
@@ -52,13 +52,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .whir_witness
             .receive_commitments(&mut arthur, 1)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
-        println!("self.whir_witness: {:?}", self.whir_witness);
-
-        println!("commitment_1: {:?}", commitment_1);
         let commitment_2 = if self.num_challenges > 0 {
             let _logup_challenges: Vec<FieldElement> =
                 arthur.verifier_message_vec(self.num_challenges);
-            println!("logup_challenges: {:?}", _logup_challenges);
             Some(
                 self.whir_witness
                     .receive_commitments(&mut arthur, 1)
@@ -67,19 +63,16 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         } else {
             None
         };
-        println!("commitment_2: {:?}", commitment_2);
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
             || run_sumcheck_verifier(&mut arthur, self.m_0),
         );
-        println!("sumcheck_result: {:?}", sumcheck_result);
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
 
         let public_inputs_hash_buf: FieldElement = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
-        println!("public_inputs_hash_buf: {:?}", public_inputs_hash_buf);
         let expected_public_inputs_hash = public_inputs.hash();
         ensure!(
             public_inputs_hash_buf == expected_public_inputs_hash,
@@ -89,7 +82,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         );
         let x: FieldElement = arthur.verifier_message();
 
-        println!("x: {:?}", x);
         let alphas = multiply_transposed_by_eq_alpha(
             &at,
             &bt,
@@ -224,15 +216,12 @@ pub fn run_sumcheck_verifier(
 ) -> Result<DataFromSumcheckVerifier> {
     let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
 
-    println!("r: {:?}", r);
     let sum_g: FieldElement = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read sum_g"))?;
 
-    println!("sum_g: {:?}", sum_g);
     let rho: FieldElement = arthur.verifier_message();
 
-    println!("rho: {:?}", rho);
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g;
 
     let mut alpha = vec![FieldElement::zero(); m_0];
@@ -263,7 +252,6 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i);
     }
 
-    println!("alpha: {:?}", alpha);
     let blinding_eval: FieldElement = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;

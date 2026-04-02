@@ -259,7 +259,6 @@ fn prove_from_alphas(
             create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
 
         merlin.prover_hint_ark(&evals);
-
         if !public_inputs.is_empty() {
             let public_eval = compute_public_weight_evaluation(
                 &mut weights,
