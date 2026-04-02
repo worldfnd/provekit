@@ -1,29 +1,13 @@
 package circuit
 
 import (
-	"math/big"
-	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
-
-// bytesToScalarLE interprets the first 32 bytes as a little-endian scalar (field element).
-func bytesToScalarLE(api frontend.API, b []uints.U8) frontend.Variable {
-	const wordSize = 32
-	if len(b) < wordSize {
-		return frontend.Variable(0)
-	}
-	out := frontend.Variable(0)
-	curMul := big.NewInt(1)
-	for i := 0; i < wordSize; i++ {
-		out = api.Add(out, api.Mul(b[i].Val, curMul))
-		curMul.Mul(curMul, big.NewInt(256))
-	}
-	return out
-}
 
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Nimue, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
@@ -58,11 +42,11 @@ func runSumcheck(
 		}
 		foldingRandomness[i] = foldingRandomnessTemp[0]
 		sumcheckVal := api.Add(
-			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{0})[0],
-			utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{1})[0],
+			whir.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{0})[0],
+			whir.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{1})[0],
 		)
 		api.AssertIsEqual(sumcheckVal, lastEval)
-		lastEval = utilities.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{foldingRandomness[i]})[0]
+		lastEval = whir.UnivarPoly(api, sumcheckPolynomial, []frontend.Variable{foldingRandomness[i]})[0]
 	}
 	return foldingRandomness, lastEval, nil
 }

@@ -333,16 +333,6 @@ func nativeIRSCommitVerifyWithPoints(
 	if err = arthur.ProverHintArk(&submatrix); err != nil {
 		return nil, nil, fmt.Errorf("submatrix: %w", err)
 	}
-	// Print submatrix values as decimal using LimbsToBigIntMod
-	// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-	// for i, v := range submatrix {
-	// 	if i > 0 {
-	// 		fmt.Print(", ")
-	// 	}
-	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
-	// 	fmt.Print(val.String())
-	// }
-	// fmt.Println("]")
 
 	// Read Merkle proof hints
 	foldedDomainSize := domainSize / foldingFactorPower
@@ -610,11 +600,6 @@ func buildRoundMerkleEntry(
 	// Debug: for first query, print full verification trace
 	if len(indices) > 0 {
 		idx := uint64(indices[0])
-		leafHash := tree[IndexPair{Depth: uint64(treeHeight), Index: idx}]
-		sibHash := tree[IndexPair{Depth: uint64(treeHeight), Index: idx ^ 1}]
-		fmt.Println("buildRoundMerkleEntry: query[0] idx =", idx)
-		fmt.Println("  leaf hash  =", DigestToFieldElement(leafHash))
-		fmt.Println("  sib hash   =", DigestToFieldElement(sibHash))
 		currentIdx := idx
 		for d := treeHeight; d > 0; d-- {
 			node := tree[IndexPair{Depth: uint64(d), Index: currentIdx}]
@@ -688,11 +673,10 @@ func nativeReceiveCommitment(
 	oodSamples int,
 ) (*NativeCommitment, error) {
 	// Root hash (prover_message)
-	roots, err := arthur.FillNextScalars(1)
+	_, err := arthur.FillNextScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("root hash: %w", err)
 	}
-	fmt.Println("roots:", roots)
 	// OOD points (verifier challenges)
 	oodPoints := make([]*big.Int, 0)
 	oodAnswers := make([]*big.Int, 0)
@@ -709,9 +693,6 @@ func nativeReceiveCommitment(
 		}
 		oodAnswers = ans
 	}
-
-	fmt.Println("oodPoints:", oodPoints)
-	fmt.Println("oodAnswers:", oodAnswers)
 
 	return &NativeCommitment{
 		OutOfDomain: NativeEvaluations{
@@ -779,19 +760,6 @@ func nativePowThreshold(difficulty int) [4]uint64 {
 	return skBigIntToLimbs(threshold)
 }
 
-// limbsLessThan returns true if a < b, comparing [4]uint64 as little-endian 256-bit integers.
-func limbsLessThan(a, b [4]uint64) bool {
-	for i := 3; i >= 0; i-- {
-		if a[i] < b[i] {
-			return true
-		}
-		if a[i] > b[i] {
-			return false
-		}
-	}
-	return false
-}
-
 // ---------------------------------------------------------------------------
 // NativeWhirVerify: full WHIR batched verification
 // Mirrors Rust whir::Config::verify() exactly.
@@ -840,10 +808,7 @@ func NativeWhirVerify(
 			},
 		}, nil
 	}
-	fmt.Println("evaluations:", evaluations)
-	fmt.Println("numVectors:", numVectors)
 	numLinearForms = len(evaluations) / numVectors
-	fmt.Println("numLinearForms:", numLinearForms)
 	// ---------------------------------------------------------------
 	// 1. Complete OOD evaluation matrix with cross-terms
 	// ---------------------------------------------------------------
@@ -876,10 +841,6 @@ func NativeWhirVerify(
 		}
 		vectorOffset += commitment.NumVectors()
 	}
-	fmt.Println("oods_evals count:", len(oodsEvalInfos))
-	fmt.Println("oods_matrix len:", len(oodsMatrix))
-	fmt.Println("oods_eval_infos:", oodsEvalInfos)
-	fmt.Println("oods_matrix:", oodsMatrix)
 
 	// ---------------------------------------------------------------
 	// 2. Vector RLC (random linear combination of interleaved vectors)
@@ -893,7 +854,6 @@ func NativeWhirVerify(
 	// 3. Constraint RLC
 	// ---------------------------------------------------------------
 	totalConstraints := len(oodsEvalInfos) + numLinearForms
-	fmt.Println("totalConstraints:", totalConstraints)
 	constraintRLCCoeffs, err := nativeGeometricChallenge(arthur, totalConstraints)
 	if err != nil {
 		return nil, fmt.Errorf("constraint_rlc: %w", err)
@@ -918,7 +878,6 @@ func NativeWhirVerify(
 		row := oodsMatrix[i*numVectors : (i+1)*numVectors]
 		theSum = frAdd(theSum, frMul(coeff, nativeDotBigInt(vectorRLCCoeffs, row)))
 	}
-	fmt.Println("the_sum after initial:", theSum)
 
 	// Track round constraints for final MLE subtraction
 	roundConstraints := []NativeRoundConstraint{
@@ -930,7 +889,6 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	// 5. Initial sumcheck
 	// ---------------------------------------------------------------
-	fmt.Println("constraintRLCCoeffs:", constraintRLCCoeffs)
 	if len(constraintRLCCoeffs) == 0 {
 		// No constraints: skip sumcheck, just squeeze folding randomness
 		if theSum.Cmp(big.NewInt(0)) != 0 {
@@ -975,7 +933,6 @@ func NativeWhirVerify(
 	// polyRLC for initial is vectorRLCCoeffs; for round is [1]
 	currentPolyRLC := vectorRLCCoeffs
 
-	fmt.Println("before round configs iteration")
 	for r := 0; r < nRounds; r++ {
 		// receive_commitment for folded polynomial
 		oodSamples := whirParams.RoundParametersOODSamples[r]
@@ -993,7 +950,6 @@ func NativeWhirVerify(
 		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
 		var inDomainIndices []int
 		var roundMerkle *whir.RoundMerkleEntry
-		fmt.Println("prev: prevInitial", prev, prevInitial)
 		if prev == prevInitial {
 			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
 				arthur,
@@ -1071,7 +1027,6 @@ func NativeWhirVerify(
 		}
 		_ = tensorWeights
 
-		fmt.Println("before Constraint RLC")
 		// Squeeze combination randomness for this round
 		constraintRLC, err := nativeGeometricChallenge(arthur, len(constraintValues))
 		if err != nil {
@@ -1106,7 +1061,6 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	finalSize := 1 << whirParams.FinalSumcheckRounds
 	finalVector, err := arthur.FillNextScalars(finalSize)
-	fmt.Println("finalVector:", finalVector)
 
 	if err != nil {
 		return nil, fmt.Errorf("final vector: %w", err)
@@ -1135,15 +1089,6 @@ func NativeWhirVerify(
 	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
 		return nil, fmt.Errorf("final submatrix: %w", err)
 	}
-	// fmt.Print("finalSubmatrix [")
-	// for i, v := range finalSubmatrix {
-	// 	if i > 0 {
-	// 		fmt.Print(", ")
-	// 	}
-	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
-	// 	fmt.Print(val.String())
-	// }
-	// fmt.Println("]")
 
 	allStirAnswers = append(allStirAnswers, [][]Fp256{})
 
@@ -1237,54 +1182,4 @@ func NativeWhirVerify(
 			Rounds: merkleRounds,
 		},
 	}, nil
-}
-
-// nativeMatrixMLE computes the MLE of a sparse matrix weight:
-// sum over cells: value * rowEval[row] * colEval[col]
-func nativeMatrixMLE(cells []MatrixCell, rowEval []*big.Int, colEval []*big.Int) *big.Int {
-	result := big.NewInt(0)
-	for _, cell := range cells {
-		if cell.row < len(rowEval) && cell.column < len(colEval) {
-			term := frMul(cell.value, frMul(rowEval[cell.row], colEval[cell.column]))
-			result = frAdd(result, term)
-		}
-	}
-	return result
-}
-
-// nativeGeometricTillMLE evaluates the MLE of [1, x, x^2, ..., x^{n-1}, 0, ..., 0]
-// at the given point. This mirrors the circuit geometricTill function.
-func nativeGeometricTillMLE(x *big.Int, n int, point []*big.Int) *big.Int {
-	k := len(point)
-	if n <= 0 || n > (1<<k) {
-		panic(fmt.Sprintf("nativeGeometricTillMLE: invalid n=%d for k=%d", n, k))
-	}
-
-	borrow0 := big.NewInt(1)
-	borrow1 := big.NewInt(0)
-	xCur := new(big.Int).Set(x)
-
-	for i := range k {
-		ri := point[k-1-i]
-		bn := ((n - 1) >> i) & 1
-
-		b0 := frSub(big.NewInt(1), ri)
-		b1 := frMul(xCur, ri)
-
-		if bn == 0 {
-			newBorrow0 := frMul(b0, borrow0)
-			newBorrow1 := frAdd(frMul(frAdd(b0, b1), borrow1), frMul(b1, borrow0))
-			borrow0 = newBorrow0
-			borrow1 = newBorrow1
-		} else {
-			newBorrow0 := frAdd(frMul(frAdd(b0, b1), borrow0), frMul(b0, borrow1))
-			newBorrow1 := frMul(b1, borrow1)
-			borrow0 = newBorrow0
-			borrow1 = newBorrow1
-		}
-
-		xCur = frMul(xCur, xCur)
-	}
-
-	return borrow0
 }

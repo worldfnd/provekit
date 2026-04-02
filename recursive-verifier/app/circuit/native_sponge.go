@@ -141,18 +141,18 @@ func (s *NativeSponge) permute() {
 // Absorb writes input bytes into the rate portion of the state, permuting
 // when the rate is full. Matches DuplexSponge::absorb exactly.
 func (s *NativeSponge) Absorb(input []byte) {
-	if len(input) == 0 {
-		return
+	s.squeezePos = spongeRate
+
+	for len(input) > 0 {
+		if s.absorbPos == spongeRate {
+			s.permute()
+			s.absorbPos = 0
+		}
+		chunkLen := min(len(input), spongeRate-s.absorbPos)
+		copy(s.state[s.absorbPos:s.absorbPos+chunkLen], input[:chunkLen])
+		s.absorbPos += chunkLen
+		input = input[chunkLen:]
 	}
-	if s.absorbPos == spongeRate {
-		s.absorbPos = 0
-		s.squeezePos = spongeRate
-		s.permute()
-	}
-	chunkLen := min(len(input), spongeRate-s.absorbPos)
-	copy(s.state[s.absorbPos:s.absorbPos+chunkLen], input[:chunkLen])
-	s.absorbPos += chunkLen
-	s.Absorb(input[chunkLen:])
 }
 
 // Squeeze reads output bytes from the rate portion of the state, permuting
@@ -161,9 +161,10 @@ func (s *NativeSponge) Squeeze(output []byte) {
 	if len(output) == 0 {
 		return
 	}
+	s.absorbPos = 0
+
 	if s.squeezePos == spongeRate {
 		s.squeezePos = 0
-		s.absorbPos = 0
 		s.permute()
 	}
 	chunkLen := min(len(output), spongeRate-s.squeezePos)
@@ -173,24 +174,22 @@ func (s *NativeSponge) Squeeze(output []byte) {
 }
 
 // InitFromProtocolID initializes the sponge by absorbing the 64-byte protocol_id
-// (as 2 LE field elements) and the 32-byte session_id (as 1 LE field element).
-// If sessionID is nil or shorter than 32 bytes, session_id is absorbed as Fr(0).
-// This matches spongefish's DomainSeparator initialization.
+// and the 32-byte session_id as raw bytes. This matches spongefish's
+// DomainSeparator initialization which absorbs raw bytes via public_message.
 func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte) {
 	s.state = [64]byte{}
 	s.absorbPos = 0
 	s.squeezePos = spongeRate
-	sessionID = make([]byte, 32)
 
-	s.AbsorbFr(leBytesToNativeBigInt(protocolID[:32]))
-	s.AbsorbFr(leBytesToNativeBigInt(protocolID[32:]))
-	var sessionFr *big.Int
+	// Absorb protocol ID as raw bytes (64 bytes)
+	s.Absorb(protocolID[:])
+	// Absorb session ID as raw bytes (32 bytes, zero-padded if needed)
+	var sessionBuf [32]byte
 	if len(sessionID) >= 32 {
-		sessionFr = leBytesToNativeBigInt(sessionID[:32])
-	} else {
-		sessionFr = big.NewInt(0)
+		copy(sessionBuf[:], sessionID[:32])
 	}
-	s.AbsorbFr(sessionFr)
+	s.Absorb(sessionBuf[:])
+	// Instance is Empty (0 bytes), nothing to absorb.
 }
 
 // AbsorbFr absorbs a field element as 32 LE bytes.
@@ -206,12 +205,18 @@ func (s *NativeSponge) SqueezeFr() *big.Int {
 	return leBytesToNativeBigInt(buf[:])
 }
 
-func leBytesToNativeBigInt(b []byte) *big.Int {
+// leBytesToBigIntUnreduced interprets b as a little-endian integer without reducing mod p.
+func leBytesToBigIntUnreduced(b []byte) *big.Int {
 	val := new(big.Int)
 	for i := len(b) - 1; i >= 0; i-- {
 		val.Lsh(val, 8)
 		val.Or(val, big.NewInt(int64(b[i])))
 	}
+	return val
+}
+
+func leBytesToNativeBigInt(b []byte) *big.Int {
+	val := leBytesToBigIntUnreduced(b)
 	val.Mod(val, bn254Modulus)
 	return val
 }
@@ -274,20 +279,17 @@ func (a *NativeArthur) FillNextScalars(n int) ([]*big.Int, error) {
 }
 
 // FillChallengeScalars squeezes n field elements from the sponge.
-// Each challenge requires 64 bytes (two sponge squeezes) to match spongefish's
-// DecodingFieldBuffer which uses (MODULUS_BIT_SIZE.div_ceil(8) + 32) = 64 bytes
-// per field element for statistical uniformity, then reduces mod p.
+// Each challenge requires 64 bytes to match spongefish's DecodingFieldBuffer
+// which uses (MODULUS_BIT_SIZE.div_ceil(8) + 32) = 64 bytes per field element
+// for statistical uniformity, then reduces mod p once over the full 64-byte LE integer.
 func (a *NativeArthur) FillChallengeScalars(n int) ([]*big.Int, error) {
 	out := make([]*big.Int, n)
 	for i := range n {
-		// Squeeze two field elements (64 bytes total) and combine as LE integer mod p.
-		lo := a.sponge.SqueezeFr() // first 32 bytes
-		hi := a.sponge.SqueezeFr() // next 32 bytes
-		// combined = hi << 256 | lo, then mod p
-		combined := new(big.Int).Lsh(hi, 256)
-		combined.Add(combined, lo)
-		combined.Mod(combined, bn254Modulus)
-		out[i] = combined
+		// Squeeze 64 raw bytes and interpret as a single LE integer, then reduce mod p.
+		var buf [64]byte
+		a.sponge.Squeeze(buf[:])
+		out[i] = leBytesToBigIntUnreduced(buf[:])
+		out[i].Mod(out[i], bn254Modulus)
 	}
 	return out, nil
 }
@@ -418,7 +420,6 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 			} else {
 				// Need sibling hash from hints
 				siblingHash, err := arthur.ProverHint(32)
-				// fmt.Println("prover hint:", FrDecimalToHexLE(typeConverters.LittleEndianUint8ToBigInt(siblingHash).String()))
 				if err != nil {
 					return FullMultiPath[KeccakDigest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}

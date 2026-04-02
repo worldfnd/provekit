@@ -20,7 +20,6 @@ func geometricChallenge(api frontend.API, nimue gnarkNimue.Nimue, count int) ([]
 		if err := nimue.FillChallengeScalars(x); err != nil {
 			return nil, err
 		}
-		api.Println("x", x[0])
 		return ExpandRandomness(api, x[0], count), nil
 	}
 }
@@ -56,30 +55,6 @@ func TensorProduct(api frontend.API, a []frontend.Variable, b []frontend.Variabl
 	return result
 }
 
-// EvaluateQuadraticPolynomialFromEvaluationList performs Lagrange interpolation on a
-// quadratic polynomial P(x) defined by evaluations over the domain {0, 1, 2}.
-//
-// Given the input vector E = [P(0), P(1), P(2)], it computes the value P(r)
-// for an arbitrary point 'r' by deriving the coefficients a, b, c such that:
-//
-//	P(x) = ax^2 + bx + c
-//
-// The coefficients are computed as:
-//
-//	c = P(0)
-//	b = (-P(2) + 4P(1) - 3P(0)) / 2
-//	a = ( P(2) - 2P(1) +  P(0)) / 2
-//
-// This allows the verifier to evaluate the polynomial at a random challenge point
-// using only the evaluations provided by the prover.
-func EvaluateQuadraticPolynomialFromEvaluationList(api frontend.API, evaluations []frontend.Variable, point frontend.Variable) (ans frontend.Variable) {
-	inv2 := api.Inverse(2)
-	b0 := evaluations[0]
-	b1 := api.Mul(api.Add(api.Neg(evaluations[2]), api.Mul(4, evaluations[1]), api.Mul(-3, evaluations[0])), inv2)
-	b2 := api.Mul(api.Add(evaluations[2], api.Mul(-2, evaluations[1]), evaluations[0]), inv2)
-	return api.Add(api.Mul(point, point, b2), api.Mul(point, b1), b0)
-}
-
 func MultivarPoly(coefs []frontend.Variable, vars []frontend.Variable, api frontend.API) frontend.Variable {
 	if len(vars) == 0 {
 		return coefs[0]
@@ -105,33 +80,6 @@ func UnivarPoly(api frontend.API, coefficients []frontend.Variable, points []fro
 	return results
 }
 
-func EqPolyOutside(api frontend.API, coords []frontend.Variable, point []frontend.Variable) frontend.Variable {
-	acc := frontend.Variable(1)
-	for i := range coords {
-		// a*b + (1-a)(1-b) = 2ab - a - b + 1
-		ab := api.Mul(coords[i], point[i])
-		term := api.Add(api.Add(ab, ab), api.Sub(api.Sub(1, coords[i]), point[i]))
-		acc = api.Mul(acc, term)
-	}
-	return acc
-}
-
-func Reverse[T any](s []T) []T {
-	res := make([]T, len(s))
-	copy(res, s)
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		res[i], res[j] = s[j], s[i]
-	}
-	return res
-}
-
-// calculateShiftValue returns the dot product of the concatenated OOD answers
-// and folded values against a vector of random challenges.
-// Used to verify random linear combinations in FRI-based protocols.
-func CalculateShiftValue(oodAnswers []frontend.Variable, combinationRandomness []frontend.Variable, computedFold []frontend.Variable, api frontend.API) frontend.Variable {
-	return DotProduct(api, append(oodAnswers, computedFold...), combinationRandomness)
-}
-
 // computeEqWeights computes eq(point, p) for all binary points p on the hypercube.
 // Mirrors Rust MultilinearPoint::eq_weights / eq_poly.
 // For point = [r_0, ..., r_{n-1}], returns 2^n values where
@@ -151,18 +99,6 @@ func computeEqWeights(api frontend.API, point []frontend.Variable) []frontend.Va
 			result[2*j+1] = hi
 		}
 		cur *= 2
-	}
-	return result
-}
-
-// tensorProductVec computes the Kronecker product of two vectors.
-// Mirrors Rust algebra::tensor_product: result[i*len(b)+j] = a[i] * b[j].
-func tensorProductVec(api frontend.API, a, b []frontend.Variable) []frontend.Variable {
-	result := make([]frontend.Variable, len(a)*len(b))
-	for i, x := range a {
-		for j, y := range b {
-			result[i*len(b)+j] = api.Mul(x, y)
-		}
 	}
 	return result
 }

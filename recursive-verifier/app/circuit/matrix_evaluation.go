@@ -211,54 +211,152 @@ func evaluateFoldedR1CSMatrixExtension(
 	return []frontend.Variable{ansA, ansB, ansC}
 }
 
-// func evaluateR1CSMatrixExtensionBatch(
-// 	api frontend.API,
-// 	circuit *Circuit,
-// 	rowRand []frontend.Variable,
-// 	colRand []frontend.Variable,
-// 	w1Size int,
-// ) []frontend.Variable {
-// 	// Returns [Az1, Bz1, Cz1, Az2, Bz2, Cz2]
-// 	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
-// 	colEval := calculateEQOverBooleanHypercube(api, colRand)
+// evaluateR1CSMatrixExtensionSplit evaluates the R1CS matrix MLEs at (rowRand, colRand)
+// but splits contributions by column: columns < w1Size contribute to the first set
+// [A1, B1, C1], columns >= w1Size contribute to the second set [A2, B2, C2] with
+// column indices shifted by w1Size.
+// Returns [A1, B1, C1, A2, B2, C2].
+func evaluateR1CSMatrixExtensionSplit(
+	api frontend.API,
+	circuit *Circuit,
+	rowRand []frontend.Variable,
+	colRand1 []frontend.Variable,
+	colRand2 []frontend.Variable,
+	w1Size int,
+) ([]frontend.Variable, []frontend.Variable) {
+	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
 
-// 	ans := make([]frontend.Variable, 6)
-// 	for i := range ans {
-// 		ans[i] = frontend.Variable(0)
-// 	}
+	eval1 := colRand1 != nil
+	eval2 := colRand2 != nil
 
-// 	for i := range circuit.MatrixA {
-// 		col := circuit.MatrixA[i].column
-// 		row := circuit.MatrixA[i].row
-// 		val := circuit.MatrixA[i].value
+	var colEval1, colEval2 []frontend.Variable
+	if eval1 {
+		colEval1 = calculateEQOverBooleanHypercube(api, colRand1)
+	}
+	if eval2 {
+		colEval2 = calculateEQOverBooleanHypercube(api, colRand2)
+	}
 
-// 		if col < w1Size {
-// 			ans[0] = api.Add(ans[0], api.Mul(val, api.Mul(rowEval[row], colEval[col])))
-// 		} else {
-// 			ans[3] = api.Add(ans[3], api.Mul(val, api.Mul(rowEval[row], colEval[col-w1Size])))
-// 		}
-// 	}
+	ans1 := []frontend.Variable{frontend.Variable(0), frontend.Variable(0), frontend.Variable(0)}
+	ans2 := []frontend.Variable{frontend.Variable(0), frontend.Variable(0), frontend.Variable(0)}
 
-// 	for i := range circuit.MatrixB {
-// 		col := circuit.MatrixB[i].column
-// 		if col < w1Size {
-// 			ans[1] = api.Add(ans[1], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col])))
-// 		} else {
-// 			ans[4] = api.Add(ans[4], api.Mul(circuit.MatrixB[i].value, api.Mul(rowEval[circuit.MatrixB[i].row], colEval[col-w1Size])))
-// 		}
-// 	}
+	for i := range circuit.MatrixA {
+		cell := circuit.MatrixA[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[0] = api.Add(ans1[0], api.Mul(contrib, colEval1[cell.column]))
+			}
+		} else {
+			if eval2 {
+				ans2[0] = api.Add(ans2[0], api.Mul(contrib, colEval2[cell.column-w1Size]))
+			}
+		}
+	}
 
-// 	for i := range circuit.MatrixC {
-// 		col := circuit.MatrixC[i].column
-// 		if col < w1Size {
-// 			ans[2] = api.Add(ans[2], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col])))
-// 		} else {
-// 			ans[5] = api.Add(ans[5], api.Mul(circuit.MatrixC[i].value, api.Mul(rowEval[circuit.MatrixC[i].row], colEval[col-w1Size])))
-// 		}
-// 	}
+	for i := range circuit.MatrixB {
+		cell := circuit.MatrixB[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[1] = api.Add(ans1[1], api.Mul(contrib, colEval1[cell.column]))
+			}
+		} else {
+			if eval2 {
+				ans2[1] = api.Add(ans2[1], api.Mul(contrib, colEval2[cell.column-w1Size]))
+			}
+		}
+	}
 
-// 	return ans
-// }
+	for i := range circuit.MatrixC {
+		cell := circuit.MatrixC[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[2] = api.Add(ans1[2], api.Mul(contrib, colEval1[cell.column]))
+			}
+		} else {
+			if eval2 {
+				ans2[2] = api.Add(ans2[2], api.Mul(contrib, colEval2[cell.column-w1Size]))
+			}
+		}
+	}
+
+	return ans1, ans2
+}
+
+// evaluateFoldedR1CSMatrixExtensionSplit computes the folded R1CS weight MLE
+// split by column, analogous to evaluateR1CSMatrixExtensionSplit but with
+// column indices taken modulo maskSize.
+func evaluateFoldedR1CSMatrixExtensionSplit(
+	api frontend.API,
+	circuit *Circuit,
+	rowRand []frontend.Variable,
+	foldedPoint1 []frontend.Variable,
+	foldedPoint2 []frontend.Variable,
+	maskSize int,
+	w1Size int,
+) ([]frontend.Variable, []frontend.Variable) {
+	rowEval := calculateEQOverBooleanHypercube(api, rowRand)
+
+	eval1 := foldedPoint1 != nil
+	eval2 := foldedPoint2 != nil
+
+	var foldedColEval1, foldedColEval2 []frontend.Variable
+	if eval1 {
+		foldedColEval1 = calculateEQOverBooleanHypercube(api, foldedPoint1)
+	}
+	if eval2 {
+		foldedColEval2 = calculateEQOverBooleanHypercube(api, foldedPoint2)
+	}
+
+	ans1 := []frontend.Variable{frontend.Variable(0), frontend.Variable(0), frontend.Variable(0)}
+	ans2 := []frontend.Variable{frontend.Variable(0), frontend.Variable(0), frontend.Variable(0)}
+
+	for i := range circuit.MatrixA {
+		cell := circuit.MatrixA[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[0] = api.Add(ans1[0], api.Mul(contrib, foldedColEval1[cell.column%maskSize]))
+			}
+		} else {
+			if eval2 {
+				ans2[0] = api.Add(ans2[0], api.Mul(contrib, foldedColEval2[(cell.column-w1Size)%maskSize]))
+			}
+		}
+	}
+
+	for i := range circuit.MatrixB {
+		cell := circuit.MatrixB[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[1] = api.Add(ans1[1], api.Mul(contrib, foldedColEval1[cell.column%maskSize]))
+			}
+		} else {
+			if eval2 {
+				ans2[1] = api.Add(ans2[1], api.Mul(contrib, foldedColEval2[(cell.column-w1Size)%maskSize]))
+			}
+		}
+	}
+
+	for i := range circuit.MatrixC {
+		cell := circuit.MatrixC[i]
+		contrib := api.Mul(cell.value, rowEval[cell.row])
+		if cell.column < w1Size {
+			if eval1 {
+				ans1[2] = api.Add(ans1[2], api.Mul(contrib, foldedColEval1[cell.column%maskSize]))
+			}
+		} else {
+			if eval2 {
+				ans2[2] = api.Add(ans2[2], api.Mul(contrib, foldedColEval2[(cell.column-w1Size)%maskSize]))
+			}
+		}
+	}
+
+	return ans1, ans2
+}
 
 func calculateEQOverBooleanHypercube(api frontend.API, r []frontend.Variable) []frontend.Variable {
 	ans := []frontend.Variable{frontend.Variable(1)}

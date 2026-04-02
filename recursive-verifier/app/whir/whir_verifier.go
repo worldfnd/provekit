@@ -50,8 +50,6 @@ func VerifyWhir(
 		mlPoint := ExpandFromUnivariate(api, point, params.MVParamsNumberOfVariables)
 		oodPoints = append(oodPoints, mlPoint)
 	}
-	api.Println("oodPoints", oodPoints)
-	api.Println("oodMatrix", oodMatrix)
 	// Random linear combination of the vectors.
 	vectorRlcCoeffs, err := geometricChallenge(api, nimue, numVectors)
 	if err != nil {
@@ -108,15 +106,13 @@ func VerifyWhir(
 	totalFoldingRandomness = initialSumcheckFoldingRandomness
 
 	prevRootHash := commitment.Root
-	api.Println("prevRootHash", prevRootHash)
-
+	api.Println(prevRootHash)
 	for r := range params.ParamNRounds {
 		// Receive round commitment
 		rootHash := make([]frontend.Variable, 1)
 		if err = nimue.FillNextScalars(rootHash); err != nil {
 			return nil, fmt.Errorf("round %d root: %w", r, err)
 		}
-		api.Println("rootHash", rootHash)
 
 		roundOODPoints := make([]frontend.Variable, params.RoundParametersOODSamples[r])
 		roundOODAnswers := make([]frontend.Variable, params.RoundParametersOODSamples[r])
@@ -128,8 +124,6 @@ func VerifyWhir(
 				return nil, fmt.Errorf("round %d ood answers: %w", r, err)
 			}
 		}
-		api.Println("roundOODPoints", roundOODPoints)
-		api.Println("roundOODAnswers", roundOODAnswers)
 		mainRoundData.OODPoints[r] = roundOODPoints
 
 		if err = RunPoW(api, sc, nimue, params.PowBits[r]); err != nil {

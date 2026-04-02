@@ -10,31 +10,6 @@ import (
 	"github.com/consensys/gnark/std/math/uints"
 )
 
-func MultivarPoly(coefs []frontend.Variable, vars []frontend.Variable, api frontend.API) frontend.Variable {
-	if len(vars) == 0 {
-		return coefs[0]
-	}
-	deg_zero := MultivarPoly(coefs[:len(coefs)/2], vars[:len(vars)-1], api)
-	deg_one := api.Mul(vars[len(vars)-1], MultivarPoly(coefs[len(coefs)/2:], vars[:len(vars)-1], api))
-	return api.Add(deg_zero, deg_one)
-}
-
-func UnivarPoly(api frontend.API, coefficients []frontend.Variable, points []frontend.Variable) []frontend.Variable {
-	if len(points) == 0 {
-		return coefficients
-	}
-
-	results := make([]frontend.Variable, len(points))
-	for j := range points {
-		ans := frontend.Variable(0)
-		for i := range coefficients {
-			ans = api.Add(api.Mul(ans, points[j]), coefficients[len(coefficients)-1-i])
-		}
-		results[j] = ans
-	}
-	return results
-}
-
 func IndexOf(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
 	if len(outputs) != 1 {
 		return fmt.Errorf("expecting one output")
@@ -55,14 +30,6 @@ func IndexOf(_ *big.Int, inputs []*big.Int, outputs []*big.Int) error {
 
 	outputs[0] = big.NewInt(-1)
 	return nil
-}
-
-func EqPolyOutside(api frontend.API, coords []frontend.Variable, point []frontend.Variable) frontend.Variable {
-	acc := frontend.Variable(1)
-	for i := range coords {
-		acc = api.Mul(acc, api.Add(api.Mul(coords[i], point[i]), api.Mul(api.Sub(frontend.Variable(1), coords[i]), api.Sub(frontend.Variable(1), point[i]))))
-	}
-	return acc
 }
 
 func EvaluateQuadraticPolynomialFromEvaluationList(api frontend.API, evaluations []frontend.Variable, point frontend.Variable) (ans frontend.Variable) {

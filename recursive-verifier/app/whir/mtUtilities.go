@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"math/bits"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -63,8 +62,6 @@ func runWhirSumcheckRounds(
 		}
 		c0 := coeffs[0]
 		c2 := coeffs[1]
-		api.Println("c0", c0)
-		api.Println("c2", c2)
 
 		c1 := api.Sub(sum, api.Add(api.Add(c0, c0), c2))
 
@@ -72,7 +69,6 @@ func runWhirSumcheckRounds(
 		if err := nimue.FillChallengeScalars(rBuf); err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
 		}
-		api.Println("rBuf", rBuf[0])
 		foldingRandomness[i] = rBuf[0]
 
 		r := foldingRandomness[i]
@@ -90,13 +86,11 @@ func getStirChallenges(
 ) ([]frontend.Variable, error) {
 	foldedDomainSize := domainSize / foldingFactorPower
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
-	api.Println("domainSizeBytes", domainSizeBytes)
-	api.Println("numQueries", numQueries)
+
 	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
 	if err := nimue.FillChallengeBytes(stirQueries); err != nil {
 		return nil, err
 	}
-	api.Println("stirQueries", stirQueries)
 	bitLength := bits.Len(uint(foldedDomainSize)) - 1
 
 	indexes := make([]frontend.Variable, numQueries)
@@ -151,19 +145,25 @@ func PoW(api frontend.API, sc *skyscraper.Skyscraper, nimue gnarkNimue.Nimue, di
 	if err := nimue.FillChallengeBytes(challenge); err != nil {
 		return nil, nil, err
 	}
-	api.Println("challenge", challenge)
 	nonce := make([]uints.U8, 8)
 	if err := nimue.FillNextBytes(nonce); err != nil {
 		return nil, nil, err
 	}
-	api.Println("nonce", nonce)
-	challengeFieldElement := typeConverters.LittleEndianFromUints(api, challenge)
-	nonceFieldElement := typeConverters.LittleEndianFromUints(api, nonce)
+	challengeFieldElement := LittleEndianFromUints(api, challenge)
+	nonceFieldElement := LittleEndianFromUints(api, nonce)
 	err := CheckPoW(api, sc, challengeFieldElement, nonceFieldElement, difficulty)
 	if err != nil {
 		return nil, nil, err
 	}
 	return challenge, nonce, nil
+}
+
+func LittleEndianFromUints(api frontend.API, varArr []uints.U8) frontend.Variable {
+	frontendVar := frontend.Variable(0)
+	for i := range varArr {
+		frontendVar = api.Add(api.Mul(256, frontendVar), varArr[len(varArr)-1-i].Val)
+	}
+	return frontendVar
 }
 
 // CheckPoW verifies a proof-of-work using Skyscraper hash.
@@ -186,7 +186,6 @@ func CheckPoW(api frontend.API, sc *skyscraper.Skyscraper, challenge frontend.Va
 	threshold := new(big.Int).Rsh(modulus, uint(difficulty))
 	threshold.And(threshold, maxUint64)
 
-	api.Println("firstLimb, threshold", firstLimb, threshold)
 	api.AssertIsLessOrEqual(firstLimb, threshold)
 	return nil
 }

@@ -2,64 +2,13 @@ package circuit
 
 import (
 	"fmt"
-	"math/big"
 
 	"reilabs/whir-verifier-circuit/app/whir"
 
-	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	gnarkNimue "github.com/reilabs/gnark-nimue"
 	skyscraper "github.com/reilabs/gnark-skyscraper"
 )
-
-// ---------------------------------------------------------------------------
-// Circuit-level WHIR verification using gnark-nimue transcript.
-// Adapted from the gnark whir package (recursive-verifier/app/whir/) to use
-// nimue instead of keccacheck/transcript.Verifier.
-// ---------------------------------------------------------------------------
-
-// NimueHintReader provides on-demand access to the WHIR hint byte stream
-// by issuing gnark NewHint calls. Mirrors whir.HintReader but avoids the
-// keccacheck dependency.
-type NimueHintReader struct {
-	api        frontend.API
-	hintInputs []frontend.Variable
-	vecHint    solver.Hint
-	hashHint   solver.Hint
-	callIndex  int
-}
-
-// NewNimueHintReader creates a hint reader for WHIR proof data.
-func NewNimueHintReader(api frontend.API, hintInputs []frontend.Variable, vecHint, hashHint solver.Hint) *NimueHintReader {
-	return &NimueHintReader{
-		api:        api,
-		hintInputs: hintInputs,
-		vecHint:    vecHint,
-		hashHint:   hashHint,
-	}
-}
-
-// ReadVec reads n field elements from a Vec block in the hint stream.
-func (h *NimueHintReader) ReadVec(n int) []frontend.Variable {
-	inputs := append(h.hintInputs, frontend.Variable(h.callIndex), frontend.Variable(0))
-	h.callIndex++
-	results, err := h.api.Compiler().NewHint(h.vecHint, n, inputs...)
-	if err != nil {
-		panic(fmt.Sprintf("NimueHintReader.ReadVec failed: %v", err))
-	}
-	return results
-}
-
-// ReadHash reads a single hash from the hint stream.
-func (h *NimueHintReader) ReadHash() frontend.Variable {
-	inputs := append(h.hintInputs, frontend.Variable(h.callIndex), frontend.Variable(1))
-	h.callIndex++
-	results, err := h.api.Compiler().NewHint(h.hashHint, 1, inputs...)
-	if err != nil {
-		panic(fmt.Sprintf("NimueHintReader.ReadHash failed: %v", err))
-	}
-	return results[0]
-}
 
 // ---------------------------------------------------------------------------
 // ParsedCommitmentNimue is the circuit-level parsed commitment.
@@ -83,16 +32,30 @@ type WhirStatement struct {
 // Mirrors nativeZKWhirVerify but uses gnark constraints.
 // ---------------------------------------------------------------------------
 
+// CommitmentMode controls which columns of the R1CS matrices contribute to
+// weight MLE evaluations in the FinalClaim checks.
+type CommitmentMode int
+
+const (
+	// SingleCommitment uses all columns (single-commitment path).
+	SingleCommitment CommitmentMode = iota
+	// DualCommitment1 uses only columns < W1Size and includes public + blinding weights.
+	DualCommitment1
+	// DualCommitment2 uses only columns >= W1Size (shifted by W1Size). No public or blinding weights.
+	DualCommitment2
+)
+
 // R1CSWeightParams bundles the circuit data needed to compute weight MLE
 // evaluations for both the blinded and blinding FinalClaim checks.
 type R1CSWeightParams struct {
-	Circuit               *Circuit
-	Alpha                 []frontend.Variable
+	Circuit                *Circuit
+	Alpha                  []frontend.Variable
 	PublicWeightsChallenge frontend.Variable
-	HasPublicInputs       bool
+	HasPublicInputs        bool
+	Mode                   CommitmentMode
 }
 
-func ZKWhirVerifyNimue(
+func ZKWhirVerify(
 	api frontend.API,
 	sc *skyscraper.Skyscraper,
 	nimue gnarkNimue.Nimue,
@@ -102,7 +65,7 @@ func ZKWhirVerifyNimue(
 	blindingParams WHIRParams,
 	evaluations []frontend.Variable, // claimed linear form evaluations [pub?, az, bz, cz, blinding_eval]
 	weightsLen int, // 4 (no public) or 5 (with public)
-	numPolynomials int, // typically 1
+	numPolynomials int,
 	blindedMerkleData *whir.WhirMerkleData,
 	blindingMerkleData *whir.WhirMerkleData,
 	r1csWeights R1CSWeightParams,
@@ -335,27 +298,41 @@ func ZKWhirVerifyNimue(
 	// ---------------------------------------------------------------
 	// 10. Blinded FinalClaim: verify WHIR-committed polynomial matches
 	//     R1CS weight linear forms.
-	//     Weights: [pub?, az_covector, bz_covector, cz_covector, blinding_covector]
 	// ---------------------------------------------------------------
 	{
 		w := r1csWeights
 		fc := blindedResult.FinalClaim
 		foldingRandomness := fc.EvaluationPoint
-		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, w.Circuit, w.Alpha, foldingRandomness)
 
 		var weightMLEs []frontend.Variable
-		if w.HasPublicInputs {
-			weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
+		switch w.Mode {
+		case SingleCommitment:
+			// All columns, public + blinding weights.
+			matrixExtensionEvals := evaluateR1CSMatrixExtension(api, w.Circuit, w.Alpha, foldingRandomness)
+			if w.HasPublicInputs {
+				weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
+			}
+			weightMLEs = append(weightMLEs, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
+			weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
+		case DualCommitment1:
+			// Columns < W1Size only, with public + blinding weights.
+			matrixEvals1, _ := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, foldingRandomness, nil, w.Circuit.W1Size)
+			if w.HasPublicInputs {
+				weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
+			}
+			weightMLEs = append(weightMLEs, matrixEvals1[0], matrixEvals1[1], matrixEvals1[2])
+			weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
+		case DualCommitment2:
+			// Columns >= W1Size only, no public, no blinding.
+			_, matrixEvals2 := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, foldingRandomness, w.Circuit.W1Size)
+			weightMLEs = append(weightMLEs, matrixEvals2[0], matrixEvals2[1], matrixEvals2[2])
 		}
-		weightMLEs = append(weightMLEs, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
-		weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
 		fc.VerifyClaim(api, weightMLEs)
 	}
 
 	// ---------------------------------------------------------------
 	// 11. Blinding FinalClaim: verify blinding polynomial matches
 	//     beq_weights and folded R1CS weights.
-	//     Weights: [beq_weights, pub?, az_folded, bz_folded, cz_folded, blinding_folded]
 	// ---------------------------------------------------------------
 	{
 		w := r1csWeights
@@ -363,15 +340,29 @@ func ZKWhirVerifyNimue(
 		evalPoint := fc.EvaluationPoint
 		numBlindingVars := blindingParams.MVParamsNumberOfVariables - 1
 		maskSize := 1 << (numBlindingVars + 1)
-		foldedMatrixEvals := evaluateFoldedR1CSMatrixExtension(api, w.Circuit, w.Alpha, evalPoint, maskSize)
 
 		beqMLE := batchedBeqMLE(api, gammas, maskingChallenge[0], tau2[0], numBlindingVars, evalPoint)
 		weightMLEs := []frontend.Variable{beqMLE}
-		if w.HasPublicInputs {
-			weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
+
+		switch w.Mode {
+		case SingleCommitment:
+			foldedMatrixEvals := evaluateFoldedR1CSMatrixExtension(api, w.Circuit, w.Alpha, evalPoint, maskSize)
+			if w.HasPublicInputs {
+				weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
+			}
+			weightMLEs = append(weightMLEs, foldedMatrixEvals[0], foldedMatrixEvals[1], foldedMatrixEvals[2])
+			weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
+		case DualCommitment1:
+			foldedEvals1, _ := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, evalPoint, nil, maskSize, w.Circuit.W1Size)
+			if w.HasPublicInputs {
+				weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
+			}
+			weightMLEs = append(weightMLEs, foldedEvals1[0], foldedEvals1[1], foldedEvals1[2])
+			weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
+		case DualCommitment2:
+			_, foldedEvals2 := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, evalPoint, maskSize, w.Circuit.W1Size)
+			weightMLEs = append(weightMLEs, foldedEvals2[0], foldedEvals2[1], foldedEvals2[2])
 		}
-		weightMLEs = append(weightMLEs, foldedMatrixEvals[0], foldedMatrixEvals[1], foldedMatrixEvals[2])
-		weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
 		fc.VerifyClaim(api, weightMLEs)
 	}
 
@@ -498,7 +489,3 @@ func batchedBeqMLE(
 
 	return result
 }
-
-// Dummy hint function references to satisfy HintReader.
-// The actual hint functions are registered by the caller.
-var _ solver.Hint = func(_ *big.Int, _ []*big.Int, _ []*big.Int) error { return nil }

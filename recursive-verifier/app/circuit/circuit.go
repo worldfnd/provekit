@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"reilabs/whir-verifier-circuit/app/common"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
 	"reilabs/whir-verifier-circuit/app/whir"
 
@@ -38,14 +37,19 @@ type Circuit struct {
 	PublicInputs                 PublicInputs
 
 	// Evaluation hints from prover (prover_hint_ark, not transcript-bound).
-	// Single commitment: [az_at_alpha, bz_at_alpha, cz_at_alpha]
+	// [az_at_alpha, bz_at_alpha, cz_at_alpha] for commitment 1 (or single commitment).
 	Evaluations []frontend.Variable
+	// [az_at_alpha, bz_at_alpha, cz_at_alpha] for commitment 2 (dual mode only).
+	Evaluations2 []frontend.Variable
 	// Public input evaluation hint (only used when PublicInputs is non-empty).
 	PublicEval frontend.Variable
 
-	// Merkle proof data for WHIR commitment verification.
+	// Merkle proof data for WHIR commitment verification (commitment 1 / single).
 	BlindedMerkleData  whir.WhirMerkleData
 	BlindingMerkleData whir.WhirMerkleData
+	// Merkle proof data for commitment 2 (dual mode only).
+	BlindedMerkleData2  whir.WhirMerkleData
+	BlindingMerkleData2 whir.WhirMerkleData
 
 	// R1CS matrices as sparse cell lists. Used to compute the weight MLE
 	// evaluations for the FinalClaim binding check.
@@ -66,6 +70,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
+	// ---------------------------------------------------------------
+	// 1. Parse commitment 1 (witness polynomial)
+	// ---------------------------------------------------------------
 	blindedCommitments, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
 	api.Println("blindedCommitments", blindedCommitments)
 	api.Println("blindingCommitment", blindingCommitment)
@@ -73,16 +80,20 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 	numPolynomials := 1
+	isDualMode := circuit.NumChallenges > 0
 
-	if circuit.NumChallenges > 0 {
-		// Squeeze logup challenges
+	// ---------------------------------------------------------------
+	// 2. If dual mode: squeeze logup challenges, parse commitment 2
+	// ---------------------------------------------------------------
+	var blindedCommitments2 []Commitment
+	var blindingCommitment2 Commitment
+	if isDualMode {
 		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
 		if err = nimue.FillChallengeScalars(logupChallenges); err != nil {
 			return err
 		}
 
-		// Parse second commitment (C2)
-		blindedCommitments2, blindingCommitment2, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
+		blindedCommitments2, blindingCommitment2, err = zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
 		api.Println("blindedCommitments2", blindedCommitments2)
 		api.Println("blindingCommitment2", blindingCommitment2)
 		if err != nil {
@@ -90,7 +101,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 	}
 
-	// Run ZK sumcheck — returns tRand (r), alpha (folding challenges), and blindingEval.
+	// ---------------------------------------------------------------
+	// 3. ZK sumcheck
+	// ---------------------------------------------------------------
 	tRand, alpha, fAtAlpha, blindingEval, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
@@ -100,6 +113,9 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	api.Println("fAtAlpha", fAtAlpha)
 	api.Println("blindingEval", blindingEval)
 
+	// ---------------------------------------------------------------
+	// 4. Public inputs hash check + x challenge
+	// ---------------------------------------------------------------
 	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
 		return err
@@ -112,86 +128,142 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	api.Println("publicWeightsChallenge", publicWeightsChallenge)
 
 	// ---------------------------------------------------------------
-	// Single commitment WHIR R1CS verification
-	// (mirrors Rust verifier lines 172-214, single commitment path)
+	// 5. Read evaluation hints
 	// ---------------------------------------------------------------
-
-	// Evaluation hints (az_at_alpha, bz_at_alpha, cz_at_alpha) come from
-	// prover_hint_ark in the Rust verifier (hint stream, not transcript).
-	// They are passed as circuit witness fields.
 	if len(circuit.Evaluations) < 3 {
 		return fmt.Errorf("circuit.Evaluations must have at least 3 elements, got %d", len(circuit.Evaluations))
 	}
-	azAtAlpha := circuit.Evaluations[0]
-	bzAtAlpha := circuit.Evaluations[1]
-	czAtAlpha := circuit.Evaluations[2]
-	api.Println("azAtAlpha", azAtAlpha)
-	api.Println("bzAtAlpha", bzAtAlpha)
-	api.Println("czAtAlpha", czAtAlpha)
+	evals1Az := circuit.Evaluations[0]
+	evals1Bz := circuit.Evaluations[1]
+	evals1Cz := circuit.Evaluations[2]
+	api.Println("evals1Az", evals1Az)
+	api.Println("evals1Bz", evals1Bz)
+	api.Println("evals1Cz", evals1Cz)
 
-	// Build the evaluations list for WHIR verify.
-	// Includes blinding_eval as the last weight, matching Rust's
-	// [pub?, az, bz, cz, blinding_eval] passed to whir_zk::verify.
 	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
-	var whirEvaluations []frontend.Variable
 
-	if hasPublicInputs {
-		api.Println("publicEval", circuit.PublicEval)
-		whirEvaluations = []frontend.Variable{circuit.PublicEval, azAtAlpha, bzAtAlpha, czAtAlpha, blindingEval}
-	} else {
-		whirEvaluations = []frontend.Variable{azAtAlpha, bzAtAlpha, czAtAlpha, blindingEval}
-	}
+	// ---------------------------------------------------------------
+	// 6. WHIR verification for commitment 1
+	// ---------------------------------------------------------------
+	{
+		var whirEvaluations []frontend.Variable
+		if hasPublicInputs {
+			api.Println("publicEval", circuit.PublicEval)
+			whirEvaluations = []frontend.Variable{circuit.PublicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
+		} else {
+			whirEvaluations = []frontend.Variable{evals1Az, evals1Bz, evals1Cz, blindingEval}
+		}
 
-	// Determine weights length: 3 (A,B,C) + optional public + blinding = 4 or 5
-	// weightsLen includes the blinding weight for computing numWFoldedEvals
-	// in the ZK wrapper, even though evaluations doesn't include blinding_eval.
-	weightsLen := 4
-	if hasPublicInputs {
-		weightsLen = 5
-	}
+		weightsLen := 4
+		if hasPublicInputs {
+			weightsLen = 5
+		}
 
-	// Convert parsed commitments to nimue format
-	blindedCommitmentNimue := ParsedCommitmentNimue{
-		Root:       blindedCommitments[0].RootHash,
-		OodPoints:  blindedCommitments[0].InitialOODQueries,
-		OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
-	}
-	blindingCommitmentNimue := ParsedCommitmentNimue{
-		Root:       blindingCommitment.RootHash,
-		OodPoints:  blindingCommitment.InitialOODQueries,
-		OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
-	}
+		blindedCommitmentNimue := ParsedCommitmentNimue{
+			Root:       blindedCommitments[0].RootHash,
+			OodPoints:  blindedCommitments[0].InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
+		}
+		blindingCommitmentNimue := ParsedCommitmentNimue{
+			Root:       blindingCommitment.RootHash,
+			OodPoints:  blindingCommitment.InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
+		}
 
-	// Run ZK-WHIR verification (single commitment version)
-	err = ZKWhirVerifyNimue(
-		api, sc, nimue,
-		blindedCommitmentNimue,
-		blindingCommitmentNimue,
-		circuit.BlindedCommitmentWhirConfig,
-		circuit.BlindingCommitmentWhirConfig,
-		whirEvaluations,
-		weightsLen,
-		numPolynomials,
-		&circuit.BlindedMerkleData,
-		&circuit.BlindingMerkleData,
-		R1CSWeightParams{
-			Circuit:                circuit,
-			Alpha:                  alpha,
-			PublicWeightsChallenge: publicWeightsChallenge[0],
-			HasPublicInputs:        hasPublicInputs,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("ZK-WHIR verification failed: %w", err)
+		mode := SingleCommitment
+		if isDualMode {
+			mode = DualCommitment1
+		}
+
+		err = ZKWhirVerify(
+			api, sc, nimue,
+			blindedCommitmentNimue,
+			blindingCommitmentNimue,
+			circuit.BlindedCommitmentWhirConfig,
+			circuit.BlindingCommitmentWhirConfig,
+			whirEvaluations,
+			weightsLen,
+			numPolynomials,
+			&circuit.BlindedMerkleData,
+			&circuit.BlindingMerkleData,
+			R1CSWeightParams{
+				Circuit:                circuit,
+				Alpha:                  alpha,
+				PublicWeightsChallenge: publicWeightsChallenge[0],
+				HasPublicInputs:        hasPublicInputs,
+				Mode:                   mode,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("ZK-WHIR verification failed for commitment 1: %w", err)
+		}
 	}
 
 	// ---------------------------------------------------------------
-	// Final R1CS constraint satisfaction check:
-	// f_at_alpha == (az·bz - cz) * eq(tRand, alpha)
-	//
-	// tRand is the Spartan verifier randomness (r), alpha is the
-	// sumcheck folding challenges, fAtAlpha is the unblinded last
-	// evaluation from the sumcheck.
+	// 7. If dual mode: WHIR verification for commitment 2
+	//    Commitment 2 has no public weight and no blinding weight → weightsLen=3
+	// ---------------------------------------------------------------
+	var azAtAlpha, bzAtAlpha, czAtAlpha frontend.Variable
+	if isDualMode {
+		if len(circuit.Evaluations2) < 3 {
+			return fmt.Errorf("circuit.Evaluations2 must have at least 3 elements, got %d", len(circuit.Evaluations2))
+		}
+		evals2Az := circuit.Evaluations2[0]
+		evals2Bz := circuit.Evaluations2[1]
+		evals2Cz := circuit.Evaluations2[2]
+		api.Println("evals2Az", evals2Az)
+		api.Println("evals2Bz", evals2Bz)
+		api.Println("evals2Cz", evals2Cz)
+
+		whirEvaluations2 := []frontend.Variable{evals2Az, evals2Bz, evals2Cz}
+
+		blindedCommitmentNimue2 := ParsedCommitmentNimue{
+			Root:       blindedCommitments2[0].RootHash,
+			OodPoints:  blindedCommitments2[0].InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindedCommitments2[0].InitialOODAnswers),
+		}
+		blindingCommitmentNimue2 := ParsedCommitmentNimue{
+			Root:       blindingCommitment2.RootHash,
+			OodPoints:  blindingCommitment2.InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindingCommitment2.InitialOODAnswers),
+		}
+
+		err = ZKWhirVerify(
+			api, sc, nimue,
+			blindedCommitmentNimue2,
+			blindingCommitmentNimue2,
+			circuit.BlindedCommitmentWhirConfig,
+			circuit.BlindingCommitmentWhirConfig,
+			whirEvaluations2,
+			3, // weightsLen: 3 (A,B,C only, no public, no blinding)
+			numPolynomials,
+			&circuit.BlindedMerkleData2,
+			&circuit.BlindingMerkleData2,
+			R1CSWeightParams{
+				Circuit:                circuit,
+				Alpha:                  alpha,
+				PublicWeightsChallenge: publicWeightsChallenge[0],
+				HasPublicInputs:        false,
+				Mode:                   DualCommitment2,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("ZK-WHIR verification failed for commitment 2: %w", err)
+		}
+
+		// az_at_alpha = evals_1 + evals_2 (Rust verifier sums the two)
+		azAtAlpha = api.Add(evals1Az, evals2Az)
+		bzAtAlpha = api.Add(evals1Bz, evals2Bz)
+		czAtAlpha = api.Add(evals1Cz, evals2Cz)
+	} else {
+		azAtAlpha = evals1Az
+		bzAtAlpha = evals1Bz
+		czAtAlpha = evals1Cz
+	}
+
+	// ---------------------------------------------------------------
+	// 8. Final R1CS constraint satisfaction check:
+	//    f_at_alpha == (az·bz - cz) * eq(tRand, alpha)
 	// ---------------------------------------------------------------
 	eqRA := calculateEqCircuit(api, tRand, alpha)
 	rhs := api.Mul(api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha), eqRA)
@@ -231,12 +303,14 @@ func configToNimueInit(cfg Config) (circuit, assign NimueInit) {
 	return circuit, assign
 }
 
+// DualCommitmentData holds the additional data needed for dual-commitment mode.
+type DualCommitmentData struct {
+	Evals2BigInt       []*big.Int
+	BlindedMerkleData  whir.WhirMerkleData
+	BlindingMerkleData whir.WhirMerkleData
+}
+
 // verifyCircuit builds the gnark circuit and runs Groth16 proving + verification.
-// Currently stubbed: the circuit requires transcript/IOPattern fields that are
-// being replaced by native spongefish replay. Will be re-enabled once the
-// SpongefishArthur-based circuit is integrated.
-//
-//nolint:unused
 func verifyCircuit(
 	cfg Config,
 	pk *groth16.ProvingKey,
@@ -245,10 +319,11 @@ func verifyCircuit(
 	interner Interner,
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
-	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints
+	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints (commitment 1)
 	publicEvalBigInt *big.Int, // public input evaluation (nil if no public inputs)
 	blindedMerkleData whir.WhirMerkleData,
 	blindingMerkleData whir.WhirMerkleData,
+	dualData *DualCommitmentData, // nil for single-commitment mode
 ) error {
 	transcriptT := make([]uints.U8, len(cfg.NargString))
 	contTranscript := make([]uints.U8, len(cfg.NargString))
@@ -272,6 +347,16 @@ func verifyCircuit(
 	evalsContainer := make([]frontend.Variable, 3)
 	blindedMerkleTemplate := allocateZeroWhirMerkleData(blindedMerkleData)
 	blindingMerkleTemplate := allocateZeroWhirMerkleData(blindingMerkleData)
+
+	// Dual-commitment templates
+	var evals2Container []frontend.Variable
+	var blindedMerkleTemplate2, blindingMerkleTemplate2 whir.WhirMerkleData
+	if dualData != nil {
+		evals2Container = make([]frontend.Variable, 3)
+		blindedMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindedMerkleData)
+		blindingMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindingMerkleData)
+	}
+
 	circuit := Circuit{
 		InitializationData:           nimueInitCircuit,
 		Transcript:                   contTranscript,
@@ -282,8 +367,11 @@ func verifyCircuit(
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputsContainer,
 		Evaluations:                  evalsContainer,
+		Evaluations2:                 evals2Container,
 		BlindedMerkleData:            blindedMerkleTemplate,
 		BlindingMerkleData:           blindingMerkleTemplate,
+		BlindedMerkleData2:           blindedMerkleTemplate2,
+		BlindingMerkleData2:          blindingMerkleTemplate2,
 		MatrixA:                      matrixA,
 		MatrixB:                      matrixB,
 		MatrixC:                      matrixC,
@@ -316,15 +404,12 @@ func verifyCircuit(
 		vk = &unsafeVk
 
 		if buildOps.ShouldSaveKeys() {
-			// Create the save keys directory if it doesn't exist
 			if err := os.MkdirAll(buildOps.SaveKeys, 0o755); err != nil {
 				log.Printf("Failed to create save keys directory %s: %v", buildOps.SaveKeys, err)
 			}
 
-			// Generate timestamp for filenames
 			timestamp := time.Now().Format("02Jan_15-04-05")
 
-			// Save proving key to file
 			pkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("pk_%s.bin", timestamp))
 			pkFile, err := os.Create(pkFilename)
 			if err != nil {
@@ -335,15 +420,13 @@ func verifyCircuit(
 						log.Printf("Failed to close PK file: %v", err)
 					}
 				}()
-				_, err = (*pk).WriteTo(pkFile) // Dereference with (*pk)
-				if err != nil {
+				if _, err = (*pk).WriteTo(pkFile); err != nil {
 					log.Printf("Failed to write PK to file: %v", err)
 				} else {
 					log.Printf("Proving key saved to %s", pkFilename)
 				}
 			}
 
-			// Save verifying key to file
 			vkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("vk_%s.bin", timestamp))
 			vkFile, err := os.Create(vkFilename)
 			if err != nil {
@@ -354,8 +437,7 @@ func verifyCircuit(
 						log.Printf("Failed to close VK file: %v", err)
 					}
 				}()
-				_, err = (*vk).WriteTo(vkFile) // Dereference with (*vk)
-				if err != nil {
+				if _, err = (*vk).WriteTo(vkFile); err != nil {
 					log.Printf("Failed to write VK to file: %v", err)
 				} else {
 					log.Printf("Verifying key saved to %s", vkFilename)
@@ -376,6 +458,18 @@ func verifyCircuit(
 		publicEvalAssign = big.NewInt(0)
 	}
 
+	// Build dual-commitment assignment data
+	var evals2Assign []frontend.Variable
+	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
+	if dualData != nil {
+		evals2Assign = make([]frontend.Variable, 3)
+		for i := 0; i < 3 && i < len(dualData.Evals2BigInt); i++ {
+			evals2Assign[i] = dualData.Evals2BigInt[i]
+		}
+		blindedMerkleAssign2 = dualData.BlindedMerkleData
+		blindingMerkleAssign2 = dualData.BlindingMerkleData
+	}
+
 	assignment := Circuit{
 		InitializationData:           nimueInitAssign,
 		Transcript:                   transcriptT,
@@ -386,9 +480,12 @@ func verifyCircuit(
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputs,
 		Evaluations:                  evalsAssign,
+		Evaluations2:                 evals2Assign,
 		PublicEval:                   publicEvalAssign,
 		BlindedMerkleData:            blindedMerkleData,
 		BlindingMerkleData:           blindingMerkleData,
+		BlindedMerkleData2:           blindedMerkleAssign2,
+		BlindingMerkleData2:          blindingMerkleAssign2,
 		MatrixA:                      matrixA,
 		MatrixB:                      matrixB,
 		MatrixC:                      matrixC,
@@ -449,68 +546,4 @@ func allocateZeroWhirMerkleData(src whir.WhirMerkleData) whir.WhirMerkleData {
 		dst.Rounds[r] = entry
 	}
 	return dst
-}
-
-//nolint:unused
-func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer bool) ([]frontend.Variable, []frontend.Variable) {
-	fSums := make([]frontend.Variable, len(claimedEvaluations.FSums))
-	gSums := make([]frontend.Variable, len(claimedEvaluations.GSums))
-
-	if !isContainer {
-		for i := range claimedEvaluations.FSums {
-			fSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.FSums[i].Limbs)
-			gSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.GSums[i].Limbs)
-		}
-	}
-
-	return fSums, gSums
-}
-
-//nolint:unused
-func witnessFirstRounds(hints Hints, isContainer bool) []Merkle {
-	result := make([]Merkle, len(hints.WitnessFirstRoundHints))
-	for i, hint := range hints.WitnessFirstRoundHints {
-		result[i] = newMerkle(hint.path, isContainer)
-	}
-	return result
-}
-
-//nolint:unused
-func parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation [2]Fp256, isContainer bool) (frontend.Variable, frontend.Variable) {
-	var fSumPublicWeights, gSumPublicWeights frontend.Variable
-
-	if !isContainer {
-		fSumPublicWeights = typeConverters.LimbsToBigIntMod(publicWeightsClaimedEvaluation[0].Limbs)
-		gSumPublicWeights = typeConverters.LimbsToBigIntMod(publicWeightsClaimedEvaluation[1].Limbs)
-	}
-
-	return fSumPublicWeights, gSumPublicWeights
-}
-
-func extendLinearStatement(
-	circuit *Circuit,
-	linearStatementEvaluations [][]frontend.Variable,
-	pubWitnessEvaluations []frontend.Variable,
-) [][]frontend.Variable {
-	var extendedLinearStatementEvals [][]frontend.Variable
-
-	if !circuit.PublicInputs.IsEmpty() {
-		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
-		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
-
-		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
-		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
-		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
-		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
-
-		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
-		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
-		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
-		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
-	} else {
-		// No public inputs, use original arrays
-		extendedLinearStatementEvals = linearStatementEvaluations
-	}
-
-	return extendedLinearStatementEvals
 }

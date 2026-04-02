@@ -132,16 +132,6 @@ type ZKHint struct {
 	roundHints            Hint
 }
 
-type ClaimedEvaluations struct {
-	FSums []Fp256
-	GSums []Fp256
-}
-
-type DualClaimedEvaluations struct {
-	First  ClaimedEvaluations
-	Second ClaimedEvaluations
-}
-
 type PublicInputs struct {
 	Values []frontend.Variable
 }

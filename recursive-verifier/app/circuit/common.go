@@ -70,41 +70,29 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	}
 	blindedCommitment := NativeCommitmentFromParsed(blindedCommitmentOODPoint, blindedCommitmentOODMatrix)
 
-	blindingCommitmentPolyRoot, blindingCommitmentOODPoint, blindingCommitmentOODMatrix, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
-	fmt.Println("blindingCommitmentPolyRoot", FrDecimalToHexLE(blindingCommitmentPolyRoot.String()))
-	fmt.Println("blindingCommitmentOODPoint", blindingCommitmentOODPoint)
-	fmt.Println("blindingCommitmentOODMatrix", blindingCommitmentOODMatrix)
+	_, blindingCommitmentOODPoint, blindingCommitmentOODMatrix, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
+
 	if err != nil {
 		return fmt.Errorf("parse blinding commitment: %w", err)
 	}
 	blindingCommitment := NativeCommitmentFromParsed(blindingCommitmentOODPoint, blindingCommitmentOODMatrix)
 
-	fmt.Println("config.BlindedCommitmentWhirConfig", config.BlindedCommitmentWhirConfig)
-	fmt.Println("config.BlindingCommitmentWhirConfig", config.BlindingCommitmentWhirConfig)
-
 	// ---------------------------------------------------------------
 	// 2. If dual mode: squeeze logup challenges, parse commitment 2
 	// ---------------------------------------------------------------
 	if config.NumChallenges > 0 {
-		a, err := arthur.FillChallengeScalars(config.NumChallenges)
-		fmt.Println("challenges", a)
+		_, err := arthur.FillChallengeScalars(config.NumChallenges)
 		if err != nil {
 			return fmt.Errorf("logup challenges: %w", err)
 		}
 		// Commitment 2 is another witness commitment (same config as commitment 1),
 		// parsed via receive_commitments which calls blinded.receive_commitment +
 		// blinding.receive_commitment.
-		e, f, g, err := nativeParseBatchedCommitment(arthur, blindedCommitmentWhirConfig)
-		fmt.Println("c2_blinded_root", e)
-		fmt.Println("c2_blinded_ood_points", f)
-		fmt.Println("c2_blinded_ood_matrix", g)
+		_, _, _, err = nativeParseBatchedCommitment(arthur, blindedCommitmentWhirConfig)
 		if err != nil {
 			return fmt.Errorf("parse commitment 2 blinded: %w", err)
 		}
-		e2, f2, g2, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
-		fmt.Println("c2_blinding_root", e2)
-		fmt.Println("c2_blinding_ood_points", f2)
-		fmt.Println("c2_blinding_ood_matrix", g2)
+		_, _, _, err = nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
 		if err != nil {
 			return fmt.Errorf("parse commitment 2: %w", err)
 		}
@@ -137,7 +125,6 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	if err = arthur.ProverHintArk(&evals1); err != nil {
 		return fmt.Errorf("evals_1: %w", err)
 	}
-	fmt.Println("evals_1:", evals1)
 
 	// Convert evals1 to []*big.Int for WHIR verification
 	evals1BigInt := fp256SliceToBigInt(evals1)
@@ -148,7 +135,6 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		if err = arthur.ProverHintArk(&evals2); err != nil {
 			return fmt.Errorf("evals_2: %w", err)
 		}
-		fmt.Println("evals_2:", evals2)
 		evals2BigInt = fp256SliceToBigInt(evals2)
 	}
 
@@ -159,7 +145,6 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		if err = arthur.ProverHintArk(&publicEval); err != nil {
 			return fmt.Errorf("public_eval: %w", err)
 		}
-		fmt.Println("public_eval:", publicEval)
 		publicEvalBigInt = fp256ToBigInt(publicEval)
 	}
 
@@ -178,11 +163,17 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	// 7. If dual mode: zkWHIR verify (second commitment)
 	//    weights_2 has no public weight and no blinding weight → 3 weights
 	// ---------------------------------------------------------------
+	var dualData *DualCommitmentData
 	if config.NumChallenges > 0 {
 		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
-		_, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
+		zkWhirData2, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
 		if err != nil {
 			return fmt.Errorf("zkWHIR verify commitment 2: %w", err)
+		}
+		dualData = &DualCommitmentData{
+			Evals2BigInt:       evals2BigInt,
+			BlindedMerkleData:  *zkWhirData2.BlindedMerkleData,
+			BlindingMerkleData: *zkWhirData2.BlindingMerkleData,
 		}
 	}
 	// ---------------------------------------------------------------
@@ -197,7 +188,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("parse interner: %w", err)
 	}
 
-	verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData)
+	verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, publicEvalBigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData, dualData)
 
 	return nil
 }
@@ -291,7 +282,6 @@ func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckDat
 		// saved_val = hhat(alpha_i)
 		savedVal = nativeEvalCubicPoly(hhat, alpha[i])
 	}
-	fmt.Println("alpha:", alpha)
 
 	// blinding_eval = prover_message()
 	blindingSlice, err := arthur.FillNextScalars(1)
@@ -299,7 +289,6 @@ func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckDat
 		return nil, fmt.Errorf("blinding_eval: %w", err)
 	}
 	blindingEval := blindingSlice[0]
-	fmt.Println("blinding_eval:", blindingEval)
 
 	// f_at_alpha = saved_val - rho * blinding_eval
 	rhoBE := new(big.Int).Mul(rho, blindingEval)
@@ -310,7 +299,6 @@ func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckDat
 	if fAtAlpha.Sign() < 0 {
 		fAtAlpha.Add(fAtAlpha, bn254Modulus)
 	}
-	fmt.Println("f_at_alpha:", fAtAlpha)
 
 	return &NativeSumcheckData{
 		R:            r,
@@ -319,7 +307,6 @@ func nativeRunSumcheckVerifier(arthur *NativeArthur, m0 int) (*NativeSumcheckDat
 		FAtAlpha:     fAtAlpha,
 	}, nil
 }
-
 
 // ---------------------------------------------------------------------------
 // Native zkWHIR verification transcript replay
@@ -393,15 +380,7 @@ func nativeIRSCommitVerify(
 	if err = arthur.ProverHintArk(&submatrix); err != nil {
 		return nil, fmt.Errorf("initial submatrix: %w", err)
 	}
-	// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-	// for i, v := range submatrix {
-	// 	if i > 0 {
-	// 		fmt.Print(", ")
-	// 	}
-	// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
-	// 	fmt.Print(val.String())
-	// }
-	// fmt.Println("]")
+
 	// matrix_commit.verify: read Merkle proof from hints
 	foldedDomainSize := domainSize / foldingFactorPower
 	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
@@ -452,7 +431,6 @@ func nativeZKWhirVerify(
 		return nil, fmt.Errorf("blinding_challenge: %w", err)
 	}
 	data.BlindingChallenge = bc[0]
-	fmt.Println("blinding_challenge:", data.BlindingChallenge)
 
 	// ---------------------------------------------------------------
 	// 2. w_folded_blinding_evals = prover_messages_vec(num_w_folded_evals)
@@ -464,7 +442,6 @@ func nativeZKWhirVerify(
 		return nil, fmt.Errorf("w_folded_blinding_evals: %w", err)
 	}
 	data.WFoldedBlindingEvals = wfbe
-	fmt.Println("w_folded_blinding_evals:", wfbe)
 
 	// ---------------------------------------------------------------
 	// 3. masking_challenge = verifier_message()
@@ -474,7 +451,6 @@ func nativeZKWhirVerify(
 		return nil, fmt.Errorf("masking_challenge: %w", err)
 	}
 	data.MaskingChallenge = mc[0]
-	fmt.Println("masking_challenge:", data.MaskingChallenge)
 
 	// ---------------------------------------------------------------
 	// 4. initial_committer.verify() — IRS commit in-domain verification
@@ -535,7 +511,6 @@ func nativeZKWhirVerify(
 			data.PerGammaEvals[g][p] = vals
 		}
 	}
-	fmt.Println("per-gamma evals parsed:", hGammasCount, "gammas x", params.NumPolynomials, "polys")
 
 	// ---------------------------------------------------------------
 	// 7. combined_claims = prover_messages_vec(num_polynomials)
@@ -545,13 +520,11 @@ func nativeZKWhirVerify(
 	if err != nil {
 		return nil, fmt.Errorf("combined_claims: %w", err)
 	}
-	fmt.Println("combined_claims:", data.CombinedClaims)
 
 	data.BatchedHClaims, err = arthur.FillNextScalars(params.NumPolynomials)
 	if err != nil {
 		return nil, fmt.Errorf("batched_h_claims: %w", err)
 	}
-	fmt.Println("batched_h_claims:", data.BatchedHClaims)
 
 	// ---------------------------------------------------------------
 	// 8. blinded_commitment.verify() — full WHIR verification
@@ -570,7 +543,6 @@ func nativeZKWhirVerify(
 	if err != nil {
 		return nil, fmt.Errorf("blinded_commitment verify: %w", err)
 	}
-	fmt.Println("blinded WHIR FinalClaim:", blindedResult.FinalClaim)
 
 	// ---------------------------------------------------------------
 	// 9. blinding_commitment.verify() — full WHIR verification
@@ -629,7 +601,6 @@ func nativeZKWhirVerify(
 	if err != nil {
 		return nil, fmt.Errorf("blinding_commitment verify: %w", err)
 	}
-	fmt.Println("blinding WHIR FinalClaim:", blindingResult.FinalClaim)
 
 	data.BlindedMerkleData = blindedResult.MerkleData
 	data.BlindingMerkleData = blindingResult.MerkleData
@@ -641,7 +612,6 @@ func nativeZKWhirVerify(
 // ---------------------------------------------------------------------------
 // Native protocol replay helpers
 // ---------------------------------------------------------------------------
-
 func nativeParseBatchedCommitment(arthur *NativeArthur, whirParams WHIRParams) (
 	rootHash *big.Int,
 	oodPoints []*big.Int,
@@ -663,7 +633,6 @@ func nativeParseBatchedCommitment(arthur *NativeArthur, whirParams WHIRParams) (
 	}
 	oodPoints = oodPts
 
-	fmt.Println("whirParams.BatchSize", whirParams.BatchSize)
 	oodAnswers = make([][]*big.Int, whirParams.BatchSize*oodSamples)
 	for i := range whirParams.BatchSize * oodSamples {
 		ans, e := arthur.FillNextScalars(1)
@@ -816,16 +785,7 @@ func nativeWhirVerify(arthur *NativeArthur, whirParams WHIRParams, whirConfig WH
 		if err = arthur.ProverHintArk(&submatrix); err != nil {
 			return ZKHint{}, fmt.Errorf("round %d submatrix: %w", r, err)
 		}
-		fmt.Println("round", r)
-		// fmt.Print("nativeIRSCommitVerifyWithPoints submatrix [")
-		// for i, v := range submatrix {
-		// 	if i > 0 {
-		// 		fmt.Print(", ")
-		// 	}
-		// 	val := typeConverters.LimbsToBigIntMod(v.Limbs)
-		// 	fmt.Print(val.String())
-		// }
-		// fmt.Println("]")
+
 		allStirAnswers = append(allStirAnswers, [][]Fp256{submatrix})
 
 		// Merkle tree hints

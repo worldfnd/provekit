@@ -147,7 +147,8 @@ pub fn gnark_parameters(
     w1_size: usize,
     public_inputs: &PublicInputs,
 ) -> GnarkConfig {
-    let protocol_id: Vec<u8> = [254, 56, 133, 87, 194, 81, 172, 125, 171, 232, 212, 34, 213, 54, 201, 175, 243, 8, 115, 212, 43, 15, 232, 98, 212, 206, 212, 200, 177, 211, 201, 173, 127, 207, 223, 18, 176, 207, 42, 100, 210, 104, 54, 46, 157, 243, 45, 22, 182, 241, 133, 183, 237, 27, 217, 103, 136, 241, 181, 218, 73, 192, 186, 128].to_vec();
+    let ds = scheme.create_domain_separator();
+    let protocol_id: Vec<u8> = ds.protocol_id.to_vec();
     GnarkConfig {
         blinded_commitment_whir_config: WHIRConfigGnark::new(blinded_commitment),
         blinding_commitment_whir_config: WHIRConfigGnark::new(blinding_commitment),

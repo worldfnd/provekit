@@ -2,8 +2,7 @@ package circuit
 
 import (
 	"math/big"
-
-	"reilabs/whir-verifier-circuit/app/utilities"
+	"math/bits"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -70,41 +69,33 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 	}
 }
 
-// GenerateStirChallengePoints generates the stir challenge points for the given parameters.
-// It calculates the folding factor power and generates the stir challenges for the given leaf indexes.
-func GenerateStirChallengePoints(
+func getStirChallenges(
 	api frontend.API,
 	arthur gnarkNimue.Nimue,
-	NQueries int,
-	leafIndexes []uints.U64,
+	numQueries int,
 	domainSize int,
-	uapi *uints.BinaryField[uints.U64],
-	expDomainGenerator frontend.Variable,
-	foldingFactor int,
+	foldingFactorPower int,
 ) ([]frontend.Variable, error) {
-	foldingFactorPower := 1 << foldingFactor
-	_, err := getStirChallenges(api, arthur, NQueries, domainSize, foldingFactorPower)
-	if err != nil {
+	foldedDomainSize := domainSize / foldingFactorPower
+	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
+
+	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
+	if err := arthur.FillChallengeBytes(stirQueries); err != nil {
 		return nil, err
 	}
 
-	finalRandomnessPoints := make([]frontend.Variable, len(leafIndexes))
+	bitLength := bits.Len(uint(foldedDomainSize)) - 1
 
-	for index := range leafIndexes {
-		finalRandomnessPoints[index] = utilities.Exponent(api, uapi, expDomainGenerator, leafIndexes[index])
+	indexes := make([]frontend.Variable, numQueries)
+	for i := range numQueries {
+		var value frontend.Variable = 0
+		for j := range domainSizeBytes {
+			value = api.Add(stirQueries[j+i*domainSizeBytes].Val, api.Mul(value, 256))
+		}
+
+		bitsOfValue := api.ToBinary(value)
+		indexes[i] = api.FromBinary(bitsOfValue[:bitLength]...)
 	}
 
-	return finalRandomnessPoints, nil
-}
-
-// GenerateCombinationRandomness generates the combination randomness for the given parameters.
-// It generates a random scalar and expands it to the required length.
-func GenerateCombinationRandomness(api frontend.API, arthur gnarkNimue.Nimue, randomnessLength int) ([]frontend.Variable, error) {
-	combRandomnessGen := make([]frontend.Variable, 1)
-	if err := arthur.FillChallengeScalars(combRandomnessGen); err != nil {
-		return nil, err
-	}
-
-	combinationRandomness := utilities.ExpandRandomness(api, combRandomnessGen[0], randomnessLength)
-	return combinationRandomness, nil
+	return indexes, nil
 }
