@@ -3,7 +3,7 @@ use {
     whir::parameters::ProtocolParameters,
 };
 
-const MIN_WHIR_NUM_VARIABLES: usize = 13;
+const MIN_WHIR_NUM_VARIABLES: usize = 14;
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
@@ -82,7 +82,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             batch_size:             1,
             hash_id:                whir::hash::SHA2,
         };
-        WhirZkConfig::new(1 << nv, &whir_params, num_polynomials)
+        WhirZkConfig::new(nv, &whir_params)
     }
 }
 
@@ -94,11 +94,11 @@ mod tests {
     fn verify_security_level() {
         let config = WhirR1CSScheme::new_whir_zk_config_for_size(20, 1);
         let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+            .blinded_polynomial
+            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
         let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+            .blinding_polynomial
+            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
         assert!(
             sec_blinded >= 128.0,
             "Blinded commitment security {sec_blinded:.2} < 128 bits"
@@ -113,11 +113,11 @@ mod tests {
     fn verify_security_level_min_variables() {
         let config = WhirR1CSScheme::new_whir_zk_config_for_size(MIN_WHIR_NUM_VARIABLES, 1);
         let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
+            .blinded_polynomial
+            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
         let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+            .blinding_polynomial
+            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
         assert!(
             sec_blinded >= 128.0,
             "Blinded commitment security {sec_blinded:.2} < 128 bits at nv={}",
