@@ -65,9 +65,9 @@ on:
         type: string
     secrets:
       BROWSERSTACK_USERNAME:
-        required: true
+        required: false
       BROWSERSTACK_ACCESS_KEY:
-        required: true
+        required: false
 
 permissions:
   actions: read
@@ -85,6 +85,7 @@ jobs:
     name: iOS BrowserStack benchmark
     if: inputs.platform == 'ios' || inputs.platform == 'both'
     runs-on: macos-15
+    environment: Browserstack
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -170,16 +171,25 @@ jobs:
           if [[ "${FUNCTIONS}" == \[* ]]; then
             functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
           fi
+          device_args=()
+          IFS=',' read -r -a device_specs <<<"${IOS_DEVICE_SPECS}"
+          for device in "${device_specs[@]}"; do
+            device="$(echo "$device" | xargs)"
+            if [[ -n "$device" ]]; then
+              device_args+=(--devices "$device")
+            fi
+          done
 
           cargo-mobench ci run \
             --target ios \
             --functions "${functions_arg}" \
             --iterations "${ITERATIONS}" \
             --warmup "${WARMUP}" \
-            --devices "${IOS_DEVICE_SPECS}" \
+            "${device_args[@]}" \
             --crate-path "$CRATE_PATH" \
             $RELEASE_FLAG \
             --fetch \
+            --fetch-timeout-secs 1800 \
             --output-dir target/mobench/ci/ios
 
       - name: Validate iOS benchmark outputs
@@ -209,6 +219,7 @@ jobs:
     name: Android BrowserStack benchmark
     if: inputs.platform == 'android' || inputs.platform == 'both'
     runs-on: macos-14
+    environment: Browserstack
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -309,16 +320,25 @@ jobs:
           if [[ "${FUNCTIONS}" == \[* ]]; then
             functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
           fi
+          device_args=()
+          IFS=',' read -r -a device_specs <<<"${ANDROID_DEVICE_SPECS}"
+          for device in "${device_specs[@]}"; do
+            device="$(echo "$device" | xargs)"
+            if [[ -n "$device" ]]; then
+              device_args+=(--devices "$device")
+            fi
+          done
 
           cargo-mobench ci run \
             --target android \
             --functions "${functions_arg}" \
             --iterations "${ITERATIONS}" \
             --warmup "${WARMUP}" \
-            --devices "${ANDROID_DEVICE_SPECS}" \
+            "${device_args[@]}" \
             --crate-path "$CRATE_PATH" \
             $RELEASE_FLAG \
             --fetch \
+            --fetch-timeout-secs 1800 \
             --output-dir target/mobench/ci/android
 
       - name: Validate Android benchmark outputs

@@ -1,88 +1,100 @@
-diff --git a/crates/mobench/src/browserstack.rs b/crates/mobench/src/browserstack.rs
-index d684cf3..647431e 100644
---- a/crates/mobench/src/browserstack.rs
-+++ b/crates/mobench/src/browserstack.rs
-@@ -345,35 +345,26 @@ impl BrowserStackClient {
+diff --git a/crates/mobench-sdk/src/builders/android.rs b/crates/mobench-sdk/src/builders/android.rs
+index 0f18c9a..9fcc7da 100644
+--- a/crates/mobench-sdk/src/builders/android.rs
++++ b/crates/mobench-sdk/src/builders/android.rs
+@@ -326,7 +326,7 @@ impl AndroidBuilder {
+         // Check that at least one native library exists in jniLibs
+         let jni_libs_dir = self.output_dir.join("android/app/src/main/jniLibs");
+         let lib_name = format!("lib{}.so", self.crate_name.replace("-", "_"));
+-        let required_abis = ["arm64-v8a", "armeabi-v7a", "x86_64"];
++        let required_abis = ["arm64-v8a"];
+         let mut found_libs = 0;
+         for abi in &required_abis {
+             let lib_path = jni_libs_dir.join(abi).join(&lib_name);
+@@ -458,7 +458,7 @@ impl AndroidBuilder {
+         self.check_cargo_ndk()?;
  
-     /// List available Android devices for Espresso testing.
-     pub fn list_espresso_devices(&self) -> Result<Vec<BrowserStackDevice>> {
--        let json = self.get_json("app-automate/espresso/v2/devices")?;
--        parse_device_list(json, "espresso")
-+        let json = self.get_json("app-automate/devices.json")?;
-+        Ok(parse_device_list(json, "espresso")?
-+            .into_iter()
-+            .filter(|device| device.os.eq_ignore_ascii_case("android"))
-+            .collect())
-     }
+         // Android ABIs to build for
+-        let abis = vec!["arm64-v8a", "armeabi-v7a", "x86_64"];
++        let abis = vec!["arm64-v8a"];
+         let release_flag = if matches!(config.profile, BuildProfile::Release) {
+             "--release"
+         } else {
+diff --git a/crates/mobench-sdk/src/codegen.rs b/crates/mobench-sdk/src/codegen.rs
+index 693156a..2ba0a35 100644
+--- a/crates/mobench-sdk/src/codegen.rs
++++ b/crates/mobench-sdk/src/codegen.rs
+@@ -335,6 +335,19 @@ pub fn generate_android_project(
+     default_function: &str,
+ ) -> Result<(), BenchError> {
+     let target_dir = output_dir.join("android");
++    let assets_backup_dir = output_dir.join(".android-assets-backup");
++    let existing_assets_dir = target_dir.join("app/src/main/assets");
++    if existing_assets_dir.exists() {
++        if assets_backup_dir.exists() {
++            fs::remove_dir_all(&assets_backup_dir).map_err(|e| {
++                BenchError::Build(format!(
++                    "Failed to clear Android assets backup at {:?}: {}",
++                    assets_backup_dir, e
++                ))
++            })?;
++        }
++        copy_dir_recursive(&existing_assets_dir, &assets_backup_dir)?;
++    }
+     reset_generated_project_dir(&target_dir)?;
+     let library_name = project_slug.replace('-', "_");
+     let project_pascal = to_pascal_case(project_slug);
+@@ -378,6 +391,54 @@ pub fn generate_android_project(
+     // The package "dev.world.{project_slug}" maps to directory "dev/world/{project_slug}/"
+     move_kotlin_files_to_package_dir(&target_dir, &package_name)?;
  
-     /// List available iOS devices for XCUITest testing.
-     pub fn list_xcuitest_devices(&self) -> Result<Vec<BrowserStackDevice>> {
--        let json = self.get_json("app-automate/xcuitest/v2/devices")?;
--        parse_device_list(json, "xcuitest")
-+        let json = self.get_json("app-automate/devices.json")?;
-+        Ok(parse_device_list(json, "xcuitest")?
-+            .into_iter()
-+            .filter(|device| device.os.eq_ignore_ascii_case("ios"))
-+            .collect())
-     }
- 
-     /// List all available devices (both Android and iOS).
-     pub fn list_all_devices(&self) -> Result<Vec<BrowserStackDevice>> {
--        let mut devices = Vec::new();
--
--        match self.list_espresso_devices() {
--            Ok(android_devices) => devices.extend(android_devices),
--            Err(e) => {
--                eprintln!("Warning: Failed to fetch Android devices: {}", e);
--            }
--        }
--
--        match self.list_xcuitest_devices() {
--            Ok(ios_devices) => devices.extend(ios_devices),
--            Err(e) => {
--                eprintln!("Warning: Failed to fetch iOS devices: {}", e);
--            }
--        }
--
--        Ok(devices)
-+        let json = self.get_json("app-automate/devices.json")?;
-+        parse_device_list(json, "all")
-     }
- 
-     /// Validate device specifications against available devices.
-diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
-index f3f059b..a9de261 100644
---- a/crates/mobench/src/lib.rs
-+++ b/crates/mobench/src/lib.rs
-@@ -871,6 +871,13 @@ impl MobileTarget {
-             Self::Ios => "ios",
-         }
-     }
++    if assets_backup_dir.exists() {
++        let restored_assets_dir = target_dir.join("app/src/main/assets");
++        copy_dir_recursive(&assets_backup_dir, &restored_assets_dir)?;
++        let _ = fs::remove_dir_all(&assets_backup_dir);
++    }
 +
-+    fn display_name(self) -> &'static str {
-+        match self {
-+            Self::Android => "Android",
-+            Self::Ios => "iOS",
++    Ok(())
++}
++
++fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), BenchError> {
++    fs::create_dir_all(dst).map_err(|e| {
++        BenchError::Build(format!(
++            "Failed to create directory {:?} while copying assets: {}",
++            dst, e
++        ))
++    })?;
++
++    for entry in fs::read_dir(src).map_err(|e| {
++        BenchError::Build(format!(
++            "Failed to read directory {:?} while copying assets: {}",
++            src, e
++        ))
++    })? {
++        let entry = entry.map_err(|e| {
++            BenchError::Build(format!(
++                "Failed to read entry under {:?} while copying assets: {}",
++                src, e
++            ))
++        })?;
++        let entry_path = entry.path();
++        let dest_path = dst.join(entry.file_name());
++        if entry.file_type().map_err(|e| {
++            BenchError::Build(format!(
++                "Failed to inspect {:?} while copying assets: {}",
++                entry_path, e
++            ))
++        })?.is_dir() {
++            copy_dir_recursive(&entry_path, &dest_path)?;
++        } else {
++            fs::copy(&entry_path, &dest_path).map_err(|e| {
++                BenchError::Build(format!(
++                    "Failed to copy {:?} to {:?}: {}",
++                    entry_path, dest_path, e
++                ))
++            })?;
 +        }
 +    }
++
+     Ok(())
  }
- 
- #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
-@@ -4900,7 +4907,7 @@ fn render_markdown_summary(summary: &SummaryReport) -> String {
-     let _ = writeln!(output, "# Benchmark Summary");
-     let _ = writeln!(output);
-     let _ = writeln!(output, "- Generated: {}", summary.generated_at);
--    let _ = writeln!(output, "- Target: {:?}", summary.target);
-+    let _ = writeln!(output, "- Target: {}", summary.target.display_name());
-     let _ = writeln!(output, "- Function: {}", summary.function);
-     let _ = writeln!(
-         output,
-@@ -8282,6 +8289,8 @@ project = "proj"
-         let markdown = render_summary_markdown_from_output(&merged).expect("render markdown");
-         assert!(markdown.contains("## android"));
-         assert!(markdown.contains("## ios"));
-+        assert!(markdown.contains("- Target: Android"));
-+        assert!(markdown.contains("- Target: iOS"));
-     }
- 
-     #[test]
