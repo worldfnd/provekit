@@ -1,0 +1,88 @@
+diff --git a/crates/mobench/src/browserstack.rs b/crates/mobench/src/browserstack.rs
+index d684cf3..647431e 100644
+--- a/crates/mobench/src/browserstack.rs
++++ b/crates/mobench/src/browserstack.rs
+@@ -345,35 +345,26 @@ impl BrowserStackClient {
+ 
+     /// List available Android devices for Espresso testing.
+     pub fn list_espresso_devices(&self) -> Result<Vec<BrowserStackDevice>> {
+-        let json = self.get_json("app-automate/espresso/v2/devices")?;
+-        parse_device_list(json, "espresso")
++        let json = self.get_json("app-automate/devices.json")?;
++        Ok(parse_device_list(json, "espresso")?
++            .into_iter()
++            .filter(|device| device.os.eq_ignore_ascii_case("android"))
++            .collect())
+     }
+ 
+     /// List available iOS devices for XCUITest testing.
+     pub fn list_xcuitest_devices(&self) -> Result<Vec<BrowserStackDevice>> {
+-        let json = self.get_json("app-automate/xcuitest/v2/devices")?;
+-        parse_device_list(json, "xcuitest")
++        let json = self.get_json("app-automate/devices.json")?;
++        Ok(parse_device_list(json, "xcuitest")?
++            .into_iter()
++            .filter(|device| device.os.eq_ignore_ascii_case("ios"))
++            .collect())
+     }
+ 
+     /// List all available devices (both Android and iOS).
+     pub fn list_all_devices(&self) -> Result<Vec<BrowserStackDevice>> {
+-        let mut devices = Vec::new();
+-
+-        match self.list_espresso_devices() {
+-            Ok(android_devices) => devices.extend(android_devices),
+-            Err(e) => {
+-                eprintln!("Warning: Failed to fetch Android devices: {}", e);
+-            }
+-        }
+-
+-        match self.list_xcuitest_devices() {
+-            Ok(ios_devices) => devices.extend(ios_devices),
+-            Err(e) => {
+-                eprintln!("Warning: Failed to fetch iOS devices: {}", e);
+-            }
+-        }
+-
+-        Ok(devices)
++        let json = self.get_json("app-automate/devices.json")?;
++        parse_device_list(json, "all")
+     }
+ 
+     /// Validate device specifications against available devices.
+diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
+index f3f059b..a9de261 100644
+--- a/crates/mobench/src/lib.rs
++++ b/crates/mobench/src/lib.rs
+@@ -871,6 +871,13 @@ impl MobileTarget {
+             Self::Ios => "ios",
+         }
+     }
++
++    fn display_name(self) -> &'static str {
++        match self {
++            Self::Android => "Android",
++            Self::Ios => "iOS",
++        }
++    }
+ }
+ 
+ #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+@@ -4900,7 +4907,7 @@ fn render_markdown_summary(summary: &SummaryReport) -> String {
+     let _ = writeln!(output, "# Benchmark Summary");
+     let _ = writeln!(output);
+     let _ = writeln!(output, "- Generated: {}", summary.generated_at);
+-    let _ = writeln!(output, "- Target: {:?}", summary.target);
++    let _ = writeln!(output, "- Target: {}", summary.target.display_name());
+     let _ = writeln!(output, "- Function: {}", summary.function);
+     let _ = writeln!(
+         output,
+@@ -8282,6 +8289,8 @@ project = "proj"
+         let markdown = render_summary_markdown_from_output(&merged).expect("render markdown");
+         assert!(markdown.contains("## android"));
+         assert!(markdown.contains("## ios"));
++        assert!(markdown.contains("- Target: Android"));
++        assert!(markdown.contains("- Target: iOS"));
+     }
+ 
+     #[test]

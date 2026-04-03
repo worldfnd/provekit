@@ -1,0 +1,577 @@
+name: Reusable Mobile Benchmark (BrowserStack)
+
+on:
+  workflow_call:
+    inputs:
+      crate_path:
+        description: "Path to the benchmark crate in the caller repo"
+        required: true
+        type: string
+      functions:
+        description: "Comma-separated or JSON array list of benchmark function names to run"
+        required: true
+        type: string
+      iterations:
+        description: "Number of benchmark iterations"
+        required: false
+        type: string
+        default: "30"
+      warmup:
+        description: "Number of warmup iterations"
+        required: false
+        type: string
+        default: "5"
+      platform:
+        description: "Target platform: android, ios, or both"
+        required: false
+        type: string
+        default: "both"
+      rust_targets_ios:
+        description: "Comma-separated iOS Rust targets"
+        required: false
+        type: string
+        default: "aarch64-apple-ios,aarch64-apple-ios-sim"
+      rust_targets_android:
+        description: "Comma-separated Android Rust targets"
+        required: false
+        type: string
+        default: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+      build_release:
+        description: "Build in release mode"
+        required: false
+        type: boolean
+        default: true
+      mobench_version:
+        description: "Mobench version to install"
+        required: false
+        type: string
+        default: "0.1.28"
+      mobench_ref:
+        description: "Git ref for mobile-bench-rs"
+        required: false
+        type: string
+        default: "5749c073c341fa6beeacf7d059f95937e8a4e4aa"
+      pr_number:
+        description: "PR number for reporting"
+        required: false
+        type: string
+      requested_by:
+        description: "Who triggered the run"
+        required: false
+        type: string
+      head_sha:
+        description: "Exact commit SHA to checkout in the caller repo"
+        required: false
+        type: string
+    secrets:
+      BROWSERSTACK_USERNAME:
+        required: true
+      BROWSERSTACK_ACCESS_KEY:
+        required: true
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+  MOBENCH_PATCH_PATH: caller/.github/patches/mobile-bench-rs-browserstack-devices.patch
+  IOS_DEVICE_SPECS: "iPhone 13-15,iPhone 14-16,iPhone 16 Pro-18"
+  ANDROID_DEVICE_SPECS: "Google Pixel 6-12.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
+
+jobs:
+  ios:
+    name: iOS BrowserStack benchmark
+    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    runs-on: macos-15
+    env:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+      IPHONEOS_DEPLOYMENT_TARGET: "13.0"
+      CFLAGS_aarch64_apple_ios: "-miphoneos-version-min=13.0"
+      CFLAGS_aarch64_apple_ios_sim: "-mios-simulator-version-min=13.0"
+      CFLAGS_x86_64_apple_ios: "-mios-simulator-version-min=13.0"
+      CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-miphoneos-version-min=13.0"
+      CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=13.0"
+      CARGO_TARGET_X86_64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=13.0"
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+        with:
+          path: caller
+          ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: Setup Rust
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+          targets: ${{ inputs.rust_targets_ios }}
+
+      - name: Install mobench
+        shell: bash
+        env:
+          MOBENCH_VERSION: ${{ inputs.mobench_version }}
+          MOBENCH_REF: ${{ inputs.mobench_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MOBENCH_REF:-}" ]; then
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "$MOBENCH_REF"
+          else
+            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
+            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
+            if [ -z "${REG_SRC}" ]; then
+              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} in cargo registry source cache"
+              exit 1
+            fi
+            mkdir -p mobench-src/crates
+            cp -R "${REG_SRC}" mobench-src/crates/mobench
+            git -C mobench-src init -q
+          fi
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          else
+            echo "Skipping local mobench patch; already included or not applicable"
+          fi
+          cargo install --path mobench-src/crates/mobench --locked
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build iOS artifacts
+        working-directory: caller
+        shell: bash
+        env:
+          RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
+          CRATE_PATH: ${{ inputs.crate_path }}
+        run: |
+          set -euo pipefail
+          cargo-mobench build --target ios $RELEASE_FLAG --crate-path "$CRATE_PATH"
+          cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
+          cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
+          test -f target/mobench/ios/BenchRunner.ipa
+          test -f target/mobench/ios/BenchRunnerUITests.zip
+
+      - name: Run iOS benchmarks
+        id: run_ios_benchmarks
+        working-directory: caller
+        shell: bash
+        env:
+          FUNCTIONS: ${{ inputs.functions }}
+          ITERATIONS: ${{ inputs.iterations }}
+          WARMUP: ${{ inputs.warmup }}
+          RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
+          CRATE_PATH: ${{ inputs.crate_path }}
+        run: |
+          set -euo pipefail
+          functions_arg="${FUNCTIONS}"
+          if [[ "${FUNCTIONS}" == \[* ]]; then
+            functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
+          fi
+
+          cargo-mobench ci run \
+            --target ios \
+            --functions "${functions_arg}" \
+            --iterations "${ITERATIONS}" \
+            --warmup "${WARMUP}" \
+            --devices "${IOS_DEVICE_SPECS}" \
+            --crate-path "$CRATE_PATH" \
+            $RELEASE_FLAG \
+            --fetch \
+            --output-dir target/mobench/ci/ios
+
+      - name: Validate iOS benchmark outputs
+        if: always()
+        working-directory: caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          json_count=$(find target/mobench/ci/ios -type f -name summary.json 2>/dev/null | wc -l | tr -d ' ')
+          csv_count=$(find target/mobench/ci/ios -type f -name results.csv 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$json_count" -eq 0 ] || [ "$csv_count" -eq 0 ]; then
+            echo "::error::iOS benchmark artifacts were not produced"
+            exit 1
+          fi
+
+      - name: Upload iOS results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobench-results-ios
+          path: |
+            caller/target/mobench/ci/ios/**
+            caller/target/browserstack/**
+          if-no-files-found: warn
+
+  android:
+    name: Android BrowserStack benchmark
+    if: inputs.platform == 'android' || inputs.platform == 'both'
+    runs-on: macos-14
+    env:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+        with:
+          path: caller
+          ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: Setup Rust
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+          targets: ${{ inputs.rust_targets_android }}
+
+      - name: Setup Android SDK/NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages and resolve NDK
+        shell: bash
+        run: |
+          SDKMGR="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then
+            SDKMGR=$(command -v sdkmanager 2>/dev/null || echo "sdkmanager")
+          fi
+
+          $SDKMGR --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" 2>&1 || true
+
+          if [ -d "${ANDROID_HOME}/ndk/26.1.10909125" ]; then
+            NDK_DIR="${ANDROID_HOME}/ndk/26.1.10909125"
+          else
+            NDK_VER=$(ls "${ANDROID_HOME}/ndk/" 2>/dev/null | sort -V | tail -1)
+            if [ -z "$NDK_VER" ]; then
+              echo "::error::No Android NDK found"
+              exit 1
+            fi
+            NDK_DIR="${ANDROID_HOME}/ndk/${NDK_VER}"
+          fi
+
+          echo "ANDROID_NDK_HOME=${NDK_DIR}" >> "$GITHUB_ENV"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Install mobench
+        shell: bash
+        env:
+          MOBENCH_VERSION: ${{ inputs.mobench_version }}
+          MOBENCH_REF: ${{ inputs.mobench_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MOBENCH_REF:-}" ]; then
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "$MOBENCH_REF"
+          else
+            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
+            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
+            if [ -z "${REG_SRC}" ]; then
+              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} in cargo registry source cache"
+              exit 1
+            fi
+            mkdir -p mobench-src/crates
+            cp -R "${REG_SRC}" mobench-src/crates/mobench
+            git -C mobench-src init -q
+          fi
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          else
+            echo "Skipping local mobench patch; already included or not applicable"
+          fi
+          cargo install --path mobench-src/crates/mobench --locked
+
+      - name: Build Android artifacts
+        working-directory: caller
+        shell: bash
+        env:
+          RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
+          CRATE_PATH: ${{ inputs.crate_path }}
+        run: |
+          set -euo pipefail
+          cargo-mobench build --target android $RELEASE_FLAG --crate-path "$CRATE_PATH"
+
+      - name: Run Android benchmarks
+        id: run_android_benchmarks
+        working-directory: caller
+        shell: bash
+        env:
+          FUNCTIONS: ${{ inputs.functions }}
+          ITERATIONS: ${{ inputs.iterations }}
+          WARMUP: ${{ inputs.warmup }}
+          RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
+          CRATE_PATH: ${{ inputs.crate_path }}
+        run: |
+          set -euo pipefail
+          functions_arg="${FUNCTIONS}"
+          if [[ "${FUNCTIONS}" == \[* ]]; then
+            functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
+          fi
+
+          cargo-mobench ci run \
+            --target android \
+            --functions "${functions_arg}" \
+            --iterations "${ITERATIONS}" \
+            --warmup "${WARMUP}" \
+            --devices "${ANDROID_DEVICE_SPECS}" \
+            --crate-path "$CRATE_PATH" \
+            $RELEASE_FLAG \
+            --fetch \
+            --output-dir target/mobench/ci/android
+
+      - name: Validate Android benchmark outputs
+        if: always()
+        working-directory: caller
+        shell: bash
+        run: |
+          set -euo pipefail
+          json_count=$(find target/mobench/ci/android -type f -name summary.json 2>/dev/null | wc -l | tr -d ' ')
+          csv_count=$(find target/mobench/ci/android -type f -name results.csv 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$json_count" -eq 0 ] || [ "$csv_count" -eq 0 ]; then
+            echo "::error::Android benchmark artifacts were not produced"
+            exit 1
+          fi
+
+      - name: Upload Android results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobench-results-android
+          path: |
+            caller/target/mobench/ci/android/**
+            caller/target/browserstack/**
+          if-no-files-found: warn
+
+  summarize:
+    name: Summarize benchmark results
+    needs: [ios, android]
+    if: always() && (needs.ios.result == 'success' || needs.android.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+        with:
+          path: caller
+          ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: Setup Rust
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache: false
+
+      - name: Install mobench
+        shell: bash
+        env:
+          MOBENCH_VERSION: ${{ inputs.mobench_version }}
+          MOBENCH_REF: ${{ inputs.mobench_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${MOBENCH_REF:-}" ]; then
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "$MOBENCH_REF"
+          else
+            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
+            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
+            if [ -z "${REG_SRC}" ]; then
+              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} in cargo registry source cache"
+              exit 1
+            fi
+            mkdir -p mobench-src/crates
+            cp -R "${REG_SRC}" mobench-src/crates/mobench
+            git -C mobench-src init -q
+          fi
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          else
+            echo "Skipping local mobench patch; already included or not applicable"
+          fi
+          cargo install --path mobench-src/crates/mobench --locked
+
+      - name: Download iOS results
+        if: needs.ios.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: mobench-results-ios
+          path: results/ios
+
+      - name: Download Android results
+        if: needs.android.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: mobench-results-android
+          path: results/android
+
+      - name: Setup Python for plot rendering
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install plot rendering dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install matplotlib
+
+      - name: Render plot-capable platform summaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p rendered
+          rendered_count=0
+
+          render_platform_summary() {
+            local platform="$1"
+            local results_dir="results/${platform}"
+            if [ ! -d "${results_dir}" ]; then
+              return 0
+            fi
+
+            local summary_json
+            summary_json=$(find "${results_dir}" -type f -name summary.json | head -1)
+            if [ -z "${summary_json}" ]; then
+              echo "::warning::No ${platform} summary.json found under ${results_dir}"
+              return 0
+            fi
+
+            mkdir -p "rendered/${platform}"
+
+            if cargo-mobench report summarize \
+              --summary "${summary_json}" \
+              --output "rendered/${platform}/summary.md" \
+              --plots auto; then
+              return 0
+            fi
+
+            echo "::warning::Falling back to markdown-only ${platform} summary."
+            cargo-mobench ci summarize \
+              --results-dir "${results_dir}" \
+              --output-format markdown \
+              --output-file "rendered/${platform}/summary.md"
+          }
+
+          for platform in ios android; do
+            if render_platform_summary "${platform}" && [ -f "rendered/${platform}/summary.md" ]; then
+              rendered_count=$((rendered_count + 1))
+            fi
+          done
+
+          if [ "${rendered_count}" -eq 0 ]; then
+            echo "::error::No benchmark summaries were rendered."
+            exit 1
+          fi
+
+      - name: Publish plot assets
+        id: publish_plots
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ASSET_BRANCH: mobench-plots
+        run: |
+          set -euo pipefail
+
+          if ! find rendered -type f -path "*/plots/*.svg" | grep -q .; then
+            echo "base_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          asset_path="runs/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          publish_root="$(mktemp -d)"
+
+          if git clone --quiet --branch "${ASSET_BRANCH}" "${remote}" "${publish_root}" 2>/dev/null; then
+            :
+          else
+            git clone --quiet "${remote}" "${publish_root}"
+            git -C "${publish_root}" checkout --orphan "${ASSET_BRANCH}"
+            git -C "${publish_root}" rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          git -C "${publish_root}" config user.name "github-actions[bot]"
+          git -C "${publish_root}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p "${publish_root}/${asset_path}"
+
+          for platform in ios android; do
+            if [ -d "rendered/${platform}/plots" ]; then
+              mkdir -p "${publish_root}/${asset_path}/${platform}"
+              rm -rf "${publish_root}/${asset_path}/${platform}/plots"
+              cp -R "rendered/${platform}/plots" "${publish_root}/${asset_path}/${platform}/plots"
+            fi
+          done
+
+          git -C "${publish_root}" add "${asset_path}"
+          if ! git -C "${publish_root}" diff --cached --quiet; then
+            git -C "${publish_root}" commit -m "mobench plots for run ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >/dev/null
+            git -C "${publish_root}" push origin "${ASSET_BRANCH}" >/dev/null
+          fi
+
+          echo "base_url=https://raw.githubusercontent.com/${REPO}/${ASSET_BRANCH}/${asset_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Rewrite platform summaries for GitHub markdown
+        shell: bash
+        env:
+          PLOT_BASE_URL: ${{ steps.publish_plots.outputs.base_url }}
+        run: |
+          set -euo pipefail
+
+          rewrite_platform_summary() {
+            local platform="$1"
+            local input="rendered/${platform}/summary.md"
+            local output="rendered/${platform}/github-summary.md"
+            if [ ! -f "${input}" ]; then
+              return 0
+            fi
+
+            cp "${input}" "${output}"
+            if [ -n "${PLOT_BASE_URL:-}" ] && [ -d "rendered/${platform}/plots" ]; then
+              sed -i "s#](plots/#](${PLOT_BASE_URL}/${platform}/plots/#g" "${output}"
+            fi
+          }
+
+          rewrite_platform_summary ios
+          rewrite_platform_summary android
+
+      - name: Post sticky PR comment
+        if: inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          MARKER="<!-- mobench-summary -->"
+          BODY="${MARKER}
+          ## Mobench Benchmark Results
+
+          "
+
+          for platform in ios android; do
+            PLATFORM_MD_FILE="rendered/${platform}/github-summary.md"
+            if [ -f "${PLATFORM_MD_FILE}" ]; then
+              PLATFORM_MD=$(cat "${PLATFORM_MD_FILE}")
+              BODY="${BODY}${PLATFORM_MD}
+
+          "
+            fi
+          done
+
+          BODY="${BODY}
+          ---
+          *Posted by [mobench](https://github.com/worldcoin/mobile-bench-rs) at $(date -u '+%Y-%m-%d %H:%M UTC')*"
+
+          EXISTING_COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
+            2>/dev/null | head -1)
+
+          if [ -n "$EXISTING_COMMENT_ID" ]; then
+            gh api "repos/${REPO}/issues/comments/${EXISTING_COMMENT_ID}" \
+              -X PATCH \
+              -f body="${BODY}" \
+              --silent
+          else
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+              -f body="${BODY}" \
+              --silent
+          fi

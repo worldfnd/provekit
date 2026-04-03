@@ -1,0 +1,118 @@
+name: Mobile Bench PR Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  issues: read
+
+jobs:
+  dispatch:
+    name: Parse /mobench and dispatch
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/mobench')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check trust
+        id: trust
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+        run: |
+          if echo "OWNER,MEMBER,COLLABORATOR" | tr ',' '\n' | grep -qx "$AUTHOR_ASSOCIATION"; then
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Untrusted author association: $AUTHOR_ASSOCIATION"
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse command
+        if: steps.trust.outputs.trusted == 'true'
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          line=$(echo "$COMMENT_BODY" | head -1)
+
+          extract_val() {
+            echo "$line" | sed -n "s/.*${1}=\([^ ]*\).*/\1/p"
+          }
+
+          platform=$(extract_val platform)
+          device_profile=$(extract_val device_profile)
+          iterations=$(extract_val iterations)
+          warmup=$(extract_val warmup)
+
+          case "${platform:-both}" in
+            android|ios|both) platform="${platform:-both}" ;;
+            *) echo "::warning::Invalid platform '${platform}', defaulting to 'both'"; platform="both" ;;
+          esac
+
+          case "${device_profile:-triad}" in
+            triad|low-spec|mid-spec|high-spec|flagship) device_profile="${device_profile:-triad}" ;;
+            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
+          esac
+
+          if ! [[ "${iterations:-30}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid iterations '${iterations}', defaulting to '30'"
+            iterations="30"
+          else
+            iterations="${iterations:-30}"
+          fi
+
+          if ! [[ "${warmup:-5}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid warmup '${warmup}', defaulting to '5'"
+            warmup="5"
+          else
+            warmup="${warmup:-5}"
+          fi
+
+          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+          echo "device_profile=${device_profile}" >> "$GITHUB_OUTPUT"
+          echo "iterations=${iterations}" >> "$GITHUB_OUTPUT"
+          echo "warmup=${warmup}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve PR refs
+        if: steps.trust.outputs.trusted == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+        run: |
+          head_sha=$(gh api "$PR_URL" --jq '.head.sha')
+          base_ref=$(gh api "$PR_URL" --jq '.base.ref')
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${base_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch benchmark workflow
+        if: steps.trust.outputs.trusted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PLATFORM: ${{ steps.parse.outputs.platform }}
+          DEVICE_PROFILE: ${{ steps.parse.outputs.device_profile }}
+          ITERATIONS: ${{ steps.parse.outputs.iterations }}
+          WARMUP: ${{ steps.parse.outputs.warmup }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REQUESTED_BY: ${{ github.event.comment.user.login }}
+        run: |
+          gh workflow run ".github/workflows/mobile-bench.yml" \
+            --ref "$BASE_REF" \
+            -f head_sha="$HEAD_SHA" \
+            -f crate_path="./bench-mobile" \
+            -f functions='["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]' \
+            -f platform="$PLATFORM" \
+            -f device_profile="$DEVICE_PROFILE" \
+            -f iterations="$ITERATIONS" \
+            -f warmup="$WARMUP" \
+            -f pr_number="$PR_NUMBER" \
+            -f requested_by="$REQUESTED_BY"
+          echo "Dispatched benchmark for PR #${PR_NUMBER} at ${HEAD_SHA} using workflow ref ${BASE_REF}"
