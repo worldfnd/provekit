@@ -1,5 +1,5 @@
 use {
-    crate::workload_size,
+    crate::{extend_roots_table, workload_size},
     ark_bn254::Fr,
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -7,6 +7,10 @@ use {
     },
 };
 
+pub fn ntt_nr_ark(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
+    let new_root = extend_roots_table(codeword_size);
+    interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
+}
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
 /// order.
 ///

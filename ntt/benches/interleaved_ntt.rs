@@ -2,7 +2,7 @@ use {
     ark_bn254::Fr,
     ark_ff::UniformRand,
     divan::{black_box, Bencher},
-    ntt::{ntt_nr_ark, ntt_nr_b51},
+    ntt::{ark_interleaved::ntt_nr_ark, b51_interleaved::ntt_nr_b51},
 };
 
 // (codeword_size_log2, num_groups_log2)
