@@ -1,0 +1,102 @@
+name: Mobile Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate_path:
+        description: "Path to the benchmark crate"
+        required: false
+        type: string
+        default: "./bench-mobile"
+      functions:
+        description: "JSON array of benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      platform:
+        description: "android | ios | both"
+        required: false
+        type: choice
+        default: both
+        options:
+          - android
+          - ios
+          - both
+      device_profile:
+        description: "Accepted for PR command compatibility; this workflow always runs the three-device matrix."
+        required: false
+        type: string
+        default: "triad"
+      iterations:
+        description: "Number of benchmark iterations"
+        required: false
+        type: string
+        default: "30"
+      warmup:
+        description: "Number of warmup iterations"
+        required: false
+        type: string
+        default: "5"
+      pr_number:
+        description: "PR number for reporting"
+        required: false
+        type: string
+        default: ""
+      head_sha:
+        description: "Exact commit SHA to benchmark"
+        required: false
+        type: string
+        default: ""
+      requested_by:
+        description: "Who triggered the run"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: mobench-${{ inputs.pr_number != '' && inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  browserstack-preflight:
+    name: BrowserStack preflight
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    env:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - name: Check BrowserStack secrets
+        id: check
+        shell: bash
+        run: |
+          if [ -n "$BROWSERSTACK_USERNAME" ] && [ -n "$BROWSERSTACK_ACCESS_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  browserstack:
+    name: BrowserStack benchmarks
+    needs: browserstack-preflight
+    if: ${{ needs.browserstack-preflight.outputs.available == 'true' }}
+    uses: ./.github/workflows/mobile-bench-reusable.yml
+    with:
+      crate_path: ${{ inputs.crate_path }}
+      functions: ${{ inputs.functions }}
+      platform: ${{ inputs.platform }}
+      iterations: ${{ inputs.iterations }}
+      warmup: ${{ inputs.warmup }}
+      pr_number: ${{ inputs.pr_number }}
+      head_sha: ${{ inputs.head_sha }}
+      requested_by: ${{ inputs.requested_by }}
+    secrets:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+

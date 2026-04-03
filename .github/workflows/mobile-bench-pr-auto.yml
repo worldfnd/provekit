@@ -1,0 +1,97 @@
+name: Mobile Bench PR Auto
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_run:
+    workflows: ["Cargo Build & Test"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  checks: read
+
+jobs:
+  dispatch:
+    name: Check compile gate and dispatch
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' && github.event.action == 'labeled') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - name: Resolve PR context
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
+          HEAD_SHA_PR: ${{ github.event.pull_request.head.sha }}
+          BASE_REF_PR: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA_WR: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            PR_NUMBER="$PR_NUMBER_EVENT"
+            HEAD_SHA="$HEAD_SHA_PR"
+            BASE_REF="$BASE_REF_PR"
+          else
+            pr_json=$(gh api "repos/${REPO}/pulls?state=open&sort=updated&direction=desc&per_page=50" \
+              --jq ".[] | select(.head.sha == \"${HEAD_SHA_WR}\") | {number, base_ref: .base.ref}" \
+              | head -1)
+            if [ -z "$pr_json" ]; then
+              echo "::notice::No open PR found for SHA ${HEAD_SHA_WR}, skipping"
+              echo "should_dispatch=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            PR_NUMBER=$(jq -r '.number' <<<"$pr_json")
+            HEAD_SHA="$HEAD_SHA_WR"
+            BASE_REF=$(jq -r '.base_ref' <<<"$pr_json")
+          fi
+
+          has_label=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" \
+            --jq '.[].name' | grep -qx 'bench' && echo "true" || echo "false")
+          if [ "$has_label" != "true" ]; then
+            echo "::notice::PR #${PR_NUMBER} does not have 'bench' label, skipping"
+            echo "should_dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gate_status=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+            --jq '.check_runs[] | select(.name == "Cargo Build & Test" or (.app.name == "GitHub Actions" and .name == "Cargo Build & Test")) | .conclusion' \
+            | head -1)
+          if [ "$gate_status" != "success" ]; then
+            echo "::notice::Compile gate 'Cargo Build & Test' not yet passed for ${HEAD_SHA} (status: ${gate_status:-pending})"
+            echo "should_dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "should_dispatch=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch benchmark workflow
+        if: steps.pr.outputs.should_dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          gh workflow run ".github/workflows/mobile-bench.yml" \
+            --ref "$BASE_REF" \
+            -f head_sha="$HEAD_SHA" \
+            -f crate_path="./bench-mobile" \
+            -f functions='["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]' \
+            -f platform="both" \
+            -f device_profile="triad" \
+            -f iterations="30" \
+            -f warmup="5" \
+            -f pr_number="$PR_NUMBER" \
+            -f requested_by="auto:${GITHUB_EVENT_NAME}"
+          echo "Dispatched benchmark for PR #${PR_NUMBER} at ${HEAD_SHA} using workflow ref ${BASE_REF}"
