@@ -54,7 +54,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         let commitment_1 = self
             .whir_witness
-            .receive_commitments(&mut arthur, 1)
+            .receive_commitments(&mut arthur)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
@@ -63,7 +63,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             (
                 Some(
                     self.whir_witness
-                        .receive_commitments(&mut arthur, 1)
+                        .receive_commitments(&mut arthur)
                         .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?,
                 ),
                 logup_challenges,
