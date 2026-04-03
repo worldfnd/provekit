@@ -55,6 +55,8 @@ xz2.workspace = true
 
 [dev-dependencies]
 divan.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest.workspace = true
 
 [[bench]]
