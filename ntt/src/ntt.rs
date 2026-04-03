@@ -103,8 +103,12 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
 pub fn ntt_nr(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
+    ntt_nr_ark(values, codeword_size, num_groups);
+}
+
+pub fn ntt_nr_ark(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
-    interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
+    interleaved_ntt_nr(ark_kernel, &new_root.0, values, codeword_size, num_groups)
 }
 
 fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
@@ -147,12 +151,15 @@ impl Default for NTTEngine {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-fn interleaved_ntt_nr(
+fn interleaved_ntt_nr<K>(
+    kernel: K,
     reversed_ordered_roots: &[Fr],
     values: &mut [Fr],
     codeword_size: usize,
     mut num_groups: usize,
-) {
+) where
+    K: Fn(&mut Fr, &mut Fr, &Fr) + Copy + Send + Sync,
+{
     // Reversed ordered roots idea from "Inside the FFT blackbox"
     // Implementation is a DIT NR algorithm
 
@@ -194,9 +201,10 @@ fn interleaved_ntt_nr(
                 let omega = reversed_ordered_roots[k];
                 let (evens, odds) = group.split_at_mut(elements_in_group / 2);
 
-                evens.par_iter_mut().zip(odds).for_each(|(even, odd)| {
-                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                });
+                evens
+                    .par_iter_mut()
+                    .zip(odds)
+                    .for_each(|(even, odd)| kernel(even, odd, &omega));
             });
         elements_in_group /= 2;
         num_groups *= 2;
@@ -210,9 +218,10 @@ fn interleaved_ntt_nr(
                 let omega = reversed_ordered_roots[k];
                 let (evens, odds) = group.split_at_mut(elements_in_group / 2);
 
-                evens.iter_mut().zip(odds).for_each(|(even, odd)| {
-                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                });
+                evens
+                    .iter_mut()
+                    .zip(odds)
+                    .for_each(|(even, odd)| kernel(even, odd, &omega));
             });
         elements_in_group /= 2;
         num_groups *= 2;
@@ -222,11 +231,25 @@ fn interleaved_ntt_nr(
         .par_chunks_exact_mut(elements_in_group)
         .enumerate()
         .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, codeword_size / num_groups);
+            dit_nr_cache(
+                kernel,
+                reversed_ordered_roots,
+                k,
+                group,
+                codeword_size / num_groups,
+            );
         });
 }
 
-fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+pub fn dit_nr_cache<K>(
+    kernel: K,
+    reverse_ordered_roots: &[Fr],
+    segment: usize,
+    input: &mut [Fr],
+    size: usize,
+) where
+    K: Fn(&mut Fr, &mut Fr, &Fr) + Copy,
+{
     let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
@@ -238,13 +261,19 @@ fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], 
             let twiddle = twiddle_base + k;
             let omega = reverse_ordered_roots[twiddle];
             let (evens, odds) = group.split_at_mut(elements_in_group / 2);
-            evens.iter_mut().zip(odds).for_each(|(even, odd)| {
-                (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-            });
+            evens
+                .iter_mut()
+                .zip(odds)
+                .for_each(|(even, odd)| kernel(even, odd, &omega));
         }
         elements_in_group /= 2;
         num_of_groups *= 2;
     }
+}
+
+#[inline(always)]
+fn ark_kernel(even: &mut Fr, odd: &mut Fr, omega: &Fr) {
+    (*even, *odd) = (*even + omega * odd, *even - omega * odd)
 }
 
 /// Bit reverses val for a given bit size
