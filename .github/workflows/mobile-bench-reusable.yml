@@ -30,7 +30,7 @@ on:
         description: "Comma-separated iOS Rust targets"
         required: false
         type: string
-        default: "aarch64-apple-ios,aarch64-apple-ios-sim"
+        default: "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios"
       rust_targets_android:
         description: "Comma-separated Android Rust targets"
         required: false
