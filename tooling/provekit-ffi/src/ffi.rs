@@ -751,8 +751,10 @@ pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::types::{PKBuf, PKStatus};
+    use {
+        super::*,
+        crate::types::{PKBuf, PKStatus},
+    };
 
     // -----------------------------------------------------------------------
     // catch_panic tests
@@ -789,8 +791,13 @@ mod tests {
             let slice = std::slice::from_raw_parts(buf.ptr as *const u8, buf.len);
             std::str::from_utf8(slice).unwrap().to_string()
         };
-        assert!(msg.contains("my panic msg"), "expected panic msg in error, got: {msg}");
-        unsafe { pk_free_buf(buf); }
+        assert!(
+            msg.contains("my panic msg"),
+            "expected panic msg in error, got: {msg}"
+        );
+        unsafe {
+            pk_free_buf(buf);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -822,7 +829,9 @@ mod tests {
         let status = unsafe { pk_get_last_error(&mut buf) };
         assert_eq!(status, PKStatus::Success as i32);
         assert!(buf.len > 0);
-        unsafe { pk_free_buf(buf); }
+        unsafe {
+            pk_free_buf(buf);
+        }
 
         // Second read must be empty
         let mut buf2 = PKBuf::empty();
@@ -841,7 +850,9 @@ mod tests {
             std::str::from_utf8(slice).unwrap().to_string()
         };
         assert_eq!(msg, "hello FFI");
-        unsafe { pk_free_buf(buf); }
+        unsafe {
+            pk_free_buf(buf);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -869,7 +880,8 @@ mod tests {
         assert_eq!(status, PKStatus::Success as i32);
         // Values should be written (0 when mmap allocator not configured)
         // Just ensure they were touched (no longer 999 unless allocator returns 999)
-        // We can only assert the call succeeded — actual values depend on allocator state
+        // We can only assert the call succeeded — actual values depend on allocator
+        // state
         let _ = (ram, swap, peak); // silence unused warnings
     }
 
