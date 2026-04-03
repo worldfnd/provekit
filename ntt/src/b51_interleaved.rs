@@ -2,8 +2,9 @@ use {
     crate::workload_size,
     ark_bn254::Fr,
     bn254_multiplier::{
-        constants, rne,
-        utils::{self, addv, subby, subtraction_reduce},
+        constants::{self, U64_P_MULTIPLES},
+        rne,
+        utils::{self, addv, div_p_32b, subby, subtraction_reduce},
     },
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -137,4 +138,52 @@ fn b51_kernel(even: &mut Fr, odd: &mut Fr, omega: &Fr) {
 
     (even.0 .0) = l;
     (odd.0 .0) = r;
+}
+
+fn canonicalize_b51(values: &mut [Fr]) {
+    for elem in values.iter_mut() {
+        let reduced = subtraction_reduce(div_p_32b, elem.0 .0);
+        let tentative = utils::sub(reduced, U64_P_MULTIPLES[1]);
+        elem.0 .0 = if tentative[3] >> 63 == 1 {
+            reduced
+        } else {
+            tentative
+        };
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use {
+        super::interleaved_ntt_nr,
+        crate::{ark_interleaved, b51_interleaved::canonicalize_b51, ntt::extend_roots_table},
+        ark_bn254::Fr,
+        ark_ff::BigInt,
+        proptest::{collection, prelude::*},
+    };
+
+    proptest! {
+        #[test]
+        fn b51_matches_ark(
+            values in (1_usize..=15).prop_flat_map(|k| {
+                let len = 1 << k;
+                collection::vec(
+                    proptest::array::uniform4(0u64..).prop_map(|val| Fr::new(BigInt(val))),
+                    len..=len,
+                )
+            })
+        ) {
+            let codeword_size = values.len();
+            let roots = extend_roots_table(codeword_size);
+
+            let mut b51_out = values.clone();
+            interleaved_ntt_nr(&roots.0, &mut b51_out, codeword_size, 1);
+            canonicalize_b51(&mut b51_out);
+
+            let mut ark_out = values;
+            ark_interleaved::interleaved_ntt_nr(&roots.0, &mut ark_out, codeword_size, 1);
+
+            prop_assert_eq!(b51_out, ark_out);
+        }
+    }
 }
