@@ -71,7 +71,7 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 
 func getStirChallenges(
 	api frontend.API,
-	arthur gnarkNimue.Nimue,
+	nimue gnarkNimue.Nimue,
 	numQueries int,
 	domainSize int,
 	foldingFactorPower int,
@@ -80,7 +80,7 @@ func getStirChallenges(
 	domainSizeBytes := (bits.Len(uint(foldedDomainSize*2-1)) - 1 + 7) / 8
 
 	stirQueries := make([]uints.U8, domainSizeBytes*numQueries)
-	if err := arthur.FillChallengeBytes(stirQueries); err != nil {
+	if err := nimue.FillChallengeBytes(stirQueries); err != nil {
 		return nil, err
 	}
 

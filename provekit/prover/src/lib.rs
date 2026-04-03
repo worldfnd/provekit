@@ -7,11 +7,6 @@ use {
     },
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    mavros_vm::interpreter as mavros_interpreter,
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
     hex,
     provekit_common::{
         FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
@@ -126,8 +121,16 @@ impl Prove for NoirProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&Empty);
-        println!("rust protocol_id len={} hex={}", ds.protocol_id.len(), hex::encode(&ds.protocol_id));
-        println!("rust session_id len={} hex={}", ds.session_id.len(), hex::encode(&ds.session_id));
+        println!(
+            "rust protocol_id len={} hex={}",
+            ds.protocol_id.len(),
+            hex::encode(&ds.protocol_id)
+        );
+        println!(
+            "rust session_id len={} hex={}",
+            ds.session_id.len(),
+            hex::encode(&ds.session_id)
+        );
 
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 

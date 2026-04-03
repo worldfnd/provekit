@@ -1,14 +1,21 @@
 use {
-    anyhow::{Context, Result, ensure}, ark_std::{One, Zero}, provekit_common::{
-        FieldElement, HashConfig, PublicInputs, R1CS, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, prefix_covector::{
-            OffsetCovector, build_prefix_covectors, expand_powers, make_public_weight
-        }, utils::sumcheck::{
+    anyhow::{ensure, Context, Result},
+    ark_std::{One, Zero},
+    provekit_common::{
+        prefix_covector::{
+            build_prefix_covectors, expand_powers, make_public_weight, OffsetCovector,
+        },
+        utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
-        }
-    }, tracing::instrument, whir::{
+        },
+        FieldElement, HashConfig, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme,
+        R1CS,
+    },
+    tracing::instrument,
+    whir::{
         algebra::linear_form::LinearForm,
-        transcript::{Proof, VerifierMessage, VerifierState, codecs::Empty},
-    }
+        transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
+    },
 };
 
 #[derive(Debug)]

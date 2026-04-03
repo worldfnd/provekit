@@ -148,15 +148,14 @@ func nativeGeometricSequence(x *big.Int, count int) []*big.Int {
 
 // nativeGeometricChallenge mirrors Rust geometric_challenge: squeeze a single
 // challenge and expand to a geometric sequence of the given length.
-func nativeGeometricChallenge(arthur *NativeArthur, count int) ([]*big.Int, error) {
+func nativeGeometricChallenge(nimue *NativeNimue, count int) ([]*big.Int, error) {
 	switch count {
 	case 0:
 		return []*big.Int{}, nil
 	case 1:
 		return []*big.Int{big.NewInt(1)}, nil
 	default:
-		x, err := arthur.FillChallengeScalars(1)
-		fmt.Println("x:", x)
+		x, err := nimue.FillChallengeScalars(1)
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +261,7 @@ func nativeUnivariateEvalMLE(point *big.Int, size int, mlPoint []*big.Int) *big.
 // a folding randomness challenge. Updates sum in place.
 // Returns the folding randomness points.
 func nativeWhirSumcheckVerify(
-	arthur *NativeArthur,
+	nimue *NativeNimue,
 	sum *big.Int,
 	numRounds int,
 ) ([]*big.Int, *big.Int, error) {
@@ -271,7 +270,7 @@ func nativeWhirSumcheckVerify(
 
 	for i := 0; i < numRounds; i++ {
 		// Read c0 and c2 (evaluations at 0 and 2)
-		evals, err := arthur.FillNextScalars(2)
+		evals, err := nimue.FillNextScalars(2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d coeffs: %w", i, err)
 		}
@@ -285,7 +284,7 @@ func nativeWhirSumcheckVerify(
 		// Verify: c0 + c1 == currentSum (this is guaranteed by construction)
 
 		// Squeeze folding randomness
-		rSlice, err := arthur.FillChallengeScalars(1)
+		rSlice, err := nimue.FillChallengeScalars(1)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
 		}
@@ -314,21 +313,21 @@ func nativeWhirSumcheckVerify(
 // nativeIRSCommitVerifyWithPoints replays the IRS commit verification and
 // returns the in-domain query indices plus the parsed Merkle round data.
 func nativeIRSCommitVerifyWithPoints(
-	arthur *NativeArthur,
+	nimue *NativeNimue,
 	numQueries int,
 	domainSize int,
 	foldingFactorPower int,
 ) ([]int, *whir.RoundMerkleEntry, error) {
-	_ = int(arthur.hints.Size()) - arthur.hints.Len()
+	_ = int(nimue.hints.Size()) - nimue.hints.Len()
 	// Squeeze challenge indices
-	indices, err := nativeGetStirChallenges(arthur, domainSize/foldingFactorPower, numQueries, false)
+	indices, err := nativeGetStirChallenges(nimue, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("stir challenges: %w", err)
 	}
 
 	// Read submatrix hint
 	var submatrix []Fp256
-	if err = arthur.ProverHintArk(&submatrix); err != nil {
+	if err = nimue.ProverHintArk(&submatrix); err != nil {
 		return nil, nil, fmt.Errorf("submatrix: %w", err)
 	}
 
@@ -346,7 +345,7 @@ func nativeIRSCommitVerifyWithPoints(
 	if len(indices) > 0 {
 		leafFoldSize = len(submatrix) / len(indices)
 	}
-	entry, err := consumeHintsAndBuildMerkleEntry(arthur, indices, dedupedIndices, submatrix, leafFoldSize, treeHeight)
+	entry, err := consumeHintsAndBuildMerkleEntry(nimue, indices, dedupedIndices, submatrix, leafFoldSize, treeHeight)
 	if err != nil {
 		return nil, nil, fmt.Errorf("merkle: %w", err)
 	}
@@ -376,7 +375,7 @@ func ExtractFullAuthPath(
 	return siblingHash, authPath
 }
 
-// consumeHintsAndBuildMerkleEntry reads Merkle proof hints from arthur and
+// consumeHintsAndBuildMerkleEntry reads Merkle proof hints from nimue and
 // builds the RoundMerkleEntry in a single bottom-up pass. This combines what
 // was previously two separate functions (consumeMerkleHints + buildRoundMerkleEntry)
 // that each independently replayed the same level-by-level tree traversal.
@@ -385,7 +384,7 @@ func ExtractFullAuthPath(
 // dedupSorted: sorted, deduplicated indices (pre-computed by caller)
 // submatrix: leaf data laid out in order of indices, foldSize elements per index
 func consumeHintsAndBuildMerkleEntry(
-	arthur *NativeArthur,
+	name *NativeNimue,
 	indices []int,
 	dedupSorted []int,
 	submatrix []Fp256,
@@ -418,7 +417,7 @@ func consumeHintsAndBuildMerkleEntry(
 		leafVarByIdx[idx] = varRow
 	}
 
-	// Build the Merkle tree bottom-up while consuming hints from arthur.
+	// Build the Merkle tree bottom-up while consuming hints from nimue.
 	// For each level, sibling pairs (both in the query set) don't need a hint;
 	// single indices get a sibling hash from the hint stream.
 	tree := make(map[IndexPair]Digest)
@@ -455,7 +454,7 @@ func consumeHintsAndBuildMerkleEntry(
 				i += 2
 			} else {
 				// Single index: read sibling hash from hints.
-				siblingHash, err := arthur.ProverHint(32)
+				siblingHash, err := name.ProverHint(32)
 				if err != nil {
 					return nil, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}
@@ -536,11 +535,11 @@ func NativeCommitmentFromParsed(oodPoints []*big.Int, oodAnswers [][]*big.Int) *
 // ---------------------------------------------------------------------------
 
 func nativeReceiveCommitment(
-	arthur *NativeArthur,
+	name *NativeNimue,
 	oodSamples int,
 ) (*NativeCommitment, error) {
 	// Root hash (prover_message)
-	_, err := arthur.FillNextScalars(1)
+	_, err := name.FillNextScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("root hash: %w", err)
 	}
@@ -548,13 +547,13 @@ func nativeReceiveCommitment(
 	oodPoints := make([]*big.Int, 0)
 	oodAnswers := make([]*big.Int, 0)
 	if oodSamples > 0 {
-		pts, err := arthur.FillChallengeScalars(oodSamples)
+		pts, err := name.FillChallengeScalars(oodSamples)
 		if err != nil {
 			return nil, fmt.Errorf("ood points: %w", err)
 		}
 		oodPoints = pts
 
-		ans, err := arthur.FillNextScalars(oodSamples)
+		ans, err := name.FillNextScalars(oodSamples)
 		if err != nil {
 			return nil, fmt.Errorf("ood answers: %w", err)
 		}
@@ -573,13 +572,13 @@ func nativeReceiveCommitment(
 // Native PoW verification (transcript replay only — actual check is in circuit)
 // ---------------------------------------------------------------------------
 
-func nativePoWVerify(arthur *NativeArthur, powBits int) error {
+func nativePoWVerify(nimue *NativeNimue, powBits int) error {
 	if powBits > 0 {
-		challengeBytes, err := arthur.FillChallengeBytes(32)
+		challengeBytes, err := nimue.FillChallengeBytes(32)
 		if err != nil {
 			return fmt.Errorf("pow challenge: %w", err)
 		}
-		nonceBytes, err := arthur.FillNextBytes(8)
+		nonceBytes, err := nimue.FillNextBytes(8)
 		if err != nil {
 			return fmt.Errorf("pow nonce: %w", err)
 		}
@@ -644,14 +643,14 @@ type NativeWhirVerifyResult struct {
 // This mirrors the Rust `Config::verify()` method for batched commitments.
 //
 // Parameters:
-//   - arthur: transcript reader
+//   - nimue: transcript reader
 //   - whirParams: WHIR protocol parameters
 //   - whirConfig: WHIR configuration (for ZKHint construction)
 //   - commitments: N parsed commitments (from parseBatchedCommitment)
 //   - evaluations: constraint evaluation values (flattened)
 //   - numLinearForms: number of external linear form constraints
 func NativeWhirVerify(
-	arthur *NativeArthur,
+	nimue *NativeNimue,
 	whirParams WHIRParams,
 	whirConfig WHIRConfig,
 	commitments []*NativeCommitment,
@@ -691,7 +690,7 @@ func NativeWhirVerify(
 					oodsMatrix = append(oodsMatrix, row[j-vectorOffset])
 				} else {
 					// Cross-term: read from transcript
-					vals, err := arthur.FillNextScalars(1)
+					vals, err := nimue.FillNextScalars(1)
 					if err != nil {
 						return nil, fmt.Errorf("ood cross-term: %w", err)
 					}
@@ -712,7 +711,7 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	// 2. Vector RLC (random linear combination of interleaved vectors)
 	// ---------------------------------------------------------------
-	vectorRLCCoeffs, err := nativeGeometricChallenge(arthur, numVectors)
+	vectorRLCCoeffs, err := nativeGeometricChallenge(nimue, numVectors)
 	if err != nil {
 		return nil, fmt.Errorf("vector_rlc: %w", err)
 	}
@@ -721,7 +720,7 @@ func NativeWhirVerify(
 	// 3. Constraint RLC
 	// ---------------------------------------------------------------
 	totalConstraints := len(oodsEvalInfos) + numLinearForms
-	constraintRLCCoeffs, err := nativeGeometricChallenge(arthur, totalConstraints)
+	constraintRLCCoeffs, err := nativeGeometricChallenge(nimue, totalConstraints)
 	if err != nil {
 		return nil, fmt.Errorf("constraint_rlc: %w", err)
 	}
@@ -762,12 +761,12 @@ func NativeWhirVerify(
 			return nil, fmt.Errorf("the_sum should be zero but got %s", theSum.String())
 		}
 		ff0 := whirParams.FoldingFactorArray[0]
-		foldRandomness, err := arthur.FillChallengeScalars(ff0)
+		foldRandomness, err := nimue.FillChallengeScalars(ff0)
 		if err != nil {
 			return nil, fmt.Errorf("initial skip folding: %w", err)
 		}
 		// initial_skip_pow
-		if err := nativePoWVerify(arthur, 0); err != nil {
+		if err := nativePoWVerify(nimue, 0); err != nil {
 			return nil, fmt.Errorf("initial skip pow: %w", err)
 		}
 		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
@@ -775,7 +774,7 @@ func NativeWhirVerify(
 		fmt.Println("the_sum before initial sumcheck:", theSum)
 		ff0 := whirParams.FoldingFactorArray[0]
 		fmt.Println("num rounds:", ff0)
-		foldRandomness, newSum, err := nativeWhirSumcheckVerify(arthur, theSum, ff0)
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff0)
 		if err != nil {
 			return nil, fmt.Errorf("initial sumcheck: %w", err)
 		}
@@ -803,13 +802,13 @@ func NativeWhirVerify(
 	for r := 0; r < nRounds; r++ {
 		// receive_commitment for folded polynomial
 		oodSamples := whirParams.RoundParametersOODSamples[r]
-		roundCommitment, err := nativeReceiveCommitment(arthur, oodSamples)
+		roundCommitment, err := nativeReceiveCommitment(nimue, oodSamples)
 		if err != nil {
 			return nil, fmt.Errorf("round %d commitment: %w", r, err)
 		}
 
 		// Proof of work
-		if err := nativePoWVerify(arthur, whirParams.PowBits[r]); err != nil {
+		if err := nativePoWVerify(nimue, whirParams.PowBits[r]); err != nil {
 			return nil, fmt.Errorf("round %d pow: %w", r, err)
 		}
 
@@ -819,7 +818,7 @@ func NativeWhirVerify(
 		var roundMerkle *whir.RoundMerkleEntry
 		if prev == prevInitial {
 			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
-				arthur,
+				nimue,
 				whirParams.InitialInDomainSamples,
 				domainSize,
 				foldingFactorPower,
@@ -827,7 +826,7 @@ func NativeWhirVerify(
 		} else {
 			prevFF := 1 << whirParams.FoldingFactorArray[r-1]
 			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
-				arthur,
+				nimue,
 				whirParams.RoundParametersNumOfQueries[r-1],
 				domainSize,
 				prevFF,
@@ -895,7 +894,7 @@ func NativeWhirVerify(
 		_ = tensorWeights
 
 		// Squeeze combination randomness for this round
-		constraintRLC, err := nativeGeometricChallenge(arthur, len(constraintValues))
+		constraintRLC, err := nativeGeometricChallenge(nimue, len(constraintValues))
 		if err != nil {
 			return nil, fmt.Errorf("round %d combination randomness: %w", r, err)
 		}
@@ -911,7 +910,7 @@ func NativeWhirVerify(
 		if r+1 < len(whirParams.FoldingFactorArray) {
 			ff = whirParams.FoldingFactorArray[r+1]
 		}
-		foldRandomness, newSum, err := nativeWhirSumcheckVerify(arthur, theSum, ff)
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff)
 		if err != nil {
 			return nil, fmt.Errorf("round %d sumcheck: %w", r, err)
 		}
@@ -927,14 +926,14 @@ func NativeWhirVerify(
 	// 7. Final round: receive full vector
 	// ---------------------------------------------------------------
 	finalSize := 1 << whirParams.FinalSumcheckRounds
-	finalVector, err := arthur.FillNextScalars(finalSize)
+	finalVector, err := nimue.FillNextScalars(finalSize)
 
 	if err != nil {
 		return nil, fmt.Errorf("final vector: %w", err)
 	}
 
 	// Final PoW
-	if err := nativePoWVerify(arthur, whirParams.FinalPowBits); err != nil {
+	if err := nativePoWVerify(nimue, whirParams.FinalPowBits); err != nil {
 		return nil, fmt.Errorf("final pow: %w", err)
 	}
 
@@ -943,7 +942,7 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
 	finalIndices, err := nativeGetStirChallenges(
-		arthur,
+		nimue,
 		domainSize/finalFoldingFactorPower,
 		whirParams.FinalQueries,
 		false,
@@ -953,7 +952,7 @@ func NativeWhirVerify(
 	}
 
 	var finalSubmatrix []Fp256
-	if err = arthur.ProverHintArk(&finalSubmatrix); err != nil {
+	if err = nimue.ProverHintArk(&finalSubmatrix); err != nil {
 		return nil, fmt.Errorf("final submatrix: %w", err)
 	}
 
@@ -966,7 +965,7 @@ func NativeWhirVerify(
 	sort.Ints(dedupedFinal)
 	dedupedFinal = dedup(dedupedFinal)
 
-	finalMerkleEntry, err := consumeHintsAndBuildMerkleEntry(arthur, finalIndices, dedupedFinal, finalSubmatrix, finalFoldingFactorPower, treeHeight)
+	finalMerkleEntry, err := consumeHintsAndBuildMerkleEntry(nimue, finalIndices, dedupedFinal, finalSubmatrix, finalFoldingFactorPower, treeHeight)
 	if err != nil {
 		return nil, fmt.Errorf("final merkle: %w", err)
 	}
@@ -976,7 +975,7 @@ func NativeWhirVerify(
 	// ---------------------------------------------------------------
 	// 9. Final sumcheck
 	// ---------------------------------------------------------------
-	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(arthur, theSum, whirParams.FinalSumcheckRounds)
+	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, whirParams.FinalSumcheckRounds)
 	if err != nil {
 		return nil, fmt.Errorf("final sumcheck: %w", err)
 	}
@@ -984,7 +983,7 @@ func NativeWhirVerify(
 	allFoldingRandomness = append(allFoldingRandomness, finalSumcheckRandomness)
 
 	// Final folding PoW
-	if err := nativePoWVerify(arthur, whirParams.FinalFoldingPowBits); err != nil {
+	if err := nativePoWVerify(nimue, whirParams.FinalFoldingPowBits); err != nil {
 		return nil, fmt.Errorf("final folding pow: %w", err)
 	}
 

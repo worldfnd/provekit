@@ -33,7 +33,7 @@ func irsReceiveCommitment(api frontend.API, nimue gnarkNimue.Nimue, whir_params 
 	}
 
 	// OOD samples count comes from the commitment's out_domain_samples config.
-	oodSamples := whir_params.CommittmentOODSamples
+	oodSamples := whir_params.CommitmentOODSamples
 	oodPoints := make([]frontend.Variable, oodSamples)
 
 	if err := nimue.FillChallengeScalars(oodPoints); err != nil {

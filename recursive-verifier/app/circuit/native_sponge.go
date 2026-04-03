@@ -234,21 +234,21 @@ func nativeBigIntToLeBytes(v *big.Int) [32]byte {
 }
 
 // ---------------------------------------------------------------------------
-// NativeArthur: native transcript reader mirroring the in-circuit Arthur.
+// NativeNimue: native transcript reader mirroring the in-circuit Nimue.
 // Reads scalars from nargString (prover messages), squeezes challenges
 // from the sponge, and reads hints from a separate buffer.
 // ---------------------------------------------------------------------------
 
-type NativeArthur struct {
+type NativeNimue struct {
 	sponge     *NativeSponge
 	nargString []byte
 	hints      *bytes.Reader
 }
 
-func NewNativeArthur(protocolID [64]byte, sessionID []byte, nargString []byte, hints []byte) *NativeArthur {
+func NewNativeNimue(protocolID [64]byte, sessionID []byte, nargString []byte, hints []byte) *NativeNimue {
 	sponge := newNativeSponge()
 	sponge.InitFromProtocolID(protocolID, sessionID)
-	return &NativeArthur{
+	return &NativeNimue{
 		sponge:     sponge,
 		nargString: nargString,
 		hints:      bytes.NewReader(hints),
@@ -257,7 +257,7 @@ func NewNativeArthur(protocolID [64]byte, sessionID []byte, nargString []byte, h
 
 // FillNextScalars reads n field elements (32 bytes each, LE) from the
 // transcript and absorbs them into the sponge.
-func (a *NativeArthur) FillNextScalars(n int) ([]*big.Int, error) {
+func (a *NativeNimue) FillNextScalars(n int) ([]*big.Int, error) {
 	out := make([]*big.Int, n)
 	for i := range n {
 		if len(a.nargString) < 32 {
@@ -277,7 +277,7 @@ func (a *NativeArthur) FillNextScalars(n int) ([]*big.Int, error) {
 // Each challenge requires 64 bytes to match spongefish's DecodingFieldBuffer
 // which uses (MODULUS_BIT_SIZE.div_ceil(8) + 32) = 64 bytes per field element
 // for statistical uniformity, then reduces mod p once over the full 64-byte LE integer.
-func (a *NativeArthur) FillChallengeScalars(n int) ([]*big.Int, error) {
+func (a *NativeNimue) FillChallengeScalars(n int) ([]*big.Int, error) {
 	out := make([]*big.Int, n)
 	for i := range n {
 		// Squeeze 64 raw bytes and interpret as a single LE integer, then reduce mod p.
@@ -292,7 +292,7 @@ func (a *NativeArthur) FillChallengeScalars(n int) ([]*big.Int, error) {
 // FillNextBytes reads n bytes from the transcript and absorbs them as raw
 // bytes into the sponge rate block. Partial writes leave the remaining rate
 // bytes unchanged, matching Rust spongefish's EncodingByteBuffer behavior.
-func (a *NativeArthur) FillNextBytes(n int) ([]byte, error) {
+func (a *NativeNimue) FillNextBytes(n int) ([]byte, error) {
 	if len(a.nargString) < n {
 		return nil, fmt.Errorf("FillNextBytes: need %d bytes, have %d", n, len(a.nargString))
 	}
@@ -305,14 +305,14 @@ func (a *NativeArthur) FillNextBytes(n int) ([]byte, error) {
 
 // FillChallengeBytes squeezes n bytes directly from the sponge.
 // Uses byte-level squeeze tracking, matching Rust DuplexSponge exactly.
-func (a *NativeArthur) FillChallengeBytes(n int) ([]byte, error) {
+func (a *NativeNimue) FillChallengeBytes(n int) ([]byte, error) {
 	out := make([]byte, n)
 	a.sponge.Squeeze(out)
 	return out, nil
 }
 
 // ProverHint reads exactly n raw bytes from the hints buffer (NargDeserialize).
-func (a *NativeArthur) ProverHint(n int) ([]byte, error) {
+func (a *NativeNimue) ProverHint(n int) ([]byte, error) {
 	buf := make([]byte, n)
 	_, err := io.ReadFull(a.hints, buf)
 	if err != nil {
@@ -322,7 +322,7 @@ func (a *NativeArthur) ProverHint(n int) ([]byte, error) {
 }
 
 // ProverHintArk reads an Arkworks compressed-serialized value from the hints buffer.
-func (a *NativeArthur) ProverHintArk(target interface{}) error {
+func (a *NativeNimue) ProverHintArk(target interface{}) error {
 	_, err := arkSerialize.CanonicalDeserializeWithMode(a.hints, target, false, false)
 	if err != nil {
 		return fmt.Errorf("ProverHintArk: %w", err)
@@ -335,7 +335,7 @@ func (a *NativeArthur) ProverHintArk(target interface{}) error {
 // ---------------------------------------------------------------------------
 
 func nativeGetStirChallenges(
-	arthur *NativeArthur,
+	nimue *NativeNimue,
 	numLeaves int,
 	count int,
 	deduplicate bool,
@@ -352,7 +352,7 @@ func nativeGetStirChallenges(
 
 	sizeBytes := (bits.Len(uint(numLeaves)) - 1 + 7) / 8
 
-	entropy, err := arthur.FillChallengeBytes(count * sizeBytes)
+	entropy, err := nimue.FillChallengeBytes(count * sizeBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,7 @@ func nativeGetStirChallenges(
 // countMerkleHints determines the number of 32-byte sibling hashes in the
 // hints buffer for a Merkle multi-opening at the given leaf indices.
 // It also returns the FullMultiPath reconstructed from the hints.
-func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (FullMultiPath[Digest], error) {
+func consumeMerkleHints(nimue *NativeNimue, indices []int, treeHeight int) (FullMultiPath[Digest], error) {
 	if len(indices) == 0 {
 		return FullMultiPath[Digest]{}, nil
 	}
@@ -414,7 +414,7 @@ func consumeMerkleHints(arthur *NativeArthur, indices []int, treeHeight int) (Fu
 				i += 2
 			} else {
 				// Need sibling hash from hints
-				siblingHash, err := arthur.ProverHint(32)
+				siblingHash, err := nimue.ProverHint(32)
 				if err != nil {
 					return FullMultiPath[Digest]{}, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
 				}

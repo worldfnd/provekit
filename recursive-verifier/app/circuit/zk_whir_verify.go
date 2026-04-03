@@ -228,7 +228,7 @@ func ZKWhirVerify(
 	}
 	blindedWhirCommitment := toWhirCommitment(blindedCommitment)
 	blindedWhirStatements := toWhirStatements(modifiedEvaluations, blindedParams.BatchSize)
-	blindedWhirParams := toWhirParams(blindedParams)
+	blindedWhirParams := blindedParams
 
 	blindedResult, err := whir.VerifyWhir(api, sc, nimue, blindedWhirCommitment, blindedWhirStatements, blindedWhirParams, blindedMerkleData)
 	if err != nil {
@@ -288,7 +288,7 @@ func ZKWhirVerify(
 
 	blindingWhirCommitment := toWhirCommitment(blindingCommitment)
 	blindingWhirStatements := toWhirStatements(blindingEvaluations, blindingParams.BatchSize)
-	blindingWhirParams := toWhirParams(blindingParams)
+	blindingWhirParams := blindingParams
 
 	blindingResult, err := whir.VerifyWhir(api, sc, nimue, blindingWhirCommitment, blindingWhirStatements, blindingWhirParams, blindingMerkleData)
 	if err != nil {
@@ -396,26 +396,6 @@ func toWhirStatements(evaluations []frontend.Variable, numVectors int) []whir.St
 		statements[i] = whir.Statement{Constraints: constraints, NVars: 0}
 	}
 	return statements
-}
-
-func toWhirParams(p WHIRParams) whir.WHIRParams {
-	return whir.WHIRParams{
-		ParamNRounds:                         p.ParamNRounds,
-		FoldingFactorArray:                   p.FoldingFactorArray,
-		RoundParametersOODSamples:            p.RoundParametersOODSamples,
-		RoundParametersNumOfQueries:          p.RoundParametersNumOfQueries,
-		PowBits:                              p.PowBits,
-		FinalQueries:                         p.FinalQueries,
-		FinalPowBits:                         p.FinalPowBits,
-		FinalFoldingPowBits:                  p.FinalFoldingPowBits,
-		StartingDomainBackingDomainGenerator: p.StartingDomainBackingDomainGenerator,
-		DomainSize:                           p.DomainSize,
-		CommittmentOODSamples:                p.CommittmentOODSamples,
-		FinalSumcheckRounds:                  p.FinalSumcheckRounds,
-		MVParamsNumberOfVariables:            p.MVParamsNumberOfVariables,
-		BatchSize:                            p.BatchSize,
-		InitialInDomainSamples:               p.InitialInDomainSamples,
-	}
 }
 
 // ---------------------------------------------------------------------------

@@ -41,9 +41,6 @@ type Circuit struct {
 	Evaluations []frontend.Variable
 	// [az_at_alpha, bz_at_alpha, cz_at_alpha] for commitment 2 (dual mode only).
 	Evaluations2 []frontend.Variable
-	// Public input evaluation hint (only used when PublicInputs is non-empty).
-	PublicEval frontend.Variable
-
 	// Merkle proof data for WHIR commitment verification (commitment 1 / single).
 	BlindedMerkleData  whir.WhirMerkleData
 	BlindingMerkleData whir.WhirMerkleData
@@ -143,13 +140,25 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
 
 	// ---------------------------------------------------------------
+	// 5b. Read public_eval from transcript (prover_message in Rust)
+	// ---------------------------------------------------------------
+	var publicEval frontend.Variable
+	if hasPublicInputs {
+		publicEvalSlice := make([]frontend.Variable, 1)
+		if err := nimue.FillNextScalars(publicEvalSlice); err != nil {
+			return fmt.Errorf("failed to read public_eval from transcript: %w", err)
+		}
+		publicEval = publicEvalSlice[0]
+		api.Println("publicEval", publicEval)
+	}
+
+	// ---------------------------------------------------------------
 	// 6. WHIR verification for commitment 1
 	// ---------------------------------------------------------------
 	{
 		var whirEvaluations []frontend.Variable
 		if hasPublicInputs {
-			api.Println("publicEval", circuit.PublicEval)
-			whirEvaluations = []frontend.Variable{circuit.PublicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
+			whirEvaluations = []frontend.Variable{publicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
 		} else {
 			whirEvaluations = []frontend.Variable{evals1Az, evals1Bz, evals1Cz, blindingEval}
 		}
@@ -320,7 +329,6 @@ func verifyCircuit(
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
 	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints (commitment 1)
-	publicEvalBigInt *big.Int, // public input evaluation (nil if no public inputs)
 	blindedMerkleData whir.WhirMerkleData,
 	blindingMerkleData whir.WhirMerkleData,
 	dualData *DualCommitmentData, // nil for single-commitment mode
@@ -451,13 +459,6 @@ func verifyCircuit(
 	for i := 0; i < 3 && i < len(evaluationsBigInt); i++ {
 		evalsAssign[i] = evaluationsBigInt[i]
 	}
-	var publicEvalAssign frontend.Variable
-	if publicEvalBigInt != nil {
-		publicEvalAssign = publicEvalBigInt
-	} else {
-		publicEvalAssign = big.NewInt(0)
-	}
-
 	// Build dual-commitment assignment data
 	var evals2Assign []frontend.Variable
 	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
@@ -481,7 +482,6 @@ func verifyCircuit(
 		PublicInputs:                 publicInputs,
 		Evaluations:                  evalsAssign,
 		Evaluations2:                 evals2Assign,
-		PublicEval:                   publicEvalAssign,
 		BlindedMerkleData:            blindedMerkleData,
 		BlindingMerkleData:           blindingMerkleData,
 		BlindedMerkleData2:           blindedMerkleAssign2,

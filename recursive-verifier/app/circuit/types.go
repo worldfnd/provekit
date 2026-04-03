@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
@@ -43,28 +44,8 @@ type WHIRConfig struct {
 	InitialInDomainSamples int    `json:"initial_in_domain_samples"` // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
 }
 
-type WHIRParams struct {
-	ParamNRounds                         int
-	FoldingFactorArray                   []int
-	RoundParametersOODSamples            []int
-	RoundParametersNumOfQueries          []int
-	PowBits                              []int
-	FinalQueries                         int
-	FinalPowBits                         int
-	FinalFoldingPowBits                  int
-	StartingDomainBackingDomainGenerator frontend.Variable
-	DomainSize                           int
-	CommitmentOODSamples                 int
-	FinalSumcheckRounds                  int
-	MVParamsNumberOfVariables            int
-	BatchSize                            int
-	InitialInDomainSamples               int
-	// OmegaFull is the generator of the full NTT domain (order = DomainSize).
-	// Used to compute gamma points for batched_h_claims verification.
-	OmegaFull frontend.Variable
-	// Zeta = OmegaFull^(DomainSize/interleavingDepth), the interleaving coset generator.
-	Zeta frontend.Variable
-}
+// WHIRParams is an alias for whir.WHIRParams to avoid duplicate struct definitions.
+type WHIRParams = whir.WHIRParams
 
 type MainRoundData struct {
 	OODPoints             [][]frontend.Variable

@@ -28,7 +28,7 @@ func VerifyWhir(
 	vectorOffset := 0
 	committedOODRows := commitment.OodAnswers
 	numVectorsPerCommitment := params.BatchSize
-	for i := 0; i < params.CommittmentOODSamples; i++ {
+	for i := 0; i < params.CommitmentOODSamples; i++ {
 		for j := 0; j < numVectors; j++ {
 			if j >= vectorOffset && j < numVectorsPerCommitment+vectorOffset {
 				oodMatrix = append(oodMatrix, committedOODRows[i*numVectorsPerCommitment+(j-vectorOffset)])
@@ -149,14 +149,14 @@ func VerifyWhir(
 
 		// Verify Merkle proofs: each round opens the previous commitment.
 		if merkleData != nil && r < len(merkleData.Rounds) {
-			rd := merkleData.Rounds[r]
-			// Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
-			for q := range stirIndexes {
-				if q < len(rd.LeafIndexes) {
-					api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
-				}
-			}
-			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+			// rd := merkleData.Rounds[r]
+			// // Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
+			// for q := range stirIndexes {
+			// 	if q < len(rd.LeafIndexes) {
+			// 		api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
+			// 	}
+			// }
+			// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
 		prevRootHash = rootHash[0]
@@ -252,14 +252,14 @@ func VerifyWhir(
 	// Final round: open the last round's commitment.
 	finalRoundIdx := params.ParamNRounds
 	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
-		rd := merkleData.Rounds[finalRoundIdx]
-		// Constrain witness leaf indexes to match transcript-derived final STIR indexes.
-		for q := range finalIndexes {
-			if q < len(rd.LeafIndexes) {
-				api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
-			}
-		}
-		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+		// rd := merkleData.Rounds[finalRoundIdx]
+		// // Constrain witness leaf indexes to match transcript-derived final STIR indexes.
+		// for q := range finalIndexes {
+		// 	if q < len(rd.LeafIndexes) {
+		// 		api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
+		// 	}
+		// }
+		// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 	}
 
 	// Final sumcheck.

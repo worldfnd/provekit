@@ -1,9 +1,6 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{
-        skyscraper::SKYSCRAPER_ENGINE_ID,
-        FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
-    },
+    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -14,45 +11,46 @@ pub struct GnarkConfig {
     pub blinded_commitment_whir_config: WHIRConfigGnark,
     pub blinding_commitment_whir_config: WHIRConfigGnark,
     pub log_num_constraints: usize,
-    pub log_num_variables:   usize,
-    pub log_a_num_terms:     usize,
-    pub narg_string:         Vec<u8>,
-    pub narg_string_len:     usize,
-    pub hints:               Vec<u8>,
-    pub hints_len:           usize,
-    pub protocol_id:         Vec<u8>,
-    pub num_challenges:      usize,
-    pub w1_size:             usize,
-    pub public_inputs:       PublicInputs,
+    pub log_num_variables: usize,
+    pub log_a_num_terms: usize,
+    pub narg_string: Vec<u8>,
+    pub narg_string_len: usize,
+    pub hints: Vec<u8>,
+    pub hints_len: usize,
+    pub protocol_id: Vec<u8>,
+    pub num_challenges: usize,
+    pub w1_size: usize,
+    pub public_inputs: PublicInputs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WHIRConfigGnark {
     /// Number of WHIR rounds.
-    pub n_rounds:               usize,
+    pub n_rounds: usize,
     /// Reed-Solomon rate (log₂ of inverse rate).
-    pub rate:                   usize,
+    pub rate: usize,
     /// Number of variables in the multilinear polynomial.
-    pub n_vars:                 usize,
+    pub n_vars: usize,
     /// Folding factor per round.
-    pub folding_factor:         Vec<usize>,
+    pub folding_factor: Vec<usize>,
     /// Out-of-domain samples per round.
-    pub ood_samples:            Vec<usize>,
+    pub ood_samples: Vec<usize>,
     /// Number of queries per round.
-    pub num_queries:            Vec<usize>,
+    pub num_queries: Vec<usize>,
     /// Proof-of-work bits per round.
-    pub pow_bits:               Vec<i32>,
+    pub pow_bits: Vec<i32>,
     /// Final round query count.
-    pub final_queries:          usize,
+    pub final_queries: usize,
     /// Final round proof-of-work bits.
-    pub final_pow_bits:         i32,
+    pub final_pow_bits: i32,
     /// Final folding proof-of-work bits.
     pub final_folding_pow_bits: i32,
     /// Domain generator as a string.
-    pub domain_generator:       String,
+    pub domain_generator: String,
     /// Batch size (number of polynomials committed together).
-    pub batch_size:             usize,
-    /// Initial committer in-domain samples (query count for zkWHIR in-domain verification).
+    pub batch_size: usize,
+    /// Initial committer in-domain samples (query count for zkWHIR in-domain
+    /// verification).
     pub initial_in_domain_samples: usize,
 }
 

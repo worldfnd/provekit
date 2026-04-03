@@ -118,18 +118,18 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	var pid [64]byte
 	copy(pid[:], config.ProtocolID[:64])
 
-	arthur := NewNativeArthur(pid, config.SessionID, config.NargString, config.Hints)
+	nimue := NewNativeNimue(pid, config.SessionID, config.NargString, config.Hints)
 	blindedCommitmentWhirConfig := NewWhirParams(config.BlindedCommitmentWhirConfig)
 	blindingCommitmentWhirConfig := NewWhirParams(config.BlindingCommitmentWhirConfig)
 
 	// 1. Parse commitment 1
-	_, blindedOODPoints, blindedOODMatrix, err := nativeParseBatchedCommitment(arthur, blindedCommitmentWhirConfig)
+	_, blindedOODPoints, blindedOODMatrix, err := nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse blinded commitment: %w", err)
 	}
 	blindedCommitment := NativeCommitmentFromParsed(blindedOODPoints, blindedOODMatrix)
 
-	_, blindingOODPoints, blindingOODMatrix, err := nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig)
+	_, blindingOODPoints, blindingOODMatrix, err := nativeParseBatchedCommitment(nimue, blindingCommitmentWhirConfig)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse blinding commitment: %w", err)
 	}
@@ -137,33 +137,33 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 
 	// 2. If dual mode: squeeze logup challenges, parse commitment 2
 	if config.NumChallenges > 0 {
-		if _, err = arthur.FillChallengeScalars(config.NumChallenges); err != nil {
+		if _, err = nimue.FillChallengeScalars(config.NumChallenges); err != nil {
 			return nil, nil, fmt.Errorf("logup challenges: %w", err)
 		}
-		if _, _, _, err = nativeParseBatchedCommitment(arthur, blindedCommitmentWhirConfig); err != nil {
+		if _, _, _, err = nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig); err != nil {
 			return nil, nil, fmt.Errorf("parse commitment 2 blinded: %w", err)
 		}
-		if _, _, _, err = nativeParseBatchedCommitment(arthur, blindingCommitmentWhirConfig); err != nil {
+		if _, _, _, err = nativeParseBatchedCommitment(nimue, blindingCommitmentWhirConfig); err != nil {
 			return nil, nil, fmt.Errorf("parse commitment 2 blinding: %w", err)
 		}
 	}
 
 	// 3. Sumcheck
-	if _, err = nativeRunSumcheckVerifier(arthur, config.LogNumConstraints); err != nil {
+	if _, err = nativeRunSumcheckVerifier(nimue, config.LogNumConstraints); err != nil {
 		return nil, nil, fmt.Errorf("sumcheck verifier: %w", err)
 	}
 
 	// 4. Public inputs hash + x challenge
-	if _, err = arthur.FillNextScalars(1); err != nil {
+	if _, err = nimue.FillNextScalars(1); err != nil {
 		return nil, nil, fmt.Errorf("public inputs hash: %w", err)
 	}
-	if _, err = arthur.FillChallengeScalars(1); err != nil {
+	if _, err = nimue.FillChallengeScalars(1); err != nil {
 		return nil, nil, fmt.Errorf("x challenge: %w", err)
 	}
 
 	// 5. Read evaluation hints
 	var evals1 []Fp256
-	if err = arthur.ProverHintArk(&evals1); err != nil {
+	if err = nimue.ProverHintArk(&evals1); err != nil {
 		return nil, nil, fmt.Errorf("evals_1: %w", err)
 	}
 	evals1BigInt := fp256SliceToBigInt(evals1)
@@ -171,25 +171,22 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	var evals2BigInt []*big.Int
 	if config.NumChallenges > 0 {
 		var evals2 []Fp256
-		if err = arthur.ProverHintArk(&evals2); err != nil {
+		if err = nimue.ProverHintArk(&evals2); err != nil {
 			return nil, nil, fmt.Errorf("evals_2: %w", err)
 		}
 		evals2BigInt = fp256SliceToBigInt(evals2)
 	}
 
 	hasPublicInputs := !config.PublicInputs.IsEmpty()
-	var publicEvalBigInt *big.Int
 	if hasPublicInputs {
-		var publicEval Fp256
-		if err = arthur.ProverHintArk(&publicEval); err != nil {
+		if _, err = nimue.FillNextScalars(1); err != nil {
 			return nil, nil, fmt.Errorf("public_eval: %w", err)
 		}
-		publicEvalBigInt = fp256ToBigInt(publicEval)
 	}
 
 	// 6. zkWHIR verify (commitment 1)
 	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
-	zkWhirData1, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
+	zkWhirData1, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
 	if err != nil {
 		return nil, nil, fmt.Errorf("zkWHIR verify commitment 1: %w", err)
 	}
@@ -198,7 +195,7 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	var dualData *DualCommitmentData
 	if config.NumChallenges > 0 {
 		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
-		zkWhirData2, err := nativeZKWhirVerify(arthur, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
+		zkWhirData2, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
 		if err != nil {
 			return nil, nil, fmt.Errorf("zkWHIR verify commitment 2: %w", err)
 		}
@@ -270,12 +267,6 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	for i := 0; i < 3 && i < len(evals1BigInt); i++ {
 		evalsAssign[i] = evals1BigInt[i]
 	}
-	var publicEvalAssign frontend.Variable
-	if publicEvalBigInt != nil {
-		publicEvalAssign = publicEvalBigInt
-	} else {
-		publicEvalAssign = big.NewInt(0)
-	}
 
 	var evals2Assign []frontend.Variable
 	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
@@ -299,7 +290,6 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		PublicInputs:                 config.PublicInputs,
 		Evaluations:                  evalsAssign,
 		Evaluations2:                 evals2Assign,
-		PublicEval:                   publicEvalAssign,
 		BlindedMerkleData:            *zkWhirData1.BlindedMerkleData,
 		BlindingMerkleData:           *zkWhirData1.BlindingMerkleData,
 		BlindedMerkleData2:           blindedMerkleAssign2,
