@@ -1,8 +1,5 @@
 use {
-    crate::{
-        ark_interleaved::{self, ntt_nr_ark},
-        b51_interleaved,
-    },
+    crate::ark_interleaved::ntt_nr_ark,
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{

@@ -4,18 +4,27 @@ use {
     bn254_multiplier::{
         constants::{self, U64_P_MULTIPLES},
         rne,
-        utils::{self, addv, div_p_32b, div_p_6b, subby, subtraction_reduce},
+        utils::{self, addv, div_p_6b, subby, subtraction_reduce},
     },
     rayon::{
         iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
     },
+    std::mem,
 };
 
 pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
-    interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups);
-    canonicalize_b51(values)
+    // SAFETY: `Fr` is `#[repr(transparent)]` over `BigInt<4>`, which is
+    // `#[repr(transparent)]` over `[u64; 4]`, so the layouts are identical.
+    let (roots, raw): (&[[u64; 4]], &mut [[u64; 4]]) = unsafe {
+        (
+            mem::transmute(new_root.0.as_slice()),
+            mem::transmute(values),
+        )
+    };
+    interleaved_ntt_nr(roots, raw, codeword_size, num_groups);
+    canonicalize_b51(raw);
 }
 
 /// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
@@ -35,9 +44,9 @@ pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-pub fn interleaved_ntt_nr(
-    reversed_ordered_roots: &[Fr],
-    values: &mut [Fr],
+pub(crate) fn interleaved_ntt_nr(
+    reversed_ordered_roots: &[[u64; 4]],
+    values: &mut [[u64; 4]],
     codeword_size: usize,
     mut num_groups: usize,
 ) {
@@ -54,9 +63,6 @@ pub fn interleaved_ntt_nr(
     // Each unique twiddle factor within a stage is a group.
     let mut elements_in_group = values.len() / num_groups;
 
-    // num of groups is the same as inner inner ntt size
-    // let mut num_groups = 1;
-
     // For large NTTs we start with linear scans through memory and once all the
     // elements of the sub NTTs reach the size of workload_size we know that they
     // are contiguous in cache memory and we switch over to a different strategy.
@@ -69,7 +75,7 @@ pub fn interleaved_ntt_nr(
 
     // Parallelizing over the groups is most effective but in the beginning there
     // aren't enough groups to occupy all threads.
-    while num_groups < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
+    while num_groups < 32.min(codeword_size) && elements_in_group > workload_size::<[u64; 4]>() {
         values
             .chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -86,7 +92,7 @@ pub fn interleaved_ntt_nr(
         num_groups *= 2;
     }
 
-    while num_groups < codeword_size && elements_in_group > workload_size::<Fr>() {
+    while num_groups < codeword_size && elements_in_group > workload_size::<[u64; 4]>() {
         values
             .par_chunks_exact_mut(elements_in_group)
             .enumerate()
@@ -111,7 +117,12 @@ pub fn interleaved_ntt_nr(
         });
 }
 
-pub fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+pub(crate) fn dit_nr_cache(
+    reverse_ordered_roots: &[[u64; 4]],
+    segment: usize,
+    input: &mut [[u64; 4]],
+    size: usize,
+) {
     let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
@@ -134,28 +145,26 @@ pub fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [F
 }
 
 #[inline(always)]
-fn b51_kernel(even: &mut Fr, odd: &mut Fr, omega: &Fr) {
-    let f = rne::mono::mul(odd.0 .0, omega.0 .0);
-    let l = subtraction_reduce(subby, addv(even.0 .0, f));
+fn b51_kernel(even: &mut [u64; 4], odd: &mut [u64; 4], omega: &[u64; 4]) {
+    let f = rne::mono::mul(*odd, *omega);
+    let l = subtraction_reduce(subby, addv(*even, f));
     let r = subtraction_reduce(
         subby,
-        addv(even.0 .0, utils::sub(constants::U64_P_MULTIPLES[3], f)),
+        addv(*even, utils::sub(constants::U64_P_MULTIPLES[3], f)),
     );
-
-    (even.0 .0) = l;
-    (odd.0 .0) = r;
+    (*even, *odd) = (l, r);
 }
 
-fn canonicalize_b51(values: &mut [Fr]) {
-    for elem in values.iter_mut() {
-        let reduced = subtraction_reduce(div_p_6b, elem.0 .0);
+fn canonicalize_b51(values: &mut [[u64; 4]]) {
+    values.par_iter_mut().for_each(|elem| {
+        let reduced = subtraction_reduce(div_p_6b, *elem);
         let tentative = utils::sub(reduced, U64_P_MULTIPLES[1]);
-        elem.0 .0 = if tentative[3] >> 63 == 1 {
+        *elem = if tentative[3] >> 63 == 1 {
             reduced
         } else {
             tentative
         };
-    }
+    });
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

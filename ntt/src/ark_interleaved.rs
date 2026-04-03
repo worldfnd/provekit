@@ -28,7 +28,7 @@ pub fn ntt_nr_ark(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
 ///   order.
 /// * `values` - coefficients to be transformed in place with evaluation or vice
 ///   versa.
-pub fn interleaved_ntt_nr(
+pub(crate) fn interleaved_ntt_nr(
     reversed_ordered_roots: &[Fr],
     values: &mut [Fr],
     codeword_size: usize,
@@ -46,9 +46,6 @@ pub fn interleaved_ntt_nr(
 
     // Each unique twiddle factor within a stage is a group.
     let mut elements_in_group = values.len() / num_groups;
-
-    // num of groups is the same as inner inner ntt size
-    // let mut num_groups = 1;
 
     // For large NTTs we start with linear scans through memory and once all the
     // elements of the sub NTTs reach the size of workload_size we know that they
@@ -104,7 +101,7 @@ pub fn interleaved_ntt_nr(
         });
 }
 
-pub fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+pub(crate) fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
     let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
