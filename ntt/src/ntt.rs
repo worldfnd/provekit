@@ -1,5 +1,5 @@
 use {
-    crate::ark_interleaved,
+    crate::{ark_interleaved, b51_interleaved},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -112,7 +112,12 @@ pub fn ntt_nr_ark(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     ark_interleaved::interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
 }
 
-fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
+pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
+    let new_root = extend_roots_table(codeword_size);
+    b51_interleaved::interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
+}
+
+pub fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
     let roots = ENGINE.read().unwrap();
     let new_root = if roots.order() >= codeword_size {
         roots

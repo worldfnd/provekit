@@ -110,8 +110,8 @@ u52_i3 = limbs_to_int(52, U52_i3)
 u52_i4 = limbs_to_int(52, U52_i4)
 
 
-def log_jump(single_input_bound):
-    product_bound = single_input_bound**2
+def log_jump(lhs, rhs):
+    product_bound = lhs * rhs
 
     first_round = (product_bound >> 2 * 64) + u64_i2 * (2**128 - 1)
     second_round = (first_round >> 64) + u64_i1 * (2**64 - 1)
@@ -120,8 +120,8 @@ def log_jump(single_input_bound):
     return final
 
 
-def single_step(single_input_bound):
-    product_bound = single_input_bound**2
+def single_step(lhs, rhs):
+    product_bound = lhs * rhs
 
     first_round = (product_bound >> 3 * 64) + (u64_i3 + u64_i2 + u64_i1) * (2**64 - 1)
     mont_round = first_round + p * (2**64 - 1)
@@ -131,9 +131,8 @@ def single_step(single_input_bound):
     return final
 
 
-def single_step_simd(single_input_bound):
-    product_bound = (single_input_bound << 2) ** 2
-
+def single_step_simd(lhs, rhs):
+    product_bound = lhs * rhs
     first_round = (product_bound >> 4 * 52) + (u52_i4 + u52_i3 + u52_i2 + u52_i1) * (
         2**52 - 1
     )
@@ -143,19 +142,17 @@ def single_step_simd(single_input_bound):
     return final
 
 
-def single_step_simd_wasm(single_input_bound):
-    product_bound = (single_input_bound) ** 2
+def single_step_simd_wasm(lhs, rhs):
+    product_bound = lhs * rhs
 
     first_round = (product_bound >> 4 * 51) + (U51_i1 + U51_i2 + U51_i3 + U51_i4) * (
         2**51 - 1
     )
     mont_round = first_round + p * (2**51 - 1)
     final = mont_round >> 51
-    # print(log2(final))
-    # print(log2(final + p))
 
-    reduced = (final + p) >> 1 if final & 1 else final >> 1
-    # print(log2(reduced))
+    # reduced = (final + p) >> 1 if final & 1 else final >> 1
+    reduced = (final + p) >> 1
     return reduced
 
 
@@ -168,18 +165,40 @@ if __name__ == "__main__":
         ("2ˆ255", 2**255),
         ("3p", 3 * p),
         ("2ˆ256-2p", 2**256 - 2 * p),
+        ("4p", 4 * p),
     ]
+    print("input*p")
     print("Input Size | single_step | single_step_simd | log_jump| single_step_wasm ")
     print("-----------|-------------|------------------|---------|-----------------|")
     for name, bound in test_bounds:
-        single = single_step(bound) / p
-        simd = single_step_simd(bound) / p
-        simd_wasm = single_step_simd_wasm(bound) / p
-        log = log_jump(bound) / p
-        single_space = (2**256 - 1 - single_step(bound)) / p
-        simd_space = (2**256 - 1 - single_step_simd(bound)) / p
-        simd_wasm_space = (2**256 - 1 - single_step_simd_wasm(bound)) / p
-        log_space = (2**256 - 1 - log_jump(bound)) / p
+        single = single_step(bound, p) / p
+        simd = single_step_simd(bound, p) / p
+        simd_wasm = single_step_simd_wasm(bound, p) / p
+        log = log_jump(bound, p) / p
+        single_space = (2**256 - 1 - single_step(bound, p)) / p
+        simd_space = (2**256 - 1 - single_step_simd(bound, p)) / p
+        simd_wasm_space = (2**256 - 1 - single_step_simd_wasm(bound, p)) / p
+        log_space = (2**256 - 1 - log_jump(bound, p)) / p
+        print(
+            f"{name:10} | {single:4.2f} [{single_space:4.2f}] | {simd:7.2f} [{simd_space:.4f}] | {log:4.2f} [{log_space:.2f}] | {simd_wasm:4.2f} [{simd_wasm_space:.2f}]"
+        )
+
+    print("\ninput**2")
+    print(
+        "Input Size | single_step | single_step_simd |   log_jump  | single_step_wasm "
+    )
+    print(
+        "-----------|-------------|------------------|-------------|-----------------|"
+    )
+    for name, bound in test_bounds:
+        single = single_step(bound, bound) / p
+        simd = single_step_simd(bound, bound) / p
+        simd_wasm = single_step_simd_wasm(bound, bound) / p
+        log = log_jump(bound, bound) / p
+        single_space = (2**256 - 1 - single_step(bound, bound)) / p
+        simd_space = (2**256 - 1 - single_step_simd(bound, bound)) / p
+        simd_wasm_space = (2**256 - 1 - single_step_simd_wasm(bound, bound)) / p
+        log_space = (2**256 - 1 - log_jump(bound, bound)) / p
         print(
             f"{name:10} | {single:4.2f} [{single_space:4.2f}] | {simd:7.2f} [{simd_space:.4f}] | {log:4.2f} [{log_space:.2f}] | {simd_wasm:4.2f} [{simd_wasm_space:.2f}]"
         )
