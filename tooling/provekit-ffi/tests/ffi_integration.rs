@@ -9,17 +9,19 @@
 //! Run `cargo test --release` to execute the full suite including verify.
 
 use {
-    provekit_ffi::ffi::{
-        pk_free_buf, pk_free_prover, pk_free_verifier, pk_get_last_error,
-        pk_init, pk_load_prover, pk_load_prover_bytes, pk_load_verifier, pk_load_verifier_bytes,
-        pk_prepare, pk_prove_json, pk_prove_toml, pk_save_prover, pk_save_verifier,
-        pk_serialize_prover, pk_serialize_verifier, pk_verify,
+    nargo_cli::cli::compile_cmd::compile_workspace_full,
+    nargo_toml::{resolve_workspace_from_toml, PackageSelection},
+    noirc_driver::CompileOptions,
+    provekit_ffi::{
+        ffi::{
+            pk_free_buf, pk_free_prover, pk_free_verifier, pk_get_last_error, pk_init,
+            pk_load_prover, pk_load_prover_bytes, pk_load_verifier, pk_load_verifier_bytes,
+            pk_prepare, pk_prove_json, pk_prove_toml, pk_save_prover, pk_save_verifier,
+            pk_serialize_prover, pk_serialize_verifier, pk_verify,
+        },
+        types::{PKBuf, PKProver, PKStatus, PKVerifier},
     },
-    provekit_ffi::types::{PKBuf, PKProver, PKStatus, PKVerifier},
-    std::{
-        ffi::CString,
-        sync::Once,
-    },
+    std::{ffi::CString, path::PathBuf, sync::Once},
 };
 
 // ---------------------------------------------------------------------------
@@ -37,9 +39,34 @@ const PK_COMPILATION_ERROR: i32 = PKStatus::CompilationError as i32;
 // ---------------------------------------------------------------------------
 
 static INIT: Once = Once::new();
+static COMPILE_BASIC_2: Once = Once::new();
+
+fn basic_2_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/basic-2")
+}
+
+fn compile_basic_2_workspace_once() {
+    COMPILE_BASIC_2.call_once(|| {
+        let workspace_toml = basic_2_dir()
+            .join("Nargo.toml")
+            .canonicalize()
+            .expect("Canonicalizing basic-2/Nargo.toml");
+
+        let workspace =
+            resolve_workspace_from_toml(&workspace_toml, PackageSelection::DefaultOrAll, None)
+                .expect("Resolving Noir workspace for basic-2");
+
+        let compile_options = CompileOptions::default();
+        compile_workspace_full(&workspace, &compile_options, None)
+            .expect("Compiling noir-examples/basic-2");
+    });
+}
 
 fn init() {
     INIT.call_once(|| {
+        // Ensure CI has the fixture artifact expected by FFI tests:
+        // noir-examples/basic-2/target/basic.json
+        compile_basic_2_workspace_once();
         let status = pk_init();
         assert_eq!(status, PK_SUCCESS, "pk_init failed");
     });
@@ -50,17 +77,13 @@ fn init() {
 // ---------------------------------------------------------------------------
 
 fn circuit_json_cstring() -> CString {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    // CARGO_MANIFEST_DIR = <workspace>/tooling/provekit-ffi
-    // noir-examples lives at <workspace>/noir-examples
-    let path = format!("{manifest}/../../noir-examples/basic-2/target/basic.json");
-    CString::new(path).unwrap()
+    let path = basic_2_dir().join("target/basic.json");
+    CString::new(path.to_string_lossy().into_owned()).unwrap()
 }
 
 fn toml_input_cstring() -> CString {
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let path = format!("{manifest}/../../noir-examples/basic-2/Prover.toml");
-    CString::new(path).unwrap()
+    let path = basic_2_dir().join("Prover.toml");
+    CString::new(path.to_string_lossy().into_owned()).unwrap()
 }
 
 const JSON_INPUTS_VALID: &str = r#"{"a": "1", "b": "2", "c": "3", "d": "5"}"#;
@@ -125,8 +148,8 @@ unsafe fn prepare_basic_circuit() -> (ScopedProver, ScopedVerifier) {
         };
         pk_free_buf(err_buf);
         panic!(
-            "pk_prepare returned status {status} (expected {PK_SUCCESS}). \
-             Circuit path: {:?}. Error: {msg}",
+            "pk_prepare returned status {status} (expected {PK_SUCCESS}). Circuit path: {:?}. \
+             Error: {msg}",
             circuit.to_str().unwrap_or("?")
         );
     }
@@ -167,8 +190,7 @@ fn b_prepare_null_out_prover_returns_invalid_input() {
     init();
     let circuit = circuit_json_cstring();
     let mut verifier: *mut PKVerifier = std::ptr::null_mut();
-    let status =
-        unsafe { pk_prepare(circuit.as_ptr(), 0, std::ptr::null_mut(), &mut verifier) };
+    let status = unsafe { pk_prepare(circuit.as_ptr(), 0, std::ptr::null_mut(), &mut verifier) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -177,8 +199,7 @@ fn b_prepare_null_out_verifier_returns_invalid_input() {
     init();
     let circuit = circuit_json_cstring();
     let mut prover: *mut PKProver = std::ptr::null_mut();
-    let status =
-        unsafe { pk_prepare(circuit.as_ptr(), 0, &mut prover, std::ptr::null_mut()) };
+    let status = unsafe { pk_prepare(circuit.as_ptr(), 0, &mut prover, std::ptr::null_mut()) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -205,7 +226,10 @@ fn b_prepare_bad_hash_config_sets_error_message() {
     let mut verifier: *mut PKVerifier = std::ptr::null_mut();
     let _ = unsafe { pk_prepare(circuit.as_ptr(), 99, &mut prover, &mut verifier) };
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for bad hash_config");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for bad hash_config"
+    );
     assert!(
         err.as_str().contains("hash_config"),
         "expected 'hash_config' in message, got: {}",
@@ -223,11 +247,13 @@ fn b_prepare_nonexistent_circuit_returns_compilation_error() {
     let bad_path = CString::new("/no/such/circuit.json").unwrap();
     let mut prover: *mut PKProver = std::ptr::null_mut();
     let mut verifier: *mut PKVerifier = std::ptr::null_mut();
-    let status =
-        unsafe { pk_prepare(bad_path.as_ptr(), 0, &mut prover, &mut verifier) };
+    let status = unsafe { pk_prepare(bad_path.as_ptr(), 0, &mut prover, &mut verifier) };
     assert_eq!(status, PK_COMPILATION_ERROR);
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for bad circuit path");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for bad circuit path"
+    );
     unsafe {
         pk_free_prover(prover);
         pk_free_verifier(verifier);
@@ -254,8 +280,7 @@ fn d_prove_toml_null_prover_returns_invalid_input() {
     init();
     let toml = toml_input_cstring();
     let mut proof_buf = PKBuf::empty();
-    let status =
-        unsafe { pk_prove_toml(std::ptr::null(), toml.as_ptr(), &mut proof_buf) };
+    let status = unsafe { pk_prove_toml(std::ptr::null(), toml.as_ptr(), &mut proof_buf) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -269,9 +294,7 @@ fn d_prove_toml_null_out_proof_returns_invalid_input() {
     // null-output-ptr path. We can pass null prover here since the null checks
     // happen before dereferencing either pointer.
     let toml = toml_input_cstring();
-    let status = unsafe {
-        pk_prove_toml(std::ptr::null(), toml.as_ptr(), std::ptr::null_mut())
-    };
+    let status = unsafe { pk_prove_toml(std::ptr::null(), toml.as_ptr(), std::ptr::null_mut()) };
     // Both prover AND out_proof null → InvalidInput
     assert_eq!(status, PK_INVALID_INPUT);
 }
@@ -300,7 +323,10 @@ fn d_prove_toml_roundtrip() {
     let proof = ScopedBuf(proof_buf);
     let verify_status =
         unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "pk_verify failed for toml-proved proof");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "pk_verify failed for toml-proved proof"
+    );
 }
 
 #[test]
@@ -312,7 +338,10 @@ fn d_prove_toml_bad_toml_path_returns_error() {
     // Should fail with WitnessReadError or ProofError depending on internals
     assert_ne!(status, PK_SUCCESS, "expected failure for bad toml path");
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for bad toml path");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for bad toml path"
+    );
 }
 
 // ===========================================================================
@@ -324,8 +353,7 @@ fn e_prove_json_null_prover_returns_invalid_input() {
     init();
     let json = CString::new(JSON_INPUTS_VALID).unwrap();
     let mut proof_buf = PKBuf::empty();
-    let status =
-        unsafe { pk_prove_json(std::ptr::null(), json.as_ptr(), &mut proof_buf) };
+    let status = unsafe { pk_prove_json(std::ptr::null(), json.as_ptr(), &mut proof_buf) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -333,8 +361,7 @@ fn e_prove_json_null_prover_returns_invalid_input() {
 fn e_prove_json_null_out_proof_returns_invalid_input() {
     init();
     let json = CString::new(JSON_INPUTS_VALID).unwrap();
-    let status =
-        unsafe { pk_prove_json(std::ptr::null(), json.as_ptr(), std::ptr::null_mut()) };
+    let status = unsafe { pk_prove_json(std::ptr::null(), json.as_ptr(), std::ptr::null_mut()) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -363,7 +390,10 @@ fn e_prove_json_roundtrip() {
     let proof = ScopedBuf(proof_buf);
     let verify_status =
         unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "pk_verify failed for json-proved proof");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "pk_verify failed for json-proved proof"
+    );
 }
 
 #[test]
@@ -375,7 +405,10 @@ fn e_prove_json_wrong_field_returns_error() {
     let status = unsafe { pk_prove_json(pk.0, bad_json.as_ptr(), &mut proof_buf) };
     assert_ne!(status, PK_SUCCESS, "expected failure for wrong JSON field");
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for wrong field");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for wrong field"
+    );
 }
 
 #[test]
@@ -444,7 +477,7 @@ fn f_verify_corrupted_proof_returns_proof_error() {
     // Corrupt a byte in the middle of the proof
     let mut corrupted = proof.as_slice().to_vec();
     let mid = corrupted.len() / 2;
-    corrupted[mid] ^= 0xFF;
+    corrupted[mid] ^= 0xff;
 
     let status = unsafe { pk_verify(vk.0, corrupted.as_ptr(), corrupted.len()) };
     assert_eq!(status, PK_PROOF_ERROR, "corrupted proof must not verify");
@@ -463,7 +496,10 @@ fn f_verify_idempotent() {
     let s1 = unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
     let s2 = unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
     assert_eq!(s1, PK_SUCCESS);
-    assert_eq!(s2, PK_SUCCESS, "second verify call on same proof must also succeed");
+    assert_eq!(
+        s2, PK_SUCCESS,
+        "second verify call on same proof must also succeed"
+    );
 }
 
 // ===========================================================================
@@ -505,13 +541,15 @@ fn g_load_verifier_bytes_null_ptr_returns_invalid_input() {
 #[test]
 fn g_load_prover_bytes_corrupt_data_returns_scheme_read_error() {
     init();
-    let garbage = vec![0xBAu8, 0xAD, 0xF0, 0x0D, 0x01, 0x02, 0x03, 0x04];
+    let garbage = vec![0xbau8, 0xad, 0xf0, 0x0d, 0x01, 0x02, 0x03, 0x04];
     let mut out: *mut PKProver = std::ptr::null_mut();
-    let status =
-        unsafe { pk_load_prover_bytes(garbage.as_ptr(), garbage.len(), &mut out) };
+    let status = unsafe { pk_load_prover_bytes(garbage.as_ptr(), garbage.len(), &mut out) };
     assert_eq!(status, PK_SCHEME_READ_ERROR);
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for corrupt prover bytes");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for corrupt prover bytes"
+    );
 }
 
 #[test]
@@ -525,7 +563,10 @@ fn g_serialize_prover_bytes_roundtrip_prove_only() {
     let ser_status = unsafe { pk_serialize_prover(pk.0, &mut ser_buf) };
     assert_eq!(ser_status, PK_SUCCESS, "pk_serialize_prover failed");
     let ser = ScopedBuf(ser_buf);
-    assert!(ser.as_slice().len() > 0, "serialized prover must be non-empty");
+    assert!(
+        ser.as_slice().len() > 0,
+        "serialized prover must be non-empty"
+    );
 
     // Reload from bytes
     let mut pk2: *mut PKProver = std::ptr::null_mut();
@@ -538,7 +579,10 @@ fn g_serialize_prover_bytes_roundtrip_prove_only() {
     let json = CString::new(JSON_INPUTS_VALID).unwrap();
     let mut proof_buf = PKBuf::empty();
     let prove_status = unsafe { pk_prove_json(pk2.0, json.as_ptr(), &mut proof_buf) };
-    assert_eq!(prove_status, PK_SUCCESS, "prove via reloaded prover must succeed");
+    assert_eq!(
+        prove_status, PK_SUCCESS,
+        "prove via reloaded prover must succeed"
+    );
     let proof = ScopedBuf(proof_buf);
     assert!(proof.as_slice().len() > 0);
 }
@@ -552,12 +596,14 @@ fn g_serialize_verifier_bytes_roundtrip_load_only() {
     let ser_status = unsafe { pk_serialize_verifier(vk.0, &mut ser_buf) };
     assert_eq!(ser_status, PK_SUCCESS, "pk_serialize_verifier failed");
     let ser = ScopedBuf(ser_buf);
-    assert!(ser.as_slice().len() > 0, "serialized verifier must be non-empty");
+    assert!(
+        ser.as_slice().len() > 0,
+        "serialized verifier must be non-empty"
+    );
 
     let mut vk2: *mut PKVerifier = std::ptr::null_mut();
-    let load_status = unsafe {
-        pk_load_verifier_bytes(ser.as_slice().as_ptr(), ser.as_slice().len(), &mut vk2)
-    };
+    let load_status =
+        unsafe { pk_load_verifier_bytes(ser.as_slice().as_ptr(), ser.as_slice().len(), &mut vk2) };
     assert_eq!(load_status, PK_SUCCESS, "pk_load_verifier_bytes failed");
     let vk2 = ScopedVerifier(vk2);
     assert!(!vk2.0.is_null());
@@ -592,7 +638,10 @@ fn g_serialize_prover_roundtrip() {
 
     let verify_status =
         unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "proof from reloaded prover must verify");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "proof from reloaded prover must verify"
+    );
 }
 
 #[test]
@@ -609,13 +658,13 @@ fn g_serialize_verifier_roundtrip() {
 
     // Reload verifier from bytes
     let mut vk2: *mut PKVerifier = std::ptr::null_mut();
-    let load_status = unsafe {
-        pk_load_verifier_bytes(ser.as_slice().as_ptr(), ser.as_slice().len(), &mut vk2)
-    };
+    let load_status =
+        unsafe { pk_load_verifier_bytes(ser.as_slice().as_ptr(), ser.as_slice().len(), &mut vk2) };
     assert_eq!(load_status, PK_SUCCESS, "pk_load_verifier_bytes failed");
     let vk2 = ScopedVerifier(vk2);
 
-    // Generate a proof with the original prover and verify with the reloaded verifier
+    // Generate a proof with the original prover and verify with the reloaded
+    // verifier
     let json = CString::new(JSON_INPUTS_VALID).unwrap();
     let mut proof_buf = PKBuf::empty();
     unsafe { pk_prove_json(pk.0, json.as_ptr(), &mut proof_buf) };
@@ -623,7 +672,10 @@ fn g_serialize_verifier_roundtrip() {
 
     let verify_status =
         unsafe { pk_verify(vk2.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "reloaded verifier must accept valid proof");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "reloaded verifier must accept valid proof"
+    );
 }
 
 // ===========================================================================
@@ -654,7 +706,10 @@ fn h_load_prover_bad_path_returns_scheme_read_error() {
     let status = unsafe { pk_load_prover(bad.as_ptr(), &mut out) };
     assert_eq!(status, PK_SCHEME_READ_ERROR);
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for bad prover path");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for bad prover path"
+    );
 }
 
 #[test]
@@ -665,7 +720,10 @@ fn h_load_verifier_bad_path_returns_scheme_read_error() {
     let status = unsafe { pk_load_verifier(bad.as_ptr(), &mut out) };
     assert_eq!(status, PK_SCHEME_READ_ERROR);
     let err = unsafe { last_error() };
-    assert!(err.as_slice().len() > 0, "expected error message for bad verifier path");
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for bad verifier path"
+    );
 }
 
 #[test]
@@ -690,7 +748,10 @@ fn h_save_load_prover_file_prove_only() {
     let json = CString::new(JSON_INPUTS_VALID).unwrap();
     let mut proof_buf = PKBuf::empty();
     let prove_status = unsafe { pk_prove_json(pk2.0, json.as_ptr(), &mut proof_buf) };
-    assert_eq!(prove_status, PK_SUCCESS, "prove with file-loaded prover must succeed");
+    assert_eq!(
+        prove_status, PK_SUCCESS,
+        "prove with file-loaded prover must succeed"
+    );
     let _proof = ScopedBuf(proof_buf);
 }
 
@@ -723,7 +784,10 @@ fn h_save_load_prover_file_roundtrip() {
 
     let verify_status =
         unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "proof from file-saved prover must verify");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "proof from file-saved prover must verify"
+    );
 }
 
 #[test]
@@ -752,7 +816,10 @@ fn h_save_load_verifier_file_roundtrip() {
 
     let verify_status =
         unsafe { pk_verify(vk2.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
-    assert_eq!(verify_status, PK_SUCCESS, "file-reloaded verifier must accept valid proof");
+    assert_eq!(
+        verify_status, PK_SUCCESS,
+        "file-reloaded verifier must accept valid proof"
+    );
 }
 
 // ===========================================================================
@@ -769,12 +836,20 @@ fn i_error_cleared_after_successful_call() {
 
     // Error should be set
     let err1 = unsafe { last_error() };
-    assert!(err1.as_slice().len() > 0, "error should be set after failing call");
+    assert!(
+        err1.as_slice().len() > 0,
+        "error should be set after failing call"
+    );
 
-    // Now a succeeding call (pk_init clears last error via catch_panic's clear_last_error)
+    // Now a succeeding call (pk_init clears last error via catch_panic's
+    // clear_last_error)
     let _ = pk_init();
     let err2 = unsafe { last_error() };
-    assert_eq!(err2.as_slice().len(), 0, "error should be cleared after successful call");
+    assert_eq!(
+        err2.as_slice().len(),
+        0,
+        "error should be cleared after successful call"
+    );
 }
 
 #[test]
@@ -877,8 +952,7 @@ fn k_concurrent_prove_same_handle() {
                 let verifier = vk_ptr as *const PKVerifier;
                 let json = CString::new(JSON_INPUTS_VALID).unwrap();
                 let mut proof_buf = PKBuf::empty();
-                let prove_status =
-                    unsafe { pk_prove_json(prover, json.as_ptr(), &mut proof_buf) };
+                let prove_status = unsafe { pk_prove_json(prover, json.as_ptr(), &mut proof_buf) };
                 assert_eq!(prove_status, PK_SUCCESS, "thread prove failed");
                 let proof = ScopedBuf(proof_buf);
                 let verify_status = unsafe {
@@ -919,9 +993,8 @@ fn k_concurrent_verify_same_handle() {
             let proof_clone = Arc::clone(&proof_arc);
             thread::spawn(move || {
                 let verifier = vk_ptr as *const PKVerifier;
-                let status = unsafe {
-                    pk_verify(verifier, proof_clone.as_ptr(), proof_clone.len())
-                };
+                let status =
+                    unsafe { pk_verify(verifier, proof_clone.as_ptr(), proof_clone.len()) };
                 assert_eq!(status, PK_SUCCESS, "concurrent verify failed");
             })
         })

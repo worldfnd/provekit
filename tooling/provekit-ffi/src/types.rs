@@ -190,7 +190,11 @@ mod tests {
                 PKStatus::FileWriteError => PKStatus::FileWriteError.into(),
                 PKStatus::CompilationError => PKStatus::CompilationError.into(),
             };
-            assert_eq!(code, *expected, "PKStatus::{:?} should be {}", status, expected);
+            assert_eq!(
+                code, *expected,
+                "PKStatus::{:?} should be {}",
+                status, expected
+            );
         }
     }
 

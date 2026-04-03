@@ -4654,7 +4654,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libc",
+ "nargo",
+ "nargo_cli",
+ "nargo_toml",
  "noirc_abi",
+ "noirc_driver",
  "parking_lot",
  "provekit-common",
  "provekit-prover",
