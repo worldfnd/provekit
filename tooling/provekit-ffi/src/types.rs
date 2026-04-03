@@ -116,3 +116,99 @@ pub struct PKVerifier {
 trait AssertSendSync: Send + Sync {}
 impl AssertSendSync for PKProver {}
 impl AssertSendSync for PKVerifier {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // PKBuf tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn pkbuf_empty_has_null_ptr() {
+        let buf = PKBuf::empty();
+        assert!(buf.ptr.is_null());
+        assert_eq!(buf.len, 0);
+        assert_eq!(buf.cap, 0);
+    }
+
+    #[test]
+    fn pkbuf_from_vec_captures_metadata() {
+        let data: Vec<u8> = vec![1, 2, 3, 4, 5];
+        let expected_ptr = data.as_ptr();
+        let expected_len = data.len();
+        let expected_cap = data.capacity();
+        let buf = PKBuf::from_vec(data);
+        // ptr must point to the same allocation
+        assert_eq!(buf.ptr as *const u8, expected_ptr);
+        assert_eq!(buf.len, expected_len);
+        assert_eq!(buf.cap, expected_cap);
+        // Reconstruct to avoid leak in test
+        unsafe {
+            drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.cap));
+        }
+    }
+
+    #[test]
+    fn pkbuf_from_vec_nonempty_has_nonnull_ptr() {
+        let buf = PKBuf::from_vec(vec![42u8]);
+        assert!(!buf.ptr.is_null());
+        assert_eq!(buf.len, 1);
+        unsafe {
+            drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.cap));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // PKStatus → c_int conversion tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn pkstatus_codes_are_correct() {
+        let cases: &[(PKStatus, i32)] = &[
+            (PKStatus::Success, 0),
+            (PKStatus::InvalidInput, 1),
+            (PKStatus::SchemeReadError, 2),
+            (PKStatus::WitnessReadError, 3),
+            (PKStatus::ProofError, 4),
+            (PKStatus::SerializationError, 5),
+            (PKStatus::Utf8Error, 6),
+            (PKStatus::FileWriteError, 7),
+            (PKStatus::CompilationError, 8),
+        ];
+        for (status, expected) in cases {
+            // Use format to avoid consuming the enum value
+            let code: c_int = match status {
+                PKStatus::Success => PKStatus::Success.into(),
+                PKStatus::InvalidInput => PKStatus::InvalidInput.into(),
+                PKStatus::SchemeReadError => PKStatus::SchemeReadError.into(),
+                PKStatus::WitnessReadError => PKStatus::WitnessReadError.into(),
+                PKStatus::ProofError => PKStatus::ProofError.into(),
+                PKStatus::SerializationError => PKStatus::SerializationError.into(),
+                PKStatus::Utf8Error => PKStatus::Utf8Error.into(),
+                PKStatus::FileWriteError => PKStatus::FileWriteError.into(),
+                PKStatus::CompilationError => PKStatus::CompilationError.into(),
+            };
+            assert_eq!(code, *expected, "PKStatus::{:?} should be {}", status, expected);
+        }
+    }
+
+    #[test]
+    fn pkstatus_display_is_nonempty() {
+        let statuses = [
+            PKStatus::Success,
+            PKStatus::InvalidInput,
+            PKStatus::SchemeReadError,
+            PKStatus::WitnessReadError,
+            PKStatus::ProofError,
+            PKStatus::SerializationError,
+            PKStatus::Utf8Error,
+            PKStatus::FileWriteError,
+            PKStatus::CompilationError,
+        ];
+        for s in statuses {
+            assert!(!s.to_string().is_empty());
+        }
+    }
+}
