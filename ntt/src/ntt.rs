@@ -376,9 +376,8 @@ fn intt_nr(values: &mut [Fr]) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    #[cfg(test)]
     use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, reverse_order},
