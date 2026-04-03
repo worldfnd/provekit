@@ -180,6 +180,7 @@ pub fn div_p_32b(x: u64) -> u64 {
     MULSHIFT.div_p(upper_bits)
 }
 
+#[inline(always)]
 pub fn subby(x: u64) -> u64 {
     x >> 62
 }
