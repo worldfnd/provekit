@@ -4660,6 +4660,7 @@ dependencies = [
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
+ "tempfile",
 ]
 
 [[package]]

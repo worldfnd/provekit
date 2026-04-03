@@ -748,3 +748,146 @@ pub unsafe extern "C" fn pk_free_buf(buf: PKBuf) {
         drop(Vec::from_raw_parts(buf.ptr, buf.len, buf.cap));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{PKBuf, PKStatus};
+
+    // -----------------------------------------------------------------------
+    // catch_panic tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn catch_panic_returns_value_on_success() {
+        let result: i32 = catch_panic(0, || 42);
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn catch_panic_catches_str_panic_and_returns_default() {
+        let result: i32 = catch_panic(-1, || panic!("intentional test panic"));
+        assert_eq!(result, -1);
+    }
+
+    #[test]
+    fn catch_panic_catches_string_panic_and_returns_default() {
+        let result: i32 = catch_panic(-1, || {
+            panic!("{}", "string panic".to_string());
+        });
+        assert_eq!(result, -1);
+    }
+
+    #[test]
+    fn catch_panic_stores_panic_message_in_last_error() {
+        let _ = catch_panic(-1, || panic!("my panic msg"));
+        let mut buf = PKBuf::empty();
+        let status = unsafe { pk_get_last_error(&mut buf) };
+        assert_eq!(status, PKStatus::Success as i32);
+        assert!(buf.len > 0, "error message should be non-empty after panic");
+        let msg = unsafe {
+            let slice = std::slice::from_raw_parts(buf.ptr as *const u8, buf.len);
+            std::str::from_utf8(slice).unwrap().to_string()
+        };
+        assert!(msg.contains("my panic msg"), "expected panic msg in error, got: {msg}");
+        unsafe { pk_free_buf(buf); }
+    }
+
+    // -----------------------------------------------------------------------
+    // pk_get_last_error tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn get_last_error_null_out_buf_returns_invalid_input() {
+        let status = unsafe { pk_get_last_error(std::ptr::null_mut()) };
+        assert_eq!(status, PKStatus::InvalidInput as i32);
+    }
+
+    #[test]
+    fn get_last_error_empty_when_no_error() {
+        // Ensure no stale error from previous test (clear it)
+        clear_last_error();
+        let mut buf = PKBuf::empty();
+        let status = unsafe { pk_get_last_error(&mut buf) };
+        assert_eq!(status, PKStatus::Success as i32);
+        assert_eq!(buf.len, 0);
+        // No need to free empty buf (ptr is null, cap is 0)
+    }
+
+    #[test]
+    fn get_last_error_clears_after_first_read() {
+        set_last_error("test error".to_string());
+
+        let mut buf = PKBuf::empty();
+        let status = unsafe { pk_get_last_error(&mut buf) };
+        assert_eq!(status, PKStatus::Success as i32);
+        assert!(buf.len > 0);
+        unsafe { pk_free_buf(buf); }
+
+        // Second read must be empty
+        let mut buf2 = PKBuf::empty();
+        let status2 = unsafe { pk_get_last_error(&mut buf2) };
+        assert_eq!(status2, PKStatus::Success as i32);
+        assert_eq!(buf2.len, 0);
+    }
+
+    #[test]
+    fn get_last_error_returns_utf8_message() {
+        set_last_error("hello FFI".to_string());
+        let mut buf = PKBuf::empty();
+        unsafe { pk_get_last_error(&mut buf) };
+        let msg = unsafe {
+            let slice = std::slice::from_raw_parts(buf.ptr as *const u8, buf.len);
+            std::str::from_utf8(slice).unwrap().to_string()
+        };
+        assert_eq!(msg, "hello FFI");
+        unsafe { pk_free_buf(buf); }
+    }
+
+    // -----------------------------------------------------------------------
+    // pk_get_memory_stats tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn get_memory_stats_all_null_returns_success() {
+        let status = unsafe {
+            pk_get_memory_stats(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, PKStatus::Success as i32);
+    }
+
+    #[test]
+    fn get_memory_stats_writes_to_provided_pointers() {
+        let mut ram: usize = 999;
+        let mut swap: usize = 999;
+        let mut peak: usize = 999;
+        let status = unsafe { pk_get_memory_stats(&mut ram, &mut swap, &mut peak) };
+        assert_eq!(status, PKStatus::Success as i32);
+        // Values should be written (0 when mmap allocator not configured)
+        // Just ensure they were touched (no longer 999 unless allocator returns 999)
+        // We can only assert the call succeeded — actual values depend on allocator state
+        let _ = (ram, swap, peak); // silence unused warnings
+    }
+
+    // -----------------------------------------------------------------------
+    // pk_init tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn init_succeeds() {
+        let status = pk_init();
+        assert_eq!(status, PKStatus::Success as i32);
+    }
+
+    #[test]
+    fn init_is_idempotent() {
+        let s1 = pk_init();
+        let s2 = pk_init();
+        assert_eq!(s1, PKStatus::Success as i32);
+        assert_eq!(s2, PKStatus::Success as i32);
+    }
+}
