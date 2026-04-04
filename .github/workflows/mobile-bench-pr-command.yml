@@ -11,14 +11,22 @@ permissions:
   issues: read
 
 jobs:
-  dispatch:
-    name: Parse /mobench and dispatch
+  resolve:
+    name: Parse /mobench and resolve context
     if: >-
       github.event_name == 'issue_comment' &&
       github.event.action == 'created' &&
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/mobench')
     runs-on: ubuntu-latest
+    outputs:
+      trusted: ${{ steps.trust.outputs.trusted }}
+      platform: ${{ steps.parse.outputs.platform }}
+      iterations: ${{ steps.parse.outputs.iterations }}
+      warmup: ${{ steps.parse.outputs.warmup }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      pr_number: ${{ github.event.issue.number }}
+      requested_by: ${{ github.event.comment.user.login }}
     steps:
       - name: Check trust
         id: trust
@@ -87,32 +95,20 @@ jobs:
           PR_URL: ${{ github.event.issue.pull_request.url }}
         run: |
           head_sha=$(gh api "$PR_URL" --jq '.head.sha')
-          base_ref=$(gh api "$PR_URL" --jq '.base.ref')
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
-          echo "base_ref=${base_ref}" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch benchmark workflow
-        if: steps.trust.outputs.trusted == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BASE_REF: ${{ steps.pr.outputs.base_ref }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          PLATFORM: ${{ steps.parse.outputs.platform }}
-          DEVICE_PROFILE: ${{ steps.parse.outputs.device_profile }}
-          ITERATIONS: ${{ steps.parse.outputs.iterations }}
-          WARMUP: ${{ steps.parse.outputs.warmup }}
-          PR_NUMBER: ${{ github.event.issue.number }}
-          REQUESTED_BY: ${{ github.event.comment.user.login }}
-        run: |
-          gh workflow run ".github/workflows/mobile-bench.yml" \
-            --ref "$BASE_REF" \
-            -f head_sha="$HEAD_SHA" \
-            -f crate_path="./bench-mobile" \
-            -f functions='["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]' \
-            -f platform="$PLATFORM" \
-            -f device_profile="$DEVICE_PROFILE" \
-            -f iterations="$ITERATIONS" \
-            -f warmup="$WARMUP" \
-            -f pr_number="$PR_NUMBER" \
-            -f requested_by="$REQUESTED_BY"
-          echo "Dispatched benchmark for PR #${PR_NUMBER} at ${HEAD_SHA} using workflow ref ${BASE_REF}"
+  browserstack:
+    name: Run BrowserStack benchmarks
+    needs: resolve
+    if: needs.resolve.outputs.trusted == 'true'
+    uses: ./.github/workflows/mobile-bench-reusable.yml
+    secrets: inherit
+    with:
+      crate_path: ./bench-mobile
+      functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      platform: ${{ needs.resolve.outputs.platform }}
+      iterations: ${{ needs.resolve.outputs.iterations }}
+      warmup: ${{ needs.resolve.outputs.warmup }}
+      pr_number: ${{ needs.resolve.outputs.pr_number }}
+      requested_by: ${{ needs.resolve.outputs.requested_by }}
+      head_sha: ${{ needs.resolve.outputs.head_sha }}
