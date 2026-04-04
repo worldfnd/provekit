@@ -35,7 +35,7 @@ on:
         description: "Comma-separated Android Rust targets"
         required: false
         type: string
-        default: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+        default: "aarch64-linux-android"
       build_release:
         description: "Build in release mode"
         required: false
@@ -154,6 +154,31 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Pre-generate iOS UniFFI bindings
+        working-directory: caller
+        shell: bash
+        env:
+          CRATE_PATH: ${{ inputs.crate_path }}
+        run: |
+          set -euo pipefail
+
+          crate_manifest="${CRATE_PATH}/Cargo.toml"
+          crate_name=$(cargo metadata --format-version 1 --no-deps --manifest-path "$crate_manifest" | jq -r '.packages[0].name')
+          crate_name_underscored="${crate_name//-/_}"
+          host_lib="target/debug/lib${crate_name_underscored}.dylib"
+          generated_dir="target/mobench/ios/BenchRunner/BenchRunner/Generated"
+
+          cargo build --manifest-path "$crate_manifest"
+          mkdir -p "$generated_dir"
+          cargo run --manifest-path "$crate_manifest" --bin uniffi-bindgen -- \
+            generate \
+            --library "$host_lib" \
+            --language swift \
+            --out-dir "$generated_dir"
+
+          test -f "${generated_dir}/${crate_name_underscored}FFI.h"
+          test -f "${generated_dir}/${crate_name_underscored}.swift"
 
       - name: Build iOS artifacts
         working-directory: caller
