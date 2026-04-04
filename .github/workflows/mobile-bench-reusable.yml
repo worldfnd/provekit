@@ -78,7 +78,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: nightly-2026-03-04
   MOBENCH_PATCH_PATH: caller/.github/patches/mobile-bench-rs-browserstack-devices.patch
-  IOS_DEVICE_SPECS: "iPhone 7-10,iPhone 14-16,iPhone 16 Pro-18"
+  IOS_DEVICE_SPECS: "iPhone 13-15,iPhone 14-16,iPhone 16 Pro-18"
   ANDROID_DEVICE_SPECS: "Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
 
 jobs:
