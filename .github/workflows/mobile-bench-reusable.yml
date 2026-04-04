@@ -78,8 +78,8 @@ env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: nightly-2026-03-04
   MOBENCH_PATCH_PATH: caller/.github/patches/mobile-bench-rs-browserstack-devices.patch
-  IOS_DEVICE_SPECS: "iPhone 13-15,iPhone 14-16,iPhone 16 Pro-18"
-  ANDROID_DEVICE_SPECS: "Google Pixel 6-12.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
+  IOS_DEVICE_SPECS: "iPhone 7-10,iPhone 14-16,iPhone 16 Pro-18"
+  ANDROID_DEVICE_SPECS: "Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
 
 jobs:
   ios:
@@ -150,35 +150,13 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
+          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Pre-generate iOS UniFFI bindings
-        working-directory: caller
-        shell: bash
-        env:
-          CRATE_PATH: ${{ inputs.crate_path }}
-        run: |
-          set -euo pipefail
-
-          crate_manifest="${CRATE_PATH}/Cargo.toml"
-          crate_name=$(cargo metadata --format-version 1 --no-deps --manifest-path "$crate_manifest" | jq -r '.packages[0].name')
-          crate_name_underscored="${crate_name//-/_}"
-          host_lib="target/debug/lib${crate_name_underscored}.dylib"
-          generated_dir="target/mobench/ios/BenchRunner/BenchRunner/Generated"
-
-          cargo build --manifest-path "$crate_manifest"
-          mkdir -p "$generated_dir"
-          cargo run --manifest-path "$crate_manifest" --bin uniffi-bindgen -- \
-            generate \
-            --library "$host_lib" \
-            --language swift \
-            --out-dir "$generated_dir"
-
-          test -f "${generated_dir}/${crate_name_underscored}FFI.h"
-          test -f "${generated_dir}/${crate_name_underscored}.swift"
+      - name: Install iOS tooling
+        run: brew install xcodegen swiftformat
 
       - name: Build iOS artifacts
         working-directory: caller
@@ -344,6 +322,9 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
+          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Build Android artifacts
@@ -463,6 +444,9 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
+          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Download iOS results
