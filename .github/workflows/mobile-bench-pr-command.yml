@@ -106,6 +106,8 @@ jobs:
     with:
       crate_path: ./bench-mobile
       functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: ${{ needs.resolve.outputs.platform }}
       iterations: ${{ needs.resolve.outputs.iterations }}
       warmup: ${{ needs.resolve.outputs.warmup }}

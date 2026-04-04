@@ -13,6 +13,16 @@ on:
         required: false
         type: string
         default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions_ios:
+        description: "Optional iOS-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions_android:
+        description: "Optional Android-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform:
         description: "android | ios | both"
         required: false
@@ -92,6 +102,8 @@ jobs:
     with:
       crate_path: ${{ inputs.crate_path }}
       functions: ${{ inputs.functions }}
+      functions_ios: ${{ inputs.functions_ios }}
+      functions_android: ${{ inputs.functions_android }}
       platform: ${{ inputs.platform }}
       iterations: ${{ inputs.iterations }}
       warmup: ${{ inputs.warmup }}
