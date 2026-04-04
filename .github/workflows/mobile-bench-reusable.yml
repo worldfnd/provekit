@@ -11,6 +11,16 @@ on:
         description: "Comma-separated or JSON array list of benchmark function names to run"
         required: true
         type: string
+      functions_ios:
+        description: "Optional iOS-specific benchmark function list"
+        required: false
+        type: string
+        default: ""
+      functions_android:
+        description: "Optional Android-specific benchmark function list"
+        required: false
+        type: string
+        default: ""
       iterations:
         description: "Number of benchmark iterations"
         required: false
@@ -153,6 +163,7 @@ jobs:
           grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
           grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
           grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Install iOS tooling
@@ -177,7 +188,7 @@ jobs:
         working-directory: caller
         shell: bash
         env:
-          FUNCTIONS: ${{ inputs.functions }}
+          FUNCTIONS: ${{ inputs.functions_ios != '' && inputs.functions_ios || inputs.functions }}
           ITERATIONS: ${{ inputs.iterations }}
           WARMUP: ${{ inputs.warmup }}
           RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
@@ -342,7 +353,7 @@ jobs:
         working-directory: caller
         shell: bash
         env:
-          FUNCTIONS: ${{ inputs.functions }}
+          FUNCTIONS: ${{ inputs.functions_android != '' && inputs.functions_android || inputs.functions }}
           ITERATIONS: ${{ inputs.iterations }}
           WARMUP: ${{ inputs.warmup }}
           RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
