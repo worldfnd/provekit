@@ -88,6 +88,7 @@ jobs:
     needs: browserstack-preflight
     if: ${{ needs.browserstack-preflight.outputs.available == 'true' }}
     uses: ./.github/workflows/mobile-bench-reusable.yml
+    secrets: inherit
     with:
       crate_path: ${{ inputs.crate_path }}
       functions: ${{ inputs.functions }}
