@@ -102,4 +102,215 @@ index 693156a..5359f85 100644
 +
      Ok(())
  }
+
+diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
+index 59ecaa4..ceca3e7 100644
+--- a/crates/mobench/src/lib.rs
++++ b/crates/mobench/src/lib.rs
+@@ -1530,6 +1530,29 @@ pub fn run() -> Result<()> {
+                 ) {
+                     println!("Warning: Failed to fetch detailed artifacts: {}", e);
+                 }
++
++                let needs_recovery = match run_summary.benchmark_results.as_ref() {
++                    Some(results) => results.is_empty(),
++                    None => true,
++                };
++                if needs_recovery {
++                    match recover_benchmark_results_from_fetched_artifacts(&output_root) {
++                        Ok(recovered) if !recovered.is_empty() => {
++                            println!(
++                                "Recovered benchmark results from fetched BrowserStack artifacts for {} device(s)",
++                                recovered.len()
++                            );
++                            run_summary.benchmark_results = Some(recovered);
++                        }
++                        Ok(_) => {}
++                        Err(err) => {
++                            println!(
++                                "Warning: Failed to recover benchmark results from fetched artifacts: {}",
++                                err
++                            );
++                        }
++                    }
++                }
+             } else if fetch {
+                 println!("No BrowserStack run to fetch (devices not provided?)");
+             }
+@@ -3217,6 +3240,115 @@ fn fetch_browserstack_artifacts(
+     Ok(())
+ }
  
++fn recover_benchmark_results_from_fetched_artifacts(
++    output_root: &Path,
++) -> Result<BTreeMap<String, Vec<Value>>> {
++    let mut device_by_session = BTreeMap::new();
++    let build_json_path = output_root.join("build.json");
++    if build_json_path.exists() {
++        let build_json: Value = serde_json::from_str(
++            &fs::read_to_string(&build_json_path)
++                .with_context(|| format!("reading build artifact {:?}", build_json_path))?,
++        )
++        .with_context(|| format!("parsing build artifact {:?}", build_json_path))?;
++
++        if let Some(devices) = build_json.get("devices").and_then(|value| value.as_array()) {
++            for device in devices {
++                let Some(device_name) = device.get("device").and_then(|value| value.as_str()) else {
++                    continue;
++                };
++                let os_version = device
++                    .get("os_version")
++                    .and_then(|value| value.as_str())
++                    .unwrap_or_default();
++                let device_identifier = if os_version.is_empty() {
++                    device_name.to_string()
++                } else {
++                    format!("{device_name}-{os_version}")
++                };
++
++                if let Some(sessions) = device.get("sessions").and_then(|value| value.as_array()) {
++                    for session in sessions {
++                        if let Some(session_id) = session.get("id").and_then(|value| value.as_str())
++                        {
++                            device_by_session
++                                .insert(session_id.to_string(), device_identifier.clone());
++                        }
++                    }
++                }
++            }
++        }
++    }
++
++    let mut recovered = BTreeMap::new();
++    for entry in fs::read_dir(output_root)
++        .with_context(|| format!("reading BrowserStack artifact dir {:?}", output_root))?
++    {
++        let entry = entry?;
++        if !entry.file_type()?.is_dir() {
++            continue;
++        }
++
++        let entry_name = entry.file_name();
++        let entry_name = entry_name.to_string_lossy();
++        let Some(session_id) = entry_name.strip_prefix("session-") else {
++            continue;
++        };
++
++        let report_path = entry.path().join("bench-report.json");
++        if !report_path.exists() {
++            continue;
++        }
++
++        let report_value: Value = serde_json::from_str(
++            &fs::read_to_string(&report_path)
++                .with_context(|| format!("reading session artifact {:?}", report_path))?,
++        )
++        .with_context(|| format!("parsing session artifact {:?}", report_path))?;
++
++        let device = device_by_session
++            .get(session_id)
++            .cloned()
++            .unwrap_or_else(|| session_id.to_string());
++        let device_results = recovered.entry(device.clone()).or_insert_with(Vec::new);
++
++        let reports = match report_value {
++            Value::Array(reports) => reports,
++            report => vec![report],
++        };
++
++        for mut report in reports {
++            let has_function = report
++                .get("function")
++                .and_then(|value| value.as_str())
++                .is_some()
++                || report
++                    .get("spec")
++                    .and_then(|spec| spec.get("name"))
++                    .and_then(|value| value.as_str())
++                    .is_some();
++            let has_samples = !extract_samples(&report).is_empty();
++            let has_stats = ["mean_ns", "median_ns", "p95_ns", "min_ns", "max_ns"]
++                .iter()
++                .any(|key| report.get(*key).is_some());
++
++            if !has_function || (!has_samples && !has_stats) {
++                continue;
++            }
++
++            if let Some(object) = report.as_object_mut() {
++                object
++                    .entry("device".to_string())
++                    .or_insert_with(|| Value::String(device.clone()));
++            }
++            device_results.push(report);
++        }
++    }
++
++    recovered.retain(|_, entries| !entries.is_empty());
++    Ok(recovered)
++}
++
+ fn browserstack_base_path(target: MobileTarget) -> &'static str {
+     match target {
+         MobileTarget::Android => "app-automate/espresso/v2",
+@@ -10091,6 +10223,60 @@ mod ci_merge_tests {
+         assert_eq!(resource_usage["cpu_median_ms"], 482);
+         assert_eq!(resource_usage["peak_memory_kb"], 249416);
+     }
++
++    #[test]
++    fn recover_benchmark_results_from_fetched_artifacts_uses_build_device_mapping() {
++        let dir = tempfile::tempdir().expect("tempdir");
++        fs::write(
++            dir.path().join("build.json"),
++            serde_json::to_vec_pretty(&json!({
++                "devices": [
++                    {
++                        "device": "Samsung Galaxy S24",
++                        "os_version": "14.0",
++                        "sessions": [
++                            { "id": "session-1" }
++                        ]
++                    }
++                ]
++            }))
++            .expect("serialize build json"),
++        )
++        .expect("write build json");
++
++        let session_dir = dir.path().join("session-session-1");
++        fs::create_dir_all(&session_dir).expect("create session dir");
++        fs::write(
++            session_dir.join("bench-report.json"),
++            serde_json::to_vec_pretty(&json!({
++                "function": "bench_mobile::bench_passport_complete_age_check_prove",
++                "samples": [1_u64, 2_u64, 3_u64],
++                "mean_ns": 2_u64,
++                "resources": {
++                    "cpu_median_ms": 123
++                }
++            }))
++            .expect("serialize bench report"),
++        )
++        .expect("write bench report");
++
++        let recovered =
++            recover_benchmark_results_from_fetched_artifacts(dir.path()).expect("recover results");
++
++        let reports = recovered
++            .get("Samsung Galaxy S24-14.0")
++            .expect("device reports");
++        assert_eq!(reports.len(), 1);
++        assert_eq!(
++            reports[0]["function"],
++            Value::String("bench_mobile::bench_passport_complete_age_check_prove".to_string())
++        );
++        assert_eq!(
++            reports[0]["device"],
++            Value::String("Samsung Galaxy S24-14.0".to_string())
++        );
++        assert_eq!(reports[0]["resources"]["cpu_median_ms"], 123);
++    }
+ }
+ 
+ #[cfg(test)]
