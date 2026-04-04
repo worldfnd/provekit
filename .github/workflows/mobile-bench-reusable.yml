@@ -150,9 +150,9 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
-          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Install iOS tooling
@@ -322,9 +322,9 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
-          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Build Android artifacts
@@ -444,9 +444,9 @@ jobs:
           else
             echo "Skipping local mobench patch; already included or not applicable"
           fi
-          rg -n 'let required_abis = \["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'let abis = vec!\["arm64-v8a"\];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          rg -n 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked
 
       - name: Download iOS results
