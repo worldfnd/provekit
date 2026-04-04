@@ -21,7 +21,7 @@ index 0f18c9a..9fcc7da 100644
              "--release"
          } else {
 diff --git a/crates/mobench-sdk/src/codegen.rs b/crates/mobench-sdk/src/codegen.rs
-index 693156a..2ba0a35 100644
+index 693156a..5359f85 100644
 --- a/crates/mobench-sdk/src/codegen.rs
 +++ b/crates/mobench-sdk/src/codegen.rs
 @@ -335,6 +335,19 @@ pub fn generate_android_project(
@@ -44,7 +44,7 @@ index 693156a..2ba0a35 100644
      reset_generated_project_dir(&target_dir)?;
      let library_name = project_slug.replace('-', "_");
      let project_pascal = to_pascal_case(project_slug);
-@@ -378,6 +391,54 @@ pub fn generate_android_project(
+@@ -378,6 +391,58 @@ pub fn generate_android_project(
      // The package "dev.world.{project_slug}" maps to directory "dev/world/{project_slug}/"
      move_kotlin_files_to_package_dir(&target_dir, &package_name)?;
  
@@ -79,12 +79,16 @@ index 693156a..2ba0a35 100644
 +        })?;
 +        let entry_path = entry.path();
 +        let dest_path = dst.join(entry.file_name());
-+        if entry.file_type().map_err(|e| {
-+            BenchError::Build(format!(
-+                "Failed to inspect {:?} while copying assets: {}",
-+                entry_path, e
-+            ))
-+        })?.is_dir() {
++        if entry
++            .file_type()
++            .map_err(|e| {
++                BenchError::Build(format!(
++                    "Failed to inspect {:?} while copying assets: {}",
++                    entry_path, e
++                ))
++            })?
++            .is_dir()
++        {
 +            copy_dir_recursive(&entry_path, &dest_path)?;
 +        } else {
 +            fs::copy(&entry_path, &dest_path).map_err(|e| {
@@ -98,3 +102,4 @@ index 693156a..2ba0a35 100644
 +
      Ok(())
  }
+ 
