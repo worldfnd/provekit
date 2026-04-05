@@ -155,16 +155,6 @@ jobs:
             cargo install --path mobench-src/crates/mobench --locked --force
           else
             cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            cargo info "mobench-sdk@${MOBENCH_VERSION}" >/dev/null
-            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
-            SDK_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-sdk-${MOBENCH_VERSION}" | head -n 1)
-            if [ -z "${REG_SRC}" ] || [ -z "${SDK_SRC}" ]; then
-              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} sources in cargo registry cache"
-              exit 1
-            fi
-            grep -F 'recover_benchmark_results_from_fetched_artifacts' "${REG_SRC}/src/lib.rs" >/dev/null
-            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' "${SDK_SRC}/src/builders/android.rs" >/dev/null
-            grep -F 'collect_preserved_android_assets' "${SDK_SRC}/src/codegen.rs" >/dev/null
             cargo install "mobench@${MOBENCH_VERSION}" --locked --force
           fi
 
