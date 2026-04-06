@@ -1,8 +1,9 @@
 [package]
-name = "data_check_integrity_lib"
+name = "data_check_tbs_pubkey"
 type = "lib"
 authors = ["Theo Madzou"]
 compiler_version = ">=0.22.0"
 
 [dependencies]
 utils = { path = "../../utils" }
+common = { path = "../../sig-check/common" }
