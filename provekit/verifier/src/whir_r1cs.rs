@@ -265,10 +265,8 @@ pub fn run_sumcheck_verifier(
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;
 
-    println!("blinding_eval: {:?}", blinding_eval);
     let f_at_alpha = saved_val_for_sumcheck_equality_assertion - rho * blinding_eval;
 
-    println!("f_at_alpha: {:?}", f_at_alpha);
     Ok(DataFromSumcheckVerifier {
         r,
         alpha,

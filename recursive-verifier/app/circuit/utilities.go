@@ -118,8 +118,6 @@ func publicInputsHashCheck(
 	}
 
 	expectedHash := publicInputsHash(sc, publicInputs)
-	api.Println("publicInputsHashBuf", publicInputsHashBuf)
-	api.Println("expectedHash", expectedHash)
 	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
 	return nil
 }

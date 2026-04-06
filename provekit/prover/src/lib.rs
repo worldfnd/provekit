@@ -121,16 +121,6 @@ impl Prove for NoirProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&Empty);
-        println!(
-            "rust protocol_id len={} hex={}",
-            ds.protocol_id.len(),
-            hex::encode(&ds.protocol_id)
-        );
-        println!(
-            "rust session_id len={} hex={}",
-            ds.session_id.len(),
-            hex::encode(&ds.session_id)
-        );
 
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 

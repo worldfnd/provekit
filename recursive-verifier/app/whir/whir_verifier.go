@@ -106,7 +106,6 @@ func VerifyWhir(
 	totalFoldingRandomness = initialSumcheckFoldingRandomness
 
 	prevRootHash := commitment.Root
-	api.Println(prevRootHash)
 	for r := range params.ParamNRounds {
 		// Receive round commitment
 		rootHash := make([]frontend.Variable, 1)
@@ -149,14 +148,14 @@ func VerifyWhir(
 
 		// Verify Merkle proofs: each round opens the previous commitment.
 		if merkleData != nil && r < len(merkleData.Rounds) {
-			// rd := merkleData.Rounds[r]
-			// // Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
-			// for q := range stirIndexes {
-			// 	if q < len(rd.LeafIndexes) {
-			// 		api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
-			// 	}
-			// }
-			// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+			rd := merkleData.Rounds[r]
+			// Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
+			for q := range stirIndexes {
+				if q < len(rd.LeafIndexes) {
+					api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
+				}
+			}
+			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
 		prevRootHash = rootHash[0]

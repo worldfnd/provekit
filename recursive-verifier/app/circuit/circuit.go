@@ -67,21 +67,15 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		return err
 	}
 
-	// ---------------------------------------------------------------
-	// 1. Parse commitment 1 (witness polynomial)
-	// ---------------------------------------------------------------
 	blindedCommitments, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
-	api.Println("blindedCommitments", blindedCommitments)
-	api.Println("blindingCommitment", blindingCommitment)
+	// api.Println("blindedCommitments", blindedCommitments)
+	// api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
 		return err
 	}
 	numPolynomials := 1
 	isDualMode := circuit.NumChallenges > 0
 
-	// ---------------------------------------------------------------
-	// 2. If dual mode: squeeze logup challenges, parse commitment 2
-	// ---------------------------------------------------------------
 	var blindedCommitments2 []Commitment
 	var blindingCommitment2 Commitment
 	if isDualMode {
@@ -91,24 +85,21 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		}
 
 		blindedCommitments2, blindingCommitment2, err = zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
-		api.Println("blindedCommitments2", blindedCommitments2)
-		api.Println("blindingCommitment2", blindingCommitment2)
+		// api.Println("blindedCommitments2", blindedCommitments2)
+		// api.Println("blindingCommitment2", blindingCommitment2)
 		if err != nil {
 			return err
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 3. ZK sumcheck
-	// ---------------------------------------------------------------
 	tRand, alpha, fAtAlpha, blindingEval, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
-	api.Println("tRand", tRand)
-	api.Println("alpha", alpha)
-	api.Println("fAtAlpha", fAtAlpha)
-	api.Println("blindingEval", blindingEval)
+	// api.Println("tRand", tRand)
+	// api.Println("alpha", alpha)
+	// api.Println("fAtAlpha", fAtAlpha)
+	// api.Println("blindingEval", blindingEval)
 
 	// ---------------------------------------------------------------
 	// 4. Public inputs hash check + x challenge
@@ -122,7 +113,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
 		return fmt.Errorf("failed to read public weights challenge: %w", err)
 	}
-	api.Println("publicWeightsChallenge", publicWeightsChallenge)
+	// api.Println("publicWeightsChallenge", publicWeightsChallenge)
 
 	// ---------------------------------------------------------------
 	// 5. Read evaluation hints
@@ -133,15 +124,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	evals1Az := circuit.Evaluations[0]
 	evals1Bz := circuit.Evaluations[1]
 	evals1Cz := circuit.Evaluations[2]
-	api.Println("evals1Az", evals1Az)
-	api.Println("evals1Bz", evals1Bz)
-	api.Println("evals1Cz", evals1Cz)
+	// api.Println("evals1Az", evals1Az)
+	// api.Println("evals1Bz", evals1Bz)
+	// api.Println("evals1Cz", evals1Cz)
 
 	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
 
-	// ---------------------------------------------------------------
-	// 5b. Read public_eval from transcript (prover_message in Rust)
-	// ---------------------------------------------------------------
 	var publicEval frontend.Variable
 	if hasPublicInputs {
 		publicEvalSlice := make([]frontend.Variable, 1)
@@ -149,69 +137,71 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return fmt.Errorf("failed to read public_eval from transcript: %w", err)
 		}
 		publicEval = publicEvalSlice[0]
-		api.Println("publicEval", publicEval)
+		// api.Println("publicEval", publicEval)
+
+		// Verify public input binding (Rust: verify_public_input_binding).
+		// expected = 1 + x*pi[0] + x²*pi[1] + ...
+		// where x = publicWeightsChallenge and position 0 is the constant 1.
+		expectedPublicEval := frontend.Variable(1)
+		xPow := publicWeightsChallenge[0]
+		for _, pi := range circuit.PublicInputs.Values {
+			expectedPublicEval = api.Add(expectedPublicEval, api.Mul(xPow, pi))
+			xPow = api.Mul(xPow, publicWeightsChallenge[0])
+		}
+		api.AssertIsEqual(publicEval, expectedPublicEval)
 	}
 
-	// ---------------------------------------------------------------
-	// 6. WHIR verification for commitment 1
-	// ---------------------------------------------------------------
-	{
-		var whirEvaluations []frontend.Variable
-		if hasPublicInputs {
-			whirEvaluations = []frontend.Variable{publicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
-		} else {
-			whirEvaluations = []frontend.Variable{evals1Az, evals1Bz, evals1Cz, blindingEval}
-		}
-
-		weightsLen := 4
-		if hasPublicInputs {
-			weightsLen = 5
-		}
-
-		blindedCommitmentNimue := ParsedCommitmentNimue{
-			Root:       blindedCommitments[0].RootHash,
-			OodPoints:  blindedCommitments[0].InitialOODQueries,
-			OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
-		}
-		blindingCommitmentNimue := ParsedCommitmentNimue{
-			Root:       blindingCommitment.RootHash,
-			OodPoints:  blindingCommitment.InitialOODQueries,
-			OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
-		}
-
-		mode := SingleCommitment
-		if isDualMode {
-			mode = DualCommitment1
-		}
-
-		err = ZKWhirVerify(
-			api, sc, nimue,
-			blindedCommitmentNimue,
-			blindingCommitmentNimue,
-			circuit.BlindedCommitmentWhirConfig,
-			circuit.BlindingCommitmentWhirConfig,
-			whirEvaluations,
-			weightsLen,
-			numPolynomials,
-			&circuit.BlindedMerkleData,
-			&circuit.BlindingMerkleData,
-			R1CSWeightParams{
-				Circuit:                circuit,
-				Alpha:                  alpha,
-				PublicWeightsChallenge: publicWeightsChallenge[0],
-				HasPublicInputs:        hasPublicInputs,
-				Mode:                   mode,
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("ZK-WHIR verification failed for commitment 1: %w", err)
-		}
+	var whirEvaluations []frontend.Variable
+	if hasPublicInputs {
+		whirEvaluations = []frontend.Variable{publicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
+	} else {
+		whirEvaluations = []frontend.Variable{evals1Az, evals1Bz, evals1Cz, blindingEval}
 	}
 
-	// ---------------------------------------------------------------
-	// 7. If dual mode: WHIR verification for commitment 2
-	//    Commitment 2 has no public weight and no blinding weight → weightsLen=3
-	// ---------------------------------------------------------------
+	weightsLen := 4
+	if hasPublicInputs {
+		weightsLen = 5
+	}
+
+	blindedCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindedCommitments[0].RootHash,
+		OodPoints:  blindedCommitments[0].InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
+	}
+	blindingCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindingCommitment.RootHash,
+		OodPoints:  blindingCommitment.InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
+	}
+
+	mode := SingleCommitment
+	if isDualMode {
+		mode = DualCommitment1
+	}
+
+	err = ZKWhirVerify(
+		api, sc, nimue,
+		blindedCommitmentNimue,
+		blindingCommitmentNimue,
+		circuit.BlindedCommitmentWhirConfig,
+		circuit.BlindingCommitmentWhirConfig,
+		whirEvaluations,
+		weightsLen,
+		numPolynomials,
+		&circuit.BlindedMerkleData,
+		&circuit.BlindingMerkleData,
+		R1CSWeightParams{
+			Circuit:                circuit,
+			Alpha:                  alpha,
+			PublicWeightsChallenge: publicWeightsChallenge[0],
+			HasPublicInputs:        hasPublicInputs,
+			Mode:                   mode,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("ZK-WHIR verification failed for commitment 1: %w", err)
+	}
+
 	var azAtAlpha, bzAtAlpha, czAtAlpha frontend.Variable
 	if isDualMode {
 		if len(circuit.Evaluations2) < 3 {
@@ -220,9 +210,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		evals2Az := circuit.Evaluations2[0]
 		evals2Bz := circuit.Evaluations2[1]
 		evals2Cz := circuit.Evaluations2[2]
-		api.Println("evals2Az", evals2Az)
-		api.Println("evals2Bz", evals2Bz)
-		api.Println("evals2Cz", evals2Cz)
 
 		whirEvaluations2 := []frontend.Variable{evals2Az, evals2Bz, evals2Cz}
 
@@ -270,10 +257,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 		czAtAlpha = evals1Cz
 	}
 
-	// ---------------------------------------------------------------
-	// 8. Final R1CS constraint satisfaction check:
-	//    f_at_alpha == (az·bz - cz) * eq(tRand, alpha)
-	// ---------------------------------------------------------------
 	eqRA := calculateEqCircuit(api, tRand, alpha)
 	rhs := api.Mul(api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha), eqRA)
 	api.AssertIsEqual(fAtAlpha, rhs)

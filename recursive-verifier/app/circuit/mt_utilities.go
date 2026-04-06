@@ -10,15 +10,12 @@ func zkWHIRCommitmentParsing(api frontend.API, nimue gnarkNimue.Nimue, blindedCo
 	for i := 0; i < numPolynomials; i++ {
 		blindedCommitment, err := irsReceiveCommitment(api, nimue, blindedCommitmentWhirConfig)
 		if err != nil {
-			api.Println("parse commitment 1")
 			return []Commitment{}, Commitment{}, err
 		}
 		fHat[i] = blindedCommitment
-		api.Println("blindedCommitment", blindedCommitment)
 	}
 
 	blindingCommitment, err := irsReceiveCommitment(api, nimue, blindingCommitmentWhirConfig)
-	api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
 		return []Commitment{}, Commitment{}, err
 	}

@@ -58,13 +58,10 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	blindedCommitmentWhirConfig := NewWhirParams(config.BlindedCommitmentWhirConfig)
 	blindingCommitmentWhirConfig := NewWhirParams(config.BlindingCommitmentWhirConfig)
 
-	// ---------------------------------------------------------------
-	// 1. parseBatchedCommitment for commitment 1 (witness)
-	// ---------------------------------------------------------------
-	blindedCommitmentPolyRoot, blindedCommitmentOODPoint, blindedCommitmentOODMatrix, err := nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
-	fmt.Println("blindedCommitmentPolyRoot", FrDecimalToHexLE(blindedCommitmentPolyRoot.String()))
-	fmt.Println("blindedCommitmentOODPoint", blindedCommitmentOODPoint)
-	fmt.Println("blindedCommitmentOODMatrix", blindedCommitmentOODMatrix)
+	_, blindedCommitmentOODPoint, blindedCommitmentOODMatrix, err := nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
+	// fmt.Println("blindedCommitmentPolyRoot", FrDecimalToHexLE(blindedCommitmentPolyRoot.String()))
+	// fmt.Println("blindedCommitmentOODPoint", blindedCommitmentOODPoint)
+	// fmt.Println("blindedCommitmentOODMatrix", blindedCommitmentOODMatrix)
 	if err != nil {
 		return fmt.Errorf("parse blinded commitment: %w", err)
 	}
@@ -77,17 +74,11 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	}
 	blindingCommitment := NativeCommitmentFromParsed(blindingCommitmentOODPoint, blindingCommitmentOODMatrix)
 
-	// ---------------------------------------------------------------
-	// 2. If dual mode: squeeze logup challenges, parse commitment 2
-	// ---------------------------------------------------------------
 	if config.NumChallenges > 0 {
 		_, err := nimue.FillChallengeScalars(config.NumChallenges)
 		if err != nil {
 			return fmt.Errorf("logup challenges: %w", err)
 		}
-		// Commitment 2 is another witness commitment (same config as commitment 1),
-		// parsed via receive_commitments which calls blinded.receive_commitment +
-		// blinding.receive_commitment.
 		_, _, _, err = nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
 		if err != nil {
 			return fmt.Errorf("parse commitment 2 blinded: %w", err)
@@ -98,19 +89,12 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 3. Spartan sumcheck: squeeze tRand, then run ZK sumcheck
-	// ---------------------------------------------------------------
-	// 3a. tRand (Spartan verifier randomness)
+	// Spartan sumcheck: squeeze tRand, then run ZK sumcheck
 	sumcheckData, err := nativeRunSumcheckVerifier(nimue, config.LogNumConstraints)
 	if err != nil {
 		return fmt.Errorf("sumcheck verifier: %w", err)
 	}
-	fmt.Println("sumcheck data:", sumcheckData)
 
-	// ---------------------------------------------------------------
-	// 4. public_inputs_hash (prover_message) + x challenge (verifier_message)
-	// ---------------------------------------------------------------
 	if _, err = nimue.FillNextScalars(1); err != nil {
 		return fmt.Errorf("public inputs hash: %w", err)
 	}
@@ -118,9 +102,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("x challenge: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 5. Read claimed evaluations from hints (prover_hint_ark)
-	// ---------------------------------------------------------------
+	// Read claimed evaluations from hints (prover_hint_ark)
 	var evals1 []Fp256
 	if err = nimue.ProverHintArk(&evals1); err != nil {
 		return fmt.Errorf("evals_1: %w", err)
@@ -139,14 +121,27 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	}
 
 	hasPublicInputs := !config.PublicInputs.IsEmpty()
+	var publicEval *big.Int
 	if hasPublicInputs {
-		// Consume public_eval from transcript (prover_message in Rust) to
-		// keep the native transcript position in sync. The circuit reads
-		// this value directly from nimue in its Define method.
-		if _, err := nimue.FillNextScalars(1); err != nil {
+		// Consume public_eval from transcript (prover_message in Rust).
+		publicEvalSlice, err := nimue.FillNextScalars(1)
+		if err != nil {
 			return fmt.Errorf("public_eval: %w", err)
 		}
+		publicEval = publicEvalSlice[0]
 	}
+
+	// Build the full evaluations vector matching Rust whir_r1cs.rs:
+	//   [public_eval?, Az, Bz, Cz, blinding_eval]
+	// The blinding_eval comes from the Spartan sumcheck verifier output.
+	blindingEval := sumcheckData.BlindingEval
+	var fullEvals1 []*big.Int
+	if hasPublicInputs {
+		fullEvals1 = append([]*big.Int{publicEval}, evals1BigInt...)
+	} else {
+		fullEvals1 = append([]*big.Int{}, evals1BigInt...)
+	}
+	fullEvals1 = append(fullEvals1, blindingEval)
 
 	// ---------------------------------------------------------------
 	// 6. zkWHIR verify (first commitment)
@@ -154,7 +149,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	//    numPolynomials: 1 (single commitment)
 	// ---------------------------------------------------------------
 	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
-	zkWhirData1, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
+	zkWhirData1, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, fullEvals1)
 	if err != nil {
 		return fmt.Errorf("zkWHIR verify commitment 1: %w", err)
 	}
@@ -532,12 +527,22 @@ func nativeZKWhirVerify(
 	// ---------------------------------------------------------------
 	// numLinearForms excludes the blinding weight (last in WeightsLen) because
 	// the blinding evaluation is not part of the external evaluations slice.
+	//
+	// Build modified_evaluations = evaluations + m_evals, matching
+	// Rust whir_zk/verifier.rs: modified_evaluations[i] = evaluations[i] + m_evals[i]
+	// where m_evals[i] is the first element of each (μ+1)-sized block in wFoldedBlindingEvals.
+	blockSize := numWitnessVariables + 1
+	modifiedEvaluations := make([]*big.Int, len(evaluations))
+	for i, eval := range evaluations {
+		mEval := data.WFoldedBlindingEvals[i*blockSize]
+		modifiedEvaluations[i] = frAdd(eval, mEval)
+	}
 	blindedResult, err := NativeWhirVerify(
 		nimue,
 		blindedWhirParams,
 		config.BlindedCommitmentWhirConfig,
 		[]*NativeCommitment{blindedCommitment},
-		evaluations,
+		modifiedEvaluations,
 		params.WeightsLen-1,
 	)
 	if err != nil {

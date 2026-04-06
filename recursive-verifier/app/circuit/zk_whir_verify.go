@@ -73,50 +73,31 @@ func ZKWhirVerify(
 	numWitnessVariables := blindedParams.MVParamsNumberOfVariables
 	interleavingDepth := 1 << blindedParams.FoldingFactorArray[0]
 
-	// ---------------------------------------------------------------
-	// 1. blinding_challenge
-	// ---------------------------------------------------------------
 	blindingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(blindingChallenge); err != nil {
 		return fmt.Errorf("blinding_challenge: %w", err)
 	}
-	api.Println("blinding_challenge", blindingChallenge[0])
 
-	// ---------------------------------------------------------------
-	// 2. w_folded_blinding_evals
-	// ---------------------------------------------------------------
 	numWFoldedEvals := weightsLen * numPolynomials * (numWitnessVariables + 1)
 	wFoldedBlindingEvals := make([]frontend.Variable, numWFoldedEvals)
 	if err := nimue.FillNextScalars(wFoldedBlindingEvals); err != nil {
 		return fmt.Errorf("w_folded_blinding_evals: %w", err)
 	}
-	api.Println("w_folded_blinding_evals", wFoldedBlindingEvals)
-	// ---------------------------------------------------------------
-	// 3. masking_challenge
-	// ---------------------------------------------------------------
+
 	maskingChallenge := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(maskingChallenge); err != nil {
 		return fmt.Errorf("masking_challenge: %w", err)
 	}
-	api.Println("masking_challenge", maskingChallenge[0])
 
-	// ---------------------------------------------------------------
-	// 4. initial_committer.verify() (IRS commit in-domain verification)
-	// ---------------------------------------------------------------
 	numInitialQueries := blindedParams.InitialInDomainSamples
 	initialStirIndexes, err := getStirChallenges(api, nimue, numInitialQueries, blindedParams.DomainSize, interleavingDepth)
 	if err != nil {
 		return fmt.Errorf("initial_committer stir: %w", err)
 	}
-	api.Println("initial_committer stir", initialStirIndexes)
 
 	// h_gammas count
 	hGammasCount := numInitialQueries * interleavingDepth
-	api.Println("h_gammas count", hGammasCount)
 
-	// ---------------------------------------------------------------
-	// 5. tau1, tau2
-	// ---------------------------------------------------------------
 	tau1 := make([]frontend.Variable, 1)
 	if err := nimue.FillChallengeScalars(tau1); err != nil {
 		return fmt.Errorf("tau1: %w", err)
@@ -125,12 +106,7 @@ func ZKWhirVerify(
 	if err := nimue.FillChallengeScalars(tau2); err != nil {
 		return fmt.Errorf("tau2: %w", err)
 	}
-	api.Println("tau1", tau1[0])
-	api.Println("tau2", tau2[0])
 
-	// ---------------------------------------------------------------
-	// 6. Per-gamma evaluations
-	// ---------------------------------------------------------------
 	evalsPerPoly := 1 + numWitnessVariables
 	perGammaEvals := make([][][]frontend.Variable, hGammasCount)
 	for g := range hGammasCount {
@@ -143,9 +119,7 @@ func ZKWhirVerify(
 			perGammaEvals[g][p] = vals
 		}
 	}
-	// ---------------------------------------------------------------
-	// 7. combined_claims, batched_h_claims
-	// ---------------------------------------------------------------
+
 	combinedClaims := make([]frontend.Variable, numPolynomials)
 	if err := nimue.FillNextScalars(combinedClaims); err != nil {
 		return fmt.Errorf("combined_claims: %w", err)
@@ -154,14 +128,8 @@ func ZKWhirVerify(
 	if err := nimue.FillNextScalars(batchedHClaims); err != nil {
 		return fmt.Errorf("batched_h_claims: %w", err)
 	}
-	api.Println("combined_claims", combinedClaims)
-	api.Println("batched_h_claims", batchedHClaims)
 
-	// ---------------------------------------------------------------
-	// 7a. Verify batched_h_claims (Rust: verify!(batched_h_claims == expected_batched_h_claims))
-	//     Compute gamma points from query indices and verify h-value accumulation.
-	// ---------------------------------------------------------------
-
+	// Verify batched_h_claims (Rust: verify!(batched_h_claims == expected_batched_h_claims))
 	// Compute gamma values: for each query index i, for k = 0..interleavingDepth-1:
 	//   gamma_{i,k} = omega_full^(index_i) * zeta^k
 	numBitsIdx := 0
@@ -213,13 +181,11 @@ func ZKWhirVerify(
 		api.AssertIsEqual(batchedHClaims[p], expectedBatchedHClaims[p])
 	}
 
-	// ---------------------------------------------------------------
-	// 8. Blinded commitment WHIR verify
+	// Blinded commitment WHIR verify
 	//    Mirrors Rust whir_zk/verifier.rs lines 118-125:
 	//    modified_evaluations[i] = evaluations[i] + m_evals[i]
 	//    where m_evals[i] is the first element of each (μ+1)-sized block
 	//    in wFoldedBlindingEvals.
-	// ---------------------------------------------------------------
 	blockSize := numWitnessVariables + 1
 	modifiedEvaluations := make([]frontend.Variable, len(evaluations))
 	for i, eval := range evaluations {
@@ -235,9 +201,7 @@ func ZKWhirVerify(
 		return fmt.Errorf("blinded WHIR verify: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 9. Blinding commitment WHIR verify
-	// ---------------------------------------------------------------
+	// blinding commitment WHIR verify
 	// Accumulate m_claims and g_hat_claims using tau2 powers
 	mClaims := make([]frontend.Variable, numPolynomials)
 	gHatClaims := make([][]frontend.Variable, numPolynomials)
@@ -261,10 +225,8 @@ func ZKWhirVerify(
 		tau2Power = api.Mul(tau2Power, tau2[0])
 	}
 
-	// ---------------------------------------------------------------
-	// 9a. Verify combined_claims (Rust: verify!(combined_claims == expected_combined_claims))
+	// verify combined_claims (Rust: verify!(combined_claims == expected_combined_claims))
 	//     combined_claims[p] = m_claims[p] + 2 * tau1 * univariate_evaluate(g_hat_claims[p], tau1)
-	// ---------------------------------------------------------------
 	for p := range numPolynomials {
 		// Horner evaluation of g_hat_claims[p] at tau1
 		gHatEval := frontend.Variable(0)
@@ -295,76 +257,68 @@ func ZKWhirVerify(
 		return fmt.Errorf("blinding WHIR verify: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 10. Blinded FinalClaim: verify WHIR-committed polynomial matches
-	//     R1CS weight linear forms.
-	// ---------------------------------------------------------------
-	{
-		w := r1csWeights
-		fc := blindedResult.FinalClaim
-		foldingRandomness := fc.EvaluationPoint
+	// verify WHIR-committed polynomial matches R1CS weight linear forms.
+	w := r1csWeights
+	fc := blindedResult.FinalClaim
+	foldingRandomness := fc.EvaluationPoint
 
-		var weightMLEs []frontend.Variable
-		switch w.Mode {
-		case SingleCommitment:
-			// All columns, public + blinding weights.
-			matrixExtensionEvals := evaluateR1CSMatrixExtension(api, w.Circuit, w.Alpha, foldingRandomness)
-			if w.HasPublicInputs {
-				weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
-			}
-			weightMLEs = append(weightMLEs, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
-			weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
-		case DualCommitment1:
-			// Columns < W1Size only, with public + blinding weights.
-			matrixEvals1, _ := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, foldingRandomness, nil, w.Circuit.W1Size)
-			if w.HasPublicInputs {
-				weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), foldingRandomness))
-			}
-			weightMLEs = append(weightMLEs, matrixEvals1[0], matrixEvals1[1], matrixEvals1[2])
-			weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
-		case DualCommitment2:
-			// Columns >= W1Size only, no public, no blinding.
-			_, matrixEvals2 := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, foldingRandomness, w.Circuit.W1Size)
-			weightMLEs = append(weightMLEs, matrixEvals2[0], matrixEvals2[1], matrixEvals2[2])
+	var weightMLEs []frontend.Variable
+	switch w.Mode {
+	case SingleCommitment:
+		// All columns, public + blinding weights.
+		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, w.Circuit, w.Alpha, foldingRandomness)
+		if w.HasPublicInputs {
+			// n = num_public_inputs + 1 (the +1 accounts for the constant-1 witness at position 0)
+			weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values)+1, foldingRandomness))
 		}
-		fc.VerifyClaim(api, weightMLEs)
-	}
-
-	// ---------------------------------------------------------------
-	// 11. Blinding FinalClaim: verify blinding polynomial matches
-	//     beq_weights and folded R1CS weights.
-	// ---------------------------------------------------------------
-	{
-		w := r1csWeights
-		fc := blindingResult.FinalClaim
-		evalPoint := fc.EvaluationPoint
-		numBlindingVars := blindingParams.MVParamsNumberOfVariables - 1
-		maskSize := 1 << (numBlindingVars + 1)
-
-		beqMLE := batchedBeqMLE(api, gammas, maskingChallenge[0], tau2[0], numBlindingVars, evalPoint)
-		weightMLEs := []frontend.Variable{beqMLE}
-
-		switch w.Mode {
-		case SingleCommitment:
-			foldedMatrixEvals := evaluateFoldedR1CSMatrixExtension(api, w.Circuit, w.Alpha, evalPoint, maskSize)
-			if w.HasPublicInputs {
-				weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
-			}
-			weightMLEs = append(weightMLEs, foldedMatrixEvals[0], foldedMatrixEvals[1], foldedMatrixEvals[2])
-			weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
-		case DualCommitment1:
-			foldedEvals1, _ := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, evalPoint, nil, maskSize, w.Circuit.W1Size)
-			if w.HasPublicInputs {
-				weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values), evalPoint, maskSize))
-			}
-			weightMLEs = append(weightMLEs, foldedEvals1[0], foldedEvals1[1], foldedEvals1[2])
-			weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
-		case DualCommitment2:
-			_, foldedEvals2 := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, evalPoint, maskSize, w.Circuit.W1Size)
-			weightMLEs = append(weightMLEs, foldedEvals2[0], foldedEvals2[1], foldedEvals2[2])
+		weightMLEs = append(weightMLEs, matrixExtensionEvals[0], matrixExtensionEvals[1], matrixExtensionEvals[2])
+		weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
+	case DualCommitment1:
+		// Columns < W1Size only, with public + blinding weights.
+		matrixEvals1, _ := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, foldingRandomness, nil, w.Circuit.W1Size)
+		if w.HasPublicInputs {
+			// n = num_public_inputs + 1 (the +1 accounts for the constant-1 witness at position 0)
+			weightMLEs = append(weightMLEs, geometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values)+1, foldingRandomness))
 		}
-		fc.VerifyClaim(api, weightMLEs)
+		weightMLEs = append(weightMLEs, matrixEvals1[0], matrixEvals1[1], matrixEvals1[2])
+		weightMLEs = append(weightMLEs, blindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, foldingRandomness))
+	case DualCommitment2:
+		// Columns >= W1Size only, no public, no blinding.
+		_, matrixEvals2 := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, foldingRandomness, w.Circuit.W1Size)
+		weightMLEs = append(weightMLEs, matrixEvals2[0], matrixEvals2[1], matrixEvals2[2])
 	}
+	fc.VerifyClaim(api, weightMLEs)
+
+	// verify blinding polynomial matches beq_weights and folded R1CS weights.
+	w = r1csWeights
+	fc = blindingResult.FinalClaim
+	evalPoint := fc.EvaluationPoint
+	numBlindingVars := blindingParams.MVParamsNumberOfVariables - 1
+	maskSize := 1 << (numBlindingVars + 1)
+
+	beqMLE := batchedBeqMLE(api, gammas, maskingChallenge[0], tau2[0], numBlindingVars, evalPoint)
+	weightMLEs = []frontend.Variable{beqMLE}
+
+	switch w.Mode {
+	case SingleCommitment:
+		foldedMatrixEvals := evaluateFoldedR1CSMatrixExtension(api, w.Circuit, w.Alpha, evalPoint, maskSize)
+		if w.HasPublicInputs {
+			weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values)+1, evalPoint, maskSize))
+		}
+		weightMLEs = append(weightMLEs, foldedMatrixEvals[0], foldedMatrixEvals[1], foldedMatrixEvals[2])
+		weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
+	case DualCommitment1:
+		foldedEvals1, _ := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, evalPoint, nil, maskSize, w.Circuit.W1Size)
+		if w.HasPublicInputs {
+			weightMLEs = append(weightMLEs, foldedGeometricTill(api, w.PublicWeightsChallenge, len(w.Circuit.PublicInputs.Values)+1, evalPoint, maskSize))
+		}
+		weightMLEs = append(weightMLEs, foldedEvals1[0], foldedEvals1[1], foldedEvals1[2])
+		weightMLEs = append(weightMLEs, foldedBlindingCovectorMLE(api, w.Alpha, w.Circuit.W1Size, evalPoint, maskSize))
+	case DualCommitment2:
+		_, foldedEvals2 := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, evalPoint, maskSize, w.Circuit.W1Size)
+		weightMLEs = append(weightMLEs, foldedEvals2[0], foldedEvals2[1], foldedEvals2[2])
+	}
+	fc.VerifyClaim(api, weightMLEs)
 
 	return nil
 }

@@ -235,18 +235,18 @@ func nativeEqPoly(a, b []*big.Int) *big.Int {
 //
 // where n = log2(size) and the x_i are taken from mlPoint.
 func nativeUnivariateEvalMLE(point *big.Int, size int, mlPoint []*big.Int) *big.Int {
-	n := bits.Len(uint(size)) - 1 // log2(size)
+	n := len(mlPoint)
+	_ = size // size is implicit: 2^n
 	result := big.NewInt(1)
 	// power tracks point^(2^i)
 	power := new(big.Int).Set(point)
-	for i := 0; i < n; i++ {
-		// r = mlPoint[i]
+	// Iterate in reverse to match Rust point.iter().rev() and
+	// circuit UnivarMleEvaluate which iterates i = n-1..0.
+	for i := n - 1; i >= 0; i-- {
 		r := mlPoint[i]
-		// factor = (1 - r) + r * power = 1 - r + r * power
 		oneMinusR := frSub(big.NewInt(1), r)
 		factor := frAdd(oneMinusR, frMul(r, power))
 		result = frMul(result, factor)
-		// power = power^2
 		power = frMul(power, power)
 	}
 	return result
@@ -257,9 +257,11 @@ func nativeUnivariateEvalMLE(point *big.Int, size int, mlPoint []*big.Int) *big.
 // ---------------------------------------------------------------------------
 
 // nativeWhirSumcheckVerify runs the WHIR-style sumcheck verification.
-// Each round reads 2 evaluations (c0, c2), checks c0+c1 == sum, and squeezes
-// a folding randomness challenge. Updates sum in place.
-// Returns the folding randomness points.
+// Each round reads 2 monomial coefficients (c0, c2) of the quadratic polynomial
+// p(x) = c0 + c1*x + c2*x^2. The linear coefficient c1 is derived from the
+// sumcheck constraint p(0) + p(1) = sum, giving c1 = sum - 2*c0 - c2.
+// After squeezing a folding randomness challenge r, the sum is updated to p(r).
+// Returns the folding randomness points and the final sum.
 func nativeWhirSumcheckVerify(
 	nimue *NativeNimue,
 	sum *big.Int,
@@ -269,19 +271,16 @@ func nativeWhirSumcheckVerify(
 	currentSum := new(big.Int).Set(sum)
 
 	for i := 0; i < numRounds; i++ {
-		// Read c0 and c2 (evaluations at 0 and 2)
+		// Read c0 and c2 (monomial coefficients: constant and quadratic)
 		evals, err := nimue.FillNextScalars(2)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sumcheck round %d coeffs: %w", i, err)
 		}
 		c0 := evals[0]
 		c2 := evals[1]
-		// c1 = sum - 2*c0 - c2  (from c0 + c1 = sum, but we need to derive c1)
-		// Actually: the polynomial p(x) is quadratic with p(0)=c0, p(1)=c1, p(2)=c2
-		// The sumcheck check is: p(0) + p(1) = sum, so c1 = sum - c0
-		c1 := frSub(currentSum, c0)
-
-		// Verify: c0 + c1 == currentSum (this is guaranteed by construction)
+		// Derive c1 from p(0) + p(1) = sum:
+		// p(0) = c0, p(1) = c0 + c1 + c2, so 2*c0 + c1 + c2 = sum
+		c1 := frSub(frSub(currentSum, frAdd(c0, c0)), c2)
 
 		// Squeeze folding randomness
 		rSlice, err := nimue.FillChallengeScalars(1)
@@ -291,16 +290,8 @@ func nativeWhirSumcheckVerify(
 		r := rSlice[0]
 		foldingRandomness[i] = r
 
-		// Update sum: p(r) using the quadratic interpolation from (0, c0), (1, c1), (2, c2)
-		// p(x) = c0 + b1*x + b2*x^2 where:
-		//   b0 = c0
-		//   b1 = (-c2 + 4*c1 - 3*c0) / 2
-		//   b2 = (c2 - 2*c1 + c0) / 2
-		inv2 := frInv(big.NewInt(2))
-		b1 := frMul(frAdd(frAdd(frSub(big.NewInt(0), c2), frMul(big.NewInt(4), c1)), frMul(frSub(big.NewInt(0), big.NewInt(3)), c0)), inv2)
-		b2 := frMul(frAdd(frAdd(c2, frMul(frSub(big.NewInt(0), big.NewInt(2)), c1)), c0), inv2)
-		// p(r) = b2*r^2 + b1*r + c0
-		currentSum = frAdd(frAdd(frMul(frMul(b2, r), r), frMul(b1, r)), c0)
+		// Update sum: p(r) = (c2*r + c1)*r + c0
+		currentSum = frAdd(frMul(frAdd(frMul(c2, r), c1), r), c0)
 	}
 
 	return foldingRandomness, currentSum, nil
@@ -603,11 +594,6 @@ func nativePoWVerify(nimue *NativeNimue, powBits int) error {
 		// Compute threshold: modulus * 2^(-difficulty)
 		// Using the same approach as Rust: approximate modulus via high limb, then f64 arithmetic
 		threshold := nativePowThreshold(powBits)
-
-		// Print hash and threshold as big.Ints for easier interpretation:
-		hashInt := skLimbsToBigInt(hash)
-		thresholdInt := skLimbsToBigInt(threshold)
-		fmt.Printf("hash:      %s\nthreshold: %s\n", hashInt.String(), thresholdInt.String())
 		// less_than comparison on [4]uint64 limbs (little-endian)
 		if !(hash[0] < threshold[0]) {
 			return fmt.Errorf("PoW check failed: hash not below threshold for difficulty %d", powBits)
@@ -771,9 +757,7 @@ func NativeWhirVerify(
 		}
 		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
 	} else {
-		fmt.Println("the_sum before initial sumcheck:", theSum)
 		ff0 := whirParams.FoldingFactorArray[0]
-		fmt.Println("num rounds:", ff0)
 		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff0)
 		if err != nil {
 			return nil, fmt.Errorf("initial sumcheck: %w", err)
@@ -798,6 +782,12 @@ func NativeWhirVerify(
 	prev := prevInitial
 	// polyRLC for initial is vectorRLCCoeffs; for round is [1]
 	currentPolyRLC := vectorRLCCoeffs
+
+	// expDomainGen is the generator of the folded domain (codeword rows).
+	// It starts as startingDomainGen^(1 << foldingFactor[0]) = generator of
+	// codeword_length = domainSize / interleavingDepth.
+	startingDomainGen, _ := new(big.Int).SetString(whirConfig.DomainGenerator, 10)
+	expDomainGen := new(big.Int).Exp(startingDomainGen, big.NewInt(int64(1<<whirParams.FoldingFactorArray[0])), bn254Modulus)
 
 	for r := 0; r < nRounds; r++ {
 		// receive_commitment for folded polynomial
@@ -860,45 +850,39 @@ func NativeWhirVerify(
 		}
 
 		// In-domain constraints from IRS verify
-		// Compute domain generator for in-domain points
-		// In-domain evaluator points come from the STIR challenge indices
-		foldedDomainSize := domainSize / foldingFactorPower
-		_ = foldedDomainSize
-		// The in-domain points are domain elements at the queried indices
-		// For the tensor product weights: tensor(polyRLC, eq_weights(last_folding_randomness))
+		// Compute the folded domain generator for evaluation points.
+		// expDomainGen is the generator of the folded domain (codeword_length rows).
 		lastFoldRand := allFoldingRandomness[len(allFoldingRandomness)-1]
 		tensorWeights := nativeTensorProduct(currentPolyRLC, nativeEqWeights(lastFoldRand))
 
-		// In-domain evaluator: each index gives a domain point
-		for _, idx := range inDomainIndices {
-			// Domain point = domainGenerator^(idx * foldingFactorPower)
-			// For evaluator info, we store the index-based domain point
-			// The actual point computation requires the domain generator
-			_ = idx
-			// For now, store placeholder — the actual mle_evaluate uses the
-			// point to compute (1-r) + r*point^(2^i) for each round variable
+		// Compute in-domain evaluation points and values from Merkle-verified leaves.
+		for qi, idx := range inDomainIndices {
+			// Compute the domain evaluation point: expDomainGen^idx
+			domainPoint := new(big.Int).Exp(expDomainGen, big.NewInt(int64(idx)), bn254Modulus)
 			constraintEvalInfos = append(constraintEvalInfos, evaluatorInfo{
-				point: big.NewInt(int64(idx)), // placeholder
+				point: domainPoint,
 				size:  roundSize,
 			})
-		}
 
-		// In-domain values: for each query, compute the dot product with tensor weights
-		// These values come from the submatrix hint (already consumed by IRS verify)
-		// For verification, they are verified by Merkle proof, so we trust them here
-		for range inDomainIndices {
-			// The actual values are verified by Merkle proofs in the circuit
-			// In the native replay, we just need the constraint structure
-			constraintValues = append(constraintValues, big.NewInt(0)) // placeholder
+			// Compute in-domain value from leaf data: dot(tensorWeights, leaf)
+			if qi < len(roundMerkle.Leaves) {
+				leafBigInts := make([]*big.Int, len(roundMerkle.Leaves[qi]))
+				for j, v := range roundMerkle.Leaves[qi] {
+					leafBigInts[j] = v.(*big.Int)
+				}
+				constraintValues = append(constraintValues, nativeDotBigInt(tensorWeights, leafBigInts))
+			} else {
+				constraintValues = append(constraintValues, big.NewInt(0))
+			}
 		}
-		_ = tensorWeights
 
 		// Squeeze combination randomness for this round
 		constraintRLC, err := nativeGeometricChallenge(nimue, len(constraintValues))
 		if err != nil {
 			return nil, fmt.Errorf("round %d combination randomness: %w", r, err)
 		}
-		theSum = frAdd(theSum, nativeDotBigInt(constraintRLC, constraintValues))
+		inDomainContrib := nativeDotBigInt(constraintRLC, constraintValues)
+		theSum = frAdd(theSum, inDomainContrib)
 
 		roundConstraints = append(roundConstraints, NativeRoundConstraint{
 			RLCCoeffs:      constraintRLC,
@@ -920,6 +904,17 @@ func NativeWhirVerify(
 		prev = prevRound
 		currentPolyRLC = []*big.Int{big.NewInt(1)}
 		domainSize /= 2
+
+		// Update the folded domain generator for the next round.
+		// Mirrors the circuit code: numSquarings = 1 + ff[r+1] - ff[r]
+		nextFF := whirParams.FoldingFactorArray[r]
+		if r+1 < len(whirParams.FoldingFactorArray) {
+			nextFF = whirParams.FoldingFactorArray[r+1]
+		}
+		numSquarings := 1 + nextFF - whirParams.FoldingFactorArray[r]
+		for k := 0; k < numSquarings; k++ {
+			expDomainGen = frMul(expDomainGen, expDomainGen)
+		}
 	}
 
 	// ---------------------------------------------------------------
@@ -1004,16 +999,14 @@ func NativeWhirVerify(
 	// linear_form_rlc = the_sum / poly_eval
 	linearFormRLC := frDiv(theSum, polyEval)
 
-	// Subtract all internal linear forms
+	// Subtract all internal linear forms.
+	// roundConstraints[0] = initial OODs (uses initial_num_variables = MVParams)
+	// roundConstraints[r+1] = main round r (uses round_configs[r].initial_num_variables)
+	// Mirrors Rust: round.checked_sub(1).map_or(initial_num_vars, |p| round_configs[p].initial_num_vars)
 	for round, rc := range roundConstraints {
-		var numVariables int
-		if round == 0 {
-			numVariables = whirParams.MVParamsNumberOfVariables
-		} else {
-			numVariables = whirParams.MVParamsNumberOfVariables
-			for k := 0; k < round-1; k++ {
-				numVariables -= whirParams.FoldingFactorArray[k]
-			}
+		numVariables := whirParams.MVParamsNumberOfVariables
+		for k := 0; k < round; k++ {
+			numVariables -= whirParams.FoldingFactorArray[k]
 		}
 		start := len(evaluationPoint) - numVariables
 		if start < 0 {
