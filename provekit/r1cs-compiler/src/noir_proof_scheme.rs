@@ -73,13 +73,14 @@ impl NoirCompiler {
             main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
-        let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
             WitnessBuilder::split_and_prepare_layers(
                 &witness_builders,
                 r1cs,
                 witness_map,
                 acir_public_inputs_indices_set,
             )?;
+        let num_challenges = challenge_offsets.len();
         info!(
             "Witness split: w1 size = {}, w2 size = {}",
             split_witness_builders.w1_size,
@@ -96,6 +97,7 @@ impl NoirCompiler {
             &remapped_r1cs,
             split_witness_builders.w1_size,
             num_challenges,
+            challenge_offsets,
             has_public_inputs,
             hash_config.engine_id(),
         );
@@ -158,10 +160,15 @@ impl MavrosCompiler {
             }
         }
 
+        let challenges_size = mavros_r1cs.witness_layout.challenges_size;
+        // In Mavros, challenges occupy the first `challenges_size` positions of
+        // w2 (immediately after the pre-commitment boundary).
+        let challenge_offsets: Vec<usize> = (0..challenges_size).collect();
         let whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
             &mavros_r1cs,
             mavros_r1cs.witness_layout.pre_commitment_size(),
-            mavros_r1cs.witness_layout.challenges_size,
+            challenges_size,
+            challenge_offsets,
             num_public_inputs > 0,
             hash_config.engine_id(),
         );

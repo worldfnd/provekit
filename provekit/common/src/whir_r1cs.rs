@@ -25,6 +25,7 @@ pub struct WhirR1CSScheme {
     pub m_0:               usize,
     pub a_num_terms:       usize,
     pub num_challenges:    usize,
+    pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
     pub whir_witness:      WhirZkConfig,
 }
