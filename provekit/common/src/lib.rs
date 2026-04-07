@@ -32,7 +32,7 @@ pub use {
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
-    whir_r1cs::{WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
+    whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
 };
 

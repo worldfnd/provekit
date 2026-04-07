@@ -96,6 +96,9 @@ impl PublicInputs {
         }
     }
 
+    /// Compute the public-inputs hash as a 32-byte array (little-endian).
+    ///
+    /// Used to bind public inputs to the Fiat-Shamir transcript instance.
     #[must_use]
     pub fn hash_bytes(&self) -> [u8; 32] {
         let hash = self.hash();

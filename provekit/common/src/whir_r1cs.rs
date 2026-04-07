@@ -18,6 +18,24 @@ pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
 
+/// SHA3-256 hash of a serialized R1CS instance, used to bind the Fiat-Shamir
+/// transcript to a concrete circuit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct R1csHash([u8; 32]);
+
+impl R1csHash {
+    /// Sentinel value for paths that don't have an R1CS at construction time
+    /// (e.g. `new_from_dimensions`). Will trigger a debug assertion if used
+    /// in `create_domain_separator`.
+    pub const UNSET: Self = Self([0u8; 32]);
+
+    /// Wrap a raw 32-byte digest.
+    #[must_use]
+    pub const fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
     pub m:                 usize,
@@ -28,12 +46,21 @@ pub struct WhirR1CSScheme {
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
     pub whir_witness:      WhirZkConfig,
-    pub r1cs_hash:         [u8; 32],
+    pub r1cs_hash:         R1csHash,
 }
 
 impl WhirR1CSScheme {
     /// Create a domain separator for the provekit outer protocol.
+    ///
+    /// The domain separator serializes the entire scheme (including
+    /// `r1cs_hash`) into the protocol ID, binding the Fiat-Shamir
+    /// transcript to the concrete R1CS instance.
     pub fn create_domain_separator(&self) -> WhirDomainSeparator {
+        debug_assert_ne!(
+            self.r1cs_hash,
+            R1csHash::UNSET,
+            "R1CS hash is uninitialized — transcript will not be bound to a concrete circuit"
+        );
         transcript::DomainSeparator::protocol(self)
     }
 }
