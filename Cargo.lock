@@ -3442,7 +3442,7 @@ dependencies = [
 [[package]]
 name = "noir-bignum-paramgen"
 version = "0.1.5"
-source = "git+https://github.com/noir-lang/noir-bignum-paramgen?branch=main#e5cfb26ce4330bd95557b962440fbb20aec763e5"
+source = "git+https://github.com/noir-lang/noir-bignum-paramgen?rev=e5cfb26ce4330bd95557b962440fbb20aec763e5#e5cfb26ce4330bd95557b962440fbb20aec763e5"
 dependencies = [
  "hex",
  "itoa",

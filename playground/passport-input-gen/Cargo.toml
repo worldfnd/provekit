@@ -33,7 +33,7 @@ tracing-subscriber = { workspace = true, features = ["fmt"] }
 chrono = { version = "0.4", features = ["serde"] }
 argh.workspace = true
 lazy_static = "1.5.0"
-noir-bignum-paramgen = { git = "https://github.com/noir-lang/noir-bignum-paramgen", branch = "main" }
+noir-bignum-paramgen = { git = "https://github.com/noir-lang/noir-bignum-paramgen", rev = "e5cfb26ce4330bd95557b962440fbb20aec763e5" }
 rasn = "0.15"
 rasn-cms = "0.15"
 rasn-pkix = "0.15"
