@@ -14,10 +14,10 @@ use {
     noirc_driver::CompileOptions,
     provekit_ffi::{
         ffi::{
-            pk_free_buf, pk_free_prover, pk_free_verifier, pk_get_last_error, pk_init,
-            pk_load_prover, pk_load_prover_bytes, pk_load_verifier, pk_load_verifier_bytes,
-            pk_prepare, pk_prove_json, pk_prove_toml, pk_save_prover, pk_save_verifier,
-            pk_serialize_prover, pk_serialize_verifier, pk_verify,
+            pk_configure_memory, pk_free_buf, pk_free_prover, pk_free_verifier, pk_get_last_error,
+            pk_init, pk_load_prover, pk_load_prover_bytes, pk_load_verifier,
+            pk_load_verifier_bytes, pk_prepare, pk_prove_json, pk_prove_toml, pk_save_prover,
+            pk_save_verifier, pk_serialize_prover, pk_serialize_verifier, pk_verify,
         },
         types::{PKBuf, PKProver, PKStatus, PKVerifier},
     },
@@ -109,11 +109,11 @@ impl Drop for ScopedVerifier {
 struct ScopedBuf(PKBuf);
 impl Drop for ScopedBuf {
     fn drop(&mut self) {
-        // pk_free_buf takes ownership by value; use ptr::read to avoid moving
-        // out of a field while the struct is being dropped.
-        unsafe {
-            pk_free_buf(std::ptr::read(&self.0));
-        }
+        // Replace self.0 with an empty buffer before freeing so that a
+        // hypothetical double-drop calls pk_free_buf on a null/cap=0 buffer
+        // (a safe no-op) rather than freeing the same allocation twice.
+        let buf = std::mem::replace(&mut self.0, PKBuf::empty());
+        unsafe { pk_free_buf(buf) };
     }
 }
 impl ScopedBuf {
@@ -125,6 +125,21 @@ impl ScopedBuf {
     }
     fn as_str(&self) -> &str {
         std::str::from_utf8(self.as_slice()).unwrap_or("<invalid utf8>")
+    }
+}
+
+/// Wrapper to send a raw const pointer across thread boundaries.
+/// SAFETY: `PKProver` and `PKVerifier` are asserted `Send + Sync` in types.rs.
+struct SendPtr<T>(*const T);
+unsafe impl<T> Send for SendPtr<T> {}
+unsafe impl<T> Sync for SendPtr<T> {}
+impl<T> SendPtr<T> {
+    /// Extract the raw pointer. Call this *inside* the spawned closure so
+    /// that the closure captures `self` (a `Send` `SendPtr<T>`) rather than
+    /// the raw field `self.0` (which the compiler sees as non-`Send` under
+    /// Rust 2021 precise-capture rules).
+    fn as_ptr(&self) -> *const T {
+        self.0
     }
 }
 
@@ -177,6 +192,42 @@ fn a_init_succeeds() {
 fn a_init_idempotent() {
     let s1 = pk_init();
     let s2 = pk_init();
+    assert_eq!(s1, PK_SUCCESS);
+    assert_eq!(s2, PK_SUCCESS);
+}
+
+// ===========================================================================
+// A2. pk_configure_memory
+// ===========================================================================
+
+#[test]
+fn a2_configure_memory_zero_ram_returns_invalid_input() {
+    // Early-exit before set_last_error, so no error message is stored.
+    let status = unsafe { pk_configure_memory(0, false, std::ptr::null()) };
+    assert_eq!(status, PK_INVALID_INPUT);
+    // Error message should be empty for this path (no set_last_error called).
+    let err = unsafe { last_error() };
+    assert_eq!(
+        err.as_slice().len(),
+        0,
+        "zero-ram path should not set an error message"
+    );
+}
+
+#[test]
+fn a2_configure_memory_valid_no_swap_returns_success() {
+    // configure_allocator is idempotent (returns true if POOL_INITIALIZED);
+    // safe to call even after pk_init().
+    let status = unsafe { pk_configure_memory(300 * 1024 * 1024, false, std::ptr::null()) };
+    assert_eq!(status, PK_SUCCESS);
+}
+
+#[test]
+fn a2_configure_memory_idempotent() {
+    // Calling twice should always return Success — the second call hits the
+    // POOL_INITIALIZED early-return inside configure_allocator.
+    let s1 = unsafe { pk_configure_memory(300 * 1024 * 1024, false, std::ptr::null()) };
+    let s2 = unsafe { pk_configure_memory(128 * 1024 * 1024, false, std::ptr::null()) };
     assert_eq!(s1, PK_SUCCESS);
     assert_eq!(s2, PK_SUCCESS);
 }
@@ -420,6 +471,59 @@ fn e_prove_json_null_inputs_returns_error() {
     assert_ne!(status, PK_SUCCESS);
 }
 
+#[test]
+fn e_prove_json_malformed_json_returns_witness_error() {
+    // Syntactically invalid JSON → noirc_abi parse error → WitnessReadError(3)
+    let (pk, _vk) = unsafe { prepare_basic_circuit() };
+    let bad = CString::new("{invalid json").unwrap();
+    let mut proof_buf = PKBuf::empty();
+    let status = unsafe { pk_prove_json(pk.0, bad.as_ptr(), &mut proof_buf) };
+    assert_eq!(
+        status,
+        PKStatus::WitnessReadError as i32,
+        "malformed JSON should return WitnessReadError"
+    );
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_slice().len() > 0,
+        "malformed JSON should set an error message"
+    );
+}
+
+#[test]
+fn e_prove_json_wrong_type_returns_witness_error() {
+    // Passing a JSON array for a Field input — type mismatch that ABI
+    // parsing must reject.
+    let (pk, _vk) = unsafe { prepare_basic_circuit() };
+    let bad = CString::new(r#"{"a": [1, 2], "b": "2", "c": "3", "d": "5"}"#).unwrap();
+    let mut proof_buf = PKBuf::empty();
+    let status = unsafe { pk_prove_json(pk.0, bad.as_ptr(), &mut proof_buf) };
+    assert_ne!(status, PK_SUCCESS, "array for Field input should fail");
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_slice().len() > 0,
+        "type mismatch should set an error message"
+    );
+}
+
+#[test]
+fn e_prove_json_empty_object_returns_witness_error() {
+    // Empty JSON object is missing all required circuit inputs.
+    let (pk, _vk) = unsafe { prepare_basic_circuit() };
+    let bad = CString::new("{}").unwrap();
+    let mut proof_buf = PKBuf::empty();
+    let status = unsafe { pk_prove_json(pk.0, bad.as_ptr(), &mut proof_buf) };
+    assert_ne!(
+        status, PK_SUCCESS,
+        "empty JSON object should not prove successfully"
+    );
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_slice().len() > 0,
+        "missing fields should set an error message"
+    );
+}
+
 // ===========================================================================
 // F. pk_verify — error paths
 // ===========================================================================
@@ -434,11 +538,12 @@ fn f_verify_null_verifier_returns_invalid_input() {
 
 #[test]
 fn f_verify_null_proof_ptr_returns_invalid_input() {
-    init();
-    // We need a non-null verifier for this check. Allocate a junk pointer
-    // that passes the null check — but verify checks proof_ptr null before
-    // dereferencing verifier, so this is safe.
-    let status = unsafe { pk_verify(std::ptr::null(), std::ptr::null(), 16) };
+    // A real verifier handle is required: pk_verify checks
+    // `verifier.is_null() || proof_ptr.is_null() || proof_len == 0`
+    // in a single OR chain. Without a real verifier, the verifier.is_null()
+    // branch fires first and the proof_ptr.is_null() branch is never reached.
+    let (_pk, vk) = unsafe { prepare_basic_circuit() };
+    let status = unsafe { pk_verify(vk.0, std::ptr::null(), 16) };
     assert_eq!(status, PK_INVALID_INPUT);
 }
 
@@ -549,6 +654,20 @@ fn g_load_prover_bytes_corrupt_data_returns_scheme_read_error() {
     assert!(
         err.as_slice().len() > 0,
         "expected error message for corrupt prover bytes"
+    );
+}
+
+#[test]
+fn g_load_verifier_bytes_corrupt_data_returns_scheme_read_error() {
+    init();
+    let garbage = vec![0xbau8, 0xad, 0xf0, 0x0d, 0x01, 0x02, 0x03, 0x04];
+    let mut out: *mut PKVerifier = std::ptr::null_mut();
+    let status = unsafe { pk_load_verifier_bytes(garbage.as_ptr(), garbage.len(), &mut out) };
+    assert_eq!(status, PK_SCHEME_READ_ERROR);
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_slice().len() > 0,
+        "expected error message for corrupt verifier bytes"
     );
 }
 
@@ -699,6 +818,34 @@ fn h_save_verifier_null_handle_returns_invalid_input() {
 }
 
 #[test]
+fn h_save_prover_null_path_returns_invalid_input() {
+    // c_str_to_str returns Err(InvalidInput) for null C strings;
+    // verify pk_save_prover propagates that correctly.
+    let (pk, _vk) = unsafe { prepare_basic_circuit() };
+    let status = unsafe { pk_save_prover(pk.0, std::ptr::null()) };
+    assert_eq!(status, PK_INVALID_INPUT);
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_str().contains("null pointer"),
+        "expected 'null pointer' in error, got: {}",
+        err.as_str()
+    );
+}
+
+#[test]
+fn h_save_verifier_null_path_returns_invalid_input() {
+    let (_pk, vk) = unsafe { prepare_basic_circuit() };
+    let status = unsafe { pk_save_verifier(vk.0, std::ptr::null()) };
+    assert_eq!(status, PK_INVALID_INPUT);
+    let err = unsafe { last_error() };
+    assert!(
+        err.as_str().contains("null pointer"),
+        "expected 'null pointer' in error, got: {}",
+        err.as_str()
+    );
+}
+
+#[test]
 fn h_load_prover_bad_path_returns_scheme_read_error() {
     init();
     let bad = CString::new("/no/such/prover.pkp").unwrap();
@@ -827,28 +974,29 @@ fn h_save_load_verifier_file_roundtrip() {
 // ===========================================================================
 
 #[test]
-fn i_error_cleared_after_successful_call() {
+fn i_error_cleared_after_read() {
     init();
-    // Trigger an error
+    // Trigger an error.
     let bad = CString::new("/no/such/prover.pkp").unwrap();
     let mut out: *mut PKProver = std::ptr::null_mut();
     unsafe { pk_load_prover(bad.as_ptr(), &mut out) };
 
-    // Error should be set
+    // First read: error must be present.
     let err1 = unsafe { last_error() };
     assert!(
         err1.as_slice().len() > 0,
         "error should be set after failing call"
     );
 
-    // Now a succeeding call (pk_init clears last error via catch_panic's
-    // clear_last_error)
-    let _ = pk_init();
+    // Second read: must be empty — pk_get_last_error clears the error on
+    // the first read (single-read guarantee). Note: pk_init() does NOT clear
+    // the error (it wraps no catch_panic), so this tests the read-clears
+    // behaviour, not "successful call clears error".
     let err2 = unsafe { last_error() };
     assert_eq!(
         err2.as_slice().len(),
         0,
-        "error should be cleared after successful call"
+        "error should be cleared after first read"
     );
 }
 
@@ -940,23 +1088,33 @@ fn k_concurrent_prove_same_handle() {
     use std::thread;
 
     let (pk, vk) = unsafe { prepare_basic_circuit() };
-    // Share the raw pointer across threads — PKProver is Send+Sync
-    let pk_ptr = pk.0 as usize; // transmit as usize to cross thread boundary
-    let vk_ptr = vk.0 as usize;
+    // SendPtr carries the raw pointer safely across thread boundaries.
+    // SAFETY: PKProver and PKVerifier are Send+Sync (asserted in types.rs).
+    let pk_ptr = SendPtr(pk.0 as *const PKProver);
+    let vk_ptr = SendPtr(vk.0 as *const PKVerifier);
 
     const N: usize = 4;
     let handles: Vec<_> = (0..N)
         .map(|_| {
+            // Clone SendPtr (copy of the pointer value) for each thread.
+            let p = SendPtr(pk_ptr.0);
+            let v = SendPtr(vk_ptr.0);
             thread::spawn(move || {
-                let prover = pk_ptr as *const PKProver;
-                let verifier = vk_ptr as *const PKVerifier;
+                // .as_ptr() is called inside the closure so the closure
+                // captures `p`/`v` (SendPtr<T>, which is Send) rather than
+                // `p.0`/`v.0` (raw pointers, which are not Send).
                 let json = CString::new(JSON_INPUTS_VALID).unwrap();
                 let mut proof_buf = PKBuf::empty();
-                let prove_status = unsafe { pk_prove_json(prover, json.as_ptr(), &mut proof_buf) };
+                let prove_status =
+                    unsafe { pk_prove_json(p.as_ptr(), json.as_ptr(), &mut proof_buf) };
                 assert_eq!(prove_status, PK_SUCCESS, "thread prove failed");
                 let proof = ScopedBuf(proof_buf);
                 let verify_status = unsafe {
-                    pk_verify(verifier, proof.as_slice().as_ptr(), proof.as_slice().len())
+                    pk_verify(
+                        v.as_ptr(),
+                        proof.as_slice().as_ptr(),
+                        proof.as_slice().len(),
+                    )
                 };
                 assert_eq!(verify_status, PK_SUCCESS, "thread verify failed");
             })
@@ -966,7 +1124,7 @@ fn k_concurrent_prove_same_handle() {
     for h in handles {
         h.join().expect("thread panicked");
     }
-    // pk and vk still valid — drop via ScopedProver/ScopedVerifier
+    // pk and vk still valid — dropped via ScopedProver/ScopedVerifier
 }
 
 #[test]
@@ -982,19 +1140,20 @@ fn k_concurrent_verify_same_handle() {
     let prove_status = unsafe { pk_prove_json(pk.0, json.as_ptr(), &mut proof_buf) };
     assert_eq!(prove_status, PK_SUCCESS);
     let proof = ScopedBuf(proof_buf);
-    let proof_bytes = proof.as_slice().to_vec(); // owned copy for all threads
+    let proof_bytes = proof.as_slice().to_vec();
 
-    let vk_ptr = vk.0 as usize;
+    // SAFETY: PKVerifier is Send+Sync (asserted in types.rs).
+    let vk_ptr = SendPtr(vk.0 as *const PKVerifier);
     let proof_arc = Arc::new(proof_bytes);
 
     const N: usize = 4;
     let handles: Vec<_> = (0..N)
         .map(|_| {
+            let v = SendPtr(vk_ptr.0);
             let proof_clone = Arc::clone(&proof_arc);
             thread::spawn(move || {
-                let verifier = vk_ptr as *const PKVerifier;
                 let status =
-                    unsafe { pk_verify(verifier, proof_clone.as_ptr(), proof_clone.len()) };
+                    unsafe { pk_verify(v.as_ptr(), proof_clone.as_ptr(), proof_clone.len()) };
                 assert_eq!(status, PK_SUCCESS, "concurrent verify failed");
             })
         })
