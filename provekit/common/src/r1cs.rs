@@ -4,6 +4,7 @@ use {
     },
     ark_ff::Zero,
     serde::{Deserialize, Serialize},
+    sha3::{Digest, Sha3_256},
     std::collections::HashMap,
 };
 
@@ -106,6 +107,16 @@ impl R1CS {
     /// witness).
     pub const fn num_witnesses(&self) -> usize {
         self.a.num_cols
+    }
+
+    /// Compute a SHA3-256 hash of the serialized R1CS matrices.
+    ///
+    /// Panics if postcard serialization fails, which should not happen for a
+    /// well-formed `R1CS` (all fields implement `Serialize`).
+    #[must_use]
+    pub fn hash(&self) -> crate::R1csHash {
+        let bytes = postcard::to_stdvec(self).expect("R1CS serialization should not fail");
+        crate::R1csHash::new(Sha3_256::digest(&bytes).into())
     }
 
     // Increase the size of the R1CS matrices to the specified dimensions.

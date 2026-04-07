@@ -1,6 +1,6 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
+    provekit_common::{utils::next_power_of_two, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS},
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 
@@ -87,6 +87,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             challenge_offsets,
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
             has_public_inputs,
+            r1cs_hash: r1cs.hash(),
         }
     }
 
@@ -175,6 +176,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             num_challenges,
             challenge_offsets,
             has_public_inputs,
+            r1cs_hash: R1csHash::UNSET,
         }
     }
 }

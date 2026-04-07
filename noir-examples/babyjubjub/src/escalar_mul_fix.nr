@@ -24,10 +24,10 @@ fn segment_mul_fix_generator<let N: u32>(
 
     Then we calculate S1 = 2*2^246*B + (1 + a0)*B + (2^3 + a1)*B + .....+ (2^243 + a81)*B
 
-    And Finaly we compute the result: RES = SQ - Q
+    And Finally we compute the result: RES = SQ - Q
 
     As you can see the input of the adders cannot be equal nor zero, except for the last
-    substraction that it's done in montgomery.
+    subtraction that it's done in montgomery.
 
     A good way to see it is that the accumulator input of the adder >= 2^247*B and the other input
     is the output of the windows that it's going to be <= 2^246*B

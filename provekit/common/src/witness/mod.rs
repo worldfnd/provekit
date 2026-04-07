@@ -11,7 +11,7 @@ use {
         utils::{serde_ark, serde_ark_vec},
         FieldElement,
     },
-    ark_ff::{BigInt, One, PrimeField},
+    ark_ff::{BigInt, BigInteger, One, PrimeField},
     serde::{Deserialize, Serialize},
 };
 pub use {
@@ -94,6 +94,19 @@ impl PublicInputs {
             1 => compress(self.0[0], FieldElement::from(0u64)),
             _ => self.0.iter().copied().reduce(compress).unwrap(),
         }
+    }
+
+    /// Compute the public-inputs hash as a 32-byte array (little-endian).
+    ///
+    /// Used to bind public inputs to the Fiat-Shamir transcript instance.
+    #[must_use]
+    pub fn hash_bytes(&self) -> [u8; 32] {
+        let hash = self.hash();
+        let bytes = hash.into_bigint().to_bytes_le();
+        let mut result = [0u8; 32];
+        let len = bytes.len().min(32);
+        result[..len].copy_from_slice(&bytes[..len]);
+        result
     }
 }
 

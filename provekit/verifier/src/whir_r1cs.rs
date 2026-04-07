@@ -15,7 +15,7 @@ use {
     tracing::instrument,
     whir::{
         algebra::linear_form::LinearForm,
-        transcript::{codecs::Empty, Proof, VerifierMessage, VerifierState},
+        transcript::{Proof, VerifierMessage, VerifierState},
     },
 };
 
@@ -45,7 +45,16 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         r1cs: &R1CS,
         hash_config: HashConfig,
     ) -> Result<()> {
-        let ds = self.create_domain_separator().instance(&Empty);
+        let actual_r1cs_hash = r1cs.hash();
+        anyhow::ensure!(
+            self.r1cs_hash == actual_r1cs_hash,
+            "R1CS hash mismatch: scheme expects {:?}, got {:?}",
+            self.r1cs_hash,
+            actual_r1cs_hash
+        );
+
+        let instance = public_inputs.hash_bytes();
+        let ds = self.create_domain_separator().instance(&instance);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
             hints: proof.hints.clone(),
