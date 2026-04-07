@@ -1,6 +1,7 @@
 use {
     crate::{
         binops::add_combined_binop_constraints,
+        constraint_helpers::{compute_boolean_or, constrain_boolean},
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         msm::{add_msm_with_curve, MsmLimbedOutputs},
@@ -18,7 +19,7 @@ use {
     },
     anyhow::{bail, ensure, Result},
     ark_ff::{BigInteger, PrimeField},
-    ark_std::One,
+    ark_std::{One, Zero},
     provekit_common::{
         utils::noir_to_native,
         witness::{
@@ -638,10 +639,10 @@ impl NoirToR1CSCompiler {
                     BlackBoxFuncCall::MultiScalarMul {
                         points,
                         scalars,
-                        predicate: _,
+                        predicate,
                         outputs,
                     } => {
-                        let point_wits: Vec<ConstantOrR1CSWitness> = points
+                        let mut point_wits: Vec<ConstantOrR1CSWitness> = points
                             .iter()
                             .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
@@ -649,6 +650,71 @@ impl NoirToR1CSCompiler {
                             .iter()
                             .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
+                        ensure!(
+                            point_wits.len() % 3 == 0,
+                            "MSM points must be encoded as [x, y, is_infinite] triples, got {} \
+                             elements",
+                            point_wits.len()
+                        );
+                        // ACVM semantics: predicate=0 → output is identity (0, 0, 1).
+                        // We implement this by forcing every point's is_infinite flag to
+                        // (old_is_infinite OR !predicate). When predicate=0, all points
+                        // become "at infinity" and the existing all_skipped mechanism
+                        // constrains the output to the identity point.
+                        let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
+                        match predicate {
+                            ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
+                                // Inactive branch — force all points to infinity.
+                                for i in (2..point_wits.len()).step_by(3) {
+                                    point_wits[i] =
+                                        ConstantOrR1CSWitness::Constant(FieldElement::one());
+                                }
+                            }
+                            ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
+                                // Active branch — no modification needed.
+                            }
+                            ConstantOrR1CSWitness::Constant(c) => {
+                                bail!("MSM predicate constant must be 0 or 1, got {c:?}");
+                            }
+                            ConstantOrR1CSWitness::Witness(predicate_wit) => {
+                                // Constrain predicate to be boolean (Noir guarantees this,
+                                // but we check defensively).
+                                constrain_boolean(self, predicate_wit);
+                                // not_predicate = 1 - predicate_wit
+                                let not_predicate = self.add_sum(vec![
+                                    SumTerm(Some(FieldElement::one()), self.witness_one()),
+                                    SumTerm(Some(-FieldElement::one()), predicate_wit),
+                                ]);
+                                // For each is_infinite flag (index 2, 5, 8, ...):
+                                // new_inf = old_inf OR not_predicate
+                                for i in (2..point_wits.len()).step_by(3) {
+                                    point_wits[i] = match point_wits[i] {
+                                        ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
+                                            // Already infinite; stays infinite regardless.
+                                            ConstantOrR1CSWitness::Constant(FieldElement::one())
+                                        }
+                                        ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
+                                            // 0 OR not_predicate = not_predicate
+                                            ConstantOrR1CSWitness::Witness(not_predicate)
+                                        }
+                                        ConstantOrR1CSWitness::Constant(c) => {
+                                            bail!(
+                                                "MSM is_infinite input must be boolean (0 or 1), \
+                                                 got {c:?}"
+                                            );
+                                        }
+                                        ConstantOrR1CSWitness::Witness(inf_wit) => {
+                                            // inf_wit OR not_predicate
+                                            ConstantOrR1CSWitness::Witness(compute_boolean_or(
+                                                self,
+                                                inf_wit,
+                                                not_predicate,
+                                            ))
+                                        }
+                                    };
+                                }
+                            }
+                        }
                         let out_x = self.fetch_r1cs_witness_index(outputs.0);
                         let out_y = self.fetch_r1cs_witness_index(outputs.1);
                         let out_inf = self.fetch_r1cs_witness_index(outputs.2);

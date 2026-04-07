@@ -1,0 +1,4 @@
+outer = true
+inner = false
+scalar_lo = "1"
+scalar_hi = "0"

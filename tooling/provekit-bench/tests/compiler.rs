@@ -203,6 +203,19 @@ fn case_noir(path: &str, witness_file: &str) {
     test_noir_compiler(path, witness_file);
 }
 
+/// MSM inside a conditional branch — exercises the predicate field added in
+/// ACIR beta.19. Active branch (predicate=1), inactive branch (predicate=0),
+/// and nested conditionals (compound predicate) are all covered.
+#[test_case("../../noir-examples/msm_conditional", "Prover.toml"; "msm_conditional_active")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_inactive.toml"; "msm_conditional_inactive")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_scalar2.toml"; "msm_conditional_active_scalar2")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover.toml"; "msm_nested_both_true")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_outer_false.toml"; "msm_nested_outer_false")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_inner_false.toml"; "msm_nested_inner_false")]
+fn case_noir_msm_conditional(path: &str, witness_file: &str) {
+    test_noir_compiler(path, witness_file);
+}
+
 /// Verify that the verifier rejects a proof whose public inputs have been
 /// tampered with.
 #[test]
