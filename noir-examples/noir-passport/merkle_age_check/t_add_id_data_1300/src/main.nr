@@ -15,7 +15,7 @@ fn main(
     exponent: u32,
     exponent_offset_in_dsc_cert: u32,
     sod_signature: [u8; 256],
-    tbs_certificate: [u8; 1300],
+    tbs_certificate: [u8; 1400],
     signed_attributes: SignedAttrsData,
     e_content: EContentData,
 ) -> pub Field {

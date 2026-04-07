@@ -1,6 +1,5 @@
 CIRCUITS=(
-    "t_add_dsc_hash_1300"
-    "t_add_dsc_verify_1300"
+    "t_add_dsc_1300"
     "t_add_id_data_1300"
     "t_add_integrity_commit"
     "t_attest"
