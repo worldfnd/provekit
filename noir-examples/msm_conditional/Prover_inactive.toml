@@ -1,0 +1,4 @@
+cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkvcondition = false
+scalar_lo = "99"
+scalar_hi = "0"
+expected_infinite = true

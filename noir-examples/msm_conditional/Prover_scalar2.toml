@@ -1,0 +1,4 @@
+condition = true
+scalar_lo = "2"
+scalar_hi = "0"
+expected_infinite = false
