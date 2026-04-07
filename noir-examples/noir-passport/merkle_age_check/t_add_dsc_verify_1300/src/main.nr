@@ -5,6 +5,7 @@ use partial_sha256::{
 use fragmented_sig_check_rsa::verify_rsa_signature;
 use utils::check_zero_padding;
 use utils::get_asn1_element_length;
+use sig_check_rsa::compute_key_ne_hash;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -38,14 +39,14 @@ fn main(
         tbs_certificate_len == computed_len,
         "tbs_certificate_len does not match ASN.1 header",
     );
-    assert(
-        csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
-        "CSC key hash does not match (n||e)",
-    );
 
     // Ensure all bytes beyond the signed length are zero so that trailing
     // bytes cannot carry attacker-controlled data into the commitment.
     check_zero_padding(tbs_certificate, tbs_certificate_len);
+    assert(
+        csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
+        "CSC key hash does not match (n||e)",
+    );
 
     let mut chunk1: [u8; CHUNK1_SIZE] = [0; CHUNK1_SIZE];
     for i in 0..CHUNK1_SIZE {

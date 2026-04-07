@@ -7,7 +7,6 @@ use rsa::rsa::verify_sha256_pkcs1v15;
 pub fn verify_rsa_signature<let SIG_BYTES: u32>(
     pubkey_bytes: [u8; SIG_BYTES],
     sig_bytes: [u8; (((SIG_BYTES * 8) + 7) / 8)],
-    // NOTE: reverted to witness-supplied Barrett/redc parameter for compatibility with existing proving inputs.
     redc_param_bytes: [u8; SIG_BYTES + 1],
     exponent: u32,
     msg_hash: [u8; 32], // Pre-computed SHA256 hash

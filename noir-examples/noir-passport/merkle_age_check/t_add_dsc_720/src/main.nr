@@ -1,6 +1,6 @@
 // Verify CSCA signed DSC certificate (720-byte TBS)
 use commitment::hash_salt_country_tbs;
-use sig_check_rsa::verify_signature;
+use sig_check_rsa::{compute_key_ne_hash, verify_signature};
 use utils::get_asn1_element_length;
 use utils::types::Alpha3CountryCode;
 
