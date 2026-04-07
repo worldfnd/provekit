@@ -505,6 +505,33 @@ fn test_single_point_rejects_wrong_output_coordinate() {
     );
 }
 
+/// Corrupting an expected output y-limb must also violate the output equality
+/// constraints.
+#[test]
+fn test_single_point_rejects_wrong_output_y_coordinate() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(
+        fixture,
+        "wrong output y coordinate",
+        |layout, corrupted| {
+            let idx = layout.out_y_limbs[0];
+            corrupted[idx] = different_field_element(corrupted[idx]);
+        },
+    );
+}
+
 /// Corrupting the input y-coordinate must violate the curve-membership and
 /// consistency constraints.
 #[test]
@@ -563,6 +590,34 @@ fn test_single_point_rejects_wrong_scalar_output_pairing() {
         |layout, corrupted| {
             overwrite_witness_values(corrupted, &layout.out_x_limbs, &wrong_ex_fes);
             overwrite_witness_values(corrupted, &layout.out_y_limbs, &wrong_ey_fes);
+        },
+    );
+}
+
+/// Replacing the scalar input while keeping the original output must fail.
+#[test]
+fn test_single_point_rejects_scalar_corruption() {
+    let curve = Secp256r1;
+    let gx = curve.generator().0;
+    let gy = curve.generator().1;
+    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let wrong_scalar: [u64; 4] = [5, 0, 0, 0];
+    let (wrong_lo, wrong_hi) = split_scalar(&wrong_scalar);
+    let (ex, ey) = ec_scalar_mul(
+        &gx,
+        &gy,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+
+    assert_single_point_corruption_is_rejected(
+        fixture,
+        "scalar corruption",
+        |layout, corrupted| {
+            corrupted[layout.scalar_lo] = u256_to_fe(&wrong_lo);
+            corrupted[layout.scalar_hi] = u256_to_fe(&wrong_hi);
         },
     );
 }
