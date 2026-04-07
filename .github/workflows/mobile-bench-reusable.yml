@@ -309,26 +309,19 @@ jobs:
           if [ -n "${MOBENCH_REF:-}" ]; then
             git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
             git -C mobench-src checkout "$MOBENCH_REF"
+            if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+              git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+            else
+              echo "Skipping local mobench patch; already included or not applicable"
+            fi
+            grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
+            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+            grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+            cargo install --path mobench-src/crates/mobench --locked --force
           else
             cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
-            if [ -z "${REG_SRC}" ]; then
-              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} in cargo registry source cache"
-              exit 1
-            fi
-            mkdir -p mobench-src/crates
-            cp -R "${REG_SRC}" mobench-src/crates/mobench
-            git -C mobench-src init -q
+            cargo install "mobench@${MOBENCH_VERSION}" --locked --force
           fi
-          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
-          else
-            echo "Skipping local mobench patch; already included or not applicable"
-          fi
-          grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          cargo install --path mobench-src/crates/mobench --locked
 
       - name: Build Android artifacts
         working-directory: caller
@@ -431,26 +424,19 @@ jobs:
           if [ -n "${MOBENCH_REF:-}" ]; then
             git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
             git -C mobench-src checkout "$MOBENCH_REF"
+            if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+              git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+            else
+              echo "Skipping local mobench patch; already included or not applicable"
+            fi
+            grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
+            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+            grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+            cargo install --path mobench-src/crates/mobench --locked --force
           else
             cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            REG_SRC=$(find "${CARGO_HOME:-$HOME/.cargo}/registry/src" -maxdepth 2 -type d -name "mobench-${MOBENCH_VERSION}" | head -n 1)
-            if [ -z "${REG_SRC}" ]; then
-              echo "::error::Unable to locate mobench ${MOBENCH_VERSION} in cargo registry source cache"
-              exit 1
-            fi
-            mkdir -p mobench-src/crates
-            cp -R "${REG_SRC}" mobench-src/crates/mobench
-            git -C mobench-src init -q
+            cargo install "mobench@${MOBENCH_VERSION}" --locked --force
           fi
-          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
-          else
-            echo "Skipping local mobench patch; already included or not applicable"
-          fi
-          grep -F 'let required_abis = ["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'let abis = vec!["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'copy_dir_recursive' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          cargo install --path mobench-src/crates/mobench --locked
 
       - name: Download iOS results
         if: needs.ios.result == 'success'
