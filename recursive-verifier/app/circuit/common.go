@@ -183,7 +183,9 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("parse interner: %w", err)
 	}
 
-	verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData, dualData)
+	if err := verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData, dualData); err != nil {
+		return fmt.Errorf("verify circuit: %w", err)
+	}
 
 	return nil
 }
@@ -361,16 +363,12 @@ func nativeIRSCommitVerify(
 	domainSize int,
 	foldingFactorPower int,
 ) ([]int, error) {
-	hintPos := int(nimue.hints.Size()) - nimue.hints.Len()
-	fmt.Println("nativeIRSCommitVerify hintPos:", hintPos)
 	// in_domain_challenges: squeeze challenge bytes → query indices
 	indices, err := nativeGetStirChallenges(nimue, domainSize/foldingFactorPower, numQueries, false)
 	if err != nil {
 		return nil, fmt.Errorf("initial in-domain challenges: %w", err)
 	}
-	fmt.Println("initial_committer indices:", indices)
 
-	// prover_hint_ark: read submatrix from hints
 	var submatrix []Fp256
 	if err = nimue.ProverHintArk(&submatrix); err != nil {
 		return nil, fmt.Errorf("initial submatrix: %w", err)
@@ -412,25 +410,17 @@ func nativeZKWhirVerify(
 ) (*NativeZKWhirData, error) {
 	data := &NativeZKWhirData{}
 
-	// Derive parameters from WHIRParams:
-	// μ = num_witness_variables = blinded commitment's initial_num_variables (NVars)
 	numWitnessVariables := blindedWhirParams.MVParamsNumberOfVariables
-	// interleaving_depth = 1 << initial_folding_factor = 1 << foldingFactorArray[0]
 	interleavingDepth := 1 << blindedWhirParams.FoldingFactorArray[0]
 
-	// ---------------------------------------------------------------
-	// 1. blinding_challenge = verifier_message()
-	// ---------------------------------------------------------------
 	bc, err := nimue.FillChallengeScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("blinding_challenge: %w", err)
 	}
 	data.BlindingChallenge = bc[0]
 
-	// ---------------------------------------------------------------
-	// 2. w_folded_blinding_evals = prover_messages_vec(num_w_folded_evals)
-	//    num_w_folded_evals = weights.len() * num_polynomials * (μ + 1)
-	// ---------------------------------------------------------------
+	// w_folded_blinding_evals = prover_messages_vec(num_w_folded_evals)
+	// num_w_folded_evals = weights.len() * num_polynomials * (μ + 1)
 	numWFoldedEvals := params.WeightsLen * params.NumPolynomials * (numWitnessVariables + 1)
 	wfbe, err := nimue.FillNextScalars(numWFoldedEvals)
 	if err != nil {
@@ -438,21 +428,11 @@ func nativeZKWhirVerify(
 	}
 	data.WFoldedBlindingEvals = wfbe
 
-	// ---------------------------------------------------------------
-	// 3. masking_challenge = verifier_message()
-	// ---------------------------------------------------------------
 	mc, err := nimue.FillChallengeScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("masking_challenge: %w", err)
 	}
 	data.MaskingChallenge = mc[0]
-
-	// ---------------------------------------------------------------
-	// 4. initial_committer.verify() — IRS commit in-domain verification
-	//    domainSize = blinded WHIRParams DomainSize
-	//    foldingFactorPower = interleaving_depth = 1 << foldingFactor[0]
-	//    numQueries = initial_in_domain_samples from config
-	// ---------------------------------------------------------------
 
 	indices, err := nativeIRSCommitVerify(
 		nimue,
@@ -468,32 +448,24 @@ func nativeZKWhirVerify(
 	// h_gammas = all_gammas(initial_in_domain.points)
 	// Each query point expands to interleavingDepth gamma points.
 	hGammasCount := len(indices) * interleavingDepth
-	fmt.Println("h_gammas count:", hGammasCount)
 
-	// ---------------------------------------------------------------
-	// 5. tau1 = verifier_message(), tau2 = verifier_message()
-	// ---------------------------------------------------------------
 	tau1Slice, err := nimue.FillChallengeScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("tau1: %w", err)
 	}
 	data.Tau1 = tau1Slice[0]
-	fmt.Println("tau1:", data.Tau1)
 
 	tau2Slice, err := nimue.FillChallengeScalars(1)
 	if err != nil {
 		return nil, fmt.Errorf("tau2: %w", err)
 	}
 	data.Tau2 = tau2Slice[0]
-	fmt.Println("tau2:", data.Tau2)
 
-	// ---------------------------------------------------------------
-	// 6. Per-gamma evaluation loop
-	//    For each gamma in h_gammas:
-	//      For each polynomial:
-	//        m_eval      = prover_message()
-	//        g_hat_evals = prover_message() × num_witness_variables
-	// ---------------------------------------------------------------
+	// Per-gamma evaluation loop
+	// For each gamma in h_gammas:
+	//   For each polynomial:
+	//     m_eval      = prover_message()
+	//     g_hat_evals = prover_message() × num_witness_variables
 	evalsPerPoly := 1 + numWitnessVariables // m_eval + g_hat_evals
 	data.PerGammaEvals = make([][][]*big.Int, hGammasCount)
 	for g := range hGammasCount {
@@ -507,10 +479,8 @@ func nativeZKWhirVerify(
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 7. combined_claims = prover_messages_vec(num_polynomials)
-	//    batched_h_claims = prover_messages_vec(num_polynomials)
-	// ---------------------------------------------------------------
+	// combined_claims = prover_messages_vec(num_polynomials)
+	// batched_h_claims = prover_messages_vec(num_polynomials)
 	data.CombinedClaims, err = nimue.FillNextScalars(params.NumPolynomials)
 	if err != nil {
 		return nil, fmt.Errorf("combined_claims: %w", err)
@@ -521,10 +491,8 @@ func nativeZKWhirVerify(
 		return nil, fmt.Errorf("batched_h_claims: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 8. blinded_commitment.verify() — full WHIR verification
-	//    Verifies the witness polynomial commitment using NativeWhirVerify.
-	// ---------------------------------------------------------------
+	// blinded_commitment.verify() — full WHIR verification
+	// Verifies the witness polynomial commitment using NativeWhirVerify.
 	// numLinearForms excludes the blinding weight (last in WeightsLen) because
 	// the blinding evaluation is not part of the external evaluations slice.
 	//
@@ -543,24 +511,20 @@ func nativeZKWhirVerify(
 		config.BlindedCommitmentWhirConfig,
 		[]*NativeCommitment{blindedCommitment},
 		modifiedEvaluations,
-		params.WeightsLen-1,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("blinded_commitment verify: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 9. blinding_commitment.verify() — full WHIR verification
-	//    Verifies the blinding polynomial commitment using NativeWhirVerify.
-	//
-	//    The evaluations are all_expected_blinding_claims, which is the
-	//    concatenation of:
-	//      - expected_batched_blinding_subproof_claims: accumulated m_claims
-	//        and g_hat_claims from the per-gamma evaluation loop, interleaved
-	//        as [m_0, g_hat_0..., m_1, g_hat_1..., ...] (num_polynomials *
-	//        (1 + num_witness_variables) elements)
-	//      - w_folded_blinding_evals: parsed from transcript at step 2
-	// ---------------------------------------------------------------
+	// blinding_commitment.verify() — full WHIR verification
+	// Verifies the blinding polynomial commitment using NativeWhirVerify.
+	// The evaluations are all_expected_blinding_claims, which is the
+	// concatenation of:
+	//   - expected_batched_blinding_subproof_claims: accumulated m_claims
+	//     and g_hat_claims from the per-gamma evaluation loop, interleaved
+	//     as [m_0, g_hat_0..., m_1, g_hat_1..., ...] (num_polynomials *
+	//     (1 + num_witness_variables) elements)
+	//   - w_folded_blinding_evals: parsed from transcript at step 2
 
 	// Accumulate m_claims[p] = Σ_g tau2^g * PerGammaEvals[g][p][0]
 	// and g_hat_claims[p][j] = Σ_g tau2^g * PerGammaEvals[g][p][j+1]
@@ -601,7 +565,6 @@ func nativeZKWhirVerify(
 		config.BlindingCommitmentWhirConfig,
 		[]*NativeCommitment{blindingCommitment},
 		blindingEvaluations,
-		0,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("blinding_commitment verify: %w", err)
@@ -649,266 +612,6 @@ func nativeParseBatchedCommitment(nimue *NativeNimue, whirParams WHIRParams) (
 	}
 
 	return
-}
-
-// nativeRunZKSumcheck replays the ZK sumcheck transcript operations and
-// the embedded hiding-spartan WHIR verify.
-func nativeRunZKSumcheck(nimue *NativeNimue, config Config, whirParams WHIRParams) (ZKHint, error) {
-	// Parse commitment for hiding spartan blinding polynomial
-	if _, _, _, err := nativeParseBatchedCommitment(nimue, whirParams); err != nil {
-		return ZKHint{}, fmt.Errorf("spartan commitment: %w", err)
-	}
-
-	// sum_g + rho
-	if _, err := nimue.FillNextScalars(1); err != nil {
-		return ZKHint{}, fmt.Errorf("sum_g: %w", err)
-	}
-	if _, err := nimue.FillChallengeScalars(1); err != nil {
-		return ZKHint{}, fmt.Errorf("rho: %w", err)
-	}
-
-	// Sumcheck rounds
-	for range config.LogNumConstraints {
-		// 4 coefficients per round (degree-3 polynomial evaluated at 0,1,2,3)
-		if _, err := nimue.FillNextScalars(4); err != nil {
-			return ZKHint{}, fmt.Errorf("sumcheck coeff: %w", err)
-		}
-		if _, err := nimue.FillChallengeScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("folding randomness: %w", err)
-		}
-	}
-
-	// Polynomial sums (blinding evals)
-	if _, err := nimue.FillNextScalars(2); err != nil {
-		return ZKHint{}, fmt.Errorf("polynomial sums: %w", err)
-	}
-
-	// RunZKWhir for hiding spartan
-	zkHint, err := nativeWhirVerify(nimue, whirParams, config.BlindedCommitmentWhirConfig)
-	if err != nil {
-		return ZKHint{}, fmt.Errorf("hiding spartan whir: %w", err)
-	}
-
-	return zkHint, nil
-}
-
-// nativeWhirVerify replays the full WHIR verification protocol, consuming
-// transcript messages and hints. Returns the parsed Merkle proofs as a ZKHint.
-func nativeWhirVerify(nimue *NativeNimue, whirParams WHIRParams, whirConfig WHIRConfig) (ZKHint, error) {
-	var allMerklePaths []FullMultiPath[Digest]
-	var allStirAnswers [][][]Fp256
-
-	domainSize := whirParams.DomainSize
-	nRounds := whirParams.ParamNRounds
-
-	// --- OOD matrix (initial commitment has CommitmentOODSamples OOD evaluations) ---
-	// The initial commitment's OOD entries are already on the transcript from
-	// parseBatchedCommitment. The WHIR verifier now reads cross-terms for
-	// the evaluation matrix if batch_size > 1.
-	// For now we skip cross-term OOD reads (single vector case).
-
-	// --- Geometric challenges: vector_rlc_coeffs ---
-	numVectors := whirParams.BatchSize
-	if numVectors >= 2 {
-		if x, err := nimue.FillChallengeScalars(1); err != nil {
-			fmt.Println("x", x)
-			return ZKHint{}, fmt.Errorf("vector_rlc: %w", err)
-		}
-	}
-
-	// --- Geometric challenges: constraint_rlc_coeffs ---
-	numConstraints := whirParams.CommitmentOODSamples + 0 // + len(linear_forms) handled by caller
-	if numConstraints >= 2 {
-		if _, err := nimue.FillChallengeScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("constraint_rlc: %w", err)
-		}
-	}
-
-	// --- Initial sumcheck ---
-	foldingFactor0 := whirParams.FoldingFactorArray[0]
-	for range foldingFactor0 {
-		// c0, c2 (quadratic sumcheck polynomial)
-		if _, err := nimue.FillNextScalars(2); err != nil {
-			return ZKHint{}, fmt.Errorf("initial sumcheck coeff: %w", err)
-		}
-		// Round PoW (if any)
-		// Skipped if pow bits == 0
-		// folding randomness
-		if _, err := nimue.FillChallengeScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("initial folding: %w", err)
-		}
-	}
-
-	// --- Main rounds ---
-	for r := range nRounds {
-		// receive_commitment: root hash
-		if _, err := nimue.FillNextScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("round %d root: %w", r, err)
-		}
-
-		// OOD points + answers for this round
-		oodSamples := whirParams.RoundParametersOODSamples[r]
-		if oodSamples > 0 {
-			if _, err := nimue.FillChallengeScalars(oodSamples); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d ood points: %w", r, err)
-			}
-			if _, err := nimue.FillNextScalars(oodSamples); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d ood answers: %w", r, err)
-			}
-		}
-
-		// PoW
-		if whirParams.PowBits[r] > 0 {
-			if _, err := nimue.FillChallengeBytes(32); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d pow challenge: %w", r, err)
-			}
-			if _, err := nimue.FillNextBytes(8); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d pow nonce: %w", r, err)
-			}
-		}
-
-		// Challenge indices (squeeze bytes → indices)
-		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
-
-		// 	numInitialQueries := blindedParams.InitialInDomainSamples
-		// initialStirIndexes, err := getStirChallenges(api, nimue, numInitialQueries, blindedParams.DomainSize, interleavingDepth)
-
-		indices, err := nativeGetStirChallenges(
-			nimue,
-			domainSize/foldingFactorPower,
-			whirParams.RoundParametersNumOfQueries[r],
-			false,
-		)
-		fmt.Println("indices", indices)
-		if err != nil {
-			return ZKHint{}, fmt.Errorf("round %d stir challenges: %w", r, err)
-		}
-
-		// irs_commit.verify: submatrix + merkle hints
-		// Submatrix is ark-serialized Vec<F>
-		var submatrix []Fp256
-		if err = nimue.ProverHintArk(&submatrix); err != nil {
-			return ZKHint{}, fmt.Errorf("round %d submatrix: %w", r, err)
-		}
-
-		allStirAnswers = append(allStirAnswers, [][]Fp256{submatrix})
-
-		// Merkle tree hints
-		foldedDomainSize := domainSize / foldingFactorPower
-		treeHeight := bits.Len(uint(foldedDomainSize)) - 1
-		dedupedIndices := make([]int, len(indices))
-		copy(dedupedIndices, indices)
-		sort.Ints(dedupedIndices)
-		dedupedIndices = dedup(dedupedIndices)
-
-		merklePath, err := consumeMerkleHints(nimue, dedupedIndices, treeHeight)
-		if err != nil {
-			return ZKHint{}, fmt.Errorf("round %d merkle: %w", r, err)
-		}
-		allMerklePaths = append(allMerklePaths, merklePath)
-
-		// Geometric challenge (combination randomness)
-		if _, err := nimue.FillChallengeScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("round %d comb randomness: %w", r, err)
-		}
-
-		// Sumcheck for this round
-		ff := whirParams.FoldingFactorArray[r]
-		if r+1 < len(whirParams.FoldingFactorArray) {
-			ff = whirParams.FoldingFactorArray[r+1]
-		}
-		for range ff {
-			if _, err := nimue.FillNextScalars(2); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d sumcheck coeff: %w", r, err)
-			}
-			if _, err := nimue.FillChallengeScalars(1); err != nil {
-				return ZKHint{}, fmt.Errorf("round %d sumcheck folding: %w", r, err)
-			}
-		}
-
-		domainSize /= 2
-	}
-
-	// --- Final round: receive full vector ---
-	finalSize := 1 << whirParams.FinalSumcheckRounds
-	if _, err := nimue.FillNextScalars(finalSize); err != nil {
-		return ZKHint{}, fmt.Errorf("final vector: %w", err)
-	}
-
-	// --- Final PoW ---
-	if whirParams.FinalPowBits > 0 {
-		if _, err := nimue.FillChallengeBytes(32); err != nil {
-			return ZKHint{}, fmt.Errorf("final pow challenge: %w", err)
-		}
-		if _, err := nimue.FillNextBytes(8); err != nil {
-			return ZKHint{}, fmt.Errorf("final pow nonce: %w", err)
-		}
-	}
-
-	// --- Final opening (irs_commit.verify for last round) ---
-	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
-	finalIndices, err := nativeGetStirChallenges(
-		nimue,
-		domainSize/finalFoldingFactorPower,
-		whirParams.FinalQueries,
-		false,
-	)
-	if err != nil {
-		return ZKHint{}, fmt.Errorf("final stir challenges: %w", err)
-	}
-
-	var finalSubmatrix []Fp256
-	if err = nimue.ProverHintArk(&finalSubmatrix); err != nil {
-		return ZKHint{}, fmt.Errorf("final submatrix: %w", err)
-	}
-	// fmt.Println("final submatrix:", finalSubmatrix)
-	allStirAnswers = append(allStirAnswers, [][]Fp256{finalSubmatrix})
-
-	foldedDomainSize := domainSize / finalFoldingFactorPower
-	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
-	dedupedFinal := make([]int, len(finalIndices))
-	copy(dedupedFinal, finalIndices)
-	sort.Ints(dedupedFinal)
-	dedupedFinal = dedup(dedupedFinal)
-
-	finalMerklePath, err := consumeMerkleHints(nimue, dedupedFinal, treeHeight)
-	if err != nil {
-		return ZKHint{}, fmt.Errorf("final merkle: %w", err)
-	}
-	allMerklePaths = append(allMerklePaths, finalMerklePath)
-
-	// --- Deferred weight evaluations ---
-	var deferred []Fp256
-	if err = nimue.ProverHintArk(&deferred); err != nil {
-		return ZKHint{}, fmt.Errorf("deferred: %w", err)
-	}
-	fmt.Println("deferred:", deferred)
-	log.Printf("Read %d deferred weight evaluations", len(deferred))
-
-	// --- Final sumcheck ---
-	for range whirParams.FinalSumcheckRounds {
-		if _, err := nimue.FillNextScalars(2); err != nil {
-			return ZKHint{}, fmt.Errorf("final sumcheck coeff: %w", err)
-		}
-		if _, err := nimue.FillChallengeScalars(1); err != nil {
-			return ZKHint{}, fmt.Errorf("final sumcheck folding: %w", err)
-		}
-	}
-
-	// --- Final folding PoW ---
-	if whirParams.FinalFoldingPowBits > 0 {
-		if _, err := nimue.FillChallengeBytes(32); err != nil {
-			return ZKHint{}, fmt.Errorf("final folding pow challenge: %w", err)
-		}
-		if _, err := nimue.FillNextBytes(8); err != nil {
-			return ZKHint{}, fmt.Errorf("final folding pow nonce: %w", err)
-		}
-	}
-
-	// Build ZKHint from parsed data
-	zkHint := consumeWhirData(whirConfig, &allMerklePaths, &allStirAnswers)
-
-	return zkHint, nil
 }
 
 // ---------------------------------------------------------------------------

@@ -44,12 +44,6 @@ func VerifyWhir(
 		numOODConstraints++
 	}
 
-	// Extract OOD multilinear points from the univariate OOD challenge points
-	oodPoints := make([][]frontend.Variable, 0, len(commitment.OodPoints))
-	for _, point := range commitment.OodPoints {
-		mlPoint := ExpandFromUnivariate(api, point, params.MVParamsNumberOfVariables)
-		oodPoints = append(oodPoints, mlPoint)
-	}
 	// Random linear combination of the vectors.
 	vectorRlcCoeffs, err := geometricChallenge(api, nimue, numVectors)
 	if err != nil {
@@ -107,7 +101,6 @@ func VerifyWhir(
 
 	prevRootHash := commitment.Root
 	for r := range params.ParamNRounds {
-		// Receive round commitment
 		rootHash := make([]frontend.Variable, 1)
 		if err = nimue.FillNextScalars(rootHash); err != nil {
 			return nil, fmt.Errorf("round %d root: %w", r, err)
@@ -149,7 +142,6 @@ func VerifyWhir(
 		// Verify Merkle proofs: each round opens the previous commitment.
 		if merkleData != nil && r < len(merkleData.Rounds) {
 			rd := merkleData.Rounds[r]
-			// Constrain witness leaf indexes to match transcript-derived STIR challenge indexes.
 			for q := range stirIndexes {
 				if q < len(rd.LeafIndexes) {
 					api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
@@ -248,17 +240,16 @@ func VerifyWhir(
 		finalRandomnessPoints[i] = ExponentVar(api, expDomainGenerator, idx, numBits)
 	}
 
-	// Final round: open the last round's commitment.
+	// Final round
 	finalRoundIdx := params.ParamNRounds
 	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
-		// rd := merkleData.Rounds[finalRoundIdx]
-		// // Constrain witness leaf indexes to match transcript-derived final STIR indexes.
-		// for q := range finalIndexes {
-		// 	if q < len(rd.LeafIndexes) {
-		// 		api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
-		// 	}
-		// }
-		// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+		rd := merkleData.Rounds[finalRoundIdx]
+		for q := range finalIndexes {
+			if q < len(rd.LeafIndexes) {
+				api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
+			}
+		}
+		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 	}
 
 	// Final sumcheck.
@@ -275,8 +266,7 @@ func VerifyWhir(
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 10. Deferred evaluation check
+	// Deferred evaluation check
 	//
 	// Mirrors Rust whir verifier.rs lines 246-268:
 	//   poly_eval = MLE(finalSumcheckRandomness, finalVector)
@@ -285,14 +275,9 @@ func VerifyWhir(
 	//     rlc_coeff * UnivariateEvaluation{point, size}.mle_evaluate(evaluationPoint)
 	// ---------------------------------------------------------------
 
-	// Concatenate all folding randomness into the full evaluation point.
 	evaluationPoint := totalFoldingRandomness
 
-	// poly_eval = MLE(finalSumcheckRandomness).evaluate(Identity, finalVector)
 	polyEval := MultilinearEvalCircuit(api, finalSumcheckRandomness, finalVector)
-
-	// linear_form_rlc = the_sum / poly_eval
-	// In gnark: api.Div(a, b) constrains b * result == a.
 	linearFormRLC := api.Div(theSum, polyEval)
 
 	// Subtract initial round OOD evaluator contributions.

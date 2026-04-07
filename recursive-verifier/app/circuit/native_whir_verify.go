@@ -211,21 +211,6 @@ func nativeMultilinearEval(point []*big.Int, values []*big.Int) *big.Int {
 	return nativeDotBigInt(eqW, values)
 }
 
-// nativeEqPoly computes eq(a, b) = Π_i (a_i*b_i + (1-a_i)*(1-b_i)).
-// This is the MultilinearExtension::mle_evaluate equivalent.
-func nativeEqPoly(a, b []*big.Int) *big.Int {
-	result := big.NewInt(1)
-	for i := range a {
-		ab := frMul(a[i], b[i])
-		oneMinusA := frSub(big.NewInt(1), a[i])
-		oneMinusB := frSub(big.NewInt(1), b[i])
-		prod := frMul(oneMinusA, oneMinusB)
-		term := frAdd(ab, prod)
-		result = frMul(result, term)
-	}
-	return result
-}
-
 // nativeUnivariateEvalMLE computes UnivariateEvaluation{point, size}.mle_evaluate(mlPoint).
 //
 // This is the MLE of the linear form that evaluates a polynomial at `point`,
@@ -641,7 +626,6 @@ func NativeWhirVerify(
 	whirConfig WHIRConfig,
 	commitments []*NativeCommitment,
 	evaluations []*big.Int,
-	numLinearForms int,
 ) (*NativeWhirVerifyResult, error) {
 	var allMerklePaths []FullMultiPath[Digest]
 	var allStirAnswers [][][]Fp256
@@ -660,10 +644,8 @@ func NativeWhirVerify(
 			},
 		}, nil
 	}
-	numLinearForms = len(evaluations) / numVectors
-	// ---------------------------------------------------------------
-	// 1. Complete OOD evaluation matrix with cross-terms
-	// ---------------------------------------------------------------
+	numLinearForms := len(evaluations) / numVectors
+	// Complete OOD evaluation matrix with cross-terms
 	var oodsEvalInfos []evaluatorInfo // evaluator info per OOD constraint
 	var oodsMatrix []*big.Int         // flattened: [ood0_vec0, ood0_vec1, ..., ood1_vec0, ...]
 
@@ -694,17 +676,11 @@ func NativeWhirVerify(
 		vectorOffset += commitment.NumVectors()
 	}
 
-	// ---------------------------------------------------------------
-	// 2. Vector RLC (random linear combination of interleaved vectors)
-	// ---------------------------------------------------------------
 	vectorRLCCoeffs, err := nativeGeometricChallenge(nimue, numVectors)
 	if err != nil {
 		return nil, fmt.Errorf("vector_rlc: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 3. Constraint RLC
-	// ---------------------------------------------------------------
 	totalConstraints := len(oodsEvalInfos) + numLinearForms
 	constraintRLCCoeffs, err := nativeGeometricChallenge(nimue, totalConstraints)
 	if err != nil {
@@ -714,9 +690,6 @@ func NativeWhirVerify(
 	initialFormRLCCoeffs := constraintRLCCoeffs[:numLinearForms]
 	oodsRLCCoeffs := constraintRLCCoeffs[numLinearForms:]
 
-	// ---------------------------------------------------------------
-	// 4. Compute "The Sum"
-	// ---------------------------------------------------------------
 	theSum := big.NewInt(0)
 
 	// Contribution from external linear forms
@@ -738,9 +711,7 @@ func NativeWhirVerify(
 
 	var allFoldingRandomness [][]*big.Int
 
-	// ---------------------------------------------------------------
-	// 5. Initial sumcheck
-	// ---------------------------------------------------------------
+	// Initial sumcheck
 	if len(constraintRLCCoeffs) == 0 {
 		// No constraints: skip sumcheck, just squeeze folding randomness
 		if theSum.Cmp(big.NewInt(0)) != 0 {
@@ -766,9 +737,7 @@ func NativeWhirVerify(
 		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
 	}
 
-	// ---------------------------------------------------------------
-	// 6. Main WHIR rounds
-	// ---------------------------------------------------------------
+	// Main WHIR rounds
 	domainSize := whirParams.DomainSize
 	nRounds := whirParams.ParamNRounds
 	var merkleRounds []whir.RoundMerkleEntry
@@ -876,7 +845,6 @@ func NativeWhirVerify(
 			}
 		}
 
-		// Squeeze combination randomness for this round
 		constraintRLC, err := nativeGeometricChallenge(nimue, len(constraintValues))
 		if err != nil {
 			return nil, fmt.Errorf("round %d combination randomness: %w", r, err)
@@ -917,9 +885,7 @@ func NativeWhirVerify(
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 7. Final round: receive full vector
-	// ---------------------------------------------------------------
+	// Final round: receive full vector
 	finalSize := 1 << whirParams.FinalSumcheckRounds
 	finalVector, err := nimue.FillNextScalars(finalSize)
 
@@ -932,9 +898,7 @@ func NativeWhirVerify(
 		return nil, fmt.Errorf("final pow: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 8. Open previous commitment (final IRS verify)
-	// ---------------------------------------------------------------
+	// Open previous commitment (final IRS verify)
 	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
 	finalIndices, err := nativeGetStirChallenges(
 		nimue,
@@ -967,9 +931,7 @@ func NativeWhirVerify(
 	allMerklePaths = append(allMerklePaths, FullMultiPath[Digest]{})
 	merkleRounds = append(merkleRounds, *finalMerkleEntry)
 
-	// ---------------------------------------------------------------
-	// 9. Final sumcheck
-	// ---------------------------------------------------------------
+	// Final sumcheck
 	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, whirParams.FinalSumcheckRounds)
 	if err != nil {
 		return nil, fmt.Errorf("final sumcheck: %w", err)
@@ -982,17 +944,13 @@ func NativeWhirVerify(
 		return nil, fmt.Errorf("final folding pow: %w", err)
 	}
 
-	// ---------------------------------------------------------------
-	// 11. Compute evaluation point (all folding randomness concatenated)
-	// ---------------------------------------------------------------
+	// Compute evaluation point (all folding randomness concatenated)
 	var evaluationPoint []*big.Int
 	for _, fr := range allFoldingRandomness {
 		evaluationPoint = append(evaluationPoint, fr...)
 	}
 
-	// ---------------------------------------------------------------
-	// 12. Compute linear_form_rlc from the sumcheck invariant
-	// ---------------------------------------------------------------
+	// Compute linear_form_rlc from the sumcheck invariant
 	// poly_eval = MLE(final_sumcheck_randomness).evaluate(Identity, final_vector)
 	polyEval := nativeMultilinearEval(finalSumcheckRandomness, finalVector)
 
@@ -1022,9 +980,7 @@ func NativeWhirVerify(
 		}
 	}
 
-	// ---------------------------------------------------------------
-	// 13. Build ZKHint from parsed Merkle data
-	// ---------------------------------------------------------------
+	// Build ZKHint from parsed Merkle data
 	zkHint := consumeWhirData(whirConfig, &allMerklePaths, &allStirAnswers)
 
 	return &NativeWhirVerifyResult{

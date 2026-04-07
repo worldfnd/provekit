@@ -86,18 +86,6 @@ type Config struct {
 	PublicInputs                 PublicInputs `json:"public_inputs"`
 }
 
-// Update Hints to support batch mode
-type Hints struct {
-	spartanHidingHint ZKHint
-
-	// Witness hints (length 1 for single mode, N for batch mode)
-	WitnessFirstRoundHints []FirstRoundHint
-
-	// Single mode: rounds 1+ for the one commitment
-	// Batch mode: rounds 1+ for batched polynomial
-	WitnessRoundHints ZKHint
-}
-
 type Hint struct {
 	merklePaths []FullMultiPath[Digest]
 	stirAnswers [][][]Fp256

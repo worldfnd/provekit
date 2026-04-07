@@ -24,7 +24,7 @@ func geometricChallenge(api frontend.API, nimue gnarkNimue.Nimue, count int) ([]
 	}
 }
 
-// Given some randomeness r, return a vector r^0, r^1,...r^{len-1}
+// Given some randomness r, return a vector r^0, r^1,...r^{len-1}
 func ExpandRandomness(api frontend.API, base frontend.Variable, len int) []frontend.Variable {
 	res := make([]frontend.Variable, len)
 	acc := frontend.Variable(1)
