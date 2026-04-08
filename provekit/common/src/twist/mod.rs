@@ -29,6 +29,8 @@
 //! adversarial provers**. A permutation argument must be added before this
 //! can be used in production.
 
+pub mod sumcheck;
+
 use {
     crate::FieldElement,
     ark_std::{One, Zero},
