@@ -3,6 +3,7 @@ use partial_sha256::{
     SHA256State, sha256_continue, sha256_finalize, verify_sha256_state_and_data_commitment, commit_to_data_chunk,
 };
 use fragmented_sig_check_rsa::verify_rsa_signature;
+use sig_check_rsa::compute_key_ne_hash;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -12,12 +13,13 @@ global TBS_CERT_SIZE: u32 = 1300;
 fn main(
     comm_in: pub Field,
     csc_pubkey: pub [u8; 512],
+    csc_key_ne_hash: pub Field,
+    csc_pubkey_redc_param: [u8; 513],
     salt: Field,
     country: Alpha3CountryCode,
     state1: SHA256State,
     tbs_certificate: [u8; TBS_CERT_SIZE],
     tbs_certificate_len: u32,
-    csc_pubkey_redc_param: [u8; 513],
     dsc_signature: [u8; 512],
     exponent: u32,
     salt_out: Field,
@@ -26,6 +28,10 @@ fn main(
     assert(
         tbs_certificate_len <= TBS_CERT_SIZE,
         "tbs_certificate_len must not exceed TBS_CERT_SIZE (1300)"
+    );
+    assert(
+        csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
+        "CSC key hash does not match (n||e)",
     );
 
     let mut chunk1: [u8; CHUNK1_SIZE] = [0; CHUNK1_SIZE];

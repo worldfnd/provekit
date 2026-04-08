@@ -54,14 +54,19 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	var pid [64]byte
 	copy(pid[:], config.ProtocolID[:64])
 
-	nimue := NewNativeNimue(pid, config.SessionID, config.NargString, config.Hints)
+	// Compute instance = public_inputs.hash_bytes() to bind public inputs to the transcript.
+	piValues := make([]*big.Int, len(config.PublicInputs.Values))
+	for i, v := range config.PublicInputs.Values {
+		piValues[i] = v.(*big.Int)
+	}
+	instance := nativePublicInputsHashBytes(piValues)
+
+	nimue := NewNativeNimue(pid, config.SessionID, instance, config.NargString, config.Hints)
 	blindedCommitmentWhirConfig := NewWhirParams(config.BlindedCommitmentWhirConfig)
 	blindingCommitmentWhirConfig := NewWhirParams(config.BlindingCommitmentWhirConfig)
 
 	_, blindedCommitmentOODPoint, blindedCommitmentOODMatrix, err := nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
-	// fmt.Println("blindedCommitmentPolyRoot", FrDecimalToHexLE(blindedCommitmentPolyRoot.String()))
-	// fmt.Println("blindedCommitmentOODPoint", blindedCommitmentOODPoint)
-	// fmt.Println("blindedCommitmentOODMatrix", blindedCommitmentOODMatrix)
+
 	if err != nil {
 		return fmt.Errorf("parse blinded commitment: %w", err)
 	}
@@ -95,40 +100,52 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("sumcheck verifier: %w", err)
 	}
 
-	if _, err = nimue.FillNextScalars(1); err != nil {
+	_, err = nimue.FillNextScalars(1)
+	if err != nil {
 		return fmt.Errorf("public inputs hash: %w", err)
 	}
-	if _, err = nimue.FillChallengeScalars(1); err != nil {
+
+	_, err = nimue.FillChallengeScalars(1)
+	if err != nil {
 		return fmt.Errorf("x challenge: %w", err)
 	}
 
-	// Read claimed evaluations from hints (prover_hint_ark)
-	var evals1 []Fp256
-	if err = nimue.ProverHintArk(&evals1); err != nil {
+	// Read evaluations from transcript (prover_message in Rust)
+	evals1Scalars, err := nimue.FillNextScalars(3)
+	if err != nil {
 		return fmt.Errorf("evals_1: %w", err)
 	}
-
-	// Convert evals1 to []*big.Int for WHIR verification
-	evals1BigInt := fp256SliceToBigInt(evals1)
+	evals1BigInt := evals1Scalars
 
 	var evals2BigInt []*big.Int
 	if config.NumChallenges > 0 {
-		var evals2 []Fp256
-		if err = nimue.ProverHintArk(&evals2); err != nil {
+		evals2Scalars, err := nimue.FillNextScalars(3)
+		if err != nil {
 			return fmt.Errorf("evals_2: %w", err)
 		}
-		evals2BigInt = fp256SliceToBigInt(evals2)
+		evals2BigInt = evals2Scalars
 	}
 
 	hasPublicInputs := !config.PublicInputs.IsEmpty()
 	var publicEval *big.Int
 	if hasPublicInputs {
-		// Consume public_eval from transcript (prover_message in Rust).
 		publicEvalSlice, err := nimue.FillNextScalars(1)
 		if err != nil {
 			return fmt.Errorf("public_eval: %w", err)
 		}
 		publicEval = publicEvalSlice[0]
+	}
+
+	// Challenge binding: in dual mode, read challenge_eval from transcript
+	// (prover_message in Rust). This binds w2's challenge values to the transcript.
+	// challenge_eval is appended to evaluations_2 and an extra weight is added.
+	var challengeEval *big.Int
+	if config.NumChallenges > 0 {
+		ceSlice, err := nimue.FillNextScalars(1)
+		if err != nil {
+			return fmt.Errorf("challenge_eval: %w", err)
+		}
+		challengeEval = ceSlice[0]
 	}
 
 	// Build the full evaluations vector matching Rust whir_r1cs.rs:
@@ -160,8 +177,15 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 	// ---------------------------------------------------------------
 	var dualData *DualCommitmentData
 	if config.NumChallenges > 0 {
-		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
-		zkWhirData2, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
+		// Commitment 2 has 3 base weights (A,B,C) + 1 challenge weight if challenge_eval exists.
+		evals2WithChallenge := evals2BigInt
+		weightsLen2 := 3
+		if challengeEval != nil {
+			evals2WithChallenge = append(evals2WithChallenge, challengeEval)
+			weightsLen2 = 4
+		}
+		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: weightsLen2}
+		zkWhirData2, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2WithChallenge)
 		if err != nil {
 			return fmt.Errorf("zkWHIR verify commitment 2: %w", err)
 		}
@@ -183,7 +207,7 @@ func PrepareAndVerifyCircuit(config Config, r1cs R1CS, pk *groth16.ProvingKey, v
 		return fmt.Errorf("parse interner: %w", err)
 	}
 
-	if err := verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, evals1BigInt, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData, dualData); err != nil {
+	if err := verifyCircuit(config, pk, vk, r1cs, interner, buildOps, config.PublicInputs, *zkWhirData1.BlindedMerkleData, *zkWhirData1.BlindingMerkleData, dualData); err != nil {
 		return fmt.Errorf("verify circuit: %w", err)
 	}
 
@@ -224,7 +248,6 @@ func nativeRunSumcheckVerifier(nimue *NativeNimue, m0 int) (*NativeSumcheckData,
 	if err != nil {
 		return nil, fmt.Errorf("r: %w", err)
 	}
-	fmt.Println("r:", r)
 
 	// sum_g = prover_message()
 	sumGSlice, err := nimue.FillNextScalars(1)
@@ -232,7 +255,6 @@ func nativeRunSumcheckVerifier(nimue *NativeNimue, m0 int) (*NativeSumcheckData,
 		return nil, fmt.Errorf("sum_g: %w", err)
 	}
 	sumG := sumGSlice[0]
-	fmt.Println("sum_g:", sumG)
 
 	// rho = verifier_message()
 	rhoSlice, err := nimue.FillChallengeScalars(1)
@@ -240,7 +262,6 @@ func nativeRunSumcheckVerifier(nimue *NativeNimue, m0 int) (*NativeSumcheckData,
 		return nil, fmt.Errorf("rho: %w", err)
 	}
 	rho := rhoSlice[0]
-	fmt.Println("rho:", rho)
 
 	// saved_val = rho * sum_g
 	savedVal := new(big.Int).Mul(rho, sumG)

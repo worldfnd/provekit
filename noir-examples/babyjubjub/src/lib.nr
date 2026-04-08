@@ -3,15 +3,13 @@
 // Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
 // where a = 168700, d = 168696
 
-use check_sub_group::esc_mul_fix_scalar;
 use escalar_mul_fix::generator_mul_fix;
-use std::field::bn254;
+use std::{field::bn254, static_assert};
 
 mod tests;
 pub mod hash_to_curve;
 pub(crate) mod montgomery;
 pub(crate) mod window_table;
-pub(crate) mod check_sub_group;
 pub(crate) mod escalar_mul_fix;
 
 // BabyJubJub curve constants
@@ -30,6 +28,20 @@ global BABYJUBJUB_GENERATOR_Y: Field =
 // Scalar field order (Fr) - prime order of BabyJubJub's scalar field
 global BABYJUBJUB_Fr: Field =
     2736030358979909402780800718157159386076813972158567259200215660948447373041;
+
+// Bit-decomposition of the BabyJubJub subgroup order (scalar field Fr), little-endian.
+// NOTE: Named CHARACTERISTIC for upstream compatibility, but this is the group order (Fr),
+// NOT the field characteristic (prime p of the base field).
+global BABYJUBJUB_CHARACTERISTIC: [u1; 251] = [
+    1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0,
+    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
+    0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1,
+    1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1,
+    0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0,
+    1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0,
+    0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
+];
 
 /// Represents a point on the BabyJubJub curve
 pub struct BabyJubJubPoint {
@@ -73,7 +85,7 @@ impl BabyJubJubPoint {
         !self.is_identity()
     }
 
-    /// Multiplies the point by the cofactor (7 for BabyJubJub over BN254)
+    /// Multiplies the point by the cofactor (8 for BabyJubJub over BN254)
     pub fn multiply_by_cofactor(self) -> Self {
         self.double().double().double()
     }
@@ -103,7 +115,7 @@ impl BabyJubJubPoint {
         let den_x = 1 + BABYJUBJUB_D * tau;
         let den_y = 1 - BABYJUBJUB_D * tau;
 
-        // Safety: cast to unconstrained field
+        // Safety: Points lie on the BabyJubJub curve and its TE addition formula is complete.
         let (x, y) = unsafe { Self::add_unconstrained(self, other) };
         assert(
             y * den_y == delta + BABYJUBJUB_A * beta - gamma,
@@ -167,6 +179,7 @@ impl BabyJubJubPoint {
 
         result
     }
+
     /// Base field scalar multiplication
     pub fn scalar_mul_base_field(self, scalar_fq: Field) -> Self {
         // Early termination for zero scalar
@@ -182,7 +195,7 @@ impl BabyJubJubPoint {
 
     /// Validates that a field element is in the BabyJubJub scalar field Fr
     pub fn validate_babyjubjub_field(field_element: Field) {
-        bn254::assert_lt(field_element, BABYJUBJUB_Fr );
+        bn254::assert_lt(field_element, BABYJUBJUB_Fr);
     }
 
     pub fn validate_scalar_field_with_bits(field_element: Field) -> [u1; 251] {
@@ -191,24 +204,48 @@ impl BabyJubJubPoint {
         bits
     }
 
+    // Precondition: This method expects that the point is on-curve.
     pub fn check_sub_group(self) -> bool {
-        let characteristic: [u1; 251] = [
-            1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,
-            1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1,
-            1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0,
-            0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
-            1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0,
-            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0,
-            0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
-            0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1,
-            1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-        ];
+        static_assert(
+            BABYJUBJUB_CHARACTERISTIC[250] == 1,
+            "Characteristic has high bit set",
+        );
 
-        let res = esc_mul_fix_scalar(characteristic, self);
-        res.is_identity()
+        let mut p = self;
+        for i in 0..250 {
+            p = p.double();
+            if BABYJUBJUB_CHARACTERISTIC[249 - i] == 1 {
+                p = p.add(self);
+            }
+        }
+
+        p.is_identity()
     }
 
     pub fn generator_scalar_mul(scalar: Field) -> Self {
         generator_mul_fix(scalar)
     }
+}
+
+#[test]
+fn test_babyjubjub_in_correct_subgroup() {
+    let p0 = 4597297048474520994314398800947075450541957920804155712178316083765998639288;
+    let p1 = 5569132826648062501012191259106565336315721760204071234863390487921354852142;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
+}
+
+#[test]
+fn test_two_torsion_not_correct_subgroup() {
+    let p0 = 0;
+    let p1 = -1;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
+}
+#[test]
+fn test_a_plus_two_torsion_not_correct_subgroup() {
+    let p0 = 4689731437944306428780974070575571025333825310181802403039288057202868837337;
+    let p1 = 14792220576807380471707687543579831579477508903129740636298855878394914021491;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
 }

@@ -476,6 +476,45 @@ func foldedGeometricTill(
 //	weights[4*j + k] = alpha[j]^k at domain index w1Size + 4*j + k
 //
 // Folded: result = Σ_{j,k} alpha[j]^k * L_{(w1Size + 4*j + k) mod maskSize}(evalPoint)
+// challengeWeightMLE computes the MLE evaluation of the challenge weight covector.
+// The challenge weight is a sparse covector with entries (offset_i, x^i).
+// MLE at r = Σ_i x^i * eq(offset_i, r)
+func challengeWeightMLE(
+	api frontend.API,
+	x frontend.Variable,
+	challengeOffsets []int,
+	evaluationPoint []frontend.Variable,
+) frontend.Variable {
+	lagrange := calculateEQOverBooleanHypercube(api, evaluationPoint)
+	result := frontend.Variable(0)
+	xPow := frontend.Variable(1)
+	for _, offset := range challengeOffsets {
+		result = api.Add(result, api.Mul(xPow, lagrange[offset]))
+		xPow = api.Mul(xPow, x)
+	}
+	return result
+}
+
+// foldedChallengeWeightMLE computes the MLE of the challenge weight covector
+// folded modulo maskSize, evaluated at evalPoint.
+func foldedChallengeWeightMLE(
+	api frontend.API,
+	x frontend.Variable,
+	challengeOffsets []int,
+	evalPoint []frontend.Variable,
+	maskSize int,
+) frontend.Variable {
+	lagrange := calculateEQOverBooleanHypercube(api, evalPoint)
+	result := frontend.Variable(0)
+	xPow := frontend.Variable(1)
+	for _, offset := range challengeOffsets {
+		idx := offset % maskSize
+		result = api.Add(result, api.Mul(xPow, lagrange[idx]))
+		xPow = api.Mul(xPow, x)
+	}
+	return result
+}
+
 func foldedBlindingCovectorMLE(
 	api frontend.API,
 	alpha []frontend.Variable,

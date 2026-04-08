@@ -3,6 +3,20 @@ use sha256::{sha224_var, sha256_var};
 use sha512::{sha384, sha512};
 use utils::check_zero_padding;
 
+pub fn assert_allowed_rsa_exponent(exponent: u32) {
+    assert(
+        (exponent == 3)
+            | (exponent == 56611)
+            | (exponent == 38129)
+            | (exponent == 109729)
+            | (exponent == 130689)
+            | (exponent == 122125)
+            | (exponent == 107903)
+            | (exponent == 65537),
+        "Unsupported RSA exponent",
+    );
+}
+
 pub fn sha1_and_check_data_to_sign<let DATA_TO_SIGN_MAX_LEN: u32>(
     data_to_sign: [u8; DATA_TO_SIGN_MAX_LEN],
     data_to_sign_len: u32,

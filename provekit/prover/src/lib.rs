@@ -5,15 +5,16 @@ use {
         r1cs::{CompressedLayers, CompressedR1CS},
         whir_r1cs::WhirR1CSProver,
     },
-    acir::native_types::WitnessMap,
+    acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     hex,
     provekit_common::{
-        FieldElement, NoirElement, NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
+        PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
-    whir::transcript::{codecs::Empty, ProverState},
+    whir::transcript::ProverState,
 };
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 use {
@@ -105,7 +106,23 @@ impl Prove for NoirProver {
     ) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
-        let num_public_inputs = self.program.functions[0].public_inputs().indices().len();
+        let mut public_input_indices = self.program.functions[0].public_inputs().indices();
+        public_input_indices.sort_unstable();
+        let public_inputs = if public_input_indices.is_empty() {
+            PublicInputs::new()
+        } else {
+            let values = public_input_indices
+                .iter()
+                .map(|&idx| {
+                    let noir_val = acir_witness_idx_to_value_map
+                        .get(&Witness::from(idx))
+                        .ok_or_else(|| anyhow::anyhow!("Missing public input at index {idx}"))?;
+                    Ok(noir_to_native(*noir_val))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            PublicInputs::from_vec(values)
+        };
+
         drop(self.program);
         drop(self.witness_generator);
 
@@ -116,19 +133,18 @@ impl Prove for NoirProver {
         let num_witnesses = compressed_r1cs.num_witnesses();
         let num_constraints = compressed_r1cs.num_constraints();
 
-        // Set up transcript with sponge selected by hash_config.
+        // Set up transcript with public inputs bound to the instance.
+        let instance = public_inputs.hash_bytes();
         let ds = self
             .whir_for_witness
             .create_domain_separator()
-            .instance(&Empty);
+            .instance(&instance);
 
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses];
 
         // Solve w1 (or all witnesses if no challenges).
-        // Outer span captures memory AFTER w1_layers parameter is freed
-        // (parameter drop happens before outer span close).
         {
             let _s = info_span!("solve_w1").entered();
             crate::r1cs::solve_witness_vec(
@@ -136,7 +152,8 @@ impl Prove for NoirProver {
                 self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
                 &mut merlin,
-            );
+            )
+            .context("While solving w1 witnesses")?;
         }
 
         // Compress w2 layers to free memory during w1 commit (only when
@@ -183,7 +200,8 @@ impl Prove for NoirProver {
                     w2_layers,
                     &acir_witness_idx_to_value_map,
                     &mut merlin,
-                );
+                )
+                .context("While solving w2 witnesses")?;
             }
             drop(acir_witness_idx_to_value_map);
 
@@ -214,17 +232,6 @@ impl Prove for NoirProver {
         #[cfg(test)]
         r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
             .context("While verifying R1CS instance")?;
-
-        let public_inputs = if num_public_inputs == 0 {
-            PublicInputs::new()
-        } else {
-            PublicInputs::from_vec(
-                witness[1..=num_public_inputs]
-                    .iter()
-                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
-                    .collect::<Result<Vec<FieldElement>>>()?,
-            )
-        };
 
         let full_witness: Vec<FieldElement> = witness
             .into_iter()
@@ -258,10 +265,19 @@ impl Prove for MavrosProver {
             &params,
         );
 
+        let num_public_inputs = self.num_public_inputs;
+        let public_inputs = if num_public_inputs == 0 {
+            PublicInputs::new()
+        } else {
+            PublicInputs::from_vec(phase1.out_wit_pre_comm[1..=num_public_inputs].to_vec())
+        };
+
+        // Set up transcript with public inputs bound to the instance.
+        let instance = public_inputs.hash_bytes();
         let ds = self
             .whir_for_witness
             .create_domain_separator()
-            .instance(&Empty);
+            .instance(&instance);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         let commitment_1 = self
@@ -275,7 +291,7 @@ impl Prove for MavrosProver {
             )
             .context("While committing to w1")?;
 
-        let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
+        let commitments = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
                 .map(|_| merlin.verifier_message())
                 .collect();
@@ -298,22 +314,15 @@ impl Prove for MavrosProver {
                 )
                 .context("While committing to w2")?;
 
-            (vec![commitment_1, commitment_2], witgen_result)
+            vec![commitment_1, commitment_2]
         } else {
-            let witgen_result = mavros_interpreter::run_phase2(
+            mavros_interpreter::run_phase2(
                 phase1.clone(),
                 &[],
                 self.witness_layout,
                 self.constraints_layout,
             );
-            (vec![commitment_1], witgen_result)
-        };
-
-        let num_public_inputs = self.num_public_inputs;
-        let public_inputs = if num_public_inputs == 0 {
-            PublicInputs::new()
-        } else {
-            PublicInputs::from_vec(witgen_result.out_wit_pre_comm[1..=num_public_inputs].to_vec())
+            vec![commitment_1]
         };
 
         let whir_r1cs_proof = self

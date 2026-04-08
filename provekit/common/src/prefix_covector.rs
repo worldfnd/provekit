@@ -238,6 +238,109 @@ pub fn compute_public_eval(
     eval
 }
 
+/// A covector with non-zero weights at arbitrary scattered positions within a
+/// `domain_size`-length domain. Used for challenge binding where challenge
+/// positions in w2 may not be contiguous.
+pub struct SparseCovector {
+    /// (position, weight) pairs.
+    entries:     Vec<(usize, FieldElement)>,
+    domain_size: usize,
+}
+
+impl SparseCovector {
+    /// Create a new `SparseCovector` from position-weight pairs.
+    ///
+    /// # Panics
+    ///
+    /// Asserts that `domain_size` is a power of two and all positions are
+    /// within bounds.
+    #[must_use]
+    pub fn new(entries: Vec<(usize, FieldElement)>, domain_size: usize) -> Self {
+        debug_assert!(domain_size.is_power_of_two());
+        for &(pos, _) in &entries {
+            assert!(
+                pos < domain_size,
+                "SparseCovector: position {pos} >= domain_size {domain_size}"
+            );
+        }
+        Self {
+            entries,
+            domain_size,
+        }
+    }
+}
+
+impl LinearForm<FieldElement> for SparseCovector {
+    fn size(&self) -> usize {
+        self.domain_size
+    }
+
+    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+        let n = point.len();
+        let mut result = FieldElement::zero();
+        for &(idx, w) in &self.entries {
+            if w.is_zero() {
+                continue;
+            }
+            let mut basis = FieldElement::one();
+            for (k, pk) in point.iter().enumerate() {
+                if (idx >> (n - 1 - k)) & 1 == 1 {
+                    basis *= pk;
+                } else {
+                    basis *= FieldElement::one() - pk;
+                }
+            }
+            result += w * basis;
+        }
+        result
+    }
+
+    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+        for &(pos, w) in &self.entries {
+            accumulator[pos] += scalar * w;
+        }
+    }
+}
+
+/// Create a challenge-binding weight [`SparseCovector`] from Fiat-Shamir
+/// randomness `x`.
+///
+/// Places `[1, x, x², …]` at the given `challenge_offsets` positions within a
+/// `2^m`-length domain.
+#[must_use]
+pub fn make_challenge_weight(
+    x: FieldElement,
+    challenge_offsets: &[usize],
+    m: usize,
+) -> SparseCovector {
+    let domain_size = 1 << m;
+    let mut entries = Vec::with_capacity(challenge_offsets.len());
+    let mut x_pow = FieldElement::one();
+    for &offset in challenge_offsets {
+        entries.push((offset, x_pow));
+        x_pow *= x;
+    }
+    SparseCovector::new(entries, domain_size)
+}
+
+/// Compute the challenge weight evaluation
+/// `⟨[1, x, x², …], poly[offsets[0]], poly[offsets[1]], …⟩` without
+/// allocating a [`SparseCovector`].
+#[must_use]
+pub fn compute_challenge_eval(
+    x: FieldElement,
+    challenge_offsets: &[usize],
+    polynomial: &[FieldElement],
+) -> FieldElement {
+    let mut eval = FieldElement::zero();
+    let mut x_pow = FieldElement::one();
+    for &offset in challenge_offsets {
+        eval += x_pow * polynomial[offset];
+        x_pow *= x;
+    }
+    eval
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, whir::algebra::multilinear_extend};
@@ -432,5 +535,84 @@ mod tests {
     fn new_panics_on_out_of_bounds() {
         // offset + weights.len() = 7 + 2 = 9 > 8
         let _ = OffsetCovector::new(vec![fe(1), fe(2)], 7, 8);
+    }
+
+    fn sparse_full_vector(
+        entries: &[(usize, FieldElement)],
+        domain_size: usize,
+    ) -> Vec<FieldElement> {
+        let mut v = vec![FieldElement::zero(); domain_size];
+        for &(pos, w) in entries {
+            v[pos] = w;
+        }
+        v
+    }
+
+    #[test]
+    fn sparse_mle_evaluate_matches_full_vector() {
+        let domain_size = 16;
+        let entries = vec![(2, fe(7)), (5, fe(3)), (11, fe(13))];
+        let point = vec![fe(2), fe(5), fe(13), fe(17)];
+
+        let covector = SparseCovector::new(entries.clone(), domain_size);
+        let full = sparse_full_vector(&entries, domain_size);
+
+        let expected = multilinear_extend(&full, &point);
+        let actual = covector.mle_evaluate(&point);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn sparse_accumulate_writes_correct_positions() {
+        let domain_size = 16;
+        let entries = vec![(2, fe(7)), (5, fe(3)), (11, fe(13))];
+        let scalar = fe(4);
+
+        let covector = SparseCovector::new(entries.clone(), domain_size);
+        let mut accumulator = vec![FieldElement::zero(); domain_size];
+        covector.accumulate(&mut accumulator, scalar);
+
+        let expected = sparse_full_vector(&entries, domain_size);
+        for i in 0..domain_size {
+            assert_eq!(accumulator[i], scalar * expected[i], "mismatch at {i}");
+        }
+    }
+
+    #[test]
+    fn sparse_mle_and_accumulate_are_consistent() {
+        let domain_size = 8;
+        let entries = vec![(1, fe(5)), (3, fe(11)), (6, fe(7))];
+
+        let covector = SparseCovector::new(entries.clone(), domain_size);
+
+        let mut full_weights = vec![FieldElement::zero(); domain_size];
+        covector.accumulate(&mut full_weights, FieldElement::one());
+        assert_eq!(full_weights, sparse_full_vector(&entries, domain_size));
+
+        let point = vec![fe(3), fe(7), fe(11)];
+        let mle_from_full = multilinear_extend(&full_weights, &point);
+        let mle_from_covector = covector.mle_evaluate(&point);
+        assert_eq!(mle_from_full, mle_from_covector);
+    }
+
+    #[test]
+    #[should_panic(expected = "position 8 >= domain_size 8")]
+    fn sparse_panics_on_out_of_bounds() {
+        let _ = SparseCovector::new(vec![(8, fe(1))], 8);
+    }
+
+    #[test]
+    fn compute_challenge_eval_matches_weight() {
+        let offsets = vec![1, 5, 11];
+        let x = fe(7);
+
+        let mut poly = vec![FieldElement::zero(); 16];
+        poly[1] = fe(42);
+        poly[5] = fe(99);
+        poly[11] = fe(17);
+
+        let eval = compute_challenge_eval(x, &offsets, &poly);
+        let expected = fe(42) + fe(7) * fe(99) + fe(49) * fe(17);
+        assert_eq!(eval, expected);
     }
 }

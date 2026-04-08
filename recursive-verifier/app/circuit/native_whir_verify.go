@@ -2,6 +2,7 @@ package circuit
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"math/bits"
 	"sort"
@@ -251,6 +252,7 @@ func nativeWhirSumcheckVerify(
 	nimue *NativeNimue,
 	sum *big.Int,
 	numRounds int,
+	powThreshold uint64,
 ) ([]*big.Int, *big.Int, error) {
 	foldingRandomness := make([]*big.Int, numRounds)
 	currentSum := new(big.Int).Set(sum)
@@ -266,6 +268,11 @@ func nativeWhirSumcheckVerify(
 		// Derive c1 from p(0) + p(1) = sum:
 		// p(0) = c0, p(1) = c0 + c1 + c2, so 2*c0 + c1 + c2 = sum
 		c1 := frSub(frSub(currentSum, frAdd(c0, c0)), c2)
+
+		// PoW check (matching Rust sumcheck round_pow.verify)
+		if err := nativePoWVerify(nimue, powThreshold); err != nil {
+			return nil, nil, fmt.Errorf("sumcheck round %d pow: %w", i, err)
+		}
 
 		// Squeeze folding randomness
 		rSlice, err := nimue.FillChallengeScalars(1)
@@ -514,8 +521,9 @@ func nativeReceiveCommitment(
 	name *NativeNimue,
 	oodSamples int,
 ) (*NativeCommitment, error) {
-	// Root hash (prover_message)
-	_, err := name.FillNextScalars(1)
+	// Root hash (prover_message) — absorbed as raw bytes, NOT as a field element,
+	// because the Merkle root hash can be >= BN254 modulus.
+	_, err := name.FillNextBytes(32)
 	if err != nil {
 		return nil, fmt.Errorf("root hash: %w", err)
 	}
@@ -548,8 +556,8 @@ func nativeReceiveCommitment(
 // Native PoW verification (transcript replay only — actual check is in circuit)
 // ---------------------------------------------------------------------------
 
-func nativePoWVerify(nimue *NativeNimue, powBits int) error {
-	if powBits > 0 {
+func nativePoWVerify(nimue *NativeNimue, threshold uint64) error {
+	if threshold < math.MaxUint64 {
 		challengeBytes, err := nimue.FillChallengeBytes(32)
 		if err != nil {
 			return fmt.Errorf("pow challenge: %w", err)
@@ -576,25 +584,13 @@ func nativePoWVerify(nimue *NativeNimue, powBits int) error {
 		// Skyscraper compress
 		hash := SkyscraperCompress(challengeLimbs, nonceLimbs)
 
-		// Compute threshold: modulus * 2^(-difficulty)
-		// Using the same approach as Rust: approximate modulus via high limb, then f64 arithmetic
-		threshold := nativePowThreshold(powBits)
-		// less_than comparison on [4]uint64 limbs (little-endian)
-		if !(hash[0] < threshold[0]) {
-			return fmt.Errorf("PoW check failed: hash not below threshold for difficulty %d", powBits)
+		// Rust PoW check: first 8 bytes of hash as u64 LE <= threshold
+		value := hash[0]
+		if value > threshold {
+			return fmt.Errorf("PoW check failed: hash not below threshold (value=%d, threshold=%d)", value, threshold)
 		}
 	}
 	return nil
-}
-
-// nativePowThreshold computes the PoW threshold for an integer difficulty,
-// matching Rust skyscraper::pow::threshold().
-func nativePowThreshold(difficulty int) [4]uint64 {
-	// BN254 scalar field modulus
-	modulus, _ := new(big.Int).SetString("21888242871839275222246405745257275088548364400416034343698204186575808495617", 10)
-	// threshold = floor(modulus / 2^difficulty)
-	threshold := new(big.Int).Rsh(modulus, uint(difficulty))
-	return skBigIntToLimbs(threshold)
 }
 
 // ---------------------------------------------------------------------------
@@ -723,13 +719,13 @@ func NativeWhirVerify(
 			return nil, fmt.Errorf("initial skip folding: %w", err)
 		}
 		// initial_skip_pow
-		if err := nativePoWVerify(nimue, 0); err != nil {
+		if err := nativePoWVerify(nimue, whirConfig.InitialSkipPowThreshold); err != nil {
 			return nil, fmt.Errorf("initial skip pow: %w", err)
 		}
 		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
 	} else {
 		ff0 := whirParams.FoldingFactorArray[0]
-		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff0)
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff0, whirConfig.InitialSumcheckPowThreshold)
 		if err != nil {
 			return nil, fmt.Errorf("initial sumcheck: %w", err)
 		}
@@ -767,7 +763,7 @@ func NativeWhirVerify(
 		}
 
 		// Proof of work
-		if err := nativePoWVerify(nimue, whirParams.PowBits[r]); err != nil {
+		if err := nativePoWVerify(nimue, whirConfig.PowThresholds[r]); err != nil {
 			return nil, fmt.Errorf("round %d pow: %w", r, err)
 		}
 
@@ -862,7 +858,7 @@ func NativeWhirVerify(
 		if r+1 < len(whirParams.FoldingFactorArray) {
 			ff = whirParams.FoldingFactorArray[r+1]
 		}
-		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff)
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff, whirConfig.SumcheckPowThresholds[r])
 		if err != nil {
 			return nil, fmt.Errorf("round %d sumcheck: %w", r, err)
 		}
@@ -894,7 +890,7 @@ func NativeWhirVerify(
 	}
 
 	// Final PoW
-	if err := nativePoWVerify(nimue, whirParams.FinalPowBits); err != nil {
+	if err := nativePoWVerify(nimue, whirConfig.FinalPowThreshold); err != nil {
 		return nil, fmt.Errorf("final pow: %w", err)
 	}
 
@@ -932,7 +928,7 @@ func NativeWhirVerify(
 	merkleRounds = append(merkleRounds, *finalMerkleEntry)
 
 	// Final sumcheck
-	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, whirParams.FinalSumcheckRounds)
+	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, whirParams.FinalSumcheckRounds, whirConfig.FinalFoldingPowThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("final sumcheck: %w", err)
 	}
@@ -940,7 +936,7 @@ func NativeWhirVerify(
 	allFoldingRandomness = append(allFoldingRandomness, finalSumcheckRandomness)
 
 	// Final folding PoW
-	if err := nativePoWVerify(nimue, whirParams.FinalFoldingPowBits); err != nil {
+	if err := nativePoWVerify(nimue, whirConfig.FinalFoldingPowThreshold); err != nil {
 		return nil, fmt.Errorf("final folding pow: %w", err)
 	}
 

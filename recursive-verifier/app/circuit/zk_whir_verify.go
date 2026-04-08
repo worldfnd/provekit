@@ -52,6 +52,7 @@ type R1CSWeightParams struct {
 	Alpha                  []frontend.Variable
 	PublicWeightsChallenge frontend.Variable
 	HasPublicInputs        bool
+	ChallengeOffsets       []int
 	Mode                   CommitmentMode
 }
 
@@ -286,6 +287,10 @@ func ZKWhirVerify(
 		// Columns >= W1Size only, no public, no blinding.
 		_, matrixEvals2 := evaluateR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, foldingRandomness, w.Circuit.W1Size)
 		weightMLEs = append(weightMLEs, matrixEvals2[0], matrixEvals2[1], matrixEvals2[2])
+		// Challenge weight MLE if challenge_offsets are present.
+		if len(w.ChallengeOffsets) > 0 {
+			weightMLEs = append(weightMLEs, challengeWeightMLE(api, w.PublicWeightsChallenge, w.ChallengeOffsets, foldingRandomness))
+		}
 	}
 	fc.VerifyClaim(api, weightMLEs)
 
@@ -317,6 +322,10 @@ func ZKWhirVerify(
 	case DualCommitment2:
 		_, foldedEvals2 := evaluateFoldedR1CSMatrixExtensionSplit(api, w.Circuit, w.Alpha, nil, evalPoint, maskSize, w.Circuit.W1Size)
 		weightMLEs = append(weightMLEs, foldedEvals2[0], foldedEvals2[1], foldedEvals2[2])
+		// Folded challenge weight MLE if challenge_offsets are present.
+		if len(w.ChallengeOffsets) > 0 {
+			weightMLEs = append(weightMLEs, foldedChallengeWeightMLE(api, w.PublicWeightsChallenge, w.ChallengeOffsets, evalPoint, maskSize))
+		}
 	}
 	fc.VerifyClaim(api, weightMLEs)
 

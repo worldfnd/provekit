@@ -29,19 +29,25 @@ type FullMultiPath[Digest any] struct {
 
 // WHIR specific types
 type WHIRConfig struct {
-	NRounds                int    `json:"n_rounds"`
-	Rate                   int    `json:"rate"`
-	NVars                  int    `json:"n_vars"`
-	FoldingFactor          []int  `json:"folding_factor"`
-	OODSamples             []int  `json:"ood_samples"`
-	NumQueries             []int  `json:"num_queries"`
-	PowBits                []int  `json:"pow_bits"`
-	FinalQueries           int    `json:"final_queries"`
-	FinalPowBits           int    `json:"final_pow_bits"`
-	FinalFoldingPowBits    int    `json:"final_folding_pow_bits"`
-	DomainGenerator        string `json:"domain_generator"`
-	BatchSize              int    `json:"batch_size"`
-	InitialInDomainSamples int    `json:"initial_in_domain_samples"` // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
+	NRounds                     int      `json:"n_rounds"`
+	Rate                        int      `json:"rate"`
+	NVars                       int      `json:"n_vars"`
+	FoldingFactor               []int    `json:"folding_factor"`
+	OODSamples                  []int    `json:"ood_samples"`
+	NumQueries                  []int    `json:"num_queries"`
+	PowBits                     []int    `json:"pow_bits"`
+	PowThresholds               []uint64 `json:"pow_thresholds"`
+	SumcheckPowThresholds       []uint64 `json:"sumcheck_pow_thresholds"`
+	InitialSumcheckPowThreshold uint64   `json:"initial_sumcheck_pow_threshold"`
+	InitialSkipPowThreshold     uint64   `json:"initial_skip_pow_threshold"`
+	FinalQueries                int      `json:"final_queries"`
+	FinalPowBits                int      `json:"final_pow_bits"`
+	FinalPowThreshold           uint64   `json:"final_pow_threshold"`
+	FinalFoldingPowBits         int      `json:"final_folding_pow_bits"`
+	FinalFoldingPowThreshold    uint64   `json:"final_folding_pow_threshold"`
+	DomainGenerator             string   `json:"domain_generator"`
+	BatchSize                   int      `json:"batch_size"`
+	InitialInDomainSamples      int      `json:"initial_in_domain_samples"` // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
 }
 
 // WHIRParams is an alias for whir.WHIRParams to avoid duplicate struct definitions.
@@ -82,6 +88,7 @@ type Config struct {
 	ProtocolID                   []byte       `json:"protocol_id"`
 	SessionID                    []byte       `json:"session_id"`
 	NumChallenges                int          `json:"num_challenges"`
+	ChallengeOffsets             []int        `json:"challenge_offsets"`
 	W1Size                       int          `json:"w1_size"`
 	PublicInputs                 PublicInputs `json:"public_inputs"`
 }

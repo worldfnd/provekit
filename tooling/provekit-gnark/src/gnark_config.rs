@@ -19,6 +19,7 @@ pub struct GnarkConfig {
     pub hints_len: usize,
     pub protocol_id: Vec<u8>,
     pub num_challenges: usize,
+    pub challenge_offsets: Vec<usize>,
     pub w1_size: usize,
     pub public_inputs: PublicInputs,
 }
@@ -37,14 +38,26 @@ pub struct WHIRConfigGnark {
     pub ood_samples: Vec<usize>,
     /// Number of queries per round.
     pub num_queries: Vec<usize>,
-    /// Proof-of-work bits per round.
+    /// Proof-of-work bits per round (truncated integer, kept for backwards compat).
     pub pow_bits: Vec<i32>,
+    /// Proof-of-work u64 thresholds per WHIR round (exact values from Rust).
+    pub pow_thresholds: Vec<u64>,
+    /// Sumcheck round PoW thresholds per WHIR round.
+    pub sumcheck_pow_thresholds: Vec<u64>,
+    /// Initial sumcheck round PoW threshold.
+    pub initial_sumcheck_pow_threshold: u64,
+    /// Initial skip PoW threshold (used when initial sumcheck is skipped).
+    pub initial_skip_pow_threshold: u64,
     /// Final round query count.
     pub final_queries: usize,
-    /// Final round proof-of-work bits.
+    /// Final round proof-of-work bits (truncated integer).
     pub final_pow_bits: i32,
-    /// Final folding proof-of-work bits.
+    /// Final round proof-of-work threshold (exact u64).
+    pub final_pow_threshold: u64,
+    /// Final folding proof-of-work bits (truncated integer).
     pub final_folding_pow_bits: i32,
+    /// Final folding proof-of-work threshold (exact u64).
+    pub final_folding_pow_threshold: u64,
     /// Domain generator as a string.
     pub domain_generator: String,
     /// Batch size (number of polynomials committed together).
@@ -90,6 +103,18 @@ impl WHIRConfigGnark {
                 f64::from(whir::protocols::proof_of_work::difficulty(rc.pow.threshold)) as i32
             })
             .collect();
+        let pow_thresholds: Vec<u64> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.pow.threshold)
+            .collect();
+        let sumcheck_pow_thresholds: Vec<u64> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.sumcheck.round_pow.threshold)
+            .collect();
+        let initial_sumcheck_pow_threshold = whir_params.initial_sumcheck.round_pow.threshold;
+        let initial_skip_pow_threshold = whir_params.initial_skip_pow.threshold;
 
         // If there are no folding rounds, fall back to the initial commitment's
         // in-domain samples.
@@ -122,9 +147,15 @@ impl WHIRConfigGnark {
             ood_samples,
             num_queries,
             pow_bits,
+            pow_thresholds,
+            sumcheck_pow_thresholds,
+            initial_sumcheck_pow_threshold,
+            initial_skip_pow_threshold,
             final_queries,
             final_pow_bits,
+            final_pow_threshold: whir_params.final_pow.threshold,
             final_folding_pow_bits,
+            final_folding_pow_threshold: whir_params.final_sumcheck.round_pow.threshold,
             domain_generator,
             batch_size,
             initial_in_domain_samples,
@@ -159,6 +190,7 @@ pub fn gnark_parameters(
         hints_len: proof.hints.len(),
         protocol_id,
         num_challenges,
+        challenge_offsets: scheme.challenge_offsets.clone(),
         w1_size,
         public_inputs: public_inputs.clone(),
     }

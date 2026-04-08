@@ -48,7 +48,7 @@ mod tests {
         assert(!is_valid, "Invalid signature should not verify successfully");
     }
 
-    #[test]
+    #[test(should_fail)]
     fn test_case4() {
         let x = 15861662102942198476185518224532077347254150735350796263259682790715259346390;
         let y = 17622332940847650587004774926435083207962382856110852169511204932927794212320;
@@ -59,7 +59,7 @@ mod tests {
         let signature_s =
             4864135265609343478310308775703443966324041291506045146590638005673265296370;
         let message = 3126080974277891902445700130528654565374341115115698716199527644337840721369;
-        let is_valid = verify_eddsa_poseidon2(x, y, signature_s, signature, message);
-        assert(!is_valid, "Invalid signature (S out of range) should not verify successfully");
+        // should fail because signature_s too large
+        let _ = verify_eddsa_poseidon2(x, y, signature_s, signature, message);
     }
 }

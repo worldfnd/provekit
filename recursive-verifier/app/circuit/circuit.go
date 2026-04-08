@@ -33,14 +33,10 @@ type Circuit struct {
 	BlindingCommitmentWhirConfig WHIRParams
 	BlindedCommitmentWhirConfig  WHIRParams
 	NumChallenges                int
+	ChallengeOffsets             []int
 	W1Size                       int
 	PublicInputs                 PublicInputs
 
-	// Evaluation hints from prover (prover_hint_ark, not transcript-bound).
-	// [az_at_alpha, bz_at_alpha, cz_at_alpha] for commitment 1 (or single commitment).
-	Evaluations []frontend.Variable
-	// [az_at_alpha, bz_at_alpha, cz_at_alpha] for commitment 2 (dual mode only).
-	Evaluations2 []frontend.Variable
 	// Merkle proof data for WHIR commitment verification (commitment 1 / single).
 	BlindedMerkleData  whir.WhirMerkleData
 	BlindingMerkleData whir.WhirMerkleData
@@ -96,14 +92,8 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
-	// api.Println("tRand", tRand)
-	// api.Println("alpha", alpha)
-	// api.Println("fAtAlpha", fAtAlpha)
-	// api.Println("blindingEval", blindingEval)
 
-	// ---------------------------------------------------------------
-	// 4. Public inputs hash check + x challenge
-	// ---------------------------------------------------------------
+	// Public inputs hash check + x challenge
 	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
 		return err
@@ -113,20 +103,27 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
 		return fmt.Errorf("failed to read public weights challenge: %w", err)
 	}
-	// api.Println("publicWeightsChallenge", publicWeightsChallenge)
 
-	// ---------------------------------------------------------------
-	// 5. Read evaluation hints
-	// ---------------------------------------------------------------
-	if len(circuit.Evaluations) < 3 {
-		return fmt.Errorf("circuit.Evaluations must have at least 3 elements, got %d", len(circuit.Evaluations))
+	// Read evaluations from transcript (prover_message in Rust)
+	evals1 := make([]frontend.Variable, 3)
+	if err := nimue.FillNextScalars(evals1); err != nil {
+		return fmt.Errorf("failed to read evals_1 from transcript: %w", err)
 	}
-	evals1Az := circuit.Evaluations[0]
-	evals1Bz := circuit.Evaluations[1]
-	evals1Cz := circuit.Evaluations[2]
-	// api.Println("evals1Az", evals1Az)
-	// api.Println("evals1Bz", evals1Bz)
-	// api.Println("evals1Cz", evals1Cz)
+	evals1Az := evals1[0]
+	evals1Bz := evals1[1]
+	evals1Cz := evals1[2]
+
+	// In dual mode, evals_2 follows evals_1 in the transcript (before public_eval).
+	var evals2Az, evals2Bz, evals2Cz frontend.Variable
+	if isDualMode {
+		evals2 := make([]frontend.Variable, 3)
+		if err := nimue.FillNextScalars(evals2); err != nil {
+			return fmt.Errorf("failed to read evals_2 from transcript: %w", err)
+		}
+		evals2Az = evals2[0]
+		evals2Bz = evals2[1]
+		evals2Cz = evals2[2]
+	}
 
 	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
 
@@ -137,7 +134,6 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			return fmt.Errorf("failed to read public_eval from transcript: %w", err)
 		}
 		publicEval = publicEvalSlice[0]
-		// api.Println("publicEval", publicEval)
 
 		// Verify public input binding (Rust: verify_public_input_binding).
 		// expected = 1 + x*pi[0] + x²*pi[1] + ...
@@ -149,6 +145,16 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			xPow = api.Mul(xPow, publicWeightsChallenge[0])
 		}
 		api.AssertIsEqual(publicEval, expectedPublicEval)
+	}
+
+	// Challenge binding: in dual mode, read challenge_eval from transcript.
+	var challengeEval frontend.Variable
+	if isDualMode {
+		ceSlice := make([]frontend.Variable, 1)
+		if err := nimue.FillNextScalars(ceSlice); err != nil {
+			return fmt.Errorf("failed to read challenge_eval from transcript: %w", err)
+		}
+		challengeEval = ceSlice[0]
 	}
 
 	var whirEvaluations []frontend.Variable
@@ -204,14 +210,13 @@ func (circuit *Circuit) Define(api frontend.API) error {
 
 	var azAtAlpha, bzAtAlpha, czAtAlpha frontend.Variable
 	if isDualMode {
-		if len(circuit.Evaluations2) < 3 {
-			return fmt.Errorf("circuit.Evaluations2 must have at least 3 elements, got %d", len(circuit.Evaluations2))
-		}
-		evals2Az := circuit.Evaluations2[0]
-		evals2Bz := circuit.Evaluations2[1]
-		evals2Cz := circuit.Evaluations2[2]
-
+		// Commitment 2 has 3 base weights (A,B,C) + 1 challenge weight if challenge_eval exists.
 		whirEvaluations2 := []frontend.Variable{evals2Az, evals2Bz, evals2Cz}
+		weightsLen2 := 3
+		if circuit.NumChallenges > 0 {
+			whirEvaluations2 = append(whirEvaluations2, challengeEval)
+			weightsLen2 = 4
+		}
 
 		blindedCommitmentNimue2 := ParsedCommitmentNimue{
 			Root:       blindedCommitments2[0].RootHash,
@@ -231,7 +236,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 			circuit.BlindedCommitmentWhirConfig,
 			circuit.BlindingCommitmentWhirConfig,
 			whirEvaluations2,
-			3, // weightsLen: 3 (A,B,C only, no public, no blinding)
+			weightsLen2,
 			numPolynomials,
 			&circuit.BlindedMerkleData2,
 			&circuit.BlindingMerkleData2,
@@ -240,6 +245,7 @@ func (circuit *Circuit) Define(api frontend.API) error {
 				Alpha:                  alpha,
 				PublicWeightsChallenge: publicWeightsChallenge[0],
 				HasPublicInputs:        false,
+				ChallengeOffsets:       circuit.ChallengeOffsets,
 				Mode:                   DualCommitment2,
 			},
 		)
@@ -261,6 +267,10 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	rhs := api.Mul(api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha), eqRA)
 	api.AssertIsEqual(fAtAlpha, rhs)
 
+	if remaining := nimue.RemainingTranscriptLen(); remaining != 0 {
+		return fmt.Errorf("transcript not fully consumed: %d bytes remaining", remaining)
+	}
+
 	return nil
 }
 
@@ -279,18 +289,30 @@ func flattenOODAnswers(answers [][]frontend.Variable) []frontend.Variable {
 //   - ProtocolID[0]: little-endian field element from cfg.ProtocolID bytes 0..31
 //   - ProtocolID[1]: little-endian field element from cfg.ProtocolID bytes 32..63
 //   - SessionID:     little-endian field element from cfg.SessionID bytes 0..31
+//
+// InstanceID is computed in-circuit from PublicInputs (see initializeComponents).
 func configToNimueInit(cfg Config) (circuit, assign NimueInit) {
 	var pid [64]byte
 	copy(pid[:], cfg.ProtocolID)
 	var sid [32]byte
 	copy(sid[:], cfg.SessionID)
 
+	// Compute instance = public_inputs.hash_bytes() for the assignment.
+	// The circuit recomputes this in-circuit (see initializeComponents), but
+	// gnark requires all witness fields to have concrete values.
+	piValues := make([]*big.Int, len(cfg.PublicInputs.Values))
+	for i, v := range cfg.PublicInputs.Values {
+		piValues[i] = v.(*big.Int)
+	}
+	instance := nativePublicInputsHashBytes(piValues)
+
 	assign = NimueInit{
 		ProtocolID: [2]frontend.Variable{
 			leBytesToNativeBigInt(pid[:32]),
 			leBytesToNativeBigInt(pid[32:]),
 		},
-		SessionID: leBytesToNativeBigInt(sid[:]),
+		SessionID:  leBytesToNativeBigInt(sid[:]),
+		InstanceID: leBytesToNativeBigInt(instance[:]),
 	}
 	return circuit, assign
 }
@@ -311,7 +333,6 @@ func verifyCircuit(
 	interner Interner,
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
-	evaluationsBigInt []*big.Int, // [az, bz, cz] from prover hints (commitment 1)
 	blindedMerkleData whir.WhirMerkleData,
 	blindingMerkleData whir.WhirMerkleData,
 	dualData *DualCommitmentData, // nil for single-commitment mode
@@ -335,15 +356,12 @@ func verifyCircuit(
 	}
 
 	// Circuit template: placeholder (zero-valued) fields for compilation.
-	evalsContainer := make([]frontend.Variable, 3)
 	blindedMerkleTemplate := allocateZeroWhirMerkleData(blindedMerkleData)
 	blindingMerkleTemplate := allocateZeroWhirMerkleData(blindingMerkleData)
 
 	// Dual-commitment templates
-	var evals2Container []frontend.Variable
 	var blindedMerkleTemplate2, blindingMerkleTemplate2 whir.WhirMerkleData
 	if dualData != nil {
-		evals2Container = make([]frontend.Variable, 3)
 		blindedMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindedMerkleData)
 		blindingMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindingMerkleData)
 	}
@@ -353,12 +371,11 @@ func verifyCircuit(
 		Transcript:                   contTranscript,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,
+		ChallengeOffsets:             cfg.ChallengeOffsets,
 		W1Size:                       cfg.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputsContainer,
-		Evaluations:                  evalsContainer,
-		Evaluations2:                 evals2Container,
 		BlindedMerkleData:            blindedMerkleTemplate,
 		BlindingMerkleData:           blindingMerkleTemplate,
 		BlindedMerkleData2:           blindedMerkleTemplate2,
@@ -437,19 +454,9 @@ func verifyCircuit(
 		}
 	}
 
-	// Build evaluation witness values from the native-parsed big.Ints.
-	evalsAssign := make([]frontend.Variable, 3)
-	for i := 0; i < 3 && i < len(evaluationsBigInt); i++ {
-		evalsAssign[i] = evaluationsBigInt[i]
-	}
 	// Build dual-commitment assignment data
-	var evals2Assign []frontend.Variable
 	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
 	if dualData != nil {
-		evals2Assign = make([]frontend.Variable, 3)
-		for i := 0; i < 3 && i < len(dualData.Evals2BigInt); i++ {
-			evals2Assign[i] = dualData.Evals2BigInt[i]
-		}
 		blindedMerkleAssign2 = dualData.BlindedMerkleData
 		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
@@ -459,12 +466,11 @@ func verifyCircuit(
 		Transcript:                   transcriptT,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,
+		ChallengeOffsets:             cfg.ChallengeOffsets,
 		W1Size:                       cfg.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputs,
-		Evaluations:                  evalsAssign,
-		Evaluations2:                 evals2Assign,
 		BlindedMerkleData:            blindedMerkleData,
 		BlindingMerkleData:           blindingMerkleData,
 		BlindedMerkleData2:           blindedMerkleAssign2,

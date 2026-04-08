@@ -173,10 +173,40 @@ func (s *NativeSponge) Squeeze(output []byte) {
 	s.Squeeze(output[chunkLen:])
 }
 
-// InitFromProtocolID initializes the sponge by absorbing the 64-byte protocol_id
-// and the 32-byte session_id as raw bytes. This matches spongefish's
-// DomainSeparator initialization which absorbs raw bytes via public_message.
-func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte) {
+// nativeCompress computes the Skyscraper compression function:
+// permute(l, r), then add back the initial l (Davies-Meyer feed-forward).
+// This matches skyscraper::reference::compress on the Rust side.
+func nativeCompress(l, r *big.Int) *big.Int {
+	t := new(big.Int).Set(l)
+	state := [2]*big.Int{new(big.Int).Set(l), new(big.Int).Set(r)}
+	nativePermuteV2(&state)
+	result := new(big.Int).Add(state[0], t)
+	result.Mod(result, bn254Modulus)
+	return result
+}
+
+// nativePublicInputsHashBytes computes the public inputs hash as 32 LE bytes,
+// matching PublicInputs::hash_bytes() on the Rust side.
+func nativePublicInputsHashBytes(publicInputs []*big.Int) [32]byte {
+	var hash *big.Int
+	switch len(publicInputs) {
+	case 0:
+		hash = big.NewInt(0)
+	case 1:
+		hash = nativeCompress(publicInputs[0], big.NewInt(0))
+	default:
+		hash = new(big.Int).Set(publicInputs[0])
+		for i := 1; i < len(publicInputs); i++ {
+			hash = nativeCompress(hash, publicInputs[i])
+		}
+	}
+	return nativeBigIntToLeBytes(hash)
+}
+
+// InitFromProtocolID initializes the sponge by absorbing the 64-byte protocol_id,
+// the 32-byte session_id, and the 32-byte instance as raw bytes. This matches
+// spongefish's DomainSeparator initialization which absorbs raw bytes via public_message.
+func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte, instance [32]byte) {
 	s.state = [64]byte{}
 	s.absorbPos = 0
 	s.squeezePos = spongeRate
@@ -189,7 +219,8 @@ func (s *NativeSponge) InitFromProtocolID(protocolID [64]byte, sessionID []byte)
 		copy(sessionBuf[:], sessionID[:32])
 	}
 	s.Absorb(sessionBuf[:])
-	// Instance is Empty (0 bytes), nothing to absorb.
+	// Absorb instance as raw bytes (32 bytes)
+	s.Absorb(instance[:])
 }
 
 // AbsorbFr absorbs a field element as 32 LE bytes.
@@ -245,9 +276,9 @@ type NativeNimue struct {
 	hints      *bytes.Reader
 }
 
-func NewNativeNimue(protocolID [64]byte, sessionID []byte, nargString []byte, hints []byte) *NativeNimue {
+func NewNativeNimue(protocolID [64]byte, sessionID []byte, instance [32]byte, nargString []byte, hints []byte) *NativeNimue {
 	sponge := newNativeSponge()
-	sponge.InitFromProtocolID(protocolID, sessionID)
+	sponge.InitFromProtocolID(protocolID, sessionID, instance)
 	return &NativeNimue{
 		sponge:     sponge,
 		nargString: nargString,

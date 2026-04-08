@@ -118,7 +118,14 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	var pid [64]byte
 	copy(pid[:], config.ProtocolID[:64])
 
-	nimue := NewNativeNimue(pid, config.SessionID, config.NargString, config.Hints)
+	// Compute instance = public_inputs.hash_bytes() to bind public inputs to the transcript.
+	piValues := make([]*big.Int, len(config.PublicInputs.Values))
+	for i, v := range config.PublicInputs.Values {
+		piValues[i] = v.(*big.Int)
+	}
+	instance := nativePublicInputsHashBytes(piValues)
+
+	nimue := NewNativeNimue(pid, config.SessionID, instance, config.NargString, config.Hints)
 	blindedCommitmentWhirConfig := NewWhirParams(config.BlindedCommitmentWhirConfig)
 	blindingCommitmentWhirConfig := NewWhirParams(config.BlindingCommitmentWhirConfig)
 
@@ -230,14 +237,11 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		Values: make([]frontend.Variable, len(config.PublicInputs.Values)),
 	}
 
-	evalsContainer := make([]frontend.Variable, 3)
 	blindedMerkleTemplate := allocateZeroWhirMerkleData(*zkWhirData1.BlindedMerkleData)
 	blindingMerkleTemplate := allocateZeroWhirMerkleData(*zkWhirData1.BlindingMerkleData)
 
-	var evals2Container []frontend.Variable
 	var blindedMerkleTemplate2, blindingMerkleTemplate2 whir.WhirMerkleData
 	if dualData != nil {
-		evals2Container = make([]frontend.Variable, 3)
 		blindedMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindedMerkleData)
 		blindingMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindingMerkleData)
 	}
@@ -247,12 +251,11 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		Transcript:                   contTranscript,
 		LogNumConstraints:            config.LogNumConstraints,
 		NumChallenges:                config.NumChallenges,
+		ChallengeOffsets:             config.ChallengeOffsets,
 		W1Size:                       config.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(config.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(config.BlindedCommitmentWhirConfig),
 		PublicInputs:                 publicInputsContainer,
-		Evaluations:                  evalsContainer,
-		Evaluations2:                 evals2Container,
 		BlindedMerkleData:            blindedMerkleTemplate,
 		BlindingMerkleData:           blindingMerkleTemplate,
 		BlindedMerkleData2:           blindedMerkleTemplate2,
@@ -262,19 +265,8 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		MatrixC:                      matrixC,
 	}
 
-	// Build evaluation assignment values
-	evalsAssign := make([]frontend.Variable, 3)
-	for i := 0; i < 3 && i < len(evals1BigInt); i++ {
-		evalsAssign[i] = evals1BigInt[i]
-	}
-
-	var evals2Assign []frontend.Variable
 	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
 	if dualData != nil {
-		evals2Assign = make([]frontend.Variable, 3)
-		for i := 0; i < 3 && i < len(dualData.Evals2BigInt); i++ {
-			evals2Assign[i] = dualData.Evals2BigInt[i]
-		}
 		blindedMerkleAssign2 = dualData.BlindedMerkleData
 		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
@@ -284,12 +276,11 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		Transcript:                   transcriptT,
 		LogNumConstraints:            config.LogNumConstraints,
 		NumChallenges:                config.NumChallenges,
+		ChallengeOffsets:             config.ChallengeOffsets,
 		W1Size:                       config.W1Size,
 		BlindingCommitmentWhirConfig: NewWhirParams(config.BlindingCommitmentWhirConfig),
 		BlindedCommitmentWhirConfig:  NewWhirParams(config.BlindedCommitmentWhirConfig),
 		PublicInputs:                 config.PublicInputs,
-		Evaluations:                  evalsAssign,
-		Evaluations2:                 evals2Assign,
 		BlindedMerkleData:            *zkWhirData1.BlindedMerkleData,
 		BlindingMerkleData:           *zkWhirData1.BlindingMerkleData,
 		BlindedMerkleData2:           blindedMerkleAssign2,

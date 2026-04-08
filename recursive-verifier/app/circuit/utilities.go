@@ -11,7 +11,12 @@ import (
 
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Nimue, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
-	nimue, err := gnarkNimue.NewSkyscraperNimue(api, sc, circuit.InitializationData, circuit.Transcript[:])
+
+	// Compute InstanceID in-circuit from public inputs, matching Rust's PublicInputs::hash_bytes().
+	initData := circuit.InitializationData
+	initData.InstanceID = publicInputsHash(sc, circuit.PublicInputs)
+
+	nimue, err := gnarkNimue.NewSkyscraperNimue(api, sc, initData, circuit.Transcript[:])
 	if err != nil {
 		return nil, nil, nil, err
 	}
