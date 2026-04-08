@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose, Engine as _};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct Binary {
     pub data: Vec<u8>,
 }
@@ -43,10 +43,6 @@ impl Binary {
 
     pub fn to_hex(&self) -> String {
         format!("0x{}", hex::encode(&self.data))
-    }
-
-    pub fn equals(&self, other: &Binary) -> bool {
-        self.data.eq(&other.data)
     }
 
     pub fn from_hex(hex_str: &str) -> Result<Self, hex::FromHexError> {
