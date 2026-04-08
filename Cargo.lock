@@ -7128,7 +7128,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/xrvdg/whir/?branch=xr%2Fomega#59a258b0c3a4299384b8c2550bd858c0f6520e6a"
+source = "git+https://github.com/WizardOfMenlo/whir/?rev=0aeaa7f337c743d9ddfcb9d909628d6491e3355c#0aeaa7f337c743d9ddfcb9d909628d6491e3355c"
 dependencies = [
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
