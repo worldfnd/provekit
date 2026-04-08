@@ -184,6 +184,45 @@ fn case_noir(path: &str, witness_file: &str) {
     test_noir_compiler(path, witness_file);
 }
 
+fn test_twist_ram(path: &str, witness_file: &str) {
+    let test_case_path = Path::new(path);
+    compile_workspace_once(test_case_path);
+
+    let nargo_toml = std::fs::read_to_string(test_case_path.join("Nargo.toml")).unwrap();
+    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).unwrap();
+    let circuit_path = test_case_path.join(format!("target/{}.json", nargo_toml.package.name));
+    let witness_path = test_case_path.join(witness_file);
+
+    let schema = NoirCompiler::from_file_with_methods(
+        &circuit_path,
+        provekit_common::HashConfig::default(),
+        provekit_r1cs_compiler::RamCheckingMethod::Twist,
+    )
+    .expect("Compiling with Twist");
+
+    let prover = Prover::from_noir_proof_scheme(schema.clone());
+    let mut verifier = Verifier::from_noir_proof_scheme(schema);
+
+    let proof = prover
+        .prove_with_toml(&witness_path)
+        .expect("Proving with Twist");
+    verifier.verify(&proof).expect("Verifying Twist proof");
+}
+
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/read-write-memory",
+    "Prover.toml";
+    "twist_read_write_memory"
+)]
+#[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/simplest-read-only-memory",
+    "Prover.toml";
+    "twist_simplest_rom"
+)]
+fn case_twist_ram(path: &str, witness_file: &str) {
+    test_twist_ram(path, witness_file);
+}
+
 /// Verify that the verifier rejects a proof whose public inputs have been
 /// tampered with.
 #[test]
