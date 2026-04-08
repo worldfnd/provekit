@@ -112,6 +112,12 @@ pub struct NoirToR1CSCompiler {
 
     /// The ACIR witness indices of the initial values of the memory blocks
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
+
+    /// Which RAM checking method to use (SPICE or Twist).
+    pub ram_checking_method: crate::memory::RamCheckingMethod,
+
+    /// Twist scheme info, populated when `ram_checking_method == Twist`.
+    pub twist_info: Option<provekit_common::twist::TwistSchemeInfo>,
 }
 
 /// Compile a Noir circuit to an R1CS relation.
@@ -140,6 +146,24 @@ pub fn noir_to_r1cs_with_breakdown(
     Ok((r1cs, map, builders, breakdown))
 }
 
+/// Compile a Noir circuit to R1CS with an explicit RAM checking method.
+pub fn noir_to_r1cs_with_methods(
+    circuit: &Circuit<NoirElement>,
+    ram_method: crate::memory::RamCheckingMethod,
+) -> Result<(
+    R1CS,
+    Vec<Option<NonZeroU32>>,
+    Vec<WitnessBuilder>,
+    Option<provekit_common::twist::TwistSchemeInfo>,
+)> {
+    let mut compiler = NoirToR1CSCompiler::new();
+    compiler.ram_checking_method = ram_method;
+    compiler.add_circuit_with_breakdown(circuit)?;
+    let twist_info = compiler.twist_info.clone();
+    let (r1cs, map, builders) = compiler.finalize();
+    Ok((r1cs, map, builders, twist_info))
+}
+
 impl NoirToR1CSCompiler {
     pub fn new() -> Self {
         let mut r1cs = R1CS::new();
@@ -159,6 +183,8 @@ impl NoirToR1CSCompiler {
             acir_to_r1cs_witness_map: BTreeMap::new(),
             product_cache: std::collections::HashMap::new(),
             initial_memories: BTreeMap::new(),
+            ram_checking_method: crate::memory::RamCheckingMethod::default(),
+            twist_info: None,
         }
     }
 
@@ -691,19 +717,29 @@ impl NoirToR1CSCompiler {
         breakdown.memory_rom_constraints = self.r1cs.num_constraints() - constraints_before_rom;
         breakdown.memory_rom_witnesses = self.num_witnesses() - witnesses_before_rom;
 
-        // Process RAM blocks second (read-write memory uses Spice offline memory
-        // checking)
+        // Process RAM blocks second (read-write memory checking)
         let constraints_before_ram = self.r1cs.num_constraints();
         let witnesses_before_ram = self.num_witnesses();
-        for (_, block) in memory_blocks.iter() {
-            if !block.is_read_only() {
-                // RAM checking returns witnesses that need range checks for timestamp
-                // validation
-                let (num_bits, witnesses_to_range_check) = add_ram_checking(self, block);
-                let range_check = range_checks.entry(num_bits).or_default();
-                witnesses_to_range_check
-                    .iter()
-                    .for_each(|value| range_check.push(*value));
+        let ram_blocks: Vec<&MemoryBlock> = memory_blocks
+            .values()
+            .filter(|b| !b.is_read_only())
+            .collect();
+        match self.ram_checking_method {
+            crate::memory::RamCheckingMethod::Spice => {
+                for block in &ram_blocks {
+                    let (num_bits, witnesses_to_range_check) = add_ram_checking(self, block);
+                    let range_check = range_checks.entry(num_bits).or_default();
+                    witnesses_to_range_check
+                        .iter()
+                        .for_each(|value| range_check.push(*value));
+                }
+            }
+            crate::memory::RamCheckingMethod::Twist => {
+                if !ram_blocks.is_empty() {
+                    self.twist_info = Some(
+                        crate::memory::ram_twist::add_ram_checking_twist(self, &ram_blocks),
+                    );
+                }
             }
         }
         breakdown.memory_ram_constraints = self.r1cs.num_constraints() - constraints_before_ram;

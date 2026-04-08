@@ -88,6 +88,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
+            twist: None,
         }
     }
 
@@ -177,6 +178,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             challenge_offsets,
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
+            twist: None,
         }
     }
 }
