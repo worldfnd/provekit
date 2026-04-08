@@ -99,7 +99,7 @@ func VerifyWhir(
 
 	totalFoldingRandomness = initialSumcheckFoldingRandomness
 
-	// prevRootHash := commitment.Root
+	prevRootHash := commitment.Root
 	for r := range params.ParamNRounds {
 		rootHash := make([]frontend.Variable, 1)
 		if err = nimue.FillNextScalars(rootHash); err != nil {
@@ -141,16 +141,16 @@ func VerifyWhir(
 
 		// Verify Merkle proofs: each round opens the previous commitment.
 		if merkleData != nil && r < len(merkleData.Rounds) {
-			// rd := merkleData.Rounds[r]
-			// for q := range stirIndexes {
-			// 	if q < len(rd.LeafIndexes) {
-			// 		api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
-			// 	}
-			// }
-			// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+			rd := merkleData.Rounds[r]
+			for q := range stirIndexes {
+				if q < len(rd.LeafIndexes) {
+					api.AssertIsEqual(stirIndexes[q], rd.LeafIndexes[q])
+				}
+			}
+			verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 		}
 
-		// prevRootHash = rootHash[0]
+		prevRootHash = rootHash[0]
 
 		// Compute domain evaluation points from indices
 		numBits := bits.Len(uint(domainSize - 1))
@@ -243,13 +243,13 @@ func VerifyWhir(
 	// Final round
 	finalRoundIdx := params.ParamNRounds
 	if merkleData != nil && finalRoundIdx < len(merkleData.Rounds) {
-		// rd := merkleData.Rounds[finalRoundIdx]
-		// for q := range finalIndexes {
-		// 	if q < len(rd.LeafIndexes) {
-		// 		api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
-		// 	}
-		// }
-		// verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+		rd := merkleData.Rounds[finalRoundIdx]
+		for q := range finalIndexes {
+			if q < len(rd.LeafIndexes) {
+				api.AssertIsEqual(finalIndexes[q], rd.LeafIndexes[q])
+			}
+		}
+		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
 	}
 
 	// Final sumcheck.
