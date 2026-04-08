@@ -201,6 +201,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
 
+            // Temporary fix! Drain SPARK .
+            drain_split_witness_sumcheck(&mut arthur, self.m)?;
+
             (
                 evals_1[0] + evals_2[0],
                 evals_1[1] + evals_2[1],
@@ -260,6 +263,32 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .check_eof()
             .map_err(|_| anyhow::anyhow!("Proof contains unparsed trailing bytes"))
     }
+}
+
+/// TEMPORARY FIX: Drain the split witness for now. To properly check, we
+fn drain_split_witness_sumcheck(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    m: usize,
+) -> Result<()> {
+    // beta
+    let _: FieldElement = arthur.verifier_message();
+
+    // run_two_sumcheck: m + 1 rounds, each with 9 prover messages and 1
+    // verifier message.
+    let num_rounds = m + 1;
+    for _ in 0..num_rounds {
+        for _ in 0..9 {
+            let _: FieldElement = arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("Failed to drain spark-prep prover message: {e}"))?;
+        }
+        let _: FieldElement = arthur.verifier_message();
+    }
+
+    // matrix_batching
+    let _: FieldElement = arthur.verifier_message();
+
+    Ok(())
 }
 
 #[instrument(skip_all)]

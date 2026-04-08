@@ -4,7 +4,7 @@ Reference for this implementation
 - SPARK: https://eprint.iacr.org/2019/550
 - Stronger security analysis of SPARK: https://people.cs.georgetown.edu/jthaler/Lasso-paper.pdf
 
-## Proposed protototype workflow
+## Proposed prototype workflow
 1. Serve step 
     - One time
       - Starts the server

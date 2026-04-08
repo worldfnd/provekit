@@ -37,7 +37,9 @@ impl Command for Args {
         let mut verifier = verifier?;
         let proof = proof?;
 
-        // Verify the proof
+        // Verify the proof. Note that the WHIR verifier directly computes deferred
+        // values internally, and doesn't return folding randomness or deferred
+        // values. To correctly incorporate SPARK verifier, we need these values
         verifier
             .verify(&proof)
             .context("While verifying Noir proof")?;
