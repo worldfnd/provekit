@@ -121,7 +121,7 @@ impl PassportReader {
         Ok((modulus, exponent, barrett, signature))
     }
 
-    /// Extract CSCA public key, exponent, Barrett mu, and signature
+    /// Extract CSCA public key, exponent, Barrett mu, and signature from the registry
     fn extract_csca(
         &self,
         idx: usize,
@@ -141,23 +141,10 @@ impl PassportReader {
             .map_err(|e| PassportError::Base64DecodingFailed(e.to_string()))?;
         let pubkey = RsaPublicKey::from_public_key_der(&der)
             .map_err(|_| PassportError::CscaPublicKeyInvalid)?;
-
-        let modulus =
-            to_fixed_array::<{ SIG_BYTES * 2 }>(&pubkey.n().to_bytes_be(), "CSCA modulus")?;
-        let exponent = to_u32(pubkey.e().to_bytes_be())?;
-        let barrett = to_fixed_array::<{ SIG_BYTES * 2 + 1 }>(
-            &compute_barrett_reduction_parameter(&BigUint::from_bytes_be(&modulus)).to_bytes_be(),
-            "CSCA Barrett",
-        )?;
-        let signature = to_fixed_array::<{ SIG_BYTES * 2 }>(
-            self.sod.certificate.signature.as_bytes(),
-            "CSCA signature",
-        )?;
-
-        Ok((modulus, exponent, barrett, signature))
+        self.extract_csca_from_pubkey(&pubkey)
     }
 
-    /// Extract CSCA data from an in-memory public key (used for mock data)
+    /// Extract CSCA modulus, exponent, Barrett mu, and cert signature from a public key
     fn extract_csca_from_pubkey(
         &self,
         pubkey: &RsaPublicKey,
@@ -373,7 +360,149 @@ impl PassportReader {
     }
 }
 
+/// Per-stage TOML inputs for the passport proof pipeline.
+pub struct StageInputs {
+    pub t_add_dsc: String,
+    pub t_add_id_data: String,
+    pub t_add_integrity_commit: String,
+    pub t_attest: String,
+}
+
 impl CircuitInputs {
+    /// Country code extracted from DG1 (3-letter ISO code).
+    pub fn country(&self) -> &str {
+        std::str::from_utf8(&self.dg1[7..10]).unwrap_or("UNK")
+    }
+
+    /// Find the offset of the RSA exponent value within the TBS certificate.
+    pub fn exponent_offset(&self) -> Result<usize, PassportError> {
+        let pvc = &self.passport_validity_contents;
+        let exp_be = pvc.dsc_rsa_exponent.to_be_bytes();
+        let start = exp_be.iter().position(|&b| b != 0).unwrap_or(3);
+        let exp_minimal = &exp_be[start..];
+        for i in 0..pvc.dsc_cert_len.saturating_sub(exp_minimal.len()) {
+            if &pvc.dsc_cert[i..i + exp_minimal.len()] == exp_minimal {
+                return Ok(i);
+            }
+        }
+        Err(PassportError::DataNotFound(
+            "RSA exponent in TBS certificate".to_string(),
+        ))
+    }
+
+    /// Generate per-stage TOML input strings for all four circuits.
+    pub fn to_stage_inputs(&self) -> Result<StageInputs, PassportError> {
+        Ok(StageInputs {
+            t_add_dsc: self.build_stage1_toml(),
+            t_add_id_data: self.build_stage2_toml()?,
+            t_add_integrity_commit: self.build_stage3_toml(),
+            t_attest: self.build_stage4_toml(),
+        })
+    }
+
+    /// Save all stage TOML files to the given directory.
+    pub fn save_stage_inputs<P: AsRef<Path>>(&self, output_dir: P) -> Result<(), PassportError> {
+        let dir = output_dir.as_ref();
+        std::fs::create_dir_all(dir)
+            .map_err(|e| PassportError::DataNotFound(format!("output dir: {}", e)))?;
+        let stages = self.to_stage_inputs()?;
+        std::fs::write(dir.join("t_add_dsc_1850.toml"), &stages.t_add_dsc)
+            .map_err(|e| PassportError::DataNotFound(format!("write failed: {}", e)))?;
+        std::fs::write(dir.join("t_add_id_data_1850.toml"), &stages.t_add_id_data)
+            .map_err(|e| PassportError::DataNotFound(format!("write failed: {}", e)))?;
+        std::fs::write(dir.join("t_add_integrity_commit.toml"), &stages.t_add_integrity_commit)
+            .map_err(|e| PassportError::DataNotFound(format!("write failed: {}", e)))?;
+        std::fs::write(dir.join("t_attest.toml"), &stages.t_attest)
+            .map_err(|e| PassportError::DataNotFound(format!("write failed: {}", e)))?;
+        Ok(())
+    }
+
+    /// Stage 1: t_add_dsc — verifies CSCA signed DSC certificate.
+    pub fn build_stage1_toml(&self) -> String {
+        let pvc = &self.passport_validity_contents;
+        let country = self.country();
+        let mut out = String::new();
+        let _ = writeln!(out, "csc_pubkey = {:?}", pvc.csc_pubkey.as_slice());
+        let _ = writeln!(out, "csc_key_ne_hash = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: csc_key_ne_hash is a Poseidon2 hash. Compute externally or use passport-prover.");
+        let _ = writeln!(out, "csc_pubkey_redc_param = {:?}", pvc.csc_barrett_mu.as_slice());
+        let _ = writeln!(out, "salt = \"0x1\"");
+        let _ = writeln!(out, "country = \"{}\"", country);
+        let _ = writeln!(out, "tbs_certificate = {:?}", pvc.dsc_cert.as_slice());
+        let _ = writeln!(out, "dsc_signature = {:?}", pvc.dsc_cert_signature.as_slice());
+        let _ = writeln!(out, "exponent = {}", pvc.csc_rsa_exponent);
+        let _ = writeln!(out, "tbs_certificate_len = {}", pvc.dsc_cert_len);
+        out
+    }
+
+    /// Stage 2: t_add_id_data — verifies DSC signed the passport data.
+    pub fn build_stage2_toml(&self) -> Result<String, PassportError> {
+        let pvc = &self.passport_validity_contents;
+        let exp_offset = self.exponent_offset()?;
+        let mut out = String::new();
+        let _ = writeln!(out, "comm_in = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_dsc. Run that circuit first.");
+        let _ = writeln!(out, "salt_in = \"0x1\"");
+        let _ = writeln!(out, "salt_out = \"0x2\"");
+        let _ = writeln!(out, "dg1 = {:?}", self.dg1.as_slice());
+        let _ = writeln!(out, "dsc_pubkey = {:?}", pvc.dsc_pubkey.as_slice());
+        let _ = writeln!(out, "dsc_pubkey_redc_param = {:?}", pvc.dsc_barrett_mu.as_slice());
+        let _ = writeln!(out, "dsc_pubkey_offset_in_dsc_cert = {}", pvc.dsc_pubkey_offset_in_dsc_cert);
+        let _ = writeln!(out, "exponent = {}", pvc.dsc_rsa_exponent);
+        let _ = writeln!(out, "exponent_offset_in_dsc_cert = {}", exp_offset);
+        let _ = writeln!(out, "sod_signature = {:?}", pvc.dsc_signature.as_slice());
+        let _ = writeln!(out, "tbs_certificate = {:?}", pvc.dsc_cert.as_slice());
+        let _ = writeln!(out, "signed_attributes = {:?}", pvc.signed_attributes.as_slice());
+        let _ = writeln!(out, "e_content = {:?}", pvc.econtent.as_slice());
+        Ok(out)
+    }
+
+    /// Stage 3: t_add_integrity_commit — verifies hash chain and computes Merkle leaf.
+    pub fn build_stage3_toml(&self) -> String {
+        let pvc = &self.passport_validity_contents;
+        let mut out = String::new();
+        let _ = writeln!(out, "comm_in = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_id_data.");
+        let _ = writeln!(out, "salt_in = \"0x2\"");
+        let _ = writeln!(out, "dg1 = {:?}", self.dg1.as_slice());
+        let _ = writeln!(out, "dg1_padded_length = {}", self.dg1_padded_length);
+        let _ = writeln!(out, "dg1_hash_offset = {}", pvc.dg1_hash_offset);
+        let _ = writeln!(out, "signed_attributes = {:?}", pvc.signed_attributes.as_slice());
+        let _ = writeln!(out, "signed_attributes_size = {}", pvc.signed_attributes_size);
+        let _ = writeln!(out, "e_content = {:?}", pvc.econtent.as_slice());
+        let _ = writeln!(out, "e_content_len = {}", pvc.econtent_len);
+        let _ = writeln!(out, "private_nullifier = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: private_nullifier = Poseidon2(packed_dg1, packed_econtent, packed_sod_sig). Compute externally.");
+        let _ = writeln!(out, "r_dg1 = \"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\"");
+        out
+    }
+
+    /// Stage 4: t_attest — age check with Merkle inclusion proof.
+    pub fn build_stage4_toml(&self) -> String {
+        let mut out = String::new();
+        let _ = writeln!(out, "root = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: root is the Merkle tree root from the sequencer.");
+        let _ = writeln!(out, "current_date = \"{}\"", self.current_date);
+        let _ = writeln!(out, "service_scope = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "service_subscope = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "dg1 = {:?}", self.dg1.as_slice());
+        let _ = writeln!(out, "r_dg1 = \"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\"");
+        let _ = writeln!(out, "sod_hash = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        let _ = writeln!(out, "# NOTE: sod_hash = Poseidon2(packed_econtent). Computed by t_add_integrity_commit.");
+        let _ = writeln!(out, "leaf_index = \"0\"");
+        let mut merkle_path = String::from("[\n");
+        for _ in 0..24 {
+            merkle_path.push_str("    \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n");
+        }
+        merkle_path.push(']');
+        let _ = writeln!(out, "merkle_path = {}", merkle_path);
+        let _ = writeln!(out, "min_age_required = \"{}\"", self.min_age_required);
+        let _ = writeln!(out, "max_age_required = \"{}\"", self.max_age_required);
+        let _ = writeln!(out, "nullifier_secret = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
+        out
+    }
+
+    /// Flat TOML dump of all circuit inputs (for reference/debugging).
     pub fn to_toml_string(&self) -> String {
         let mut out = String::new();
         let _ = writeln!(out, "dg1 = {:?}", self.dg1);
@@ -385,11 +514,7 @@ impl CircuitInputs {
 
         let pvc = &self.passport_validity_contents;
         let _ = writeln!(out, "signed_attributes = {:?}", pvc.signed_attributes);
-        let _ = writeln!(
-            out,
-            "signed_attributes_size = {}",
-            pvc.signed_attributes_size
-        );
+        let _ = writeln!(out, "signed_attributes_size = {}", pvc.signed_attributes_size);
         let _ = writeln!(out, "econtent = {:?}", pvc.econtent);
         let _ = writeln!(out, "econtent_len = {}", pvc.econtent_len);
         let _ = writeln!(out, "dsc_signature = {:?}", pvc.dsc_signature);
@@ -402,11 +527,7 @@ impl CircuitInputs {
         let _ = writeln!(out, "csc_rsa_exponent = {}", pvc.csc_rsa_exponent);
         let _ = writeln!(out, "dg1_hash_offset = {}", pvc.dg1_hash_offset);
         let _ = writeln!(out, "econtent_hash_offset = {}", pvc.econtent_hash_offset);
-        let _ = writeln!(
-            out,
-            "dsc_pubkey_offset_in_dsc_cert = {}",
-            pvc.dsc_pubkey_offset_in_dsc_cert
-        );
+        let _ = writeln!(out, "dsc_pubkey_offset_in_dsc_cert = {}", pvc.dsc_pubkey_offset_in_dsc_cert);
         let _ = writeln!(out, "dsc_cert = {:?}", pvc.dsc_cert);
         let _ = writeln!(out, "dsc_cert_len = {}", pvc.dsc_cert_len);
         out
@@ -415,4 +536,24 @@ impl CircuitInputs {
     pub fn save_to_toml_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         std::fs::write(path, self.to_toml_string())
     }
+}
+
+/// Top-level function: parse raw DG1 + SOD bytes, validate, and produce all stage inputs.
+pub fn generate_all_inputs(
+    dg1_bytes: &[u8],
+    sod_bytes: &[u8],
+    current_date: u64,
+    min_age: u8,
+    max_age: u8,
+) -> Result<(CircuitInputs, usize), PassportError> {
+    let mut sod_binary = Binary::from_slice(sod_bytes);
+    let sod = SOD::from_der(&mut sod_binary)?;
+
+    let dg1 = Binary::from_slice(dg1_bytes);
+    let reader = PassportReader::new(dg1, sod, false, None);
+
+    let csca_index = reader.validate()?;
+    let inputs = reader.to_circuit_inputs(current_date, min_age, max_age, csca_index)?;
+
+    Ok((inputs, csca_index))
 }

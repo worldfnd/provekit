@@ -34,8 +34,11 @@ pub fn oid_to_string(oid: &rasn::types::ObjectIdentifier) -> String {
         .join(".")
 }
 
+/// Strip a 4-byte SOD length prefix (tag 0x77, long-form length 0x82)
+/// if present. Some ePassport readers prepend this wrapper around the
+/// DER-encoded SOD payload.
 pub fn strip_length_prefix(binary: &Binary) -> Binary {
-    if binary.slice(0, 2).equals(&Binary::new(vec![119, 130])) {
+    if binary.len() >= 4 && binary.data[0] == 0x77 && binary.data[1] == 0x82 {
         binary.slice(4, binary.len())
     } else {
         binary.clone()
@@ -60,17 +63,15 @@ pub fn fit<const N: usize>(data: &[u8]) -> Result<[u8; N], PassportError> {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct CscaKey {
-    #[serde(rename = "filename")]
-    pub _filename:   String,
-    pub public_key:  String,
-    // pub subject:    String,
+    pub filename:   String,
+    pub public_key: String,
     #[serde(rename = "notBefore")]
-    pub _not_before: String,
+    pub not_before: String,
     #[serde(rename = "notAfter")]
-    pub _not_after:  String,
-    #[serde(rename = "serial")]
-    pub _serial:     String,
+    pub not_after:  String,
+    pub serial:     String,
 }
 
 pub const ASN1_OCTET_STRING_TAG: u8 = 0x04;
