@@ -1,6 +1,6 @@
 use divan;
 /// Benchmarks for NTTEngine with divan
-use ntt::NTTEngine;
+use ntt::{NTTEngine, Pow2};
 
 fn main() {
     // Initialize Rayon thread pool
@@ -14,5 +14,5 @@ const ORDER: usize = 1 << 24;
 /// Benchmark NTTEngine creation with order 1<<24
 #[divan::bench]
 fn create_engine() {
-    let _engine = divan::black_box(NTTEngine::with_order(ORDER));
+    let _engine = divan::black_box(NTTEngine::with_order(Pow2::new(ORDER).unwrap()));
 }
