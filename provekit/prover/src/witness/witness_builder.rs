@@ -955,6 +955,7 @@ impl WitnessBuilderSolver for WitnessBuilder {
                     "SpreadTableQuotient should not be called - handled by batch inversion"
                 )
             }
+            WitnessBuilder::Placeholder { .. } => {}
         }
         Ok(())
     }

@@ -31,6 +31,7 @@ pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
 pub(crate) mod r1cs;
+pub(crate) mod twist;
 mod whir_r1cs;
 mod witness;
 
@@ -152,6 +153,11 @@ impl Prove for NoirProver {
                 &mut merlin,
             )
             .context("While solving w1 witnesses")?;
+        }
+
+        // Fill Twist polynomial witnesses (after w1 solve, before commit).
+        if let Some(twist_info) = &self.whir_for_witness.twist {
+            crate::twist::fill_twist_witnesses(&mut witness, twist_info);
         }
 
         // Compress w2 layers to free memory during w1 commit (only when
