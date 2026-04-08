@@ -46,7 +46,7 @@ impl ReedSolomon<Fr> for RSFr {
         num_messages = messages.len(),
         message_len = messages.first().map(|c| c.len()),
         codeword_length = codeword_length,
-        mask_len = masks.len() / messages.len()
+        mask_len = masks.len().checked_div(messages.len())
 
     ))]
     fn interleaved_encode(
