@@ -1,6 +1,6 @@
 use {
     crate::{
-        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
+        memory::RamCheckingMethod, noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
         witness_generator::NoirWitnessGeneratorBuilder,
     },
     anyhow::{ensure, Context as _, Result},
@@ -73,7 +73,7 @@ impl NoirCompiler {
             main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
-        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets, _remapper) =
             WitnessBuilder::split_and_prepare_layers(
                 &witness_builders,
                 r1cs,
@@ -101,6 +101,108 @@ impl NoirCompiler {
             has_public_inputs,
             hash_config.engine_id(),
         );
+
+        Ok(NoirProofScheme::Noir(NoirSchemeData {
+            program: program.bytecode,
+            r1cs: remapped_r1cs,
+            split_witness_builders,
+            witness_generator,
+            whir_for_witness,
+            hash_config,
+        }))
+    }
+
+    /// Compile a Noir program with an explicit RAM checking method.
+    #[instrument(fields(
+        path = %path.as_ref().display(),
+        hash_config = ?hash_config,
+        ram_method = ?ram_method,
+        size = path.as_ref().metadata().map(|m| m.len()).ok()
+    ))]
+    pub fn from_file_with_methods(
+        path: impl AsRef<Path> + std::fmt::Debug,
+        hash_config: provekit_common::HashConfig,
+        ram_method: RamCheckingMethod,
+    ) -> Result<NoirProofScheme> {
+        let file = File::open(path).context("while opening Noir program")?;
+        let program = serde_json::from_reader(file).context("while reading Noir program")?;
+        Self::from_program_with_methods(program, hash_config, ram_method)
+    }
+
+    #[instrument(skip_all)]
+    pub fn from_program_with_methods(
+        program: ProgramArtifact,
+        hash_config: provekit_common::HashConfig,
+        ram_method: RamCheckingMethod,
+    ) -> Result<NoirProofScheme> {
+        info!("Program noir version: {}", program.noir_version);
+        info!("Program entry point: fn main{};", PrintAbi(&program.abi));
+        ensure!(
+            program.bytecode.functions.len() == 1,
+            "Program must have one entry point."
+        );
+
+        let main = &program.bytecode.functions[0];
+        info!(
+            "ACIR: {} witnesses, {} opcodes.",
+            main.current_witness_index,
+            main.opcodes.len()
+        );
+
+        let (mut r1cs, witness_map, witness_builders, twist_info) =
+            crate::noir_to_r1cs::noir_to_r1cs_with_methods(main, ram_method)?;
+        info!(
+            "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
+            r1cs.num_constraints(),
+            r1cs.num_witnesses(),
+            r1cs.a.num_entries(),
+            r1cs.b.num_entries(),
+            r1cs.c.num_entries()
+        );
+
+        let opt_stats = provekit_common::optimize::optimize_r1cs(&mut r1cs);
+        info!(
+            "After GE optimization: {} constraints ({} eliminated, {:.1}% constraint reduction)",
+            opt_stats.constraints_after,
+            opt_stats.eliminated,
+            opt_stats.constraint_reduction_percent()
+        );
+
+        let acir_public_inputs_indices_set: HashSet<u32> =
+            main.public_inputs().indices().iter().cloned().collect();
+
+        let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets, remapper) =
+            WitnessBuilder::split_and_prepare_layers(
+                &witness_builders,
+                r1cs,
+                witness_map,
+                acir_public_inputs_indices_set,
+            )?;
+        let num_challenges = challenge_offsets.len();
+        info!(
+            "Witness split: w1 size = {}, w2 size = {}",
+            split_witness_builders.w1_size,
+            remapped_r1cs.num_witnesses() - split_witness_builders.w1_size
+        );
+
+        let witness_generator = NoirWitnessGenerator::new(
+            &program,
+            remapped_witness_map,
+            remapped_r1cs.num_witnesses(),
+        );
+
+        let mut whir_for_witness = WhirR1CSScheme::new_for_r1cs(
+            &remapped_r1cs,
+            split_witness_builders.w1_size,
+            num_challenges,
+            challenge_offsets,
+            has_public_inputs,
+            hash_config.engine_id(),
+        );
+
+        whir_for_witness.twist =
+            twist_info.map(|ti| remapper.remap_twist_scheme_info(&ti));
 
         Ok(NoirProofScheme::Noir(NoirSchemeData {
             program: program.bytecode,
