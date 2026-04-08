@@ -68,18 +68,18 @@ jobs:
             *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
           esac
 
-          if ! [[ "${iterations:-30}" =~ ^[0-9]+$ ]]; then
-            echo "::warning::Invalid iterations '${iterations}', defaulting to '30'"
-            iterations="30"
+          if ! [[ "${iterations:-2}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid iterations '${iterations}', defaulting to '2'"
+            iterations="2"
           else
-            iterations="${iterations:-30}"
+            iterations="${iterations:-2}"
           fi
 
-          if ! [[ "${warmup:-5}" =~ ^[0-9]+$ ]]; then
-            echo "::warning::Invalid warmup '${warmup}', defaulting to '5'"
-            warmup="5"
+          if ! [[ "${warmup:-1}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid warmup '${warmup}', defaulting to '1'"
+            warmup="1"
           else
-            warmup="${warmup:-5}"
+            warmup="${warmup:-1}"
           fi
 
           echo "platform=${platform}" >> "$GITHUB_OUTPUT"
@@ -105,8 +105,8 @@ jobs:
     secrets: inherit
     with:
       crate_path: ./bench-mobile
-      functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
-      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: ${{ needs.resolve.outputs.platform }}
       iterations: ${{ needs.resolve.outputs.iterations }}
