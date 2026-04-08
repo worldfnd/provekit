@@ -47,6 +47,9 @@ pub struct WhirR1CSScheme {
     pub has_public_inputs: bool,
     pub whir_witness:      WhirZkConfig,
     pub r1cs_hash:         R1csHash,
+    /// Twist sumcheck-native RAM checking metadata (None if using SPICE).
+    #[serde(default)]
+    pub twist:             Option<crate::twist::TwistSchemeInfo>,
 }
 
 impl WhirR1CSScheme {
