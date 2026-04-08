@@ -87,6 +87,16 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
 
+        // Run Twist sumcheck verification if applicable
+        let twist_result = if let Some(twist_info) = &self.twist {
+            Some(
+                crate::twist::run_twist_sumcheck_verifier(&mut arthur, twist_info)
+                    .context("while verifying Twist sumcheck")?,
+            )
+        } else {
+            None
+        };
+
         let public_inputs_hash_buf: FieldElement = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
@@ -163,6 +173,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             } else {
                 evals_1.to_vec()
             };
+
+            let (twist_covectors, twist_evals) = build_twist_covectors(&twist_result, self);
+            evaluations_1.extend_from_slice(&twist_evals);
+
             evaluations_1.push(blinding_eval);
             let mut evaluations_2 = evals_2.to_vec();
 
@@ -184,6 +198,9 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            for tc in &twist_covectors {
+                weight_refs_1.push(tc as &dyn LinearForm<FieldElement>);
+            }
             weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
@@ -231,12 +248,19 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             } else {
                 evals.to_vec()
             };
+
+            let (twist_covectors, twist_evals) = build_twist_covectors(&twist_result, self);
+            evaluations.extend_from_slice(&twist_evals);
+
             evaluations.push(blinding_eval);
 
             let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
                 .iter()
                 .map(|w| w as &dyn LinearForm<FieldElement>)
                 .collect();
+            for tc in &twist_covectors {
+                weight_refs.push(tc as &dyn LinearForm<FieldElement>);
+            }
             weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
@@ -341,6 +365,30 @@ fn verify_challenge_binding(
 }
 
 /// Verify that the prover's claimed public evaluation matches the known public
+/// Build Twist OffsetCovectors for the 6 polynomial evaluations.
+fn build_twist_covectors(
+    twist_result: &Option<crate::twist::TwistVerifyResult>,
+    scheme: &WhirR1CSScheme,
+) -> (Vec<OffsetCovector>, Vec<FieldElement>) {
+    let mut covectors = Vec::new();
+    let mut evals = Vec::new();
+    if let (Some(twist_res), Some(twist_info)) = (twist_result, &scheme.twist) {
+        let domain_size = 1usize << scheme.m;
+        let tau = &twist_res.tau;
+        for i in 0..6 {
+            let start = twist_info.poly_start(i);
+            let tsp = twist_info.trace_size_padded;
+            let eq_weights =
+                provekit_common::utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq(
+                    tau, tsp,
+                );
+            covectors.push(OffsetCovector::new(eq_weights, start, domain_size));
+            evals.push(twist_res.evals[i]);
+        }
+    }
+    (covectors, evals)
+}
+
 /// inputs. The weight covers positions `[0, 1, ..., N]` where position 0 is the
 /// R1CS constant `1` and positions `1..=N` are the public inputs.
 fn verify_public_input_binding(

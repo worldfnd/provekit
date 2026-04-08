@@ -1,3 +1,4 @@
+mod twist;
 mod whir_r1cs;
 
 use {

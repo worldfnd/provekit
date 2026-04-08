@@ -255,6 +255,16 @@ fn prove_from_alphas(
     public_inputs: &PublicInputs,
 ) -> Result<WhirR1CSProof> {
     let is_single = commitments.len() == 1;
+
+    // Run Twist sumcheck if applicable (after R1CS sumcheck, before WHIR prove)
+    let twist_result = scheme.twist.as_ref().map(|twist_info| {
+        crate::twist::run_twist_sumcheck_prover(
+            &mut merlin,
+            &commitments[0].polynomial,
+            twist_info,
+        )
+    });
+
     let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
 
     let domain_size = 1usize << scheme.m;
@@ -282,14 +292,16 @@ fn prove_from_alphas(
         }
 
         let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
-        evaluations.push(blinding_eval);
-
-        let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
         let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
             .into_iter()
             .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
             .collect();
+
+        append_twist_weights(&twist_result, scheme, &mut boxed_weights, &mut evaluations);
+
+        evaluations.push(blinding_eval);
+        let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
         boxed_weights.push(Box::new(blinding_covector));
 
         let _ = scheme.whir_witness.prove(
@@ -364,15 +376,17 @@ fn prove_from_alphas(
                 evaluations.push(pe);
             }
             evaluations.extend_from_slice(&evals_1);
-            evaluations.push(blinding_eval);
-
-            let blinding_covector =
-                OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
             let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
                 .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
+
+            append_twist_weights(&twist_result, scheme, &mut boxed_weights, &mut evaluations);
+
+            evaluations.push(blinding_eval);
+            let blinding_covector =
+                OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
             boxed_weights.push(Box::new(blinding_covector));
 
             let _ = scheme.whir_witness.prove(
@@ -660,6 +674,31 @@ fn compute_public_weight_evaluation(
     let eval = dot(public_weights.vector(), &polynomial[..n]);
     weights.insert(0, public_weights);
     eval
+}
+
+/// Build Twist OffsetCovectors for the 6 polynomial evaluations and append
+/// them to the weight/evaluation vectors.
+fn append_twist_weights(
+    twist_result: &Option<crate::twist::TwistSumcheckResult>,
+    scheme: &WhirR1CSScheme,
+    boxed_weights: &mut Vec<Box<dyn LinearForm<FieldElement>>>,
+    evaluations: &mut Vec<FieldElement>,
+) {
+    if let (Some(twist_res), Some(twist_info)) = (twist_result, &scheme.twist) {
+        let domain_size = 1usize << scheme.m;
+        let tau = &twist_res.tau;
+        for i in 0..6 {
+            let start = twist_info.poly_start(i);
+            let tsp = twist_info.trace_size_padded;
+            let eq_weights =
+                provekit_common::utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq(
+                    tau, tsp,
+                );
+            let covector = OffsetCovector::new(eq_weights, start, domain_size);
+            evaluations.push(twist_res.evals[i]);
+            boxed_weights.push(Box::new(covector));
+        }
+    }
 }
 
 fn get_public_weights(
