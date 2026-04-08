@@ -1,4 +1,4 @@
-// Verify CSCA signed DSC certificate (1300-byte TBS)
+// Verify CSCA signed DSC certificate (1850-byte TBS)
 use commitment::hash_salt_country_tbs;
 use sig_check_rsa::{compute_key_ne_hash, verify_signature};
 use utils::check_zero_padding;
@@ -11,15 +11,15 @@ fn main(
     csc_pubkey_redc_param: [u8; 513],
     salt: Field,
     country: Alpha3CountryCode,
-    tbs_certificate: [u8; 1400],
+    tbs_certificate: [u8; 1850],
     dsc_signature: [u8; 512],
     exponent: u32,
     tbs_certificate_len: u32,
 ) -> pub Field {
     // Validate tbs_certificate_len bounds
     assert(
-        tbs_certificate_len <= 1400,
-        "tbs_certificate_len must not exceed 1400",
+        tbs_certificate_len <= 1850,
+        "tbs_certificate_len must not exceed 1850",
     );
 
     // Validate prover-supplied tbs_certificate_len against ASN.1 DER header
@@ -40,7 +40,7 @@ fn main(
     );
 
     assert(
-        verify_signature::<512, 0, 1400, 32>(
+        verify_signature::<512, 0, 1850, 32>(
             csc_pubkey,
             dsc_signature,
             csc_pubkey_redc_param,

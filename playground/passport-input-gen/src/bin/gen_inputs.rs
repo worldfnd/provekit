@@ -85,7 +85,7 @@ fn main() {
     let exp_offset = find_exponent_offset(&pvc.dsc_cert, pvc.dsc_cert_len, &exp_bytes);
     println!("Exponent offset in TBS cert: {}", exp_offset);
 
-    // === t_add_dsc_1300.toml ===
+    // === t_add_dsc_1850.toml ===
     {
         let mut out = String::new();
         let _ = writeln!(out, "csc_pubkey = {:?}", pvc.csc_pubkey.as_slice());
@@ -100,16 +100,16 @@ fn main() {
         let _ = writeln!(out, "exponent = {}", pvc.csc_rsa_exponent);
         let _ = writeln!(out, "tbs_certificate_len = {}", pvc.dsc_cert_len);
 
-        let path = Path::new(output_dir).join("t_add_dsc_1300.toml");
+        let path = Path::new(output_dir).join("t_add_dsc_1850.toml");
         fs::write(&path, &out).unwrap();
         println!("Wrote {}", path.display());
     }
 
-    // === t_add_id_data_1300.toml ===
+    // === t_add_id_data_1850.toml ===
     {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
-        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_dsc_1300. Run that circuit first to get this value.");
+        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_dsc_1850. Run that circuit first to get this value.");
         let _ = writeln!(out, "salt_in = \"0x1\"");
         let _ = writeln!(out, "salt_out = \"0x2\"");
         let _ = writeln!(out, "dg1 = {:?}", inputs.dg1.as_slice());
@@ -123,7 +123,7 @@ fn main() {
         let _ = writeln!(out, "signed_attributes = {:?}", pvc.signed_attributes.as_slice());
         let _ = writeln!(out, "e_content = {:?}", pvc.econtent.as_slice());
 
-        let path = Path::new(output_dir).join("t_add_id_data_1300.toml");
+        let path = Path::new(output_dir).join("t_add_id_data_1850.toml");
         fs::write(&path, &out).unwrap();
         println!("Wrote {}", path.display());
     }
@@ -132,7 +132,7 @@ fn main() {
     {
         let mut out = String::new();
         let _ = writeln!(out, "comm_in = \"0x0000000000000000000000000000000000000000000000000000000000000000\"");
-        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_id_data_1300.");
+        let _ = writeln!(out, "# NOTE: comm_in is the output of t_add_id_data_1850.");
         let _ = writeln!(out, "salt_in = \"0x2\"");
         let _ = writeln!(out, "dg1 = {:?}", inputs.dg1.as_slice());
         let _ = writeln!(out, "dg1_padded_length = {}", inputs.dg1_padded_length);
