@@ -10,10 +10,10 @@ import (
 // Returns [1] for count <= 1 (no entropy sourced), or [1, x, x^2, ..., x^{count-1}]
 // for count > 1 where x is squeezed from the transcript.
 func geometricChallenge(api frontend.API, nimue gnarkNimue.Nimue, count int) ([]frontend.Variable, error) {
-	switch {
-	case count == 0:
+	switch count {
+	case 0:
 		return nil, nil
-	case count == 1:
+	case 1:
 		return []frontend.Variable{frontend.Variable(1)}, nil
 	default:
 		x := make([]frontend.Variable, 1)

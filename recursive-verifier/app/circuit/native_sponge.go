@@ -455,9 +455,10 @@ func consumeMerkleHints(nimue *NativeNimue, indices []int, treeHeight int) (Full
 				sibling := a ^ 1
 				if level == 0 {
 					for _, idx := range sorted {
-						if idx == a {
+						switch idx {
+						case a:
 							proofs[idx].LeafSiblingHash = digest
-						} else if idx == sibling {
+						case sibling:
 							proofs[idx].LeafSiblingHash = digest
 						}
 					}
