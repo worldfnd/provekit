@@ -1,5 +1,5 @@
 [package]
-name = "t_add_dsc_1300"
+name = "t_add_dsc_1850"
 type = "bin"
 compiler_version = ">=1.0.0"
 
