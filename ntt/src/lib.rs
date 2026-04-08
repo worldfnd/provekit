@@ -4,9 +4,8 @@ pub use ntt::*;
 pub mod ark_interleaved;
 pub mod b51_interleaved;
 
-/// Generates an NTT loop function for a given element type and butterfly
-/// kernel. The cache-phase helper is defined as a private inner function so
-/// it does not appear in the module namespace.
+/// Generates an NTT for a given element type and butterfly
+/// kernel.
 ///
 /// Usage:
 /// ```ignore
@@ -17,7 +16,7 @@ pub mod b51_interleaved;
 /// regression caused by generic boundaries inhibiting LLVM's loop/vectorisation
 /// optimisations even when the kernel is monomorphised.
 #[macro_export]
-macro_rules! define_ntt_loops {
+macro_rules! define_ntt {
     ($ntt_fn:ident, $T:ty, $kernel:ident) => {
         /// In-place Number Theoretic Transform (NTT) from normal order to
         /// reverse bit order.
@@ -26,8 +25,8 @@ macro_rules! define_ntt_loops {
         /// `[a0, b0, a1, b1, ...]`. Operates on all polynomials in-place
         /// without a prior transpose.
         ///
-        /// * `reversed_ordered_roots` — precomputed roots of unity in reverse
-        ///   bit order.
+        /// * `reversed_ordered_roots` — precomputed roots of unity in reverse bit
+        ///   order.
         /// * `values` — coefficients transformed in place.
         pub(crate) fn $ntt_fn(
             reversed_ordered_roots: &[$T],
@@ -93,9 +92,7 @@ macro_rules! define_ntt_loops {
                 num_groups *= 2;
             }
 
-            while num_groups < codeword_size
-                && elements_in_group > $crate::workload_size::<$T>()
-            {
+            while num_groups < codeword_size && elements_in_group > $crate::workload_size::<$T>() {
                 values
                     .par_chunks_exact_mut(elements_in_group)
                     .enumerate()

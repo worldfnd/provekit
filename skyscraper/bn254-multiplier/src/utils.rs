@@ -157,8 +157,6 @@ impl MulShift {
 /// Tradeoff: due the limited range of this division \[0,4\] (instead of \[0,5\]
 /// for u256) will lead to a larger value after subtraction reduction.
 /// subtraction reduction output: [0, 1+ε] with ε < 0.3.
-///
-/// Situation: want value to be within 2p
 #[inline(always)]
 pub fn div_p_6b(x: u64) -> u64 {
     let upper_bits = x >> (64 - 6);
@@ -181,7 +179,7 @@ pub fn div_p_32b(x: u64) -> u64 {
 }
 
 #[inline(always)]
-pub fn subby(x: u64) -> u64 {
+pub fn div_p_2b(x: u64) -> u64 {
     x >> 62
 }
 
