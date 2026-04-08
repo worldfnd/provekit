@@ -1,0 +1,6 @@
+[package]
+name = "skyscraper_noir"
+type = "lib"
+authors = [""]
+
+[dependencies]
