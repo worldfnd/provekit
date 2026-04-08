@@ -445,6 +445,14 @@ pub enum WitnessBuilder {
         #[serde(with = "serde_ark")]
         divisor: FieldElement,
     },
+    /// Placeholder for witness slots filled by the prover outside the normal
+    /// solve pipeline (e.g. Twist polynomials). `reads` lists witness indices
+    /// that must be solved before this builder's slots are filled.
+    Placeholder {
+        start: usize,
+        count: usize,
+        reads: Vec<usize>,
+    },
 }
 
 impl WitnessBuilder {
@@ -477,6 +485,7 @@ impl WitnessBuilder {
             },
             WitnessBuilder::FakeGLVHint { .. } => 4,
             WitnessBuilder::EcScalarMulHint { num_limbs, .. } => 2 * *num_limbs as usize,
+            WitnessBuilder::Placeholder { count, .. } => *count,
 
             _ => 1,
         }
@@ -518,6 +527,7 @@ impl WitnessBuilder {
             R1CS,
             Vec<Option<NonZeroU32>>,
             Vec<usize>,
+            WitnessIndexRemapper,
         ),
         SplitError,
     > {
@@ -531,6 +541,10 @@ impl WitnessBuilder {
                 r1cs,
                 witness_map,
                 Vec::new(),
+                WitnessIndexRemapper {
+                    old_to_new: std::collections::HashMap::new(),
+                    w1_size:    0,
+                },
             ));
         }
 
@@ -602,6 +616,7 @@ impl WitnessBuilder {
             remapped_r1cs,
             remapped_witness_map,
             challenge_offsets,
+            remapper,
         ))
     }
 }
