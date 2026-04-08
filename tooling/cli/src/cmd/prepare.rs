@@ -311,7 +311,7 @@ impl SPARKCommitterScheme {
             },
         }
     }
-    
+
     pub fn commit(
         &self,
         merlin: &mut ProverState<TranscriptSponge>,

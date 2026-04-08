@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::run_gpa4,
-        memory::{produce_whir_proof, prove_axis, AxisConfig},
+        memory::{produce_whir_proof, prove_axis_init_final_product, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
             Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
@@ -219,7 +219,7 @@ fn memory_checking(
     let gamma: FieldElement = merlin.verifier_message();
     let challenges = Challenges { tau, gamma };
 
-    run_rs_ws_gpa_and_proofs(
+    prove_combined_rs_ws_product(
         merlin,
         &data.matrix,
         e_values,
@@ -229,7 +229,7 @@ fn memory_checking(
         &challenges,
     )?;
 
-    prove_axis(
+    prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_rx,
@@ -240,7 +240,7 @@ fn memory_checking(
         &challenges,
     )?;
 
-    prove_axis(
+    prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_ry,
@@ -294,7 +294,7 @@ fn sumcheck_and_its_proofs(
 }
 
 #[instrument(skip_all)]
-fn run_rs_ws_gpa_and_proofs(
+fn prove_combined_rs_ws_product(
     merlin: &mut ProverState<TranscriptSponge>,
     matrix: &SparkMatrix,
     e_values: &EValuesForMatrix,

@@ -23,7 +23,7 @@ pub struct AxisConfig<'a> {
 }
 
 #[instrument(skip_all)]
-pub fn prove_axis(
+pub fn prove_axis_init_final_product(
     merlin: &mut ProverState<TranscriptSponge>,
     config: AxisConfig<'_>,
     final_ts_witness: &WhirWitness,
@@ -33,31 +33,33 @@ pub fn prove_axis(
     let tau = &challenges.tau;
     let gamma_sq = *gamma * *gamma;
 
-    let (init_vec, final_vec) = rayon::join(
-        || {
-            config
-                .eq_memory
-                .par_iter()
-                .enumerate()
-                .map(|(i, &v)| {
-                    let a = FieldElement::from(i as u64);
-                    a * gamma_sq + v * gamma - tau
-                })
-                .collect::<Vec<_>>()
-        },
-        || {
-            config
-                .eq_memory
-                .par_iter()
-                .zip(config.final_timestamp.par_iter())
-                .enumerate()
-                .map(|(i, (&v, &t))| {
-                    let a = FieldElement::from(i as u64);
-                    a * gamma_sq + v * gamma + t - tau
-                })
-                .collect::<Vec<_>>()
-        },
-    );
+    let (init_vec, final_vec) = tracing::info_span!("build_init_final_vecs").in_scope(|| {
+        rayon::join(
+            || {
+                config
+                    .eq_memory
+                    .par_iter()
+                    .enumerate()
+                    .map(|(i, &v)| {
+                        let a = FieldElement::from(i as u64);
+                        a * gamma_sq + v * gamma - tau
+                    })
+                    .collect::<Vec<_>>()
+            },
+            || {
+                config
+                    .eq_memory
+                    .par_iter()
+                    .zip(config.final_timestamp.par_iter())
+                    .enumerate()
+                    .map(|(i, (&v, &t))| {
+                        let a = FieldElement::from(i as u64);
+                        a * gamma_sq + v * gamma + t - tau
+                    })
+                    .collect::<Vec<_>>()
+            },
+        )
+    });
 
     let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec)?;
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
