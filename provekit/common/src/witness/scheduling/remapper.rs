@@ -549,7 +549,55 @@ impl WitnessIndexRemapper {
                 spread_val:   *spread_val,
                 multiplicity: self.remap(*multiplicity),
             },
+            WitnessBuilder::Placeholder {
+                start,
+                count,
+                reads,
+            } => WitnessBuilder::Placeholder {
+                start: self.remap(*start),
+                count: *count,
+                reads: reads.iter().map(|&r| self.remap(r)).collect(),
+            },
         }
+    }
+
+    /// Remaps all witness indices in a `TwistSchemeInfo`.
+    pub fn remap_twist_scheme_info(
+        &self,
+        info: &crate::twist::TwistSchemeInfo,
+    ) -> crate::twist::TwistSchemeInfo {
+        let remapped_blocks = info
+            .ram_blocks
+            .iter()
+            .map(|block| crate::twist::TwistRamBlockInfo {
+                initial_value_witnesses: block
+                    .initial_value_witnesses
+                    .iter()
+                    .map(|&w| self.remap(w))
+                    .collect(),
+                operations: block
+                    .operations
+                    .iter()
+                    .map(|op| match op {
+                        crate::twist::TwistMemoryOpInfo::Load(addr, val) => {
+                            crate::twist::TwistMemoryOpInfo::Load(
+                                self.remap(*addr),
+                                self.remap(*val),
+                            )
+                        }
+                        crate::twist::TwistMemoryOpInfo::Store(addr, old_val, new_val) => {
+                            crate::twist::TwistMemoryOpInfo::Store(
+                                self.remap(*addr),
+                                self.remap(*old_val),
+                                self.remap(*new_val),
+                            )
+                        }
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        crate::twist::TwistSchemeInfo::new(self.remap(info.poly_offset), remapped_blocks)
     }
 
     /// Remaps witness indices in R1CS constraint matrices.

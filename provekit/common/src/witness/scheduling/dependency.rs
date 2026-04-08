@@ -281,6 +281,7 @@ impl DependencyInfo {
             } => {
                 vec![*sz, *rs, *multiplicity]
             }
+            WitnessBuilder::Placeholder { reads, .. } => reads.clone(),
         }
     }
 
@@ -395,6 +396,7 @@ impl DependencyInfo {
                 vec![*result_idx, *carry_idx]
             }
             WitnessBuilder::BytePartition { lo, hi, .. } => vec![*lo, *hi],
+            WitnessBuilder::Placeholder { start, count, .. } => (*start..*start + *count).collect(),
         }
     }
 }

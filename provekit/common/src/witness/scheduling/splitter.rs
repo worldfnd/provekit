@@ -129,6 +129,15 @@ impl<'a> WitnessSplitter<'a> {
             backward_stack.push_back(lookup_idx);
         }
 
+        // Placeholder builders must be in w1 — their slots are filled by the
+        // prover after w1 solve but before commit.
+        for (idx, builder) in self.witness_builders.iter().enumerate() {
+            if matches!(builder, WitnessBuilder::Placeholder { .. }) {
+                mandatory_w1.insert(idx);
+                backward_stack.push_back(idx);
+            }
+        }
+
         while let Some(current_idx) = backward_stack.pop_front() {
             if backward_visited[current_idx] {
                 continue;
