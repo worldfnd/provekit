@@ -10,6 +10,10 @@ use {
 pub struct RSFr;
 
 impl ReedSolomon<Fr> for RSFr {
+    fn generator(&self, codeword_length: usize) -> Fr {
+        Fr::get_root_of_unity(codeword_length as u64).unwrap()
+    }
+
     fn next_order(&self, size: usize) -> Option<usize> {
         let order = size.next_power_of_two();
         if order <= 1 << 28 {
