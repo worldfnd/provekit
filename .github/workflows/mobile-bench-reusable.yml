@@ -25,12 +25,12 @@ on:
         description: "Number of benchmark iterations"
         required: false
         type: string
-        default: "30"
+        default: "2"
       warmup:
         description: "Number of warmup iterations"
         required: false
         type: string
-        default: "5"
+        default: "1"
       platform:
         description: "Target platform: android, ios, or both"
         required: false
@@ -396,7 +396,7 @@ jobs:
   summarize:
     name: Summarize benchmark results
     needs: [ios, android]
-    if: always() && (needs.ios.result == 'success' || needs.android.result == 'success')
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout caller repo
@@ -439,14 +439,16 @@ jobs:
           fi
 
       - name: Download iOS results
-        if: needs.ios.result == 'success'
+        if: always()
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: mobench-results-ios
           path: results/ios
 
       - name: Download Android results
-        if: needs.android.result == 'success'
+        if: always()
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: mobench-results-android

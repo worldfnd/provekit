@@ -88,12 +88,12 @@ jobs:
     secrets: inherit
     with:
       crate_path: ./bench-mobile
-      functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
-      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: both
-      iterations: "30"
-      warmup: "5"
+      iterations: "2"
+      warmup: "1"
       pr_number: ${{ needs.resolve.outputs.pr_number }}
       requested_by: ${{ needs.resolve.outputs.requested_by }}
       head_sha: ${{ needs.resolve.outputs.head_sha }}

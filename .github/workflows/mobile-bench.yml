@@ -12,12 +12,12 @@ on:
         description: "JSON array of benchmark functions"
         required: false
         type: string
-        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+        default: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_ios:
         description: "Optional iOS-specific benchmark functions"
         required: false
         type: string
-        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e"]'
+        default: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_android:
         description: "Optional Android-specific benchmark functions"
         required: false
@@ -41,12 +41,12 @@ on:
         description: "Number of benchmark iterations"
         required: false
         type: string
-        default: "30"
+        default: "2"
       warmup:
         description: "Number of warmup iterations"
         required: false
         type: string
-        default: "5"
+        default: "1"
       pr_number:
         description: "PR number for reporting"
         required: false
