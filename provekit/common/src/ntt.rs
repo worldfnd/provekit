@@ -35,7 +35,8 @@ impl ReedSolomon<Fr> for RSFr {
                     i.reverse_bits() >> (usize::BITS - bits)
                 };
 
-                let generator = self.generator(codeword_length);
+                // TODO Optimise generator away by storing it in the engine
+                let generator = Fr::get_root_of_unity(codeword_length as u64).unwrap();
                 generator.pow([k as u64])
             })
             .collect()
@@ -97,10 +98,6 @@ impl ReedSolomon<Fr> for RSFr {
         ntt_nr(&mut result, codeword_length, num_cosets);
 
         result
-    }
-
-    fn generator(&self, codeword_length: usize) -> Fr {
-        Fr::get_root_of_unity(codeword_length as u64).unwrap()
     }
 }
 
