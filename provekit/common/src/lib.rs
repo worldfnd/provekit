@@ -4,6 +4,7 @@ pub mod hash_config;
 mod interner;
 mod mavros;
 mod noir_proof_scheme;
+pub mod ntt;
 pub mod optimize;
 pub mod prefix_covector;
 mod prover;
@@ -47,6 +48,7 @@ pub fn register_ntt() {
         // Register NTT for polynomial operations
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
             Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
+
         whir::algebra::ntt::NTT.insert(ntt);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
