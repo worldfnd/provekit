@@ -21,7 +21,7 @@ pub const fn workload_size<T: Sized>() -> usize {
 }
 
 /// NTTEngine allows for reusing twiddle factors between computations
-pub struct NTTEngine(pub Vec<Fr>);
+pub struct NTTEngine(Vec<Fr>);
 
 impl NTTEngine {
     /// Initialize an NTT Engine
@@ -107,7 +107,7 @@ pub fn ntt_nr(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
 }
 
-pub fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
+fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
     let roots = ENGINE.read().unwrap();
     let new_root = if roots.order() >= codeword_size {
         roots
@@ -160,6 +160,11 @@ fn interleaved_ntt_nr(
     if codeword_size <= 1 {
         return;
     }
+
+    assert!(
+        values.len() % num_groups == 0,
+        "values.len() must be divisible by num_groups"
+    );
 
     assert!(codeword_size.is_power_of_two());
 
@@ -221,7 +226,7 @@ fn interleaved_ntt_nr(
         });
 }
 
-pub fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
+fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
     let mut elements_in_group = input.len();
     let mut num_of_groups = 1;
 
