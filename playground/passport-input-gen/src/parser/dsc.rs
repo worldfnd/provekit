@@ -64,7 +64,8 @@ impl DSC {
     /// Parses a DER-encoded X.509 certificate into a `DSC`.
     pub fn from_der(binary: &Binary) -> Result<DSC, PassportError> {
         let der = strip_length_prefix(binary);
-        let (_, cert) = parse_x509_certificate(&der.data).expect("X509 decode failed");
+        let (_, cert) = parse_x509_certificate(&der.data)
+            .map_err(|e| PassportError::X509ParsingFailed(e.to_string()))?;
         Self::from_x509(cert)
     }
 
