@@ -113,17 +113,6 @@ jobs:
           echo "=== SPARK server log ==="
           cat /tmp/spark-server.log 2>/dev/null || true
 
-      - name: Verify proofs for all circuits
-        working-directory: noir-examples/noir-passport/merkle_age_check
-        run: |
-          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
-            echo "Verifying $circuit"
-            ../../../target/release/provekit-cli verify \
-              ./benchmark-inputs/$circuit.pkv \
-              ./benchmark-inputs/$circuit-proof.np
-            echo "Verified $circuit"
-          done
-
       - name: Verify SPARK proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |

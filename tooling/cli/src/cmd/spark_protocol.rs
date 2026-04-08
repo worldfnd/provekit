@@ -1,5 +1,6 @@
 use {
     anyhow::{Context, Result},
+    provekit_common::spark::R1CSSparkQuery,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
         io::{Read, Write},
@@ -9,9 +10,9 @@ use {
 
 #[derive(Serialize, Deserialize)]
 pub struct SparkRequest {
-    pub circuit:    String,
-    pub noir_proof: PathBuf,
-    pub output:     PathBuf,
+    pub circuit:     String,
+    pub spark_query: R1CSSparkQuery,
+    pub output:      PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]

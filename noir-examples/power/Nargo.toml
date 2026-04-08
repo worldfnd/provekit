@@ -1,5 +1,5 @@
 [package]
-name = "basic"
+name = "power"
 type = "bin"
 authors = [""]
 compiler_version = ">=0.22.0"

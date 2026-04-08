@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::{calculate_adr, gpa_sumcheck_verifier2, run_gpa2},
-        types::WhirWitness,
+        types::{Challenges, WhirWitness},
     },
     anyhow::{ensure, Result},
     ark_std::One,
@@ -27,9 +27,10 @@ pub fn prove_axis(
     merlin: &mut ProverState<TranscriptSponge>,
     config: AxisConfig<'_>,
     final_ts_witness: &WhirWitness,
-    gamma: &FieldElement,
-    tau: &FieldElement,
+    challenges: &Challenges,
 ) -> Result<()> {
+    let gamma = &challenges.gamma;
+    let tau = &challenges.tau;
     let gamma_sq = *gamma * *gamma;
 
     let (init_vec, final_vec) = rayon::join(

@@ -97,9 +97,9 @@ impl Command for Args {
                 UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
 
             let request = SparkRequest {
-                circuit:    circuit.clone(),
-                noir_proof: self.proof_path.clone(),
-                output:     self.spark_proof_path.clone(),
+                circuit:     circuit.clone(),
+                spark_query: proof.r1cs_spark_query,
+                output:      self.spark_proof_path.clone(),
             };
 
             spark_protocol::write_message(&mut stream, &request)?;

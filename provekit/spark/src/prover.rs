@@ -4,7 +4,7 @@ use {
         memory::{produce_whir_proof, prove_axis, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
-            EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
+            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
             SerializableCommitment, SparkMatrix, SparkPreparedData, WhirWitness,
         },
         utils::calculate_memory,
@@ -89,12 +89,6 @@ impl SPARKScheme {
     }
 }
 
-/// Challenges drawn from the Fiat-Shamir transcript during proving.
-struct Challenges {
-    gamma: FieldElement,
-    tau:   FieldElement,
-}
-
 impl SPARKProver for SPARKScheme {
     #[instrument(skip_all)]
     fn prove(
@@ -107,33 +101,11 @@ impl SPARKProver for SPARKScheme {
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
-        let memory = calculate_memory(
-            request.matrix_batching_randomness
-                / (FieldElement::ONE + request.matrix_batching_randomness),
-            &request.point_to_evaluate.row,
-            &request.point_to_evaluate.col,
-        );
+        let (memory, e_values) = compute_spark_data(request, spark_data, padded_num_entries);
 
         let claimed_value = (request.claimed_value
             / (FieldElement::ONE + request.matrix_batching_randomness))
             / (FieldElement::ONE + request.matrix_batching_randomness);
-
-        let (e_rx, e_ry) = rayon::join(
-            || {
-                spark_data.matrix.coo.row[..padded_num_entries]
-                    .par_iter()
-                    .map(|&r| memory.eq_rx[r])
-                    .collect()
-            },
-            || {
-                spark_data.matrix.coo.col[..padded_num_entries]
-                    .par_iter()
-                    .map(|&c| memory.eq_ry[c])
-                    .collect()
-            },
-        );
-
-        let e_values = EValuesForMatrix { e_rx, e_ry };
 
         prove_spark(
             &mut merlin,
@@ -157,6 +129,50 @@ impl SPARKProver for SPARKScheme {
 }
 
 #[instrument(skip_all)]
+fn compute_spark_data(
+    request: &R1CSSparkQuery,
+    spark_data: &SparkPreparedData,
+    padded_num_entries: usize,
+) -> (Memory, EValuesForMatrix) {
+    let memory = compute_memory(request);
+    let e_values = compute_e_values(spark_data, &memory, padded_num_entries);
+    (memory, e_values)
+}
+
+#[instrument(skip_all)]
+fn compute_memory(request: &R1CSSparkQuery) -> Memory {
+    calculate_memory(
+        request.matrix_batching_randomness
+            / (FieldElement::ONE + request.matrix_batching_randomness),
+        &request.point_to_evaluate.row,
+        &request.point_to_evaluate.col,
+    )
+}
+
+#[instrument(skip_all)]
+fn compute_e_values(
+    spark_data: &SparkPreparedData,
+    memory: &Memory,
+    padded_num_entries: usize,
+) -> EValuesForMatrix {
+    let (e_rx, e_ry) = rayon::join(
+        || {
+            spark_data.matrix.coo.row[..padded_num_entries]
+                .par_iter()
+                .map(|&r| memory.eq_rx[r])
+                .collect()
+        },
+        || {
+            spark_data.matrix.coo.col[..padded_num_entries]
+                .par_iter()
+                .map(|&c| memory.eq_ry[c])
+                .collect()
+        },
+    );
+    EValuesForMatrix { e_rx, e_ry }
+}
+
+#[instrument(skip_all)]
 fn prove_spark(
     merlin: &mut ProverState<TranscriptSponge>,
     data: &SparkPreparedData,
@@ -165,22 +181,10 @@ fn prove_spark(
     memory: &Memory,
     whir_configs: &SPARKWHIRConfigs,
 ) -> Result<()> {
-    replay_commitment(
-        merlin,
-        &data.commitments.vals,
-        &whir_configs.num_terms_1batched,
-    );
-    replay_commitment(
-        merlin,
-        &data.commitments.rs_ws,
-        &whir_configs.num_terms_4batched,
-    );
-    replay_commitment(merlin, &data.commitments.final_row_ts, &whir_configs.row);
-    replay_commitment(merlin, &data.commitments.final_col_ts, &whir_configs.col);
+    let e_values_witness =
+        replay_commitments_and_commit_e_values(merlin, data, e_values, whir_configs);
 
-    let e_values_witness = commit_e_values(merlin, whir_configs, e_values);
-
-    spark_sumcheck(
+    sumcheck_and_its_proofs(
         merlin,
         &data.matrix,
         e_values,
@@ -190,6 +194,27 @@ fn prove_spark(
         whir_configs,
     )?;
 
+    memory_checking(
+        merlin,
+        data,
+        e_values,
+        &e_values_witness,
+        memory,
+        whir_configs,
+    )?;
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn memory_checking(
+    merlin: &mut ProverState<TranscriptSponge>,
+    data: &SparkPreparedData,
+    e_values: &EValuesForMatrix,
+    e_values_witness: &WhirWitness,
+    memory: &Memory,
+    whir_configs: &SPARKWHIRConfigs,
+) -> Result<()> {
     let tau: FieldElement = merlin.verifier_message();
     let gamma: FieldElement = merlin.verifier_message();
     let challenges = Challenges { tau, gamma };
@@ -198,7 +223,7 @@ fn prove_spark(
         merlin,
         &data.matrix,
         e_values,
-        &e_values_witness,
+        e_values_witness,
         &data.witnesses.rs_ws_witness,
         whir_configs,
         &challenges,
@@ -212,8 +237,7 @@ fn prove_spark(
             whir_config:     &whir_configs.row,
         },
         &data.witnesses.final_row_ts_witness,
-        &challenges.gamma,
-        &challenges.tau,
+        &challenges,
     )?;
 
     prove_axis(
@@ -224,15 +248,14 @@ fn prove_spark(
             whir_config:     &whir_configs.col,
         },
         &data.witnesses.final_col_ts_witness,
-        &challenges.gamma,
-        &challenges.tau,
+        &challenges,
     )?;
 
     Ok(())
 }
 
 #[instrument(skip_all)]
-fn spark_sumcheck(
+fn sumcheck_and_its_proofs(
     merlin: &mut ProverState<TranscriptSponge>,
     matrix: &SparkMatrix,
     e_values: &EValuesForMatrix,
@@ -383,6 +406,29 @@ fn run_rs_ws_gpa_and_proofs(
     )?;
 
     Ok(())
+}
+
+#[instrument(skip_all)]
+fn replay_commitments_and_commit_e_values(
+    merlin: &mut ProverState<TranscriptSponge>,
+    data: &SparkPreparedData,
+    e_values: &EValuesForMatrix,
+    whir_configs: &SPARKWHIRConfigs,
+) -> WhirWitness {
+    replay_commitment(
+        merlin,
+        &data.commitments.vals,
+        &whir_configs.num_terms_1batched,
+    );
+    replay_commitment(
+        merlin,
+        &data.commitments.rs_ws,
+        &whir_configs.num_terms_4batched,
+    );
+    replay_commitment(merlin, &data.commitments.final_row_ts, &whir_configs.row);
+    replay_commitment(merlin, &data.commitments.final_col_ts, &whir_configs.col);
+
+    commit_e_values(merlin, whir_configs, e_values)
 }
 
 #[instrument(skip_all)]

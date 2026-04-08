@@ -7,11 +7,10 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
-        file::{read, write},
-        HashConfig, NoirProofScheme, Prover, TranscriptSponge, Verifier,
+        file::write, HashConfig, NoirProofScheme, Prover, TranscriptSponge, Verifier,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::{SPARKProver as _, SPARKProverScheme, SparkPreparedData},
+    provekit_spark::{types::SparkMatrix, SPARKProver as _, SPARKProverScheme, SparkPreparedData},
     std::{
         collections::HashMap,
         os::unix::net::UnixListener,
@@ -59,6 +58,9 @@ impl Command for Args {
 
         provekit_common::register_ntt();
 
+        std::fs::create_dir_all(&self.output_dir)
+            .with_context(|| format!("creating output directory {:?}", self.output_dir))?;
+
         let mut circuits: HashMap<String, SparkPreparedData> = HashMap::new();
 
         for spec in &self.circuit {
@@ -67,23 +69,17 @@ impl Command for Args {
                 .with_context(|| format!("invalid circuit spec '{spec}', expected name:path"))?;
 
             info!("Preparing circuit '{name}' from {path:?}");
-            let (spark_data, scheme) = prepare_circuit(
+            let pkp_path = self.output_dir.join(format!("{name}.pkp"));
+            let pkv_path = self.output_dir.join(format!("{name}.pkv"));
+
+            let spark_data = prepare_circuit(
                 Path::new(path),
                 &self.compiler,
                 self.r1cs_path.as_deref(),
                 hash_config,
+                &pkp_path,
+                &pkv_path,
             )?;
-
-            // Write .pkp and .pkv so provekit-prover can load them
-            let pkp_path = self.output_dir.join(format!("{name}.pkp"));
-            let pkv_path = self.output_dir.join(format!("{name}.pkv"));
-
-            let prover = Prover::from_noir_proof_scheme(scheme.clone());
-            let verifier = Verifier::from_noir_proof_scheme(scheme);
-            write(&prover, &pkp_path).with_context(|| format!("writing prover for '{name}'"))?;
-            write(&verifier, &pkv_path)
-                .with_context(|| format!("writing verifier for '{name}'"))?;
-            info!("Wrote {pkp_path:?} and {pkv_path:?}");
 
             circuits.insert(name.to_string(), spark_data);
             info!("Circuit '{name}' ready");
@@ -128,30 +124,49 @@ fn prepare_circuit(
     compiler: &Compiler,
     r1cs_path: Option<&Path>,
     hash_config: HashConfig,
-) -> Result<(SparkPreparedData, NoirProofScheme)> {
-    let scheme = match compiler {
+    pkp_path: &Path,
+    pkv_path: &Path,
+) -> Result<SparkPreparedData> {
+    let scheme = compile_scheme(program_path, compiler, r1cs_path, hash_config)?;
+    let spark_r1cs = build_spark_matrix(&scheme, r1cs_path)?;
+    let spark_data = commit_spark(spark_r1cs)?;
+    write_artifacts(scheme, pkp_path, pkv_path)?;
+    Ok(spark_data)
+}
+
+#[instrument(skip_all)]
+fn compile_scheme(
+    program_path: &Path,
+    compiler: &Compiler,
+    r1cs_path: Option<&Path>,
+    hash_config: HashConfig,
+) -> Result<NoirProofScheme> {
+    match compiler {
         Compiler::Noir => NoirCompiler::from_file(program_path, hash_config)
-            .context("while compiling Noir program")?,
+            .context("while compiling Noir program"),
         Compiler::Mavros => {
             let r1cs_path = r1cs_path.context("--r1cs is required for mavros compiler")?;
             MavrosCompiler::compile(program_path, r1cs_path, hash_config)
-                .context("while compiling with Mavros")?
+                .context("while compiling with Mavros")
         }
-    };
+    }
+}
 
-    let whir_r1cs_scheme = match &scheme {
+#[instrument(skip_all)]
+fn build_spark_matrix(scheme: &NoirProofScheme, r1cs_path: Option<&Path>) -> Result<SparkMatrix> {
+    let whir_r1cs_scheme = match scheme {
         NoirProofScheme::Noir(s) => s.whir_for_witness.clone(),
         NoirProofScheme::Mavros(s) => s.whir_for_witness.clone(),
     };
 
-    let spark_r1cs = match &scheme {
+    match scheme {
         NoirProofScheme::Noir(noir) => prepare::build_spark_r1cs_noir(
             &noir.r1cs,
             whir_r1cs_scheme.m_0,
             whir_r1cs_scheme.m,
             whir_r1cs_scheme.w1_size,
             whir_r1cs_scheme.num_challenges,
-        )?,
+        ),
         NoirProofScheme::Mavros(_) => {
             let r1cs_path = r1cs_path.context("--r1cs is required for mavros compiler")?;
             prepare::build_spark_r1cs_mavros(
@@ -160,10 +175,13 @@ fn prepare_circuit(
                 whir_r1cs_scheme.m,
                 whir_r1cs_scheme.w1_size,
                 whir_r1cs_scheme.num_challenges,
-            )?
+            )
         }
-    };
+    }
+}
 
+#[instrument(skip_all)]
+fn commit_spark(spark_r1cs: SparkMatrix) -> Result<SparkPreparedData> {
     let num_rows = spark_r1cs.timestamps.final_row.len();
     let num_cols = spark_r1cs.timestamps.final_col.len();
     let num_nz_vals = spark_r1cs.coo.val.len();
@@ -178,13 +196,21 @@ fn prepare_circuit(
     let commitments =
         prepare::extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
 
-    let spark_data = SparkPreparedData {
+    Ok(SparkPreparedData {
         matrix: spark_r1cs,
         witnesses,
         commitments,
-    };
+    })
+}
 
-    Ok((spark_data, scheme))
+#[instrument(skip_all)]
+fn write_artifacts(scheme: NoirProofScheme, pkp_path: &Path, pkv_path: &Path) -> Result<()> {
+    let prover = Prover::from_noir_proof_scheme(scheme.clone());
+    let verifier = Verifier::from_noir_proof_scheme(scheme);
+    write(&prover, pkp_path).context("while writing Provekit Prover")?;
+    write(&verifier, pkv_path).context("while writing Provekit Verifier")?;
+    info!("Wrote {pkp_path:?} and {pkv_path:?}");
+    Ok(())
 }
 
 #[instrument(skip_all, fields(circuit = %request.circuit))]
@@ -196,11 +222,6 @@ fn handle_prove(
         .get(&request.circuit)
         .with_context(|| format!("unknown circuit '{}'", request.circuit))?;
 
-    info!("Loading NoirProof from {:?}", request.noir_proof);
-    let noir_proof: provekit_common::NoirProof =
-        read(&request.noir_proof).context("reading NoirProof")?;
-    let spark_query = noir_proof.r1cs_spark_query;
-
     let num_constraints = spark_data.matrix.timestamps.final_row.len();
     let num_witnesses = spark_data.matrix.timestamps.final_col.len();
     let num_nonzero = spark_data.matrix.coo.val.len();
@@ -208,7 +229,7 @@ fn handle_prove(
     info!("Proving ({num_constraints} constraints, {num_witnesses} witnesses)");
     let scheme = SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero);
     let proof = scheme
-        .prove(spark_data, &spark_query)
+        .prove(spark_data, &request.spark_query)
         .context("generating SPARK proof")?;
 
     info!("Writing proof to {:?}", request.output);

@@ -123,3 +123,10 @@ pub struct EValuesForMatrix {
     pub e_rx: Vec<FieldElement>,
     pub e_ry: Vec<FieldElement>,
 }
+
+/// Challenges drawn from the Fiat-Shamir transcript during proving.
+#[derive(Debug, Clone)]
+pub struct Challenges {
+    pub gamma: FieldElement,
+    pub tau:   FieldElement,
+}
