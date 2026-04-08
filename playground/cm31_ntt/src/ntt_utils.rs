@@ -55,9 +55,9 @@ pub fn ntt_block_8(
     wt7: CF,
 ) -> (CF, CF, CF, CF, CF, CF, CF, CF) {
     // Refer to Yuval's Radix 8 DIT diagram.
-    // 1st columm of black dots: a0-a8
-    // 2nd columm of black dots: b0-b8
-    // 3nd columm of black dots: res[0]-res[8]
+    // 1st column of black dots: a0-a8
+    // 2nd column of black dots: b0-b8
+    // 3nd column of black dots: res[0]-res[8]
 
     let t0 = f0;
     let t1 = f1 * wt;

@@ -40,7 +40,7 @@ func NewWhirParams(cfg WHIRConfig) WHIRParams {
 		FinalFoldingPowBits:                  cfg.FinalFoldingPowBits,
 		StartingDomainBackingDomainGenerator: *startingDomainGen,
 		DomainSize:                           domainSize,
-		CommittmentOODSamples:                1,
+		CommitmentOODSamples:                 1,
 		FinalSumcheckRounds:                  finalSumcheckRounds,
 		MVParamsNumberOfVariables:            mvParamsNumberOfVariables,
 		BatchSize:                            cfg.BatchSize,
@@ -598,20 +598,20 @@ func runWhir(
 		return
 	}
 
-	initialOODQueries, initialOODAnswers, tempErr := fillInOODPointsAndAnswers(whirParams.CommittmentOODSamples, arthur)
+	initialOODQueries, initialOODAnswers, tempErr := fillInOODPointsAndAnswers(whirParams.CommitmentOODSamples, arthur)
 	if tempErr != nil {
 		err = tempErr
 		return
 	}
 
-	initialCombinationRandomness, tempErr := GenerateCombinationRandomness(api, arthur, whirParams.CommittmentOODSamples+len(linearStatementEvaluations))
+	initialCombinationRandomness, tempErr := GenerateCombinationRandomness(api, arthur, whirParams.CommitmentOODSamples+len(linearStatementEvaluations))
 	if tempErr != nil {
 		err = tempErr
 		return
 	}
 
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, linearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
+	OODAnswersAndStatementEvaluations := append(initialOODAnswers, linearStatementEvaluations...)
+	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatementEvaluations)
 
 	initialSumcheckFoldingRandomness, lastEval, tempErr := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if tempErr != nil {

@@ -6,7 +6,10 @@ mod json;
 pub use self::bin::Compression;
 use {
     self::{
-        bin::{read_bin, read_hash_config as read_hash_config_bin, write_bin},
+        bin::{
+            deserialize_from_bytes, read_bin, read_hash_config as read_hash_config_bin,
+            serialize_to_bytes, write_bin,
+        },
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
@@ -133,6 +136,22 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
             T::EXTENSION
         )),
     }
+}
+
+/// Serialize a value to bytes in the same binary format as `write`.
+///
+/// The output is byte-for-byte identical to what `write` produces on disk
+/// (header + compressed postcard). Use `deserialize` to recover the value.
+#[allow(private_bounds)]
+pub fn serialize<T: FileFormat + MaybeHashAware>(value: &T) -> Result<Vec<u8>> {
+    let hash_config = value.maybe_hash_config();
+    serialize_to_bytes(value, T::FORMAT, T::VERSION, T::COMPRESSION, hash_config)
+}
+
+/// Deserialize a value from bytes produced by `serialize` or read from a file
+/// written by `write`.
+pub fn deserialize<T: FileFormat>(data: &[u8]) -> Result<T> {
+    deserialize_from_bytes(data, T::FORMAT, T::VERSION)
 }
 
 /// Read just the hash configuration from a file.

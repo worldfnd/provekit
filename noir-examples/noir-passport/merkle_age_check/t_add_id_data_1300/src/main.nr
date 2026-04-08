@@ -11,14 +11,22 @@ fn main(
     dsc_pubkey: [u8; 256],
     dsc_pubkey_redc_param: [u8; 257],
     dsc_pubkey_offset_in_dsc_cert: u32,
+    exponent: u32,
+    exponent_offset_in_dsc_cert: u32,
     sod_signature: [u8; 256],
     tbs_certificate: [u8; 1300],
     signed_attributes: SignedAttrsData,
     signed_attributes_size: u64,
-    exponent: u32,
     e_content: EContentData,
 ) -> pub Field {
-    verify_rsa_pubkey_in_tbs(dsc_pubkey, tbs_certificate,dsc_pubkey_offset_in_dsc_cert);
+    // Verify DSC public key modulus and exponent are present in the authenticated TBS certificate.
+    verify_rsa_pubkey_in_tbs(
+        dsc_pubkey,
+        tbs_certificate,
+        dsc_pubkey_offset_in_dsc_cert,
+        exponent,
+        exponent_offset_in_dsc_cert,
+    );
 
     assert(
         verify_signature::<256, 0, 200, 32>(

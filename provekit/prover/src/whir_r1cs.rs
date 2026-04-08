@@ -4,8 +4,9 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, compute_alpha_evals, compute_public_eval, expand_powers,
-            make_public_weight, OffsetCovector,
+            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
+            compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
+            OffsetCovector,
         },
         spark::{Point, R1CSSparkQuery},
         utils::{
@@ -276,7 +277,9 @@ fn prove_from_alphas(
         let (mut weights, evals) =
             create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
 
-        merlin.prover_hint_ark(&evals);
+        for eval in &evals {
+            merlin.prover_message(eval);
+        }
 
         if !public_inputs.is_empty() {
             let public_eval = compute_public_weight_evaluation(
@@ -365,13 +368,27 @@ fn prove_from_alphas(
 
         let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
         let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
-        merlin.prover_hint_ark(&evals_1);
-        merlin.prover_hint_ark(&evals_2);
+        for eval in &evals_1 {
+            merlin.prover_message(eval);
+        }
+        for eval in &evals_2 {
+            merlin.prover_message(eval);
+        }
 
         let public_1 = if !public_inputs.is_empty() {
             let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
             merlin.prover_message(&p1);
             Some(p1)
+        } else {
+            None
+        };
+
+        // Challenge binding: prove that w2 contains the correct Fiat-Shamir
+        // challenge values at the expected positions.
+        let challenge_eval = if !scheme.challenge_offsets.is_empty() {
+            let ce = compute_challenge_eval(x, &scheme.challenge_offsets, &c2.polynomial);
+            merlin.prover_message(&ce);
+            Some(ce)
         } else {
             None
         };
@@ -417,12 +434,19 @@ fn prove_from_alphas(
         } = c2;
         let final_claim2 = {
             let weights = build_prefix_covectors(scheme.m, alphas_2.clone());
-            let evaluations: Vec<FieldElement> = evals_2;
+            let mut evaluations: Vec<FieldElement> = evals_2;
 
-            let boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
                 .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
                 .collect();
+
+            if let Some(ce) = challenge_eval {
+                let cw = make_challenge_weight(x, &scheme.challenge_offsets, scheme.m);
+                evaluations.push(ce);
+                boxed_weights.push(Box::new(cw));
+            }
+
             scheme.whir_witness.prove(
                 &mut merlin,
                 vec![Cow::Borrowed(p2.as_slice())],

@@ -34,8 +34,8 @@ func initialSumcheck(
 		}
 		combinedLinearStatementEvaluations[evaluationIndex] = sum
 	}
-	OODAnswersAndStatmentEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
-	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatmentEvaluations)
+	OODAnswersAndStatementEvaluations := append(initialOODAnswers, combinedLinearStatementEvaluations...)
+	lastEval := utilities.DotProduct(api, initialCombinationRandomness, OODAnswersAndStatementEvaluations)
 
 	initialSumcheckFoldingRandomness, lastEval, err := runWhirSumcheckRounds(api, lastEval, arthur, whirParams.FoldingFactorArray[0], 3)
 	if err != nil {

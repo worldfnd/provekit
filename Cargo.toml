@@ -62,10 +62,14 @@ missing_docs_in_private_items = { level = "allow", priority = 1 }
 missing_safety_doc = { level = "deny", priority = 1 }
 
 [profile.release]
-debug = true      # Generate symbol info for profiling
 opt-level = 3
 codegen-units = 1
 lto = "fat"
+
+# Size-optimized builds for mobile (iOS/Android): cargo build --profile release-mobile
+[profile.release-mobile]
+inherits = "release"
+opt-level = "z"
 
 # Fast release builds for development iteration: cargo build --profile release-fast
 [profile.release-fast]
@@ -133,6 +137,7 @@ seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = { version = "0.10.9", features = ["asm"] }
+sha3 = "0.10"
 test-case = "3.3.1"
 tikv-jemallocator = "0.6"
 toml = "0.8.8"
@@ -145,6 +150,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
+parking_lot = "0.12"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
@@ -186,4 +192,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "20aecf708c34b91f652c851f0722177bf08315af", features = ["tracing"] }
+whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "790bdf02cc469700fcb227aae48c8fbc25ca9f49", features = ["tracing", "rs_in_order"] }

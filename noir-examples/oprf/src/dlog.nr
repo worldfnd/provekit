@@ -1,13 +1,17 @@
-use super::{constants::DS_DLOG, types::PublicKey};
+use super::constants::DS_DLOG;
 use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
-pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: PublicKey) {
+// Verify a Chaum-Pedersen dlog equality proof that shows that A=x*G and C=x*B share the same discrete log x, given A,B,C and proof e,s.
+// Point A is a public input in our use case (the OPRF public key and therefore we expect it to be checked to be in the prime order subgroup outside of this circuit)
+pub fn verify_dlog_equality(
+    e: Field,
+    s: Field,
+    a_point: BabyJubJubPoint,
+    b_point: BabyJubJubPoint,
+    c_point: BabyJubJubPoint,
+) {
     BabyJubJubPoint::validate_babyjubjub_field(s);
-
-    let a_point = BabyJubJubPoint::new(a.x, a.y);
-    let b_point = BabyJubJubPoint::new(b.x, b.y);
-    let c_point = BabyJubJubPoint::new(c.x, c.y);
 
     assert(
         a_point.is_on_curve()
@@ -18,15 +22,17 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
             & c_point.is_not_identity(),
         "All points must be on curve and not identity",
     );
+    assert(b_point.check_sub_group(), "Point b must be in subgroup");
+    assert(c_point.check_sub_group(), "Point c must be in subgroup");
 
     // Compute r1 = G*s - a*e and r2 = b*s - c*e
     let generator = BabyJubJubPoint::generator();
     let gs = BabyJubJubPoint::generator_scalar_mul(s);
-    let ae = a_point.scalar_mul(e);
+    let ae = a_point.scalar_mul_base_field(e);
     let r1 = gs.subtract(ae);
 
     let bs = b_point.scalar_mul(s);
-    let ce = c_point.scalar_mul(e);
+    let ce = c_point.scalar_mul_base_field(e);
     let r2 = bs.subtract(ce);
 
     // Batch check that r1 and r2 are not identity
@@ -36,12 +42,12 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
     // Hash input: [DS_DLOG, a.x, a.y, b.x, b.y, c.x, c.y, G.x, G.y, r1.x, r1.y, r2.x, r2.y, 0, 0, 0]
     let hash_input = [
         DS_DLOG,
-        a.x,
-        a.y,
-        b.x,
-        b.y,
-        c.x,
-        c.y,
+        a_point.x,
+        a_point.y,
+        b_point.x,
+        b_point.y,
+        c_point.x,
+        c_point.y,
         generator.x,
         generator.y,
         r1.x,

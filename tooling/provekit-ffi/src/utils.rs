@@ -1,7 +1,7 @@
 //! Utility functions for ProveKit FFI bindings.
 
 use {
-    crate::types::PKError,
+    crate::{ffi::set_last_error, types::PKStatus},
     anyhow::Result,
     std::{ffi::CStr, os::raw::c_char},
 };
@@ -15,12 +15,16 @@ use {
 ///
 /// The caller must ensure that `ptr` is a valid null-terminated C string
 /// that remains valid for the duration of this function call.
-pub unsafe fn c_str_to_str(ptr: *const c_char) -> Result<String, PKError> {
+pub unsafe fn c_str_to_str(ptr: *const c_char) -> Result<String, PKStatus> {
     if ptr.is_null() {
-        return Err(PKError::InvalidInput);
+        set_last_error("null pointer passed as C string".into());
+        return Err(PKStatus::InvalidInput);
     }
     CStr::from_ptr(ptr)
         .to_str()
         .map(|s| s.to_owned())
-        .map_err(|_| PKError::Utf8Error)
+        .map_err(|e| {
+            set_last_error(format!("invalid UTF-8 in C string: {e}"));
+            PKStatus::Utf8Error
+        })
 }

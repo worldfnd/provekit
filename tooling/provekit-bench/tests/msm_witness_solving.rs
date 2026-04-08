@@ -98,7 +98,8 @@ fn solve_witnesses(
 
     let acir_map = WitnessMap::<NoirElement>::new();
     let mut transcript = dummy_transcript();
-    solve_witness_vec(&mut witness, layers, &acir_map, &mut transcript);
+    solve_witness_vec(&mut witness, layers, &acir_map, &mut transcript)
+        .expect("witness solving failed");
 
     witness
         .into_iter()

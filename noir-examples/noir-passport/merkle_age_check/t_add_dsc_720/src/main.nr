@@ -1,14 +1,15 @@
 // Verify CSCA signed DSC certificate (720-byte TBS)
 use commitment::hash_salt_country_tbs;
-use sig_check_rsa::verify_signature;
+use sig_check_rsa::{compute_key_ne_hash, verify_signature};
 use utils::types::Alpha3CountryCode;
 
 fn main(
     csc_pubkey: pub [u8; 512],
+    csc_key_ne_hash: pub Field,
+    csc_pubkey_redc_param: [u8; 513],
     salt: Field,
     country: Alpha3CountryCode,
     tbs_certificate: [u8; 720],
-    csc_pubkey_redc_param: [u8; 513],
     dsc_signature: [u8; 512],
     exponent: u32,
     tbs_certificate_len: u32,
@@ -17,6 +18,10 @@ fn main(
     assert(
         tbs_certificate_len <= 720,
         "tbs_certificate_len must not exceed 720"
+    );
+    assert(
+        csc_key_ne_hash == compute_key_ne_hash::<512>(csc_pubkey, exponent),
+        "CSC key hash does not match (n||e)",
     );
 
     assert(

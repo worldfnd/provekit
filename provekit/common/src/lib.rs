@@ -4,6 +4,7 @@ pub mod hash_config;
 pub mod interner;
 mod mavros;
 mod noir_proof_scheme;
+pub mod ntt;
 pub mod optimize;
 pub mod prefix_covector;
 mod prover;
@@ -28,12 +29,12 @@ pub use {
     hash_config::HashConfig,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
-    prefix_covector::{OffsetCovector, PrefixCovector},
+    prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     prover::{NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
-    whir_r1cs::{WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
+    whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
 };
 
@@ -47,7 +48,8 @@ pub fn register_ntt() {
     INIT.call_once(|| {
         // Register NTT for polynomial operations
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
+            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
+
         whir::algebra::ntt::NTT.insert(ntt);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines

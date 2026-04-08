@@ -53,7 +53,7 @@ fn diagonal() -> [usize; 12] {
         println!();
     }
 
-    // Since there is no data of the diagionals yet it is safe to double them. This
+    // Since there is no data of the diagonals yet it is safe to double them. This
     // means that t[8][1] = t[9] needs to be included.
     // t[0][1] is not touched by the diagonalisation so no need to include t[0]
 
