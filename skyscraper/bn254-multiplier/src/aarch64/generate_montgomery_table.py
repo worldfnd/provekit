@@ -166,6 +166,8 @@ if __name__ == "__main__":
         ("3p", 3 * p),
         ("2ˆ256-2p", 2**256 - 2 * p),
         ("4p", 4 * p),
+        ("5p", 5 * p),
+        ("2^256-1", 2**256-1)
     ]
     print("input*p")
     print("Input Size | single_step | single_step_simd | log_jump| single_step_wasm ")
