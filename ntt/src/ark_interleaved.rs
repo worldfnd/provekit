@@ -1,6 +1,9 @@
-use {crate::{define_ntt_loops, extend_roots_table}, ark_bn254::Fr};
+use {
+    crate::{define_ntt, extend_roots_table},
+    ark_bn254::Fr,
+};
 
-define_ntt_loops!(interleaved_ntt_nr, Fr, ark_kernel);
+define_ntt!(interleaved_ntt_nr, Fr, ark_kernel);
 
 pub fn ntt_nr_ark(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
