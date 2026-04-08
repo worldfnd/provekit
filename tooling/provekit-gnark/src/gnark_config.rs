@@ -38,7 +38,8 @@ pub struct WHIRConfigGnark {
     pub ood_samples: Vec<usize>,
     /// Number of queries per round.
     pub num_queries: Vec<usize>,
-    /// Proof-of-work bits per round (truncated integer, kept for backwards compat).
+    /// Proof-of-work bits per round (truncated integer, kept for backwards
+    /// compat).
     pub pow_bits: Vec<i32>,
     /// Proof-of-work u64 thresholds per WHIR round (exact values from Rust).
     pub pow_thresholds: Vec<u64>,
