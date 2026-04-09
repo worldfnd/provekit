@@ -60,6 +60,19 @@ index fc0e8df..1920f58 100644
  
      func testLaunchAndCaptureBenchmarkReport() {
          let app = XCUIApplication()
+diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template b/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
+index 7ccad1a..46c6909 100644
+--- a/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
++++ b/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
+@@ -14,7 +14,7 @@ targets:
+     resources:
+       - path: {{PROJECT_NAME_PASCAL}}/Resources
+         optional: true
+-      - path: ../../target/mobile-spec/ios
++      - path: ../../../mobile-spec/ios
+         optional: true
+     info:
+       path: {{PROJECT_NAME_PASCAL}}/Info.plist
 diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
 index 46f7546..da8350e 100644
 --- a/crates/mobench/src/lib.rs
