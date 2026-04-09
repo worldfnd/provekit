@@ -1,6 +1,7 @@
 [package]
-name = "ntt"
+name = "provekit-ntt"
 version = "0.1.0"
+description = "Number Theoretic Transform implementation for BN254"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

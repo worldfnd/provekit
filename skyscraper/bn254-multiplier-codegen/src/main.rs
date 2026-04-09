@@ -1,5 +1,5 @@
 use {
-    bn254_multiplier_codegen::{scalar, simd},
+    provekit_bn254_multiplier_codegen::{scalar, simd},
     hla::builder::{build_includable, Interleaving},
 };
 
