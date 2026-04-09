@@ -42,13 +42,15 @@ Observed in ProveKit smoke rerun:
 - fetched iOS summary instead contained `bench_mobile::bench_passport_complete_age_check_prepare`
 - fetched iOS samples used default profile settings (`20` iterations, `3` warmup)
 
-Likely cause:
-- generated iOS `project.yml` points at `../../target/mobile-spec/ios`
-- from `target/mobench/ios/BenchRunner`, that resolves to `target/mobench/target/mobile-spec/ios`
-- the packaged app therefore misses `bench_spec.json`, so the app falls back to `DEFAULT_FUNCTION`, `20`, and `3`
+Confirmed cause:
+- `persist_mobile_spec(...)` embeds `bench_spec.json` into `target/mobench/ios/BenchRunner/BenchRunner/Resources`
+- `generate_ios_project(...)` unconditionally deletes and regenerates `target/mobench/ios/` on every build/package step
+- that regeneration wipes the embedded `Resources/bench_spec.json` before `xcodegen` packages the BrowserStack app
+- the app then falls back to the template defaults (`DEFAULT_FUNCTION`, `20`, `3`)
 
 What should be upstreamed:
-- fix the generated iOS resource path so `bench_spec.json` is bundled into the app
+- preserve existing iOS `BenchRunner/Resources` contents during scaffolding regeneration, the same way Android assets are already preserved
+- add a regression test proving `bench_spec.json` and `bench_meta.json` survive `generate_ios_project(...)` re-runs
 - add an integration test that packages the iOS BrowserStack artifacts and verifies the embedded spec matches the requested function/iterations/warmup
 - fail `ci run --target ios` if fetched results do not match the requested benchmark spec
 
