@@ -10,7 +10,7 @@
 // Inner circuit: 8 constraints, 10 witnesses -> m_0=3, m=13.
 
 // log2(number of R1CS constraints)
-pub global LOG_NUM_CONSTRAINTS: u32 = 3;
+pub global LOG_NUM_CONSTRAINTS: u32 = 1;
 // log2(number of witness variables in the WHIR MLE)
 pub global LOG_NUM_VARIABLES: u32 = 13;
 // Number of WHIR middle folding rounds (excluding initial and final)
@@ -20,21 +20,21 @@ pub global FOLDING_FACTOR: u32 = 3;
 // Number of in-domain queries per WHIR round
 pub global MAX_QUERIES_PER_ROUND: u32 = 127;
 // Merkle tree height = log2(codeword_length / interleaving_depth)
-pub global TREE_HEIGHT: u32 = 9;
+pub global TREE_HEIGHT: u32 = 12;
 // Number of out-of-domain samples per WHIR round
 pub global OOD_SAMPLES: u32 = 1;
 // Reed-Solomon rate (log2 of inverse rate)
-pub global LOG_INV_RATE: u32 = 2;
+pub global LOG_INV_RATE: u32 = 0;
 // Proof-of-work bits per round
 pub global POW_BITS: u32 = 6;
 // Maximum number of public inputs from the inner circuit
 pub global MAX_PUBLIC_INPUTS: u32 = 0;
 // Maximum non-zero entries per R1CS matrix
-pub global MAX_MATRIX_CELLS: u32 = 100;
+pub global MAX_MATRIX_CELLS: u32 = 3;
 // Number of logup challenges (0 = single commitment mode)
 pub global NUM_CHALLENGES: u32 = 0;
 // Size of w1 (first witness segment)
-pub global W1_SIZE: u32 = 10;
+pub global W1_SIZE: u32 = 5;
 // Number of WHIR batch polynomials
 pub global BATCH_SIZE: u32 = 1;
 
@@ -45,7 +45,7 @@ pub global BLINDING_OOD_SAMPLES: u32 = 1;
 // Number of blinding WHIR folding rounds
 pub global BLINDING_WHIR_ROUNDS: u32 = 3;
 // Blinding tree height
-pub global BLINDING_TREE_HEIGHT: u32 = 8;
+pub global BLINDING_TREE_HEIGHT: u32 = 11;
 // Number of blinding polynomial vectors
 pub global NUM_BLINDING_VECTORS: u32 = 14;
 // Number of witness variables in the WHIR (mu = m = LOG_NUM_VARIABLES)
@@ -54,6 +54,8 @@ pub global NUM_WITNESS_VARIABLES: u32 = 13;
 pub global BLINDING_MAX_QUERIES: u32 = 127;
 // Blinding fold size (same folding factor)
 pub global BLINDING_FOLD_SIZE: u32 = 8;
+// Full blinding Merkle leaf row width = NUM_BLINDING_VECTORS * BLINDING_FOLD_SIZE
+pub global BLINDING_MERKLE_LEAF_SIZE: u32 = NUM_BLINDING_VECTORS * BLINDING_FOLD_SIZE;
 
 // --- WHIR inner verification parameters ---
 // Number of linear forms = 3 (evals_az/bz/cz) + 1 (blinding) = 4
@@ -102,18 +104,18 @@ pub global BLINDING_STIR_TOTAL_BYTES: u32 = BLINDING_MAX_QUERIES * BLINDING_STIR
 // Upper bound for squeeze_stir_challenges loop iterations.
 // Must be >= max(STIR_TOTAL_BYTES, BLINDING_STIR_TOTAL_BYTES) across all openings.
 // 127 queries * 2 bytes = 254; round up to 256.
-pub global MAX_STIR_BYTES: u32 = 256;
+pub global MAX_STIR_BYTES: u32 = 254;
 
 // Number of constraint RLC terms for the inner WHIR.
-pub global INNER_WHIR_CONSTRAINT_COUNT: u32 = OOD_SAMPLES + NUM_LINEAR_FORMS;
+pub global INNER_WHIR_CONSTRAINT_COUNT: u32 = 5;
 // Constraint count for the blinding WHIR.
-pub global BLINDING_WHIR_CONSTRAINT_COUNT: u32 = BLINDING_OOD_SAMPLES + NUM_LINEAR_FORMS;
+pub global BLINDING_WHIR_CONSTRAINT_COUNT: u32 = 5;
 
 // Interleaving depth of the IRS commitment.
-pub global INTERLEAVING_DEPTH: u32 = FOLD_SIZE; // = 1 << FOLDING_FACTOR
+pub global INTERLEAVING_DEPTH: u32 = 8; // = 1 << FOLDING_FACTOR
 
 // Number of gammas in the zkWHIR per-gamma loop.
-pub global MAX_GAMMAS: u32 = MAX_QUERIES_PER_ROUND * INTERLEAVING_DEPTH;
+pub global MAX_GAMMAS: u32 = 1016;
 
 // --- SHA256 constants ---
 

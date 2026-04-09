@@ -1,29 +1,38 @@
 use {
     crate::Command,
-    anyhow::{Context, Result},
+    anyhow::{ensure, Context, Result},
     argh::FromArgs,
     ark_ff::{PrimeField, Zero},
+    ark_serialize::CanonicalDeserialize,
     provekit_common::{
-        file::read,
-        FieldElement, NoirProof, Verifier, WhirR1CSScheme,
+        file::read, FieldElement, NoirProof, TranscriptSponge, Verifier, WhirR1CSScheme,
     },
     provekit_verifier::Verify,
     sha3::{Digest, Sha3_512},
     std::{
         fmt::Write as FmtWrite,
-        fs::File,
+        fs::{self, File},
         io::Write,
         path::PathBuf,
     },
     tracing::{info, instrument},
-    whir::protocols::proof_of_work,
+    whir::{
+        hash::{Hash, ENGINES},
+        protocols::{
+            challenge_indices::challenge_indices, geometric_challenge::geometric_challenge,
+            irs_commit, proof_of_work,
+        },
+        transcript::{Proof as WhirProof, VerifierMessage, VerifierState},
+    },
 };
 
 /// Generate input files for the Noir recursive verifier circuit.
 ///
 /// Extracts WHIR configuration constants and proof data needed by the
-/// Noir recursive verifier. Outputs a JSON config file and a partial
-/// Prover.toml with Spartan-level data and R1CS matrices.
+/// Noir recursive verifier. Outputs:
+/// - Prover.toml (for verifier-noir)
+/// - noir_verifier_data.json (raw extracted config)
+/// - synchronized src/types.nr constants
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "generate-noir-inputs")]
 pub struct Args {
@@ -39,7 +48,7 @@ pub struct Args {
     #[argh(
         option,
         long = "output",
-        default = "String::from(\"./Prover.toml\")"
+        default = "String::from(\"./provekit/verifier-noir/Prover.toml\")"
     )]
     output_path: String,
 
@@ -47,9 +56,17 @@ pub struct Args {
     #[argh(
         option,
         long = "json",
-        default = "String::from(\"./noir_verifier_data.json\")"
+        default = "String::from(\"./provekit/verifier-noir/noir_verifier_data.json\")"
     )]
     json_path: String,
+
+    /// path to verifier-noir types.nr to auto-sync constants
+    #[argh(
+        option,
+        long = "types",
+        default = "String::from(\"./provekit/verifier-noir/src/types.nr\")"
+    )]
+    types_path: String,
 }
 
 /// SHA3-512(CBOR(WhirR1CSScheme)) -- matches whir::transcript::DomainSeparator::protocol().
@@ -108,6 +125,530 @@ fn parse_whir_sumcheck(
     (coeffs, pow_nonces, offset - pos)
 }
 
+#[derive(Clone, Debug)]
+struct MerkleOpening {
+    leaves:    Vec<Vec<FieldElement>>,
+    siblings:  Vec<Vec<[u8; 32]>>,
+    indices:   Vec<u32>,
+    height:    usize,
+    leaf_size: usize,
+}
+
+#[derive(Clone, Debug)]
+struct MerkleExtraction {
+    inner_round:     Vec<MerkleOpening>,
+    inner_final:     MerkleOpening,
+    blinding_round:  Vec<MerkleOpening>,
+    blinding_final:  MerkleOpening,
+}
+
+fn decode_field_vec_hint(hints: &mut &[u8]) -> Result<Vec<FieldElement>> {
+    let before = *hints;
+    let mut cursor = before;
+    let values = Vec::<FieldElement>::deserialize_compressed(&mut cursor)
+        .context("failed to decode prover_hint_ark<Vec<FieldElement>>")?;
+    let consumed = before.len().saturating_sub(cursor.len());
+    ensure!(consumed > 0, "zero-byte prover_hint_ark decode");
+    *hints = cursor;
+    Ok(values)
+}
+
+fn decode_hash_hint(hints: &mut &[u8]) -> Result<Hash> {
+    ensure!(
+        hints.len() >= 32,
+        "not enough hint bytes while decoding Merkle sibling hash"
+    );
+    let (head, tail) = hints.split_at(32);
+    *hints = tail;
+    Ok(Hash(head.try_into().expect("split_at guarantees 32-byte slice")))
+}
+
+fn field_row_to_bytes(row: &[FieldElement]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(row.len() * 32);
+    for value in row {
+        let limbs = value.into_bigint();
+        #[cfg(not(target_endian = "little"))]
+        compile_error!("This crate requires little-endian targets.");
+        let bytes = limbs.as_ref();
+        for limb in bytes {
+            out.extend_from_slice(&limb.to_le_bytes());
+        }
+    }
+    out
+}
+
+fn hash_rows(leaf_hash_id: whir::engines::EngineId, rows: &[Vec<FieldElement>]) -> Result<Vec<Hash>> {
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let row_size = rows[0].len();
+    ensure!(row_size > 0, "cannot hash empty-width matrix rows");
+    ensure!(
+        rows.iter().all(|r| r.len() == row_size),
+        "inconsistent row width while hashing Merkle leaves"
+    );
+    let message_size = row_size * 32;
+    let mut input = Vec::with_capacity(rows.len() * message_size);
+    for row in rows {
+        input.extend_from_slice(&field_row_to_bytes(row));
+    }
+    let engine = ENGINES
+        .retrieve(leaf_hash_id)
+        .context("missing WHIR leaf hash engine")?;
+    let mut out = vec![Hash::default(); rows.len()];
+    engine.hash_many(message_size, &input, &mut out);
+    Ok(out)
+}
+
+fn hash_pair(layer_hash_id: whir::engines::EngineId, left: Hash, right: Hash) -> Result<Hash> {
+    let mut input = [0u8; 64];
+    input[..32].copy_from_slice(&left.0);
+    input[32..].copy_from_slice(&right.0);
+    let engine = ENGINES
+        .retrieve(layer_hash_id)
+        .context("missing WHIR Merkle layer hash engine")?;
+    let mut out = [Hash::default(); 1];
+    engine.hash_many(64, &input, &mut out);
+    Ok(out[0])
+}
+
+fn decode_opening(
+    hints: &mut &[u8],
+    committer: &irs_commit::Config<whir::algebra::embedding::Identity<FieldElement>>,
+    indices: &[usize],
+    expected_root: [u8; 32],
+) -> Result<MerkleOpening> {
+    let matrix = decode_field_vec_hint(hints)?;
+    let row_size = committer.matrix_commit.num_cols;
+    ensure!(
+        matrix.len() == indices.len() * row_size,
+        "opened matrix hint length mismatch: got {}, expected {}",
+        matrix.len(),
+        indices.len() * row_size
+    );
+
+    let rows = matrix
+        .chunks_exact(row_size)
+        .map(|row| row.to_vec())
+        .collect::<Vec<_>>();
+    let leaf_hashes = hash_rows(committer.matrix_commit.leaf_hash_id, &rows)?;
+    let mut paths = vec![Vec::<[u8; 32]>::new(); indices.len()];
+
+    #[derive(Clone)]
+    struct State {
+        idx:         usize,
+        hash:        Hash,
+        descendants: Vec<usize>,
+    }
+
+    let mut states = indices
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(q, idx)| State {
+            idx,
+            hash: leaf_hashes[q],
+            descendants: vec![q],
+        })
+        .collect::<Vec<_>>();
+
+    // Merge duplicate query indices and enforce equal opened rows.
+    states.sort_unstable_by_key(|s| s.idx);
+    let mut deduped = Vec::<State>::new();
+    for s in states {
+        if let Some(last) = deduped.last_mut() {
+            if last.idx == s.idx {
+                ensure!(
+                    last.hash == s.hash,
+                    "duplicate query index {} has inconsistent opened row values",
+                    s.idx
+                );
+                last.descendants.extend(s.descendants);
+                continue;
+            }
+        }
+        deduped.push(s);
+    }
+    let mut states = deduped;
+
+    for layer in committer.matrix_commit.merkle_tree.layers.iter().rev() {
+        let mut next = Vec::<State>::with_capacity(states.len());
+        let mut i = 0usize;
+        while i < states.len() {
+            if i + 1 < states.len() && states[i + 1].idx == (states[i].idx ^ 1) {
+                let left = states[i].clone();
+                let right = states[i + 1].clone();
+                for &q in &left.descendants {
+                    paths[q].push(right.hash.0);
+                }
+                for &q in &right.descendants {
+                    paths[q].push(left.hash.0);
+                }
+                let parent = hash_pair(layer.hash_id, left.hash, right.hash)?;
+                let mut descendants = left.descendants;
+                descendants.extend(right.descendants);
+                next.push(State {
+                    idx: left.idx >> 1,
+                    hash: parent,
+                    descendants,
+                });
+                i += 2;
+            } else {
+                let single = states[i].clone();
+                let sibling = decode_hash_hint(hints)?;
+                for &q in &single.descendants {
+                    paths[q].push(sibling.0);
+                }
+                let parent = if (single.idx & 1) == 0 {
+                    hash_pair(layer.hash_id, single.hash, sibling)?
+                } else {
+                    hash_pair(layer.hash_id, sibling, single.hash)?
+                };
+                next.push(State {
+                    idx: single.idx >> 1,
+                    hash: parent,
+                    descendants: single.descendants,
+                });
+                i += 1;
+            }
+        }
+        states = next;
+    }
+
+    ensure!(
+        states.len() == 1 && states[0].idx == 0,
+        "invalid Merkle reconstruction state after consuming hints"
+    );
+    ensure!(
+        states[0].hash.0 == expected_root,
+        "Merkle reconstruction root mismatch after consuming hints"
+    );
+
+    Ok(MerkleOpening {
+        leaves: rows,
+        siblings: paths,
+        indices: indices.iter().map(|&i| i as u32).collect(),
+        height: committer.matrix_commit.merkle_tree.layers.len(),
+        leaf_size: row_size,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn extract_merkle_openings(
+    verifier: &Verifier,
+    proof: &NoirProof,
+    wfw: &WhirR1CSScheme,
+    num_linear_forms: usize,
+    num_w_folded_evals: usize,
+    num_gammas: usize,
+    num_witness_variables: usize,
+    initial_root_hash: [u8; 32],
+    round_root_hashes: &[[u8; 32]],
+    blinding_root_hash: [u8; 32],
+    blinding_round_root_hashes: &[[u8; 32]],
+) -> Result<MerkleExtraction> {
+    let blinded = &wfw.whir_witness.blinded_commitment;
+    let blinding = &wfw.whir_witness.blinding_commitment;
+
+    ensure!(
+        wfw.num_challenges == 0,
+        "generate-noir-inputs currently supports only num_challenges=0"
+    );
+
+    let instance = proof.public_inputs.hash_bytes();
+    let ds = wfw.create_domain_separator().instance(&instance);
+    let whir_proof = WhirProof {
+        narg_string: proof.whir_r1cs_proof.narg_string.clone(),
+        hints: proof.whir_r1cs_proof.hints.clone(),
+        #[cfg(debug_assertions)]
+        pattern: proof.whir_r1cs_proof.pattern.clone(),
+    };
+    let mut arthur = VerifierState::new(
+        &ds,
+        &whir_proof,
+        TranscriptSponge::from_config(verifier.hash_config),
+    );
+
+    // Phase 1 commitments
+    let _initial_commitment = wfw
+        .whir_witness
+        .receive_commitments(&mut arthur, 1)
+        .map_err(|_| anyhow::anyhow!("failed to receive initial commitments for transcript replay"))?;
+
+    // Spartan sumcheck transcript flow
+    let _: Vec<FieldElement> = arthur.verifier_message_vec(wfw.m_0);
+    let _: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read sum_g during transcript replay"))?;
+    let _: FieldElement = arthur.verifier_message();
+    for _ in 0..wfw.m_0 {
+        for _ in 0..4 {
+            let _: FieldElement = arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("failed to read Spartan coeff during transcript replay"))?;
+        }
+        let _: FieldElement = arthur.verifier_message();
+    }
+    let _: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read blinding_eval during transcript replay"))?;
+
+    // Public-input and eval claims
+    let _: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read public_inputs_hash during transcript replay"))?;
+    let _: FieldElement = arthur.verifier_message();
+    let _: FieldElement = arthur.prover_message().map_err(|_| anyhow::anyhow!("failed eval az"))?;
+    let _: FieldElement = arthur.prover_message().map_err(|_| anyhow::anyhow!("failed eval bz"))?;
+    let _: FieldElement = arthur.prover_message().map_err(|_| anyhow::anyhow!("failed eval cz"))?;
+    if !proof.public_inputs.0.is_empty() {
+        let _: FieldElement = arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("failed public_eval during transcript replay"))?;
+    }
+
+    // zkWHIR prelude
+    let _: FieldElement = arthur.verifier_message(); // blinding challenge
+    for _ in 0..num_w_folded_evals {
+        let _: FieldElement = arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("failed w_folded eval during transcript replay"))?;
+    }
+    let _: FieldElement = arthur.verifier_message(); // masking challenge
+    let zkwhir_initial_indices = challenge_indices(
+        &mut arthur,
+        blinded.initial_committer.matrix_commit.num_rows(),
+        blinded.initial_committer.in_domain_samples,
+        blinded.initial_committer.deduplicate_in_domain,
+    );
+    let _: FieldElement = arthur.verifier_message(); // tau1
+    let _: FieldElement = arthur.verifier_message(); // tau2
+    for _ in 0..num_gammas {
+        let _: FieldElement = arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("failed gamma m_eval during transcript replay"))?;
+        for _ in 0..num_witness_variables {
+            let _: FieldElement = arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("failed gamma g_hat_eval during transcript replay"))?;
+        }
+    }
+    let _: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed combined_claims during transcript replay"))?;
+    let _: FieldElement = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed batched_h_claims during transcript replay"))?;
+
+    // Inner WHIR transcript flow
+    if blinded.initial_committer.out_domain_samples + num_linear_forms > 1 {
+        let _: Vec<FieldElement> = geometric_challenge(&mut arthur, 2);
+    }
+    let mut dummy_sum = FieldElement::zero();
+    blinded
+        .initial_sumcheck
+        .verify(&mut arthur, &mut dummy_sum)
+        .map_err(|_| anyhow::anyhow!("failed initial inner WHIR sumcheck replay"))?;
+
+    let mut inner_round_indices = Vec::<Vec<usize>>::with_capacity(blinded.round_configs.len());
+    let mut current_inner_committer = &blinded.initial_committer;
+    for round in &blinded.round_configs {
+        let _ = round
+            .irs_committer
+            .receive_commitment(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("failed round commitment replay"))?;
+        round
+            .pow
+            .verify(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("failed round pow replay"))?;
+        let indices = challenge_indices(
+            &mut arthur,
+            current_inner_committer.matrix_commit.num_rows(),
+            current_inner_committer.in_domain_samples,
+            current_inner_committer.deduplicate_in_domain,
+        );
+        if round.irs_committer.out_domain_samples + indices.len() > 1 {
+            let _: Vec<FieldElement> = geometric_challenge(&mut arthur, 2);
+        }
+        round
+            .sumcheck
+            .verify(&mut arthur, &mut dummy_sum)
+            .map_err(|_| anyhow::anyhow!("failed round sumcheck replay"))?;
+        inner_round_indices.push(indices);
+        current_inner_committer = &round.irs_committer;
+    }
+
+    let _: Vec<FieldElement> = arthur
+        .prover_messages_vec(blinded.final_sumcheck.initial_size)
+        .map_err(|_| anyhow::anyhow!("failed final vector replay"))?;
+    blinded
+        .final_pow
+        .verify(&mut arthur)
+        .map_err(|_| anyhow::anyhow!("failed final pow replay"))?;
+    let inner_final_indices = challenge_indices(
+        &mut arthur,
+        current_inner_committer.matrix_commit.num_rows(),
+        current_inner_committer.in_domain_samples,
+        current_inner_committer.deduplicate_in_domain,
+    );
+    blinded
+        .final_sumcheck
+        .verify(&mut arthur, &mut dummy_sum)
+        .map_err(|_| anyhow::anyhow!("failed inner final sumcheck replay"))?;
+
+    // Blinding WHIR transcript flow
+    if blinding.initial_committer.num_vectors > 1 {
+        let _: Vec<FieldElement> =
+            geometric_challenge(&mut arthur, blinding.initial_committer.num_vectors);
+    }
+    if blinding.initial_committer.out_domain_samples + num_linear_forms > 1 {
+        let _: Vec<FieldElement> = geometric_challenge(&mut arthur, 2);
+    }
+    let mut blinding_dummy_sum = FieldElement::zero();
+    blinding
+        .initial_sumcheck
+        .verify(&mut arthur, &mut blinding_dummy_sum)
+        .map_err(|_| anyhow::anyhow!("failed blinding initial sumcheck replay"))?;
+
+    let mut blinding_round_indices = Vec::<Vec<usize>>::with_capacity(blinding.round_configs.len());
+    let mut current_blinding_committer = &blinding.initial_committer;
+    for round in &blinding.round_configs {
+        let _ = round
+            .irs_committer
+            .receive_commitment(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("failed blinding round commitment replay"))?;
+        round
+            .pow
+            .verify(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("failed blinding round pow replay"))?;
+        let indices = challenge_indices(
+            &mut arthur,
+            current_blinding_committer.matrix_commit.num_rows(),
+            current_blinding_committer.in_domain_samples,
+            current_blinding_committer.deduplicate_in_domain,
+        );
+        if round.irs_committer.out_domain_samples + indices.len() > 1 {
+            let _: Vec<FieldElement> = geometric_challenge(&mut arthur, 2);
+        }
+        round
+            .sumcheck
+            .verify(&mut arthur, &mut blinding_dummy_sum)
+            .map_err(|_| anyhow::anyhow!("failed blinding round sumcheck replay"))?;
+        blinding_round_indices.push(indices);
+        current_blinding_committer = &round.irs_committer;
+    }
+
+    let _: Vec<FieldElement> = arthur
+        .prover_messages_vec(blinding.final_sumcheck.initial_size)
+        .map_err(|_| anyhow::anyhow!("failed blinding final vector replay"))?;
+    blinding
+        .final_pow
+        .verify(&mut arthur)
+        .map_err(|_| anyhow::anyhow!("failed blinding final pow replay"))?;
+    let blinding_final_indices = challenge_indices(
+        &mut arthur,
+        current_blinding_committer.matrix_commit.num_rows(),
+        current_blinding_committer.in_domain_samples,
+        current_blinding_committer.deduplicate_in_domain,
+    );
+    blinding
+        .final_sumcheck
+        .verify(&mut arthur, &mut blinding_dummy_sum)
+        .map_err(|_| anyhow::anyhow!("failed blinding final sumcheck replay"))?;
+
+    // Decode hints in the exact opening order.
+    let mut hints = proof.whir_r1cs_proof.hints.as_slice();
+
+    // 1) zkWHIR initial opening (consumed for order; not directly emitted)
+    let _ = decode_opening(
+        &mut hints,
+        &blinded.initial_committer,
+        &zkwhir_initial_indices,
+        initial_root_hash,
+    )?;
+
+    // 2) Inner per-round openings (open previous commitment each round)
+    let mut inner_round_openings = Vec::with_capacity(inner_round_indices.len());
+    for (r, indices) in inner_round_indices.iter().enumerate() {
+        let committer = if r == 0 {
+            &blinded.initial_committer
+        } else {
+            &blinded.round_configs[r - 1].irs_committer
+        };
+        let root = if r == 0 {
+            initial_root_hash
+        } else {
+            round_root_hashes[r - 1]
+        };
+        inner_round_openings.push(decode_opening(&mut hints, committer, indices, root)?);
+    }
+
+    // 3) Inner final opening
+    let inner_final_committer = if blinded.round_configs.is_empty() {
+        &blinded.initial_committer
+    } else {
+        &blinded.round_configs[blinded.round_configs.len() - 1].irs_committer
+    };
+    let inner_final_root = if round_root_hashes.is_empty() {
+        initial_root_hash
+    } else {
+        round_root_hashes[round_root_hashes.len() - 1]
+    };
+    let inner_final_opening = decode_opening(
+        &mut hints,
+        inner_final_committer,
+        &inner_final_indices,
+        inner_final_root,
+    )?;
+
+    // 4) Blinding per-round openings
+    let mut blinding_round_openings = Vec::with_capacity(blinding_round_indices.len());
+    for (r, indices) in blinding_round_indices.iter().enumerate() {
+        let committer = if r == 0 {
+            &blinding.initial_committer
+        } else {
+            &blinding.round_configs[r - 1].irs_committer
+        };
+        let root = if r == 0 {
+            blinding_root_hash
+        } else {
+            blinding_round_root_hashes[r - 1]
+        };
+        blinding_round_openings.push(decode_opening(&mut hints, committer, indices, root)?);
+    }
+
+    // 5) Blinding final opening
+    let blinding_final_committer = if blinding.round_configs.is_empty() {
+        &blinding.initial_committer
+    } else {
+        &blinding.round_configs[blinding.round_configs.len() - 1].irs_committer
+    };
+    let blinding_final_root = if blinding_round_root_hashes.is_empty() {
+        blinding_root_hash
+    } else {
+        blinding_round_root_hashes[blinding_round_root_hashes.len() - 1]
+    };
+    let blinding_final_opening = decode_opening(
+        &mut hints,
+        blinding_final_committer,
+        &blinding_final_indices,
+        blinding_final_root,
+    )?;
+
+    ensure!(
+        hints.is_empty(),
+        "unconsumed hint bytes remain after Merkle extraction: {}",
+        hints.len()
+    );
+
+    Ok(MerkleExtraction {
+        inner_round: inner_round_openings,
+        inner_final: inner_final_opening,
+        blinding_round: blinding_round_openings,
+        blinding_final: blinding_final_opening,
+    })
+}
+
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
@@ -151,21 +692,23 @@ impl Command for Args {
         let ood_samples = blinded.initial_committer.out_domain_samples;
         let num_vectors = blinded.initial_committer.num_vectors;
         let max_queries = blinded.initial_committer.in_domain_samples;
-        let tree_height = {
-            let cl = blinded.initial_committer.codeword_length;
-            let il = blinded.initial_committer.interleaving_depth;
-            (cl / il).ilog2() as usize
-        };
+        let tree_height = blinded
+            .initial_committer
+            .matrix_commit
+            .merkle_tree
+            .layers
+            .len();
         let pow_bits = f64::from(proof_of_work::difficulty(blinded.final_pow.threshold));
 
         let blinding_ood = blinding.initial_committer.out_domain_samples;
         let blinding_num_vectors = blinding.initial_committer.num_vectors;
         let blinding_whir_rounds = blinding.round_configs.len();
-        let blinding_tree_height = {
-            let cl = blinding.initial_committer.codeword_length;
-            let il = blinding.initial_committer.interleaving_depth;
-            (cl / il).ilog2() as usize
-        };
+        let blinding_tree_height = blinding
+            .initial_committer
+            .matrix_commit
+            .merkle_tree
+            .layers
+            .len();
         let blinding_queries = blinding.initial_committer.in_domain_samples;
 
         let interleaving_depth = blinded.initial_committer.interleaving_depth;
@@ -208,6 +751,15 @@ impl Command for Args {
             .iter()
             .map(|rc| rc.irs_committer.out_domain_samples)
             .collect();
+        let _round_num_queries: Vec<usize> = (0..num_whir_rounds)
+            .map(|r| {
+                if r == 0 {
+                    blinded.initial_committer.in_domain_samples
+                } else {
+                    blinded.round_configs[r - 1].irs_committer.in_domain_samples
+                }
+            })
+            .collect();
         let round_pow_active: Vec<bool> = blinded
             .round_configs
             .iter()
@@ -230,6 +782,15 @@ impl Command for Args {
             .iter()
             .map(|rc| rc.irs_committer.out_domain_samples)
             .collect();
+        let _blinding_round_num_queries: Vec<usize> = (0..blinding_whir_rounds)
+            .map(|r| {
+                if r == 0 {
+                    blinding.initial_committer.in_domain_samples
+                } else {
+                    blinding.round_configs[r - 1].irs_committer.in_domain_samples
+                }
+            })
+            .collect();
         let blinding_round_pow_active: Vec<bool> = blinding
             .round_configs
             .iter()
@@ -240,6 +801,26 @@ impl Command for Args {
             .iter()
             .map(|rc| rc.sumcheck.round_pow.threshold != u64::MAX)
             .collect();
+
+        let _final_num_queries = if num_whir_rounds == 0 {
+            blinded.initial_committer.in_domain_samples
+        } else {
+            blinded.round_configs[num_whir_rounds - 1]
+                .irs_committer
+                .in_domain_samples
+        };
+        let _blinding_final_num_queries = if blinding_whir_rounds == 0 {
+            blinding.initial_committer.in_domain_samples
+        } else {
+            blinding.round_configs[blinding_whir_rounds - 1]
+                .irs_committer
+                .in_domain_samples
+        };
+        let round_array_size = std::cmp::max(1, num_whir_rounds);
+        let blinding_round_array_size = std::cmp::max(1, blinding_whir_rounds);
+        let final_sc_array_size = std::cmp::max(1, final_sumcheck_rounds);
+        let blinding_final_sc_array_size = std::cmp::max(1, blinding_final_sc_rounds);
+        let blinding_final_poly_array_size = std::cmp::max(1, blinding_final_poly_size);
 
         info!(
             initial_ff,
@@ -597,6 +1178,100 @@ impl Command for Args {
             );
         }
 
+        let merkle = extract_merkle_openings(
+            &verifier,
+            &proof,
+            wfw,
+            num_linear_forms,
+            num_w_folded_evals,
+            num_gammas,
+            num_witness_variables,
+            initial_root_hash,
+            &round_root_hashes,
+            blinding_root_hash,
+            &blinding_round_root_hashes,
+        )
+        .context("while extracting Merkle openings from WHIR hints")?;
+
+        let expected_inner_leaf_size = 1usize << initial_ff;
+        let expected_blinding_leaf_size = blinding_num_vectors * (1usize << blinding_ff);
+        for (r, opening) in merkle.inner_round.iter().enumerate() {
+            ensure!(
+                opening.leaf_size <= expected_inner_leaf_size,
+                "inner round {r} leaf width {} exceeds max {}",
+                opening.leaf_size,
+                expected_inner_leaf_size
+            );
+            ensure!(
+                opening.height <= tree_height,
+                "inner round {r} Merkle height {} exceeds TREE_HEIGHT {}",
+                opening.height,
+                tree_height
+            );
+            ensure!(
+                opening.indices.len() <= max_queries,
+                "inner round {r} query count {} exceeds MAX_QUERIES_PER_ROUND {}",
+                opening.indices.len(),
+                max_queries
+            );
+        }
+        ensure!(
+            merkle.inner_final.leaf_size <= expected_inner_leaf_size,
+            "inner final leaf width {} exceeds max {}",
+            merkle.inner_final.leaf_size,
+            expected_inner_leaf_size
+        );
+        ensure!(
+            merkle.inner_final.height <= tree_height,
+            "inner final Merkle height {} exceeds TREE_HEIGHT {}",
+            merkle.inner_final.height,
+            tree_height
+        );
+        ensure!(
+            merkle.inner_final.indices.len() <= max_queries,
+            "inner final query count {} exceeds MAX_QUERIES_PER_ROUND {}",
+            merkle.inner_final.indices.len(),
+            max_queries
+        );
+        for (r, opening) in merkle.blinding_round.iter().enumerate() {
+            ensure!(
+                opening.leaf_size <= expected_blinding_leaf_size,
+                "blinding round {r} leaf width {} exceeds max {}",
+                opening.leaf_size,
+                expected_blinding_leaf_size
+            );
+            ensure!(
+                opening.height <= blinding_tree_height,
+                "blinding round {r} Merkle height {} exceeds BLINDING_TREE_HEIGHT {}",
+                opening.height,
+                blinding_tree_height
+            );
+            ensure!(
+                opening.indices.len() <= blinding_queries,
+                "blinding round {r} query count {} exceeds BLINDING_MAX_QUERIES {}",
+                opening.indices.len(),
+                blinding_queries
+            );
+        }
+        ensure!(
+            merkle.blinding_final.leaf_size <= expected_blinding_leaf_size,
+            "blinding final leaf width {} exceeds max {}",
+            merkle.blinding_final.leaf_size,
+            expected_blinding_leaf_size
+        );
+        ensure!(
+            merkle.blinding_final.height <= blinding_tree_height,
+            "blinding final Merkle height {} exceeds BLINDING_TREE_HEIGHT {}",
+            merkle.blinding_final.height,
+            blinding_tree_height
+        );
+        ensure!(
+            merkle.blinding_final.indices.len() <= blinding_queries,
+            "blinding final query count {} exceeds BLINDING_MAX_QUERIES {}",
+            merkle.blinding_final.indices.len(),
+            blinding_queries
+        );
+
         // === Extract R1CS matrices ===
         let r1cs = &verifier.r1cs;
         let ha = r1cs.a();
@@ -629,6 +1304,38 @@ impl Command for Args {
             c_nnz = c_cells.len(),
             "Extracted R1CS matrices"
         );
+
+        sync_types_file(
+            &self.types_path,
+            m_0 as u32,
+            m as u32,
+            num_whir_rounds as u32,
+            initial_ff as u32,
+            max_queries as u32,
+            tree_height as u32,
+            ood_samples as u32,
+            ((blinded.initial_committer.codeword_length.ilog2() as usize).saturating_sub(m)) as u32,
+            pow_bits.round() as u32,
+            proof.public_inputs.0.len() as u32,
+            std::cmp::max(a_cells.len(), std::cmp::max(b_cells.len(), c_cells.len())) as u32,
+            wfw.num_challenges as u32,
+            wfw.w1_size as u32,
+            num_vectors as u32,
+            blinding_ood as u32,
+            blinding_whir_rounds as u32,
+            blinding_tree_height as u32,
+            blinding_num_vectors as u32,
+            num_witness_variables as u32,
+            blinding_queries as u32,
+            num_linear_forms as u32,
+            num_w_folded_evals as u32,
+            final_poly_size as u32,
+            blinding_final_poly_size as u32,
+            final_sumcheck_rounds as u32,
+            blinding_final_sc_rounds as u32,
+            num_gammas as u32,
+        )?;
+        info!(path = %self.types_path, "Synchronized verifier-noir types.nr constants");
 
         // === Write Prover.toml ===
         let mut out = String::new();
@@ -715,12 +1422,18 @@ impl Command for Args {
 
         write_field_array(&mut out, "final_coefficients", &final_coefficients)?;
         writeln!(out, "final_pow_nonce = {final_pow_nonce}")?;
-        writeln!(out, "final_num_queries = {max_queries}")?;
+        writeln!(out, "final_num_queries = {}", merkle.inner_final.indices.len())?;
 
         writeln!(out, "final_whir_sumcheck_coeffs = [")?;
-        for (i, c) in final_whir_coeffs.iter().enumerate() {
-            let comma = if i < final_whir_coeffs.len() - 1 { "," } else { "" };
-            writeln!(out, "  [\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+        for i in 0..final_sc_array_size {
+            if i < final_whir_coeffs.len() {
+                let c = final_whir_coeffs[i];
+                let comma = if i < final_sc_array_size - 1 { "," } else { "" };
+                writeln!(out, "  [\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+            } else {
+                let comma = if i < final_sc_array_size - 1 { "," } else { "" };
+                writeln!(out, "  [\"0\", \"0\"]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
         writeln!(out)?;
@@ -728,28 +1441,53 @@ impl Command for Args {
         // Per-round WHIR data
         writeln!(out, "# Per-round WHIR data ({num_whir_rounds} rounds)")?;
         writeln!(out, "round_root_hashes = [")?;
-        for (r, rh) in round_root_hashes.iter().enumerate() {
-            let comma = if r < num_whir_rounds - 1 { "," } else { "" };
-            writeln!(out, "  {:?}{comma}", rh)?;
+        for r in 0..round_array_size {
+            let comma = if r < round_array_size - 1 { "," } else { "" };
+            if r < round_root_hashes.len() {
+                writeln!(out, "  {:?}{comma}", round_root_hashes[r])?;
+            } else {
+                writeln!(out, "  [0; 32]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
 
         writeln!(out, "round_ood_answers = [")?;
-        for (r, answers) in round_ood_answers.iter().enumerate() {
-            let vals: Vec<String> = answers.iter().map(|f| format!("\"{}\"", field_str(f))).collect();
-            let comma = if r < num_whir_rounds - 1 { "," } else { "" };
-            writeln!(out, "  [{}]{comma}", vals.join(", "))?;
+        for r in 0..round_array_size {
+            let comma = if r < round_array_size - 1 { "," } else { "" };
+            if r < round_ood_answers.len() {
+                let vals: Vec<String> = round_ood_answers[r]
+                    .iter()
+                    .map(|f| format!("\"{}\"", field_str(f)))
+                    .collect();
+                writeln!(out, "  [{}]{comma}", vals.join(", "))?;
+            } else {
+                writeln!(out, "  [\"0\"]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
 
         writeln!(out, "round_whir_sumcheck_coeffs = [")?;
-        for (r, coeffs) in round_sumcheck_coeffs.iter().enumerate() {
+        for r in 0..round_array_size {
             write!(out, "  [")?;
-            for (i, c) in coeffs.iter().enumerate() {
-                let comma = if i < coeffs.len() - 1 { ", " } else { "" };
-                write!(out, "[\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+            if r < round_sumcheck_coeffs.len() {
+                let coeffs = &round_sumcheck_coeffs[r];
+                for i in 0..initial_ff {
+                    if i < coeffs.len() {
+                        let c = coeffs[i];
+                        let comma = if i < initial_ff - 1 { ", " } else { "" };
+                        write!(out, "[\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+                    } else {
+                        let comma = if i < initial_ff - 1 { ", " } else { "" };
+                        write!(out, "[\"0\", \"0\"]{comma}")?;
+                    }
+                }
+            } else {
+                for i in 0..initial_ff {
+                    let comma = if i < initial_ff - 1 { ", " } else { "" };
+                    write!(out, "[\"0\", \"0\"]{comma}")?;
+                }
             }
-            let comma = if r < num_whir_rounds - 1 { "," } else { "" };
+            let comma = if r < round_array_size - 1 { "," } else { "" };
             writeln!(out, "]{comma}")?;
         }
         writeln!(out, "]")?;
@@ -757,12 +1495,196 @@ impl Command for Args {
         writeln!(
             out,
             "round_pow_nonces = [{}]",
-            round_pow_nonces.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")
+            (0..round_array_size)
+                .map(|r| {
+                    if r < round_pow_nonces.len() {
+                        round_pow_nonces[r].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "round_num_queries = [{}]",
+            (0..round_array_size)
+                .map(|r| {
+                    if r < merkle.inner_round.len() {
+                        merkle.inner_round[r].indices.len().to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(out, "round_merkle_leaves = [")?;
+        for r in 0..round_array_size {
+            let comma = if r < round_array_size - 1 { "," } else { "" };
+            write!(out, "  [")?;
+            for q in 0..max_queries {
+                let q_comma = if q < max_queries - 1 { ", " } else { "" };
+                if r < merkle.inner_round.len() && q < merkle.inner_round[r].leaves.len() {
+                    let mut vals = merkle.inner_round[r].leaves[q]
+                        .iter()
+                        .map(|f| format!("\"{}\"", field_str(f)))
+                        .collect::<Vec<_>>();
+                    vals.extend(std::iter::repeat_n(
+                        "\"0\"".to_string(),
+                        expected_inner_leaf_size.saturating_sub(vals.len()),
+                    ));
+                    write!(out, "[{}]{q_comma}", vals.join(", "))?;
+                } else {
+                    write!(
+                        out,
+                        "[{}]{q_comma}",
+                        vec!["\"0\""; 1usize << initial_ff].join(", ")
+                    )?;
+                }
+            }
+            writeln!(out, "]{comma}")?;
+        }
+        writeln!(out, "]")?;
+        writeln!(out, "round_merkle_siblings = [")?;
+        for r in 0..round_array_size {
+            let comma = if r < round_array_size - 1 { "," } else { "" };
+            write!(out, "  [")?;
+            for q in 0..max_queries {
+                let q_comma = if q < max_queries - 1 { ", " } else { "" };
+                if r < merkle.inner_round.len() && q < merkle.inner_round[r].siblings.len() {
+                    let sibs = (0..tree_height)
+                        .map(|h| {
+                            if h < merkle.inner_round[r].siblings[q].len() {
+                                format!("{:?}", merkle.inner_round[r].siblings[q][h])
+                            } else {
+                                "[0; 32]".to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    write!(out, "[{}]{q_comma}", sibs.join(", "))?;
+                } else {
+                    write!(
+                        out,
+                        "[{}]{q_comma}",
+                        vec!["[0; 32]"; tree_height].join(", ")
+                    )?;
+                }
+            }
+            writeln!(out, "]{comma}")?;
+        }
+        writeln!(out, "]")?;
+        writeln!(out, "round_merkle_indices = [")?;
+        for r in 0..round_array_size {
+            let comma = if r < round_array_size - 1 { "," } else { "" };
+            let row = (0..max_queries)
+                .map(|q| {
+                    if r < merkle.inner_round.len() && q < merkle.inner_round[r].indices.len() {
+                        merkle.inner_round[r].indices[q].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>();
+            writeln!(out, "  [{}]{comma}", row.join(", "))?;
+        }
+        writeln!(out, "]")?;
+        writeln!(
+            out,
+            "round_merkle_leaf_sizes = [{}]",
+            (0..round_array_size)
+                .map(|r| {
+                    if r < merkle.inner_round.len() {
+                        merkle.inner_round[r].leaf_size.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "round_merkle_tree_heights = [{}]",
+            (0..round_array_size)
+                .map(|r| {
+                    if r < merkle.inner_round.len() {
+                        merkle.inner_round[r].height.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
         )?;
         writeln!(out)?;
 
-        // Final Merkle proofs (TODO: extract from proof hints)
-        writeln!(out, "# Final Merkle proofs (TODO: extract from proof hints)")?;
+        // Final Merkle proofs
+        writeln!(out, "# Final Merkle proofs")?;
+        writeln!(
+            out,
+            "final_merkle_leaves = [{}]",
+            (0..max_queries)
+                .map(|q| {
+                    if q < merkle.inner_final.leaves.len() {
+                        let mut vals = merkle.inner_final.leaves[q]
+                            .iter()
+                            .map(|f| format!("\"{}\"", field_str(f)))
+                            .collect::<Vec<_>>();
+                        vals.extend(std::iter::repeat_n(
+                            "\"0\"".to_string(),
+                            expected_inner_leaf_size.saturating_sub(vals.len()),
+                        ));
+                        format!("[{}]", vals.join(", "))
+                    } else {
+                        format!("[{}]", vec!["\"0\""; 1usize << initial_ff].join(", "))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "final_merkle_siblings = [{}]",
+            (0..max_queries)
+                .map(|q| {
+                    let sibs = (0..tree_height)
+                        .map(|h| {
+                            if q < merkle.inner_final.siblings.len()
+                                && h < merkle.inner_final.siblings[q].len()
+                            {
+                                format!("{:?}", merkle.inner_final.siblings[q][h])
+                            } else {
+                                "[0; 32]".to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    format!("[{}]", sibs.join(", "))
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "final_merkle_indices = [{}]",
+            (0..max_queries)
+                .map(|q| {
+                    if q < merkle.inner_final.indices.len() {
+                        merkle.inner_final.indices[q].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(out, "final_merkle_leaf_size = {}", merkle.inner_final.leaf_size)?;
+        writeln!(
+            out,
+            "final_merkle_tree_height = {}",
+            merkle.inner_final.height
+        )?;
         writeln!(out)?;
 
         // === Blinding WHIR data ===
@@ -774,14 +1696,35 @@ impl Command for Args {
         }
         writeln!(out, "]")?;
 
-        write_field_array(&mut out, "blinding_final_coefficients", &blinding_final_coefficients)?;
+        if blinding_final_coefficients.is_empty() {
+            writeln!(out, "blinding_final_coefficients = [\"0\"]")?;
+        } else if blinding_final_coefficients.len() < blinding_final_poly_array_size {
+            let mut vals: Vec<String> = blinding_final_coefficients
+                .iter()
+                .map(|f| format!("\"{}\"", field_str(f)))
+                .collect();
+            vals.extend(std::iter::repeat_n("\"0\"".to_string(), blinding_final_poly_array_size - blinding_final_coefficients.len()));
+            writeln!(out, "blinding_final_coefficients = [{}]", vals.join(", "))?;
+        } else {
+            write_field_array(&mut out, "blinding_final_coefficients", &blinding_final_coefficients)?;
+        }
         writeln!(out, "blinding_final_pow_nonce = {blinding_final_pow_nonce}")?;
-        writeln!(out, "blinding_final_num_queries = {blinding_queries}")?;
+        writeln!(
+            out,
+            "blinding_final_num_queries = {}",
+            merkle.blinding_final.indices.len()
+        )?;
 
         writeln!(out, "blinding_final_sumcheck_coeffs = [")?;
-        for (i, c) in blinding_final_coeffs.iter().enumerate() {
-            let comma = if i < blinding_final_coeffs.len() - 1 { "," } else { "" };
-            writeln!(out, "  [\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+        for i in 0..blinding_final_sc_array_size {
+            if i < blinding_final_coeffs.len() {
+                let c = blinding_final_coeffs[i];
+                let comma = if i < blinding_final_sc_array_size - 1 { "," } else { "" };
+                writeln!(out, "  [\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+            } else {
+                let comma = if i < blinding_final_sc_array_size - 1 { "," } else { "" };
+                writeln!(out, "  [\"0\", \"0\"]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
         writeln!(out)?;
@@ -789,28 +1732,53 @@ impl Command for Args {
         // Blinding per-round data
         writeln!(out, "# Blinding per-round data ({blinding_whir_rounds} rounds)")?;
         writeln!(out, "blinding_round_root_hashes = [")?;
-        for (r, rh) in blinding_round_root_hashes.iter().enumerate() {
-            let comma = if r < blinding_whir_rounds - 1 { "," } else { "" };
-            writeln!(out, "  {:?}{comma}", rh)?;
+        for r in 0..blinding_round_array_size {
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
+            if r < blinding_round_root_hashes.len() {
+                writeln!(out, "  {:?}{comma}", blinding_round_root_hashes[r])?;
+            } else {
+                writeln!(out, "  [0; 32]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
 
         writeln!(out, "blinding_round_ood_answers = [")?;
-        for (r, answers) in blinding_round_ood_ans.iter().enumerate() {
-            let vals: Vec<String> = answers.iter().map(|f| format!("\"{}\"", field_str(f))).collect();
-            let comma = if r < blinding_whir_rounds - 1 { "," } else { "" };
-            writeln!(out, "  [{}]{comma}", vals.join(", "))?;
+        for r in 0..blinding_round_array_size {
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
+            if r < blinding_round_ood_ans.len() {
+                let vals: Vec<String> = blinding_round_ood_ans[r]
+                    .iter()
+                    .map(|f| format!("\"{}\"", field_str(f)))
+                    .collect();
+                writeln!(out, "  [{}]{comma}", vals.join(", "))?;
+            } else {
+                writeln!(out, "  [\"0\"]{comma}")?;
+            }
         }
         writeln!(out, "]")?;
 
         writeln!(out, "blinding_round_sumcheck_coeffs = [")?;
-        for (r, coeffs) in blinding_round_sumcheck_coeffs_vec.iter().enumerate() {
+        for r in 0..blinding_round_array_size {
             write!(out, "  [")?;
-            for (i, c) in coeffs.iter().enumerate() {
-                let comma = if i < coeffs.len() - 1 { ", " } else { "" };
-                write!(out, "[\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+            if r < blinding_round_sumcheck_coeffs_vec.len() {
+                let coeffs = &blinding_round_sumcheck_coeffs_vec[r];
+                for i in 0..blinding_ff {
+                    if i < coeffs.len() {
+                        let c = coeffs[i];
+                        let comma = if i < blinding_ff - 1 { ", " } else { "" };
+                        write!(out, "[\"{}\", \"{}\"]{comma}", field_str(&c[0]), field_str(&c[1]))?;
+                    } else {
+                        let comma = if i < blinding_ff - 1 { ", " } else { "" };
+                        write!(out, "[\"0\", \"0\"]{comma}")?;
+                    }
+                }
+            } else {
+                for i in 0..blinding_ff {
+                    let comma = if i < blinding_ff - 1 { ", " } else { "" };
+                    write!(out, "[\"0\", \"0\"]{comma}")?;
+                }
             }
-            let comma = if r < blinding_whir_rounds - 1 { "," } else { "" };
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
             writeln!(out, "]{comma}")?;
         }
         writeln!(out, "]")?;
@@ -818,12 +1786,202 @@ impl Command for Args {
         writeln!(
             out,
             "blinding_round_pow_nonces = [{}]",
-            blinding_round_pow_nonce_vec.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")
+            (0..blinding_round_array_size)
+                .map(|r| {
+                    if r < blinding_round_pow_nonce_vec.len() {
+                        blinding_round_pow_nonce_vec[r].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "blinding_round_num_queries = [{}]",
+            (0..blinding_round_array_size)
+                .map(|r| {
+                    if r < merkle.blinding_round.len() {
+                        merkle.blinding_round[r].indices.len().to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(out, "blinding_round_merkle_leaves = [")?;
+        for r in 0..blinding_round_array_size {
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
+            write!(out, "  [")?;
+            for q in 0..blinding_queries {
+                let q_comma = if q < blinding_queries - 1 { ", " } else { "" };
+                if r < merkle.blinding_round.len() && q < merkle.blinding_round[r].leaves.len() {
+                    let mut vals = merkle.blinding_round[r].leaves[q]
+                        .iter()
+                        .map(|f| format!("\"{}\"", field_str(f)))
+                        .collect::<Vec<_>>();
+                    vals.extend(std::iter::repeat_n(
+                        "\"0\"".to_string(),
+                        expected_blinding_leaf_size.saturating_sub(vals.len()),
+                    ));
+                    write!(out, "[{}]{q_comma}", vals.join(", "))?;
+                } else {
+                    write!(
+                        out,
+                        "[{}]{q_comma}",
+                        vec!["\"0\""; expected_blinding_leaf_size].join(", ")
+                    )?;
+                }
+            }
+            writeln!(out, "]{comma}")?;
+        }
+        writeln!(out, "]")?;
+        writeln!(out, "blinding_round_merkle_siblings = [")?;
+        for r in 0..blinding_round_array_size {
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
+            write!(out, "  [")?;
+            for q in 0..blinding_queries {
+                let q_comma = if q < blinding_queries - 1 { ", " } else { "" };
+                if r < merkle.blinding_round.len() && q < merkle.blinding_round[r].siblings.len() {
+                    let sibs = (0..blinding_tree_height)
+                        .map(|h| {
+                            if h < merkle.blinding_round[r].siblings[q].len() {
+                                format!("{:?}", merkle.blinding_round[r].siblings[q][h])
+                            } else {
+                                "[0; 32]".to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    write!(out, "[{}]{q_comma}", sibs.join(", "))?;
+                } else {
+                    write!(
+                        out,
+                        "[{}]{q_comma}",
+                        vec!["[0; 32]"; blinding_tree_height].join(", ")
+                    )?;
+                }
+            }
+            writeln!(out, "]{comma}")?;
+        }
+        writeln!(out, "]")?;
+        writeln!(out, "blinding_round_merkle_indices = [")?;
+        for r in 0..blinding_round_array_size {
+            let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
+            let row = (0..blinding_queries)
+                .map(|q| {
+                    if r < merkle.blinding_round.len()
+                        && q < merkle.blinding_round[r].indices.len()
+                    {
+                        merkle.blinding_round[r].indices[q].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>();
+            writeln!(out, "  [{}]{comma}", row.join(", "))?;
+        }
+        writeln!(out, "]")?;
+        writeln!(
+            out,
+            "blinding_round_merkle_leaf_sizes = [{}]",
+            (0..blinding_round_array_size)
+                .map(|r| {
+                    if r < merkle.blinding_round.len() {
+                        merkle.blinding_round[r].leaf_size.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "blinding_round_merkle_tree_heights = [{}]",
+            (0..blinding_round_array_size)
+                .map(|r| {
+                    if r < merkle.blinding_round.len() {
+                        merkle.blinding_round[r].height.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
         )?;
         writeln!(out)?;
 
-        // Blinding final Merkle proofs (TODO: extract from proof hints)
-        writeln!(out, "# Blinding final Merkle proofs (TODO: extract from proof hints)")?;
+        // Blinding final Merkle proofs
+        writeln!(out, "# Blinding final Merkle proofs")?;
+        writeln!(
+            out,
+            "blinding_final_merkle_leaves = [{}]",
+            (0..blinding_queries)
+                .map(|q| {
+                    if q < merkle.blinding_final.leaves.len() {
+                        let mut vals = merkle.blinding_final.leaves[q]
+                            .iter()
+                            .map(|f| format!("\"{}\"", field_str(f)))
+                            .collect::<Vec<_>>();
+                        vals.extend(std::iter::repeat_n(
+                            "\"0\"".to_string(),
+                            expected_blinding_leaf_size.saturating_sub(vals.len()),
+                        ));
+                        format!("[{}]", vals.join(", "))
+                    } else {
+                        format!("[{}]", vec!["\"0\""; expected_blinding_leaf_size].join(", "))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "blinding_final_merkle_siblings = [{}]",
+            (0..blinding_queries)
+                .map(|q| {
+                    let sibs = (0..blinding_tree_height)
+                        .map(|h| {
+                            if q < merkle.blinding_final.siblings.len()
+                                && h < merkle.blinding_final.siblings[q].len()
+                            {
+                                format!("{:?}", merkle.blinding_final.siblings[q][h])
+                            } else {
+                                "[0; 32]".to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    format!("[{}]", sibs.join(", "))
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "blinding_final_merkle_indices = [{}]",
+            (0..blinding_queries)
+                .map(|q| {
+                    if q < merkle.blinding_final.indices.len() {
+                        merkle.blinding_final.indices[q].to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        writeln!(
+            out,
+            "blinding_final_merkle_leaf_size = {}",
+            merkle.blinding_final.leaf_size
+        )?;
+        writeln!(
+            out,
+            "blinding_final_merkle_tree_height = {}",
+            merkle.blinding_final.height
+        )?;
         writeln!(out)?;
 
         // === R1CS matrices ===
@@ -903,4 +2061,114 @@ fn write_matrix_cells(
     writeln!(out, "]")?;
 
     writeln!(out, "{}_len = {}", prefix.replace("matrix_", ""), cells.len())
+}
+
+fn replace_u32_const(contents: &mut String, name: &str, value: u32) -> Result<()> {
+    let needle = format!("pub global {name}: u32 = ");
+    let start = contents
+        .find(&needle)
+        .with_context(|| format!("Could not find constant {name} in types.nr"))?;
+    let after = &contents[start..];
+    let semi_rel = after
+        .find(';')
+        .with_context(|| format!("Malformed constant line for {name} in types.nr"))?;
+    let value_start = start + needle.len();
+    let value_end = start + semi_rel;
+    contents.replace_range(value_start..value_end, &value.to_string());
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sync_types_file(
+    path: &str,
+    log_num_constraints: u32,
+    log_num_variables: u32,
+    num_whir_rounds: u32,
+    folding_factor: u32,
+    max_queries_per_round: u32,
+    tree_height: u32,
+    ood_samples: u32,
+    log_inv_rate: u32,
+    pow_bits: u32,
+    max_public_inputs: u32,
+    max_matrix_cells: u32,
+    num_challenges: u32,
+    w1_size: u32,
+    batch_size: u32,
+    blinding_ood_samples: u32,
+    blinding_whir_rounds: u32,
+    blinding_tree_height: u32,
+    num_blinding_vectors: u32,
+    num_witness_variables: u32,
+    blinding_max_queries: u32,
+    num_linear_forms: u32,
+    num_w_folded_evals: u32,
+    final_poly_size: u32,
+    blinding_final_poly_size: u32,
+    final_sumcheck_rounds: u32,
+    blinding_final_sumcheck_rounds: u32,
+    max_gammas: u32,
+) -> Result<()> {
+    let mut contents = fs::read_to_string(path)
+        .with_context(|| format!("while reading types file at {path}"))?;
+
+    replace_u32_const(&mut contents, "LOG_NUM_CONSTRAINTS", log_num_constraints)?;
+    replace_u32_const(&mut contents, "LOG_NUM_VARIABLES", log_num_variables)?;
+    replace_u32_const(&mut contents, "NUM_WHIR_ROUNDS", num_whir_rounds)?;
+    replace_u32_const(&mut contents, "FOLDING_FACTOR", folding_factor)?;
+    replace_u32_const(&mut contents, "MAX_QUERIES_PER_ROUND", max_queries_per_round)?;
+    replace_u32_const(&mut contents, "TREE_HEIGHT", tree_height)?;
+    replace_u32_const(&mut contents, "OOD_SAMPLES", ood_samples)?;
+    replace_u32_const(&mut contents, "LOG_INV_RATE", log_inv_rate)?;
+    replace_u32_const(&mut contents, "POW_BITS", pow_bits)?;
+    replace_u32_const(&mut contents, "MAX_PUBLIC_INPUTS", max_public_inputs)?;
+    replace_u32_const(&mut contents, "MAX_MATRIX_CELLS", max_matrix_cells)?;
+    replace_u32_const(&mut contents, "NUM_CHALLENGES", num_challenges)?;
+    replace_u32_const(&mut contents, "W1_SIZE", w1_size)?;
+    replace_u32_const(&mut contents, "BATCH_SIZE", batch_size)?;
+    replace_u32_const(&mut contents, "BLINDING_OOD_SAMPLES", blinding_ood_samples)?;
+    replace_u32_const(&mut contents, "BLINDING_WHIR_ROUNDS", blinding_whir_rounds)?;
+    replace_u32_const(&mut contents, "BLINDING_TREE_HEIGHT", blinding_tree_height)?;
+    replace_u32_const(&mut contents, "NUM_BLINDING_VECTORS", num_blinding_vectors)?;
+    replace_u32_const(&mut contents, "NUM_WITNESS_VARIABLES", num_witness_variables)?;
+    replace_u32_const(&mut contents, "BLINDING_MAX_QUERIES", blinding_max_queries)?;
+    replace_u32_const(&mut contents, "BLINDING_FOLD_SIZE", 1u32 << folding_factor)?;
+    replace_u32_const(&mut contents, "NUM_LINEAR_FORMS", num_linear_forms)?;
+    replace_u32_const(&mut contents, "NUM_W_FOLDED_EVALS", num_w_folded_evals)?;
+    replace_u32_const(&mut contents, "FINAL_POLY_SIZE", final_poly_size)?;
+    replace_u32_const(
+        &mut contents,
+        "BLINDING_FINAL_POLY_SIZE",
+        blinding_final_poly_size,
+    )?;
+    replace_u32_const(&mut contents, "FINAL_SUMCHECK_ROUNDS", final_sumcheck_rounds)?;
+    replace_u32_const(
+        &mut contents,
+        "BLINDING_FINAL_SUMCHECK_ROUNDS",
+        blinding_final_sumcheck_rounds,
+    )?;
+    replace_u32_const(&mut contents, "MAX_GAMMAS", max_gammas)?;
+    replace_u32_const(&mut contents, "FOLD_SIZE", 1u32 << folding_factor)?;
+    replace_u32_const(&mut contents, "INTERLEAVING_DEPTH", 1u32 << folding_factor)?;
+    replace_u32_const(
+        &mut contents,
+        "INNER_WHIR_CONSTRAINT_COUNT",
+        ood_samples + num_linear_forms,
+    )?;
+    replace_u32_const(
+        &mut contents,
+        "BLINDING_WHIR_CONSTRAINT_COUNT",
+        blinding_ood_samples + num_linear_forms,
+    )?;
+    replace_u32_const(
+        &mut contents,
+        "MAX_STIR_BYTES",
+        std::cmp::max(
+            max_queries_per_round * ((tree_height + 7) / 8),
+            blinding_max_queries * ((blinding_tree_height + 7) / 8),
+        ),
+    )?;
+
+    fs::write(path, contents).with_context(|| format!("while writing types file at {path}"))?;
+    Ok(())
 }

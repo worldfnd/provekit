@@ -64,26 +64,32 @@ fn sha256_two_blocks(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
     state_to_bytes(state2)
 }
 
-// SHA256 of a variable number of 32-byte field element encodings.
-// Used to hash leaf values.
-fn sha256_field_elements<let N: u32>(fields: [Field; N]) -> [u8; 32] {
-    let total_bytes: u32 = N * 32;
+// SHA256 of the first `n_fields` 32-byte field element encodings.
+// Used to hash Merkle leaf values with runtime row width.
+fn sha256_field_elements_prefix<let MAX_N: u32>(
+    fields: [Field; MAX_N],
+    n_fields: u32,
+) -> [u8; 32] {
+    assert(n_fields <= MAX_N, "leaf_size exceeds MAX_N");
+    let total_bytes: u32 = n_fields * 32;
 
     // Process 64-byte blocks
     let mut state = SHA256_INIT;
     let mut byte_buf: [u8; 64] = [0; 64];
     let mut buf_pos: u32 = 0;
 
-    for i in 0..N {
-        let f_bytes = field_to_bytes_le(fields[i]);
-        for j in 0..32 {
-            byte_buf[buf_pos] = f_bytes[j];
-            buf_pos += 1;
-            if buf_pos == 64 {
-                let block = bytes_to_u32x16(byte_buf);
-                state = sha256_compression(block, state);
-                byte_buf = [0; 64];
-                buf_pos = 0;
+    for i in 0..MAX_N {
+        if (i as u32) < n_fields {
+            let f_bytes = field_to_bytes_le(fields[i]);
+            for j in 0..32 {
+                byte_buf[buf_pos] = f_bytes[j];
+                buf_pos += 1;
+                if buf_pos == 64 {
+                    let block = bytes_to_u32x16(byte_buf);
+                    state = sha256_compression(block, state);
+                    byte_buf = [0; 64];
+                    buf_pos = 0;
+                }
             }
         }
     }
@@ -120,28 +126,35 @@ fn sha256_field_elements<let N: u32>(fields: [Field; N]) -> [u8; 32] {
 // - siblings: sibling hashes along the path (bottom to top)
 // - index: leaf index in the tree (used for left/right selection)
 // - root: expected Merkle root hash
-pub fn verify_merkle_proof<let LEAF_SIZE: u32, let HEIGHT: u32>(
-    leaf_values: [Field; LEAF_SIZE],
-    siblings: [[u8; 32]; HEIGHT],
+pub fn verify_merkle_proof_dynamic<let MAX_LEAF_SIZE: u32, let MAX_HEIGHT: u32>(
+    leaf_values: [Field; MAX_LEAF_SIZE],
+    leaf_size: u32,
+    siblings: [[u8; 32]; MAX_HEIGHT],
+    path_len: u32,
     index: u32,
     root: [u8; 32],
 ) {
+    assert(leaf_size <= MAX_LEAF_SIZE, "leaf_size exceeds max");
+    assert(path_len <= MAX_HEIGHT, "path_len exceeds max");
+
     // Step 1: Hash the leaf values
-    let mut current = sha256_field_elements(leaf_values);
+    let mut current = sha256_field_elements_prefix(leaf_values, leaf_size);
 
     // Step 2: Walk up the tree
     let mut idx = index;
-    for i in 0..HEIGHT {
-        let sibling = siblings[i];
-        let is_right = idx & 1;
-        idx = idx >> 1;
+    for i in 0..MAX_HEIGHT {
+        if (i as u32) < path_len {
+            let sibling = siblings[i];
+            let is_right = idx & 1;
+            idx = idx >> 1;
 
-        if is_right == 1 {
-            // current is right child
-            current = sha256_two_blocks(sibling, current);
-        } else {
-            // current is left child
-            current = sha256_two_blocks(current, sibling);
+            if is_right == 1 {
+                // current is right child
+                current = sha256_two_blocks(sibling, current);
+            } else {
+                // current is left child
+                current = sha256_two_blocks(current, sibling);
+            }
         }
     }
 

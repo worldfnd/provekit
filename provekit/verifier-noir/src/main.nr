@@ -27,12 +27,13 @@ mod whir;
 use types::{
     LOG_NUM_CONSTRAINTS, LOG_NUM_VARIABLES, NUM_WHIR_ROUNDS,
     FOLDING_FACTOR, MAX_QUERIES_PER_ROUND, TREE_HEIGHT, FOLD_SIZE,
-    OOD_SAMPLES, FINAL_SUMCHECK_ROUNDS,
+    OOD_SAMPLES, FINAL_SUMCHECK_ROUNDS, MAX_PUBLIC_INPUTS,
     ROUND_ARRAY_SIZE, BLINDING_ROUND_ARRAY_SIZE,
     FINAL_SC_ARRAY_SIZE, BLINDING_FINAL_SC_ARRAY_SIZE,
     BLINDING_OOD_SAMPLES, BLINDING_WHIR_ROUNDS, BLINDING_TREE_HEIGHT,
-    NUM_WITNESS_VARIABLES,
+    NUM_WITNESS_VARIABLES, NUM_BLINDING_VECTORS,
     BLINDING_MAX_QUERIES, BLINDING_FOLD_SIZE,
+    BLINDING_MERKLE_LEAF_SIZE,
     NUM_W_FOLDED_EVALS, FINAL_POLY_SIZE,
     BLINDING_FINAL_POLY_SIZE, BLINDING_FINAL_POLY_ARRAY_SIZE,
     BLINDING_FINAL_SUMCHECK_ROUNDS,
@@ -42,7 +43,7 @@ use types::{
 };
 use transcript::SHO;
 use sumcheck::{run_sumcheck_verifier, SumcheckResult};
-use merkle::verify_merkle_proof;
+use merkle::verify_merkle_proof_dynamic;
 use matrix_eval::{eq_over_hypercube, calculate_eq, evaluate_r1cs_matrices};
 use public_input::{verify_public_input_hash, verify_public_eval};
 use whir::{
@@ -53,14 +54,14 @@ use whir::{
 
 // --- Compile-time sizes ---
 
-global EQ_ROW_SIZE: u32 = 8; // 2^LOG_NUM_CONSTRAINTS = 2^3
-global EQ_COL_SIZE: u32 = 8192; // 2^LOG_NUM_VARIABLES = 2^13
+global EQ_ROW_SIZE: u32 = 1 << LOG_NUM_CONSTRAINTS;
+global EQ_COL_SIZE: u32 = 1 << LOG_NUM_VARIABLES;
 
 global PROTOCOL_ID_SIZE: u32 = 64;
 global INSTANCE_SIZE: u32 = 32;
 
-// Public inputs: MAX_PUBLIC_INPUTS=0 means no public inputs, use 1 for array sizing
-global PUBLIC_INPUTS_ARRAY_SIZE: u32 = 1;
+// Public inputs: when MAX_PUBLIC_INPUTS=0, keep a sized array at 1.
+global PUBLIC_INPUTS_ARRAY_SIZE: u32 = if MAX_PUBLIC_INPUTS == 0 { 1 } else { MAX_PUBLIC_INPUTS };
 
 // --- Entry point ---
 
@@ -107,6 +108,8 @@ fn main(
     round_merkle_leaves: [[[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_siblings: [[[[u8; 32]; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_indices: [[u32; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
+    round_merkle_leaf_sizes: [u32; ROUND_ARRAY_SIZE],
+    round_merkle_tree_heights: [u32; ROUND_ARRAY_SIZE],
     round_num_queries: [u32; ROUND_ARRAY_SIZE],
 
     round_pow_nonces: [u64; ROUND_ARRAY_SIZE],
@@ -118,6 +121,8 @@ fn main(
     final_merkle_leaves: [[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND],
     final_merkle_siblings: [[[u8; 32]; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND],
     final_merkle_indices: [u32; MAX_QUERIES_PER_ROUND],
+    final_merkle_leaf_size: u32,
+    final_merkle_tree_height: u32,
     final_num_queries: u32,
 
     // Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
@@ -135,17 +140,21 @@ fn main(
     blinding_round_root_hashes: [[u8; 32]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_ood_answers: [[Field; BLINDING_OOD_SAMPLES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_sumcheck_coeffs: [[[Field; 2]; FOLDING_FACTOR]; BLINDING_ROUND_ARRAY_SIZE],
-    blinding_round_merkle_leaves: [[[Field; BLINDING_FOLD_SIZE]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
+    blinding_round_merkle_leaves: [[[Field; BLINDING_MERKLE_LEAF_SIZE]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_siblings: [[[[u8; 32]; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_indices: [[u32; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
+    blinding_round_merkle_leaf_sizes: [u32; BLINDING_ROUND_ARRAY_SIZE],
+    blinding_round_merkle_tree_heights: [u32; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_num_queries: [u32; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_pow_nonces: [u64; BLINDING_ROUND_ARRAY_SIZE],
     blinding_final_coefficients: [Field; BLINDING_FINAL_POLY_ARRAY_SIZE],
     blinding_final_pow_nonce: u64,
     blinding_final_sumcheck_coeffs: [[Field; 2]; BLINDING_FINAL_SC_ARRAY_SIZE],
-    blinding_final_merkle_leaves: [[Field; BLINDING_FOLD_SIZE]; BLINDING_MAX_QUERIES],
+    blinding_final_merkle_leaves: [[Field; BLINDING_MERKLE_LEAF_SIZE]; BLINDING_MAX_QUERIES],
     blinding_final_merkle_siblings: [[[u8; 32]; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES],
     blinding_final_merkle_indices: [u32; BLINDING_MAX_QUERIES],
+    blinding_final_merkle_leaf_size: u32,
+    blinding_final_merkle_tree_height: u32,
     blinding_final_num_queries: u32,
 
     // --- Phase 5: R1CS matrices (sparse, flattened) ---
@@ -335,9 +344,11 @@ fn main(
         let n_queries = round_num_queries[r];
         for q in 0..MAX_QUERIES_PER_ROUND {
             if (q as u32) < n_queries {
-                verify_merkle_proof(
+                verify_merkle_proof_dynamic(
                     round_merkle_leaves[r][q],
+                    round_merkle_leaf_sizes[r],
                     round_merkle_siblings[r][q],
+                    round_merkle_tree_heights[r],
                     round_merkle_indices[r][q],
                     round_root_hashes[r],
                 );
@@ -380,14 +391,23 @@ fn main(
     // 4a.7: STIR opening of initial/last commitment (squeeze bytes, NOT fields)
     squeeze_stir_challenges(&mut sho, final_num_queries, STIR_BYTES_PER_INDEX);
 
-    // Verify final Merkle proofs (uses initial root if NUM_WHIR_ROUNDS=0)
+    // Verify final Merkle proofs:
+    // - if no middle rounds, final opening is against initial_root_hash
+    // - otherwise against the last round root
+    let final_root = if NUM_WHIR_ROUNDS == 0 {
+        initial_root_hash
+    } else {
+        round_root_hashes[NUM_WHIR_ROUNDS - 1]
+    };
     for q in 0..MAX_QUERIES_PER_ROUND {
         if (q as u32) < final_num_queries {
-            verify_merkle_proof(
+            verify_merkle_proof_dynamic(
                 final_merkle_leaves[q],
+                final_merkle_leaf_size,
                 final_merkle_siblings[q],
+                final_merkle_tree_height,
                 final_merkle_indices[q],
-                initial_root_hash,
+                final_root,
             );
         }
     }
@@ -411,8 +431,9 @@ fn main(
     //
     // Same structure as inner WHIR but with blinding parameters.
 
-    // geometric_challenge(blinding_num_vectors=1) -> no-op
-    let _blinding_vector_rlc: [Field; 1] = generate_combination_randomness(&mut sho, 1);
+    // geometric_challenge(blinding_num_vectors)
+    let blinding_vector_rlc: [Field; NUM_BLINDING_VECTORS] =
+        generate_combination_randomness(&mut sho, NUM_BLINDING_VECTORS);
 
     // geometric_challenge for blinding constraints
     let _blinding_constraint_rlc: [Field; BLINDING_WHIR_CONSTRAINT_COUNT] =
@@ -444,17 +465,35 @@ fn main(
         let n_queries = blinding_round_num_queries[r];
         for q in 0..BLINDING_MAX_QUERIES {
             if (q as u32) < n_queries {
-                verify_merkle_proof(
+                verify_merkle_proof_dynamic(
                     blinding_round_merkle_leaves[r][q],
+                    blinding_round_merkle_leaf_sizes[r],
                     blinding_round_merkle_siblings[r][q],
+                    blinding_round_merkle_tree_heights[r],
                     blinding_round_merkle_indices[r][q],
                     blinding_round_root_hashes[r],
                 );
             }
         }
 
+        // Reduce full Merkle rows (num_vectors * fold_size) into fold_size rows
+        // using the same vector RLC as the Rust verifier.
+        let mut blinding_fold_leaves: [[Field; BLINDING_FOLD_SIZE]; BLINDING_MAX_QUERIES] =
+            [[0; BLINDING_FOLD_SIZE]; BLINDING_MAX_QUERIES];
+        for q in 0..BLINDING_MAX_QUERIES {
+            if (q as u32) < n_queries {
+                for j in 0..BLINDING_FOLD_SIZE {
+                    let mut acc: Field = 0;
+                    for v in 0..NUM_BLINDING_VECTORS {
+                        let idx = v * BLINDING_FOLD_SIZE + j;
+                        acc += blinding_vector_rlc[v] * blinding_round_merkle_leaves[r][q][idx];
+                    }
+                    blinding_fold_leaves[q][j] = acc;
+                }
+            }
+        }
         let _blinding_fold = compute_fold(
-            blinding_round_merkle_leaves[r],
+            blinding_fold_leaves,
             blinding_initial_fold_rand,
             n_queries,
         );
@@ -480,14 +519,21 @@ fn main(
     // STIR opening for blinding final round
     squeeze_stir_challenges(&mut sho, blinding_final_num_queries, BLINDING_STIR_BYTES_PER_INDEX);
 
-    // Verify blinding final Merkle proofs
+    // Verify blinding final Merkle proofs against last round root (or initial if 0 rounds)
+    let blinding_final_root = if BLINDING_WHIR_ROUNDS == 0 {
+        blinding_root_hash
+    } else {
+        blinding_round_root_hashes[BLINDING_WHIR_ROUNDS - 1]
+    };
     for q in 0..BLINDING_MAX_QUERIES {
         if (q as u32) < blinding_final_num_queries {
-            verify_merkle_proof(
+            verify_merkle_proof_dynamic(
                 blinding_final_merkle_leaves[q],
+                blinding_final_merkle_leaf_size,
                 blinding_final_merkle_siblings[q],
+                blinding_final_merkle_tree_height,
                 blinding_final_merkle_indices[q],
-                blinding_root_hash,
+                blinding_final_root,
             );
         }
     }
