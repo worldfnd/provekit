@@ -4,7 +4,7 @@ index e1541ce..ed37d34 100644
 +++ b/crates/mobench-sdk/src/codegen.rs
 @@ -4,6 +4,7 @@
  //! embedded templates. It handles template parameterization and file generation.
-
+ 
  use crate::types::{BenchError, InitConfig, Target};
 +use std::env;
  use std::fs;
@@ -22,7 +22,7 @@ index e1541ce..ed37d34 100644
      render_dir(&IOS_TEMPLATES, &target_dir, &vars)?;
      Ok(())
  }
-
+ 
 +fn ios_benchmark_timeout_secs() -> String {
 +    match env::var("MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS") {
 +        Ok(raw_value) => {
@@ -50,14 +50,14 @@ index fc0e8df..1920f58 100644
 --- a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
 +++ b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
 @@ -2,8 +2,8 @@ import XCTest
-
+ 
  final class {{PROJECT_NAME_PASCAL}}UITests: XCTestCase {
-
+ 
 -    /// Maximum time to wait for benchmark completion (5 minutes for long benchmarks)
 -    private let benchmarkTimeout: TimeInterval = 300.0
 +    /// Maximum time to wait for benchmark completion (set by the workflow profile at generation time)
 +    private let benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}
-
+ 
      func testLaunchAndCaptureBenchmarkReport() {
          let app = XCUIApplication()
 diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
@@ -67,7 +67,7 @@ index 46f7546..da8350e 100644
 @@ -1455,6 +1455,7 @@ pub fn run() -> Result<()> {
                  println!("Waiting for build {} to complete...", build_id);
                  println!("Dashboard: {}", dashboard_url);
-
+ 
 +                let mut fetch_error = None;
                  match client.wait_and_fetch_all_results_with_poll(
                      build_id,
@@ -79,11 +79,11 @@ index 46f7546..da8350e 100644
 +                        fetch_error = Some(e.to_string());
                      }
                  }
-
+ 
 @@ -1532,7 +1534,7 @@ pub fn run() -> Result<()> {
                      println!("Warning: Failed to fetch detailed artifacts: {}", e);
                  }
-
+ 
 -                if run_summary.benchmark_results.is_none() {
 +                if !has_benchmark_payloads(run_summary.benchmark_results.as_ref()) {
                      match recover_benchmark_results_from_fetched_artifacts(&output_root) {
@@ -109,10 +109,11 @@ index 46f7546..da8350e 100644
 @@ -3324,6 +3336,10 @@ fn recover_benchmark_results_from_fetched_artifacts(
      Ok(Some(recovered))
  }
-
+ 
 +fn has_benchmark_payloads(results: Option<&BTreeMap<String, Vec<Value>>>) -> bool {
 +    results.is_some_and(|results| results.values().any(|entries| !entries.is_empty()))
 +}
 +
  fn extract_session_device_names(build_json: &Value) -> BTreeMap<String, String> {
      let mut session_devices = BTreeMap::new();
+ 
