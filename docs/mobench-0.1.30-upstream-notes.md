@@ -35,7 +35,28 @@ Recommended upstream surface:
 - either a `browserstack.ios_completion_timeout_secs` config key
 - or a generic `--benchmark-timeout-secs` / `--completion-timeout-secs` flag that feeds generated harnesses
 
-### 2. Treat failed/timed-out fetches as hard failures when no payloads are recovered
+### 2. Ensure generated iOS BrowserStack artifacts actually embed `bench_spec.json`
+
+Observed in ProveKit smoke rerun:
+- request asked for `bench_mobile::bench_passport_complete_age_check_prove`
+- fetched iOS summary instead contained `bench_mobile::bench_passport_complete_age_check_prepare`
+- fetched iOS samples used default profile settings (`20` iterations, `3` warmup)
+
+Likely cause:
+- generated iOS `project.yml` points at `../../target/mobile-spec/ios`
+- from `target/mobench/ios/BenchRunner`, that resolves to `target/mobench/target/mobile-spec/ios`
+- the packaged app therefore misses `bench_spec.json`, so the app falls back to `DEFAULT_FUNCTION`, `20`, and `3`
+
+What should be upstreamed:
+- fix the generated iOS resource path so `bench_spec.json` is bundled into the app
+- add an integration test that packages the iOS BrowserStack artifacts and verifies the embedded spec matches the requested function/iterations/warmup
+- fail `ci run --target ios` if fetched results do not match the requested benchmark spec
+
+Why:
+- otherwise iOS can report apparently successful samples for the wrong benchmark
+- this is more dangerous than an empty run because it looks valid at first glance
+
+### 3. Treat failed/timed-out fetches as hard failures when no payloads are recovered
 
 Current local patch:
 - preserves the existing artifact recovery attempt
@@ -55,7 +76,7 @@ Desired behavior:
 Why:
 - otherwise CI can produce empty summaries and still look successful
 
-### 3. First-class validation of non-empty benchmark outputs
+### 4. First-class validation of non-empty benchmark outputs
 
 Current local implementation lives in:
 - `.github/scripts/validate_mobile_bench_outputs.sh`
@@ -78,7 +99,7 @@ Why:
 - output-presence checks are not enough
 - every repo will otherwise reinvent this same shell validation
 
-### 4. Machine-readable BrowserStack diagnostics
+### 5. Machine-readable BrowserStack diagnostics
 
 Current workflow prints diagnostics by parsing fetched artifacts itself:
 - build id
@@ -104,7 +125,7 @@ Suggested schema:
 Why:
 - repo workflows should not need bespoke `jq` parsing for common BrowserStack failure triage
 
-### 5. Make incomplete BrowserStack terminal states explicit in `mobench` exit behavior
+### 6. Make incomplete BrowserStack terminal states explicit in `mobench` exit behavior
 
 Current repo workflow still checks this outside `mobench`:
 - fetched build status still `running`
@@ -120,7 +141,7 @@ What should be upstreamed:
 Why:
 - CI should not need to infer terminal state correctness from raw BrowserStack JSON
 
-### 6. Preserve artifact fetch outputs for failure cases as a documented contract
+### 7. Preserve artifact fetch outputs for failure cases as a documented contract
 
 Current repo behavior:
 - upload raw BrowserStack artifacts on both success and failure
@@ -147,5 +168,6 @@ These are repo policy, not `mobench` features:
 We can remove the local patch when upstream `mobench` exposes:
 
 1. configurable iOS completion timeout
-2. hard failure on unrecovered fetch errors
-3. built-in CI validation and diagnostics good enough to replace the local shell script
+2. guaranteed iOS bundling of the requested bench spec
+3. hard failure on unrecovered fetch errors
+4. built-in CI validation and diagnostics good enough to replace the local shell script
