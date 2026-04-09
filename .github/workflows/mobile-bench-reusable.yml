@@ -567,7 +567,12 @@ jobs:
               return 0
             fi
 
-            if ! jq -e '(.device_summaries // []) | length > 0' "${summary_json}" >/dev/null; then
+            if ! jq -e '
+              [
+                ((.device_summaries // []) | length),
+                ((.summary?.device_summaries // []) | length)
+              ] | max > 0
+            ' "${summary_json}" >/dev/null; then
               echo "::warning::Skipping ${platform} summary render because device_summaries is empty."
               return 0
             fi
