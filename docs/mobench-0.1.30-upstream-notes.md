@@ -82,6 +82,10 @@ What should be upstreamed:
   - `resources.peak_memory_kb`
 - source those values from the runner process itself, not only BrowserStack
   post-processing
+- CI summary/resource extraction should honor explicit raw
+  `resources.peak_memory_kb` values when BrowserStack profiling is absent,
+  instead of only deriving peak memory from BrowserStack profiling or Android
+  heap fields
 - add a regression test proving generated `BenchRunnerFFI.swift` includes those
   fields
 

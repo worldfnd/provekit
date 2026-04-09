@@ -196,6 +196,7 @@ jobs:
           grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
@@ -399,6 +400,7 @@ jobs:
           grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
@@ -520,6 +522,7 @@ jobs:
           grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
