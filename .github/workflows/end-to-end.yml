@@ -102,38 +102,37 @@ jobs:
             ./benchmark-inputs/t_attest-proof.np
           
 
-      # Disabled gnark, check https://github.com/worldfnd/provekit/issues/302
-      # - name: Run Gnark verifier 
-      #   working-directory: recursive-verifier
-      #   run: |
-      #     go build -o gnark-verifier cmd/cli/main.go
+      - name: Run Gnark verifier 
+        working-directory: recursive-verifier
+        run: |
+          go build -o gnark-verifier cmd/cli/main.go
 
-      #     # Set up cleanup trap
-      #     cleanup() {
-      #       if [ ! -z "$MONITOR_PID" ]; then
-      #         kill $MONITOR_PID 2>/dev/null || true
-      #       fi
-      #     }
-      #     trap cleanup EXIT
+          # Set up cleanup trap
+          cleanup() {
+            if [ ! -z "$MONITOR_PID" ]; then
+              kill $MONITOR_PID 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
 
-      #     # Start monitoring in background
-      #     (
-      #       while true; do
-      #         echo "=== $(date) ==="
-      #         echo "Memory:"
-      #         free -h
-      #         echo "Disk:"
-      #         df -h
-      #         echo "Processes:"
-      #         ps aux --sort=-%mem | head -5
-      #         echo "=================="
-      #         sleep 10  # Check every 10 seconds
-      #       done
-      #     ) &
-      #     MONITOR_PID=$!
+          # Start monitoring in background
+          (
+            while true; do
+              echo "=== $(date) ==="
+              echo "Memory:"
+              free -h
+              echo "Disk:"
+              df -h
+              echo "Processes:"
+              ps aux --sort=-%mem | head -5
+              echo "=================="
+              sleep 10  # Check every 10 seconds
+            done
+          ) &
+          MONITOR_PID=$!
 
-      #     # Run the main process 
-      #     ./gnark-verifier --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json"
+          # Run the main process 
+          ./gnark-verifier --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json"
 
-      #     # Stop monitoring
-      #     kill $MONITOR_PID
+          # Stop monitoring
+          kill $MONITOR_PID
