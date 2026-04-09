@@ -14,6 +14,9 @@ failed=0
 device_summaries_count=0
 csv_data_rows=0
 recovered_payloads=0
+spec_matches_requested=1
+requested_spec='{}'
+actual_specs='[]'
 
 error() {
   echo "::error::$1"
@@ -68,8 +71,58 @@ if [ -n "$summary_json" ]; then
       ] | max
     ' "$summary_json"
   )"
+  requested_spec="$(
+    jq -c '
+      {
+        function: (.spec.function // ""),
+        iterations: (.spec.iterations // -1),
+        warmup: (.spec.warmup // -1)
+      }
+    ' "$summary_json"
+  )"
+  actual_specs="$(
+    jq -c '
+      [
+        (.benchmark_results // {})
+        | to_entries[]?
+        | .value[]?
+        | {
+            function: (.function // .spec?.name // ""),
+            iterations: (.spec?.iterations // .iterations // -1),
+            warmup: (.spec?.warmup // .warmup // -1)
+          }
+      ] | unique
+    ' "$summary_json"
+  )"
+  if ! jq -e '
+    def requested:
+      {
+        function: (.spec.function // ""),
+        iterations: (.spec.iterations // -1),
+        warmup: (.spec.warmup // -1)
+      };
+    def actual_specs:
+      [
+        (.benchmark_results // {})
+        | to_entries[]?
+        | .value[]?
+        | {
+            function: (.function // .spec?.name // ""),
+            iterations: (.spec?.iterations // .iterations // -1),
+            warmup: (.spec?.warmup // .warmup // -1)
+          }
+      ] | unique;
+    requested as $requested
+    | actual_specs as $actual
+    | ($actual | length) > 0
+      and all($actual[]; . == $requested)
+  ' "$summary_json" >/dev/null; then
+    spec_matches_requested=0
+  fi
   echo "  summary_json=${summary_json}"
   echo "  summary_device_summaries=${device_summaries_count}"
+  echo "  requested_spec=${requested_spec}"
+  echo "  actual_specs=${actual_specs}"
 else
   warn "${platform}: summary.json was not found under ${results_dir}"
 fi
@@ -167,6 +220,10 @@ fi
 
 if [ "$device_summaries_count" -le 0 ]; then
   error "${platform}: summary.json has no device_summaries"
+fi
+
+if [ "$spec_matches_requested" -eq 0 ]; then
+  error "${platform}: benchmark results do not match requested spec ${requested_spec}; actual ${actual_specs}"
 fi
 
 if [ -z "$results_csv" ]; then

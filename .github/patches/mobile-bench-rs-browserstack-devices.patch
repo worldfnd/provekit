@@ -1,5 +1,5 @@
 diff --git a/crates/mobench-sdk/src/codegen.rs b/crates/mobench-sdk/src/codegen.rs
-index e1541ce..ed37d34 100644
+index e1541ce..dd15e44 100644
 --- a/crates/mobench-sdk/src/codegen.rs
 +++ b/crates/mobench-sdk/src/codegen.rs
 @@ -4,6 +4,7 @@
@@ -10,7 +10,55 @@ index e1541ce..ed37d34 100644
  use std::fs;
  use std::io::{BufRead, BufReader};
  use std::path::{Path, PathBuf};
-@@ -581,11 +582,34 @@ pub fn generate_ios_project(
+@@ -449,6 +450,39 @@ fn restore_preserved_android_assets(
+     Ok(())
+ }
+ 
++fn collect_preserved_ios_resources(
++    target_dir: &Path,
++) -> Result<Vec<(PathBuf, Vec<u8>)>, BenchError> {
++    let resources_dir = target_dir.join("BenchRunner/BenchRunner/Resources");
++    let mut preserved = Vec::new();
++
++    if resources_dir.exists() {
++        collect_preserved_files(&resources_dir, &resources_dir, &mut preserved)?;
++    }
++
++    Ok(preserved)
++}
++
++fn restore_preserved_ios_resources(
++    target_dir: &Path,
++    preserved_resources: &[(PathBuf, Vec<u8>)],
++) -> Result<(), BenchError> {
++    if preserved_resources.is_empty() {
++        return Ok(());
++    }
++
++    let resources_dir = target_dir.join("BenchRunner/BenchRunner/Resources");
++    for (relative, contents) in preserved_resources {
++        let resource_path = resources_dir.join(relative);
++        if let Some(parent) = resource_path.parent() {
++            fs::create_dir_all(parent)?;
++        }
++        fs::write(resource_path, contents)?;
++    }
++
++    Ok(())
++}
++
+ fn reset_generated_project_dir(target_dir: &Path) -> Result<(), BenchError> {
+     if target_dir.exists() {
+         fs::remove_dir_all(target_dir).map_err(|e| {
+@@ -546,6 +580,7 @@ pub fn generate_ios_project(
+     default_function: &str,
+ ) -> Result<(), BenchError> {
+     let target_dir = output_dir.join("ios");
++    let preserved_resources = collect_preserved_ios_resources(&target_dir)?;
+     reset_generated_project_dir(&target_dir)?;
+     // Sanitize bundle ID components to ensure they only contain alphanumeric characters
+     // iOS bundle identifiers should not contain hyphens or underscores
+@@ -581,11 +616,35 @@ pub fn generate_ios_project(
              name: "LIBRARY_NAME",
              value: project_slug.replace('-', "_"),
          },
@@ -20,6 +68,7 @@ index e1541ce..ed37d34 100644
 +        },
      ];
      render_dir(&IOS_TEMPLATES, &target_dir, &vars)?;
++    restore_preserved_ios_resources(&target_dir, &preserved_resources)?;
      Ok(())
  }
  
@@ -45,6 +94,67 @@ index e1541ce..ed37d34 100644
  /// Generates bench-config.toml configuration file
  fn generate_config_file(output_dir: &Path, config: &InitConfig) -> Result<(), BenchError> {
      let config_target = match config.target {
+@@ -1441,6 +1500,60 @@ mod tests {
+         fs::remove_dir_all(&temp_dir).ok();
+     }
+ 
++    #[test]
++    fn test_generate_ios_project_preserves_existing_resources_on_regeneration() {
++        let temp_dir = env::temp_dir().join("mobench-sdk-ios-resources-regenerate-test");
++        let _ = fs::remove_dir_all(&temp_dir);
++        fs::create_dir_all(&temp_dir).unwrap();
++
++        generate_ios_project(
++            &temp_dir,
++            "bench_mobile",
++            "BenchRunner",
++            "dev.world.benchmobile",
++            "bench_mobile::bench_prepare",
++        )
++        .unwrap();
++
++        let resources_dir = temp_dir.join("ios/BenchRunner/BenchRunner/Resources");
++        fs::create_dir_all(resources_dir.join("nested")).unwrap();
++        fs::write(
++            resources_dir.join("bench_spec.json"),
++            r#"{"function":"bench_mobile::bench_prove","iterations":2,"warmup":1}"#,
++        )
++        .unwrap();
++        fs::write(
++            resources_dir.join("bench_meta.json"),
++            r#"{"build_id":"build-123"}"#,
++        )
++        .unwrap();
++        fs::write(resources_dir.join("nested/custom.txt"), "keep me").unwrap();
++
++        generate_ios_project(
++            &temp_dir,
++            "bench_mobile",
++            "BenchRunner",
++            "dev.world.benchmobile",
++            "bench_mobile::bench_prepare",
++        )
++        .unwrap();
++
++        assert_eq!(
++            fs::read_to_string(resources_dir.join("bench_spec.json")).unwrap(),
++            r#"{"function":"bench_mobile::bench_prove","iterations":2,"warmup":1}"#
++        );
++        assert_eq!(
++            fs::read_to_string(resources_dir.join("bench_meta.json")).unwrap(),
++            r#"{"build_id":"build-123"}"#
++        );
++        assert_eq!(
++            fs::read_to_string(resources_dir.join("nested/custom.txt")).unwrap(),
++            "keep me"
++        );
++
++        fs::remove_dir_all(&temp_dir).ok();
++    }
++
+     #[test]
+     fn test_is_template_file() {
+         assert!(is_template_file(Path::new("settings.gradle")));
 diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
 index fc0e8df..1920f58 100644
 --- a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
@@ -60,19 +170,6 @@ index fc0e8df..1920f58 100644
  
      func testLaunchAndCaptureBenchmarkReport() {
          let app = XCUIApplication()
-diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template b/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
-index 7ccad1a..46c6909 100644
---- a/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
-+++ b/crates/mobench-sdk/templates/ios/BenchRunner/project.yml.template
-@@ -14,7 +14,7 @@ targets:
-     resources:
-       - path: {{PROJECT_NAME_PASCAL}}/Resources
-         optional: true
--      - path: ../../target/mobile-spec/ios
-+      - path: ../../../mobile-spec/ios
-         optional: true
-     info:
-       path: {{PROJECT_NAME_PASCAL}}/Info.plist
 diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
 index 46f7546..da8350e 100644
 --- a/crates/mobench/src/lib.rs
