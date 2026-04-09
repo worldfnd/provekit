@@ -58,7 +58,38 @@ Why:
 - otherwise iOS can report apparently successful samples for the wrong benchmark
 - this is more dangerous than an empty run because it looks valid at first glance
 
-### 3. Treat failed/timed-out fetches as hard failures when no payloads are recovered
+### 3. Emit raw iOS CPU and peak-memory metrics from the runner itself
+
+Observed in ProveKit after fixing the iOS bench-spec packaging bug:
+- the correct benchmark ran and produced valid samples
+- BrowserStack `performance_metrics` was `{}` for the successful short smoke run
+- `summary.device_summaries[].benchmarks[].resource_usage` therefore lost both
+  `cpu_total_ms` and `peak_memory_kb`
+
+Confirmed cause:
+- the generated iOS `BenchRunnerFFI.swift` template only emitted:
+  - `resources.platform`
+  - `resources.timestamp_ms`
+- the summary path only had resource metrics when BrowserStack app profiling
+  happened to return data
+- short successful iOS runs can complete before BrowserStack profiling yields a
+  usable sample
+
+What should be upstreamed:
+- generated iOS runner should emit raw resource fields directly into the
+  `BENCH_REPORT_JSON` payload:
+  - `resources.elapsed_cpu_ms`
+  - `resources.peak_memory_kb`
+- source those values from the runner process itself, not only BrowserStack
+  post-processing
+- add a regression test proving generated `BenchRunnerFFI.swift` includes those
+  fields
+
+Why:
+- short iOS smoke runs should still report CPU time and peak memory
+- these metrics should not depend on provider-side profiling availability
+
+### 4. Treat failed/timed-out fetches as hard failures when no payloads are recovered
 
 Current local patch:
 - preserves the existing artifact recovery attempt
@@ -78,7 +109,7 @@ Desired behavior:
 Why:
 - otherwise CI can produce empty summaries and still look successful
 
-### 4. First-class validation of non-empty benchmark outputs
+### 5. First-class validation of non-empty benchmark outputs
 
 Current local implementation lives in:
 - `.github/scripts/validate_mobile_bench_outputs.sh`
@@ -101,7 +132,7 @@ Why:
 - output-presence checks are not enough
 - every repo will otherwise reinvent this same shell validation
 
-### 5. Machine-readable BrowserStack diagnostics
+### 6. Machine-readable BrowserStack diagnostics
 
 Current workflow prints diagnostics by parsing fetched artifacts itself:
 - build id
@@ -127,7 +158,7 @@ Suggested schema:
 Why:
 - repo workflows should not need bespoke `jq` parsing for common BrowserStack failure triage
 
-### 6. Make incomplete BrowserStack terminal states explicit in `mobench` exit behavior
+### 7. Make incomplete BrowserStack terminal states explicit in `mobench` exit behavior
 
 Current repo workflow still checks this outside `mobench`:
 - fetched build status still `running`
@@ -143,7 +174,7 @@ What should be upstreamed:
 Why:
 - CI should not need to infer terminal state correctness from raw BrowserStack JSON
 
-### 7. Preserve artifact fetch outputs for failure cases as a documented contract
+### 8. Preserve artifact fetch outputs for failure cases as a documented contract
 
 Current repo behavior:
 - upload raw BrowserStack artifacts on both success and failure
@@ -171,5 +202,6 @@ We can remove the local patch when upstream `mobench` exposes:
 
 1. configurable iOS completion timeout
 2. guaranteed iOS bundling of the requested bench spec
-3. hard failure on unrecovered fetch errors
-4. built-in CI validation and diagnostics good enough to replace the local shell script
+3. raw iOS CPU and peak-memory metrics emitted without depending on BrowserStack profiling
+4. hard failure on unrecovered fetch errors
+5. built-in CI validation and diagnostics good enough to replace the local shell script

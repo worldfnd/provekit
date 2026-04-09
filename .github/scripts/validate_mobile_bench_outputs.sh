@@ -17,6 +17,8 @@ recovered_payloads=0
 spec_matches_requested=1
 requested_spec='{}'
 actual_specs='[]'
+benchmarks_with_resource_usage=0
+benchmarks_missing_resource_usage=0
 
 error() {
   echo "::error::$1"
@@ -123,6 +125,30 @@ if [ -n "$summary_json" ]; then
   echo "  summary_device_summaries=${device_summaries_count}"
   echo "  requested_spec=${requested_spec}"
   echo "  actual_specs=${actual_specs}"
+  benchmarks_with_resource_usage="$(
+    jq -r '
+      [
+        ((.summary?.device_summaries // .device_summaries // [])[]?.benchmarks[]?)
+        | select(
+            (.resource_usage?.cpu_total_ms // null) != null
+            and (.resource_usage?.peak_memory_kb // null) != null
+          )
+      ] | length
+    ' "$summary_json"
+  )"
+  benchmarks_missing_resource_usage="$(
+    jq -r '
+      [
+        ((.summary?.device_summaries // .device_summaries // [])[]?.benchmarks[]?)
+        | select(
+            (.resource_usage?.cpu_total_ms // null) == null
+            or (.resource_usage?.peak_memory_kb // null) == null
+          )
+      ] | length
+    ' "$summary_json"
+  )"
+  echo "  benchmarks_with_resource_usage=${benchmarks_with_resource_usage}"
+  echo "  benchmarks_missing_resource_usage=${benchmarks_missing_resource_usage}"
 else
   warn "${platform}: summary.json was not found under ${results_dir}"
 fi
@@ -232,6 +258,14 @@ fi
 
 if [ "$csv_data_rows" -le 0 ]; then
   error "${platform}: results.csv has no benchmark data rows"
+fi
+
+if [ "$benchmarks_with_resource_usage" -le 0 ]; then
+  error "${platform}: no benchmark rows reported both cpu_total_ms and peak_memory_kb"
+fi
+
+if [ "$benchmarks_missing_resource_usage" -gt 0 ]; then
+  error "${platform}: ${benchmarks_missing_resource_usage} benchmark row(s) were missing cpu_total_ms or peak_memory_kb"
 fi
 
 if [ "$build_found" -eq 0 ]; then
