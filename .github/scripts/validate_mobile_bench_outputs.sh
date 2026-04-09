@@ -60,7 +60,14 @@ summary_json="$(first_match "$results_dir" summary.json)"
 results_csv="$(first_match "$results_dir" results.csv)"
 
 if [ -n "$summary_json" ]; then
-  device_summaries_count="$(jq -r '(.device_summaries // []) | length' "$summary_json")"
+  device_summaries_count="$(
+    jq -r '
+      [
+        ((.device_summaries // []) | length),
+        ((.summary?.device_summaries // []) | length)
+      ] | max
+    ' "$summary_json"
+  )"
   echo "  summary_json=${summary_json}"
   echo "  summary_device_summaries=${device_summaries_count}"
 else
