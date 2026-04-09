@@ -44,6 +44,8 @@ Current local patch:
 What should be upstreamed:
 - `cargo mobench run --fetch`
 - `cargo mobench ci run --fetch`
+- payload presence checks must treat both `None` and structurally empty payloads
+  (`Some({})`, `Some({"device": []})`, etc.) as "no benchmark payloads"
 
 Desired behavior:
 - if live fetch succeeds, continue normally
@@ -63,6 +65,7 @@ What it currently validates:
 - `summary.device_summaries` is non-empty
 - `results.csv` exists
 - `results.csv` contains at least one data row
+- recovered benchmark payload collections are not merely present, but non-empty
 - BrowserStack `build.json` artifacts were fetched
 - no fetched BrowserStack build/session/testcase state is still `running`, `failed`, `error`, `timedout`, or `timeout`
 
