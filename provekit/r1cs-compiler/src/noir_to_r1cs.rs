@@ -354,8 +354,7 @@ impl NoirToR1CSCompiler {
         fn assert_fits_32_bits(fe: &FieldElement) {
             let bigint = fe.into_bigint();
             assert!(
-                bigint.0[1..].iter().all(|&limb| limb == 0)
-                    && bigint.0[0] <= u32::MAX as u64,
+                bigint.0[1..].iter().all(|&limb| limb == 0) && bigint.0[0] <= u32::MAX as u64,
                 "AND/XOR constant exceeds 32 bits: {fe}"
             );
         }
