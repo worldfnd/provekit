@@ -1,5 +1,5 @@
 diff --git a/crates/mobench-sdk/src/codegen.rs b/crates/mobench-sdk/src/codegen.rs
-index e1541ce..dd15e44 100644
+index e1541ce..9f974ba 100644
 --- a/crates/mobench-sdk/src/codegen.rs
 +++ b/crates/mobench-sdk/src/codegen.rs
 @@ -4,6 +4,7 @@
@@ -155,6 +155,222 @@ index e1541ce..dd15e44 100644
      #[test]
      fn test_is_template_file() {
          assert!(is_template_file(Path::new("settings.gradle")));
+@@ -1672,6 +1785,42 @@ pub fn public_bench() {
+         fs::remove_dir_all(&temp_dir).ok();
+     }
+ 
++    #[test]
++    fn test_generate_ios_project_includes_raw_resource_metrics_in_json_report() {
++        let temp_dir = env::temp_dir().join("mobench-sdk-ios-resource-metrics-test");
++        let _ = fs::remove_dir_all(&temp_dir);
++        fs::create_dir_all(&temp_dir).unwrap();
++
++        let result = generate_ios_project(
++            &temp_dir,
++            "bench_mobile",
++            "BenchRunner",
++            "dev.world.benchmobile",
++            "bench_mobile::bench_passport_complete_age_check_prove",
++        );
++        assert!(
++            result.is_ok(),
++            "generate_ios_project failed: {:?}",
++            result.err()
++        );
++
++        let ffi_path = temp_dir.join("ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift");
++        let ffi = fs::read_to_string(&ffi_path).expect("BenchRunnerFFI.swift should exist");
++
++        assert!(
++            ffi.contains("\"elapsed_cpu_ms\""),
++            "BenchRunnerFFI.swift should emit elapsed_cpu_ms into raw resources, got:\n{}",
++            ffi
++        );
++        assert!(
++            ffi.contains("\"peak_memory_kb\""),
++            "BenchRunnerFFI.swift should emit peak_memory_kb into raw resources, got:\n{}",
++            ffi
++        );
++
++        fs::remove_dir_all(&temp_dir).ok();
++    }
++
+     #[test]
+     fn test_cross_platform_naming_consistency() {
+         // Test that Android and iOS use the same naming convention for package/bundle IDs
+diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template
+index cbd2bed..fc517cb 100644
+--- a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template
++++ b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template
+@@ -1,9 +1,113 @@
+ import Foundation
++import Darwin
++import Dispatch
+ 
+ private let defaultFunction = "{{DEFAULT_FUNCTION}}"
+ private let defaultIterations: UInt32 = 20
+ private let defaultWarmup: UInt32 = 3
+ 
++private struct ProcessResourceSnapshot {
++    let cpuTotalMs: UInt64
++    let currentMemoryKb: UInt64
++}
++
++private struct ProcessResourceUsage {
++    let elapsedCpuMs: UInt64?
++    let peakMemoryKb: UInt64?
++}
++
++private func captureProcessResourceSnapshot() -> ProcessResourceSnapshot? {
++    var usage = rusage()
++    guard getrusage(RUSAGE_SELF, &usage) == 0 else {
++        return nil
++    }
++
++    let userMs = UInt64(usage.ru_utime.tv_sec) * 1000 + UInt64(usage.ru_utime.tv_usec) / 1000
++    let systemMs = UInt64(usage.ru_stime.tv_sec) * 1000 + UInt64(usage.ru_stime.tv_usec) / 1000
++
++    var info = task_vm_info_data_t()
++    var count = mach_msg_type_number_t(
++        MemoryLayout.size(ofValue: info) / MemoryLayout<natural_t>.size
++    )
++    let kerr = withUnsafeMutablePointer(to: &info) {
++        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
++            task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
++        }
++    }
++
++    let memoryBytes: UInt64
++    if kerr == KERN_SUCCESS {
++        memoryBytes =
++            info.phys_footprint > 0 ? UInt64(info.phys_footprint) : UInt64(info.resident_size)
++    } else {
++        memoryBytes = 0
++    }
++
++    return ProcessResourceSnapshot(
++        cpuTotalMs: userMs + systemMs,
++        currentMemoryKb: memoryBytes / 1024
++    )
++}
++
++private final class ProcessResourceSampler {
++    private let queue = DispatchQueue(label: "dev.world.mobench.resource-sampler", qos: .utility)
++    private let lock = NSLock()
++    private var peakMemoryKb: UInt64 = 0
++    private var timer: DispatchSourceTimer?
++
++    func start() -> ProcessResourceSnapshot? {
++        let start = captureProcessResourceSnapshot()
++        peakMemoryKb = start?.currentMemoryKb ?? 0
++
++        let timer = DispatchSource.makeTimerSource(queue: queue)
++        timer.schedule(deadline: .now(), repeating: .milliseconds(20))
++        timer.setEventHandler { [weak self] in
++            guard let self else { return }
++            guard let snapshot = captureProcessResourceSnapshot() else { return }
++
++            self.lock.lock()
++            if snapshot.currentMemoryKb > self.peakMemoryKb {
++                self.peakMemoryKb = snapshot.currentMemoryKb
++            }
++            self.lock.unlock()
++        }
++        self.timer = timer
++        timer.resume()
++
++        return start
++    }
++
++    func stop(start: ProcessResourceSnapshot?) -> ProcessResourceUsage {
++        timer?.cancel()
++        timer = nil
++
++        let end = captureProcessResourceSnapshot()
++        let endingMemoryKb = end?.currentMemoryKb ?? 0
++
++        lock.lock()
++        if endingMemoryKb > peakMemoryKb {
++            peakMemoryKb = endingMemoryKb
++        }
++        let peak = peakMemoryKb
++        lock.unlock()
++
++        let elapsedCpuMs: UInt64?
++        if let start, let end {
++            elapsedCpuMs =
++                end.cpuTotalMs >= start.cpuTotalMs
++                ? end.cpuTotalMs - start.cpuTotalMs
++                : end.cpuTotalMs
++        } else {
++            elapsedCpuMs = nil
++        }
++
++        return ProcessResourceUsage(
++            elapsedCpuMs: elapsedCpuMs,
++            peakMemoryKb: peak > 0 ? peak : nil
++        )
++    }
++}
++
+ struct BenchParams {
+     let function: String
+     let iterations: UInt32
+@@ -127,18 +231,23 @@ enum {{PROJECT_NAME_PASCAL}}FFI {
+             iterations: params.iterations,
+             warmup: params.warmup
+         )
++        let resourceSampler = ProcessResourceSampler()
++        let resourceStart = resourceSampler.start()
+ 
+         do {
+             let report = try runBenchmark(spec: spec)
++            let resourceUsage = resourceSampler.stop(start: resourceStart)
+             let displayText = formatBenchReport(report)
+-            let jsonReport = generateJSONReport(report)
++            let jsonReport = generateJSONReport(report, resourceUsage: resourceUsage)
+             return BenchmarkResult(displayText: displayText, jsonReport: jsonReport)
+         } catch let error as BenchError {
++            _ = resourceSampler.stop(start: resourceStart)
+             print("[BenchRunner] ERROR: Benchmark failed: \(error)")
+             let errorText = formatBenchError(error)
+             let errorJSON = generateErrorJSON(error)
+             return BenchmarkResult(displayText: errorText, jsonReport: errorJSON)
+         } catch {
++            _ = resourceSampler.stop(start: resourceStart)
+             print("[BenchRunner] ERROR: Unexpected error during benchmark execution: \(error)")
+             let errorText = "Unexpected error: \(error.localizedDescription)"
+             let errorJSON = "{\"error\": \"Unexpected error: \(error.localizedDescription)\"}"
+@@ -148,7 +257,10 @@ enum {{PROJECT_NAME_PASCAL}}FFI {
+ 
+     /// Generates a JSON report that matches the Android BENCH_JSON-style payload
+     /// consumed by mobench so cross-platform parsers can stay aligned.
+-    private static func generateJSONReport(_ report: BenchReport) -> String {
++    private static func generateJSONReport(
++        _ report: BenchReport,
++        resourceUsage: ProcessResourceUsage
++    ) -> String {
+         var json: [String: Any] = [:]
+ 
+         // Spec section
+@@ -211,10 +323,16 @@ enum {{PROJECT_NAME_PASCAL}}FFI {
+         }
+ 
+         // Resource metrics (iOS-specific)
+-        let resources: [String: Any] = [
++        var resources: [String: Any] = [
+             "platform": "ios",
+             "timestamp_ms": Int64(Date().timeIntervalSince1970 * 1000)
+         ]
++        if let elapsedCpuMs = resourceUsage.elapsedCpuMs {
++            resources["elapsed_cpu_ms"] = elapsedCpuMs
++        }
++        if let peakMemoryKb = resourceUsage.peakMemoryKb {
++            resources["peak_memory_kb"] = peakMemoryKb
++        }
+         json["resources"] = resources
+ 
+         // Serialize to JSON string
 diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
 index fc0e8df..1920f58 100644
 --- a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template

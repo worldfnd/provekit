@@ -191,7 +191,11 @@ jobs:
           grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
@@ -390,7 +394,11 @@ jobs:
           grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
@@ -507,7 +515,11 @@ jobs:
           grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
           grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
+          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
           grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
           cargo install --path mobench-src/crates/mobench --locked --force
 
