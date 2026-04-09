@@ -1,6 +1,7 @@
 [package]
-name = "hla"
+name = "provekit-hla"
 version = "0.1.0"
+description = "High-level assembly DSL for code generation"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

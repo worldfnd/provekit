@@ -1,6 +1,7 @@
 [package]
-name = "bn254-multiplier"
+name = "provekit-bn254-multiplier"
 version = "0.1.0"
+description = "Optimized BN254 field multiplication"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
