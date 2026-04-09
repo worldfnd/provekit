@@ -92,6 +92,7 @@ jobs:
       functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: both
+      device_profile: smoke
       iterations: "2"
       warmup: "1"
       pr_number: ${{ needs.resolve.outputs.pr_number }}

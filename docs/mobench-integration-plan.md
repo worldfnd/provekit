@@ -1,4 +1,4 @@
-# mobench 0.1.28 Integration Plan (Noir Circuits)
+# mobench 0.1.29 Integration Plan (Noir Circuits)
 
 Status: Draft plan
 Owner: ProveKit maintainers
@@ -6,7 +6,7 @@ Scope start: passport end-to-end circuit
 
 ## 1. Objective
 
-Add `mobench` `0.1.28` based mobile benchmarking so we can run selected Noir proving workloads on Android/iOS devices, starting with passport end-to-end proving.
+Add `mobench` `0.1.29` based mobile benchmarking so we can run selected Noir proving workloads on Android/iOS devices, starting with passport end-to-end proving.
 
 ## 2. Primary target for phase 1
 
@@ -18,7 +18,7 @@ Reason:
 - Already used in CI/workflows (`circuit_keys.yml`) and compiler tests.
 - Good baseline before fragmented passport chain and other examples.
 
-## 3. Constraints discovered from mobench 0.1.28
+## 3. Constraints discovered from mobench 0.1.29
 
 From published crate APIs and README behavior:
 - `mobench` build/run pipeline expects a benchmark crate that can be cross-compiled and exposed via UniFFI.
@@ -134,14 +134,19 @@ Add mobile-benchmark CI workflow with explicit contract outputs:
 - `target/mobench/ci/results.csv`
 
 Current PR workflow shape:
-- `mobile-bench.yml` is dispatchable and BrowserStack-gated on secrets.
+- `mobile-bench.yml` is dispatchable, BrowserStack-gated on secrets, and exposes `device_profile=smoke|triad`.
 - `mobile-bench-pr-command.yml` enables `/mobench` PR comments and dispatches `mobile-bench.yml` from the PR base ref.
-- `mobile-bench-pr-auto.yml` auto-dispatches when a PR has the `bench` label and `Cargo Build & Test` has passed, using the PR base ref rather than the repository default branch.
+- `mobile-bench-pr-command.yml` defaults PR-triggered runs to `device_profile=smoke` and allows `device_profile=triad` for manual escalation.
+- `mobile-bench-pr-auto.yml` auto-dispatches when a PR has the `bench` label and `Cargo Build & Test` has passed, using the PR base ref rather than the repository default branch and forcing the smoke profile.
 - Sticky comment updates use the `<!-- mobench-summary -->` marker.
 
-Current BrowserStack triad:
-- Android: `Google Pixel 6-12.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
-- iOS: `iPhone 13-15`, `iPhone 14-16`, `iPhone 16 Pro-18`
+Current BrowserStack device profiles:
+- Smoke:
+  - Android: `Google Pixel 7-13.0`
+  - iOS: `iPhone 16 Pro-18`
+- Triad:
+  - Android: `Vivo Y21-11.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
+  - iOS: `iPhone 7-10`, `iPhone 14-16`, `iPhone 16 Pro-18`
 
 Gate regressions using baseline comparison threshold.
 

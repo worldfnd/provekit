@@ -6,6 +6,7 @@ use {
         PreparedCompleteAgeCheckFixture, VerifiedCompleteAgeCheckFixture,
     },
     mobench_sdk::{benchmark, profile_phase},
+    serde_json::json,
     std::{cell::RefCell, hint::black_box},
 };
 
@@ -93,22 +94,14 @@ impl From<mobench_sdk::SemanticPhase> for SemanticPhase {
     }
 }
 
-impl From<mobench_sdk::BenchResourceUsage> for BenchResourceUsage {
-    fn from(resource_usage: mobench_sdk::BenchResourceUsage) -> Self {
-        Self {
-            cpu_median_ms:  resource_usage.cpu_median_ms,
-            peak_memory_kb: resource_usage.peak_memory_kb,
-        }
-    }
-}
-
 impl From<mobench_sdk::RunnerReport> for BenchReport {
     fn from(report: mobench_sdk::RunnerReport) -> Self {
         Self {
             spec:           report.spec.into(),
             samples:        report.samples.into_iter().map(Into::into).collect(),
             phases:         report.phases.into_iter().map(Into::into).collect(),
-            resource_usage: report.resource_usage.map(Into::into),
+            // mobench-sdk 0.1.29 no longer reports aggregated resource usage on RunnerReport.
+            resource_usage: None,
         }
     }
 }
@@ -129,11 +122,75 @@ impl From<mobench_sdk::BenchError> for BenchError {
     }
 }
 
+fn log_benchmark_lifecycle(
+    event: &str,
+    function: &str,
+    iterations: u32,
+    warmup: u32,
+    extra: serde_json::Value,
+) {
+    let payload = json!({
+        "tag": "MOBENCH_LIFECYCLE",
+        "event": event,
+        "function": function,
+        "iterations": iterations,
+        "warmup": warmup,
+        "extra": extra,
+    });
+
+    if event == "error" {
+        eprintln!("{payload}");
+    } else {
+        println!("{payload}");
+    }
+}
+
 #[uniffi::export]
 pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
+    let function = spec.name.clone();
+    let iterations = spec.iterations;
+    let warmup = spec.warmup;
+    log_benchmark_lifecycle(
+        "start",
+        &function,
+        iterations,
+        warmup,
+        json!({
+            "resolved_function": function,
+        }),
+    );
+
     let sdk_spec: mobench_sdk::BenchSpec = spec.into();
-    let report = mobench_sdk::run_benchmark(sdk_spec)?;
-    Ok(report.into())
+    match mobench_sdk::run_benchmark(sdk_spec) {
+        Ok(report) => {
+            log_benchmark_lifecycle(
+                "success",
+                &report.spec.name,
+                report.spec.iterations,
+                report.spec.warmup,
+                json!({
+                    "sample_count": report.samples.len(),
+                    "phase_count": report.phases.len(),
+                    "timeline_span_count": report.timeline.len(),
+                    "has_resource_usage": false,
+                }),
+            );
+            Ok(report.into())
+        }
+        Err(err) => {
+            log_benchmark_lifecycle(
+                "error",
+                &function,
+                iterations,
+                warmup,
+                json!({
+                    "resolved_function": function,
+                    "error": err.to_string(),
+                }),
+            );
+            Err(err.into())
+        }
+    }
 }
 
 uniffi::setup_scaffolding!();

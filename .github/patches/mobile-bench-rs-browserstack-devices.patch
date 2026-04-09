@@ -1,316 +1,118 @@
-diff --git a/crates/mobench-sdk/src/builders/android.rs b/crates/mobench-sdk/src/builders/android.rs
-index 0f18c9a..9fcc7da 100644
---- a/crates/mobench-sdk/src/builders/android.rs
-+++ b/crates/mobench-sdk/src/builders/android.rs
-@@ -326,7 +326,7 @@ impl AndroidBuilder {
-         // Check that at least one native library exists in jniLibs
-         let jni_libs_dir = self.output_dir.join("android/app/src/main/jniLibs");
-         let lib_name = format!("lib{}.so", self.crate_name.replace("-", "_"));
--        let required_abis = ["arm64-v8a", "armeabi-v7a", "x86_64"];
-+        let required_abis = ["arm64-v8a"];
-         let mut found_libs = 0;
-         for abi in &required_abis {
-             let lib_path = jni_libs_dir.join(abi).join(&lib_name);
-@@ -458,7 +458,7 @@ impl AndroidBuilder {
-         self.check_cargo_ndk()?;
- 
-         // Android ABIs to build for
--        let abis = vec!["arm64-v8a", "armeabi-v7a", "x86_64"];
-+        let abis = vec!["arm64-v8a"];
-         let release_flag = if matches!(config.profile, BuildProfile::Release) {
-             "--release"
-         } else {
 diff --git a/crates/mobench-sdk/src/codegen.rs b/crates/mobench-sdk/src/codegen.rs
-index 693156a..5359f85 100644
+index e1541ce..ed37d34 100644
 --- a/crates/mobench-sdk/src/codegen.rs
 +++ b/crates/mobench-sdk/src/codegen.rs
-@@ -335,6 +335,19 @@ pub fn generate_android_project(
-     default_function: &str,
- ) -> Result<(), BenchError> {
-     let target_dir = output_dir.join("android");
-+    let assets_backup_dir = output_dir.join(".android-assets-backup");
-+    let existing_assets_dir = target_dir.join("app/src/main/assets");
-+    if existing_assets_dir.exists() {
-+        if assets_backup_dir.exists() {
-+            fs::remove_dir_all(&assets_backup_dir).map_err(|e| {
-+                BenchError::Build(format!(
-+                    "Failed to clear Android assets backup at {:?}: {}",
-+                    assets_backup_dir, e
-+                ))
-+            })?;
-+        }
-+        copy_dir_recursive(&existing_assets_dir, &assets_backup_dir)?;
-+    }
-     reset_generated_project_dir(&target_dir)?;
-     let library_name = project_slug.replace('-', "_");
-     let project_pascal = to_pascal_case(project_slug);
-@@ -378,6 +391,58 @@ pub fn generate_android_project(
-     // The package "dev.world.{project_slug}" maps to directory "dev/world/{project_slug}/"
-     move_kotlin_files_to_package_dir(&target_dir, &package_name)?;
- 
-+    if assets_backup_dir.exists() {
-+        let restored_assets_dir = target_dir.join("app/src/main/assets");
-+        copy_dir_recursive(&assets_backup_dir, &restored_assets_dir)?;
-+        let _ = fs::remove_dir_all(&assets_backup_dir);
-+    }
-+
-+    Ok(())
-+}
-+
-+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), BenchError> {
-+    fs::create_dir_all(dst).map_err(|e| {
-+        BenchError::Build(format!(
-+            "Failed to create directory {:?} while copying assets: {}",
-+            dst, e
-+        ))
-+    })?;
-+
-+    for entry in fs::read_dir(src).map_err(|e| {
-+        BenchError::Build(format!(
-+            "Failed to read directory {:?} while copying assets: {}",
-+            src, e
-+        ))
-+    })? {
-+        let entry = entry.map_err(|e| {
-+            BenchError::Build(format!(
-+                "Failed to read entry under {:?} while copying assets: {}",
-+                src, e
-+            ))
-+        })?;
-+        let entry_path = entry.path();
-+        let dest_path = dst.join(entry.file_name());
-+        if entry
-+            .file_type()
-+            .map_err(|e| {
-+                BenchError::Build(format!(
-+                    "Failed to inspect {:?} while copying assets: {}",
-+                    entry_path, e
-+                ))
-+            })?
-+            .is_dir()
-+        {
-+            copy_dir_recursive(&entry_path, &dest_path)?;
-+        } else {
-+            fs::copy(&entry_path, &dest_path).map_err(|e| {
-+                BenchError::Build(format!(
-+                    "Failed to copy {:?} to {:?}: {}",
-+                    entry_path, dest_path, e
-+                ))
-+            })?;
-+        }
-+    }
-+
+@@ -4,6 +4,7 @@
+ //! embedded templates. It handles template parameterization and file generation.
+
+ use crate::types::{BenchError, InitConfig, Target};
++use std::env;
+ use std::fs;
+ use std::io::{BufRead, BufReader};
+ use std::path::{Path, PathBuf};
+@@ -581,11 +582,34 @@ pub fn generate_ios_project(
+             name: "LIBRARY_NAME",
+             value: project_slug.replace('-', "_"),
+         },
++        TemplateVar {
++            name: "BENCHMARK_TIMEOUT_SECS",
++            value: ios_benchmark_timeout_secs(),
++        },
+     ];
+     render_dir(&IOS_TEMPLATES, &target_dir, &vars)?;
      Ok(())
  }
 
++fn ios_benchmark_timeout_secs() -> String {
++    match env::var("MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS") {
++        Ok(raw_value) => {
++            let trimmed = raw_value.trim();
++            match trimmed.parse::<u64>() {
++                Ok(timeout_secs) if timeout_secs > 0 => format!("{timeout_secs}.0"),
++                _ => {
++                    eprintln!(
++                        "Ignoring invalid MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS='{}'; falling back to 300.0",
++                        raw_value
++                    );
++                    "300.0".to_string()
++                }
++            }
++        }
++        Err(_) => "300.0".to_string(),
++    }
++}
++
+ /// Generates bench-config.toml configuration file
+ fn generate_config_file(output_dir: &Path, config: &InitConfig) -> Result<(), BenchError> {
+     let config_target = match config.target {
+diff --git a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
+index fc0e8df..1920f58 100644
+--- a/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
++++ b/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template
+@@ -2,8 +2,8 @@ import XCTest
+
+ final class {{PROJECT_NAME_PASCAL}}UITests: XCTestCase {
+
+-    /// Maximum time to wait for benchmark completion (5 minutes for long benchmarks)
+-    private let benchmarkTimeout: TimeInterval = 300.0
++    /// Maximum time to wait for benchmark completion (set by the workflow profile at generation time)
++    private let benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}
+
+     func testLaunchAndCaptureBenchmarkReport() {
+         let app = XCUIApplication()
 diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
-index 59ecaa4..ceca3e7 100644
+index 46f7546..da8350e 100644
 --- a/crates/mobench/src/lib.rs
 +++ b/crates/mobench/src/lib.rs
-@@ -1530,6 +1530,29 @@ pub fn run() -> Result<()> {
-                 ) {
+@@ -1455,6 +1455,7 @@ pub fn run() -> Result<()> {
+                 println!("Waiting for build {} to complete...", build_id);
+                 println!("Dashboard: {}", dashboard_url);
+
++                let mut fetch_error = None;
+                 match client.wait_and_fetch_all_results_with_poll(
+                     build_id,
+                     platform,
+@@ -1515,6 +1516,7 @@ pub fn run() -> Result<()> {
+                     Err(e) => {
+                         println!("\nWarning: Failed to fetch results: {}", e);
+                         println!("Build may still be accessible at: {}", dashboard_url);
++                        fetch_error = Some(e.to_string());
+                     }
+                 }
+
+@@ -1532,7 +1534,7 @@ pub fn run() -> Result<()> {
                      println!("Warning: Failed to fetch detailed artifacts: {}", e);
                  }
+
+-                if run_summary.benchmark_results.is_none() {
++                if !has_benchmark_payloads(run_summary.benchmark_results.as_ref()) {
+                     match recover_benchmark_results_from_fetched_artifacts(&output_root) {
+                         Ok(Some(recovered)) => {
+                             println!(
+@@ -1550,6 +1552,16 @@ pub fn run() -> Result<()> {
+                         }
+                     }
+                 }
 +
-+                let needs_recovery = match run_summary.benchmark_results.as_ref() {
-+                    Some(results) => results.is_empty(),
-+                    None => true,
-+                };
-+                if needs_recovery {
-+                    match recover_benchmark_results_from_fetched_artifacts(&output_root) {
-+                        Ok(recovered) if !recovered.is_empty() => {
-+                            println!(
-+                                "Recovered benchmark results from fetched BrowserStack artifacts for {} device(s)",
-+                                recovered.len()
-+                            );
-+                            run_summary.benchmark_results = Some(recovered);
-+                        }
-+                        Ok(_) => {}
-+                        Err(err) => {
-+                            println!(
-+                                "Warning: Failed to recover benchmark results from fetched artifacts: {}",
-+                                err
-+                            );
-+                        }
-+                    }
++                if let Some(fetch_error) = fetch_error
++                    && !has_benchmark_payloads(run_summary.benchmark_results.as_ref())
++                {
++                    return Err(anyhow!(
++                        "fetch did not recover any benchmark payloads for BrowserStack build {}: {}",
++                        build_id,
++                        fetch_error
++                    ));
 +                }
              } else if fetch {
                  println!("No BrowserStack run to fetch (devices not provided?)");
              }
-@@ -3217,6 +3240,115 @@ fn fetch_browserstack_artifacts(
-     Ok(())
+@@ -3324,6 +3336,10 @@ fn recover_benchmark_results_from_fetched_artifacts(
+     Ok(Some(recovered))
  }
- 
-+fn recover_benchmark_results_from_fetched_artifacts(
-+    output_root: &Path,
-+) -> Result<BTreeMap<String, Vec<Value>>> {
-+    let mut device_by_session = BTreeMap::new();
-+    let build_json_path = output_root.join("build.json");
-+    if build_json_path.exists() {
-+        let build_json: Value = serde_json::from_str(
-+            &fs::read_to_string(&build_json_path)
-+                .with_context(|| format!("reading build artifact {:?}", build_json_path))?,
-+        )
-+        .with_context(|| format!("parsing build artifact {:?}", build_json_path))?;
-+
-+        if let Some(devices) = build_json.get("devices").and_then(|value| value.as_array()) {
-+            for device in devices {
-+                let Some(device_name) = device.get("device").and_then(|value| value.as_str()) else {
-+                    continue;
-+                };
-+                let os_version = device
-+                    .get("os_version")
-+                    .and_then(|value| value.as_str())
-+                    .unwrap_or_default();
-+                let device_identifier = if os_version.is_empty() {
-+                    device_name.to_string()
-+                } else {
-+                    format!("{device_name}-{os_version}")
-+                };
-+
-+                if let Some(sessions) = device.get("sessions").and_then(|value| value.as_array()) {
-+                    for session in sessions {
-+                        if let Some(session_id) = session.get("id").and_then(|value| value.as_str())
-+                        {
-+                            device_by_session
-+                                .insert(session_id.to_string(), device_identifier.clone());
-+                        }
-+                    }
-+                }
-+            }
-+        }
-+    }
-+
-+    let mut recovered = BTreeMap::new();
-+    for entry in fs::read_dir(output_root)
-+        .with_context(|| format!("reading BrowserStack artifact dir {:?}", output_root))?
-+    {
-+        let entry = entry?;
-+        if !entry.file_type()?.is_dir() {
-+            continue;
-+        }
-+
-+        let entry_name = entry.file_name();
-+        let entry_name = entry_name.to_string_lossy();
-+        let Some(session_id) = entry_name.strip_prefix("session-") else {
-+            continue;
-+        };
-+
-+        let report_path = entry.path().join("bench-report.json");
-+        if !report_path.exists() {
-+            continue;
-+        }
-+
-+        let report_value: Value = serde_json::from_str(
-+            &fs::read_to_string(&report_path)
-+                .with_context(|| format!("reading session artifact {:?}", report_path))?,
-+        )
-+        .with_context(|| format!("parsing session artifact {:?}", report_path))?;
-+
-+        let device = device_by_session
-+            .get(session_id)
-+            .cloned()
-+            .unwrap_or_else(|| session_id.to_string());
-+        let device_results = recovered.entry(device.clone()).or_insert_with(Vec::new);
-+
-+        let reports = match report_value {
-+            Value::Array(reports) => reports,
-+            report => vec![report],
-+        };
-+
-+        for mut report in reports {
-+            let has_function = report
-+                .get("function")
-+                .and_then(|value| value.as_str())
-+                .is_some()
-+                || report
-+                    .get("spec")
-+                    .and_then(|spec| spec.get("name"))
-+                    .and_then(|value| value.as_str())
-+                    .is_some();
-+            let has_samples = !extract_samples(&report).is_empty();
-+            let has_stats = ["mean_ns", "median_ns", "p95_ns", "min_ns", "max_ns"]
-+                .iter()
-+                .any(|key| report.get(*key).is_some());
-+
-+            if !has_function || (!has_samples && !has_stats) {
-+                continue;
-+            }
-+
-+            if let Some(object) = report.as_object_mut() {
-+                object
-+                    .entry("device".to_string())
-+                    .or_insert_with(|| Value::String(device.clone()));
-+            }
-+            device_results.push(report);
-+        }
-+    }
-+
-+    recovered.retain(|_, entries| !entries.is_empty());
-+    Ok(recovered)
+
++fn has_benchmark_payloads(results: Option<&BTreeMap<String, Vec<Value>>>) -> bool {
++    results.is_some_and(|results| results.values().any(|entries| !entries.is_empty()))
 +}
 +
- fn browserstack_base_path(target: MobileTarget) -> &'static str {
-     match target {
-         MobileTarget::Android => "app-automate/espresso/v2",
-@@ -10091,6 +10223,60 @@ mod ci_merge_tests {
-         assert_eq!(resource_usage["cpu_median_ms"], 482);
-         assert_eq!(resource_usage["peak_memory_kb"], 249416);
-     }
-+
-+    #[test]
-+    fn recover_benchmark_results_from_fetched_artifacts_uses_build_device_mapping() {
-+        let dir = tempfile::tempdir().expect("tempdir");
-+        fs::write(
-+            dir.path().join("build.json"),
-+            serde_json::to_vec_pretty(&json!({
-+                "devices": [
-+                    {
-+                        "device": "Samsung Galaxy S24",
-+                        "os_version": "14.0",
-+                        "sessions": [
-+                            { "id": "session-1" }
-+                        ]
-+                    }
-+                ]
-+            }))
-+            .expect("serialize build json"),
-+        )
-+        .expect("write build json");
-+
-+        let session_dir = dir.path().join("session-session-1");
-+        fs::create_dir_all(&session_dir).expect("create session dir");
-+        fs::write(
-+            session_dir.join("bench-report.json"),
-+            serde_json::to_vec_pretty(&json!({
-+                "function": "bench_mobile::bench_passport_complete_age_check_prove",
-+                "samples": [1_u64, 2_u64, 3_u64],
-+                "mean_ns": 2_u64,
-+                "resources": {
-+                    "cpu_median_ms": 123
-+                }
-+            }))
-+            .expect("serialize bench report"),
-+        )
-+        .expect("write bench report");
-+
-+        let recovered =
-+            recover_benchmark_results_from_fetched_artifacts(dir.path()).expect("recover results");
-+
-+        let reports = recovered
-+            .get("Samsung Galaxy S24-14.0")
-+            .expect("device reports");
-+        assert_eq!(reports.len(), 1);
-+        assert_eq!(
-+            reports[0]["function"],
-+            Value::String("bench_mobile::bench_passport_complete_age_check_prove".to_string())
-+        );
-+        assert_eq!(
-+            reports[0]["device"],
-+            Value::String("Samsung Galaxy S24-14.0".to_string())
-+        );
-+        assert_eq!(reports[0]["resources"]["cpu_median_ms"], 123);
-+    }
- }
- 
- #[cfg(test)]
+ fn extract_session_device_names(build_json: &Value) -> BTreeMap<String, String> {
+     let mut session_devices = BTreeMap::new();
