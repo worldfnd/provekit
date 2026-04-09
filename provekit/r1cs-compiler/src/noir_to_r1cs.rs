@@ -670,8 +670,9 @@ impl NoirToR1CSCompiler {
                         // ### Case 1: constant predicate=0 (statically dead branch)
                         //
                         // The output is fully determined at compile time as the Grumpkin identity
-                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely. `constrain_to_constant`
-                        // pins each output witness to its identity value — 3 constraints total.
+                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely.
+                        // `constrain_to_constant` pins each output witness
+                        // to its identity value — 3 constraints total.
                         //
                         // ### Case 2: witness predicate (runtime conditional)
                         //
@@ -711,7 +712,8 @@ impl NoirToR1CSCompiler {
                                 } else if !c.is_one() {
                                     bail!("MSM predicate constant must be 0 or 1, got {c:?}");
                                 }
-                                // c.is_one(): statically active branch — no modification needed.
+                                // c.is_one(): statically active branch — no
+                                // modification needed.
                             }
                             ConstantOrR1CSWitness::Witness(predicate_wit) => {
                                 // Runtime predicate. Noir guarantees it is boolean (product of
