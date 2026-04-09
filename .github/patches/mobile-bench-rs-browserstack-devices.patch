@@ -387,7 +387,7 @@ index fc0e8df..1920f58 100644
      func testLaunchAndCaptureBenchmarkReport() {
          let app = XCUIApplication()
 diff --git a/crates/mobench/src/lib.rs b/crates/mobench/src/lib.rs
-index 46f7546..da8350e 100644
+index 46f7546..a123aa3 100644
 --- a/crates/mobench/src/lib.rs
 +++ b/crates/mobench/src/lib.rs
 @@ -1455,6 +1455,7 @@ pub fn run() -> Result<()> {
@@ -443,3 +443,39 @@ index 46f7546..da8350e 100644
  fn extract_session_device_names(build_json: &Value) -> BTreeMap<String, String> {
      let mut session_devices = BTreeMap::new();
  
+@@ -5412,10 +5428,14 @@ fn extract_benchmark_resource_usage(
+     let java_heap_kb = resources
+         .and_then(|res| res.get("java_heap_kb"))
+         .and_then(json_value_to_u64);
++    let reported_peak_memory_kb = resources
++        .and_then(|res| res.get("peak_memory_kb"))
++        .and_then(json_value_to_u64);
+ 
+     let peak_memory_kb = perf_metrics
+         .and_then(|metrics| metrics.memory.as_ref())
+         .map(|memory| (memory.peak_mb * 1024.0).round() as u64)
++        .or(reported_peak_memory_kb)
+         .or_else(|| {
+             raw_peak_memory_kb(total_pss_kb, private_dirty_kb, native_heap_kb, java_heap_kb)
+         });
+@@ -10286,6 +10306,20 @@ mod resource_usage_tests {
+         assert_eq!(usage.total_pss_kb, Some(4096));
+     }
+ 
++    #[test]
++    fn test_extract_resource_usage_reads_explicit_peak_memory_kb() {
++        let entry = json!({
++            "resources": {
++                "elapsed_cpu_ms": 120,
++                "peak_memory_kb": 1673010
++            }
++        });
++
++        let usage = extract_benchmark_resource_usage(&entry, None).unwrap();
++        assert_eq!(usage.cpu_total_ms, Some(120));
++        assert_eq!(usage.peak_memory_kb, Some(1673010));
++    }
++
+     #[test]
+     fn test_extract_resource_usage_empty_returns_none() {
+         let entry = json!({});
