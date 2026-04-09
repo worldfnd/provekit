@@ -197,6 +197,50 @@ struct SinglePointMsmFixture {
     layout:         SinglePointMsmLayout,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SinglePointGeneratorCase {
+    point_x:    [u64; 4],
+    point_y:    [u64; 4],
+    scalar:     [u64; 4],
+    expected_x: [u64; 4],
+    expected_y: [u64; 4],
+}
+
+/// Build a single-point secp256r1 generator case for the given scalar.
+fn secp256r1_generator_case(scalar: [u64; 4]) -> SinglePointGeneratorCase {
+    let curve = Secp256r1;
+    let point_x = curve.generator().0;
+    let point_y = curve.generator().1;
+    let (expected_x, expected_y) = ec_scalar_mul(
+        &point_x,
+        &point_y,
+        &scalar,
+        &curve.curve_a(),
+        &curve.field_modulus_p(),
+    );
+
+    SinglePointGeneratorCase {
+        point_x,
+        point_y,
+        scalar,
+        expected_x,
+        expected_y,
+    }
+}
+
+/// Build the single-point generator fixture for a precomputed test case.
+fn build_generator_single_point_fixture(case: SinglePointGeneratorCase) -> SinglePointMsmFixture {
+    build_single_point_msm_fixture(
+        &case.point_x,
+        &case.point_y,
+        false,
+        &case.scalar,
+        &case.expected_x,
+        &case.expected_y,
+        false,
+    )
+}
+
 /// Locate the single FakeGLV hint used by the single-point MSM circuit.
 fn locate_single_point_fake_glv(builders: &[WitnessBuilder]) -> FakeGlvWitnessIndices {
     let fake_glv_indices: Vec<FakeGlvWitnessIndices> = builders
@@ -489,22 +533,12 @@ fn test_arbitrary_point_and_scalar() {
 /// equality constraints.
 #[test]
 fn test_single_point_rejects_wrong_output_coordinates() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [7, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
+    let case = secp256r1_generator_case([7, 0, 0, 0]);
 
     let get_x: fn(&SinglePointMsmLayout) -> usize = |l| l.out_x_limbs[0];
     let get_y: fn(&SinglePointMsmLayout) -> usize = |l| l.out_y_limbs[0];
     for (label, get_idx) in [("out_x", get_x), ("out_y", get_y)] {
-        let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+        let fixture = build_generator_single_point_fixture(case);
         assert_single_point_corruption_is_rejected(
             fixture,
             &format!("wrong output coordinate ({label})"),
@@ -519,18 +553,8 @@ fn test_single_point_rejects_wrong_output_coordinates() {
 /// Corrupting the output infinity flag must violate the output constraints.
 #[test]
 fn test_single_point_rejects_wrong_output_inf() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [7, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+    let case = secp256r1_generator_case([7, 0, 0, 0]);
+    let fixture = build_generator_single_point_fixture(case);
 
     assert_single_point_corruption_is_rejected(
         fixture,
@@ -545,21 +569,11 @@ fn test_single_point_rejects_wrong_output_inf() {
 /// consistency constraints.
 #[test]
 fn test_single_point_rejects_off_curve_input() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [7, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
-    let py_off_curve = increment_u256(&gy);
+    let case = secp256r1_generator_case([7, 0, 0, 0]);
+    let (num_limbs, limb_bits) = msm_params_for_curve(&Secp256r1, 1);
+    let py_off_curve = increment_u256(&case.point_y);
     let py_off_curve_fes = u256_to_limb_fes(&py_off_curve, limb_bits, num_limbs);
-    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+    let fixture = build_generator_single_point_fixture(case);
 
     assert_single_point_corruption_is_rejected(fixture, "off-curve input", |layout, corrupted| {
         overwrite_witness_values(corrupted, &layout.point_y_limbs, &py_off_curve_fes);
@@ -569,29 +583,12 @@ fn test_single_point_rejects_off_curve_input() {
 /// Replacing the expected output with a different scalar multiple must fail.
 #[test]
 fn test_single_point_rejects_wrong_scalar_output_pairing() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [7, 0, 0, 0];
-    let wrong_scalar: [u64; 4] = [5, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let (wrong_ex, wrong_ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &wrong_scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 1);
-    let wrong_ex_fes = u256_to_limb_fes(&wrong_ex, limb_bits, num_limbs);
-    let wrong_ey_fes = u256_to_limb_fes(&wrong_ey, limb_bits, num_limbs);
-    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+    let case = secp256r1_generator_case([7, 0, 0, 0]);
+    let wrong_case = secp256r1_generator_case([5, 0, 0, 0]);
+    let (num_limbs, limb_bits) = msm_params_for_curve(&Secp256r1, 1);
+    let wrong_ex_fes = u256_to_limb_fes(&wrong_case.expected_x, limb_bits, num_limbs);
+    let wrong_ey_fes = u256_to_limb_fes(&wrong_case.expected_y, limb_bits, num_limbs);
+    let fixture = build_generator_single_point_fixture(case);
 
     assert_single_point_corruption_is_rejected(
         fixture,
@@ -606,20 +603,10 @@ fn test_single_point_rejects_wrong_scalar_output_pairing() {
 /// Replacing the scalar input while keeping the original output must fail.
 #[test]
 fn test_single_point_rejects_scalar_corruption() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [7, 0, 0, 0];
+    let case = secp256r1_generator_case([7, 0, 0, 0]);
     let wrong_scalar: [u64; 4] = [5, 0, 0, 0];
     let (wrong_lo, wrong_hi) = split_scalar(&wrong_scalar);
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+    let fixture = build_generator_single_point_fixture(case);
 
     assert_single_point_corruption_is_rejected(
         fixture,
@@ -634,18 +621,8 @@ fn test_single_point_rejects_scalar_corruption() {
 /// Zeroing s2 must violate the explicit s2 != 0 soundness check.
 #[test]
 fn test_single_point_rejects_zero_s2_forgery() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [17, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
-    let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+    let case = secp256r1_generator_case([17, 0, 0, 0]);
+    let fixture = build_generator_single_point_fixture(case);
 
     assert_single_point_corruption_is_rejected(fixture, "s2 forgery", |layout, corrupted| {
         assert_ne!(
@@ -666,22 +643,12 @@ fn test_single_point_rejects_zero_s2_forgery() {
 /// decomposition back to the original scalar.
 #[test]
 fn test_single_point_rejects_flipped_neg_bits() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let scalar: [u64; 4] = [17, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
+    let case = secp256r1_generator_case([17, 0, 0, 0]);
 
     let get_neg1: fn(&FakeGlvWitnessIndices) -> usize = |g| g.neg1;
     let get_neg2: fn(&FakeGlvWitnessIndices) -> usize = |g| g.neg2;
     for (label, get_idx) in [("neg1", get_neg1), ("neg2", get_neg2)] {
-        let fixture = build_single_point_msm_fixture(&gx, &gy, false, &scalar, &ex, &ey, false);
+        let fixture = build_generator_single_point_fixture(case);
         assert_single_point_corruption_is_rejected(
             fixture,
             &format!("flipped {label} bit"),
