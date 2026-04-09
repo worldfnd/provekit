@@ -1,7 +1,7 @@
 use {
     crate::{
         binops::add_combined_binop_constraints,
-        constraint_helpers::{compute_boolean_or, constrain_boolean},
+        constraint_helpers::{compute_boolean_or, constrain_boolean, constrain_to_constant},
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         msm::{add_msm_with_curve, MsmLimbedOutputs},
@@ -656,41 +656,77 @@ impl NoirToR1CSCompiler {
                              elements",
                             point_wits.len()
                         );
-                        // ACVM semantics: predicate=0 → output is identity (0, 0, 1).
-                        // We implement this by forcing every point's is_infinite flag to
-                        // (old_is_infinite OR !predicate). When predicate=0, all points
-                        // become "at infinity" and the existing all_skipped mechanism
-                        // constrains the output to the identity point.
+                        // ## Conditional MSM: predicate field handling
+                        //
+                        // Noir's `flatten_cfg` pass lowers `if cond { multi_scalar_mul(...) }`
+                        // into a single unconditional ACIR `MultiScalarMul` opcode with a
+                        // `predicate` witness. For nested conditions the predicate is the product
+                        // of all enclosing branch conditions: `predicate = c1 * c2 * ...`.
+                        //
+                        // ACVM semantics: when predicate=0, the opcode must output the Grumpkin
+                        // identity point (0, 0, is_infinite=1) regardless of the point/scalar
+                        // inputs. When predicate=1 the MSM runs normally.
+                        //
+                        // ### Case 1: constant predicate=0 (statically dead branch)
+                        //
+                        // The output is fully determined at compile time as the Grumpkin identity
+                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely. `constrain_to_constant`
+                        // pins each output witness to its identity value — 3 constraints total.
+                        //
+                        // ### Case 2: witness predicate (runtime conditional)
+                        //
+                        // We hook into the existing `all_skipped` short-circuit already present
+                        // in the MSM pipeline (msm/pipeline.rs). That mechanism tracks whether
+                        // every input point has `is_skip = is_infinite OR scalar_is_zero`. When
+                        // `all_skipped=1` the pipeline constrains the output to (0, 0, 1) and
+                        // the EC addition chain still produces a valid (trivial) witness.
+                        //
+                        // To activate it we rewrite each point's `is_infinite` flag before
+                        // passing points to the pipeline:
+                        //
+                        //   new_is_infinite[i] = old_is_infinite[i] OR (NOT predicate)
+                        //
+                        // When predicate=0: every `new_is_infinite[i]` = 1, so `all_skipped=1`
+                        //   and output is constrained to identity. Correct.
+                        // When predicate=1: `NOT predicate` = 0, so `new_is_infinite[i]` =
+                        //   `old_is_infinite[i]`. The MSM runs normally. Correct.
+                        //
+                        // The full MSM constraint set is always generated — GLV decomposition,
+                        // signed-bit decomposition, on-curve checks, and the EC addition chain.
+                        // R1CS is a static constraint system: every row of A·B=C is fixed at
+                        // compile time and must be satisfied for every valid witness. Unlike
+                        // plonkish systems (e.g. Barretenberg/UltraPlonk), which have gate
+                        // selectors that multiply a gate's contribution by 0 when inactive, R1CS
+                        // has no such mechanism. This is an inherent cost of R1CS for runtime
+                        // conditional operations.
                         let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
+                        let mut skip_msm = false;
                         match predicate {
-                            ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
-                                // Inactive branch — force all points to infinity.
-                                for i in (2..point_wits.len()).step_by(3) {
-                                    point_wits[i] =
-                                        ConstantOrR1CSWitness::Constant(FieldElement::one());
-                                }
-                            }
-                            ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
-                                // Active branch — no modification needed.
-                            }
                             ConstantOrR1CSWitness::Constant(c) => {
-                                bail!("MSM predicate constant must be 0 or 1, got {c:?}");
+                                if c.is_zero() {
+                                    // Statically inactive branch. The output is fully determined
+                                    // at compile time: identity (0, 0, 1). Skip the MSM pipeline
+                                    // entirely — no GLV/bit-decomp/EC-add constraints needed.
+                                    skip_msm = true;
+                                } else if !c.is_one() {
+                                    bail!("MSM predicate constant must be 0 or 1, got {c:?}");
+                                }
+                                // c.is_one(): statically active branch — no modification needed.
                             }
                             ConstantOrR1CSWitness::Witness(predicate_wit) => {
-                                // Constrain predicate to be boolean (Noir guarantees this,
-                                // but we check defensively).
+                                // Runtime predicate. Noir guarantees it is boolean (product of
+                                // branch conditions), but we constrain defensively.
                                 constrain_boolean(self, predicate_wit);
                                 // not_predicate = 1 - predicate_wit
                                 let not_predicate = self.add_sum(vec![
                                     SumTerm(Some(FieldElement::one()), self.witness_one()),
                                     SumTerm(Some(-FieldElement::one()), predicate_wit),
                                 ]);
-                                // For each is_infinite flag (index 2, 5, 8, ...):
-                                // new_inf = old_inf OR not_predicate
+                                // new_is_infinite[i] = old_is_infinite[i] OR not_predicate
                                 for i in (2..point_wits.len()).step_by(3) {
                                     point_wits[i] = match point_wits[i] {
                                         ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
-                                            // Already infinite; stays infinite regardless.
+                                            // Already infinite regardless of predicate.
                                             ConstantOrR1CSWitness::Constant(FieldElement::one())
                                         }
                                         ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
@@ -718,7 +754,19 @@ impl NoirToR1CSCompiler {
                         let out_x = self.fetch_r1cs_witness_index(outputs.0);
                         let out_y = self.fetch_r1cs_witness_index(outputs.1);
                         let out_inf = self.fetch_r1cs_witness_index(outputs.2);
-                        msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
+                        if skip_msm {
+                            // Constrain outputs directly to the Grumpkin identity point.
+                            // ACVM sets (0, 0, 1) for predicate=0 in the ACIR witness map, so
+                            // the WitnessBuilder::Acir created by fetch_r1cs_witness_index will
+                            // assign the correct values. constrain_to_constant adds a soundness
+                            // check (1 * w = value * 1) to prevent a malicious prover from
+                            // substituting different output values.
+                            constrain_to_constant(self, out_x, FieldElement::zero());
+                            constrain_to_constant(self, out_y, FieldElement::zero());
+                            constrain_to_constant(self, out_inf, FieldElement::one());
+                        } else {
+                            msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
+                        }
                     }
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
