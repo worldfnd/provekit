@@ -5,66 +5,68 @@
 // recompiling.
 
 // --- Protocol parameters (set per target inner circuit) ---
-
-// NOTE: These are SMALL test parameters for initial compilation.
-// For a real inner circuit, increase to match the WHIR configuration.
+//
+// Generated from noir_verifier_data.json for the acir_assert_zero test circuit.
+// Inner circuit: 8 constraints, 10 witnesses -> m_0=3, m=13.
 
 // log2(number of R1CS constraints)
-pub global LOG_NUM_CONSTRAINTS: u32 = 5;
-// log2(number of witness variables)
-pub global LOG_NUM_VARIABLES: u32 = 5;
-// Number of WHIR folding rounds (excluding final)
-pub global NUM_WHIR_ROUNDS: u32 = 1;
+pub global LOG_NUM_CONSTRAINTS: u32 = 3;
+// log2(number of witness variables in the WHIR MLE)
+pub global LOG_NUM_VARIABLES: u32 = 13;
+// Number of WHIR middle folding rounds (excluding initial and final)
+pub global NUM_WHIR_ROUNDS: u32 = 3;
 // Folding factor per WHIR round
 pub global FOLDING_FACTOR: u32 = 3;
 // Number of in-domain queries per WHIR round
-pub global MAX_QUERIES_PER_ROUND: u32 = 3;
-// Merkle tree height (log2 of codeword length)
-pub global TREE_HEIGHT: u32 = 5;
+pub global MAX_QUERIES_PER_ROUND: u32 = 127;
+// Merkle tree height = log2(codeword_length / interleaving_depth)
+pub global TREE_HEIGHT: u32 = 9;
 // Number of out-of-domain samples per WHIR round
 pub global OOD_SAMPLES: u32 = 1;
 // Reed-Solomon rate (log2 of inverse rate)
 pub global LOG_INV_RATE: u32 = 2;
 // Proof-of-work bits per round
-pub global POW_BITS: u32 = 10;
+pub global POW_BITS: u32 = 6;
 // Maximum number of public inputs from the inner circuit
-pub global MAX_PUBLIC_INPUTS: u32 = 4;
+pub global MAX_PUBLIC_INPUTS: u32 = 0;
 // Maximum non-zero entries per R1CS matrix
 pub global MAX_MATRIX_CELLS: u32 = 100;
 // Number of logup challenges (0 = single commitment mode)
 pub global NUM_CHALLENGES: u32 = 0;
 // Size of w1 (first witness segment)
-pub global W1_SIZE: u32 = 32;
+pub global W1_SIZE: u32 = 10;
 // Number of WHIR batch polynomials
 pub global BATCH_SIZE: u32 = 1;
 
 // --- zkWHIR blinding parameters ---
-// The blinding commitment has its own WHIR config, potentially with
-// different round count and tree height (usually smaller).
 
 // OOD samples for the blinding commitment
 pub global BLINDING_OOD_SAMPLES: u32 = 1;
 // Number of blinding WHIR folding rounds
-pub global BLINDING_WHIR_ROUNDS: u32 = 1;
+pub global BLINDING_WHIR_ROUNDS: u32 = 3;
 // Blinding tree height
-pub global BLINDING_TREE_HEIGHT: u32 = 5;
-// Number of blinding polynomial vectors = num_polynomials * (num_witness_variables + 1)
-// For single commitment mode with LOG_NUM_VARIABLES=5: 1 * (5 + 1) = 6
-pub global NUM_BLINDING_VECTORS: u32 = 6;
-// Number of witness variables in the blinding WHIR (mu)
-pub global NUM_WITNESS_VARIABLES: u32 = 5;
+pub global BLINDING_TREE_HEIGHT: u32 = 8;
+// Number of blinding polynomial vectors
+pub global NUM_BLINDING_VECTORS: u32 = 14;
+// Number of witness variables in the WHIR (mu = m = LOG_NUM_VARIABLES)
+pub global NUM_WITNESS_VARIABLES: u32 = 13;
 // Maximum queries for blinding WHIR rounds
-pub global BLINDING_MAX_QUERIES: u32 = 3;
+pub global BLINDING_MAX_QUERIES: u32 = 127;
 // Blinding fold size (same folding factor)
 pub global BLINDING_FOLD_SIZE: u32 = 8;
 
 // --- WHIR inner verification parameters ---
-// Number of linear forms = (public_inputs ? 1 : 0) + 3 (evals) + 1 (blinding) = 5
-pub global NUM_LINEAR_FORMS: u32 = 5;
-// Number of w_folded evaluations = NUM_LINEAR_FORMS * 1 * (NUM_WITNESS_VARIABLES + 1)
-pub global NUM_W_FOLDED_EVALS: u32 = 30;
-// Final sumcheck polynomial size (coefficients sent in clear at end of WHIR)
-pub global FINAL_POLY_SIZE: u32 = 8;
+// Number of linear forms = 3 (evals_az/bz/cz) + 1 (blinding) = 4
+// (No public_eval since MAX_PUBLIC_INPUTS=0)
+pub global NUM_LINEAR_FORMS: u32 = 4;
+// Number of w_folded evaluations = NUM_LINEAR_FORMS * BATCH_SIZE * (NUM_WITNESS_VARIABLES + 1)
+pub global NUM_W_FOLDED_EVALS: u32 = 56;
+// Final sumcheck polynomial size for the inner (blinded) WHIR
+// = 1 << (m - initial_ff - NUM_WHIR_ROUNDS * ff) = 1 << (13 - 3 - 3*3) = 1 << 1 = 2
+pub global FINAL_POLY_SIZE: u32 = 2;
+// Final sumcheck polynomial size for the blinding WHIR
+// = 1 << (blinding_m - blinding_ff - BLINDING_WHIR_ROUNDS * blinding_ff)
+pub global BLINDING_FINAL_POLY_SIZE: u32 = 1;
 
 // --- Derived constants ---
 
@@ -74,6 +76,44 @@ pub global FOLD_SIZE: u32 = 8; // 1 << FOLDING_FACTOR
 pub global SUMCHECK_ROUNDS: u32 = LOG_NUM_CONSTRAINTS;
 // Cubic polynomial degree + 1 (coefficients per sumcheck round)
 pub global CUBIC_POLY_SIZE: u32 = 4;
+// Final WHIR sumcheck rounds for the inner (blinded) WHIR
+// = m - initial_ff - NUM_WHIR_ROUNDS * ff = 13 - 3 - 3*3 = 1
+pub global FINAL_SUMCHECK_ROUNDS: u32 = 1;
+// Final WHIR sumcheck rounds for the blinding WHIR
+pub global BLINDING_FINAL_SUMCHECK_ROUNDS: u32 = 0;
+// Minimum-1 array size for per-round data (avoids zero-sized arrays in main).
+pub global ROUND_ARRAY_SIZE: u32 = if NUM_WHIR_ROUNDS == 0 { 1 } else { NUM_WHIR_ROUNDS };
+pub global BLINDING_ROUND_ARRAY_SIZE: u32 = if BLINDING_WHIR_ROUNDS == 0 { 1 } else { BLINDING_WHIR_ROUNDS };
+// Same for final sumcheck arrays
+pub global FINAL_SC_ARRAY_SIZE: u32 = if FINAL_SUMCHECK_ROUNDS == 0 { 1 } else { FINAL_SUMCHECK_ROUNDS };
+pub global BLINDING_FINAL_SC_ARRAY_SIZE: u32 = if BLINDING_FINAL_SUMCHECK_ROUNDS == 0 { 1 } else { BLINDING_FINAL_SUMCHECK_ROUNDS };
+pub global BLINDING_FINAL_POLY_ARRAY_SIZE: u32 = if BLINDING_FINAL_POLY_SIZE == 0 { 1 } else { BLINDING_FINAL_POLY_SIZE };
+
+// --- STIR challenge parameters ---
+// Bytes per STIR index = ceil(TREE_HEIGHT / 8).
+// For TREE_HEIGHT=9: ceil(9/8) = 2 bytes per index.
+pub global STIR_BYTES_PER_INDEX: u32 = (TREE_HEIGHT + 7) / 8;
+pub global BLINDING_STIR_BYTES_PER_INDEX: u32 = (BLINDING_TREE_HEIGHT + 7) / 8;
+
+// Total STIR bytes squeezed per opening = in_domain_samples * bytes_per_index.
+pub global STIR_TOTAL_BYTES: u32 = MAX_QUERIES_PER_ROUND * STIR_BYTES_PER_INDEX;
+pub global BLINDING_STIR_TOTAL_BYTES: u32 = BLINDING_MAX_QUERIES * BLINDING_STIR_BYTES_PER_INDEX;
+
+// Upper bound for squeeze_stir_challenges loop iterations.
+// Must be >= max(STIR_TOTAL_BYTES, BLINDING_STIR_TOTAL_BYTES) across all openings.
+// 127 queries * 2 bytes = 254; round up to 256.
+pub global MAX_STIR_BYTES: u32 = 256;
+
+// Number of constraint RLC terms for the inner WHIR.
+pub global INNER_WHIR_CONSTRAINT_COUNT: u32 = OOD_SAMPLES + NUM_LINEAR_FORMS;
+// Constraint count for the blinding WHIR.
+pub global BLINDING_WHIR_CONSTRAINT_COUNT: u32 = BLINDING_OOD_SAMPLES + NUM_LINEAR_FORMS;
+
+// Interleaving depth of the IRS commitment.
+pub global INTERLEAVING_DEPTH: u32 = FOLD_SIZE; // = 1 << FOLDING_FACTOR
+
+// Number of gammas in the zkWHIR per-gamma loop.
+pub global MAX_GAMMAS: u32 = MAX_QUERIES_PER_ROUND * INTERLEAVING_DEPTH;
 
 // --- SHA256 constants ---
 
@@ -112,8 +152,8 @@ pub fn bytes_le_to_field(bytes: [u8; 32]) -> Field {
     result
 }
 
-// Convert a u64 to 8 bytes big-endian (for spongefish counters, which use
-// usize::to_be_bytes() and usize is 8 bytes on 64-bit).
+// Convert a u64 to 8 bytes big-endian (for spongefish SHO internal counters,
+// which use usize::to_be_bytes()).
 pub fn u64_to_be_bytes(val: u64) -> [u8; 8] {
     let mut out: [u8; 8] = [0; 8];
     out[0] = ((val >> 56) & 0xFF) as u8;
@@ -124,6 +164,21 @@ pub fn u64_to_be_bytes(val: u64) -> [u8; 8] {
     out[5] = ((val >> 16) & 0xFF) as u8;
     out[6] = ((val >> 8) & 0xFF) as u8;
     out[7] = (val & 0xFF) as u8;
+    out
+}
+
+// Convert a u64 to 8 bytes little-endian (for WHIR transcript messages,
+// matching the U64 codec's to_le_bytes() in whir/transcript/codecs.rs).
+pub fn u64_to_le_bytes(val: u64) -> [u8; 8] {
+    let mut out: [u8; 8] = [0; 8];
+    out[0] = (val & 0xFF) as u8;
+    out[1] = ((val >> 8) & 0xFF) as u8;
+    out[2] = ((val >> 16) & 0xFF) as u8;
+    out[3] = ((val >> 24) & 0xFF) as u8;
+    out[4] = ((val >> 32) & 0xFF) as u8;
+    out[5] = ((val >> 40) & 0xFF) as u8;
+    out[6] = ((val >> 48) & 0xFF) as u8;
+    out[7] = ((val >> 56) & 0xFF) as u8;
     out
 }
 

@@ -199,6 +199,7 @@ pub struct SHO {
     mode: u8,
     squeeze_counter: u32,
     leftovers: [u8; 32],
+    leftovers_start: u32,
     leftovers_len: u32,
 }
 
@@ -211,6 +212,7 @@ impl SHO {
             mode: MODE_START,
             squeeze_counter: 0,
             leftovers: [0; 32],
+            leftovers_start: 0,
             leftovers_len: 0,
         }
     }
@@ -256,57 +258,104 @@ impl SHO {
         outer_hasher.update(inner);
         self.cv = outer_hasher.finalize();
 
-        // Reset
         self.hasher.reset();
         self.leftovers = [0; 32];
+        self.leftovers_start = 0;
         self.leftovers_len = 0;
         self.mode = MODE_START;
     }
 
-    // Squeeze exactly 32 bytes from the sponge.
-    //
-    // Implements the squeeze logic from spongefish Hash::squeeze():
-    //   if mode == Start:
-    //     update(mask_squeeze)
-    //     update(cv)
-    //     mode = Squeeze(0)
-    //   if mode == Absorb:
-    //     ratchet() first, then squeeze
-    //   Clone hasher, append counter, finalize -> 32 bytes
-    pub fn squeeze_32(&mut self) -> [u8; 32] {
-        // If absorbing, ratchet first
+    // Ensure the sponge is in squeeze mode. Call before any squeeze operation.
+    fn enter_squeeze_mode(&mut self) {
         if self.mode == MODE_ABSORB {
             self.ratchet();
         }
-
-        // If starting fresh squeeze
         if self.mode == MODE_START {
             self.mode = MODE_SQUEEZE;
             self.squeeze_counter = 0;
             self.hasher.update(mask_squeeze());
             self.hasher.update(self.cv);
         }
+    }
 
-        // If we have leftovers from a previous squeeze chunk, use them
+    // Generate a fresh 32-byte digest block (increments squeeze counter).
+    fn generate_digest_block(&mut self) -> [u8; 32] {
+        let mut clone = self.hasher.copy();
+        let counter_bytes = u64_to_be_bytes(self.squeeze_counter as u64);
+        clone.update(counter_bytes);
+        let digest = clone.finalize();
+        self.squeeze_counter += 1;
+        digest
+    }
+
+    // Squeeze exactly 1 byte from the sponge.
+    // Uses leftover buffer for partial consumption of 32-byte digest blocks.
+    pub fn squeeze_1(&mut self) -> u8 {
+        self.enter_squeeze_mode();
+
         if self.leftovers_len > 0 {
+            let byte = self.leftovers[self.leftovers_start];
+            self.leftovers_start += 1;
+            self.leftovers_len -= 1;
+            byte
+        } else {
+            let digest = self.generate_digest_block();
+            let byte = digest[0];
+            for i in 0..31 {
+                self.leftovers[i] = digest[i + 1];
+            }
+            self.leftovers_start = 0;
+            self.leftovers_len = 31;
+            byte
+        }
+    }
+
+    // Squeeze exactly 32 bytes from the sponge.
+    //
+    // If 32 leftover bytes are available, returns them directly.
+    // Otherwise generates a fresh 32-byte digest block.
+    pub fn squeeze_32(&mut self) -> [u8; 32] {
+        self.enter_squeeze_mode();
+
+        if self.leftovers_len >= 32 {
             let mut out: [u8; 32] = [0; 32];
             for i in 0..32 {
-                if (i as u32) < self.leftovers_len {
-                    out[i] = self.leftovers[i];
+                out[i] = self.leftovers[self.leftovers_start + i];
+            }
+            self.leftovers_start += 32;
+            self.leftovers_len -= 32;
+            out
+        } else if self.leftovers_len > 0 {
+            // Partial leftovers: drain them and generate fresh bytes for the rest
+            let mut out: [u8; 32] = [0; 32];
+            let have = self.leftovers_len;
+            for i in 0..32 {
+                if (i as u32) < have {
+                    out[i] = self.leftovers[self.leftovers_start + i];
                 }
             }
             self.leftovers_len = 0;
-            self.leftovers = [0; 32];
+            self.leftovers_start = 0;
+
+            let digest = self.generate_digest_block();
+            let need = 32 - have;
+            for i in 0..32 {
+                if (i as u32) < need {
+                    out[have + i] = digest[i];
+                }
+            }
+            // Save remaining digest bytes as new leftovers
+            let remaining = 32 - need;
+            for i in 0..32 {
+                if (i as u32) < remaining {
+                    self.leftovers[i] = digest[need + i];
+                }
+            }
+            self.leftovers_start = 0;
+            self.leftovers_len = remaining;
             out
         } else {
-            // Squeeze a fresh 32-byte chunk
-            let mut clone = self.hasher.copy();
-            let counter_bytes = u64_to_be_bytes(self.squeeze_counter as u64);
-            clone.update(counter_bytes);
-            let digest = clone.finalize();
-
-            self.squeeze_counter += 1;
-            digest
+            self.generate_digest_block()
         }
     }
 
@@ -333,7 +382,8 @@ impl SHO {
         if self.mode == MODE_SQUEEZE {
             self.hasher.reset();
 
-            // Compute how many bytes were actually read from squeezes
+            // Compute how many bytes were actually consumed from squeezes.
+            // Total produced = squeeze_counter * 32. Unconsumed = leftovers_len.
             let byte_count: u64 = (self.squeeze_counter as u64) * (SHA256_DIGEST_SIZE as u64)
                 - (self.leftovers_len as u64);
 
@@ -345,9 +395,9 @@ impl SHO {
             sq_hasher.update(count_bytes);
             self.cv = sq_hasher.finalize();
 
-            // Reset
             self.mode = MODE_START;
             self.leftovers = [0; 32];
+            self.leftovers_start = 0;
             self.leftovers_len = 0;
         }
     }
