@@ -11,6 +11,7 @@ repository.workspace = true
 [features]
 default = ["parallel"]
 parallel = []
+provekit_ntt = []
 
 [dependencies]
 # Workspace crates
